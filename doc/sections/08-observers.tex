@@ -1,0 +1,386 @@
+\newpage{}
+\section{Distribution Field and Observer Operators}
+\label{sec:distribution-field-and-observer-operators}
+
+Section~\ref{sec:edge-forecast-head} defines the edge-local predictive
+distribution
+${}_{\psi}\mathfrak{D}_{u\,v}^{c\,i}\in\mathcal{P}(\R^{D_f})$.
+For a fixed forecast channel $c$ and forecast step $i$, the
+\emph{edge distribution field} is the edge-indexed collection
+\[
+  \left\{
+    {}_{\psi}\mathfrak{D}_{u\,v}^{c\,i}
+    \in
+    \mathcal{P}(\R^{D_f})
+    :
+    (u,v)\in\mathcal{E}
+  \right\}
+  \in
+  \left(\mathcal{P}(\R^{D_f})\right)^L.
+\]
+If the model is evaluated repeatedly over time, each local distribution may be
+written ${}_{\psi}\mathfrak{D}_{u\,v}^{c\,i}(t)$ for $t\in\mathcal{T}$, and
+the corresponding edge-indexed collection is time-indexed.  The field itself
+stores uncertainty.  It is not yet a single action, score, or node state.
+Observers read this field or scalar marginals derived from it.
+
+\subsection{Observer Operators}
+\label{subsec:observer-operators}
+
+An observer operator is any map that reads a declared predictive distribution
+and returns a value that can be compared, stored, or passed to another
+mathematical object.  Observers may read the full future-target distribution
+or a selected scalar marginal.  For edge $e=(u,v)$, channel $c$, and forecast
+step $i$, the full distribution is
+\[
+  {}_{\psi}\mathfrak{D}_{u\,v}^{c\,i}
+  \in
+  \mathcal{P}(\R^{D_f}).
+\]
+The scalar edge-return marginal is obtained only after selecting the return
+coordinate:
+\[
+  {}_{\psi}\mathfrak{D}_{(r),u\,v}^{c\,i}
+  =
+  (\pi_{(r)})_{\#}
+  {}_{\psi}\mathfrak{D}_{u\,v}^{c\,i},
+  \qquad
+  \pi_{(r)}:\R^{D_f}\rightarrow\R.
+\]
+Thus the scalar return marginal does not replace the full predictive
+distribution; it is one observer input derived from it.  Formally, for the
+chosen observer input dimension,
+\[
+  d_{\mathcal{O}} \in \{1,D_f\},
+  \qquad
+  \mathcal{O} : \mathcal{P}(\R^{d_{\mathcal{O}}}) \rightarrow \mathcal{Y},
+\]
+where $d_{\mathcal{O}}=1$ denotes a scalar observer and
+$d_{\mathcal{O}}=D_f$ denotes an observer on the full future target vector.
+Here $\mathcal{Y}$ is the chosen output space.
+
+For $\mathfrak{D}\in\mathcal{P}(\R^{D_f})$ and
+$\vect{f}\in\R^{D_f}$, useful coordinatewise observers include
+\begin{align*}
+  \mathcal{O}_{\E}[\mathfrak{D}]
+    &= \E_{\mathfrak{D}}[\vect{f}]
+    &&\in\R^{D_f}
+    &&\text{(expected value)},\\
+  \mathcal{O}_{\Var}[\mathfrak{D}]
+    &= \Var_{\mathfrak{D}}[\vect{f}]
+    &&\in\R^{D_f}
+    &&\text{(coordinatewise variance)},\\
+  \mathcal{O}_{\Quant\,\tau}[\mathfrak{D}]
+    &= \Quant_{\tau}(\mathfrak{D})
+    &&\in\R^{D_f}
+    &&\text{(coordinatewise $\tau$-quantile)},\\
+  \mathcal{O}_{\ES\,\tau}[\mathfrak{D}]
+    &= \ES_{\tau}(\mathfrak{D})
+    &&\in\R^{D_f}
+    &&\text{(coordinatewise expected shortfall)},\\
+  \mathcal{O}_{\Risk}[\mathfrak{D}]
+    &\in \R^m
+    &&
+    &&\text{(generic risk observer)}.
+\end{align*}
+Applied to the scalar marginal
+${}_{\psi}\mathfrak{D}_{(r),u\,v}^{c\,i}\in\mathcal{P}(\R)$, the same named
+observer families return scalar outputs unless a larger output space is
+explicitly declared.
+For the expected-shortfall observer we follow the coherent-risk treatment of
+Acerbi and Tasche~\cite{acerbi2002coherence}.  For mixture distributions,
+coordinatewise quantiles and expected shortfall are computed numerically from
+the scalar marginal distribution, unless a closed-form special case is
+explicitly available.
+
+In plain terms, observers do not create the distribution field.  They read the
+field.  The expected value attached to an instrument edge is therefore one
+observer among several, not the whole predictive object.
+
+\subsection{Distribution Calibration Diagnostics}
+\label{subsec:distribution-calibration-diagnostics}
+
+The MDN loss trains a predictive density, but low training loss alone does not
+guarantee calibrated uncertainty.  During evaluation, the distribution field
+should be checked with held-out negative log-likelihood, coverage of predictive
+intervals, probability integral transform diagnostics for scalar marginals, and
+error statistics of observer readouts such as expectation and quantiles.  This
+keeps validation tied to the full predictive distribution rather than only to a
+point-estimate error such as mean squared error.
+
+\subsection{Pointwise Fields Derived from Observers}
+\label{subsec:pointwise-fields-derived-from-observers}
+
+Applying an observer pointwise over the edge distribution field gives a derived
+field.  For edge $e=(u,v)$, the scalar edge-return marginal gives the
+mean-return field
+\[
+  \widehat{r}_{e}^{c\,i}
+  :=
+  \mathcal{O}_{\E}
+  \left[
+    {}_{\psi}\mathfrak{D}_{(r),u\,v}^{c\,i}
+  \right]
+  \in\R.
+\]
+A simple variance-based confidence rule is
+\[
+  \gamma_{e}^{c\,i}
+  :=
+  \frac{1}{
+    \mathcal{O}_{\Var}
+    \left[
+      {}_{\psi}\mathfrak{D}_{(r),u\,v}^{c\,i}
+    \right]
+    +
+    \delta
+  }
+  \in\Rpos,
+  \qquad
+  \delta\in\Rpos.
+\]
+High predictive variance lowers the confidence weight; the floor $\delta$
+prevents a zero denominator.  The same idea yields downside-risk fields,
+entropy fields, quantile fields, or policy-specific confidence fields.
+
+For a fixed channel and forecast step, one may suppress $(c,i)$ and write
+\[
+  \widehat{r}_e
+  :=
+  \widehat{r}_{e}^{c\,i},
+  \qquad
+  \gamma_e
+  :=
+  \gamma_{e}^{c\,i}.
+\]
+This is the notation used in the edge-to-node recovery section.
+
+\subsection{Step and Cumulative Return Readouts}
+\label{subsec:step-and-cumulative-return-readouts}
+
+The scalar edge-return marginal gives a step return at each forecast position.
+For edge-to-node recovery at one forecast step, this step return may be the
+desired object:
+\[
+  r_e^{c\,i}\in\R.
+\]
+For horizon-level valuation, one may instead read the cumulative log return from
+the anchor to forecast step $i$:
+\[
+  R_e^{c\,i}
+  =
+  \sum_{s=1}^{i}
+  r_e^{c\,s}
+  \in\R.
+\]
+At the level of expectations, the same readout gives
+\[
+  \widehat{R}_e^{c\,i}
+  =
+  \sum_{s=1}^{i}
+  \widehat{r}_e^{c\,s}
+  \in\R.
+\]
+This cumulative readout is an observer choice%
+\note{
+  The current MDN head gives horizon-wise marginal distributions.  Summing
+  expected step returns is well defined, but the full uncertainty of
+  $R_e^{c\,i}$ requires cross-horizon covariance.  Without such a joint horizon
+  model, cumulative-return uncertainty must be treated as an observer
+  approximation or supplied by an additional covariance model.
+}.
+
+\subsection{Trajectory and Control-Prepared Readouts}
+\label{subsec:trajectory-and-control-prepared-readouts}
+
+The observers above read one predictive distribution at a time.  We may also
+read several forecast horizons together.  These are still readouts of the MDN
+field; they do not change the predictive distribution learned by the model.
+
+For one edge $e=(u,v)$ and channel $c$, define a forecast trajectory as
+\[
+  \vect{F}_{e}^{c,1:H_f}
+  =
+  \left(
+    \vect{f}_{e}^{c\,1},
+    \vect{f}_{e}^{c\,2},
+    \ldots,
+    \vect{f}_{e}^{c\,H_f}
+  \right)
+  \in
+  \left(\R^{D_f}\right)^{H_f}.
+\]
+The current MDN head gives one marginal predictive distribution
+${}_{\psi}\mathfrak{D}_{u\,v}^{c\,i}$ for each horizon $i$.  Therefore, any trajectory
+readout must declare how these horizon-wise distributions are combined.  A
+simple first choice is the product score
+\[
+  S_{\mathrm{path}}(\vect{F}_{e}^{c,1:H_f})
+  =
+  \sum_{i=1}^{H_f}
+  \log
+  {}_{\psi}p_{u\,v}^{c\,i}
+  \left(
+    \vect{f}_{e}^{c\,i}
+    \given
+    \tensor{z}_{u\,v}
+  \right),
+\]
+which treats the horizon-wise MDN outputs as conditionally independent given
+the edge representation.  This is a readout assumption, not an additional claim
+made by the MDN head.
+
+A maximum-density predictive trajectory readout may then be written as
+\[
+  \widehat{\vect{F}}_{e,\mathrm{dens}}^{c,1:H_f}
+  =
+  \arg\max_{\vect{F}_{e}^{c,1:H_f}}
+  \left\{
+    S_{\mathrm{path}}(\vect{F}_{e}^{c,1:H_f})
+    -
+    \mathcal{R}_{\mathrm{path}}(\vect{F}_{e}^{c,1:H_f})
+  \right\}.
+\]
+Here $\mathcal{R}_{\mathrm{path}}$ is an optional trajectory regularizer.  For
+example, it may penalize impossible jumps, prefer smooth paths, or enforce
+domain constraints inherited from the market representation.
+
+For implementation, a lighter component-path version is often enough.  For
+each horizon and mixture component, define the component-mode score
+\[
+  s_{e}^{c\,i\,k}
+  =
+  \log \alpha_{e}^{c\,i\,k}
+  -
+  \frac{1}{2}
+  \log
+  \det
+  \left(
+    2\pi \mat{\Sigma}_{e}^{c\,i\,k}
+  \right).
+\]
+This score measures the height of component $k$ at its own mean.  A discrete
+component trajectory is
+\[
+  \widehat{\kappa}_{e}^{c}
+  =
+  \arg\max_{(k_1,\ldots,k_{H_f})}
+  \left\{
+    \sum_{i=1}^{H_f}
+    s_{e}^{c\,i\,k_i}
+    -
+    \lambda_{\Delta}
+    \sum_{i=2}^{H_f}
+    \left\|
+      \vect{\mu}_{e}^{c\,i\,k_i}
+      -
+      \vect{\mu}_{e}^{c\,(i-1)\,k_{i-1}}
+    \right\|_2^2
+  \right\}.
+\]
+The resulting trajectory readout is then
+\[
+  \widehat{\vect{F}}_{e,\mathrm{comp}}^{c,1:H_f}
+  =
+  \left(
+    \vect{\mu}_{e}^{c\,1\,\widehat{k}_1},
+    \vect{\mu}_{e}^{c\,2\,\widehat{k}_2},
+    \ldots,
+    \vect{\mu}_{e}^{c\,H_f\,\widehat{k}_{H_f}}
+  \right).
+\]
+This gives a concrete representative path through the mixture field without
+collapsing the whole predictive distribution into an expectation.
+
+The same distribution field can also produce samples:
+\[
+  \vect{F}_{e,s}^{c,1:H_f}
+  \sim
+  \prod_{i=1}^{H_f}
+  {}_{\psi}\mathfrak{D}_{u\,v}^{c\,i},
+  \qquad
+  s=1,\ldots,S.
+\]
+Scenario trajectories are useful when an observer needs more than a mean path,
+for example when estimating downside risk, tail exposure, or the distribution
+of recovered node states.
+
+Finally, the distribution field may be prepared for a later control problem.
+Such a readout does not solve the trading problem inside this document.  It
+only converts predictive distributions into quantities that a control layer could
+consume.  For example,
+\[
+  \mathcal{O}_{\mathrm{ctrl}}
+  \left[
+    \left\{
+      {}_{\psi}\mathfrak{D}_{u\,v}^{c\,i}(t)
+      :
+      (u,v)\in\mathcal{E}
+    \right\},
+    \vect{h}(t)
+  \right]
+  =
+  \left(
+    \widehat{\vect{y}}^{c\,i}(t),
+    \mat{C}_{y}^{c\,i}(t),
+    \text{risk fields},
+    \text{constraint fields}
+  \right),
+\]
+where $\widehat{\vect{y}}^{c\,i}(t)$ and $\mat{C}_{y}^{c\,i}(t)$ may be obtained
+after the edge-to-node recovery step.  These objects are compatible with later
+dynamic-programming or Hamilton--Jacobi--Bellman formulations, but they are not
+the policy itself.
+
+In that later setting, one would introduce a state $s$, a control $a$, a value
+function $V$, and an objective.  A schematic continuous-time control equation
+would have the form
+\[
+  0
+  =
+  \partial_t V(s,t)
+  +
+  \sup_{a\in\mathcal{A}(s)}
+  \left\{
+    \operatorname{Reward}(s,a)
+    -
+    \mathrm{Cost}(s,a)
+    +
+    {}_{\psi}\mathcal{L}^{a}V(s,t)
+  \right\},
+\]
+where the operator ${}_{\psi}\mathcal{L}^{a}$ would be built from drift,
+covariance, and risk quantities read from the predictive distribution field.
+This is why the MDN field is useful for control, but the control problem remains
+a separate layer.
+
+\subsection{Second-Order Observers and Normalization}
+\label{subsec:second-order-observers-and-normalization}
+
+If a joint second-order observer is maintained across a collection of edge or
+node returns $R_1,\ldots,R_m\in\R$, define the covariance matrix by
+\[
+  \Sigma_{i\,j}
+  =
+  \Cov(R_i,R_j),
+  \qquad
+  \Sigma\in\R^{m\times m}.
+\]
+The diagonal terms $\Sigma_{i\,i}$ are variances; they count one dispersion
+value per coordinate, not necessarily one unit per traded instrument.  The
+normalized correlation matrix is
+\[
+  \rho_{i\,j}
+  =
+  \frac{\Sigma_{i\,j}}{\sqrt{\Sigma_{i\,i}\Sigma_{j\,j}}},
+  \qquad
+  \rho\in\R^{m\times m}.
+\]
+This normalization removes scale and keeps only the signed strength of linear
+co-movement.
+
+A covariance observer is additional information beyond the pointwise MDN head.
+It may come from repeated evaluations, sampled scenarios, an ensemble, a
+separate covariance model, or a policy-level estimator.  The current MDN head
+standardizes the edge-local predictive distributions; it does not by itself impose a
+joint covariance model across the whole market graph.

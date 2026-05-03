@@ -83,20 +83,22 @@ The holdings of the portfolio are recorded on nodes%
 \]
   
 \calloutbox{Edge-Data \& Node-State Disambiguation.}{\\%
-  Asset holdings at the base node $\tensor{h}_{u}$, 
-  has a price readout $\tensor{x}_{u\,v}(t)$ of $u$ in terms of $v$,
-  thus prices are quotation, not states stored inside either node.  Section~\ref{sec:edges-to-nodes}
+  Asset holdings at the base node $h_{u}$
+  have a price readout $\tensor{x}_{u\,v}(t)$ of $u$ in terms of $v$,
+  thus prices are quotations, not states stored inside either node.  Section~\ref{sec:edges-to-nodes}
   describes how node valuations are recovered from edge readouts.
 }
 
-There are $N$ nodes and $N(N-1)$ edges%
+There are $N$ nodes and $L=|\mathcal{E}|$ active directed edges, with
+$L\le N(N-1)$%
 \note{
-  The active edge universe is taken to be the full directed graph without self-edges: 
-  $\mathcal{E} = \{(u,v)\in\mathcal{V}\times\mathcal{V}:u\ne v\}, |\mathcal{E}|=N(N-1).$
-  Both directions are counted separately.  Thus $(u,v)$ and $(v,u)$ are
-  distinct directed quotations, corresponding for example to \field{BTCUSDT}
-  and \field{USDTBTC}. And something like \field{BTCBTC} is not consider valid.
+  The complete directed graph without self-edges would contain $N(N-1)$
+  directed edges.  The active graph need not contain all of them; it contains
+  the staged traded instrument relations available to the model.  Both
+  directions are distinct when both are present, so $(u,v)$ and $(v,u)$ are
+  different directed quotations.  A self-quotation such as \field{BTCBTC} is
+  not considered valid.
 }.
 
-We will later present observer operators to measure all the standard quantities. 
-Risk, exposure, entropy and others. 
+We will later present observer operators to read standard quantities such as
+risk, exposure, entropy, and others. 

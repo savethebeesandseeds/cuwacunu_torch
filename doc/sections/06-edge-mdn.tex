@@ -2,32 +2,37 @@
 \section{Edge Value Forecasting}
 \label{sec:edge-forecast-head}
 
-We use mixture density networks in the sense of Bishop~\cite{bishop1994mdn}, 
-to forecast the \texttt{kline} features at each of the edges $e=(u,v) \in \mathcal{E}$%
+We use mixture density networks in the sense of Bishop~\cite{bishop1994mdn},
+to forecast the normalized \texttt{kline} future attached to each directed edge
+$e=(u,v) \in \mathcal{E}$%
 \note{
-  Note, there is separate specialized network for each edge $e=(u,v) \in \mathcal{E}$.
-}.  
+  In the current edge-specialized setting, one forecast head is trained for
+  each directed edge $e=(u,v) \in \mathcal{E}$.  The notation below writes
+  $\psi$ without adding an edge subscript; when needed, read it as the
+  parameter collection belonging to the active edge.
+}.
 This means that instead of predicting only one value per feature, we
-model a conditional probability density for each future feature $D_{f}$.%
+model a conditional probability density for each future feature vector
+$\tensor{f}_{u\,v}^{c\,i}\in\R^{D_f}$.%
 \note{
   This is
   important because the future market state may be multi-modal: several different
   future moves can be plausible under the same current representation.
 }
 
-The edge predition heads consumes the edge representation exported by Section~\ref{sec:representation}. 
+The edge prediction head consumes the edge representation exported by Section~\ref{sec:representation}. 
 \[
   \tensor{z}_{u\,v} \in \R^{D_e}.
 \]
 
-And tries to estimate the \texttt{klines} at the future: 
+It then tries to estimate the future normalized \texttt{kline} window: 
 \[
   \tensor{f}_{u\,v} \in \R^{C \times H_f \times D_f},
   \quad or \quad
-  \tensor{f}_{u\,v}^{c\,i} \in \R^{\times D_f}.
+  \tensor{f}_{u\,v}^{c\,i} \in \R^{D_f}.
 \]
 
-For wich the model creates%
+For this, the model creates%
 \note{
   A mixture of $K$ Gaussian distributions creates $k = 1,\ldots,K$
   possible centers and spreads for that future, with mixture weights expressing
@@ -41,7 +46,7 @@ For wich the model creates%
 
 \[
   \text{distribution}\quad
-  \mathcal{D}_{u\,v}^{c\,i}
+  {}_{\psi}\mathfrak{D}_{u\,v}^{c\,i}
   \quad\text{with density}\quad
   {}_{\psi}p_{u\,v}^{c\,i}(\cdot\given\tensor{z}_{u\,v}),
   \quad\text{parameterized by}\quad
@@ -53,8 +58,8 @@ For wich the model creates%
 \]
 
 
-Where $\alpha$ is the component weight, $\vect{\mu}$ is the Gaussian mean, and
-$\mat{\Sigma}$ the component covariance matrix%
+Here $\alpha$ is the component weight, $\vect{\mu}$ is the Gaussian mean, and
+$\mat{\Sigma}$ is the component covariance matrix%
 \note{
   The network does not emit every constrained parameter directly ($\alpha$, $\vect{\mu}$, $\mat{\Sigma}$).  
   It emits ($\tilde{\alpha}$,$\vect{\mu}$, $\vect{\beta}$), 
@@ -91,7 +96,7 @@ The first layer maps one edge representation to hidden space%
   $\operatorname{SiLU}(x)=x/(1+\exp(-x))$. 
 }:
 \[
-  \vect{h}^{(0)}
+  {}_{\psi}\vect{h}^{(0)}
   =
   \operatorname{SiLU}
   \left(
@@ -101,72 +106,72 @@ The first layer maps one edge representation to hidden space%
   \right)
   \in \R^{H_{\psi}}.
 \]
-Each residual block keeps the same width $H_{\psi}$
+Each residual block keeps the same width $H_{\psi}$.
 A typical block has the form
 \[
-  \vect{q}^{(r)}
+  {}_{\psi}\vect{q}^{(r)}
   =
   \operatorname{SiLU}
   \left(
     {}_{\psi}\mat{W}^{(r)}_{a_1}\cdot
-    {}_{\psi}\operatorname{LN}^{(r)}_{a_1}(\vect{h}^{(r-1)})
+    \operatorname{LayerNormalization}^{(r)}_{a_1}({}_{\psi}\vect{h}^{(r-1)})
     +
     {}_{\psi}\vect{b}^{(r)}_{a_1}
   \right)
   \in \R^{2H_{\psi}},
 \]
 \[
-  \widetilde{\vect{h}}^{(r)}
+  {}_{\psi}\widetilde{\vect{h}}^{(r)}
   =
-  {}_{\psi}\mat{W}^{(r)}_{a_2}\cdot\vect{q}^{(r)}
+  {}_{\psi}\mat{W}^{(r)}_{a_2}\cdot{}_{\psi}\vect{q}^{(r)}
   +
   {}_{\psi}\vect{b}^{(r)}_{a_2}
   \in \R^{H_{\psi}},
 \]
 and
 \[
-  \vect{h}^{(r)}
+  {}_{\psi}\vect{h}^{(r)}
   =
   \operatorname{SiLU}
   \left(
-    {}_{\psi}\operatorname{LN}^{(r)}_{a_2}
+    \operatorname{LayerNormalization}^{(r)}_{a_2}
     \left(
-      \vect{h}^{(r-1)}
+      {}_{\psi}\vect{h}^{(r-1)}
       +
-      \widetilde{\vect{h}}^{(r)}
+      {}_{\psi}\widetilde{\vect{h}}^{(r)}
     \right)
   \right)
   \in \R^{H_{\psi}}.
 \]
-After the residual stack, the backbone applies layer normalization (${}_{\psi}\operatorname{LN}$)%
+After the residual stack, the backbone applies layer normalization ($\operatorname{LayerNormalization}$)%
 \note{
-  ${}_{\psi}\operatorname{LN}$ denotes layer normalization applied to the vector inside
+  $\operatorname{LayerNormalization}$ denotes layer normalization applied to the vector inside
   its parentheses.  Superscript $(r)$ labels the residual block, while
   subscripts such as $a_1$ and $a_2$ label different layer normalization
   modules inside that block; they are not tensor
-  coordinates.  For a vector $\vect{q}\in\R^{H_{\psi}}$, one common form is
-  ${}_{\psi}\operatorname{LN}(\vect{q})
+  coordinates.  For a vector $\vect{v}\in\R^{H_{\psi}}$, one common form is
+  $\operatorname{LayerNormalization}(\vect{v})
   =
   \vect{g}\odot
-  (\vect{q}-\bar{q}\mathbf{1})/\sqrt{s_q^2+\eps}
+  (\vect{v}-\bar{v}\mathbf{1})/\sqrt{s_v^2+\eps}
   +
   \vect{d}$,
-  where $\bar{q}=H_{\psi}^{-1}\sum_{a=1}^{H_{\psi}}q^a$,
-  $s_q^2=H_{\psi}^{-1}\sum_{a=1}^{H_{\psi}}(q^a-\bar{q})^2$, and
+  where $\bar{v}=H_{\psi}^{-1}\sum_{a=1}^{H_{\psi}}v^a$,
+  $s_v^2=H_{\psi}^{-1}\sum_{a=1}^{H_{\psi}}(v^a-\bar{v})^2$, and
   $\vect{g},\vect{d}\in\R^{H_{\psi}}$ are learned coordinatewise scale and shift
   vectors.
 } to the last hidden state as:
 \[
-  {}_{\psi}\vect{o}
+  \vect{\psi}_{\mathrm{out}}
   =
-  {}_{\psi}\operatorname{LN}_{\mathrm{out}}
+  \operatorname{LayerNormalization}_{\mathrm{out}}
   \left(
-    \vect{h}^{(R_{\psi})}
+    {}_{\psi}\vect{h}^{(R_{\psi})}
   \right)
   \in \R^{H_{\psi}}.
 \]
 
-Based on the shared backbone output ${}_{\psi}\vect{o}$, we apply three
+Based on the shared backbone output $\vect{\psi}_{\mathrm{out}}$, we apply three
 one-layer activationless affine readout branches: one for raw
 mixture activations $\tilde{\alpha}$, one for component means $\mu$, and one
 for raw scales $\beta$.%
@@ -184,19 +189,19 @@ mixture, and feature axes:
   \begin{aligned}
     \tensor{\tilde{\alpha}}_{u\,v}
     &=
-    {}_{\psi}\mat{W}_{\tilde{\alpha}}\cdot{}_{\psi}\vect{o}
+    {}_{\psi}\mat{W}_{\tilde{\alpha}}\cdot\vect{\psi}_{\mathrm{out}}
     +
     {}_{\psi}\vect{b}_{\tilde{\alpha}}
     \quad \in \R^{C \times H_f \times K},\\
     \tensor{\mu}_{u\,v}
     &=
-    {}_{\psi}\mat{W}_{\mu}\cdot{}_{\psi}\vect{o}
+    {}_{\psi}\mat{W}_{\mu}\cdot\vect{\psi}_{\mathrm{out}}
     +
     {}_{\psi}\vect{b}_{\mu}
     \quad \in \R^{C \times H_f \times K \times D_f},\\
     \tensor{\beta}_{u\,v}
     &=
-    {}_{\psi}\mat{W}_{\beta}\cdot{}_{\psi}\vect{o}
+    {}_{\psi}\mat{W}_{\beta}\cdot\vect{\psi}_{\mathrm{out}}
     +
     {}_{\psi}\vect{b}_{\beta}
     \quad \in \R^{C \times H_f \times K \times D_f}.
@@ -204,8 +209,8 @@ mixture, and feature axes:
 \]
 
 Equivalently, for every forecast channel $c=1,\ldots,C$, forecast step
-$i=1,\ldots,H_f$, and mixture component $k=1,\ldots,K$. For the future features target $\in D_f$ 
-these outputs expose:
+$i=1,\ldots,H_f$, and mixture component $k=1,\ldots,K$.  For the future target feature vector in
+$\R^{D_f}$, these outputs expose:
 \[
   \tilde{\alpha}_{u\,v}^{c\,i\,k}\in\R,
   \qquad
@@ -230,16 +235,16 @@ representation $\tensor{z}_{u\,v}$ for $e=(u,v)$.
 
 
 
-\subsection{From Network Outputs to Gaussian Mixtures}
+\subsection{From Edge Forecast Network Outputs to Edge Forecast Gaussian Mixtures}
 \label{subsec:from-mdn-to-mixtures}
 
 We go from model outputs 
 $\{\tensor{\tilde{\alpha}},\,\tensor{\mu},\,\tensor{\beta}\}$
-to the distribution's density parameters $\{\alpha,\,\vect{\mu},\,\mat{\Sigma}\}$.\\
+to the distribution's density parameters $\{\alpha,\,\vect{\mu},\,\mat{\Sigma}\}$.
 
 For each directed edge $e=(u,v)$, forecast channel $c$, and forecast horizon
 $i$, the MDN defines a $K$-component Gaussian mixture over the selected future
-target vector $\tensor{f}_{u\,v}^{c\,i}\in\R^{D_f}$.\\
+target vector $\tensor{f}_{u\,v}^{c\,i}\in\R^{D_f}$.
 
 The mixture coefficients%
 \note{
@@ -301,7 +306,7 @@ scales.  These scales define a diagonal component covariance%
   \in\R^{D_f\times D_f}.
 \]
 
-Where folows that the predictive density for one future vector is
+It follows that the predictive density for one future vector is
 \[
   {}_{\psi}p_{u\,v}^{c\,i}(\tensor{f}_{u\,v}^{c\,i}\given\tensor{z}_{u\,v})
   :=
@@ -312,11 +317,12 @@ Where folows that the predictive density for one future vector is
     \tensor{f}_{u\,v}^{c\,i};
     \vect{\mu}_{u\,v}^{c\,i\,k},
     \mat{\Sigma}_{u\,v}^{c\,i\,k}
-  \right).
+  \right)
+  \in\Rnonneg.
 \]
 
 So finally, for every edge $e=(u,v)$, forecast channel $c$, and horizon $i$, the MDN
-defines one Gaussian predictive distribution with density
+defines one Gaussian-mixture predictive distribution with density
 ${}_{\psi}p_{u\,v}^{c\,i}(\cdot\given\tensor{z}_{u\,v})$%
 \note{
   For $\vect{f},\vect{\mu}\in\R^{D_f}$ and positive-definite
@@ -335,10 +341,26 @@ ${}_{\psi}p_{u\,v}^{c\,i}(\cdot\given\tensor{z}_{u\,v})$%
 }.
 
 \[
-  \mathcal{D}_{u\,v}^{c\,i}
+  {}_{\psi}\mathfrak{D}_{u\,v}^{c\,i}
   \in
   \mathcal{P}(\R^{D_f}).
 \]
+This is an edge-local predictive distribution%
+\note{
+  $\mathcal{P}(\R^{D_f})$ denotes the collection of probability distributions
+  whose outcomes are vectors in $\R^{D_f}$.  In this case,
+  ${}_{\psi}\mathfrak{D}_{u\,v}^{c\,i}$ is one such distribution, and
+  ${}_{\psi}p_{u\,v}^{c\,i}$ is its density.
+  The MDN head defines one predictive distribution for each directed edge,
+  forecast channel, and forecast step.  It does not by itself define a joint
+  probability distribution over all active edges, channels, or horizons.  When
+  the training loss sums the NLL over $(c,i)$, it is using a pointwise
+  conditional likelihood over channel-horizon targets.  Observer operators later
+  decide what to read from these edge-level distributions, and the edge-to-node
+  procedure decides how selected scalar edge readouts are lifted back into node
+  coordinates.  A joint cross-edge, cross-channel, or cross-horizon uncertainty
+  model is a separate design choice.
+}.
 
 
 
@@ -348,148 +370,283 @@ ${}_{\psi}p_{u\,v}^{c\,i}(\cdot\given\tensor{z}_{u\,v})$%
 \subsection{Mixture Density Network's Training Loss}
 \label{subsec:mdn-training-loss}
 
-In the training equations below, the leading index $b$ denotes the stacked
-edge-labeled sample in the batch%
+Fix one directed edge $e=(u,v)\in\mathcal{E}$.  In the training equations
+below, the leading index $b$ denotes a sample in the homogeneous batch assigned
+to this edge%
 \note{
-  Each batch sample still carries an edge label $(u,v)$.  The edge label is
-  suppressed in the loss equations only to keep the batch likelihood readable.
+  The current edge-specialized setting trains one MDN head per directed edge.
+  Therefore the batch index $b$ enumerates repeated windows for the fixed edge,
+  not different edges: $e^1=\cdots=e^B=(u,v)$.
+  The lower edge label $u\,v$ is kept on the batch tensors below to make this
+  ownership explicit.  Mixed-edge batches would require routing by $e^b$ or a
+  shared edge-conditioned forecast head.
 }.
-In the coordinatewise likelihood below, $\mu^{b\,c\,i\,k\,d}$ and
-$\sigma^{b\,c\,i\,k\,d}$ denote the $d$-th coordinates of the component mean
-and positive scale vectors.  For one valid target position $(b,c,i)$, the
-unweighted MDN negative log-likelihood is
+The future mask decides which target positions are allowed to contribute:
 \[
-  \ell^{b\,c\,i}
+  \mathcal{I}_{f,u\,v}
+  =
+  \left\{
+    (b,c,i) : {}_{f}m_{u\,v}^{b\,c\,i}=1
+  \right\}
+  \subseteq
+  \{1,\ldots,B\}
+  \times
+  \{1,\ldots,C\}
+  \times
+  \{1,\ldots,H_f\}.
+\]
+If $(b,c,i)\notin\mathcal{I}_{f,u\,v}$, the target slice is not treated as observed
+training evidence%
+\note{
+  The future mask ${}_{f}m_{u\,v}^{b\,c\,i}$ is a supervision mask.  It should not be
+  confused with the input mask used by the representation encoder.  A sample may
+  have a usable input window and still have some missing future targets.
+}.
+
+The target values used by this loss are normalized future coordinates%
+\note{
+  The loss is computed in normalized target coordinates, not in raw market
+  units.  The model assigns density to normalized future \texttt{kline}
+  features, such as log-return price coordinates and \texttt{log1p} activity
+  coordinates.  Any interpretation in raw market units must pass through the
+  inverse normalization or through a clearly named observer.
+}.
+
+The scale used in the loss is the positive scale emitted by the head, possibly
+after numerical protection.  For each batch sample and mixture component,
+\[
+  \vect{\sigma}_{u\,v}^{b\,c\,i\,k}\in\Rpos^{D_f},
+  \qquad
+  \sigma_{u\,v}^{b\,c\,i\,k\,d}
+  =
+  \left(\vect{\sigma}_{u\,v}^{b\,c\,i\,k}\right)^d\in\Rpos.
+\]
+Coordinatewise, write
+\[
+  \bar{\sigma}_{u\,v}^{b\,c\,i\,k\,d}
+  =
+  \max
+  \left(
+    \sigma_{\min},
+    \sigma_{u\,v}^{b\,c\,i\,k\,d}
+  \right)
+  \in\Rpos,
+  \qquad
+  \sigma_{\min}\in\Rpos.
+\]
+An implementation may also apply an upper clamp
+$\bar{\sigma}_{u\,v}^{b\,c\,i\,k\,d}\le \sigma_{\max}$ with
+$\sigma_{\max}\in\Rpos$.  If no clamp is used, then
+$\bar{\sigma}_{u\,v}=\sigma_{u\,v}$%
+\note{
+  Scale protection is part of stable training.  Very small predicted scales can
+  create exploding losses and unstable gradients, while very large scales can
+  make the density too diffuse.  The chosen $\sigma_{\min}$, optional
+  $\sigma_{\max}$, and any gradient clipping rule should be treated as
+  experiment configuration and recorded with the run.
+}.
+
+For one valid target position $(b,c,i)$ and one mixture component $k$, define
+the coordinate log-density
+\[
+  g_{u\,v}^{b\,c\,i\,k\,d}
+  :=
+  \log
+  \mathcal{N}
+  \left(
+    f_{u\,v}^{b\,c\,i\,d};
+    \mu_{u\,v}^{b\,c\,i\,k\,d},
+    (\bar{\sigma}_{u\,v}^{b\,c\,i\,k\,d})^{2}
+  \right)
+  \in\R,
+\]
+that is,
+\[
+  g_{u\,v}^{b\,c\,i\,k\,d}
+  =
+  -\frac{1}{2}
+  \left[
+    \left(
+      \frac{
+        f_{u\,v}^{b\,c\,i\,d}-\mu_{u\,v}^{b\,c\,i\,k\,d}
+      }{
+        \bar{\sigma}_{u\,v}^{b\,c\,i\,k\,d}
+      }
+    \right)^{2}
+    +
+    2\log \bar{\sigma}_{u\,v}^{b\,c\,i\,k\,d}
+    +
+    \log(2\pi)
+  \right]
+  \in\R.
+\]
+The diagonal Gaussian component log-density is then
+\[
+  q_{u\,v}^{b\,c\,i\,k}
+  =
+  \sum_{d=1}^{D_f} g_{u\,v}^{b\,c\,i\,k\,d}
+  \in\R.
+\]
+The unweighted MDN negative log-likelihood is
+\[
+  \ell_{u\,v}^{b\,c\,i}
+  =
+  -
+  \operatorname{logsumexp}_{k}
+  \left(
+    \log \alpha_{u\,v}^{b\,c\,i\,k}
+    +
+    q_{u\,v}^{b\,c\,i\,k}
+  \right)
+  \in\R.
+\]
+Equivalently,
+\[
+  \ell_{u\,v}^{b\,c\,i}
   =
   -
   \log
   \left[
     \sum_{k=1}^{K}
-    \alpha^{b\,c\,i\,k}\cdot
+    \alpha_{u\,v}^{b\,c\,i\,k}
     \prod_{d=1}^{D_f}
     \mathcal{N}
     \left(
-      f^{b\,c\,i\,d};
-      \mu^{b\,c\,i\,k\,d},
-      (\sigma^{b\,c\,i\,k\,d})^{2}
+      f_{u\,v}^{b\,c\,i\,d};
+      \mu_{u\,v}^{b\,c\,i\,k\,d},
+      (\bar{\sigma}_{u\,v}^{b\,c\,i\,k\,d})^{2}
     \right)
-  \right].
+  \right]
+  \in\R.
 \]
-Equivalently, in log-sum-exp form%
+In code, $\log\alpha_{u\,v}^{b\,c\,i\,k}$ is usually obtained by applying
+\texttt{log\_softmax} to the raw mixture activations
+$\vect{\tilde{\alpha}}_{u\,v}^{b\,c\,i}$, rather than by taking the logarithm of an
+already rounded softmax output%
 \note{
-  For values $a_1,\ldots,a_K$,
-  $\operatorname{logsumexp}_{k}(a_k)
-  =
-  \log\left(\sum_{k=1}^{K}\exp(a_k)\right)$.
-  It is used here to combine the $K$ mixture components in log space, which is
-  numerically more stable than summing tiny densities directly.
-},
-\[
-  \ell^{b\,c\,i}
-  =
-  -
-  \operatorname{logsumexp}_{k}
-  \left(
-    \log \alpha^{b\,c\,i\,k}
-    +
-    \sum_{d=1}^{D_f}
-    \log
-    \mathcal{N}
-    \left(
-      f^{b\,c\,i\,d};
-      \mu^{b\,c\,i\,k\,d},
-      (\sigma^{b\,c\,i\,k\,d})^{2}
-    \right)
-  \right).
-\]
-This is the standard maximum-likelihood training objective for the conditional
-mixture model.
+  The implementation should compute the mixture likelihood in log space:
+  \texttt{log\_softmax} for mixture weights, coordinate log-densities for the
+  Gaussian factors, and \texttt{logsumexp} across mixture components.  Directly
+  multiplying many small Gaussian densities is numerically fragile.
+}.
 
 The implementation may also use feature weights
-$\lambda^{(f)}_d\in\Rnonneg$.  In that case the per-component log-density is replaced
-by the weighted pseudo-likelihood score
+${}_{d}\lambda^{(d)}\in\Rnonneg$.  In that case, replace $q_{u\,v}^{b\,c\,i\,k}$ by the
+weighted score
 \[
-  q^{b\,c\,i\,k}
+  {}_{\lambda}q_{u\,v}^{b\,c\,i\,k}
   =
   \sum_{d=1}^{D_f}
-  \lambda^{(f)}_d\cdot
-  \log
-  \mathcal{N}
-  \left(
-    f^{b\,c\,i\,d};
-    \mu^{b\,c\,i\,k\,d},
-    (\sigma^{b\,c\,i\,k\,d})^{2}
-  \right),
+  {}_{d}\lambda^{(d)}\cdot g_{u\,v}^{b\,c\,i\,k\,d}
+  \in\R,
 \]
-and
+and use
 \[
-  \ell_{(\lambda)}^{b\,c\,i}
+  {}_{\lambda}\ell_{u\,v}^{b\,c\,i}
   =
   -
   \operatorname{logsumexp}_{k}
   \left(
-    \log \alpha^{b\,c\,i\,k}
+    \log \alpha_{u\,v}^{b\,c\,i\,k}
     +
-    q^{b\,c\,i\,k}
-  \right).
+    {}_{\lambda}q_{u\,v}^{b\,c\,i\,k}
+  \right)
+  \in\R.
 \]
 When all feature weights are equal to one,
-$\ell_{(\lambda)}^{b\,c\,i}$ reduces to the ordinary MDN negative log-likelihood.
+${}_{\lambda}\ell_{u\,v}^{b\,c\,i}$ reduces to the ordinary MDN negative
+log-likelihood.  When the feature weights are not all one, the expression is a
+weighted training score rather than a normalized probability density; this is
+acceptable as a design choice, but it should be named as such%
+\note{
+  Feature weights ${}_{d}\lambda^{(d)}$ change the meaning of the objective.  They
+  can be useful for training emphasis, but the resulting score should not be
+  reported as an exact normalized likelihood without qualification.
+}.
 
-Let $\lambda^{(c)}_c\in\Rnonneg$ be an optional channel weight and let
-$\lambda^{(h)}_i\in\Rnonneg$ be an optional horizon weight.  The masked batch loss is
+Let ${}_{c}\lambda^{(c)}\in\Rnonneg$ be an optional channel weight and let
+${}_{i}\lambda^{(i)}\in\Rnonneg$ be an optional horizon weight.  Define
 \[
-  \mathcal{L}_{\mathrm{MDN}}
+  {}_{f}\omega_{u\,v}^{b\,c\,i}
+  =
+  {}_{f}m_{u\,v}^{b\,c\,i}
+  \cdot
+  {}_{c}\lambda^{(c)}
+  \cdot
+  {}_{i}\lambda^{(i)}
+  \in\Rnonneg.
+\]
+The channel and horizon weights express training emphasis%
+\note{
+  Channel weights ${}_{c}\lambda^{(c)}$ and horizon weights ${}_{i}\lambda^{(i)}$
+  decide which resolutions and forecast positions receive more learning
+  pressure.  They should be chosen deliberately, not left as hidden constants in
+  the training loop.
+}.
+The masked batch loss is
+\[
+  \mathcal{L}_{\mathrm{MDN},u\,v}
   =
   \frac{
     \sum_{b=1}^{B}
     \sum_{c=1}^{C}
     \sum_{i=1}^{H_f}
-    {}_{f}m^{b\,c\,i}\cdot
-    \lambda^{(c)}_c\cdot
-    \lambda^{(h)}_i\cdot
-    \ell_{(\lambda)}^{b\,c\,i}
+    {}_{f}\omega_{u\,v}^{b\,c\,i}\cdot
+    {}_{\lambda}\ell_{u\,v}^{b\,c\,i}
   }{
     \sum_{b=1}^{B}
     \sum_{c=1}^{C}
     \sum_{i=1}^{H_f}
-    {}_{f}m^{b\,c\,i}\cdot
-    \lambda^{(c)}_c\cdot
-    \lambda^{(h)}_i
-  }.
+    {}_{f}\omega_{u\,v}^{b\,c\,i}
+  }
+  \in\R.
 \]
-Only valid future positions contribute to the numerator.  Implementations may
-clamp the denominator away from zero for numerical safety.
+Only valid future positions contribute.  If the denominator is zero, the batch
+does not contain supervised evidence for this head and should be skipped or
+handled by the training loop's numerical guard%
+\note{
+  Silently forcing the masked denominator to a small constant can hide dataloader
+  or masking problems.  A zero-denominator batch should be treated as an explicit
+  no-evidence case.
+}.
 
-The scale used inside the loss may also be protected by floors and ceilings,
-for example, with $\sigma_{\min}\in\Rpos$,
-\[
-  \bar{\sigma}^{b\,c\,i\,k\,d}
-  =
-  \max
-  \left(
-    \sigma_{\min},
-    \sigma^{b\,c\,i\,k\,d}
-  \right),
-\]
-with an optional upper clamp
-$\bar{\sigma}^{b\,c\,i\,k\,d}\le\sigma_{\max}$ for
-$\sigma_{\max}\in\Rpos$.  These protections do not change the mathematical
-object being modeled; they make numerical training stable.
-
-
+This loss trains the whole predictive distribution.  It does not ask the head
+to make only the mixture mean accurate; it rewards the model for placing high
+density on the observed future target, including the scale and mixture-weight
+choices that express uncertainty%
+\note{
+  Mean-squared error of the expectation may be monitored as a diagnostic, but it
+  is not the training objective unless a separate observer-level loss is added.
+}.
+The MDN loss is pointwise over channel-horizon target slices%
+\note{
+  Summing over $(c,i)$ does not, by itself, define a joint probability distribution over
+  all channels and all horizons.  Any trajectory score, cumulative-return score,
+  or cross-horizon uncertainty model is a later readout assumption unless a
+  joint head is explicitly introduced.
+}.
+During validation, the useful diagnostics include held-out negative
+log-likelihood, finite-value checks, scale statistics, mixture-weight entropy,
+component usage, observer errors for means and quantiles, and coverage of
+predictive intervals%
+\note{
+  These checks help detect mixture collapse, overconfident scales, unused
+  components, bad masks, or distributional miscalibration before the readouts are
+  used by downstream graph recovery.
+}.
 
 
 
 \newpage{}
-\subsection{Expectation and covariance observers}
+\subsection{Expectation and covariance readouts}
 \label{subsec:mdn-expectation-and-covariance}
 
-The expected future vector is available in closed form:
+After training, the MDN distribution can be read in several ways.  The first
+readout is the expected future vector, available in closed form:
 \[
   \widehat{\tensor{f}}_{u\,v}^{c\,i}
   =
-  \E_{\psi}
+  {}_{\psi}\E
   \left[
     \tensor{f}_{u\,v}^{c\,i}\given\tensor{z}_{u\,v}
   \right]
@@ -506,30 +663,44 @@ In batch form,
   \R^{B\times C\times H_f\times D_f}.
 \]
 
-The full covariance of the mixture distribution is also closed form:
+The full covariance of the mixture distribution is also closed form.  Let
 \[
-  \operatorname{Cov}_{\psi}
+  \mat{C}_{u\,v}^{c\,i}
+  :=
+  {}_{\psi}\Cov
   \left[
     \tensor{f}_{u\,v}^{c\,i}
     \given
     \tensor{z}_{u\,v}
   \right]
+  \in\R^{D_f\times D_f}.
+\]
+Then the expresion for the full covariance readout becomes,
+\[
+  \mat{C}_{u\,v}^{c\,i}
   =
   \sum_{k=1}^{K}
   \alpha_{u\,v}^{c\,i\,k}\cdot
   \left(
     \mat{\Sigma}_{u\,v}^{c\,i\,k}
     +
-    \vect{\mu}_{u\,v}^{c\,i\,k}(\vect{\mu}_{u\,v}^{c\,i\,k})^{\top}
+    \vect{\mu}_{u\,v}^{c\,i\,k}
+    (\vect{\mu}_{u\,v}^{c\,i\,k})^{\top}
   \right)
   -
   \widehat{\tensor{f}}_{u\,v}^{c\,i}
-  (\widehat{\tensor{f}}_{u\,v}^{c\,i})^{\top}.
+  (\widehat{\tensor{f}}_{u\,v}^{c\,i})^{\top}
+  \in\R^{D_f\times D_f}.
 \]
-Although each component covariance $\mat{\Sigma}_{u\,v}^{c\,i\,k}$ is diagonal, this
-mixture covariance can contain off-diagonal terms through the component means.
-
-
+The products with transposed vectors are outer products%
+\note{
+  For $\vect{a}\in\R^{D_f}$, the expression
+  $\vect{a}(\vect{a})^{\top}$ is a $D_f\times D_f$ outer product, not a
+  scalar dot product.
+}. Although each component covariance $\mat{\Sigma}_{u\,v}^{c\,i\,k}$ is diagonal,
+this mixture covariance can contain off-diagonal terms through the component
+means.  This is one reason the mixture should be treated as a distribution over
+the full target vector, not only as a list of independent scalar forecasts.
 
 
 
@@ -537,35 +708,36 @@ mixture covariance can contain off-diagonal terms through the component means.
 \subsection{Scalar edge-return marginal}
 \label{subsec:mdn-scalar-edge-return-marginal}
 
-Some downstream graph operations use one scalar return coordinate rather than
-the full future vector.  Let $d_r\in\{1,\ldots,D_f\}$ be the selected return
-coordinate and define
-\[
-  r_{u\,v}^{c\,i}
-  =
-  f_{u\,v}^{c\,i\,d_r}
-  \in\R.
-\]
+\calloutbox{}{%
+  Some downstream graph operations use one scalar return coordinate rather than
+  the full future vector. They requires a scalar edge quantity whose
+  meaning is a relative value change between two nodes, usually the \texttt{close returns} coordinate.
+}
+
+Let $(r)$ denote the selected scalar return coordinate
+inside the future target vector.
+
 The scalar predictive density is the marginal mixture
 \[
-  {}_{\psi}p_{u\,v}^{(r)\,c\,i}(r\given\tensor{z}_{u\,v})
+  {}_{\psi}p_{(r),u\,v}^{c\,i}(f_{u\,v}^{c\,i\,(r)}\given\tensor{z}_{u\,v})
   =
   \sum_{k=1}^{K}
   \alpha_{u\,v}^{c\,i\,k}\cdot
   \mathcal{N}
   \left(
-    r;
-    \mu_{u\,v}^{c\,i\,k\,d_r},
-    (\sigma_{u\,v}^{c\,i\,k\,d_r})^{2}
+    f_{u\,v}^{c\,i\,(r)};
+    \mu_{u\,v}^{c\,i\,k\,(r)},
+    (\sigma_{u\,v}^{c\,i\,k\,(r)})^{2}
   \right)
+  \in\Rnonneg.
 \]
 and the corresponding scalar predictive distribution is
 \[
-  \mathcal{D}_{u\,v}^{(r)\,c\,i}
+  {}_{\psi}\mathfrak{D}_{(r),u\,v}^{c\,i}
   \in\mathcal{P}(\R),
   \qquad
   \text{with density }
-  {}_{\psi}p_{u\,v}^{(r)\,c\,i}(\cdot\given\tensor{z}_{u\,v}).
+  {}_{\psi}p_{(r),u\,v}^{c\,i}(\cdot\given\tensor{z}_{u\,v}).
 \]
 Its expectation is
 \[
@@ -573,13 +745,14 @@ Its expectation is
   =
   \sum_{k=1}^{K}
   \alpha_{u\,v}^{c\,i\,k}\cdot
-  \mu_{u\,v}^{c\,i\,k\,d_r},
+  \mu_{u\,v}^{c\,i\,k\,(r)}
+  \in\R,
 \]
-and its variance is
+and $(r)-th$ marginal variance is
 \[
-  \Var_{\psi}
+  {}_{\psi}\Var
   \left[
-    r_{u\,v}^{c\,i}
+    f_{u\,v}^{c\,i\,(r)}
     \given
     \tensor{z}_{u\,v}
   \right]
@@ -587,36 +760,14 @@ and its variance is
   \sum_{k=1}^{K}
   \alpha_{u\,v}^{c\,i\,k}\cdot
   \left(
-    (\sigma_{u\,v}^{c\,i\,k\,d_r})^{2}
+    (\sigma_{u\,v}^{c\,i\,k\,(r)})^{2}
     +
-    (\mu_{u\,v}^{c\,i\,k\,d_r})^{2}
+    (\mu_{u\,v}^{c\,i\,k\,(r)})^{2}
   \right)
   -
-  (\widehat{r}_{u\,v}^{c\,i})^{2}.
+  (\widehat{r}_{u\,v}^{c\,i})^{2}
+  \in\Rnonneg.
 \]
 These scalar distributions are the objects read by the edge observers in
 Section~\ref{sec:distribution-field-and-observer-operators} and by the
 edge-to-node recovery step in Section~\ref{sec:edges-to-nodes}.
-
-
-
-
-
-
-\subsection{Scope of the head}
-\label{subsec:mdn-head-scope}
-
-The MDN head is edge-local.  It defines
-\[
-  \mathcal{D}_{u\,v}^{c\,i}
-  \in\mathcal{P}(\R^{D_f}),
-  \qquad
-  \text{with density }
-  {}_{\psi}p_{u\,v}^{c\,i}(\cdot\given\tensor{z}_{u\,v})
-\]
-for each directed edge, channel, and forecast step.  It does not by itself define a
-joint probability distribution over all active edges, all channels, or all horizons.
-When the training loss sums the NLL over $(c,i)$, it is using a pointwise
-conditional likelihood over channel-horizon targets.  A joint cross-edge or
-cross-horizon uncertainty model is a separate design choice, not part of the
-current standardized MDN head.

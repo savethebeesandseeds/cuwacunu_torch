@@ -4,8 +4,8 @@
 \subsection[Input Data]{Input Data $(\tensor{x}, {}_{x}\tensor{m})$}
 \label{subsec:input-data}
 
-The raw market observation are a large and structured window of
-normalized \texttt{kline} sequences: several channels several points and several
+The raw market observations are a large and structured window of
+normalized \texttt{kline} sequences: several channels, several points, and several
 features per edge. As introduced in Section~\ref{sec:edges-and-nodes}, 
 $\tensor{x}_{u\,v}(t)$ is the normalized%
 \textsuperscript{\textcolor{FootnoteField}{\ref{fn:data-normalized}}}
@@ -28,7 +28,7 @@ $H_x$ is the input sequence length%
 \note{
   Each channel may contribute a different native input length, 
   so the dataloader pads them to a common length to preserve a rectangular tensor shape 
-  and records the pad into the mask so the efective sequence length is not altered.
+  and records the pad into the mask so the effective sequence length is not altered.
   The shared time anchor is the last available record on each channel not after the
   common anchor time.  Positions across channels therefore have the same role
   relative to the anchor, but they are not required to have identical raw
@@ -75,8 +75,8 @@ For one sample, one channel, and one input position, the normalized candle slice
   $i$, while the lower label $u\,v$ keeps the edge carried by the sample
   visible, with $e=(u,v)$.  $\tensor{x}_{u\,v}^{c\,i}$ denotes the full
   $D_x$-dimensional normalized candle vector; an individual scalar entry would
-  be indexed as $x_{u\,v}^{c\,i\,j}$.
-  Note that $i$ index the channel's sequence, 
+  be indexed as $x_{u\,v}^{c\,i\,d}$.
+  Note that $i$ indexes the channel's sequence, 
   not to be confused with $t$ that index anchor that synchronizes all channel's sequences.
 }
 \[
@@ -94,10 +94,10 @@ For batched notation%
   \in\R^{B \times C \times H_x}$
 }, stack the window with an extra rank as
 \[
-  \tensor{x}_{u\,v}(t)
+  \tensor{x}(t)
   \in \R^{B \times C \times H_x \times D_x},
   \qquad
-  {}_{x}\tensor{m}_{u\,v}(t)
+  {}_{x}\tensor{m}(t)
   \in \{0,1\}^{B \times C \times H_x}.
 \]
 
@@ -119,7 +119,7 @@ For batched notation%
 
 Given an anchor time $t$, the supervised target is a normalized%
 \note{
-  Future windows uses the same log-return and \(\operatorname{log1p}\) normalization
+  Future windows use the same log-return and \(\operatorname{log1p}\) normalization
   rules as the input tensor; see footnote~\ref{fn:data-normalized} and
   Appendix~\ref{app:normalization}.
 }
@@ -161,15 +161,15 @@ coordinates. \\
 
 For batched notation, stack targets as%
 \note{
-  For batching operation, simply stak the feature and mask tensors as: 
+  For batching operations, simply stack the feature and mask tensors as: 
   $\left(\tensor{f}_{u\,v}^{b}(t)\right)_{b=1}^{B} \in \R^{B \times C \times H_f \times D_f}$, 
   and 
   $\left({}_{f}\tensor{m}_{u\,v}^{b}(t)\right)_{b=1}^{B} \in \{0,1\}^{B \times C \times H_f}$.
 }
 \[
-  \tensor{f}_{u\,v}(t) \in \R^{B \times C \times H_f \times D_f},
+  \tensor{f}(t) \in \R^{B \times C \times H_f \times D_f},
   \qquad
-  {}_{f}\tensor{m}_{u\,v}(t) \in \{0,1\}^{B \times C \times H_f}.
+  {}_{f}\tensor{m}(t) \in \{0,1\}^{B \times C \times H_f}.
 \]
 
 \calloutbox{Non-Forecasting Claims \& Future Uncertainty Disambiguation%
@@ -217,10 +217,10 @@ are on the nodes. Nodes also have valuation $\tensor{\eta}$%
   and estimate the valuation of one asset relative to another.
 }.
 
-At anchor time $t$, we've find the amount of units we hold for asset $u$ are%
+At anchor time $t$, the amount of units we hold for asset $u$ is%
 \note{
   When the nodes are concrete assets, ${h}_u(t)$ may be read as signed inventory
-  in the native unit of asset $u$.  More generally, it is the quanities of the portfolio records, 
+  in the native unit of asset $u$.  More generally, it is the quantity recorded in the portfolio records, 
   we do this for all nodes (assets) even if we have zero of such asset: 
   $\tensor{h}(t) = \bigl({h}_u(t)\bigr)_{u\in\mathcal{V}} \in \R^N$
 }: 
@@ -258,8 +258,7 @@ At the nodes we attach a separate object, the node valuation $\tensor{\eta}_u(t)
 \note{
   $\tensor{\eta}$ represents a node-level valuation coordinate, recovered through edge relations.
 }
-Used to asign relative value and compare the assets with and against eachother.
+It is used to assign relative value and compare assets with and against each other.
 \[
   \tensor{\eta}(t)\in\R^{N}.
 \]
-

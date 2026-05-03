@@ -1,20 +1,235 @@
 \section{Standard Symbols}
 \label{sec:standard-symbols}
 
-Every reusable symbol in this draft should have a declared domain or shape
-before it is used.  Unless otherwise stated, bold symbols denote named tensors
-or tensor families.  For the exposed data, representation, and forecast
-families in this draft, upper indices denote coordinate slots or lower-rank
-slices, while lower indices are reserved for semantic labels such as the edge
-label $e$, the ordered edge label $u\,v$ for $e=(u,v)$, the mask-family labels
-$x$ and $f$, or augmented-view labels such as $(1)$ and $(2)$.  Plain symbols
-with the same letter denote scalar
-components when an additional coordinate is exposed.  Other indexed families,
-such as graph assignments, predictive distributions, or implementation-local hidden
-states, may keep ordinary subscripts when that is clearer.  The choice between
-uppercase and lowercase letters is a notational choice here rather than a
-statement about tensor rank.  Calligraphic symbols denote sets or structured
-collections.
+This section is the notation contract for the document.  The symbol table below
+declares the reusable objects, but the rules in this opening subsection explain
+how to read indexed expressions before looking up each individual symbol.
+
+\subsection{Reading Conventions}
+\label{subsec:notation-reading-conventions}
+
+Every reusable symbol in this draft should have a declared domain, shape, or
+local definition before it is used.  A symbol that appears across more than one
+subsection belongs in the table below.  A temporary symbol used only inside one
+display or one paragraph may be defined locally, but it should not silently
+change the meaning of a tabled symbol.
+
+\begin{enumerate}
+  \item \textbf{Visual role is not the whole type.}
+  The macros $\vect{\cdot}$, $\mat{\cdot}$, and $\tensor{\cdot}$ are visual
+  reminders:
+  \[
+    \vect{a}\quad\text{vector-like},\qquad
+    \mat{A}\quad\text{matrix-like},\qquad
+    \tensor{x}\quad\text{tensor or tensor-family-like}.
+  \]
+  The actual rank and shape are determined by the displayed domain, not by the
+  letter case alone.  For example, $\tensor{x}$ is rank four in a batch, while
+  $\tensor{x}_{u\,v}^{c\,i}$ is a feature vector slice.
+
+  \item \textbf{Declare dimensionality with membership.}
+  Whenever a new variable is introduced with a domain, shape, or output space,
+  declare it with $\in$:
+  \[
+    \tensor{x}\in\R^{B\times C\times H_x\times D_x},
+    \qquad
+    \widehat{r}_e\in\R,
+    \qquad
+    \mathcal{O}:\mathcal{P}(\R^{d_{\mathcal{O}}})\rightarrow\mathcal{Y}.
+  \]
+  Equality signs are reserved for definitions, identities, or assignments after
+  the dimensional role has been made clear.
+
+  \item \textbf{Sets, collections, and maps.}
+  Calligraphic symbols denote sets or structured collections, such as
+  $\mathcal{V}$, $\mathcal{E}$, $\mathcal{P}(\R^d)$, or an augmentation family
+  $\mathcal{A}$.  Named maps such as $\Phi$, ${}_{\zeta}P$, and
+  $\mathcal{O}$ are written as functions with explicit input and output spaces
+  whenever their type matters.
+
+  \item \textbf{The active graph convention.}
+  The active market graph is
+  \[
+    \mathcal{G}=(\mathcal{V},\mathcal{E}),
+    \qquad
+    \mathcal{E}
+    \subseteq
+    \{(u,v)\in\mathcal{V}\times\mathcal{V}:u\ne v\}.
+  \]
+  An edge is written $e=(u,v)$, where $u$ is the base node and $v$ is the quote
+  node.  The lower label $u\,v$ in an expression such as
+  $\tensor{x}_{u\,v}$ is an ordered edge label, not multiplication.
+
+  \item \textbf{Batch, channel, time, feature, and mixture order.}
+  For exposed data and target tensors, the standard coordinate order is
+  \[
+    (b,c,i,d)
+    =
+    (\text{batch},\text{channel},\text{sequence or horizon},\text{feature}).
+  \]
+  Thus
+  \[
+    x^{b\,c\,i\,d}
+    \quad\text{and}\quad
+    f^{b\,c\,i\,d}
+  \]
+  are scalar feature coordinates.  For MDN component tensors, the standard
+  coordinate order is
+  \[
+    (b,c,i,k,d)
+    =
+    (\text{batch},\text{channel},\text{horizon},\text{mixture component},
+    \text{feature}).
+  \]
+  Thus $\mu^{b\,c\,i\,k\,d}$ and $\sigma^{b\,c\,i\,k\,d}$ are scalar
+  coordinates of component $k$ at one batch, channel, and horizon.
+
+  \item \textbf{The index $i$ is context-dependent.}
+  The same letter $i$ is used for input positions and forecast positions.  The
+  object determines the active range:
+  \[
+    i=1,\ldots,H_x
+    \quad\text{for input windows},\qquad
+    i=1,\ldots,H_f
+    \quad\text{for future windows}.
+  \]
+  When the distinction must be emphasized in prose, we say input position for
+  $H_x$ and forecast step or horizon for $H_f$.
+
+  \item \textbf{Channel time is channel-relative.}
+  A channel $c$ represents a native time scale, such as \field{1m},
+  \field{1h}, or \field{1d}.  The same forecast index $i$ can therefore mean
+  different physical elapsed time on different channels.  When elapsed duration
+  is needed, write it as $i\Delta_c$, where $\Delta_c$ is the native step
+  duration of channel $c$.
+
+  \item \textbf{External time is not a tensor axis unless declared.}
+  The symbol $t$ denotes an anchor time or repeated evaluation time.  It is
+  written as an argument, as in $\tensor{x}_{u\,v}(t)$ or
+  ${}_{\psi}\mathfrak{D}_{u\,v}^{c\,i}(t)$, rather than as one of the core
+  tensor axes.  The tensor axes describe one sampled window around that anchor.
+
+  \item \textbf{Sample-level and batch-level notation.}
+  A sample-level edge object keeps its edge label visible:
+  \[
+    \tensor{x}_{u\,v}(t)\in\R^{C\times H_x\times D_x}.
+  \]
+  A batch-level object may suppress the edge labels and use the leading batch
+  index:
+  \[
+    \tensor{x}(t)\in\R^{B\times C\times H_x\times D_x}.
+  \]
+  Logically, each batch sample still carries an edge identity
+  $e^b=(u^b,v^b)\in\mathcal{E}$.  When batches are homogeneous, all samples may
+  share the same edge.  When batches mix edges, the implementation must route
+  each sample by its edge label or use an explicitly edge-conditioned model.
+
+  \item \textbf{Lower-right labels and lower-left namespaces.}
+  Lower-right subscripts usually label semantic objects, such as edges,
+  endpoints, or named coordinates:
+  \[
+    \tensor{x}_{u\,v},\qquad
+    \widehat{r}_{e},\qquad
+    \mat{C}_{y}.
+  \]
+  Lower-left tags mark a family or parameter namespace, not an extra tensor
+  coordinate:
+  \[
+    {}_{x}\tensor{m}
+    \quad\text{input-mask family},\qquad
+    {}_{f}\tensor{m}
+    \quad\text{future-mask family},\qquad
+    {}_{\psi}p
+    \quad\text{density emitted by the MDN family}.
+  \]
+  The lower-left tags $\Phi$, $\zeta$, and $\psi$ are used to keep the
+  representation encoder, VICReg projector, and MDN forecast head visually
+  separated.
+
+  \item \textbf{Parenthesized labels are semantic labels, not powers.}
+  Parentheses in indices denote labels such as augmented views, residual blocks,
+  or selected semantic coordinates:
+  \[
+    (1),(2) \quad\text{augmented views},\qquad
+    (\{1,2\}) \quad\text{paired augmented-view object},\qquad
+    (r) \quad\text{selected scalar return coordinate}.
+  \]
+  Thus $f^{c\,i}_{(r)}$ means the scalar return coordinate of the future vector;
+
+  \item \textbf{Source coordinates and target coordinates.}
+  %NOTE: #TODO not finish, this part i dont know if its clear.
+  The input source registry has $D_x$ normalized kline coordinates.  The future
+  target tensor has $D_f$ coordinates selected by the ordered list
+  $\mathcal{J}_f$.  A target coordinate index $d=1,\ldots,D_f$ is therefore a
+  slot inside the selected target vector, while a source coordinate such as
+  $d_{(r)}=4$ refers to the original normalized kline registry.  When the scalar
+  return readout is used, the source coordinate $d_{(r)}$ must appear in
+  $\mathcal{J}_f$, and the label $(r)$ denotes its corresponding target slot.
+
+  \item \textbf{Masks are evidence selectors.}
+  Mask values live in $\{0,1\}$.  The input mask ${}_{x}\tensor{m}$ says which
+  past channel-time slices are usable by the encoder.  The future mask
+  ${}_{f}\tensor{m}$ says which future channel-horizon slices are valid
+  supervised evidence for the MDN loss.  A masked-out slice is not an observed
+  zero-valued market event.
+
+  \item \textbf{Distributions and densities are different objects.}
+  Predictive distributions are written with fraktur symbols, for example
+  \[
+    {}_{\psi}\mathfrak{D}_{u\,v}^{c\,i}
+    \in
+    \mathcal{P}(\R^{D_f}).
+  \]
+  Their densities are written with $p$, for example
+  \[
+    {}_{\psi}p_{u\,v}^{c\,i}
+    (\cdot\given\tensor{z}_{u\,v})
+    :
+    \R^{D_f}
+    \rightarrow
+    \Rnonneg.
+  \]
+  The distribution is the probabilistic object.  The density is the function
+  used to evaluate likelihoods and training scores.
+
+  \item \textbf{Observers read distributions.}
+  Observer operators do not replace the predictive distribution field.  They
+  read it:
+  \[
+    \mathcal{O}
+    :
+    \mathcal{P}(\R^{d_{\mathcal{O}}})
+    \rightarrow
+    \mathcal{Y}.
+  \]
+  Hatted quantities such as $\widehat{\tensor{f}}$, $\widehat{r}_{e}^{c\,i}$,
+  and $\widehat{\vect{y}}$ are observer outputs or recovered estimates.  They
+  should not be confused with the full uncertainty-bearing distribution.
+
+  \item \textbf{Suppressed indices must be fixed by context.}
+  Later sections sometimes suppress indices to keep equations readable.  For
+  example, Section~\ref{sec:edges-to-nodes} writes $\widehat{r}_e$ and
+  $\gamma_e$ after fixing a channel, forecast step, scalar observer, and usable
+  edge set.  Suppression is allowed only when the surrounding text states which
+  indices have been fixed.
+
+  \item \textbf{Code field names are written as fields, not symbols.}
+  Implementation names such as \field{features}, \field{future\_features},
+  \field{mask}, \field{future\_mask}, \field{edge\_id}, \field{log\_pi},
+  \field{mu}, and \field{sigma} are written with \verb|\field{...}|.  When a
+  code field corresponds to a mathematical object, the source-code interface
+  appendix states the equivalence.
+\end{enumerate}
+
+\calloutbox{Notation Contract.}{\\%
+  The notation should make hidden implementation assumptions visible.  When a
+  tensor changes axis order, when a batch begins mixing edges, when a target
+  registry changes, or when a readout becomes part of a training objective, this
+  section and the source-code interface contract should be updated together.
+}
+
+\subsection{Symbol Table}
+\label{subsec:symbol-table}
 
 \begin{center}
 \rowcolors{2}{SymbolRow}{white}
@@ -32,7 +247,8 @@ $\Rnonneg$ & $\Rnonneg = \{x \in \R : x \ge 0\}$ & Nonnegative real numbers. \\
 \midrule
 $\mathcal{G}$ & $\mathcal{G}=(\mathcal{V},\mathcal{E})$ & Active directed graph. \\
 $\mathcal{V}$ & finite, $|\mathcal{V}|=N$ & Node set. \\
-$\mathcal{E}$ & $\{(u,v)\in\mathcal{V}\times\mathcal{V}:u\ne v\}$ & Directed edge set without self-edges. \\
+$\mathcal{E}$ & $\mathcal{E}\subseteq\{(u,v)\in\mathcal{V}\times\mathcal{V}:u\ne v\}$ & Active directed edge set of staged traded instruments. \\
+$\mathcal{E}_{\mathrm{use}}$ & $\mathcal{E}_{\mathrm{use}}\subseteq\mathcal{E}$ & Usable edge subset selected for one graph recovery solve after masks and observer choices are applied. \\
 \midrule
 $B$ & $B \in \N$ & Batch size. \\
 $C$ & $C \in \N$ & Active channel count. \\
@@ -41,33 +257,38 @@ $H_f$ & $H_f \in \N$ & Forecast sequence length. \\
 $D_x$ & $D_x \in \N$ & Input features count. \\
 $D_f$ & $D_f \in \N$ & Forecast feature count. \\
 $D_e$ & $D_e \in \N$ & Encoding or embedding dimension. \\
+$D_p$ & $D_p \in \N$ & VICReg projector width. \\
+$S$ & $S\in\N$ & Number of sampled scenario trajectories. \\
 $H_x'$ & $H_x' \in \N$ & Optional internal encoder sequence length. \\
-$H_{\theta}$ & $H_{\theta} \in \N$ & Hidden width in the representation encoder. \\
+$H_{\Phi}$ & $H_{\Phi} \in \N$ & Hidden width in the representation encoder. \\
 $H_{\psi}$ & $H_{\psi} \in \N$ & Hidden width in the MDN backbone. \\
 $R_{\psi}$ & $R_{\psi} \in \N_{\ge 0}$ & Number of residual blocks in the MDN backbone. \\
 $K$ & $K \in \N$ & Number of density-mixture components. \\
 $N$ & $N = |\mathcal{V}| \in \N$ & Active node count. \\
-$L$ & $L=|\mathcal{E}|=N(N-1)$ & Active edge count. \\
+$L$ & $L=|\mathcal{E}|\le N(N-1)$ & Active edge count. \\
 \midrule
 $b$ & $b \in \{1,\ldots,B\}$ & Batch sample index. \\
 $c$ & $c \in \{1,\ldots,C\}$ & Channel index. \\
 $i$ & $i \in \{1,\ldots,H_x\}$ or $i \in \{1,\ldots,H_f\}$ & Sequence index; the active range is determined by whether the tensor uses the input axis $H_x$ or the forecast axis $H_f$. \\
-$j$ & $j \in \{1,\ldots,D_x\}$ or $j \in \{1,\ldots,D_f\}$ & Input-feature coordinate index or Future-feature coordinate index\\
+$d$ & $d \in \{1,\ldots,D_x\}$, $d \in \{1,\ldots,D_f\}$, or $d \in \{1,\ldots,D_p\}$ & Feature-coordinate or projector-coordinate index; the active range is determined by whether the tensor uses the input-feature axis $D_x$, the future-feature axis $D_f$, or the projector axis $D_p$. \\
 $k$ & $k \in \{1,\ldots,K\}$ & Mixture-component index. \\
+$r$ & $r \in \{1,\ldots,R_{\psi}\}$ & Residual-block index in the MDN backbone. \\
 $t$ & $t \in \mathcal{T}$ & Optional evaluation-time index. \\
+$\Delta_c$ & positive time duration & Native step duration of channel $c$; forecast step $i$ corresponds to elapsed duration $i\Delta_c$. \\
 $u$ & $u \in \mathcal{V}$ & Base node. \\
 $v$ & $v \in \mathcal{V}$ & Quote node. \\
 $e$ & $e \in \mathcal{E}$ & Graph edge. \\
+$e^b$ & $e^b=(u^b,v^b)\in\mathcal{E}$ & Directed edge label carried by batch sample $b$. \\
+$g$ & $g \in \mathcal{V}$ & Gauge or reference node used to remove the additive ambiguity in node recovery. \\
 \midrule
 $\mathcal{T}$ & $\mathcal{T}$ ordered set & Evaluation-time index set when repeated model evaluations are discussed. \\
 $m$ & $m \in \N$ & Generic observer output or covariance coordinate count. \\
-$d$ & $d \in \{1,\ldots,D_f\}$ or $d \in \N$ & Future-feature coordinate index; more generally a generic vector-space dimension when the active range is clear. \\
-$d_{\mathcal{O}}$ & $d_{\mathcal{O}} \in \{1,D_f\}$ & Observer input dimension: scalar law or full future-vector law. \\
+$d_{\mathcal{O}}$ & $d_{\mathcal{O}} \in \{1,D_f\}$ & Observer input dimension: scalar distribution or full future-vector distribution. \\
 \midrule
 $\tensor{x}_{u\,v}(t)$ & $\tensor{x}_{u\,v}(t) \in \R^{C \times H_x \times D_x}$, $(u,v) \in \mathcal{E}$ & Normalized kline input window carried by the directed edge from $u$ to $v$ at time $t$. \\
 $\tensor{x}_{u\,v}^{b}(t)$ & $\tensor{x}_{u\,v}^{b}(t) \in \R^{C \times H_x \times D_x}$ & Normalized input window for sample $b$, carried by edge $e=(u,v)$. \\
 $\tensor{x}_{u\,v}^{b\,c\,i}$ & $\tensor{x}_{u\,v}^{b\,c\,i} \in \R^{D_x}$ & Normalized kline feature slice for one sample, edge, channel, and input position. \\
-$x_{u\,v}^{b\,c\,i\,j}$ & $x_{u\,v}^{b\,c\,i\,j} \in \R$ & Scalar coordinate $j$ of the normalized slice $\tensor{x}_{u\,v}^{b\,c\,i}$. \\
+$x_{u\,v}^{b\,c\,i\,d}$ & $x_{u\,v}^{b\,c\,i\,d} \in \R$ & Scalar coordinate $d$ of the normalized slice $\tensor{x}_{u\,v}^{b\,c\,i}$. \\
 $\tensor{x}$ & $\tensor{x} \in \R^{B \times C \times H_x \times D_x}$ & Batch formed by stacking edge-labeled input windows $\tensor{x}_{u\,v}^{b}$. \\
 ${}_{x}\tensor{m}_{u\,v}$ & ${}_{x}\tensor{m}_{u\,v} \in \{0,1\}^{C \times H_x}$ & Input validity mask for edge $e=(u,v)$. \\
 $\tensor{m}_x^{b}$ & $\tensor{m}_x^{b} \in \{0,1\}^{C \times H_x}$ & Input validity mask for sample $b$. \\
@@ -80,12 +301,12 @@ $\tensor{f}$ & $\tensor{f} \in \R^{B \times C \times H_f \times D_f}$ & Future t
 $\vect{f}$ & $\vect{f} \in \R^{D_f}$ & Generic future target vector. \\
 $\tensor{f}^{b\,c\,i}$ & $\tensor{f}^{b\,c\,i} \in \R^{D_f}$ & Future target slice for one sample, channel, and horizon. \\
 $f^{b\,c\,i\,d}$ & $f^{b\,c\,i\,d} \in \R$ & Scalar target coordinate $d$ of the future slice $\tensor{f}^{b\,c\,i}$. \\
+$\mathcal{J}_f$ & $\mathcal{J}_f=(d_1,\ldots,d_{D_f})$, $d_a\in\{1,\ldots,D_x\}$ & Ordered source-coordinate list used to form the future target tensor. \\
 \midrule
-$\theta,\zeta,\psi$ & learned parameter collections & Representation-map, VICReg-projector, and forecast-head parameters. \\
-$\Phi_{\theta}$ & $\Phi_{\theta}:\R^{C \times H_x \times D_x}\times\{0,1\}^{C \times H_x}\rightarrow\R^{H_x' \times D_e}$ & Sequence encoder map for one sample. \\
+$\Phi,\zeta,\psi$ & learned parameter collections & Representation-map, VICReg-projector, and forecast-head parameters. \\
+$\Phi$ & $\Phi:\R^{C \times H_x \times D_x}\times\{0,1\}^{C \times H_x}\rightarrow\R^{H_x' \times D_e}$ & Sequence encoder map for one sample. \\
 $\tensor{z}_{u\,v}$ & $\tensor{z}_{u\,v}\in\R^{D_e}$ & Reduced edge representation for directed edge $e=(u,v)$. \\
 $\tensor{z}$ & $\tensor{z} \in \R^{B \times D_e}$ & Representation batch. \\
-$r_{\theta}$ & $r_{\theta}:\R^{H_x \times D_e}\times\{0,1\}^{C \times H_x}\rightarrow\R^{D_e}$ & Temporal reducer. \\
 \midrule
 $\tilde{\alpha}_{u\,v}^{c\,i\,k}$ & $\tilde{\alpha}_{u\,v}^{c\,i\,k} \in \R$ & Raw mixture activation before normalization. \\
 $\vect{\tilde{\alpha}}_{u\,v}^{c\,i}$ & $\vect{\tilde{\alpha}}_{u\,v}^{c\,i}\in\R^K$ & Raw mixture-activation vector for one edge, channel, and horizon. \\
@@ -98,6 +319,8 @@ $\vect{\beta}_{u\,v}^{c\,i\,k}$ & $\vect{\beta}_{u\,v}^{c\,i\,k} \in \R^{D_f}$ &
 $\tensor{\beta}$ & $\tensor{\beta} \in \R^{B \times C \times H_f \times K \times D_f}$ & Batch raw scale vectors emitted before the positive transform. \\
 $\tensor{\sigma}$ & $\tensor{\sigma} \in \Rpos^{B \times C \times H_f \times K \times D_f}$ & Batch positive component scales. \\
 $\vect{\sigma}_{u\,v}^{c\,i\,k}$ & $\vect{\sigma}_{u\,v}^{c\,i\,k} \in \Rpos^{D_f}$ & Positive component scale vector. \\
+$\bar{\sigma}^{b\,c\,i\,k\,d}$ & $\bar{\sigma}^{b\,c\,i\,k\,d}\in\Rpos$ & Protected scale coordinate used inside the MDN training loss after optional lower or upper clamping. \\
+$\sigma_{\min},\sigma_{\max}$ & $\sigma_{\min}\in\Rpos$, optional $\sigma_{\max}\in\Rpos$ & Optional lower and upper numerical scale clamps for MDN training. \\
 $\eps$ & $\eps \in \Rpos$ & Positive numerical floor. \\
 $\mat{\Sigma}_{u\,v}^{c\,i\,k}$ & $\mat{\Sigma}_{u\,v}^{c\,i\,k} \in \R^{D_f \times D_f}$ & Diagonal covariance of one component. \\
 $\softmax$ & $\softmax:\R^K\rightarrow[0,1]^K$ & Mixture-coefficient normalization operator. \\
@@ -105,29 +328,37 @@ $\softplus$ & $\softplus:\R^{D_f}\rightarrow\Rpos^{D_f}$ & Positive scale transf
 $\diag$ & $\diag:\R^{D_f}\rightarrow\R^{D_f \times D_f}$ & Diagonal-matrix constructor. \\
 $\mathcal{N}(\vect{f};\vect{\mu},\mat{\Sigma})$ & $\mathcal{N}:\R^{D_f}\rightarrow\Rnonneg$ & Gaussian density with mean $\vect{\mu}$ and covariance $\mat{\Sigma}$. \\
 ${}_{\psi}p_{u\,v}^{c\,i}$ & ${}_{\psi}p_{u\,v}^{c\,i}(\cdot \given \tensor{z}_{u\,v}):\R^{D_f}\rightarrow\Rnonneg$ & Conditional predictive density for edge $e=(u,v)$, channel, and horizon. \\
-$\E_{\psi}$ & $\E_{\psi}:\mathcal{P}(\R^{D_f})\rightarrow\R^{D_f}$ & Expectation under the MDN predictive distribution. \\
-$d_r$ & $d_r \in \{1,\ldots,D_f\}$ & Chosen scalar return coordinate inside the future target vector. \\
-$\lambda^{(f)}_d$ & $\lambda^{(f)}_d\in\Rnonneg$ & Optional feature weight in the MDN likelihood. \\
-$\lambda^{(c)}_c$ & $\lambda^{(c)}_c\in\Rnonneg$ & Optional channel weight in the MDN loss. \\
-$\lambda^{(h)}_i$ & $\lambda^{(h)}_i\in\Rnonneg$ & Optional horizon weight in the MDN loss. \\
+${}_{\psi}p_{(r),u\,v}^{c\,i}$ & ${}_{\psi}p_{(r),u\,v}^{c\,i}(\cdot \given \tensor{z}_{u\,v}):\R\rightarrow\Rnonneg$ & Scalar edge-return predictive density for edge $e=(u,v)$, channel, and horizon. \\
+$d_{(r)}$ & $d_{(r)}\in\{1,\ldots,D_x\}$ & Source-registry coordinate selected as the scalar edge return; for close return in the normalized kline registry, $d_{(r)}=4$. \\
+$(r)$ & selected target-slot label in $\{1,\ldots,D_f\}$ & Semantic label for the scalar return coordinate inside the future target vector. \\
+${}_{d}\lambda^{(d)}$ & ${}_{d}\lambda^{(d)}\in\Rnonneg$ & Optional feature-coordinate weight in the MDN likelihood. \\
+${}_{c}\lambda^{(c)}$ & ${}_{c}\lambda^{(c)}\in\Rnonneg$ & Optional channel weight in the MDN loss. \\
+${}_{i}\lambda^{(i)}$ & ${}_{i}\lambda^{(i)}\in\Rnonneg$ & Optional horizon weight in the MDN loss. \\
+${}_{f}\omega_{u\,v}^{b\,c\,i}$ & ${}_{f}\omega_{u\,v}^{b\,c\,i}\in\Rnonneg$ & Nonnegative MDN training weight for edge $e=(u,v)$, combining the future mask with optional channel and horizon weights. \\
 \midrule
 $\mathcal{P}(\R^d)$ & $\mathcal{P}(\R^d)$ & Probability distributions on $\R^d$. \\
-$\mathcal{D}_{u\,v}^{c\,i}$ & $\mathcal{D}_{u\,v}^{c\,i} \in \mathcal{P}(\R^{D_f})$ & Predictive distribution for one future target vector on edge $e=(u,v)$. \\
-$\mathcal{D}_{u\,v}^{(r)\,c\,i}$ & $\mathcal{D}_{u\,v}^{(r)\,c\,i} \in \mathcal{P}(\R)$ & Scalar edge-return predictive distribution for edge $e=(u,v)$. \\
-$\mathcal{D}_{e}^{c\,i}$ & $\mathcal{D}_{e}^{c\,i} \in \mathcal{P}(\R^{D_f})$ & Predictive distribution attached to edge $e$. \\
-$\mathcal{D}_{e}^{(r)\,c\,i}$ & $\mathcal{D}_{e}^{(r)\,c\,i} \in \mathcal{P}(\R)$ & Scalar edge-return predictive distribution attached to edge $e$. \\
-$\mathcal{D}$ & $\mathcal{D} \in \mathcal{P}(\R^{D_f})$ & Generic predictive distribution used in observer definitions. \\
+${}_{\psi}\mathfrak{D}_{u\,v}^{c\,i}$ & ${}_{\psi}\mathfrak{D}_{u\,v}^{c\,i} \in \mathcal{P}(\R^{D_f})$ & Predictive distribution for one future target vector on edge $e=(u,v)$. \\
+${}_{\psi}\mathfrak{D}_{(r),u\,v}^{c\,i}$ & ${}_{\psi}\mathfrak{D}_{(r),u\,v}^{c\,i} \in \mathcal{P}(\R)$ & Scalar edge-return predictive distribution for edge $e=(u,v)$. \\
+$\mathfrak{D}$ & $\mathfrak{D} \in \mathcal{P}(\R^{D_f})$ & Generic predictive distribution used in observer definitions. \\
 $\widehat{\tensor{f}}$ & $\widehat{\tensor{f}} \in \R^{B \times C \times H_f \times D_f}$ & Batch expectation of future target vectors. \\
 $\widehat{\tensor{f}}_{u\,v}^{c\,i}$ & $\widehat{\tensor{f}}_{u\,v}^{c\,i} \in \R^{D_f}$ & Expected future target slice for edge $e=(u,v)$. \\
 $r_{u\,v}^{c\,i}$ & $r_{u\,v}^{c\,i} \in \R$ & Scalar return value for edge $e=(u,v)$, channel, and horizon. \\
+$R_e^{c\,i}$ & $R_e^{c\,i}\in\R$ & Cumulative scalar edge return from the anchor to forecast step $i$. \\
 \midrule
-$\mathfrak{D}^{c\,i}$ & $\mathfrak{D}^{c\,i} \in (\mathcal{P}(\R^{D_f}))^L$ & Edge distribution field for one channel and horizon; written $\mathfrak{D}^{c\,i}(t)$ when time-indexed. \\
 $\mathcal{O}$ & $\mathcal{O}:\mathcal{P}(\R^{d_{\mathcal{O}}})\rightarrow\mathcal{Y}$ & Observer operator for scalar or vector predictive distributions. \\
 $\mathcal{O}_{\E}$, $\mathcal{O}_{\Var}$, $\mathcal{O}_{\Quant\,\tau}$, $\mathcal{O}_{\ES\,\tau}$, $\mathcal{O}_{\Risk}$ & $\mathcal{O}_{\cdot}:\mathcal{P}(\R^{d_{\mathcal{O}}})\rightarrow\mathcal{Y}$ & Named observer examples. \\
 $\E$, $\Var$, $\Cov$, $\Quant$, $\ES$ & Operators on random variables or probability distributions & Expectation, variance, covariance, quantile, and expected shortfall. \\
 $\mathcal{Y}$ & $\mathcal{Y}$ set & Observer output space. \\
 $\tau$ & $\tau \in (0,1)$ & Quantile or expected-shortfall level. \\
 $\widehat{r}_{e}^{c\,i}$ & $\widehat{r}_{e}^{c\,i} \in \R$ & Scalar edge-return value read by an observer. \\
+$\widehat{R}_{e}^{c\,i}$ & $\widehat{R}_{e}^{c\,i}\in\R$ & Expected cumulative scalar edge return from the anchor to forecast step $i$. \\
+$\vect{F}_{e}^{c,1:H_f}$ & $\vect{F}_{e}^{c,1:H_f}\in(\R^{D_f})^{H_f}$ & Forecast trajectory for edge $e$ and channel $c$. \\
+$s_{e}^{c\,i\,k}$ & $s_{e}^{c\,i\,k}\in\R$ & Component-mode score for component $k$ at edge $e$, channel $c$, and horizon $i$. \\
+$\widehat{\kappa}_{e}^{c}$ & $\widehat{\kappa}_{e}^{c}\in\{1,\ldots,K\}^{H_f}$ & Discrete component-path index sequence selected by the component-path trajectory readout. \\
+$\widehat{\vect{F}}_{e,\mathrm{dens}}^{c,1:H_f}$ & $\widehat{\vect{F}}_{e,\mathrm{dens}}^{c,1:H_f}\in(\R^{D_f})^{H_f}$ & Maximum-density predictive trajectory readout. \\
+$\widehat{\vect{F}}_{e,\mathrm{comp}}^{c,1:H_f}$ & $\widehat{\vect{F}}_{e,\mathrm{comp}}^{c,1:H_f}\in(\R^{D_f})^{H_f}$ & Component-path representative trajectory readout. \\
+$\mathcal{R}_{\mathrm{path}}$ & $\mathcal{R}_{\mathrm{path}}:(\R^{D_f})^{H_f}\rightarrow\Rnonneg$ & Optional trajectory regularizer used by maximum-density path readouts. \\
+$\lambda_{\Delta}$ & $\lambda_{\Delta}\in\Rnonneg$ & Smoothness or jump-penalty weight for component-path readouts. \\
 $\gamma_{e}^{c\,i}$ & $\gamma_{e}^{c\,i} \in \Rpos$ & Scalar confidence or precision weight. \\
 $\widehat{r}_e$ & $\widehat{r}_e \in \R$ & Edge-return observation for a fixed channel and forecast step. \\
 $\gamma_e$ & $\gamma_e \in \Rpos$ & Edge confidence or precision weight for a fixed channel and forecast step. \\
@@ -147,13 +378,17 @@ $r_e$ & $r_e \in \R$ & Signed scalar edge return. \\
 $y_u$ & $y_u \in \R$ & Scalar node return or node potential coordinate. \\
 $\vect{y}$ & $\vect{y} \in \R^N$ & Node-return or node-potential vector. \\
 $\vect{\widehat{r}}$ & $\vect{\widehat{r}} \in \R^L$ & Vector of observed or predicted edge returns. \\
+$\vect{\eps}_r$ & $\vect{\eps}_r\in\R^L$ & Edge-recovery residual, $\vect{\widehat{r}}-\mat{A}\widehat{\vect{y}}$. \\
+$\mathcal{Q}_r$ & $\mathcal{Q}_r\in\Rnonneg$ & Weighted residual diagnostic for node recovery. \\
 $\mat{A}$ & $\mat{A} \in \R^{L \times N}$ & Directed edge-node incidence matrix. \\
+$\mat{A}_g$ & gauge-fixed incidence matrix & Incidence matrix after removing the gauge coordinate or otherwise restricting to free node coordinates. \\
 $\mat{\Gamma}$ & $\mat{\Gamma} \in \R^{L \times L}$ & Diagonal edge-confidence matrix. \\
 $\mat{L}_{\gamma}$ & $\mat{L}_{\gamma} \in \R^{N \times N}$ & Confidence-weighted graph Laplacian, $\mat{A}^{\top}\mat{\Gamma}\mat{A}$. \\
 $\mat{C}_r$ & $\mat{C}_r \in \R^{L \times L}$ & Edge-return covariance matrix. \\
-$\mat{C}_y$ & $\mat{C}_y \in \R^{N \times N}$ & Recovered node covariance matrix. \\
-$\mat{V}$ & $\mat{V} \in \R^{N \times N}$ & Eigenvector matrix for node covariance modes. \\
-$\Lambda$ & $\Lambda \in \R^{N \times N}$ & Diagonal eigenvalue matrix for node covariance modes. \\
+$\mat{C}_y$ & $\mat{C}_y \in \R^{N \times N}$ & Recovered node covariance matrix, understood after gauge fixing or on the quotient space. \\
+$\mat{C}_y^{(g)}$ & gauge-fixed node covariance & Recovered node covariance in the free coordinates after the gauge node has been removed. \\
+$\mat{V}$ & $\mat{V} \in \R^{(N-1) \times (N-1)}$ & Eigenvector matrix for gauge-fixed node covariance modes. \\
+$\Lambda$ & $\Lambda \in \R^{(N-1) \times (N-1)}$ & Diagonal eigenvalue matrix for gauge-fixed node covariance modes. \\
 $d(\vect{y},\vect{y}')$ & $d:\R^N\times\R^N\rightarrow\Rnonneg$ & Mahalanobis distance between node states. \\
 \bottomrule
 \end{longtable}

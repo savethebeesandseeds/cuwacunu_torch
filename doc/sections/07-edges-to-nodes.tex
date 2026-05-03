@@ -1,0 +1,228 @@
+\newpage{}
+\section{From Edges to Nodes}
+\label{sec:edges-to-nodes}
+
+\subsection{Balance Equation}
+\label{subsec:balance-equation}
+
+With the graph convention from Section~\ref{sec:edges-and-nodes}, a node view
+becomes available when an edge price is interpreted as a ratio of node
+valuations.  Let $\eta_u\in\Rpos$ denote the node valuation of node
+$u\in\mathcal{V}$.  For edge $e=(u,v)\in\mathcal{E}$, the idealized edge price
+is
+\[
+  q_e
+  =
+  \frac{\eta_u}{\eta_v}
+  \in\Rpos.
+\]
+In log coordinates,
+\[
+  \ell_e := \log q_e = \xi_u-\xi_v,
+  \qquad
+  \ell_e\in\R,
+  \qquad
+  \xi_u := \log\eta_u\in\R.
+\]
+Therefore a signed scalar edge return satisfies
+\[
+  r_e
+  =
+  \Delta\ell_e
+  =
+  y_u-y_v,
+  \qquad
+  r_e\in\R,
+  \qquad
+  y_u := \Delta\xi_u\in\R.
+\]
+This is the basic balance equation.  The edge forecast is a relation; the node
+state is a potential whose differences explain that relation.
+
+\subsection{Best-Fit Node Recovery}
+\label{subsec:best-fit-node-recovery}
+
+In practice the edge readouts may be noisy, masked, or internally inconsistent.
+The node returns are then recovered as the best global fit to the selected edge
+returns.  Let $\mathcal{E}_{\mathrm{use}}\subseteq\mathcal{E}$ denote the
+usable edges for one forecast step and one scalar observer.  To keep notation
+light, the equations below write sums over $\mathcal{E}$; one may read this as
+summing over $\mathcal{E}_{\mathrm{use}}$ after masking invalid edges.
+
+For each usable edge, let $\widehat{r}_e\in\R$ be the observed or predicted edge
+return and let $\gamma_e\in\Rpos$ be its confidence weight.  Recover the node
+vector $\vect{y}\in\R^N$ by
+\[
+  \min_{\vect{y}\in\R^N}
+  \sum_{e=(u,v)\in\mathcal{E}}
+  \gamma_e\cdot
+  \left(
+    \widehat{r}_e-(y_u-y_v)
+  \right)^2
+  \qquad\text{subject to}\qquad
+  y_g=0.
+\]
+The gauge node $g\in\mathcal{V}$ fixes the additive ambiguity: only differences
+of node values matter.  If the usable graph is disconnected, one gauge is
+needed for each connected component; otherwise the recovery is not unique on
+isolated components.
+
+\subsection{Incidence-Matrix Form}
+\label{subsec:incidence-matrix-form}
+
+Let $\mat{A}\in\R^{L\times N}$ be the directed incidence matrix of
+$\mathcal{G}$.  For edge $e=(u,v)$, the corresponding incidence entries are
+\[
+  A_{e\,u}=1,
+  \qquad
+  A_{e\,v}=-1,
+\]
+and zeros elsewhere.  Let $\vect{\widehat{r}}\in\R^L$ collect the edge
+observations and let
+\[
+  \mat{\Gamma}
+  =
+  \diag(\gamma_1,\ldots,\gamma_L)
+  \in\R^{L\times L}.
+\]
+Then node recovery is the weighted least-squares problem
+\[
+  \min_{\vect{y}\in\R^N}
+  \lVert
+    \mat{\Gamma}^{1/2}
+    (\vect{\widehat{r}}-\mat{A}\vect{y})
+  \rVert_2^2,
+  \qquad
+  y_g=0.
+\]
+Its normal equations are
+\[
+  \mat{A}^{\top}\mat{\Gamma}\mat{A}\vect{y}
+  =
+  \mat{A}^{\top}\mat{\Gamma}\vect{\widehat{r}},
+  \qquad
+  y_g=0.
+\]
+The matrix
+\[
+  \mat{L}_{\gamma}
+  :=
+  \mat{A}^{\top}\mat{\Gamma}\mat{A}
+  \in\R^{N\times N}
+\]
+is the confidence-weighted graph Laplacian.  Without gauge fixing it has the
+usual constant-vector null direction on each connected component; the gauge
+constraint removes that ambiguity for the solve.
+
+\subsection{Recovery Residuals}
+\label{subsec:recovery-residuals}
+
+After recovery, the remaining edge mismatch is
+\[
+  \vect{\eps}_r
+  =
+  \vect{\widehat{r}}
+  -
+  \mat{A}\widehat{\vect{y}}
+  \in\R^L.
+\]
+This residual measures the part of the edge-return field that cannot be
+explained by one global node-potential vector.  A weighted scalar diagnostic is
+\[
+  \mathcal{Q}_r
+  =
+  \left\|
+    \mat{\Gamma}^{1/2}\vect{\eps}_r
+  \right\|_2^2
+  \in\Rnonneg.
+\]
+Large residuals indicate disagreement among edge forecasts, poor confidence
+weights, or cycle inconsistency in the active market graph.
+
+\subsection{Covariance-Aware Recovery}
+\label{subsec:covariance-aware-recovery}
+
+If a full edge covariance estimate $\mat{C}_r\in\R^{L\times L}$ is available for
+the chosen observer, then the natural generalization is
+\[
+  \min_{\vect{y}\in\R^N}
+  \left(
+    \vect{\widehat{r}}-\mat{A}\vect{y}
+  \right)^{\top}
+  \mat{C}_r^{-1}
+  \left(
+    \vect{\widehat{r}}-\mat{A}\vect{y}
+  \right),
+  \qquad
+  y_g=0.
+\]
+This is the Mahalanobis-weighted version of the same balance equation.  It does
+not introduce a new node model; it only measures edge mismatch using the edge
+uncertainty structure instead of independent scalar weights.
+
+When $\mat{C}_r$ is singular or nearly singular, the implementation should use
+a regularized inverse or a pseudoinverse on the usable edge subspace.  This is a
+numerical protection around the same mathematical object, not a change in the
+meaning of the recovery.
+
+\subsection{Node Covariance and Geometry}
+\label{subsec:node-covariance-and-geometry}
+
+When the covariance-aware system is well posed, the recovered node covariance is
+read after applying the same gauge fixing used in the least-squares solve.  If
+$\mat{A}_g$ denotes the incidence matrix in the free node coordinates after the
+gauge coordinate has been removed, then
+\[
+  \mat{C}_y^{(g)}
+  \approx
+  \left(
+    \mat{A}_g^{\top}\mat{C}_r^{-1}\mat{A}_g
+  \right)^{-1} 
+  \in \R^{D_p}.
+\]
+Equivalently, one may keep all $N$ coordinates and understand the covariance on
+the quotient space where additive constants are identified, using the
+corresponding constrained inverse or pseudoinverse.  The important point is that
+the null gauge direction is not an economic uncertainty mode.
+
+This covariance gives a natural local geometry on recovered node states.  For
+two gauge-fixed node configurations $\vect{y},\vect{y}'$, the Mahalanobis
+distance is
+\[
+  d(\vect{y},\vect{y}')^2
+  =
+  (\vect{y}-\vect{y}')^{\top}
+  \mat{C}_y^{-1}
+  (\vect{y}-\vect{y}')
+  \in\Rnonneg.
+\]
+This distance measures separation in units of node uncertainty, not in raw
+coordinate scale.
+
+\subsection{Modes}
+\label{subsec:modes}
+
+If a covariance matrix is available on the recovered node space, diagonalize the
+gauge-fixed covariance in the free coordinates as
+\[
+  \mat{C}_y^{(g)}
+  =
+  \mat{V}\Lambda\mat{V}^{\top},
+  \qquad
+  \mat{V}\in\R^{(N-1)\times(N-1)},
+  \qquad
+  \Lambda\in\R^{(N-1)\times(N-1)},
+\]
+when one gauge node has been removed.  In quotient-space notation the same modes
+may be lifted back to the $N$ node coordinates, with the gauge direction excluded.
+The eigenvectors are the principal modes of collective node motion, and the
+eigenvalues measure how much variance each mode carries.  Keeping only a few
+dominant modes is an optional compression step, not a mandatory reduction.
+
+\calloutbox{End of the Forecasting Interface.}{\\%
+  At this point the document has defined the active graph, normalized data,
+  representation, edge-level predictive distributions, observer readouts, and
+  the optional lift from scalar edge observations to node coordinates.  Trading
+  policy, execution rules, and portfolio decision logic remain outside this
+  notation layer.
+}

@@ -1,0 +1,229 @@
+\section{Source-Code Interface Contract}
+\label{app:source-interface-contract}
+
+This appendix records the tensor shapes expected by the current implementation.
+It is not a new mathematical layer; it is the code-facing version of the
+notation introduced in the main text.%
+\note{
+  The source tree contains more runtime wiring than this appendix records:
+  configuration binding, source selection, key-range slicing, normalization
+  caches, analytics, device movement, and training wrappers.  This appendix is
+  only the minimal tensor contract that the forecasting notation expects.  Some
+  source modules may need to catch up as the document settles.
+}
+
+\subsection{Dataloader Batch}
+\label{appsub:dataloader-batch-contract}
+
+For one collated batch, the source dataloader exports the past window as
+\[
+  \text{\field{features}}
+  \equiv
+  \tensor{x}
+  \in
+  \R^{B \times C \times H_x \times D_x},
+  \qquad
+  \text{\field{mask}}
+  \equiv
+  \tensor{m}_x
+  \in
+  \{0,1\}^{B \times C \times H_x}.
+\]
+It exports the raw future window and future mask as
+\[
+  \text{\field{future\_features}}
+  \in
+  \R^{B \times C \times H_f \times D_x},
+  \qquad
+  \text{\field{future\_mask}}
+  \equiv
+  \tensor{m}_f
+  \in
+  \{0,1\}^{B \times C \times H_f}.
+\]
+The raw future width is $D_x$ because it is read from the same normalized kline
+feature layout as the input window.  The MDN target-selection step then keeps
+the configured future coordinates described in
+Subsection~\ref{appsub:feature-registry-target-selection-contract} and forms
+\[
+  \tensor{f}
+  \in
+  \R^{B \times C \times H_f \times D_f}.
+\]
+Therefore $D_f$ is the selected target width used by the forecast head, not
+necessarily the full raw kline width.
+
+When key tensors are present, they follow the non-feature axes:
+\[
+  \text{\field{past\_keys}}
+  \in
+  \R^{B \times C \times H_x},
+  \qquad
+  \text{\field{future\_keys}}
+  \in
+  \R^{B \times C \times H_f}.
+\]
+The logical batch contract also carries the directed edge label:
+\[
+  \left(
+    e^{b},
+    \tensor{x}^{b}_{u^{b}\,v^{b}},
+    {}_{x}\tensor{m}^{b}_{u^{b}\,v^{b}},
+    \tensor{f}^{b}_{u^{b}\,v^{b}},
+    {}_{f}\tensor{m}^{b}_{u^{b}\,v^{b}}
+  \right),
+  \qquad
+  e^{b}=(u^{b},v^{b})\in\mathcal{E}.
+\]
+When this label is materialized in code, the field \field{edge\_id} is an
+implementation label for the mathematical edge:
+\[
+  \text{\field{edge\_id}}^{b}
+  \longmapsto
+  e^{b}=(u^{b},v^{b})\in\mathcal{E},
+  \qquad
+  \text{\field{edge\_id}}\in\{1,\ldots,L\}^{B}.
+\]
+Some current source paths may still supply this identity through runtime binding
+and source selection around the batch rather than through a materialized tensor.
+
+In the edge-specialized setting used in this draft, the forecast module applied
+to a batch is selected from the batch edge label.  Homogeneous batches satisfy
+\[
+  e^{1}=\cdots=e^{B}=e_{\mathrm{batch}}.
+\]
+The selected forecast head is then read as
+\[
+  {}_{\psi^{e_{\mathrm{batch}}}}g(\tensor{z}^{b}).
+\]
+If mixed-edge batches are introduced later, the implementation must either route
+each sample by \field{edge\_id} or replace the edge-specialized heads with a
+shared edge-conditioned head.
+
+\subsection{Feature Registry and Target Selection}
+\label{appsub:feature-registry-target-selection-contract}
+
+The normalized kline source registry has $D_x=9$ model coordinates:
+\begin{center}
+\begin{tabular}{c l l}
+\toprule
+Coordinate & Field & Meaning \\
+\midrule
+1 & \field{open} & Log open relative to previous close. \\
+2 & \field{high} & Log high relative to previous close. \\
+3 & \field{low} & Log low relative to previous close. \\
+4 & \field{close} & Log close relative to previous close. \\
+5 & \field{volume} & $\log(1+\cdot)$ applied to volume. \\
+6 & \field{quote\_volume} & $\log(1+\cdot)$ applied to quote volume. \\
+7 & \field{trades} & $\log(1+\cdot)$ applied to number of trades. \\
+8 & \field{taker\_buy\_base} & $\log(1+\cdot)$ applied to taker buy base volume. \\
+9 & \field{taker\_buy\_quote} & $\log(1+\cdot)$ applied to taker buy quote volume. \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The target feature registry is an ordered selection from this source registry:
+\[
+  \mathcal{J}_f
+  =
+  (d_1,\ldots,d_{D_f}),
+  \qquad
+  d_a\in\{1,\ldots,D_x\},
+  \qquad
+  a=1,\ldots,D_f.
+\]
+Thus $D_f$ is the number of selected future coordinates, while
+$\mathcal{J}_f$ is the selected coordinate list.  The target tensor is formed by
+\[
+  f^{b\,c\,i\,a}
+  =
+  \text{\field{future\_features}}^{b\,c\,i\,d_a},
+  \qquad
+  a=1,\ldots,D_f.
+\]
+
+The scalar edge-return readout uses the close-return source coordinate
+\[
+  d_{(r)}=4.
+\]
+When scalar edge-return recovery is enabled, $\mathcal{J}_f$ must contain this
+coordinate, and the label $(r)$ denotes the selected target slot corresponding
+to $d_{(r)}$.
+
+\subsection{Representation Output}
+\label{appsub:representation-output-contract}
+
+The representation encoder consumes the past batch
+\[
+  (\text{\field{features}},\text{\field{mask}})
+  \in
+  \R^{B \times C \times H_x \times D_x}
+  \times
+  \{0,1\}^{B \times C \times H_x}
+\]
+and returns an \field{encoding}.  Code that calls the pure MDN must provide the
+reduced form
+\[
+  \text{\field{encoding}}
+  \equiv
+  \tensor{z}
+  \in
+  \R^{B \times D_e}.
+\]
+If an encoder path produces a sequence encoding in
+$\R^{B \times H_x' \times D_e}$, it must be reduced before entering the pure
+MDN model.
+
+\subsection{MDN Output}
+\label{appsub:mdn-output-contract}
+
+The current MDN implementation takes
+\[
+  \text{\field{encoding}}
+  \in
+  \R^{B \times D_e}
+\]
+and returns the structure \field{MdnOut}.  Its fields are
+\[
+  \text{\field{log\_pi}}
+  \in
+  \R^{B \times C \times H_f \times K},
+\]
+\[
+  \text{\field{mu}}
+  \in
+  \R^{B \times C \times H_f \times K \times D_f},
+  \qquad
+  \text{\field{sigma}}
+  \in
+  \Rpos^{B \times C \times H_f \times K \times D_f}.
+\]
+The \field{log\_pi} tensor contains log-normalized mixture weights.  Thus
+$\exp(\text{\field{log\_pi}})$ corresponds to the mixture coefficient tensor
+$\tensor{\alpha}$.  The \field{sigma} tensor is already positive and represents
+the diagonal component scale vector used to form component covariances.
+
+\subsection{Loss Interface}
+\label{appsub:loss-interface-contract}
+
+The MDN negative-log-likelihood reads
+\[
+  \text{\field{MdnOut}},
+  \qquad
+  \tensor{f}
+  \in
+  \R^{B \times C \times H_f \times D_f},
+  \qquad
+  \tensor{m}_f
+  \in
+  \{0,1\}^{B \times C \times H_f}.
+\]
+The unreduced NLL map has one scalar per batch, channel, and horizon:
+\[
+  \ell_{\mathrm{map}}
+  \in
+  \R^{B \times C \times H_f}.
+\]
+Only positions with $m_f^{b\,c\,i}=1$ contribute to the reduced loss.  Optional
+channel, horizon, and feature weights may be applied before reduction; the
+reduced training loss is a scalar in $\R$.
