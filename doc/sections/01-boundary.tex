@@ -10,10 +10,11 @@ The scope is intentionally narrow.  The notation standardizes the objects that
 are active in the present line of work:
 \begin{enumerate}
   \item normalized edge-level market windows,
+  \item a feature-wise NodeLift layer from edge-carried input fields to
+  node-carried features, including price residual sidecars,
   \item a learned representation for one sample,
   \item an edge-level mixture-density forecast,
-  \item observer operators such as expectation, variance, and downside risk,
-  \item an optional lift from edge observations to node valuations.
+  \item observer operators such as expectation, variance, and downside risk.
 \end{enumerate}
 
 The document deliberately excludes runtime wiring, source registries, training

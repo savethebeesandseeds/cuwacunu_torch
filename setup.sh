@@ -338,7 +338,8 @@ install_base_requirements() {
     ca-certificates build-essential libssl-dev libncurses5-dev libncursesw5-dev \
     gnupg valgrind gdb ccache mold clang-format locales curl libcurl4-openssl-dev \
     openssh-client bash-completion \
-    texlive-latex-base texlive-latex-recommended texlive-fonts-recommended
+    texlive-latex-base texlive-latex-recommended texlive-fonts-recommended \
+    texlive-pictures
   run_cmd "Enabling en_US.UTF-8 in /etc/locale.gen" "${SUDO[@]}" bash -lc \
     "if grep -Eq '^[[:space:]]*#?[[:space:]]*en_US\.UTF-8[[:space:]]+UTF-8[[:space:]]*$' /etc/locale.gen; then \
        sed -i 's/^[[:space:]]*#\?[[:space:]]*en_US\.UTF-8[[:space:]]\+UTF-8[[:space:]]*$/en_US.UTF-8 UTF-8/' /etc/locale.gen; \

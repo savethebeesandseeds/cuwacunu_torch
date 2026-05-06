@@ -6,6 +6,9 @@
 }{}
 \usepackage[margin=1.15in]{geometry}
 \usepackage{graphicx}
+\usepackage[table]{xcolor}
+\usepackage{tikz}
+\usetikzlibrary{positioning}
 \usepackage{amsmath}
 \usepackage{amssymb}
 \usepackage{mathtools}
@@ -14,7 +17,6 @@
 \usepackage{tabularx}
 \usepackage{longtable}
 \usepackage{array}
-\usepackage[table]{xcolor}
 \usepackage[font=small,labelfont=bf,labelsep=period,justification=raggedright,singlelinecheck=false]{caption}
 \usepackage[hidelinks,hyperfootnotes=false]{hyperref}
 \usepackage{microtype}
@@ -94,11 +96,13 @@
 
 \begin{abstract}
 This manuscript lays the mathematical foundation for \Cuwacunu{}, an artificial
-intelligence agent for portfolio management.  The system reads
-multi-resolution market data as edge-carried signals on an active market graph,
-learns representations of traded relations, emits predictive distribution
-fields, and lifts selected edge forecasts back into node-level portfolio
-states.  The current draft fixes the tensor, graph, distribution, and observer
+intelligence agent for portfolio management.  The system reads multi-resolution
+market data as edge-carried signals on an active market graph, defines a
+feature-wise NodeLift procedure that transforms normalized edge-carried input
+fields into node-carried market features while preserving residual edge tension,
+learns representations of traded relations, and emits predictive distribution
+fields.  The
+current draft fixes the tensor, graph, distribution, observer, and NodeLift
 objects needed to connect implementation, experiments, and analysis.  Its
 purpose is to make the forecasting interface precise while preserving the larger
 direction: portfolio positioning under abstract values.
@@ -106,7 +110,8 @@ direction: portfolio positioning under abstract values.
 
 \keywords{portfolio positioning; abstract values; semantic transformers;
 multi-resolution market fields; mixture-density networks; predictive
-distributions; node recovery}
+distributions; feature-wise NodeLift; synthetic gauges; graph Laplacians;
+residual edge tension}
 
 \tableofcontents
 
@@ -114,15 +119,14 @@ distributions; node recovery}
 \input{sections/02-symbols}
 \input{sections/03-edges-and-nodes}
 \input{sections/04-data}
-\input{sections/05-representation}
-\input{sections/06-edge-mdn}
-\input{sections/07-edges-to-nodes}
+\input{sections/05-edges-to-nodes}
+\input{sections/06-representation}
+\input{sections/07-edge-mdn}
 \input{sections/08-observers}
 
 \appendix
-\input{sections/09-normalization-procedure}
-\input{sections/10-sequence-synchronization}
-\input{sections/11-source-interface-contract}
+\input{sections/09-sequence-synchronization}
+\input{sections/10-source-interface-contract}
 
 \bibliographystyle{plain}
 \bibliography{references}

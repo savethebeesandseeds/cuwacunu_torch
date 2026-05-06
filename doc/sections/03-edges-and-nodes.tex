@@ -7,9 +7,9 @@ In \Cuwacunu{}%
   www.waajacu.com/
 }, we model%
 \note{
-  The market graph is the mathematical object shared by the representation,
-  edge forecasting, risk \& value at node observers after the node-recovery section.  It
-  treats assets as nodes, traded instruments prices as directed edge relations.
+  The market graph is the mathematical object shared by NodeLift, the
+  representation module, edge forecasting, and node/residual observers.  It
+  treats assets as nodes and traded instrument prices as directed edge relations.
 }
 the active market universe%
 \note{
@@ -85,8 +85,9 @@ The holdings of the portfolio are recorded on nodes%
 \calloutbox{Edge-Data \& Node-State Disambiguation.}{\\%
   Asset holdings at the base node $h_{u}$
   have a price readout $\tensor{x}_{u\,v}(t)$ of $u$ in terms of $v$,
-  thus prices are quotations, not states stored inside either node.  Section~\ref{sec:edges-to-nodes}
-  describes how node valuations are recovered from edge readouts.
+  thus prices are quotations, not states stored inside either node.
+  Section~\ref{sec:edges-to-nodes} describes how normalized edge-carried
+  features are lifted into node-carried features and residual sidecars.
 }
 
 There are $N$ nodes and $L=|\mathcal{E}|$ active directed edges, with

@@ -1,0 +1,1882 @@
+\newpage{}
+\section{From Edges to Nodes}
+\label{sec:edges-to-nodes}
+
+This section defines a concrete procedure for lifting edge-carried market
+features into node-carried market features.  We call this procedure
+\[
+  \operatorname{NodeLift}.
+\]
+It is not a forecast model.  It is a graph-structured transformation applied
+to observed input windows.
+
+The guiding idea is:
+
+\begin{quote}
+Edges carry market relations and market activity.  Nodes carry recovered
+semantic state.  A node lift turns edge-local observations into node-local
+features, while preserving residual edge information that cannot be explained by
+nodes alone.
+\end{quote}
+
+For one anchor time $t$, one channel $c$, one input position $i$, and one
+directed edge $e=(u,v)$, write the observed edge normalized feature vector as
+\[
+  \tensor{x}_{e}^{c\,i}(t)
+  :=
+  \tensor{x}_{u\,v}^{c\,i}(t)
+  \in
+  \R^{D_x}.
+\]
+The lift produces a node feature matrix
+\[
+  \tensor{s}^{c\,i}(t)
+  \in
+  \R^{N\times D_y},
+\]
+where $s_u^{c\,i\,d}(t)$ is the lifted feature coordinate attached to node
+$u\in\mathcal{V}$.
+
+Here $D_x$ is the source kline feature width before lifting, and $D_y$ is the
+node feature width after lifting.  The symbol $D_y$ is kept because it names the
+output side of NodeLift.  For the full normalized kline lift, one node feature
+is produced for each input feature, so
+\[
+  D_y=D_x=9.
+\]
+If a later model selects only a subset of node coordinates, that selection
+happens after this input-side lift.
+
+\calloutbox{NodeLift principle.}{\\%
+  Price coordinates are relative quantities, so they are lifted through signed
+  edge differences.  Activity coordinates are additive quantities, so they are
+  lifted through endpoint aggregation.  The residual edge field is preserved
+  because it contains cycle tension and edge-local information not represented
+  by the node state.
+}
+
+\subsection{Feature Classes}
+\label{subsec:node-lift-feature-classes}
+
+The normalized kline registry has four price-return coordinates and five
+activity coordinates.  We write
+\[
+  \mathcal{J}_{\mathrm{price}}
+  =
+  \{1,2,3,4\},
+\]
+corresponding to \field{open}, \field{high}, \field{low}, and
+\field{close}, and
+\[
+  \mathcal{J}_{\mathrm{act}}
+  =
+  \{5,6,7,8,9\},
+\]
+corresponding to \field{volume}, \field{quote\_volume}, \field{trades},
+\field{taker\_buy\_base}, and \field{taker\_buy\_quote}.
+
+The price coordinates are normalized log-return coordinates.  They are
+compatible with a difference equation on node log-valuations.  The activity
+coordinates are normalized nonnegative activity coordinates.  They are
+compatible with endpoint aggregation, not with a difference equation.
+
+Time keys such as \field{open\_time} and \field{close\_time} are alignment
+metadata rather than model features.  They are handled by the sequence
+synchronization procedure and are not lifted here.
+
+The normalization rules used by these coordinates are recorded next, because
+NodeLift depends on the difference between price-like coordinates and
+activity-like coordinates.
+
+\subsection{Normalization Procedure Used by NodeLift}
+\label{subsec:nodelift-normalization-procedure}
+
+NodeLift operates on normalized edge features.  It does not lift raw kline
+records directly.  For one directed edge $e=(u,v)$, channel $c$, and input
+position $i$, the normalized slice is
+\[
+  \tensor{x}_{e}^{c\,i}(t)
+  \in
+  \R^{D_x},
+  \qquad
+  D_x=9.
+\]
+The corresponding input mask is
+\[
+  {}_{x}m_{e}^{c\,i}(t)
+  \in
+  \{0,1\}.
+\]
+A masked-out slice is not a zero-valued market event.  It is unavailable
+evidence.
+
+The normalization pass is causal and channel-local.  For each edge $e$ and
+channel $c$, the normalizer scans records from past to future while remembering
+the previous valid candle on that same edge and channel.  Let
+\[
+  p_{e}^{c\,(i-1)\,(\mathrm{close})}(t)\in\Rpos
+\]
+denote the previous valid close price available before position $i$ on the same
+edge and channel.
+
+For one raw valid candle, write the OHLC price tuple for $\mathcal{J}_{\mathrm{price}}$ as
+\[
+  \left(
+    p_{e}^{c\,i\,(\mathrm{open})},
+    p_{e}^{c\,i\,(\mathrm{high})},
+    p_{e}^{c\,i\,(\mathrm{low})},
+    p_{e}^{c\,i\,(\mathrm{close})}
+  \right)
+  \in
+  \Rpos^4,
+\]
+and the raw activity tuple for $\mathcal{J}_{\mathrm{act}}$ as
+\[
+  \left(
+    a_{e}^{c\,i\,(\mathrm{volume})},
+    a_{e}^{c\,i\,(\mathrm{quote})},
+    a_{e}^{c\,i\,(\mathrm{trades})},
+    a_{e}^{c\,i\,(\mathrm{buybase})},
+    a_{e}^{c\,i\,(\mathrm{buyquote})}
+  \right)
+  \in
+  \Rnonneg^5.
+\]
+
+If the current raw candle is invalid, the normalized slice is marked invalid:
+\[
+  {}_{x}m_{e}^{c\,i}(t)=0.
+\]
+The previous-valid state is cleared, so the next valid candle begins a new
+contiguous valid segment.
+
+If the current raw candle is valid but no previous valid close is available,
+the normalized slice is also marked invalid:
+\[
+  {}_{x}m_{e}^{c\,i}(t)=0.
+\]
+This is why the first valid candle of every contiguous valid segment is masked
+out: there is no causal previous close from which to form log-return price
+coordinates.  The current valid candle may then become the previous valid candle
+for the next position.
+
+If both the current raw candle and the previous valid close are available, the
+normalized price coordinates $d\in\mathcal{J}_{\mathrm{price}}$ are
+\[
+  x_{e}^{c\,i\,(1)}(t)
+  =
+  \log
+  \left(
+    \frac{
+      p_{e}^{c\,i\,(\mathrm{open})}
+    }{
+      p_{e}^{c\,(i-1)\,(\mathrm{close})}(t)
+    }
+  \right),
+\]
+\[
+  x_{e}^{c\,i\,(2)}(t)
+  =
+  \log
+  \left(
+    \frac{
+      p_{e}^{c\,i\,(\mathrm{high})}
+    }{
+      p_{e}^{c\,(i-1)\,(\mathrm{close})}(t)
+    }
+  \right),
+\]
+\[
+  x_{e}^{c\,i\,(3)}(t)
+  =
+  \log
+  \left(
+    \frac{
+      p_{e}^{c\,i\,(\mathrm{low})}
+    }{
+      p_{e}^{c\,(i-1)\,(\mathrm{close})}(t)
+    }
+  \right),
+\]
+and
+\[
+  x_{e}^{c\,i\,(4)}(t)
+  =
+  \log
+  \left(
+    \frac{
+      p_{e}^{c\,i\,(\mathrm{close})}
+    }{
+      p_{e}^{c\,(i-1)\,(\mathrm{close})}(t)
+    }
+  \right).
+\]
+
+The normalized activity coordinates $d\in\mathcal{J}_{\mathrm{act}}$ are
+\[
+  x_{e}^{c\,i\,(5)}(t)
+  =
+  \log
+  \left(
+    1+a_{e}^{c\,i\,(\mathrm{volume})}
+  \right),
+\]
+\[
+  x_{e}^{c\,i\,(6)}(t)
+  =
+  \log
+  \left(
+    1+a_{e}^{c\,i\,(\mathrm{quote})}
+  \right),
+\]
+\[
+  x_{e}^{c\,i\,(7)}(t)
+  =
+  \log
+  \left(
+    1+a_{e}^{c\,i\,(\mathrm{trades})}
+  \right),
+\]
+\[
+  x_{e}^{c\,i\,(8)}(t)
+  =
+  \log
+  \left(
+    1+a_{e}^{c\,i\,(\mathrm{buybase})}
+  \right),
+\]
+and
+\[
+  x_{e}^{c\,i\,(9)}(t)
+  =
+  \log
+  \left(
+    1+a_{e}^{c\,i\,(\mathrm{buyquote})}
+  \right).
+\]
+
+When all nine normalized coordinates are produced successfully, the slice is
+valid:
+\[
+  {}_{x}m_{e}^{c\,i}(t)=1.
+\]
+The resulting normalized vector is
+\[
+  \tensor{x}_{e}^{c\,i}(t)
+  =
+  \left(
+    x_{e}^{c\,i\,(1)}(t),
+    \ldots,
+    x_{e}^{c\,i\,(9)}(t)
+  \right)
+  \in
+  \R^9.
+\]
+
+In implementation, the normalization pass protects the domains of the
+logarithms.  Nonpositive or non-finite prices are clamped to a positive floor
+before price logarithms are applied, and non-finite activity values are clamped
+to a valid nonnegative value before $\log(1+\cdot)$ is applied.  These numerical
+protections keep the normalized cache finite, but they do not turn invalid
+records into observed market evidence.  The mask remains the source of truth
+for whether a normalized slice is usable.
+
+\calloutbox{Normalization and NodeLift.}{\\%
+  NodeLift reads the normalized feature coordinates.  The price coordinates
+  $d\in\mathcal{J}_{\mathrm{price}}$ are log-return coordinates and are lifted
+  by signed incidence recovery.  The activity coordinates
+  $d\in\mathcal{J}_{\mathrm{act}}$ are $\log(1+a)$ coordinates and are lifted
+  by first applying the inverse activity map $a=\exp(x)-1$, then aggregating to
+  endpoints.
+}
+
+\subsection{Balance Equation for Price Coordinates}
+\label{subsec:balance-equation-for-price-coordinates}
+
+The price-coordinate lift comes from the usual edge-to-node balance relation.
+Suppose every node $u\in\mathcal{V}$ has a positive latent valuation
+\[
+  \eta_u\in\Rpos.
+\]
+For an edge $e=(u,v)$, the idealized edge price is the ratio
+\[
+  q_e
+  =
+  \frac{\eta_u}{\eta_v}
+  \in\Rpos.
+\]
+In log coordinates,
+\[
+  \xi_u := \log\eta_u\in\R,
+  \qquad
+  \ell_e := \log q_e\in\R,
+\]
+so
+\[
+  \ell_e
+  =
+  \xi_u-\xi_v.
+\]
+If the node log-valuations change over time, define the node increment
+\[
+  y_u := \Delta\xi_u\in\R.
+\]
+Then the scalar edge return satisfies
+\[
+  r_e
+  =
+  \Delta\ell_e
+  =
+  y_u-y_v.
+\]
+
+This is the balance equation:
+\[
+  r_e = y_u-y_v.
+\]
+The edge return is a local relation.  The node vector is the global potential
+whose differences explain those local relations.
+
+\subsection{Observed Input Masks and Usable Edge Sets}
+\label{subsec:observed-input-masks-and-usable-edge-sets}
+
+NodeLift must lift masks together with values.  The input mask
+\[
+  {}_{x}m_{e}^{c\,i}(t)
+  \in
+  \{0,1\},
+  \qquad
+  e=(u,v),
+\]
+says whether the normalized edge feature slice
+$\tensor{x}_{e}^{c\,i}(t)\in\R^{D_x}$ is valid.  A masked-out slice is not an
+observed zero-valued market event.  It is unavailable evidence.
+
+Since NodeLift produces node features with a feature coordinate, we first
+derive a coordinatewise edge mask.  By default,
+\[
+  {}_{x}m_{e}^{c\,i\,d}(t)
+  :=
+  {}_{x}m_{e}^{c\,i}(t)
+  \cdot
+  \mathbf{1}
+  \left\{
+    x_{e}^{c\,i\,d}(t)
+    \text{ is valid}
+  \right\}
+  \in
+  \{0,1\}.
+\]
+In the normalized cache this valid-value check is usually already protected by
+the normalization procedure, because the cache stores finite normalized values,
+but it is useful to keep the check in the mathematical contract.  Later
+feature-level filters may also refine ${}_{x}m_{e}^{c\,i\,d}(t)$ without
+changing the rest of the lift.
+
+The slice-level usable edge set is
+\[
+  \mathcal{E}_{\mathrm{slice}}^{c\,i}(t)
+  =
+  \left\{
+    e\in\mathcal{E}
+    :
+    {}_{x}m_{e}^{c\,i}(t)=1
+  \right\}.
+\]
+For each coordinate, define the coordinatewise usable edge set
+\[
+  \mathcal{E}_{\mathrm{use}}^{c\,i\,d}(t)
+  =
+  \left\{
+    e\in\mathcal{E}
+    :
+    {}_{x}m_{e}^{c\,i\,d}(t)=1
+  \right\}
+  \subseteq
+  \mathcal{E}_{\mathrm{slice}}^{c\,i}(t).
+\]
+Thus usability is coordinatewise.  The usable edge set for a price coordinate
+and the usable edge set for an activity coordinate need not be identical.
+
+For observed input windows, the edge-coordinate field over the coordinatewise
+usable edge set is
+\[
+  \vect{x}_{\mathcal{E}}^{c\,i\,d}(t)
+  =
+  \left(
+    x_{e}^{c\,i\,d}(t)
+  \right)_{e\in\mathcal{E}_{\mathrm{use}}^{c\,i\,d}(t)}
+  \in
+  \R^{L_{\mathrm{use}}^{c\,i\,d}},
+\]
+where
+\[
+  L_{\mathrm{use}}^{c\,i\,d}
+  =
+  \left|
+    \mathcal{E}_{\mathrm{use}}^{c\,i\,d}(t)
+  \right|.
+\]
+This is the scalar field consumed by NodeLift in this chapter:
+\[
+  \text{observed scalar input edge field}
+  \quad
+  \longrightarrow
+  \quad
+  \text{node field}.
+\]
+Predictive and supervised readouts may reuse the same algebra later, but they
+should introduce their source explicitly instead of hiding it behind a generic
+edge-field symbol.
+
+\subsection{Graph Matrices for NodeLift}
+\label{subsec:graph-matrices-for-nodelift}
+
+The graph matrices used by NodeLift are built from the endpoints of each
+directed edge.  For every edge
+\[
+  e=(u(e),v(e)),
+  \quad
+  e\in\mathcal{E}.
+\]
+Where $u(e)\in\mathcal{V}$ is the base endpoint and
+$v(e)\in\mathcal{V}$ is the quote endpoint.
+Thus, for an edge such as \field{BTCUSDT},
+$u(e)=\text{\field{BTC}}$, $v(e)=\text{\field{USDT}}$.
+
+The graph matrices have one row per edge and one column per node.  In this
+subsection, the symbol $a\in\mathcal{V}$ denotes a generic node column.  It is
+not a raw activity variable.
+
+The signed incidence matrix of the active graph is
+\[
+  \mat{A}_{\mathcal{E}}
+  \in
+  \R^{L\times N},
+\]
+with entries%
+\note{
+  The symbol $a\in\mathcal{V}$ denotes a generic node column. It is not a raw activity variable.
+}
+\[
+  A_{e}^{a}
+  =
+  \mathbf{1}\{a=u(e)\}
+  -
+  \mathbf{1}\{a=v(e)\},
+  \qquad
+  e\in\mathcal{E},
+  \quad
+  a\in\mathcal{V}.
+\]
+Therefore, for any node vector $\vect{y}\in\R^N$,
+\[
+  \left(
+    \mat{A}_{\mathcal{E}}\vect{y}
+  \right)_{e}
+  =
+  \sum_{a\in\mathcal{V}}
+  A_{e}^{a}y_a
+  =
+  y_{u(e)}-y_{v(e)}.
+\]
+This is the signed operator used for price-like coordinates.
+
+For activity aggregation, define the base-endpoint assignment matrix
+\[
+  \mat{B}_{\mathcal{E}}
+  \in
+  \{0,1\}^{L\times N}
+\]
+by
+\[
+  B_{e}^{a}
+  =
+  \mathbf{1}\{a=u(e)\},
+  \qquad
+  e\in\mathcal{E},
+  \quad
+  a\in\mathcal{V}.
+\]
+Thus $B_{e}^{a}=1$ exactly when node $a$ is the base endpoint of edge $e$.
+
+Define the quote-endpoint assignment matrix
+\[
+  \mat{Q}_{\mathcal{E}}
+  \in
+  \{0,1\}^{L\times N}
+\]
+by
+\[
+  Q_{e}^{a}
+  =
+  \mathbf{1}\{a=v(e)\},
+  \qquad
+  e\in\mathcal{E},
+  \quad
+  a\in\mathcal{V}.
+\]
+Thus $Q_{e}^{a}=1$ exactly when node $a$ is the quote endpoint of edge $e$.
+
+The unsigned endpoint matrix is
+\[
+  \mat{U}_{\mathcal{E}}
+  =
+  \mat{B}_{\mathcal{E}}
+  +
+  \mat{Q}_{\mathcal{E}}
+  \in
+  \{0,1\}^{L\times N}.
+\]
+Its entries are
+\[
+  U_{e}^{a}
+  =
+  \mathbf{1}\{a=u(e)\}
+  +
+  \mathbf{1}\{a=v(e)\}.
+\]
+Since self-edges are not allowed, $u(e)\ne v(e)$, so
+$U_{e}^{a}$ is either $0$ or $1$.
+
+These matrices have simple aggregation meanings.  For any scalar edge field
+\[
+  \vect{\rho}_{\mathcal{E}}
+  =
+  (\rho_e)_{e\in\mathcal{E}}
+  \in
+  \R^{L},
+\]
+the base aggregation is
+\[
+  \left(
+    \mat{B}_{\mathcal{E}}^{\top}
+    \vect{\rho}_{\mathcal{E}}
+  \right)^{a}
+  =
+  \sum_{e\in\mathcal{E}}
+  B_{e}^{a}\rho_e
+  =
+  \sum_{\substack{e\in\mathcal{E}\\u(e)=a}}
+  \rho_e.
+\]
+The quote aggregation is
+\[
+  \left(
+    \mat{Q}_{\mathcal{E}}^{\top}
+    \vect{\rho}_{\mathcal{E}}
+  \right)^{a}
+  =
+  \sum_{e\in\mathcal{E}}
+  Q_{e}^{a}\rho_e
+  =
+  \sum_{\substack{e\in\mathcal{E}\\v(e)=a}}
+  \rho_e.
+\]
+The incident endpoint aggregation is
+\[
+  \left(
+    \mat{U}_{\mathcal{E}}^{\top}
+    \vect{\rho}_{\mathcal{E}}
+  \right)^{a}
+  =
+  \sum_{\substack{e\in\mathcal{E}\\u(e)=a\ \mathrm{or}\ v(e)=a}}
+  \rho_e.
+\]
+
+Thus:
+\[
+  \mat{A}_{\mathcal{E}}
+  \quad
+  \text{creates signed edge differences from node values},
+\]
+while
+\[
+  \mat{B}_{\mathcal{E}},
+  \quad
+  \mat{Q}_{\mathcal{E}},
+  \quad
+  \mat{U}_{\mathcal{E}}
+  \quad
+  \text{assign edge activity to node endpoints}.
+\]
+
+For a coordinatewise usable edge set
+\[
+  \mathcal{E}_{\mathrm{use}}^{c\,i\,d}(t)
+  \subseteq
+  \mathcal{E},
+\]
+the corresponding usable graph matrices are obtained by keeping only the rows
+whose edge belongs to that set:
+\[
+  \mat{A}^{c\,i\,d}(t)
+  =
+  \left.
+    \mat{A}_{\mathcal{E}}
+  \right|_{\mathcal{E}_{\mathrm{use}}^{c\,i\,d}(t)},
+\]
+\[
+  \mat{B}^{c\,i\,d}(t)
+  =
+  \left.
+    \mat{B}_{\mathcal{E}}
+  \right|_{\mathcal{E}_{\mathrm{use}}^{c\,i\,d}(t)},
+  \qquad
+  \mat{Q}^{c\,i\,d}(t)
+  =
+  \left.
+    \mat{Q}_{\mathcal{E}}
+  \right|_{\mathcal{E}_{\mathrm{use}}^{c\,i\,d}(t)},
+\]
+and
+\[
+  \mat{U}^{c\,i\,d}(t)
+  =
+  \left.
+    \mat{U}_{\mathcal{E}}
+  \right|_{\mathcal{E}_{\mathrm{use}}^{c\,i\,d}(t)}.
+\]
+Here the vertical restriction symbol means: keep the selected edge rows and keep
+all node columns.
+
+Once the channel $c$, input position $i$, coordinate $d$, and usable edge set
+are fixed, we suppress these labels and write simply
+\[
+  \mat{A},
+  \qquad
+  \mat{B},
+  \qquad
+  \mat{Q},
+  \qquad
+  \mat{U}.
+\]
+
+\calloutbox{Endpoint matrices.}{\\%
+  The matrix $\mat{A}$ is signed: it compares the base endpoint against the
+  quote endpoint.  The matrices $\mat{B}$ and $\mat{Q}$ are unsigned assignment
+  matrices: $\mat{B}$ sends an edge quantity to its base node, and $\mat{Q}$
+  sends an edge quantity to its quote node.  The matrix $\mat{U}=\mat{B}+\mat{Q}$
+  sends an edge quantity to both endpoints.
+}
+
+\subsection{Edge Conditions for a Valid Lift}
+\label{subsec:edge-conditions-for-valid-lift}
+
+NodeLift does not require the active graph to be complete.  The active edge set
+may be any staged set of traded instruments:
+\[
+  \mathcal{E}
+  \subseteq
+  \{(u,v)\in\mathcal{V}\times\mathcal{V}:u\ne v\}.
+\]
+For one channel, position, and coordinate, the usable edge set
+\[
+  \mathcal{E}_{\mathrm{use}}^{c\,i\,d}(t)
+  \subseteq
+  \mathcal{E}
+\]
+may be smaller after masks, data availability, feature availability, and
+observer choices are applied.
+
+For price-coordinate recovery, the important condition is connectivity of the
+underlying undirected usable graph.  Direction fixes the sign of each incidence
+row, but the ability to recover node differences depends on whether the usable
+edges connect the nodes.
+
+A reverse edge is not required.  If $e=(u,v)$ is present, then its incidence row
+already gives the relation
+\[
+  y_u-y_v.
+\]
+If the reverse edge $(v,u)$ is also present, it is a second directed
+observation with the opposite incidence sign:
+\[
+  y_v-y_u.
+\]
+Both may be used when both are independently observed traded instruments.  But
+if one reverse edge is synthetically created from the other, it should not be
+treated as an independent observation with full confidence, because that would
+double-count the same market information.
+
+Let the usable undirected graph for one price coordinate have connected
+components
+\[
+  \mathcal{V}_{(1)},\ldots,\mathcal{V}_{(C_{\mathrm{comp}})}.
+\]
+For component $a$, write
+\[
+  n_a = |\mathcal{V}_{(a)}|,
+  \qquad
+  L_a = |\mathcal{E}_{(a)}|.
+\]
+For price recovery on that component, the component must contain enough usable
+edges to connect its nodes.  At minimum, it needs
+\[
+  L_a \ge n_a-1
+\]
+with those edges arranged as a connected tree.  If fewer edges are available, the
+price-coordinate node values inside that component are underdetermined and the
+missing nodes or component should be masked out.
+
+A connected tree is enough to recover node coordinates after a gauge is fixed.
+However, a tree has no cycles.  Therefore it cannot reveal cycle inconsistency:
+any edge field on a tree can be explained exactly by some node-potential vector.
+Extra edges beyond a tree create cycles.  Cycles make the edge field
+overdetermined and allow residual tension to appear.
+
+For one connected component, the number of independent cycle constraints is
+\[
+  L_a-n_a+1.
+\]
+Across all usable components, the total cycle dimension is
+\[
+  L_{\mathrm{use}}
+  -
+  N_{\mathrm{use}}
+  +
+  C_{\mathrm{comp}},
+\]
+where $N_{\mathrm{use}}$ is the number of nodes touched by the usable edge set.
+When this number is zero, the usable graph is a forest.  A forest can still
+recover node coordinates componentwise, but it cannot detect cycle
+inconsistency.  Nonzero residual tension requires cycles.
+
+Activity-coordinate lifting has weaker graph requirements.  A node can receive
+an activity feature whenever the relevant endpoint aggregation has usable
+incident edges.  Activity aggregation does not require a connected price graph.
+
+\calloutbox{Edge requirement.}{\\%
+  NodeLift does not need all possible instruments and does not need both
+  directions of every pair.  For price coordinates, each recoverable component
+  needs enough usable edges to be connected.  Extra edges beyond a tree create
+  cycles, and cycles are where residual tension and arbitrage-like disagreement
+  can appear.
+}
+
+\subsection{Synthetic Reference Gauge}
+\label{subsec:synthetic-reference-gauge}
+
+Because only node differences appear, adding the same constant to every node in
+one connected component does not change any edge difference:
+\[
+  (y_u-y_v)
+  =
+  \bigl((y_u+a)-(y_v+a)\bigr),
+  \qquad
+  a\in\R.
+\]
+So price-coordinate recovery is not unique until a reference is fixed.
+
+The ordinary gauge fixes one real node $g\in\mathcal{V}$ by imposing
+\[
+  y_g=0.
+\]
+That is valid, but it makes every displayed node coordinate relative to that
+single chosen node.
+
+Instead, NodeLift uses a synthetic reference vector.  For one connected usable
+component, let
+\[
+  \vect{w}_{\star}
+  \in
+  \Rnonneg^{n_a},
+  \qquad
+  \mathbf{1}^{\top}\vect{w}_{\star}=1.
+\]
+The synthetic reference return is
+\[
+  y_{\star}
+  =
+  \vect{w}_{\star}^{\top}\vect{y},
+\]
+and the gauge condition is
+\[
+  \vect{w}_{\star}^{\top}\vect{y}=0.
+\]
+
+A real-node gauge is a special case.  If $\vect{w}_{\star}$ places all mass on
+node $g$, then
+\[
+  \vect{w}_{\star}^{\top}\vect{y}
+  =
+  y_g.
+\]
+The synthetic gauge therefore generalizes the ordinary constraint $y_g=0$.
+
+For multiple connected components, one independent reference is needed per
+component.  Let
+\[
+  \vect{w}_{\star}^{(a)}
+\]
+be the synthetic reference for component $a$, supported only on
+$\mathcal{V}_{(a)}$.  Stack these component references into the reference
+constraint matrix
+\[
+  \mat{G}_{\star}
+  =
+  \begin{bmatrix}
+    \vect{w}_{\star}^{(1)}
+    &
+    \cdots
+    &
+    \vect{w}_{\star}^{(C_{\mathrm{comp}})}
+  \end{bmatrix}
+  \in
+  \R^{N\times C_{\mathrm{comp}}}.
+\]
+The multi-component gauge condition is
+\[
+  \mat{G}_{\star}^{\top}\vect{y}
+  =
+  \vect{0}.
+\]
+For a connected usable graph, this reduces to the single constraint
+\[
+  \vect{w}_{\star}^{\top}\vect{y}=0.
+\]
+
+In log-valuation coordinates, the synthetic node is a geometric basket:
+\[
+  \xi_{\star}
+  =
+  \sum_{u\in\mathcal{V}}
+  w_{\star,u}\xi_u,
+  \qquad
+  \eta_{\star}
+  =
+  \prod_{u\in\mathcal{V}}
+  \eta_u^{w_{\star,u}}.
+\]
+Thus the synthetic reference is not a stablecoin and does not need to be a
+traded asset.  It is the coordinate origin from which recovered node values are
+read.
+
+\calloutbox{Gauge interpretation.}{\\%
+  The synthetic reference chooses the coordinate origin for recovered
+  price-coordinate node values.  It can shift the displayed price-coordinate
+  values within a connected component, but it does not change edge differences
+  and does not erase residual edge tension.  Activity coordinates are endpoint
+  aggregates rather than edge differences, so this gauge does not act on them.
+  Residuals remain the gauge-invariant place where cycle disagreement appears.
+}
+
+\subsection{Choosing the Covariance-Minimizing Reference}
+\label{subsec:choosing-covariance-minimizing-reference}
+
+When a node covariance estimate is available, the synthetic reference may be
+chosen to make displayed node coordinates as stable as possible.
+
+For one connected component, define the admissible set of reference baskets
+\[
+  \mathcal{W}_{\star}
+  =
+  \left\{
+    \vect{w}\in\Rnonneg^{n_a}:
+    \mathbf{1}^{\top}\vect{w}=1
+  \right\}.
+\]
+Let
+\[
+  \mat{C}_{y}^{\mathrm{quot}}
+\]
+denote a quotient-space node covariance for that component, where the additive
+constant direction has already been identified as a gauge symmetry.  This
+covariance may come from a previous recovery pass, repeated observations,
+sampled scenarios, predictive ensembles, or a regularized graph covariance
+estimator.
+
+For any candidate reference $\vect{w}\in\mathcal{W}_{\star}$, define the
+centering map
+\[
+  \mat{P}_{w}
+  :=
+  \mat{I}
+  -
+  \mathbf{1}\vect{w}^{\top}.
+\]
+It transforms a node vector into coordinates read relative to $\vect{w}$:
+\[
+  \widetilde{\vect{y}}
+  =
+  \mat{P}_{w}\vect{y}
+  =
+  \vect{y}
+  -
+  \mathbf{1}
+  \left(
+    \vect{w}^{\top}\vect{y}
+  \right),
+  \qquad
+  \vect{w}^{\top}\widetilde{\vect{y}}=0.
+\]
+The displayed covariance under this reference is
+\[
+  \mat{C}_{y}^{(w)}
+  =
+  \mat{P}_{w}
+  \mat{C}_{y}^{\mathrm{quot}}
+  \mat{P}_{w}^{\top}.
+\]
+
+Let $\mat{D}_{\mathrm{node}}$ be an optional diagonal matrix of node-importance
+weights.  If no priority is needed, take
+\[
+  \mat{D}_{\mathrm{node}}=\mat{I}.
+\]
+Let $\vect{w}_0\in\mathcal{W}_{\star}$ be an optional prior reference basket,
+often initialized as
+\[
+  \vect{w}_0
+  =
+  \frac{1}{n_a}\mathbf{1}.
+\]
+The covariance-minimizing reference is
+\[
+  \vect{w}_{\star}
+  =
+  \operatorname*{arg\,min}_{\vect{w}\in\mathcal{W}_{\star}}
+  \left\{
+    \operatorname{tr}
+    \left(
+      \mat{D}_{\mathrm{node}}
+      \mat{P}_{w}
+      \mat{C}_{y}^{\mathrm{quot}}
+      \mat{P}_{w}^{\top}
+    \right)
+    +
+    \lambda_{\mathrm{ref}}
+    \left\|
+      \vect{w}-\vect{w}_0
+    \right\|_2^2
+  \right\},
+  \qquad
+  \lambda_{\mathrm{ref}}\in\Rnonneg.
+\]
+This chooses the synthetic reference whose displayed node coordinates have small
+covariance, while optionally staying close to a prior basket.
+
+If no covariance estimate is available yet, one may initialize
+\[
+  \vect{w}_{\star}
+  =
+  \frac{1}{n_a}\mathbf{1}
+\]
+on each connected component, or use a selected real node as a temporary
+reference.  The recovery equations below only require valid reference
+constraints, one per usable connected component.
+
+\subsection{Price-Coordinate Lift}
+\label{subsec:price-coordinate-lift}
+
+For every price coordinate
+\[
+  d\in\mathcal{J}_{\mathrm{price}},
+\]
+the edge coordinate is interpreted as a relative log-price feature.  The node
+lift asks for node values whose differences explain the edge field:
+\[
+  \vect{x}_{\mathcal{E}}^{c\,i\,d}
+  \approx
+  \mat{A}\vect{y}^{c\,i\,d}.
+\]
+
+Let
+\[
+  \mat{W}^{c\,i\,d}
+  \in
+  \R^{L_{\mathrm{use}}^{c\,i\,d}\times L_{\mathrm{use}}^{c\,i\,d}}
+\]
+be the edge precision matrix for this coordinate.  In the simplest independent
+case,
+\[
+  \mat{W}^{c\,i\,d}
+  =
+  \mat{\Gamma}^{c\,i\,d}
+  =
+  \diag
+  \left(
+    \gamma_1^{c\,i\,d},
+    \ldots,
+    \gamma_{L_{\mathrm{use}}}^{c\,i\,d}
+  \right).
+\]
+If a full edge covariance estimate is available, then
+\[
+  \mat{W}^{c\,i\,d}
+  =
+  \left(
+    \mat{C}_{x}^{c\,i\,d}
+  \right)^{-1},
+\]
+using a regularized inverse or pseudoinverse when needed.
+
+The recovered node price-coordinate vector is
+\[
+  \widehat{\vect{y}}^{c\,i\,d}
+  =
+  \operatorname*{arg\,min}_{\vect{y}\in\R^N}
+  \left(
+    \vect{x}_{\mathcal{E}}^{c\,i\,d}
+    -
+    \mat{A}\vect{y}
+  \right)^{\top}
+  \mat{W}^{c\,i\,d}
+  \left(
+    \vect{x}_{\mathcal{E}}^{c\,i\,d}
+    -
+    \mat{A}\vect{y}
+  \right),
+  \qquad
+  \mat{G}_{\star}^{\top}\vect{y}=\vect{0}.
+\]
+For a connected usable graph, the constraint is simply
+\[
+  \vect{w}_{\star}^{\top}\vect{y}=0.
+\]
+
+This recovered node coordinate becomes the node feature
+\[
+  s_u^{c\,i\,d}
+  =
+  \widehat{y}_{u}^{c\,i\,d},
+  \qquad
+  d\in\mathcal{J}_{\mathrm{price}}.
+\]
+
+Let
+\[
+  \mathcal{C}_{\mathrm{rec}}^{c\,i\,d}(t)
+\]
+be the set of recoverable connected components for price coordinate $d$.  Define
+the price-coordinate node mask by
+\[
+  {}_{s}m_{\mathrm{price}}^{c\,i\,u\,d}(t)
+  =
+  \mathbf{1}
+  \left\{
+    u
+    \in
+    \bigcup_{a\in\mathcal{C}_{\mathrm{rec}}^{c\,i\,d}(t)}
+    \mathcal{V}_{(a)}^{c\,i\,d}(t)
+  \right\}.
+\]
+When this mask is zero, the corresponding recovered price coordinate
+$s_u^{c\,i\,d}(t)$ is not treated as observed node evidence.
+
+Define the graph precision
+\[
+  \mat{H}^{c\,i\,d}
+  =
+  \mat{A}^{\top}
+  \mat{W}^{c\,i\,d}
+  \mat{A}
+  \in
+  \R^{N\times N}.
+\]
+Then the constrained solve may be written as the KKT system
+\[
+  \begin{bmatrix}
+    \mat{H}^{c\,i\,d} & \mat{G}_{\star}\\
+    \mat{G}_{\star}^{\top} & \mat{0}
+  \end{bmatrix}
+  \begin{bmatrix}
+    \widehat{\vect{y}}^{c\,i\,d}\\
+    \vect{\lambda}_{\star}^{c\,i\,d}
+  \end{bmatrix}
+  =
+  \begin{bmatrix}
+    \mat{A}^{\top}
+    \mat{W}^{c\,i\,d}
+    \vect{x}_{\mathcal{E}}^{c\,i\,d}\\
+    \vect{0}
+  \end{bmatrix}.
+\]
+The vector $\vect{\lambda}_{\star}^{c\,i\,d}$ contains the Lagrange multipliers
+for the component reference constraints.  The node feature is
+$\widehat{\vect{y}}^{c\,i\,d}$.
+
+When the edge precision is diagonal,
+\[
+  \mat{W}^{c\,i\,d}
+  =
+  \mat{\Gamma}^{c\,i\,d},
+\]
+the matrix
+\[
+  \mat{L}_{\gamma}^{c\,i\,d}
+  :=
+  \mat{A}^{\top}
+  \mat{\Gamma}^{c\,i\,d}
+  \mat{A}
+  \in
+  \R^{N\times N}
+\]
+is the confidence-weighted graph Laplacian of the usable graph for that
+coordinate.  In this case,
+\[
+  \mat{H}^{c\,i\,d}
+  =
+  \mat{L}_{\gamma}^{c\,i\,d}.
+\]
+
+When a full edge covariance is used,
+\[
+  \mat{W}^{c\,i\,d}
+  =
+  \left(
+    \mat{C}_{x}^{c\,i\,d}
+  \right)^{-1},
+\]
+the same matrix
+\[
+  \mat{H}^{c\,i\,d}
+  =
+  \mat{A}^{\top}
+  \mat{W}^{c\,i\,d}
+  \mat{A}
+\]
+is the covariance-aware graph precision.  It plays the same role as the
+Laplacian in the recovery solve, but it may include cross-edge uncertainty
+rather than only independent edge weights.
+
+Both the Laplacian and the covariance-aware graph precision have the same
+structural ambiguity: on each connected component, a constant node vector is
+invisible to edge differences.  The reference constraints in
+$\mat{G}_{\star}^{\top}\vect{y}=\vect{0}$ remove those additive null directions.
+
+The close coordinate is the cleanest scalar return coordinate.  The open, high,
+and low coordinates are also price-ratio features, so the same lift is useful
+for them.  However, high and low are candle extrema, so their node lift should
+be read as a feature-wise reconstruction rather than a claim that all edge
+extrema were synchronized through one instantaneous node value.
+
+\subsection{Price Residual Sidecar}
+\label{subsec:price-residual-sidecar}
+
+For every lifted price coordinate, keep the edge residual
+\[
+  \vect{\eps}_{\mathrm{price}}^{c\,i\,d}
+  =
+  \vect{x}_{\mathcal{E}}^{c\,i\,d}
+  -
+  \mat{A}
+  \widehat{\vect{y}}^{c\,i\,d}
+  \in
+  \R^{L_{\mathrm{use}}^{c\,i\,d}},
+  \qquad
+  d\in\mathcal{J}_{\mathrm{price}}.
+\]
+The weighted residual energy is
+\[
+  \mathcal{Q}_{\mathrm{price}}^{c\,i\,d}
+  =
+  \left(
+    \vect{\eps}_{\mathrm{price}}^{c\,i\,d}
+  \right)^{\top}
+  \mat{W}^{c\,i\,d}
+  \vect{\eps}_{\mathrm{price}}^{c\,i\,d}
+  \in
+  \Rnonneg.
+\]
+
+This residual is not a nuisance.  It is the edge-local part that cannot be
+explained by one global node-potential vector.  On cycles, it records
+non-integrability or cycle tension.  It may later be useful for arbitrage-like
+disagreement diagnostics, but executable trading decisions remain outside this
+notation layer.
+
+\calloutbox{Residuals are preserved.}{\\%
+  Node lifting does not throw away the edge world.  It decomposes price-like
+  edge fields into an integrable node-potential part and a residual edge part:
+  \[
+    \vect{x}_{\mathcal{E}}^{c\,i\,d}
+    =
+    \mat{A}\widehat{\vect{y}}^{c\,i\,d}
+    +
+    \vect{\eps}_{\mathrm{price}}^{c\,i\,d}.
+  \]
+  The node tensor carries the semantic global state.  The residual sidecar
+  carries the remaining edge tension.
+}
+
+The residual sidecar also receives a mask.  For $e=(u,v)$ and
+$d\in\mathcal{J}_{\mathrm{price}}$, define
+\[
+  {}_{\eps}m_{\mathrm{price},e}^{c\,i\,d}(t)
+  =
+  {}_{x}m_{e}^{c\,i\,d}(t)
+  \cdot
+  {}_{s}m_{\mathrm{price}}^{c\,i\,u\,d}(t)
+  \cdot
+  {}_{s}m_{\mathrm{price}}^{c\,i\,v\,d}(t).
+\]
+This says that a price residual is valid only when the original edge coordinate
+was valid and both endpoint nodes belong to a recoverable price component.
+Invalid residuals are not used by downstream residual diagnostics or later
+trading-engine logic.
+
+\subsection{Activity-Coordinate Lift}
+\label{subsec:activity-coordinate-lift}
+
+Activity coordinates are not differences of node potentials.  They are
+nonnegative quantities attached to a traded relation.  Therefore they are lifted
+by endpoint aggregation.
+
+A direct sum of incident edge activity is meaningful, but it is also sensitive
+to the number of usable edges touching a node.  Since the same representation
+engine is intended to operate across all nodes, NodeLift separates total node
+activity from support-normalized node activity intensity.
+
+For
+\[
+  d\in\mathcal{J}_{\mathrm{act}},
+\]
+the normalized coordinate has the form
+\[
+  x_{e}^{c\,i\,d}
+  =
+  \log
+  \left(
+    1+a_{e}^{c\,i\,d}
+  \right).
+\]
+For observed normalized input data, recover the raw nonnegative activity by
+\[
+  a_{e}^{c\,i\,d}
+  =
+  \exp
+  \left(
+    x_{e}^{c\,i\,d}
+  \right)
+  -
+  1
+  \in
+  \Rnonneg.
+\]
+The inverse activity map is applied only to valid normalized activity
+coordinates.
+
+For each activity coordinate, define the endpoint assignment matrix
+\[
+  \mat{M}^{(d)}
+  =
+  \begin{cases}
+    \mat{B}_{\mathcal{E}}, & d=5 \quad \text{base volume},\\
+    \mat{Q}_{\mathcal{E}}, & d=6 \quad \text{quote volume},\\
+    \mat{U}_{\mathcal{E}}, & d=7 \quad \text{incident trades},\\
+    \mat{B}_{\mathcal{E}}, & d=8 \quad \text{taker buy base volume},\\
+    \mat{Q}_{\mathcal{E}}, & d=9 \quad \text{taker buy quote volume}.
+  \end{cases}
+\]
+The valid support count at node $u$ is
+\[
+  \kappa_{u}^{c\,i\,d}(t)
+  =
+  \sum_{e\in\mathcal{E}}
+  M_{e}^{(d),u}
+  \cdot
+  {}_{x}m_{e}^{c\,i\,d}(t)
+  \in
+  \N_{\ge 0}.
+\]
+This counts how many valid assigned edge coordinates contribute to node $u$ for
+activity coordinate $d$.
+
+The summed raw node activity is
+\[
+  \nu_{\Sigma,u}^{c\,i\,d}(t)
+  =
+  \sum_{e\in\mathcal{E}}
+  M_{e}^{(d),u}
+  \cdot
+  {}_{x}m_{e}^{c\,i\,d}(t)
+  \cdot
+  a_{e}^{c\,i\,d}(t)
+  \in
+  \Rnonneg.
+\]
+This total is useful as a liquidity or execution-side quantity, but it is
+degree-sensitive.
+
+The support-normalized activity intensity is
+\[
+  \bar{\nu}_{u}^{c\,i\,d}(t)
+  =
+  \frac{
+    \nu_{\Sigma,u}^{c\,i\,d}(t)
+  }{
+    \max
+    \left(
+      1,
+      \kappa_{u}^{c\,i\,d}(t)
+    \right)
+  }
+  \in
+  \Rnonneg.
+\]
+This quantity measures average activity per valid assigned edge.  It is less
+sensitive to the number of markets touching the node and is therefore the
+default activity value exported to the shared node representation engine.
+
+The normalized node activity feature is
+\[
+  s_u^{c\,i\,d}(t)
+  =
+  \log
+  \left(
+    1+\bar{\nu}_{u}^{c\,i\,d}(t)
+  \right),
+  \qquad
+  d\in\mathcal{J}_{\mathrm{act}}.
+\]
+The activity-coordinate node mask is
+\[
+  {}_{s}m_{\mathrm{act}}^{c\,i\,u\,d}(t)
+  =
+  \mathbf{1}
+  \left\{
+    \kappa_{u}^{c\,i\,d}(t)>0
+  \right\},
+  \qquad
+  d\in\mathcal{J}_{\mathrm{act}}.
+\]
+This mask says that node $u$ has valid lifted activity coordinate $d$ whenever
+at least one usable assigned edge contributes to that node.
+
+A useful optional diagnostic is the activity coverage fraction
+\[
+  \rho_{u}^{c\,i\,d}(t)
+  =
+  \frac{
+    \kappa_{u}^{c\,i\,d}(t)
+  }{
+    \max
+    \left(
+      1,
+      \sum_{e\in\mathcal{E}}M_{e}^{(d),u}
+    \right)
+  }
+  \in[0,1].
+\]
+The mask records whether any usable activity evidence exists.  The coverage
+fraction records how much of the staged incident activity support was actually
+available.
+
+The trade-count lift above uses the full incident count at each endpoint.  If a
+future diagnostic needs graph-wide conservation of total trade counts, one may
+replace $\mat{U}_{\mathcal{E}}^{\top}$ by
+$\frac{1}{2}\mat{U}_{\mathcal{E}}^{\top}$.  The full incident version is the
+default here because the node feature asks: ``how much activity touched this
+node?''
+
+\calloutbox{Activity normalization.}{\\%
+  The summed activity $\nu_{\Sigma,u}^{c\,i\,d}$ answers: ``how much total
+  activity touched this node?''  The normalized intensity
+  $\bar{\nu}_{u}^{c\,i\,d}$ answers: ``how much activity occurred per valid
+  assigned edge?''  The shared node representation uses the normalized
+  intensity by default, while the total activity and coverage may be kept as
+  sidecars.
+}
+
+\subsection{The Full Node Feature Tensor and Exported Masks}
+\label{subsec:full-node-feature-tensor-and-exported-masks}
+
+Combining the price lift and activity lift gives the full node feature matrix
+\[
+  \tensor{s}^{c\,i}(t)
+  \in
+  \R^{N\times D_y}.
+\]
+For the full normalized kline feature lift,
+\[
+  D_y=D_x=9.
+\]
+Coordinatewise,
+\[
+  s_u^{c\,i\,d}(t)
+  =
+  \begin{cases}
+    \widehat{y}_{u}^{c\,i\,d}(t),
+    & d\in\mathcal{J}_{\mathrm{price}},\\[0.8em]
+    \log
+    \left(
+      1+\bar{\nu}_{u}^{c\,i\,d}(t)
+    \right),
+    & d\in\mathcal{J}_{\mathrm{act}}.
+  \end{cases}
+\]
+
+The full coordinatewise node mask is
+\[
+  {}_{s}m^{c\,i\,u\,d}(t)
+  =
+  \begin{cases}
+    {}_{s}m_{\mathrm{price}}^{c\,i\,u\,d}(t),
+    & d\in\mathcal{J}_{\mathrm{price}},\\[0.6em]
+    {}_{s}m_{\mathrm{act}}^{c\,i\,u\,d}(t),
+    & d\in\mathcal{J}_{\mathrm{act}}.
+  \end{cases}
+\]
+When a downstream node encoder accepts only a node-level mask, derive a coarse
+mask from the coordinatewise one.  An any-valid mask is
+\[
+  {}_{s}m_{\mathrm{any}}^{c\,i\,u}(t)
+  =
+  \mathbf{1}
+  \left\{
+    \sum_{d=1}^{D_y}
+    {}_{s}m^{c\,i\,u\,d}(t)
+    >
+    0
+  \right\}.
+\]
+An all-required mask for a chosen coordinate set
+$\mathcal{J}_{\mathrm{req}}\subseteq\{1,\ldots,D_y\}$ is
+\[
+  {}_{s}m_{\mathrm{all}}^{c\,i\,u}(t)
+  =
+  \prod_{d\in\mathcal{J}_{\mathrm{req}}}
+  {}_{s}m^{c\,i\,u\,d}(t).
+\]
+The implementation should name which coarse rule is used.  If the node encoder
+does not accept coordinatewise masks, the all-required rule is safer because it
+does not treat missing feature coordinates as observed values.
+
+Over a full observed input window, the node-lifted input tensor is
+\[
+  \tensor{s}_{x}(t)
+  \in
+  \R^{C\times H_x\times N\times D_y}.
+\]
+The corresponding coordinatewise node mask is
+\[
+  {}_{s}\tensor{m}_{x}(t)
+  \in
+  \{0,1\}^{C\times H_x\times N\times D_y}.
+\]
+A coarser node mask may also be exported when needed:
+\[
+  {}_{s}\tensor{m}_{x,\mathrm{any}}(t)
+  \in
+  \{0,1\}^{C\times H_x\times N},
+\]
+or
+\[
+  {}_{s}\tensor{m}_{x,\mathrm{all}}(t)
+  \in
+  \{0,1\}^{C\times H_x\times N}.
+\]
+This is the NodeLift output used by the node-first representation path.
+
+\subsection{NodeLift as a Procedure}
+\label{subsec:nodelift-procedure}
+
+For one anchor time $t$, one channel $c$, and one input position $i$, the
+concrete procedure is:
+
+\begin{enumerate}
+  \item Start from the observed edge feature slices and input masks
+  \[
+    \left\{
+      \tensor{x}_{e}^{c\,i}(t),
+      {}_{x}m_{e}^{c\,i}(t)
+      :
+      e\in\mathcal{E}
+    \right\}.
+  \]
+
+  \item Build the coordinatewise edge masks
+  \[
+    {}_{x}m_{e}^{c\,i\,d}(t)
+    =
+    {}_{x}m_{e}^{c\,i}(t)
+    \cdot
+    \mathbf{1}
+    \left\{
+      x_{e}^{c\,i\,d}(t)
+      \text{ is finite}
+    \right\}.
+  \]
+  These masks determine the coordinatewise usable edge sets
+  \[
+    \mathcal{E}_{\mathrm{use}}^{c\,i\,d}(t)
+    =
+    \left\{
+      e\in\mathcal{E}:
+      {}_{x}m_{e}^{c\,i\,d}(t)=1
+    \right\}.
+  \]
+
+  \item Build the full active graph matrices
+  \[
+    \mat{A}_{\mathcal{E}},
+    \qquad
+    \mat{B}_{\mathcal{E}},
+    \qquad
+    \mat{Q}_{\mathcal{E}},
+    \qquad
+    \mat{U}_{\mathcal{E}}
+    =
+    \mat{B}_{\mathcal{E}}
+    +
+    \mat{Q}_{\mathcal{E}}.
+  \]
+  For each coordinate, restrict these matrices to the rows selected by
+  $\mathcal{E}_{\mathrm{use}}^{c\,i\,d}(t)$.
+
+  \item For each price coordinate
+  $d\in\mathcal{J}_{\mathrm{price}}$, find the connected components of the
+  underlying undirected usable graph induced by
+  $\mathcal{E}_{\mathrm{use}}^{c\,i\,d}(t)$.  For each recoverable component,
+  choose or update a synthetic reference
+  $\vect{w}_{\star}^{(a)}$, and assemble the constraint matrix
+  \[
+    \mat{G}_{\star}^{c\,i\,d}(t).
+  \]
+
+  \item For each price coordinate
+  $d\in\mathcal{J}_{\mathrm{price}}$, solve the gauge-fixed weighted
+  least-squares problem on the recoverable components:
+  \[
+    \vect{x}_{\mathcal{E}}^{c\,i\,d}
+    \approx
+    \mat{A}\vect{y}^{c\,i\,d},
+    \qquad
+    \left(
+      \mat{G}_{\star}^{c\,i\,d}
+    \right)^{\top}
+    \vect{y}^{c\,i\,d}
+    =
+    \vect{0}.
+  \]
+  Store the recovered node coordinate
+  \[
+    \widehat{\vect{y}}^{c\,i\,d}
+  \]
+  and the price residual
+  \[
+    \vect{\eps}_{\mathrm{price}}^{c\,i\,d}.
+  \]
+  Also store the price-coordinate node mask
+  \[
+    {}_{s}m_{\mathrm{price}}^{c\,i\,u\,d}(t)
+  \]
+  and the residual mask
+  \[
+    {}_{\eps}m_{\mathrm{price},e}^{c\,i\,d}(t).
+  \]
+
+	  \item For each activity coordinate
+	  $d\in\mathcal{J}_{\mathrm{act}}$, undo the $\log(1+\cdot)$ transform on valid
+	  edge coordinates:
+  \[
+    a_{e}^{c\,i\,d}(t)
+    =
+    \exp
+    \left(
+      x_{e}^{c\,i\,d}(t)
+    \right)
+	    -
+	    1.
+	  \]
+	  Aggregate valid raw activity to endpoints:
+	  \[
+	    \nu_{\Sigma,u}^{c\,i\,d}(t)
+	    =
+	    \sum_{e\in\mathcal{E}}
+	    M_{e}^{(d),u}
+	    \cdot
+	    {}_{x}m_{e}^{c\,i\,d}(t)
+	    \cdot
+	    a_{e}^{c\,i\,d}(t).
+	  \]
+	  Compute the valid support count:
+	  \[
+	    \kappa_{u}^{c\,i\,d}(t)
+	    =
+	    \sum_{e\in\mathcal{E}}
+	    M_{e}^{(d),u}
+	    \cdot
+	    {}_{x}m_{e}^{c\,i\,d}(t).
+	  \]
+	  Compute the support-normalized activity intensity:
+	  \[
+	    \bar{\nu}_{u}^{c\,i\,d}(t)
+	    =
+	    \frac{
+	      \nu_{\Sigma,u}^{c\,i\,d}(t)
+	    }{
+	      \max
+	      \left(
+	        1,
+	        \kappa_{u}^{c\,i\,d}(t)
+	      \right)
+	    }.
+	  \]
+	  Export the normalized node activity feature
+	  \[
+	    s_u^{c\,i\,d}(t)
+	    =
+	    \log
+	    \left(
+	      1+\bar{\nu}_{u}^{c\,i\,d}(t)
+	    \right).
+	  \]
+	  Store the activity-coordinate node mask
+	  \[
+	    {}_{s}m_{\mathrm{act}}^{c\,i\,u\,d}(t)
+    =
+    \mathbf{1}
+	    \left\{
+	      \kappa_{u}^{c\,i\,d}(t)>0
+	    \right\}.
+	  \]
+	  Optionally store the summed activity
+	  $\nu_{\Sigma,u}^{c\,i\,d}(t)$ and coverage
+	  $\rho_u^{c\,i\,d}(t)$ as sidecars.
+
+  \item Assemble the node feature matrix
+  \[
+    \tensor{s}^{c\,i}(t)
+    \in
+    \R^{N\times D_y}.
+  \]
+  Coordinatewise,
+  \[
+    s_u^{c\,i\,d}(t)
+    =
+    \begin{cases}
+      \widehat{y}_{u}^{c\,i\,d}(t),
+      & d\in\mathcal{J}_{\mathrm{price}},\\[0.8em]
+	      \log
+	      \left(
+	        1+\bar{\nu}_{u}^{c\,i\,d}(t)
+	      \right),
+      & d\in\mathcal{J}_{\mathrm{act}}.
+    \end{cases}
+  \]
+
+  \item Assemble the coordinatewise node mask
+  \[
+    {}_{s}\tensor{m}^{c\,i}(t)
+    \in
+    \{0,1\}^{N\times D_y},
+  \]
+  where
+  \[
+    {}_{s}m^{c\,i\,u\,d}(t)
+    =
+    \begin{cases}
+      {}_{s}m_{\mathrm{price}}^{c\,i\,u\,d}(t),
+      & d\in\mathcal{J}_{\mathrm{price}},\\[0.6em]
+      {}_{s}m_{\mathrm{act}}^{c\,i\,u\,d}(t),
+      & d\in\mathcal{J}_{\mathrm{act}}.
+    \end{cases}
+  \]
+
+  \item Optionally derive a coarse node mask
+  \[
+    {}_{s}m_{\mathrm{any}}^{c\,i\,u}(t)
+    \quad\text{or}\quad
+    {}_{s}m_{\mathrm{all}}^{c\,i\,u}(t),
+  \]
+  depending on what the downstream node encoder accepts.
+
+  \item Export the node feature matrix, node masks, and residual sidecar:
+  \[
+    \left(
+      \tensor{s}^{c\,i}(t),
+      {}_{s}\tensor{m}^{c\,i}(t),
+      \tensor{\eps}_{\mathrm{price}}^{c\,i}(t),
+      {}_{\eps}\tensor{m}_{\mathrm{price}}^{c\,i}(t)
+    \right).
+  \]
+\end{enumerate}
+
+In compact form:
+\[
+  \operatorname{NodeLift}
+  \left[
+    \left\{
+      \tensor{x}_{e}^{c\,i}(t),
+      {}_{x}m_{e}^{c\,i}(t)
+      :
+      e\in\mathcal{E}
+    \right\},
+    \mat{A}_{\mathcal{E}},
+    \mat{B}_{\mathcal{E}},
+    \mat{Q}_{\mathcal{E}},
+    \mat{G}_{\star}
+  \right]
+  =
+  \left(
+    \tensor{s}^{c\,i}(t),
+    {}_{s}\tensor{m}^{c\,i}(t),
+    \tensor{\eps}_{\mathrm{price}}^{c\,i}(t),
+    {}_{\eps}\tensor{m}_{\mathrm{price}}^{c\,i}(t)
+  \right).
+\]
+
+This is the edge-to-node lift used by the node-first representation path.
+
+\subsection{Node Geometry After Lifting}
+\label{subsec:node-geometry-after-lifting}
+
+For price coordinates, the recovery solve also gives a local geometry on node
+states.  For one coordinate $d\in\mathcal{J}_{\mathrm{price}}$, define
+\[
+  \mat{H}^{c\,i\,d}
+  =
+  \mat{A}^{\top}
+  \mat{W}^{c\,i\,d}
+  \mat{A}
+  \in
+  \R^{N\times N}.
+\]
+Let
+\[
+  \mat{B}_{\star}
+\]
+have columns spanning the synthetic-gauge free subspace:
+\[
+  \mat{G}_{\star}^{\top}\mat{B}_{\star}=\mat{0}.
+\]
+If the usable graph is connected, then
+\[
+  \mat{B}_{\star}\in\R^{N\times(N-1)}.
+\]
+If the usable graph has $C_{\mathrm{comp}}$ connected components, then the free
+dimension is
+\[
+  N_{\mathrm{use}}-C_{\mathrm{comp}}
+\]
+on the touched usable nodes.
+
+The free-coordinate graph precision is
+\[
+  \mat{H}_{\star}^{c\,i\,d}
+  =
+  \mat{B}_{\star}^{\top}
+  \mat{H}^{c\,i\,d}
+  \mat{B}_{\star}.
+\]
+When well posed, the corresponding node covariance in free coordinates is
+\[
+  \mat{C}_{\theta}^{c\,i\,d}
+  \approx
+  \left(
+    \mat{H}_{\star}^{c\,i\,d}
+  \right)^{-1}.
+\]
+Lifting back to node coordinates gives
+\[
+  \mat{C}_{y}^{c\,i\,d}
+  =
+  \mat{B}_{\star}
+  \mat{C}_{\theta}^{c\,i\,d}
+  \mat{B}_{\star}^{\top}.
+\]
+This covariance is understood on the synthetic-gauge subspace.  The removed
+constant directions are not economic uncertainty modes; they are only the
+additive symmetries of the edge-difference equations.
+
+For two node states $\vect{y},\vect{y}'$ in the same gauge, the Mahalanobis
+distance is
+\[
+  d_{\star}(\vect{y},\vect{y}')^2
+  =
+  (\vect{y}-\vect{y}')^{\top}
+  \left(
+    \mat{C}_{y}^{c\,i\,d}
+  \right)^{+}
+  (\vect{y}-\vect{y}')
+  \in
+  \Rnonneg.
+\]
+This measures distance in units of node uncertainty rather than raw coordinate
+scale.
+
+\subsection{Modes of Node Motion}
+\label{subsec:modes-of-node-motion}
+
+When the covariance is available in free synthetic-gauge coordinates, its
+eigenvectors describe collective modes of node motion:
+\[
+  \mat{C}_{\theta}^{c\,i\,d}
+  =
+  \mat{V}_{\star}^{c\,i\,d}
+  \Lambda_{\star}^{c\,i\,d}
+  \left(
+    \mat{V}_{\star}^{c\,i\,d}
+  \right)^{\top}.
+\]
+The columns of $\mat{V}_{\star}^{c\,i\,d}$ are principal directions in the free
+node coordinates, and the diagonal entries of $\Lambda_{\star}^{c\,i\,d}$
+measure variance along those directions.
+
+The corresponding node-coordinate modes are
+\[
+  \mat{B}_{\star}
+  \mat{V}_{\star}^{c\,i\,d}.
+\]
+These modes are optional readouts of the recovered node geometry.  They are not
+required for the basic node lift, but they become useful when the next semantic
+layer wants lower-dimensional collective node factors.
+
+\subsection{What This Chapter Gives to Cuwacunu}
+\label{subsec:what-nodelift-gives-cuwacunu}
+
+The chapter defines a graph transformation:
+\[
+  \text{edge feature tensor}
+  \quad
+  \longrightarrow
+  \quad
+  \text{node feature tensor}
+  \quad
+  +
+  \quad
+  \text{price residual sidecar}.
+\]
+
+The transformation is not a neural network.  It is a deterministic graph lift
+defined by the market graph, the feature registry, the masks, the edge precision
+weights, and the synthetic reference gauge.
+
+This gives Cuwacunu the input-side node-first path:
+\[
+  \tensor{x}_{u\,v}(t)
+  \longrightarrow
+  \tensor{s}_{x}(t)
+  \longrightarrow
+  \text{node representation learning}.
+\]
+
+\calloutbox{Modeling route enabled by NodeLift.}{\\%
+  In the node-first route, observed edge fields are first lifted to node tensors
+  and a later model learns node representations directly.  The hybrid variant
+  keeps node tensors and residual edge sidecars together, preserving both
+  semantic node state and edge-local cycle tension.
+}
+
+The node-first path does not need to discard edge information.  It keeps
+\[
+  \tensor{\eps}_{\mathrm{price}}(t)
+\]
+as a sidecar for the residual edge tension.  Later systems may also keep edge
+activity sidecars when edge-local liquidity, routing, or execution detail
+matters.
+
+\calloutbox{End of the NodeLift layer.}{\\%
+  At this point the document has defined a concrete procedure for lifting
+  normalized edge-carried market features into node-carried market features.
+  Price coordinates are recovered through incidence-based balance equations.
+  In the independent-confidence case, the recovery matrix is the
+  confidence-weighted graph Laplacian.  Activity coordinates are recovered
+  through endpoint aggregation.  Synthetic gauges make node coordinates
+  interpretable, masks are lifted together with values, and residuals preserve
+  the edge-local tension that the node state cannot explain.  Trading policy,
+  execution rules, and portfolio decision logic remain outside this notation
+  layer.
+}

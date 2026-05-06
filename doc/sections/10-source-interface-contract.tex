@@ -100,6 +100,106 @@ If mixed-edge batches are introduced later, the implementation must either route
 each sample by \field{edge\_id} or replace the edge-specialized heads with a
 shared edge-conditioned head.
 
+\subsection{NodeLift Graph-Collated Interface}
+\label{appsub:nodelift-graph-collated-interface}
+
+NodeLift is a graph-level transformation, not an edge-local batch operation.  It
+requires a usable observed input edge field over several edges at the same
+anchor time, channel, and position.  Therefore an implementation that starts
+from edge-labeled samples must provide a graph-collation step.
+
+For one graph-collated observed-input anchor batch, a convenient code-facing
+shape is
+\[
+  \text{\field{edge\_features}}
+  \in
+  \R^{B_g\times L_{\mathrm{use}}\times C\times H_x\times D_x},
+\]
+where $B_g\in\N$ is the number of graph anchors in the graph-collated batch.
+The corresponding edge mask is
+\[
+  \text{\field{edge\_mask}}
+  \in
+  \{0,1\}^{B_g\times L_{\mathrm{use}}\times C\times H_x}.
+\]
+The coordinatewise edge mask is
+\[
+  \text{\field{edge\_coord\_mask}}
+  \in
+  \{0,1\}^{B_g\times L_{\mathrm{use}}\times C\times H_x\times D_y}.
+\]
+The graph metadata provides
+\[
+  \text{\field{edge\_index}}
+  \longmapsto
+  e=(u,v),
+  \qquad
+  \mat{A},
+  \qquad
+  \mat{B},
+  \qquad
+  \mat{Q},
+  \qquad
+  \mat{U},
+  \qquad
+  \mat{G}_{\star}.
+\]
+
+NodeLift returns
+\[
+  \text{\field{node\_features}}
+  \in
+  \R^{B_g\times C\times H_x\times N\times D_y},
+\]
+and the primary coordinatewise node mask
+\[
+  \text{\field{node\_mask}}
+  \in
+  \{0,1\}^{B_g\times C\times H_x\times N\times D_y}.
+\]
+A coarse node mask may also be exported when needed:
+\[
+  \text{\field{node\_mask\_any}}
+  \in
+  \{0,1\}^{B_g\times C\times H_x\times N},
+\]
+or
+\[
+  \text{\field{node\_mask\_all}}
+  \in
+  \{0,1\}^{B_g\times C\times H_x\times N}.
+\]
+The price residual sidecar is
+\[
+  \text{\field{price\_residual}}
+  \in
+  \R^{B_g\times C\times H_x\times L_{\mathrm{use}}\times
+  |\mathcal{J}_{\mathrm{price}}|}.
+\]
+Its residual mask is
+\[
+  \text{\field{price\_residual\_mask}}
+  \in
+  \{0,1\}^{B_g\times C\times H_x\times L_{\mathrm{use}}\times
+  |\mathcal{J}_{\mathrm{price}}|}.
+\]
+When activity diagnostics are retained, NodeLift may also return
+\[
+  \text{\field{activity\_support}},
+  \qquad
+  \text{\field{activity\_coverage}},
+  \qquad
+  \text{\field{activity\_total}},
+\]
+corresponding to $\vect{\kappa}^{c\,i\,d}$, $\rho_u^{c\,i\,d}$, and
+$\vect{\nu}_{\Sigma}^{c\,i\,d}$.  Their common code-facing shape is
+\[
+  B_g\times C\times H_x\times N\times |\mathcal{J}_{\mathrm{act}}|.
+\]
+
+The important requirement is that the observed edge input field is aligned over
+a common graph anchor before NodeLift is applied.
+
 \subsection{Feature Registry and Target Selection}
 \label{appsub:feature-registry-target-selection-contract}
 
@@ -153,31 +253,39 @@ to $d_{(r)}$.
 \subsection{Representation Output}
 \label{appsub:representation-output-contract}
 
-The representation encoder consumes the past batch
+The node-first representation encoder consumes the NodeLift output
 \[
-  (\text{\field{features}},\text{\field{mask}})
+  (\text{\field{node\_features}},\text{\field{node\_mask}})
   \in
-  \R^{B \times C \times H_x \times D_x}
+  \R^{B_g \times C \times H_x \times N \times D_y}
   \times
-  \{0,1\}^{B \times C \times H_x}
+  \{0,1\}^{B_g \times C \times H_x \times N \times D_y}
 \]
-and returns an \field{encoding}.  Code that calls the pure MDN must provide the
-reduced form
+or an equivalent flattened batch of node windows.  It returns node encodings
+\[
+  \text{\field{node\_encoding}}
+  \equiv
+  \tensor{z}_{\mathcal{V}}
+  \in
+  \R^{B_g\times N\times D_e}.
+\]
+For an edge-specialized MDN, code then builds an edge-conditioned encoding
 \[
   \text{\field{encoding}}
   \equiv
-  \tensor{z}
+  \tensor{z}_{\mathcal{E}}
   \in
-  \R^{B \times D_e}.
+  \R^{B_g\times L_{\mathrm{use}}\times D_e}
 \]
-If an encoder path produces a sequence encoding in
-$\R^{B \times H_x' \times D_e}$, it must be reduced before entering the pure
-MDN model.
+from endpoint node encodings and optional residual sidecars.  A pure MDN call on
+a single edge batch may still receive a flattened
+$\text{\field{encoding}}\in\R^{B\times D_e}$.  If an encoder path produces a
+sequence encoding, it must be reduced before entering the pure MDN model.
 
 \subsection{MDN Output}
 \label{appsub:mdn-output-contract}
 
-The current MDN implementation takes
+The current MDN implementation takes an edge-conditioned encoding
 \[
   \text{\field{encoding}}
   \in

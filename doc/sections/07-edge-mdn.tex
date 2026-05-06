@@ -20,7 +20,9 @@ $\tensor{f}_{u\,v}^{c\,i}\in\R^{D_f}$.%
   future moves can be plausible under the same current representation.
 }
 
-The edge prediction head consumes the edge representation exported by Section~\ref{sec:representation}. 
+The edge prediction head consumes the edge-conditioned context exported by
+Section~\ref{sec:representation}.  In the node-first route, this context is
+built from the endpoint node representations for $e=(u,v)$:
 \[
   \tensor{z}_{u\,v} \in \R^{D_e}.
 \]
@@ -90,7 +92,7 @@ Let $H_{\psi}\in\N$ be the hidden width of the MDN backbone and let
 $R_{\psi}\in\N_{\ge 0}$ be the number of residual Multi-Layer Perceptron blocks.
 Each block uses two learned affine maps, layer normalization, and a Sigmoid
 Linear Unit activation ($\operatorname{SiLU}$).
-The first layer maps one edge representation to hidden space%
+The first layer maps one edge-conditioned representation to hidden space%
 \note{
   $\operatorname{SiLU}$ is the coordinatewise Sigmoid Linear Unit activation,
   $\operatorname{SiLU}(x)=x/(1+\exp(-x))$. 
@@ -508,14 +510,17 @@ Equivalently,
   \log
   \left[
     \sum_{k=1}^{K}
-    \alpha_{u\,v}^{b\,c\,i\,k}
-    \prod_{d=1}^{D_f}
-    \mathcal{N}
-    \left(
-      f_{u\,v}^{b\,c\,i\,d};
-      \mu_{u\,v}^{b\,c\,i\,k\,d},
-      (\bar{\sigma}_{u\,v}^{b\,c\,i\,k\,d})^{2}
-    \right)
+      \left(
+      \alpha_{u\,v}^{b\,c\,i\,k}
+      \cdot
+        \prod_{d=1}^{D_f}
+        \mathcal{N}
+        \left(
+          f_{u\,v}^{b\,c\,i\,d};
+          \mu_{u\,v}^{b\,c\,i\,k\,d},
+          (\bar{\sigma}_{u\,v}^{b\,c\,i\,k\,d})^{2}
+        \right)
+      \right)
   \right]
   \in\R.
 \]
@@ -531,10 +536,11 @@ already rounded softmax output%
 }.
 
 The implementation may also use feature weights
-${}_{d}\lambda^{(d)}\in\Rnonneg$.  In that case, replace $q_{u\,v}^{b\,c\,i\,k}$ by the
-weighted score
+${}_{d}\lambda^{(d)}\in\Rnonneg$.  In that case, replace $q, \ell$ by their
+weighted scores $({}_{\lambda}q)$ and weighted log-likelihood
+$({}_{\lambda}\ell)$.
 \[
-  {}_{\lambda}q_{u\,v}^{b\,c\,i\,k}
+  ({}_{\lambda}q)_{u\,v}^{b\,c\,i\,k}
   =
   \sum_{d=1}^{D_f}
   {}_{d}\lambda^{(d)}\cdot g_{u\,v}^{b\,c\,i\,k\,d}
@@ -542,19 +548,19 @@ weighted score
 \]
 and use
 \[
-  {}_{\lambda}\ell_{u\,v}^{b\,c\,i}
+  ({}_{\lambda}\ell)_{u\,v}^{b\,c\,i}
   =
   -
   \operatorname{logsumexp}_{k}
   \left(
     \log \alpha_{u\,v}^{b\,c\,i\,k}
     +
-    {}_{\lambda}q_{u\,v}^{b\,c\,i\,k}
+    ({}_{\lambda}q)_{u\,v}^{b\,c\,i\,k}
   \right)
   \in\R.
 \]
 When all feature weights are equal to one,
-${}_{\lambda}\ell_{u\,v}^{b\,c\,i}$ reduces to the ordinary MDN negative
+$({}_{\lambda}\ell)_{u\,v}^{b\,c\,i}$ reduces to the ordinary MDN negative
 log-likelihood.  When the feature weights are not all one, the expression is a
 weighted training score rather than a normalized probability density; this is
 acceptable as a design choice, but it should be named as such%
@@ -567,7 +573,7 @@ acceptable as a design choice, but it should be named as such%
 Let ${}_{c}\lambda^{(c)}\in\Rnonneg$ be an optional channel weight and let
 ${}_{i}\lambda^{(i)}\in\Rnonneg$ be an optional horizon weight.  Define
 \[
-  {}_{f}\omega_{u\,v}^{b\,c\,i}
+  ({}_{f}\omega)_{u\,v}^{b\,c\,i}
   =
   {}_{f}m_{u\,v}^{b\,c\,i}
   \cdot
@@ -591,13 +597,13 @@ The masked batch loss is
     \sum_{b=1}^{B}
     \sum_{c=1}^{C}
     \sum_{i=1}^{H_f}
-    {}_{f}\omega_{u\,v}^{b\,c\,i}\cdot
-    {}_{\lambda}\ell_{u\,v}^{b\,c\,i}
+    ({}_{f}\omega)_{u\,v}^{b\,c\,i}\cdot
+    ({}_{\lambda}\ell)_{u\,v}^{b\,c\,i}
   }{
     \sum_{b=1}^{B}
     \sum_{c=1}^{C}
     \sum_{i=1}^{H_f}
-    {}_{f}\omega_{u\,v}^{b\,c\,i}
+    ({}_{f}\omega)_{u\,v}^{b\,c\,i}
   }
   \in\R.
 \]

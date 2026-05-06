@@ -11,6 +11,8 @@ The current source state is prepared for the larger representation/inference
 model, but the iitepi remake should not start until the doc gives us the target
 shape.
 
+First implementation route: graph-collated NodeLift -> shared node encoder -> EdgeContext(z_u,z_v,residual_e) -> edge-specialized MDN head.
+
 The intended direction remains:
 
 - Train one shared representation wikimyei over a compatible source domain.

@@ -155,16 +155,28 @@ change the meaning of a tabled symbol.
     (r) \quad\text{selected scalar return coordinate}.
   \]
   Thus $f^{c\,i}_{(r)}$ means the scalar return coordinate of the future vector;
+  it does not mean that $f^{c\,i}$ is raised to a power.
 
-  \item \textbf{Source coordinates and target coordinates.}
-  %NOTE: #TODO not finish, this part i dont know if its clear.
-  The input source registry has $D_x$ normalized kline coordinates.  The future
+  \item \textbf{Source coordinates, target coordinates, and lifted coordinates.}
+  The normalized source registry has $D_x=9$ kline coordinates.  The future
   target tensor has $D_f$ coordinates selected by the ordered list
-  $\mathcal{J}_f$.  A target coordinate index $d=1,\ldots,D_f$ is therefore a
-  slot inside the selected target vector, while a source coordinate such as
-  $d_{(r)}=4$ refers to the original normalized kline registry.  When the scalar
-  return readout is used, the source coordinate $d_{(r)}$ must appear in
-  $\mathcal{J}_f$, and the label $(r)$ denotes its corresponding target slot.
+  $\mathcal{J}_f$.  Therefore a source coordinate
+  $d\in\{1,\ldots,D_x\}$ and a target slot
+  $a\in\{1,\ldots,D_f\}$ are not automatically the same object.
+
+  If
+  \[
+    \mathcal{J}_f=(d_1,\ldots,d_{D_f}),
+  \]
+  then target slot $a$ corresponds to source coordinate $d_a$.  The scalar
+  return label $(r)$ denotes the target slot whose source coordinate is the
+  close-return coordinate $d_{(r)}=4$.
+
+  NodeLift introduces node feature coordinates.  For the full feature lift,
+  $D_y=D_x=9$, and the lifted coordinate $d$ follows the source registry:
+  price coordinates are
+  $d\in\mathcal{J}_{\mathrm{price}}=\{1,2,3,4\}$ and activity coordinates are
+  $d\in\mathcal{J}_{\mathrm{act}}=\{5,6,7,8,9\}$.
 
   \item \textbf{Masks are evidence selectors.}
   Mask values live in $\{0,1\}$.  The input mask ${}_{x}\tensor{m}$ says which
@@ -258,6 +270,7 @@ $D_x$ & $D_x \in \N$ & Input features count. \\
 $D_f$ & $D_f \in \N$ & Forecast feature count. \\
 $D_e$ & $D_e \in \N$ & Encoding or embedding dimension. \\
 $D_p$ & $D_p \in \N$ & VICReg projector width. \\
+$D_y$ & $D_y\in\N$ & Node feature width after feature-wise node lifting; default $D_y=D_x=9$. \\
 $S$ & $S\in\N$ & Number of sampled scenario trajectories. \\
 $H_x'$ & $H_x' \in \N$ & Optional internal encoder sequence length. \\
 $H_{\Phi}$ & $H_{\Phi} \in \N$ & Hidden width in the representation encoder. \\
@@ -265,12 +278,16 @@ $H_{\psi}$ & $H_{\psi} \in \N$ & Hidden width in the MDN backbone. \\
 $R_{\psi}$ & $R_{\psi} \in \N_{\ge 0}$ & Number of residual blocks in the MDN backbone. \\
 $K$ & $K \in \N$ & Number of density-mixture components. \\
 $N$ & $N = |\mathcal{V}| \in \N$ & Active node count. \\
+$N_{\mathrm{use}}$ & $N_{\mathrm{use}}\in\N$ & Number of nodes touched by one usable edge set. \\
 $L$ & $L=|\mathcal{E}|\le N(N-1)$ & Active edge count. \\
+$L_{\mathrm{use}}$ & $L_{\mathrm{use}}=|\mathcal{E}_{\mathrm{use}}|$ & Number of usable edges in one NodeLift solve. \\
+$C_{\mathrm{comp}}$ & $C_{\mathrm{comp}}\in\N$ & Number of connected components in the underlying undirected usable graph. \\
 \midrule
 $b$ & $b \in \{1,\ldots,B\}$ & Batch sample index. \\
+$B_g$ & $B_g\in\N$ & Number of graph anchors in a graph-collated batch. \\
 $c$ & $c \in \{1,\ldots,C\}$ & Channel index. \\
 $i$ & $i \in \{1,\ldots,H_x\}$ or $i \in \{1,\ldots,H_f\}$ & Sequence index; the active range is determined by whether the tensor uses the input axis $H_x$ or the forecast axis $H_f$. \\
-$d$ & $d \in \{1,\ldots,D_x\}$, $d \in \{1,\ldots,D_f\}$, or $d \in \{1,\ldots,D_p\}$ & Feature-coordinate or projector-coordinate index; the active range is determined by whether the tensor uses the input-feature axis $D_x$, the future-feature axis $D_f$, or the projector axis $D_p$. \\
+$d$ & $d \in \{1,\ldots,D_x\}$, $d \in \{1,\ldots,D_y\}$, $d \in \{1,\ldots,D_f\}$, or $d \in \{1,\ldots,D_p\}$ & Feature-coordinate or projector-coordinate index; the active range is determined by whether the tensor uses the input-feature axis $D_x$, node-feature axis $D_y$, future-feature axis $D_f$, or projector axis $D_p$. \\
 $k$ & $k \in \{1,\ldots,K\}$ & Mixture-component index. \\
 $r$ & $r \in \{1,\ldots,R_{\psi}\}$ & Residual-block index in the MDN backbone. \\
 $t$ & $t \in \mathcal{T}$ & Optional evaluation-time index. \\
@@ -278,8 +295,11 @@ $\Delta_c$ & positive time duration & Native step duration of channel $c$; forec
 $u$ & $u \in \mathcal{V}$ & Base node. \\
 $v$ & $v \in \mathcal{V}$ & Quote node. \\
 $e$ & $e \in \mathcal{E}$ & Graph edge. \\
+$u(e)$ & $u(e)\in\mathcal{V}$ & Base endpoint of edge $e$. \\
+$v(e)$ & $v(e)\in\mathcal{V}$ & Quote endpoint of edge $e$. \\
 $e^b$ & $e^b=(u^b,v^b)\in\mathcal{E}$ & Directed edge label carried by batch sample $b$. \\
-$g$ & $g \in \mathcal{V}$ & Gauge or reference node used to remove the additive ambiguity in node recovery. \\
+$g$ & $g \in \mathcal{V}$ & Real-node gauge used as a special case of the synthetic reference constraint. \\
+$\star$ & synthetic reference label & Synthetic reference node used as the covariance-minimizing gauge. \\
 \midrule
 $\mathcal{T}$ & $\mathcal{T}$ ordered set & Evaluation-time index set when repeated model evaluations are discussed. \\
 $m$ & $m \in \N$ & Generic observer output or covariance coordinate count. \\
@@ -304,8 +324,11 @@ $f^{b\,c\,i\,d}$ & $f^{b\,c\,i\,d} \in \R$ & Scalar target coordinate $d$ of the
 $\mathcal{J}_f$ & $\mathcal{J}_f=(d_1,\ldots,d_{D_f})$, $d_a\in\{1,\ldots,D_x\}$ & Ordered source-coordinate list used to form the future target tensor. \\
 \midrule
 $\Phi,\zeta,\psi$ & learned parameter collections & Representation-map, VICReg-projector, and forecast-head parameters. \\
-$\Phi$ & $\Phi:\R^{C \times H_x \times D_x}\times\{0,1\}^{C \times H_x}\rightarrow\R^{H_x' \times D_e}$ & Sequence encoder map for one sample. \\
-$\tensor{z}_{u\,v}$ & $\tensor{z}_{u\,v}\in\R^{D_e}$ & Reduced edge representation for directed edge $e=(u,v)$. \\
+$\Phi$ & $\Phi:\R^{C \times H_x \times D_y}\times\{0,1\}^{C \times H_x\times D_y}\rightarrow\R^{H_x' \times D_e}$ & Sequence encoder map for one node-lifted sample. \\
+$\tensor{z}_{u}$ & $\tensor{z}_{u}\in\R^{D_e}$ & Reduced node representation for node $u$. \\
+$\tensor{z}_{u\,v}$ & $\tensor{z}_{u\,v}\in\R^{D_e}$ & Edge-conditioned representation built from endpoint node representations for $e=(u,v)$. \\
+$\tensor{z}_{\mathcal{V}}$ & $\tensor{z}_{\mathcal{V}}\in\R^{B_g\times N\times D_e}$ & Graph-collated batch of node representations. \\
+$\tensor{z}_{\mathcal{E}}$ & $\tensor{z}_{\mathcal{E}}\in\R^{B_g\times L_{\mathrm{use}}\times D_e}$ & Graph-collated batch of edge-conditioned representations. \\
 $\tensor{z}$ & $\tensor{z} \in \R^{B \times D_e}$ & Representation batch. \\
 \midrule
 $\tilde{\alpha}_{u\,v}^{c\,i\,k}$ & $\tilde{\alpha}_{u\,v}^{c\,i\,k} \in \R$ & Raw mixture activation before normalization. \\
@@ -334,7 +357,7 @@ $(r)$ & selected target-slot label in $\{1,\ldots,D_f\}$ & Semantic label for th
 ${}_{d}\lambda^{(d)}$ & ${}_{d}\lambda^{(d)}\in\Rnonneg$ & Optional feature-coordinate weight in the MDN likelihood. \\
 ${}_{c}\lambda^{(c)}$ & ${}_{c}\lambda^{(c)}\in\Rnonneg$ & Optional channel weight in the MDN loss. \\
 ${}_{i}\lambda^{(i)}$ & ${}_{i}\lambda^{(i)}\in\Rnonneg$ & Optional horizon weight in the MDN loss. \\
-${}_{f}\omega_{u\,v}^{b\,c\,i}$ & ${}_{f}\omega_{u\,v}^{b\,c\,i}\in\Rnonneg$ & Nonnegative MDN training weight for edge $e=(u,v)$, combining the future mask with optional channel and horizon weights. \\
+$({}_{f}\omega)_{u\,v}^{b\,c\,i}$ & $({}_{f}\omega)_{u\,v}^{b\,c\,i}\in\Rnonneg$ & Nonnegative MDN training weight for edge $e=(u,v)$, combining the future mask with optional channel and horizon weights. \\
 \midrule
 $\mathcal{P}(\R^d)$ & $\mathcal{P}(\R^d)$ & Probability distributions on $\R^d$. \\
 ${}_{\psi}\mathfrak{D}_{u\,v}^{c\,i}$ & ${}_{\psi}\mathfrak{D}_{u\,v}^{c\,i} \in \mathcal{P}(\R^{D_f})$ & Predictive distribution for one future target vector on edge $e=(u,v)$. \\
@@ -372,23 +395,57 @@ $\eta_u(t)$ & $\eta_u(t) \in \Rpos$ & Positive node valuation at node $u$ and ti
 $\xi_u(t)$ & $\xi_u(t) \in \R$ & Log node valuation, $\xi_u(t)=\log \eta_u(t)$; the time argument may be omitted when fixed. \\
 $h_u(t)$ & $h_u(t)\in\R$ & Signed portfolio holding coordinate at node $u$ and time $t$.  Positive values denote long or positive exposure, negative values denote short, borrowed, or liability exposure, and zero denotes no active holding. \\
 $\vect{h}(t)$ & $\vect{h}(t)=(h_u(t))_{u\in\mathcal{V}}\in\R^N$ & Node-level portfolio holding state. \\
+$\eta_{\star}$ & $\eta_{\star}=\prod_u\eta_u^{w_u}$ & Synthetic reference valuation, a geometric basket of node valuations. \\
+$\mathcal{J}_{\mathrm{price}}$ & $\{1,2,3,4\}$ & Price-return feature coordinates: open, high, low, close. \\
+$\mathcal{J}_{\mathrm{act}}$ & $\{5,6,7,8,9\}$ & Activity feature coordinates: volume, quote volume, trades, taker buy base, taker buy quote. \\
+$\tensor{x}_{e}^{c\,i}$ & $\tensor{x}_{e}^{c\,i}:=\tensor{x}_{u\,v}^{c\,i}\in\R^{D_x}$ & Observed input feature vector on usable edge $e=(u,v)$ for NodeLift. \\
+$\vect{x}_{\mathcal{E}}^{c\,i\,d}$ & $\vect{x}_{\mathcal{E}}^{c\,i\,d}\in\R^{L_{\mathrm{use}}}$ & Observed scalar input-coordinate field over the usable edge set. \\
 $q_e$ & $q_e \in \Rpos$ & Observed edge price. \\
 $\ell_e$ & $\ell_e \in \R$ & Log edge price, $\ell_e=\log q_e$. \\
 $r_e$ & $r_e \in \R$ & Signed scalar edge return. \\
 $y_u$ & $y_u \in \R$ & Scalar node return or node potential coordinate. \\
+$y_{\star}$ & $y_{\star}=\vect{w}^{\top}\vect{y}$ & Synthetic reference node return. \\
 $\vect{y}$ & $\vect{y} \in \R^N$ & Node-return or node-potential vector. \\
+$\vect{w}$ & $\vect{w}\in\R^N$, $\mathbf{1}^{\top}\vect{w}=1$ & Reference-weight vector defining a synthetic gauge. \\
+$\vect{w}_{\star}$ & $\vect{w}_{\star}\in\Rnonneg^N$, $\mathbf{1}^{\top}\vect{w}_{\star}=1$ & Synthetic covariance-minimizing reference gauge. \\
+$\mathcal{W}_{\star}$ & $\{\vect{w}\in\Rnonneg^N:\mathbf{1}^{\top}\vect{w}=1\}$ & Admissible synthetic-reference baskets. \\
 $\vect{\widehat{r}}$ & $\vect{\widehat{r}} \in \R^L$ & Vector of observed or predicted edge returns. \\
-$\vect{\eps}_r$ & $\vect{\eps}_r\in\R^L$ & Edge-recovery residual, $\vect{\widehat{r}}-\mat{A}\widehat{\vect{y}}$. \\
-$\mathcal{Q}_r$ & $\mathcal{Q}_r\in\Rnonneg$ & Weighted residual diagnostic for node recovery. \\
-$\mat{A}$ & $\mat{A} \in \R^{L \times N}$ & Directed edge-node incidence matrix. \\
-$\mat{A}_g$ & gauge-fixed incidence matrix & Incidence matrix after removing the gauge coordinate or otherwise restricting to free node coordinates. \\
-$\mat{\Gamma}$ & $\mat{\Gamma} \in \R^{L \times L}$ & Diagonal edge-confidence matrix. \\
-$\mat{L}_{\gamma}$ & $\mat{L}_{\gamma} \in \R^{N \times N}$ & Confidence-weighted graph Laplacian, $\mat{A}^{\top}\mat{\Gamma}\mat{A}$. \\
-$\mat{C}_r$ & $\mat{C}_r \in \R^{L \times L}$ & Edge-return covariance matrix. \\
-$\mat{C}_y$ & $\mat{C}_y \in \R^{N \times N}$ & Recovered node covariance matrix, understood after gauge fixing or on the quotient space. \\
-$\mat{C}_y^{(g)}$ & gauge-fixed node covariance & Recovered node covariance in the free coordinates after the gauge node has been removed. \\
-$\mat{V}$ & $\mat{V} \in \R^{(N-1) \times (N-1)}$ & Eigenvector matrix for gauge-fixed node covariance modes. \\
-$\Lambda$ & $\Lambda \in \R^{(N-1) \times (N-1)}$ & Diagonal eigenvalue matrix for gauge-fixed node covariance modes. \\
+$\vect{a}^{c\,i\,d}$ & $\vect{a}^{c\,i\,d}\in\Rnonneg^{L_{\mathrm{use}}}$ & Raw edge activity after undoing the $\log(1+\cdot)$ transform. \\
+$\vect{\kappa}^{c\,i\,d}$ & $\vect{\kappa}^{c\,i\,d}\in\N_{\ge 0}^{N}$ & Valid activity support counts after endpoint assignment. \\
+$\vect{\nu}_{\Sigma}^{c\,i\,d}$ & $\vect{\nu}_{\Sigma}^{c\,i\,d}\in\Rnonneg^N$ & Summed raw node activity after endpoint aggregation. \\
+$\bar{\vect{\nu}}^{c\,i\,d}$ & $\bar{\vect{\nu}}^{c\,i\,d}\in\Rnonneg^N$ & Support-normalized node activity intensity. \\
+$\rho_u^{c\,i\,d}$ & $\rho_u^{c\,i\,d}\in[0,1]$ & Activity coverage fraction for node $u$. \\
+$\vect{\eps}_{\mathrm{price}}^{c\,i\,d}$ & $\vect{\eps}_{\mathrm{price}}^{c\,i\,d}\in\R^{L_{\mathrm{use}}}$ & Residual edge field for one lifted price coordinate. \\
+$\mathcal{Q}_{\mathrm{price}}^{c\,i\,d}$ & $\mathcal{Q}_{\mathrm{price}}^{c\,i\,d}\in\Rnonneg$ & Weighted residual energy for one lifted price coordinate. \\
+$\tensor{s}^{c\,i}$ & $\tensor{s}^{c\,i}\in\R^{N\times D_y}$ & Node feature matrix lifted from edge features at one channel and position. \\
+$\tensor{s}_{x,u}$ & $\tensor{s}_{x,u}\in\R^{C\times H_x\times D_y}$ & Node-lifted observed input window for one node $u$. \\
+$\tensor{s}_{x}$ & $\tensor{s}_{x}\in\R^{C\times H_x\times N\times D_y}$ & Node-lifted observed input tensor. \\
+${}_{s}\tensor{m}$ & node mask tensor & Coordinatewise node validity mask after lifting. \\
+$\mat{A}_{\mathcal{E}}$ & $\mat{A}_{\mathcal{E}}\in\R^{L\times N}$ & Directed incidence matrix on the active edge set. \\
+$\mat{B}_{\mathcal{E}}$ & $\mat{B}_{\mathcal{E}}\in\{0,1\}^{L\times N}$ & Base-endpoint assignment matrix on the active edge set. \\
+$\mat{Q}_{\mathcal{E}}$ & $\mat{Q}_{\mathcal{E}}\in\{0,1\}^{L\times N}$ & Quote-endpoint assignment matrix on the active edge set. \\
+$\mat{U}_{\mathcal{E}}$ & $\mat{U}_{\mathcal{E}}=\mat{B}_{\mathcal{E}}+\mat{Q}_{\mathcal{E}}$ & Unsigned endpoint-incidence matrix on the active edge set. \\
+$\mat{A}$ & $\mat{A} \in \R^{L_{\mathrm{use}} \times N}$ & Directed edge-node incidence matrix for one usable edge set. \\
+$\mat{B}$ & $\mat{B}\in\{0,1\}^{L_{\mathrm{use}}\times N}$ & Base-endpoint assignment matrix. \\
+$\mat{Q}$ & $\mat{Q}\in\{0,1\}^{L_{\mathrm{use}}\times N}$ & Quote-endpoint assignment matrix. \\
+$\mat{U}$ & $\mat{U}=\mat{B}+\mat{Q}$ & Unsigned endpoint-incidence matrix. \\
+$\mat{M}^{(d)}$ & endpoint assignment matrix & Activity-coordinate assignment matrix selected from $\mat{B}$, $\mat{Q}$, or $\mat{U}$. \\
+$\mat{\Gamma}^{c\,i\,d}$ & $\mat{\Gamma}^{c\,i\,d}\in\R^{L_{\mathrm{use}}\times L_{\mathrm{use}}}$ & Diagonal edge-confidence matrix for one price-coordinate lift. \\
+$\mat{W}^{c\,i\,d}$ & $\mat{W}^{c\,i\,d}\in\R^{L_{\mathrm{use}}\times L_{\mathrm{use}}}$ & Edge precision matrix used in one price-coordinate node recovery solve. \\
+$\mat{C}_{x}^{c\,i\,d}$ & $\mat{C}_{x}^{c\,i\,d}\in\R^{L_{\mathrm{use}}\times L_{\mathrm{use}}}$ & Edge covariance estimate for coordinate $d$ of the observed input edge field. \\
+$\mat{P}_{w}$ & $\mat{P}_{w}=\mat{I}-\mathbf{1}\vect{w}^{\top}$ & Centering map that reads node coordinates relative to reference $\vect{w}$. \\
+$\mat{G}_{\star}$ & $\mat{G}_{\star}\in\R^{N\times C_{\mathrm{comp}}}$ & Reference-constraint matrix with one synthetic gauge vector per usable connected component. \\
+$\mat{B}_{\star}$ & $\mat{B}_{\star}\in\R^{N\times(N-1)}$ & Basis for the synthetic-gauge hyperplane $\vect{w}_{\star}^{\top}\vect{y}=0$. \\
+$\mat{L}_{\gamma}^{c\,i\,d}$ & $\mat{L}_{\gamma}^{c\,i\,d}=\mat{A}^{\top}\mat{\Gamma}^{c\,i\,d}\mat{A}$ & Confidence-weighted graph Laplacian for one price-coordinate lift. \\
+$\mat{H}^{c\,i\,d}$ & $\mat{H}^{c\,i\,d}=\mat{A}^{\top}\mat{W}^{c\,i\,d}\mat{A}$ & General graph precision for diagonal or covariance-aware price-coordinate recovery. \\
+$\mat{H}_{\star}^{c\,i\,d}$ & $\mat{H}_{\star}^{c\,i\,d}=\mat{B}_{\star}^{\top}\mat{H}^{c\,i\,d}\mat{B}_{\star}$ & Free-coordinate graph precision in the synthetic gauge. \\
+$\mat{C}_{y}^{\mathrm{quot}}$ & $\mat{C}_{y}^{\mathrm{quot}}\in\R^{N\times N}$ & Quotient-space node covariance where additive constants are identified. \\
+$\mat{D}_{\mathrm{node}}$ & diagonal matrix in $\R^{N\times N}$ & Optional node-importance weights for choosing the synthetic reference. \\
+$\lambda_{\mathrm{ref}}$ & $\lambda_{\mathrm{ref}}\in\Rnonneg$ & Regularization weight for keeping the synthetic reference near a prior basket. \\
+$\mat{C}_{\theta}^{c\,i\,d}$ & $\mat{C}_{\theta}^{c\,i\,d}\in\R^{(N-1)\times(N-1)}$ & Free-coordinate node covariance in the synthetic gauge. \\
+$\mat{C}_{y}^{c\,i\,d}$ & $\mat{C}_{y}^{c\,i\,d}\in\R^{N\times N}$ & Node-coordinate covariance for one lifted price coordinate, understood on the synthetic-gauge subspace. \\
+$\mat{V}_{\star}^{c\,i\,d}$ & $\mat{V}_{\star}^{c\,i\,d}\in\R^{(N-1)\times(N-1)}$ & Eigenvector matrix for synthetic-gauge node covariance modes. \\
+$\Lambda_{\star}^{c\,i\,d}$ & $\Lambda_{\star}^{c\,i\,d}\in\R^{(N-1)\times(N-1)}$ & Diagonal eigenvalue matrix for synthetic-gauge node covariance modes. \\
 $d(\vect{y},\vect{y}')$ & $d:\R^N\times\R^N\rightarrow\Rnonneg$ & Mahalanobis distance between node states. \\
 \bottomrule
 \end{longtable}

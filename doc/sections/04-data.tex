@@ -53,8 +53,17 @@ model coordinates.  Each OHLC price $p(t)$ is represented by the log-return
 $\log\!\bigl(p(t)/\mathrm{close\_price}(t-1)\bigr)$, where
 \field{close\_price}$(t-1)$ is the previous close on the same channel.
 Non-price activity fields are mapped coordinatewise by
-$\operatorname{log1p}(u)=\log(1+u)$.  For more details see
-Appendix~\ref{app:normalization}.} 
+  $\operatorname{log1p}(u)=\log(1+u)$.  The normalization details used by
+  NodeLift are recorded in
+  Section~\ref{subsec:nodelift-normalization-procedure}.} 
+
+These nine coordinates do not all have the same graph semantics.  The four
+price coordinates are relative log-price coordinates and are compatible with
+signed incidence-based NodeLift.  The five activity coordinates are nonnegative
+activity coordinates after the inverse $\log(1+\cdot)$ transform and are
+compatible with endpoint aggregation.  This distinction is used in
+Section~\ref{sec:edges-to-nodes}.
+
 The sample validity mask%
 \note{
   Market data are not a complete mathematical grid.  Source records may be
@@ -121,7 +130,7 @@ Given an anchor time $t$, the supervised target is a normalized%
 \note{
   Future windows use the same log-return and \(\operatorname{log1p}\) normalization
   rules as the input tensor; see footnote~\ref{fn:data-normalized} and
-  Appendix~\ref{app:normalization}.
+  Section~\ref{subsec:nodelift-normalization-procedure}.
 }
 future window%
 \note{
@@ -189,8 +198,9 @@ remove that uncertainty.  See Section~\ref{sec:edge-forecast-head} for the
 density-mixture formulation.
 }
 
-See section~\ref{sec:representation} for how we use the same embedding network to 
-encode the data on any edge to a unified representation.
+See Section~\ref{sec:representation} for how the node-lifted input tensor
+$\tensor{s}_{x}(t)$ is encoded into node representations and then into
+edge-conditioned contexts for forecasting.
 
 
 

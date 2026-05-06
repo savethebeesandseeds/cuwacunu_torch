@@ -2,13 +2,27 @@
 \section{Representation}
 \label{sec:representation}
 
-The self-supervised representation module maps a normalized edge window 
-($\tensor{x}_{u\,v}$) to a latent state ($\tensor{z}_{u\,v}$). 
+The self-supervised representation module consumes the node-lifted observed
+input window produced by NodeLift.  For one node $u\in\mathcal{V}$, it maps
+the node feature window
+\[
+  \tensor{s}_{x,u}(t)
+  \in
+  \R^{C\times H_x\times D_y}
+\]
+to a node latent state
+\[
+  \tensor{z}_{u}(t)
+  \in
+  \R^{D_e}.
+\]
 \texttt{VICReg\_Rank4}%
 \note{
-  Here \texttt{Rank4} means that the implementation
-  extends the original VICReg architecture by one additional tensor rank, so the
-  encoder operates on rank-4 input tensors: $\{batch, channels, sequence, features\}$.
+  Here \texttt{Rank4} refers to the four semantic axes of one graph-collated
+  node-lifted input tensor: $\{channels, sequence, nodes, features\}$.  When a
+  node window is selected as one representation sample, the per-sample tensor has
+  axes $\{channels, sequence, features\}$ and the implementation carries a
+  leading batch axis.
 }
 is an encoder trained with the Variance Invariance Covariance Regulation objective of
 Bardes, Ponce, and LeCun~\cite{bardes2022vicreg}.\\
@@ -17,19 +31,19 @@ Bardes, Ponce, and LeCun~\cite{bardes2022vicreg}.\\
 Internally, the output is produced in two stages. 
 \[
 \begin{aligned}
-  \tensor{x}_{u\,v}
-  &\in \R^{C \times H_x \times D_x} \\
+  \tensor{s}_{x,u}
+  &\in \R^{C \times H_x \times D_y} \\
   &\downarrow \\
   \Phi &\in \R^{H_x' \times D_e} \\
   &\downarrow \\
-  \tensor{z}_{u\,v} &\in \R^{D_e}.
+  \tensor{z}_{u} &\in \R^{D_e}.
 \end{aligned}
 \]
 
 
-First it encodes the input ($\tensor{x}$) into a time-indexed latent sequence of embeddings 
+First it encodes the node-lifted input ($\tensor{s}_{x}$) into a time-indexed latent sequence of embeddings 
 $\Phi \in \R^{H_x' \times D_e}$ 
-and then it collapses into $\tensor{z}_{u\,v} \in \R^{D_e}$ with a temporal reduction. 
+and then it collapses into $\tensor{z}_{u} \in \R^{D_e}$ with a temporal reduction. 
 In more detail, the encoding considers the input and the mask%
 \note{
   Invalid entries are not treated as market observations; they are zeroed or 
@@ -38,10 +52,10 @@ In more detail, the encoding considers the input and the mask%
   so we can make use of the mask again for the temporal reduction. 
 }: 
 \[
-  \Phi(\tensor{x}_{u\,v};\,{}_{x}\tensor{m}_{u\,v}) :
-  \R^{C \times H_x \times D_x}
+  \Phi(\tensor{s}_{x,u};\,{}_{s}\tensor{m}_{x,u}) :
+  \R^{C \times H_x \times D_y}
   \times
-  \{0,1\}^{C \times H_x}
+  \{0,1\}^{C \times H_x\times D_y}
   \longrightarrow
   \R^{H_x' \times D_e}.\\
 \]
@@ -49,10 +63,10 @@ Where the slice $\Phi^{i} \in \R^{D_e}$ would be the latent state at sequence po
 
 In our case $H_x' = H_x$ and we decided to apply a masked temporal reducer ($\operatorname{TemporalReducer}$) so that:
 \[
-  \operatorname{TemporalReducer}(\Phi;\,{}_{x}\tensor{m}_{u\,v}) :
+  \operatorname{TemporalReducer}(\Phi;\,{}_{s}\tensor{m}_{x,u}) :
   \R^{H_x \times D_e}
   \times
-  \{0,1\}^{C \times H_x}
+  \{0,1\}^{C \times H_x\times D_y}
   \longrightarrow
   \R^{D_e}.
 \]
@@ -63,15 +77,19 @@ A simple masked mean temporal reducer is:
   =
   \mathbf{1}
   \left\{
-    \sum_{c=1}^{C} {}_{x}m_{u\,v}^{c\,i} > 0
+    \sum_{c=1}^{C}
+    \sum_{d=1}^{D_y}
+    {}_{s}m_{x,u}^{c\,i\,d}
+    >
+    0
   \right\},
   \qquad
-  \tensor{z}_{u\,v}
+  \tensor{z}_{u}
   =
   \frac{
     \sum_{i=1}^{H_x}
     \omega^i\cdot
-    \Phi(\tensor{x}_{u\,v};\,{}_{x}\tensor{m}_{u\,v})^{i}
+    \Phi(\tensor{s}_{x,u};\,{}_{s}\tensor{m}_{x,u})^{i}
   }{
     \sum_{i=1}^{H_x} \omega^i
   },
@@ -88,21 +106,43 @@ The final exported representation could be described as%
   sample-level objects along a leading sample axis.
 }: 
 \[
-  \tensor{z}_{u\,v}
+  \tensor{z}_{u}
   =
   \operatorname{TemporalReducer}
   \left(
-    \Phi(\tensor{x}_{u\,v};\,{}_{x}\tensor{m}_{u\,v});\,
-    {}_{x}\tensor{m}_{u\,v}
+    \Phi(\tensor{s}_{x,u};\,{}_{s}\tensor{m}_{x,u});\,
+    {}_{s}\tensor{m}_{x,u}
   \right)
   \in
   \R^{D_e}.
 \]
 
-The training data ranges
-over the full family $\{\tensor{x}_{u\,v} : (u,v)\in\mathcal{E}\}$, so the
-encoder learns and can be used across all instruments. 
-\textit{All directed edges share the same representation map.}
+The training data ranges over node windows produced by NodeLift,
+\[
+  \left\{
+    \tensor{s}_{x,u}(t):u\in\mathcal{V}
+  \right\},
+\]
+so the encoder learns one shared map for node-carried market state.
+\textit{All nodes share the same representation map.}
+
+The edge forecast head still needs an edge-conditioned representation.  After
+node representations are available, a directed edge context is formed from the
+endpoint node states:
+\[
+  \tensor{z}_{u\,v}
+  =
+  \operatorname{EdgeContext}
+  \left(
+    \tensor{z}_{u},
+    \tensor{z}_{v},
+    \text{optional residual sidecar for }e=(u,v)
+  \right)
+  \in
+  \R^{D_e}.
+\]
+This keeps forecasting edge-local while making the primary representation
+node-first.
 
 
 
@@ -122,12 +162,12 @@ Let $E_c$ denote the internal channel-expansion dimension, $F$ the fused channel
 dimension, and $H_{\Phi}$ the hidden width of the temporal convolution stack.  The
 network has the following shape flow.
 
-First, invalid channel-time entries are masked:
+First, invalid channel-time-feature entries are masked:
 \[
-  \widetilde{x}_{u\,v}^{c\,i\,d}
+  \widetilde{s}_{u}^{c\,i\,d}
   =
-  {}_{x}m_{u\,v}^{c\,i}\cdot x_{u\,v}^{c\,i\,d}. 
-  \in \R
+  {}_{s}m_{x,u}^{c\,i\,d}\cdot s_{u}^{c\,i\,d}
+  \in \R.
 \]
 A depthwise convolution over the time axis extracts local channel-wise
 patterns, followed by a ReLU activation%
@@ -147,13 +187,13 @@ patterns, followed by a ReLU activation%
   =
   \operatorname{ReLU}
   \left(
-    \operatorname{DWConv}_{3\times 1}(\widetilde{\tensor{x}})
+    \operatorname{DWConv}_{3\times 1}(\widetilde{\tensor{s}}_{u})
   \right)
   \in
-  \R^{C \times H_x \times D_x},
+  \R^{C \times H_x \times D_y},
 \]
 
-Next, a grouped $1\times D_x$ convolution projects each channel's feature vector
+Next, a grouped $1\times D_y$ convolution projects each channel's feature vector
 into an $E_c$-dimensional latent channel space:
 \[
   {}_{\Phi}\mat{U}^{(2)}
@@ -162,8 +202,8 @@ into an $E_c$-dimensional latent channel space:
 \]
 A learned channel identity vector $\vect{\kappa}_c \in \R^{E_c}$%
 \note{
-  The channel identity vector identifies the channel, not the edge or
-  instrument.  The same $\vect{\kappa}_c$ is shared across all directed edges
+  The channel identity vector identifies the channel, not the node or
+  instrument.  The same $\vect{\kappa}_c$ is shared across all nodes
   for channel $c$.
 }
 is added:
@@ -194,7 +234,7 @@ The tensor is then passed through the implementation's temporal transformer%
   \operatorname{TemporalTransformer1D}
   \left(
     {}_{\Phi}\mat{U}^{(3)};\,
-    {}_{x}\tensor{m}_{u\,v}
+    {}_{s}\tensor{m}_{x,u}
   \right)
   \in
   \R^{C \times H_x \times E_c}.
@@ -243,10 +283,10 @@ to the representation width%
 }%
 :
 \[
-  \Phi(\tensor{x}_{u\,v};\,{}_{x}\tensor{m}_{u\,v})
+  \Phi(\tensor{s}_{x,u};\,{}_{s}\tensor{m}_{x,u})
   =
   \operatorname{DilatedConv}
-  ({}_{\Phi}\mat{U}^{(7)};\,{}_{x}\tensor{m}_{u\,v})^{\top}
+  ({}_{\Phi}\mat{U}^{(7)};\,{}_{s}\tensor{m}_{x,u})^{\top}
   \in
   \R^{H_x \times D_e}.
 \]
@@ -291,7 +331,7 @@ stochastic augmented views%
   valid time positions.  If $N_{\Omega}$ becomes too small relative to the
   projector width $D_p$, the variance and covariance estimates become unstable.
 }
-are generated from the same edge-labeled input batch.  We sample two
+are generated from the same node-lifted input batch.  We sample two
 augmentation maps independently,
 \[
   \operatorname{aug}_{(1)},\operatorname{aug}_{(2)}
@@ -300,31 +340,33 @@ augmentation maps independently,
 \]
 and apply them to the same batch:
 \[
-  \begin{aligned}
-    \left(
-      \tensor{x}_{(1)},\,{}_{x}\tensor{m}_{(1)}
-    \right)
-    &=
-    \operatorname{aug}_{(1)}
-    \left(
-      (\tensor{x}_{u\,v}^{b},\,{}_{x}\tensor{m}_{u\,v}^{b})_{b=1}^{B}
-    \right),
-    \\
-    \left(
-      \tensor{x}_{(2)},\,{}_{x}\tensor{m}_{(2)}
-    \right)
-    &=
-    \operatorname{aug}_{(2)}
-    \left(
-      (\tensor{x}_{u\,v}^{b},\,{}_{x}\tensor{m}_{u\,v}^{b})_{b=1}^{B}
-    \right).
-  \end{aligned}
+	  \begin{aligned}
+	    \left(
+	      \tensor{s}_{x,(1)},\,{}_{s}\tensor{m}_{x,(1)}
+	    \right)
+	    &=
+	    \operatorname{aug}_{(1)}
+	    \left(
+	      (\tensor{s}_{x,u}^{b},\,{}_{s}\tensor{m}_{x,u}^{b})_{b=1}^{B}
+	    \right),
+	    \\
+	    \left(
+	      \tensor{s}_{x,(2)},\,{}_{s}\tensor{m}_{x,(2)}
+	    \right)
+	    &=
+	    \operatorname{aug}_{(2)}
+	    \left(
+	      (\tensor{s}_{x,u}^{b},\,{}_{s}\tensor{m}_{x,u}^{b})_{b=1}^{B}
+	    \right).
+	  \end{aligned}
 \]
+The leading batch axis stacks node-window samples from graph-collated anchors;
+the active node label may vary with $b$.
 The labels $(1)$ and $(2)$ mark the two augmented views.  They are semantic view
 labels, not additional tensor axes.
 
 The augmentation family $\mathcal{A}$ produces two alternative versions of the
-same input $\tensor{x}$ and mask ${}_{x}\tensor{m}$%
+same node-lifted input $\tensor{s}_{x}$ and mask ${}_{s}\tensor{m}_{x}$%
 \note{
   The augmentation map changes both the feature tensor and its validity mask.
   Dropped or masked positions are removed from the valid set rather than treated
@@ -335,9 +377,9 @@ masking, and point dropping%
 \note{
   Be aware that the VICReg loss is computed on time positions that are valid in
   both augmented views.  This validity rule is stricter than the masked-mean
-  reducer: a time position is used by VICReg only when all channels are valid in
-  both augmented views.  This keeps the paired projected states comparable under
-  the same channel support.
+	  reducer: a time position is used by VICReg only when the required
+	  channel-coordinate support is valid in both augmented views.  This keeps the
+	  paired projected states comparable under the same node-feature support.
 }.
 
 VICReg loss requires and is applied after a projector MLP%
@@ -370,11 +412,11 @@ For each view $s\in\{1,2\}$,
   =
   {}_{\zeta}\operatorname{Projector}
   \left(
-    \Phi
-    \left(
-      \tensor{x}_{(s)};
-      {}_{x}\tensor{m}_{(s)}
-    \right)^{b\,i}
+	    \Phi
+	    \left(
+	      \tensor{s}_{x,(s)};
+	      {}_{s}\tensor{m}_{x,(s)}
+	    \right)^{b\,i}
   \right)
   \in
   \R^{D_p}.
@@ -394,12 +436,12 @@ augmentations%
   \left\{
     (b,i)
     :
-    {}_{x}m_{(1)}^{b\,c\,i}
+    {}_{s}m_{x,(1)}^{b\,c\,i\,d}
     \cdot
-    {}_{x}m_{(2)}^{b\,c\,i}
+    {}_{s}m_{x,(2)}^{b\,c\,i\,d}
     =
     1
-    \text{ for all } c=1,\ldots,C
+    \text{ for all required } c,d
   \right\},
   \qquad
   N_{\Omega}=|\Omega|.
@@ -659,7 +701,9 @@ The invariance term makes the two views agree.  The variance term prevents
 collapse to a constant representation.  The covariance term discourages
 redundant projected coordinates.
 
-After training, the forecast system uses the reduced embedding
-$\tensor{z}_{u\,v}$.  The projector output
-${}_{\zeta}\operatorname{Projector}(\cdot)$ is a training device and is not part
-of the edge forecast distribution in Section~\ref{sec:edge-forecast-head}.
+After training, the forecast system uses the reduced node embeddings
+$\tensor{z}_{u}$.  The edge forecast head receives the edge-conditioned context
+$\tensor{z}_{u\,v}$ built from endpoint node embeddings and optional residual
+sidecars.  The projector output ${}_{\zeta}\operatorname{Projector}(\cdot)$ is a
+training device and is not part of the edge forecast distribution in
+Section~\ref{sec:edge-forecast-head}.
