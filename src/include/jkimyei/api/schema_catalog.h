@@ -13,7 +13,7 @@
 #include <utility>
 #include <vector>
 
-#include "jkimyei/specs/jkimyei_schema.h"
+#include "jkimyei/api/jkimyei_schema.h"
 
 namespace cuwacunu {
 namespace jkimyei {

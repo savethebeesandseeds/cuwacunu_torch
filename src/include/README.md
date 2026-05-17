@@ -1,17 +1,23 @@
-## Include Taxonomy
+# Fresh Include Surface
 
-- `source/dataloader`: source-owned domain/runtime helpers for `tsi.source.dataloader`
-- `source/evaluation`: source-owned analytics/report wrappers
-- `wikimyei/evaluation`: representation-owned analytics/evaluation wrappers
-- `piaabo/torch_compat`: reusable analytics kernels and serializers
+The previous implementation is preserved under `src_legacy/`. Do not delete or
+modify it casually; it is the reference quarry for the rewrite.
 
-Runtime report identity now carries three separate ideas:
+The first migrated pillars are:
 
-- `schema`
-- `semantic_taxon`
-- context: `canonical_path`, `binding_id`, `wave_cursor`, optional `source_runtime_cursor`
-- payload: every remaining report-specific key
+- `piaabo`, the quiet utility layer.
+- `wikimyei`, the worker code, with representation and inference copied mostly
+  as they existed in `src_legacy`.
+- `ujcamei`, meaning input or source, migrated from
+  `src_legacy/include/source`.
+- `jkimyei`, the training policy and setup room.
+- `kikijyeba`, meaning brain, introduced as the future place for intent and
+  coordination.
 
-Read that surface as latest semantic facts by default. Historical selection is
-an explicit `wave_cursor` concern, while campaign/job lineage stays in Runtime
-Hero state and run manifests rather than the runtime report header.
+The old runtime ontology is still paused. In particular, this tree does not
+assume that graph contracts or training belong under a specific named pillar
+until that ownership is decided carefully.
+
+Camahjucunu is not migrated as a whole. Its legacy pieces are being placed into
+the fresh rooms that own them: Ujcamei for input/data, Jkimyei for training
+specs, Wikimyei for worker design, and Kikijyeba for lineage/memory.

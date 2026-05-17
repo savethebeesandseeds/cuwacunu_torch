@@ -1,0 +1,30 @@
+/*
+  jkimyei.representation.vicreg.bnf
+  ==========================================
+  Fresh authored surface for VICReg representation training orchestration.
+
+  <training-file> ::= "TRAINING" "{" <kv-list> "}"
+  <kv-list>       ::= (<key> "=" <value> ";")*
+
+  Required keys:
+    VERSION = jkimyei.representation.vicreg.v1
+    TRAINING_ID
+    TASK = vicreg_node_representation
+    COMPONENT_ID
+    LEARNING_RATE
+    BATCH_SIZE
+
+  Optional keys:
+    OPTIMIZER = adam
+    MAX_STEPS = integer >= 0
+    GRAD_CLIP_NORM = float >= 0
+    CHECKPOINT_EVERY = integer >= 0
+    REPORT_EVERY = integer > 0
+    VALIDATION_EVERY = 0
+    SEED = integer >= 0
+    FREEZE_REPRESENTATION = true | false
+
+  V1 describes representation training only. Forecast/MDN training has its own
+  Jkimyei surface. Validation cadence is not implemented in v1, so nonzero
+  VALIDATION_EVERY is rejected instead of being ignored.
+*/

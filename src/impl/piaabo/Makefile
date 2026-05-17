@@ -8,46 +8,47 @@ REL_MODULE  := $(patsubst $(IMPL_PATH)/%,%,$(HERE_PATH))
 MODULE_NAME := $(notdir $(HERE_PATH))
 # -----------------------------------------------------------------
 # Build Rules (producers; no lib*.a prerequisites)
-#   - Common utilities → build/common
-#   - Security/encryption → build/openssl (needs SSL includes)
+#   - Pure utilities live in named Piaabo rooms.
 # -----------------------------------------------------------------
-$(eval $(call BUILD_OBJ,      common,  dutils,         dutils))
-$(eval $(call BUILD_OBJ,      common,  djson_parsing,  djson_parsing))
-$(eval $(call BUILD_OBJ,      common,  dfiles,         dfiles))
-$(eval $(call BUILD_OBJ,      common,  latent_lineage_state/runtime_lls,    runtime_lls))
-$(eval $(call BUILD_OBJ_INC,  openssl, dencryption,    dencryption, $(SSL_INCLUDE_PATHS)))
-$(eval $(call BUILD_OBJ_INC,  openssl, dsecurity,      dsecurity,   $(SSL_INCLUDE_PATHS)))
+$(eval $(call BUILD_OBJ,      common,  core/utils,              utils))
+$(eval $(call BUILD_OBJ,      common,  parse/json/json_parsing, json_parsing))
+$(eval $(call BUILD_OBJ,      common,  io/files,                files))
+$(eval $(call BUILD_OBJ_INC,  openssl, security/encryption,     encryption, $(SSL_INCLUDE_PATHS)))
+$(eval $(call BUILD_OBJ_INC,  openssl, security/security,       security,   $(SSL_INCLUDE_PATHS)))
 
 PIAABO_CORE := \
-  dutils \
-  djson_parsing \
-  dfiles \
-  runtime_lls \
-  dencryption \
-  dsecurity
+  utils \
+  json_parsing \
+  files \
+  encryption \
+  security
 
 # -----------------------------------------------------------------
 # Aggregate Target
 #   - Build local piaabo leaf producers.
-#   - Fan out into https_compat, bnf_compat, math_compat and torch_compat so
+#   - Fan out into parse/network/math/tensor rooms so
 #     GNU make can schedule them in parallel.
 # -----------------------------------------------------------------
-.PHONY: https_compat
-https_compat:
-	$(MAKE) -C $(HERE_PATH)/https_compat all
+.PHONY: network
+network:
+	$(MAKE) -C $(HERE_PATH)/network/curl all
 
-.PHONY: bnf_compat
-bnf_compat:
-	$(MAKE) -C $(HERE_PATH)/bnf_compat all
+.PHONY: parse
+parse:
+	$(MAKE) -C $(HERE_PATH)/parse/bnf all
 
-.PHONY: math_compat
-math_compat:
-	$(MAKE) -C $(HERE_PATH)/math_compat all
+.PHONY: math
+math:
+	$(MAKE) -C $(HERE_PATH)/math all
 
-.PHONY: torch_compat
-torch_compat:
-	$(MAKE) -C $(HERE_PATH)/torch_compat all
+.PHONY: tensor
+tensor:
+	$(MAKE) -C $(HERE_PATH)/tensor all
+
+.PHONY: db
+db:
+	$(MAKE) -C $(HERE_PATH)/db all
 
 .PHONY: all
-all: $(PIAABO_CORE) https_compat bnf_compat math_compat torch_compat
+all: $(PIAABO_CORE) network parse math tensor db
 	@$(LOG_SUCCESS)

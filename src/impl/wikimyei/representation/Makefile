@@ -11,10 +11,10 @@ MODULE_NAME := $(notdir $(HERE_PATH))
 #   - This directory doesn’t build objects itself.
 #   - It exposes each submodule as a prerequisite so GNU make can schedule it.
 # -----------------------------------------------------------------
-.PHONY: VICReg
-VICReg:
-	$(MAKE) -C $(HERE_PATH)/VICReg all
+.PHONY: encoding_vicreg
+encoding_vicreg:
+	$(MAKE) -C $(HERE_PATH)/encoding/vicreg all
 
 .PHONY: all
-all: VICReg
+all: encoding_vicreg
 	@$(LOG_SUCCESS)

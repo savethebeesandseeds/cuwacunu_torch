@@ -58,5 +58,3 @@ LaTeX constructs, `amsmath`, and project-owned source snippets.
 ```bash
 apt install -y --no-install-recommends texlive-latex-base texlive-latex-recommended texlive-fonts-recommended texlive-pictures
 ```
-
-No Python tooling is required.

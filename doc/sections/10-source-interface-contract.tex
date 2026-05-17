@@ -113,20 +113,22 @@ shape is
 \[
   \text{\field{edge\_features}}
   \in
-  \R^{B_g\times L_{\mathrm{use}}\times C\times H_x\times D_x},
+  \R^{B\times L\times C\times H_x\times D_x},
 \]
-where $B_g\in\N$ is the number of graph anchors in the graph-collated batch.
+where $B\in\N$ is the number of anchor-time samples in the graph batch.  Public
+source tensors use the full active edge order $L$; coordinatewise usable edge
+subsets are derived internally from masks.
 The corresponding edge mask is
 \[
   \text{\field{edge\_mask}}
   \in
-  \{0,1\}^{B_g\times L_{\mathrm{use}}\times C\times H_x}.
+  \{0,1\}^{B\times L\times C\times H_x}.
 \]
 The coordinatewise edge mask is
 \[
   \text{\field{edge\_coord\_mask}}
   \in
-  \{0,1\}^{B_g\times L_{\mathrm{use}}\times C\times H_x\times D_y}.
+  \{0,1\}^{B\times L\times C\times H_x\times D_y}.
 \]
 The graph metadata provides
 \[
@@ -149,38 +151,38 @@ NodeLift returns
 \[
   \text{\field{node\_features}}
   \in
-  \R^{B_g\times C\times H_x\times N\times D_y},
+  \R^{B\times C\times H_x\times N\times D_y},
 \]
 and the primary coordinatewise node mask
 \[
   \text{\field{node\_mask}}
   \in
-  \{0,1\}^{B_g\times C\times H_x\times N\times D_y}.
+  \{0,1\}^{B\times C\times H_x\times N\times D_y}.
 \]
 A coarse node mask may also be exported when needed:
 \[
   \text{\field{node\_mask\_any}}
   \in
-  \{0,1\}^{B_g\times C\times H_x\times N},
+  \{0,1\}^{B\times C\times H_x\times N},
 \]
 or
 \[
   \text{\field{node\_mask\_all}}
   \in
-  \{0,1\}^{B_g\times C\times H_x\times N}.
+  \{0,1\}^{B\times C\times H_x\times N}.
 \]
 The price residual sidecar is
 \[
   \text{\field{price\_residual}}
   \in
-  \R^{B_g\times C\times H_x\times L_{\mathrm{use}}\times
+  \R^{B\times C\times H_x\times L\times
   |\mathcal{J}_{\mathrm{price}}|}.
 \]
 Its residual mask is
 \[
   \text{\field{price\_residual\_mask}}
   \in
-  \{0,1\}^{B_g\times C\times H_x\times L_{\mathrm{use}}\times
+  \{0,1\}^{B\times C\times H_x\times L\times
   |\mathcal{J}_{\mathrm{price}}|}.
 \]
 When activity diagnostics are retained, NodeLift may also return
@@ -194,11 +196,11 @@ When activity diagnostics are retained, NodeLift may also return
 corresponding to $\vect{\kappa}^{c\,i\,d}$, $\rho_u^{c\,i\,d}$, and
 $\vect{\nu}_{\Sigma}^{c\,i\,d}$.  Their common code-facing shape is
 \[
-  B_g\times C\times H_x\times N\times |\mathcal{J}_{\mathrm{act}}|.
+  B\times C\times H_x\times N\times |\mathcal{J}_{\mathrm{act}}|.
 \]
 
 The important requirement is that the observed edge input field is aligned over
-a common graph anchor before NodeLift is applied.
+a common anchor time before NodeLift is applied.
 
 \subsection{Feature Registry and Target Selection}
 \label{appsub:feature-registry-target-selection-contract}
@@ -257,9 +259,9 @@ The node-first representation encoder consumes the NodeLift output
 \[
   (\text{\field{node\_features}},\text{\field{node\_mask}})
   \in
-  \R^{B_g \times C \times H_x \times N \times D_y}
+  \R^{B \times C \times H_x \times N \times D_y}
   \times
-  \{0,1\}^{B_g \times C \times H_x \times N \times D_y}
+  \{0,1\}^{B \times C \times H_x \times N \times D_y}
 \]
 or an equivalent flattened batch of node windows.  It returns node encodings
 \[
@@ -267,7 +269,7 @@ or an equivalent flattened batch of node windows.  It returns node encodings
   \equiv
   \tensor{z}_{\mathcal{V}}
   \in
-  \R^{B_g\times N\times D_e}.
+  \R^{B\times N\times D_e}.
 \]
 For an edge-specialized MDN, code then builds an edge-conditioned encoding
 \[
@@ -275,7 +277,7 @@ For an edge-specialized MDN, code then builds an edge-conditioned encoding
   \equiv
   \tensor{z}_{\mathcal{E}}
   \in
-  \R^{B_g\times L_{\mathrm{use}}\times D_e}
+  \R^{B\times L_{\mathrm{use}}\times D_e}
 \]
 from endpoint node encodings and optional residual sidecars.  A pure MDN call on
 a single edge batch may still receive a flattened

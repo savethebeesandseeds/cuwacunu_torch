@@ -1,0 +1,29 @@
+/*
+  wikimyei.representation.vicreg.bnf
+  ===================
+  Fresh graph-first authored surface for VICReg representation workers.
+
+  This BNF documents the small v1 key/value DSL decoded by
+  vicreg_node_representation_spec_t. The legacy network_design/VICReg wrapper
+  surface is no longer part of fresh node-first representation.
+
+  <vicreg-file>  ::= "VICREG" "{" <kv-list> "}"
+  <kv-list>      ::= (<key> "=" <value> ";")*
+
+  Required keys:
+    COMPONENT_ID
+    ENCODING_DIM
+    CHANNEL_EXPANSION_DIM
+    FUSED_FEATURE_DIM
+    ENCODER_HIDDEN_DIM
+    ENCODER_DEPTH
+
+  Common optional keys:
+    VERSION = wikimyei.representation.vicreg.v1
+    INPUT_ROUTE = node_stream
+    INPUT_WIDTH = 9
+    MASK_PROFILE = all_9 | price_only | close_only | activity_only | custom
+    REQUIRED_FEATURE_COORDS = comma-separated zero-based feature coordinates
+    DTYPE = float32 | float64
+    DEVICE = cpu | cuda | cuda:N
+*/

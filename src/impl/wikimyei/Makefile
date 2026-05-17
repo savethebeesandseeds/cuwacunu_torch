@@ -11,6 +11,10 @@ MODULE_NAME := $(notdir $(HERE_PATH))
 #   - This directory doesn’t build objects itself.
 #   - It fans out into submodules so GNU make can schedule them in parallel.
 # -----------------------------------------------------------------
+.PHONY: expression
+expression:
+	$(MAKE) -C $(HERE_PATH)/expression all
+
 .PHONY: representation
 representation:
 	$(MAKE) -C $(HERE_PATH)/representation all
@@ -20,5 +24,5 @@ inference:
 	$(MAKE) -C $(HERE_PATH)/inference all
 
 .PHONY: all
-all: representation inference
+all: expression representation inference
 	@$(LOG_SUCCESS)

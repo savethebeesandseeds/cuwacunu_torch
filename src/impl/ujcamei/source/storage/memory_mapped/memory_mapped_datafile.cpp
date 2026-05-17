@@ -1,0 +1,17 @@
+/* memory_mapped_datafile.cpp */
+#include "ujcamei/source/storage/memory_mapped/memory_mapped_datafile.h"
+
+DEV_WARNING("(memory_mapped_datafile.cpp)[] files need to be sequential and "
+            "increase in key_value should be constant, this could change. \n");
+DEV_WARNING("(memory_mapped_datafile.cpp)[] skiping the binarization of file "
+            "pose a security concern if the file is modified. \n");
+
+namespace cuwacunu {
+namespace ujcamei {
+namespace source {
+namespace storage {
+namespace memory_mapped {} /* namespace memory_mapped */
+} /* namespace storage */
+} /* namespace source */
+} /* namespace ujcamei */
+} /* namespace cuwacunu */

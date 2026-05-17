@@ -4,7 +4,6 @@
  */
 #pragma once
 
+#include "jkimyei/api/jkimyei_optimizers.h"
+#include "jkimyei/api/jkimyei_setup.h"
 #include "jkimyei/api/schema_catalog.h"
-#include "jkimyei/optim/optimizer_utils.h"
-#include "jkimyei/training_setup/jk_setup.h"
-

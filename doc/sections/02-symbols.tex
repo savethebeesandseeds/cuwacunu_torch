@@ -284,7 +284,6 @@ $L_{\mathrm{use}}$ & $L_{\mathrm{use}}=|\mathcal{E}_{\mathrm{use}}|$ & Number of
 $C_{\mathrm{comp}}$ & $C_{\mathrm{comp}}\in\N$ & Number of connected components in the underlying undirected usable graph. \\
 \midrule
 $b$ & $b \in \{1,\ldots,B\}$ & Batch sample index. \\
-$B_g$ & $B_g\in\N$ & Number of graph anchors in a graph-collated batch. \\
 $c$ & $c \in \{1,\ldots,C\}$ & Channel index. \\
 $i$ & $i \in \{1,\ldots,H_x\}$ or $i \in \{1,\ldots,H_f\}$ & Sequence index; the active range is determined by whether the tensor uses the input axis $H_x$ or the forecast axis $H_f$. \\
 $d$ & $d \in \{1,\ldots,D_x\}$, $d \in \{1,\ldots,D_y\}$, $d \in \{1,\ldots,D_f\}$, or $d \in \{1,\ldots,D_p\}$ & Feature-coordinate or projector-coordinate index; the active range is determined by whether the tensor uses the input-feature axis $D_x$, node-feature axis $D_y$, future-feature axis $D_f$, or projector axis $D_p$. \\
@@ -327,8 +326,8 @@ $\Phi,\zeta,\psi$ & learned parameter collections & Representation-map, VICReg-p
 $\Phi$ & $\Phi:\R^{C \times H_x \times D_y}\times\{0,1\}^{C \times H_x\times D_y}\rightarrow\R^{H_x' \times D_e}$ & Sequence encoder map for one node-lifted sample. \\
 $\tensor{z}_{u}$ & $\tensor{z}_{u}\in\R^{D_e}$ & Reduced node representation for node $u$. \\
 $\tensor{z}_{u\,v}$ & $\tensor{z}_{u\,v}\in\R^{D_e}$ & Edge-conditioned representation built from endpoint node representations for $e=(u,v)$. \\
-$\tensor{z}_{\mathcal{V}}$ & $\tensor{z}_{\mathcal{V}}\in\R^{B_g\times N\times D_e}$ & Graph-collated batch of node representations. \\
-$\tensor{z}_{\mathcal{E}}$ & $\tensor{z}_{\mathcal{E}}\in\R^{B_g\times L_{\mathrm{use}}\times D_e}$ & Graph-collated batch of edge-conditioned representations. \\
+$\tensor{z}_{\mathcal{V}}$ & $\tensor{z}_{\mathcal{V}}\in\R^{B\times N\times D_e}$ & Graph-collated batch of node representations. \\
+$\tensor{z}_{\mathcal{E}}$ & $\tensor{z}_{\mathcal{E}}\in\R^{B\times L_{\mathrm{use}}\times D_e}$ & Graph-collated batch of edge-conditioned representations. \\
 $\tensor{z}$ & $\tensor{z} \in \R^{B \times D_e}$ & Representation batch. \\
 \midrule
 $\tilde{\alpha}_{u\,v}^{c\,i\,k}$ & $\tilde{\alpha}_{u\,v}^{c\,i\,k} \in \R$ & Raw mixture activation before normalization. \\

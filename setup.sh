@@ -4,7 +4,7 @@
 #
 # What this script installs/configures (inside a Debian-based environment):
 # - Base toolchain and system deps via apt:
-#   ca-certificates, build-essential, libssl-dev, ncurses dev libs, gnupg,
+#   ca-certificates, build-essential, libssl-dev, ncurses dev libs, gnupg, git,
 #   valgrind, gdb, ccache, mold, clang-format, locales, curl,
 #   libcurl4-openssl-dev, openssh-client (provides ssh-keygen for Human Hero
 #   operator setup), and the minimal LaTeX packages used by doc/.
@@ -336,7 +336,7 @@ install_base_requirements() {
   run_cmd "Installing base build/debug dependencies" "${SUDO[@]}" env DEBIAN_FRONTEND=noninteractive \
     apt install -y --no-install-recommends \
     ca-certificates build-essential libssl-dev libncurses5-dev libncursesw5-dev \
-    gnupg valgrind gdb ccache mold clang-format locales curl libcurl4-openssl-dev \
+    gnupg git valgrind gdb ccache mold clang-format locales curl libcurl4-openssl-dev \
     openssh-client bash-completion \
     texlive-latex-base texlive-latex-recommended texlive-fonts-recommended \
     texlive-pictures
@@ -556,7 +556,7 @@ main() {
   info "Open a new shell or run: source ~/.bashrc"
   info "That shell refresh also sources /cuwacunu/src/scripts/cuwacunu_bashrc.sh"
   info "It exposes /cuwacunu/.build/hero, /cuwacunu/.build/tools, and /cuwacunu/.build/interface on PATH"
-  info "It enables the [*] and [!] shell status marks"
+  info "It enables the [*] and [!] shell status marks when their helper scripts are present"
   info "Useful check: nvidia-smi"
   info "Useful check: /cuwacunu/.build/tests/test_cuda_probe"
   if (( VERBOSE == 0 )); then

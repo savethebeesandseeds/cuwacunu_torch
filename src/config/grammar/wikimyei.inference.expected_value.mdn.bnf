@@ -1,0 +1,35 @@
+/*
+  wikimyei.inference.expected_value.mdn.bnf
+  ==============================================
+  Fresh node-centered ExpectedValue MDN surface.
+
+  <mdn-file> ::= "MDN" "{" <kv-list> "}"
+  <kv-list>  ::= (<key> "=" <value> ";")*
+
+  Required keys:
+    VERSION = wikimyei.inference.expected_value.mdn.v1
+    COMPONENT_ID
+    INPUT_REPRESENTATION_ID
+    TARGET_DOMAIN = node_future
+    TARGET_COORDS = 0,1,2,3,4,5,6,7,8
+    MIXTURE_COUNT
+    HIDDEN_WIDTH
+
+  Optional keys:
+    TARGET_MASK_POLICY = all_target_features_valid
+    ACTIVITY_TARGET = node_feature_support_mean
+    HEAD_POLICY = per_node
+    CONTEXT_REDUCTION = last | mean
+    RESIDUAL_DEPTH = integer >= 0
+    SIGMA_MIN = float >= 0
+    SIGMA_MAX = float >= 0, 0 disables
+    EPS = float > 0
+
+  V1 predicts the target-side future NodeLift tensor:
+    future_node_features [B,C,Hf,N,9]
+  under:
+    future_node_mask [B,C,Hf,N,9].
+
+  Future edge tensors remain source evidence for target-side NodeLift and
+  diagnostics. They are not the MDN target.
+*/

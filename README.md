@@ -73,7 +73,7 @@ nvidia-smi
 After `source ~/.bashrc`, binaries built under `/cuwacunu/.build/tools`,
 `/cuwacunu/.build/hero`, and `/cuwacunu/.build/interface` are available
 directly on `PATH`, and the shell status marks `[*]` and `[!]` are enabled
-through the repo-owned shell extension
+when their helper scripts are present through the repo-owned shell extension
 [`src/scripts/cuwacunu_bashrc.sh`](/cuwacunu/src/scripts/cuwacunu_bashrc.sh).
 
 ## Build Shortcuts
