@@ -34,20 +34,21 @@ training/inference pipelines, and DSL-driven system configuration.
 # HERO MCP Servers
 - Codex MCP registrations (stdio):
   - `hero-config` -> `/cuwacunu/.build/hero/hero_config.mcp`
+  - `hero-runtime` -> `/cuwacunu/.build/hero/hero_runtime.mcp`
   - `hero-hashimyei` -> `/cuwacunu/.build/hero/hero_hashimyei.mcp`
   - `hero-lattice` -> `/cuwacunu/.build/hero/hero_lattice.mcp`
 - MCP usage preference:
-  - For Hero runtime/config questions (Hashimyei, Lattice, or Config behavior), use MCP calls first before reading local source files.
-  - Prefer direct tool invocations (`hero.config.*`, `hero.hashimyei.*`, `hero.lattice.*`) and return MCP output as the source of truth.
+  - For Hero runtime/config questions (Runtime, Hashimyei, Lattice, or Config behavior), use MCP calls first before reading local source files.
+  - Prefer direct tool invocations (`hero.runtime.*`, `hero.config.*`, `hero.hashimyei.*`, `hero.lattice.*`) and return MCP output as the source of truth.
   - Only inspect source files when MCP is unavailable or fails (hard error), and only then.
-- Preferred MCP args for all three servers:
+- Preferred MCP args for all four servers:
   - `--global-config /cuwacunu/src/config/.config`
-- Default runtime policy for Hashimyei/Lattice MCP comes from `[REAL_HERO]` DSL path
-  pointers in `src/config/.config`:
-  - `config_hero_dsl_filename`
-  - `hashimyei_hero_dsl_filename`
-  - `lattice_hero_dsl_filename`
+- Fresh Config/Runtime Hero policy comes from `[HERO]` DSL path pointers in
+  `src/config/.config`:
+  - `config_hero_dsl_path`
+  - `runtime_hero_dsl_path`
 - Runtime contract:
+  - Runtime tools: `hero.runtime.*`
   - Config tools: `hero.config.*`
   - Hashimyei tools: `hero.hashimyei.*`
   - Lattice tools: `hero.lattice.*`
@@ -65,5 +66,6 @@ training/inference pipelines, and DSL-driven system configuration.
   aligned with actual runtime behavior.
 
 # Known Pitfalls
-- Ensure `default.hero.config.dsl` keeps `protocol_layer:str = STDIO` for current MCP runtime.
+- Ensure `hero.config.dsl` and `hero.runtime.dsl` keep
+  `protocol_layer[STDIO|HTTPS/SSE]:enum = STDIO` for current MCP runtime.
 - `HTTPS/SSE` is intentionally not implemented yet and must fail fast.

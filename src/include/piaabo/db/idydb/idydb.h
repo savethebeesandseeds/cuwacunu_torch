@@ -10,10 +10,12 @@
 
 #include <stdbool.h>
 #include <stddef.h>
-#include <stdint.h>
 #ifdef __cplusplus
+#include <cstdint>
 #include <string>
 #include <vector>
+#else
+#include <stdint.h>
 #endif
 
 #define IDYDB_SUCCESS       0  // Successful operation

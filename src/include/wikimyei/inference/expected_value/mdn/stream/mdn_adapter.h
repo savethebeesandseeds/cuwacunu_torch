@@ -10,7 +10,8 @@
 
 #include <torch/torch.h>
 
-#include "ujcamei/source/types/kline_feature_registry.h"
+#include "kikijyeba/protocol/component_stream.h"
+#include "ujcamei/source/registry/types/kline_feature_registry.h"
 #include "wikimyei/representation/encoding/vicreg/stream/node_representation_batch.h"
 
 namespace cuwacunu::wikimyei::inference::expected_value::mdn::stream {
@@ -47,6 +48,14 @@ template <typename KeyT> struct mdn_input_batch_t {
   std::vector<std::string> edge_ids{};
   std::vector<int64_t> target_coords{};
   std::string graph_order_fingerprint{};
+  cuwacunu::ujcamei::source::retrieval::dataloader::graph_anchor_cursor_t<KeyT>
+      cursor{};
+  cuwacunu::kikijyeba::protocol::component_stream_report_t
+      nodelift_stream_report{};
+  cuwacunu::kikijyeba::protocol::component_stream_report_t
+      representation_stream_report{};
+  std::string nodelift_runtime_lls{};
+  std::string representation_runtime_lls{};
   std::string target_domain{"node_future"};
   std::string activity_target_semantics{"node_feature_support_mean"};
 };
@@ -126,9 +135,10 @@ template <typename KeyT>
   const auto future_width = nodes.future_node_features.size(4);
   mdn_adapter_detail::validate_target_feature_indices(options.target_coords,
                                                       future_width);
-  TORCH_CHECK(future_width ==
-                  cuwacunu::ujcamei::source::types::kKlineFeatureWidth,
-              "[mdn_adapter] MDN v1 requires future width 9");
+  TORCH_CHECK(
+      future_width ==
+          cuwacunu::ujcamei::source::registry::types::kKlineFeatureWidth,
+      "[mdn_adapter] MDN v1 requires future width 9");
   TORCH_CHECK(nodes.future_node_features.size(0) == B &&
                   nodes.future_node_features.size(3) == N,
               "[mdn_adapter] future node feature shape mismatch");
@@ -178,6 +188,11 @@ template <typename KeyT>
   out.edge_ids = nodes.edge_ids;
   out.target_coords = options.target_coords;
   out.graph_order_fingerprint = nodes.graph_order_fingerprint;
+  out.cursor = nodes.cursor;
+  out.nodelift_stream_report = nodes.nodelift_stream_report;
+  out.representation_stream_report = nodes.stream_report;
+  out.nodelift_runtime_lls = nodes.nodelift_runtime_lls;
+  out.representation_runtime_lls = nodes.runtime_lls;
   return out;
 }
 

@@ -1,0 +1,22 @@
+#pragma once
+
+#include "iinuji/primitives/panel.h"
+#include "iinuji/render/layout_core.h"
+
+namespace cuwacunu {
+namespace iinuji {
+
+inline void render_panel(const iinuji_object_t &obj) {
+  Rect r = content_rect(obj);
+  auto *R = get_renderer();
+  if (!R)
+    return;
+  short pair =
+      (short)get_color_pair(obj.style.label_color, obj.style.background_color);
+  if (pair == 0)
+    pair = (short)get_color_pair("white", obj.style.background_color);
+  R->fillRect(r.y, r.x, r.h, r.w, pair);
+}
+
+} // namespace iinuji
+} // namespace cuwacunu

@@ -12,10 +12,10 @@ contract:
 	$(MAKE) -C $(IMPL_PATH)/ujcamei/source/contract all
 
 types:
-	$(MAKE) -C $(IMPL_PATH)/ujcamei/source/types all
+	$(MAKE) -C $(IMPL_PATH)/ujcamei/source/registry/types all
 
 storage:
-	$(MAKE) -C $(IMPL_PATH)/ujcamei/source/storage all
+	$(MAKE) -C $(IMPL_PATH)/ujcamei/source/retrieval/storage all
 
 dataloader:
-	$(MAKE) -C $(IMPL_PATH)/ujcamei/source/dataloader all
+	$(MAKE) -C $(IMPL_PATH)/ujcamei/source/retrieval/dataloader all

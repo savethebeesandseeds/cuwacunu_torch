@@ -7,8 +7,7 @@
 #include <string_view>
 #include <vector>
 
-#include "piaabo/log/dlogs.h"
-#include "tsiemene/tsi.report.h"
+#include "jkimyei/evaluation/evaluation_report_identity.h"
 
 namespace torch {
 namespace nn {
@@ -39,12 +38,9 @@ inline constexpr std::string_view kNetworkDesignAnalyticsSchemaV5 =
 inline constexpr std::string_view kNetworkDesignAnalyticsSchemaCurrent =
     kNetworkDesignAnalyticsSchemaV5;
 
-DEV_WARNING("network_analytics: pending improvements include node<->module "
-            "crosswalk. \n");
-DEV_WARNING("explicit DSL edges, bottleneck metrics "
-            "(articulation/bridge/shared-trunk). \n");
-DEV_WARNING("capacity concentration metrics (param/norm HHI), and expanded "
-            "matrix diagnostics.\n");
+// Backlog: node-to-module crosswalks, explicit DSL edges, bottleneck metrics,
+// capacity concentration metrics, and expanded matrix diagnostics belong in
+// the analytics roadmap, not in runtime startup warnings.
 
 struct network_analytics_options_t {
   double near_zero_epsilon{1e-8};
@@ -225,7 +221,7 @@ summarize_network_design_analytics(
 [[nodiscard]] std::string network_analytics_to_latent_lineage_state_text(
     const network_analytics_report_t &report,
     std::string_view checkpoint_filename = {},
-    const tsiemene::component_report_identity_t &report_identity = {});
+    const evaluation_report_identity_t &report_identity = {});
 
 [[nodiscard]] std::string
 network_analytics_to_pretty_text(const network_analytics_report_t &report,
@@ -252,7 +248,7 @@ is_supported_network_design_analytics_schema(std::string_view schema);
     const torch::nn::Module &model, const std::filesystem::path &output_file,
     const network_analytics_options_t &options = {},
     std::string *error = nullptr,
-    const tsiemene::component_report_identity_t &report_identity = {});
+    const evaluation_report_identity_t &report_identity = {});
 
 [[nodiscard]] bool write_network_analytics_sidecar_for_checkpoint(
     const torch::nn::Module &model,
@@ -260,7 +256,7 @@ is_supported_network_design_analytics_schema(std::string_view schema);
     std::filesystem::path *out_sidecar_file = nullptr,
     const network_analytics_options_t &options = {},
     std::string *error = nullptr,
-    const tsiemene::component_report_identity_t &report_identity = {});
+    const evaluation_report_identity_t &report_identity = {});
 
 } // namespace evaluation
 } // namespace jkimyei

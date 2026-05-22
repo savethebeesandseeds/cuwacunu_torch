@@ -56,7 +56,9 @@ struct mdn_train_report_t {
   int64_t valid_row_count{0};
   int64_t valid_target_count{0};
   int64_t skipped_node_head_count{0};
+  int64_t active_node_head_count{0};
   int64_t trained_node_head_count{0};
+  int64_t evaluated_node_head_count{0};
   double valid_node_target_fraction{std::numeric_limits<double>::quiet_NaN()};
 
   double loss{std::numeric_limits<double>::quiet_NaN()};
@@ -70,6 +72,7 @@ struct mdn_train_report_t {
   double finite_parameter_check{1.0};
 
   std::vector<int64_t> routed_row_count_by_node{};
+  std::vector<int64_t> active_row_count_by_node{};
   std::vector<int64_t> trained_row_count_by_node{};
   std::vector<int64_t> valid_target_count_by_node{};
   std::vector<double> nll_by_node{};
@@ -257,6 +260,7 @@ template <typename KeyT>
   report.row_count = batch.context.size(0);
   report.node_count = node_count;
   report.routed_row_count_by_node.assign(node_count, 0);
+  report.active_row_count_by_node.assign(node_count, 0);
   report.trained_row_count_by_node.assign(node_count, 0);
   report.valid_target_count_by_node.assign(node_count, 0);
   report.nll_by_node.assign(node_count,
@@ -347,10 +351,12 @@ template <typename KeyT>
 
     node_loss_sums.push_back(loss_sum);
     node_valid_counts.push_back(valid_count_t);
+    report.active_row_count_by_node[node_slot] = rows.numel();
     report.trained_row_count_by_node[node_slot] = rows.numel();
     report.valid_target_count_by_node[node_slot] = valid_count;
     report.nll_by_node[node_slot] =
         mdn_trainer_detail::tensor_scalar_or_nan(loss_sum / valid_count_t);
+    ++report.active_node_head_count;
     ++report.trained_node_head_count;
 
     nll_by_channel_sum =
@@ -392,6 +398,199 @@ template <typename KeyT>
 
   report.trained = true;
   report.optimizer_step_applied = true;
+  report.loss = mdn_trainer_detail::tensor_scalar_or_nan(total_loss);
+
+  auto context_norm = batch.context.norm(2, /*dim=*/1);
+  auto valid_context_norm =
+      context_norm.masked_select(batch.context_mask.to(torch::kBool));
+  if (valid_context_norm.numel() > 0) {
+    report.node_context_norm_mean = valid_context_norm.mean()
+                                        .detach()
+                                        .to(torch::kCPU)
+                                        .template item<double>();
+    report.node_context_norm_max = valid_context_norm.max()
+                                       .detach()
+                                       .to(torch::kCPU)
+                                       .template item<double>();
+  }
+  if (entropy_count > 0) {
+    report.mixture_entropy_mean =
+        entropy_sum / static_cast<double>(entropy_count);
+    report.mixture_entropy_min = entropy_min;
+  }
+  if (sigma_count > 0) {
+    report.sigma_mean = sigma_sum / static_cast<double>(sigma_count);
+    report.sigma_min = sigma_min;
+    report.sigma_max = sigma_max;
+  }
+  report.valid_target_count_by_channel = valid_target_count_by_channel.detach();
+  report.valid_target_count_by_horizon = valid_target_count_by_horizon.detach();
+  report.nll_by_channel =
+      (nll_by_channel_sum / nll_by_channel_den.clamp_min(1.0)).detach();
+  report.nll_by_horizon =
+      (nll_by_horizon_sum / nll_by_horizon_den.clamp_min(1.0)).detach();
+  return report;
+}
+
+template <typename KeyT>
+[[nodiscard]] mdn_train_report_t evaluate_mdn_batch(
+    const cuwacunu::wikimyei::inference::expected_value::mdn::stream::
+        mdn_input_batch_t<KeyT> &batch,
+    std::vector<cuwacunu::wikimyei::inference::expected_value::mdn::MdnModel>
+        &node_heads,
+    const mdn_training_options_t &options = {}) {
+  namespace mdn = cuwacunu::wikimyei::inference::expected_value::mdn;
+  namespace mdnstream =
+      cuwacunu::wikimyei::inference::expected_value::mdn::stream;
+
+  TORCH_CHECK(!node_heads.empty(), "[mdn_trainer] node_heads is empty");
+  TORCH_CHECK(batch.context.defined() && batch.context.dim() == 2,
+              "[mdn_trainer] context must be [B_node,D]");
+  TORCH_CHECK(batch.context_mask.defined() && batch.context_mask.dim() == 1 &&
+                  batch.context_mask.size(0) == batch.context.size(0),
+              "[mdn_trainer] context_mask must be [B_node]");
+  TORCH_CHECK(batch.node_index.defined() && batch.node_index.dim() == 1 &&
+                  batch.node_index.size(0) == batch.context.size(0),
+              "[mdn_trainer] node_index must be [B_node]");
+  TORCH_CHECK(batch.future.defined() && batch.future.dim() == 4,
+              "[mdn_trainer] future must be [B_node,C,Hf,D]");
+  TORCH_CHECK(batch.future_mask.defined() && batch.future_mask.dim() == 3 &&
+                  batch.future_mask.size(0) == batch.future.size(0) &&
+                  batch.future_mask.size(1) == batch.future.size(1) &&
+                  batch.future_mask.size(2) == batch.future.size(2),
+              "[mdn_trainer] future_mask must be [B_node,C,Hf]");
+
+  const int64_t inferred_node_count =
+      batch.node_index.numel() == 0
+          ? 0
+          : batch.node_index.max().template item<int64_t>() + 1;
+  const int64_t node_count = batch.node_ids.empty()
+                                 ? inferred_node_count
+                                 : static_cast<int64_t>(batch.node_ids.size());
+  TORCH_CHECK(node_count > 0, "[mdn_trainer] node_count must be positive");
+  TORCH_CHECK(static_cast<int64_t>(node_heads.size()) >= node_count,
+              "[mdn_trainer] not enough per-node MDN heads");
+
+  mdn_train_report_t report{};
+  report.row_count = batch.context.size(0);
+  report.node_count = node_count;
+  report.routed_row_count_by_node.assign(node_count, 0);
+  report.active_row_count_by_node.assign(node_count, 0);
+  report.trained_row_count_by_node.assign(node_count, 0);
+  report.valid_target_count_by_node.assign(node_count, 0);
+  report.nll_by_node.assign(node_count,
+                            std::numeric_limits<double>::quiet_NaN());
+  report.metadata = mdn_trainer_detail::make_metadata(options.target_coords,
+                                                      batch, node_count);
+
+  if (options.require_finite_context) {
+    mdn_trainer_detail::check_finite_context(batch.context, batch.context_mask);
+  }
+  auto mask = mdnstream::combine_mdn_context_and_future_mask(batch.context_mask,
+                                                             batch.future_mask);
+  if (options.require_finite_targets_under_mask) {
+    mdn_trainer_detail::check_finite_targets_under_mask(batch.future, mask);
+  }
+
+  report.valid_row_count =
+      mask.any(std::vector<int64_t>{1, 2}).sum().template item<int64_t>();
+  report.valid_target_count = mask.sum().template item<int64_t>();
+  const int64_t total_possible_targets = mask.numel();
+  report.valid_node_target_fraction =
+      total_possible_targets == 0
+          ? std::numeric_limits<double>::quiet_NaN()
+          : static_cast<double>(report.valid_target_count) /
+                static_cast<double>(total_possible_targets);
+  report.low_target_coverage_warning =
+      std::isfinite(report.valid_node_target_fraction) &&
+      report.valid_node_target_fraction <
+          options.low_target_coverage_warning_fraction;
+  if (report.valid_target_count == 0) {
+    report.skipped_empty = options.skip_empty_batches;
+    return report;
+  }
+
+  auto nll_by_channel_sum =
+      torch::zeros({batch.future.size(1)}, batch.context.options());
+  auto nll_by_channel_den =
+      torch::zeros({batch.future.size(1)}, batch.context.options());
+  auto nll_by_horizon_sum =
+      torch::zeros({batch.future.size(2)}, batch.context.options());
+  auto nll_by_horizon_den =
+      torch::zeros({batch.future.size(2)}, batch.context.options());
+  auto valid_target_count_by_channel =
+      torch::zeros({batch.future.size(1)}, batch.context.options());
+  auto valid_target_count_by_horizon =
+      torch::zeros({batch.future.size(2)}, batch.context.options());
+
+  double entropy_sum = 0.0;
+  double entropy_min = std::numeric_limits<double>::infinity();
+  int64_t entropy_count = 0;
+  double sigma_sum = 0.0;
+  double sigma_min = std::numeric_limits<double>::infinity();
+  double sigma_max = -std::numeric_limits<double>::infinity();
+  int64_t sigma_count = 0;
+  std::vector<torch::Tensor> node_loss_sums;
+  std::vector<torch::Tensor> node_valid_counts;
+
+  torch::NoGradGuard no_grad;
+  for (int64_t node_slot = 0; node_slot < node_count; ++node_slot) {
+    auto routed_rows = mdnstream::mdn_rows_for_node(batch, node_slot);
+    report.routed_row_count_by_node[node_slot] = routed_rows.numel();
+    auto rows = mdn_trainer_detail::valid_training_rows(routed_rows, mask);
+    if (rows.numel() == 0) {
+      ++report.skipped_node_head_count;
+      continue;
+    }
+    auto context_n = batch.context.index_select(/*dim=*/0, rows);
+    auto target_n = batch.future.index_select(/*dim=*/0, rows);
+    auto mask_n = mask.index_select(/*dim=*/0, rows);
+    const int64_t valid_count = mask_n.sum().template item<int64_t>();
+    if (valid_count <= 0) {
+      ++report.skipped_node_head_count;
+      continue;
+    }
+    node_heads[node_slot]->eval();
+    auto out = node_heads[node_slot]->forward_from_encoding(context_n);
+    auto nll = mdn::mdn_nll_map(out, target_n, mask_n, options.nll_options);
+    auto valid_f = mask_n.to(nll.scalar_type());
+    auto loss_sum = nll.sum();
+    auto valid_count_t = valid_f.sum().clamp_min(1.0);
+
+    node_loss_sums.push_back(loss_sum);
+    node_valid_counts.push_back(valid_count_t);
+    report.active_row_count_by_node[node_slot] = rows.numel();
+    report.valid_target_count_by_node[node_slot] = valid_count;
+    report.nll_by_node[node_slot] =
+        mdn_trainer_detail::tensor_scalar_or_nan(loss_sum / valid_count_t);
+    ++report.active_node_head_count;
+    ++report.evaluated_node_head_count;
+
+    nll_by_channel_sum =
+        nll_by_channel_sum + nll.sum(std::vector<int64_t>{0, 2});
+    nll_by_channel_den =
+        nll_by_channel_den + valid_f.sum(std::vector<int64_t>{0, 2});
+    nll_by_horizon_sum =
+        nll_by_horizon_sum + nll.sum(std::vector<int64_t>{0, 1});
+    nll_by_horizon_den =
+        nll_by_horizon_den + valid_f.sum(std::vector<int64_t>{0, 1});
+    valid_target_count_by_channel =
+        valid_target_count_by_channel + valid_f.sum(std::vector<int64_t>{0, 2});
+    valid_target_count_by_horizon =
+        valid_target_count_by_horizon + valid_f.sum(std::vector<int64_t>{0, 1});
+
+    mdn_trainer_detail::accumulate_output_stats(
+        report, out, mask_n, entropy_sum, entropy_min, entropy_count, sigma_sum,
+        sigma_min, sigma_max, sigma_count);
+  }
+
+  if (node_loss_sums.empty()) {
+    report.skipped_empty = options.skip_empty_batches;
+    return report;
+  }
+
+  auto total_loss = torch::stack(node_loss_sums).sum() /
+                    torch::stack(node_valid_counts).sum().clamp_min(1.0);
   report.loss = mdn_trainer_detail::tensor_scalar_or_nan(total_loss);
 
   auto context_norm = batch.context.norm(2, /*dim=*/1);

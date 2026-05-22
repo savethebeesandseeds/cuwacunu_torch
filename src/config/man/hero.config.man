@@ -1,0 +1,108 @@
+MAN_ID = hero.config
+TARGET_DSL = src/config/hero.config.dsl
+PRIMARY_VALIDATORS = src/include/hero/config_hero/hero_config.h
+
+[FIELD protocol_layer]
+key = protocol_layer
+scope = Config Hero policy
+type = enum
+default = STDIO
+allowed = STDIO,HTTPS/SSE
+nuance = STDIO is implemented; HTTPS/SSE is reserved and must fail fast.
+
+[FIELD config_root]
+key = config_root
+scope = Config Hero policy
+type = path
+default = /cuwacunu/src/config
+nuance = Relative paths passed to hero.config.list/read/write/delete resolve here.
+
+[FIELD managed_roots]
+key = managed_roots
+scope = Config Hero policy
+type = path_list
+default = /cuwacunu/src/config
+nuance = Read and write targets must stay under one of these roots.
+
+[FIELD allow_read]
+key = allow_read
+scope = Config Hero policy
+type = bool
+default = true
+nuance = Gates hero.config.list and hero.config.read.
+
+[FIELD allow_write]
+key = allow_write
+scope = Config Hero policy
+type = bool
+default = false
+nuance = Gates hero.config.write, hero.config.delete, hero.config.save, and hero.config.rollback.
+
+[FIELD write_roots]
+key = write_roots
+scope = Config Hero policy
+type = path_list
+default = /tmp
+nuance = Mutating tools require both allow_write=true and target containment under write_roots.
+
+[FIELD allowed_extensions]
+key = allowed_extensions
+scope = Config Hero policy
+type = string_list
+default = .config,.dsl,.bnf,.man,.md,.net,.jkimyei
+nuance = Config Hero is a generic file policy surface; family-specific DSL validation belongs to domain owners. Defaults cover every fresh global config file suffix currently mapped from src/config/.config.
+
+[FIELD backup_enabled]
+key = backup_enabled
+scope = Config Hero policy
+type = bool
+default = true
+nuance = Existing files are backed up before whole-file replacement, deletion, policy save, or policy rollback.
+
+[FIELD backup_dir]
+key = backup_dir
+scope = Config Hero policy
+type = path
+default = /cuwacunu/.backups/hero.config
+nuance = Policy backups live under policy/ and managed file backups live under files/.
+
+[FIELD backup_max_entries]
+key = backup_max_entries
+scope = Config Hero policy
+type = int
+default = 20
+allowed = integer >= 1
+nuance = Maximum retained backup snapshots per backup family.
+
+[FIELD require_expected_sha256_for_replace]
+key = require_expected_sha256_for_replace
+scope = Config Hero policy
+type = bool
+default = true
+nuance = Existing file replacement requires expected_sha256 so agents do not overwrite stale reads.
+
+[FIELD require_expected_sha256_for_delete]
+key = require_expected_sha256_for_delete
+scope = Config Hero policy
+type = bool
+default = true
+nuance = File deletion requires expected_sha256 so agents do not delete stale targets.
+
+[TOOLS]
+hero.config.status = policy and global-config health summary
+hero.config.schema = policy key registry
+hero.config.show = loaded policy entries
+hero.config.get = one policy value
+hero.config.set = in-memory policy edit
+hero.config.validate = policy validation plus global config path existence checks
+hero.config.map = global config path-reference map with existence and optional sha256
+hero.config.resolve = resolve one path and report read/write policy gates
+hero.config.diff = pending policy save preview
+hero.config.save = persist policy after write policy checks
+hero.config.reload = reload policy from disk
+hero.config.backups = list policy backups
+hero.config.rollback = restore policy backup after write policy checks
+hero.config.list = list managed config files
+hero.config.read = read one managed config file with sha256
+hero.config.write = whole-file create or replace after write policy checks; dry_run supported; existing targets require expected_sha256 by default
+hero.config.delete = delete one managed config file after write policy checks; dry_run supported; expected_sha256 required by default

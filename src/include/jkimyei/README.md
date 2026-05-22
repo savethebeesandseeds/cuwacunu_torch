@@ -38,17 +38,19 @@ Selected files:
 
 Authored training configs are split by worker surface:
 
-- `jkimyei.representation.vicreg.*` owns representation training
+- `wikimyei.representation.vicreg.jkimyei` owns representation training
   policy.
-- `jkimyei.inference.expected_value.mdn.*` owns node ExpectedValue
+- `wikimyei.inference.expected_value.mdn.jkimyei` owns node ExpectedValue
   inference training policy.
 - The older generic `jkimyei.*` name is not used by the fresh
   graph-first path.
+- Runtime `.lls` emission is wave-owned. `.jkimyei` files describe training policy,
+  not latent-lineage report persistence.
 
 Runtime boundary:
 - `jkimyei` owns policy/schema selection and component setup.
-- Cross-worker graph-first composition now lives under
-  `kikijyeba/composition`; Jkimyei launchers consume that surface.
+- Cross-worker graph-first protocol now lives under
+  `kikijyeba/protocol`; Jkimyei launchers consume that surface.
 - Evaluation helpers live here even when they describe source-data reports, so
   Ujcamei can stay focused on source formation.
 - runtime episode budgets such as `n_epochs`, `n_iters`, and `batches` stay wave-owned.

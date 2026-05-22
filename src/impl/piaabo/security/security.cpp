@@ -24,8 +24,8 @@
 #define FATAL_NON_TTY_AUTH "Authentication requires an interactive TTY terminal."
 #define MAX_PASSWORD_SIZE 1024
 
-DEV_WARNING("(dsecurity.cpp)[] secure the secret with hardware \n");
-DEV_WARNING("(dsecurity.cpp)[] add second factor authentication \n");
+// Backlog: hardware-backed secrets and second-factor authentication are not
+// implemented by this storage layer.
 
 namespace cuwacunu {
 namespace piaabo {
@@ -495,7 +495,7 @@ void SecureStronghold_t::authenticate() {
   }
 }
 
-/* retrive the api_key */
+/* retrieve the api_key */
 std::string SecureStronghold_t::which_api_key() {
   std::lock_guard<std::mutex> lock(stronghold_mutex);
   if (api_key == nullptr || api_key_size == 0) {

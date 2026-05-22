@@ -10,7 +10,7 @@
 
 #include <torch/torch.h>
 
-#include "ujcamei/source/types/kline_feature_registry.h"
+#include "ujcamei/source/registry/types/kline_feature_registry.h"
 #include "wikimyei/expression/nodelift/srl/stream/node_lifted_stream.h"
 
 namespace cuwacunu::wikimyei::representation::encoding::vicreg {
@@ -157,7 +157,7 @@ make_node_encoder_input(const cuwacunu::wikimyei::expression::nodelift::srl::
   TORCH_CHECK(
       B > 0 && C > 0 && Hx > 0 && N > 0 && D > 0,
       "[node_stream_adapter] node_features dimensions must be positive");
-  TORCH_CHECK(D == cuwacunu::ujcamei::source::types::kKlineFeatureWidth,
+  TORCH_CHECK(D == cuwacunu::ujcamei::source::registry::types::kKlineFeatureWidth,
               "[node_stream_adapter] v1 expects kline feature width 9, got ",
               D);
   TORCH_CHECK(batch.node_ids.empty() ||

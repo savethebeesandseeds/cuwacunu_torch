@@ -1,0 +1,42 @@
+/*
+  Lattice Hero v0 policy key registry.
+
+  Consumers may define:
+    HERO_LATTICE_POLICY_KEY(KEY, TYPE, REQUIRED, DEFAULT_VALUE, RANGE, ALLOWED,
+                            SUMMARY)
+*/
+
+#ifndef HERO_LATTICE_POLICY_KEY
+#define HERO_LATTICE_POLICY_KEY(KEY, TYPE, REQUIRED, DEFAULT_VALUE, RANGE,     \
+                                ALLOWED, SUMMARY)
+#endif
+
+HERO_LATTICE_POLICY_KEY("protocol_layer", "enum", 1, "STDIO", "one token",
+                        "STDIO,HTTPS/SSE",
+                        "MCP protocol layer. HTTPS/SSE is reserved and fails "
+                        "fast.")
+HERO_LATTICE_POLICY_KEY(
+    "default_config_path", "path", 1, "/cuwacunu/src/config/.config",
+    "file path", "absolute_or_relative_path",
+    "Default global config used to find lattice target DSL paths.")
+HERO_LATTICE_POLICY_KEY("runtime_root", "path", 1,
+                        "/cuwacunu/.runtime/cuwacunu_exec", "directory path",
+                        "absolute_or_relative_path",
+                        "Default runtime artifact root scanned by Lattice "
+                        "Hero.")
+HERO_LATTICE_POLICY_KEY(
+    "allowed_runtime_roots", "path_list", 1,
+    "/cuwacunu/.runtime/cuwacunu_exec,/tmp", "comma-separated path list",
+    "absolute_or_relative_paths",
+    "Roots under which explicit runtime_root and checkpoint arguments may "
+    "live.")
+HERO_LATTICE_POLICY_KEY(
+    "auto_build_exposure_ledger", "bool", 1, "true", "true|false", "true,false",
+    "Build an in-memory exposure ledger from runtime job artifacts when "
+    "evaluating targets.")
+HERO_LATTICE_POLICY_KEY("max_fact_preview", "int", 1, "64", ">=1", "integer",
+                        "Maximum exposure facts returned by scan tools.")
+HERO_LATTICE_POLICY_KEY("max_closure_facts", "int", 1, "256", ">=1", "integer",
+                        "Maximum checkpoint closure facts returned inline.")
+
+#undef HERO_LATTICE_POLICY_KEY

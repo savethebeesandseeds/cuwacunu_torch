@@ -45,7 +45,7 @@ Matching behavior:
 
 - alternatives are attempted and the parser keeps the match that consumes the longest input
 - terminal matching is exact character-by-character
-- repetition parse currently succeeds only when at least one repetition item is matched
+- repetition (`{<...>}`) has zero-or-more semantics
 - parsing failure throws `std::runtime_error` with failure context
 
 AST contract:

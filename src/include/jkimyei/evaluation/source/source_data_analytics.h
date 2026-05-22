@@ -6,8 +6,7 @@
 #include <string_view>
 
 #include "jkimyei/evaluation/source/data_analytics.h"
-#include "kikijyeba/lattice/latent_lineage_state/runtime_report/report_taxonomy.h"
-#include "tsiemene/tsi.report.h"
+#include "kikijyeba/lattice/runtime_report/report_taxonomy.h"
 
 namespace cuwacunu::jkimyei::evaluation {
 
@@ -30,26 +29,22 @@ latest_source_data_analytics_artifact_paths(
   };
 }
 
-[[nodiscard]] inline ::tsiemene::component_report_identity_t
+[[nodiscard]] inline evaluation_report_identity_t
 make_source_data_analytics_report_identity(
     std::string_view binding_id, std::string_view source_runtime_cursor) {
-  auto identity = ::tsiemene::make_component_report_identity(
-      "tsi.source.dataloader", binding_id,
-      cuwacunu::kikijyeba::lattice::latent_lineage_state::runtime_report::
-          report_taxonomy::kSourceData);
-  identity.source_runtime_cursor = std::string(source_runtime_cursor);
-  return identity;
+  return make_evaluation_report_identity(
+      cuwacunu::kikijyeba::lattice::runtime_report::
+          report_taxonomy::kSourceData,
+      binding_id, "ujcamei.source.retrieval", source_runtime_cursor);
 }
 
-[[nodiscard]] inline ::tsiemene::component_report_identity_t
+[[nodiscard]] inline evaluation_report_identity_t
 make_source_data_symbolic_analytics_report_identity(
     std::string_view binding_id, std::string_view source_runtime_cursor) {
-  auto identity = ::tsiemene::make_component_report_identity(
-      "tsi.source.dataloader", binding_id,
-      cuwacunu::kikijyeba::lattice::latent_lineage_state::runtime_report::
-          report_taxonomy::kSourceData);
-  identity.source_runtime_cursor = std::string(source_runtime_cursor);
-  return identity;
+  return make_evaluation_report_identity(
+      cuwacunu::kikijyeba::lattice::runtime_report::
+          report_taxonomy::kSourceData,
+      binding_id, "ujcamei.source.retrieval.symbolic", source_runtime_cursor);
 }
 
 } // namespace cuwacunu::jkimyei::evaluation

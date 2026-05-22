@@ -14,18 +14,20 @@
 
 #include <unistd.h>
 
-namespace dl = cuwacunu::ujcamei::source::dataloader;
-namespace graph = cuwacunu::ujcamei::graph;
+namespace dl = cuwacunu::ujcamei::source::retrieval::dataloader;
+namespace graph = cuwacunu::kikijyeba::topology::graph;
 namespace contract = cuwacunu::ujcamei::source::contract;
-namespace mm = cuwacunu::ujcamei::source::storage::memory_mapped;
+namespace mm = cuwacunu::ujcamei::source::retrieval::storage::memory_mapped;
 namespace srl = cuwacunu::wikimyei::expression::nodelift::srl;
 namespace stream = cuwacunu::wikimyei::expression::nodelift::srl::stream;
 namespace mdnstream =
     cuwacunu::wikimyei::inference::expected_value::mdn::stream;
 namespace repstream =
     cuwacunu::wikimyei::representation::encoding::vicreg::stream;
+namespace runtime_lls =
+    cuwacunu::kikijyeba::lattice::runtime_report;
 namespace source = cuwacunu::ujcamei::source;
-namespace types = cuwacunu::ujcamei::source::types;
+namespace types = cuwacunu::ujcamei::source::registry::types;
 
 namespace {
 
@@ -394,9 +396,9 @@ srl::graph_t make_srl_graph_from_market(const graph::market_graph_t &market) {
   return out;
 }
 
-source::instrument_signature_t
+source::registry::instrument_signature_t
 make_signature(std::string symbol, std::string base, std::string quote) {
-  return source::instrument_signature_t{
+  return source::registry::instrument_signature_t{
       .symbol = std::move(symbol),
       .record_type = "kline",
       .market_type = "spot",
@@ -407,8 +409,8 @@ make_signature(std::string symbol, std::string base, std::string quote) {
 }
 
 contract::source_spec_t
-make_source_spec(const source::instrument_signature_t &btc_usdt,
-                 const source::instrument_signature_t &eth_usdt,
+make_source_spec(const source::registry::instrument_signature_t &btc_usdt,
+                 const source::registry::instrument_signature_t &eth_usdt,
                  const std::filesystem::path &btc_csv,
                  const std::filesystem::path &eth_csv) {
   contract::source_spec_t spec{};
@@ -449,9 +451,9 @@ make_source_spec(const source::instrument_signature_t &btc_usdt,
   return spec;
 }
 
-graph::market_graph_t
-make_contract_market_graph(const source::instrument_signature_t &btc_usdt,
-                           const source::instrument_signature_t &eth_usdt) {
+graph::market_graph_t make_contract_market_graph(
+    const source::registry::instrument_signature_t &btc_usdt,
+    const source::registry::instrument_signature_t &eth_usdt) {
   return graph::make_market_graph({
       graph::make_directed_instrument_edge(btc_usdt),
       graph::make_directed_instrument_edge(eth_usdt),
@@ -479,6 +481,7 @@ void test_node_lifted_stream() {
 
   stream::node_lifted_stream_options_t<Kline> options{};
   options.batch_size = 3;
+  options.runtime_report_mode = runtime_lls::runtime_report_mode_t::debug;
   stream::node_lifted_stream_t<Kline> node_lifted_stream(
       std::move(source), make_srl_graph_from_market(market), options);
 
@@ -492,12 +495,70 @@ void test_node_lifted_stream() {
         "node-lifted stream graph fingerprint carried");
   check(!torch::isnan(first.node_features).any().item<bool>(),
         "first node-lifted batch no NaNs");
+  check(first.cursor.anchor_count() == 3, "first node-lifted cursor carried");
+  check(first.runtime_lls.find(
+            "schema:str = wikimyei.expression.nodelift.srl.runtime.v1") !=
+            std::string::npos,
+        "NodeLift runtime LLS emitted in debug mode");
+  check(first.runtime_lls.find("batch_cursor_token") != std::string::npos,
+        "NodeLift runtime LLS carries batch cursor token");
+  check(first.runtime_lls.find("source_cursor_token") == std::string::npos,
+        "NodeLift runtime LLS does not mislabel batch cursor as source cursor");
+  check(first.runtime_lls.find("component_id:str = nodelift_srl_v1") !=
+            std::string::npos,
+        "NodeLift runtime LLS carries component id");
+  MeanNodeEncoder encoder{};
+  auto rep_debug =
+      repstream::make_node_representation_batch<MeanNodeEncoder,
+                                                typename Kline::key_type_t>(
+          encoder, first,
+          cuwacunu::wikimyei::representation::encoding::vicreg::
+              node_vicreg_encoding_adapter_options(),
+          /*use_swa=*/true, /*detach_to_cpu=*/false,
+          runtime_lls::runtime_report_mode_t::debug);
+  check(rep_debug.runtime_lls.find(
+            "schema:str = wikimyei.representation.vicreg.runtime.v1") !=
+            std::string::npos,
+        "representation runtime LLS emitted in debug mode");
+  check(rep_debug.runtime_lls.find("component_id:str = node_vicreg_v1") !=
+            std::string::npos,
+        "representation runtime LLS carries component id");
+  check(rep_debug.nodelift_runtime_lls == first.runtime_lls,
+        "representation batch carries NodeLift runtime LLS");
 
   check(node_lifted_stream.has_next(),
         "node-lifted stream has final short batch");
   auto second = node_lifted_stream.next();
   check(second.node_features.size(0) == 1, "final short batch size");
   check(!node_lifted_stream.has_next(), "node-lifted stream exhausted");
+
+  dl::graph_anchor_edge_dataset_t<Kline>::edge_dataset_map_t range_datasets;
+  range_datasets.emplace("e0", make_edge_dataset(csv0));
+  range_datasets.emplace("e1", make_edge_dataset(csv1));
+  dl::graph_anchor_edge_dataset_t<Kline> range_source(
+      market, std::move(range_datasets), source_options);
+  stream::node_lifted_stream_options_t<Kline> range_options{};
+  range_options.batch_size = 1;
+  range_options.begin_anchor_index = 1;
+  range_options.end_anchor_index = 3;
+  stream::node_lifted_stream_t<Kline> range_stream(
+      std::move(range_source), make_srl_graph_from_market(market),
+      range_options);
+  check(range_stream.begin_anchor_index() == 1,
+        "node-lifted stream range begin");
+  check(range_stream.end_anchor_index() == 3,
+        "node-lifted stream range end");
+  auto range_first = range_stream.next();
+  check(range_first.cursor.begin_anchor_index == 1,
+        "range stream first batch cursor begin");
+  check(range_first.cursor.end_anchor_index == 2,
+        "range stream first batch cursor end");
+  auto range_second = range_stream.next();
+  check(range_second.cursor.begin_anchor_index == 2,
+        "range stream second batch cursor begin");
+  check(range_second.cursor.end_anchor_index == 3,
+        "range stream second batch cursor end");
+  check(!range_stream.has_next(), "range stream exhausted at requested end");
 
   dl::graph_anchor_edge_dataset_t<Kline>::edge_dataset_map_t datasets_no_diag;
   datasets_no_diag.emplace("e0", make_edge_dataset(csv0));

@@ -19,7 +19,7 @@ enum class training_optimizer_t {
 };
 
 struct training_run_spec_t {
-  std::string version_token{"jkimyei.inference.expected_value.mdn.v1"};
+  std::string version_token{"wikimyei.inference.expected_value.mdn.jkimyei.v1"};
   std::string training_id{};
   training_task_t task{training_task_t::mdn_expected_value_inference};
   std::string component_id{};
@@ -33,6 +33,9 @@ struct training_run_spec_t {
   int64_t validation_every{0};
   int64_t seed{0};
   bool freeze_representation{true};
+  std::string input_representation_checkpoint_path{};
+  std::string input_mdn_checkpoint_path{};
+  bool allow_untrained_representation{false};
 };
 
 namespace training_spec_detail {
@@ -61,9 +64,9 @@ namespace kv = cuwacunu::piaabo::parse::simple_kv;
 [[nodiscard]] inline const char *expected_version_token(training_task_t task) {
   switch (task) {
   case training_task_t::vicreg_node_representation:
-    return "jkimyei.representation.vicreg.v1";
+    return "wikimyei.representation.vicreg.jkimyei.v1";
   case training_task_t::mdn_expected_value_inference:
-    return "jkimyei.inference.expected_value.mdn.v1";
+    return "wikimyei.inference.expected_value.mdn.jkimyei.v1";
   }
   throw std::runtime_error("[training_spec] unknown training task");
 }
@@ -106,6 +109,23 @@ inline void validate_training_run_spec(const training_run_spec_t &spec) {
         "[training_spec] v1 MDN ExpectedValue training requires frozen "
         "representation");
   }
+  if (spec.task == training_task_t::mdn_expected_value_inference &&
+      spec.input_representation_checkpoint_path.empty() &&
+      !spec.allow_untrained_representation) {
+    throw std::runtime_error(
+        "[training_spec] MDN ExpectedValue training requires "
+        "INPUT_REPRESENTATION_CHECKPOINT unless "
+        "ALLOW_UNTRAINED_REPRESENTATION is true for a smoke run");
+  }
+  if (spec.task == training_task_t::vicreg_node_representation &&
+      (!spec.input_representation_checkpoint_path.empty() ||
+       !spec.input_mdn_checkpoint_path.empty() ||
+       spec.allow_untrained_representation)) {
+    throw std::runtime_error(
+        "[training_spec] representation training does not consume "
+        "INPUT_REPRESENTATION_CHECKPOINT, INPUT_MDN_CHECKPOINT, or "
+        "ALLOW_UNTRAINED_REPRESENTATION");
+  }
 }
 
 [[nodiscard]] inline training_run_spec_t
@@ -132,6 +152,12 @@ decode_training_run_spec_from_dsl(const std::string &dsl_text) {
   spec.seed = kv::parse_i64(kv::optional(block, "SEED", "0"));
   spec.freeze_representation =
       kv::parse_bool(kv::optional(block, "FREEZE_REPRESENTATION", "true"));
+  spec.input_representation_checkpoint_path =
+      kv::optional(block, "INPUT_REPRESENTATION_CHECKPOINT", "");
+  spec.input_mdn_checkpoint_path =
+      kv::optional(block, "INPUT_MDN_CHECKPOINT", "");
+  spec.allow_untrained_representation = kv::parse_bool(
+      kv::optional(block, "ALLOW_UNTRAINED_REPRESENTATION", "false"));
   validate_training_run_spec(spec);
   return spec;
 }

@@ -10,9 +10,9 @@ SOURCE_CONTRACT_OBJS := \
   $(OUTPUT_PATH)/common/core/utils.o \
   $(OUTPUT_PATH)/common/source_contract.o \
   $(OUTPUT_PATH)/common/source_contract_decode.o \
-  $(OUTPUT_PATH)/common/source_forms_decoder.o \
-  $(OUTPUT_PATH)/common/channel_forms_decoder.o \
-  $(OUTPUT_PATH)/common/graph_forms_decoder.o \
+  $(OUTPUT_PATH)/common/source_registry_decoder.o \
+  $(OUTPUT_PATH)/common/retrieval_channel_decoder.o \
+  $(OUTPUT_PATH)/common/graph_topology_decoder.o \
   $(OUTPUT_PATH)/common/parser_types.o \
   $(OUTPUT_PATH)/common/ast.o \
   $(OUTPUT_PATH)/common/grammar_lexer.o \

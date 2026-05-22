@@ -1,0 +1,8 @@
+<instruction> ::= "NODELIFT_SRL" [<whitespace>] "{" <line_end> {<assignment>} [<whitespace>] "}" [<whitespace>] ";" [<line_end>] ;
+<assignment>  ::= [<whitespace>] <key> [<whitespace>] "=" [<whitespace>] <value> [<whitespace>] ";" <line_end> ;
+<key>         ::= "VERSION" | "COMPONENT_ID" | "FEATURE_WIDTH" | "PRICE_COORDS" | "ACTIVITY_COORDS" | "GAUGE_POLICY" | "PRECISION_POLICY" | "ACTIVITY_MODE" | "LIFT_FUTURE" | "RETURN_ACTIVITY_TOTAL" | "RETURN_ACTIVITY_SUPPORT" | "RETURN_ACTIVITY_COVERAGE" | "RETURN_COARSE_MASKS" | "EPS" | "ACTIVITY_MAX_EXP_ARG" ;
+<value>       ::= <value_char> {<value_char>} ;
+<value_char>  ::= <letter> | <digit> | "_" | "." | "-" | "+" ;
+<line_end>    ::= [<whitespace>] <break_block> ;
+<break_block> ::= {<newline>} ;
+<whitespace>  ::= {<empty>} ;

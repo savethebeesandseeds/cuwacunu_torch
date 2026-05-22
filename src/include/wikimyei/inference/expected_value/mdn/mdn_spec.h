@@ -10,7 +10,7 @@
 #include <vector>
 
 #include "piaabo/parse/simple_kv_block.h"
-#include "ujcamei/source/types/kline_feature_registry.h"
+#include "ujcamei/source/registry/types/kline_feature_registry.h"
 #include "wikimyei/inference/expected_value/mdn/mixture_density_network_utils.h"
 #include "wikimyei/inference/expected_value/mdn/stream/mdn_adapter.h"
 
@@ -105,7 +105,7 @@ inline void validate_target_coords(const std::vector<int64_t> &coords) {
   }
   if (coords.size() !=
       static_cast<std::size_t>(
-          cuwacunu::ujcamei::source::types::kKlineFeatureWidth)) {
+          cuwacunu::ujcamei::source::registry::types::kKlineFeatureWidth)) {
     throw std::runtime_error(
         "[mdn_spec] v1 requires all 9 future node feature coordinates");
   }
@@ -113,7 +113,7 @@ inline void validate_target_coords(const std::vector<int64_t> &coords) {
   seen.reserve(coords.size());
   for (const int64_t coord : coords) {
     if (coord < 0 ||
-        coord >= cuwacunu::ujcamei::source::types::kKlineFeatureWidth) {
+        coord >= cuwacunu::ujcamei::source::registry::types::kKlineFeatureWidth) {
       throw std::runtime_error("[mdn_spec] target coord out of range");
     }
     if (!seen.insert(coord).second) {
@@ -121,7 +121,7 @@ inline void validate_target_coords(const std::vector<int64_t> &coords) {
     }
   }
   for (int64_t coord = 0;
-       coord < cuwacunu::ujcamei::source::types::kKlineFeatureWidth; ++coord) {
+       coord < cuwacunu::ujcamei::source::registry::types::kKlineFeatureWidth; ++coord) {
     if (seen.find(coord) == seen.end()) {
       throw std::runtime_error(
           "[mdn_spec] v1 target coords must contain every kline coord");
@@ -170,8 +170,19 @@ inline void validate_mdn_spec(const mdn_spec_t &spec) {
   }
 }
 
+inline void decode_mdn_net_into_spec(const std::string &net_text,
+                                     mdn_spec_t &spec) {
+  namespace kv = cuwacunu::piaabo::parse::simple_kv;
+  const auto &block = kv::single_block(net_text, "MDN_NET");
+  spec.mixture_count = kv::parse_i64(kv::required(block, "MIXTURE_COUNT"));
+  spec.hidden_width = kv::parse_i64(kv::required(block, "HIDDEN_WIDTH"));
+  spec.residual_depth =
+      kv::parse_i64(kv::optional(block, "RESIDUAL_DEPTH", "0"));
+}
+
 [[nodiscard]] inline mdn_spec_t
-decode_mdn_spec_from_dsl(const std::string &dsl_text) {
+decode_mdn_spec_from_split_dsl(const std::string &dsl_text,
+                               const std::string &net_text) {
   namespace kv = cuwacunu::piaabo::parse::simple_kv;
   const auto &block = kv::single_block(dsl_text, "MDN");
   mdn_spec_t spec{};
@@ -189,13 +200,10 @@ decode_mdn_spec_from_dsl(const std::string &dsl_text) {
       kv::optional(block, "HEAD_POLICY", "per_node"));
   spec.context_reduction = mdn_spec_detail::parse_context_reduction(
       kv::optional(block, "CONTEXT_REDUCTION", "last"));
-  spec.mixture_count = kv::parse_i64(kv::required(block, "MIXTURE_COUNT"));
-  spec.hidden_width = kv::parse_i64(kv::required(block, "HIDDEN_WIDTH"));
-  spec.residual_depth =
-      kv::parse_i64(kv::optional(block, "RESIDUAL_DEPTH", "0"));
   spec.sigma_min = kv::parse_double(kv::optional(block, "SIGMA_MIN", "0.001"));
   spec.sigma_max = kv::parse_double(kv::optional(block, "SIGMA_MAX", "0.0"));
   spec.eps = kv::parse_double(kv::optional(block, "EPS", "0.000001"));
+  decode_mdn_net_into_spec(net_text, spec);
   validate_mdn_spec(spec);
   return spec;
 }

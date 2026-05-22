@@ -43,10 +43,10 @@
 
 #define WARM_UP_CUDA()                                                         \
   do {                                                                         \
-    if (::torch::cuda::is_available()) {                                         \
+    if (::torch::cuda::is_available()) {                                       \
       TICK(warming_up_cuda_device_);                                           \
-      ::torch::randn({1}, ::torch::TensorOptions().device(::torch::kCUDA));          \
-      ::torch::cuda::synchronize();                                              \
+      ::torch::randn({1}, ::torch::TensorOptions().device(::torch::kCUDA));    \
+      ::torch::cuda::synchronize();                                            \
       errno = 0; /* there was a bug on libtorch */                             \
       PRINT_TOCK_ms(warming_up_cuda_device_);                                  \
     }                                                                          \
@@ -61,6 +61,14 @@ namespace torch {
 extern ::torch::Device kDevice;
 extern ::torch::Dtype kType;
 ::torch::Device select_torch_device();
+
+/**
+ * Seeds libtorch CPU RNG, and CUDA RNGs when CUDA is available.
+ *
+ * @param seed The deterministic seed value to apply.
+ * @return A short scope string describing which torch RNGs were seeded.
+ */
+std::string seed_torch_runtime(uint64_t seed);
 
 /**
  * Validates parameters of a given ::torch::nn::Module.

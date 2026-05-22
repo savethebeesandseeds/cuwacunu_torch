@@ -1,8 +1,8 @@
 /* network_analytics.cpp */
 #include "jkimyei/evaluation/representation/network_analytics.h"
 
-#include "kikijyeba/lattice/latent_lineage_state/latent_lineage_state_lhs.h"
-#include "kikijyeba/lattice/latent_lineage_state/runtime_report/runtime_lls.h"
+#include "kikijyeba/lattice/lhs.h"
+#include "kikijyeba/lattice/runtime_report/runtime_lls.h"
 #include "piaabo/tensor/network_design/network_design.h"
 #include <ATen/ops/linalg_svd.h>
 #include <torch/torch.h>
@@ -45,8 +45,7 @@ constexpr std::string_view kRefRangeNonNegative = "[0,+inf)";
 constexpr std::string_view kRefRangePositive = "[1,+inf)";
 constexpr std::string_view kRefRangeSigned = "(-inf,+inf)";
 
-using runtime_lls_document_t = cuwacunu::kikijyeba::lattice::
-    latent_lineage_state::runtime_report::runtime_lls_document_t;
+using runtime_lls_document_t = cuwacunu::kikijyeba::lattice::runtime_report::runtime_lls_document_t;
 
 struct report_accumulator_t {
   std::uint64_t tensor_count{0};
@@ -140,12 +139,8 @@ struct tensor_snapshot_t {
 
 void append_component_report_identity_entries_(
     runtime_lls_document_t *document,
-    const tsiemene::component_report_identity_t &report_identity) {
-  if (!document)
-    return;
-  cuwacunu::kikijyeba::lattice::latent_lineage_state::runtime_report::
-      append_runtime_report_header_entries(
-          document, tsiemene::make_runtime_report_header(report_identity));
+    const evaluation_report_identity_t &report_identity) {
+  append_evaluation_report_identity_entries(document, report_identity);
 }
 
 void append_string_entry_if_nonempty_(runtime_lls_document_t *document,
@@ -154,14 +149,14 @@ void append_string_entry_if_nonempty_(runtime_lls_document_t *document,
   if (!document || value.empty())
     return;
   document->entries.push_back(
-      cuwacunu::kikijyeba::lattice::latent_lineage_state::runtime_report::
+      cuwacunu::kikijyeba::lattice::runtime_report::
           make_runtime_lls_string_entry(std::string(key), std::string(value)));
 }
 
 void append_bool_entry_(runtime_lls_document_t *document, std::string_view key,
                         bool value) {
   document->entries.push_back(
-      cuwacunu::kikijyeba::lattice::latent_lineage_state::runtime_report::
+      cuwacunu::kikijyeba::lattice::runtime_report::
           make_runtime_lls_bool_entry(std::string(key), value));
 }
 
@@ -169,7 +164,7 @@ void append_int_entry_(runtime_lls_document_t *document, std::string_view key,
                        std::int64_t value,
                        std::string_view declared_domain = kRefRangeSigned) {
   document->entries.push_back(
-      cuwacunu::kikijyeba::lattice::latent_lineage_state::runtime_report::
+      cuwacunu::kikijyeba::lattice::runtime_report::
           make_runtime_lls_int_entry(std::string(key), value,
                                      std::string(declared_domain)));
 }
@@ -178,7 +173,7 @@ void append_u64_entry_(
     runtime_lls_document_t *document, std::string_view key, std::uint64_t value,
     std::string_view declared_domain = kRefRangeNonNegative) {
   document->entries.push_back(
-      cuwacunu::kikijyeba::lattice::latent_lineage_state::runtime_report::
+      cuwacunu::kikijyeba::lattice::runtime_report::
           make_runtime_lls_uint_entry(std::string(key), value,
                                       std::string(declared_domain)));
 }
@@ -187,7 +182,7 @@ void append_double_entry_(runtime_lls_document_t *document,
                           std::string_view key, double value,
                           std::string_view declared_domain = kRefRangeSigned) {
   document->entries.push_back(
-      cuwacunu::kikijyeba::lattice::latent_lineage_state::runtime_report::
+      cuwacunu::kikijyeba::lattice::runtime_report::
           make_runtime_lls_double_entry(std::string(key), value,
                                         std::string(declared_domain)));
 }
@@ -535,7 +530,7 @@ void append_topk_entries_(runtime_lls_document_t *document,
   for (std::size_t i = 0; i < entries.size(); ++i) {
     const std::string index = std::to_string(i + 1);
     document->entries.push_back(
-        cuwacunu::kikijyeba::lattice::latent_lineage_state::runtime_report::
+        cuwacunu::kikijyeba::lattice::runtime_report::
             make_runtime_lls_string_entry(std::string(prefix) + "_" + index +
                                               "_name",
                                           entries[i].tensor_name));
@@ -829,10 +824,10 @@ void accumulate_buffer_tensor_(const std::string &tensor_name,
 [[nodiscard]] runtime_lls_document_t make_runtime_lls_document_(
     const network_analytics_report_t &report,
     std::string_view checkpoint_filename,
-    const tsiemene::component_report_identity_t &report_identity) {
+    const evaluation_report_identity_t &report_identity) {
   runtime_lls_document_t document{};
   document.entries.push_back(
-      cuwacunu::kikijyeba::lattice::latent_lineage_state::runtime_report::
+      cuwacunu::kikijyeba::lattice::runtime_report::
           make_runtime_lls_string_entry("schema", report.schema));
   append_component_report_identity_entries_(&document, report_identity);
   append_string_entry_if_nonempty_(&document, "checkpoint_file",
@@ -954,8 +949,14 @@ void accumulate_buffer_tensor_(const std::string &tensor_name,
                               report.col_norm_cv_mean);
   append_nonneg_double_entry_(&document, "network_global_entropic_capacity",
                               report.network_global_entropic_capacity);
+  append_string_entry_if_nonempty_(
+      &document, "network_global_entropic_capacity_preference",
+      "higher_is_better");
   append_nonneg_double_entry_(&document, "network_entropic_bottleneck_min",
                               report.network_entropic_bottleneck_min);
+  append_string_entry_if_nonempty_(&document,
+                                   "network_entropic_bottleneck_min_preference",
+                                   "higher_is_better");
   append_nonneg_double_entry_(&document, "network_effective_rank_p50",
                               report.network_effective_rank_p50);
   append_nonneg_double_entry_(&document, "network_effective_rank_p90",

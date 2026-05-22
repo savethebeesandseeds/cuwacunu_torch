@@ -3,7 +3,7 @@ include $(ROOT_PATH)/Makefile.config
 
 .DEFAULT_GOAL := all
 
-.PHONY: all piaabo wikimyei ujcamei jkimyei kikijyeba
+.PHONY: all piaabo wikimyei ujcamei jkimyei kikijyeba hero
 
 piaabo:
 	$(MAKE) -C $(IMPL_PATH)/piaabo all
@@ -20,4 +20,7 @@ jkimyei:
 kikijyeba:
 	$(MAKE) -C $(IMPL_PATH)/kikijyeba all
 
-all: piaabo wikimyei ujcamei jkimyei kikijyeba
+hero:
+	$(MAKE) -C $(IMPL_PATH)/hero all
+
+all: piaabo wikimyei ujcamei jkimyei kikijyeba hero

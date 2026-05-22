@@ -3,9 +3,9 @@
 
 namespace cuwacunu::wikimyei::expression::nodelift::srl::stream {
 
-cuwacunu::wikimyei::expression::nodelift::srl::graph_t
-make_srl_graph(const cuwacunu::ujcamei::graph::market_graph_t &market_graph,
-               std::optional<torch::Device> device) {
+cuwacunu::wikimyei::expression::nodelift::srl::graph_t make_srl_graph(
+    const cuwacunu::kikijyeba::topology::graph::market_graph_t &market_graph,
+    std::optional<torch::Device> device) {
   market_graph.validate();
 
   const torch::Device target_device =

@@ -1,0 +1,8 @@
+<instruction> ::= "WAVE_SETTINGS" [<whitespace>] "{" <line_end> {<assignment>} [<whitespace>] "}" [<whitespace>] ";" [<line_end>] ;
+<assignment>  ::= [<whitespace>] <key> [<whitespace>] "=" [<whitespace>] <value> [<whitespace>] ";" <line_end> ;
+<key>         ::= "WAVE_ID" | "TARGET" | "MODE" | "SOURCE_CURSOR_KIND" | "SOURCE_CURSOR_SCOPE" | "SOURCE_RANGE" | "ANCHOR_INDEX_BEGIN" | "ANCHOR_INDEX_END" ;
+<value>       ::= <value_char> {<value_char>} ;
+<value_char>  ::= <letter> | <digit> | "_" | "." | "-" | "|" | "," | "+" ;
+<line_end>    ::= [<whitespace>] <break_block> ;
+<break_block> ::= {<newline>} ;
+<whitespace>  ::= {<empty>} ;

@@ -1,0 +1,78 @@
+/*
+  Runtime Hero v2 policy key registry.
+
+  Consumers may define:
+    HERO_RUNTIME_POLICY_KEY(KEY, TYPE, REQUIRED, DEFAULT_VALUE, RANGE, ALLOWED,
+                            SUMMARY)
+*/
+
+#ifndef HERO_RUNTIME_POLICY_KEY
+#define HERO_RUNTIME_POLICY_KEY(KEY, TYPE, REQUIRED, DEFAULT_VALUE, RANGE,     \
+                                ALLOWED, SUMMARY)
+#endif
+
+HERO_RUNTIME_POLICY_KEY("protocol_layer", "enum", 1, "STDIO", "one token",
+                        "STDIO,HTTPS/SSE",
+                        "MCP protocol layer. HTTPS/SSE is reserved and fails "
+                        "fast.")
+HERO_RUNTIME_POLICY_KEY("runtime_exec_path", "path", 1,
+                        "/cuwacunu/.build/exec/cuwacunu_exec",
+                        "executable path", "absolute_or_relative_path",
+                        "Executable launched by Runtime Hero.")
+HERO_RUNTIME_POLICY_KEY(
+    "default_config_path", "path", 1, "/cuwacunu/src/config/.config",
+    "file path", "absolute_or_relative_path",
+    "Default runtime global config passed to cuwacunu_exec.")
+HERO_RUNTIME_POLICY_KEY("runtime_root", "path", 1,
+                        "/cuwacunu/.runtime/cuwacunu_exec", "directory path",
+                        "absolute_or_relative_path",
+                        "Default root for Runtime Hero job discovery.")
+HERO_RUNTIME_POLICY_KEY(
+    "allowed_job_roots", "path_list", 1,
+    "/cuwacunu/.runtime/cuwacunu_exec,/tmp", "comma-separated path list",
+    "absolute_or_relative_paths",
+    "Roots under which explicit job_dir arguments may live.")
+HERO_RUNTIME_POLICY_KEY("default_dry_run", "bool", 1, "true", "true|false",
+                        "true,false",
+                        "Default dry_run value for hero.runtime.execute.")
+HERO_RUNTIME_POLICY_KEY("allow_execute", "bool", 1, "false", "true|false",
+                        "true,false", "Allow non-dry-run runtime execution.")
+HERO_RUNTIME_POLICY_KEY(
+    "allow_train_execute", "bool", 1, "false", "true|false", "true,false",
+    "Allow non-dry-run execution when the active wave action "
+    "is train.")
+HERO_RUNTIME_POLICY_KEY("allow_force_rebuild_cache", "bool", 1, "false",
+                        "true|false", "true,false",
+                        "Allow passing --force-rebuild-cache to cuwacunu_exec.")
+HERO_RUNTIME_POLICY_KEY(
+    "require_confirm_execute", "bool", 1, "true", "true|false", "true,false",
+    "Require confirm_execute=true for non-dry-run execution.")
+HERO_RUNTIME_POLICY_KEY("allow_dev_nuke", "bool", 1, "false", "true|false",
+                        "true,false",
+                        "Allow hero.runtime.dev_nuke to clear runtime state.")
+HERO_RUNTIME_POLICY_KEY(
+    "require_confirm_dev_nuke", "bool", 1, "true", "true|false",
+    "true,false",
+    "Require confirm_dev_nuke=true for non-dry-run runtime state reset.")
+HERO_RUNTIME_POLICY_KEY(
+    "dev_nuke_backup_enabled", "bool", 1, "true", "true|false",
+    "true,false",
+    "Move runtime state into a backup snapshot before clearing it.")
+HERO_RUNTIME_POLICY_KEY(
+    "dev_nuke_backup_root", "path", 1,
+    "/cuwacunu/.runtime/.backups/hero.runtime_dev_nuke", "directory path",
+    "absolute_or_relative_path",
+    "Root for hero.runtime.dev_nuke backup snapshots.")
+HERO_RUNTIME_POLICY_KEY(
+    "allowed_dev_nuke_roots", "path_list", 1,
+    "/cuwacunu/.runtime/cuwacunu_exec", "comma-separated path list",
+    "absolute_or_relative_paths",
+    "Runtime roots that hero.runtime.dev_nuke may clear.")
+HERO_RUNTIME_POLICY_KEY(
+    "max_capture_bytes", "int", 1, "65536", ">=1024", "integer",
+    "Maximum stdout/stderr bytes retained inline per stream.")
+HERO_RUNTIME_POLICY_KEY("max_runtime_seconds", "int", 1, "600", ">=1",
+                        "integer",
+                        "Default timeout for cuwacunu_exec child processes.")
+
+#undef HERO_RUNTIME_POLICY_KEY

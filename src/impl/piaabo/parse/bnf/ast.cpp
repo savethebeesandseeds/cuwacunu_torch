@@ -2,8 +2,6 @@
 #include "piaabo/parse/bnf/ast.h"
 #include "piaabo/parse/bnf/visitor.h"
 
-DEV_WARNING("(bnf_ast.cpp)[] node hashes are not actually hashes \n");
-
 namespace cuwacunu {
 namespace piaabo {
 namespace parse {

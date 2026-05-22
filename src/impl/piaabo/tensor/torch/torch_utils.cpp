@@ -4,11 +4,6 @@
 #include <iomanip>
 #include <vector>
 
-DEV_WARNING("(torch_utils.cpp)[] #FIXME be aware to also seed the random "
-            "number generator for libtorch.\n");
-DEV_WARNING("(torch_utils.cpp)[] #FIXME consider the implincations of changing "
-            "floats to double. \n");
-
 namespace cuwacunu {
 namespace piaabo {
 namespace tensor {
@@ -18,10 +13,21 @@ namespace torch {
 ::torch::Dtype kType = ::torch::kFloat32;
 
 ::torch::Device select_torch_device() {
-  ::torch::Device aDev = ::torch::cuda::is_available() ? ::torch::kCUDA : ::torch::kCPU;
+  ::torch::Device aDev =
+      ::torch::cuda::is_available() ? ::torch::kCUDA : ::torch::kCPU;
   CLEAR_SYS_ERR(); /* CUDA lefts a residual error message */
 
   return aDev;
+}
+
+std::string seed_torch_runtime(uint64_t seed) {
+  ::torch::manual_seed(seed);
+  if (::torch::cuda::is_available()) {
+    ::torch::cuda::manual_seed_all(seed);
+    CLEAR_SYS_ERR(); /* CUDA can leave a residual error message */
+    return "torch_manual_seed_cuda_manual_seed_all";
+  }
+  return "torch_manual_seed_cpu";
 }
 
 void validate_module_parameters(const ::torch::nn::Module &model) {
@@ -57,9 +63,10 @@ void assert_tensor_shape(const ::torch::Tensor &tensor, int64_t expected_size,
 
 /**
  *  Recursively prints the values of a “small” tensor of arbitrary rank.
- *  We use data_ptr<float>() + stride arithmetic to avoid needing TensorIndex.
+ *  We print through Float64 + stride arithmetic to avoid TensorIndex while
+ *  keeping the debug path safe for all floating tensor dtypes.
  */
-void print_tensor_values(const float *data, const std::vector<int64_t> &sizes,
+void print_tensor_values(const double *data, const std::vector<int64_t> &sizes,
                          const std::vector<int64_t> &strides,
                          std::vector<int64_t> &idx, int dim) {
   // If we're at the last dimension, emit a flat “[v0, v1, …]”
@@ -71,7 +78,7 @@ void print_tensor_values(const float *data, const std::vector<int64_t> &sizes,
       int64_t offset = 0;
       for (size_t d = 0; d < sizes.size(); ++d)
         offset += idx[d] * strides[d];
-      float v = data[offset];
+      double v = data[offset];
       fprintf(LOG_FILE, "%f", v);
       if (i + 1 < sizes[dim])
         fprintf(LOG_FILE, ", ");
@@ -92,7 +99,7 @@ void print_tensor_values(const float *data, const std::vector<int64_t> &sizes,
 }
 
 void print_tensor_info(const ::torch::Tensor &tensor, const char *label) {
-  ::torch::NoGradGuard guard;          // never track this in autograd
+  ::torch::NoGradGuard guard;        // never track this in autograd
   auto dtmp = tensor.detach().cpu(); // break the graph, move to CPU
 
   log_dbg("Tensor info - %s:\n", label);
@@ -107,12 +114,12 @@ void print_tensor_info(const ::torch::Tensor &tensor, const char *label) {
   log_dbg("\tDevice: %s\n", dtmp.device().str().c_str());
   log_dbg("\tRequires gradient: %s\n", dtmp.requires_grad() ? "Yes" : "No");
 
-  // only print values if small _and_ float
-  if (dtmp.numel() <= 25 && dtmp.scalar_type() == ::torch::kFloat32) {
+  // only print values if small and floating point
+  if (dtmp.numel() <= 25 && dtmp.is_floating_point()) {
     log_dbg("\tValues: ");
 
     // 1) Copy out to CPU and ensure contiguous layout
-    auto tmp = dtmp;
+    auto tmp = dtmp.to(::torch::kFloat64);
     if (!tmp.device().is_cpu())
       tmp = tmp.cpu();
     tmp = tmp.contiguous();
@@ -120,7 +127,7 @@ void print_tensor_info(const ::torch::Tensor &tensor, const char *label) {
     // 2) Extract sizes/strides & data pointer
     std::vector<int64_t> sizes(tmp.sizes().begin(), tmp.sizes().end()),
         strides(tmp.strides().begin(), tmp.strides().end());
-    const float *data = tmp.data_ptr<float>();
+    const double *data = tmp.data_ptr<double>();
 
     // 3) Prepare an index vector and recurse
     std::vector<int64_t> idx(tmp.dim(), 0);

@@ -33,14 +33,16 @@ namespace {
 
 std::vector<source_form_t> source_spec_t::filter_source_forms(
     const instrument_signature_t &target_signature,
-    cuwacunu::ujcamei::source::types::interval_type_e target_interval) const {
+    cuwacunu::ujcamei::source::registry::types::interval_type_e target_interval)
+    const {
   return make_source_universe_from_compat(*this).filter_source_forms(
       target_signature, target_interval);
 }
 
 std::vector<source_form_t> source_universe_t::filter_source_forms(
     const instrument_signature_t &target_signature,
-    cuwacunu::ujcamei::source::types::interval_type_e target_interval) const {
+    cuwacunu::ujcamei::source::registry::types::interval_type_e target_interval)
+    const {
   std::vector<source_form_t> result;
   for (const auto &form : source_forms) {
     if (form.interval != target_interval)
@@ -186,10 +188,11 @@ int64_t source_spec_t::max_future_length() {
   return max_future;
 }
 
-cuwacunu::ujcamei::graph::market_graph_t
+cuwacunu::kikijyeba::topology::graph::market_graph_t
 source_spec_t::active_market_graph() const {
-  cuwacunu::ujcamei::graph::market_graph_t graph{};
-  std::unordered_map<std::string, cuwacunu::ujcamei::graph::node_index_t>
+  cuwacunu::kikijyeba::topology::graph::market_graph_t graph{};
+  std::unordered_map<std::string,
+                     cuwacunu::kikijyeba::topology::graph::node_index_t>
       node_to_index;
   node_to_index.reserve(graph_node_forms.size());
 
@@ -202,8 +205,9 @@ source_spec_t::active_market_graph() const {
       throw std::runtime_error(
           "[source_spec_t] active graph node has empty id");
     }
-    const auto index = static_cast<cuwacunu::ujcamei::graph::node_index_t>(
-        graph.node_ids.size());
+    const auto index =
+        static_cast<cuwacunu::kikijyeba::topology::graph::node_index_t>(
+            graph.node_ids.size());
     if (!node_to_index.emplace(node_id, index).second) {
       throw std::runtime_error("[source_spec_t] duplicate active graph node: " +
                                node_id);

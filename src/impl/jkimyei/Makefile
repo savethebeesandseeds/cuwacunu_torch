@@ -18,4 +18,4 @@ evaluation:
 	$(MAKE) -C $(IMPL_PATH)/jkimyei/evaluation all
 
 all:
-	@printf "[JKIMYEI] implementation rooms migrated; build waits for namespace/bridge pass\n"
+	@printf "[JKIMYEI] implementation modules migrated; build waits for namespace/bridge pass\n"

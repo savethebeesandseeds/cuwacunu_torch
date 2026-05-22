@@ -1,7 +1,7 @@
 /* bnf_grammar_lexer.cpp */
 #include "piaabo/parse/bnf/grammar_lexer.h"
 
-DEV_WARNING("(bnf_grammar_lexer.cpp)[] guard printing the errors with secure methods \n");
+// Backlog: lexer diagnostics should be sanitized before being shown to users.
 
 namespace cuwacunu {
 namespace piaabo {

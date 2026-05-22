@@ -17,11 +17,11 @@
 #include <utility>
 #include <vector>
 
-#include "ujcamei/graph/graph.h"
+#include "kikijyeba/topology/graph/graph.h"
 #include "ujcamei/source/contract/contract.h"
-#include "ujcamei/source/instrument_signature.h"
-#include "ujcamei/source/types/kline_feature_registry.h"
-#include "ujcamei/source/types/types_enums.h"
+#include "ujcamei/source/registry/instrument_signature.h"
+#include "ujcamei/source/registry/types/kline_feature_registry.h"
+#include "ujcamei/source/registry/types/enums.h"
 
 namespace cuwacunu::ujcamei::source::contract::validation {
 
@@ -126,7 +126,7 @@ struct nodelift_compatibility_options_t {
   bool include_future{true};
   bool require_future{true};
   std::int64_t expected_feature_width{
-      cuwacunu::ujcamei::source::types::kKlineFeatureWidth};
+      cuwacunu::ujcamei::source::registry::types::kKlineFeatureWidth};
 };
 
 [[nodiscard]] inline const char *
@@ -279,7 +279,8 @@ inline void add_issue(nodelift_compatibility_report_t &report,
 
 [[nodiscard]] inline std::string channel_label(
     const cuwacunu::ujcamei::source::contract::channel_form_t &channel) {
-  return cuwacunu::ujcamei::source::types::enum_to_string(channel.interval) +
+  return cuwacunu::ujcamei::source::registry::types::enum_to_string(
+             channel.interval) +
          "/" + channel.record_type;
 }
 
@@ -326,7 +327,8 @@ active_channels(
   for (const auto &form : source_spec->source_forms) {
     std::ostringstream row;
     row << "source|" << form.instrument << "|"
-        << cuwacunu::ujcamei::source::types::enum_to_string(form.interval)
+        << cuwacunu::ujcamei::source::registry::types::enum_to_string(
+               form.interval)
         << "|" << form.record_type << "|" << form.market_type << "|"
         << form.venue << "|" << form.base_asset << "|" << form.quote_asset
         << "|" << form.source_kind << "|" << form.source;
@@ -345,13 +347,13 @@ active_channels(
     return "none";
   }
   std::uint64_t hash = kFnvOffsetBasis;
-  mix_string(hash,
-             "cuwacunu.kikijyeba.protocol.cwu_01v.settings.dock.channels.v1");
+  mix_string(hash, "cuwacunu.ujcamei.source.retrieval.channels.v1");
   std::vector<std::string> rows;
   for (const auto &channel : source_spec->channel_forms) {
     std::ostringstream row;
     row << channel.active << "|"
-        << cuwacunu::ujcamei::source::types::enum_to_string(channel.interval)
+        << cuwacunu::ujcamei::source::registry::types::enum_to_string(
+               channel.interval)
         << "|" << channel.record_type << "|" << channel.input_length << "|"
         << channel.future_length << "|" << channel.channel_weight << "|"
         << channel.normalization_policy;
@@ -370,7 +372,7 @@ active_channels(
     return "none";
   }
   std::uint64_t hash = kFnvOffsetBasis;
-  mix_string(hash, "cuwacunu.kikijyeba.protocol.cwu_01v.topology.graph.v1");
+  mix_string(hash, "cuwacunu.kikijyeba.topology.graph.v1");
   std::vector<std::string> rows;
   rows.reserve(source_spec->graph_node_forms.size() +
                source_spec->graph_edge_forms.size());
@@ -402,7 +404,7 @@ active_channels(
 template <typename InstrumentMapT>
 [[nodiscard]] inline nodelift_compatibility_report_t
 validate_nodelift_compatibility(
-    const cuwacunu::ujcamei::graph::market_graph_t &graph,
+    const cuwacunu::kikijyeba::topology::graph::market_graph_t &graph,
     const InstrumentMapT *edge_instruments,
     const cuwacunu::ujcamei::source::contract::source_spec_t *source_spec,
     const nodelift_compatibility_options_t &options = {}) {
@@ -413,7 +415,7 @@ validate_nodelift_compatibility(
   report.edge_count = static_cast<std::int64_t>(graph.edge_ids.size());
 
   if (options.expected_feature_width !=
-      cuwacunu::ujcamei::source::types::kKlineFeatureWidth) {
+      cuwacunu::ujcamei::source::registry::types::kKlineFeatureWidth) {
     add_issue(report, validation_severity_t::error,
               validation_code_t::feature_width_mismatch,
               "NodeLift v1 requires kline feature width 9");
@@ -441,8 +443,8 @@ validate_nodelift_compatibility(
   std::unordered_set<std::string> seen_edges;
   seen_edges.reserve(graph.edge_ids.size());
   std::vector<std::int64_t> incident(graph.node_ids.size(), 0);
-  std::map<std::pair<cuwacunu::ujcamei::graph::node_index_t,
-                     cuwacunu::ujcamei::graph::node_index_t>,
+  std::map<std::pair<cuwacunu::kikijyeba::topology::graph::node_index_t,
+                     cuwacunu::kikijyeba::topology::graph::node_index_t>,
            std::size_t>
       endpoint_to_edge;
   std::set<std::pair<std::size_t, std::size_t>> reverse_pairs;
@@ -460,11 +462,13 @@ validate_nodelift_compatibility(
     const auto u = graph.base_index[e];
     const auto v = graph.quote_index[e];
     const bool valid_u =
-        u >= 0 && u < static_cast<cuwacunu::ujcamei::graph::node_index_t>(
-                          graph.node_ids.size());
+        u >= 0 &&
+        u < static_cast<cuwacunu::kikijyeba::topology::graph::node_index_t>(
+                graph.node_ids.size());
     const bool valid_v =
-        v >= 0 && v < static_cast<cuwacunu::ujcamei::graph::node_index_t>(
-                          graph.node_ids.size());
+        v >= 0 &&
+        v < static_cast<cuwacunu::kikijyeba::topology::graph::node_index_t>(
+                graph.node_ids.size());
     if (!valid_u || !valid_v) {
       add_issue(report, validation_severity_t::error,
                 validation_code_t::invalid_node_index,
@@ -481,15 +485,15 @@ validate_nodelift_compatibility(
     ++incident[static_cast<std::size_t>(v)];
 
     const auto reverse = endpoint_to_edge.find(
-        std::pair<cuwacunu::ujcamei::graph::node_index_t,
-                  cuwacunu::ujcamei::graph::node_index_t>{v, u});
+        std::pair<cuwacunu::kikijyeba::topology::graph::node_index_t,
+                  cuwacunu::kikijyeba::topology::graph::node_index_t>{v, u});
     if (reverse != endpoint_to_edge.end()) {
       reverse_pairs.insert(
           {std::min(e, reverse->second), std::max(e, reverse->second)});
     }
     endpoint_to_edge.emplace(
-        std::pair<cuwacunu::ujcamei::graph::node_index_t,
-                  cuwacunu::ujcamei::graph::node_index_t>{u, v},
+        std::pair<cuwacunu::kikijyeba::topology::graph::node_index_t,
+                  cuwacunu::kikijyeba::topology::graph::node_index_t>{u, v},
         e);
   }
 
@@ -517,7 +521,7 @@ validate_nodelift_compatibility(
     if (active_channels.empty()) {
       add_issue(report, validation_severity_t::error,
                 validation_code_t::inactive_or_empty_channel_set,
-                "kikijyeba.protocol.cwu_01v has no active channels");
+                "ujcamei.source.retrieval.channels has no active channels");
     }
 
     bool active_channel_contract_ok = !active_channels.empty();
@@ -577,7 +581,7 @@ validate_nodelift_compatibility(
         add_issue(
             report, validation_severity_t::error,
             validation_code_t::missing_source_row,
-            "kikijyeba.protocol.cwu_01v validation requested without edge "
+            "kikijyeba.topology.graph validation requested without edge "
             "instruments",
             edge_id);
         continue;
@@ -591,7 +595,7 @@ validate_nodelift_compatibility(
       }
       const auto &signature = instrument_found->second;
       std::string signature_error{};
-      if (!cuwacunu::ujcamei::source::instrument_signature_validate(
+      if (!cuwacunu::ujcamei::source::registry::instrument_signature_validate(
               signature, /*allow_any=*/false, "graph edge instrument",
               &signature_error)) {
         add_issue(report, validation_severity_t::error,
@@ -612,10 +616,12 @@ validate_nodelift_compatibility(
         const auto u = graph.base_index[e];
         const auto v = graph.quote_index[e];
         if (u >= 0 &&
-            u < static_cast<cuwacunu::ujcamei::graph::node_index_t>(
+            u < static_cast<
+                    cuwacunu::kikijyeba::topology::graph::node_index_t>(
                     graph.node_ids.size()) &&
             v >= 0 &&
-            v < static_cast<cuwacunu::ujcamei::graph::node_index_t>(
+            v < static_cast<
+                    cuwacunu::kikijyeba::topology::graph::node_index_t>(
                     graph.node_ids.size())) {
           const auto &base = graph.node_ids[static_cast<std::size_t>(u)];
           const auto &quote = graph.node_ids[static_cast<std::size_t>(v)];
@@ -709,7 +715,7 @@ validate_nodelift_compatibility(
 
 [[nodiscard]] inline nodelift_compatibility_identity_t
 make_nodelift_compatibility_identity(
-    const cuwacunu::ujcamei::graph::market_graph_t &graph,
+    const cuwacunu::kikijyeba::topology::graph::market_graph_t &graph,
     const cuwacunu::ujcamei::source::contract::source_spec_t *source_spec) {
   return nodelift_compatibility_identity_t{
       .graph_fingerprint = graph.computed_graph_order_fingerprint(),

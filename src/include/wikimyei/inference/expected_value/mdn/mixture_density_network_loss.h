@@ -1,15 +1,9 @@
 /* mixture_density_network_loss.h */
 #pragma once
-#include <cctype>
-#include <string>
 #include <torch/torch.h>
 
-#include "piaabo/core/utils.h"
 #include "wikimyei/inference/expected_value/mdn/mixture_density_network_types.h"
 #include "wikimyei/inference/expected_value/mdn/mixture_density_network_utils.h"
-
-#include "jkimyei/api/jkimyei_setup.h"
-#include "jkimyei/api/jkimyei_specs.h"
 
 namespace cuwacunu {
 namespace wikimyei {
@@ -17,8 +11,9 @@ namespace inference {
 namespace expected_value {
 namespace mdn {
 
-// ---------- Loss (configurable via jkimyei_component.loss_conf) ----------
-// options (table row id == jkimyei_component.loss_conf.id):
+// ---------- Loss ----------
+// Wikimyei owns the density math; Jkimyei owns training policy decoding.
+// Configure this loss with MdnNllOptions produced by the MDN spec/trainer:
 //   eps=<float>           (default 1e-6)
 //   sigma_min=<float>     (default 1e-3)
 //   sigma_max=<float>     (default 0.0 → disabled)
@@ -29,34 +24,10 @@ struct MdnNLLLoss {
   double sigma_max_{0.0};
   bool reduce_mean_{true};
 
-  explicit MdnNLLLoss(
-      const cuwacunu::jkimyei::jkimyei_component_t &jkimyei_component) {
-    ASSERT(
-        jkimyei_component.loss_conf.type == "NLLLoss",
-        ("Review <jkimyei_specs>.dsl: MDN requires loss type 'NLLLoss', got '" +
-         jkimyei_component.loss_conf.type + "'.")
-            .c_str());
-    try {
-      const auto &row = jkimyei_component.inst.retrive_row(
-          "loss_functions_table", jkimyei_component.loss_conf.id);
-      if (cuwacunu::jkimyei::specs::has_option(row, "eps"))
-        eps_ = cuwacunu::jkimyei::specs::to_double(
-            cuwacunu::jkimyei::specs::require_option(row, "eps"));
-      if (cuwacunu::jkimyei::specs::has_option(row, "sigma_min"))
-        sigma_min_ = cuwacunu::jkimyei::specs::to_double(
-            cuwacunu::jkimyei::specs::require_option(row, "sigma_min"));
-      if (cuwacunu::jkimyei::specs::has_option(row, "sigma_max"))
-        sigma_max_ = cuwacunu::jkimyei::specs::to_double(
-            cuwacunu::jkimyei::specs::require_option(row, "sigma_max"));
-      if (cuwacunu::jkimyei::specs::has_option(row, "reduction")) {
-        std::string red =
-            cuwacunu::jkimyei::specs::require_option(row, "reduction");
-        for (auto &c : red)
-          c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-        reduce_mean_ = (red != "sum");
-      }
-    } catch (...) { /* keep defaults */
-    }
+  explicit MdnNLLLoss(const MdnNllOptions &options = {},
+                      bool reduce_mean = true)
+      : eps_(options.eps), sigma_min_(options.sigma_min),
+        sigma_max_(options.sigma_max), reduce_mean_(reduce_mean) {
   }
 
   // Generalized masked NLL with optional weights:

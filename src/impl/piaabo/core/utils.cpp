@@ -1,12 +1,9 @@
 #include "piaabo/core/utils.h"
 
-// Optional developer reminders. Enable explicitly to avoid noisy startup logs.
-#ifdef CUWACUNU_ENABLE_DEV_WARNINGS
-DEV_WARNING("(dutils.cpp) #FIXME be aware to seed all random number generator seeds, seed is for reproducibility, you actually dont want to seed or seed with a random seed.\n");
-DEV_WARNING("(dutils.cpp) #FIXME Valgrind debug with libtorch suppressed warnings.\n");
-DEV_WARNING("(dutils.cpp) #FIXME revisit that all dependencies .d files are correct stated on the makefiles for each file, for instance dutils.cpp is missing as a dependency everywhere.\n");
-DEV_WARNING("(dutils.cpp) be aware of the floating point precision when printing doubles.\n");
-#endif
+// Developer backlog: keep Makefile dependency generation audited for this shared
+// utility module, and refresh libtorch Valgrind suppressions before treating
+// Valgrind runs as clean. Deterministic torch seeding and double serialization
+// precision now live next to the modules that own those contracts.
 
 #if __cplusplus < 201703L
 // For pre-C++17 builds where dlogs.h declares `extern std::mutex log_mutex;`.

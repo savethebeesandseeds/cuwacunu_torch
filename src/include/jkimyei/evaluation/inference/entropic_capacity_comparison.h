@@ -4,7 +4,7 @@
 #include <string_view>
 #include <unordered_map>
 
-#include "tsiemene/tsi.report.h"
+#include "jkimyei/evaluation/evaluation_report_identity.h"
 
 namespace cuwacunu {
 namespace jkimyei {
@@ -43,7 +43,7 @@ summarize_entropic_capacity_comparison(double source_entropic_load,
 [[nodiscard]] std::string
 entropic_capacity_comparison_to_latent_lineage_state_text(
     const entropic_capacity_comparison_report_t &report,
-    const tsiemene::component_report_identity_t &report_identity = {});
+    const evaluation_report_identity_t &report_identity = {});
 
 } // namespace evaluation
 } // namespace jkimyei

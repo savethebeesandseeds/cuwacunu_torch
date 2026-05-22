@@ -10,9 +10,9 @@
 #include <vector>
 
 namespace contract = cuwacunu::ujcamei::source::contract;
-namespace graph = cuwacunu::ujcamei::graph;
+namespace graph = cuwacunu::kikijyeba::topology::graph;
 namespace source = cuwacunu::ujcamei::source;
-namespace types = cuwacunu::ujcamei::source::types;
+namespace types = cuwacunu::ujcamei::source::registry::types;
 namespace validation = cuwacunu::ujcamei::source::contract::validation;
 
 namespace {
@@ -63,36 +63,39 @@ std::string replace_once(std::string text, const std::string &from,
 int main() {
   const auto config_path = contract::default_source_config_path();
   const auto paths =
-      contract::load_source_config_paths_from_config(config_path);
+      contract::load_source_registry_config_paths_from_config(config_path);
 
-  assert(paths.sources_bnf_path.find("ujcamei.sources.bnf") !=
-         std::string::npos);
-  assert(paths.sources_dsl_path.find("ujcamei.sources.dsl") !=
+  assert(paths.source_registry_dsl_bnf_path.find(
+             "ujcamei.source.registry.dsl.bnf") != std::string::npos);
+  assert(paths.source_registry_dsl_path.find("ujcamei.source.registry.dsl") !=
          std::string::npos);
 
   const auto config_text = read_text(config_path);
   assert_no_old_runtime_names(config_text);
   assert(config_text.find(std::string("ujcamei") + "_cursors") ==
          std::string::npos);
-  const auto sources_bnf = read_text(paths.sources_bnf_path);
+  const auto sources_bnf = read_text(paths.source_registry_dsl_bnf_path);
   assert_no_old_runtime_names(sources_bnf);
-  const auto sources_dsl = read_text(paths.sources_dsl_path);
-  const auto channels_bnf =
-      read_text("/cuwacunu/src/config/grammar/"
-                "kikijyeba.protocol.cwu_01v.settings.dock.channels.bnf");
+  const auto sources_dsl = read_text(paths.source_registry_dsl_path);
+  const auto channels_bnf = read_text(
+      "/cuwacunu/src/config/grammar/ujcamei.source.retrieval.channels.dsl.bnf");
   const auto channels_dsl =
-      read_text("/cuwacunu/src/config/"
-                "kikijyeba.protocol.cwu_01v.settings.dock.channels.dsl");
-  const auto graph_bnf =
-      read_text("/cuwacunu/src/config/grammar/"
-                "kikijyeba.protocol.cwu_01v.topology.graph.bnf");
-  const auto graph_dsl = read_text(
-      "/cuwacunu/src/config/kikijyeba.protocol.cwu_01v.topology.graph.dsl");
+      read_text("/cuwacunu/src/config/ujcamei.source.retrieval.channels.dsl");
+  const auto graph_bnf = read_text("/cuwacunu/src/config/grammar/"
+                                   "kikijyeba.topology.graph.dsl.bnf");
+  const auto graph_dsl =
+      read_text("/cuwacunu/src/config/kikijyeba.topology.graph.dsl");
   assert_no_old_runtime_names(sources_dsl);
   assert(sources_dsl.find("source_kind") != std::string::npos);
 
   auto universe = contract::decode_source_universe_from_default_config();
   assert(universe.source_forms.size() == 59);
+  bool saw_basic_source_row = false;
+  for (const auto &source_form : universe.source_forms) {
+    saw_basic_source_row =
+        saw_basic_source_row || source_form.record_type == "basic";
+  }
+  assert(saw_basic_source_row);
   assert(universe.csv_bootstrap_deltas == 128);
   assert(universe.data_analytics_policy.declared);
   assert(universe.data_analytics_policy.max_samples == 4096);
@@ -117,7 +120,7 @@ int main() {
   assert(spec.max_input_length() == 30);
   assert(spec.max_future_length() == 1);
 
-  const source::instrument_signature_t btc_usdt{
+  const source::registry::instrument_signature_t btc_usdt{
       .symbol = "BTCUSDT",
       .record_type = "kline",
       .market_type = "spot",
@@ -134,7 +137,7 @@ int main() {
   assert(daily_sources.front().source_kind == "real");
   assert(daily_sources.front().source.find("BTCUSDT/1d") != std::string::npos);
 
-  const source::instrument_signature_t utilities{
+  const source::registry::instrument_signature_t utilities{
       .symbol = "UTILITIES",
       .record_type = "kline",
       .market_type = "synthetic",
@@ -246,6 +249,15 @@ int main() {
     (void)contract::decode_source_spec_from_split_dsl(
         sources_bnf, sources_dsl, channels_bnf, weighted_channel_dsl, graph_bnf,
         graph_dsl);
+  });
+
+  const std::string active_basic_channel_dsl =
+      replace_once(channels_dsl, "|    1d       |   true    |    kline",
+                   "|    1d       |   true    |    basic");
+  expect_throw([&] {
+    (void)contract::decode_source_spec_from_split_dsl(
+        sources_bnf, sources_dsl, channels_bnf, active_basic_channel_dsl,
+        graph_bnf, graph_dsl);
   });
 
   const std::string missing_graph_source_dsl =

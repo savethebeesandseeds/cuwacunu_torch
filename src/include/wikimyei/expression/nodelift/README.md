@@ -17,7 +17,7 @@ The implementation should follow the document:
 - activity coordinates by endpoint aggregation.
 
 `srl/stream/srl_graph_adapter.h` provides the narrow bridge from
-`ujcamei::graph::market_graph_t` into the current SRL graph metadata.
+`kikijyeba::topology::graph::market_graph_t` into the current SRL graph metadata.
 `srl/stream/node_lifted_stream.h` composes Ujcamei graph-anchor edge batches
 with the SRL transform. Ujcamei still owns source formation and graph-collated
 edge batches; NodeLift only consumes the stable graph order and endpoint

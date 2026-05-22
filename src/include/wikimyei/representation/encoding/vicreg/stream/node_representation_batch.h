@@ -7,6 +7,7 @@
 
 #include <torch/torch.h>
 
+#include "kikijyeba/protocol/component_stream.h"
 #include "wikimyei/expression/nodelift/srl/stream/node_lifted_stream.h"
 #include "wikimyei/representation/encoding/vicreg/node_stream_adapter.h"
 
@@ -20,6 +21,13 @@ template <typename KeyT> struct node_representation_batch_t {
   std::vector<std::string> node_ids{};
   std::vector<std::string> edge_ids{};
   std::string graph_order_fingerprint{};
+  cuwacunu::ujcamei::source::retrieval::dataloader::graph_anchor_cursor_t<KeyT>
+      cursor{};
+  cuwacunu::kikijyeba::protocol::component_stream_report_t
+      nodelift_stream_report{};
+  cuwacunu::kikijyeba::protocol::component_stream_report_t stream_report{};
+  std::string nodelift_runtime_lls{};
+  std::string runtime_lls{};
 
   torch::Tensor price_residual{};      // [B_anchor,C,Hx,L,4]
   torch::Tensor price_residual_mask{}; // [B_anchor,C,Hx,L,4], bool
@@ -50,7 +58,7 @@ template <typename KeyT> struct node_representation_batch_t {
       nodelift_diagnostics{};
   cuwacunu::wikimyei::expression::nodelift::srl::nodelift_diagnostics_t
       future_nodelift_diagnostics{};
-  cuwacunu::ujcamei::source::dataloader::
+  cuwacunu::ujcamei::source::retrieval::dataloader::
       graph_anchor_edge_alignment_diagnostics_t alignment_diagnostics{};
 };
 

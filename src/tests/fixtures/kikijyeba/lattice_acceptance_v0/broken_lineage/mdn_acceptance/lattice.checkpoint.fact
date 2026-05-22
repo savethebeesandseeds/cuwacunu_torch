@@ -1,0 +1,17 @@
+schema=kikijyeba.lattice.checkpoint.v1
+fact_type=checkpoint_identity
+checkpoint_id=fixture_mdn_checkpoint
+checkpoint_path=inference.report.mdn.pt
+checkpoint_file_digest=fixture_mdn_file
+component=wikimyei.inference.expected_value.mdn
+contract_fingerprint=contract_acceptance
+graph_order_fingerprint=graph_acceptance
+source_cursor_token=cursor_acceptance
+component_assembly_fingerprint=mdn_acceptance
+created_by_job_id=cwu_01v_accept_mdn_0029_0031.train.inference_mdn
+created_by_wave_id=cwu_01v_accept_mdn_0029_0031
+created_by_exposure_fact_id=fixture_mdn
+input_checkpoints=../untracked_rep/representation.report.vicreg.pt
+direct_exposure_digest=fixture_mdn
+closure_digest=
+fact_digest=fixture_mdn_checkpoint_fact

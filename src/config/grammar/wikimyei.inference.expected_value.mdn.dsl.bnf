@@ -1,0 +1,8 @@
+<instruction> ::= "MDN" [<whitespace>] "{" <line_end> {<assignment>} [<whitespace>] "}" [<whitespace>] ";" [<line_end>] ;
+<assignment>  ::= [<whitespace>] <key> [<whitespace>] "=" [<whitespace>] <value> [<whitespace>] ";" <line_end> ;
+<key>         ::= "VERSION" | "COMPONENT_ID" | "INPUT_REPRESENTATION_ID" | "TARGET_DOMAIN" | "TARGET_COORDS" | "TARGET_MASK_POLICY" | "ACTIVITY_TARGET" | "HEAD_POLICY" | "CONTEXT_REDUCTION" | "SIGMA_MIN" | "SIGMA_MAX" | "EPS" ;
+<value>       ::= <value_char> {<value_char>} ;
+<value_char>  ::= <letter> | <digit> | "_" | "." | "-" | "," | "+" ;
+<line_end>    ::= [<whitespace>] <break_block> ;
+<break_block> ::= {<newline>} ;
+<whitespace>  ::= {<empty>} ;

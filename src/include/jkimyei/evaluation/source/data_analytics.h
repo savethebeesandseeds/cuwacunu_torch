@@ -8,7 +8,7 @@
 
 #include <torch/torch.h>
 
-#include "tsiemene/tsi.report.h"
+#include "jkimyei/evaluation/evaluation_report_identity.h"
 
 namespace cuwacunu {
 namespace jkimyei {
@@ -371,25 +371,25 @@ make_data_symbolic_analytics_report(
     const sequence_analytics_report_t &report,
     const data_analytics_options_t &options,
     std::string_view sequence_label = {},
-    const tsiemene::component_report_identity_t &report_identity = {});
+    const evaluation_report_identity_t &report_identity = {});
 
 [[nodiscard]] std::string data_analytics_to_latent_lineage_state_text(
     const data_source_analytics_report_t &report,
     const data_analytics_options_t &options, std::string_view source_label = {},
-    const tsiemene::component_report_identity_t &report_identity = {},
+    const evaluation_report_identity_t &report_identity = {},
     std::string_view contract_hash = {});
 
 [[nodiscard]] std::string
 sequence_symbolic_analytics_to_latent_lineage_state_text(
     const sequence_symbolic_analytics_report_t &report,
     std::string_view sequence_label = {},
-    const tsiemene::component_report_identity_t &report_identity = {},
+    const evaluation_report_identity_t &report_identity = {},
     sequence_symbolic_report_compaction_options_t compaction_options = {});
 
 [[nodiscard]] std::string data_symbolic_analytics_to_latent_lineage_state_text(
     const data_symbolic_analytics_report_t &report,
     std::string_view source_label = {},
-    const tsiemene::component_report_identity_t &report_identity = {},
+    const evaluation_report_identity_t &report_identity = {},
     std::string_view contract_hash = {});
 
 [[nodiscard]] std::string sequence_symbolic_analytics_to_pretty_text(
@@ -408,28 +408,28 @@ sequence_symbolic_analytics_to_latent_lineage_state_text(
     const data_analytics_options_t &options,
     const std::filesystem::path &output_file,
     std::string_view sequence_label = {}, std::string *error = nullptr,
-    const tsiemene::component_report_identity_t &report_identity = {});
+    const evaluation_report_identity_t &report_identity = {});
 
 [[nodiscard]] bool write_data_analytics_file(
     const data_source_analytics_report_t &report,
     const data_analytics_options_t &options,
     const std::filesystem::path &output_file,
     std::string_view source_label = {}, std::string *error = nullptr,
-    const tsiemene::component_report_identity_t &report_identity = {},
+    const evaluation_report_identity_t &report_identity = {},
     std::string_view contract_hash = {});
 
 [[nodiscard]] bool write_sequence_symbolic_analytics_file(
     const sequence_symbolic_analytics_report_t &report,
     const std::filesystem::path &output_file,
     std::string_view sequence_label = {}, std::string *error = nullptr,
-    const tsiemene::component_report_identity_t &report_identity = {},
+    const evaluation_report_identity_t &report_identity = {},
     sequence_symbolic_report_compaction_options_t compaction_options = {});
 
 [[nodiscard]] bool write_data_symbolic_analytics_file(
     const data_symbolic_analytics_report_t &report,
     const std::filesystem::path &output_file,
     std::string_view source_label = {}, std::string *error = nullptr,
-    const tsiemene::component_report_identity_t &report_identity = {},
+    const evaluation_report_identity_t &report_identity = {},
     std::string_view contract_hash = {});
 
 [[nodiscard]] std::string

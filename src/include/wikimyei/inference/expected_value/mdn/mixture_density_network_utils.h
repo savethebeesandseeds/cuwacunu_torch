@@ -1,16 +1,13 @@
 /* mixture_density_network_utils.h */
 #pragma once
-#include <torch/torch.h>
 #include <algorithm>
 #include <cmath>
-#include <iostream>
-#include <random>
-#include <memory>
-#include <functional>
-#include <string>
-#include <unordered_map>
+#include <cstdint>
+#include <limits>
+#include <vector>
 
-#include "jkimyei/api/jkimyei_specs.h"
+#include <torch/torch.h>
+
 #include "wikimyei/inference/expected_value/mdn/mixture_density_network_types.h"
 
 namespace cuwacunu {

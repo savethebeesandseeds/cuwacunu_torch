@@ -1,7 +1,6 @@
 #include "jkimyei/evaluation/source/data_analytics.h"
 
-#include "hero/hashimyei_hero/hashimyei_report_fragments.h"
-#include "kikijyeba/lattice/latent_lineage_state/runtime_report/runtime_lls.h"
+#include "kikijyeba/lattice/runtime_report/runtime_lls.h"
 #include <ATen/ops/linalg_eigvalsh.h>
 
 #include <algorithm>
@@ -10,6 +9,7 @@
 #include <cctype>
 #include <chrono>
 #include <cmath>
+#include <cstdlib>
 #include <exception>
 #include <fstream>
 #include <iomanip>
@@ -39,8 +39,7 @@ constexpr std::size_t kPowerSpectrumMaxBins = 64;
 constexpr double kAutocorrelationDecayThreshold = 0.36787944117144233;
 constexpr double kPi = 3.14159265358979323846;
 
-using runtime_lls_document_t = cuwacunu::kikijyeba::lattice::
-    latent_lineage_state::runtime_report::runtime_lls_document_t;
+using runtime_lls_document_t = cuwacunu::kikijyeba::lattice::runtime_report::runtime_lls_document_t;
 
 [[nodiscard]] inline double clamp_nonneg(double v) {
   return (v > 0.0) ? v : 0.0;
@@ -60,11 +59,6 @@ using runtime_lls_document_t = cuwacunu::kikijyeba::lattice::
   return text.substr(begin, end - begin);
 }
 
-[[nodiscard]] std::string
-contract_hash_path_token_(std::string_view contract_hash) {
-  return cuwacunu::hashimyei::compact_contract_hash_path_token(contract_hash);
-}
-
 [[nodiscard]] std::string analytics_path_token_(std::string_view token_text) {
   const std::string_view token = trim_ascii_ws_view_(token_text);
   if (token.empty())
@@ -79,14 +73,109 @@ contract_hash_path_token_(std::string_view contract_hash) {
   return out;
 }
 
+[[nodiscard]] std::string
+contract_hash_path_token_(std::string_view contract_hash) {
+  return analytics_path_token_(contract_hash);
+}
+
+[[nodiscard]] std::filesystem::path evaluation_store_root_() {
+  if (const char *env = std::getenv("CUWACUNU_EVALUATION_STORE_ROOT");
+      env && *env) {
+    return std::filesystem::path(env);
+  }
+  return std::filesystem::path(".runtime") / "jkimyei" / "evaluation";
+}
+
+[[nodiscard]] std::filesystem::path
+canonical_path_directory_(const std::filesystem::path &root,
+                          std::string_view canonical_path) {
+  std::filesystem::path out = root;
+  std::string segment{};
+  const auto flush = [&]() {
+    if (!segment.empty()) {
+      out /= segment;
+      segment.clear();
+    }
+  };
+  for (const unsigned char c : trim_ascii_ws_view_(canonical_path)) {
+    if (c == '.' || c == '/' || c == '\\') {
+      flush();
+      continue;
+    }
+    const bool ok = (std::isalnum(c) != 0) || c == '_' || c == '-';
+    segment.push_back(ok ? static_cast<char>(c) : '_');
+  }
+  flush();
+  return out;
+}
+
+[[nodiscard]] bool write_text_file_atomically_(
+    const std::string &payload, const std::filesystem::path &output_file,
+    std::string_view artifact_name, std::string *error) {
+  if (error)
+    error->clear();
+
+  std::error_code ec;
+  const auto parent = output_file.parent_path();
+  if (!parent.empty()) {
+    std::filesystem::create_directories(parent, ec);
+    if (ec) {
+      if (error) {
+        *error = "cannot create " + std::string(artifact_name) +
+                 " directory: " + parent.string();
+      }
+      return false;
+    }
+  }
+
+  static std::atomic<std::uint64_t> s_temp_counter{0};
+  const auto temp_suffix =
+      std::to_string(static_cast<std::uint64_t>(
+          std::chrono::steady_clock::now().time_since_epoch().count())) +
+      "." +
+      std::to_string(s_temp_counter.fetch_add(1, std::memory_order_relaxed));
+  const std::filesystem::path temp_file =
+      output_file.string() + ".tmp." + temp_suffix;
+
+  {
+    std::ofstream out(temp_file, std::ios::binary | std::ios::trunc);
+    if (!out) {
+      if (error) {
+        *error = "cannot open temporary " + std::string(artifact_name) +
+                 " file: " + temp_file.string();
+      }
+      return false;
+    }
+    out.write(payload.data(), static_cast<std::streamsize>(payload.size()));
+    out.close();
+    if (!out) {
+      std::error_code remove_ec;
+      std::filesystem::remove(temp_file, remove_ec);
+      if (error) {
+        *error = "cannot write temporary " + std::string(artifact_name) +
+                 " file: " + temp_file.string();
+      }
+      return false;
+    }
+  }
+
+  std::filesystem::rename(temp_file, output_file, ec);
+  if (ec) {
+    std::error_code remove_ec;
+    std::filesystem::remove(temp_file, remove_ec);
+    if (error) {
+      *error = "cannot replace " + std::string(artifact_name) +
+               " file: " + output_file.string();
+    }
+    return false;
+  }
+  return true;
+}
+
 void append_component_report_identity_entries_(
     runtime_lls_document_t *document,
-    const tsiemene::component_report_identity_t &report_identity) {
-  if (!document)
-    return;
-  cuwacunu::kikijyeba::lattice::latent_lineage_state::runtime_report::
-      append_runtime_report_header_entries(
-          document, tsiemene::make_runtime_report_header(report_identity));
+    const evaluation_report_identity_t &report_identity) {
+  append_evaluation_report_identity_entries(document, report_identity);
 }
 
 void append_string_entry_if_nonempty_(runtime_lls_document_t *document,
@@ -95,14 +184,14 @@ void append_string_entry_if_nonempty_(runtime_lls_document_t *document,
   if (!document || value.empty())
     return;
   document->entries.push_back(
-      cuwacunu::kikijyeba::lattice::latent_lineage_state::runtime_report::
+      cuwacunu::kikijyeba::lattice::runtime_report::
           make_runtime_lls_string_entry(std::string(key), std::string(value)));
 }
 
 void append_bool_entry_(runtime_lls_document_t *document, std::string_view key,
                         bool value) {
   document->entries.push_back(
-      cuwacunu::kikijyeba::lattice::latent_lineage_state::runtime_report::
+      cuwacunu::kikijyeba::lattice::runtime_report::
           make_runtime_lls_bool_entry(std::string(key), value));
 }
 
@@ -110,7 +199,7 @@ void append_u64_entry_(
     runtime_lls_document_t *document, std::string_view key, std::uint64_t value,
     std::string_view declared_domain = kRefRangeNonNegative) {
   document->entries.push_back(
-      cuwacunu::kikijyeba::lattice::latent_lineage_state::runtime_report::
+      cuwacunu::kikijyeba::lattice::runtime_report::
           make_runtime_lls_uint_entry(std::string(key), value,
                                       std::string(declared_domain)));
 }
@@ -119,7 +208,7 @@ void append_i64_entry_(runtime_lls_document_t *document, std::string_view key,
                        std::int64_t value,
                        std::string_view declared_domain = kRefRangeSigned) {
   document->entries.push_back(
-      cuwacunu::kikijyeba::lattice::latent_lineage_state::runtime_report::
+      cuwacunu::kikijyeba::lattice::runtime_report::
           make_runtime_lls_int_entry(std::string(key), value,
                                      std::string(declared_domain)));
 }
@@ -128,7 +217,7 @@ void append_double_entry_(runtime_lls_document_t *document,
                           std::string_view key, double value,
                           std::string_view declared_domain = kRefRangeSigned) {
   document->entries.push_back(
-      cuwacunu::kikijyeba::lattice::latent_lineage_state::runtime_report::
+      cuwacunu::kikijyeba::lattice::runtime_report::
           make_runtime_lls_double_entry(std::string(key), value,
                                         std::string(declared_domain)));
 }
@@ -748,11 +837,11 @@ void fill_remaining_stream_indices_evenly_(
     const sequence_analytics_report_t &report,
     const data_analytics_options_t &options,
     const sequence_report_key_config_t &keys, std::string_view report_label,
-    const tsiemene::component_report_identity_t &report_identity) {
+    const evaluation_report_identity_t &report_identity) {
   runtime_lls_document_t document{};
   document.entries.reserve(18);
   document.entries.push_back(
-      cuwacunu::kikijyeba::lattice::latent_lineage_state::runtime_report::
+      cuwacunu::kikijyeba::lattice::runtime_report::
           make_runtime_lls_string_entry("schema", report.schema));
   append_component_report_identity_entries_(&document, report_identity);
   append_string_entry_if_nonempty_(&document, keys.label_key, report_label);
@@ -779,6 +868,9 @@ void fill_remaining_stream_indices_evenly_(
 
   append_double_entry_(&document, keys.entropic_load_key,
                        report.sequence_entropic_load, kRefRangeNonNegative);
+  append_string_entry_if_nonempty_(
+      &document, std::string(keys.entropic_load_key) + "_role",
+      "observed_load_estimate");
   append_double_entry_(&document, keys.cov_trace_key, report.sequence_cov_trace,
                        kRefRangeNonNegative);
   append_u64_entry_(&document, keys.nonzero_eigen_count_key,
@@ -799,11 +891,11 @@ void fill_remaining_stream_indices_evenly_(
 [[nodiscard]] runtime_lls_document_t make_symbolic_runtime_lls_document_(
     const sequence_symbolic_analytics_report_t &report,
     const symbolic_report_key_config_t &keys, std::string_view report_label,
-    const tsiemene::component_report_identity_t &report_identity) {
+    const evaluation_report_identity_t &report_identity) {
   runtime_lls_document_t document{};
   document.entries.reserve(40 + report.streams.size() * 15);
   document.entries.push_back(
-      cuwacunu::kikijyeba::lattice::latent_lineage_state::runtime_report::
+      cuwacunu::kikijyeba::lattice::runtime_report::
           make_runtime_lls_string_entry("schema", report.schema));
   append_component_report_identity_entries_(&document, report_identity);
   append_string_entry_if_nonempty_(&document, keys.label_key, report_label);
@@ -1126,3 +1218,5 @@ normalize_options_(const data_analytics_options_t &in) {
   *out_mask = m;
   return true;
 }
+
+} // namespace

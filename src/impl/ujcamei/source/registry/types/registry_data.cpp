@@ -1,0 +1,1603 @@
+/* registry_data.cpp */
+#include "ujcamei/source/registry/types/data.h"
+#include "ujcamei/source/registry/types/kline_feature_registry.h"
+#include <array>
+#include <cmath>
+#include <cstring>
+#include <iomanip>
+#include <limits>
+#include <sstream>
+#include <stdexcept>
+
+namespace cuwacunu {
+namespace ujcamei {
+namespace source {
+namespace registry {
+namespace types {
+
+namespace {
+
+constexpr double kPositiveFloor = 1e-12;
+constexpr double kLog1pInputFloor = -1.0 + kPositiveFloor;
+constexpr std::size_t kMaxDetailedNormalizationWarningsPerKind = 3;
+constexpr i64 kUnixTimeMicrosecondThreshold = 100000000000000LL;
+
+enum class normalization_warning_kind_e : std::size_t {
+  LogReturnValueNonPositive = 0,
+  LogReturnValueNonFinite,
+  LogReturnReferenceNonPositive,
+  LogReturnReferenceNonFinite,
+  Log1pBelowFloor,
+  Log1pNonFinite,
+  Count
+};
+
+struct normalization_warning_scope_state_t {
+  bool active{false};
+  std::string filename{};
+  std::string policy{};
+  normalization_warning_summary_t summary{};
+  std::array<std::size_t,
+             static_cast<std::size_t>(normalization_warning_kind_e::Count)>
+      detail_counts{};
+};
+
+thread_local normalization_warning_scope_state_t
+    g_normalization_warning_scope{};
+
+void reset_normalization_warning_scope_state() {
+  g_normalization_warning_scope = normalization_warning_scope_state_t{};
+}
+
+[[nodiscard]] ms_t canonical_exchange_time_ms(i64 raw_time) {
+  while (raw_time >= kUnixTimeMicrosecondThreshold ||
+         raw_time <= -kUnixTimeMicrosecondThreshold) {
+    raw_time /= 1000;
+  }
+  return static_cast<ms_t>(raw_time);
+}
+
+[[nodiscard]] ms_t parse_exchange_time_ms(const std::string &raw) {
+  return canonical_exchange_time_ms(std::stoll(raw));
+}
+
+std::size_t &warning_summary_slot(normalization_warning_summary_t &summary,
+                                  normalization_warning_kind_e kind) {
+  switch (kind) {
+  case normalization_warning_kind_e::LogReturnValueNonPositive:
+    return summary.log_return_value_nonpositive;
+  case normalization_warning_kind_e::LogReturnValueNonFinite:
+    return summary.log_return_value_nonfinite;
+  case normalization_warning_kind_e::LogReturnReferenceNonPositive:
+    return summary.log_return_reference_nonpositive;
+  case normalization_warning_kind_e::LogReturnReferenceNonFinite:
+    return summary.log_return_reference_nonfinite;
+  case normalization_warning_kind_e::Log1pBelowFloor:
+    return summary.log1p_below_floor;
+  case normalization_warning_kind_e::Log1pNonFinite:
+    return summary.log1p_nonfinite;
+  case normalization_warning_kind_e::Count:
+  default:
+    return summary.log1p_nonfinite;
+  }
+}
+
+[[nodiscard]] const char *
+warning_kind_label(normalization_warning_kind_e kind) {
+  switch (kind) {
+  case normalization_warning_kind_e::LogReturnValueNonPositive:
+    return "log_return value <= 0";
+  case normalization_warning_kind_e::LogReturnValueNonFinite:
+    return "log_return value non-finite";
+  case normalization_warning_kind_e::LogReturnReferenceNonPositive:
+    return "log_return reference <= 0";
+  case normalization_warning_kind_e::LogReturnReferenceNonFinite:
+    return "log_return reference non-finite";
+  case normalization_warning_kind_e::Log1pBelowFloor:
+    return "log1p input <= -1";
+  case normalization_warning_kind_e::Log1pNonFinite:
+    return "log1p input non-finite";
+  case normalization_warning_kind_e::Count:
+  default:
+    return "unknown normalization warning";
+  }
+}
+
+void note_normalization_warning(normalization_warning_kind_e kind,
+                                double original, double clamped) {
+  if (!g_normalization_warning_scope.active)
+    return;
+
+  ++warning_summary_slot(g_normalization_warning_scope.summary, kind);
+
+  const std::size_t index = static_cast<std::size_t>(kind);
+  std::size_t &detailed_count =
+      g_normalization_warning_scope.detail_counts[index];
+  if (detailed_count < kMaxDetailedNormalizationWarningsPerKind) {
+    log_warn("[normalize_log_returns] policy=%s file=%s%s%s %s: original=%.17g "
+             "clamped=%.17g\n",
+             g_normalization_warning_scope.policy.c_str(), ANSI_COLOR_Dim_Gray,
+             g_normalization_warning_scope.filename.c_str(), ANSI_COLOR_RESET,
+             warning_kind_label(kind), original, clamped);
+  }
+  ++detailed_count;
+}
+
+[[nodiscard]] inline double
+clamp_positive_for_log_return(double value,
+                              normalization_warning_kind_e nonpositive_kind,
+                              normalization_warning_kind_e nonfinite_kind) {
+  if (std::isfinite(value)) {
+    if (value > 0.0)
+      return value;
+    note_normalization_warning(nonpositive_kind, value, kPositiveFloor);
+    return kPositiveFloor;
+  }
+
+  note_normalization_warning(nonfinite_kind, value, kPositiveFloor);
+  return kPositiveFloor;
+}
+
+[[nodiscard]] inline double safe_log_return(double value, double reference) {
+  const double safe_value = clamp_positive_for_log_return(
+      value, normalization_warning_kind_e::LogReturnValueNonPositive,
+      normalization_warning_kind_e::LogReturnValueNonFinite);
+  const double safe_reference = clamp_positive_for_log_return(
+      reference, normalization_warning_kind_e::LogReturnReferenceNonPositive,
+      normalization_warning_kind_e::LogReturnReferenceNonFinite);
+  return std::log(safe_value / safe_reference);
+}
+
+[[nodiscard]] inline double safe_log1p_value(double value) {
+  if (std::isfinite(value)) {
+    if (value > -1.0) {
+      return value == 0.0 ? 0.0 : std::log1p(value);
+    }
+
+    note_normalization_warning(normalization_warning_kind_e::Log1pBelowFloor,
+                               value, kLog1pInputFloor);
+    return std::log1p(kLog1pInputFloor);
+  }
+
+  note_normalization_warning(normalization_warning_kind_e::Log1pNonFinite,
+                             value, kLog1pInputFloor);
+  return std::log1p(kLog1pInputFloor);
+}
+
+template <typename KlineRecord>
+[[nodiscard]] double kline_feature_value(const KlineRecord &record,
+                                         kline_feature_e feature) {
+  switch (feature) {
+  case kline_feature_e::open:
+    return record.open_price;
+  case kline_feature_e::high:
+    return record.high_price;
+  case kline_feature_e::low:
+    return record.low_price;
+  case kline_feature_e::close:
+    return record.close_price;
+  case kline_feature_e::volume:
+    return record.volume;
+  case kline_feature_e::quote_volume:
+    return record.quote_asset_volume;
+  case kline_feature_e::trades:
+    return static_cast<double>(record.number_of_trades);
+  case kline_feature_e::taker_buy_base:
+    return record.taker_buy_base_volume;
+  case kline_feature_e::taker_buy_quote:
+    return record.taker_buy_quote_volume;
+  }
+  return 0.0;
+}
+
+void set_kline_cache_feature(kline_cache_t &record, kline_feature_e feature,
+                             double value) {
+  switch (feature) {
+  case kline_feature_e::open:
+    record.open_price = value;
+    return;
+  case kline_feature_e::high:
+    record.high_price = value;
+    return;
+  case kline_feature_e::low:
+    record.low_price = value;
+    return;
+  case kline_feature_e::close:
+    record.close_price = value;
+    return;
+  case kline_feature_e::volume:
+    record.volume = value;
+    return;
+  case kline_feature_e::quote_volume:
+    record.quote_asset_volume = value;
+    return;
+  case kline_feature_e::trades:
+    record.number_of_trades = value;
+    return;
+  case kline_feature_e::taker_buy_base:
+    record.taker_buy_base_volume = value;
+    return;
+  case kline_feature_e::taker_buy_quote:
+    record.taker_buy_quote_volume = value;
+    return;
+  }
+}
+
+template <typename KlineRecord>
+[[nodiscard]] std::vector<double>
+kline_tensor_features_from_registry(const KlineRecord &record) {
+  std::vector<double> out(static_cast<std::size_t>(kKlineFeatureWidth), 0.0);
+  for (const auto &entry : kKlineFeatureRegistry) {
+    out[static_cast<std::size_t>(entry.coord)] =
+        kline_feature_value(record, entry.feature);
+  }
+  return out;
+}
+
+[[nodiscard]] double
+normalize_kline_feature_value(const kline_feature_descriptor_t &entry,
+                              const kline_cache_t &current,
+                              const kline_cache_t &previous_valid) {
+  const double value = kline_feature_value(current, entry.feature);
+  switch (entry.normalization_rule) {
+  case kline_normalization_rule_e::log_return_to_previous_close:
+    return safe_log_return(value, previous_valid.close_price);
+  case kline_normalization_rule_e::log1p:
+    return safe_log1p_value(value);
+  }
+  return value;
+}
+
+} // namespace
+
+void begin_normalization_warning_scope(std::string_view filename,
+                                       std::string_view policy_name) {
+  reset_normalization_warning_scope_state();
+  g_normalization_warning_scope.active = true;
+  g_normalization_warning_scope.filename = std::string(filename);
+  g_normalization_warning_scope.policy = std::string(policy_name);
+}
+
+normalization_warning_summary_t end_normalization_warning_scope() {
+  normalization_warning_summary_t summary =
+      g_normalization_warning_scope.summary;
+  reset_normalization_warning_scope_state();
+  return summary;
+}
+
+/* --- --- --- --- --- --- --- --- --- --- --- */
+/*            arguments structures             */
+/* --- --- --- --- --- --- --- --- --- --- --- */
+[[nodiscard]] std::string depth_args_t::jsonify() const {
+  return jsonify_as_object(pairWrap(symbol), pairWrap(limit));
+}
+[[nodiscard]] std::string tradesRecent_args_t::jsonify() const {
+  return jsonify_as_object(pairWrap(symbol), pairWrap(limit));
+}
+[[nodiscard]] std::string tradesHistorical_args_t::jsonify() const {
+  return jsonify_as_object(pairWrap(symbol), pairWrap(limit), pairWrap(fromId));
+}
+[[nodiscard]] std::string klines_args_t::jsonify() const {
+  return jsonify_as_object(pairWrap(symbol), pairWrap(interval),
+                           pairWrap(startTime), pairWrap(endTime),
+                           pairWrap(timeZone), pairWrap(limit));
+}
+[[nodiscard]] std::string avgPrice_args_t::jsonify() const {
+  return jsonify_as_object(pairWrap(symbol));
+}
+[[nodiscard]] std::string ticker_args_t::jsonify() const {
+  return jsonify_as_object(pairWrap_variant(symbol), pairWrap(windowSize),
+                           pairWrap(type));
+}
+[[nodiscard]] std::string tickerTradingDay_args_t::jsonify() const {
+  return jsonify_as_object(pairWrap_variant(symbol), pairWrap(timeZone),
+                           pairWrap(type));
+}
+[[nodiscard]] std::string tickerPrice_args_t::jsonify() const {
+  return jsonify_as_object(pairWrap_variant(symbol));
+}
+[[nodiscard]] std::string tickerBook_args_t::jsonify() const {
+  return jsonify_as_object(pairWrap_variant(symbol));
+}
+
+/* --- --- --- --- --- --- --- --- --- --- --- */
+/*         expected return structures          */
+/*              deserializations               */
+/* --- --- --- --- --- --- --- --- --- --- --- */
+depth_ret_t::depth_ret_t(const std::string &json) { deserialize(*this, json); }
+tradesRecent_ret_t::tradesRecent_ret_t(const std::string &json) {
+  deserialize(*this, json);
+}
+tradesHistorical_ret_t::tradesHistorical_ret_t(const std::string &json) {
+  deserialize(*this, json);
+}
+klines_ret_t::klines_ret_t(const std::string &json) {
+  deserialize(*this, json);
+}
+avgPrice_ret_t::avgPrice_ret_t(const std::string &json) {
+  deserialize(*this, json);
+}
+tickerTradingDay_ret_t::tickerTradingDay_ret_t(const std::string &json) {
+  deserialize(*this, json);
+}
+ticker_ret_t::ticker_ret_t(const std::string &json) {
+  deserialize(*this, json);
+}
+tickerPrice_ret_t::tickerPrice_ret_t(const std::string &json) {
+  deserialize(*this, json);
+}
+tickerBook_ret_t::tickerBook_ret_t(const std::string &json) {
+  deserialize(*this, json);
+}
+
+/* --- --- --- --- --- --- --- --- --- --- --- */
+/*                 from_csv                    */
+/* --- --- --- --- --- --- --- --- --- --- --- */
+
+trade_t trade_t::from_csv(const std::string &line, char delimiter,
+                          size_t line_number) {
+  const size_t expected_fields = 7;
+  std::vector<std::string> tokens;
+  std::stringstream ss(line);
+  std::string token;
+  while (std::getline(ss, token, delimiter)) {
+    tokens.push_back(token);
+  }
+
+  if (tokens.size() != expected_fields) {
+    throw std::runtime_error(
+        "[from_csv](trade_t) Incorrect number of fields in line " +
+        std::to_string(line_number) + ": expected " +
+        std::to_string(expected_fields) + ", got " +
+        std::to_string(tokens.size()) + ". Line content: " + line);
+  }
+
+  trade_t trade;
+  size_t idx = 0;
+
+  try {
+    trade.id = std::stoll(tokens[idx++]);
+    trade.price = std::stod(tokens[idx++]);
+    trade.qty = std::stod(tokens[idx++]);
+    trade.quoteQty = std::stod(tokens[idx++]);
+    trade.time = parse_exchange_time_ms(tokens[idx++]);
+
+    // isBuyerMaker
+    {
+      std::string &bool_str = tokens[idx++];
+      if (bool_str == "true" || bool_str == "1") {
+        trade.isBuyerMaker = true;
+      } else if (bool_str == "false" || bool_str == "0") {
+        trade.isBuyerMaker = false;
+      } else {
+        throw std::runtime_error(
+            "[from_csv](trade_t) Invalid boolean value for isBuyerMaker: " +
+            bool_str);
+      }
+    }
+
+    // isBestMatch
+    {
+      std::string &bool_str = tokens[idx++];
+      if (bool_str == "true" || bool_str == "1") {
+        trade.isBestMatch = true;
+      } else if (bool_str == "false" || bool_str == "0") {
+        trade.isBestMatch = false;
+      } else {
+        throw std::runtime_error(
+            "[from_csv](trade_t) Invalid boolean value for isBestMatch: " +
+            bool_str);
+      }
+    }
+  } catch (const std::exception &e) {
+    throw std::runtime_error(
+        std::string("[from_csv](trade_t) Error parsing tokens in line ") +
+        std::to_string(line_number) + ": " + e.what());
+  }
+
+  return trade;
+}
+
+kline_t kline_t::from_csv(const std::string &line, char delimiter,
+                          size_t line_number) {
+  const size_t expected_fields =
+      11 + 1; /* unused additional field (per Binance doc) */
+  std::vector<std::string> tokens;
+  std::stringstream ss(line);
+  std::string token;
+  while (std::getline(ss, token, delimiter)) {
+    tokens.push_back(token);
+  }
+
+  if (tokens.size() != expected_fields) {
+    throw std::runtime_error(
+        "[from_csv](kline_t) Incorrect number of fields in line " +
+        std::to_string(line_number) + ": expected " +
+        std::to_string(expected_fields) + ", got " +
+        std::to_string(tokens.size()) + ". Line content: " + line);
+  }
+
+  kline_t kline;
+  size_t idx = 0;
+
+  try {
+    kline.open_time = parse_exchange_time_ms(tokens[idx++]);
+    kline.open_price = std::stod(tokens[idx++]);
+    kline.high_price = std::stod(tokens[idx++]);
+    kline.low_price = std::stod(tokens[idx++]);
+    kline.close_price = std::stod(tokens[idx++]);
+    kline.volume = std::stod(tokens[idx++]);
+    kline.close_time = parse_exchange_time_ms(tokens[idx++]);
+    kline.quote_asset_volume = std::stod(tokens[idx++]);
+    kline.number_of_trades = static_cast<int32_t>(std::stoi(tokens[idx++]));
+    kline.taker_buy_base_volume = std::stod(tokens[idx++]);
+    kline.taker_buy_quote_volume = std::stod(tokens[idx++]);
+  } catch (const std::exception &e) {
+    throw std::runtime_error(
+        std::string("[from_csv](kline_t) Error parsing tokens in line ") +
+        std::to_string(line_number) + ": " + e.what());
+  }
+
+  return kline;
+}
+
+basic_t basic_t::from_csv(const std::string &line, char delimiter,
+                          size_t line_number) {
+  const size_t expected_fields = 2;
+  std::vector<std::string> tokens;
+  std::stringstream ss(line);
+  std::string token;
+  while (std::getline(ss, token, delimiter)) {
+    tokens.push_back(token);
+  }
+
+  if (tokens.size() != expected_fields) {
+    throw std::runtime_error(
+        "[from_csv](basic_t) Incorrect number of fields in line " +
+        std::to_string(line_number) + ": expected " +
+        std::to_string(expected_fields) + ", got " +
+        std::to_string(tokens.size()) + ". Line content: " + line);
+  }
+
+  basic_t out;
+  size_t idx = 0;
+
+  try {
+    out.time = std::stod(tokens[idx++]);
+    out.value = std::stod(tokens[idx++]);
+  } catch (const std::exception &e) {
+    throw std::runtime_error(
+        std::string("[from_csv](basic_t) Error parsing tokens in line ") +
+        std::to_string(line_number) + ": " + e.what());
+  }
+
+  return out;
+}
+
+/* --- --- --- --- --- --- --- --- --- --- --- */
+/*                key_value                    */
+/* --- --- --- --- --- --- --- --- --- --- --- */
+kline_t::key_type_t kline_t::key_value() { return close_time; }
+trade_t::key_type_t trade_t::key_value() { return time; }
+basic_t::key_type_t basic_t::key_value() { return time; }
+
+/* --- --- --- --- --- --- --- --- --- --- --- */
+/*               from_binary                   */
+/* --- --- --- --- --- --- --- --- --- --- --- */
+kline_t kline_t::from_binary(const char *data) {
+  kline_t obj;
+  std::memcpy(&obj, data, sizeof(kline_t));
+  return obj;
+}
+
+trade_t trade_t::from_binary(const char *data) {
+  trade_t obj;
+  std::memcpy(&obj, data, sizeof(trade_t));
+  return obj;
+}
+
+basic_t basic_t::from_binary(const char *data) {
+  basic_t obj;
+  std::memcpy(&obj, data, sizeof(basic_t));
+  return obj;
+}
+
+trade_cache_t trade_cache_t::from_binary(const char *data) {
+  trade_cache_t obj;
+  std::memcpy(&obj, data, sizeof(trade_cache_t));
+  return obj;
+}
+
+kline_cache_t kline_cache_t::from_binary(const char *data) {
+  kline_cache_t obj;
+  std::memcpy(&obj, data, sizeof(kline_cache_t));
+  return obj;
+}
+
+basic_cache_t basic_cache_t::from_binary(const char *data) {
+  basic_cache_t obj;
+  std::memcpy(&obj, data, sizeof(basic_cache_t));
+  return obj;
+}
+
+trade_cache_t trade_cache_t::from_raw(const raw_type_t &raw) {
+  trade_cache_t out{};
+  out.id = raw.id;
+  out.price = raw.price;
+  out.qty = raw.qty;
+  out.quoteQty = raw.quoteQty;
+  out.time = raw.time;
+  out.isBuyerMaker = raw.isBuyerMaker;
+  out.isBestMatch = raw.isBestMatch;
+  return out;
+}
+
+kline_cache_t kline_cache_t::from_raw(const raw_type_t &raw) {
+  kline_cache_t out{};
+  out.open_time = raw.open_time;
+  out.open_price = raw.open_price;
+  out.high_price = raw.high_price;
+  out.low_price = raw.low_price;
+  out.close_price = raw.close_price;
+  out.volume = raw.volume;
+  out.close_time = raw.close_time;
+  out.quote_asset_volume = raw.quote_asset_volume;
+  out.number_of_trades = static_cast<double>(raw.number_of_trades);
+  out.taker_buy_base_volume = raw.taker_buy_base_volume;
+  out.taker_buy_quote_volume = raw.taker_buy_quote_volume;
+  return out;
+}
+
+basic_cache_t basic_cache_t::from_raw(const raw_type_t &raw) {
+  basic_cache_t out{};
+  out.time = raw.time;
+  out.value = raw.value;
+  return out;
+}
+
+/* --- --- --- --- --- --- --- --- --- --- --- */
+/*             tensor_features                 */
+/* --- --- --- --- --- --- --- --- --- --- --- */
+std::vector<double> kline_t::tensor_features() const {
+  return kline_tensor_features_from_registry(*this);
+}
+
+std::vector<double> trade_t::tensor_features() const {
+  return {// static_cast<double>(id),
+          price, qty, quoteQty,
+          // static_cast<double>(time),
+          static_cast<double>(isBuyerMaker), static_cast<double>(isBestMatch)};
+}
+
+std::vector<double> basic_t::tensor_features() const {
+  return {// time,
+          value};
+}
+
+std::vector<double> trade_cache_t::tensor_features() const {
+  return {price, qty, quoteQty, static_cast<double>(isBuyerMaker),
+          static_cast<double>(isBestMatch)};
+}
+
+std::vector<double> kline_cache_t::tensor_features() const {
+  return kline_tensor_features_from_registry(*this);
+}
+
+std::vector<double> basic_cache_t::tensor_features() const { return {value}; }
+
+trade_cache_t
+trade_cache_t::normalize_log_returns(const trade_cache_t &current,
+                                     const trade_cache_t *previous_valid) {
+  if (previous_valid == nullptr) {
+    return trade_cache_t::null_instance(current.time);
+  }
+  trade_cache_t normalized = current;
+  const double reference_price = previous_valid->price;
+
+  normalized.price = safe_log_return(current.price, reference_price);
+  normalized.qty = safe_log1p_value(current.qty);
+  normalized.quoteQty = safe_log1p_value(current.quoteQty);
+  return normalized;
+}
+
+kline_cache_t
+kline_cache_t::normalize_log_returns(const kline_cache_t &current,
+                                     const kline_cache_t *previous_valid) {
+  if (previous_valid == nullptr) {
+    return kline_cache_t::null_instance(current.close_time);
+  }
+  kline_cache_t normalized = current;
+  for (const auto &entry : kKlineFeatureRegistry) {
+    set_kline_cache_feature(
+        normalized, entry.feature,
+        normalize_kline_feature_value(entry, current, *previous_valid));
+  }
+  return normalized;
+}
+
+basic_cache_t
+basic_cache_t::normalize_log_returns(const basic_cache_t &current,
+                                     const basic_cache_t *previous_valid) {
+  if (previous_valid == nullptr) {
+    return basic_cache_t::null_instance(current.time);
+  }
+  basic_cache_t normalized = current;
+  const double reference_value = previous_valid->value;
+  normalized.value = safe_log_return(current.value, reference_value);
+  return normalized;
+}
+
+/* --- --- --- --- --- --- --- --- --- --- --- */
+/*               null_instance                 */
+/* --- --- --- --- --- --- --- --- --- --- --- */
+kline_t kline_t::null_instance(key_type_t key_value) {
+  kline_t dnew;
+
+  dnew.open_time = INT64_MIN;
+  dnew.open_price = 0.0;
+  dnew.high_price = 0.0;
+  dnew.low_price = 0.0;
+  dnew.close_price = 0.0;
+  dnew.volume = 0.0;
+  dnew.close_time = key_value;
+  dnew.quote_asset_volume = 0.0;
+  dnew.number_of_trades = -1;
+  dnew.taker_buy_base_volume = 0.0;
+  dnew.taker_buy_quote_volume = 0.0;
+
+  return dnew;
+}
+
+trade_t trade_t::null_instance(key_type_t key_value) {
+  trade_t dnew;
+
+  dnew.id = -1;
+  dnew.price = 0.0;
+  dnew.qty = 0.0;
+  dnew.quoteQty = 0.0;
+  dnew.time = key_value;
+  dnew.isBuyerMaker = false;
+  dnew.isBestMatch = false;
+
+  return dnew;
+}
+
+basic_t basic_t::null_instance(key_type_t key_value) {
+  basic_t dnew;
+
+  dnew.time = key_value;
+  dnew.value = std::numeric_limits<double>::min();
+
+  return dnew;
+}
+
+trade_cache_t trade_cache_t::null_instance(key_type_t key_value) {
+  trade_cache_t dnew{};
+  dnew.id = -1;
+  dnew.price = 0.0;
+  dnew.qty = 0.0;
+  dnew.quoteQty = 0.0;
+  dnew.time = key_value;
+  dnew.isBuyerMaker = false;
+  dnew.isBestMatch = false;
+  return dnew;
+}
+
+kline_cache_t kline_cache_t::null_instance(key_type_t key_value) {
+  kline_cache_t dnew{};
+  dnew.open_time = INT64_MIN;
+  dnew.open_price = 0.0;
+  dnew.high_price = 0.0;
+  dnew.low_price = 0.0;
+  dnew.close_price = 0.0;
+  dnew.volume = 0.0;
+  dnew.close_time = key_value;
+  dnew.quote_asset_volume = 0.0;
+  dnew.number_of_trades = -1.0;
+  dnew.taker_buy_base_volume = 0.0;
+  dnew.taker_buy_quote_volume = 0.0;
+  return dnew;
+}
+
+basic_cache_t basic_cache_t::null_instance(key_type_t key_value) {
+  basic_cache_t dnew{};
+  dnew.time = key_value;
+  dnew.value = std::numeric_limits<double>::min();
+  return dnew;
+}
+
+/* --- --- --- --- --- --- --- --- --- --- --- */
+/*                  is_valid                   */
+/* --- --- --- --- --- --- --- --- --- --- --- */
+bool kline_t::is_valid() const { return open_time != INT64_MIN; }
+bool trade_t::is_valid() const { return id >= 0; }
+bool basic_t::is_valid() const {
+  return value != std::numeric_limits<double>::min();
+}
+bool trade_cache_t::is_valid() const { return id >= 0; }
+bool kline_cache_t::is_valid() const { return open_time != INT64_MIN; }
+bool basic_cache_t::is_valid() const {
+  return value != std::numeric_limits<double>::min();
+}
+
+trade_cache_t::key_type_t trade_cache_t::key_value() { return time; }
+kline_cache_t::key_type_t kline_cache_t::key_value() { return close_time; }
+basic_cache_t::key_type_t basic_cache_t::key_value() { return time; }
+
+/* --- --- --- --- --- --- --- --- --- --- --- */
+/*                   to_csv                    */
+/* --- --- --- --- --- --- --- --- --- --- --- */
+void kline_t::to_csv(std::ostream &os, char delimiter) const {
+  os << std::fixed << std::setprecision(8) << open_time << delimiter
+     << open_price << delimiter << high_price << delimiter << low_price
+     << delimiter << close_price << delimiter << volume << delimiter
+     << close_time << delimiter << quote_asset_volume << delimiter
+     << number_of_trades << delimiter << taker_buy_base_volume << delimiter
+     << taker_buy_quote_volume << delimiter << 0;
+}
+
+void trade_t::to_csv(std::ostream &os, char delimiter) const {
+  os << std::fixed << std::setprecision(8) << id << delimiter << price
+     << delimiter << qty << delimiter << quoteQty << delimiter << time
+     << delimiter << std::boolalpha << isBuyerMaker << delimiter << isBestMatch;
+}
+
+void basic_t::to_csv(std::ostream &os, char delimiter) const {
+  os << std::fixed << std::setprecision(8) << time << delimiter << value;
+}
+
+/* --- --- --- --- --- --- --- --- --- --- --- */
+/*         initialize_statistics_pack          */
+/* --- --- --- --- --- --- --- --- --- --- --- */
+statistics_pack_t<kline_t>
+kline_t::initialize_statistics_pack(unsigned int window_size) {
+  using accessor_t = FieldAccessor<kline_t>;
+  std::vector<accessor_t> accessors = {
+      //{ [](const kline_t& k){ return static_cast<double>(k.open_time); },
+      //[](kline_t& k, double v){ k.open_time = static_cast<ms_t>(v); } },
+      {[](const kline_t &k) { return k.open_price; },
+       [](kline_t &k, double v) { k.open_price = v; }},
+      {[](const kline_t &k) { return k.high_price; },
+       [](kline_t &k, double v) { k.high_price = v; }},
+      {[](const kline_t &k) { return k.low_price; },
+       [](kline_t &k, double v) { k.low_price = v; }},
+      {[](const kline_t &k) { return k.close_price; },
+       [](kline_t &k, double v) { k.close_price = v; }},
+      {[](const kline_t &k) { return k.volume; },
+       [](kline_t &k, double v) { k.volume = v; }},
+      //{ [](const kline_t& k){ return static_cast<double>(k.close_time); },
+      //[](kline_t& k, double v){ k.close_time = static_cast<ms_t>(v); } },
+      {[](const kline_t &k) { return k.quote_asset_volume; },
+       [](kline_t &k, double v) { k.quote_asset_volume = v; }},
+      {[](const kline_t &k) { return k.taker_buy_base_volume; },
+       [](kline_t &k, double v) { k.taker_buy_base_volume = v; }},
+      {[](const kline_t &k) { return k.taker_buy_quote_volume; },
+       [](kline_t &k, double v) { k.taker_buy_quote_volume = v; }}};
+
+  return statistics_pack_t<kline_t>(window_size, accessors);
+}
+
+statistics_pack_t<trade_t>
+trade_t::initialize_statistics_pack(unsigned int window_size) {
+  using accessor_t = FieldAccessor<trade_t>;
+  std::vector<accessor_t> accessors = {
+      {[](const trade_t &t) { return t.price; },
+       [](trade_t &t, double v) { t.price = v; }},
+      {[](const trade_t &t) { return t.qty; },
+       [](trade_t &t, double v) { t.qty = v; }},
+      {[](const trade_t &t) { return t.quoteQty; },
+       [](trade_t &t, double v) { t.quoteQty = v; }}
+      //  { [](const trade_t& t){ return static_cast<double>(t.time); },
+      //  [](trade_t& t, double v){ t.time = static_cast<ms_t>(v); } },
+  };
+
+  return statistics_pack_t<trade_t>(window_size, accessors);
+}
+
+statistics_pack_t<basic_t>
+basic_t::initialize_statistics_pack(unsigned int window_size) {
+  using accessor_t = FieldAccessor<basic_t>;
+  std::vector<accessor_t> accessors = {
+      // { [](const basic_t& t){ return t.time; },  [](basic_t& t, double v){
+      // t.time = v; } },
+      {[](const basic_t &t) { return t.value; },
+       [](basic_t &t, double v) { t.value = v; }}};
+
+  return statistics_pack_t<basic_t>(window_size, accessors);
+}
+
+/* --- --- --- --- --- --- --- --- --- --- --- */
+/*         deserialize specializations         */
+/* --- --- --- --- --- --- --- --- --- --- --- */
+
+void deserialize(depth_ret_t &deserialized, const std::string &json) {
+  /*
+    {
+      "id": "51e2affb-0aba-4821-ba75-f2625006eb43",
+      "status": 200,
+      "result": {
+        "lastUpdateId": 2731179239,
+        // Bid levels are sorted from highest to lowest price.
+        "bids": [
+          [
+            "0.01379900",   // Price
+            "3.43200000"    // Quantity
+          ],
+          [
+            "0.01379800",
+            "3.24300000"
+          ]
+        ],
+        // Ask levels are sorted from lowest to highest price.
+        "asks": [
+          [
+            "0.01380000",
+            "5.91700000"
+          ],
+          [
+            "0.01380100",
+            "6.01400000"
+          ]
+        ]
+      },
+      "rateLimits": [
+        {
+          "rateLimitType": "REQUEST_WEIGHT",
+          "interval": "MINUTE",
+          "intervalNum": 1,
+          "limit": 6000,
+          "count": 2
+        }
+      ]
+    }
+  */
+
+  INITIAL_PARSE(json, root, root_obj);
+  RETRIVE_OBJECT(root_obj, "result", result_obj);
+  RETRIVE_ARRAY(result_obj, "bids", bids);
+  RETRIVE_ARRAY(result_obj, "asks", asks);
+  ALLOCATE_VECT(deserialized.bids, bids.size());
+  ALLOCATE_VECT(deserialized.asks, asks.size());
+
+  /* frame response object */
+  ASSIGN_STRING_FIELD_FROM_JSON_STRING(deserialized.frame_rsp, root_obj, "id",
+                                       frame_id);
+  ASSIGN_NUMBER_FIELD_FROM_JSON_NUMBER(deserialized.frame_rsp, root_obj,
+                                       "status", http_status, unsigned int);
+
+  /* result fields */
+  ASSIGN_NUMBER_FIELD_FROM_JSON_NUMBER(deserialized, result_obj, "lastUpdateId",
+                                       lastUpdateId, i64);
+  for (auto &bidEntry : bids) {
+    price_qty_t tmp;
+    ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING_IN_ARRAY(tmp, bidEntry, 0, price);
+    ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING_IN_ARRAY(tmp, bidEntry, 1, qty);
+    deserialized.bids.push_back(std::move(tmp));
+  }
+  for (auto &askEntry : asks) {
+    price_qty_t tmp;
+    ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING_IN_ARRAY(tmp, askEntry, 0, price);
+    ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING_IN_ARRAY(tmp, askEntry, 1, qty);
+    deserialized.asks.push_back(std::move(tmp));
+  }
+}
+
+void deserialize(tradesRecent_ret_t &deserialized, const std::string &json) {
+  /*
+    {
+      "id": "409a20bd-253d-41db-a6dd-687862a5882f",
+      "status": 200,
+      "result": [
+        {
+          "id": 194686783,
+          "price": "0.01361000",
+          "qty": "0.01400000",
+          "quoteQty": "0.00019054",
+          "time": 1660009530807,
+          "isBuyerMaker": true,
+          "isBestMatch": true
+        }
+      ],
+      "rateLimits": [ ... ]
+    }
+  */
+
+  INITIAL_PARSE(json, root, root_obj);
+  RETRIVE_ARRAY(root_obj, "result", result_arr);
+  ALLOCATE_VECT(deserialized.trades, result_arr.size());
+
+  /* frame response object */
+  ASSIGN_STRING_FIELD_FROM_JSON_STRING(deserialized.frame_rsp, root_obj, "id",
+                                       frame_id);
+  ASSIGN_NUMBER_FIELD_FROM_JSON_NUMBER(deserialized.frame_rsp, root_obj,
+                                       "status", http_status, unsigned int);
+
+  /* result fields */
+  for (auto &resultEntry : result_arr) {
+    trade_t tmp;
+    ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING_IN_OBJECT(tmp, resultEntry, "price",
+                                                   price);
+    ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING_IN_OBJECT(tmp, resultEntry, "qty",
+                                                   qty);
+    ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING_IN_OBJECT(tmp, resultEntry, "quoteQty",
+                                                   quoteQty);
+    ASSIGN_NUMBER_FIELD_FROM_JSON_NUMBER_IN_OBJECT(tmp, resultEntry, "id", id,
+                                                   i64);
+    ASSIGN_NUMBER_FIELD_FROM_JSON_NUMBER_IN_OBJECT(tmp, resultEntry, "time",
+                                                   time, ms_t);
+    ASSIGN_BOOL_FIELD_FROM_JSON_BOOL_IN_OBJECT(tmp, resultEntry, "isBuyerMaker",
+                                               isBuyerMaker);
+    ASSIGN_BOOL_FIELD_FROM_JSON_BOOL_IN_OBJECT(tmp, resultEntry, "isBestMatch",
+                                               isBestMatch);
+    deserialized.trades.push_back(std::move(tmp));
+  }
+}
+
+void deserialize(tradesHistorical_ret_t &deserialized,
+                 const std::string &json) {
+  /*
+    {
+      "id": "cffc9c7d-4efc-4ce0-b587-6b87448f052a",
+      "status": 200,
+      "result": [
+        {
+          "id": 0,
+          "price": "0.00005000",
+          "qty": "40.00000000",
+          "quoteQty": "0.00200000",
+          "time": 1500004800376,
+          "isBuyerMaker": true,
+          "isBestMatch": true
+        }
+      ],
+      "rateLimits": [ ... ]
+    }
+  */
+
+  INITIAL_PARSE(json, root, root_obj);
+  RETRIVE_ARRAY(root_obj, "result", result_arr);
+  ALLOCATE_VECT(deserialized.trades, result_arr.size());
+
+  /* frame response object */
+  ASSIGN_STRING_FIELD_FROM_JSON_STRING(deserialized.frame_rsp, root_obj, "id",
+                                       frame_id);
+  ASSIGN_NUMBER_FIELD_FROM_JSON_NUMBER(deserialized.frame_rsp, root_obj,
+                                       "status", http_status, unsigned int);
+
+  for (auto &resultEntry : result_arr) {
+    trade_t tmp;
+    ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING_IN_OBJECT(tmp, resultEntry, "price",
+                                                   price);
+    ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING_IN_OBJECT(tmp, resultEntry, "qty",
+                                                   qty);
+    ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING_IN_OBJECT(tmp, resultEntry, "quoteQty",
+                                                   quoteQty);
+    ASSIGN_NUMBER_FIELD_FROM_JSON_NUMBER_IN_OBJECT(tmp, resultEntry, "id", id,
+                                                   i64);
+    ASSIGN_NUMBER_FIELD_FROM_JSON_NUMBER_IN_OBJECT(tmp, resultEntry, "time",
+                                                   time, ms_t);
+    ASSIGN_BOOL_FIELD_FROM_JSON_BOOL_IN_OBJECT(tmp, resultEntry, "isBuyerMaker",
+                                               isBuyerMaker);
+    ASSIGN_BOOL_FIELD_FROM_JSON_BOOL_IN_OBJECT(tmp, resultEntry, "isBestMatch",
+                                               isBestMatch);
+    deserialized.trades.push_back(std::move(tmp));
+  }
+}
+
+void deserialize(klines_ret_t &deserialized, const std::string &json) {
+  /*
+    {
+      "id": "1dbbeb56-8eea-466a-8f6e-86bdcfa2fc0b",
+      "status": 200,
+      "result": [
+        [
+          1655971200000,      // Kline open time
+          "0.01086000",       // Open price
+          "0.01086600",       // High price
+          "0.01083600",       // Low price
+          "0.01083800",       // Close price
+          "2290.53800000",    // Volume
+          1655974799999,      // Kline close time
+          "24.85074442",      // Quote asset volume
+          2283,               // Number of trades
+          "1171.64000000",    // Taker buy base asset volume
+          "12.71225884",      // Taker buy quote asset volume
+          "0"                 // Unused field, ignore
+        ]
+      ],
+      "rateLimits": [ ... ]
+    }
+  */
+
+  INITIAL_PARSE(json, root, root_obj);
+  RETRIVE_ARRAY(root_obj, "result", result_arr);
+  ALLOCATE_VECT(deserialized.klines, result_arr.size());
+
+  /* frame response object */
+  ASSIGN_STRING_FIELD_FROM_JSON_STRING(deserialized.frame_rsp, root_obj, "id",
+                                       frame_id);
+  ASSIGN_NUMBER_FIELD_FROM_JSON_NUMBER(deserialized.frame_rsp, root_obj,
+                                       "status", http_status, unsigned int);
+
+  for (auto &resultEntry : result_arr) {
+    kline_t tmp;
+    ASSIGN_NUMBER_FIELD_FROM_JSON_NUMBER_IN_ARRAY(tmp, resultEntry, 0,
+                                                  open_time, ms_t);
+    ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING_IN_ARRAY(tmp, resultEntry, 1,
+                                                  open_price);
+    ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING_IN_ARRAY(tmp, resultEntry, 2,
+                                                  high_price);
+    ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING_IN_ARRAY(tmp, resultEntry, 3,
+                                                  low_price);
+    ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING_IN_ARRAY(tmp, resultEntry, 4,
+                                                  close_price);
+    ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING_IN_ARRAY(tmp, resultEntry, 5, volume);
+    ASSIGN_NUMBER_FIELD_FROM_JSON_NUMBER_IN_ARRAY(tmp, resultEntry, 6,
+                                                  close_time, ms_t);
+    ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING_IN_ARRAY(tmp, resultEntry, 7,
+                                                  quote_asset_volume);
+    ASSIGN_NUMBER_FIELD_FROM_JSON_NUMBER_IN_ARRAY(tmp, resultEntry, 8,
+                                                  number_of_trades, int32_t);
+    ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING_IN_ARRAY(tmp, resultEntry, 9,
+                                                  taker_buy_base_volume);
+    ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING_IN_ARRAY(tmp, resultEntry, 10,
+                                                  taker_buy_quote_volume);
+    deserialized.klines.push_back(std::move(tmp));
+  }
+}
+
+void deserialize(avgPrice_ret_t &deserialized, const std::string &json) {
+  /*
+    {
+      "id": "ddbfb65f-9ebf-42ec-8240-8f0f91de0867",
+      "status": 200,
+      "result": {
+        "mins": 5,                    // Average price interval (in minutes)
+        "price": "9.35751834",        // Average price
+        "closeTime": 1694061154503    // Last trade time
+      },
+      "rateLimits": [ ... ]
+    }
+  */
+
+  INITIAL_PARSE(json, root, root_obj);
+  RETRIVE_OBJECT(root_obj, "result", result_obj);
+
+  /* frame response object */
+  ASSIGN_STRING_FIELD_FROM_JSON_STRING(deserialized.frame_rsp, root_obj, "id",
+                                       frame_id);
+  ASSIGN_NUMBER_FIELD_FROM_JSON_NUMBER(deserialized.frame_rsp, root_obj,
+                                       "status", http_status, unsigned int);
+
+  /* result fields */
+  ASSIGN_NUMBER_FIELD_FROM_JSON_NUMBER(deserialized, result_obj, "mins", mins,
+                                       int);
+  ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING(deserialized, result_obj, "price",
+                                       price);
+  ASSIGN_NUMBER_FIELD_FROM_JSON_NUMBER(deserialized, result_obj, "closeTime",
+                                       close_time, ms_t);
+}
+
+void deserialize(tickerTradingDay_ret_t &deserialized,
+                 const std::string &json) {
+  /*
+    {
+      "id": "f4b3b507-c8f2-442a-81a6-b2f12daa030f",
+      "status": 200,
+      "result": {
+        "symbol": "BTCUSDT",
+        "priceChange": "-83.13000000",                // Absolute price change
+        "priceChangePercent": "-0.317",               // Relative price change
+    in percent "weightedAvgPrice": "26234.58803036",         // quoteVolume /
+    volume "openPrice": "26304.80000000", "highPrice": "26397.46000000",
+        "lowPrice": "26088.34000000",
+        "lastPrice": "26221.67000000",
+        "volume": "18495.35066000",                   // Volume in base asset
+        "quoteVolume": "485217905.04210480",
+        "openTime": 1695686400000,
+        "closeTime": 1695772799999,
+        "firstId": 3220151555,
+        "lastId": 3220849281,
+        "count": 697727
+      },
+      "rateLimits": [ ... ]
+    }
+  */
+
+  INITIAL_PARSE(json, root, root_obj);
+
+  /* frame response object */
+  ASSIGN_STRING_FIELD_FROM_JSON_STRING(deserialized.frame_rsp, root_obj, "id",
+                                       frame_id);
+  ASSIGN_NUMBER_FIELD_FROM_JSON_NUMBER(deserialized.frame_rsp, root_obj,
+                                       "status", http_status, unsigned int);
+
+  if (root_obj["result"].type ==
+      cuwacunu::piaabo::parse::json::JsonValueType::OBJECT) {
+    /* found the result to be an object */
+    RETRIVE_OBJECT(root_obj, "result", result_obj);
+    deserialized.is_full =
+        result_obj.find("weightedAvgPrice") != result_obj.end();
+
+    /* result fields */
+    if (deserialized.is_full) {
+      tick_full_t tmp;
+      ASSIGN_STRING_FIELD_FROM_JSON_STRING(tmp, result_obj, "symbol", symbol);
+      ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING(tmp, result_obj, "priceChange",
+                                           priceChange);
+      ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING(
+          tmp, result_obj, "priceChangePercent", priceChangePercent);
+      ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING(tmp, result_obj, "weightedAvgPrice",
+                                           weightedAvgPrice);
+      ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING(tmp, result_obj, "openPrice",
+                                           openPrice);
+      ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING(tmp, result_obj, "highPrice",
+                                           highPrice);
+      ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING(tmp, result_obj, "lowPrice",
+                                           lowPrice);
+      ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING(tmp, result_obj, "lastPrice",
+                                           lastPrice);
+      ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING(tmp, result_obj, "volume", volume);
+      ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING(tmp, result_obj, "quoteVolume",
+                                           quoteVolume);
+      ASSIGN_NUMBER_FIELD_FROM_JSON_NUMBER(tmp, result_obj, "openTime",
+                                           openTime, ms_t);
+      ASSIGN_NUMBER_FIELD_FROM_JSON_NUMBER(tmp, result_obj, "closeTime",
+                                           closeTime, ms_t);
+      ASSIGN_NUMBER_FIELD_FROM_JSON_NUMBER(tmp, result_obj, "firstId", firstId,
+                                           i64);
+      ASSIGN_NUMBER_FIELD_FROM_JSON_NUMBER(tmp, result_obj, "lastId", lastId,
+                                           i64);
+      ASSIGN_NUMBER_FIELD_FROM_JSON_NUMBER(tmp, result_obj, "count", count,
+                                           int32_t);
+      deserialized.ticks.emplace<tick_full_t>(std::move(tmp));
+    } else {
+      tick_mini_t tmp;
+      ASSIGN_STRING_FIELD_FROM_JSON_STRING(tmp, result_obj, "symbol", symbol);
+      ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING(tmp, result_obj, "lastPrice",
+                                           lastPrice);
+      ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING(tmp, result_obj, "openPrice",
+                                           openPrice);
+      ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING(tmp, result_obj, "highPrice",
+                                           highPrice);
+      ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING(tmp, result_obj, "lowPrice",
+                                           lowPrice);
+      ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING(tmp, result_obj, "volume", volume);
+      ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING(tmp, result_obj, "quoteVolume",
+                                           quoteVolume);
+      ASSIGN_NUMBER_FIELD_FROM_JSON_NUMBER(tmp, result_obj, "openTime",
+                                           openTime, ms_t);
+      ASSIGN_NUMBER_FIELD_FROM_JSON_NUMBER(tmp, result_obj, "closeTime",
+                                           closeTime, ms_t);
+      ASSIGN_NUMBER_FIELD_FROM_JSON_NUMBER(tmp, result_obj, "firstId", firstId,
+                                           i64);
+      ASSIGN_NUMBER_FIELD_FROM_JSON_NUMBER(tmp, result_obj, "lastId", lastId,
+                                           i64);
+      ASSIGN_NUMBER_FIELD_FROM_JSON_NUMBER(tmp, result_obj, "count", count,
+                                           int32_t);
+      deserialized.ticks.emplace<tick_mini_t>(std::move(tmp));
+    }
+  } else if (root_obj["result"].type ==
+             cuwacunu::piaabo::parse::json::JsonValueType::ARRAY) {
+    /* found result to be a list */
+    RETRIVE_ARRAY(root_obj, "result", result_arr);
+    if (result_arr.size() > 0) {
+      /* determine the type of tick */
+      deserialized.is_full =
+          result_arr[0].objectValue->find("weightedAvgPrice") !=
+          result_arr[0].objectValue->end();
+
+      /* allocate variant vector accordingly */
+      if (deserialized.is_full) {
+        deserialized.ticks.emplace<std::vector<tick_full_t>>();
+        std::get<std::vector<tick_full_t>>(deserialized.ticks)
+            .reserve(result_arr.size());
+      } else {
+        deserialized.ticks.emplace<std::vector<tick_mini_t>>();
+        std::get<std::vector<tick_mini_t>>(deserialized.ticks)
+            .reserve(result_arr.size());
+      }
+
+      /* loop over all records */
+      for (auto &resultEntry : result_arr) {
+        if (deserialized.is_full) {
+          tick_full_t tmp;
+          ASSIGN_STRING_FIELD_FROM_JSON_STRING_IN_OBJECT(tmp, resultEntry,
+                                                         "symbol", symbol);
+          ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING_IN_OBJECT(
+              tmp, resultEntry, "priceChange", priceChange);
+          ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING_IN_OBJECT(
+              tmp, resultEntry, "priceChangePercent", priceChangePercent);
+          ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING_IN_OBJECT(
+              tmp, resultEntry, "weightedAvgPrice", weightedAvgPrice);
+          ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING_IN_OBJECT(
+              tmp, resultEntry, "openPrice", openPrice);
+          ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING_IN_OBJECT(
+              tmp, resultEntry, "highPrice", highPrice);
+          ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING_IN_OBJECT(tmp, resultEntry,
+                                                         "lowPrice", lowPrice);
+          ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING_IN_OBJECT(
+              tmp, resultEntry, "lastPrice", lastPrice);
+          ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING_IN_OBJECT(tmp, resultEntry,
+                                                         "volume", volume);
+          ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING_IN_OBJECT(
+              tmp, resultEntry, "quoteVolume", quoteVolume);
+          ASSIGN_NUMBER_FIELD_FROM_JSON_NUMBER_IN_OBJECT(
+              tmp, resultEntry, "openTime", openTime, ms_t);
+          ASSIGN_NUMBER_FIELD_FROM_JSON_NUMBER_IN_OBJECT(
+              tmp, resultEntry, "closeTime", closeTime, ms_t);
+          ASSIGN_NUMBER_FIELD_FROM_JSON_NUMBER_IN_OBJECT(
+              tmp, resultEntry, "firstId", firstId, i64);
+          ASSIGN_NUMBER_FIELD_FROM_JSON_NUMBER_IN_OBJECT(tmp, resultEntry,
+                                                         "lastId", lastId, i64);
+          ASSIGN_NUMBER_FIELD_FROM_JSON_NUMBER_IN_OBJECT(
+              tmp, resultEntry, "count", count, int32_t);
+          std::get<std::vector<tick_full_t>>(deserialized.ticks)
+              .push_back(std::move(tmp));
+        } else {
+          tick_mini_t tmp;
+          ASSIGN_STRING_FIELD_FROM_JSON_STRING_IN_OBJECT(tmp, resultEntry,
+                                                         "symbol", symbol);
+          ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING_IN_OBJECT(
+              tmp, resultEntry, "lastPrice", lastPrice);
+          ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING_IN_OBJECT(
+              tmp, resultEntry, "openPrice", openPrice);
+          ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING_IN_OBJECT(
+              tmp, resultEntry, "highPrice", highPrice);
+          ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING_IN_OBJECT(tmp, resultEntry,
+                                                         "lowPrice", lowPrice);
+          ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING_IN_OBJECT(tmp, resultEntry,
+                                                         "volume", volume);
+          ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING_IN_OBJECT(
+              tmp, resultEntry, "quoteVolume", quoteVolume);
+          ASSIGN_NUMBER_FIELD_FROM_JSON_NUMBER_IN_OBJECT(
+              tmp, resultEntry, "openTime", openTime, ms_t);
+          ASSIGN_NUMBER_FIELD_FROM_JSON_NUMBER_IN_OBJECT(
+              tmp, resultEntry, "closeTime", closeTime, ms_t);
+          ASSIGN_NUMBER_FIELD_FROM_JSON_NUMBER_IN_OBJECT(
+              tmp, resultEntry, "firstId", firstId, i64);
+          ASSIGN_NUMBER_FIELD_FROM_JSON_NUMBER_IN_OBJECT(tmp, resultEntry,
+                                                         "lastId", lastId, i64);
+          ASSIGN_NUMBER_FIELD_FROM_JSON_NUMBER_IN_OBJECT(
+              tmp, resultEntry, "count", count, int32_t);
+          std::get<std::vector<tick_mini_t>>(deserialized.ticks)
+              .push_back(std::move(tmp));
+        }
+      }
+    }
+  } else {
+    /* error case */
+    log_secure_fatal(
+        "Unexpected [types_deserialization](tickerTradingDay_ret_t) encounter: "
+        "%s \n",
+        json.c_str());
+  }
+}
+
+void deserialize(ticker_ret_t &deserialized, const std::string &json) {
+  /*
+    {
+      "id": "f4b3b507-c8f2-442a-81a6-b2f12daa030f",
+      "status": 200,
+      "result": {
+        "symbol": "BNBBTC",
+        "priceChange": "0.00061500",
+        "priceChangePercent": "4.735",
+        "weightedAvgPrice": "0.01368242",
+        "openPrice": "0.01298900",
+        "highPrice": "0.01418800",
+        "lowPrice": "0.01296000",
+        "lastPrice": "0.01360400",
+        "volume": "587179.23900000",
+        "quoteVolume": "8034.03382165",
+        "openTime": 1659580020000,
+        "closeTime": 1660184865291,
+        "firstId": 192977765,       // First trade ID
+        "lastId": 195365758,        // Last trade ID
+        "count": 2387994            // Number of trades
+      },
+      "rateLimits": [ ... ]
+    }
+  */
+
+  INITIAL_PARSE(json, root, root_obj);
+
+  /* frame response object */
+  ASSIGN_STRING_FIELD_FROM_JSON_STRING(deserialized.frame_rsp, root_obj, "id",
+                                       frame_id);
+  ASSIGN_NUMBER_FIELD_FROM_JSON_NUMBER(deserialized.frame_rsp, root_obj,
+                                       "status", http_status, unsigned int);
+
+  /* determine if ticker is full */
+  if (root_obj["result"].type ==
+      cuwacunu::piaabo::parse::json::JsonValueType::OBJECT) {
+    /* found the result to be an object */
+    RETRIVE_OBJECT(root_obj, "result", result_obj);
+    deserialized.is_full =
+        result_obj.find("weightedAvgPrice") != result_obj.end();
+
+    /* result fields */
+    if (deserialized.is_full) {
+      tick_full_t tmp;
+      ASSIGN_STRING_FIELD_FROM_JSON_STRING(tmp, result_obj, "symbol", symbol);
+      ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING(tmp, result_obj, "priceChange",
+                                           priceChange);
+      ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING(
+          tmp, result_obj, "priceChangePercent", priceChangePercent);
+      ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING(tmp, result_obj, "weightedAvgPrice",
+                                           weightedAvgPrice);
+      ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING(tmp, result_obj, "openPrice",
+                                           openPrice);
+      ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING(tmp, result_obj, "highPrice",
+                                           highPrice);
+      ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING(tmp, result_obj, "lowPrice",
+                                           lowPrice);
+      ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING(tmp, result_obj, "lastPrice",
+                                           lastPrice);
+      ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING(tmp, result_obj, "volume", volume);
+      ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING(tmp, result_obj, "quoteVolume",
+                                           quoteVolume);
+      ASSIGN_NUMBER_FIELD_FROM_JSON_NUMBER(tmp, result_obj, "openTime",
+                                           openTime, ms_t);
+      ASSIGN_NUMBER_FIELD_FROM_JSON_NUMBER(tmp, result_obj, "closeTime",
+                                           closeTime, ms_t);
+      ASSIGN_NUMBER_FIELD_FROM_JSON_NUMBER(tmp, result_obj, "firstId", firstId,
+                                           i64);
+      ASSIGN_NUMBER_FIELD_FROM_JSON_NUMBER(tmp, result_obj, "lastId", lastId,
+                                           i64);
+      ASSIGN_NUMBER_FIELD_FROM_JSON_NUMBER(tmp, result_obj, "count", count,
+                                           int32_t);
+      deserialized.ticks.emplace<tick_full_t>(std::move(tmp));
+    } else {
+      tick_mini_t tmp;
+      ASSIGN_STRING_FIELD_FROM_JSON_STRING(tmp, result_obj, "symbol", symbol);
+      ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING(tmp, result_obj, "lastPrice",
+                                           lastPrice);
+      ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING(tmp, result_obj, "openPrice",
+                                           openPrice);
+      ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING(tmp, result_obj, "highPrice",
+                                           highPrice);
+      ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING(tmp, result_obj, "lowPrice",
+                                           lowPrice);
+      ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING(tmp, result_obj, "volume", volume);
+      ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING(tmp, result_obj, "quoteVolume",
+                                           quoteVolume);
+      ASSIGN_NUMBER_FIELD_FROM_JSON_NUMBER(tmp, result_obj, "openTime",
+                                           openTime, ms_t);
+      ASSIGN_NUMBER_FIELD_FROM_JSON_NUMBER(tmp, result_obj, "closeTime",
+                                           closeTime, ms_t);
+      ASSIGN_NUMBER_FIELD_FROM_JSON_NUMBER(tmp, result_obj, "firstId", firstId,
+                                           i64);
+      ASSIGN_NUMBER_FIELD_FROM_JSON_NUMBER(tmp, result_obj, "lastId", lastId,
+                                           i64);
+      ASSIGN_NUMBER_FIELD_FROM_JSON_NUMBER(tmp, result_obj, "count", count,
+                                           int32_t);
+      deserialized.ticks.emplace<tick_mini_t>(std::move(tmp));
+    }
+  } else if (root_obj["result"].type ==
+             cuwacunu::piaabo::parse::json::JsonValueType::ARRAY) {
+    /* found result to be a list */
+    RETRIVE_ARRAY(root_obj, "result", result_arr);
+    if (result_arr.size() > 0) {
+      /* determine the type of tick */
+      deserialized.is_full =
+          result_arr[0].objectValue->find("weightedAvgPrice") !=
+          result_arr[0].objectValue->end();
+
+      /* allocate variant vector accordingly */
+      if (deserialized.is_full) {
+        deserialized.ticks.emplace<std::vector<tick_full_t>>();
+        std::get<std::vector<tick_full_t>>(deserialized.ticks)
+            .reserve(result_arr.size());
+      } else {
+        deserialized.ticks.emplace<std::vector<tick_mini_t>>();
+        std::get<std::vector<tick_mini_t>>(deserialized.ticks)
+            .reserve(result_arr.size());
+      }
+
+      /* loop over all records */
+      for (auto &resultEntry : result_arr) {
+        if (deserialized.is_full) {
+          tick_full_t tmp;
+          ASSIGN_STRING_FIELD_FROM_JSON_STRING_IN_OBJECT(tmp, resultEntry,
+                                                         "symbol", symbol);
+          ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING_IN_OBJECT(
+              tmp, resultEntry, "priceChange", priceChange);
+          ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING_IN_OBJECT(
+              tmp, resultEntry, "priceChangePercent", priceChangePercent);
+          ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING_IN_OBJECT(
+              tmp, resultEntry, "weightedAvgPrice", weightedAvgPrice);
+          ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING_IN_OBJECT(
+              tmp, resultEntry, "openPrice", openPrice);
+          ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING_IN_OBJECT(
+              tmp, resultEntry, "highPrice", highPrice);
+          ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING_IN_OBJECT(tmp, resultEntry,
+                                                         "lowPrice", lowPrice);
+          ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING_IN_OBJECT(
+              tmp, resultEntry, "lastPrice", lastPrice);
+          ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING_IN_OBJECT(tmp, resultEntry,
+                                                         "volume", volume);
+          ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING_IN_OBJECT(
+              tmp, resultEntry, "quoteVolume", quoteVolume);
+          ASSIGN_NUMBER_FIELD_FROM_JSON_NUMBER_IN_OBJECT(
+              tmp, resultEntry, "openTime", openTime, ms_t);
+          ASSIGN_NUMBER_FIELD_FROM_JSON_NUMBER_IN_OBJECT(
+              tmp, resultEntry, "closeTime", closeTime, ms_t);
+          ASSIGN_NUMBER_FIELD_FROM_JSON_NUMBER_IN_OBJECT(
+              tmp, resultEntry, "firstId", firstId, i64);
+          ASSIGN_NUMBER_FIELD_FROM_JSON_NUMBER_IN_OBJECT(tmp, resultEntry,
+                                                         "lastId", lastId, i64);
+          ASSIGN_NUMBER_FIELD_FROM_JSON_NUMBER_IN_OBJECT(
+              tmp, resultEntry, "count", count, int32_t);
+          std::get<std::vector<tick_full_t>>(deserialized.ticks)
+              .push_back(std::move(tmp));
+        } else {
+          tick_mini_t tmp;
+          ASSIGN_STRING_FIELD_FROM_JSON_STRING_IN_OBJECT(tmp, resultEntry,
+                                                         "symbol", symbol);
+          ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING_IN_OBJECT(
+              tmp, resultEntry, "lastPrice", lastPrice);
+          ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING_IN_OBJECT(
+              tmp, resultEntry, "openPrice", openPrice);
+          ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING_IN_OBJECT(
+              tmp, resultEntry, "highPrice", highPrice);
+          ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING_IN_OBJECT(tmp, resultEntry,
+                                                         "lowPrice", lowPrice);
+          ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING_IN_OBJECT(tmp, resultEntry,
+                                                         "volume", volume);
+          ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING_IN_OBJECT(
+              tmp, resultEntry, "quoteVolume", quoteVolume);
+          ASSIGN_NUMBER_FIELD_FROM_JSON_NUMBER_IN_OBJECT(
+              tmp, resultEntry, "openTime", openTime, ms_t);
+          ASSIGN_NUMBER_FIELD_FROM_JSON_NUMBER_IN_OBJECT(
+              tmp, resultEntry, "closeTime", closeTime, ms_t);
+          ASSIGN_NUMBER_FIELD_FROM_JSON_NUMBER_IN_OBJECT(
+              tmp, resultEntry, "firstId", firstId, i64);
+          ASSIGN_NUMBER_FIELD_FROM_JSON_NUMBER_IN_OBJECT(tmp, resultEntry,
+                                                         "lastId", lastId, i64);
+          ASSIGN_NUMBER_FIELD_FROM_JSON_NUMBER_IN_OBJECT(
+              tmp, resultEntry, "count", count, int32_t);
+          std::get<std::vector<tick_mini_t>>(deserialized.ticks)
+              .push_back(std::move(tmp));
+        }
+      }
+    }
+  } else {
+    /* error case */
+    log_secure_fatal(
+        "Unexpected [types_deserialization](ticker_ret_t) encounter: %s \n",
+        json.c_str());
+  }
+}
+
+void deserialize(tickerPrice_ret_t &deserialized, const std::string &json) {
+  /*
+    {
+      "id": "043a7cf2-bde3-4888-9604-c8ac41fcba4d",
+      "status": 200,
+      "result": {
+        "symbol": "BNBBTC",
+        "price": "0.01361900"
+      },
+      "rateLimits": [ ... ]
+    }
+  */
+
+  INITIAL_PARSE(json, root, root_obj);
+
+  /* frame response object */
+  ASSIGN_STRING_FIELD_FROM_JSON_STRING(deserialized.frame_rsp, root_obj, "id",
+                                       frame_id);
+  ASSIGN_NUMBER_FIELD_FROM_JSON_NUMBER(deserialized.frame_rsp, root_obj,
+                                       "status", http_status, unsigned int);
+
+  /* result fields */
+  if (root_obj["result"].type ==
+      cuwacunu::piaabo::parse::json::JsonValueType::OBJECT) {
+    RETRIVE_OBJECT(root_obj, "result", result_obj);
+    /* only one symbol */
+    {
+      price_t tmp;
+      ASSIGN_STRING_FIELD_FROM_JSON_STRING(tmp, result_obj, "symbol", symbol);
+      ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING(tmp, result_obj, "price", price);
+      deserialized.prices.emplace<price_t>(std::move(tmp));
+    }
+  } else if (root_obj["result"].type ==
+             cuwacunu::piaabo::parse::json::JsonValueType::ARRAY) {
+    RETRIVE_ARRAY(root_obj, "result", result_arr);
+    deserialized.prices.emplace<std::vector<price_t>>();
+    std::get<std::vector<price_t>>(deserialized.prices)
+        .reserve(result_arr.size());
+    /* list of symbols */
+    for (auto &resultEntry : result_arr) {
+      price_t tmp;
+      ASSIGN_STRING_FIELD_FROM_JSON_STRING_IN_OBJECT(tmp, resultEntry, "symbol",
+                                                     symbol);
+      ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING_IN_OBJECT(tmp, resultEntry, "price",
+                                                     price);
+      std::get<std::vector<price_t>>(deserialized.prices)
+          .push_back(std::move(tmp));
+    }
+  } else {
+    /* error case */
+    log_secure_fatal("Unexpected [types_deserialization](tickerPrice_ret_t) "
+                     "encounter: %s \n",
+                     json.c_str());
+  }
+}
+
+void deserialize(tickerBook_ret_t &deserialized, const std::string &json) {
+  /*
+    {
+      "id": "9d32157c-a556-4d27-9866-66760a174b57",
+      "status": 200,
+      "result": {
+        "symbol": "BNBBTC",
+        "bidPrice": "0.01358000",
+        "bidQty": "12.53400000",
+        "askPrice": "0.01358100",
+        "askQty": "17.83700000"
+      },
+      "rateLimits": [ ... ]
+    }
+  */
+
+  INITIAL_PARSE(json, root, root_obj);
+
+  /* frame response object */
+  ASSIGN_STRING_FIELD_FROM_JSON_STRING(deserialized.frame_rsp, root_obj, "id",
+                                       frame_id);
+  ASSIGN_NUMBER_FIELD_FROM_JSON_NUMBER(deserialized.frame_rsp, root_obj,
+                                       "status", http_status, unsigned int);
+
+  /* result fields */
+  if (root_obj["result"].type ==
+      cuwacunu::piaabo::parse::json::JsonValueType::OBJECT) {
+    RETRIVE_OBJECT(root_obj, "result", result_obj);
+    /* only one symbol */
+    {
+      bookPrice_t tmp;
+      ASSIGN_STRING_FIELD_FROM_JSON_STRING(tmp, result_obj, "symbol", symbol);
+      ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING(tmp, result_obj, "bidPrice",
+                                           bidPrice);
+      ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING(tmp, result_obj, "bidQty", bidQty);
+      ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING(tmp, result_obj, "askPrice",
+                                           askPrice);
+      ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING(tmp, result_obj, "askQty", askQty);
+      deserialized.bookPrices.emplace<bookPrice_t>(std::move(tmp));
+    }
+  } else if (root_obj["result"].type ==
+             cuwacunu::piaabo::parse::json::JsonValueType::ARRAY) {
+    RETRIVE_ARRAY(root_obj, "result", result_arr);
+    deserialized.bookPrices.emplace<std::vector<bookPrice_t>>();
+    std::get<std::vector<bookPrice_t>>(deserialized.bookPrices)
+        .reserve(result_arr.size());
+    /* list of symbols */
+    for (auto &resultEntry : result_arr) {
+      bookPrice_t tmp;
+      ASSIGN_STRING_FIELD_FROM_JSON_STRING_IN_OBJECT(tmp, resultEntry, "symbol",
+                                                     symbol);
+      ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING_IN_OBJECT(tmp, resultEntry,
+                                                     "bidPrice", bidPrice);
+      ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING_IN_OBJECT(tmp, resultEntry, "bidQty",
+                                                     bidQty);
+      ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING_IN_OBJECT(tmp, resultEntry,
+                                                     "askPrice", askPrice);
+      ASSIGN_DOUBLE_FIELD_FROM_JSON_STRING_IN_OBJECT(tmp, resultEntry, "askQty",
+                                                     askQty);
+      std::get<std::vector<bookPrice_t>>(deserialized.bookPrices)
+          .push_back(std::move(tmp));
+    }
+  } else {
+    /* error case */
+    log_secure_fatal(
+        "Unexpected [types_deserialization](tickerBook_ret_t) encounter: %s \n",
+        json.c_str());
+  }
+}
+
+} /* namespace types */
+} /* namespace registry */
+} /* namespace source */
+} /* namespace ujcamei */
+} /* namespace cuwacunu */

@@ -1,9 +1,8 @@
 /* bnf_grammar_parser.cpp */
 #include "piaabo/parse/bnf/grammar_parser.h"
 
-DEV_WARNING("(bnf_grammar_parser.cpp)[] guard printing the errors with secure methods \n");
-DEV_WARNING("(bnf_grammar_parser.cpp)[] could use better grammar verification \n");
-
+// Backlog: grammar diagnostics should be sanitized before being shown to users.
+// Additional grammar verification belongs in parser tests.
 
 namespace cuwacunu {
 namespace piaabo {

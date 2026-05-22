@@ -30,7 +30,7 @@ ret_conf(const cuwacunu::jkimyei::specs::jkimyei_specs_t &inst,
          const std::string &component) {
   jkimyei_conf_t ret;
   ret.id = cuwacunu::jkimyei::specs::require_column(row, component);
-  const auto component_row = inst.retrive_row(component + "s_table", ret.id);
+  const auto component_row = inst.retrieve_row(component + "s_table", ret.id);
   ret.type = cuwacunu::jkimyei::specs::require_column(component_row, "type");
   return ret;
 }
@@ -138,7 +138,7 @@ struct jkimyei_component_t {
       if (profile_row.has_value()) {
         row = *profile_row;
       } else {
-        row = instruction.retrive_row("component_profiles_table",
+        row = instruction.retrieve_row("component_profiles_table",
                                       component_lookup_name);
       }
       from_component_profile_row = true;

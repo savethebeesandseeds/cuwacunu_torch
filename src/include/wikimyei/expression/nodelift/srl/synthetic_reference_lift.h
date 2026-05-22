@@ -10,23 +10,23 @@
 
 #include <torch/torch.h>
 
-#include "ujcamei/graph/graph.h"
-#include "ujcamei/source/types/kline_feature_registry.h"
+#include "kikijyeba/topology/graph/graph.h"
+#include "ujcamei/source/registry/types/kline_feature_registry.h"
 
 namespace cuwacunu::wikimyei::expression::nodelift::srl {
 
 inline constexpr const char *kCanonicalToken =
     "wikimyei.expression.nodelift.srl.v1";
 inline constexpr int64_t kFeatureWidth =
-    cuwacunu::ujcamei::source::types::kKlineFeatureWidth;
+    cuwacunu::ujcamei::source::registry::types::kKlineFeatureWidth;
 inline constexpr int64_t kPriceWidth =
-    cuwacunu::ujcamei::source::types::kKlinePriceFeatureWidth;
+    cuwacunu::ujcamei::source::registry::types::kKlinePriceFeatureWidth;
 inline constexpr int64_t kActivityWidth =
-    cuwacunu::ujcamei::source::types::kKlineActivityFeatureWidth;
+    cuwacunu::ujcamei::source::registry::types::kKlineActivityFeatureWidth;
 inline constexpr std::array<int64_t, kPriceWidth> kDefaultPriceCoords =
-    cuwacunu::ujcamei::source::types::kKlinePriceFeatureCoords;
+    cuwacunu::ujcamei::source::registry::types::kKlinePriceFeatureCoords;
 inline constexpr std::array<int64_t, kActivityWidth> kDefaultActivityCoords =
-    cuwacunu::ujcamei::source::types::kKlineActivityFeatureCoords;
+    cuwacunu::ujcamei::source::registry::types::kKlineActivityFeatureCoords;
 
 struct graph_t {
   std::vector<std::string> node_ids{};
@@ -41,8 +41,8 @@ struct graph_t {
   [[nodiscard]] std::string computed_graph_order_fingerprint() const {
     auto base_cpu = base_index.to(torch::kCPU).to(torch::kInt64).contiguous();
     auto quote_cpu = quote_index.to(torch::kCPU).to(torch::kInt64).contiguous();
-    std::vector<cuwacunu::ujcamei::graph::node_index_t> base;
-    std::vector<cuwacunu::ujcamei::graph::node_index_t> quote;
+    std::vector<cuwacunu::kikijyeba::topology::graph::node_index_t> base;
+    std::vector<cuwacunu::kikijyeba::topology::graph::node_index_t> quote;
     base.reserve(static_cast<std::size_t>(base_cpu.numel()));
     quote.reserve(static_cast<std::size_t>(quote_cpu.numel()));
     const auto *base_ptr = base_cpu.data_ptr<int64_t>();
@@ -51,8 +51,8 @@ struct graph_t {
       base.push_back(base_ptr[e]);
       quote.push_back(quote_ptr[e]);
     }
-    return cuwacunu::ujcamei::graph::compute_graph_order_fingerprint(
-        node_ids, edge_ids, base, quote);
+    return cuwacunu::kikijyeba::topology::graph::
+        compute_graph_order_fingerprint(node_ids, edge_ids, base, quote);
   }
   void validate() const;
 };

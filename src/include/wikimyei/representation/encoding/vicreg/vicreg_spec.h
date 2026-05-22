@@ -10,7 +10,7 @@
 #include <vector>
 
 #include "piaabo/parse/simple_kv_block.h"
-#include "ujcamei/source/types/kline_feature_registry.h"
+#include "ujcamei/source/registry/types/kline_feature_registry.h"
 #include "wikimyei/representation/encoding/vicreg/node_stream_adapter.h"
 
 namespace cuwacunu::wikimyei::representation::encoding::vicreg {
@@ -31,7 +31,7 @@ struct vicreg_node_representation_spec_t {
   std::string version_token{"wikimyei.representation.vicreg.v1"};
   std::string component_id{};
   vicreg_input_route_t input_route{vicreg_input_route_t::node_stream};
-  int64_t input_width{cuwacunu::ujcamei::source::types::kKlineFeatureWidth};
+  int64_t input_width{cuwacunu::ujcamei::source::registry::types::kKlineFeatureWidth};
 
   int64_t encoding_dim{0};
   int64_t channel_expansion_dim{0};
@@ -147,7 +147,7 @@ inline void validate_vicreg_node_representation_spec(
     throw std::runtime_error("[vicreg_spec] v1 requires node_stream input");
   }
   if (spec.input_width !=
-      cuwacunu::ujcamei::source::types::kKlineFeatureWidth) {
+      cuwacunu::ujcamei::source::registry::types::kKlineFeatureWidth) {
     throw std::runtime_error("[vicreg_spec] input_width must be 9 for v1");
   }
   if (spec.encoding_dim <= 0 || spec.channel_expansion_dim <= 0 ||
@@ -166,8 +166,24 @@ inline void validate_vicreg_node_representation_spec(
   }
 }
 
+inline void
+decode_vicreg_net_into_spec(const std::string &net_text,
+                            vicreg_node_representation_spec_t &spec) {
+  namespace kv = cuwacunu::piaabo::parse::simple_kv;
+  const auto &block = kv::single_block(net_text, "VICREG_NET");
+  spec.encoding_dim = kv::parse_i64(kv::required(block, "ENCODING_DIM"));
+  spec.channel_expansion_dim =
+      kv::parse_i64(kv::required(block, "CHANNEL_EXPANSION_DIM"));
+  spec.fused_feature_dim =
+      kv::parse_i64(kv::required(block, "FUSED_FEATURE_DIM"));
+  spec.encoder_hidden_dim =
+      kv::parse_i64(kv::required(block, "ENCODER_HIDDEN_DIM"));
+  spec.encoder_depth = kv::parse_i64(kv::required(block, "ENCODER_DEPTH"));
+}
+
 [[nodiscard]] inline vicreg_node_representation_spec_t
-decode_vicreg_node_representation_spec_from_dsl(const std::string &dsl_text) {
+decode_vicreg_node_representation_spec_from_split_dsl(
+    const std::string &dsl_text, const std::string &net_text) {
   namespace kv = cuwacunu::piaabo::parse::simple_kv;
   const auto &block = kv::single_block(dsl_text, "VICREG");
   vicreg_node_representation_spec_t spec{};
@@ -177,14 +193,6 @@ decode_vicreg_node_representation_spec_from_dsl(const std::string &dsl_text) {
       kv::optional(block, "INPUT_ROUTE", "node_stream"));
   spec.input_width = kv::parse_i64(
       kv::optional(block, "INPUT_WIDTH", std::to_string(spec.input_width)));
-  spec.encoding_dim = kv::parse_i64(kv::required(block, "ENCODING_DIM"));
-  spec.channel_expansion_dim =
-      kv::parse_i64(kv::required(block, "CHANNEL_EXPANSION_DIM"));
-  spec.fused_feature_dim =
-      kv::parse_i64(kv::required(block, "FUSED_FEATURE_DIM"));
-  spec.encoder_hidden_dim =
-      kv::parse_i64(kv::required(block, "ENCODER_HIDDEN_DIM"));
-  spec.encoder_depth = kv::parse_i64(kv::required(block, "ENCODER_DEPTH"));
   spec.mask_profile = vicreg_spec_detail::parse_mask_profile(
       kv::optional(block, "MASK_PROFILE", "all_9"));
   const auto coord_value = kv::optional(block, "REQUIRED_FEATURE_COORDS", "");
@@ -194,6 +202,7 @@ decode_vicreg_node_representation_spec_from_dsl(const std::string &dsl_text) {
           : kv::parse_i64_list(coord_value);
   spec.dtype = kv::optional(block, "DTYPE", spec.dtype);
   spec.device = kv::optional(block, "DEVICE", spec.device);
+  decode_vicreg_net_into_spec(net_text, spec);
   validate_vicreg_node_representation_spec(spec);
   return spec;
 }

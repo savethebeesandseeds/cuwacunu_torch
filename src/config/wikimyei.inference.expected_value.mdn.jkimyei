@@ -1,0 +1,48 @@
+/*
+  wikimyei.inference.expected_value.mdn.jkimyei
+  ======================================
+  Default one-step smoke training policy for mdn ExpectedValue.
+
+  This file is Jkimyei training policy for the MDN component only. Runtime
+  `.lls` report emission is controlled by kikijyeba.settings.wave.dsl.
+
+  Supported v1 settings:
+    TASK = mdn_expected_value_inference
+    OPTIMIZER = adam
+    MAX_STEPS >= 0, where 0 means run until stream exhaustion.
+    BATCH_SIZE > 0 and must match the graph-first builder batch size.
+    CHECKPOINT_EVERY >= 0, where 0 disables checkpoint cadence.
+    REPORT_EVERY > 0.
+    VALIDATION_EVERY = 0; validation cadence is not implemented in v1.
+    FREEZE_REPRESENTATION = true for v1 MDN training.
+    INPUT_REPRESENTATION_CHECKPOINT names the VICReg encoder checkpoint to
+      freeze for production MDN training. Keep repository defaults empty;
+      Lattice Hero plan inputs or runtime-local overlays should provide the
+      concrete checkpoint path for operational waves.
+    INPUT_MDN_CHECKPOINT optionally names an existing MDN checkpoint to restore
+      before train or run. This is runtime model-state input evidence and is not
+      protocol contract identity.
+    ALLOW_UNTRAINED_REPRESENTATION = true is only for smoke/default config
+      validity where the encoder is freshly initialized. Production MDN waves
+      should set this to false and provide INPUT_REPRESENTATION_CHECKPOINT via
+      a runtime-local overlay or Hero plan input.
+*/
+TRAINING {
+  VERSION = wikimyei.inference.expected_value.mdn.jkimyei.v1;
+  TRAINING_ID = smoke_mdn_inference;
+  TASK = mdn_expected_value_inference;
+  COMPONENT_ID = mdn_v1;
+  OPTIMIZER = adam;
+  LEARNING_RATE = 0.01;
+  MAX_STEPS = 0;
+  BATCH_SIZE = 64;
+  GRAD_CLIP_NORM = 0.0;
+  CHECKPOINT_EVERY = 1;
+  REPORT_EVERY = 1;
+  VALIDATION_EVERY = 0;
+  SEED = 31;
+  FREEZE_REPRESENTATION = true;
+  INPUT_REPRESENTATION_CHECKPOINT = ;
+  INPUT_MDN_CHECKPOINT = ;
+  ALLOW_UNTRAINED_REPRESENTATION = true;
+};

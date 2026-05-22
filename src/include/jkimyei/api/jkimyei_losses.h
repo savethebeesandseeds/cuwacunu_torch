@@ -39,7 +39,7 @@ inline void validate_loss(const cuwacunu::jkimyei::specs::jkimyei_specs_t &inst,
                           const std::string &row_id) {
   ensure_loss_validation_coverage();
 
-  const auto &row = inst.retrive_row("loss_functions_table", row_id);
+  const auto &row = inst.retrieve_row("loss_functions_table", row_id);
 
   // Exact columns; allow empties.
   cuwacunu::jkimyei::specs::require_columns_exact(

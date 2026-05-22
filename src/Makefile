@@ -3,7 +3,7 @@ include $(ROOT_PATH)/Makefile.config
 
 .DEFAULT_GOAL := lib
 
-.PHONY: lib modules piaabo wikimyei ujcamei jkimyei kikijyeba link install tests clean help targets
+.PHONY: lib modules piaabo wikimyei ujcamei jkimyei kikijyeba hero link install tests clean help targets
 
 lib modules:
 	@printf "[SRC] migrated implementation Makefiles exist; default build waits for dependencies\n"
@@ -22,6 +22,9 @@ jkimyei:
 
 kikijyeba:
 	$(MAKE) -C $(IMPL_PATH)/kikijyeba all
+
+hero:
+	$(MAKE) -C $(IMPL_PATH)/hero all
 
 link install:
 	@printf "[SRC] fresh source root: no binaries defined yet\n"
@@ -42,10 +45,11 @@ help:
 	  "  ujcamei build Ujcamei implementation modules" \
 	  "  jkimyei build Jkimyei implementation modules" \
 	  "  kikijyeba build Kikijyeba implementation modules" \
+	  "  hero    build Hero implementation modules" \
 	  "  tests    no-op until fresh tests exist" \
 	  "  link     no-op until fresh binaries exist" \
 	  "  install  no-op until fresh binaries exist" \
 	  "  clean    no-op until fresh build artifacts exist"
 
 targets:
-	@printf "%s\n" lib modules piaabo wikimyei ujcamei jkimyei kikijyeba tests link install clean help targets
+	@printf "%s\n" lib modules piaabo wikimyei ujcamei jkimyei kikijyeba hero tests link install clean help targets

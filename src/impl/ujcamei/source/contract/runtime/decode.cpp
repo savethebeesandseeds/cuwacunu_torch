@@ -1,9 +1,10 @@
 /* runtime/decode.cpp */
 #include "ujcamei/source/contract/runtime/decode.h"
 
-#include "ujcamei/source/contract/dsl/channel_forms_decoder.h"
-#include "ujcamei/source/contract/dsl/graph_forms_decoder.h"
-#include "ujcamei/source/contract/dsl/source_forms_decoder.h"
+#include "kikijyeba/topology/graph/graph_topology_decoder.h"
+#include "kikijyeba/topology/graph/graph_topology_spec.h"
+#include "ujcamei/source/registry/source_registry_decoder.h"
+#include "ujcamei/source/retrieval/retrieval_channel_decoder.h"
 
 #include "piaabo/core/utils.h"
 
@@ -72,6 +73,11 @@ std::string &source_runtime_last_config_path_() {
 }
 
 [[nodiscard]] bool
+supported_runtime_record_type(const std::string &record_type) {
+  return trim_ascii_ws_copy(record_type) == "kline";
+}
+
+[[nodiscard]] bool
 valid_normalization_policy(const std::string &normalization_policy) {
   const std::string value = trim_ascii_ws_copy(normalization_policy);
   return value == "none" || value == "log_returns";
@@ -91,11 +97,11 @@ valid_normalization_policy(const std::string &normalization_policy) {
   return trim_ascii_ws_copy(text) == "true";
 }
 
-[[nodiscard]] std::string
-channel_key(cuwacunu::ujcamei::source::types::interval_type_e interval,
-            const std::string &record_type) {
-  return cuwacunu::ujcamei::source::types::enum_to_string(interval) + "/" +
-         trim_ascii_ws_copy(record_type);
+[[nodiscard]] std::string channel_key(
+    cuwacunu::ujcamei::source::registry::types::interval_type_e interval,
+    const std::string &record_type) {
+  return cuwacunu::ujcamei::source::registry::types::enum_to_string(interval) +
+         "/" + trim_ascii_ws_copy(record_type);
 }
 
 [[nodiscard]] std::int64_t
@@ -233,9 +239,8 @@ void validate_source_channel_contract_or_throw(const source_spec_t &spec) {
         "sources DSL must declare at least one source row");
   }
   if (spec.channel_forms.empty()) {
-    throw std::runtime_error("kikijyeba.protocol.cwu_01v channels DSL must "
-                             "declare at least one channel "
-                             "row");
+    throw std::runtime_error("ujcamei.source.retrieval.channels DSL must "
+                             "declare at least one channel row");
   }
 
   std::unordered_set<std::string> source_channels;
@@ -249,7 +254,7 @@ void validate_source_channel_contract_or_throw(const source_spec_t &spec) {
   declared_channels.reserve(spec.channel_forms.size());
   for (const auto &channel : spec.channel_forms) {
     const std::string row_label =
-        "kikijyeba.protocol.cwu_01v channel row " +
+        "ujcamei.source.retrieval.channels row " +
         channel_key(channel.interval, channel.record_type);
 
     if (!valid_bool_text(channel.active)) {
@@ -261,6 +266,13 @@ void validate_source_channel_contract_or_throw(const source_spec_t &spec) {
     if (!valid_channel_record_type(channel.record_type)) {
       throw std::runtime_error(row_label + " has invalid record_type '" +
                                channel.record_type + "'");
+    }
+    if (is_true(channel.active) &&
+        !supported_runtime_record_type(channel.record_type)) {
+      throw std::runtime_error(
+          row_label + " has active record_type '" + channel.record_type +
+          "', but the current graph-first runtime supports only kline "
+          "retrieval channels");
     }
     if (!declared_channels
              .insert(channel_key(channel.interval, channel.record_type))
@@ -296,9 +308,8 @@ void validate_source_channel_contract_or_throw(const source_spec_t &spec) {
   }
 
   if (!saw_active_channel) {
-    throw std::runtime_error("kikijyeba.protocol.cwu_01v channels DSL must "
-                             "declare at least one active "
-                             "channel row");
+    throw std::runtime_error("ujcamei.source.retrieval.channels DSL must "
+                             "declare at least one active channel row");
   }
 }
 
@@ -309,7 +320,7 @@ void validate_graph_contract_or_throw(const source_spec_t &spec) {
   const std::string edge_resolution_policy =
       trim_ascii_ws_copy(spec.graph_edge_resolution_policy);
   if (!valid_graph_edge_resolution_policy(edge_resolution_policy)) {
-    throw std::runtime_error("kikijyeba.protocol.cwu_01v graph DSL has invalid "
+    throw std::runtime_error("kikijyeba.topology.graph DSL has invalid "
                              "EDGE_RESOLUTION_POLICY '" +
                              spec.graph_edge_resolution_policy + "'");
   }
@@ -317,23 +328,23 @@ void validate_graph_contract_or_throw(const source_spec_t &spec) {
       trim_ascii_ws_copy(spec.graph_edge_source_kind);
   if (!valid_source_kind(edge_source_kind)) {
     throw std::runtime_error(
-        "kikijyeba.protocol.cwu_01v graph DSL has invalid EDGE_SOURCE_KIND '" +
+        "kikijyeba.topology.graph DSL has invalid EDGE_SOURCE_KIND '" +
         spec.graph_edge_source_kind + "'");
   }
   const std::string fetch_mode = trim_ascii_ws_copy(spec.graph_fetch_mode);
   if (!valid_graph_fetch_mode(fetch_mode)) {
-    throw std::runtime_error("kikijyeba.protocol.cwu_01v graph DSL has invalid "
+    throw std::runtime_error("kikijyeba.topology.graph DSL has invalid "
                              "FETCH_MODE '" +
                              spec.graph_fetch_mode + "'");
   }
   (void)parse_nonnegative_i64_field(spec.graph_max_fetch_workers,
                                     "MAX_FETCH_WORKERS",
-                                    "kikijyeba.protocol.cwu_01v GRAPH_POLICY");
+                                    "kikijyeba.topology.graph GRAPH_POLICY");
   const auto parallel_min_work_items = parse_nonnegative_i64_field(
       spec.graph_parallel_min_work_items, "PARALLEL_MIN_WORK_ITEMS",
-      "kikijyeba.protocol.cwu_01v GRAPH_POLICY");
+      "kikijyeba.topology.graph GRAPH_POLICY");
   if (parallel_min_work_items <= 0) {
-    throw std::runtime_error("kikijyeba.protocol.cwu_01v GRAPH_POLICY "
+    throw std::runtime_error("kikijyeba.topology.graph GRAPH_POLICY "
                              "PARALLEL_MIN_WORK_ITEMS must be positive");
   }
 
@@ -366,14 +377,14 @@ void validate_graph_contract_or_throw(const source_spec_t &spec) {
 
   if (active_nodes.empty()) {
     throw std::runtime_error(
-        "kikijyeba.protocol.cwu_01v graph DSL must declare at least one active "
+        "kikijyeba.topology.graph DSL must declare at least one active "
         "node");
   }
 
   const auto active_channels = active_channel_rows(spec);
   if (active_channels.empty()) {
     throw std::runtime_error(
-        "kikijyeba.protocol.cwu_01v graph DSL requires at least one active "
+        "kikijyeba.topology.graph DSL requires at least one active "
         "channel");
   }
 
@@ -433,12 +444,12 @@ void validate_graph_contract_or_throw(const source_spec_t &spec) {
 
       if (matches.empty()) {
         throw std::runtime_error(
-            "kikijyeba.protocol.cwu_01v graph edge " + edge_id +
+            "kikijyeba.topology.graph graph edge " + edge_id +
             " has no Ujcamei source row for an active channel");
       }
       if (matches.size() != 1) {
         throw std::runtime_error(
-            "kikijyeba.protocol.cwu_01v graph edge " + edge_id +
+            "kikijyeba.topology.graph graph edge " + edge_id +
             " has ambiguous Ujcamei source rows for an active channel");
       }
       const auto &source_form = *matches.front();
@@ -462,7 +473,7 @@ void validate_graph_contract_or_throw(const source_spec_t &spec) {
       return;
     }
     throw std::runtime_error(
-        "kikijyeba.protocol.cwu_01v graph DSL must declare at least one active "
+        "kikijyeba.topology.graph DSL must declare at least one active "
         "edge");
   }
 
@@ -535,7 +546,8 @@ decode_source_universe_from_split_dsl(std::string source_grammar,
   if (!has_non_ws(source_grammar) || !has_non_ws(source_instruction)) {
     throw std::runtime_error("Ujcamei sources DSL is required");
   }
-  dsl::source_forms_decoder_t sources_decoder(std::move(source_grammar));
+  cuwacunu::ujcamei::source::registry::source_registry_decoder_t
+      sources_decoder(std::move(source_grammar));
   source_spec_t sources_part = sources_decoder.decode(source_instruction);
   auto universe = make_source_universe_from_compat(sources_part);
   validate_source_universe_or_throw(universe);
@@ -550,18 +562,20 @@ source_spec_t decode_source_spec_from_split_dsl(std::string source_grammar,
                                                 std::string graph_instruction) {
   if (has_non_ws(source_grammar) && has_non_ws(source_instruction) &&
       has_non_ws(channel_grammar) && has_non_ws(channel_instruction)) {
-    dsl::channel_forms_decoder_t channels_decoder(std::move(channel_grammar));
+    cuwacunu::ujcamei::source::retrieval::retrieval_channel_decoder_t
+        channels_decoder(std::move(channel_grammar));
 
     source_universe_t source_universe = decode_source_universe_from_split_dsl(
         std::move(source_grammar), std::move(source_instruction));
     source_spec_t channels_part = channels_decoder.decode(channel_instruction);
-    source_spec_t graph_part{};
+    cuwacunu::kikijyeba::topology::graph::graph_topology_spec_t graph_part{};
     if (has_non_ws(graph_grammar) || has_non_ws(graph_instruction)) {
       if (!has_non_ws(graph_grammar) || !has_non_ws(graph_instruction)) {
         throw std::runtime_error(
             "graph DSL requires both grammar and instruction text");
       }
-      dsl::graph_forms_decoder_t graph_decoder(std::move(graph_grammar));
+      cuwacunu::kikijyeba::topology::graph::graph_topology_decoder_t
+          graph_decoder(std::move(graph_grammar));
       graph_part = graph_decoder.decode(graph_instruction);
     }
 
@@ -571,14 +585,12 @@ source_spec_t decode_source_spec_from_split_dsl(std::string source_grammar,
     merged.graph_node_forms = std::move(graph_part.graph_node_forms);
     merged.graph_edge_forms = std::move(graph_part.graph_edge_forms);
     merged.graph_edge_resolution_policy =
-        std::move(graph_part.graph_edge_resolution_policy);
-    merged.graph_edge_source_kind =
-        std::move(graph_part.graph_edge_source_kind);
-    merged.graph_fetch_mode = std::move(graph_part.graph_fetch_mode);
-    merged.graph_max_fetch_workers =
-        std::move(graph_part.graph_max_fetch_workers);
+        std::move(graph_part.edge_resolution_policy);
+    merged.graph_edge_source_kind = std::move(graph_part.edge_source_kind);
+    merged.graph_fetch_mode = std::move(graph_part.fetch_mode);
+    merged.graph_max_fetch_workers = std::move(graph_part.max_fetch_workers);
     merged.graph_parallel_min_work_items =
-        std::move(graph_part.graph_parallel_min_work_items);
+        std::move(graph_part.parallel_min_work_items);
     merged.csv_bootstrap_deltas = source_universe.csv_bootstrap_deltas;
     merged.csv_step_abs_tol = source_universe.csv_step_abs_tol;
     merged.csv_step_rel_tol = source_universe.csv_step_rel_tol;
@@ -595,18 +607,18 @@ std::string default_source_config_path() {
   return "/cuwacunu/src/config/.config";
 }
 
-source_config_paths_t
-load_source_config_paths_from_config(std::string config_path) {
+source_registry_config_paths_t
+load_source_registry_config_paths_from_config(std::string config_path) {
   config_path = trim_ascii_ws_copy(std::move(config_path));
   if (!has_non_ws(config_path)) {
     config_path = default_source_config_path();
   }
   const auto cfg = parse_simple_config_file(config_path);
-  return source_config_paths_t{
-      .sources_bnf_path =
-          required_config_value(cfg, "ujcamei_sources_bnf_path", config_path),
-      .sources_dsl_path =
-          required_config_value(cfg, "ujcamei_sources_dsl_path", config_path),
+  return source_registry_config_paths_t{
+      .source_registry_dsl_bnf_path = required_config_value(
+          cfg, "ujcamei_source_registry_dsl_bnf_path", config_path),
+      .source_registry_dsl_path = required_config_value(
+          cfg, "ujcamei_source_registry_dsl_path", config_path),
   };
 }
 
@@ -615,33 +627,32 @@ source_spec_t decode_source_spec_from_config(std::string config_path) {
   if (!has_non_ws(config_path)) {
     config_path = default_source_config_path();
   }
-  const auto paths = load_source_config_paths_from_config(config_path);
+  const auto paths = load_source_registry_config_paths_from_config(config_path);
   const auto cfg = parse_simple_config_file(config_path);
-  const auto graph_first_channels_bnf_path = required_config_value(
-      cfg, "kikijyeba_protocol_cwu_01v_settings_dock_channels_bnf_path",
-      config_path);
-  const auto graph_first_channels_dsl_path = required_config_value(
-      cfg, "kikijyeba_protocol_cwu_01v_settings_dock_channels_dsl_path",
-      config_path);
-  const auto graph_first_graph_bnf_path = required_config_value(
-      cfg, "kikijyeba_protocol_cwu_01v_topology_graph_bnf_path", config_path);
+  const auto graph_first_retrieval_channels_dsl_bnf_path =
+      required_config_value(
+          cfg, "ujcamei_source_retrieval_channels_dsl_bnf_path", config_path);
+  const auto graph_first_retrieval_channels_dsl_path = required_config_value(
+      cfg, "ujcamei_source_retrieval_channels_dsl_path", config_path);
+  const auto graph_first_graph_dsl_bnf_path = required_config_value(
+      cfg, "kikijyeba_topology_graph_dsl_bnf_path", config_path);
   const auto graph_first_graph_dsl_path = required_config_value(
-      cfg, "kikijyeba_protocol_cwu_01v_topology_graph_dsl_path", config_path);
+      cfg, "kikijyeba_topology_graph_dsl_path", config_path);
   return decode_source_spec_from_split_dsl(
-      read_text_file_or_throw(paths.sources_bnf_path),
-      read_text_file_or_throw(paths.sources_dsl_path),
-      read_text_file_or_throw(graph_first_channels_bnf_path),
-      read_text_file_or_throw(graph_first_channels_dsl_path),
-      read_text_file_or_throw(graph_first_graph_bnf_path),
+      read_text_file_or_throw(paths.source_registry_dsl_bnf_path),
+      read_text_file_or_throw(paths.source_registry_dsl_path),
+      read_text_file_or_throw(graph_first_retrieval_channels_dsl_bnf_path),
+      read_text_file_or_throw(graph_first_retrieval_channels_dsl_path),
+      read_text_file_or_throw(graph_first_graph_dsl_bnf_path),
       read_text_file_or_throw(graph_first_graph_dsl_path));
 }
 
 source_universe_t decode_source_universe_from_config(std::string config_path) {
   const auto paths =
-      load_source_config_paths_from_config(std::move(config_path));
+      load_source_registry_config_paths_from_config(std::move(config_path));
   return decode_source_universe_from_split_dsl(
-      read_text_file_or_throw(paths.sources_bnf_path),
-      read_text_file_or_throw(paths.sources_dsl_path));
+      read_text_file_or_throw(paths.source_registry_dsl_bnf_path),
+      read_text_file_or_throw(paths.source_registry_dsl_path));
 }
 
 source_universe_t decode_source_universe_from_default_config() {

@@ -13,6 +13,21 @@ flows. Evaluation headers are split by the thing being evaluated:
   reports used by representation/inference models.
 - `inference/entropic_capacity_comparison.h`: reader/helper surface for
   entropic-capacity comparisons.
+- `evaluation_report_identity.h`: current runtime `.lls` identity envelope used
+  by evaluation emitters. Active evaluation code should not depend on Tsiemene
+  report identities.
+
+The old load/capacity vocabulary is still useful, but it now travels through the
+strict runtime `.lls` surface:
+
+- source reports emit `source_entropic_load`
+- network reports emit `network_global_entropic_capacity`
+- capacity-comparison reports derive `capacity_margin`, `capacity_ratio`, and
+  `capacity_regime`
+
+Source analytics artifact paths default under
+`.runtime/jkimyei/evaluation/ujcamei/source/retrieval`; set
+`CUWACUNU_EVALUATION_STORE_ROOT` to redirect that store.
 
 Ujcamei forms source tensors. Piaabo owns generic utilities. Jkimyei owns
 evaluation/report helper surfaces.

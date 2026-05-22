@@ -11,13 +11,13 @@ NODE_LIFTED_STREAM_OBJS := \
   $(OUTPUT_PATH)/common/io/files.o \
   $(OUTPUT_PATH)/common/parse/json/json_parsing.o \
   $(OUTPUT_PATH)/common/statistics_space.o \
-  $(OUTPUT_PATH)/common/types_data.o \
-  $(OUTPUT_PATH)/common/types_utils.o \
+  $(OUTPUT_PATH)/common/registry_data.o \
+  $(OUTPUT_PATH)/common/registry_utils.o \
   $(OUTPUT_PATH)/common/source_contract.o \
   $(OUTPUT_PATH)/common/source_contract_decode.o \
-  $(OUTPUT_PATH)/common/source_forms_decoder.o \
-  $(OUTPUT_PATH)/common/channel_forms_decoder.o \
-  $(OUTPUT_PATH)/common/graph_forms_decoder.o \
+  $(OUTPUT_PATH)/common/source_registry_decoder.o \
+  $(OUTPUT_PATH)/common/retrieval_channel_decoder.o \
+  $(OUTPUT_PATH)/common/graph_topology_decoder.o \
   $(OUTPUT_PATH)/common/parser_types.o \
   $(OUTPUT_PATH)/common/ast.o \
   $(OUTPUT_PATH)/common/grammar_lexer.o \
@@ -33,9 +33,9 @@ node_lifted_stream_objects:
 	$(MAKE) -C $(IMPL_PATH)/piaabo utils files json_parsing
 	$(MAKE) -C $(IMPL_PATH)/piaabo/parse/bnf all
 	$(MAKE) -C $(IMPL_PATH)/piaabo/math all
-	$(MAKE) -C $(IMPL_PATH)/ujcamei/source/types all
+	$(MAKE) -C $(IMPL_PATH)/ujcamei/source/registry/types all
 	$(MAKE) -C $(IMPL_PATH)/ujcamei/source/contract all
-	$(MAKE) -C $(IMPL_PATH)/ujcamei/source/storage/memory_mapped all
+	$(MAKE) -C $(IMPL_PATH)/ujcamei/source/retrieval/storage/memory_mapped all
 
 $(eval $(call TEST_ONEFILE, test_wikimyei_node_lifted_stream, test_wikimyei_node_lifted_stream.cpp, \
   $(libtorch_a) $(NODE_LIFTED_STREAM_OBJS) $(LDLIBS_torch)))

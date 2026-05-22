@@ -608,7 +608,7 @@ inline std::unique_ptr<JkimyeiSchedulerBuilder> make_scheduler_builder_from_row(
 inline std::unique_ptr<JkimyeiSchedulerBuilder>
 make_scheduler_builder(const cuwacunu::jkimyei::specs::jkimyei_specs_t &inst,
                        const std::string &row_id) {
-  const auto &row = inst.retrive_row("lr_schedulers_table", row_id);
+  const auto &row = inst.retrieve_row("lr_schedulers_table", row_id);
   return make_scheduler_builder_from_row(row);
 }
 

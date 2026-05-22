@@ -1,5 +1,7 @@
 /* mixture_density_network_types.h */
 #pragma once
+#include <cstdint>
+
 #include <torch/torch.h>
 
 namespace cuwacunu {

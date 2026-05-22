@@ -4,15 +4,10 @@
  * heads. This header declares the MdnModelImpl module (no training loop here).
  */
 #pragma once
-#include <algorithm>
-#include <cmath>
-#include <iostream>
-#include <memory>
-#include <string>
+#include <cstdint>
 #include <torch/torch.h>
 #include <vector>
 
-#include "piaabo/core/utils.h"
 #include "wikimyei/inference/expected_value/mdn/mixture_density_network_backbone.h"
 #include "wikimyei/inference/expected_value/mdn/mixture_density_network_head.h"
 #include "wikimyei/inference/expected_value/mdn/mixture_density_network_loss.h"

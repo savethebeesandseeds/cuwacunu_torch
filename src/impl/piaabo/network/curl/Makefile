@@ -17,13 +17,13 @@ $(eval $(call BUILD_OBJ_INC, libcurl, openai_responses_api, openai_responses_api
 
 # -----------------------------------------------------------------
 # Aggregate Targets
-#   - Expose websockets_api as a sibling prerequisite so GNU make can schedule
+#   - Expose websocket_api as a sibling prerequisite so GNU make can schedule
 #     it in parallel with the local curl producers.
 # -----------------------------------------------------------------
-.PHONY: websockets_api
-websockets_api:
-	$(MAKE) -C $(HERE_PATH)/websockets_api all
+.PHONY: websocket_api
+websocket_api:
+	$(MAKE) -C $(HERE_PATH)/websocket_api all
 
 .PHONY: all
-all: curl_utils openai_responses_api websockets_api
+all: curl_utils openai_responses_api websocket_api
 	@$(LOG_SUCCESS)

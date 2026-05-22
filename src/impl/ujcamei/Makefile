@@ -6,7 +6,7 @@ include $(ROOT_PATH)/Makefile.config
 .PHONY: all source
 
 all:
-	@printf "[UJCAMEI] implementation rooms migrated; build waits for namespace/config pass\n"
+	@printf "[UJCAMEI] implementation modules migrated; build waits for namespace/config pass\n"
 
 source:
 	$(MAKE) -C $(IMPL_PATH)/ujcamei/source all

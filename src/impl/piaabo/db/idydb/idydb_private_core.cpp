@@ -139,6 +139,18 @@ typedef unsigned long long idydb_sizing_max;
 #define IDYDB_ENC_MIN_PBKDF2_ITER 10000u
 #define IDYDB_ENC_MAX_PBKDF2_ITER 5000000u
 
+/* Named-lock retry safety.
+ * The lock itself is nonblocking; this cap prevents a caller from creating an
+ * accidental "wait forever" by passing a huge retry_count. Set to 0 at
+ * compile time if you truly want only retry_count to bound the wait.
+ */
+#ifndef IDYDB_NAMED_LOCK_MAX_WAIT_MS
+#define IDYDB_NAMED_LOCK_MAX_WAIT_MS 30000u
+#endif
+#ifndef IDYDB_NAMED_LOCK_MIN_RETRY_DELAY_MS
+#define IDYDB_NAMED_LOCK_MIN_RETRY_DELAY_MS 1u
+#endif
+
 static inline void idydb_u32_le_write(unsigned char* p, uint32_t v) {
 	p[0] = (unsigned char)(v & 0xFFu);
 	p[1] = (unsigned char)((v >> 8) & 0xFFu);
@@ -581,6 +593,61 @@ static std::string idydb_named_lock_metadata(
 	return out.str();
 }
 
+static bool idydb_named_lock_parse_pid(const std::string& metadata, pid_t* out_pid)
+{
+	if (!out_pid) return false;
+	const std::string key = "pid=";
+	std::size_t pos = metadata.find(key);
+	if (pos == std::string::npos) return false;
+	pos += key.size();
+	char* end = NULL;
+	errno = 0;
+	long value = ::strtol(metadata.c_str() + pos, &end, 10);
+	if (errno != 0 || end == metadata.c_str() + pos || value <= 0) return false;
+	*out_pid = static_cast<pid_t>(value);
+	return true;
+}
+
+static bool idydb_named_lock_busy_owner_is_current_process(int fd)
+{
+	std::string metadata;
+	if (!idydb_named_lock_read_all(fd, &metadata)) return false;
+	pid_t owner_pid = 0;
+	if (!idydb_named_lock_parse_pid(metadata, &owner_pid)) return false;
+	return owner_pid == ::getpid();
+}
+
+static bool idydb_named_lock_wait_cap_expired(
+	const std::chrono::steady_clock::time_point& start)
+{
+#if IDYDB_NAMED_LOCK_MAX_WAIT_MS > 0
+	const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+		std::chrono::steady_clock::now() - start).count();
+	return elapsed >= static_cast<long long>(IDYDB_NAMED_LOCK_MAX_WAIT_MS);
+#else
+	(void)start;
+	return false;
+#endif
+}
+
+static unsigned int idydb_named_lock_retry_sleep_ms(
+	unsigned int requested_delay_ms,
+	const std::chrono::steady_clock::time_point& start)
+{
+	unsigned int delay_ms = requested_delay_ms;
+	if (delay_ms == 0) delay_ms = IDYDB_NAMED_LOCK_MIN_RETRY_DELAY_MS;
+#if IDYDB_NAMED_LOCK_MAX_WAIT_MS > 0
+	const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+		std::chrono::steady_clock::now() - start).count();
+	const long long remaining =
+		static_cast<long long>(IDYDB_NAMED_LOCK_MAX_WAIT_MS) - elapsed;
+	if (remaining <= 0) return 0;
+	if (static_cast<long long>(delay_ms) > remaining)
+		delay_ms = static_cast<unsigned int>(remaining);
+#endif
+	return delay_ms;
+}
+
 extern "C" int idydb_named_lock_acquire(const char* lock_path,
                                         idydb_named_lock** out_lock,
                                         const idydb_named_lock_options* options)
@@ -608,20 +675,47 @@ extern "C" int idydb_named_lock_acquire(const char* lock_path,
 	const unsigned int retry_delay_ms = options ? options->retry_delay_ms : 0U;
 
 	bool locked = false;
-	for (unsigned int attempt = 0; attempt <= retry_count; ++attempt)
+	unsigned int attempt = 0;
+	const auto wait_started = std::chrono::steady_clock::now();
+	for (;;)
 	{
 		if (::flock(fd, lock_mode) == 0)
 		{
 			locked = true;
 			break;
 		}
-		if (errno == EINTR) continue;
-		if ((errno != EWOULDBLOCK && errno != EAGAIN) || attempt >= retry_count)
+
+		const int saved_errno = errno;
+		if (saved_errno == EINTR)
+		{
+			if (idydb_named_lock_wait_cap_expired(wait_started)) break;
+			continue;
+		}
+
+		if (saved_errno != EWOULDBLOCK && saved_errno != EAGAIN)
 		{
 			(void)::close(fd);
-			return (errno == EWOULDBLOCK || errno == EAGAIN) ? IDYDB_BUSY : IDYDB_PERM;
+			return IDYDB_PERM;
 		}
-		std::this_thread::sleep_for(std::chrono::milliseconds(retry_delay_ms));
+
+		/* Reentrant self-waits are almost always a bug in the caller and can
+		 * otherwise look like a deadlock. Return BUSY immediately instead of
+		 * burning the retry budget on ourselves.
+		 */
+		if (idydb_named_lock_busy_owner_is_current_process(fd))
+		{
+			(void)::close(fd);
+			return IDYDB_BUSY;
+		}
+
+		if (attempt >= retry_count || idydb_named_lock_wait_cap_expired(wait_started))
+			break;
+
+		const unsigned int sleep_ms =
+			idydb_named_lock_retry_sleep_ms(retry_delay_ms, wait_started);
+		if (sleep_ms == 0) break;
+		std::this_thread::sleep_for(std::chrono::milliseconds(sleep_ms));
+		++attempt;
 	}
 	if (!locked)
 	{
@@ -632,8 +726,7 @@ extern "C" int idydb_named_lock_acquire(const char* lock_path,
 	const std::string metadata = idydb_named_lock_metadata(options);
 	if (::ftruncate(fd, 0) != 0 ||
 	    ::lseek(fd, 0, SEEK_SET) < 0 ||
-	    !idydb_named_lock_write_all(fd, metadata.data(), metadata.size()) ||
-	    ::fsync(fd) != 0)
+	    !idydb_named_lock_write_all(fd, metadata.data(), metadata.size()))
 	{
 		(void)::flock(fd, LOCK_UN);
 		(void)::close(fd);
@@ -671,6 +764,12 @@ extern "C" int idydb_named_lock_release(idydb_named_lock** lock)
 	int rc = IDYDB_DONE;
 	if ((*lock)->fd >= 0)
 	{
+		/* Clear diagnostic metadata while still owning the kernel lock so
+		 * describe_owner() is less likely to report a released owner.
+		 * Lock correctness does not depend on this truncate.
+		 */
+		if (::ftruncate((*lock)->fd, 0) != 0) rc = IDYDB_ERROR;
+		(void)::lseek((*lock)->fd, 0, SEEK_SET);
 		if (::flock((*lock)->fd, LOCK_UN) != 0) rc = IDYDB_ERROR;
 		if (::close((*lock)->fd) != 0) rc = IDYDB_ERROR;
 	}

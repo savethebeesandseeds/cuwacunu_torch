@@ -35,19 +35,19 @@ struct jkimyei_specs_t {
   std::unordered_map<std::string, table_t> tables{};
   std::deque<raw_element_t> raw{};
 
-  const table_t retrive_table(const std::string& table_name) const;
-  const row_t retrive_row(const table_t& table, std::size_t row_index) const;
-  const row_t retrive_row(const std::string& table_name, std::size_t row_index) const;
-  const row_t retrive_row(const table_t& table, const std::string& row_id) const;
-  const row_t retrive_row(const std::string& table_name, const std::string& row_id) const;
-  const std::string retrive_field(const row_t& row, const std::string& column_name) const;
-  const std::string retrive_field(const std::string& table_name,
+  const table_t retrieve_table(const std::string& table_name) const;
+  const row_t retrieve_row(const table_t& table, std::size_t row_index) const;
+  const row_t retrieve_row(const std::string& table_name, std::size_t row_index) const;
+  const row_t retrieve_row(const table_t& table, const std::string& row_id) const;
+  const row_t retrieve_row(const std::string& table_name, const std::string& row_id) const;
+  const std::string retrieve_field(const row_t& row, const std::string& column_name) const;
+  const std::string retrieve_field(const std::string& table_name,
                                   std::size_t row_index,
                                   const std::string& column_name) const;
-  const std::string retrive_field(const table_t& table,
+  const std::string retrieve_field(const table_t& table,
                                   const std::string& row_id,
                                   const std::string& column_name) const;
-  const std::string retrive_field(const std::string& table_name,
+  const std::string retrieve_field(const std::string& table_name,
                                   const std::string& row_id,
                                   const std::string& column_name) const;
 
@@ -71,7 +71,7 @@ class jkimyeiSpecsConfAccess {
   template <typename T>
   T operator()(const std::string& column_name) const {
     return cuwacunu::piaabo::core::string_cast<T>(
-        train_inst_.retrive_field(table_name_, row_id_, column_name));
+        train_inst_.retrieve_field(table_name_, row_id_, column_name));
   }
 };
 

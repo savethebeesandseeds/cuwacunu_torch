@@ -7,34 +7,36 @@
 #include <unordered_map>
 #include <vector>
 
-#include "ujcamei/graph/graph.h"
-#include "ujcamei/source/instrument_signature.h"
-#include "ujcamei/source/types/types_enums.h"
+#include "kikijyeba/topology/graph/graph.h"
+#include "kikijyeba/topology/graph/graph_topology_spec.h"
+#include "ujcamei/source/registry/instrument_signature.h"
+#include "ujcamei/source/registry/types/enums.h"
 
 namespace cuwacunu {
 namespace ujcamei {
 namespace source {
 namespace contract {
 
-using ::cuwacunu::ujcamei::source::instrument_signature_compact_string;
-using ::cuwacunu::ujcamei::source::instrument_signature_t;
-using ::cuwacunu::ujcamei::source::instrument_signature_validate;
+using ::cuwacunu::ujcamei::source::registry::
+    instrument_signature_compact_string;
+using ::cuwacunu::ujcamei::source::registry::instrument_signature_t;
+using ::cuwacunu::ujcamei::source::registry::instrument_signature_validate;
 
 /*
  * Stable source contract model.
  *
  * These structs describe the decoded source/dock compatibility bundle.
- * Ujcamei-owned source rows define what records exist. The channel and graph
- * rows are kikijyeba.protocol.cwu_01v dock settings owned semantically by
- * Kikijyeba composition and kept here only while lower storage and validation
- * surfaces still accept one merged shape. Runtime cursors are internal
+ * Ujcamei-owned source rows define what records exist. Retrieval-channel rows
+ * are source retrieval policy. Kikijyeba topology rows are only carried in
+ * source_spec_t as a compatibility merge while lower storage and validation
+ * surfaces still accept one combined shape. Runtime cursors are internal
  * dataloader/reporting selectors, not authored source contract rows. These
  * structs intentionally do not expose parser token hashes or runtime retrieval
  * state.
  */
 struct source_form_t {
   std::string instrument;
-  cuwacunu::ujcamei::source::types::interval_type_e interval;
+  cuwacunu::ujcamei::source::registry::types::interval_type_e interval;
   std::string record_type;
   std::string market_type;
   std::string venue;
@@ -56,27 +58,13 @@ struct source_form_t {
 };
 
 struct channel_form_t {
-  cuwacunu::ujcamei::source::types::interval_type_e interval;
+  cuwacunu::ujcamei::source::registry::types::interval_type_e interval;
   std::string active;
   std::string record_type;
   std::string input_length;
   std::string future_length;
   std::string channel_weight;
   std::string normalization_policy;
-};
-
-struct graph_node_form_t {
-  std::string node_id;
-  std::string node_kind;
-  std::string active;
-};
-
-struct graph_edge_form_t {
-  std::string edge_id;
-  std::string base_node;
-  std::string quote_node;
-  std::string source_instrument;
-  std::string active;
 };
 
 struct source_data_analytics_policy_t {
@@ -98,7 +86,8 @@ struct source_universe_t {
 
   std::vector<source_form_t> filter_source_forms(
       const instrument_signature_t &target_signature,
-      cuwacunu::ujcamei::source::types::interval_type_e target_interval) const;
+      cuwacunu::ujcamei::source::registry::types::interval_type_e
+          target_interval) const;
   bool active_sources_match_runtime_signature(
       const instrument_signature_t &runtime_signature,
       std::string *error = nullptr) const;
@@ -107,8 +96,10 @@ struct source_universe_t {
 struct source_spec_t {
   std::vector<source_form_t> source_forms;
   std::vector<channel_form_t> channel_forms;
-  std::vector<graph_node_form_t> graph_node_forms;
-  std::vector<graph_edge_form_t> graph_edge_forms;
+  std::vector<cuwacunu::kikijyeba::topology::graph::graph_node_form_t>
+      graph_node_forms;
+  std::vector<cuwacunu::kikijyeba::topology::graph::graph_edge_form_t>
+      graph_edge_forms;
   std::string graph_edge_resolution_policy{"explicit_only"};
   std::string graph_edge_source_kind{"real"};
   std::string graph_fetch_mode{"serial"};
@@ -121,7 +112,8 @@ struct source_spec_t {
 
   std::vector<source_form_t> filter_source_forms(
       const instrument_signature_t &target_signature,
-      cuwacunu::ujcamei::source::types::interval_type_e target_interval) const;
+      cuwacunu::ujcamei::source::registry::types::interval_type_e
+          target_interval) const;
   bool active_sources_match_runtime_signature(
       const instrument_signature_t &runtime_signature,
       std::string *error = nullptr) const;
@@ -129,7 +121,8 @@ struct source_spec_t {
   int64_t count_channels();
   int64_t max_input_length();
   int64_t max_future_length();
-  cuwacunu::ujcamei::graph::market_graph_t active_market_graph() const;
+  cuwacunu::kikijyeba::topology::graph::market_graph_t
+  active_market_graph() const;
   std::unordered_map<std::string, instrument_signature_t>
   active_edge_instrument_map() const;
 };

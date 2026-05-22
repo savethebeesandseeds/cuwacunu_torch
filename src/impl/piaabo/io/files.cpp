@@ -1,8 +1,6 @@
-/* dfiles.cpp */
+/* files.cpp */
 #include "piaabo/io/files.h"
 #include <sstream>
-
-DEV_WARNING("(dfiles.cpp)[] binaryFile_to_vector has a note on imporving performance \n");
 
 namespace cuwacunu {
 namespace piaabo {

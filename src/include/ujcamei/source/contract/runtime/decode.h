@@ -10,9 +10,9 @@ namespace ujcamei {
 namespace source {
 namespace contract {
 
-struct source_config_paths_t {
-  std::string sources_bnf_path{};
-  std::string sources_dsl_path{};
+struct source_registry_config_paths_t {
+  std::string source_registry_dsl_bnf_path{};
+  std::string source_registry_dsl_path{};
 };
 
 source_universe_t
@@ -27,8 +27,8 @@ source_spec_t decode_source_spec_from_split_dsl(std::string source_grammar,
                                                 std::string graph_grammar,
                                                 std::string graph_instruction);
 std::string default_source_config_path();
-source_config_paths_t
-load_source_config_paths_from_config(std::string config_path);
+source_registry_config_paths_t
+load_source_registry_config_paths_from_config(std::string config_path);
 source_spec_t decode_source_spec_from_config(std::string config_path);
 source_spec_t decode_source_spec_from_default_config();
 

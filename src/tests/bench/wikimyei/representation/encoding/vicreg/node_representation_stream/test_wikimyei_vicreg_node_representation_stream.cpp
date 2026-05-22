@@ -13,14 +13,14 @@
 #include <unistd.h>
 
 namespace contract = cuwacunu::ujcamei::source::contract;
-namespace dl = cuwacunu::ujcamei::source::dataloader;
-namespace graph = cuwacunu::ujcamei::graph;
+namespace dl = cuwacunu::ujcamei::source::retrieval::dataloader;
+namespace graph = cuwacunu::kikijyeba::topology::graph;
 namespace nodelift = cuwacunu::wikimyei::expression::nodelift::srl::stream;
 namespace repstream =
     cuwacunu::wikimyei::representation::encoding::vicreg::stream;
 namespace source = cuwacunu::ujcamei::source;
 namespace srl = cuwacunu::wikimyei::expression::nodelift::srl;
-namespace types = cuwacunu::ujcamei::source::types;
+namespace types = cuwacunu::ujcamei::source::registry::types;
 namespace vicreg = cuwacunu::wikimyei::representation::encoding::vicreg;
 
 namespace {
@@ -244,9 +244,9 @@ void write_kline_csv(const std::filesystem::path &path,
   }
 }
 
-source::instrument_signature_t
+source::registry::instrument_signature_t
 make_signature(std::string symbol, std::string base, std::string quote) {
-  return source::instrument_signature_t{
+  return source::registry::instrument_signature_t{
       .symbol = std::move(symbol),
       .record_type = "kline",
       .market_type = "spot",
@@ -257,8 +257,8 @@ make_signature(std::string symbol, std::string base, std::string quote) {
 }
 
 contract::source_spec_t
-make_source_spec(const source::instrument_signature_t &btc_usdt,
-                 const source::instrument_signature_t &eth_usdt,
+make_source_spec(const source::registry::instrument_signature_t &btc_usdt,
+                 const source::registry::instrument_signature_t &eth_usdt,
                  const std::filesystem::path &btc_csv,
                  const std::filesystem::path &eth_csv) {
   contract::source_spec_t spec{};
@@ -299,9 +299,9 @@ make_source_spec(const source::instrument_signature_t &btc_usdt,
   return spec;
 }
 
-graph::market_graph_t
-make_contract_market_graph(const source::instrument_signature_t &btc_usdt,
-                           const source::instrument_signature_t &eth_usdt) {
+graph::market_graph_t make_contract_market_graph(
+    const source::registry::instrument_signature_t &btc_usdt,
+    const source::registry::instrument_signature_t &eth_usdt) {
   return graph::make_market_graph({
       graph::make_directed_instrument_edge(btc_usdt),
       graph::make_directed_instrument_edge(eth_usdt),

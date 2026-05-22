@@ -11,9 +11,9 @@
 
 #include <unistd.h>
 
-namespace builder = cuwacunu::kikijyeba::composition;
+namespace builder = cuwacunu::kikijyeba::protocol;
 namespace launcher = cuwacunu::jkimyei::training::inference;
-namespace types = cuwacunu::ujcamei::source::types;
+namespace types = cuwacunu::ujcamei::source::registry::types;
 
 namespace {
 
@@ -92,11 +92,12 @@ struct fixture_paths_t {
   std::filesystem::path report{};
 };
 
-fixture_paths_t make_config_fixture(const std::string &label,
-                                    int64_t max_steps = 3,
-                                    int64_t checkpoint_every = 1,
-                                    int64_t mdn_batch_size = 2,
-                                    int64_t report_every = 1) {
+fixture_paths_t
+make_config_fixture(const std::string &label, int64_t max_steps = 3,
+                    int64_t checkpoint_every = 1, int64_t mdn_batch_size = 2,
+                    int64_t report_every = 1,
+                    const std::string &wave_mode = "run",
+                    const std::string &wave_range = "  SOURCE_RANGE = all;\n") {
   fixture_paths_t out{};
   out.dir = make_tmp_dir(label);
   out.report = out.dir / "inference.report";
@@ -111,13 +112,12 @@ fixture_paths_t make_config_fixture(const std::string &label,
   write_kline_csv(usdt_eth_csv, {1000, 1001, 1002, 1003, 1004, 1005, 1006},
                   0.005);
 
-  const auto sources_dsl = out.dir / "ujcamei.sources.dsl";
-  const auto channels_dsl =
-      out.dir / "kikijyeba.protocol.cwu_01v.settings.dock.channels.dsl";
-  const auto graph_dsl =
-      out.dir / "kikijyeba.protocol.cwu_01v.topology.graph.dsl";
+  const auto sources_dsl = out.dir / "ujcamei.source.registry.dsl";
+  const auto channels_dsl = out.dir / "ujcamei.source.retrieval.channels.dsl";
+  const auto graph_dsl = out.dir / "kikijyeba.topology.graph.dsl";
+  const auto wave_dsl = out.dir / "kikijyeba.settings.wave.dsl";
   const auto mdn_training_dsl =
-      out.dir / "jkimyei.inference.expected_value.mdn.dsl";
+      out.dir / "wikimyei.inference.expected_value.mdn.jkimyei";
   out.config = out.dir / ".config";
 
   write_text(
@@ -202,7 +202,7 @@ fixture_paths_t make_config_fixture(const std::string &label,
   write_text(mdn_training_dsl,
              std::string("TRAINING {\n"
                          "  VERSION = "
-                         "jkimyei.inference.expected_value.mdn.v1;\n"
+                         "wikimyei.inference.expected_value.mdn.jkimyei.v1;\n"
                          "  TRAINING_ID = smoke_mdn_inference;\n"
                          "  TASK = mdn_expected_value_inference;\n"
                          "  COMPONENT_ID = mdn_v1;\n"
@@ -224,66 +224,107 @@ fixture_paths_t make_config_fixture(const std::string &label,
                  "  VALIDATION_EVERY = 0;\n"
                  "  SEED = 31;\n"
                  "  FREEZE_REPRESENTATION = true;\n"
+                 "  ALLOW_UNTRAINED_REPRESENTATION = true;\n"
                  "};\n");
+
+  write_text(wave_dsl,
+             std::string("WAVE_SETTINGS {\n"
+                         "  WAVE_ID = cwu_01v_smoke;\n"
+                         "  TARGET = wikimyei.inference.expected_value.mdn;\n"
+                         "  MODE = ") +
+                 wave_mode +
+                 ";\n"
+                 "  SOURCE_CURSOR_KIND = graph_anchor;\n"
+                 "  SOURCE_CURSOR_SCOPE = wave_batch;\n" +
+                 wave_range + "};\n");
 
   write_text(
       out.config,
-      std::string("[UJCAMEI]\n"
-                  "ujcamei_sources_bnf_path = "
-                  "/cuwacunu/src/config/grammar/ujcamei.sources.bnf\n"
-                  "ujcamei_sources_dsl_path = ") +
+      std::string(
+          "[UJCAMEI]\n"
+          "ujcamei_source_registry_dsl_bnf_path = "
+          "/cuwacunu/src/config/grammar/ujcamei.source.registry.dsl.bnf\n"
+          "ujcamei_source_registry_dsl_path = ") +
           sources_dsl.string() +
           "\n"
-          "kikijyeba_protocol_cwu_01v_settings_dock_channels_bnf_path = "
+          "ujcamei_source_retrieval_channels_dsl_bnf_path = "
           "/cuwacunu/src/config/grammar/"
-          "kikijyeba.protocol.cwu_01v.settings.dock.channels.bnf\n"
-          "kikijyeba_protocol_cwu_01v_settings_dock_channels_dsl_path = " +
+          "ujcamei.source.retrieval.channels.dsl.bnf\n"
+          "ujcamei_source_retrieval_channels_dsl_path = " +
           channels_dsl.string() +
           "\n"
-          "kikijyeba_protocol_cwu_01v_topology_graph_bnf_path = "
+          "kikijyeba_topology_graph_dsl_bnf_path = "
           "/cuwacunu/src/config/grammar/"
-          "kikijyeba.protocol.cwu_01v.topology.graph.bnf\n"
-          "kikijyeba_protocol_cwu_01v_topology_graph_dsl_path = " +
+          "kikijyeba.topology.graph.dsl.bnf\n"
+          "kikijyeba_topology_graph_dsl_path = " +
           graph_dsl.string() +
+          "\n"
+          "kikijyeba_settings_wave_dsl_bnf_path = "
+          "/cuwacunu/src/config/grammar/kikijyeba.settings.wave.dsl.bnf\n"
+          "kikijyeba_settings_wave_dsl_path = " +
+          wave_dsl.string() +
           "\n\n"
           "[WIKIMYEI]\n"
-          "wikimyei_representation_vicreg_bnf_path = "
-          "/cuwacunu/src/config/grammar/wikimyei.representation.vicreg.bnf\n"
+          "wikimyei_expression_nodelift_srl_dsl_bnf_path = "
+          "/cuwacunu/src/config/grammar/"
+          "wikimyei.expression.nodelift.srl.dsl.bnf\n"
+          "wikimyei_expression_nodelift_srl_dsl_path = "
+          "/cuwacunu/src/config/wikimyei.expression.nodelift.srl.dsl\n"
+          "wikimyei_representation_vicreg_dsl_bnf_path = "
+          "/cuwacunu/src/config/grammar/"
+          "wikimyei.representation.vicreg.dsl.bnf\n"
           "wikimyei_representation_vicreg_dsl_path = "
           "/cuwacunu/src/config/wikimyei.representation.vicreg.dsl\n"
-          "wikimyei_inference_expected_value_mdn_bnf_path = "
+          "wikimyei_representation_vicreg_net_bnf_path = "
           "/cuwacunu/src/config/grammar/"
-          "wikimyei.inference.expected_value.mdn.bnf\n"
+          "wikimyei.representation.vicreg.net.bnf\n"
+          "wikimyei_representation_vicreg_net_path = "
+          "/cuwacunu/src/config/wikimyei.representation.vicreg.net\n"
+          "wikimyei_inference_expected_value_mdn_dsl_bnf_path = "
+          "/cuwacunu/src/config/grammar/"
+          "wikimyei.inference.expected_value.mdn.dsl.bnf\n"
           "wikimyei_inference_expected_value_mdn_dsl_path = "
           "/cuwacunu/src/config/"
           "wikimyei.inference.expected_value.mdn.dsl\n\n"
-          "[JKIMYEI]\n"
-          "jkimyei_representation_vicreg_bnf_path = "
-          "/cuwacunu/src/config/grammar/jkimyei.representation.vicreg.bnf\n"
-          "jkimyei_representation_vicreg_dsl_path = "
-          "/cuwacunu/src/config/jkimyei.representation.vicreg.dsl\n"
-          "jkimyei_inference_expected_value_mdn_bnf_path = "
+          "wikimyei_inference_expected_value_mdn_net_bnf_path = "
           "/cuwacunu/src/config/grammar/"
-          "jkimyei.inference.expected_value.mdn.bnf\n"
-          "jkimyei_inference_expected_value_mdn_dsl_path = " +
+          "wikimyei.inference.expected_value.mdn.net.bnf\n"
+          "wikimyei_inference_expected_value_mdn_net_path = "
+          "/cuwacunu/src/config/"
+          "wikimyei.inference.expected_value.mdn.net\n\n"
+          "[JKIMYEI]\n"
+          "wikimyei_representation_vicreg_jkimyei_bnf_path = "
+          "/cuwacunu/src/config/grammar/"
+          "wikimyei.representation.vicreg.jkimyei.bnf\n"
+          "wikimyei_representation_vicreg_jkimyei_path = "
+          "/cuwacunu/src/config/wikimyei.representation.vicreg.jkimyei\n"
+          "wikimyei_inference_expected_value_mdn_jkimyei_bnf_path = "
+          "/cuwacunu/src/config/grammar/"
+          "wikimyei.inference.expected_value.mdn.jkimyei.bnf\n"
+          "wikimyei_inference_expected_value_mdn_jkimyei_path = " +
           mdn_training_dsl.string() + "\n");
 
   return out;
 }
 
-launcher::graph_first_inference_launcher_t<Kline>
-make_launcher(const fixture_paths_t &fixture, bool force_rebuild_cache = true,
-              bool write_report = false) {
+launcher::graph_first_inference_launcher_t<Kline> make_launcher(
+    const fixture_paths_t &fixture, bool force_rebuild_cache = true,
+    bool write_report = false,
+    cuwacunu::kikijyeba::lattice::runtime_report::runtime_report_mode_t
+        runtime_report_mode = cuwacunu::kikijyeba::lattice::runtime_report::
+            runtime_report_mode_t::normal,
+    std::size_t batch_size = 2) {
   auto bundle =
       builder::load_graph_first_config_bundle_from_config(fixture.config);
   builder::graph_first_pipeline_builder_options_t builder_options{};
   builder_options.force_rebuild_cache = force_rebuild_cache;
-  builder_options.batch_size = 2;
+  builder_options.batch_size = batch_size;
   builder::graph_first_pipeline_builder_t<Kline> pipe(bundle, builder_options);
 
   launcher::graph_first_inference_launcher_options_t launcher_options{};
   launcher_options.write_report = write_report;
   launcher_options.report_path = fixture.report;
+  launcher_options.runtime_report_mode = runtime_report_mode;
   return launcher::graph_first_inference_launcher_t<Kline>(std::move(pipe),
                                                            launcher_options);
 }
@@ -312,11 +353,32 @@ void test_dry_run_launcher_report() {
   check(report.device == "cpu", "dry-run device");
   check(report.seed == 31, "dry-run seed");
   check(report.seed_scope == "torch_manual_seed_cpu", "dry-run seed scope");
+  check(report.representation_checkpoint_path.empty(),
+        "dry-run representation checkpoint absent");
+  check(!report.representation_checkpoint_loaded,
+        "dry-run representation checkpoint not loaded");
+  check(report.allow_untrained_representation,
+        "dry-run allows untrained representation smoke");
   check(report.checkpoint_every == 0, "dry-run checkpoint cadence");
   check(report.report_every == 1, "dry-run report cadence");
   check(report.validation_every == 0, "dry-run validation cadence");
   check(report.analytics_status == "decoded_validated_not_emitted",
         "dry-run analytics status");
+  check(report.wave_id == "cwu_01v_smoke", "dry-run wave id");
+  check(report.wave_mode == "run", "dry-run wave mode");
+  check(report.wave_source_cursor_kind == "graph_anchor",
+        "dry-run wave cursor kind");
+  check(report.wave_source_cursor_scope == "wave_batch",
+        "dry-run wave cursor scope");
+  check(report.wave_source_range_policy == "all", "dry-run wave range policy");
+  check(report.requested_anchor_index_begin == -1,
+        "dry-run default range begin");
+  check(report.requested_anchor_index_end == -1, "dry-run default range end");
+  check(report.runtime_report_mode == "normal", "dry-run runtime mode");
+  check(report.stream_plan.find("nodelift") != std::string::npos,
+        "dry-run report includes stream plan");
+  check(report.stream_plan.find("representation") != std::string::npos,
+        "dry-run stream plan includes representation");
 }
 
 void test_batch_size_config_contract() {
@@ -361,7 +423,9 @@ void test_batch_size_config_contract() {
 void test_config_backed_training_run_and_report_checkpoint() {
   torch::manual_seed(53);
   const auto fixture = make_config_fixture("training", /*max_steps=*/3,
-                                           /*checkpoint_every=*/1);
+                                           /*checkpoint_every=*/1,
+                                           /*mdn_batch_size=*/2,
+                                           /*report_every=*/1, "train");
   auto graph_launcher = make_launcher(fixture, /*force_rebuild_cache=*/true,
                                       /*write_report=*/true);
   const auto report = graph_launcher.run();
@@ -369,6 +433,10 @@ void test_config_backed_training_run_and_report_checkpoint() {
   check(report.steps_completed > 0, "training completed steps");
   check(report.optimizer_steps == report.steps_completed,
         "optimizer steps match completed steps");
+  check(report.wave_pulses_attempted == report.steps_attempted,
+        "training wave pulse attempts track steps");
+  check(report.wave_pulses_completed == report.steps_completed,
+        "training wave pulse completions track completed steps");
   check(report.total_valid_target_count > 0, "valid targets observed");
   check(report.total_valid_row_count > 0, "valid rows observed");
   check(report.total_trained_node_head_count > 0,
@@ -377,6 +445,17 @@ void test_config_backed_training_run_and_report_checkpoint() {
   check(std::isfinite(report.mean_loss), "mean loss finite");
   check(report.valid_target_count_by_node.size() == 3,
         "valid target counts by node");
+  check(report.routed_row_count_by_node.size() == 3,
+        "routed row counts by node");
+  check(report.active_row_count_by_node.size() == 3,
+        "active row counts by node");
+  check(report.trained_row_count_by_node.size() == 3,
+        "trained row counts by node");
+  check(report.evaluated_row_count_by_node.size() == 3,
+        "evaluated row counts by node");
+  check(report.routed_row_count_by_node[0] > 0, "node routed support observed");
+  check(report.trained_row_count_by_node[0] > 0,
+        "node trained support observed");
   check(report.mean_nll_by_node.size() == 3, "mean nll by node");
   check(std::isfinite(report.mean_node_context_norm_mean),
         "context norm mean finite");
@@ -392,11 +471,21 @@ void test_config_backed_training_run_and_report_checkpoint() {
   check(report.device == "cpu", "training device");
   check(report.seed == 31, "training seed");
   check(report.seed_scope == "torch_manual_seed_cpu", "training seed scope");
+  check(report.representation_checkpoint_path.empty(),
+        "training representation checkpoint absent");
+  check(!report.representation_checkpoint_loaded,
+        "training did not load representation checkpoint");
+  check(report.allow_untrained_representation,
+        "training allows untrained representation smoke");
   check(report.checkpoint_every == 1, "training checkpoint cadence");
   check(report.report_every == 1, "training report cadence");
   check(report.validation_every == 0, "training validation cadence");
   check(report.analytics_status == "decoded_validated_not_emitted",
         "training analytics status");
+  check(report.wave_id == "cwu_01v_smoke", "training wave id");
+  check(report.wave_mode == "train", "training wave mode");
+  check(report.wave_source_range_policy == "all", "training wave range policy");
+  check(report.runtime_report_mode == "normal", "training runtime mode");
   check(!report.source_cursor_token.empty(), "training source cursor token");
   check(report.source_anchor_count > 0, "training source anchor count");
   check(report.source_candidate_anchor_count >= report.source_anchor_count,
@@ -404,6 +493,10 @@ void test_config_backed_training_run_and_report_checkpoint() {
   check(!report.source_first_anchor_key.empty(),
         "training source first anchor");
   check(!report.source_last_anchor_key.empty(), "training source last anchor");
+  check(report.wave_streamed_anchor_count > 0,
+        "training streamed wave anchors");
+  check(!report.wave_first_anchor_key.empty(), "training wave first anchor");
+  check(!report.wave_last_anchor_key.empty(), "training wave last anchor");
   check(report.report_written, "report file written");
   check(std::filesystem::exists(fixture.report), "report path exists");
   check(report.checkpoint_written, "checkpoint metadata written");
@@ -441,9 +534,25 @@ void test_config_backed_training_run_and_report_checkpoint() {
   check(report_text.find("analytics_status=decoded_validated_not_emitted") !=
             std::string::npos,
         "report contains analytics status");
+  check(report_text.find("wave_id=cwu_01v_smoke") != std::string::npos,
+        "report contains wave id");
+  check(report_text.find("wave_source_range_policy=all") != std::string::npos,
+        "report contains wave range policy");
+  check(report_text.find("wave_pulses_attempted=") != std::string::npos,
+        "report contains wave pulse attempts");
+  check(report_text.find("runtime_report_mode=normal") != std::string::npos,
+        "report contains runtime report mode");
   check(report_text.find("edge_ids=BTCUSDT,USDTBTC,ETHUSDT,USDTETH") !=
             std::string::npos,
         "report contains edge ids");
+  check(report_text.find("routed_row_count_by_node=") != std::string::npos,
+        "report contains per-node routed row counts");
+  check(report_text.find("active_row_count_by_node=") != std::string::npos,
+        "report contains per-node active row counts");
+  check(report_text.find("trained_row_count_by_node=") != std::string::npos,
+        "report contains per-node trained row counts");
+  check(report_text.find("evaluated_row_count_by_node=") != std::string::npos,
+        "report contains per-node evaluated row counts");
   check(report_text.find("mean_nll_by_node=") != std::string::npos,
         "report contains per-node nll");
   check(report_text.find("finite_parameter_check=1") != std::string::npos,
@@ -452,6 +561,144 @@ void test_config_backed_training_run_and_report_checkpoint() {
         "report contains MDN checkpoint format");
   check(report_text.find("target_domain=node_future") != std::string::npos,
         "report contains node-future target domain");
+  check(report_text.find("mdn_checkpoint_loaded=false") != std::string::npos,
+        "initial training report records absent MDN input checkpoint");
+
+  auto restored_bundle =
+      builder::load_graph_first_config_bundle_from_config(fixture.config);
+  restored_bundle.mdn_training.input_mdn_checkpoint_path =
+      report.checkpoint_path;
+  restored_bundle.mdn_training.checkpoint_every = 0;
+  restored_bundle.mdn_training.max_steps = 1;
+  builder::graph_first_pipeline_builder_options_t restored_builder_options{};
+  restored_builder_options.force_rebuild_cache = false;
+  restored_builder_options.batch_size = 2;
+  builder::graph_first_pipeline_builder_t<Kline> restored_pipe(
+      restored_bundle, restored_builder_options);
+  launcher::graph_first_inference_launcher_options_t restored_options{};
+  restored_options.write_report = true;
+  restored_options.report_path = fixture.dir / "restored_mdn.report";
+  launcher::graph_first_inference_launcher_t<Kline> restored_launcher(
+      std::move(restored_pipe), restored_options);
+  const auto restored_report = restored_launcher.run();
+  check(restored_report.mdn_checkpoint_loaded,
+        "MDN input checkpoint should be loaded when configured");
+  check(restored_report.mdn_checkpoint_path == report.checkpoint_path,
+        "MDN input checkpoint path should be reported");
+  const auto restored_report_text = read_text(restored_options.report_path);
+  check(restored_report_text.find("mdn_checkpoint_loaded=true") !=
+            std::string::npos,
+        "restored report records loaded MDN checkpoint");
+
+  const auto range_fixture = make_config_fixture(
+      "training_wave_range", /*max_steps=*/0, /*checkpoint_every=*/0,
+      /*mdn_batch_size=*/1, /*report_every=*/1, "train",
+      "  SOURCE_RANGE = anchor_index;\n"
+      "  ANCHOR_INDEX_BEGIN = 1;\n"
+      "  ANCHOR_INDEX_END = 3;\n");
+  auto range_launcher =
+      make_launcher(range_fixture, /*force_rebuild_cache=*/true,
+                    /*write_report=*/false,
+                    cuwacunu::kikijyeba::lattice::runtime_report::
+                        runtime_report_mode_t::normal,
+                    /*batch_size=*/1);
+  const auto range_report = range_launcher.run();
+  check(range_report.wave_source_range_policy == "anchor_index",
+        "range wave policy");
+  check(range_report.requested_anchor_index_begin == 1,
+        "range wave begin index");
+  check(range_report.requested_anchor_index_end == 3, "range wave end index");
+  check(range_report.wave_streamed_anchor_count == 2,
+        "range wave streams requested anchor count");
+  check(range_report.steps_attempted == 2,
+        "range wave pulses batches until interval exhaustion");
+  check(range_report.wave_pulses_attempted == 2, "range wave pulse counter");
+  check(range_report.source_anchor_count >
+            range_report.wave_streamed_anchor_count,
+        "range wave is narrower than full source domain");
+
+  const auto debug_fixture =
+      make_config_fixture("training_debug", /*max_steps=*/1,
+                          /*checkpoint_every=*/0, /*mdn_batch_size=*/2,
+                          /*report_every=*/1, "train | debug");
+  auto debug_launcher =
+      make_launcher(debug_fixture, /*force_rebuild_cache=*/true,
+                    /*write_report=*/true);
+  const auto debug_report = debug_launcher.run();
+  check(debug_report.runtime_lls_emitted, "debug runtime LLS emitted");
+  check(debug_report.runtime_report_mode == "debug",
+        "debug wave sets runtime report mode");
+  check(debug_report.nodelift_runtime_lls.find(
+            "schema:str = wikimyei.expression.nodelift.srl.runtime.v1") !=
+            std::string::npos,
+        "debug NodeLift runtime LLS schema");
+  check(debug_report.nodelift_runtime_lls.find(
+            "component_id:str = nodelift_srl_v1") != std::string::npos,
+        "debug NodeLift runtime LLS component id");
+  check(debug_report.nodelift_runtime_lls.find(
+            "assembly_token:str = wikimyei.expression.nodelift.srl/"
+            "nodelift_srl_v1/wikimyei.expression.nodelift.srl.v1") !=
+            std::string::npos,
+        "debug NodeLift runtime LLS assembly token");
+  check(debug_report.nodelift_runtime_lls.find(
+            "dock_binding_token:str = "
+            "kikijyeba.topology.graph.dock_binding.v1/") != std::string::npos,
+        "debug NodeLift runtime LLS dock binding token");
+  check(debug_report.nodelift_runtime_lls.find("wave_id:str = cwu_01v_smoke") !=
+            std::string::npos,
+        "debug NodeLift runtime LLS wave id");
+  check(debug_report.nodelift_runtime_lls.find(
+            "source_range_policy:str = all") != std::string::npos,
+        "debug NodeLift runtime LLS source range policy");
+  check(debug_report.nodelift_runtime_lls.find("source_cursor_token") ==
+            std::string::npos,
+        "debug NodeLift runtime LLS does not mislabel batch cursor");
+  check(debug_report.representation_runtime_lls.find(
+            "schema:str = wikimyei.representation.vicreg.runtime.v1") !=
+            std::string::npos,
+        "debug representation runtime LLS schema");
+  check(debug_report.representation_runtime_lls.find(
+            "component_id:str = node_vicreg_v1") != std::string::npos,
+        "debug representation runtime LLS component id");
+  check(debug_report.representation_runtime_lls.find(
+            "assembly_token:str = wikimyei.representation.encoding.vicreg/"
+            "node_vicreg_v1/wikimyei.representation.vicreg.v1") !=
+            std::string::npos,
+        "debug representation runtime LLS assembly token");
+  check(debug_report.representation_runtime_lls.find(
+            "dock_binding_token:str = "
+            "kikijyeba.topology.graph.dock_binding.v1/") != std::string::npos,
+        "debug representation runtime LLS dock binding token");
+  check(debug_report.mdn_runtime_lls.find(
+            "schema:str = wikimyei.inference.expected_value.mdn.runtime.v1") !=
+            std::string::npos,
+        "debug MDN runtime LLS schema");
+  check(debug_report.mdn_runtime_lls.find("component_id:str = mdn_v1") !=
+            std::string::npos,
+        "debug MDN runtime LLS component id");
+  check(debug_report.mdn_runtime_lls.find(
+            "assembly_token:str = wikimyei.inference.expected_value.mdn/"
+            "mdn_v1/wikimyei.inference.expected_value.mdn.v1") !=
+            std::string::npos,
+        "debug MDN runtime LLS assembly token");
+  check(debug_report.mdn_runtime_lls.find(
+            "dock_binding_token:str = "
+            "kikijyeba.topology.graph.dock_binding.v1/") != std::string::npos,
+        "debug MDN runtime LLS dock binding token");
+  check(debug_report.mdn_runtime_lls.find(
+            "loss_preference:str = lower_is_better") != std::string::npos,
+        "debug MDN runtime LLS loss preference");
+  check(debug_report.mdn_runtime_lls.find("wave_pulse_index") !=
+            std::string::npos,
+        "debug MDN runtime LLS pulse index");
+  check(
+      std::filesystem::exists(debug_fixture.report.string() + ".nodelift.lls"),
+      "debug NodeLift LLS sidecar exists");
+  check(std::filesystem::exists(debug_fixture.report.string() +
+                                ".representation.lls"),
+        "debug representation LLS sidecar exists");
+  check(std::filesystem::exists(debug_fixture.report.string() + ".mdn.lls"),
+        "debug MDN LLS sidecar exists");
 
   auto bundle =
       builder::load_graph_first_config_bundle_from_config(fixture.config);
@@ -540,12 +787,52 @@ void test_config_backed_training_run_and_report_checkpoint() {
       "checkpoint load rejects mixture count mismatch");
 }
 
+void test_run_mode_evaluates_without_training() {
+  torch::manual_seed(57);
+  const auto fixture = make_config_fixture("run_eval", /*max_steps=*/1,
+                                           /*checkpoint_every=*/0,
+                                           /*mdn_batch_size=*/2,
+                                           /*report_every=*/1, "run");
+  auto graph_launcher = make_launcher(fixture, /*force_rebuild_cache=*/true,
+                                      /*write_report=*/true);
+  const auto report = graph_launcher.run();
+  check(report.target_action == "run", "run mode target action");
+  check(report.steps_attempted > 0, "run mode attempted steps");
+  check(report.steps_completed > 0, "run mode completed evaluation");
+  check(report.optimizer_steps == 0, "run mode has no optimizer steps");
+  check(report.total_active_node_head_count > 0,
+        "run mode active node heads observed");
+  check(report.total_evaluated_node_head_count ==
+            report.total_active_node_head_count,
+        "run mode active heads are evaluated heads");
+  check(report.total_trained_node_head_count == 0,
+        "run mode does not train node heads");
+  check(report.evaluated_row_count_by_node.size() == 3,
+        "run mode evaluated row counts by node");
+  check(report.evaluated_row_count_by_node[0] > 0,
+        "run mode node evaluated support observed");
+  check(report.trained_row_count_by_node.size() == 3 &&
+            report.trained_row_count_by_node[0] == 0,
+        "run mode per-node trained support remains zero");
+  check(std::isfinite(report.last_loss), "run mode NLL finite");
+  check(!report.checkpoint_written, "run mode writes no checkpoint");
+
+  const auto report_text = read_text(fixture.report);
+  check(report_text.find("target_action=run") != std::string::npos,
+        "run mode report contains target action");
+  check(report_text.find("total_evaluated_node_head_count=") !=
+            std::string::npos,
+        "run mode report contains evaluated head count");
+  check(report_text.find("evaluated_row_count_by_node=") != std::string::npos,
+        "run mode report contains per-node evaluated row counts");
+}
+
 void test_checkpoint_and_report_cadence() {
   torch::manual_seed(57);
   const auto fixture =
       make_config_fixture("cadence", /*max_steps=*/3,
                           /*checkpoint_every=*/2, /*mdn_batch_size=*/2,
-                          /*report_every=*/2);
+                          /*report_every=*/2, "train");
   auto graph_launcher = make_launcher(fixture, /*force_rebuild_cache=*/true,
                                       /*write_report=*/true);
   const auto report = graph_launcher.run();
@@ -586,7 +873,9 @@ void test_checkpoint_and_report_cadence() {
 void test_all_masked_targets_are_skipped() {
   torch::manual_seed(59);
   const auto fixture = make_config_fixture("masked", /*max_steps=*/2,
-                                           /*checkpoint_every=*/0);
+                                           /*checkpoint_every=*/0,
+                                           /*mdn_batch_size=*/2,
+                                           /*report_every=*/1, "train");
   auto graph_launcher = make_launcher(fixture, /*force_rebuild_cache=*/true,
                                       /*write_report=*/false);
   graph_launcher.set_force_empty_targets_for_test(true);
@@ -594,6 +883,8 @@ void test_all_masked_targets_are_skipped() {
   check(report.all_target_masks_forced_empty, "forced-empty flag");
   check(report.steps_attempted > 0, "masked attempted steps");
   check(report.steps_completed == 0, "masked completed no steps");
+  check(report.wave_pulses_skipped == report.steps_attempted,
+        "masked skipped every wave pulse");
   check(report.optimizer_steps == 0, "masked no optimizer steps");
   check(report.skipped_batches == report.steps_attempted,
         "masked skipped every batch");
@@ -644,13 +935,40 @@ void test_low_target_coverage_warning() {
         "low coverage trains only one node head");
 }
 
+void test_model_state_inputs_do_not_change_contract_identity() {
+  const auto fixture =
+      make_config_fixture("contract_identity", /*max_steps=*/1,
+                          /*checkpoint_every=*/0, /*mdn_batch_size=*/2);
+  auto contract =
+      builder::load_graph_first_config_bundle_from_config(fixture.config);
+
+  const auto baseline =
+      builder::graph_first_protocol_contract_fingerprint(contract);
+  contract.mdn_training.input_representation_checkpoint_path = "/tmp/rep_a.pt";
+  contract.mdn_training.input_mdn_checkpoint_path = "/tmp/mdn_a.pt";
+  const auto with_model_state =
+      builder::graph_first_protocol_contract_fingerprint(contract);
+  check(baseline == with_model_state,
+        "runtime model-state checkpoint inputs must not alter protocol "
+        "contract fingerprint");
+
+  contract.mdn_training.batch_size = 3;
+  const auto with_contract_change =
+      builder::graph_first_protocol_contract_fingerprint(contract);
+  check(with_contract_change != baseline,
+        "contract identity should still change for canonical training "
+        "selectors such as batch size");
+}
+
 } // namespace
 
 int main() {
   try {
+    test_model_state_inputs_do_not_change_contract_identity();
     test_dry_run_launcher_report();
     test_batch_size_config_contract();
     test_config_backed_training_run_and_report_checkpoint();
+    test_run_mode_evaluates_without_training();
     test_checkpoint_and_report_cadence();
     test_all_masked_targets_are_skipped();
     test_low_target_coverage_warning();

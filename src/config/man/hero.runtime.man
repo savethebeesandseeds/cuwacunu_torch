@@ -1,0 +1,136 @@
+MAN_ID = hero.runtime
+TARGET_DSL = src/config/hero.runtime.dsl
+PRIMARY_VALIDATORS = src/include/hero/runtime_hero/hero_runtime.h
+
+[FIELD protocol_layer]
+key = protocol_layer
+scope = Runtime Hero policy
+type = enum
+default = STDIO
+allowed = STDIO,HTTPS/SSE
+nuance = STDIO is implemented; HTTPS/SSE is reserved and must fail fast.
+
+[FIELD runtime_exec_path]
+key = runtime_exec_path
+scope = Runtime Hero policy
+type = path
+default = /cuwacunu/.build/exec/cuwacunu_exec
+nuance = Runtime Hero shells out to this executable instead of embedding the heavy graph runtime.
+
+[FIELD default_config_path]
+key = default_config_path
+scope = Runtime Hero policy
+type = path
+default = /cuwacunu/src/config/.config
+nuance = Default config used for runtime tools when neither tool args nor --global-config override it.
+
+[FIELD runtime_root]
+key = runtime_root
+scope = Runtime Hero policy
+type = path
+default = /cuwacunu/.runtime/cuwacunu_exec
+nuance = Job discovery starts here.
+
+[FIELD allowed_job_roots]
+key = allowed_job_roots
+scope = Runtime Hero policy
+type = path_list
+default = /cuwacunu/.runtime/cuwacunu_exec,/tmp
+nuance = Explicit job_dir and artifact path args must stay under these roots.
+
+[FIELD default_dry_run]
+key = default_dry_run
+scope = Runtime Hero policy
+type = bool
+default = true
+nuance = hero.runtime.execute defaults to dry-run to make agent use conservative.
+
+[FIELD allow_execute]
+key = allow_execute
+scope = Runtime Hero policy
+type = bool
+default = false
+nuance = Non-dry-run execution is denied unless this is true.
+
+[FIELD allow_train_execute]
+key = allow_train_execute
+scope = Runtime Hero policy
+type = bool
+default = false
+nuance = MODE=train execution has a separate guard because it mutates target model state.
+
+[FIELD allow_force_rebuild_cache]
+key = allow_force_rebuild_cache
+scope = Runtime Hero policy
+type = bool
+default = false
+nuance = Passing --force-rebuild-cache is denied by default because it may mutate source caches.
+
+[FIELD require_confirm_execute]
+key = require_confirm_execute
+scope = Runtime Hero policy
+type = bool
+default = true
+nuance = Non-dry-run execution must pass confirm_execute=true by default.
+
+[FIELD allow_dev_nuke]
+key = allow_dev_nuke
+scope = Runtime Hero policy
+type = bool
+default = false
+nuance = Non-dry-run hero.runtime.dev_nuke is denied unless this is true.
+
+[FIELD require_confirm_dev_nuke]
+key = require_confirm_dev_nuke
+scope = Runtime Hero policy
+type = bool
+default = true
+nuance = Non-dry-run runtime state reset must pass confirm_dev_nuke=true by default.
+
+[FIELD dev_nuke_backup_enabled]
+key = dev_nuke_backup_enabled
+scope = Runtime Hero policy
+type = bool
+default = true
+nuance = When true, runtime root entries are moved into a backup snapshot before they disappear from the active runtime root.
+
+[FIELD dev_nuke_backup_root]
+key = dev_nuke_backup_root
+scope = Runtime Hero policy
+type = path
+default = /cuwacunu/.runtime/.backups/hero.runtime_dev_nuke
+nuance = Backup snapshots are written below this root as <runtime-root-leaf>/<stamp>/.
+
+[FIELD allowed_dev_nuke_roots]
+key = allowed_dev_nuke_roots
+scope = Runtime Hero policy
+type = path_list
+default = /cuwacunu/.runtime/cuwacunu_exec
+nuance = Explicit runtime_root arguments to hero.runtime.dev_nuke must resolve within one of these roots.
+
+[FIELD max_capture_bytes]
+key = max_capture_bytes
+scope = Runtime Hero policy
+type = int
+default = 65536
+allowed = integer >= 1024
+nuance = Caps inline stdout and stderr returned to agents.
+
+[FIELD max_runtime_seconds]
+key = max_runtime_seconds
+scope = Runtime Hero policy
+type = int
+default = 600
+allowed = integer >= 1
+nuance = Default child-process timeout for cuwacunu_exec invocations.
+
+[TOOLS]
+hero.runtime.status = policy, executable, active wave, and runtime-root summary
+hero.runtime.schema = policy key registry
+hero.runtime.wave = active wave intent decoded from kikijyeba.settings.wave.dsl
+hero.runtime.dry_run = guarded cuwacunu_exec --dry-run with stdout/stderr and artifacts
+hero.runtime.execute = guarded cuwacunu_exec invocation; dry_run defaults true; non-dry-run requires policy and confirm_execute
+hero.runtime.dev_nuke = guarded developer reset of runtime-root contents; dry_run defaults true; non-dry-run requires policy and confirm_dev_nuke
+hero.runtime.list_jobs = list runtime job directories and compact manifest/state summaries
+hero.runtime.get_job = inspect one job manifest/state/report bundle
+hero.runtime.read_artifact = read bounded manifest, state, report, or explicit runtime artifact path

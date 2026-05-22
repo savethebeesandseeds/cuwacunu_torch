@@ -1,6 +1,8 @@
 /* mixture_density_network.cpp */
 #include "wikimyei/inference/expected_value/mdn/mixture_density_network.h"
 
+#include "piaabo/core/utils.h"
+
 namespace cuwacunu {
 namespace wikimyei {
 namespace inference {

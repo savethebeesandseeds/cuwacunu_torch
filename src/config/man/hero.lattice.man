@@ -1,0 +1,118 @@
+CONFIG = src/config/hero.lattice.dsl
+PRIMARY_VALIDATORS = src/include/hero/lattice_hero/hero_lattice.h
+
+DESCRIPTION
+  Lattice Hero v0 is a read-only MCP/direct-tool surface for target readiness
+  and lineage inspection. It scans runtime job artifacts into an in-memory
+  exposure ledger, evaluates kikijyeba.lattice.targets.dsl, and can inspect
+  checkpoint exposure closures.
+
+KEYS
+  protocol_layer
+    Allowed: STDIO, HTTPS/SSE.
+    Current runtime supports STDIO only. HTTPS/SSE fails fast.
+
+  default_config_path
+    Global .config used to find Kikijyeba lattice target DSL paths.
+
+  runtime_root
+    Default runtime job artifact root.
+
+  allowed_runtime_roots
+    Comma-separated roots under which explicit runtime_root/checkpoint_path
+    arguments are allowed.
+
+  auto_build_exposure_ledger
+    When true, target evaluation derives exposure facts from normal runtime
+    artifacts. Future DB-backed operation should keep the DB rebuildable from
+    those same artifacts.
+
+  max_fact_preview
+    Maximum facts returned inline by hero.lattice.scan_exposure.
+
+  max_closure_facts
+    Maximum facts returned inline by hero.lattice.checkpoint_closure.
+
+TOOLS
+  hero.lattice.status
+  hero.lattice.schema
+  hero.lattice.list_targets
+  hero.lattice.explain_target
+  hero.lattice.evaluate_target
+  hero.lattice.plan_target
+  hero.lattice.scan_exposure
+  hero.lattice.checkpoint_closure
+
+AGENT RUNBOOK
+  Lattice Hero is read-only. It does not execute waves and it does not mutate
+  runtime evidence.
+
+  status
+    Always start here. Report target/split paths, split-policy fingerprint,
+    fact counts, warnings, and inferred active identity.
+
+  list_targets
+    Shows every LATTICE_TARGET block compiled from the active target DSL. V0 has
+    one active targets file per global config, but that file can contain many
+    targets.
+
+  explain_target
+    Explains one compiled proof object without scanning runtime evidence. Use
+    before editing, evaluating, or explaining a target. It includes checkpoint
+    source policy such as latest_satisfying:<target_id>.
+
+  scan_exposure
+    Builds a preview ledger from runtime job artifacts and lattice sidecars.
+    Report warnings verbatim. Fact previews include anchor_domain_health with
+    candidate/accepted graph anchors, skip reasons, common/reference key bounds,
+    and source-domain warning level. MDN jobs also expose derived node_exposure
+    previews from per-node report fields including routed/active/trained/
+    evaluated row counts, valid targets, and mean NLL; these are MDN support
+    facts, not per-node VICReg readiness claims.
+
+  evaluate_target
+    Proves whether one target is satisfied by the runtime evidence. For
+    exposure-backed targets, returns exposure_summaries with unique coverage,
+    repeated cursor-epoch exposure load, and optimizer-step density. These
+    summaries do not change status by themselves. Validation evaluation targets
+    use evaluation_metric coverage from run-mode jobs and do not require
+    optimizer mutation or a new checkpoint. When a target declares
+    EVALUATED_CHECKPOINT_SOURCE, evaluation also proves the run loaded the exact
+    MDN checkpoint selected by that source target, plus the matching
+    representation checkpoint lineage. LATTICE_WARN clauses return non-blocking
+    warning_results; triggered target warning messages are mirrored in warnings.
+
+  plan_target
+    Returns the same proof status plus any suggested next wave. Treat the wave
+    as advice only; Runtime Hero is still the executor.
+
+  checkpoint_closure
+    Inspects checkpoint lineage. Missing upstream checkpoint producer evidence
+    must fail closed and should be treated as a blocker.
+
+  CHECKPOINT_SOURCE = latest_satisfying:<target_id>
+    Read-only guard targets can inspect the checkpoint from another satisfied
+    target. If the source target is unsatisfied, the guard blocks and forwards
+    the source target's suggested wave. Lattice Hero still does not execute the
+    wave.
+
+  Empty runtime roots cannot infer graph-anchor identity. Pass active contract,
+  graph-order, source-cursor, and component assembly fingerprints explicitly, or
+  run a Runtime Hero dry-run first.
+
+  Agent invariants:
+    - Never execute waves from Lattice Hero.
+    - Prefer OVER_SPLIT, PROTECT_SPLIT, and CURSOR_EPOCHS when authoring.
+    - Treat scan_exposure anchor-domain warnings as source availability
+      visibility, not as automatic target failures.
+    - Treat scan_exposure node_exposure facts as MDN per-node support
+      visibility. They include routed/active/trained/evaluated row counts,
+      valid targets, and mean NLL. Do not infer per-node VICReg support from
+      them.
+    - Treat exposure_summaries as load visibility. Treat LATTICE_WARN results
+      as non-blocking warnings, not readiness failures.
+    - Treat CHECKPOINT_SOURCE latest_satisfying targets as checkpoint guards,
+      not as schedulers.
+    - Do not hide blocked/exposure_failed reasons.
+    - Use Runtime Hero for execution after a human or explicit caller accepts a
+      plan.

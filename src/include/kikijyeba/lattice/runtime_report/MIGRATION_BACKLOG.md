@@ -1,0 +1,50 @@
+# Runtime `.lls` Remaining Backlog
+
+This backlog now tracks the remaining work after the hard-cut runtime `.lls`
+migration landed.
+
+## Shared Layer
+
+- Keep the strict runtime `.lls` API small unless a concrete consumer requires a
+  richer neutral document/query helper.
+- Decide whether any compatibility parser is still worth adding for one-shot
+  offline conversion tooling.
+
+## `jkimyei::evaluation`
+
+`src/include/jkimyei/evaluation/evaluation_report_identity.h`
+
+- Active evaluation emitters now use the current `evaluation_report_identity_t`
+  envelope rather than Tsiemene report identities.
+- Keep source-load, network-capacity, and capacity-comparison artifacts on the
+  strict runtime `.lls` profile.
+- Decide whether the API-only network-design serializer should also be promoted
+  to a persisted runtime artifact, or remain outside the runtime-artifact
+  contract.
+
+## Archived Vicreg / Transfer Matrix Artifacts
+
+- Preserve the current matrix artifact as artifact-only unless a later change
+  explicitly promotes it to an ingestable runtime schema.
+- These are archived compatibility surfaces. Do not use them as the authored
+  graph-first Wikimyei `.lls` path.
+
+## Hero / Lattice
+
+`src/impl/hero/lattice_hero/lattice_catalog.cpp`
+
+- Keep `wave.projection.lls.v2` as the catalog-cell schema; `wave.source.runtime.projection.v2`
+  is now a standalone runtime fact and should not regress back to synthetic
+  reconstruction from joined transports.
+
+`src/impl/hero/hashimyei_hero/hashimyei_catalog.cpp`
+
+- Retire legacy fallback handling in non-runtime manifest helpers only if a separate
+  manifest standardization pass warrants it.
+
+## Documentation Follow-Ups
+
+- Keep `src/main/hero/README.md` aligned with the real ingest surface and file
+  extensions.
+- Keep `src/include/jkimyei/evaluation/README.md` aligned with the current emitter
+  and identity-envelope rules.

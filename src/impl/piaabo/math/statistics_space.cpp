@@ -1,11 +1,8 @@
 #include "piaabo/math/statistics_space.h"
 
-DEV_WARNING("(statistics_space.h)[] statistics_space_t needs to include delta_time in the calculation.\n");
-DEV_WARNING("(statistics_space.h)[] statistics_space_t and statistics_space_n_t only work for dots spaced equaly in time.\n");
-DEV_WARNING("(statistics_space.cpp)[] #FIXME statistics_space_t for actual charts involve more measures.\n");
-DEV_WARNING("(statistics_space.cpp)[] is better to use Non-parametric spearman rank correlation coheficient.\n");
-DEV_WARNING("(statistics_space.h)[] add RSI to statistics_space_t.\n");
-DEV_WARNING("(statistics_space.h)[] add MACD to statistics_space_t.\n");
+// Backlog: these statistics assume equally spaced samples and currently omit
+// time-weighted measures and indicators such as RSI/MACD. Keep that contract
+// in documentation/tests instead of emitting warnings at process startup.
 
 namespace cuwacunu {
 namespace piaabo {

@@ -1,12 +1,12 @@
 std::string extract_analytics_kv_schema(std::string_view payload) {
   runtime_lls_document_t document{};
   std::string parse_error;
-  if (!cuwacunu::kikijyeba::lattice::latent_lineage_state::runtime_report::
+  if (!cuwacunu::kikijyeba::lattice::runtime_report::
           parse_runtime_lls_text(payload, &document, &parse_error)) {
     return {};
   }
   std::unordered_map<std::string, std::string> kv{};
-  if (!cuwacunu::kikijyeba::lattice::latent_lineage_state::runtime_report::
+  if (!cuwacunu::kikijyeba::lattice::runtime_report::
           runtime_lls_document_to_kv_map(document, &kv, &parse_error)) {
     return {};
   }
@@ -26,8 +26,8 @@ bool is_supported_network_design_analytics_schema(std::string_view schema) {
 std::string network_analytics_to_latent_lineage_state_text(
     const network_analytics_report_t &report,
     std::string_view checkpoint_filename,
-    const tsiemene::component_report_identity_t &report_identity) {
-  return cuwacunu::kikijyeba::lattice::latent_lineage_state::runtime_report::
+    const evaluation_report_identity_t &report_identity) {
+  return cuwacunu::kikijyeba::lattice::runtime_report::
       emit_runtime_lls_canonical(make_runtime_lls_document_(
           report, checkpoint_filename, report_identity));
 }
@@ -42,7 +42,7 @@ network_analytics_to_pretty_text(const network_analytics_report_t &report,
 std::string network_design_analytics_to_latent_lineage_state_text(
     const network_design_analytics_report_t &report,
     std::string_view source_label) {
-  return cuwacunu::kikijyeba::lattice::latent_lineage_state::dsl::
+  return cuwacunu::kikijyeba::lattice::
       convert_latent_lineage_state_payload_to_lattice_state(
           as_ascii_key_value_(report, source_label));
 }
@@ -56,7 +56,7 @@ std::string network_design_analytics_to_pretty_text(
 bool write_network_analytics_file(
     const torch::nn::Module &model, const std::filesystem::path &output_file,
     const network_analytics_options_t &options, std::string *error,
-    const tsiemene::component_report_identity_t &report_identity) {
+    const evaluation_report_identity_t &report_identity) {
   if (error)
     error->clear();
   const network_analytics_options_t effective = normalize_options_(options);
@@ -106,7 +106,7 @@ bool write_network_analytics_sidecar_for_checkpoint(
     const std::filesystem::path &checkpoint_file,
     std::filesystem::path *out_sidecar_file,
     const network_analytics_options_t &options, std::string *error,
-    const tsiemene::component_report_identity_t &report_identity) {
+    const evaluation_report_identity_t &report_identity) {
   if (error)
     error->clear();
   const network_analytics_options_t effective = normalize_options_(options);

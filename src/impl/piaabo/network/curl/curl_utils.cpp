@@ -1,9 +1,6 @@
 /* curl_utils.cpp */
 #include "piaabo/network/curl/curl_utils.h"
 
-DEV_WARNING("(curl_utils.cpp)[] fix no internet causes fatal error on session creation.\n");
-DEV_WARNING("(curl_utils.cpp)[] writing to dbg might be slow if dbg is checking config every time.\n");
-
 namespace cuwacunu {
 namespace piaabo {
 namespace network {
@@ -13,7 +10,7 @@ bool global_curl_initialized = false;
 std::mutex global_curl_mutex;
 
 void dcurl_global_cleanup() {
-  /* globa lock */
+  /* global lock */
   LOCK_GUARD(global_curl_mutex);
 
   /* check if cleanup is required */
@@ -22,7 +19,7 @@ void dcurl_global_cleanup() {
     return;
   }
 
-  /* stand curl global cleanup */
+  /* standard curl global cleanup */
   curl_global_cleanup();
 
   /* mark the initialized flag back to false */
@@ -44,7 +41,7 @@ void dcurl_global_init() {
 
   /* validate initialization */
   if (res != CURLE_OK) {
-    log_fatal("%s : %s\n", CURL_INITIALIZATION_FAILURE, curl_easy_strerror(res)); // #FIXME no internet fatal
+    log_fatal("%s : %s\n", CURL_INITIALIZATION_FAILURE, curl_easy_strerror(res));
     return;
   }
 
@@ -58,7 +55,7 @@ CURL* create_curl_session() {
 
   /* validate */
   if (!new_curl_session) {
-    log_fatal("%s\n", "Failed to initialize curl websocket session"); // #FIXME no internet fatal
+    log_fatal("%s\n", "Failed to initialize curl websocket session");
     return nullptr;
   }
 
@@ -68,13 +65,13 @@ CURL* create_curl_session() {
 CURLcode send_ws_frame(CURL* curl_session, const unsigned char* frame, size_t frame_size, int frame_type) {
   log_dbg("sending frame bytes=%ld type=%d\n", frame_size, frame_type);
 
-  /* 0 is just to initialize, this is for an output refference pointer */
+  /* 0 is just to initialize, this is for an output reference pointer */
   size_t how_many_bytes_where_sent = 0x0;
 
   /* send */
   CURLcode res = curl_ws_send(curl_session, frame, frame_size, &how_many_bytes_where_sent, 0, frame_type);
 
-  /* valdiate the bytes where all sent */
+  /* validate that all bytes were sent */
   if(how_many_bytes_where_sent != frame_size) {
     log_err("send_ws_frame didn't sended the entire message. \n\t sent:\t%ld\n\t expected:\t%ld\n", how_many_bytes_where_sent, frame_size);
   }

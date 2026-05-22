@@ -288,7 +288,7 @@ inline std::unique_ptr<JkimyeiOptimizerBuilder> make_optimizer_builder_from_row(
 inline std::unique_ptr<JkimyeiOptimizerBuilder>
 make_optimizer_builder(const cuwacunu::jkimyei::specs::jkimyei_specs_t &inst,
                        const std::string &row_id) {
-  const auto &row = inst.retrive_row("optimizers_table", row_id);
+  const auto &row = inst.retrieve_row("optimizers_table", row_id);
   return make_optimizer_builder_from_row(row);
 }
 

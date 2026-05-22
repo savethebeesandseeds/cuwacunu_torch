@@ -2,75 +2,75 @@ namespace cuwacunu {
 namespace jkimyei {
 namespace specs {
 
-const jkimyei_specs_t::table_t jkimyei_specs_t::retrive_table(const std::string& table_name) const {
+const jkimyei_specs_t::table_t jkimyei_specs_t::retrieve_table(const std::string& table_name) const {
   auto it = tables.find(table_name);
   if (it == tables.end()) {
-    log_fatal("(jkimyei_specs)[retrive_table] Table '%s' not found. Source: %s\n",
+    log_fatal("(jkimyei_specs)[retrieve_table] Table '%s' not found. Source: %s\n",
               table_name.c_str(), instruction_filepath.c_str());
   }
   return it->second;
 }
 
-const jkimyei_specs_t::row_t jkimyei_specs_t::retrive_row(const jkimyei_specs_t::table_t& table,
+const jkimyei_specs_t::row_t jkimyei_specs_t::retrieve_row(const jkimyei_specs_t::table_t& table,
                                                           std::size_t row_index) const {
   if (row_index >= table.size()) {
-    log_fatal("(jkimyei_specs)[retrive_row] Row index %zu out of bounds. Source: %s\n",
+    log_fatal("(jkimyei_specs)[retrieve_row] Row index %zu out of bounds. Source: %s\n",
               row_index, instruction_filepath.c_str());
   }
   return table[row_index];
 }
 
-const jkimyei_specs_t::row_t jkimyei_specs_t::retrive_row(const std::string& table_name,
+const jkimyei_specs_t::row_t jkimyei_specs_t::retrieve_row(const std::string& table_name,
                                                           std::size_t row_index) const {
-  const auto table = retrive_table(table_name);
+  const auto table = retrieve_table(table_name);
   if (row_index >= table.size()) {
-    log_fatal("(jkimyei_specs)[retrive_row] Row index %zu out of bounds in table '%s'. Source: %s\n",
+    log_fatal("(jkimyei_specs)[retrieve_row] Row index %zu out of bounds in table '%s'. Source: %s\n",
               row_index, table_name.c_str(), instruction_filepath.c_str());
   }
   return table[row_index];
 }
 
-const jkimyei_specs_t::row_t jkimyei_specs_t::retrive_row(const jkimyei_specs_t::table_t& table,
+const jkimyei_specs_t::row_t jkimyei_specs_t::retrieve_row(const jkimyei_specs_t::table_t& table,
                                                           const std::string& row_id) const {
   for (const auto& row : table) {
     auto it = row.find(ROW_ID_COLUMN_HEADER);
     if (it != row.end() && it->second == row_id) return row;
   }
-  log_fatal("(jkimyei_specs)[retrive_row] row_id '%s' not found. Source: %s\n",
+  log_fatal("(jkimyei_specs)[retrieve_row] row_id '%s' not found. Source: %s\n",
             row_id.c_str(), instruction_filepath.c_str());
 }
 
-const jkimyei_specs_t::row_t jkimyei_specs_t::retrive_row(const std::string& table_name,
+const jkimyei_specs_t::row_t jkimyei_specs_t::retrieve_row(const std::string& table_name,
                                                           const std::string& row_id) const {
-  return retrive_row(retrive_table(table_name), row_id);
+  return retrieve_row(retrieve_table(table_name), row_id);
 }
 
-const std::string jkimyei_specs_t::retrive_field(const jkimyei_specs_t::row_t& row,
+const std::string jkimyei_specs_t::retrieve_field(const jkimyei_specs_t::row_t& row,
                                                  const std::string& column_name) const {
   auto it = row.find(column_name);
   if (it == row.end()) {
-    log_fatal("(jkimyei_specs)[retrive_field] Missing column '%s'. Source: %s\n",
+    log_fatal("(jkimyei_specs)[retrieve_field] Missing column '%s'. Source: %s\n",
               column_name.c_str(), instruction_filepath.c_str());
   }
   return it->second;
 }
 
-const std::string jkimyei_specs_t::retrive_field(const std::string& table_name,
+const std::string jkimyei_specs_t::retrieve_field(const std::string& table_name,
                                                  std::size_t row_index,
                                                  const std::string& column_name) const {
-  return retrive_field(retrive_row(table_name, row_index), column_name);
+  return retrieve_field(retrieve_row(table_name, row_index), column_name);
 }
 
-const std::string jkimyei_specs_t::retrive_field(const jkimyei_specs_t::table_t& table,
+const std::string jkimyei_specs_t::retrieve_field(const jkimyei_specs_t::table_t& table,
                                                  const std::string& row_id,
                                                  const std::string& column_name) const {
-  return retrive_field(retrive_row(table, row_id), column_name);
+  return retrieve_field(retrieve_row(table, row_id), column_name);
 }
 
-const std::string jkimyei_specs_t::retrive_field(const std::string& table_name,
+const std::string jkimyei_specs_t::retrieve_field(const std::string& table_name,
                                                  const std::string& row_id,
                                                  const std::string& column_name) const {
-  return retrive_field(retrive_row(table_name, row_id), column_name);
+  return retrieve_field(retrieve_row(table_name, row_id), column_name);
 }
 
 void jkimyei_specs_t::decode_raw() {
@@ -117,11 +117,7 @@ namespace specs {
 namespace dsl {
 
 jkimyeiSpecsPipeline::jkimyeiSpecsPipeline(std::string grammar_text)
-    : grammar_text_(std::move(grammar_text)) {
-  if (grammar_text_.empty()) {
-    DEV_WARNING("(jkimyei_specs) empty grammar text provided; parser uses built-in JKSPEC tokenizer/parser\n");
-  }
-}
+    : grammar_text_(std::move(grammar_text)) {}
 
 jkimyei_specs_t jkimyeiSpecsPipeline::decode(std::string instruction,
                                              std::string instruction_label) {

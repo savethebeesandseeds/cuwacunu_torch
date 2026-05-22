@@ -101,7 +101,7 @@
  * such as smart pointers and recursive descent parsing, to build a robust and efficient JSON parser.
  */
 
-/* djson_parsing.h */
+/* json_parsing.h */
 #pragma once
 
 #include <iostream>
@@ -550,18 +550,15 @@ void printJsonValue(const JsonValue& value, int indent = 0);
 std::string extract_json_string_value(const std::string& json_str, const std::string& key, const std::string& nullcase = "NULL");
 
 /**
- * @brief Performs a lightweight structural validation of a JSON string.
+ * @brief Validates a complete top-level JSON object or array.
  *
  * This function validates whether the provided buffer contains exactly one complete
- * top-level JSON object or array (with optional surrounding whitespace), while
- * handling escaped characters inside strings.
- * 
- * **Note:** This is intentionally lightweight and should be treated as a framing gate,
- * not a full JSON validator.
+ * top-level JSON object or array (with optional surrounding whitespace). It checks
+ * object/array syntax, separators, literals, numbers, strings, and escape sequences.
  *
  * @param json_str The JSON string to validate.
- * @return `true` if the JSON string is structurally valid based on bracket and quote balancing.
- * @return `false` if there are unbalanced brackets/braces, mismatched quotes, or improper nesting.
+ * @return `true` if the JSON string is valid and complete.
+ * @return `false` if the JSON string is incomplete, malformed, or not an object/array.
  */
 bool json_fast_validity_check(const std::string& json_str);
 

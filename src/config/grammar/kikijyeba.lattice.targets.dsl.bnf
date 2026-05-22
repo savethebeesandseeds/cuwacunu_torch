@@ -1,0 +1,16 @@
+<instruction> ::= {<target_block> | <profile_block> | <guard_block> | <depends_block> | <requires_block> | <forbids_block> | <plan_block> | <warn_block>} ;
+<target_block> ::= "LATTICE_TARGET" [<whitespace>] "{" <line_end> {<assignment>} [<whitespace>] "}" [<whitespace>] ";" [<line_end>] ;
+<profile_block> ::= "LATTICE_PROFILE" [<whitespace>] "{" <line_end> {<assignment>} [<whitespace>] "}" [<whitespace>] ";" [<line_end>] ;
+<guard_block> ::= "LATTICE_GUARD" [<whitespace>] "{" <line_end> {<assignment>} [<whitespace>] "}" [<whitespace>] ";" [<line_end>] ;
+<depends_block> ::= "LATTICE_DEPENDS" [<whitespace>] "{" <line_end> {<assignment>} [<whitespace>] "}" [<whitespace>] ";" [<line_end>] ;
+<requires_block> ::= "LATTICE_REQUIRES" [<whitespace>] "{" <line_end> {<assignment>} [<whitespace>] "}" [<whitespace>] ";" [<line_end>] ;
+<forbids_block> ::= "LATTICE_FORBIDS" [<whitespace>] "{" <line_end> {<assignment>} [<whitespace>] "}" [<whitespace>] ";" [<line_end>] ;
+<plan_block> ::= "LATTICE_PLAN" [<whitespace>] "{" <line_end> {<assignment>} [<whitespace>] "}" [<whitespace>] ";" [<line_end>] ;
+<warn_block> ::= "LATTICE_WARN" [<whitespace>] "{" <line_end> {<assignment>} [<whitespace>] "}" [<whitespace>] ";" [<line_end>] ;
+<assignment> ::= [<whitespace>] <key> [<whitespace>] "=" [<whitespace>] <value> [<whitespace>] ";" <line_end> ;
+<key> ::= "TARGET_ID" | "PROFILE_ID" | "GUARD_ID" | "DEPENDENCY_ID" | "REQUIREMENT_ID" | "FORBID_ID" | "PLAN_ID" | "WARNING_ID" | "USE_PROFILE" | "GUARD" | "TARGET_KIND" | "TARGET_CLASS" | "COMPONENT" | "SUBJECT_COMPONENT" | "CHECKPOINT_SOURCE" | "EVALUATED_CHECKPOINT_SOURCE" | "SOURCE_RANGE" | "TRAIN_SPLIT" | "OVER_SPLIT" | "PROTECT_SPLIT" | "APPLY_SPLIT_PROTECTION" | "ANCHOR_INDEX_BEGIN" | "ANCHOR_INDEX_END" | "UPSTREAM_TARGET_ID" | "BINDING" | "REQUIRE_EXACT_LOADED_CHECKPOINT" | "REQUIRE_CONTRACT_MATCH" | "REQUIRE_COMPONENT_MATCH" | "REQUIRE_CHECKPOINT_EXISTS" | "REQUIRE_FINITE_LOSS" | "MIN_OPTIMIZER_STEPS" | "MIN_VALID_TARGET_FRACTION" | "REQUIRE_ACTIVE_NODE_HEAD_COUNT" | "REQUIRE_TRAINED_NODE_HEAD_COUNT" | "REQUIRE_EVALUATED_NODE_HEAD_COUNT" | "MIN_OBSERVED_INPUT_COVERAGE" | "MIN_TARGET_SUPERVISION_COVERAGE" | "MIN_EVALUATION_METRIC_COVERAGE" | "FORBID_SPLIT" | "FORBID_EXPOSURE_ANCHOR_INDEX_BEGIN" | "FORBID_EXPOSURE_ANCHOR_INDEX_END" | "FORBID_EXPOSURE_USES" | "FORBID_EXPOSURE_REQUIRES_MUTATED_COMPONENT" | "KIND" | "ARTIFACT" | "EXISTS" | "METRIC" | "COUNTER" | "HEAD" | "OP" | "VALUE" | "MIN_VALUE" | "USE" | "SPLIT" | "USES" | "SCOPE" | "EVIDENCE_SCOPE" | "COMPONENT_SCOPE" | "EFFECT" | "COORDINATE" | "MIN_COVERAGE" | "CURSOR_EPOCHS" | "MIN_CURSOR_EPOCHS" | "CURSOR_EPOCHS_ABOVE" | "ABOVE" | "ACCEPTED_FRACTION_BELOW" | "SKIPPED_FAILED_FETCH_PROBE_ABOVE" | "PLAN_MODE" | "WAVE_TARGET" | "WAVE_MODE" | "WAVE_RANGE" | "PLAN_INPUT_MDN_CHECKPOINT" | "PLAN_INPUT_REPRESENTATION_CHECKPOINT" | "MAX_WAVES" | "PLAN_MAX_ATTEMPTS" ;
+<value> ::= <value_char> {<value_char>} ;
+<value_char> ::= <letter> | <digit> | "_" | "." | "-" | "|" | "," | "+" | ":" ;
+<line_end> ::= [<whitespace>] <break_block> ;
+<break_block> ::= {<newline>} ;
+<whitespace> ::= {<empty>} ;

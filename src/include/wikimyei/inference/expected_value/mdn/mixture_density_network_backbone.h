@@ -1,9 +1,10 @@
 /* mixture_density_network_backbone.h */
 #pragma once
-#include <torch/torch.h>
+#include <string>
 #include <vector>
 
-#include "jkimyei/api/jkimyei_specs.h"
+#include <torch/torch.h>
+
 #include "wikimyei/inference/expected_value/mdn/mixture_density_network_types.h"
 
 namespace cuwacunu {

@@ -3,7 +3,7 @@
 
 #include <torch/torch.h>
 #include "wikimyei/representation/encoding/vicreg/vicreg_rank4_dilated_conv.h"
-#include "wikimyei/representation/encoding/vicreg/vicreg_rank4_temporalTransformerModel.h"
+#include "wikimyei/representation/encoding/vicreg/vicreg_rank4_temporal_transformer_model.h"
 
 namespace cuwacunu {
 namespace wikimyei {

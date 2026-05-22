@@ -1,0 +1,56 @@
+/*
+  Config Hero v2 policy key registry.
+
+  Consumers may define:
+    HERO_CONFIG_RUNTIME_KEY(KEY, TYPE, REQUIRED, DEFAULT_VALUE, RANGE, ALLOWED,
+                            SUMMARY)
+*/
+
+#ifndef HERO_CONFIG_RUNTIME_KEY
+#define HERO_CONFIG_RUNTIME_KEY(KEY, TYPE, REQUIRED, DEFAULT_VALUE, RANGE,     \
+                                ALLOWED, SUMMARY)
+#endif
+
+HERO_CONFIG_RUNTIME_KEY("protocol_layer", "enum", 1, "STDIO", "one token",
+                        "STDIO,HTTPS/SSE",
+                        "MCP protocol layer. HTTPS/SSE is reserved and fails "
+                        "fast.")
+HERO_CONFIG_RUNTIME_KEY("config_root", "path", 1, "/cuwacunu/src/config",
+                        "directory path", "absolute_or_relative_path",
+                        "Base directory for relative Config Hero file paths.")
+HERO_CONFIG_RUNTIME_KEY("managed_roots", "path_list", 1, "/cuwacunu/src/config",
+                        "comma-separated path list",
+                        "absolute_or_relative_paths",
+                        "Read/write scope roots for config file tools.")
+HERO_CONFIG_RUNTIME_KEY("allow_read", "bool", 1, "true", "true|false",
+                        "true,false",
+                        "Allow Config Hero to read files under managed_roots.")
+HERO_CONFIG_RUNTIME_KEY("allow_write", "bool", 1, "false", "true|false",
+                        "true,false",
+                        "Allow Config Hero to mutate files under write_roots.")
+HERO_CONFIG_RUNTIME_KEY("write_roots", "path_list", 1, "/tmp",
+                        "comma-separated path list",
+                        "absolute_or_relative_paths",
+                        "Additional write guard for all mutating tools.")
+HERO_CONFIG_RUNTIME_KEY("allowed_extensions", "string_list", 1,
+                        ".config,.dsl,.bnf,.man,.md,.net,.jkimyei",
+                        "comma-separated extension list", "file extensions",
+                        "Allowed suffixes for managed config files.")
+HERO_CONFIG_RUNTIME_KEY("backup_enabled", "bool", 1, "true", "true|false",
+                        "true,false",
+                        "Create a backup before overwriting or deleting files.")
+HERO_CONFIG_RUNTIME_KEY("backup_dir", "path", 1,
+                        "/cuwacunu/.backups/hero.config", "directory path",
+                        "absolute_or_relative_path",
+                        "Destination for Config Hero backup snapshots.")
+HERO_CONFIG_RUNTIME_KEY("backup_max_entries", "int", 1, "20", ">=1", "integer",
+                        "Maximum retained backup snapshots per backup family.")
+HERO_CONFIG_RUNTIME_KEY("require_expected_sha256_for_replace", "bool", 1,
+                        "true", "true|false", "true,false",
+                        "Require expected_sha256 when replacing an existing "
+                        "managed file.")
+HERO_CONFIG_RUNTIME_KEY("require_expected_sha256_for_delete", "bool", 1, "true",
+                        "true|false", "true,false",
+                        "Require expected_sha256 when deleting a managed file.")
+
+#undef HERO_CONFIG_RUNTIME_KEY
