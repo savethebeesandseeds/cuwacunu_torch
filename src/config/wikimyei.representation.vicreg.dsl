@@ -1,40 +1,24 @@
 /*
   wikimyei.representation.vicreg.dsl
-  ==================================
-  Default graph-first VICReg representation component settings.
+  ==========================================
+  Channel-preserving VICReg representation component settings.
 
-  VICReg remains a rank-4 representation worker. The node stream adapter maps
-  node-lifted tensors [B,C,H,N,9] into [B*N,C,H,9]. Neural architecture lives in
-  wikimyei.representation.vicreg.net.
-
-  Supported v1 settings:
-    INPUT_ROUTE = node_stream
-      Consume NodeLift node batches through the node-stream adapter.
-
-    INPUT_WIDTH = 9
-      Must match kline NodeLift feature width.
-
-    MASK_PROFILE:
-      all_9 | price_only | close_only | activity_only | custom
-
-    REQUIRED_FEATURE_COORDS:
-      Required only for MASK_PROFILE = custom. For other profiles, the profile
-      expands to a fixed coordinate list.
-
-    DTYPE:
-      float32 | float64
-
-    DEVICE:
-      cpu | cuda | cuda:N
+  This path consumes NodeLift node batches [B,C,Hx,N,9], preserves
+  feature-level masks, encodes rows as [M,C,Hx,De], and exports the primary
+  channel representation as [B,N,C,De].
 */
 VICREG {
   VERSION = wikimyei.representation.vicreg.v1;
-  COMPONENT_ID = node_vicreg_v1;
-  INPUT_ROUTE = node_stream;
+  COMPONENT_ID = vicreg_v1;
+  INPUT_ROUTE = channel_node_stream;
+  CHANNEL_COUNT = 3;
+  HISTORY_LENGTH = 30;
   INPUT_WIDTH = 9;
 
-  MASK_PROFILE = price_only;
+  CELL_VALID_POLICY = required_features;
   REQUIRED_FEATURE_COORDS = 0,1,2,3;
+  MIN_VALID_FRACTION = 1.0;
+  USE_MISSINGNESS_INDICATORS = true;
 
   DTYPE = float32;
   DEVICE = cpu;

@@ -1,28 +1,18 @@
 /*
   wikimyei.representation.vicreg.net
-  ===================================
-  Neural architecture for the default VICReg node representation worker.
-
-  Supported v1 settings:
-    ENCODING_DIM:
-      Output node representation width.
-
-    CHANNEL_EXPANSION_DIM:
-      Per-channel expansion width before fused representation layers.
-
-    FUSED_FEATURE_DIM:
-      Intermediate fused feature width.
-
-    ENCODER_HIDDEN_DIM:
-      Hidden width of encoder MLP blocks.
-
-    ENCODER_DEPTH:
-      Number of encoder hidden layers/blocks.
+  ==========================================
+  Neural architecture for the channel-preserving VICReg representation path.
 */
 VICREG_NET {
   ENCODING_DIM = 8;
-  CHANNEL_EXPANSION_DIM = 4;
-  FUSED_FEATURE_DIM = 8;
-  ENCODER_HIDDEN_DIM = 16;
-  ENCODER_DEPTH = 1;
+  FEATURE_HIDDEN_DIM = 32;
+  TEMPORAL_DEPTH = 1;
+  RECENCY_DECAY = 0.85;
+  VICREG_PROJECTOR_DIM = 16;
+  VICREG_PROJECTOR_HIDDEN_DIM = 32;
+  VICREG_PROJECTOR_DEPTH = 1;
+  GLOBAL_AUX_WEIGHT = 0.0;
+  JITTER_STD = 0.01;
+  FEATURE_DROPOUT_PROB = 0.0;
+  HISTORY_DROPOUT_PROB = 0.0;
 };

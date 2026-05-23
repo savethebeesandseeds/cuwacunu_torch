@@ -1,5 +1,6 @@
 #include "hero/runtime_hero/hero_runtime_tools.h"
 
+#include "hero/mcp_schema_compat.h"
 #include "hero/runtime_hero/hero_runtime.h"
 
 #include <algorithm>
@@ -788,17 +789,26 @@ struct wave_info_t {
 
 [[nodiscard]] std::string job_kind_from_target(std::string_view target) {
   const std::string lower = lowercase_ascii(target);
-  if (lower.find("representation") != std::string::npos ||
-      lower.find("vicreg") != std::string::npos) {
-    return "representation_vicreg";
+  if (lower == "legacy_inference_mdn") {
+    return "inference_mdn";
   }
-  return "inference_mdn";
+  if (lower == "wikimyei.representation.encoding.vicreg" ||
+      lower == "representation_vicreg" || lower == "vicreg_representation") {
+    return "channel_representation_vicreg";
+  }
+  if (lower == "wikimyei.inference.expected_value.mdn" ||
+      lower == "inference_mdn" || lower == "inference_channel_mdn" ||
+      lower == "mdn_expected_value_inference") {
+    return "channel_inference_mdn";
+  }
+  return "invalid_wave_target";
 }
 
 [[nodiscard]] std::string execution_chain(std::string_view target,
                                           std::string_view action) {
   const std::string job_kind = job_kind_from_target(target);
-  if (job_kind == "representation_vicreg") {
+  if (job_kind == "representation_vicreg" ||
+      job_kind == "channel_representation_vicreg") {
     if (action == "train") {
       return "ujcamei.source.registry:run -> "
              "wikimyei.expression.nodelift.srl:run -> "
@@ -808,16 +818,19 @@ struct wave_info_t {
            "wikimyei.expression.nodelift.srl:run -> "
            "wikimyei.representation.encoding.vicreg:run";
   }
-  if (action == "train") {
+  if (job_kind == "inference_mdn" || job_kind == "channel_inference_mdn") {
+    if (action == "train") {
+      return "ujcamei.source.registry:run -> "
+             "wikimyei.expression.nodelift.srl:run -> "
+             "wikimyei.representation.encoding.vicreg:run_frozen -> "
+             "wikimyei.inference.expected_value.mdn:train";
+    }
     return "ujcamei.source.registry:run -> "
            "wikimyei.expression.nodelift.srl:run -> "
            "wikimyei.representation.encoding.vicreg:run_frozen -> "
-           "wikimyei.inference.expected_value.mdn:train";
+           "wikimyei.inference.expected_value.mdn:run";
   }
-  return "ujcamei.source.registry:run -> "
-         "wikimyei.expression.nodelift.srl:run -> "
-         "wikimyei.representation.encoding.vicreg:run_frozen -> "
-         "wikimyei.inference.expected_value.mdn:run";
+  return {};
 }
 
 [[nodiscard]] std::string wave_info_json(const wave_info_t &info) {
@@ -2250,6 +2263,8 @@ std::string build_tools_list_result_json() {
   std::ostringstream out;
   out << "{\"tools\":[";
   for (std::size_t i = 0; i < std::size(kTools); ++i) {
+    mcp_schema_compat::assert_tool_input_schema_compatible(
+        kTools[i].name, kTools[i].input_schema_json);
     if (i != 0) {
       out << ",";
     }

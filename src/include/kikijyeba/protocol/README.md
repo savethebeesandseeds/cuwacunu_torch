@@ -34,7 +34,8 @@ Contract/wave split:
 
 - A protocol contract defines the runnable system: source universe, active
   source dock, topology graph, Wikimyei assemblies, dock binding, and
-  Jkimyei specs.
+  Jkimyei compatibility specs. Runtime model-state inputs and model-state
+  admission flags remain job evidence, not protocol contract identity.
 - A wave runs against that contract: it chooses runtime mode and graph-wide
   Ujcamei cursor range.
 - A job records one execution of a wave against a contract.

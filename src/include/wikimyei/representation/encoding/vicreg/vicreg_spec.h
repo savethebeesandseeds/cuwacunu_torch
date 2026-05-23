@@ -9,39 +9,45 @@
 #include <unordered_set>
 #include <vector>
 
+#include <torch/torch.h>
+
 #include "piaabo/parse/simple_kv_block.h"
 #include "ujcamei/source/registry/types/kline_feature_registry.h"
-#include "wikimyei/representation/encoding/vicreg/node_stream_adapter.h"
+#include "wikimyei/representation/encoding/vicreg/channel_preserving_encoder.h"
+#include "wikimyei/representation/encoding/vicreg/vicreg_projector.h"
+#include "wikimyei/representation/encoding/vicreg/vicreg_train_model.h"
 
 namespace cuwacunu::wikimyei::representation::encoding::vicreg {
 
 enum class vicreg_input_route_t {
-  node_stream,
+  channel_node_stream,
 };
 
-enum class vicreg_mask_profile_t {
-  all_9,
-  price_only,
-  close_only,
-  activity_only,
-  custom,
-};
-
-struct vicreg_node_representation_spec_t {
+struct vicreg_spec_t {
   std::string version_token{"wikimyei.representation.vicreg.v1"};
   std::string component_id{};
-  vicreg_input_route_t input_route{vicreg_input_route_t::node_stream};
-  int64_t input_width{cuwacunu::ujcamei::source::registry::types::kKlineFeatureWidth};
+  vicreg_input_route_t input_route{vicreg_input_route_t::channel_node_stream};
+  int64_t channel_count{0};
+  int64_t history_length{0};
+  int64_t input_width{
+      cuwacunu::ujcamei::source::registry::types::kKlineFeatureWidth};
+
+  cell_valid_policy_t cell_valid_policy{cell_valid_policy_t::required_features};
+  std::vector<int64_t> required_feature_coords{0, 1, 2, 3};
+  double min_valid_fraction{1.0};
+  bool use_missingness_indicators{true};
 
   int64_t encoding_dim{0};
-  int64_t channel_expansion_dim{0};
-  int64_t fused_feature_dim{0};
-  int64_t encoder_hidden_dim{0};
-  int64_t encoder_depth{0};
-  vicreg_mask_profile_t mask_profile{vicreg_mask_profile_t::all_9};
-  std::vector<int64_t> required_feature_coords{
-      cuwacunu::wikimyei::representation::encoding::vicreg::
-          node_vicreg_all_9_feature_coords()};
+  int64_t feature_hidden_dim{0};
+  int64_t temporal_depth{0};
+  double recency_decay{0.85};
+  int64_t vicreg_projector_dim{0};
+  int64_t vicreg_projector_hidden_dim{0};
+  int64_t vicreg_projector_depth{1};
+  double global_aux_weight{0.0};
+  double jitter_std{0.01};
+  double feature_dropout_prob{0.0};
+  double history_dropout_prob{0.0};
 
   std::string dtype{"float32"};
   std::string device{"cpu"};
@@ -53,55 +59,31 @@ namespace kv = cuwacunu::piaabo::parse::simple_kv;
 
 [[nodiscard]] inline vicreg_input_route_t parse_input_route(std::string value) {
   value = kv::lowercase(kv::trim(value));
-  if (value == "node_stream") {
-    return vicreg_input_route_t::node_stream;
+  if (value == "channel_node_stream") {
+    return vicreg_input_route_t::channel_node_stream;
   }
   throw std::runtime_error("[vicreg_spec] invalid INPUT_ROUTE: " + value);
 }
 
-[[nodiscard]] inline vicreg_mask_profile_t
-parse_mask_profile(std::string value) {
+[[nodiscard]] inline cell_valid_policy_t
+parse_cell_valid_policy(std::string value) {
   value = kv::lowercase(kv::trim(value));
-  if (value == "all_9") {
-    return vicreg_mask_profile_t::all_9;
+  if (value == "any_feature") {
+    return cell_valid_policy_t::any_feature;
   }
-  if (value == "price_only") {
-    return vicreg_mask_profile_t::price_only;
+  if (value == "all_features") {
+    return cell_valid_policy_t::all_features;
   }
-  if (value == "close_only") {
-    return vicreg_mask_profile_t::close_only;
+  if (value == "required_features") {
+    return cell_valid_policy_t::required_features;
   }
-  if (value == "activity_only") {
-    return vicreg_mask_profile_t::activity_only;
+  if (value == "min_valid_fraction") {
+    return cell_valid_policy_t::min_valid_fraction;
   }
-  if (value == "custom") {
-    return vicreg_mask_profile_t::custom;
-  }
-  throw std::runtime_error("[vicreg_spec] invalid MASK_PROFILE: " + value);
-}
-
-[[nodiscard]] inline std::vector<int64_t>
-default_coords_for_profile(vicreg_mask_profile_t profile) {
-  switch (profile) {
-  case vicreg_mask_profile_t::all_9:
-    return node_vicreg_all_9_feature_coords();
-  case vicreg_mask_profile_t::price_only:
-    return node_vicreg_price_feature_coords();
-  case vicreg_mask_profile_t::close_only:
-    return node_vicreg_close_feature_coords();
-  case vicreg_mask_profile_t::activity_only:
-    return node_vicreg_activity_feature_coords();
-  case vicreg_mask_profile_t::custom:
-    return {};
-  }
-  throw std::runtime_error("[vicreg_spec] unknown mask profile");
+  throw std::runtime_error("[vicreg_spec] invalid CELL_VALID_POLICY: " + value);
 }
 
 inline void validate_coords(const std::vector<int64_t> &coords, int64_t width) {
-  if (coords.empty()) {
-    throw std::runtime_error(
-        "[vicreg_spec] required feature coordinates are empty");
-  }
   std::unordered_set<int64_t> seen;
   seen.reserve(coords.size());
   for (const int64_t coord : coords) {
@@ -133,27 +115,53 @@ inline void validate_coords(const std::vector<int64_t> &coords, int64_t width) {
                      [](unsigned char ch) { return std::isdigit(ch) != 0; });
 }
 
+[[nodiscard]] inline torch::Dtype torch_dtype(std::string value) {
+  value = kv::lowercase(kv::trim(value));
+  if (value == "float32") {
+    return torch::kFloat32;
+  }
+  if (value == "float64") {
+    return torch::kFloat64;
+  }
+  throw std::runtime_error("[vicreg_spec] unsupported dtype");
+}
+
 } // namespace vicreg_spec_detail
 
-inline void validate_vicreg_node_representation_spec(
-    const vicreg_node_representation_spec_t &spec) {
+inline void validate_vicreg_spec(const vicreg_spec_t &spec) {
   if (spec.version_token != "wikimyei.representation.vicreg.v1") {
     throw std::runtime_error("[vicreg_spec] unsupported version token");
   }
   if (spec.component_id.empty()) {
     throw std::runtime_error("[vicreg_spec] component_id is required");
   }
-  if (spec.input_route != vicreg_input_route_t::node_stream) {
-    throw std::runtime_error("[vicreg_spec] v1 requires node_stream input");
+  if (spec.input_route != vicreg_input_route_t::channel_node_stream) {
+    throw std::runtime_error(
+        "[vicreg_spec] v1 requires channel_node_stream input");
   }
-  if (spec.input_width !=
-      cuwacunu::ujcamei::source::registry::types::kKlineFeatureWidth) {
-    throw std::runtime_error("[vicreg_spec] input_width must be 9 for v1");
+  if (spec.channel_count <= 0 || spec.history_length <= 0 ||
+      spec.input_width !=
+          cuwacunu::ujcamei::source::registry::types::kKlineFeatureWidth ||
+      spec.encoding_dim <= 0 || spec.feature_hidden_dim <= 0 ||
+      spec.temporal_depth < 0 || spec.vicreg_projector_dim <= 0 ||
+      spec.vicreg_projector_depth < 0) {
+    throw std::runtime_error("[vicreg_spec] invalid dimensions");
   }
-  if (spec.encoding_dim <= 0 || spec.channel_expansion_dim <= 0 ||
-      spec.fused_feature_dim <= 0 || spec.encoder_hidden_dim <= 0 ||
-      spec.encoder_depth <= 0) {
-    throw std::runtime_error("[vicreg_spec] encoder dimensions must be > 0");
+  if (spec.vicreg_projector_depth > 0 &&
+      spec.vicreg_projector_hidden_dim <= 0) {
+    throw std::runtime_error("[vicreg_spec] projector hidden dim must be > 0");
+  }
+  if (!(spec.recency_decay > 0.0 && spec.recency_decay <= 1.0) ||
+      !(spec.min_valid_fraction > 0.0 && spec.min_valid_fraction <= 1.0) ||
+      spec.global_aux_weight < 0.0 || spec.jitter_std < 0.0 ||
+      spec.feature_dropout_prob < 0.0 || spec.feature_dropout_prob > 1.0 ||
+      spec.history_dropout_prob < 0.0 || spec.history_dropout_prob > 1.0) {
+    throw std::runtime_error("[vicreg_spec] invalid scalar option");
+  }
+  if (spec.cell_valid_policy == cell_valid_policy_t::required_features &&
+      spec.required_feature_coords.empty()) {
+    throw std::runtime_error(
+        "[vicreg_spec] required feature coordinates are empty");
   }
   vicreg_spec_detail::validate_coords(spec.required_feature_coords,
                                       spec.input_width);
@@ -166,55 +174,105 @@ inline void validate_vicreg_node_representation_spec(
   }
 }
 
-inline void
-decode_vicreg_net_into_spec(const std::string &net_text,
-                            vicreg_node_representation_spec_t &spec) {
+inline void decode_vicreg_net_into_spec(const std::string &net_text,
+                                        vicreg_spec_t &spec) {
   namespace kv = cuwacunu::piaabo::parse::simple_kv;
   const auto &block = kv::single_block(net_text, "VICREG_NET");
   spec.encoding_dim = kv::parse_i64(kv::required(block, "ENCODING_DIM"));
-  spec.channel_expansion_dim =
-      kv::parse_i64(kv::required(block, "CHANNEL_EXPANSION_DIM"));
-  spec.fused_feature_dim =
-      kv::parse_i64(kv::required(block, "FUSED_FEATURE_DIM"));
-  spec.encoder_hidden_dim =
-      kv::parse_i64(kv::required(block, "ENCODER_HIDDEN_DIM"));
-  spec.encoder_depth = kv::parse_i64(kv::required(block, "ENCODER_DEPTH"));
+  spec.feature_hidden_dim =
+      kv::parse_i64(kv::required(block, "FEATURE_HIDDEN_DIM"));
+  spec.temporal_depth =
+      kv::parse_i64(kv::optional(block, "TEMPORAL_DEPTH", "1"));
+  spec.recency_decay =
+      kv::parse_double(kv::optional(block, "RECENCY_DECAY", "0.85"));
+  spec.vicreg_projector_dim =
+      kv::parse_i64(kv::required(block, "VICREG_PROJECTOR_DIM"));
+  spec.vicreg_projector_hidden_dim =
+      kv::parse_i64(kv::required(block, "VICREG_PROJECTOR_HIDDEN_DIM"));
+  spec.vicreg_projector_depth =
+      kv::parse_i64(kv::optional(block, "VICREG_PROJECTOR_DEPTH", "1"));
+  spec.global_aux_weight =
+      kv::parse_double(kv::optional(block, "GLOBAL_AUX_WEIGHT", "0.0"));
+  spec.jitter_std = kv::parse_double(kv::optional(block, "JITTER_STD", "0.01"));
+  spec.feature_dropout_prob =
+      kv::parse_double(kv::optional(block, "FEATURE_DROPOUT_PROB", "0.0"));
+  spec.history_dropout_prob =
+      kv::parse_double(kv::optional(block, "HISTORY_DROPOUT_PROB", "0.0"));
 }
 
-[[nodiscard]] inline vicreg_node_representation_spec_t
-decode_vicreg_node_representation_spec_from_split_dsl(
-    const std::string &dsl_text, const std::string &net_text) {
+[[nodiscard]] inline vicreg_spec_t
+decode_vicreg_spec_from_split_dsl(const std::string &dsl_text,
+                                  const std::string &net_text) {
   namespace kv = cuwacunu::piaabo::parse::simple_kv;
   const auto &block = kv::single_block(dsl_text, "VICREG");
-  vicreg_node_representation_spec_t spec{};
+  vicreg_spec_t spec{};
   spec.version_token = kv::optional(block, "VERSION", spec.version_token);
   spec.component_id = kv::required(block, "COMPONENT_ID");
   spec.input_route = vicreg_spec_detail::parse_input_route(
-      kv::optional(block, "INPUT_ROUTE", "node_stream"));
+      kv::optional(block, "INPUT_ROUTE", "channel_node_stream"));
+  spec.channel_count = kv::parse_i64(kv::required(block, "CHANNEL_COUNT"));
+  spec.history_length = kv::parse_i64(kv::required(block, "HISTORY_LENGTH"));
   spec.input_width = kv::parse_i64(
       kv::optional(block, "INPUT_WIDTH", std::to_string(spec.input_width)));
-  spec.mask_profile = vicreg_spec_detail::parse_mask_profile(
-      kv::optional(block, "MASK_PROFILE", "all_9"));
-  const auto coord_value = kv::optional(block, "REQUIRED_FEATURE_COORDS", "");
-  spec.required_feature_coords =
-      coord_value.empty()
-          ? vicreg_spec_detail::default_coords_for_profile(spec.mask_profile)
-          : kv::parse_i64_list(coord_value);
+  spec.cell_valid_policy = vicreg_spec_detail::parse_cell_valid_policy(
+      kv::optional(block, "CELL_VALID_POLICY", "required_features"));
+  const auto coord_text =
+      kv::optional(block, "REQUIRED_FEATURE_COORDS", "0,1,2,3");
+  if (!coord_text.empty()) {
+    spec.required_feature_coords = kv::parse_i64_list(coord_text);
+  }
+  spec.min_valid_fraction =
+      kv::parse_double(kv::optional(block, "MIN_VALID_FRACTION", "1.0"));
+  spec.use_missingness_indicators =
+      kv::parse_bool(kv::optional(block, "USE_MISSINGNESS_INDICATORS", "true"));
   spec.dtype = kv::optional(block, "DTYPE", spec.dtype);
   spec.device = kv::optional(block, "DEVICE", spec.device);
   decode_vicreg_net_into_spec(net_text, spec);
-  validate_vicreg_node_representation_spec(spec);
+  validate_vicreg_spec(spec);
   return spec;
 }
 
-[[nodiscard]] inline node_vicreg_adapter_options_t
-node_adapter_options_from_vicreg_spec(
-    const vicreg_node_representation_spec_t &spec, bool training) {
-  validate_vicreg_node_representation_spec(spec);
-  auto out = training ? node_vicreg_training_adapter_options()
-                      : node_vicreg_encoding_adapter_options();
-  out.mask_policy = node_mask_reduce_policy_t::required_features;
+[[nodiscard]] inline channel_preserving_encoder_options_t
+channel_encoder_options_from_spec(const vicreg_spec_t &spec) {
+  validate_vicreg_spec(spec);
+  channel_preserving_encoder_options_t out{};
+  out.channel_count = spec.channel_count;
+  out.history_length = spec.history_length;
+  out.input_width = spec.input_width;
+  out.encoding_dim = spec.encoding_dim;
+  out.feature_hidden_dim = spec.feature_hidden_dim;
+  out.temporal_depth = spec.temporal_depth;
+  out.recency_decay = spec.recency_decay;
+  out.cell_valid_policy = spec.cell_valid_policy;
   out.required_feature_coords = spec.required_feature_coords;
+  out.min_valid_fraction = spec.min_valid_fraction;
+  out.use_missingness_indicators = spec.use_missingness_indicators;
+  out.dtype = vicreg_spec_detail::torch_dtype(spec.dtype);
+  out.device = torch::Device(spec.device);
+  return out;
+}
+
+[[nodiscard]] inline vicreg_projector_options_t
+channel_projector_options_from_spec(const vicreg_spec_t &spec) {
+  validate_vicreg_spec(spec);
+  vicreg_projector_options_t out{};
+  out.input_dim = spec.encoding_dim;
+  out.projector_dim = spec.vicreg_projector_dim;
+  out.hidden_dim = spec.vicreg_projector_hidden_dim;
+  out.depth = spec.vicreg_projector_depth;
+  out.dtype = vicreg_spec_detail::torch_dtype(spec.dtype);
+  out.device = torch::Device(spec.device);
+  return out;
+}
+
+[[nodiscard]] inline vicreg_train_options_t
+vicreg_train_options_from_spec(const vicreg_spec_t &spec) {
+  validate_vicreg_spec(spec);
+  vicreg_train_options_t out{};
+  out.vicreg.global_aux_weight = spec.global_aux_weight;
+  out.jitter_std = spec.jitter_std;
+  out.feature_dropout_prob = spec.feature_dropout_prob;
+  out.history_dropout_prob = spec.history_dropout_prob;
   return out;
 }
 

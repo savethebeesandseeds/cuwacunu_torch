@@ -1,26 +1,13 @@
 /*
   wikimyei.representation.vicreg.jkimyei
-  ================================
-  Default smoke training policy for graph-first VICReg representation.
-
-  This file is Jkimyei training policy for the VICReg component only. Runtime
-  `.lls` report emission is controlled by kikijyeba.settings.wave.dsl.
-
-  Supported v1 settings:
-    TASK = vicreg_node_representation
-    OPTIMIZER = adam
-    MAX_STEPS >= 0, where 0 means run until stream exhaustion.
-    BATCH_SIZE > 0.
-    CHECKPOINT_EVERY >= 0, where 0 disables checkpoint cadence.
-    REPORT_EVERY > 0.
-    VALIDATION_EVERY = 0; validation cadence is not implemented in v1.
-    FREEZE_REPRESENTATION = false when training the representation itself.
+  ==============================================
+  Smoke training policy for channel-preserving VICReg pretraining.
 */
 TRAINING {
   VERSION = wikimyei.representation.vicreg.jkimyei.v1;
-  TRAINING_ID = smoke_vicreg_node_representation;
-  TASK = vicreg_node_representation;
-  COMPONENT_ID = node_vicreg_v1;
+  TRAINING_ID = smoke_vicreg_representation;
+  TASK = vicreg_representation;
+  COMPONENT_ID = vicreg_v1;
   OPTIMIZER = adam;
   LEARNING_RATE = 0.001;
   MAX_STEPS = 0;

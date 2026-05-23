@@ -21,6 +21,7 @@ enum class wave_source_range_policy_t {
 enum class wave_target_t {
   representation_vicreg,
   inference_mdn,
+  inference_channel_mdn,
 };
 
 enum class wave_action_t {
@@ -30,7 +31,7 @@ enum class wave_action_t {
 
 struct wave_settings_t {
   std::string wave_id{};
-  wave_target_t target{wave_target_t::inference_mdn};
+  wave_target_t target{wave_target_t::inference_channel_mdn};
   std::string mode_text{"run"};
   wave_action_t action{wave_action_t::run};
   bool debug{false};
@@ -67,12 +68,16 @@ split_mode_atoms(std::string mode_text) {
 [[nodiscard]] inline wave_target_t parse_wave_target(std::string value) {
   value = wave_detail::kv::lowercase(wave_detail::kv::trim(value));
   if (value == "wikimyei.representation.encoding.vicreg" ||
-      value == "representation_vicreg") {
+      value == "representation_vicreg" || value == "vicreg_representation") {
     return wave_target_t::representation_vicreg;
   }
-  if (value == "wikimyei.inference.expected_value.mdn" ||
-      value == "inference_mdn") {
+  if (value == "legacy_inference_mdn") {
     return wave_target_t::inference_mdn;
+  }
+  if (value == "wikimyei.inference.expected_value.mdn" ||
+      value == "inference_mdn" || value == "inference_channel_mdn" ||
+      value == "mdn_expected_value_inference") {
+    return wave_target_t::inference_channel_mdn;
   }
   throw std::runtime_error("[wave_settings] invalid TARGET: " + value);
 }
@@ -82,6 +87,8 @@ split_mode_atoms(std::string mode_text) {
   case wave_target_t::representation_vicreg:
     return "wikimyei.representation.encoding.vicreg";
   case wave_target_t::inference_mdn:
+    return "wikimyei.inference.expected_value.mdn";
+  case wave_target_t::inference_channel_mdn:
     return "wikimyei.inference.expected_value.mdn";
   }
   throw std::runtime_error("[wave_settings] unknown TARGET");

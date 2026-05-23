@@ -1,6 +1,6 @@
 <instruction> ::= "VICREG_NET" [<whitespace>] "{" <line_end> {<assignment>} [<whitespace>] "}" [<whitespace>] ";" [<line_end>] ;
 <assignment>  ::= [<whitespace>] <key> [<whitespace>] "=" [<whitespace>] <value> [<whitespace>] ";" <line_end> ;
-<key>         ::= "ENCODING_DIM" | "CHANNEL_EXPANSION_DIM" | "FUSED_FEATURE_DIM" | "ENCODER_HIDDEN_DIM" | "ENCODER_DEPTH" ;
+<key>         ::= "ENCODING_DIM" | "FEATURE_HIDDEN_DIM" | "TEMPORAL_DEPTH" | "RECENCY_DECAY" | "VICREG_PROJECTOR_DIM" | "VICREG_PROJECTOR_HIDDEN_DIM" | "VICREG_PROJECTOR_DEPTH" | "GLOBAL_AUX_WEIGHT" | "JITTER_STD" | "FEATURE_DROPOUT_PROB" | "HISTORY_DROPOUT_PROB" ;
 <value>       ::= <value_char> {<value_char>} ;
 <value_char>  ::= <letter> | <digit> | "_" | "." | "-" | "+" ;
 <line_end>    ::= [<whitespace>] <break_block> ;

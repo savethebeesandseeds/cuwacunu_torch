@@ -1,20 +1,13 @@
 /*
   wikimyei.inference.expected_value.mdn.net
-  =========================================
-  Neural architecture for the default per-node ExpectedValue MDN.
-
-  Supported v1 settings:
-    MIXTURE_COUNT:
-      Number of Gaussian mixture components per node head.
-
-    HIDDEN_WIDTH:
-      Hidden width of each per-node MDN head.
-
-    RESIDUAL_DEPTH:
-      Number of residual hidden blocks after the input projection.
+  ================================================
+  Neural architecture for the strict channel-context ExpectedValue MDN.
 */
 MDN_NET {
+  CHANNEL_COUNT = 3;
+  FUTURE_HORIZON = 1;
   MIXTURE_COUNT = 2;
   HIDDEN_WIDTH = 16;
   RESIDUAL_DEPTH = 1;
+  GLOBAL_CONTEXT_DIM = 0;
 };

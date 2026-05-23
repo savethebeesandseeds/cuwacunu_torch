@@ -1,6 +1,7 @@
 #include "hero/config_hero/hero_config_tools.h"
 
 #include "hero/config_hero/hero_config.h"
+#include "hero/mcp_schema_compat.h"
 
 #include <algorithm>
 #include <array>
@@ -1793,6 +1794,8 @@ std::string build_tools_list_result_json() {
   std::ostringstream out;
   out << "{\"tools\":[";
   for (std::size_t i = 0; i < std::size(kTools); ++i) {
+    mcp_schema_compat::assert_tool_input_schema_compatible(
+        kTools[i].name, kTools[i].input_schema_json);
     if (i != 0) {
       out << ",";
     }

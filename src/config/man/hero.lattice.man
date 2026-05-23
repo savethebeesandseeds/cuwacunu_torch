@@ -20,7 +20,9 @@ KEYS
 
   allowed_runtime_roots
     Comma-separated roots under which explicit runtime_root/checkpoint_path
-    arguments are allowed.
+    arguments are allowed. The checked-in wrong-MDN validation fixture runtime
+    root is included so agents can inspect that negative case through Lattice
+    Hero without copying it into /tmp.
 
   auto_build_exposure_ledger
     When true, target evaluation derives exposure facts from normal runtime
@@ -39,9 +41,23 @@ TOOLS
   hero.lattice.list_targets
   hero.lattice.explain_target
   hero.lattice.evaluate_target
+  hero.lattice.evaluate_targets
+  hero.lattice.compare_evidence
   hero.lattice.plan_target
   hero.lattice.scan_exposure
+  hero.lattice.index_status
+  hero.lattice.index_query
+  hero.lattice.derived_query
   hero.lattice.checkpoint_closure
+
+MCP SCHEMA HYGIENE
+  Tool schemas are a harness-safety gate, not a lattice proof condition.
+  Sourced Hero catalog generation validates each inputSchema before emitting
+  tools/list JSON: the root must have type=object, and top-level oneOf, anyOf,
+  allOf, enum, and not are rejected. Failure messages name the tool,
+  schema_path, offending construct, and message. The focused schema smoke covers
+  Config, Runtime, Hashimyei, and Lattice catalogs and protects the prior
+  hero.lattice.checkpoint_closure harness failure.
 
 AGENT RUNBOOK
   Lattice Hero is read-only. It does not execute waves and it does not mutate
@@ -59,42 +75,595 @@ AGENT RUNBOOK
   explain_target
     Explains one compiled proof object without scanning runtime evidence. Use
     before editing, evaluating, or explaining a target. It includes checkpoint
-    source policy such as latest_satisfying:<target_id>.
+    source policy such as latest_satisfying:<target_id>. Model-state plan
+    inputs like PLAN_INPUT_MDN_CHECKPOINT and
+    PLAN_INPUT_REPRESENTATION_CHECKPOINT are preserved as suggested-wave hints,
+    not contract identity or proof evidence. They remain symbolic
+    latest_satisfying source-target references until runtime reports prove the
+    exact loaded checkpoint paths. Their values do not alter
+    target_spec_fingerprint. Advisory planning knobs such as WAVE_MODE,
+    PLAN_MODE, PLAN_MAX_ATTEMPTS, and MAX_WAVES also do not alter
+    target_spec_fingerprint. Non-blocking LATTICE_WARN clauses
+    remain visible in explanations and evaluations, but they also do not alter
+    target_spec_fingerprint. Explain output includes
+    derived_query_rule_vocabulary,
+    derived_query_projection_semantics_vocabulary, proof_obligation_vocabulary,
+    proof_certificate_digest_policy_vocabulary,
+    proof_certificate_digest_policy_summary,
+    checkpoint_selection_policy_vocabulary,
+    checkpoint_selection_policy_summary,
+    plan_advice_scope_policy_vocabulary,
+    deficit_vector_planning_summary,
+    node_support_scope_policy_summary,
+    validation_performance_evidence_policy_summary,
+    validation_performance_scope_policy_summary,
+    representation_geometry_summary,
+    mdn_distribution_calibration_summary,
+    mdn_distribution_calibration_diagnostic_summary,
+    contract_identity_boundary_vocabulary,
+    operational_readiness_v1_scope_vocabulary,
+    operational_readiness_v1_gate_vocabulary,
+    mathematical_readiness_v1_vocabulary,
+    warning_threshold_relation_vocabulary, target_numeric_dimension_vocabulary,
+    target_numeric_dimension_summary, and warning_anchor_scope_policy_vocabulary,
+    plus the static mathematical
+    policy vocabularies for coverage/load algebra, leakage, causal closure,
+    DB/cache, evidence abstraction, joins, deficit priority, evidence order,
+    support scope, performance scope, geometry, uncertainty, calibration,
+    monotonicity, source audit, and checkpoint identity. This makes proof/query
+    logic, digest and identity
+    boundaries, advisory planning boundaries, readiness crosswalks, numeric
+    units/bounds, warning trigger semantics, and interval-scope rules available
+    before runtime evidence is scanned.
+    It also returns warning_scope_previews, a per-warning resolved anchor-range
+    preview with resolution status; this is explanation metadata only and does
+    not satisfy readiness. A preview status of
+    unbounded_all_matching_evidence means the evaluator applies no anchor-range
+    filter for that warning kind.
 
   scan_exposure
     Builds a preview ledger from runtime job artifacts and lattice sidecars.
     Report warnings verbatim. Fact previews include anchor_domain_health with
     candidate/accepted graph anchors, skip reasons, common/reference key bounds,
-    and source-domain warning level. MDN jobs also expose derived node_exposure
-    previews from per-node report fields including routed/active/trained/
-    evaluated row counts, valid targets, and mean NLL; these are MDN support
-    facts, not per-node VICReg readiness claims.
+    and source-domain warning level. Fact previews also include
+    source_key_window and structured source_key_window_audit metadata;
+    incomplete, non-numeric, internally non-monotone, row-order-inverting, or
+    affine-inconsistent source-key windows produce scan warnings while row-index
+    footprints remain the leakage authority. The audit object exposes parsed
+    endpoints, order-preservation booleans, and inferred
+    key-step/affine-consistency fields so agents can inspect the auxiliary
+    source-key coordinate map without parsing warning text. Evaluation and
+    planning JSON also expose source_receipt_policy_vocabulary, recording that
+    compact source_file_receipts are source-audit metadata only; they do not
+    satisfy coverage, prove leakage cleanliness, alter contract identity, or
+    replace row-index footprints.
+    V2 scan_exposure also emits structured source_receipt_facts and a
+    source_receipt_summary. These rows are audit/provenance evidence only:
+    malformed non-empty compact receipts produce scan warnings, missing receipts
+    are counted as audit absence, and row-index intervals remain the
+    coverage/leakage authority.
+    source_receipt_policy_summary self-checks one row-index coverage/leakage
+    authority row, three audit-only receipt rows, no contract identity
+    authority, no structured receipt facts in V1, and declared compact/future
+    structured receipt fields.
+    MDN jobs also expose derived node_exposure previews from per-node
+    report fields including routed/active/trained/evaluated row counts, valid
+    targets, valid-target opportunity counts, and mean NLL.
+    node_support_summaries add support-row and unique-node counts, support-row
+    incidence counts by exposure use and mutation, ordered support rows,
+    aggregate support, weakest-node, Wilson support-bound, and support-balance
+    metrics including CV, Gini, and normalized entropy over those MDN facts.
+    Support rows include parent exposure fact digests and use flags. Valid-target denominators are
+    target-opportunity counts, not plain row counts; routed rows alone are
+    visibility, not Wilson denominators.
+    These are MDN support facts, not per-node VICReg readiness claims.
+    node_support_scope_policy_vocabulary makes that scope boundary explicit:
+    MDN rows support MDN-head visibility, not VICReg per-node readiness, and
+    future representation-node support must come from NodeLift or
+    representation-emitted facts rather than synthetic backfill from MDN rows.
+    node_support_scope_policy_summary self-checks the four-row boundary: three
+    V1 visibility rows, one deferred future row, no VICReg per-node readiness
+    authority, no synthetic backfill, and no runtime executor authority.
+    VICReg fact previews may include representation_health with invariance/variance/
+    covariance loss components, gradient norm, valid projection rows, adapter
+    valid-channel fraction, finite-parameter check, and optional geometry
+    metrics such as embedding dimension, effective rank/fraction, min/max
+    dimension variance, condition number, and isotropy score. These are
+    visibility fields unless a future target explicitly gates on them.
 
   evaluate_target
     Proves whether one target is satisfied by the runtime evidence. For
     exposure-backed targets, returns exposure_summaries with unique coverage,
     repeated cursor-epoch exposure load, and optimizer-step density. These
     summaries do not change status by themselves. Validation evaluation targets
-    use evaluation_metric coverage from run-mode jobs and do not require
-    optimizer mutation or a new checkpoint. When a target declares
+    use evaluation_metric coverage from run-mode jobs with no component mutation
+    and zero optimizer steps; they must bind exactly to the evaluated checkpoint
+    input edges and must not write a new checkpoint. When a target declares
     EVALUATED_CHECKPOINT_SOURCE, evaluation also proves the run loaded the exact
     MDN checkpoint selected by that source target, plus the matching
     representation checkpoint lineage. LATTICE_WARN clauses return non-blocking
-    warning_results; triggered target warning messages are mirrored in warnings.
+    warning_results; warnings is the ordered projection of triggered
+    warning_results messages.
+    Missing warning measurements are reported as unavailable with their
+    configured threshold while remaining non-blocking.
+    Each warning result names evidence_basis so agents can distinguish
+    exposure_load_summary, filtered_node_support_summary,
+    representation_health_facts, and anchor_domain_facts measurements.
+    exposure_summary_available and node_support_summary_available mark which
+    summary envelope is a real warning basis rather than an empty placeholder.
+    Any LATTICE_WARN kind may use SPLIT or explicit ANCHOR_INDEX_BEGIN/END.
+    Warning measurements are scoped to that warning interval, defaulting to the
+    target range. If trusted completed coverage is unavailable, warning overlap
+    can use anchor-range visibility without making that evidence satisfy
+    readiness coverage. Each warning_result exposes the resolved interval as
+    warning_anchor_range; explain_target exposes the same pre-evaluation scope
+    as warning_scope_previews[].resolved_warning_anchor_range; and
+    warning_anchor_scope_policy_vocabulary documents the visibility-only
+    fallback for both surfaces. Node-support warnings derive a warning-range
+    support matrix before applying USE/EFFECT filters, while the proof
+    certificate keeps its target-range node_support_summaries.
+    Warning results expose threshold_direction, threshold_triggered, and
+    threshold_relation next to threshold, so clients do not have to parse status
+    strings or diagnostic messages to know the comparison operator or trigger
+    state. warning_threshold_relation_vocabulary exposes the allowed relation
+    values with their trigger and measurement-availability semantics.
+    warning_summary aggregates warning-result count, triggered-warning count,
+    unavailable-warning count, clear measured warnings, the compatibility
+    warning_count alias, and threshold-relation counts for clients that only
+    need aggregate warning state.
+    Each result also includes proof_certificate, a machine-readable proof object
+    containing a certificate_digest, target/split fingerprints, identity,
+    dependency, idempotent coverage, closure, and leakage checks. Certificate
+    digests canonicalize dependency proofs and other set-like summaries before
+    hashing. Coverage proof records contributing intervals, contributing fact
+    digests, contributing fact witnesses, merged covered intervals, and missing
+    complement intervals. The certificate check recomputes the merged
+    idempotent union and missing complement, so scalar totals alone are not
+    enough for a valid proof. It also checks additive load counts against the
+    contributing interval list before union, recomputes witness digests and
+    intervals, and binds mutating coverage fact digests back to closure causal
+    exposures. Non-mutating evaluation_metric coverage witnesses are also bound
+    exactly to the MDN and representation input checkpoint edges declared by a
+    satisfied EVALUATED_CHECKPOINT_SOURCE dependency, must not carry extra
+    checkpoint input edges, and must not carry an output checkpoint edge.
+    Coverage deficits also include the missing intervals.
+    Leakage proof records the protected split, undilated split interval,
+    Hx/Hf-dilated protected interval, and left/right dilation widths.
+    Leakage failures include overlap witnesses with fact digest, forbidden use,
+    source footprint, and intersection interval. leakage_rule_vocabulary exposes
+    protected_split_dilation_intersection as temporal morphological dilation
+    over complete checkpoint closure with labeled causal-exposure witnesses.
+    leakage_rule_summary self-checks the single V1 rule, complete-closure
+    requirement, protected-range/base containment, empty-intersection predicate,
+    and causal witness basis.
+    Node-MDN certificates include
+    derived node_support_summaries when inherited MDN node facts are available.
+    proof_certificate_digest_policy_vocabulary exposes the digest boundary:
+    target/split identity, identity, dependency, coverage/load, closure,
+    leakage, checkpoint-preview audit fields, and MDN node-support summaries
+    are canonical proof content; the digest value itself, warnings, deficits,
+    plan advice, evidence-order projections, and policy vocabularies are not.
+    proof_certificate_digest_policy_summary counts the 11 policy rows, 8 hashed
+    proof surfaces, 3 excluded report/policy surfaces, zero advisory digest
+    overlap, and zero visibility-only status authority.
+    proof_certificate_check reports local self-consistency of the certificate
+    digest, schema, target fingerprint presence, dependency kind/status
+    vocabulary, split-policy identity for concrete named-split facts, and proof
+    arithmetic. Evaluation filtering rejects concrete named-split exposure facts
+    that omit split-policy identity while a split policy is active; legacy
+    unknown-split facts remain admissible. Unsatisfied targets may still pass
+    this check when the
+    certificate is a well-formed non-claiming envelope; use
+    status, reasons, and deficits for the target failure. A malformed certificate
+    on a would-be satisfied target fails closed as
+    certificate:proof_certificate_check. The check covers
+    upstream dependency non-binding semantics, satisfied
+    checkpoint-source path completeness, required identity field presence,
+    identity match booleans, exact non-vacuous checkpoint
+    dependency bindings, coverage
+    duplicate dependency rejection, use/fraction dimensions, positive coverage requirement thresholds,
+    non-vacuous coverage target ranges, interval arithmetic, checked-closure checkpoint identity, non-vacuous complete closure facts, closure counts,
+    causal output-checkpoint presence, causal checkpoint edge-label
+    presence/uniqueness, root-reachable causal output closure, causal input-edge
+    producer/unresolved resolution and exclusivity, causal checkpoint self-loop/cycle/root-cycle rejection,
+    coverage/load mutation-filter agreement, finite load/effort/support
+    measures, load component-scope vocabulary, target-component-local coverage load scope,
+    duplicate coverage obligation rejection,
+    target-component assembly identity in mutated coverage causal support,
+    mutated coverage causal-closure support and contributing-interval
+    multiplicity, runtime evaluation coverage as non-mutating evidence outside
+    checkpoint closure,
+    unchecked-closure and unchecked-leakage non-claiming semantics, causal
+    identity envelope/component-assembly/job-wave identity/completed-range presence,
+    checked-closure root checkpoint producer assembly identity, non-vacuous
+    leakage base range, protected split dilation, closure incompleteness witness presence/uniqueness/reachability,
+    named-split leakage proof
+    split-policy identity, leakage
+    forbidden-use membership, leakage proof complete-closure backing, leakage
+    witness closure membership, leakage witness job/wave identity, leakage
+    witness causal-field consistency, leakage witness set recomputation from
+    causal closure overlaps, leakage witness mutation requirements, non-empty leakage
+    intersections, duplicate leakage overlap witness rejection, valid-target uncertainty support totals, valid-target
+    no-trials uncertainty non-claiming, Wilson bounds, MDN-only node-support
+    scope, inherited causal MDN exposure use/mutation/split/assembly backing
+    for mutating node support, non-mutating validation/evaluation node support
+    as row-parent exposure evidence, duplicate node-support summary rejection,
+    non-empty node-support summaries,
+    finite-fraction claim/non-claim semantics, and node-support summary
+    schema/aggregate and weakest-node arithmetic/non-claiming/identity/mean/
+    support-row identity/order/fraction/use-incidence/provenance and
+    recomputation/balance-metric/row-count bounds. For leakage, the check
+    recomputes protected = [base.begin - left, base.end + right) before trusting
+    witness intersections.
+    Target satisfaction is monotone only under clean evidence growth; forbidden
+    or protected-footprint evidence can still turn a ready target into
+    exposure_failed.
+    Results also include evidence_order_vector, a Pareto-order basis over
+    separate identity, coverage, load, closure, leakage, node-support
+    confidence, node-support imbalance, source-key audit issue counts,
+    unresolved-lineage count, deficit-count, warning-result count,
+    triggered-warning count, and unavailable-warning count dimensions.
+    Selection-signal leakage excludes a checkpoint before dominance is
+    considered.
+    exposure_measure_algebra_vocabulary exposes the shared coverage/load
+    algebra semantics: unique coverage is idempotent interval union, repeated
+    load is additive interval measure.
+    exposure_measure_algebra_summary self-checks that there are exactly two
+    measures, one idempotent coverage measure, one additive load measure, no
+    dual-role measure, and distinct coverage/load units.
+    source_key_coordinate_policy_vocabulary records that row-index intervals
+    are authoritative for coverage/leakage and source-key windows are audit-only
+    order-preserving/affine map checks.
+    source_key_coordinate_policy_summary self-checks exactly one row-index
+    coverage/leakage authority row, three audit-only source-key rows, declared
+    order-preserving/affine fields, and no source-key audit row with coverage or
+    leakage authority.
+    warning_count remains the compatibility alias for triggered warnings. It is
+    projected from warning_summary. The vector is not a scalar lattice score, and
+    dimensions can remain incomparable. Internal callers can use
+    compare_lattice_evidence_order_vectors for the explicit
+    dominance/equivalence/incomparability/selector-leaked relation; Hero JSON
+    includes the same relation vocabulary, dimension-order polarity, and
+    dimension_vocabulary. hero.lattice.compare_evidence evaluates two targets
+    with one scan and returns both vectors, per-dimension dominance rows,
+    participation/exclusion reasons, and the final partial-order relation
+    without a scalar lattice score or deployment decision.
+    beside the vector for agent reporting. The vocabulary comes from the same C++
+    source as the comparator. checkpoint_selection_policy_vocabulary records
+    that latest_satisfying is a deterministic readiness selector, not a
+    best-model, Pareto, performance, deployment, or scalar-score selector.
+    checkpoint_selection_policy_summary records the compact self-check for that
+    policy: 4 rows, 3 deterministic readiness selectors, exact runtime binding
+    rows for evaluated/model-state inputs, and zero performance, Pareto,
+    identity, or executor authority.
+    source as the comparator. Warning results expose threshold_triggered and
+    measurement_available; triggered-warning and unavailable-warning dimensions
+    are derived from those structured bits instead of status/message wording.
+    Repeated cursor-load only strengthens the vector as clean load;
+    if it comes with more warnings, the relation remains incomparable.
+    Unsatisfied results include deficits, a compact list of missing or
+    contradicted proof dimensions. Each deficit carries a stable
+    key=kind:dimension plus deterministic priority and priority_class fields for
+    planning and indexing. Missing active contract/component/graph/source
+    identity inputs and stale runtime evidence with mismatched
+    contract/component/graph/source identity surface as identity:* deficits.
+    Scalar readiness failures such as finite loss, optimizer effort, valid-target fraction, and
+    node-head counts surface as metric:* deficits. Missing manifests, reports,
+    checkpoint files, exposure
+    ledgers, closure facts, active exposure facts, target-component-local
+    exposure facts, producer exposure facts, split policies, candidate state files, and
+    non-completed job status surface as artifact:* deficits.
+    Cyclic target dependency graphs surface as dependency:target_cycle.
+    Malformed proof envelopes surface as certificate:proof_certificate_check.
+    Validation/evaluation reports with wrong, missing, or extra checkpoint
+    inputs surface as model_state:input_checkpoint. Evaluation facts that mutate
+    component state or run optimizer steps surface as
+    model_state:mutated_component, while reports that write checkpoint or model
+    state surface as model_state:output_checkpoint instead of a generic status
+    deficit. Closure proofs include
+    causal_exposures, labeled summaries of inherited exposure facts, source-key
+    window audit, and checkpoint inputs/outputs;
+    causal_edge_vocabulary names the source-row, loaded-checkpoint,
+    created-checkpoint, and mutation edge labels represented by those fields.
+    causal_edge_summary self-checks the 7 V1 edge labels, 4 source-row use
+    edges, 2 checkpoint reachability edges, 1 mutation edge, and zero overlap
+    between checkpoint reachability and direct forbidden-use leakage edges.
+    selection_signal_policy_vocabulary records that V1 treats selection_signal
+    as a forbidden causal use over the causal exposure anchor footprint without
+    claiming first-class selector event provenance.
+    selection_signal_policy_summary self-checks the four-row boundary: known
+    selection_signal is forbidden and causal-anchor based, first-class selector
+    event streams and arbitrary selector-path proofs remain future/non-claiming,
+    all rows require closure completeness, and Lattice has no executor
+    authority.
+    derived_query_rule_vocabulary names read-only Datalog-style relations for
+    identity, dependency, aggregate dependency, coverage, aggregate coverage,
+    closure, checkpoint ancestry, unresolved lineage, guarded
+    closure-cleanliness, leakage, guarded no-overlap, warning, cache staleness,
+    planning, certificate-check, blocking-deficit, status, and satisfaction
+    proofs. evaluate_target and plan_target also emit derived_query_results, a
+    read-only projection of those relation truth values from the existing proof
+    result. hero.lattice.derived_query answers the finite V3-E pilot rule set
+    target_satisfied, checkpoint_ancestor, forbidden_overlap, stale_cache, and
+    unresolved_lineage with concrete witnesses and fail-closed flags. These
+    relations are query/cache metadata over runtime evidence, do not execute
+    waves, and do not alter target status or certificate digests.
+    Rule rows include projection_scope, projection_quantifier, and
+    empty_projection_policy so target-wide, per-row, compact aggregate, all-row,
+    any-witness, none-exists, and zero-row relation shapes are discoverable
+    before evaluation. They also declare the emitted result shape with
+    result_projection_scope, result_projection_quantifier, and
+    result_empty_projection_policy, so the live self-check compares result rows
+    against the vocabulary instead of a private hardcoded shape table.
+    derived_query_rule_vocabulary_digest_schema and
+    derived_query_rule_vocabulary_digest bind the declared rule vocabulary and
+    are repeated in live derived_query_results so clients can compare
+    explain/evaluate/plan surfaces without recomputing the canonical text.
+    derived_query_projection_semantics_vocabulary defines the
+    allowed projection-scope, quantifier, empty-policy, and compatibility-alias
+    values used by rule and result rows. Live result rows include
+    rule_projection_scope and rule_projection_quantifier for that declared
+    relation shape, plus result_projection_scope and result_projection_quantifier
+    for the emitted compact projection. projection_scope and
+    projection_quantifier remain compatibility aliases for the result fields, so
+    compact booleans say whether they summarize all rows or any witness. Compact
+    result envelopes declare schema=kikijyeba.lattice.derived_query_results.v1,
+    rule_vocabulary_digest_schema, and result_projection_digest_schema, and
+    include projection_target_id, projection_target_spec_fingerprint,
+    projection_certificate_digest, projection_status, projection_basis_complete,
+    projection_basis_field_count,
+    result_projection_digest_rule_vocabulary_bound,
+    result_projection_digest_basis_field_count, rule_vocabulary_digest,
+    result_projection_digest, result_count, known_count, unknown_count,
+    known_true_count, known_false_count, aggregate_projection_count, and
+    single_projection_count for whole-set sanity checks. The result projection
+    digest binds the rule-vocabulary schema and digest plus target id, target
+    spec fingerprint, certificate digest, status, and emitted rows; the digest
+    basis field count is 6. The basis check requires target id, target spec
+    fingerprint, certificate digest, and status before the projection can
+    self-check cleanly. They name
+    summary_source=emitted_result_rows and report
+    summary_self_check_passed, summary_issue_count, and
+    summary_issues for count/quantifier, projection scope, declared
+    rule/result projection-shape compatibility, empty-policy compatibility,
+    vocabulary-coverage, basis, and projection-semantics consistency. They also
+    report
+    rule_vocabulary_relation_count, result_covers_rule_vocabulary,
+    unique_result_relation_count, missing_rule_relation_count,
+    extra_result_relation_count, duplicate_result_relation_count,
+    missing_rule_relations, extra_result_relations, and
+    duplicate_result_relations so agents can detect stale, extra, missing, or
+    non-unique projections relative to the declared rule vocabulary. Compact
+    rows also expose rule_empty_projection_policy,
+    result_empty_projection_policy, empty_projection_policy,
+    projection_row_source, projection_row_count, projection_true_count, and
+    projection_false_count so empty, all-pass, partial, and any-witness summaries
+    are auditable without parsing messages.
+    db_cache_policy_vocabulary records that runtime files/facts are the source
+    of truth, DB/cache rows are rebuildable read models, cached plans are not
+    evidence, checkpoint ids/digests are preview cache keys until v2, and
+    Runtime Hero remains the only executor.
+    evidence_abstraction_vocabulary names the abstract-interpretation layer
+    from concrete runtime files and fact sidecars into proof summaries. Each
+    entry lists concrete inputs, abstract outputs, soundness condition,
+    conservative policy, and join semantics for future cache/index work,
+    including source-receipt audit as non-claiming traceability metadata.
+    product_evidence_state_vocabulary names the factorized proof space:
+    identity, coverage lattice, exposure-load monoid, closure graph, leakage
+    predicate, metric/warning vector, node-support matrix, source-receipt audit
+    set, and deficit vector, with partial orders and identity-scoped join rules.
+    join_law_vocabulary records the algebraic laws for those joins: idempotent
+    joins for coverage, closure, leakage witnesses, warnings, and deficits;
+    additive joins for distinct exposure load and node-support rows; duplicate
+    policies; cache requirements; and fail-closed unsafe joins.
+    representation_geometry_vocabulary names the VICReg representation-health
+    and embedding-geometry warning metrics, their units and threshold
+    directions, and their V1 non-blocking visibility scope.
+    representation_geometry_summary self-checks that the 18 metrics are
+    V1-visible representation_health warnings, seven are embedding-geometry
+    metrics, eleven are future hard-gate candidates, and none are active
+    performance gates.
+    performance_uncertainty_policy_vocabulary records that future performance
+    gates must compare conservative uncertainty bounds under a declared method,
+    not raw point estimates, and must include selection-leakage policy.
+    performance_uncertainty_policy_summary self-checks that six-row policy:
+    one V1 support-visibility row, five deferred future performance-gate rows,
+    no V1 performance-gate authority, no point-estimate gates, confidence bounds
+    required, and selection-leakage policy required.
+    validation_performance_evidence_policy_vocabulary names the V3-C validation
+    performance evidence contract: metric family, split field, checkpoint
+    identity fields, exact evaluated-checkpoint binding, sample-count field,
+    point-estimate field, uncertainty method, confidence-bound fields, target
+    syntax, selection-leakage policy, and fail-closed cases.
+    validation_performance_evidence_policy_summary self-checks that V3-C has no
+    active performance-gate authority, available point estimates are bounded or
+    warning-only, mean_nll remains warning-only until uncertainty is emitted,
+    and missing uncertainty, wrong checkpoint binding, stale identity, and
+    selector leakage fail closed.
+    mathematical_readiness_v1_vocabulary is a compact crosswalk from the V1
+    mathematical strengthening points to their Hero surfaces, proof basis,
+    scope boundary, and future work.
+    mathematical_readiness_v1_summary is the checked companion: it counts the
+    16 V1 mathematical items and reports that all are included, read-only,
+    non-executing, non-performance, non-DB-source-of-truth, and backed by at
+    least one Hero surface.
+    mdn_distribution_calibration_vocabulary names warning-only aggregate,
+    channel, horizon, per-node, and future distribution-calibration metrics.
+    mdn_distribution_calibration_summary keeps the legacy six-row metric policy
+    visible and self-checks that no MDN calibration row is a performance gate.
+    mdn_distribution_calibration_diagnostic_vocabulary and
+    mdn_distribution_calibration_diagnostic_summary self-check V3-D diagnostic
+    binding: exact MDN checkpoint, representation checkpoint, validation split,
+    split policy, active identity, sample count, uncertainty method, and
+    warning-only/non-performance effect.
+    validation_performance_scope_policy_vocabulary records that validation eval
+    readiness proves clean evaluation coverage and checkpoint binding, not model
+    quality, deployability, or performance acceptance. Future performance gates
+    require explicit metrics, uncertainty, and selection-leakage policy.
+    validation_performance_scope_policy_summary self-checks that boundary:
+    three V1 readiness/visibility rows, one deferred future performance row, no
+    V1 performance gate authority, uncertainty required for future gates, and no
+    runtime executor authority.
+    target_numeric_dimension_vocabulary exposes the unit/bounds table behind
+    numeric target and warning fields, including integrality and threshold
+    direction.
+    target_numeric_dimension_summary self-checks the numeric table: declared
+    units and kinds, unique context/field pairs, well-formed bounds, known
+    threshold directions, required V1 rows, and separate coverage/load units.
+    monotonicity_invariant_vocabulary records the clean-growth assumptions:
+    target satisfaction is monotone only under clean evidence growth, while
+    forbidden overlap, deficits, warnings, and Pareto tradeoffs are weakening or
+    incomparable dimensions.
+    proof_obligation_vocabulary maps certificate fields to derived relations,
+    required scopes, status effects, deficit kinds, non-claiming conditions,
+    digest participation, and planner relevance.
+    proof_certificate_digest_policy_vocabulary records which proof surfaces
+    contribute to the required certificate_digest and which
+    report/advisory/policy surfaces remain outside the digest.
+    proof_certificate_digest_policy_summary is the compact self-check for those
+    counts and boundary invariants.
+    checkpoint_identity_policy_vocabulary records that V1 checkpoint closure is
+    path/exposure-fact based, checkpoint ids/file digests are audit previews,
+    exact loaded-checkpoint bindings use runtime paths, and id/digest promotion
+    is future cache/index work rather than contract identity.
+    the certificate check rejects unknown exposure-use labels, non-completed
+    producer facts, missing source footprints for labels that require them, and
+    source-key audit summaries that do not recompute from the causal source-key
+    window fields, including affine key-step consistency.
+    plan_basis links any suggested wave back to the proof deficits it is meant
+    to address, including the primary plan-relevant deficit key, message,
+    priority/class, the addressed deficit_priority_classes,
+    deficit_priority_vocabulary, and missing cursor intervals for coverage
+    failures. It is
+    a projection of plan-relevant deficits, not a second proof source. It is
+    available only when plan_ready is true and a concrete suggested wave exists;
+    exhausted planning budgets can still report deficit keys/messages without
+    advertising an available plan. It is explanatory only and does not execute, mutate
+    evidence, or change MAX_WAVES accounting. Leakage source-row witness ranges
+    remain in deficits/proof_certificate and are not copied into
+    plan_basis.target_range.
+    plan_advice_scope_policy_vocabulary records the same boundary in
+    machine-readable form: plan_basis, suggested_wave, and PLAN_INPUT_* are
+    advisory symbolic hints; PLAN_MAX_ATTEMPTS/MAX_WAVES are recommendation
+    guards; Runtime Hero remains the only executor.
+    deficit_vector_planning_summary self-checks this boundary with ordered
+    deficit-priority counts, advisory-policy counts, zero evidence/identity
+    authority, zero Lattice execution authority, and a single Runtime Hero
+    executor boundary.
+    operational_readiness_v1_scope_vocabulary summarizes the V1 gate itself:
+    included read-only evidence-authority claims, intentionally deferred DB,
+    performance, checkpoint-identity, source-receipt, selection-event, and
+    VICReg node-support work, and explicit non-authority for execution,
+    performance gates, and DB source-of-truth claims.
+    V2 scan_exposure emits selection_signal_facts and a
+    selection_signal_summary when an exposure fact carries
+    use_selection_signal=true. These facts identify selector id/kind/rule,
+    selected checkpoint path, parent exposure digest, and selector footprint;
+    they are read-only provenance and do not become coverage, contract identity,
+    execution, or performance authority.
+    operational_readiness_v1_scope_summary self-checks that those 12 scope rows
+    partition into 6 included read-only claims and 6 deferred items, with zero
+    runtime-executor/performance/DB authority and no empty claim-boundary fields.
+    operational_readiness_v1_gate_vocabulary lists the concrete V1 acceptance
+    gates and their pass/fail boundaries for identity, train-core readiness,
+    leakage guards, validation exact-checkpoint binding, warnings/node-support
+    visibility, and Hero read/plan/closure inspection.
+    operational_readiness_v1_gate_summary self-checks that the 10 gates are
+    required, read-only, non-executing, non-performance, non-DB-source-of-truth,
+    have pass/fail conditions and Hero surfaces, and reference all five required
+    V1 targets.
+    contract_identity_boundary_vocabulary records which fields participate in
+    protocol/graph/component active identity and target proof identity, and
+    which fields are runtime model-state inputs, plan advice, warning
+    visibility, or audit metadata. Runtime-loaded checkpoint paths prove
+    dependency state; they do not split protocol contracts or target proof
+    fingerprints.
+    contract_identity_boundary_summary self-checks that model-state, planning
+    advice, warning visibility, and audit metadata have zero overlap with
+    protocol contract or target proof identity while the active identity surfaces
+    are present.
+    Node-MDN evaluations can include node_support_summaries for inherited MDN
+    node facts. LATTICE_WARN may flag high node-support imbalance, low
+    normalized support entropy, weak lowest-node support, or low aggregate
+    Wilson lower-bound support. Node-support warnings first filter support rows
+    by the warning interval and then by USE/EFFECT, defaulting to
+    target_supervision/mutated_component, and remain non-blocking.
+    LATTICE_WARN KIND=mdn_distribution_calibration can flag aggregate, channel,
+    horizon, and per-node MDN NLL diagnostics as warning-only evidence. Future
+    distribution-calibration metrics such as PIT KS statistic, predictive
+    interval coverage error, tail coverage error, and calibration slope error
+    are named but report unavailable until runtime emits samples and
+    uncertainty.
+    Validation evaluation targets remain readiness proofs: evaluation_metric
+    coverage means the checkpoint was evaluated without optimizer mutation over
+    trusted validation anchors, not that the observed distributional metrics pass
+    a quality bar.
+    LATTICE_WARN KIND=representation_health may flag
+    suspicious VICReg health metrics such
+    as high variance/covariance loss, low adapter valid-channel fraction, low
+    effective-rank fraction, or high condition number; those warnings remain
+    visibility only. Repeated exposure load remains a
+    separate additive summary. Exposure summaries expose algebra and unit labels
+    directly, distinguishing coverage fraction, cursor epochs, and anchor-event
+    counts.
+    target_numeric_dimension_summary is the compact read-side proof that the
+    target compiler's unit/bounds table is present and internally consistent.
+    The target compiler rejects dimensionally invalid thresholds: fractions must
+    be finite values in [0,1], cursor-epoch and effort-density thresholds must
+    be finite and non-negative, and count thresholds must be non-negative
+    integral counts. Representation condition-number thresholds must be finite
+    values at least 1. Representation-health warning thresholds also reject
+    inverted one-sided directions: high-bad metrics use ABOVE and low-bad
+    metrics use BELOW. Anchor-domain warning clauses carry exactly one metric
+    threshold. Treat these errors as authoring mistakes, not runtime evidence
+    failures.
+    Exposure summaries may also include valid-target support uncertainty:
+    success/opportunity counts inferred from valid_target_count and
+    valid_target_fraction, plus a Wilson 95% interval. Report it as support
+    visibility only; it is not a performance gate.
+    valid_target_uncertainty_vocabulary exposes the Wilson method, field
+    bindings, and no-trials non-claiming policy for those intervals.
+    valid_target_uncertainty_summary self-checks the three support scopes,
+    Wilson-95/binomial method, success/opportunity and interval field bindings,
+    no-trials non-claiming policy, and support-visibility-only boundary.
+    validation_performance_scope_policy_vocabulary exposes the same V1 boundary
+    in machine-readable form for evaluate_target and plan_target.
 
   plan_target
-    Returns the same proof status plus any suggested next wave. Treat the wave
+    Returns the same proof status, proof_certificate, proof_certificate_check,
+    deficits, plan_basis, warnings, and any suggested next wave. Treat the wave
     as advice only; Runtime Hero is still the executor.
 
+  compare_evidence
+    Compares two clean satisfying checkpoint targets by Pareto evidence vector.
+    Results include both vectors, per-dimension dominance rows, participation
+    and exclusion reasons, the relation vocabulary, and the final relation:
+    left_dominates, right_dominates, equivalent, incomparable,
+    selector_leaked, or unavailable. The tool is read-only, does not execute
+    waves, does not emit a scalar score, and does not choose a deployment.
+
   checkpoint_closure
-    Inspects checkpoint lineage. Missing upstream checkpoint producer evidence
-    must fail closed and should be treated as a blocker.
+    Inspects checkpoint lineage by checkpoint_path or by checkpoint_id plus
+    checkpoint_file_digest. Missing upstream checkpoint producer evidence and
+    id/digest mismatches must fail closed and should be treated as blockers.
+    Results report resolution_authority, legacy_path_fallback,
+    root_checkpoint_id, root_checkpoint_file_digest, and identity_mismatches so
+    agents can tell id/digest authority from V1 legacy path compatibility.
+
+  derived_query
+    Answers one read-only named rule query with concrete witnesses. The V3-E
+    pilot supports target_satisfied, checkpoint_ancestor, forbidden_overlap,
+    stale_cache, and unresolved_lineage. Results include the versioned rule row,
+    result source, witness count, returned witnesses, missing-witness rejection,
+    unsafe/incomplete fail-closed flags, and an explicit
+    cache_rows_used_for_target_satisfaction=false boundary.
 
   CHECKPOINT_SOURCE = latest_satisfying:<target_id>
     Read-only guard targets can inspect the checkpoint from another satisfied
     target. If the source target is unsatisfied, the guard blocks and forwards
     the source target's suggested wave. Lattice Hero still does not execute the
-    wave.
+    wave. Treat latest_satisfying as readiness selection over a referenced
+    target's newest satisfied checkpoint, not as performance ranking.
 
   Empty runtime roots cannot infer graph-anchor identity. Pass active contract,
   graph-order, source-cursor, and component assembly fingerprints explicitly, or
@@ -105,14 +674,24 @@ AGENT RUNBOOK
     - Prefer OVER_SPLIT, PROTECT_SPLIT, and CURSOR_EPOCHS when authoring.
     - Treat scan_exposure anchor-domain warnings as source availability
       visibility, not as automatic target failures.
-    - Treat scan_exposure node_exposure facts as MDN per-node support
-      visibility. They include routed/active/trained/evaluated row counts,
-      valid targets, and mean NLL. Do not infer per-node VICReg support from
-      them.
+    - Treat scan_exposure source_receipt_facts as audit/provenance visibility,
+      not as coverage, leakage, or contract identity authority.
+    - Treat scan_exposure node_exposure facts and node_support_summaries as MDN
+      per-node support visibility. They include routed/active/trained/evaluated
+      row counts, valid targets, mean NLL, aggregate support, weakest-node, and
+      balance metrics. Node-support warnings filter those rows by the warning
+      interval and USE/EFFECT, defaulting to
+      target_supervision/mutated_component. Do not infer per-node VICReg
+      support from them.
+    - Treat scan_exposure representation_support_facts and
+      representation_support_summary as aggregate shared-VICReg support
+      visibility from representation reports and NodeLift .lls sidecars. These
+      facts bind to the parent representation exposure digest, do not reuse MDN
+      node rows, and are not hard readiness gates.
     - Treat exposure_summaries as load visibility. Treat LATTICE_WARN results
       as non-blocking warnings, not readiness failures.
     - Treat CHECKPOINT_SOURCE latest_satisfying targets as checkpoint guards,
-      not as schedulers.
+      not as schedulers, best-model selectors, or Pareto optimizers.
     - Do not hide blocked/exposure_failed reasons.
     - Use Runtime Hero for execution after a human or explicit caller accepts a
       plan.

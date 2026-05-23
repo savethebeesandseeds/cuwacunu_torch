@@ -2,12 +2,16 @@
 #pragma once
 
 #include <algorithm>
+#include <array>
+#include <cctype>
 #include <cmath>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <iterator>
 #include <limits>
+#include <numeric>
 #include <optional>
 #include <set>
 #include <sstream>
@@ -29,6 +33,9 @@ enum class exposure_split_role_t {
   validation,
   test,
 };
+
+[[nodiscard]] inline const char *
+exposure_split_role_name(exposure_split_role_t role);
 
 enum class exposure_use_t {
   observed_input,
@@ -64,6 +71,18 @@ struct lattice_exposure_fact_t {
   std::string graph_order_fingerprint{};
   std::string component_assembly_fingerprint{};
   std::string target_component{};
+  std::string representation_architecture{};
+  std::string representation_contract{};
+  std::string representation_value_shape{};
+  std::string representation_sequence_value_shape{};
+  std::string channel_axis_policy{};
+  std::string temporal_reduction{};
+  std::string input_representation_id{};
+  std::string context_mode{};
+  std::string context_contract{};
+  std::string context_value_shape{};
+  std::string output_contract{};
+  std::string output_value_shape{};
   std::string job_id{};
   std::string wave_id{};
   std::string job_status{};
@@ -120,8 +139,50 @@ struct lattice_exposure_fact_t {
   bool finite_loss{false};
   double mean_loss{std::numeric_limits<double>::quiet_NaN()};
   double mean_nll{std::numeric_limits<double>::quiet_NaN()};
+  bool inference_health_available{false};
+  double mean_sigma_mean{std::numeric_limits<double>::quiet_NaN()};
+  double min_sigma_min{std::numeric_limits<double>::quiet_NaN()};
+  double max_sigma_max{std::numeric_limits<double>::quiet_NaN()};
+  double mean_mixture_entropy{std::numeric_limits<double>::quiet_NaN()};
+  std::vector<double> mean_nll_per_channel{};
+  std::vector<double> mean_nll_per_horizon{};
+  std::vector<double> mean_mixture_usage{};
+  std::int64_t nonfinite_output_count{0};
+  bool representation_health_available{false};
+  double mean_invariance_loss{std::numeric_limits<double>::quiet_NaN()};
+  double mean_variance_loss{std::numeric_limits<double>::quiet_NaN()};
+  double mean_covariance_loss{std::numeric_limits<double>::quiet_NaN()};
+  double last_grad_norm{std::numeric_limits<double>::quiet_NaN()};
+  double max_grad_norm{std::numeric_limits<double>::quiet_NaN()};
+  std::int64_t total_valid_projection_rows{0};
+  double mean_adapter_valid_channel_time_fraction{
+      std::numeric_limits<double>::quiet_NaN()};
+  std::int64_t augmented_valid_feature_count{0};
+  double mean_augmented_valid_feature_fraction{
+      std::numeric_limits<double>::quiet_NaN()};
+  double mean_augmented_feature_retention_fraction{
+      std::numeric_limits<double>::quiet_NaN()};
+  bool finite_parameter_check{false};
+  std::int64_t representation_embedding_dim{0};
+  double representation_effective_rank{
+      std::numeric_limits<double>::quiet_NaN()};
+  double representation_effective_rank_fraction{
+      std::numeric_limits<double>::quiet_NaN()};
+  double representation_min_dimension_variance{
+      std::numeric_limits<double>::quiet_NaN()};
+  double representation_max_dimension_variance{
+      std::numeric_limits<double>::quiet_NaN()};
+  double representation_condition_number{
+      std::numeric_limits<double>::quiet_NaN()};
+  double representation_isotropy_score{
+      std::numeric_limits<double>::quiet_NaN()};
   std::string diagnostics_digest{};
 };
+
+[[nodiscard]] inline std::string
+exposure_digest_for_text(const std::string &text);
+[[nodiscard]] inline std::string
+exposure_fact_digest(const lattice_exposure_fact_t &fact);
 
 struct exposure_build_context_t {
   std::string split_name{"unknown"};
@@ -137,11 +198,928 @@ struct forbidden_exposure_query_t {
   bool require_mutated_component{true};
 };
 
+struct forbidden_exposure_overlap_t {
+  std::string fact_digest{};
+  std::string job_id{};
+  std::string wave_id{};
+  std::string target_component{};
+  std::string split_name{};
+  exposure_use_t use{exposure_use_t::observed_input};
+  bool mutated_component{false};
+  std::string selector_id{};
+  std::string selector_kind{};
+  std::string selection_event_digest{};
+  std::filesystem::path selected_checkpoint{};
+  anchor_interval_t source_footprint{};
+  anchor_interval_t protected_range{};
+  anchor_interval_t intersection{};
+};
+
 struct exposure_coverage_t {
   anchor_interval_t target_range{};
+  std::vector<anchor_interval_t> contributing_intervals{};
+  std::vector<std::string> contributing_fact_digests{};
+  std::vector<lattice_exposure_fact_t> contributing_facts{};
+  std::vector<anchor_interval_t> covered_intervals{};
+  std::vector<anchor_interval_t> missing_intervals{};
   std::int64_t covered_anchors{0};
+  std::int64_t missing_anchors{0};
   double coverage_fraction{0.0};
 };
+
+inline constexpr const char *k_unique_coverage_algebra =
+    "idempotent_interval_union";
+inline constexpr const char *k_load_algebra = "additive_interval_measure";
+inline constexpr const char *k_unique_coverage_unit = "coverage_fraction";
+inline constexpr const char *k_load_unit = "cursor_epoch";
+inline constexpr const char *k_anchor_event_unit = "anchor_event";
+
+struct exposure_measure_algebra_entry_t {
+  std::string measure{};
+  std::string algebra{};
+  std::string operation{};
+  std::string unit{};
+  bool idempotent{false};
+  bool additive{false};
+};
+
+[[nodiscard]] inline std::vector<exposure_measure_algebra_entry_t>
+lattice_exposure_measure_algebra_vocabulary() {
+  return {{"unique_coverage", k_unique_coverage_algebra, "interval_union",
+           k_unique_coverage_unit, true, false},
+          {"exposure_load", k_load_algebra, "interval_measure_sum", k_load_unit,
+           false, true}};
+}
+
+struct exposure_measure_algebra_summary_t {
+  std::string schema{"kikijyeba.lattice.exposure_measure_algebra.summary.v1"};
+  std::int64_t measure_count{0};
+  std::int64_t idempotent_measure_count{0};
+  std::int64_t additive_measure_count{0};
+  std::int64_t coverage_measure_count{0};
+  std::int64_t load_measure_count{0};
+  std::int64_t dual_idempotent_additive_count{0};
+  std::int64_t empty_field_count{0};
+  bool unique_coverage_is_idempotent_union{false};
+  bool exposure_load_is_additive_measure{false};
+  bool coverage_not_additive{false};
+  bool load_not_idempotent{false};
+  bool measure_units_declared{false};
+  bool coverage_and_load_units_distinct{false};
+  bool summary_self_check_passed{false};
+  std::int64_t summary_issue_count{0};
+  std::vector<std::string> measure_names{};
+  std::vector<std::string> summary_issues{};
+};
+
+[[nodiscard]] inline exposure_measure_algebra_summary_t
+lattice_exposure_measure_algebra_summary() {
+  exposure_measure_algebra_summary_t out{};
+  const auto vocabulary = lattice_exposure_measure_algebra_vocabulary();
+  out.measure_count = static_cast<std::int64_t>(vocabulary.size());
+
+  const auto find_measure = [&](const std::string &measure) {
+    return std::find_if(
+        vocabulary.begin(), vocabulary.end(),
+        [&](const auto &entry) { return entry.measure == measure; });
+  };
+
+  for (const auto &entry : vocabulary) {
+    out.measure_names.push_back(entry.measure);
+    if (entry.idempotent) {
+      ++out.idempotent_measure_count;
+    }
+    if (entry.additive) {
+      ++out.additive_measure_count;
+    }
+    if (entry.measure == "unique_coverage") {
+      ++out.coverage_measure_count;
+    }
+    if (entry.measure == "exposure_load") {
+      ++out.load_measure_count;
+    }
+    if (entry.idempotent && entry.additive) {
+      ++out.dual_idempotent_additive_count;
+    }
+    if (entry.measure.empty() || entry.algebra.empty() ||
+        entry.operation.empty() || entry.unit.empty()) {
+      ++out.empty_field_count;
+    }
+  }
+
+  const auto coverage = find_measure("unique_coverage");
+  const auto load = find_measure("exposure_load");
+  out.unique_coverage_is_idempotent_union =
+      coverage != vocabulary.end() &&
+      coverage->algebra == k_unique_coverage_algebra &&
+      coverage->operation == "interval_union" &&
+      coverage->unit == k_unique_coverage_unit && coverage->idempotent;
+  out.exposure_load_is_additive_measure =
+      load != vocabulary.end() && load->algebra == k_load_algebra &&
+      load->operation == "interval_measure_sum" && load->unit == k_load_unit &&
+      load->additive;
+  out.coverage_not_additive =
+      coverage != vocabulary.end() && !coverage->additive;
+  out.load_not_idempotent = load != vocabulary.end() && !load->idempotent;
+  out.measure_units_declared = out.empty_field_count == 0;
+  out.coverage_and_load_units_distinct = coverage != vocabulary.end() &&
+                                         load != vocabulary.end() &&
+                                         coverage->unit != load->unit;
+
+  if (out.measure_count != 2) {
+    out.summary_issues.push_back(
+        "exposure measure algebra vocabulary must contain exactly 2 measures");
+  }
+  if (out.coverage_measure_count != 1 || out.load_measure_count != 1) {
+    out.summary_issues.push_back(
+        "exposure algebra must include unique_coverage and exposure_load");
+  }
+  if (!out.unique_coverage_is_idempotent_union) {
+    out.summary_issues.push_back(
+        "unique coverage must be idempotent interval union");
+  }
+  if (!out.exposure_load_is_additive_measure) {
+    out.summary_issues.push_back(
+        "exposure load must be additive interval measure");
+  }
+  if (!out.coverage_not_additive) {
+    out.summary_issues.push_back("unique coverage must not be additive load");
+  }
+  if (!out.load_not_idempotent) {
+    out.summary_issues.push_back(
+        "exposure load must not be idempotent coverage");
+  }
+  if (out.dual_idempotent_additive_count != 0) {
+    out.summary_issues.push_back(
+        "no exposure measure may be both idempotent and additive in V1");
+  }
+  if (!out.measure_units_declared) {
+    out.summary_issues.push_back(
+        "all exposure measure algebra rows must declare units");
+  }
+  if (!out.coverage_and_load_units_distinct) {
+    out.summary_issues.push_back(
+        "coverage fraction and cursor-epoch load units must remain distinct");
+  }
+
+  out.summary_issue_count =
+      static_cast<std::int64_t>(out.summary_issues.size());
+  out.summary_self_check_passed = out.summary_issues.empty();
+  return out;
+}
+
+struct source_key_coordinate_policy_entry_t {
+  std::string policy{};
+  std::string coordinate{};
+  std::string authority{};
+  std::vector<std::string> audit_fields{};
+  std::string invariant{};
+  std::string failure_effect{};
+  bool coverage_authority{false};
+  bool leakage_authority{false};
+  bool audit_only{true};
+};
+
+[[nodiscard]] inline std::vector<source_key_coordinate_policy_entry_t>
+lattice_source_key_coordinate_policy_vocabulary() {
+  return {{"row_index_interval_authority",
+           "row_index_interval",
+           "coverage_and_leakage_authority",
+           {"anchor_range", "completed_anchor_range", "observed_footprint",
+            "target_footprint"},
+           "row-index intervals are comparable only within active graph/order/"
+           "source identity",
+           "row-index overlap remains authoritative even when source-key audit "
+           "is unavailable",
+           true,
+           true,
+           false},
+          {"source_key_window_audit",
+           "source_key_window",
+           "audit_coordinate",
+           {"first_anchor_key", "last_anchor_key", "observed_source_key_begin",
+            "observed_source_key_end", "target_source_key_begin",
+            "target_source_key_end"},
+           "source-key windows are auxiliary row-to-source-key audit metadata",
+           "missing or non-numeric source-key windows produce warnings but do "
+           "not replace row-index math",
+           false,
+           false,
+           true},
+          {"order_preserving_map_check",
+           "row_to_source_key_map",
+           "audit_invariant",
+           {"complete", "numeric", "internally_monotone", "order_preserving"},
+           "row order must not invert in source-key space",
+           "non-monotone or row-order-inverting windows are audit issues",
+           false,
+           false,
+           true},
+          {"affine_step_consistency_check",
+           "row_to_source_key_map",
+           "audit_invariant",
+           {"affine_step_available", "reference_key_step", "affine_consistent"},
+           "regular source keys should preserve a constant source-key step "
+           "across row deltas",
+           "affine inconsistency is a source-key audit issue, not coverage/"
+           "leakage authority",
+           false,
+           false,
+           true},
+          {"gap_and_irregular_key_check",
+           "row_to_source_key_map",
+           "audit_invariant",
+           {"missing_endpoint_pair_count", "irregular_key_warning_count",
+            "source_key_gap_warning_count", "row_source_key_mismatch_count"},
+           "missing source-key endpoints, irregular anchor steps, and "
+           "row/source-key mismatches are explicit audit warnings",
+           "gap and irregular-key warnings remain audit-only unless a future "
+           "target rule promotes them",
+           false,
+           false,
+           true}};
+}
+
+struct source_key_coordinate_policy_summary_t {
+  std::string schema{
+      "kikijyeba.lattice.source_key_coordinate_policy.summary.v1"};
+  std::int64_t policy_count{0};
+  std::int64_t coverage_authority_count{0};
+  std::int64_t leakage_authority_count{0};
+  std::int64_t audit_only_count{0};
+  std::int64_t row_index_coordinate_count{0};
+  std::int64_t source_key_coordinate_count{0};
+  std::int64_t row_to_source_key_map_count{0};
+  std::int64_t empty_field_count{0};
+  bool row_index_authority_present{false};
+  bool source_key_window_audit_present{false};
+  bool order_preserving_map_check_present{false};
+  bool affine_step_consistency_check_present{false};
+  bool gap_and_irregular_key_check_present{false};
+  bool row_index_is_coverage_and_leakage_authority{false};
+  bool source_key_rows_are_audit_only{false};
+  bool audit_rows_have_no_coverage_or_leakage_authority{false};
+  bool order_preserving_fields_declared{false};
+  bool affine_fields_declared{false};
+  bool gap_fields_declared{false};
+  bool all_policies_have_claim_text{false};
+  bool summary_self_check_passed{false};
+  std::int64_t summary_issue_count{0};
+  std::vector<std::string> policy_names{};
+  std::vector<std::string> summary_issues{};
+};
+
+[[nodiscard]] inline source_key_coordinate_policy_summary_t
+lattice_source_key_coordinate_policy_summary() {
+  source_key_coordinate_policy_summary_t out{};
+  const auto vocabulary = lattice_source_key_coordinate_policy_vocabulary();
+  out.policy_count = static_cast<std::int64_t>(vocabulary.size());
+
+  const auto find_policy = [&](const std::string &policy) {
+    return std::find_if(
+        vocabulary.begin(), vocabulary.end(),
+        [&](const auto &entry) { return entry.policy == policy; });
+  };
+  const auto has_audit_field =
+      [](const source_key_coordinate_policy_entry_t &entry,
+         const std::string &field) {
+        return std::find(entry.audit_fields.begin(), entry.audit_fields.end(),
+                         field) != entry.audit_fields.end();
+      };
+
+  for (const auto &entry : vocabulary) {
+    out.policy_names.push_back(entry.policy);
+    if (entry.coverage_authority) {
+      ++out.coverage_authority_count;
+    }
+    if (entry.leakage_authority) {
+      ++out.leakage_authority_count;
+    }
+    if (entry.audit_only) {
+      ++out.audit_only_count;
+    }
+    if (entry.coordinate == "row_index_interval") {
+      ++out.row_index_coordinate_count;
+    }
+    if (entry.coordinate == "source_key_window") {
+      ++out.source_key_coordinate_count;
+    }
+    if (entry.coordinate == "row_to_source_key_map") {
+      ++out.row_to_source_key_map_count;
+    }
+    if (entry.policy.empty() || entry.coordinate.empty() ||
+        entry.authority.empty() || entry.audit_fields.empty() ||
+        entry.invariant.empty() || entry.failure_effect.empty()) {
+      ++out.empty_field_count;
+    }
+  }
+
+  const auto row_index_policy = find_policy("row_index_interval_authority");
+  const auto source_key_window_policy = find_policy("source_key_window_audit");
+  const auto order_preserving_policy =
+      find_policy("order_preserving_map_check");
+  const auto affine_policy = find_policy("affine_step_consistency_check");
+  const auto gap_policy = find_policy("gap_and_irregular_key_check");
+
+  out.row_index_authority_present =
+      row_index_policy != vocabulary.end() &&
+      row_index_policy->coordinate == "row_index_interval";
+  out.source_key_window_audit_present =
+      source_key_window_policy != vocabulary.end() &&
+      source_key_window_policy->coordinate == "source_key_window" &&
+      source_key_window_policy->audit_only;
+  out.order_preserving_map_check_present =
+      order_preserving_policy != vocabulary.end() &&
+      order_preserving_policy->coordinate == "row_to_source_key_map" &&
+      order_preserving_policy->audit_only;
+  out.affine_step_consistency_check_present =
+      affine_policy != vocabulary.end() &&
+      affine_policy->coordinate == "row_to_source_key_map" &&
+      affine_policy->audit_only;
+  out.gap_and_irregular_key_check_present =
+      gap_policy != vocabulary.end() &&
+      gap_policy->coordinate == "row_to_source_key_map" &&
+      gap_policy->audit_only;
+  out.row_index_is_coverage_and_leakage_authority =
+      row_index_policy != vocabulary.end() &&
+      row_index_policy->coverage_authority &&
+      row_index_policy->leakage_authority && !row_index_policy->audit_only;
+  out.source_key_rows_are_audit_only =
+      source_key_window_policy != vocabulary.end() &&
+      order_preserving_policy != vocabulary.end() &&
+      affine_policy != vocabulary.end() &&
+      gap_policy != vocabulary.end() &&
+      source_key_window_policy->audit_only &&
+      order_preserving_policy->audit_only && affine_policy->audit_only &&
+      gap_policy->audit_only;
+  out.audit_rows_have_no_coverage_or_leakage_authority =
+      std::all_of(vocabulary.begin(), vocabulary.end(), [](const auto &entry) {
+        return !entry.audit_only ||
+               (!entry.coverage_authority && !entry.leakage_authority);
+      });
+  out.order_preserving_fields_declared =
+      order_preserving_policy != vocabulary.end() &&
+      has_audit_field(*order_preserving_policy, "complete") &&
+      has_audit_field(*order_preserving_policy, "numeric") &&
+      has_audit_field(*order_preserving_policy, "internally_monotone") &&
+      has_audit_field(*order_preserving_policy, "order_preserving");
+  out.affine_fields_declared =
+      affine_policy != vocabulary.end() &&
+      has_audit_field(*affine_policy, "affine_step_available") &&
+      has_audit_field(*affine_policy, "reference_key_step") &&
+      has_audit_field(*affine_policy, "affine_consistent");
+  out.gap_fields_declared =
+      gap_policy != vocabulary.end() &&
+      has_audit_field(*gap_policy, "missing_endpoint_pair_count") &&
+      has_audit_field(*gap_policy, "irregular_key_warning_count") &&
+      has_audit_field(*gap_policy, "source_key_gap_warning_count") &&
+      has_audit_field(*gap_policy, "row_source_key_mismatch_count");
+  out.all_policies_have_claim_text = out.empty_field_count == 0;
+
+  if (out.policy_count != 5) {
+    out.summary_issues.push_back(
+        "source-key coordinate policy vocabulary must contain 5 policies");
+  }
+  if (out.coverage_authority_count != 1 || out.leakage_authority_count != 1) {
+    out.summary_issues.push_back(
+        "only row-index intervals may be coverage/leakage authority in V1");
+  }
+  if (out.audit_only_count != 4) {
+    out.summary_issues.push_back(
+        "source-key coordinate policy must expose 4 audit-only rows");
+  }
+  if (!out.row_index_is_coverage_and_leakage_authority) {
+    out.summary_issues.push_back(
+        "row_index_interval_authority must be the coverage/leakage authority");
+  }
+  if (!out.source_key_window_audit_present) {
+    out.summary_issues.push_back(
+        "source_key_window_audit policy must be present and audit-only");
+  }
+  if (!out.order_preserving_map_check_present ||
+      !out.order_preserving_fields_declared) {
+    out.summary_issues.push_back(
+        "order_preserving_map_check must declare complete/numeric/monotone "
+        "audit fields");
+  }
+  if (!out.affine_step_consistency_check_present ||
+      !out.affine_fields_declared) {
+    out.summary_issues.push_back(
+        "affine_step_consistency_check must declare affine audit fields");
+  }
+  if (!out.gap_and_irregular_key_check_present || !out.gap_fields_declared) {
+    out.summary_issues.push_back(
+        "gap_and_irregular_key_check must declare gap and mismatch audit "
+        "fields");
+  }
+  if (!out.source_key_rows_are_audit_only) {
+    out.summary_issues.push_back(
+        "source-key window and row-to-source-key map rows must be audit-only");
+  }
+  if (!out.audit_rows_have_no_coverage_or_leakage_authority) {
+    out.summary_issues.push_back(
+        "audit-only source-key rows must not carry coverage/leakage authority");
+  }
+  if (!out.all_policies_have_claim_text) {
+    out.summary_issues.push_back(
+        "source-key coordinate policy rows must declare policy, coordinate, "
+        "authority, audit fields, invariant, and failure effect");
+  }
+
+  out.summary_issue_count =
+      static_cast<std::int64_t>(out.summary_issues.size());
+  out.summary_self_check_passed = out.summary_issues.empty();
+  return out;
+}
+
+struct source_receipt_policy_entry_t {
+  std::string policy{};
+  std::string evidence_field{};
+  std::string authority{};
+  std::vector<std::string> receipt_fields{};
+  std::string allowed_use{};
+  std::string failure_effect{};
+  bool coverage_authority{false};
+  bool leakage_authority{false};
+  bool contract_identity_authority{false};
+  bool audit_only{true};
+  bool structured_fact_available{false};
+};
+
+[[nodiscard]] inline std::vector<source_receipt_policy_entry_t>
+lattice_source_receipt_policy_vocabulary() {
+  return {
+      {"compact_source_file_receipts",
+       "lattice.exposure.fact.source_file_receipts",
+       "audit_metadata",
+       {"edge", "instrument", "interval", "record_type", "source"},
+       "trace runtime evidence back to concrete Ujcamei source files",
+       "missing compact receipts weaken source audit traceability but do not "
+       "replace row-index coverage/leakage math",
+       false,
+       false,
+       false,
+       true,
+       false},
+      {"row_index_overlap_authority",
+       "anchor_range|completed_anchor_range|observed_footprint|"
+       "target_footprint",
+       "coverage_and_leakage_authority",
+       {"anchor_range", "completed_anchor_range", "observed_footprint",
+        "target_footprint"},
+       "prove coverage and forbidden overlap in graph-anchor/source-row space",
+       "row-index evidence remains authoritative even when receipts are "
+       "missing or compact",
+       true,
+       true,
+       false,
+       false,
+       false},
+      {"structured_source_receipt_fact",
+       "kikijyeba.lattice.source_receipt.v1",
+       "audit_fact",
+       {"parent_exposure_fact_digest", "receipt_index", "edge", "instrument",
+        "interval", "record_type", "source", "source_cursor_token"},
+       "normalized source provenance rows derived from immutable runtime "
+       "exposure facts",
+       "malformed non-empty receipts warn and are counted; missing receipts "
+       "remain audit absence",
+       false,
+       false,
+       false,
+       true,
+       true},
+      {"receipt_identity_boundary",
+       "source_file_receipts",
+       "non_contract_identity",
+       {"source_cursor_token", "graph_order_fingerprint",
+        "protocol_contract_fingerprint"},
+       "source receipt strings may audit active source files but do not alter "
+       "the protocol contract fingerprint",
+       "receipt changes must be reported as audit/source provenance changes, "
+       "not target proof identity changes",
+       false,
+       false,
+       false,
+       true,
+       false}};
+}
+
+struct source_receipt_policy_summary_t {
+  std::string schema{"kikijyeba.lattice.source_receipt_policy.summary.v1"};
+  std::int64_t policy_count{0};
+  std::int64_t coverage_authority_count{0};
+  std::int64_t leakage_authority_count{0};
+  std::int64_t contract_identity_authority_count{0};
+  std::int64_t audit_only_count{0};
+  std::int64_t structured_fact_available_count{0};
+  std::int64_t future_policy_count{0};
+  std::int64_t empty_field_count{0};
+  bool compact_receipts_audit_only{false};
+  bool row_index_overlap_authority_present{false};
+  bool structured_receipt_available{false};
+  bool receipt_identity_non_contract{false};
+  bool only_row_index_has_coverage_leakage_authority{false};
+  bool no_contract_identity_authority{false};
+  bool structured_receipts_audit_only{false};
+  bool audit_rows_have_no_coverage_or_leakage_authority{false};
+  bool compact_receipt_fields_declared{false};
+  bool structured_receipt_fields_declared{false};
+  bool all_policies_have_claim_text{false};
+  bool summary_self_check_passed{false};
+  std::int64_t summary_issue_count{0};
+  std::vector<std::string> policy_names{};
+  std::vector<std::string> summary_issues{};
+};
+
+[[nodiscard]] inline source_receipt_policy_summary_t
+lattice_source_receipt_policy_summary() {
+  source_receipt_policy_summary_t out{};
+  const auto vocabulary = lattice_source_receipt_policy_vocabulary();
+  out.policy_count = static_cast<std::int64_t>(vocabulary.size());
+
+  const auto find_policy = [&](const std::string &policy) {
+    return std::find_if(
+        vocabulary.begin(), vocabulary.end(),
+        [&](const auto &entry) { return entry.policy == policy; });
+  };
+  const auto has_receipt_field = [](const source_receipt_policy_entry_t &entry,
+                                    const std::string &field) {
+    return std::find(entry.receipt_fields.begin(), entry.receipt_fields.end(),
+                     field) != entry.receipt_fields.end();
+  };
+
+  for (const auto &entry : vocabulary) {
+    out.policy_names.push_back(entry.policy);
+    if (entry.coverage_authority) {
+      ++out.coverage_authority_count;
+    }
+    if (entry.leakage_authority) {
+      ++out.leakage_authority_count;
+    }
+    if (entry.contract_identity_authority) {
+      ++out.contract_identity_authority_count;
+    }
+    if (entry.audit_only) {
+      ++out.audit_only_count;
+    }
+    if (entry.structured_fact_available) {
+      ++out.structured_fact_available_count;
+    }
+    if (entry.policy.find("future") != std::string::npos ||
+        entry.evidence_field.find("future") != std::string::npos ||
+        entry.authority.find("future") != std::string::npos ||
+        entry.allowed_use.find("future") != std::string::npos ||
+        entry.failure_effect.find("future") != std::string::npos) {
+      ++out.future_policy_count;
+    }
+    if (entry.policy.empty() || entry.evidence_field.empty() ||
+        entry.authority.empty() || entry.receipt_fields.empty() ||
+        entry.allowed_use.empty() || entry.failure_effect.empty()) {
+      ++out.empty_field_count;
+    }
+  }
+
+  const auto compact_policy = find_policy("compact_source_file_receipts");
+  const auto row_index_policy = find_policy("row_index_overlap_authority");
+  const auto structured_policy = find_policy("structured_source_receipt_fact");
+  const auto identity_policy = find_policy("receipt_identity_boundary");
+
+  out.compact_receipts_audit_only =
+      compact_policy != vocabulary.end() && compact_policy->audit_only &&
+      !compact_policy->coverage_authority &&
+      !compact_policy->leakage_authority &&
+      !compact_policy->contract_identity_authority &&
+      !compact_policy->structured_fact_available;
+  out.row_index_overlap_authority_present =
+      row_index_policy != vocabulary.end() &&
+      row_index_policy->coverage_authority &&
+      row_index_policy->leakage_authority &&
+      !row_index_policy->contract_identity_authority &&
+      !row_index_policy->audit_only;
+  out.structured_receipt_available =
+      structured_policy != vocabulary.end() && structured_policy->audit_only &&
+      !structured_policy->coverage_authority &&
+      !structured_policy->leakage_authority &&
+      !structured_policy->contract_identity_authority &&
+      structured_policy->structured_fact_available &&
+      structured_policy->evidence_field ==
+          "kikijyeba.lattice.source_receipt.v1";
+  out.receipt_identity_non_contract =
+      identity_policy != vocabulary.end() &&
+      identity_policy->authority == "non_contract_identity" &&
+      !identity_policy->contract_identity_authority &&
+      !identity_policy->coverage_authority &&
+      !identity_policy->leakage_authority;
+  out.only_row_index_has_coverage_leakage_authority =
+      out.coverage_authority_count == 1 && out.leakage_authority_count == 1 &&
+      out.row_index_overlap_authority_present;
+  out.no_contract_identity_authority =
+      out.contract_identity_authority_count == 0;
+  out.structured_receipts_audit_only =
+      out.structured_fact_available_count == 1 && out.audit_only_count == 3 &&
+      out.structured_receipt_available;
+  out.audit_rows_have_no_coverage_or_leakage_authority =
+      std::all_of(vocabulary.begin(), vocabulary.end(), [](const auto &entry) {
+        return !entry.audit_only ||
+               (!entry.coverage_authority && !entry.leakage_authority);
+      });
+  out.compact_receipt_fields_declared =
+      compact_policy != vocabulary.end() &&
+      has_receipt_field(*compact_policy, "edge") &&
+      has_receipt_field(*compact_policy, "instrument") &&
+      has_receipt_field(*compact_policy, "interval") &&
+      has_receipt_field(*compact_policy, "record_type") &&
+      has_receipt_field(*compact_policy, "source");
+  out.structured_receipt_fields_declared =
+      structured_policy != vocabulary.end() &&
+      has_receipt_field(*structured_policy, "parent_exposure_fact_digest") &&
+      has_receipt_field(*structured_policy, "receipt_index") &&
+      has_receipt_field(*structured_policy, "edge") &&
+      has_receipt_field(*structured_policy, "instrument") &&
+      has_receipt_field(*structured_policy, "interval") &&
+      has_receipt_field(*structured_policy, "record_type") &&
+      has_receipt_field(*structured_policy, "source") &&
+      has_receipt_field(*structured_policy, "source_cursor_token");
+  out.all_policies_have_claim_text = out.empty_field_count == 0;
+
+  if (out.policy_count != 4) {
+    out.summary_issues.push_back(
+        "source receipt policy vocabulary must contain 4 policies");
+  }
+  if (!out.compact_receipts_audit_only) {
+    out.summary_issues.push_back(
+        "compact source_file_receipts must remain audit-only metadata");
+  }
+  if (!out.row_index_overlap_authority_present) {
+    out.summary_issues.push_back(
+        "row_index_overlap_authority must be the coverage/leakage authority");
+  }
+  if (!out.structured_receipt_available) {
+    out.summary_issues.push_back(
+        "structured source receipt facts must be available as audit-only rows");
+  }
+  if (!out.receipt_identity_non_contract) {
+    out.summary_issues.push_back(
+        "receipt identity boundary must not alter contract identity");
+  }
+  if (!out.only_row_index_has_coverage_leakage_authority) {
+    out.summary_issues.push_back(
+        "only row-index overlap may carry coverage/leakage authority");
+  }
+  if (!out.no_contract_identity_authority) {
+    out.summary_issues.push_back(
+        "source receipt rows must not carry contract identity authority");
+  }
+  if (!out.structured_receipts_audit_only) {
+    out.summary_issues.push_back(
+        "structured source receipt facts must remain audit-only evidence");
+  }
+  if (!out.audit_rows_have_no_coverage_or_leakage_authority) {
+    out.summary_issues.push_back(
+        "audit-only receipt rows must not carry coverage/leakage authority");
+  }
+  if (!out.compact_receipt_fields_declared) {
+    out.summary_issues.push_back(
+        "compact source receipt fields must declare edge/instrument/interval/"
+        "record_type/source");
+  }
+  if (!out.structured_receipt_fields_declared) {
+    out.summary_issues.push_back(
+        "structured receipt fields must declare parent exposure, receipt "
+        "index, source identity, and source cursor fields");
+  }
+  if (!out.all_policies_have_claim_text) {
+    out.summary_issues.push_back(
+        "source receipt policy rows must declare policy, evidence field, "
+        "authority, receipt fields, allowed use, and failure effect");
+  }
+
+  out.summary_issue_count =
+      static_cast<std::int64_t>(out.summary_issues.size());
+  out.summary_self_check_passed = out.summary_issues.empty();
+  return out;
+}
+
+struct valid_target_uncertainty_entry_t {
+  std::string scope{};
+  std::string method{};
+  std::string estimator{};
+  double confidence_level{0.95};
+  std::string success_count_field{};
+  std::string opportunity_count_field{};
+  std::string fraction_field{};
+  std::string lower_bound_field{};
+  std::string upper_bound_field{};
+  std::string no_trials_policy{"non_claiming_nan_interval"};
+};
+
+[[nodiscard]] inline std::vector<valid_target_uncertainty_entry_t>
+lattice_valid_target_uncertainty_vocabulary() {
+  return {
+      {"exposure_load_summary.valid_target_support", "wilson_score_interval_95",
+       "binomial_fraction", 0.95, "valid_target_success_count_for_uncertainty",
+       "valid_target_opportunity_count_for_uncertainty",
+       "valid_target_fraction_estimate", "valid_target_wilson_lower_95",
+       "valid_target_wilson_upper_95", "non_claiming_nan_interval"},
+      {"node_support_summary.aggregate_valid_target_support",
+       "wilson_score_interval_95", "binomial_fraction", 0.95,
+       "valid_target_count_total", "valid_target_opportunity_count_total",
+       "valid_target_fraction_estimate", "valid_target_wilson_lower_95",
+       "valid_target_wilson_upper_95", "non_claiming_nan_interval"},
+      {"node_support_summary.weakest_node_valid_target_support",
+       "wilson_score_interval_95", "binomial_fraction", 0.95,
+       "weakest_valid_target_count", "weakest_valid_target_denominator",
+       "weakest_valid_target_fraction", "weakest_valid_target_wilson_lower_95",
+       "weakest_valid_target_wilson_upper_95", "non_claiming_nan_interval"}};
+}
+
+struct valid_target_uncertainty_summary_t {
+  std::string schema{"kikijyeba.lattice.valid_target_uncertainty.summary.v1"};
+  std::int64_t scope_count{0};
+  std::int64_t wilson_method_count{0};
+  std::int64_t binomial_estimator_count{0};
+  std::int64_t confidence_95_count{0};
+  std::int64_t no_trials_non_claiming_count{0};
+  std::int64_t exposure_load_scope_count{0};
+  std::int64_t node_support_scope_count{0};
+  std::int64_t weakest_node_scope_count{0};
+  std::int64_t empty_field_count{0};
+  bool exposure_load_support_scope_present{false};
+  bool node_aggregate_support_scope_present{false};
+  bool weakest_node_support_scope_present{false};
+  bool all_scopes_use_wilson_95{false};
+  bool all_estimators_binomial_fraction{false};
+  bool all_no_trials_non_claiming{false};
+  bool all_count_fields_declared{false};
+  bool all_fraction_fields_declared{false};
+  bool all_interval_bounds_declared{false};
+  bool support_visibility_not_performance_gate{false};
+  bool summary_self_check_passed{false};
+  std::int64_t summary_issue_count{0};
+  std::vector<std::string> scope_names{};
+  std::vector<std::string> summary_issues{};
+};
+
+[[nodiscard]] inline valid_target_uncertainty_summary_t
+lattice_valid_target_uncertainty_summary() {
+  valid_target_uncertainty_summary_t out{};
+  const auto vocabulary = lattice_valid_target_uncertainty_vocabulary();
+  out.scope_count = static_cast<std::int64_t>(vocabulary.size());
+
+  const auto find_scope = [&](const std::string &scope) {
+    return std::find_if(
+        vocabulary.begin(), vocabulary.end(),
+        [&](const auto &entry) { return entry.scope == scope; });
+  };
+  const auto is_confidence_95 = [](double value) {
+    return std::isfinite(value) && std::abs(value - 0.95) < 1e-12;
+  };
+
+  for (const auto &entry : vocabulary) {
+    out.scope_names.push_back(entry.scope);
+    if (entry.method == "wilson_score_interval_95") {
+      ++out.wilson_method_count;
+    }
+    if (entry.estimator == "binomial_fraction") {
+      ++out.binomial_estimator_count;
+    }
+    if (is_confidence_95(entry.confidence_level)) {
+      ++out.confidence_95_count;
+    }
+    if (entry.no_trials_policy == "non_claiming_nan_interval") {
+      ++out.no_trials_non_claiming_count;
+    }
+    if (entry.scope == "exposure_load_summary.valid_target_support") {
+      ++out.exposure_load_scope_count;
+    }
+    if (entry.scope.find("node_support_summary.") == 0) {
+      ++out.node_support_scope_count;
+    }
+    if (entry.scope ==
+        "node_support_summary.weakest_node_valid_target_support") {
+      ++out.weakest_node_scope_count;
+    }
+    if (entry.scope.empty() || entry.method.empty() ||
+        entry.estimator.empty() || entry.success_count_field.empty() ||
+        entry.opportunity_count_field.empty() || entry.fraction_field.empty() ||
+        entry.lower_bound_field.empty() || entry.upper_bound_field.empty() ||
+        entry.no_trials_policy.empty()) {
+      ++out.empty_field_count;
+    }
+  }
+
+  const auto exposure_scope =
+      find_scope("exposure_load_summary.valid_target_support");
+  const auto aggregate_scope =
+      find_scope("node_support_summary.aggregate_valid_target_support");
+  const auto weakest_scope =
+      find_scope("node_support_summary.weakest_node_valid_target_support");
+
+  out.exposure_load_support_scope_present =
+      exposure_scope != vocabulary.end() &&
+      exposure_scope->success_count_field ==
+          "valid_target_success_count_for_uncertainty" &&
+      exposure_scope->opportunity_count_field ==
+          "valid_target_opportunity_count_for_uncertainty" &&
+      exposure_scope->fraction_field == "valid_target_fraction_estimate" &&
+      exposure_scope->lower_bound_field == "valid_target_wilson_lower_95" &&
+      exposure_scope->upper_bound_field == "valid_target_wilson_upper_95";
+  out.node_aggregate_support_scope_present =
+      aggregate_scope != vocabulary.end() &&
+      aggregate_scope->success_count_field == "valid_target_count_total" &&
+      aggregate_scope->opportunity_count_field ==
+          "valid_target_opportunity_count_total" &&
+      aggregate_scope->fraction_field == "valid_target_fraction_estimate" &&
+      aggregate_scope->lower_bound_field == "valid_target_wilson_lower_95" &&
+      aggregate_scope->upper_bound_field == "valid_target_wilson_upper_95";
+  out.weakest_node_support_scope_present =
+      weakest_scope != vocabulary.end() &&
+      weakest_scope->success_count_field == "weakest_valid_target_count" &&
+      weakest_scope->opportunity_count_field ==
+          "weakest_valid_target_denominator" &&
+      weakest_scope->fraction_field == "weakest_valid_target_fraction" &&
+      weakest_scope->lower_bound_field ==
+          "weakest_valid_target_wilson_lower_95" &&
+      weakest_scope->upper_bound_field ==
+          "weakest_valid_target_wilson_upper_95";
+  out.all_scopes_use_wilson_95 = out.wilson_method_count == out.scope_count &&
+                                 out.confidence_95_count == out.scope_count &&
+                                 out.scope_count > 0;
+  out.all_estimators_binomial_fraction =
+      out.binomial_estimator_count == out.scope_count && out.scope_count > 0;
+  out.all_no_trials_non_claiming =
+      out.no_trials_non_claiming_count == out.scope_count &&
+      out.scope_count > 0;
+  out.all_count_fields_declared =
+      std::all_of(vocabulary.begin(), vocabulary.end(), [](const auto &entry) {
+        return !entry.success_count_field.empty() &&
+               !entry.opportunity_count_field.empty();
+      });
+  out.all_fraction_fields_declared =
+      std::all_of(vocabulary.begin(), vocabulary.end(), [](const auto &entry) {
+        return !entry.fraction_field.empty();
+      });
+  out.all_interval_bounds_declared =
+      std::all_of(vocabulary.begin(), vocabulary.end(), [](const auto &entry) {
+        return !entry.lower_bound_field.empty() &&
+               !entry.upper_bound_field.empty();
+      });
+  out.support_visibility_not_performance_gate =
+      std::all_of(vocabulary.begin(), vocabulary.end(), [](const auto &entry) {
+        return entry.scope.find("valid_target_support") != std::string::npos &&
+               entry.scope.find("performance") == std::string::npos;
+      });
+
+  if (out.scope_count != 3) {
+    out.summary_issues.push_back(
+        "valid-target uncertainty vocabulary must contain 3 support scopes");
+  }
+  if (!out.exposure_load_support_scope_present) {
+    out.summary_issues.push_back(
+        "exposure-load valid-target support scope must be present");
+  }
+  if (!out.node_aggregate_support_scope_present) {
+    out.summary_issues.push_back(
+        "node aggregate valid-target support scope must be present");
+  }
+  if (!out.weakest_node_support_scope_present) {
+    out.summary_issues.push_back(
+        "weakest-node valid-target support scope must be present");
+  }
+  if (!out.all_scopes_use_wilson_95) {
+    out.summary_issues.push_back(
+        "all valid-target uncertainty scopes must use Wilson 95 intervals");
+  }
+  if (!out.all_estimators_binomial_fraction) {
+    out.summary_issues.push_back(
+        "all valid-target uncertainty scopes must use binomial fractions");
+  }
+  if (!out.all_no_trials_non_claiming) {
+    out.summary_issues.push_back(
+        "no-trials uncertainty must remain non-claiming");
+  }
+  if (!out.all_count_fields_declared || !out.all_fraction_fields_declared ||
+      !out.all_interval_bounds_declared) {
+    out.summary_issues.push_back(
+        "all valid-target uncertainty scopes must declare count, fraction, and "
+        "interval fields");
+  }
+  if (!out.support_visibility_not_performance_gate) {
+    out.summary_issues.push_back(
+        "valid-target uncertainty scopes must remain support visibility, not "
+        "performance gates");
+  }
+  if (out.empty_field_count != 0) {
+    out.summary_issues.push_back(
+        "valid-target uncertainty rows must not contain empty fields");
+  }
+
+  out.summary_issue_count =
+      static_cast<std::int64_t>(out.summary_issues.size());
+  out.summary_self_check_passed = out.summary_issues.empty();
+  return out;
+}
 
 struct exposure_load_summary_t {
   anchor_interval_t target_range{};
@@ -149,6 +1127,11 @@ struct exposure_load_summary_t {
   std::string component_scope{"all_components"};
   std::string target_component{};
   bool require_mutated_component{true};
+  std::string unique_coverage_algebra{k_unique_coverage_algebra};
+  std::string load_algebra{k_load_algebra};
+  std::string unique_coverage_unit{k_unique_coverage_unit};
+  std::string load_unit{k_load_unit};
+  std::string anchor_event_unit{k_anchor_event_unit};
 
   std::int64_t unique_covered_anchors{0};
   double unique_coverage_fraction{0.0};
@@ -163,6 +1146,12 @@ struct exposure_load_summary_t {
 
   std::int64_t valid_target_count_total{0};
   double valid_target_cursor_epochs{0.0};
+  std::int64_t valid_target_success_count_for_uncertainty{0};
+  std::int64_t valid_target_opportunity_count_for_uncertainty{0};
+  double valid_target_fraction_estimate{
+      std::numeric_limits<double>::quiet_NaN()};
+  double valid_target_wilson_lower_95{std::numeric_limits<double>::quiet_NaN()};
+  double valid_target_wilson_upper_95{std::numeric_limits<double>::quiet_NaN()};
 };
 
 struct lattice_node_exposure_fact_t {
@@ -194,18 +1183,224 @@ struct lattice_node_exposure_fact_t {
   std::int64_t trained_row_count{0};
   std::int64_t evaluated_row_count{0};
   std::int64_t valid_target_count{0};
+  std::int64_t valid_target_opportunity_count{0};
   double valid_target_fraction{std::numeric_limits<double>::quiet_NaN()};
   double mean_nll{std::numeric_limits<double>::quiet_NaN()};
 
   std::filesystem::path output_checkpoint{};
 };
 
+struct node_support_row_t {
+  std::string parent_exposure_fact_digest{};
+  std::string node_id{};
+  std::int64_t node_index{0};
+  exposure_use_set_t use{};
+  std::int64_t routed_row_count{0};
+  std::int64_t active_row_count{0};
+  std::int64_t trained_row_count{0};
+  std::int64_t evaluated_row_count{0};
+  std::int64_t valid_target_count{0};
+  std::int64_t valid_target_denominator{0};
+  double valid_target_fraction{std::numeric_limits<double>::quiet_NaN()};
+};
+
+struct node_support_summary_t {
+  std::string schema{"kikijyeba.lattice.node_support_summary.v1"};
+  std::string target_component{};
+  std::string split_name{};
+  exposure_use_set_t use{};
+  std::vector<node_support_row_t> support_rows{};
+
+  std::int64_t node_count{0};
+  std::int64_t unique_node_count{0};
+  std::int64_t observed_input_support_row_count{0};
+  std::int64_t target_supervision_support_row_count{0};
+  std::int64_t evaluation_metric_support_row_count{0};
+  std::int64_t selection_signal_support_row_count{0};
+  std::int64_t mutating_support_row_count{0};
+  std::int64_t non_mutating_support_row_count{0};
+  std::int64_t routed_row_count_total{0};
+  std::int64_t active_row_count_total{0};
+  std::int64_t trained_row_count_total{0};
+  std::int64_t evaluated_row_count_total{0};
+  std::int64_t valid_target_count_total{0};
+  std::int64_t valid_target_opportunity_count_total{0};
+  double valid_target_fraction_estimate{
+      std::numeric_limits<double>::quiet_NaN()};
+  double valid_target_wilson_lower_95{std::numeric_limits<double>::quiet_NaN()};
+  double valid_target_wilson_upper_95{std::numeric_limits<double>::quiet_NaN()};
+
+  std::int64_t finite_valid_target_fraction_count{0};
+  double min_valid_target_fraction{std::numeric_limits<double>::quiet_NaN()};
+  double max_valid_target_fraction{std::numeric_limits<double>::quiet_NaN()};
+  double mean_valid_target_fraction{std::numeric_limits<double>::quiet_NaN()};
+
+  std::string weakest_valid_target_node_id{};
+  std::int64_t weakest_valid_target_node_index{-1};
+  std::int64_t weakest_valid_target_count{0};
+  std::int64_t weakest_valid_target_denominator{0};
+  double weakest_valid_target_fraction{
+      std::numeric_limits<double>::quiet_NaN()};
+  double weakest_valid_target_wilson_lower_95{
+      std::numeric_limits<double>::quiet_NaN()};
+  double weakest_valid_target_wilson_upper_95{
+      std::numeric_limits<double>::quiet_NaN()};
+
+  double valid_target_count_mean{std::numeric_limits<double>::quiet_NaN()};
+  double valid_target_count_coefficient_of_variation{
+      std::numeric_limits<double>::quiet_NaN()};
+  double valid_target_count_gini{std::numeric_limits<double>::quiet_NaN()};
+  double valid_target_count_normalized_entropy{
+      std::numeric_limits<double>::quiet_NaN()};
+};
+
+struct lattice_representation_support_fact_t {
+  std::string schema{"kikijyeba.lattice.representation_support.v1"};
+  std::string fact_type{"representation_support"};
+  std::string parent_exposure_fact_digest{};
+
+  std::string contract_fingerprint{};
+  std::string graph_order_fingerprint{};
+  std::string source_cursor_token{};
+  std::string split_policy_fingerprint{};
+  std::string component_assembly_fingerprint{};
+  std::string target_component{};
+  std::string job_id{};
+  std::string wave_id{};
+  std::string job_status{};
+  std::string wave_action{};
+
+  std::string support_scope{"shared_representation_aggregate"};
+  bool node_indexed{false};
+  bool visibility_only{true};
+  bool readiness_authority{false};
+  bool hard_gate_authority{false};
+  bool mdn_node_support_reused{false};
+  std::string node_id{};
+  std::int64_t node_index{-1};
+
+  std::string split_name{"unknown"};
+  exposure_split_role_t split_role{exposure_split_role_t::unknown};
+  anchor_interval_t anchor_range{};
+  anchor_interval_t completed_anchor_range{};
+  exposure_use_set_t use{};
+
+  std::int64_t last_valid_projection_rows{0};
+  std::int64_t total_valid_projection_rows{0};
+  std::int64_t adapter_original_rows{0};
+  std::int64_t adapter_kept_rows{0};
+  std::int64_t adapter_dropped_rows{0};
+  std::int64_t adapter_valid_channel_time_count{0};
+  std::int64_t adapter_kept_valid_channel_time_count{0};
+  std::int64_t node_support_denominator{0};
+  std::int64_t node_valid_lifted_rows{0};
+  std::int64_t node_valid_lifted_feature_count{0};
+  std::int64_t node_valid_lifted_cell_any_count{0};
+  std::int64_t node_valid_lifted_cell_all_count{0};
+  std::int64_t node_valid_projection_rows{0};
+  double node_valid_lifted_feature_fraction{
+      std::numeric_limits<double>::quiet_NaN()};
+  double mean_adapter_valid_channel_time_fraction{
+      std::numeric_limits<double>::quiet_NaN()};
+  double mean_adapter_kept_valid_channel_time_fraction{
+      std::numeric_limits<double>::quiet_NaN()};
+
+  bool nodelift_runtime_available{false};
+  std::int64_t nodelift_anchor_count{0};
+  std::int64_t nodelift_node_count{0};
+  std::int64_t nodelift_edge_count{0};
+  std::int64_t nodelift_channel_count{0};
+  std::int64_t nodelift_input_length{0};
+  std::int64_t nodelift_future_length{0};
+  std::int64_t nodelift_feature_width{0};
+  bool nodelift_lift_future{false};
+  bool nodelift_future_lift_emitted{false};
+  double nodelift_observed_node_mask_fraction{
+      std::numeric_limits<double>::quiet_NaN()};
+  double nodelift_observed_residual_energy_mean{
+      std::numeric_limits<double>::quiet_NaN()};
+  double nodelift_observed_valid_edge_count_mean{
+      std::numeric_limits<double>::quiet_NaN()};
+  double nodelift_future_node_mask_fraction{
+      std::numeric_limits<double>::quiet_NaN()};
+  double nodelift_future_residual_energy_mean{
+      std::numeric_limits<double>::quiet_NaN()};
+  double nodelift_future_valid_edge_count_mean{
+      std::numeric_limits<double>::quiet_NaN()};
+
+  std::filesystem::path output_checkpoint{};
+};
+
+struct representation_support_summary_t {
+  std::string schema{"kikijyeba.lattice.representation_support_summary.v1"};
+  std::int64_t exposure_fact_count{0};
+  std::int64_t representation_exposure_fact_count{0};
+  std::int64_t representation_support_fact_count{0};
+  std::int64_t aggregate_fact_count{0};
+  std::int64_t node_indexed_fact_count{0};
+  std::int64_t mdn_backfill_fact_count{0};
+  std::int64_t nodelift_runtime_fact_count{0};
+  std::int64_t unique_node_count{0};
+  bool visibility_only{true};
+  bool readiness_authority{false};
+  bool hard_gate_authority{false};
+  bool mdn_node_support_reused{false};
+  bool shared_representation_scope{true};
+  std::int64_t total_valid_projection_rows{0};
+  std::int64_t adapter_original_rows_total{0};
+  std::int64_t adapter_kept_rows_total{0};
+  std::int64_t adapter_dropped_rows_total{0};
+  std::int64_t adapter_valid_channel_time_count_total{0};
+  std::int64_t adapter_kept_valid_channel_time_count_total{0};
+  std::int64_t node_support_denominator_total{0};
+  std::int64_t node_valid_lifted_rows_total{0};
+  std::int64_t node_valid_lifted_feature_count_total{0};
+  std::int64_t node_valid_lifted_cell_any_count_total{0};
+  std::int64_t node_valid_lifted_cell_all_count_total{0};
+  std::int64_t node_valid_projection_rows_total{0};
+  std::int64_t finite_adapter_valid_fraction_count{0};
+  std::int64_t finite_node_valid_lifted_feature_fraction_count{0};
+  double min_adapter_valid_channel_time_fraction{
+      std::numeric_limits<double>::quiet_NaN()};
+  double max_adapter_valid_channel_time_fraction{
+      std::numeric_limits<double>::quiet_NaN()};
+  double mean_adapter_valid_channel_time_fraction{
+      std::numeric_limits<double>::quiet_NaN()};
+  double min_node_valid_lifted_feature_fraction{
+      std::numeric_limits<double>::quiet_NaN()};
+  double max_node_valid_lifted_feature_fraction{
+      std::numeric_limits<double>::quiet_NaN()};
+  double mean_node_valid_lifted_feature_fraction{
+      std::numeric_limits<double>::quiet_NaN()};
+  std::string weakest_node_id{};
+  std::int64_t weakest_node_index{-1};
+  std::int64_t weakest_node_valid_projection_rows{0};
+  std::int64_t weakest_node_support_denominator{0};
+  double weakest_node_valid_lifted_feature_fraction{
+      std::numeric_limits<double>::quiet_NaN()};
+  double node_valid_projection_rows_mean{
+      std::numeric_limits<double>::quiet_NaN()};
+  double node_valid_projection_rows_coefficient_of_variation{
+      std::numeric_limits<double>::quiet_NaN()};
+  double node_valid_projection_rows_gini{
+      std::numeric_limits<double>::quiet_NaN()};
+  std::int64_t max_nodelift_node_count{0};
+  std::int64_t max_nodelift_edge_count{0};
+  std::int64_t max_nodelift_channel_count{0};
+  std::vector<std::string> issues{};
+};
+
 struct checkpoint_closure_result_t {
   std::vector<lattice_exposure_fact_t> facts{};
   std::vector<std::filesystem::path> unresolved_input_checkpoints{};
+  std::string resolution_authority{"legacy_path"};
+  bool legacy_path_fallback{false};
+  std::string root_checkpoint_id{};
+  std::string root_checkpoint_file_digest{};
+  std::vector<std::string> identity_mismatches{};
 
   [[nodiscard]] bool complete() const {
-    return unresolved_input_checkpoints.empty();
+    return unresolved_input_checkpoints.empty() && identity_mismatches.empty();
   }
 };
 
@@ -218,6 +1413,18 @@ struct lattice_checkpoint_fact_t {
   std::string component{};
   std::string contract_fingerprint{};
   std::string graph_order_fingerprint{};
+  std::string representation_architecture{};
+  std::string representation_contract{};
+  std::string representation_value_shape{};
+  std::string representation_sequence_value_shape{};
+  std::string channel_axis_policy{};
+  std::string temporal_reduction{};
+  std::string input_representation_id{};
+  std::string context_mode{};
+  std::string context_contract{};
+  std::string context_value_shape{};
+  std::string output_contract{};
+  std::string output_value_shape{};
   std::string source_cursor_token{};
   std::string component_assembly_fingerprint{};
   std::string created_by_job_id{};
@@ -226,6 +1433,187 @@ struct lattice_checkpoint_fact_t {
   std::vector<std::filesystem::path> input_checkpoints{};
   std::string direct_exposure_digest{};
   std::string closure_digest{};
+};
+
+struct source_key_window_audit_t {
+  std::string schema{"kikijyeba.lattice.source_key_window_audit.v1"};
+  bool available{false};
+  std::string precision{};
+  struct endpoint_t {
+    std::string label{};
+    std::int64_t row{0};
+    std::string key{};
+    bool numeric{false};
+    std::int64_t numeric_key{0};
+  };
+  std::vector<endpoint_t> endpoints{};
+  bool complete{false};
+  bool numeric{false};
+  bool internally_monotone{false};
+  bool order_preserving{false};
+  bool affine_step_available{false};
+  std::int64_t reference_key_step{0};
+  bool affine_consistent{false};
+  std::int64_t missing_endpoint_pair_count{0};
+  std::int64_t irregular_key_warning_count{0};
+  std::int64_t source_key_gap_warning_count{0};
+  std::int64_t row_source_key_mismatch_count{0};
+  bool source_key_gap_found{false};
+  bool row_source_key_mismatch_found{false};
+  std::vector<std::string> issues{};
+};
+
+struct lattice_source_receipt_fact_t {
+  std::string schema{"kikijyeba.lattice.source_receipt.v1"};
+  std::string fact_type{"source_receipt"};
+  std::string parent_exposure_fact_digest{};
+  std::int64_t receipt_index{0};
+
+  std::string contract_fingerprint{};
+  std::string graph_order_fingerprint{};
+  std::string source_cursor_token{};
+  std::string split_policy_fingerprint{};
+  std::string component_assembly_fingerprint{};
+  std::string target_component{};
+  std::string job_id{};
+  std::string wave_id{};
+  std::string split_name{"unknown"};
+  exposure_split_role_t split_role{exposure_split_role_t::unknown};
+  anchor_interval_t anchor_range{};
+  anchor_interval_t completed_anchor_range{};
+
+  std::string source_key_footprint_precision{};
+  std::string first_anchor_key{};
+  std::string last_anchor_key{};
+  std::string observed_source_key_begin{};
+  std::string observed_source_key_end{};
+  std::string target_source_key_begin{};
+  std::string target_source_key_end{};
+
+  std::string edge{};
+  std::string instrument{};
+  std::string interval{};
+  std::string record_type{};
+  std::string source{};
+  std::string raw_receipt{};
+};
+
+struct source_receipt_parse_result_t {
+  std::vector<lattice_source_receipt_fact_t> facts{};
+  std::vector<std::string> issues{};
+  std::int64_t malformed_receipt_count{0};
+  bool missing{false};
+};
+
+struct source_receipt_summary_t {
+  std::string schema{"kikijyeba.lattice.source_receipt_summary.v1"};
+  std::int64_t exposure_fact_count{0};
+  std::int64_t exposure_facts_with_receipts{0};
+  std::int64_t exposure_facts_missing_receipts{0};
+  std::int64_t source_receipt_fact_count{0};
+  std::int64_t malformed_receipt_count{0};
+  std::int64_t unique_edge_count{0};
+  std::int64_t unique_instrument_count{0};
+  std::int64_t unique_source_count{0};
+  bool audit_only{true};
+  bool coverage_authority{false};
+  bool leakage_authority{false};
+  bool contract_identity_authority{false};
+  bool row_index_authority_preserved{true};
+  std::vector<std::string> issues{};
+};
+
+struct source_key_map_audit_summary_t {
+  std::string schema{"kikijyeba.lattice.source_key_map_audit.summary.v1"};
+  std::int64_t exposure_fact_count{0};
+  std::int64_t source_receipt_fact_count{0};
+  std::int64_t source_receipt_bound_parent_count{0};
+  std::int64_t available_audit_count{0};
+  std::int64_t unavailable_audit_count{0};
+  std::int64_t complete_count{0};
+  std::int64_t numeric_count{0};
+  std::int64_t internally_monotone_count{0};
+  std::int64_t order_preserving_count{0};
+  std::int64_t affine_step_available_count{0};
+  std::int64_t affine_consistent_count{0};
+  std::int64_t source_key_gap_warning_count{0};
+  std::int64_t irregular_key_warning_count{0};
+  std::int64_t missing_endpoint_pair_count{0};
+  std::int64_t row_source_key_mismatch_count{0};
+  std::int64_t non_numeric_issue_count{0};
+  std::int64_t nonmonotone_issue_count{0};
+  std::int64_t order_inverted_issue_count{0};
+  std::int64_t issue_count{0};
+  std::int64_t audits_with_graph_order_count{0};
+  std::int64_t audits_with_source_cursor_count{0};
+  std::int64_t audits_with_source_receipts_count{0};
+  std::int64_t unique_graph_order_count{0};
+  std::int64_t unique_source_cursor_count{0};
+  bool audit_only{true};
+  bool coverage_authority{false};
+  bool leakage_authority{false};
+  bool row_index_authority_preserved{true};
+  bool explicit_target_rule_required_for_blocking{true};
+  bool summary_self_check_passed{false};
+  std::int64_t summary_issue_count{0};
+  std::vector<std::string> issues{};
+  std::vector<std::string> summary_issues{};
+};
+
+struct lattice_selection_signal_fact_t {
+  std::string schema{"kikijyeba.lattice.selection_signal.v1"};
+  std::string fact_type{"selection_signal_event"};
+  std::string parent_exposure_fact_digest{};
+
+  std::string contract_fingerprint{};
+  std::string graph_order_fingerprint{};
+  std::string source_cursor_token{};
+  std::string split_policy_fingerprint{};
+  std::string component_assembly_fingerprint{};
+  std::string target_component{};
+  std::string job_id{};
+  std::string wave_id{};
+  std::string split_name{"unknown"};
+  exposure_split_role_t split_role{exposure_split_role_t::unknown};
+
+  std::string selector_id{};
+  std::string selector_kind{"checkpoint_selection"};
+  std::string selector_rule{"runtime_reported_selection_signal"};
+  std::string selected_checkpoint_source{};
+  std::filesystem::path selected_checkpoint{};
+  std::filesystem::path output_checkpoint{};
+  std::vector<std::filesystem::path> input_checkpoints{};
+  bool mutated_component{false};
+
+  anchor_interval_t anchor_range{};
+  anchor_interval_t completed_anchor_range{};
+  anchor_interval_t selection_footprint{};
+  std::string footprint_basis{"anchor_range"};
+  std::string source_key_footprint_precision{};
+  std::string first_anchor_key{};
+  std::string last_anchor_key{};
+  std::string observed_source_key_begin{};
+  std::string observed_source_key_end{};
+  std::string target_source_key_begin{};
+  std::string target_source_key_end{};
+};
+
+struct selection_signal_summary_t {
+  std::string schema{"kikijyeba.lattice.selection_signal_summary.v1"};
+  std::int64_t exposure_fact_count{0};
+  std::int64_t selection_signal_fact_count{0};
+  std::int64_t unique_selector_count{0};
+  std::int64_t selected_checkpoint_count{0};
+  std::int64_t missing_selected_checkpoint_count{0};
+  std::int64_t mutating_selector_count{0};
+  std::int64_t non_mutating_selector_count{0};
+  bool first_class_event_stream{true};
+  bool read_only_lattice_fact{true};
+  bool runtime_executor{false};
+  bool coverage_authority{false};
+  bool contract_identity_authority{false};
+  bool leakage_relevant_when_forbidden{true};
+  std::vector<std::string> issues{};
 };
 
 namespace exposure_detail {
@@ -263,7 +1651,23 @@ parse_assignment_text(const std::string &text) {
     auto key = kv::trim(line.substr(0, eq));
     auto value = kv::trim(line.substr(eq + 1));
     if (!key.empty()) {
-      out[std::move(key)] = std::move(value);
+      auto normalized_key = key;
+      std::size_t cut = std::string::npos;
+      for (const char marker : {'[', '(', ':'}) {
+        const auto pos = normalized_key.find(marker);
+        if (pos != std::string::npos &&
+            (cut == std::string::npos || pos < cut)) {
+          cut = pos;
+        }
+      }
+      if (cut != std::string::npos) {
+        normalized_key = kv::trim(normalized_key.substr(0, cut));
+      }
+      out[key] = value;
+      if (!normalized_key.empty() && normalized_key != key &&
+          out.find(normalized_key) == out.end()) {
+        out[std::move(normalized_key)] = std::move(value);
+      }
     }
   }
   return out;
@@ -272,6 +1676,17 @@ parse_assignment_text(const std::string &text) {
 [[nodiscard]] inline std::unordered_map<std::string, std::string>
 parse_assignment_file(const fs::path &path) {
   return parse_assignment_text(read_text_file_or_empty(path));
+}
+
+[[nodiscard]] inline std::unordered_map<std::string, std::string>
+parse_first_assignment_file(const std::vector<fs::path> &paths) {
+  for (const auto &path : paths) {
+    auto parsed = parse_assignment_file(path);
+    if (!parsed.empty()) {
+      return parsed;
+    }
+  }
+  return {};
 }
 
 [[nodiscard]] inline std::string
@@ -306,6 +1721,19 @@ map_get(const std::unordered_map<std::string, std::string> &map,
     return kv::parse_i64(value);
   } catch (...) {
     return fallback;
+  }
+}
+
+[[nodiscard]] inline std::optional<std::int64_t>
+try_parse_i64(std::string value) {
+  value = kv::trim(std::move(value));
+  if (value.empty()) {
+    return std::nullopt;
+  }
+  try {
+    return kv::parse_i64(value);
+  } catch (...) {
+    return std::nullopt;
   }
 }
 
@@ -360,6 +1788,23 @@ first_double(const std::unordered_map<std::string, std::string> &a,
 [[nodiscard]] inline std::string
 first_string(const std::unordered_map<std::string, std::string> &a,
              const std::unordered_map<std::string, std::string> &b,
+             const std::vector<std::string> &keys) {
+  for (const auto &key : keys) {
+    const auto av = map_get(a, key);
+    if (!av.empty()) {
+      return av;
+    }
+    const auto bv = map_get(b, key);
+    if (!bv.empty()) {
+      return bv;
+    }
+  }
+  return {};
+}
+
+[[nodiscard]] inline std::string
+first_string(const std::unordered_map<std::string, std::string> &a,
+             const std::unordered_map<std::string, std::string> &b,
              const std::unordered_map<std::string, std::string> &c,
              const std::vector<std::string> &keys) {
   for (const auto &key : keys) {
@@ -393,6 +1838,32 @@ first_i64(const std::unordered_map<std::string, std::string> &a,
     }
     if (!map_get(c, key).empty()) {
       return parse_i64_fallback(map_get(c, key), fallback);
+    }
+  }
+  return fallback;
+}
+
+[[nodiscard]] inline double
+first_double(const std::unordered_map<std::string, std::string> &a,
+             const std::unordered_map<std::string, std::string> &b,
+             const std::unordered_map<std::string, std::string> &c,
+             const std::vector<std::string> &keys,
+             double fallback = std::numeric_limits<double>::quiet_NaN()) {
+  for (const auto &key : keys) {
+    const auto av = parse_double_fallback(
+        map_get(a, key), std::numeric_limits<double>::quiet_NaN());
+    if (std::isfinite(av)) {
+      return av;
+    }
+    const auto bv = parse_double_fallback(
+        map_get(b, key), std::numeric_limits<double>::quiet_NaN());
+    if (std::isfinite(bv)) {
+      return bv;
+    }
+    const auto cv = parse_double_fallback(
+        map_get(c, key), std::numeric_limits<double>::quiet_NaN());
+    if (std::isfinite(cv)) {
+      return cv;
     }
   }
   return fallback;
@@ -491,6 +1962,12 @@ inline void normalize_anchor_domain_health(lattice_exposure_fact_t &fact) {
   return path.empty() ? std::string{} : path.lexically_normal().string();
 }
 
+[[nodiscard]] inline bool looks_like_lattice_digest(const std::string &value) {
+  return value.size() == 16 &&
+         std::all_of(value.begin(), value.end(),
+                     [](unsigned char c) { return std::isxdigit(c) != 0; });
+}
+
 [[nodiscard]] inline std::vector<fs::path>
 parse_checkpoint_path_list(const std::string &csv, const fs::path &job_dir) {
   std::vector<fs::path> out;
@@ -529,13 +2006,27 @@ parse_double_list_fallback(const std::string &csv) {
   return out;
 }
 
+inline void append_double_list(std::ostringstream &out, const char *key,
+                               const std::vector<double> &values) {
+  out << key << "=";
+  for (std::size_t i = 0; i < values.size(); ++i) {
+    if (i != 0) {
+      out << ",";
+    }
+    out << values.at(i);
+  }
+  out << "\n";
+}
+
 [[nodiscard]] inline std::string component_fingerprint_from_manifest(
     const std::unordered_map<std::string, std::string> &manifest) {
   const auto target = map_get(manifest, "target_component");
-  if (target == "wikimyei.representation.encoding.vicreg") {
+  if (target == "wikimyei.representation.encoding.vicreg" ||
+      target == "wikimyei.representation.encoding.vicreg") {
     return map_get(manifest, "vicreg_assembly_fingerprint");
   }
-  if (target == "wikimyei.inference.expected_value.mdn") {
+  if (target == "wikimyei.inference.expected_value.mdn" ||
+      target == "wikimyei.inference.expected_value.mdn") {
     return map_get(manifest, "mdn_assembly_fingerprint");
   }
   return {};
@@ -554,6 +2045,508 @@ parse_double_list_fallback(const std::string &csv) {
 }
 
 } // namespace exposure_detail
+
+[[nodiscard]] inline source_key_window_audit_t
+audit_source_key_window(const lattice_exposure_fact_t &fact) {
+  source_key_window_audit_t out{};
+  out.precision = fact.source_key_footprint_precision;
+  if (out.precision.empty()) {
+    return out;
+  }
+  out.available = true;
+
+  const auto remember_endpoint = [&](std::string label, std::int64_t row,
+                                     const std::string &raw_key) {
+    if (raw_key.empty()) {
+      return;
+    }
+    source_key_window_audit_t::endpoint_t endpoint{};
+    endpoint.label = std::move(label);
+    endpoint.row = row;
+    endpoint.key = raw_key;
+    const auto parsed = exposure_detail::try_parse_i64(raw_key);
+    endpoint.numeric = parsed.has_value();
+    if (parsed.has_value()) {
+      endpoint.numeric_key = *parsed;
+    }
+    out.endpoints.push_back(std::move(endpoint));
+  };
+
+  const auto check_pair = [&](const std::string &label,
+                              const std::string &begin_raw,
+                              const std::string &end_raw) {
+    const bool begin_missing = begin_raw.empty();
+    const bool end_missing = end_raw.empty();
+    if (begin_missing && end_missing) {
+      return;
+    }
+    if (begin_missing != end_missing) {
+      out.issues.push_back(label + "_source_key_pair_incomplete");
+      return;
+    }
+    const auto begin = exposure_detail::try_parse_i64(begin_raw);
+    const auto end = exposure_detail::try_parse_i64(end_raw);
+    if (!begin.has_value() || !end.has_value()) {
+      out.issues.push_back(label + "_source_key_non_numeric");
+      return;
+    }
+    if (*end < *begin) {
+      out.issues.push_back(label + "_source_key_nonmonotone");
+    }
+  };
+
+  check_pair("anchor", fact.first_anchor_key, fact.last_anchor_key);
+  check_pair("observed", fact.observed_source_key_begin,
+             fact.observed_source_key_end);
+  check_pair("target", fact.target_source_key_begin,
+             fact.target_source_key_end);
+
+  if (!fact.anchor_range.empty()) {
+    remember_endpoint("anchor_begin", fact.anchor_range.begin,
+                      fact.first_anchor_key);
+    remember_endpoint("anchor_end", fact.anchor_range.end,
+                      fact.last_anchor_key);
+  }
+  if (!fact.observed_footprint.empty()) {
+    remember_endpoint("observed_begin", fact.observed_footprint.begin,
+                      fact.observed_source_key_begin);
+    remember_endpoint("observed_end", fact.observed_footprint.end,
+                      fact.observed_source_key_end);
+  }
+  if (!fact.target_footprint.empty()) {
+    remember_endpoint("target_begin", fact.target_footprint.begin,
+                      fact.target_source_key_begin);
+    remember_endpoint("target_end", fact.target_footprint.end,
+                      fact.target_source_key_end);
+  }
+
+  for (std::size_t i = 0; i < out.endpoints.size(); ++i) {
+    if (!out.endpoints[i].numeric) {
+      continue;
+    }
+    for (std::size_t j = 0; j < out.endpoints.size(); ++j) {
+      if (!out.endpoints[j].numeric) {
+        continue;
+      }
+      if (out.endpoints[i].row < out.endpoints[j].row &&
+          out.endpoints[i].numeric_key > out.endpoints[j].numeric_key) {
+        out.issues.push_back(out.endpoints[i].label + "_" +
+                             out.endpoints[j].label +
+                             "_source_key_order_inverted");
+      }
+    }
+  }
+
+  const auto anchor_begin_key =
+      exposure_detail::try_parse_i64(fact.first_anchor_key);
+  const auto anchor_last_key =
+      exposure_detail::try_parse_i64(fact.last_anchor_key);
+  const auto anchor_count = fact.anchor_range.end - fact.anchor_range.begin;
+  if (anchor_count > 1 && anchor_begin_key.has_value() &&
+      anchor_last_key.has_value()) {
+    const auto denominator = anchor_count - 1;
+    const auto delta = *anchor_last_key - *anchor_begin_key;
+    if (denominator <= 0 || delta % denominator != 0) {
+      out.issues.push_back("anchor_source_key_step_irregular");
+    } else {
+      out.affine_step_available = true;
+      out.reference_key_step = delta / denominator;
+      if (out.reference_key_step <= 0) {
+        out.issues.push_back("anchor_source_key_step_nonpositive");
+      } else {
+        out.affine_consistent = true;
+        const auto check_affine_endpoint = [&](const std::string &label,
+                                               std::int64_t row,
+                                               const std::string &raw_key) {
+          if (raw_key.empty()) {
+            return;
+          }
+          const auto parsed = exposure_detail::try_parse_i64(raw_key);
+          if (!parsed.has_value()) {
+            return;
+          }
+          const auto expected_wide =
+              static_cast<__int128>(*anchor_begin_key) +
+              static_cast<__int128>(row - fact.anchor_range.begin) *
+                  static_cast<__int128>(out.reference_key_step);
+          if (expected_wide < static_cast<__int128>(
+                                  std::numeric_limits<std::int64_t>::min()) ||
+              expected_wide > static_cast<__int128>(
+                                  std::numeric_limits<std::int64_t>::max())) {
+            out.issues.push_back(label + "_source_key_affine_overflow");
+            out.affine_consistent = false;
+            return;
+          }
+          const auto expected = static_cast<std::int64_t>(expected_wide);
+          if (*parsed != expected) {
+            out.issues.push_back(label + "_source_key_affine_mismatch");
+            out.affine_consistent = false;
+          }
+        };
+        check_affine_endpoint("observed_begin", fact.observed_footprint.begin,
+                              fact.observed_source_key_begin);
+        check_affine_endpoint("observed_end", fact.observed_footprint.end,
+                              fact.observed_source_key_end);
+        check_affine_endpoint("target_begin", fact.target_footprint.begin,
+                              fact.target_source_key_begin);
+        check_affine_endpoint("target_end", fact.target_footprint.end,
+                              fact.target_source_key_end);
+      }
+    }
+  }
+
+  const auto has_issue_containing = [&](const std::string &needle) {
+    return std::any_of(out.issues.begin(), out.issues.end(),
+                       [&](const std::string &issue) {
+                         return issue.find(needle) != std::string::npos;
+                       });
+  };
+  const auto count_issue_containing = [&](const std::string &needle) {
+    return static_cast<std::int64_t>(
+        std::count_if(out.issues.begin(), out.issues.end(),
+                      [&](const std::string &issue) {
+                        return issue.find(needle) != std::string::npos;
+                      }));
+  };
+  out.missing_endpoint_pair_count = count_issue_containing("pair_incomplete");
+  out.irregular_key_warning_count =
+      count_issue_containing("step_irregular") +
+      count_issue_containing("step_nonpositive");
+  out.row_source_key_mismatch_count =
+      count_issue_containing("affine_mismatch") +
+      count_issue_containing("affine_overflow");
+  out.source_key_gap_warning_count = out.missing_endpoint_pair_count +
+                                     out.irregular_key_warning_count +
+                                     out.row_source_key_mismatch_count;
+  out.source_key_gap_found = out.source_key_gap_warning_count > 0;
+  out.row_source_key_mismatch_found = out.row_source_key_mismatch_count > 0;
+  out.complete = !has_issue_containing("pair_incomplete");
+  out.numeric = !has_issue_containing("non_numeric");
+  out.internally_monotone = !has_issue_containing("nonmonotone");
+  out.order_preserving = !has_issue_containing("order_inverted");
+  return out;
+}
+
+[[nodiscard]] inline source_receipt_parse_result_t
+make_source_receipt_facts_from_exposure_fact(
+    const lattice_exposure_fact_t &parent) {
+  namespace kv = cuwacunu::piaabo::parse::simple_kv;
+  source_receipt_parse_result_t out{};
+  const auto raw = kv::trim(parent.source_file_receipts);
+  if (raw.empty()) {
+    out.missing = true;
+    return out;
+  }
+
+  const auto split_exact = [](const std::string &text,
+                              const std::string &delimiter) {
+    std::vector<std::string> parts;
+    std::size_t cursor = 0;
+    while (cursor <= text.size()) {
+      const auto pos = text.find(delimiter, cursor);
+      if (pos == std::string::npos) {
+        parts.push_back(text.substr(cursor));
+        break;
+      }
+      parts.push_back(text.substr(cursor, pos - cursor));
+      cursor = pos + delimiter.size();
+    }
+    return parts;
+  };
+
+  const auto parent_digest = exposure_fact_digest(parent);
+  const auto receipts = split_exact(raw, ";;");
+  for (std::size_t index = 0; index < receipts.size(); ++index) {
+    const auto receipt = kv::trim(receipts[index]);
+    if (receipt.empty()) {
+      out.issues.push_back("receipt_" + std::to_string(index) + "_empty");
+      ++out.malformed_receipt_count;
+      continue;
+    }
+
+    std::unordered_map<std::string, std::string> fields;
+    bool malformed = false;
+    for (const auto &field_text : split_exact(receipt, "|")) {
+      const auto field = kv::trim(field_text);
+      const auto eq = field.find('=');
+      if (field.empty() || eq == std::string::npos || eq == 0) {
+        malformed = true;
+        out.issues.push_back("receipt_" + std::to_string(index) +
+                             "_malformed_field");
+        continue;
+      }
+      auto key = kv::trim(field.substr(0, eq));
+      auto value = kv::trim(field.substr(eq + 1));
+      if (key.empty()) {
+        malformed = true;
+        out.issues.push_back("receipt_" + std::to_string(index) + "_empty_key");
+        continue;
+      }
+      if (fields.find(key) != fields.end()) {
+        malformed = true;
+        out.issues.push_back("receipt_" + std::to_string(index) +
+                             "_duplicate_key_" + key);
+        continue;
+      }
+      fields.emplace(std::move(key), std::move(value));
+    }
+
+    const std::vector<std::string> required_keys = {
+        "edge", "instrument", "interval", "record_type", "source"};
+    for (const auto &key : required_keys) {
+      const auto found = fields.find(key);
+      if (found == fields.end() || found->second.empty()) {
+        malformed = true;
+        out.issues.push_back("receipt_" + std::to_string(index) + "_missing_" +
+                             key);
+      }
+    }
+    if (malformed) {
+      ++out.malformed_receipt_count;
+      continue;
+    }
+
+    lattice_source_receipt_fact_t fact{};
+    fact.parent_exposure_fact_digest = parent_digest;
+    fact.receipt_index = static_cast<std::int64_t>(index);
+    fact.contract_fingerprint = parent.contract_fingerprint;
+    fact.graph_order_fingerprint = parent.graph_order_fingerprint;
+    fact.source_cursor_token = parent.source_cursor_token;
+    fact.split_policy_fingerprint = parent.split_policy_fingerprint;
+    fact.component_assembly_fingerprint = parent.component_assembly_fingerprint;
+    fact.target_component = parent.target_component;
+    fact.job_id = parent.job_id;
+    fact.wave_id = parent.wave_id;
+    fact.split_name = parent.split_name;
+    fact.split_role = parent.split_role;
+    fact.anchor_range = parent.anchor_range;
+    fact.completed_anchor_range = parent.completed_anchor_range;
+    fact.source_key_footprint_precision = parent.source_key_footprint_precision;
+    fact.first_anchor_key = parent.first_anchor_key;
+    fact.last_anchor_key = parent.last_anchor_key;
+    fact.observed_source_key_begin = parent.observed_source_key_begin;
+    fact.observed_source_key_end = parent.observed_source_key_end;
+    fact.target_source_key_begin = parent.target_source_key_begin;
+    fact.target_source_key_end = parent.target_source_key_end;
+    fact.edge = fields.at("edge");
+    fact.instrument = fields.at("instrument");
+    fact.interval = fields.at("interval");
+    fact.record_type = fields.at("record_type");
+    fact.source = fields.at("source");
+    fact.raw_receipt = receipt;
+    out.facts.push_back(std::move(fact));
+  }
+  return out;
+}
+
+[[nodiscard]] inline std::string
+canonical_source_receipt_fact_text(const lattice_source_receipt_fact_t &fact) {
+  std::ostringstream out;
+  out << "schema=" << fact.schema << "\n";
+  out << "fact_type=" << fact.fact_type << "\n";
+  out << "parent_exposure_fact_digest=" << fact.parent_exposure_fact_digest
+      << "\n";
+  out << "receipt_index=" << fact.receipt_index << "\n";
+  out << "contract_fingerprint=" << fact.contract_fingerprint << "\n";
+  out << "graph_order_fingerprint=" << fact.graph_order_fingerprint << "\n";
+  out << "source_cursor_token=" << fact.source_cursor_token << "\n";
+  out << "split_policy_fingerprint=" << fact.split_policy_fingerprint << "\n";
+  out << "component_assembly_fingerprint="
+      << fact.component_assembly_fingerprint << "\n";
+  out << "target_component=" << fact.target_component << "\n";
+  out << "job_id=" << fact.job_id << "\n";
+  out << "wave_id=" << fact.wave_id << "\n";
+  out << "split_name=" << fact.split_name << "\n";
+  out << "split_role=" << exposure_split_role_name(fact.split_role) << "\n";
+  out << "anchor_begin=" << fact.anchor_range.begin << "\n";
+  out << "anchor_end=" << fact.anchor_range.end << "\n";
+  out << "completed_anchor_begin=" << fact.completed_anchor_range.begin << "\n";
+  out << "completed_anchor_end=" << fact.completed_anchor_range.end << "\n";
+  out << "source_key_footprint_precision="
+      << fact.source_key_footprint_precision << "\n";
+  out << "first_anchor_key=" << fact.first_anchor_key << "\n";
+  out << "last_anchor_key=" << fact.last_anchor_key << "\n";
+  out << "observed_source_key_begin=" << fact.observed_source_key_begin << "\n";
+  out << "observed_source_key_end=" << fact.observed_source_key_end << "\n";
+  out << "target_source_key_begin=" << fact.target_source_key_begin << "\n";
+  out << "target_source_key_end=" << fact.target_source_key_end << "\n";
+  out << "edge=" << fact.edge << "\n";
+  out << "instrument=" << fact.instrument << "\n";
+  out << "interval=" << fact.interval << "\n";
+  out << "record_type=" << fact.record_type << "\n";
+  out << "source=" << fact.source << "\n";
+  out << "raw_receipt=" << fact.raw_receipt << "\n";
+  return out.str();
+}
+
+[[nodiscard]] inline std::string
+source_receipt_fact_digest(const lattice_source_receipt_fact_t &fact) {
+  return exposure_digest_for_text(canonical_source_receipt_fact_text(fact));
+}
+
+[[nodiscard]] inline source_receipt_summary_t summarize_source_receipts(
+    const std::vector<lattice_exposure_fact_t> &exposure_facts,
+    const std::vector<lattice_source_receipt_fact_t> &receipt_facts) {
+  source_receipt_summary_t out{};
+  out.exposure_fact_count = static_cast<std::int64_t>(exposure_facts.size());
+  out.source_receipt_fact_count =
+      static_cast<std::int64_t>(receipt_facts.size());
+
+  std::set<std::string> edges;
+  std::set<std::string> instruments;
+  std::set<std::string> sources;
+  for (const auto &receipt : receipt_facts) {
+    if (!receipt.edge.empty()) {
+      edges.insert(receipt.edge);
+    }
+    if (!receipt.instrument.empty()) {
+      instruments.insert(receipt.instrument);
+    }
+    if (!receipt.source.empty()) {
+      sources.insert(receipt.source);
+    }
+  }
+  out.unique_edge_count = static_cast<std::int64_t>(edges.size());
+  out.unique_instrument_count = static_cast<std::int64_t>(instruments.size());
+  out.unique_source_count = static_cast<std::int64_t>(sources.size());
+
+  for (const auto &fact : exposure_facts) {
+    const auto parsed = make_source_receipt_facts_from_exposure_fact(fact);
+    if (parsed.missing) {
+      ++out.exposure_facts_missing_receipts;
+    } else {
+      ++out.exposure_facts_with_receipts;
+    }
+    out.malformed_receipt_count += parsed.malformed_receipt_count;
+    for (const auto &issue : parsed.issues) {
+      out.issues.push_back(fact.job_id + ":" + issue);
+    }
+  }
+
+  if (!out.audit_only || out.coverage_authority || out.leakage_authority ||
+      out.contract_identity_authority || !out.row_index_authority_preserved) {
+    out.issues.push_back(
+        "source receipt summary must remain audit-only and preserve "
+        "row-index authority");
+  }
+  return out;
+}
+
+[[nodiscard]] inline source_key_map_audit_summary_t
+summarize_source_key_map_audits(
+    const std::vector<lattice_exposure_fact_t> &exposure_facts,
+    const std::vector<lattice_source_receipt_fact_t> &receipt_facts) {
+  source_key_map_audit_summary_t out{};
+  out.exposure_fact_count = static_cast<std::int64_t>(exposure_facts.size());
+  out.source_receipt_fact_count =
+      static_cast<std::int64_t>(receipt_facts.size());
+
+  std::set<std::string> graph_orders;
+  std::set<std::string> source_cursors;
+  std::set<std::string> receipt_parent_digests;
+  for (const auto &receipt : receipt_facts) {
+    if (!receipt.parent_exposure_fact_digest.empty()) {
+      receipt_parent_digests.insert(receipt.parent_exposure_fact_digest);
+    }
+  }
+  out.source_receipt_bound_parent_count =
+      static_cast<std::int64_t>(receipt_parent_digests.size());
+
+  const auto count_issue = [](const source_key_window_audit_t &audit,
+                              const std::string &needle) {
+    return static_cast<std::int64_t>(
+        std::count_if(audit.issues.begin(), audit.issues.end(),
+                      [&](const std::string &issue) {
+                        return issue.find(needle) != std::string::npos;
+                      }));
+  };
+
+  for (const auto &fact : exposure_facts) {
+    const auto audit = audit_source_key_window(fact);
+    if (!audit.available) {
+      ++out.unavailable_audit_count;
+      continue;
+    }
+    ++out.available_audit_count;
+    if (!fact.graph_order_fingerprint.empty()) {
+      ++out.audits_with_graph_order_count;
+      graph_orders.insert(fact.graph_order_fingerprint);
+    }
+    if (!fact.source_cursor_token.empty()) {
+      ++out.audits_with_source_cursor_count;
+      source_cursors.insert(fact.source_cursor_token);
+    }
+    if (receipt_parent_digests.find(exposure_fact_digest(fact)) !=
+        receipt_parent_digests.end()) {
+      ++out.audits_with_source_receipts_count;
+    }
+    if (audit.complete) {
+      ++out.complete_count;
+    }
+    if (audit.numeric) {
+      ++out.numeric_count;
+    }
+    if (audit.internally_monotone) {
+      ++out.internally_monotone_count;
+    }
+    if (audit.order_preserving) {
+      ++out.order_preserving_count;
+    }
+    if (audit.affine_step_available) {
+      ++out.affine_step_available_count;
+    }
+    if (audit.affine_consistent) {
+      ++out.affine_consistent_count;
+    }
+    out.source_key_gap_warning_count += audit.source_key_gap_warning_count;
+    out.irregular_key_warning_count += audit.irregular_key_warning_count;
+    out.missing_endpoint_pair_count += audit.missing_endpoint_pair_count;
+    out.row_source_key_mismatch_count += audit.row_source_key_mismatch_count;
+    out.issue_count += static_cast<std::int64_t>(audit.issues.size());
+    out.non_numeric_issue_count += count_issue(audit, "non_numeric");
+    out.nonmonotone_issue_count += count_issue(audit, "nonmonotone");
+    out.order_inverted_issue_count += count_issue(audit, "order_inverted");
+    for (const auto &issue : audit.issues) {
+      out.issues.push_back(fact.job_id + ":" + issue);
+    }
+  }
+
+  out.unique_graph_order_count = static_cast<std::int64_t>(graph_orders.size());
+  out.unique_source_cursor_count =
+      static_cast<std::int64_t>(source_cursors.size());
+
+  if (!out.audit_only || out.coverage_authority || out.leakage_authority ||
+      !out.row_index_authority_preserved) {
+    out.summary_issues.push_back(
+        "source-key map audits must remain audit-only and preserve row-index "
+        "coverage/leakage authority");
+  }
+  if (!out.explicit_target_rule_required_for_blocking) {
+    out.summary_issues.push_back(
+        "source-key audit blocking requires an explicit target rule");
+  }
+  if (out.available_audit_count > 0 &&
+      out.audits_with_graph_order_count != out.available_audit_count) {
+    out.summary_issues.push_back(
+        "available source-key audits must bind to graph-order identity");
+  }
+  if (out.available_audit_count > 0 &&
+      out.audits_with_source_cursor_count != out.available_audit_count) {
+    out.summary_issues.push_back(
+        "available source-key audits must bind to source-cursor identity");
+  }
+  if (out.source_receipt_fact_count > 0 &&
+      out.audits_with_source_receipts_count == 0) {
+    out.summary_issues.push_back(
+        "source receipt facts exist but no source-key audit is linked to their "
+        "parent exposure facts");
+  }
+
+  out.summary_issue_count =
+      static_cast<std::int64_t>(out.summary_issues.size());
+  out.summary_self_check_passed = out.summary_issues.empty();
+  return out;
+}
 
 [[nodiscard]] inline std::filesystem::path
 exposure_fact_path_for_job_dir(const std::filesystem::path &job_dir) {
@@ -684,9 +2677,27 @@ interval_intersection(anchor_interval_t a, anchor_interval_t b) {
   throw std::runtime_error("[lattice_exposure] unknown exposure use");
 }
 
+[[nodiscard]] inline bool
+exposure_use_set_has_use(const exposure_use_set_t &set, exposure_use_t use) {
+  switch (use) {
+  case exposure_use_t::observed_input:
+    return set.observed_input;
+  case exposure_use_t::target_supervision:
+    return set.target_supervision;
+  case exposure_use_t::evaluation_metric:
+    return set.evaluation_metric;
+  case exposure_use_t::selection_signal:
+    return set.selection_signal;
+  }
+  throw std::runtime_error("[lattice_exposure] unknown exposure use");
+}
+
 [[nodiscard]] inline anchor_interval_t
 anchor_coverage_for_use(const lattice_exposure_fact_t &fact,
                         exposure_use_t use) {
+  if (fact.job_status != "completed") {
+    return {};
+  }
   switch (use) {
   case exposure_use_t::observed_input:
   case exposure_use_t::target_supervision:
@@ -713,6 +2724,734 @@ source_footprint_for_use(const lattice_exposure_fact_t &fact,
     return fact.anchor_range;
   }
   throw std::runtime_error("[lattice_exposure] unknown exposure use");
+}
+
+[[nodiscard]] inline lattice_selection_signal_fact_t
+make_selection_signal_fact_from_exposure_fact(
+    const lattice_exposure_fact_t &parent) {
+  lattice_selection_signal_fact_t out{};
+  out.parent_exposure_fact_digest = exposure_fact_digest(parent);
+  out.contract_fingerprint = parent.contract_fingerprint;
+  out.graph_order_fingerprint = parent.graph_order_fingerprint;
+  out.source_cursor_token = parent.source_cursor_token;
+  out.split_policy_fingerprint = parent.split_policy_fingerprint;
+  out.component_assembly_fingerprint = parent.component_assembly_fingerprint;
+  out.target_component = parent.target_component;
+  out.job_id = parent.job_id;
+  out.wave_id = parent.wave_id;
+  out.split_name = parent.split_name;
+  out.split_role = parent.split_role;
+  out.selector_id = parent.job_id.empty() ? parent.wave_id : parent.job_id;
+  out.output_checkpoint = parent.output_checkpoint;
+  out.input_checkpoints = parent.input_checkpoints;
+  out.mutated_component = parent.use.mutated_component;
+  out.anchor_range = parent.anchor_range;
+  out.completed_anchor_range = parent.completed_anchor_range;
+  out.selection_footprint =
+      source_footprint_for_use(parent, exposure_use_t::selection_signal);
+  out.source_key_footprint_precision = parent.source_key_footprint_precision;
+  out.first_anchor_key = parent.first_anchor_key;
+  out.last_anchor_key = parent.last_anchor_key;
+  out.observed_source_key_begin = parent.observed_source_key_begin;
+  out.observed_source_key_end = parent.observed_source_key_end;
+  out.target_source_key_begin = parent.target_source_key_begin;
+  out.target_source_key_end = parent.target_source_key_end;
+  if (!parent.output_checkpoint.empty()) {
+    out.selected_checkpoint = parent.output_checkpoint.lexically_normal();
+    out.selected_checkpoint_source = "output_checkpoint";
+  } else if (!parent.input_checkpoints.empty()) {
+    out.selected_checkpoint =
+        parent.input_checkpoints.front().lexically_normal();
+    out.selected_checkpoint_source = "loaded_checkpoint";
+  }
+  return out;
+}
+
+[[nodiscard]] inline std::vector<lattice_selection_signal_fact_t>
+make_selection_signal_facts_from_exposure_fact(
+    const lattice_exposure_fact_t &parent) {
+  if (!parent.use.selection_signal) {
+    return {};
+  }
+  return {make_selection_signal_fact_from_exposure_fact(parent)};
+}
+
+[[nodiscard]] inline std::string canonical_selection_signal_fact_text(
+    const lattice_selection_signal_fact_t &fact) {
+  std::ostringstream out;
+  out << "schema=" << fact.schema << "\n";
+  out << "fact_type=" << fact.fact_type << "\n";
+  out << "parent_exposure_fact_digest=" << fact.parent_exposure_fact_digest
+      << "\n";
+  out << "contract_fingerprint=" << fact.contract_fingerprint << "\n";
+  out << "graph_order_fingerprint=" << fact.graph_order_fingerprint << "\n";
+  out << "source_cursor_token=" << fact.source_cursor_token << "\n";
+  out << "split_policy_fingerprint=" << fact.split_policy_fingerprint << "\n";
+  out << "component_assembly_fingerprint="
+      << fact.component_assembly_fingerprint << "\n";
+  out << "target_component=" << fact.target_component << "\n";
+  out << "job_id=" << fact.job_id << "\n";
+  out << "wave_id=" << fact.wave_id << "\n";
+  out << "split_name=" << fact.split_name << "\n";
+  out << "split_role=" << exposure_split_role_name(fact.split_role) << "\n";
+  out << "selector_id=" << fact.selector_id << "\n";
+  out << "selector_kind=" << fact.selector_kind << "\n";
+  out << "selector_rule=" << fact.selector_rule << "\n";
+  out << "selected_checkpoint_source=" << fact.selected_checkpoint_source
+      << "\n";
+  out << "selected_checkpoint="
+      << fact.selected_checkpoint.lexically_normal().string() << "\n";
+  out << "output_checkpoint="
+      << fact.output_checkpoint.lexically_normal().string() << "\n";
+  std::vector<std::string> input_checkpoint_paths;
+  input_checkpoint_paths.reserve(fact.input_checkpoints.size());
+  for (const auto &checkpoint : fact.input_checkpoints) {
+    input_checkpoint_paths.push_back(checkpoint.lexically_normal().string());
+  }
+  std::sort(input_checkpoint_paths.begin(), input_checkpoint_paths.end());
+  out << "input_checkpoints=";
+  for (std::size_t i = 0; i < input_checkpoint_paths.size(); ++i) {
+    if (i != 0) {
+      out << ",";
+    }
+    out << input_checkpoint_paths[i];
+  }
+  out << "\n";
+  out << "mutated_component=" << (fact.mutated_component ? "true" : "false")
+      << "\n";
+  out << "anchor_begin=" << fact.anchor_range.begin << "\n";
+  out << "anchor_end=" << fact.anchor_range.end << "\n";
+  out << "completed_anchor_begin=" << fact.completed_anchor_range.begin << "\n";
+  out << "completed_anchor_end=" << fact.completed_anchor_range.end << "\n";
+  out << "selection_footprint_begin=" << fact.selection_footprint.begin << "\n";
+  out << "selection_footprint_end=" << fact.selection_footprint.end << "\n";
+  out << "footprint_basis=" << fact.footprint_basis << "\n";
+  out << "source_key_footprint_precision="
+      << fact.source_key_footprint_precision << "\n";
+  out << "first_anchor_key=" << fact.first_anchor_key << "\n";
+  out << "last_anchor_key=" << fact.last_anchor_key << "\n";
+  out << "observed_source_key_begin=" << fact.observed_source_key_begin << "\n";
+  out << "observed_source_key_end=" << fact.observed_source_key_end << "\n";
+  out << "target_source_key_begin=" << fact.target_source_key_begin << "\n";
+  out << "target_source_key_end=" << fact.target_source_key_end << "\n";
+  return out.str();
+}
+
+[[nodiscard]] inline std::string
+selection_signal_fact_digest(const lattice_selection_signal_fact_t &fact) {
+  return exposure_digest_for_text(canonical_selection_signal_fact_text(fact));
+}
+
+[[nodiscard]] inline std::vector<std::string>
+selection_signal_fact_issues(const lattice_selection_signal_fact_t &fact) {
+  std::vector<std::string> issues;
+  if (fact.parent_exposure_fact_digest.empty()) {
+    issues.emplace_back("missing_parent_exposure_fact_digest");
+  }
+  if (fact.selector_id.empty()) {
+    issues.emplace_back("missing_selector_id");
+  }
+  if (fact.selector_kind.empty()) {
+    issues.emplace_back("missing_selector_kind");
+  }
+  if (fact.selector_rule.empty()) {
+    issues.emplace_back("missing_selector_rule");
+  }
+  if (fact.selected_checkpoint.empty()) {
+    issues.emplace_back("missing_selected_checkpoint");
+  }
+  if (fact.selection_footprint.empty()) {
+    issues.emplace_back("empty_selection_footprint");
+  }
+  if (fact.contract_fingerprint.empty()) {
+    issues.emplace_back("missing_contract_fingerprint");
+  }
+  if (fact.graph_order_fingerprint.empty()) {
+    issues.emplace_back("missing_graph_order_fingerprint");
+  }
+  if (fact.source_cursor_token.empty()) {
+    issues.emplace_back("missing_source_cursor_token");
+  }
+  return issues;
+}
+
+[[nodiscard]] inline selection_signal_summary_t summarize_selection_signals(
+    const std::vector<lattice_exposure_fact_t> &exposure_facts,
+    const std::vector<lattice_selection_signal_fact_t> &selection_facts) {
+  selection_signal_summary_t out{};
+  out.exposure_fact_count = static_cast<std::int64_t>(exposure_facts.size());
+  out.selection_signal_fact_count =
+      static_cast<std::int64_t>(selection_facts.size());
+  std::set<std::string> selectors;
+  std::set<std::string> selected_checkpoints;
+  for (const auto &fact : selection_facts) {
+    if (!fact.selector_id.empty()) {
+      selectors.insert(fact.selector_id);
+    }
+    if (!fact.selected_checkpoint.empty()) {
+      selected_checkpoints.insert(
+          fact.selected_checkpoint.lexically_normal().string());
+    } else {
+      ++out.missing_selected_checkpoint_count;
+    }
+    if (fact.mutated_component) {
+      ++out.mutating_selector_count;
+    } else {
+      ++out.non_mutating_selector_count;
+    }
+    for (const auto &issue : selection_signal_fact_issues(fact)) {
+      out.issues.push_back(fact.job_id + ":" + issue);
+    }
+  }
+  out.unique_selector_count = static_cast<std::int64_t>(selectors.size());
+  out.selected_checkpoint_count =
+      static_cast<std::int64_t>(selected_checkpoints.size());
+  if (!out.first_class_event_stream || !out.read_only_lattice_fact ||
+      out.runtime_executor || out.coverage_authority ||
+      out.contract_identity_authority || !out.leakage_relevant_when_forbidden) {
+    out.issues.push_back(
+        "selection signal summary must remain read-only, non-contract, and "
+        "leakage-relevant when forbidden");
+  }
+  return out;
+}
+
+[[nodiscard]] inline bool
+is_representation_component_name(const std::string &target_component) {
+  return target_component == "wikimyei.representation.encoding.vicreg";
+}
+
+[[nodiscard]] inline bool
+is_representation_component(const lattice_exposure_fact_t &fact) {
+  return is_representation_component_name(fact.target_component);
+}
+
+[[nodiscard]] inline bool representation_support_fact_has_payload(
+    const lattice_representation_support_fact_t &fact) {
+  return fact.last_valid_projection_rows > 0 ||
+         fact.total_valid_projection_rows > 0 ||
+         fact.adapter_original_rows > 0 || fact.adapter_kept_rows > 0 ||
+         fact.adapter_dropped_rows > 0 ||
+         fact.adapter_valid_channel_time_count > 0 ||
+         fact.adapter_kept_valid_channel_time_count > 0 ||
+         fact.node_support_denominator > 0 || fact.node_valid_lifted_rows > 0 ||
+         fact.node_valid_lifted_feature_count > 0 ||
+         fact.node_valid_lifted_cell_any_count > 0 ||
+         fact.node_valid_lifted_cell_all_count > 0 ||
+         fact.node_valid_projection_rows > 0 ||
+         std::isfinite(fact.node_valid_lifted_feature_fraction) ||
+         std::isfinite(fact.mean_adapter_valid_channel_time_fraction) ||
+         std::isfinite(fact.mean_adapter_kept_valid_channel_time_fraction) ||
+         fact.nodelift_runtime_available;
+}
+
+[[nodiscard]] inline std::vector<lattice_representation_support_fact_t>
+make_representation_support_facts_from_job_dir(
+    const std::filesystem::path &job_dir,
+    const lattice_exposure_fact_t &parent) {
+  namespace detail = exposure_detail;
+  if (!is_representation_component(parent)) {
+    return {};
+  }
+
+  const auto report = detail::parse_first_assignment_file(
+      {job_dir / "channel_representation.report",
+       job_dir / "representation.report"});
+  const auto state = detail::parse_assignment_file(job_dir / "job.state");
+  const auto training = detail::parse_first_assignment_file(
+      {job_dir / "channel_representation.report.representation_training.lls",
+       job_dir / "representation.report.representation_training.lls"});
+  const auto nodelift = detail::parse_first_assignment_file(
+      {job_dir / "channel_representation.report.nodelift.lls",
+       job_dir / "representation.report.nodelift.lls"});
+  if (report.empty() && state.empty() && training.empty() && nodelift.empty() &&
+      !parent.representation_health_available) {
+    return {};
+  }
+
+  lattice_representation_support_fact_t fact{};
+  fact.parent_exposure_fact_digest = exposure_fact_digest(parent);
+  fact.contract_fingerprint = parent.contract_fingerprint;
+  fact.graph_order_fingerprint = parent.graph_order_fingerprint;
+  fact.source_cursor_token = parent.source_cursor_token;
+  fact.split_policy_fingerprint = parent.split_policy_fingerprint;
+  fact.component_assembly_fingerprint = parent.component_assembly_fingerprint;
+  fact.target_component = parent.target_component;
+  fact.job_id = parent.job_id;
+  fact.wave_id = parent.wave_id;
+  fact.job_status = parent.job_status;
+  fact.wave_action = parent.wave_action;
+  fact.split_name = parent.split_name;
+  fact.split_role = parent.split_role;
+  fact.anchor_range = parent.anchor_range;
+  fact.completed_anchor_range = parent.completed_anchor_range;
+  fact.use = parent.use;
+  fact.output_checkpoint = parent.output_checkpoint;
+
+  fact.last_valid_projection_rows = detail::first_i64(
+      report, state, training,
+      {"last_valid_projection_rows", "valid_projection_rows"}, 0);
+  fact.total_valid_projection_rows =
+      detail::first_i64(report, state, training,
+                        {"total_valid_projection_rows",
+                         "last_valid_projection_rows", "valid_projection_rows"},
+                        parent.total_valid_projection_rows);
+  fact.adapter_original_rows = detail::first_i64(
+      report, state, {"adapter_original_rows", "original_rows"}, 0);
+  fact.adapter_kept_rows =
+      detail::first_i64(report, state, {"adapter_kept_rows", "kept_rows"}, 0);
+  fact.adapter_dropped_rows = detail::first_i64(
+      report, state, {"adapter_dropped_rows", "dropped_rows"}, 0);
+  fact.adapter_valid_channel_time_count = detail::first_i64(
+      report, state, training, {"adapter_valid_channel_time_count"}, 0);
+  fact.adapter_kept_valid_channel_time_count = detail::first_i64(
+      report, state, {"adapter_kept_valid_channel_time_count"}, 0);
+  fact.mean_adapter_valid_channel_time_fraction = detail::first_double(
+      report, state, training,
+      {"mean_adapter_valid_channel_time_fraction",
+       "mean_adapter_kept_valid_channel_time_fraction",
+       "kept_valid_channel_time_fraction", "mean_valid_feature_fraction"});
+  if (!std::isfinite(fact.mean_adapter_valid_channel_time_fraction)) {
+    fact.mean_adapter_valid_channel_time_fraction =
+        parent.mean_adapter_valid_channel_time_fraction;
+  }
+  fact.mean_adapter_kept_valid_channel_time_fraction =
+      detail::first_double(report, state, training,
+                           {"mean_adapter_kept_valid_channel_time_fraction",
+                            "kept_valid_channel_time_fraction",
+                            "mean_adapter_valid_channel_time_fraction"});
+
+  fact.nodelift_anchor_count =
+      detail::parse_i64_fallback(detail::map_get(nodelift, "anchor_count"), 0);
+  fact.nodelift_node_count =
+      detail::parse_i64_fallback(detail::map_get(nodelift, "node_count"), 0);
+  fact.nodelift_edge_count =
+      detail::parse_i64_fallback(detail::map_get(nodelift, "edge_count"), 0);
+  fact.nodelift_channel_count =
+      detail::parse_i64_fallback(detail::map_get(nodelift, "channel_count"), 0);
+  fact.nodelift_input_length =
+      detail::parse_i64_fallback(detail::map_get(nodelift, "input_length"), 0);
+  fact.nodelift_future_length =
+      detail::parse_i64_fallback(detail::map_get(nodelift, "future_length"), 0);
+  fact.nodelift_feature_width =
+      detail::parse_i64_fallback(detail::map_get(nodelift, "feature_width"), 0);
+  fact.nodelift_lift_future =
+      detail::parse_bool_fallback(detail::map_get(nodelift, "lift_future"));
+  fact.nodelift_future_lift_emitted = detail::parse_bool_fallback(
+      detail::map_get(nodelift, "future_lift_emitted"));
+  fact.nodelift_observed_node_mask_fraction = detail::parse_double_fallback(
+      detail::map_get(nodelift, "observed_node_mask_fraction"),
+      std::numeric_limits<double>::quiet_NaN());
+  fact.nodelift_observed_residual_energy_mean = detail::parse_double_fallback(
+      detail::map_get(nodelift, "observed_residual_energy_mean"),
+      std::numeric_limits<double>::quiet_NaN());
+  fact.nodelift_observed_valid_edge_count_mean = detail::parse_double_fallback(
+      detail::map_get(nodelift, "observed_valid_edge_count_mean"),
+      std::numeric_limits<double>::quiet_NaN());
+  fact.nodelift_future_node_mask_fraction = detail::parse_double_fallback(
+      detail::map_get(nodelift, "future_node_mask_fraction"),
+      std::numeric_limits<double>::quiet_NaN());
+  fact.nodelift_future_residual_energy_mean = detail::parse_double_fallback(
+      detail::map_get(nodelift, "future_residual_energy_mean"),
+      std::numeric_limits<double>::quiet_NaN());
+  fact.nodelift_future_valid_edge_count_mean = detail::parse_double_fallback(
+      detail::map_get(nodelift, "future_valid_edge_count_mean"),
+      std::numeric_limits<double>::quiet_NaN());
+  fact.nodelift_runtime_available =
+      fact.nodelift_anchor_count > 0 || fact.nodelift_node_count > 0 ||
+      fact.nodelift_edge_count > 0 || fact.nodelift_channel_count > 0 ||
+      std::isfinite(fact.nodelift_observed_node_mask_fraction) ||
+      std::isfinite(fact.nodelift_future_node_mask_fraction);
+
+  std::vector<lattice_representation_support_fact_t> facts;
+  if (representation_support_fact_has_payload(fact)) {
+    facts.push_back(fact);
+  }
+
+  const auto node_ids = detail::parse_string_list(
+      detail::first_string(report, training, nodelift, {"node_ids"}));
+  const auto support_denominator =
+      detail::parse_i64_list_fallback(detail::first_string(
+          report, training, nodelift, {"node_support_denominator"}));
+  const auto node_valid_lifted_rows =
+      detail::parse_i64_list_fallback(detail::first_string(
+          report, training, nodelift, {"node_valid_lifted_row_count"}));
+  const auto node_valid_lifted_features =
+      detail::parse_i64_list_fallback(detail::first_string(
+          report, training, nodelift, {"node_valid_lifted_feature_count"}));
+  const auto node_valid_lifted_cell_any =
+      detail::parse_i64_list_fallback(detail::first_string(
+          report, training, nodelift, {"node_valid_lifted_cell_any_count"}));
+  const auto node_valid_lifted_cell_all =
+      detail::parse_i64_list_fallback(detail::first_string(
+          report, training, nodelift, {"node_valid_lifted_cell_all_count"}));
+  const auto node_valid_projection_rows =
+      detail::parse_i64_list_fallback(detail::first_string(
+          report, training, nodelift, {"node_valid_projection_row_count"}));
+  const auto node_valid_lifted_feature_fraction =
+      detail::parse_double_list_fallback(detail::first_string(
+          report, training, nodelift, {"node_valid_lifted_feature_fraction"}));
+  const std::size_t node_count = std::max(
+      {support_denominator.size(), node_valid_lifted_rows.size(),
+       node_valid_lifted_features.size(), node_valid_lifted_cell_any.size(),
+       node_valid_lifted_cell_all.size(), node_valid_projection_rows.size(),
+       node_valid_lifted_feature_fraction.size()});
+  for (std::size_t i = 0; i < node_count; ++i) {
+    lattice_representation_support_fact_t node_fact = fact;
+    node_fact.support_scope = "shared_representation_node";
+    node_fact.node_indexed = true;
+    node_fact.node_index = static_cast<std::int64_t>(i);
+    if (i < node_ids.size()) {
+      node_fact.node_id = node_ids[i];
+    } else {
+      node_fact.node_id = "node_" + std::to_string(i);
+    }
+    node_fact.node_support_denominator =
+        i < support_denominator.size() ? support_denominator[i] : 0;
+    node_fact.node_valid_lifted_rows =
+        i < node_valid_lifted_rows.size() ? node_valid_lifted_rows[i] : 0;
+    node_fact.node_valid_lifted_feature_count =
+        i < node_valid_lifted_features.size() ? node_valid_lifted_features[i]
+                                              : 0;
+    node_fact.node_valid_lifted_cell_any_count =
+        i < node_valid_lifted_cell_any.size() ? node_valid_lifted_cell_any[i]
+                                              : 0;
+    node_fact.node_valid_lifted_cell_all_count =
+        i < node_valid_lifted_cell_all.size() ? node_valid_lifted_cell_all[i]
+                                              : 0;
+    node_fact.node_valid_projection_rows = i < node_valid_projection_rows.size()
+                                               ? node_valid_projection_rows[i]
+                                               : 0;
+    node_fact.node_valid_lifted_feature_fraction =
+        i < node_valid_lifted_feature_fraction.size()
+            ? node_valid_lifted_feature_fraction[i]
+            : std::numeric_limits<double>::quiet_NaN();
+    node_fact.last_valid_projection_rows = node_fact.node_valid_projection_rows;
+    node_fact.total_valid_projection_rows =
+        node_fact.node_valid_projection_rows;
+    node_fact.adapter_original_rows = node_fact.node_support_denominator;
+    node_fact.adapter_valid_channel_time_count =
+        node_fact.node_valid_lifted_cell_any_count;
+    node_fact.mean_adapter_valid_channel_time_fraction =
+        node_fact.node_valid_lifted_feature_fraction;
+    if (representation_support_fact_has_payload(node_fact)) {
+      facts.push_back(std::move(node_fact));
+    }
+  }
+
+  return facts;
+}
+
+[[nodiscard]] inline std::string canonical_representation_support_fact_text(
+    const lattice_representation_support_fact_t &fact) {
+  std::ostringstream out;
+  out << "schema=" << fact.schema << "\n";
+  out << "fact_type=" << fact.fact_type << "\n";
+  out << "parent_exposure_fact_digest=" << fact.parent_exposure_fact_digest
+      << "\n";
+  out << "contract_fingerprint=" << fact.contract_fingerprint << "\n";
+  out << "graph_order_fingerprint=" << fact.graph_order_fingerprint << "\n";
+  out << "source_cursor_token=" << fact.source_cursor_token << "\n";
+  out << "split_policy_fingerprint=" << fact.split_policy_fingerprint << "\n";
+  out << "component_assembly_fingerprint="
+      << fact.component_assembly_fingerprint << "\n";
+  out << "target_component=" << fact.target_component << "\n";
+  out << "job_id=" << fact.job_id << "\n";
+  out << "wave_id=" << fact.wave_id << "\n";
+  out << "job_status=" << fact.job_status << "\n";
+  out << "wave_action=" << fact.wave_action << "\n";
+  out << "support_scope=" << fact.support_scope << "\n";
+  out << "node_indexed=" << (fact.node_indexed ? "true" : "false") << "\n";
+  out << "visibility_only=" << (fact.visibility_only ? "true" : "false")
+      << "\n";
+  out << "readiness_authority=" << (fact.readiness_authority ? "true" : "false")
+      << "\n";
+  out << "hard_gate_authority=" << (fact.hard_gate_authority ? "true" : "false")
+      << "\n";
+  out << "mdn_node_support_reused="
+      << (fact.mdn_node_support_reused ? "true" : "false") << "\n";
+  out << "node_id=" << fact.node_id << "\n";
+  out << "node_index=" << fact.node_index << "\n";
+  out << "split_name=" << fact.split_name << "\n";
+  out << "split_role=" << exposure_split_role_name(fact.split_role) << "\n";
+  out << "anchor_begin=" << fact.anchor_range.begin << "\n";
+  out << "anchor_end=" << fact.anchor_range.end << "\n";
+  out << "completed_anchor_begin=" << fact.completed_anchor_range.begin << "\n";
+  out << "completed_anchor_end=" << fact.completed_anchor_range.end << "\n";
+  out << "use_observed_input=" << (fact.use.observed_input ? "true" : "false")
+      << "\n";
+  out << "use_target_supervision="
+      << (fact.use.target_supervision ? "true" : "false") << "\n";
+  out << "use_evaluation_metric="
+      << (fact.use.evaluation_metric ? "true" : "false") << "\n";
+  out << "use_selection_signal="
+      << (fact.use.selection_signal ? "true" : "false") << "\n";
+  out << "use_mutated_component="
+      << (fact.use.mutated_component ? "true" : "false") << "\n";
+  out << "last_valid_projection_rows=" << fact.last_valid_projection_rows
+      << "\n";
+  out << "total_valid_projection_rows=" << fact.total_valid_projection_rows
+      << "\n";
+  out << "adapter_original_rows=" << fact.adapter_original_rows << "\n";
+  out << "adapter_kept_rows=" << fact.adapter_kept_rows << "\n";
+  out << "adapter_dropped_rows=" << fact.adapter_dropped_rows << "\n";
+  out << "adapter_valid_channel_time_count="
+      << fact.adapter_valid_channel_time_count << "\n";
+  out << "adapter_kept_valid_channel_time_count="
+      << fact.adapter_kept_valid_channel_time_count << "\n";
+  out << "node_support_denominator=" << fact.node_support_denominator << "\n";
+  out << "node_valid_lifted_rows=" << fact.node_valid_lifted_rows << "\n";
+  out << "node_valid_lifted_feature_count="
+      << fact.node_valid_lifted_feature_count << "\n";
+  out << "node_valid_lifted_cell_any_count="
+      << fact.node_valid_lifted_cell_any_count << "\n";
+  out << "node_valid_lifted_cell_all_count="
+      << fact.node_valid_lifted_cell_all_count << "\n";
+  out << "node_valid_projection_rows=" << fact.node_valid_projection_rows
+      << "\n";
+  out << "node_valid_lifted_feature_fraction="
+      << fact.node_valid_lifted_feature_fraction << "\n";
+  out << "mean_adapter_valid_channel_time_fraction="
+      << fact.mean_adapter_valid_channel_time_fraction << "\n";
+  out << "mean_adapter_kept_valid_channel_time_fraction="
+      << fact.mean_adapter_kept_valid_channel_time_fraction << "\n";
+  out << "nodelift_runtime_available="
+      << (fact.nodelift_runtime_available ? "true" : "false") << "\n";
+  out << "nodelift_anchor_count=" << fact.nodelift_anchor_count << "\n";
+  out << "nodelift_node_count=" << fact.nodelift_node_count << "\n";
+  out << "nodelift_edge_count=" << fact.nodelift_edge_count << "\n";
+  out << "nodelift_channel_count=" << fact.nodelift_channel_count << "\n";
+  out << "nodelift_input_length=" << fact.nodelift_input_length << "\n";
+  out << "nodelift_future_length=" << fact.nodelift_future_length << "\n";
+  out << "nodelift_feature_width=" << fact.nodelift_feature_width << "\n";
+  out << "nodelift_lift_future="
+      << (fact.nodelift_lift_future ? "true" : "false") << "\n";
+  out << "nodelift_future_lift_emitted="
+      << (fact.nodelift_future_lift_emitted ? "true" : "false") << "\n";
+  out << "nodelift_observed_node_mask_fraction="
+      << fact.nodelift_observed_node_mask_fraction << "\n";
+  out << "nodelift_observed_residual_energy_mean="
+      << fact.nodelift_observed_residual_energy_mean << "\n";
+  out << "nodelift_observed_valid_edge_count_mean="
+      << fact.nodelift_observed_valid_edge_count_mean << "\n";
+  out << "nodelift_future_node_mask_fraction="
+      << fact.nodelift_future_node_mask_fraction << "\n";
+  out << "nodelift_future_residual_energy_mean="
+      << fact.nodelift_future_residual_energy_mean << "\n";
+  out << "nodelift_future_valid_edge_count_mean="
+      << fact.nodelift_future_valid_edge_count_mean << "\n";
+  out << "output_checkpoint="
+      << fact.output_checkpoint.lexically_normal().string() << "\n";
+  return out.str();
+}
+
+[[nodiscard]] inline std::string representation_support_fact_digest(
+    const lattice_representation_support_fact_t &fact) {
+  return exposure_digest_for_text(
+      canonical_representation_support_fact_text(fact));
+}
+
+[[nodiscard]] inline std::vector<std::string>
+representation_support_fact_issues(
+    const lattice_representation_support_fact_t &fact) {
+  std::vector<std::string> issues;
+  if (fact.parent_exposure_fact_digest.empty()) {
+    issues.emplace_back("missing_parent_exposure_fact_digest");
+  }
+  if (!is_representation_component_name(fact.target_component)) {
+    issues.emplace_back("not_representation_component");
+  }
+  if (fact.node_indexed) {
+    if (fact.support_scope != "shared_representation_node") {
+      issues.emplace_back("node_indexed_support_scope_mismatch");
+    }
+    if (fact.node_index < 0) {
+      issues.emplace_back("missing_node_index");
+    }
+    if (fact.node_id.empty()) {
+      issues.emplace_back("missing_node_id");
+    }
+  } else if (fact.support_scope != "shared_representation_aggregate") {
+    issues.emplace_back("aggregate_support_scope_mismatch");
+  }
+  if (!fact.visibility_only || fact.readiness_authority ||
+      fact.hard_gate_authority || fact.mdn_node_support_reused) {
+    issues.emplace_back("representation_support_scope_policy_violation");
+  }
+  if (!representation_support_fact_has_payload(fact)) {
+    issues.emplace_back("missing_representation_support_payload");
+  }
+  if (fact.contract_fingerprint.empty()) {
+    issues.emplace_back("missing_contract_fingerprint");
+  }
+  if (fact.graph_order_fingerprint.empty()) {
+    issues.emplace_back("missing_graph_order_fingerprint");
+  }
+  if (fact.source_cursor_token.empty()) {
+    issues.emplace_back("missing_source_cursor_token");
+  }
+  return issues;
+}
+
+[[nodiscard]] inline representation_support_summary_t
+summarize_representation_support(
+    const std::vector<lattice_exposure_fact_t> &exposure_facts,
+    const std::vector<lattice_representation_support_fact_t> &support_facts) {
+  representation_support_summary_t out{};
+  out.exposure_fact_count = static_cast<std::int64_t>(exposure_facts.size());
+  out.representation_support_fact_count =
+      static_cast<std::int64_t>(support_facts.size());
+  for (const auto &fact : exposure_facts) {
+    if (is_representation_component(fact)) {
+      ++out.representation_exposure_fact_count;
+    }
+  }
+
+  double finite_fraction_sum = 0.0;
+  double finite_node_fraction_sum = 0.0;
+  std::vector<double> node_valid_projection_rows;
+  std::set<std::string> unique_nodes;
+  for (const auto &fact : support_facts) {
+    if (fact.node_indexed) {
+      ++out.node_indexed_fact_count;
+      if (!fact.node_id.empty()) {
+        unique_nodes.insert(fact.node_id);
+      }
+    } else {
+      ++out.aggregate_fact_count;
+    }
+    if (fact.mdn_node_support_reused) {
+      ++out.mdn_backfill_fact_count;
+    }
+    if (fact.nodelift_runtime_available) {
+      ++out.nodelift_runtime_fact_count;
+    }
+    if (fact.node_indexed) {
+      out.node_support_denominator_total += fact.node_support_denominator;
+      out.node_valid_lifted_rows_total += fact.node_valid_lifted_rows;
+      out.node_valid_lifted_feature_count_total +=
+          fact.node_valid_lifted_feature_count;
+      out.node_valid_lifted_cell_any_count_total +=
+          fact.node_valid_lifted_cell_any_count;
+      out.node_valid_lifted_cell_all_count_total +=
+          fact.node_valid_lifted_cell_all_count;
+      out.node_valid_projection_rows_total += fact.node_valid_projection_rows;
+      node_valid_projection_rows.push_back(static_cast<double>(
+          std::max<std::int64_t>(0, fact.node_valid_projection_rows)));
+      if (out.node_indexed_fact_count == 1 ||
+          fact.node_valid_projection_rows <
+              out.weakest_node_valid_projection_rows) {
+        out.weakest_node_id = fact.node_id;
+        out.weakest_node_index = fact.node_index;
+        out.weakest_node_valid_projection_rows =
+            fact.node_valid_projection_rows;
+        out.weakest_node_support_denominator = fact.node_support_denominator;
+        out.weakest_node_valid_lifted_feature_fraction =
+            fact.node_valid_lifted_feature_fraction;
+      }
+      if (std::isfinite(fact.node_valid_lifted_feature_fraction)) {
+        if (out.finite_node_valid_lifted_feature_fraction_count == 0) {
+          out.min_node_valid_lifted_feature_fraction =
+              fact.node_valid_lifted_feature_fraction;
+          out.max_node_valid_lifted_feature_fraction =
+              fact.node_valid_lifted_feature_fraction;
+        } else {
+          out.min_node_valid_lifted_feature_fraction =
+              std::min(out.min_node_valid_lifted_feature_fraction,
+                       fact.node_valid_lifted_feature_fraction);
+          out.max_node_valid_lifted_feature_fraction =
+              std::max(out.max_node_valid_lifted_feature_fraction,
+                       fact.node_valid_lifted_feature_fraction);
+        }
+        finite_node_fraction_sum += fact.node_valid_lifted_feature_fraction;
+        ++out.finite_node_valid_lifted_feature_fraction_count;
+      }
+    } else {
+      out.total_valid_projection_rows += fact.total_valid_projection_rows;
+      out.adapter_original_rows_total += fact.adapter_original_rows;
+      out.adapter_kept_rows_total += fact.adapter_kept_rows;
+      out.adapter_dropped_rows_total += fact.adapter_dropped_rows;
+      out.adapter_valid_channel_time_count_total +=
+          fact.adapter_valid_channel_time_count;
+      out.adapter_kept_valid_channel_time_count_total +=
+          fact.adapter_kept_valid_channel_time_count;
+    }
+    if (!fact.node_indexed &&
+        std::isfinite(fact.mean_adapter_valid_channel_time_fraction)) {
+      if (out.finite_adapter_valid_fraction_count == 0) {
+        out.min_adapter_valid_channel_time_fraction =
+            fact.mean_adapter_valid_channel_time_fraction;
+        out.max_adapter_valid_channel_time_fraction =
+            fact.mean_adapter_valid_channel_time_fraction;
+      } else {
+        out.min_adapter_valid_channel_time_fraction =
+            std::min(out.min_adapter_valid_channel_time_fraction,
+                     fact.mean_adapter_valid_channel_time_fraction);
+        out.max_adapter_valid_channel_time_fraction =
+            std::max(out.max_adapter_valid_channel_time_fraction,
+                     fact.mean_adapter_valid_channel_time_fraction);
+      }
+      finite_fraction_sum += fact.mean_adapter_valid_channel_time_fraction;
+      ++out.finite_adapter_valid_fraction_count;
+    }
+    out.max_nodelift_node_count =
+        std::max(out.max_nodelift_node_count, fact.nodelift_node_count);
+    out.max_nodelift_edge_count =
+        std::max(out.max_nodelift_edge_count, fact.nodelift_edge_count);
+    out.max_nodelift_channel_count =
+        std::max(out.max_nodelift_channel_count, fact.nodelift_channel_count);
+    for (const auto &issue : representation_support_fact_issues(fact)) {
+      out.issues.push_back(fact.job_id + ":" + issue);
+    }
+  }
+  if (out.finite_adapter_valid_fraction_count > 0) {
+    out.mean_adapter_valid_channel_time_fraction =
+        finite_fraction_sum /
+        static_cast<double>(out.finite_adapter_valid_fraction_count);
+  }
+  if (out.finite_node_valid_lifted_feature_fraction_count > 0) {
+    out.mean_node_valid_lifted_feature_fraction =
+        finite_node_fraction_sum /
+        static_cast<double>(
+            out.finite_node_valid_lifted_feature_fraction_count);
+  }
+  if (!node_valid_projection_rows.empty()) {
+    const double n = static_cast<double>(node_valid_projection_rows.size());
+    const double sum = std::accumulate(node_valid_projection_rows.begin(),
+                                       node_valid_projection_rows.end(), 0.0);
+    out.node_valid_projection_rows_mean = sum / n;
+    if (out.node_valid_projection_rows_mean > 0.0) {
+      double variance = 0.0;
+      for (const double value : node_valid_projection_rows) {
+        const double delta = value - out.node_valid_projection_rows_mean;
+        variance += delta * delta;
+      }
+      out.node_valid_projection_rows_coefficient_of_variation =
+          std::sqrt(variance / n) / out.node_valid_projection_rows_mean;
+
+      std::sort(node_valid_projection_rows.begin(),
+                node_valid_projection_rows.end());
+      double weighted_sum = 0.0;
+      for (std::size_t i = 0; i < node_valid_projection_rows.size(); ++i) {
+        weighted_sum +=
+            static_cast<double>(i + 1) * node_valid_projection_rows[i];
+      }
+      out.node_valid_projection_rows_gini =
+          (2.0 * weighted_sum) / (n * sum) - (n + 1.0) / n;
+    } else {
+      out.node_valid_projection_rows_coefficient_of_variation = 0.0;
+      out.node_valid_projection_rows_gini = 0.0;
+    }
+  }
+  out.unique_node_count = static_cast<std::int64_t>(unique_nodes.size());
+  if (!out.visibility_only || out.readiness_authority ||
+      out.hard_gate_authority || out.mdn_node_support_reused ||
+      !out.shared_representation_scope) {
+    out.issues.push_back(
+        "representation support summary must stay shared, visibility-only, "
+        "and independent from MDN backfill");
+  }
+  return out;
 }
 
 [[nodiscard]] inline std::int64_t
@@ -751,9 +3490,13 @@ make_exposure_fact_from_job_dir(const std::filesystem::path &job_dir,
   }
   const auto state = detail::parse_assignment_file(job_dir / "job.state");
   const auto job_kind = detail::map_get(manifest, "job_kind");
-  const auto report_path =
-      job_dir / (job_kind == "representation_vicreg" ? "representation.report"
-                                                     : "inference.report");
+  const auto report_leaf =
+      job_kind == "representation_vicreg" ? "representation.report"
+      : job_kind == "channel_representation_vicreg"
+          ? "channel_representation.report"
+      : job_kind == "channel_inference_mdn" ? "channel_inference.report"
+                                            : "inference.report";
+  const auto report_path = job_dir / report_leaf;
   const auto report = detail::parse_assignment_file(report_path);
   const auto target_component = detail::map_get(manifest, "target_component");
   const auto wave_action = detail::map_get(
@@ -767,6 +3510,29 @@ make_exposure_fact_from_job_dir(const std::filesystem::path &job_dir,
   out.component_assembly_fingerprint =
       detail::component_fingerprint_from_manifest(manifest);
   out.target_component = target_component;
+  out.representation_architecture =
+      detail::first_string(report, state, {"representation_architecture"});
+  out.representation_contract =
+      detail::first_string(report, state, {"representation_contract"});
+  out.representation_value_shape =
+      detail::first_string(report, state, {"primary_value_shape"});
+  out.representation_sequence_value_shape =
+      detail::first_string(report, state, {"sequence_value_shape"});
+  out.channel_axis_policy =
+      detail::first_string(report, state, {"channel_axis_policy"});
+  out.temporal_reduction =
+      detail::first_string(report, state, {"temporal_reduction"});
+  out.input_representation_id =
+      detail::first_string(report, state, {"input_representation_id"});
+  out.context_mode = detail::first_string(report, state, {"context_mode"});
+  out.context_contract =
+      detail::first_string(report, state, {"context_contract"});
+  out.context_value_shape =
+      detail::first_string(report, state, {"context_value_shape"});
+  out.output_contract =
+      detail::first_string(report, state, {"output_contract"});
+  out.output_value_shape =
+      detail::first_string(report, state, {"output_value_shape"});
   out.job_id = detail::map_get(manifest, "job_id");
   out.wave_id =
       detail::map_get(manifest, "wave_id", detail::map_get(state, "wave_id"));
@@ -879,7 +3645,8 @@ make_exposure_fact_from_job_dir(const std::filesystem::path &job_dir,
   out.split_role = context.split_role;
   out.split_policy_fingerprint = std::move(context.split_policy_fingerprint);
   out.use.observed_input = true;
-  out.use.target_supervision = job_kind == "inference_mdn";
+  out.use.target_supervision =
+      job_kind == "inference_mdn" || job_kind == "channel_inference_mdn";
   out.use.evaluation_metric = !report.empty();
   out.use.selection_signal = context.selection_signal;
 
@@ -920,13 +3687,119 @@ make_exposure_fact_from_job_dir(const std::filesystem::path &job_dir,
       0);
   out.valid_target_fraction = detail::first_double(
       report, state,
-      {"mean_valid_node_target_fraction", "last_valid_node_target_fraction"});
+      {"mean_valid_node_target_fraction", "last_valid_node_target_fraction",
+       "mean_valid_target_fraction", "last_valid_target_fraction"});
   out.mean_loss =
       detail::first_double(report, state, {"mean_loss", "last_loss"});
-  out.mean_nll = job_kind == "inference_mdn"
-                     ? out.mean_loss
-                     : std::numeric_limits<double>::quiet_NaN();
+  out.mean_nll =
+      (job_kind == "inference_mdn" || job_kind == "channel_inference_mdn")
+          ? out.mean_loss
+          : std::numeric_limits<double>::quiet_NaN();
   out.finite_loss = std::isfinite(out.mean_loss);
+  if ((job_kind == "inference_mdn" || job_kind == "channel_inference_mdn") &&
+      !report.empty()) {
+    const auto has_inference_health_field =
+        report.find("mean_sigma_mean") != report.end() ||
+        report.find("last_sigma_mean") != report.end() ||
+        report.find("min_sigma_min") != report.end() ||
+        report.find("max_sigma_max") != report.end() ||
+        report.find("mean_mixture_entropy") != report.end() ||
+        report.find("mean_nll_per_channel") != report.end() ||
+        report.find("mean_nll_per_horizon") != report.end() ||
+        report.find("mean_mixture_usage") != report.end() ||
+        report.find("nonfinite_output_count") != report.end() ||
+        report.find("last_grad_norm") != report.end() ||
+        report.find("max_grad_norm") != report.end();
+    out.inference_health_available = has_inference_health_field;
+    out.mean_sigma_mean = detail::first_double(
+        report, state, {"mean_sigma_mean", "last_sigma_mean"});
+    out.min_sigma_min = detail::first_double(
+        report, state, {"min_sigma_min", "last_sigma_min"});
+    out.max_sigma_max = detail::first_double(
+        report, state, {"max_sigma_max", "last_sigma_max"});
+    out.mean_mixture_entropy = detail::first_double(
+        report, state, {"mean_mixture_entropy", "last_mixture_entropy"});
+    out.mean_nll_per_channel = detail::parse_double_list_fallback(
+        detail::map_get(report, "mean_nll_per_channel"));
+    out.mean_nll_per_horizon = detail::parse_double_list_fallback(
+        detail::map_get(report, "mean_nll_per_horizon"));
+    out.mean_mixture_usage = detail::parse_double_list_fallback(
+        detail::map_get(report, "mean_mixture_usage"));
+    out.nonfinite_output_count =
+        detail::first_i64(report, state, {"nonfinite_output_count"}, 0);
+    out.last_grad_norm =
+        detail::first_double(report, state, {"last_grad_norm"});
+    out.max_grad_norm = detail::first_double(report, state, {"max_grad_norm"});
+    out.finite_parameter_check = detail::parse_bool_fallback(
+        detail::map_get(report, "finite_parameter_check",
+                        detail::map_get(state, "finite_parameter_check")),
+        false);
+  }
+  if ((job_kind == "representation_vicreg" ||
+       job_kind == "channel_representation_vicreg") &&
+      !report.empty()) {
+    out.representation_health_available = true;
+    out.mean_invariance_loss = detail::first_double(
+        report, state, {"mean_invariance_loss", "last_invariance_loss"});
+    out.mean_variance_loss = detail::first_double(
+        report, state, {"mean_variance_loss", "last_variance_loss"});
+    out.mean_covariance_loss = detail::first_double(
+        report, state, {"mean_covariance_loss", "last_covariance_loss"});
+    out.last_grad_norm =
+        detail::first_double(report, state, {"last_grad_norm"});
+    out.max_grad_norm = detail::first_double(report, state, {"max_grad_norm"});
+    out.total_valid_projection_rows = detail::first_i64(
+        report, state,
+        {"total_valid_projection_rows", "last_valid_projection_rows"}, 0);
+    out.mean_adapter_valid_channel_time_fraction = detail::first_double(
+        report, state,
+        {"mean_adapter_valid_channel_time_fraction",
+         "mean_adapter_kept_valid_channel_time_fraction",
+         "kept_valid_channel_time_fraction", "mean_valid_feature_fraction"});
+    out.augmented_valid_feature_count =
+        detail::first_i64(report, state, {"augmented_valid_feature_count"}, 0);
+    out.mean_augmented_valid_feature_fraction =
+        detail::first_double(report, state,
+                             {"mean_augmented_valid_feature_fraction",
+                              "last_augmented_valid_feature_fraction"});
+    out.mean_augmented_feature_retention_fraction =
+        detail::first_double(report, state,
+                             {"mean_augmented_feature_retention_fraction",
+                              "last_augmented_feature_retention_fraction"});
+    out.finite_parameter_check = detail::parse_bool_fallback(
+        detail::map_get(report, "finite_parameter_check",
+                        detail::map_get(state, "finite_parameter_check")),
+        false);
+    out.representation_embedding_dim =
+        detail::first_i64(report, state,
+                          {"representation_embedding_dim", "embedding_dim",
+                           "projection_embedding_dim", "encoding_dim"},
+                          0);
+    out.representation_effective_rank =
+        detail::first_double(report, state,
+                             {"representation_effective_rank", "effective_rank",
+                              "embedding_effective_rank"});
+    out.representation_effective_rank_fraction = detail::first_double(
+        report, state,
+        {"representation_effective_rank_fraction", "effective_rank_fraction",
+         "embedding_effective_rank_fraction"});
+    out.representation_min_dimension_variance = detail::first_double(
+        report, state,
+        {"representation_min_dimension_variance", "min_dimension_variance",
+         "embedding_min_dimension_variance"});
+    out.representation_max_dimension_variance = detail::first_double(
+        report, state,
+        {"representation_max_dimension_variance", "max_dimension_variance",
+         "embedding_max_dimension_variance"});
+    out.representation_condition_number = detail::first_double(
+        report, state,
+        {"representation_condition_number", "embedding_condition_number",
+         "covariance_condition_number"});
+    out.representation_isotropy_score =
+        detail::first_double(report, state,
+                             {"representation_isotropy_score",
+                              "embedding_isotropy_score", "isotropy_score"});
+  }
 
   const auto output_checkpoint = detail::map_get(
       state, "checkpoint_path", detail::map_get(report, "checkpoint_path"));
@@ -957,6 +3830,21 @@ canonical_exposure_fact_text(const lattice_exposure_fact_t &fact) {
   out << "component_assembly_fingerprint="
       << fact.component_assembly_fingerprint << "\n";
   out << "target_component=" << fact.target_component << "\n";
+  out << "representation_architecture=" << fact.representation_architecture
+      << "\n";
+  out << "representation_contract=" << fact.representation_contract << "\n";
+  out << "representation_value_shape=" << fact.representation_value_shape
+      << "\n";
+  out << "representation_sequence_value_shape="
+      << fact.representation_sequence_value_shape << "\n";
+  out << "channel_axis_policy=" << fact.channel_axis_policy << "\n";
+  out << "temporal_reduction=" << fact.temporal_reduction << "\n";
+  out << "input_representation_id=" << fact.input_representation_id << "\n";
+  out << "context_mode=" << fact.context_mode << "\n";
+  out << "context_contract=" << fact.context_contract << "\n";
+  out << "context_value_shape=" << fact.context_value_shape << "\n";
+  out << "output_contract=" << fact.output_contract << "\n";
+  out << "output_value_shape=" << fact.output_value_shape << "\n";
   out << "job_id=" << fact.job_id << "\n";
   out << "wave_id=" << fact.wave_id << "\n";
   out << "job_status=" << fact.job_status << "\n";
@@ -1038,6 +3926,52 @@ canonical_exposure_fact_text(const lattice_exposure_fact_t &fact) {
   out << "\nfinite_loss=" << (fact.finite_loss ? "true" : "false") << "\n";
   out << "mean_loss=" << fact.mean_loss << "\n";
   out << "mean_nll=" << fact.mean_nll << "\n";
+  out << "inference_health_available="
+      << (fact.inference_health_available ? "true" : "false") << "\n";
+  out << "mean_sigma_mean=" << fact.mean_sigma_mean << "\n";
+  out << "min_sigma_min=" << fact.min_sigma_min << "\n";
+  out << "max_sigma_max=" << fact.max_sigma_max << "\n";
+  out << "mean_mixture_entropy=" << fact.mean_mixture_entropy << "\n";
+  exposure_detail::append_double_list(out, "mean_nll_per_channel",
+                                      fact.mean_nll_per_channel);
+  exposure_detail::append_double_list(out, "mean_nll_per_horizon",
+                                      fact.mean_nll_per_horizon);
+  exposure_detail::append_double_list(out, "mean_mixture_usage",
+                                      fact.mean_mixture_usage);
+  out << "nonfinite_output_count=" << fact.nonfinite_output_count << "\n";
+  out << "representation_health_available="
+      << (fact.representation_health_available ? "true" : "false") << "\n";
+  out << "mean_invariance_loss=" << fact.mean_invariance_loss << "\n";
+  out << "mean_variance_loss=" << fact.mean_variance_loss << "\n";
+  out << "mean_covariance_loss=" << fact.mean_covariance_loss << "\n";
+  out << "last_grad_norm=" << fact.last_grad_norm << "\n";
+  out << "max_grad_norm=" << fact.max_grad_norm << "\n";
+  out << "total_valid_projection_rows=" << fact.total_valid_projection_rows
+      << "\n";
+  out << "mean_adapter_valid_channel_time_fraction="
+      << fact.mean_adapter_valid_channel_time_fraction << "\n";
+  out << "augmented_valid_feature_count=" << fact.augmented_valid_feature_count
+      << "\n";
+  out << "mean_augmented_valid_feature_fraction="
+      << fact.mean_augmented_valid_feature_fraction << "\n";
+  out << "mean_augmented_feature_retention_fraction="
+      << fact.mean_augmented_feature_retention_fraction << "\n";
+  out << "finite_parameter_check="
+      << (fact.finite_parameter_check ? "true" : "false") << "\n";
+  out << "representation_embedding_dim=" << fact.representation_embedding_dim
+      << "\n";
+  out << "representation_effective_rank=" << fact.representation_effective_rank
+      << "\n";
+  out << "representation_effective_rank_fraction="
+      << fact.representation_effective_rank_fraction << "\n";
+  out << "representation_min_dimension_variance="
+      << fact.representation_min_dimension_variance << "\n";
+  out << "representation_max_dimension_variance="
+      << fact.representation_max_dimension_variance << "\n";
+  out << "representation_condition_number="
+      << fact.representation_condition_number << "\n";
+  out << "representation_isotropy_score=" << fact.representation_isotropy_score
+      << "\n";
   out << "diagnostics_digest=" << fact.diagnostics_digest << "\n";
   return out.str();
 }
@@ -1070,6 +4004,21 @@ make_exposure_fact_from_sidecar_text(const std::string &text,
   out.component_assembly_fingerprint =
       detail::map_get(map, "component_assembly_fingerprint");
   out.target_component = detail::map_get(map, "target_component");
+  out.representation_architecture =
+      detail::map_get(map, "representation_architecture");
+  out.representation_contract = detail::map_get(map, "representation_contract");
+  out.representation_value_shape =
+      detail::map_get(map, "representation_value_shape");
+  out.representation_sequence_value_shape =
+      detail::map_get(map, "representation_sequence_value_shape");
+  out.channel_axis_policy = detail::map_get(map, "channel_axis_policy");
+  out.temporal_reduction = detail::map_get(map, "temporal_reduction");
+  out.input_representation_id = detail::map_get(map, "input_representation_id");
+  out.context_mode = detail::map_get(map, "context_mode");
+  out.context_contract = detail::map_get(map, "context_contract");
+  out.context_value_shape = detail::map_get(map, "context_value_shape");
+  out.output_contract = detail::map_get(map, "output_contract");
+  out.output_value_shape = detail::map_get(map, "output_value_shape");
   out.job_id = detail::map_get(map, "job_id");
   out.wave_id = detail::map_get(map, "wave_id");
   out.job_status = detail::map_get(map, "job_status");
@@ -1179,7 +4128,82 @@ make_exposure_fact_from_sidecar_text(const std::string &text,
   out.mean_nll =
       detail::parse_double_fallback(detail::map_get(map, "mean_nll"),
                                     std::numeric_limits<double>::quiet_NaN());
+  out.inference_health_available = detail::parse_bool_fallback(
+      detail::map_get(map, "inference_health_available"));
+  out.mean_sigma_mean =
+      detail::parse_double_fallback(detail::map_get(map, "mean_sigma_mean"),
+                                    std::numeric_limits<double>::quiet_NaN());
+  out.min_sigma_min =
+      detail::parse_double_fallback(detail::map_get(map, "min_sigma_min"),
+                                    std::numeric_limits<double>::quiet_NaN());
+  out.max_sigma_max =
+      detail::parse_double_fallback(detail::map_get(map, "max_sigma_max"),
+                                    std::numeric_limits<double>::quiet_NaN());
+  out.mean_mixture_entropy = detail::parse_double_fallback(
+      detail::map_get(map, "mean_mixture_entropy"),
+      std::numeric_limits<double>::quiet_NaN());
+  out.mean_nll_per_channel = detail::parse_double_list_fallback(
+      detail::map_get(map, "mean_nll_per_channel"));
+  out.mean_nll_per_horizon = detail::parse_double_list_fallback(
+      detail::map_get(map, "mean_nll_per_horizon"));
+  out.mean_mixture_usage = detail::parse_double_list_fallback(
+      detail::map_get(map, "mean_mixture_usage"));
+  out.nonfinite_output_count = detail::parse_i64_fallback(
+      detail::map_get(map, "nonfinite_output_count"), 0);
+  out.representation_health_available = detail::parse_bool_fallback(
+      detail::map_get(map, "representation_health_available"));
+  out.mean_invariance_loss = detail::parse_double_fallback(
+      detail::map_get(map, "mean_invariance_loss"),
+      std::numeric_limits<double>::quiet_NaN());
+  out.mean_variance_loss =
+      detail::parse_double_fallback(detail::map_get(map, "mean_variance_loss"),
+                                    std::numeric_limits<double>::quiet_NaN());
+  out.mean_covariance_loss = detail::parse_double_fallback(
+      detail::map_get(map, "mean_covariance_loss"),
+      std::numeric_limits<double>::quiet_NaN());
+  out.last_grad_norm =
+      detail::parse_double_fallback(detail::map_get(map, "last_grad_norm"),
+                                    std::numeric_limits<double>::quiet_NaN());
+  out.max_grad_norm =
+      detail::parse_double_fallback(detail::map_get(map, "max_grad_norm"),
+                                    std::numeric_limits<double>::quiet_NaN());
+  out.total_valid_projection_rows = detail::parse_i64_fallback(
+      detail::map_get(map, "total_valid_projection_rows"), 0);
+  out.mean_adapter_valid_channel_time_fraction = detail::parse_double_fallback(
+      detail::map_get(map, "mean_adapter_valid_channel_time_fraction"),
+      std::numeric_limits<double>::quiet_NaN());
+  out.augmented_valid_feature_count = detail::parse_i64_fallback(
+      detail::map_get(map, "augmented_valid_feature_count"), 0);
+  out.mean_augmented_valid_feature_fraction = detail::parse_double_fallback(
+      detail::map_get(map, "mean_augmented_valid_feature_fraction"),
+      std::numeric_limits<double>::quiet_NaN());
+  out.mean_augmented_feature_retention_fraction = detail::parse_double_fallback(
+      detail::map_get(map, "mean_augmented_feature_retention_fraction"),
+      std::numeric_limits<double>::quiet_NaN());
+  out.finite_parameter_check = detail::parse_bool_fallback(
+      detail::map_get(map, "finite_parameter_check"));
+  out.representation_embedding_dim = detail::parse_i64_fallback(
+      detail::map_get(map, "representation_embedding_dim"), 0);
+  out.representation_effective_rank = detail::parse_double_fallback(
+      detail::map_get(map, "representation_effective_rank"),
+      std::numeric_limits<double>::quiet_NaN());
+  out.representation_effective_rank_fraction = detail::parse_double_fallback(
+      detail::map_get(map, "representation_effective_rank_fraction"),
+      std::numeric_limits<double>::quiet_NaN());
+  out.representation_min_dimension_variance = detail::parse_double_fallback(
+      detail::map_get(map, "representation_min_dimension_variance"),
+      std::numeric_limits<double>::quiet_NaN());
+  out.representation_max_dimension_variance = detail::parse_double_fallback(
+      detail::map_get(map, "representation_max_dimension_variance"),
+      std::numeric_limits<double>::quiet_NaN());
+  out.representation_condition_number = detail::parse_double_fallback(
+      detail::map_get(map, "representation_condition_number"),
+      std::numeric_limits<double>::quiet_NaN());
+  out.representation_isotropy_score = detail::parse_double_fallback(
+      detail::map_get(map, "representation_isotropy_score"),
+      std::numeric_limits<double>::quiet_NaN());
   out.diagnostics_digest = detail::map_get(map, "diagnostics_digest");
+  out.output_checkpoint_exposure_digest = detail::map_get(map, "fact_digest");
   return out;
 }
 
@@ -1287,6 +4311,8 @@ make_node_exposure_facts_from_job_dir(const std::filesystem::path &job_dir,
     const double possible_targets = static_cast<double>(support_rows) *
                                     target_coordinate_count * future_length;
     if (possible_targets > 0.0) {
+      fact.valid_target_opportunity_count =
+          static_cast<std::int64_t>(std::llround(possible_targets));
       fact.valid_target_fraction =
           static_cast<double>(fact.valid_target_count) / possible_targets;
     }
@@ -1301,11 +4327,36 @@ make_node_exposure_facts_from_job_dir(const std::filesystem::path &job_dir,
 
 [[nodiscard]] inline std::string
 file_content_digest(const std::filesystem::path &path) {
-  const auto text = exposure_detail::read_text_file_or_empty(path);
-  if (text.empty()) {
+  namespace assembly_detail = cuwacunu::wikimyei::assembly::assembly_detail;
+  std::ifstream in(path, std::ios::binary);
+  if (!in) {
     return {};
   }
-  return exposure_digest_for_text(std::string("file:") + text);
+  std::uint64_t hash = assembly_detail::kFnvOffsetBasis;
+  assembly_detail::mix_hash_string(hash, "kikijyeba.lattice.exposure.v1");
+  for (const unsigned char c : std::string_view("file:")) {
+    assembly_detail::mix_hash_byte(hash, c);
+  }
+  bool saw_byte = false;
+  std::array<char, 1 << 16> buffer{};
+  while (in) {
+    in.read(buffer.data(), static_cast<std::streamsize>(buffer.size()));
+    const auto n = in.gcount();
+    if (n <= 0) {
+      break;
+    }
+    saw_byte = true;
+    for (std::streamsize i = 0; i < n; ++i) {
+      assembly_detail::mix_hash_byte(
+          hash,
+          static_cast<unsigned char>(buffer[static_cast<std::size_t>(i)]));
+    }
+  }
+  if (!saw_byte) {
+    return {};
+  }
+  assembly_detail::mix_hash_byte(hash, 0xffu);
+  return assembly_detail::hash_hex(hash);
 }
 
 [[nodiscard]] inline lattice_checkpoint_fact_t
@@ -1316,6 +4367,19 @@ make_checkpoint_fact_from_exposure_fact(const lattice_exposure_fact_t &fact) {
   out.component = fact.target_component;
   out.contract_fingerprint = fact.contract_fingerprint;
   out.graph_order_fingerprint = fact.graph_order_fingerprint;
+  out.representation_architecture = fact.representation_architecture;
+  out.representation_contract = fact.representation_contract;
+  out.representation_value_shape = fact.representation_value_shape;
+  out.representation_sequence_value_shape =
+      fact.representation_sequence_value_shape;
+  out.channel_axis_policy = fact.channel_axis_policy;
+  out.temporal_reduction = fact.temporal_reduction;
+  out.input_representation_id = fact.input_representation_id;
+  out.context_mode = fact.context_mode;
+  out.context_contract = fact.context_contract;
+  out.context_value_shape = fact.context_value_shape;
+  out.output_contract = fact.output_contract;
+  out.output_value_shape = fact.output_value_shape;
   out.source_cursor_token = fact.source_cursor_token;
   out.component_assembly_fingerprint = fact.component_assembly_fingerprint;
   out.created_by_job_id = fact.job_id;
@@ -1341,6 +4405,21 @@ canonical_checkpoint_fact_text(const lattice_checkpoint_fact_t &fact) {
   out << "component=" << fact.component << "\n";
   out << "contract_fingerprint=" << fact.contract_fingerprint << "\n";
   out << "graph_order_fingerprint=" << fact.graph_order_fingerprint << "\n";
+  out << "representation_architecture=" << fact.representation_architecture
+      << "\n";
+  out << "representation_contract=" << fact.representation_contract << "\n";
+  out << "representation_value_shape=" << fact.representation_value_shape
+      << "\n";
+  out << "representation_sequence_value_shape="
+      << fact.representation_sequence_value_shape << "\n";
+  out << "channel_axis_policy=" << fact.channel_axis_policy << "\n";
+  out << "temporal_reduction=" << fact.temporal_reduction << "\n";
+  out << "input_representation_id=" << fact.input_representation_id << "\n";
+  out << "context_mode=" << fact.context_mode << "\n";
+  out << "context_contract=" << fact.context_contract << "\n";
+  out << "context_value_shape=" << fact.context_value_shape << "\n";
+  out << "output_contract=" << fact.output_contract << "\n";
+  out << "output_value_shape=" << fact.output_value_shape << "\n";
   out << "source_cursor_token=" << fact.source_cursor_token << "\n";
   out << "component_assembly_fingerprint="
       << fact.component_assembly_fingerprint << "\n";
@@ -1382,6 +4461,21 @@ make_checkpoint_fact_from_sidecar_text(const std::string &text,
   out.component = detail::map_get(map, "component");
   out.contract_fingerprint = detail::map_get(map, "contract_fingerprint");
   out.graph_order_fingerprint = detail::map_get(map, "graph_order_fingerprint");
+  out.representation_architecture =
+      detail::map_get(map, "representation_architecture");
+  out.representation_contract = detail::map_get(map, "representation_contract");
+  out.representation_value_shape =
+      detail::map_get(map, "representation_value_shape");
+  out.representation_sequence_value_shape =
+      detail::map_get(map, "representation_sequence_value_shape");
+  out.channel_axis_policy = detail::map_get(map, "channel_axis_policy");
+  out.temporal_reduction = detail::map_get(map, "temporal_reduction");
+  out.input_representation_id = detail::map_get(map, "input_representation_id");
+  out.context_mode = detail::map_get(map, "context_mode");
+  out.context_contract = detail::map_get(map, "context_contract");
+  out.context_value_shape = detail::map_get(map, "context_value_shape");
+  out.output_contract = detail::map_get(map, "output_contract");
+  out.output_value_shape = detail::map_get(map, "output_value_shape");
   out.source_cursor_token = detail::map_get(map, "source_cursor_token");
   out.component_assembly_fingerprint =
       detail::map_get(map, "component_assembly_fingerprint");
@@ -1446,14 +4540,48 @@ inline void write_checkpoint_fact_sidecar(const std::filesystem::path &path,
 
 class lattice_exposure_ledger_t {
 public:
-  void add(lattice_exposure_fact_t fact) { facts_.push_back(std::move(fact)); }
+  void add(lattice_exposure_fact_t fact) {
+    add(std::move(fact), /*derive_source_receipts=*/true,
+        /*derive_selection_signals=*/true);
+  }
+
+  void add(lattice_exposure_fact_t fact, bool derive_source_receipts,
+           bool derive_selection_signals) {
+    if (derive_source_receipts) {
+      for (auto receipt_fact :
+           make_source_receipt_facts_from_exposure_fact(fact).facts) {
+        add_source_receipt(std::move(receipt_fact));
+      }
+    }
+    if (derive_selection_signals) {
+      for (auto selection_fact :
+           make_selection_signal_facts_from_exposure_fact(fact)) {
+        add_selection_signal(std::move(selection_fact));
+      }
+    }
+    invalidate_lookup_index();
+    facts_.push_back(std::move(fact));
+  }
 
   void add_node(lattice_node_exposure_fact_t fact) {
     node_facts_.push_back(std::move(fact));
   }
 
   void add_checkpoint(lattice_checkpoint_fact_t fact) {
+    invalidate_lookup_index();
     checkpoint_facts_.push_back(std::move(fact));
+  }
+
+  void add_source_receipt(lattice_source_receipt_fact_t fact) {
+    source_receipt_facts_.push_back(std::move(fact));
+  }
+
+  void add_selection_signal(lattice_selection_signal_fact_t fact) {
+    selection_signal_facts_.push_back(std::move(fact));
+  }
+
+  void add_representation_support(lattice_representation_support_fact_t fact) {
+    representation_support_facts_.push_back(std::move(fact));
   }
 
   [[nodiscard]] const std::vector<lattice_exposure_fact_t> &facts() const {
@@ -1470,6 +4598,21 @@ public:
     return node_facts_;
   }
 
+  [[nodiscard]] const std::vector<lattice_source_receipt_fact_t> &
+  source_receipt_facts() const {
+    return source_receipt_facts_;
+  }
+
+  [[nodiscard]] const std::vector<lattice_selection_signal_fact_t> &
+  selection_signal_facts() const {
+    return selection_signal_facts_;
+  }
+
+  [[nodiscard]] const std::vector<lattice_representation_support_fact_t> &
+  representation_support_facts() const {
+    return representation_support_facts_;
+  }
+
   [[nodiscard]] std::vector<lattice_exposure_fact_t>
   checkpoint_closure(const std::filesystem::path &checkpoint) const {
     return checkpoint_closure_result(checkpoint).facts;
@@ -1480,8 +4623,80 @@ public:
     checkpoint_closure_result_t out{};
     std::unordered_set<std::string> seen_checkpoints;
     std::unordered_set<std::string> seen_facts;
+    std::unordered_set<std::string> seen_identity_bindings;
     checkpoint_closure_impl(exposure_detail::checkpoint_key(checkpoint), out,
-                            seen_checkpoints, seen_facts, /*is_root=*/true);
+                            seen_checkpoints, seen_facts,
+                            seen_identity_bindings, /*is_root=*/true);
+    finalize_checkpoint_closure_authority(out);
+    return out;
+  }
+
+  [[nodiscard]] checkpoint_closure_result_t
+  checkpoint_closure_result_for_identity(
+      const std::string &checkpoint_id,
+      const std::string &checkpoint_file_digest) const {
+    checkpoint_closure_result_t out{};
+    out.resolution_authority = "checkpoint_id_file_digest";
+    out.legacy_path_fallback = false;
+    out.root_checkpoint_id = checkpoint_id;
+    out.root_checkpoint_file_digest = checkpoint_file_digest;
+    if (checkpoint_id.empty() || checkpoint_file_digest.empty()) {
+      out.identity_mismatches.push_back(
+          "checkpoint identity lookup requires checkpoint_id and "
+          "checkpoint_file_digest");
+      return out;
+    }
+
+    std::vector<const lattice_checkpoint_fact_t *> candidates;
+    bool saw_same_id_with_wrong_digest = false;
+    const auto &index = lookup_index();
+    const auto id_it = index.checkpoint_fact_indices_by_id.find(checkpoint_id);
+    if (id_it != index.checkpoint_fact_indices_by_id.end()) {
+      for (const auto fact_index : id_it->second) {
+        const auto &fact = checkpoint_facts_.at(fact_index);
+        if (fact.checkpoint_file_digest != checkpoint_file_digest) {
+          saw_same_id_with_wrong_digest = true;
+          continue;
+        }
+        candidates.push_back(&fact);
+      }
+    }
+    for (const auto &fact : checkpoint_facts_) {
+      if (fact.checkpoint_id != checkpoint_id ||
+          fact.checkpoint_file_digest == checkpoint_file_digest) {
+        continue;
+      }
+      saw_same_id_with_wrong_digest = true;
+    }
+    if (saw_same_id_with_wrong_digest) {
+      out.identity_mismatches.push_back(
+          "checkpoint_id matched a checkpoint fact with a different "
+          "checkpoint_file_digest");
+    }
+    if (candidates.empty()) {
+      out.unresolved_input_checkpoints.emplace_back(
+          std::filesystem::path("checkpoint_id:" + checkpoint_id));
+      return out;
+    }
+    std::set<std::string> candidate_paths;
+    for (const auto *candidate : candidates) {
+      candidate_paths.insert(
+          exposure_detail::checkpoint_key(candidate->checkpoint_path));
+    }
+    if (candidate_paths.size() != 1) {
+      out.identity_mismatches.push_back(
+          "checkpoint_id/checkpoint_file_digest resolves to multiple "
+          "checkpoint paths");
+      return out;
+    }
+
+    std::unordered_set<std::string> seen_checkpoints;
+    std::unordered_set<std::string> seen_facts;
+    std::unordered_set<std::string> seen_identity_bindings;
+    checkpoint_closure_impl(*candidate_paths.begin(), out, seen_checkpoints,
+                            seen_facts, seen_identity_bindings,
+                            /*is_root=*/true);
+    finalize_checkpoint_closure_authority(out);
     return out;
   }
 
@@ -1502,29 +4717,82 @@ public:
   }
 
 private:
+  struct exposure_lookup_index_t {
+    bool built{false};
+    std::unordered_map<std::string, std::vector<std::size_t>>
+        exposure_fact_indices_by_output_checkpoint{};
+    std::unordered_map<std::string, std::vector<std::size_t>>
+        checkpoint_fact_indices_by_path{};
+    std::unordered_map<std::string, std::vector<std::size_t>>
+        checkpoint_fact_indices_by_id{};
+  };
+
+  void invalidate_lookup_index() const {
+    lookup_index_ = exposure_lookup_index_t{};
+  }
+
+  [[nodiscard]] const exposure_lookup_index_t &lookup_index() const {
+    if (lookup_index_.built) {
+      return lookup_index_;
+    }
+    lookup_index_.exposure_fact_indices_by_output_checkpoint.clear();
+    lookup_index_.checkpoint_fact_indices_by_path.clear();
+    lookup_index_.checkpoint_fact_indices_by_id.clear();
+    for (std::size_t i = 0; i < facts_.size(); ++i) {
+      const auto key =
+          exposure_detail::checkpoint_key(facts_[i].output_checkpoint);
+      if (!key.empty()) {
+        lookup_index_.exposure_fact_indices_by_output_checkpoint[key].push_back(
+            i);
+      }
+    }
+    for (std::size_t i = 0; i < checkpoint_facts_.size(); ++i) {
+      const auto path_key =
+          exposure_detail::checkpoint_key(checkpoint_facts_[i].checkpoint_path);
+      if (!path_key.empty()) {
+        lookup_index_.checkpoint_fact_indices_by_path[path_key].push_back(i);
+      }
+      if (!checkpoint_facts_[i].checkpoint_id.empty()) {
+        lookup_index_
+            .checkpoint_fact_indices_by_id[checkpoint_facts_[i].checkpoint_id]
+            .push_back(i);
+      }
+    }
+    lookup_index_.built = true;
+    return lookup_index_;
+  }
+
   void checkpoint_closure_impl(
       const std::string &checkpoint_key, checkpoint_closure_result_t &out,
       std::unordered_set<std::string> &seen_checkpoints,
-      std::unordered_set<std::string> &seen_facts, bool is_root) const {
+      std::unordered_set<std::string> &seen_facts,
+      std::unordered_set<std::string> &seen_identity_bindings,
+      bool is_root) const {
     if (checkpoint_key.empty() ||
         !seen_checkpoints.insert(checkpoint_key).second) {
       return;
     }
     bool found_producer = false;
-    for (const auto &fact : facts_) {
-      if (exposure_detail::checkpoint_key(fact.output_checkpoint) !=
-          checkpoint_key) {
-        continue;
-      }
-      found_producer = true;
-      const auto fact_key = fact.job_id + "|" + exposure_fact_digest(fact);
-      if (seen_facts.insert(fact_key).second) {
-        out.facts.push_back(fact);
-      }
-      for (const auto &input_checkpoint : fact.input_checkpoints) {
-        checkpoint_closure_impl(
-            exposure_detail::checkpoint_key(input_checkpoint), out,
-            seen_checkpoints, seen_facts, /*is_root=*/false);
+    const auto &index = lookup_index();
+    const auto fact_it =
+        index.exposure_fact_indices_by_output_checkpoint.find(checkpoint_key);
+    if (fact_it != index.exposure_fact_indices_by_output_checkpoint.end()) {
+      for (const auto fact_index : fact_it->second) {
+        const auto &fact = facts_.at(fact_index);
+        found_producer = true;
+        const auto current_fact_digest = exposure_fact_digest(fact);
+        const auto fact_key = fact.job_id + "|" + current_fact_digest;
+        validate_checkpoint_identity_for_producer(
+            checkpoint_key, fact, out, seen_identity_bindings, is_root);
+        if (seen_facts.insert(fact_key).second) {
+          out.facts.push_back(fact);
+        }
+        for (const auto &input_checkpoint : fact.input_checkpoints) {
+          checkpoint_closure_impl(
+              exposure_detail::checkpoint_key(input_checkpoint), out,
+              seen_checkpoints, seen_facts, seen_identity_bindings,
+              /*is_root=*/false);
+        }
       }
     }
     if (!found_producer && !is_root) {
@@ -1532,9 +4800,134 @@ private:
     }
   }
 
+  void validate_checkpoint_identity_for_producer(
+      const std::string &checkpoint_key,
+      const lattice_exposure_fact_t &producer_fact,
+      checkpoint_closure_result_t &out,
+      std::unordered_set<std::string> &seen_identity_bindings,
+      bool is_root) const {
+    std::vector<std::string> accepted_direct_exposure_digests;
+    accepted_direct_exposure_digests.push_back(
+        exposure_fact_digest(producer_fact));
+    if (exposure_detail::looks_like_lattice_digest(
+            producer_fact.output_checkpoint_exposure_digest) &&
+        producer_fact.output_checkpoint_exposure_digest !=
+            accepted_direct_exposure_digests.front()) {
+      accepted_direct_exposure_digests.push_back(
+          producer_fact.output_checkpoint_exposure_digest);
+    }
+    const auto binding_key =
+        checkpoint_key + "|" + accepted_direct_exposure_digests.front();
+    if (!seen_identity_bindings.insert(binding_key).second) {
+      return;
+    }
+
+    std::vector<const lattice_checkpoint_fact_t *> path_facts;
+    const auto &index = lookup_index();
+    const auto path_it =
+        index.checkpoint_fact_indices_by_path.find(checkpoint_key);
+    if (path_it != index.checkpoint_fact_indices_by_path.end()) {
+      for (const auto checkpoint_fact_index : path_it->second) {
+        path_facts.push_back(&checkpoint_facts_.at(checkpoint_fact_index));
+      }
+    }
+    if (path_facts.empty()) {
+      out.legacy_path_fallback = true;
+      return;
+    }
+
+    std::vector<const lattice_checkpoint_fact_t *> primary_facts;
+    for (const auto *checkpoint_fact : path_facts) {
+      if (!checkpoint_fact->checkpoint_id.empty() &&
+          !checkpoint_fact->checkpoint_file_digest.empty() &&
+          !checkpoint_fact->direct_exposure_digest.empty() &&
+          exposure_detail::looks_like_lattice_digest(
+              checkpoint_fact->checkpoint_id) &&
+          exposure_detail::looks_like_lattice_digest(
+              checkpoint_fact->checkpoint_file_digest) &&
+          exposure_detail::looks_like_lattice_digest(
+              checkpoint_fact->direct_exposure_digest)) {
+        primary_facts.push_back(checkpoint_fact);
+      }
+    }
+    if (primary_facts.empty()) {
+      out.legacy_path_fallback = true;
+      return;
+    }
+
+    std::vector<const lattice_checkpoint_fact_t *> matching_primary_facts;
+    for (const auto *checkpoint_fact : primary_facts) {
+      if (std::find(accepted_direct_exposure_digests.begin(),
+                    accepted_direct_exposure_digests.end(),
+                    checkpoint_fact->direct_exposure_digest) !=
+          accepted_direct_exposure_digests.end()) {
+        matching_primary_facts.push_back(checkpoint_fact);
+      }
+    }
+    if (matching_primary_facts.empty()) {
+      out.legacy_path_fallback = true;
+      return;
+    }
+
+    const auto *selected = matching_primary_facts.front();
+    for (const auto *checkpoint_fact : matching_primary_facts) {
+      if (checkpoint_fact->checkpoint_id != selected->checkpoint_id ||
+          checkpoint_fact->checkpoint_file_digest !=
+              selected->checkpoint_file_digest) {
+        out.identity_mismatches.push_back(
+            "checkpoint path has multiple checkpoint_id/file_digest "
+            "bindings: " +
+            checkpoint_key);
+      }
+      const auto expected_checkpoint_id = exposure_digest_for_text(
+          std::string("checkpoint|") +
+          checkpoint_fact->checkpoint_path.lexically_normal().string() + "|" +
+          checkpoint_fact->checkpoint_file_digest + "|" +
+          checkpoint_fact->direct_exposure_digest);
+      if (checkpoint_fact->checkpoint_id != expected_checkpoint_id) {
+        out.identity_mismatches.push_back(
+            "checkpoint_id does not match checkpoint path, file digest, and "
+            "direct exposure digest for " +
+            checkpoint_key);
+      }
+      const auto actual_file_digest =
+          file_content_digest(checkpoint_fact->checkpoint_path);
+      if (!actual_file_digest.empty() &&
+          actual_file_digest != checkpoint_fact->checkpoint_file_digest) {
+        out.identity_mismatches.push_back("checkpoint_file_digest does not "
+                                          "match checkpoint file content for " +
+                                          checkpoint_key);
+      }
+    }
+
+    if (is_root) {
+      out.root_checkpoint_id = selected->checkpoint_id;
+      out.root_checkpoint_file_digest = selected->checkpoint_file_digest;
+    }
+  }
+
+  static void
+  finalize_checkpoint_closure_authority(checkpoint_closure_result_t &out) {
+    if (!out.identity_mismatches.empty()) {
+      out.resolution_authority = "checkpoint_identity_failed";
+      return;
+    }
+    if (!out.legacy_path_fallback && !out.root_checkpoint_id.empty() &&
+        !out.root_checkpoint_file_digest.empty()) {
+      out.resolution_authority = "checkpoint_id_file_digest";
+      return;
+    }
+    out.resolution_authority = "legacy_path";
+  }
+
   std::vector<lattice_exposure_fact_t> facts_{};
   std::vector<lattice_node_exposure_fact_t> node_facts_{};
   std::vector<lattice_checkpoint_fact_t> checkpoint_facts_{};
+  std::vector<lattice_source_receipt_fact_t> source_receipt_facts_{};
+  std::vector<lattice_selection_signal_fact_t> selection_signal_facts_{};
+  std::vector<lattice_representation_support_fact_t>
+      representation_support_facts_{};
+  mutable exposure_lookup_index_t lookup_index_{};
 };
 
 struct exposure_ledger_scan_result_t {
@@ -1565,76 +4958,532 @@ append_anchor_domain_scan_warning(const lattice_exposure_fact_t &fact,
   warnings.push_back(oss.str());
 }
 
+inline void
+append_source_key_window_scan_warning(const lattice_exposure_fact_t &fact,
+                                      const std::filesystem::path &job_dir,
+                                      std::vector<std::string> &warnings) {
+  const auto audit = audit_source_key_window(fact);
+  if (!audit.available) {
+    return;
+  }
+  if (audit.issues.empty()) {
+    return;
+  }
+
+  std::ostringstream oss;
+  oss << "[lattice_exposure] source-key window warning job_dir="
+      << job_dir.string()
+      << " precision=" << fact.source_key_footprint_precision << " issues=";
+  for (std::size_t i = 0; i < audit.issues.size(); ++i) {
+    if (i != 0) {
+      oss << "|";
+    }
+    oss << audit.issues[i];
+  }
+  warnings.push_back(oss.str());
+}
+
+inline void
+append_source_receipt_scan_warning(const lattice_exposure_fact_t &fact,
+                                   const std::filesystem::path &job_dir,
+                                   std::vector<std::string> &warnings) {
+  const auto parsed = make_source_receipt_facts_from_exposure_fact(fact);
+  if (parsed.issues.empty()) {
+    return;
+  }
+
+  std::ostringstream oss;
+  oss << "[lattice_exposure] source receipt warning job_dir="
+      << job_dir.string() << " issues=";
+  for (std::size_t i = 0; i < parsed.issues.size(); ++i) {
+    if (i != 0) {
+      oss << "|";
+    }
+    oss << parsed.issues[i];
+  }
+  warnings.push_back(oss.str());
+}
+
+inline void
+append_selection_signal_scan_warning(const lattice_exposure_fact_t &fact,
+                                     const std::filesystem::path &job_dir,
+                                     std::vector<std::string> &warnings) {
+  for (const auto &selection_fact :
+       make_selection_signal_facts_from_exposure_fact(fact)) {
+    const auto issues = selection_signal_fact_issues(selection_fact);
+    if (issues.empty()) {
+      continue;
+    }
+    std::ostringstream oss;
+    oss << "[lattice_exposure] selection-signal warning job_dir="
+        << job_dir.string() << " selector_id=" << selection_fact.selector_id
+        << " issues=";
+    for (std::size_t i = 0; i < issues.size(); ++i) {
+      if (i != 0) {
+        oss << "|";
+      }
+      oss << issues[i];
+    }
+    warnings.push_back(oss.str());
+  }
+}
+
+inline bool supplement_representation_health_from_derived(
+    lattice_exposure_fact_t &sidecar_fact,
+    const lattice_exposure_fact_t &derived_fact,
+    const std::unordered_map<std::string, std::string> &sidecar_map = {}) {
+  if (!derived_fact.representation_health_available ||
+      sidecar_fact.target_component != derived_fact.target_component ||
+      sidecar_fact.job_id != derived_fact.job_id) {
+    return false;
+  }
+  const auto key_missing = [&](const char *key) {
+    const auto it = sidecar_map.find(key);
+    return it == sidecar_map.end() || it->second.empty();
+  };
+  bool changed = false;
+  if (!sidecar_fact.representation_health_available) {
+    sidecar_fact.representation_health_available = true;
+    sidecar_fact.mean_invariance_loss = derived_fact.mean_invariance_loss;
+    sidecar_fact.mean_variance_loss = derived_fact.mean_variance_loss;
+    sidecar_fact.mean_covariance_loss = derived_fact.mean_covariance_loss;
+    sidecar_fact.last_grad_norm = derived_fact.last_grad_norm;
+    sidecar_fact.max_grad_norm = derived_fact.max_grad_norm;
+    sidecar_fact.total_valid_projection_rows =
+        derived_fact.total_valid_projection_rows;
+    sidecar_fact.mean_adapter_valid_channel_time_fraction =
+        derived_fact.mean_adapter_valid_channel_time_fraction;
+    sidecar_fact.augmented_valid_feature_count =
+        derived_fact.augmented_valid_feature_count;
+    sidecar_fact.mean_augmented_valid_feature_fraction =
+        derived_fact.mean_augmented_valid_feature_fraction;
+    sidecar_fact.mean_augmented_feature_retention_fraction =
+        derived_fact.mean_augmented_feature_retention_fraction;
+    sidecar_fact.finite_parameter_check = derived_fact.finite_parameter_check;
+    changed = true;
+  }
+  if (!std::isfinite(sidecar_fact.mean_invariance_loss) &&
+      std::isfinite(derived_fact.mean_invariance_loss)) {
+    sidecar_fact.mean_invariance_loss = derived_fact.mean_invariance_loss;
+    changed = true;
+  }
+  if (!std::isfinite(sidecar_fact.mean_variance_loss) &&
+      std::isfinite(derived_fact.mean_variance_loss)) {
+    sidecar_fact.mean_variance_loss = derived_fact.mean_variance_loss;
+    changed = true;
+  }
+  if (!std::isfinite(sidecar_fact.mean_covariance_loss) &&
+      std::isfinite(derived_fact.mean_covariance_loss)) {
+    sidecar_fact.mean_covariance_loss = derived_fact.mean_covariance_loss;
+    changed = true;
+  }
+  if (!std::isfinite(sidecar_fact.last_grad_norm) &&
+      std::isfinite(derived_fact.last_grad_norm)) {
+    sidecar_fact.last_grad_norm = derived_fact.last_grad_norm;
+    changed = true;
+  }
+  if (!std::isfinite(sidecar_fact.max_grad_norm) &&
+      std::isfinite(derived_fact.max_grad_norm)) {
+    sidecar_fact.max_grad_norm = derived_fact.max_grad_norm;
+    changed = true;
+  }
+  if (key_missing("total_valid_projection_rows") &&
+      derived_fact.total_valid_projection_rows > 0) {
+    sidecar_fact.total_valid_projection_rows =
+        derived_fact.total_valid_projection_rows;
+    changed = true;
+  }
+  if (!std::isfinite(sidecar_fact.mean_adapter_valid_channel_time_fraction) &&
+      std::isfinite(derived_fact.mean_adapter_valid_channel_time_fraction)) {
+    sidecar_fact.mean_adapter_valid_channel_time_fraction =
+        derived_fact.mean_adapter_valid_channel_time_fraction;
+    changed = true;
+  }
+  if (key_missing("augmented_valid_feature_count") &&
+      derived_fact.augmented_valid_feature_count > 0) {
+    sidecar_fact.augmented_valid_feature_count =
+        derived_fact.augmented_valid_feature_count;
+    changed = true;
+  }
+  if (!std::isfinite(sidecar_fact.mean_augmented_valid_feature_fraction) &&
+      std::isfinite(derived_fact.mean_augmented_valid_feature_fraction)) {
+    sidecar_fact.mean_augmented_valid_feature_fraction =
+        derived_fact.mean_augmented_valid_feature_fraction;
+    changed = true;
+  }
+  if (!std::isfinite(sidecar_fact.mean_augmented_feature_retention_fraction) &&
+      std::isfinite(derived_fact.mean_augmented_feature_retention_fraction)) {
+    sidecar_fact.mean_augmented_feature_retention_fraction =
+        derived_fact.mean_augmented_feature_retention_fraction;
+    changed = true;
+  }
+  if (key_missing("finite_parameter_check") &&
+      derived_fact.finite_parameter_check) {
+    sidecar_fact.finite_parameter_check = true;
+    changed = true;
+  }
+  if (sidecar_fact.representation_embedding_dim <= 0 &&
+      derived_fact.representation_embedding_dim > 0) {
+    sidecar_fact.representation_embedding_dim =
+        derived_fact.representation_embedding_dim;
+    changed = true;
+  }
+  if (!std::isfinite(sidecar_fact.representation_effective_rank) &&
+      std::isfinite(derived_fact.representation_effective_rank)) {
+    sidecar_fact.representation_effective_rank =
+        derived_fact.representation_effective_rank;
+    changed = true;
+  }
+  if (!std::isfinite(sidecar_fact.representation_effective_rank_fraction) &&
+      std::isfinite(derived_fact.representation_effective_rank_fraction)) {
+    sidecar_fact.representation_effective_rank_fraction =
+        derived_fact.representation_effective_rank_fraction;
+    changed = true;
+  }
+  if (!std::isfinite(sidecar_fact.representation_min_dimension_variance) &&
+      std::isfinite(derived_fact.representation_min_dimension_variance)) {
+    sidecar_fact.representation_min_dimension_variance =
+        derived_fact.representation_min_dimension_variance;
+    changed = true;
+  }
+  if (!std::isfinite(sidecar_fact.representation_max_dimension_variance) &&
+      std::isfinite(derived_fact.representation_max_dimension_variance)) {
+    sidecar_fact.representation_max_dimension_variance =
+        derived_fact.representation_max_dimension_variance;
+    changed = true;
+  }
+  if (!std::isfinite(sidecar_fact.representation_condition_number) &&
+      std::isfinite(derived_fact.representation_condition_number)) {
+    sidecar_fact.representation_condition_number =
+        derived_fact.representation_condition_number;
+    changed = true;
+  }
+  if (!std::isfinite(sidecar_fact.representation_isotropy_score) &&
+      std::isfinite(derived_fact.representation_isotropy_score)) {
+    sidecar_fact.representation_isotropy_score =
+        derived_fact.representation_isotropy_score;
+    changed = true;
+  }
+  return changed;
+}
+
+inline bool supplement_inference_health_from_derived(
+    lattice_exposure_fact_t &sidecar_fact,
+    const lattice_exposure_fact_t &derived_fact,
+    const std::unordered_map<std::string, std::string> &sidecar_map = {}) {
+  if (!derived_fact.inference_health_available ||
+      sidecar_fact.target_component != derived_fact.target_component ||
+      sidecar_fact.job_id != derived_fact.job_id) {
+    return false;
+  }
+  const auto key_missing = [&](const char *key) {
+    const auto it = sidecar_map.find(key);
+    return it == sidecar_map.end() || it->second.empty();
+  };
+  bool changed = false;
+  if (!sidecar_fact.inference_health_available) {
+    sidecar_fact.inference_health_available = true;
+    sidecar_fact.mean_sigma_mean = derived_fact.mean_sigma_mean;
+    sidecar_fact.min_sigma_min = derived_fact.min_sigma_min;
+    sidecar_fact.max_sigma_max = derived_fact.max_sigma_max;
+    sidecar_fact.mean_mixture_entropy = derived_fact.mean_mixture_entropy;
+    sidecar_fact.mean_nll_per_channel = derived_fact.mean_nll_per_channel;
+    sidecar_fact.mean_nll_per_horizon = derived_fact.mean_nll_per_horizon;
+    sidecar_fact.mean_mixture_usage = derived_fact.mean_mixture_usage;
+    sidecar_fact.nonfinite_output_count = derived_fact.nonfinite_output_count;
+    sidecar_fact.last_grad_norm = derived_fact.last_grad_norm;
+    sidecar_fact.max_grad_norm = derived_fact.max_grad_norm;
+    sidecar_fact.finite_parameter_check = derived_fact.finite_parameter_check;
+    changed = true;
+  }
+  if (!std::isfinite(sidecar_fact.mean_sigma_mean) &&
+      std::isfinite(derived_fact.mean_sigma_mean)) {
+    sidecar_fact.mean_sigma_mean = derived_fact.mean_sigma_mean;
+    changed = true;
+  }
+  if (!std::isfinite(sidecar_fact.min_sigma_min) &&
+      std::isfinite(derived_fact.min_sigma_min)) {
+    sidecar_fact.min_sigma_min = derived_fact.min_sigma_min;
+    changed = true;
+  }
+  if (!std::isfinite(sidecar_fact.max_sigma_max) &&
+      std::isfinite(derived_fact.max_sigma_max)) {
+    sidecar_fact.max_sigma_max = derived_fact.max_sigma_max;
+    changed = true;
+  }
+  if (!std::isfinite(sidecar_fact.mean_mixture_entropy) &&
+      std::isfinite(derived_fact.mean_mixture_entropy)) {
+    sidecar_fact.mean_mixture_entropy = derived_fact.mean_mixture_entropy;
+    changed = true;
+  }
+  if (sidecar_fact.mean_nll_per_channel.empty() &&
+      !derived_fact.mean_nll_per_channel.empty()) {
+    sidecar_fact.mean_nll_per_channel = derived_fact.mean_nll_per_channel;
+    changed = true;
+  }
+  if (sidecar_fact.mean_nll_per_horizon.empty() &&
+      !derived_fact.mean_nll_per_horizon.empty()) {
+    sidecar_fact.mean_nll_per_horizon = derived_fact.mean_nll_per_horizon;
+    changed = true;
+  }
+  if (sidecar_fact.mean_mixture_usage.empty() &&
+      !derived_fact.mean_mixture_usage.empty()) {
+    sidecar_fact.mean_mixture_usage = derived_fact.mean_mixture_usage;
+    changed = true;
+  }
+  if (key_missing("nonfinite_output_count")) {
+    sidecar_fact.nonfinite_output_count = derived_fact.nonfinite_output_count;
+    changed = true;
+  }
+  if (!std::isfinite(sidecar_fact.last_grad_norm) &&
+      std::isfinite(derived_fact.last_grad_norm)) {
+    sidecar_fact.last_grad_norm = derived_fact.last_grad_norm;
+    changed = true;
+  }
+  if (!std::isfinite(sidecar_fact.max_grad_norm) &&
+      std::isfinite(derived_fact.max_grad_norm)) {
+    sidecar_fact.max_grad_norm = derived_fact.max_grad_norm;
+    changed = true;
+  }
+  if (key_missing("finite_parameter_check") &&
+      derived_fact.finite_parameter_check) {
+    sidecar_fact.finite_parameter_check = true;
+    changed = true;
+  }
+  return changed;
+}
+
+struct exposure_scan_options_t {
+  bool compare_sidecar_to_derived_fact{true};
+  bool supplement_legacy_sidecars{true};
+  bool derive_node_exposure_facts{true};
+  bool derive_representation_support_facts{true};
+  bool derive_source_receipt_facts{true};
+  bool derive_selection_signal_facts{true};
+  bool read_checkpoint_sidecars{true};
+  bool collect_warnings{true};
+};
+
+struct lattice_job_artifacts_t {
+  std::filesystem::path job_dir{};
+  std::string manifest_text{};
+  std::string state_text{};
+  std::string report_text{};
+  std::string exposure_sidecar_text{};
+  std::string checkpoint_sidecar_text{};
+  std::unordered_map<std::string, std::string> manifest{};
+  std::unordered_map<std::string, std::string> state{};
+  std::unordered_map<std::string, std::string> report{};
+  std::unordered_map<std::string, std::string> exposure_sidecar{};
+  std::unordered_map<std::string, std::string> checkpoint_sidecar{};
+  std::string job_kind{};
+  std::string report_leaf{};
+  bool exposure_sidecar_exists{false};
+  bool has_exposure_sidecar{false};
+  bool checkpoint_sidecar_exists{false};
+  bool has_checkpoint_sidecar{false};
+};
+
+[[nodiscard]] inline lattice_job_artifacts_t
+read_lattice_job_artifacts(const std::filesystem::path &job_dir,
+                           const exposure_scan_options_t &options) {
+  namespace detail = exposure_detail;
+  lattice_job_artifacts_t out{};
+  out.job_dir = job_dir;
+  out.manifest_text = detail::read_text_file_or_empty(job_dir / "job.manifest");
+  out.manifest = detail::parse_assignment_text(out.manifest_text);
+  out.state_text = detail::read_text_file_or_empty(job_dir / "job.state");
+  out.state = detail::parse_assignment_text(out.state_text);
+  out.job_kind = detail::map_get(out.manifest, "job_kind");
+  out.report_leaf =
+      out.job_kind == "representation_vicreg" ? "representation.report"
+      : out.job_kind == "channel_representation_vicreg"
+          ? "channel_representation.report"
+      : out.job_kind == "channel_inference_mdn" ? "channel_inference.report"
+                                                : "inference.report";
+  out.report_text = detail::read_text_file_or_empty(job_dir / out.report_leaf);
+  out.report = detail::parse_assignment_text(out.report_text);
+  const auto exposure_sidecar_path = exposure_fact_path_for_job_dir(job_dir);
+  std::error_code ec;
+  out.exposure_sidecar_exists =
+      std::filesystem::exists(exposure_sidecar_path, ec);
+  out.exposure_sidecar_text =
+      detail::read_text_file_or_empty(exposure_sidecar_path);
+  out.has_exposure_sidecar = !out.exposure_sidecar_text.empty();
+  if (out.has_exposure_sidecar) {
+    out.exposure_sidecar =
+        detail::parse_assignment_text(out.exposure_sidecar_text);
+  }
+  if (options.read_checkpoint_sidecars) {
+    const auto checkpoint_sidecar_path =
+        checkpoint_fact_path_for_job_dir(job_dir);
+    out.checkpoint_sidecar_exists =
+        std::filesystem::exists(checkpoint_sidecar_path, ec);
+    out.checkpoint_sidecar_text =
+        detail::read_text_file_or_empty(checkpoint_sidecar_path);
+    out.has_checkpoint_sidecar = !out.checkpoint_sidecar_text.empty();
+    if (out.has_checkpoint_sidecar) {
+      out.checkpoint_sidecar =
+          detail::parse_assignment_text(out.checkpoint_sidecar_text);
+    }
+  }
+  return out;
+}
+
 [[nodiscard]] inline exposure_ledger_scan_result_t
 scan_exposure_ledger_from_runtime_root(
     const std::filesystem::path &runtime_root,
-    exposure_build_context_t context = {}) {
+    exposure_build_context_t context = {},
+    exposure_scan_options_t options = {}) {
   namespace fs = std::filesystem;
   exposure_ledger_scan_result_t out{};
   std::error_code ec;
   if (!fs::is_directory(runtime_root, ec)) {
-    out.warnings.push_back("[lattice_exposure] runtime root is not a "
-                           "directory: " +
-                           runtime_root.string());
+    if (options.collect_warnings) {
+      out.warnings.push_back("[lattice_exposure] runtime root is not a "
+                             "directory: " +
+                             runtime_root.string());
+    }
     return out;
   }
   const auto process_job_dir = [&](const fs::path &job_dir) {
     try {
-      const auto sidecar = exposure_fact_path_for_job_dir(job_dir);
-      if (fs::exists(sidecar)) {
-        auto sidecar_fact =
-            make_exposure_fact_from_sidecar_file(sidecar, job_dir);
+      const auto artifacts = read_lattice_job_artifacts(job_dir, options);
+      if (artifacts.exposure_sidecar_exists) {
+        if (artifacts.exposure_sidecar_text.empty()) {
+          throw std::runtime_error(
+              "[lattice_exposure] exposure sidecar is empty or unreadable: " +
+              exposure_fact_path_for_job_dir(job_dir).string());
+        }
+        const auto &sidecar_map = artifacts.exposure_sidecar;
+        auto sidecar_fact = make_exposure_fact_from_sidecar_text(
+            artifacts.exposure_sidecar_text, job_dir);
         if (sidecar_fact.split_policy_fingerprint.empty() &&
             !context.split_policy_fingerprint.empty()) {
           sidecar_fact.split_policy_fingerprint =
               context.split_policy_fingerprint;
         }
-        try {
-          const auto derived_fact =
-              make_exposure_fact_from_job_dir(job_dir, context);
-          const auto sidecar_digest = exposure_fact_digest(sidecar_fact);
-          const auto derived_digest = exposure_fact_digest(derived_fact);
-          if (sidecar_digest != derived_digest) {
-            out.warnings.push_back(
-                "[lattice_exposure] sidecar digest differs from derived "
-                "runtime artifact fact for job_dir=" +
-                job_dir.string());
+        if (options.compare_sidecar_to_derived_fact ||
+            options.supplement_legacy_sidecars) {
+          try {
+            const auto derived_fact =
+                make_exposure_fact_from_job_dir(job_dir, context);
+            const auto sidecar_digest = exposure_fact_digest(sidecar_fact);
+            const auto derived_digest = exposure_fact_digest(derived_fact);
+            if (options.compare_sidecar_to_derived_fact &&
+                sidecar_digest != derived_digest && options.collect_warnings) {
+              out.warnings.push_back(
+                  "[lattice_exposure] sidecar digest differs from derived "
+                  "runtime artifact fact for job_dir=" +
+                  job_dir.string());
+            }
+            if (options.supplement_legacy_sidecars &&
+                supplement_representation_health_from_derived(
+                    sidecar_fact, derived_fact, sidecar_map) &&
+                options.collect_warnings) {
+              out.warnings.push_back(
+                  "[lattice_exposure] legacy sidecar supplemented with "
+                  "representation health from runtime report for job_dir=" +
+                  job_dir.string());
+            }
+            if (options.supplement_legacy_sidecars &&
+                supplement_inference_health_from_derived(
+                    sidecar_fact, derived_fact, sidecar_map) &&
+                options.collect_warnings) {
+              out.warnings.push_back("[lattice_exposure] legacy sidecar "
+                                     "supplemented with inference "
+                                     "health from runtime report for job_dir=" +
+                                     job_dir.string());
+            }
+          } catch (const std::exception &ex) {
+            if (options.collect_warnings) {
+              out.warnings.push_back(
+                  "[lattice_exposure] sidecar used but derived fallback failed "
+                  "for job_dir=" +
+                  job_dir.string() + " reason=" + ex.what());
+            }
           }
-        } catch (const std::exception &ex) {
-          out.warnings.push_back(
-              "[lattice_exposure] sidecar used but derived fallback failed for "
-              "job_dir=" +
-              job_dir.string() + " reason=" + ex.what());
         }
-        append_anchor_domain_scan_warning(sidecar_fact, job_dir, out.warnings);
-        for (auto node_fact :
-             make_node_exposure_facts_from_job_dir(job_dir, sidecar_fact)) {
-          out.ledger.add_node(std::move(node_fact));
+        if (options.collect_warnings) {
+          append_anchor_domain_scan_warning(sidecar_fact, job_dir,
+                                            out.warnings);
+          append_source_key_window_scan_warning(sidecar_fact, job_dir,
+                                                out.warnings);
+          if (options.derive_source_receipt_facts) {
+            append_source_receipt_scan_warning(sidecar_fact, job_dir,
+                                               out.warnings);
+          }
+          if (options.derive_selection_signal_facts) {
+            append_selection_signal_scan_warning(sidecar_fact, job_dir,
+                                                 out.warnings);
+          }
         }
-        out.ledger.add(std::move(sidecar_fact));
+        if (options.derive_node_exposure_facts) {
+          for (auto node_fact :
+               make_node_exposure_facts_from_job_dir(job_dir, sidecar_fact)) {
+            out.ledger.add_node(std::move(node_fact));
+          }
+        }
+        if (options.derive_representation_support_facts) {
+          for (auto support_fact :
+               make_representation_support_facts_from_job_dir(job_dir,
+                                                              sidecar_fact)) {
+            out.ledger.add_representation_support(std::move(support_fact));
+          }
+        }
+        out.ledger.add(std::move(sidecar_fact),
+                       options.derive_source_receipt_facts,
+                       options.derive_selection_signal_facts);
       } else {
         auto fact = make_exposure_fact_from_job_dir(job_dir, context);
-        append_anchor_domain_scan_warning(fact, job_dir, out.warnings);
-        for (auto node_fact :
-             make_node_exposure_facts_from_job_dir(job_dir, fact)) {
-          out.ledger.add_node(std::move(node_fact));
+        if (options.collect_warnings) {
+          append_anchor_domain_scan_warning(fact, job_dir, out.warnings);
+          append_source_key_window_scan_warning(fact, job_dir, out.warnings);
+          if (options.derive_source_receipt_facts) {
+            append_source_receipt_scan_warning(fact, job_dir, out.warnings);
+          }
+          if (options.derive_selection_signal_facts) {
+            append_selection_signal_scan_warning(fact, job_dir, out.warnings);
+          }
         }
-        out.ledger.add(std::move(fact));
+        if (options.derive_node_exposure_facts) {
+          for (auto node_fact :
+               make_node_exposure_facts_from_job_dir(job_dir, fact)) {
+            out.ledger.add_node(std::move(node_fact));
+          }
+        }
+        if (options.derive_representation_support_facts) {
+          for (auto support_fact :
+               make_representation_support_facts_from_job_dir(job_dir, fact)) {
+            out.ledger.add_representation_support(std::move(support_fact));
+          }
+        }
+        out.ledger.add(std::move(fact), options.derive_source_receipt_facts,
+                       options.derive_selection_signal_facts);
       }
-      const auto checkpoint_sidecar = checkpoint_fact_path_for_job_dir(job_dir);
-      if (fs::exists(checkpoint_sidecar)) {
+      if (artifacts.checkpoint_sidecar_exists) {
         try {
-          out.ledger.add_checkpoint(make_checkpoint_fact_from_sidecar_file(
-              checkpoint_sidecar, job_dir));
+          if (artifacts.checkpoint_sidecar_text.empty()) {
+            throw std::runtime_error(
+                "[lattice_exposure] checkpoint sidecar is empty or "
+                "unreadable: " +
+                checkpoint_fact_path_for_job_dir(job_dir).string());
+          }
+          out.ledger.add_checkpoint(make_checkpoint_fact_from_sidecar_text(
+              artifacts.checkpoint_sidecar_text, job_dir));
         } catch (const std::exception &ex) {
-          out.warnings.push_back(
-              "[lattice_exposure] skipped checkpoint sidecar job_dir=" +
-              job_dir.string() + " reason=" + ex.what());
+          if (options.collect_warnings) {
+            out.warnings.push_back(
+                "[lattice_exposure] skipped checkpoint sidecar job_dir=" +
+                job_dir.string() + " reason=" + ex.what());
+          }
         }
       }
     } catch (const std::exception &ex) {
-      out.warnings.push_back("[lattice_exposure] skipped job_dir=" +
-                             job_dir.string() + " reason=" + ex.what());
+      if (options.collect_warnings) {
+        out.warnings.push_back("[lattice_exposure] skipped job_dir=" +
+                               job_dir.string() + " reason=" + ex.what());
+      }
     }
   };
   if (fs::exists(runtime_root / "job.manifest")) {
@@ -1651,9 +5500,831 @@ scan_exposure_ledger_from_runtime_root(
     }
     process_job_dir(it->path());
   }
-  if (ec) {
+  if (ec && options.collect_warnings) {
     out.warnings.push_back("[lattice_exposure] runtime root scan stopped: " +
                            ec.message());
+  }
+  return out;
+}
+
+struct lattice_runtime_index_row_t {
+  std::string relation{};
+  std::string key{};
+  std::string digest{};
+};
+
+struct lattice_runtime_index_relation_count_t {
+  std::string relation{};
+  std::int64_t count{0};
+};
+
+struct lattice_runtime_index_query_t {
+  std::string relation{};
+  std::string key{};
+  std::string key_contains{};
+  std::string digest{};
+  std::string digest_prefix{};
+};
+
+struct lattice_runtime_index_query_result_t {
+  std::int64_t scanned_row_count{0};
+  std::int64_t matching_row_count{0};
+  std::vector<lattice_runtime_index_row_t> rows{};
+};
+
+struct lattice_runtime_index_parity_t {
+  bool checked{false};
+  bool passed{false};
+  bool row_count_matches{false};
+  bool relation_counts_match{false};
+  bool rows_match{false};
+  std::int64_t indexed_row_count{0};
+  std::int64_t live_row_count{0};
+  std::int64_t missing_from_index_count{0};
+  std::int64_t extra_in_index_count{0};
+  std::vector<lattice_runtime_index_relation_count_t> indexed_relation_counts{};
+  std::vector<lattice_runtime_index_relation_count_t> live_relation_counts{};
+  std::vector<lattice_runtime_index_row_t> missing_from_index{};
+  std::vector<lattice_runtime_index_row_t> extra_in_index{};
+  std::vector<std::string> issues{};
+};
+
+enum class lattice_runtime_index_validation_strength_t {
+  header_only,
+  watched_file_manifest,
+  full_runtime_metadata_digest,
+};
+
+[[nodiscard]] inline const char *runtime_index_validation_strength_name(
+    lattice_runtime_index_validation_strength_t strength) {
+  switch (strength) {
+  case lattice_runtime_index_validation_strength_t::header_only:
+    return "header_only";
+  case lattice_runtime_index_validation_strength_t::watched_file_manifest:
+    return "watched_file_manifest";
+  case lattice_runtime_index_validation_strength_t::
+      full_runtime_metadata_digest:
+    return "full_runtime_metadata_digest";
+  }
+  return "unknown";
+}
+
+struct lattice_runtime_index_cache_t {
+  std::string schema{"kikijyeba.lattice.runtime_index_cache.v1"};
+  std::string runtime_root{};
+  std::string runtime_metadata_digest{};
+  std::string watched_file_metadata_digest{};
+  std::string row_set_digest{};
+  std::string source_of_truth{"runtime_files_and_sidecars"};
+  bool db_writes_evidence{false};
+  bool runtime_executor{false};
+  bool rebuildable_from_runtime_files{true};
+  std::int64_t fact_count{0};
+  std::int64_t node_exposure_fact_count{0};
+  std::int64_t checkpoint_fact_count{0};
+  std::int64_t source_receipt_fact_count{0};
+  std::int64_t selection_signal_fact_count{0};
+  std::int64_t representation_support_fact_count{0};
+  std::vector<lattice_runtime_index_relation_count_t> relation_counts{};
+  std::vector<lattice_runtime_index_row_t> rows{};
+  std::vector<std::string> scan_warnings{};
+};
+
+struct lattice_runtime_index_cache_validation_t {
+  std::string validation_strength{"full_runtime_metadata_digest"};
+  bool available{false};
+  bool schema_matches{false};
+  bool metadata_checked{false};
+  bool metadata_matches{false};
+  bool watched_metadata_checked{false};
+  bool watched_metadata_matches{false};
+  bool row_set_checked{false};
+  bool row_set_matches{false};
+  bool relation_counts_checked{false};
+  bool relation_counts_match{false};
+  bool cache_valid{false};
+  std::string expected_runtime_metadata_digest{};
+  std::string observed_runtime_metadata_digest{};
+  std::string expected_watched_file_metadata_digest{};
+  std::string observed_watched_file_metadata_digest{};
+  std::string expected_row_set_digest{};
+  std::string observed_row_set_digest{};
+  std::vector<std::string> issues{};
+};
+
+[[nodiscard]] inline std::vector<lattice_runtime_index_relation_count_t>
+runtime_index_relation_counts(
+    const std::vector<lattice_runtime_index_row_t> &rows);
+
+[[nodiscard]] inline bool runtime_index_relation_counts_equal(
+    const std::vector<lattice_runtime_index_relation_count_t> &a,
+    const std::vector<lattice_runtime_index_relation_count_t> &b);
+
+[[nodiscard]] inline std::string
+runtime_index_rows_digest(std::vector<lattice_runtime_index_row_t> rows);
+
+[[nodiscard]] inline bool
+runtime_index_cache_path_is_metadata(const std::filesystem::path &path) {
+  for (const auto &part : path) {
+    if (part == ".lattice_index") {
+      return true;
+    }
+  }
+  const auto filename = path.filename().string();
+  return filename == "lattice_runtime_index.v1.lls";
+}
+
+[[nodiscard]] inline bool
+runtime_index_watched_file_is_relevant(const std::filesystem::path &path) {
+  if (runtime_index_cache_path_is_metadata(path)) {
+    return false;
+  }
+  const auto filename = path.filename().string();
+  if (filename == "job.manifest" || filename == "job.state" ||
+      filename == "lattice.exposure.fact" ||
+      filename == "lattice.checkpoint.fact") {
+    return true;
+  }
+  if (filename.find(".report") != std::string::npos) {
+    return true;
+  }
+  if (path.extension() == ".lls") {
+    return true;
+  }
+  return false;
+}
+
+[[nodiscard]] inline std::string metadata_digest_for_runtime_files(
+    const std::filesystem::path &runtime_root, std::string_view schema,
+    const std::function<bool(const std::filesystem::path &)> &include_file) {
+  namespace fs = std::filesystem;
+  std::vector<std::string> records;
+  std::error_code ec;
+  if (!fs::exists(runtime_root, ec)) {
+    return exposure_digest_for_text("missing_runtime_root|" +
+                                    runtime_root.string());
+  }
+  const auto append_file = [&](const fs::path &path) {
+    if (!include_file(path)) {
+      return;
+    }
+    std::error_code file_ec;
+    if (!fs::is_regular_file(path, file_ec)) {
+      return;
+    }
+    const auto rel = path.lexically_relative(runtime_root).generic_string();
+    const auto size = fs::file_size(path, file_ec);
+    const auto mtime = fs::last_write_time(path, file_ec);
+    std::ostringstream record;
+    record << rel << "|size=" << (file_ec ? 0 : size)
+           << "|mtime=" << (file_ec ? 0 : mtime.time_since_epoch().count());
+    records.push_back(record.str());
+  };
+  if (fs::is_regular_file(runtime_root, ec)) {
+    append_file(runtime_root);
+  } else {
+    for (fs::recursive_directory_iterator it(runtime_root, ec), end;
+         !ec && it != end; it.increment(ec)) {
+      append_file(it->path());
+    }
+  }
+  std::sort(records.begin(), records.end());
+  std::ostringstream canonical;
+  canonical << "schema=" << schema << "\n";
+  canonical << "runtime_root=" << runtime_root.lexically_normal().string()
+            << "\n";
+  for (const auto &record : records) {
+    canonical << "file=" << record << "\n";
+  }
+  return exposure_digest_for_text(canonical.str());
+}
+
+[[nodiscard]] inline std::string
+runtime_root_metadata_digest(const std::filesystem::path &runtime_root) {
+  return metadata_digest_for_runtime_files(
+      runtime_root, "kikijyeba.lattice.runtime_metadata_digest.v1",
+      [](const std::filesystem::path &path) {
+        return !runtime_index_cache_path_is_metadata(path);
+      });
+}
+
+[[nodiscard]] inline std::string
+watched_runtime_metadata_digest(const std::filesystem::path &runtime_root) {
+  namespace fs = std::filesystem;
+  std::vector<std::string> records;
+  std::error_code ec;
+  if (!fs::exists(runtime_root, ec)) {
+    return exposure_digest_for_text("missing_runtime_root|" +
+                                    runtime_root.string());
+  }
+  const auto append_file = [&](const fs::path &path) {
+    if (!runtime_index_watched_file_is_relevant(path)) {
+      return;
+    }
+    std::error_code file_ec;
+    if (!fs::is_regular_file(path, file_ec)) {
+      return;
+    }
+    const auto rel = path.lexically_relative(runtime_root).generic_string();
+    const auto size = fs::file_size(path, file_ec);
+    const auto mtime = fs::last_write_time(path, file_ec);
+    std::ostringstream record;
+    record << rel << "|size=" << (file_ec ? 0 : size)
+           << "|mtime=" << (file_ec ? 0 : mtime.time_since_epoch().count());
+    records.push_back(record.str());
+  };
+  const auto append_job_dir = [&](const fs::path &job_dir) {
+    std::error_code job_ec;
+    for (fs::directory_iterator it(job_dir, job_ec), end; !job_ec && it != end;
+         it.increment(job_ec)) {
+      append_file(it->path());
+    }
+  };
+  if (fs::is_regular_file(runtime_root, ec)) {
+    append_file(runtime_root);
+  } else if (fs::exists(runtime_root / "job.manifest", ec)) {
+    append_job_dir(runtime_root);
+  } else {
+    for (fs::directory_iterator it(runtime_root, ec), end; !ec && it != end;
+         it.increment(ec)) {
+      if (!it->is_directory(ec)) {
+        append_file(it->path());
+        continue;
+      }
+      if (fs::exists(it->path() / "job.manifest", ec)) {
+        append_job_dir(it->path());
+      }
+    }
+  }
+  std::sort(records.begin(), records.end());
+  std::ostringstream canonical;
+  canonical << "schema=kikijyeba.lattice.watched_runtime_metadata_digest.v1\n";
+  canonical << "runtime_root=" << runtime_root.lexically_normal().string()
+            << "\n";
+  for (const auto &record : records) {
+    canonical << "file=" << record << "\n";
+  }
+  return exposure_digest_for_text(canonical.str());
+}
+
+[[nodiscard]] inline std::string
+node_exposure_index_row_digest(const lattice_node_exposure_fact_t &fact) {
+  std::ostringstream out;
+  out << "relation=node_exposure\n";
+  out << "parent_exposure_fact_digest=" << fact.parent_exposure_fact_digest
+      << "\n";
+  out << "node_id=" << fact.node_id << "\n";
+  out << "node_index=" << fact.node_index << "\n";
+  out << "use_observed_input=" << (fact.use.observed_input ? 1 : 0) << "\n";
+  out << "use_target_supervision=" << (fact.use.target_supervision ? 1 : 0)
+      << "\n";
+  out << "use_evaluation_metric=" << (fact.use.evaluation_metric ? 1 : 0)
+      << "\n";
+  out << "use_selection_signal=" << (fact.use.selection_signal ? 1 : 0) << "\n";
+  out << "routed_row_count=" << fact.routed_row_count << "\n";
+  out << "active_row_count=" << fact.active_row_count << "\n";
+  out << "trained_row_count=" << fact.trained_row_count << "\n";
+  out << "evaluated_row_count=" << fact.evaluated_row_count << "\n";
+  out << "valid_target_count=" << fact.valid_target_count << "\n";
+  out << "valid_target_opportunity_count="
+      << fact.valid_target_opportunity_count << "\n";
+  return exposure_digest_for_text(out.str());
+}
+
+[[nodiscard]] inline lattice_runtime_index_cache_t
+make_runtime_index_cache_from_scan(const std::filesystem::path &runtime_root,
+                                   const exposure_ledger_scan_result_t &scan) {
+  lattice_runtime_index_cache_t cache{};
+  cache.runtime_root = runtime_root.lexically_normal().string();
+  cache.runtime_metadata_digest = runtime_root_metadata_digest(runtime_root);
+  cache.watched_file_metadata_digest =
+      watched_runtime_metadata_digest(runtime_root);
+  cache.fact_count = static_cast<std::int64_t>(scan.ledger.facts().size());
+  cache.node_exposure_fact_count =
+      static_cast<std::int64_t>(scan.ledger.node_facts().size());
+  cache.checkpoint_fact_count =
+      static_cast<std::int64_t>(scan.ledger.checkpoint_facts().size());
+  cache.source_receipt_fact_count =
+      static_cast<std::int64_t>(scan.ledger.source_receipt_facts().size());
+  cache.selection_signal_fact_count =
+      static_cast<std::int64_t>(scan.ledger.selection_signal_facts().size());
+  cache.representation_support_fact_count = static_cast<std::int64_t>(
+      scan.ledger.representation_support_facts().size());
+  cache.scan_warnings = scan.warnings;
+
+  const auto add_row = [&](std::string relation, std::string key,
+                           std::string digest) {
+    cache.rows.push_back(lattice_runtime_index_row_t{
+        .relation = std::move(relation),
+        .key = std::move(key),
+        .digest = std::move(digest),
+    });
+  };
+  for (const auto &fact : scan.ledger.facts()) {
+    add_row("exposure", fact.job_id, exposure_fact_digest(fact));
+  }
+  for (const auto &fact : scan.ledger.node_facts()) {
+    add_row("node_exposure",
+            fact.parent_exposure_fact_digest + "|" + fact.node_id + "|" +
+                std::to_string(fact.node_index),
+            node_exposure_index_row_digest(fact));
+  }
+  for (const auto &fact : scan.ledger.checkpoint_facts()) {
+    add_row("checkpoint", fact.checkpoint_path.lexically_normal().string(),
+            exposure_digest_for_text(canonical_checkpoint_fact_text(fact)));
+  }
+  for (const auto &fact : scan.ledger.source_receipt_facts()) {
+    add_row("source_receipt",
+            fact.parent_exposure_fact_digest + "|" +
+                std::to_string(fact.receipt_index),
+            source_receipt_fact_digest(fact));
+  }
+  for (const auto &fact : scan.ledger.selection_signal_facts()) {
+    add_row("selection_signal",
+            fact.parent_exposure_fact_digest + "|" + fact.selector_id + "|" +
+                fact.selected_checkpoint.string(),
+            selection_signal_fact_digest(fact));
+  }
+  for (const auto &fact : scan.ledger.representation_support_facts()) {
+    add_row("representation_support",
+            fact.parent_exposure_fact_digest + "|" + fact.support_scope + "|" +
+                fact.node_id + "|" + std::to_string(fact.node_index),
+            representation_support_fact_digest(fact));
+  }
+  std::sort(cache.rows.begin(), cache.rows.end(),
+            [](const lattice_runtime_index_row_t &a,
+               const lattice_runtime_index_row_t &b) {
+              if (a.relation != b.relation) {
+                return a.relation < b.relation;
+              }
+              if (a.key != b.key) {
+                return a.key < b.key;
+              }
+              return a.digest < b.digest;
+            });
+  cache.row_set_digest = runtime_index_rows_digest(cache.rows);
+  cache.relation_counts = runtime_index_relation_counts(cache.rows);
+  return cache;
+}
+
+[[nodiscard]] inline lattice_runtime_index_cache_t
+build_runtime_index_cache(const std::filesystem::path &runtime_root,
+                          exposure_build_context_t context = {}) {
+  return make_runtime_index_cache_from_scan(
+      runtime_root,
+      scan_exposure_ledger_from_runtime_root(runtime_root, context));
+}
+
+[[nodiscard]] inline std::string
+canonical_runtime_index_cache_text(const lattice_runtime_index_cache_t &cache) {
+  std::ostringstream out;
+  out << "schema=" << cache.schema << "\n";
+  out << "runtime_root=" << cache.runtime_root << "\n";
+  out << "runtime_metadata_digest=" << cache.runtime_metadata_digest << "\n";
+  out << "watched_file_metadata_digest=" << cache.watched_file_metadata_digest
+      << "\n";
+  out << "row_set_digest=" << cache.row_set_digest << "\n";
+  out << "source_of_truth=" << cache.source_of_truth << "\n";
+  out << "db_writes_evidence=" << (cache.db_writes_evidence ? "true" : "false")
+      << "\n";
+  out << "runtime_executor=" << (cache.runtime_executor ? "true" : "false")
+      << "\n";
+  out << "rebuildable_from_runtime_files="
+      << (cache.rebuildable_from_runtime_files ? "true" : "false") << "\n";
+  out << "fact_count=" << cache.fact_count << "\n";
+  out << "node_exposure_fact_count=" << cache.node_exposure_fact_count << "\n";
+  out << "checkpoint_fact_count=" << cache.checkpoint_fact_count << "\n";
+  out << "source_receipt_fact_count=" << cache.source_receipt_fact_count
+      << "\n";
+  out << "selection_signal_fact_count=" << cache.selection_signal_fact_count
+      << "\n";
+  out << "representation_support_fact_count="
+      << cache.representation_support_fact_count << "\n";
+  out << "relation_count_count=" << cache.relation_counts.size() << "\n";
+  for (std::size_t i = 0; i < cache.relation_counts.size(); ++i) {
+    out << "relation_count_" << i
+        << "_relation=" << cache.relation_counts[i].relation << "\n";
+    out << "relation_count_" << i << "_count=" << cache.relation_counts[i].count
+        << "\n";
+  }
+  out << "row_count=" << cache.rows.size() << "\n";
+  for (std::size_t i = 0; i < cache.rows.size(); ++i) {
+    out << "row_" << i << "_relation=" << cache.rows[i].relation << "\n";
+    out << "row_" << i << "_key=" << cache.rows[i].key << "\n";
+    out << "row_" << i << "_digest=" << cache.rows[i].digest << "\n";
+  }
+  out << "scan_warning_count=" << cache.scan_warnings.size() << "\n";
+  for (std::size_t i = 0; i < cache.scan_warnings.size(); ++i) {
+    out << "scan_warning_" << i << "=" << cache.scan_warnings[i] << "\n";
+  }
+  return out.str();
+}
+
+inline void
+write_runtime_index_cache(const std::filesystem::path &path,
+                          const lattice_runtime_index_cache_t &cache) {
+  write_text_file_atomically(path, canonical_runtime_index_cache_text(cache));
+}
+
+[[nodiscard]] inline lattice_runtime_index_cache_t
+read_runtime_index_cache(const std::filesystem::path &path) {
+  namespace detail = exposure_detail;
+  const auto map = detail::parse_assignment_file(path);
+  lattice_runtime_index_cache_t cache{};
+  cache.schema = detail::map_get(map, "schema");
+  cache.runtime_root = detail::map_get(map, "runtime_root");
+  cache.runtime_metadata_digest =
+      detail::map_get(map, "runtime_metadata_digest");
+  cache.watched_file_metadata_digest =
+      detail::map_get(map, "watched_file_metadata_digest");
+  cache.row_set_digest = detail::map_get(map, "row_set_digest");
+  cache.source_of_truth =
+      detail::map_get(map, "source_of_truth", cache.source_of_truth);
+  cache.db_writes_evidence = detail::parse_bool_fallback(
+      detail::map_get(map, "db_writes_evidence"), false);
+  cache.runtime_executor = detail::parse_bool_fallback(
+      detail::map_get(map, "runtime_executor"), false);
+  cache.rebuildable_from_runtime_files = detail::parse_bool_fallback(
+      detail::map_get(map, "rebuildable_from_runtime_files"), true);
+  cache.fact_count =
+      detail::parse_i64_fallback(detail::map_get(map, "fact_count"), 0);
+  cache.node_exposure_fact_count = detail::parse_i64_fallback(
+      detail::map_get(map, "node_exposure_fact_count"), 0);
+  cache.checkpoint_fact_count = detail::parse_i64_fallback(
+      detail::map_get(map, "checkpoint_fact_count"), 0);
+  cache.source_receipt_fact_count = detail::parse_i64_fallback(
+      detail::map_get(map, "source_receipt_fact_count"), 0);
+  cache.selection_signal_fact_count = detail::parse_i64_fallback(
+      detail::map_get(map, "selection_signal_fact_count"), 0);
+  cache.representation_support_fact_count = detail::parse_i64_fallback(
+      detail::map_get(map, "representation_support_fact_count"), 0);
+  const auto relation_count_count = detail::parse_i64_fallback(
+      detail::map_get(map, "relation_count_count"), 0);
+  for (std::int64_t i = 0; i < relation_count_count; ++i) {
+    const auto prefix = std::string("relation_count_") + std::to_string(i);
+    lattice_runtime_index_relation_count_t relation_count{};
+    relation_count.relation = detail::map_get(map, prefix + "_relation");
+    relation_count.count =
+        detail::parse_i64_fallback(detail::map_get(map, prefix + "_count"), 0);
+    cache.relation_counts.push_back(std::move(relation_count));
+  }
+  const auto row_count =
+      detail::parse_i64_fallback(detail::map_get(map, "row_count"), 0);
+  for (std::int64_t i = 0; i < row_count; ++i) {
+    const auto prefix = std::string("row_") + std::to_string(i);
+    lattice_runtime_index_row_t row{};
+    row.relation = detail::map_get(map, prefix + "_relation");
+    row.key = detail::map_get(map, prefix + "_key");
+    row.digest = detail::map_get(map, prefix + "_digest");
+    cache.rows.push_back(std::move(row));
+  }
+  const auto warning_count =
+      detail::parse_i64_fallback(detail::map_get(map, "scan_warning_count"), 0);
+  for (std::int64_t i = 0; i < warning_count; ++i) {
+    cache.scan_warnings.push_back(
+        detail::map_get(map, std::string("scan_warning_") + std::to_string(i)));
+  }
+  return cache;
+}
+
+[[nodiscard]] inline lattice_runtime_index_cache_validation_t
+validate_runtime_index_cache(
+    const lattice_runtime_index_cache_t &cache,
+    const std::filesystem::path &runtime_root,
+    lattice_runtime_index_validation_strength_t strength =
+        lattice_runtime_index_validation_strength_t::
+            full_runtime_metadata_digest) {
+  lattice_runtime_index_cache_validation_t out{};
+  out.validation_strength = runtime_index_validation_strength_name(strength);
+  out.available = !cache.schema.empty();
+  out.schema_matches =
+      cache.schema == "kikijyeba.lattice.runtime_index_cache.v1";
+  out.observed_runtime_metadata_digest = cache.runtime_metadata_digest;
+  out.observed_watched_file_metadata_digest =
+      cache.watched_file_metadata_digest;
+  out.observed_row_set_digest = cache.row_set_digest;
+  if (strength == lattice_runtime_index_validation_strength_t::
+                      full_runtime_metadata_digest) {
+    out.metadata_checked = true;
+    out.expected_runtime_metadata_digest =
+        runtime_root_metadata_digest(runtime_root);
+    out.metadata_matches =
+        cache.runtime_metadata_digest == out.expected_runtime_metadata_digest;
+  }
+  if (strength ==
+      lattice_runtime_index_validation_strength_t::watched_file_manifest) {
+    out.watched_metadata_checked = true;
+    out.expected_watched_file_metadata_digest =
+        watched_runtime_metadata_digest(runtime_root);
+    out.watched_metadata_matches = cache.watched_file_metadata_digest ==
+                                   out.expected_watched_file_metadata_digest;
+  }
+  out.row_set_checked = out.available;
+  if (out.row_set_checked) {
+    out.expected_row_set_digest = runtime_index_rows_digest(cache.rows);
+    out.row_set_matches = !cache.row_set_digest.empty() &&
+                          cache.row_set_digest == out.expected_row_set_digest;
+  }
+  out.relation_counts_checked = out.available;
+  if (out.relation_counts_checked) {
+    out.relation_counts_match = runtime_index_relation_counts_equal(
+        cache.relation_counts, runtime_index_relation_counts(cache.rows));
+  }
+  if (!out.available) {
+    out.issues.push_back("missing_cache");
+  }
+  if (!out.schema_matches) {
+    out.issues.push_back("schema_mismatch");
+  }
+  if (out.metadata_checked && !out.metadata_matches) {
+    out.issues.push_back("runtime_metadata_digest_mismatch");
+  }
+  if (out.watched_metadata_checked && !out.watched_metadata_matches) {
+    out.issues.push_back("watched_file_metadata_digest_mismatch");
+  }
+  if (out.row_set_checked && !out.row_set_matches) {
+    out.issues.push_back("row_set_digest_mismatch");
+  }
+  if (out.relation_counts_checked && !out.relation_counts_match) {
+    out.issues.push_back("relation_counts_digest_mismatch");
+  }
+  if (cache.db_writes_evidence) {
+    out.issues.push_back("cache_claims_evidence_write_authority");
+  }
+  if (cache.runtime_executor) {
+    out.issues.push_back("cache_claims_runtime_executor_authority");
+  }
+  if (!cache.rebuildable_from_runtime_files) {
+    out.issues.push_back("cache_not_rebuildable_from_runtime_files");
+  }
+  if (cache.source_of_truth != "runtime_files_and_sidecars") {
+    out.issues.push_back("cache_source_of_truth_not_runtime_files");
+  }
+  out.cache_valid = out.issues.empty();
+  return out;
+}
+
+[[nodiscard]] inline bool
+runtime_index_row_less(const lattice_runtime_index_row_t &a,
+                       const lattice_runtime_index_row_t &b) {
+  if (a.relation != b.relation) {
+    return a.relation < b.relation;
+  }
+  if (a.key != b.key) {
+    return a.key < b.key;
+  }
+  return a.digest < b.digest;
+}
+
+[[nodiscard]] inline bool
+runtime_index_row_equal(const lattice_runtime_index_row_t &a,
+                        const lattice_runtime_index_row_t &b) {
+  return a.relation == b.relation && a.key == b.key && a.digest == b.digest;
+}
+
+[[nodiscard]] inline std::string
+runtime_index_rows_digest(std::vector<lattice_runtime_index_row_t> rows) {
+  std::sort(rows.begin(), rows.end(), runtime_index_row_less);
+  std::ostringstream out;
+  out << "schema=kikijyeba.lattice.runtime_index_rows.v1\n";
+  out << "row_count=" << rows.size() << "\n";
+  for (const auto &row : rows) {
+    out << "relation=" << row.relation << "\n";
+    out << "key=" << row.key << "\n";
+    out << "digest=" << row.digest << "\n";
+  }
+  return exposure_digest_for_text(out.str());
+}
+
+[[nodiscard]] inline std::vector<lattice_runtime_index_relation_count_t>
+runtime_index_relation_counts(
+    const std::vector<lattice_runtime_index_row_t> &rows) {
+  std::unordered_map<std::string, std::int64_t> counts;
+  for (const auto &row : rows) {
+    ++counts[row.relation];
+  }
+  std::vector<lattice_runtime_index_relation_count_t> out;
+  out.reserve(counts.size());
+  for (const auto &entry : counts) {
+    out.push_back(lattice_runtime_index_relation_count_t{
+        .relation = entry.first,
+        .count = entry.second,
+    });
+  }
+  std::sort(out.begin(), out.end(),
+            [](const lattice_runtime_index_relation_count_t &a,
+               const lattice_runtime_index_relation_count_t &b) {
+              return a.relation < b.relation;
+            });
+  return out;
+}
+
+[[nodiscard]] inline bool runtime_index_relation_counts_equal(
+    const std::vector<lattice_runtime_index_relation_count_t> &a,
+    const std::vector<lattice_runtime_index_relation_count_t> &b) {
+  if (a.size() != b.size()) {
+    return false;
+  }
+  for (std::size_t i = 0; i < a.size(); ++i) {
+    if (a[i].relation != b[i].relation || a[i].count != b[i].count) {
+      return false;
+    }
+  }
+  return true;
+}
+
+[[nodiscard]] inline bool
+runtime_index_query_matches(const lattice_runtime_index_row_t &row,
+                            const lattice_runtime_index_query_t &query) {
+  if (!query.relation.empty() && row.relation != query.relation) {
+    return false;
+  }
+  if (!query.key.empty() && row.key != query.key) {
+    return false;
+  }
+  if (!query.key_contains.empty() &&
+      row.key.find(query.key_contains) == std::string::npos) {
+    return false;
+  }
+  if (!query.digest.empty() && row.digest != query.digest) {
+    return false;
+  }
+  if (!query.digest_prefix.empty() &&
+      row.digest.rfind(query.digest_prefix, /*pos=*/0) != 0) {
+    return false;
+  }
+  return true;
+}
+
+[[nodiscard]] inline lattice_runtime_index_query_result_t
+query_runtime_index_rows(const std::vector<lattice_runtime_index_row_t> &rows,
+                         const lattice_runtime_index_query_t &query,
+                         std::size_t limit) {
+  lattice_runtime_index_query_result_t out{};
+  out.scanned_row_count = static_cast<std::int64_t>(rows.size());
+  for (const auto &row : rows) {
+    if (!runtime_index_query_matches(row, query)) {
+      continue;
+    }
+    ++out.matching_row_count;
+    if (out.rows.size() < limit) {
+      out.rows.push_back(row);
+    }
+  }
+  return out;
+}
+
+[[nodiscard]] inline lattice_runtime_index_query_result_t
+query_runtime_index_cache(const lattice_runtime_index_cache_t &cache,
+                          const lattice_runtime_index_query_t &query,
+                          std::size_t limit) {
+  return query_runtime_index_rows(cache.rows, query, limit);
+}
+
+[[nodiscard]] inline lattice_runtime_index_parity_t
+compare_runtime_index_rows(std::vector<lattice_runtime_index_row_t> indexed,
+                           std::vector<lattice_runtime_index_row_t> live,
+                           std::size_t preview_limit) {
+  std::sort(indexed.begin(), indexed.end(), runtime_index_row_less);
+  std::sort(live.begin(), live.end(), runtime_index_row_less);
+
+  lattice_runtime_index_parity_t out{};
+  out.checked = true;
+  out.indexed_row_count = static_cast<std::int64_t>(indexed.size());
+  out.live_row_count = static_cast<std::int64_t>(live.size());
+  out.row_count_matches = indexed.size() == live.size();
+  out.indexed_relation_counts = runtime_index_relation_counts(indexed);
+  out.live_relation_counts = runtime_index_relation_counts(live);
+  out.relation_counts_match = runtime_index_relation_counts_equal(
+      out.indexed_relation_counts, out.live_relation_counts);
+
+  std::size_t i = 0;
+  std::size_t j = 0;
+  while (i < indexed.size() || j < live.size()) {
+    if (i < indexed.size() && j < live.size() &&
+        runtime_index_row_equal(indexed[i], live[j])) {
+      ++i;
+      ++j;
+      continue;
+    }
+    if (i >= indexed.size() ||
+        (j < live.size() && runtime_index_row_less(live[j], indexed[i]))) {
+      ++out.missing_from_index_count;
+      if (out.missing_from_index.size() < preview_limit) {
+        out.missing_from_index.push_back(live[j]);
+      }
+      ++j;
+      continue;
+    }
+    ++out.extra_in_index_count;
+    if (out.extra_in_index.size() < preview_limit) {
+      out.extra_in_index.push_back(indexed[i]);
+    }
+    ++i;
+  }
+
+  out.rows_match =
+      out.missing_from_index_count == 0 && out.extra_in_index_count == 0;
+  if (!out.row_count_matches) {
+    out.issues.push_back("row_count_mismatch");
+  }
+  if (!out.relation_counts_match) {
+    out.issues.push_back("relation_counts_mismatch");
+  }
+  if (!out.rows_match) {
+    out.issues.push_back("row_digest_set_mismatch");
+  }
+  out.passed = out.issues.empty();
+  return out;
+}
+
+[[nodiscard]] inline lattice_runtime_index_parity_t
+compare_runtime_index_caches(const lattice_runtime_index_cache_t &indexed,
+                             const lattice_runtime_index_cache_t &live,
+                             std::size_t preview_limit) {
+  return compare_runtime_index_rows(indexed.rows, live.rows, preview_limit);
+}
+
+[[nodiscard]] inline lattice_runtime_index_parity_t
+compare_runtime_index_cache_to_live_scan(
+    const lattice_runtime_index_cache_t &indexed,
+    const std::filesystem::path &runtime_root,
+    exposure_build_context_t context = {}, std::size_t preview_limit = 64) {
+  return compare_runtime_index_caches(
+      indexed, build_runtime_index_cache(runtime_root, std::move(context)),
+      preview_limit);
+}
+
+[[nodiscard]] inline lattice_runtime_index_parity_t
+compare_runtime_index_query_results(
+    const lattice_runtime_index_query_result_t &indexed,
+    const lattice_runtime_index_query_result_t &live,
+    std::size_t preview_limit) {
+  auto out = compare_runtime_index_rows(indexed.rows, live.rows, preview_limit);
+  out.indexed_row_count = indexed.matching_row_count;
+  out.live_row_count = live.matching_row_count;
+  out.row_count_matches = indexed.matching_row_count == live.matching_row_count;
+  const bool indexed_complete =
+      static_cast<std::int64_t>(indexed.rows.size()) ==
+      indexed.matching_row_count;
+  const bool live_complete =
+      static_cast<std::int64_t>(live.rows.size()) == live.matching_row_count;
+  if (!indexed_complete || !live_complete) {
+    out.issues.push_back("query_result_preview_incomplete");
+  }
+  if (!out.row_count_matches &&
+      std::find(out.issues.begin(), out.issues.end(), "row_count_mismatch") ==
+          out.issues.end()) {
+    out.issues.push_back("row_count_mismatch");
+  }
+  out.passed = out.issues.empty();
+  return out;
+}
+
+[[nodiscard]] inline std::vector<forbidden_exposure_overlap_t>
+forbidden_exposure_overlaps(const std::vector<lattice_exposure_fact_t> &facts,
+                            const forbidden_exposure_query_t &query) {
+  std::vector<forbidden_exposure_overlap_t> out;
+  for (const auto &fact : facts) {
+    if (query.require_mutated_component && !fact.use.mutated_component) {
+      continue;
+    }
+    for (const auto use : query.forbidden_uses) {
+      if (!fact_has_use(fact, use)) {
+        continue;
+      }
+      if (anchor_coverage_for_use(fact, use).empty()) {
+        continue;
+      }
+      const auto footprint = source_footprint_for_use(fact, use);
+      const auto intersection =
+          interval_intersection(footprint, query.forbidden_range);
+      if (intersection.empty()) {
+        continue;
+      }
+      forbidden_exposure_overlap_t witness{
+          .fact_digest = exposure_fact_digest(fact),
+          .job_id = fact.job_id,
+          .wave_id = fact.wave_id,
+          .target_component = fact.target_component,
+          .split_name = fact.split_name,
+          .use = use,
+          .mutated_component = fact.use.mutated_component,
+          .source_footprint = footprint,
+          .protected_range = query.forbidden_range,
+          .intersection = intersection,
+      };
+      if (use == exposure_use_t::selection_signal) {
+        const auto selection_fact =
+            make_selection_signal_fact_from_exposure_fact(fact);
+        witness.selector_id = selection_fact.selector_id;
+        witness.selector_kind = selection_fact.selector_kind;
+        witness.selection_event_digest =
+            selection_signal_fact_digest(selection_fact);
+        witness.selected_checkpoint = selection_fact.selected_checkpoint;
+      }
+      out.push_back(std::move(witness));
+    }
   }
   return out;
 }
@@ -1661,19 +6332,7 @@ scan_exposure_ledger_from_runtime_root(
 [[nodiscard]] inline bool has_forbidden_exposure_overlap(
     const std::vector<lattice_exposure_fact_t> &facts,
     const forbidden_exposure_query_t &query) {
-  for (const auto &fact : facts) {
-    if (query.require_mutated_component && !fact.use.mutated_component) {
-      continue;
-    }
-    for (const auto use : query.forbidden_uses) {
-      if (fact_has_use(fact, use) &&
-          intervals_overlap(source_footprint_for_use(fact, use),
-                            query.forbidden_range)) {
-        return true;
-      }
-    }
-  }
-  return false;
+  return !forbidden_exposure_overlaps(facts, query).empty();
 }
 
 [[nodiscard]] inline exposure_coverage_t
@@ -1681,6 +6340,9 @@ coverage_for_use(const std::vector<lattice_exposure_fact_t> &facts,
                  anchor_interval_t target_range, exposure_use_t use,
                  bool require_mutated_component = true) {
   std::vector<anchor_interval_t> intervals;
+  std::vector<std::string> fact_digests;
+  std::vector<lattice_exposure_fact_t> contributing_facts;
+  std::set<std::string> seen_fact_digests;
   for (const auto &fact : facts) {
     if (require_mutated_component && !fact.use.mutated_component) {
       continue;
@@ -1688,16 +6350,43 @@ coverage_for_use(const std::vector<lattice_exposure_fact_t> &facts,
     if (!fact_has_use(fact, use)) {
       continue;
     }
+    const auto fact_digest = exposure_fact_digest(fact);
+    if (!seen_fact_digests.insert(fact_digest).second) {
+      continue;
+    }
     auto interval =
         interval_intersection(anchor_coverage_for_use(fact, use), target_range);
     if (!interval.empty()) {
       intervals.push_back(interval);
+      fact_digests.push_back(fact_digest);
+      contributing_facts.push_back(fact);
     }
   }
-  std::sort(intervals.begin(), intervals.end(),
-            [](anchor_interval_t a, anchor_interval_t b) {
-              return a.begin == b.begin ? a.end < b.end : a.begin < b.begin;
-            });
+  std::vector<std::size_t> order(intervals.size());
+  std::iota(order.begin(), order.end(), std::size_t{0});
+  std::sort(order.begin(), order.end(), [&](std::size_t a, std::size_t b) {
+    if (intervals[a].begin != intervals[b].begin) {
+      return intervals[a].begin < intervals[b].begin;
+    }
+    if (intervals[a].end != intervals[b].end) {
+      return intervals[a].end < intervals[b].end;
+    }
+    return fact_digests[a] < fact_digests[b];
+  });
+  std::vector<anchor_interval_t> sorted_intervals;
+  std::vector<std::string> sorted_fact_digests;
+  std::vector<lattice_exposure_fact_t> sorted_contributing_facts;
+  sorted_intervals.reserve(intervals.size());
+  sorted_fact_digests.reserve(fact_digests.size());
+  sorted_contributing_facts.reserve(contributing_facts.size());
+  for (const auto index : order) {
+    sorted_intervals.push_back(intervals[index]);
+    sorted_fact_digests.push_back(fact_digests[index]);
+    sorted_contributing_facts.push_back(contributing_facts[index]);
+  }
+  intervals = std::move(sorted_intervals);
+  fact_digests = std::move(sorted_fact_digests);
+  contributing_facts = std::move(sorted_contributing_facts);
   std::vector<anchor_interval_t> merged;
   for (const auto interval : intervals) {
     if (merged.empty() || merged.back().end < interval.begin) {
@@ -1710,14 +6399,56 @@ coverage_for_use(const std::vector<lattice_exposure_fact_t> &facts,
   for (const auto interval : merged) {
     covered += interval.length();
   }
+  std::vector<anchor_interval_t> missing;
+  std::int64_t missing_count = 0;
+  if (!target_range.empty()) {
+    auto cursor = target_range.begin;
+    for (const auto interval : merged) {
+      if (cursor < interval.begin) {
+        missing.push_back(
+            anchor_interval_t{.begin = cursor, .end = interval.begin});
+      }
+      cursor = std::max(cursor, interval.end);
+    }
+    if (cursor < target_range.end) {
+      missing.push_back(
+          anchor_interval_t{.begin = cursor, .end = target_range.end});
+    }
+    for (const auto interval : missing) {
+      missing_count += interval.length();
+    }
+  }
   return exposure_coverage_t{
       .target_range = target_range,
+      .contributing_intervals = std::move(intervals),
+      .contributing_fact_digests = std::move(fact_digests),
+      .contributing_facts = std::move(contributing_facts),
+      .covered_intervals = std::move(merged),
+      .missing_intervals = std::move(missing),
       .covered_anchors = covered,
+      .missing_anchors = missing_count,
       .coverage_fraction = target_range.empty()
                                ? 0.0
                                : static_cast<double>(covered) /
                                      static_cast<double>(target_range.length()),
   };
+}
+
+[[nodiscard]] inline std::pair<double, double>
+wilson_score_interval_95(std::int64_t successes, std::int64_t trials) {
+  if (trials <= 0 || successes < 0 || successes > trials) {
+    return {std::numeric_limits<double>::quiet_NaN(),
+            std::numeric_limits<double>::quiet_NaN()};
+  }
+  constexpr double z = 1.959963984540054; // 95% normal quantile.
+  const double n = static_cast<double>(trials);
+  const double p = static_cast<double>(successes) / n;
+  const double z2 = z * z;
+  const double denom = 1.0 + z2 / n;
+  const double center = p + z2 / (2.0 * n);
+  const double margin = z * std::sqrt((p * (1.0 - p) + z2 / (4.0 * n)) / n);
+  return {std::max(0.0, (center - margin) / denom),
+          std::min(1.0, (center + margin) / denom)};
 }
 
 [[nodiscard]] inline exposure_load_summary_t
@@ -1734,6 +6465,7 @@ exposure_load_for_use(const std::vector<lattice_exposure_fact_t> &facts,
       out.target_component.empty() ? "all_components" : "target_component";
 
   std::vector<anchor_interval_t> intervals;
+  std::set<std::string> seen_fact_digests;
   for (const auto &fact : facts) {
     if (!out.target_component.empty() &&
         fact.target_component != out.target_component) {
@@ -1743,6 +6475,9 @@ exposure_load_for_use(const std::vector<lattice_exposure_fact_t> &facts,
       continue;
     }
     if (!fact_has_use(fact, use)) {
+      continue;
+    }
+    if (!seen_fact_digests.insert(exposure_fact_digest(fact)).second) {
       continue;
     }
     const auto interval =
@@ -1755,8 +6490,32 @@ exposure_load_for_use(const std::vector<lattice_exposure_fact_t> &facts,
     out.loaded_anchor_events += interval.length();
     ++out.fact_count;
     out.optimizer_steps_total += fact.optimizer_steps;
+    const auto fact_coverage = anchor_coverage_for_use(fact, use);
+    const double overlap_weight =
+        fact_coverage.empty()
+            ? 0.0
+            : std::min(1.0, static_cast<double>(interval.length()) /
+                                static_cast<double>(fact_coverage.length()));
     if (fact.valid_target_count > 0) {
-      out.valid_target_count_total += fact.valid_target_count;
+      out.valid_target_count_total += static_cast<std::int64_t>(std::llround(
+          static_cast<double>(fact.valid_target_count) * overlap_weight));
+    }
+    if (fact.valid_target_count >= 0 &&
+        std::isfinite(fact.valid_target_fraction) &&
+        fact.valid_target_fraction > 0.0 && fact.valid_target_fraction <= 1.0) {
+      const auto denominator = static_cast<std::int64_t>(
+          std::llround(static_cast<double>(fact.valid_target_count) /
+                       fact.valid_target_fraction));
+      if (denominator >= fact.valid_target_count && !fact_coverage.empty()) {
+        const auto successes = static_cast<std::int64_t>(std::llround(
+            static_cast<double>(fact.valid_target_count) * overlap_weight));
+        const auto trials = static_cast<std::int64_t>(
+            std::llround(static_cast<double>(denominator) * overlap_weight));
+        if (successes >= 0 && trials >= successes) {
+          out.valid_target_success_count_for_uncertainty += successes;
+          out.valid_target_opportunity_count_for_uncertainty += trials;
+        }
+      }
     }
     if (!target_range.empty() && std::isfinite(fact.valid_target_fraction)) {
       out.valid_target_cursor_epochs +=
@@ -1799,7 +6558,388 @@ exposure_load_for_use(const std::vector<lattice_exposure_fact_t> &facts,
         static_cast<double>(out.optimizer_steps_total) /
         out.cursor_exposure_load;
   }
+  if (out.valid_target_opportunity_count_for_uncertainty > 0) {
+    out.valid_target_fraction_estimate =
+        static_cast<double>(out.valid_target_success_count_for_uncertainty) /
+        static_cast<double>(out.valid_target_opportunity_count_for_uncertainty);
+    const auto [lower, upper] = wilson_score_interval_95(
+        out.valid_target_success_count_for_uncertainty,
+        out.valid_target_opportunity_count_for_uncertainty);
+    out.valid_target_wilson_lower_95 = lower;
+    out.valid_target_wilson_upper_95 = upper;
+  }
   return out;
+}
+
+[[nodiscard]] inline std::int64_t node_support_valid_target_denominator(
+    std::int64_t trained_row_count, std::int64_t evaluated_row_count,
+    std::int64_t active_row_count, std::int64_t routed_row_count,
+    std::int64_t valid_target_count, double valid_target_fraction) {
+  (void)trained_row_count;
+  (void)evaluated_row_count;
+  (void)active_row_count;
+  (void)routed_row_count;
+  if (valid_target_count > 0 && std::isfinite(valid_target_fraction) &&
+      valid_target_fraction > 0.0) {
+    return static_cast<std::int64_t>(std::llround(
+        static_cast<double>(valid_target_count) / valid_target_fraction));
+  }
+  return 0;
+}
+
+[[nodiscard]] inline std::int64_t node_support_valid_target_denominator(
+    const lattice_node_exposure_fact_t &fact) {
+  if (fact.valid_target_opportunity_count > 0) {
+    return fact.valid_target_opportunity_count;
+  }
+  return node_support_valid_target_denominator(
+      fact.trained_row_count, fact.evaluated_row_count, fact.active_row_count,
+      fact.routed_row_count, fact.valid_target_count,
+      fact.valid_target_fraction);
+}
+
+[[nodiscard]] inline node_support_summary_t
+summarize_node_support(const std::vector<lattice_node_exposure_fact_t> &facts,
+                       std::string target_component_filter = {},
+                       std::string split_name_filter = {}) {
+  node_support_summary_t out{};
+  const bool filter_target_component = !target_component_filter.empty();
+  const bool filter_split_name = !split_name_filter.empty();
+  out.target_component = std::move(target_component_filter);
+  out.split_name = std::move(split_name_filter);
+
+  std::vector<double> valid_counts;
+  std::set<std::pair<std::int64_t, std::string>> unique_nodes;
+  double valid_fraction_sum = 0.0;
+  bool have_weakest = false;
+  for (const auto &fact : facts) {
+    if (filter_target_component &&
+        fact.target_component != out.target_component) {
+      continue;
+    }
+    if (filter_split_name && fact.split_name != out.split_name) {
+      continue;
+    }
+    if (out.target_component.empty()) {
+      out.target_component = fact.target_component;
+    }
+    if (out.split_name.empty()) {
+      out.split_name = fact.split_name;
+    }
+    out.use.observed_input = out.use.observed_input || fact.use.observed_input;
+    out.use.target_supervision =
+        out.use.target_supervision || fact.use.target_supervision;
+    out.use.evaluation_metric =
+        out.use.evaluation_metric || fact.use.evaluation_metric;
+    out.use.selection_signal =
+        out.use.selection_signal || fact.use.selection_signal;
+    out.use.mutated_component =
+        out.use.mutated_component || fact.use.mutated_component;
+    if (fact.use.observed_input) {
+      ++out.observed_input_support_row_count;
+    }
+    if (fact.use.target_supervision) {
+      ++out.target_supervision_support_row_count;
+    }
+    if (fact.use.evaluation_metric) {
+      ++out.evaluation_metric_support_row_count;
+    }
+    if (fact.use.selection_signal) {
+      ++out.selection_signal_support_row_count;
+    }
+    if (fact.use.mutated_component) {
+      ++out.mutating_support_row_count;
+    } else {
+      ++out.non_mutating_support_row_count;
+    }
+
+    ++out.node_count;
+    unique_nodes.insert({fact.node_index, fact.node_id});
+    out.routed_row_count_total += fact.routed_row_count;
+    out.active_row_count_total += fact.active_row_count;
+    out.trained_row_count_total += fact.trained_row_count;
+    out.evaluated_row_count_total += fact.evaluated_row_count;
+    out.valid_target_count_total += fact.valid_target_count;
+    const auto valid_target_denominator =
+        node_support_valid_target_denominator(fact);
+    out.support_rows.push_back(node_support_row_t{
+        .parent_exposure_fact_digest = fact.parent_exposure_fact_digest,
+        .node_id = fact.node_id,
+        .node_index = fact.node_index,
+        .use = fact.use,
+        .routed_row_count = fact.routed_row_count,
+        .active_row_count = fact.active_row_count,
+        .trained_row_count = fact.trained_row_count,
+        .evaluated_row_count = fact.evaluated_row_count,
+        .valid_target_count = fact.valid_target_count,
+        .valid_target_denominator = valid_target_denominator,
+        .valid_target_fraction = fact.valid_target_fraction,
+    });
+    if (valid_target_denominator > 0) {
+      out.valid_target_opportunity_count_total += valid_target_denominator;
+    }
+    valid_counts.push_back(static_cast<double>(fact.valid_target_count));
+
+    const bool weaker_count =
+        !have_weakest ||
+        fact.valid_target_count < out.weakest_valid_target_count;
+    const bool tied_count_lower_fraction =
+        have_weakest &&
+        fact.valid_target_count == out.weakest_valid_target_count &&
+        std::isfinite(fact.valid_target_fraction) &&
+        (!std::isfinite(out.weakest_valid_target_fraction) ||
+         fact.valid_target_fraction < out.weakest_valid_target_fraction);
+    if (weaker_count || tied_count_lower_fraction) {
+      have_weakest = true;
+      out.weakest_valid_target_node_id = fact.node_id;
+      out.weakest_valid_target_node_index = fact.node_index;
+      out.weakest_valid_target_count = fact.valid_target_count;
+      out.weakest_valid_target_denominator = valid_target_denominator;
+      out.weakest_valid_target_fraction =
+          out.weakest_valid_target_denominator > 0
+              ? static_cast<double>(out.weakest_valid_target_count) /
+                    static_cast<double>(out.weakest_valid_target_denominator)
+              : fact.valid_target_fraction;
+    }
+
+    if (std::isfinite(fact.valid_target_fraction)) {
+      if (out.finite_valid_target_fraction_count == 0) {
+        out.min_valid_target_fraction = fact.valid_target_fraction;
+        out.max_valid_target_fraction = fact.valid_target_fraction;
+      } else {
+        out.min_valid_target_fraction =
+            std::min(out.min_valid_target_fraction, fact.valid_target_fraction);
+        out.max_valid_target_fraction =
+            std::max(out.max_valid_target_fraction, fact.valid_target_fraction);
+      }
+      valid_fraction_sum += fact.valid_target_fraction;
+      ++out.finite_valid_target_fraction_count;
+    }
+  }
+
+  out.unique_node_count = static_cast<std::int64_t>(unique_nodes.size());
+  if (out.finite_valid_target_fraction_count > 0) {
+    out.mean_valid_target_fraction =
+        valid_fraction_sum /
+        static_cast<double>(out.finite_valid_target_fraction_count);
+  }
+  if (out.valid_target_opportunity_count_total > 0) {
+    out.valid_target_fraction_estimate =
+        static_cast<double>(out.valid_target_count_total) /
+        static_cast<double>(out.valid_target_opportunity_count_total);
+    const auto [lower, upper] = wilson_score_interval_95(
+        out.valid_target_count_total, out.valid_target_opportunity_count_total);
+    out.valid_target_wilson_lower_95 = lower;
+    out.valid_target_wilson_upper_95 = upper;
+  }
+  if (!valid_counts.empty()) {
+    const double n = static_cast<double>(valid_counts.size());
+    const double sum =
+        std::accumulate(valid_counts.begin(), valid_counts.end(), 0.0);
+    out.valid_target_count_mean = sum / n;
+    if (out.valid_target_count_mean > 0.0) {
+      double variance = 0.0;
+      for (const double value : valid_counts) {
+        const double delta = value - out.valid_target_count_mean;
+        variance += delta * delta;
+      }
+      out.valid_target_count_coefficient_of_variation =
+          std::sqrt(variance / n) / out.valid_target_count_mean;
+
+      std::sort(valid_counts.begin(), valid_counts.end());
+      double weighted_sum = 0.0;
+      for (std::size_t i = 0; i < valid_counts.size(); ++i) {
+        weighted_sum += static_cast<double>(i + 1) * valid_counts[i];
+      }
+      out.valid_target_count_gini =
+          (2.0 * weighted_sum) / (n * sum) - (n + 1.0) / n;
+      if (valid_counts.size() > 1) {
+        double entropy = 0.0;
+        for (const double value : valid_counts) {
+          if (value <= 0.0) {
+            continue;
+          }
+          const double probability = value / sum;
+          entropy -= probability * std::log(probability);
+        }
+        out.valid_target_count_normalized_entropy =
+            entropy / std::log(static_cast<double>(valid_counts.size()));
+      } else {
+        out.valid_target_count_normalized_entropy = 0.0;
+      }
+    } else {
+      out.valid_target_count_coefficient_of_variation = 0.0;
+      out.valid_target_count_gini = 0.0;
+      out.valid_target_count_normalized_entropy = 0.0;
+    }
+  }
+
+  std::sort(out.support_rows.begin(), out.support_rows.end(),
+            [](const node_support_row_t &a, const node_support_row_t &b) {
+              if (a.node_index != b.node_index) {
+                return a.node_index < b.node_index;
+              }
+              if (a.node_id != b.node_id) {
+                return a.node_id < b.node_id;
+              }
+              return a.parent_exposure_fact_digest <
+                     b.parent_exposure_fact_digest;
+            });
+  have_weakest = false;
+  out.weakest_valid_target_node_id.clear();
+  out.weakest_valid_target_node_index = -1;
+  out.weakest_valid_target_count = 0;
+  out.weakest_valid_target_denominator = 0;
+  out.weakest_valid_target_fraction = std::numeric_limits<double>::quiet_NaN();
+  out.weakest_valid_target_wilson_lower_95 =
+      std::numeric_limits<double>::quiet_NaN();
+  out.weakest_valid_target_wilson_upper_95 =
+      std::numeric_limits<double>::quiet_NaN();
+  for (const auto &row : out.support_rows) {
+    const bool weaker_count =
+        !have_weakest ||
+        row.valid_target_count < out.weakest_valid_target_count;
+    const bool tied_count_lower_fraction =
+        have_weakest &&
+        row.valid_target_count == out.weakest_valid_target_count &&
+        std::isfinite(row.valid_target_fraction) &&
+        (!std::isfinite(out.weakest_valid_target_fraction) ||
+         row.valid_target_fraction < out.weakest_valid_target_fraction);
+    if (weaker_count || tied_count_lower_fraction) {
+      have_weakest = true;
+      out.weakest_valid_target_node_id = row.node_id;
+      out.weakest_valid_target_node_index = row.node_index;
+      out.weakest_valid_target_count = row.valid_target_count;
+      out.weakest_valid_target_denominator = row.valid_target_denominator;
+      out.weakest_valid_target_fraction =
+          out.weakest_valid_target_denominator > 0
+              ? static_cast<double>(out.weakest_valid_target_count) /
+                    static_cast<double>(out.weakest_valid_target_denominator)
+              : row.valid_target_fraction;
+    }
+  }
+  if (have_weakest && out.weakest_valid_target_denominator > 0) {
+    const auto [lower, upper] = wilson_score_interval_95(
+        out.weakest_valid_target_count, out.weakest_valid_target_denominator);
+    out.weakest_valid_target_wilson_lower_95 = lower;
+    out.weakest_valid_target_wilson_upper_95 = upper;
+  }
+
+  return out;
+}
+
+[[nodiscard]] inline anchor_interval_t
+node_support_anchor_coverage(const lattice_node_exposure_fact_t &fact) {
+  if (fact.job_status != "completed") {
+    return {};
+  }
+  if (!fact.completed_anchor_range.empty()) {
+    return fact.completed_anchor_range;
+  }
+  return fact.anchor_range;
+}
+
+[[nodiscard]] inline std::optional<lattice_node_exposure_fact_t>
+range_scope_node_support_fact(const lattice_node_exposure_fact_t &fact,
+                              anchor_interval_t target_range) {
+  if (target_range.empty()) {
+    return fact;
+  }
+  const auto fact_coverage = node_support_anchor_coverage(fact);
+  const auto overlap = interval_intersection(fact_coverage, target_range);
+  if (fact_coverage.empty() || overlap.empty()) {
+    return std::nullopt;
+  }
+  const double overlap_weight =
+      std::min(1.0, static_cast<double>(overlap.length()) /
+                        static_cast<double>(fact_coverage.length()));
+  const auto scale_count = [overlap_weight](std::int64_t count) {
+    return static_cast<std::int64_t>(
+        std::llround(static_cast<double>(count) * overlap_weight));
+  };
+
+  auto out = fact;
+  out.anchor_range = overlap;
+  out.completed_anchor_range = overlap;
+  out.routed_row_count = scale_count(fact.routed_row_count);
+  out.active_row_count = scale_count(fact.active_row_count);
+  out.trained_row_count = scale_count(fact.trained_row_count);
+  out.evaluated_row_count = scale_count(fact.evaluated_row_count);
+  out.valid_target_count = scale_count(fact.valid_target_count);
+  if (fact.valid_target_opportunity_count > 0) {
+    out.valid_target_opportunity_count =
+        scale_count(fact.valid_target_opportunity_count);
+    out.valid_target_fraction =
+        out.valid_target_opportunity_count > 0
+            ? static_cast<double>(out.valid_target_count) /
+                  static_cast<double>(out.valid_target_opportunity_count)
+            : std::numeric_limits<double>::quiet_NaN();
+  }
+  return out;
+}
+
+[[nodiscard]] inline node_support_summary_t summarize_node_support_for_range(
+    const std::vector<lattice_node_exposure_fact_t> &facts,
+    anchor_interval_t target_range, std::string target_component_filter = {},
+    std::string split_name_filter = {}) {
+  std::vector<lattice_node_exposure_fact_t> scoped_facts;
+  scoped_facts.reserve(facts.size());
+  for (const auto &fact : facts) {
+    auto scoped = range_scope_node_support_fact(fact, target_range);
+    if (scoped.has_value()) {
+      scoped_facts.push_back(std::move(*scoped));
+    }
+  }
+  return summarize_node_support(scoped_facts,
+                                std::move(target_component_filter),
+                                std::move(split_name_filter));
+}
+
+[[nodiscard]] inline node_support_summary_t
+summarize_node_support_rows(const std::vector<node_support_row_t> &rows,
+                            std::string target_component_filter = {},
+                            std::string split_name_filter = {}) {
+  std::vector<lattice_node_exposure_fact_t> facts;
+  facts.reserve(rows.size());
+  for (const auto &row : rows) {
+    lattice_node_exposure_fact_t fact{};
+    fact.parent_exposure_fact_digest = row.parent_exposure_fact_digest;
+    fact.target_component = target_component_filter;
+    fact.split_name = split_name_filter;
+    fact.node_id = row.node_id;
+    fact.node_index = row.node_index;
+    fact.use = row.use;
+    fact.routed_row_count = row.routed_row_count;
+    fact.active_row_count = row.active_row_count;
+    fact.trained_row_count = row.trained_row_count;
+    fact.evaluated_row_count = row.evaluated_row_count;
+    fact.valid_target_count = row.valid_target_count;
+    fact.valid_target_opportunity_count = row.valid_target_denominator;
+    fact.valid_target_fraction = row.valid_target_fraction;
+    facts.push_back(std::move(fact));
+  }
+  return summarize_node_support(std::move(facts),
+                                std::move(target_component_filter),
+                                std::move(split_name_filter));
+}
+
+[[nodiscard]] inline node_support_summary_t
+filter_node_support_summary(const node_support_summary_t &summary,
+                            exposure_use_t use,
+                            bool require_mutated_component) {
+  std::vector<node_support_row_t> rows;
+  rows.reserve(summary.support_rows.size());
+  for (const auto &row : summary.support_rows) {
+    if (!exposure_use_set_has_use(row.use, use)) {
+      continue;
+    }
+    if (require_mutated_component && !row.use.mutated_component) {
+      continue;
+    }
+    rows.push_back(row);
+  }
+  return summarize_node_support_rows(rows, summary.target_component,
+                                     summary.split_name);
 }
 
 } // namespace cuwacunu::kikijyeba::lattice::exposure

@@ -91,6 +91,17 @@ fixture_paths_t make_config_fixture(const std::string &label,
   const auto sources_dsl = out.dir / "ujcamei.source.registry.dsl";
   const auto channels_dsl = out.dir / "ujcamei.source.retrieval.channels.dsl";
   const auto graph_dsl = out.dir / "kikijyeba.topology.graph.dsl";
+  const auto wave_dsl = out.dir / "kikijyeba.settings.wave.dsl";
+  const auto vicreg_dsl = out.dir / "wikimyei.representation.vicreg.dsl";
+  const auto vicreg_net = out.dir / "wikimyei.representation.vicreg.net";
+  const auto channel_mdn_dsl =
+      out.dir / "wikimyei.inference.expected_value.mdn.dsl";
+  const auto channel_mdn_net =
+      out.dir / "wikimyei.inference.expected_value.mdn.net";
+  const auto vicreg_jkimyei =
+      out.dir / "wikimyei.representation.vicreg.jkimyei";
+  const auto channel_mdn_jkimyei =
+      out.dir / "wikimyei.inference.expected_value.mdn.jkimyei";
   out.config = out.dir / ".config";
 
   write_text(
@@ -184,6 +195,98 @@ fixture_paths_t make_config_fixture(const std::string &label,
                   "-------------------/\n";
   }
   write_text(graph_dsl, graph_text);
+  write_text(wave_dsl, "WAVE_SETTINGS {\n"
+                       "  WAVE_ID = fixture_graph_first_pipeline;\n"
+                       "  TARGET = wikimyei.inference.expected_value.mdn;\n"
+                       "  MODE = run;\n"
+                       "  SOURCE_CURSOR_KIND = graph_anchor;\n"
+                       "  SOURCE_CURSOR_SCOPE = wave_batch;\n"
+                       "  SOURCE_RANGE = all;\n"
+                       "};\n");
+
+  write_text(vicreg_dsl, "VICREG {\n"
+                         "  VERSION = wikimyei.representation.vicreg.v1;\n"
+                         "  COMPONENT_ID = vicreg_v1;\n"
+                         "  INPUT_ROUTE = channel_node_stream;\n"
+                         "  CHANNEL_COUNT = 1;\n"
+                         "  HISTORY_LENGTH = 2;\n"
+                         "  INPUT_WIDTH = 9;\n"
+                         "  CELL_VALID_POLICY = required_features;\n"
+                         "  REQUIRED_FEATURE_COORDS = 0,1,2,3;\n"
+                         "  MIN_VALID_FRACTION = 1.0;\n"
+                         "  USE_MISSINGNESS_INDICATORS = true;\n"
+                         "  DTYPE = float32;\n"
+                         "  DEVICE = cpu;\n"
+                         "};\n");
+  write_text(vicreg_net, "VICREG_NET {\n"
+                         "  ENCODING_DIM = 4;\n"
+                         "  FEATURE_HIDDEN_DIM = 8;\n"
+                         "  TEMPORAL_DEPTH = 1;\n"
+                         "  RECENCY_DECAY = 0.75;\n"
+                         "  VICREG_PROJECTOR_DIM = 6;\n"
+                         "  VICREG_PROJECTOR_HIDDEN_DIM = 8;\n"
+                         "  VICREG_PROJECTOR_DEPTH = 1;\n"
+                         "  GLOBAL_AUX_WEIGHT = 0.0;\n"
+                         "};\n");
+  write_text(channel_mdn_dsl,
+             "MDN {\n"
+             "  VERSION = wikimyei.inference.expected_value.mdn.v1;\n"
+             "  COMPONENT_ID = channel_context_mdn_v1;\n"
+             "  INPUT_REPRESENTATION_ID = vicreg_v1;\n"
+             "  CONTEXT_MODE = channel_context_strict;\n"
+             "  TARGET_DOMAIN = channel_node_future;\n"
+             "  TARGET_COORDS = 0,1,2,3;\n"
+             "  TARGET_MASK_POLICY = all_target_features_valid;\n"
+             "  ACTIVITY_TARGET = node_feature_support_mean;\n"
+             "  SIGMA_MIN = 0.001;\n"
+             "  SIGMA_MAX = 0.0;\n"
+             "  EPS = 0.000001;\n"
+             "};\n");
+  write_text(channel_mdn_net, "MDN_NET {\n"
+                              "  CHANNEL_COUNT = 1;\n"
+                              "  FUTURE_HORIZON = 1;\n"
+                              "  MIXTURE_COUNT = 2;\n"
+                              "  HIDDEN_WIDTH = 8;\n"
+                              "  RESIDUAL_DEPTH = 1;\n"
+                              "};\n");
+  write_text(vicreg_jkimyei,
+             "TRAINING {\n"
+             "  VERSION = wikimyei.representation.vicreg.jkimyei.v1;\n"
+             "  TRAINING_ID = fixture_vicreg;\n"
+             "  TASK = vicreg_representation;\n"
+             "  COMPONENT_ID = vicreg_v1;\n"
+             "  OPTIMIZER = adam;\n"
+             "  LEARNING_RATE = 0.001;\n"
+             "  MAX_STEPS = 0;\n"
+             "  BATCH_SIZE = 2;\n"
+             "  GRAD_CLIP_NORM = 0.0;\n"
+             "  CHECKPOINT_EVERY = 1;\n"
+             "  REPORT_EVERY = 1;\n"
+             "  VALIDATION_EVERY = 0;\n"
+             "  SEED = 17;\n"
+             "  FREEZE_REPRESENTATION = false;\n"
+             "};\n");
+  write_text(channel_mdn_jkimyei,
+             "TRAINING {\n"
+             "  VERSION = wikimyei.inference.expected_value.mdn."
+             "jkimyei.v1;\n"
+             "  TRAINING_ID = fixture_channel_mdn;\n"
+             "  TASK = mdn_expected_value_inference;\n"
+             "  COMPONENT_ID = channel_context_mdn_v1;\n"
+             "  OPTIMIZER = adam;\n"
+             "  LEARNING_RATE = 0.01;\n"
+             "  MAX_STEPS = 0;\n"
+             "  BATCH_SIZE = 2;\n"
+             "  GRAD_CLIP_NORM = 0.0;\n"
+             "  CHECKPOINT_EVERY = 1;\n"
+             "  REPORT_EVERY = 1;\n"
+             "  VALIDATION_EVERY = 0;\n"
+             "  SEED = 31;\n"
+             "  FREEZE_REPRESENTATION = true;\n"
+             "  INPUT_REPRESENTATION_CHECKPOINT = ;\n"
+             "  INPUT_MDN_CHECKPOINT = ;\n"
+             "  ALLOW_UNTRAINED_REPRESENTATION = true;\n"
+             "};\n");
 
   write_text(
       out.config,
@@ -208,8 +311,8 @@ fixture_paths_t make_config_fixture(const std::string &label,
           "\n"
           "kikijyeba_settings_wave_dsl_bnf_path = "
           "/cuwacunu/src/config/grammar/kikijyeba.settings.wave.dsl.bnf\n"
-          "kikijyeba_settings_wave_dsl_path = "
-          "/cuwacunu/src/config/kikijyeba.settings.wave.dsl"
+          "kikijyeba_settings_wave_dsl_path = " +
+          wave_dsl.string() +
           "\n\n"
           "[WIKIMYEI]\n"
           "wikimyei_expression_nodelift_srl_dsl_bnf_path = "
@@ -239,6 +342,30 @@ fixture_paths_t make_config_fixture(const std::string &label,
           "wikimyei_inference_expected_value_mdn_net_path = "
           "/cuwacunu/src/config/"
           "wikimyei.inference.expected_value.mdn.net\n\n"
+          "wikimyei_representation_vicreg_dsl_bnf_path = "
+          "/cuwacunu/src/config/grammar/"
+          "wikimyei.representation.vicreg.dsl.bnf\n"
+          "wikimyei_representation_vicreg_dsl_path = " +
+          vicreg_dsl.string() +
+          "\n"
+          "wikimyei_representation_vicreg_net_bnf_path = "
+          "/cuwacunu/src/config/grammar/"
+          "wikimyei.representation.vicreg.net.bnf\n"
+          "wikimyei_representation_vicreg_net_path = " +
+          vicreg_net.string() +
+          "\n"
+          "wikimyei_inference_expected_value_mdn_dsl_bnf_path = "
+          "/cuwacunu/src/config/grammar/"
+          "wikimyei.inference.expected_value.mdn.dsl.bnf\n"
+          "wikimyei_inference_expected_value_mdn_dsl_path = " +
+          channel_mdn_dsl.string() +
+          "\n"
+          "wikimyei_inference_expected_value_mdn_net_bnf_path = "
+          "/cuwacunu/src/config/grammar/"
+          "wikimyei.inference.expected_value.mdn.net.bnf\n"
+          "wikimyei_inference_expected_value_mdn_net_path = " +
+          channel_mdn_net.string() +
+          "\n\n"
           "[JKIMYEI]\n"
           "wikimyei_representation_vicreg_jkimyei_bnf_path = "
           "/cuwacunu/src/config/grammar/"
@@ -250,7 +377,18 @@ fixture_paths_t make_config_fixture(const std::string &label,
           "wikimyei.inference.expected_value.mdn.jkimyei.bnf\n"
           "wikimyei_inference_expected_value_mdn_jkimyei_path = "
           "/cuwacunu/src/config/"
-          "wikimyei.inference.expected_value.mdn.jkimyei\n");
+          "wikimyei.inference.expected_value.mdn.jkimyei\n"
+          "wikimyei_representation_vicreg_jkimyei_bnf_path = "
+          "/cuwacunu/src/config/grammar/"
+          "wikimyei.representation.vicreg.jkimyei.bnf\n"
+          "wikimyei_representation_vicreg_jkimyei_path = " +
+          vicreg_jkimyei.string() +
+          "\n"
+          "wikimyei_inference_expected_value_mdn_jkimyei_bnf_path = "
+          "/cuwacunu/src/config/grammar/"
+          "wikimyei.inference.expected_value.mdn.jkimyei.bnf\n"
+          "wikimyei_inference_expected_value_mdn_jkimyei_path = " +
+          channel_mdn_jkimyei.string() + "\n");
 
   return out;
 }
@@ -372,12 +510,26 @@ void test_default_config_dry_run_report() {
   check(report.mdn_validation_every == 0, "dry-run reports validation cadence");
   check(report.analytics_status == "decoded_validated_not_emitted",
         "dry-run reports analytics status");
-  check(report.wave_source_range_policy == "all",
-        "dry-run reports default wave source range");
-  check(report.requested_anchor_index_begin == -1,
-        "dry-run reports unbounded wave begin");
-  check(report.requested_anchor_index_end == -1,
-        "dry-run reports unbounded wave end");
+  check(report.wave_source_range_policy ==
+            cuwacunu::kikijyeba::settings::source_range_policy_name(
+                bundle.wave_settings.source_range_policy),
+        "dry-run reports configured wave source range");
+  if (bundle.wave_settings.anchor_index_begin.has_value()) {
+    check(report.requested_anchor_index_begin ==
+              static_cast<int64_t>(*bundle.wave_settings.anchor_index_begin),
+          "dry-run reports configured wave begin");
+  } else {
+    check(report.requested_anchor_index_begin == -1,
+          "dry-run reports unbounded wave begin");
+  }
+  if (bundle.wave_settings.anchor_index_end.has_value()) {
+    check(report.requested_anchor_index_end ==
+              static_cast<int64_t>(*bundle.wave_settings.anchor_index_end),
+          "dry-run reports configured wave end");
+  } else {
+    check(report.requested_anchor_index_end == -1,
+          "dry-run reports unbounded wave end");
+  }
   check(report.node_count == 3, "default dry-run node count");
   check(report.edge_count == 3, "default dry-run edge count");
   check(report.active_channel_count == 3, "default dry-run active channels");
@@ -408,6 +560,129 @@ void test_default_config_dry_run_report() {
         "default graph fingerprint available");
   std::cout << "[protocol_pipeline_builder dry-run] " << report.summary()
             << "\n";
+}
+
+void test_default_channel_config_dry_run_report() {
+  const auto bundle =
+      builder::load_channel_graph_first_config_bundle_from_config(
+          "/cuwacunu/src/config/.config");
+  const auto contract =
+      builder::load_channel_graph_first_protocol_contract_from_config(
+          "/cuwacunu/src/config/.config");
+  check(!builder::channel_graph_first_protocol_contract_fingerprint(contract)
+             .empty(),
+        "default channel protocol contract has fingerprint");
+  check(builder::channel_graph_first_protocol_contract_token(contract).find(
+            "kikijyeba.protocol.channel_graph_first.contract.v1/") == 0,
+        "default channel protocol contract has token");
+  check(bundle.vicreg.component_id == "vicreg_v1",
+        "default channel VICReg component id");
+  check(bundle.channel_mdn.input_representation_id ==
+            bundle.vicreg.component_id,
+        "default channel MDN points to channel VICReg");
+  check(bundle.vicreg.channel_count ==
+            builder::active_channel_count(bundle.source_dock),
+        "default channel VICReg count matches source dock");
+  check(bundle.vicreg.history_length ==
+            builder::max_input_length(bundle.source_dock),
+        "default channel VICReg Hx matches source dock");
+  check(bundle.channel_mdn.future_horizon ==
+            builder::max_future_length(bundle.source_dock),
+        "default channel MDN Hf matches source dock");
+
+  builder::graph_first_pipeline_builder_options_t options{};
+  options.dry_run = true;
+  builder::channel_graph_first_pipeline_builder_t<Kline> pipe(bundle, options);
+  const auto report = pipe.dry_run_report();
+  check(pipe.options().batch_size ==
+            static_cast<std::size_t>(bundle.channel_mdn_training.batch_size),
+        "default channel builder batch size derives from config");
+  check(pipe.batch_size_source() == "derived",
+        "default channel builder reports derived batch size");
+  check(report.protocol_contract_token.find(
+            "kikijyeba.protocol.channel_graph_first.contract.v1/") == 0,
+        "channel dry-run reports channel protocol token");
+  check(report.stream_plan.steps.size() == 4,
+        "channel dry-run reports four stream plan steps");
+  check(report.stream_plan.steps.at(2).component_family ==
+            "wikimyei.representation.encoding.vicreg",
+        "channel stream plan includes channel VICReg");
+  check(report.stream_plan.steps.at(2).output_batch ==
+            "channel_representation_batch_t",
+        "channel stream plan exports channel representation batch");
+  check(report.stream_plan.steps.at(3).component_family ==
+            "wikimyei.inference.expected_value.mdn",
+        "channel stream plan includes channel MDN");
+  check(report.stream_plan.steps.at(3).output_batch ==
+            "channel_mdn_input_batch_t",
+        "channel stream plan exports channel MDN input batch");
+  check(report.head_policy == "per_channel_strict",
+        "channel dry-run reports strict channel head policy");
+  check(report.target_domain == "channel_node_future",
+        "channel dry-run reports channel target domain");
+  check(report.mask_profile == "required_features",
+        "channel dry-run reports cell-valid policy");
+  check(report.context_dim == bundle.vicreg.encoding_dim,
+        "channel dry-run reports encoding dim");
+  check(report.mixture_count == bundle.channel_mdn.mixture_count,
+        "channel dry-run reports mixture count");
+  check(report.dock_binding_warning_count == 0,
+        "channel dry-run reports no dock binding warnings");
+  std::cout << "[protocol_pipeline_builder channel dry-run] "
+            << report.summary() << "\n";
+}
+
+void test_channel_contract_ignores_runtime_model_state_inputs() {
+  const auto fixture = make_config_fixture("channel_contract_model_state");
+  const auto base_contract =
+      builder::load_channel_graph_first_protocol_contract_from_config(
+          fixture.config);
+  const auto base_fingerprint =
+      builder::channel_graph_first_protocol_contract_fingerprint(base_contract);
+
+  const auto channel_mdn_jkimyei =
+      fixture.dir / "wikimyei.inference.expected_value.mdn.jkimyei";
+  write_text(channel_mdn_jkimyei,
+             "TRAINING {\n"
+             "  VERSION = wikimyei.inference.expected_value.mdn."
+             "jkimyei.v1;\n"
+             "  TRAINING_ID = fixture_channel_mdn;\n"
+             "  TASK = mdn_expected_value_inference;\n"
+             "  COMPONENT_ID = channel_context_mdn_v1;\n"
+             "  OPTIMIZER = adam;\n"
+             "  LEARNING_RATE = 0.01;\n"
+             "  MAX_STEPS = 0;\n"
+             "  BATCH_SIZE = 2;\n"
+             "  GRAD_CLIP_NORM = 0.0;\n"
+             "  CHECKPOINT_EVERY = 1;\n"
+             "  REPORT_EVERY = 1;\n"
+             "  VALIDATION_EVERY = 0;\n"
+             "  SEED = 31;\n"
+             "  FREEZE_REPRESENTATION = true;\n"
+             "  INPUT_REPRESENTATION_CHECKPOINT = "
+             "/tmp/runtime-evidence/representation.pt;\n"
+             "  INPUT_MDN_CHECKPOINT = /tmp/runtime-evidence/mdn.pt;\n"
+             "  ALLOW_UNTRAINED_REPRESENTATION = false;\n"
+             "};\n");
+
+  const auto model_state_contract =
+      builder::load_channel_graph_first_protocol_contract_from_config(
+          fixture.config);
+  const auto model_state_fingerprint =
+      builder::channel_graph_first_protocol_contract_fingerprint(
+          model_state_contract);
+  check(model_state_contract.channel_mdn_training
+                .input_representation_checkpoint_path ==
+            "/tmp/runtime-evidence/representation.pt",
+        "channel contract still records representation checkpoint input");
+  check(model_state_contract.channel_mdn_training.input_mdn_checkpoint_path ==
+            "/tmp/runtime-evidence/mdn.pt",
+        "channel contract still records MDN checkpoint input");
+  check(
+      !model_state_contract.channel_mdn_training.allow_untrained_representation,
+      "channel contract still records model-state admission policy");
+  check(base_fingerprint == model_state_fingerprint,
+        "model-state inputs do not alter channel protocol contract identity");
 }
 
 void test_config_backed_forward_nll_smoke() {
@@ -518,11 +793,93 @@ void test_config_backed_forward_nll_smoke() {
         "node encoding finite");
 }
 
+void test_channel_config_backed_forward_nll_smoke() {
+  torch::manual_seed(43);
+  const auto fixture = make_config_fixture("channel_forward_nll");
+  const auto bundle =
+      builder::load_channel_graph_first_config_bundle_from_config(
+          fixture.config);
+  check(bundle.vicreg.channel_count == 1, "fixture channel VICReg count");
+  check(bundle.vicreg.history_length == 2, "fixture channel VICReg Hx");
+  check(bundle.channel_mdn.future_horizon == 1, "fixture channel MDN Hf");
+
+  builder::graph_first_pipeline_builder_options_t options{};
+  options.force_rebuild_cache = true;
+  options.batch_size = 2;
+  builder::channel_graph_first_pipeline_builder_t<Kline> pipe(bundle, options);
+  const auto report = pipe.dry_run_report();
+  check(report.stream_plan.steps.at(2).output_batch ==
+            "channel_representation_batch_t",
+        "fixture channel stream plan includes channel representation");
+  check(report.stream_plan.steps.at(3).output_batch ==
+            "channel_mdn_input_batch_t",
+        "fixture channel stream plan includes channel MDN input");
+
+  auto graph_source = pipe.make_graph_source();
+  check(graph_source.size() >= 2, "fixture channel graph source has anchors");
+  auto lifted_stream = pipe.make_node_lifted_stream(std::move(graph_source));
+  auto encoder = pipe.make_vicreg_encoder();
+  auto representation_stream = pipe.make_channel_representation_stream(
+      std::move(lifted_stream), encoder);
+  check(representation_stream.has_next(),
+        "fixture channel representation stream has batch");
+  auto channel_batch = representation_stream.next();
+  check(channel_batch.node_encoding.sizes() ==
+            torch::IntArrayRef({2, 3, 1, pipe.context_dim()}),
+        "fixture channel representation shape");
+  check(channel_batch.node_encoding_mask.sizes() ==
+            torch::IntArrayRef({2, 3, 1}),
+        "fixture channel representation mask shape");
+  check(channel_batch.stream_report.identity.component_family ==
+            "wikimyei.representation.encoding.vicreg",
+        "fixture channel stream report uses channel VICReg family");
+  check(torch::isfinite(channel_batch.node_encoding).all().item<bool>(),
+        "fixture channel encoding finite");
+
+  auto mdn_batch = mdnstream::make_channel_mdn_input_batch(
+      channel_batch, pipe.channel_mdn_adapter_options());
+  check(mdn_batch.context.sizes() ==
+            torch::IntArrayRef({6, 1, pipe.context_dim()}),
+        "fixture channel MDN context shape");
+  check(mdn_batch.future.sizes() == torch::IntArrayRef({6, 1, 1, 4}),
+        "fixture channel MDN future shape");
+  check(mdn_batch.representation_stream_report.cursor.batch_cursor_token ==
+            channel_batch.stream_report.cursor.batch_cursor_token,
+        "channel MDN adapter preserves representation stream cursor");
+
+  auto mdn_model = pipe.make_channel_context_mdn(
+      /*context_dim=*/mdn_batch.context.size(2),
+      /*channel_count=*/mdn_batch.context.size(1),
+      /*horizon_count=*/mdn_batch.future.size(2));
+  auto params = builder::channel_graph_first_pipeline_builder_t<
+      Kline>::collect_channel_mdn_parameters(mdn_model);
+  check(!params.empty(), "channel MDN exposes trainable parameters");
+
+  const auto mask = mdn::combine_channel_context_and_future_mask(
+      mdn_batch.context_mask, mdn_batch.future_mask);
+  check(mask.sum().item<int64_t>() > 0,
+        "fixture channel MDN has valid targets");
+  const auto nll_options =
+      mdn::channel_mdn_nll_options_from_spec(pipe.bundle().channel_mdn);
+  auto out = mdn_model->forward(mdn_batch.context);
+  check(torch::isfinite(out.log_pi).all().item<bool>(),
+        "channel MDN log_pi finite");
+  check(torch::isfinite(out.mu).all().item<bool>(), "channel MDN mu finite");
+  check(torch::isfinite(out.sigma).all().item<bool>(),
+        "channel MDN sigma finite");
+  auto nll = cuwacunu::wikimyei::inference::expected_value::mdn::mdn_nll_map(
+      out, mdn_batch.future, mask, nll_options);
+  check(torch::isfinite(nll).all().item<bool>(), "channel MDN NLL finite");
+  auto loss = nll.sum() / mask.to(nll.scalar_type()).sum().clamp_min(1.0);
+  check(std::isfinite(loss.item<double>()), "fixture channel total NLL finite");
+}
+
 void test_edge_discovery_policy() {
   const auto fixture = make_config_fixture("discover_edges",
                                            /*discover_edges=*/true);
   const auto bundle =
-      builder::load_graph_first_config_bundle_from_config(fixture.config);
+      builder::load_channel_graph_first_config_bundle_from_config(
+          fixture.config);
   check(bundle.source_dock.edge_resolution_policy ==
             builder::graph_first_edge_resolution_policy_t::edge_discovery,
         "fixture uses edge_discovery policy");
@@ -568,7 +925,7 @@ void test_edge_discovery_policy() {
   builder::graph_first_pipeline_builder_options_t options{};
   options.dry_run = true;
   options.batch_size = 2;
-  builder::graph_first_pipeline_builder_t<Kline> pipe(bundle, options);
+  builder::channel_graph_first_pipeline_builder_t<Kline> pipe(bundle, options);
   const auto report = pipe.dry_run_report();
   check(report.edge_resolution_policy == "edge_discovery",
         "dry-run reports discovery policy");
@@ -584,9 +941,10 @@ void test_edge_discovery_policy() {
 
 int main() {
   try {
-    test_default_config_dry_run_report();
+    test_default_channel_config_dry_run_report();
+    test_channel_contract_ignores_runtime_model_state_inputs();
     test_edge_discovery_policy();
-    test_config_backed_forward_nll_smoke();
+    test_channel_config_backed_forward_nll_smoke();
     std::cout << "[Jkimyei GraphFirstPipelineBuilder test] all checks passed\n";
     return 0;
   } catch (const std::exception &ex) {

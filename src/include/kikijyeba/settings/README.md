@@ -15,6 +15,11 @@ VICReg encoder because MDN depends on node encodings. `MODE=train` mutates only
 the target; `MODE=run` applies no optimizer step. `debug` is only a report
 modifier and may be combined with either primary mode.
 
+The channel-preserving path uses
+`TARGET=wikimyei.representation.encoding.vicreg` for VICReg and
+`TARGET=wikimyei.inference.expected_value.mdn` for the strict channel
+MDN. Channel MDN keeps VICReg frozen in `MODE=train`.
+
 Wave settings are not topology and are not training policy. Topology lives in
 `kikijyeba/topology/graph`; training policy lives in `.jkimyei` files consumed by
 Jkimyei.

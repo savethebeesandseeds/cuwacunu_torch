@@ -11,9 +11,9 @@
 #include <torch/torch.h>
 
 #include "jkimyei/api/training_spec.h"
-#include "wikimyei/inference/expected_value/mdn/mdn_spec.h"
+#include "wikimyei/inference/expected_value/mdn/legacy_node_mdn_spec.h"
 #include "wikimyei/inference/expected_value/mdn/mixture_density_network.h"
-#include "wikimyei/inference/expected_value/mdn/stream/mdn_adapter.h"
+#include "wikimyei/inference/expected_value/mdn/stream/legacy_node_mdn_adapter.h"
 
 namespace cuwacunu::jkimyei::training::inference {
 

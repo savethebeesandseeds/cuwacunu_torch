@@ -336,6 +336,20 @@ void test_dry_run_launcher_report() {
                                       /*write_report=*/false);
   const auto report = graph_launcher.dry_run_report();
   check(report.training_id == "smoke_mdn_inference", "dry-run training id");
+  check(report.component_id == "mdn_v1", "dry-run fused MDN component id");
+  check(report.input_representation_id == "node_vicreg_v1",
+        "dry-run fused MDN input representation id");
+  check(report.context_mode == "global_node_context",
+        "dry-run fused MDN context mode");
+  check(report.context_contract == "graph_order.node_representation.v1",
+        "dry-run fused MDN context contract");
+  check(report.context_value_shape == "[B_node,D_e]",
+        "dry-run fused MDN context value shape");
+  check(report.output_contract == "graph_order.node_expected_value.v1",
+        "dry-run fused MDN output contract");
+  check(report.output_value_shape ==
+            "log_pi:[B,N,C,Hf,K];mu_sigma:[B,N,C,Hf,K,Df]",
+        "dry-run fused MDN output value shape");
   check(!report.graph_order_fingerprint.empty(), "dry-run graph fingerprint");
   check(report.node_ids.size() == 3, "dry-run node count");
   check(report.edge_ids.size() == 4, "dry-run edge count");
@@ -511,6 +525,28 @@ void test_config_backed_training_run_and_report_checkpoint() {
   check(report_text.find("training_id=smoke_mdn_inference") !=
             std::string::npos,
         "report contains training id");
+  check(report_text.find("component_id=mdn_v1") != std::string::npos,
+        "report contains fused MDN component id");
+  check(report_text.find("input_representation_id=node_vicreg_v1") !=
+            std::string::npos,
+        "report contains fused MDN input representation id");
+  check(report_text.find("context_mode=global_node_context") !=
+            std::string::npos,
+        "report contains fused MDN context mode");
+  check(
+      report_text.find("context_contract=graph_order.node_representation.v1") !=
+          std::string::npos,
+      "report contains fused MDN context contract");
+  check(report_text.find("context_value_shape=[B_node,D_e]") !=
+            std::string::npos,
+        "report contains fused MDN context shape");
+  check(
+      report_text.find("output_contract=graph_order.node_expected_value.v1") !=
+          std::string::npos,
+      "report contains fused MDN output contract");
+  check(report_text.find("output_value_shape=log_pi:[B,N,C,Hf,K];"
+                         "mu_sigma:[B,N,C,Hf,K,Df]") != std::string::npos,
+        "report contains fused MDN output shape");
   check(report_text.find("graph_order_fingerprint=") != std::string::npos,
         "report contains graph fingerprint");
   check(report_text.find("effective_batch_size=2") != std::string::npos,

@@ -29,6 +29,16 @@
           frozen dependency because MDN needs node encodings. In MODE=train only
           the MDN heads mutate; in MODE=run no optimizer step is applied.
 
+        wikimyei.representation.encoding.vicreg
+          Target the channel-preserving node representation. In MODE=train this
+          mutates VICReg; in MODE=run it executes the channel
+          representation path forward only.
+
+        wikimyei.inference.expected_value.mdn
+          Target channel ExpectedValue. The channel representation encoder runs
+          frozen because Channel MDN consumes `[B,N,C,De]` context. In
+          MODE=train only Channel MDN mutates.
+
     MODE:
       One or more mode atoms, joined with "|".
 
@@ -79,7 +89,7 @@
       in the accepted graph-anchor domain, and END must be greater than BEGIN.
 */
 WAVE_SETTINGS {
-  WAVE_ID = cwu_01v_validation_eval_mdn_1800_2050;
+  WAVE_ID = cwu_01v_channel_validation_eval_mdn_1800_2050;
   TARGET = wikimyei.inference.expected_value.mdn;
   MODE = run|debug;
   SOURCE_CURSOR_KIND = graph_anchor;

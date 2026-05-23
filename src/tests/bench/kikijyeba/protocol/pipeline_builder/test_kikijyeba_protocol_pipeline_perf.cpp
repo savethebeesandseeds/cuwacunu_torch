@@ -160,6 +160,104 @@ std::filesystem::path make_config(const std::filesystem::path &dir,
                                   const std::filesystem::path &graph_dsl,
                                   const std::string &label) {
   const auto config = dir / (label + ".config");
+  const auto wave_dsl = dir / (label + ".wave.dsl");
+  const auto vicreg_dsl = dir / (label + ".vicreg.dsl");
+  const auto vicreg_net = dir / (label + ".vicreg.net");
+  const auto mdn_dsl = dir / (label + ".mdn.dsl");
+  const auto mdn_net = dir / (label + ".mdn.net");
+  const auto vicreg_jkimyei = dir / (label + ".vicreg.jkimyei");
+  const auto mdn_jkimyei = dir / (label + ".mdn.jkimyei");
+
+  write_text(wave_dsl, "WAVE_SETTINGS {\n"
+                       "  WAVE_ID = pipeline_perf;\n"
+                       "  TARGET = wikimyei.inference.expected_value.mdn;\n"
+                       "  MODE = run;\n"
+                       "  SOURCE_CURSOR_KIND = graph_anchor;\n"
+                       "  SOURCE_CURSOR_SCOPE = wave_batch;\n"
+                       "  SOURCE_RANGE = all;\n"
+                       "};\n");
+  write_text(vicreg_dsl, "VICREG {\n"
+                         "  VERSION = wikimyei.representation.vicreg.v1;\n"
+                         "  COMPONENT_ID = vicreg_v1;\n"
+                         "  INPUT_ROUTE = channel_node_stream;\n"
+                         "  CHANNEL_COUNT = 1;\n"
+                         "  HISTORY_LENGTH = 8;\n"
+                         "  INPUT_WIDTH = 9;\n"
+                         "  CELL_VALID_POLICY = required_features;\n"
+                         "  REQUIRED_FEATURE_COORDS = 0,1,2,3;\n"
+                         "  MIN_VALID_FRACTION = 1.0;\n"
+                         "  USE_MISSINGNESS_INDICATORS = true;\n"
+                         "  DTYPE = float32;\n"
+                         "  DEVICE = cpu;\n"
+                         "};\n");
+  write_text(vicreg_net, "VICREG_NET {\n"
+                         "  ENCODING_DIM = 4;\n"
+                         "  FEATURE_HIDDEN_DIM = 8;\n"
+                         "  TEMPORAL_DEPTH = 1;\n"
+                         "  RECENCY_DECAY = 0.75;\n"
+                         "  VICREG_PROJECTOR_DIM = 6;\n"
+                         "  VICREG_PROJECTOR_HIDDEN_DIM = 8;\n"
+                         "  VICREG_PROJECTOR_DEPTH = 1;\n"
+                         "  GLOBAL_AUX_WEIGHT = 0.0;\n"
+                         "};\n");
+  write_text(mdn_dsl, "MDN {\n"
+                      "  VERSION = wikimyei.inference.expected_value.mdn.v1;\n"
+                      "  COMPONENT_ID = channel_context_mdn_v1;\n"
+                      "  INPUT_REPRESENTATION_ID = vicreg_v1;\n"
+                      "  CONTEXT_MODE = channel_context_strict;\n"
+                      "  TARGET_DOMAIN = channel_node_future;\n"
+                      "  TARGET_COORDS = 0,1,2,3;\n"
+                      "  TARGET_MASK_POLICY = all_target_features_valid;\n"
+                      "  ACTIVITY_TARGET = node_feature_support_mean;\n"
+                      "  SIGMA_MIN = 0.001;\n"
+                      "  SIGMA_MAX = 0.0;\n"
+                      "  EPS = 0.000001;\n"
+                      "};\n");
+  write_text(mdn_net, "MDN_NET {\n"
+                      "  CHANNEL_COUNT = 1;\n"
+                      "  FUTURE_HORIZON = 2;\n"
+                      "  MIXTURE_COUNT = 2;\n"
+                      "  HIDDEN_WIDTH = 8;\n"
+                      "  RESIDUAL_DEPTH = 1;\n"
+                      "};\n");
+  write_text(vicreg_jkimyei,
+             "TRAINING {\n"
+             "  VERSION = wikimyei.representation.vicreg.jkimyei.v1;\n"
+             "  TRAINING_ID = pipeline_perf_vicreg;\n"
+             "  TASK = vicreg_representation;\n"
+             "  COMPONENT_ID = vicreg_v1;\n"
+             "  OPTIMIZER = adam;\n"
+             "  LEARNING_RATE = 0.001;\n"
+             "  MAX_STEPS = 0;\n"
+             "  BATCH_SIZE = 8;\n"
+             "  GRAD_CLIP_NORM = 0.0;\n"
+             "  CHECKPOINT_EVERY = 1;\n"
+             "  REPORT_EVERY = 1;\n"
+             "  VALIDATION_EVERY = 0;\n"
+             "  SEED = 17;\n"
+             "  FREEZE_REPRESENTATION = false;\n"
+             "};\n");
+  write_text(mdn_jkimyei,
+             "TRAINING {\n"
+             "  VERSION = wikimyei.inference.expected_value.mdn.jkimyei.v1;\n"
+             "  TRAINING_ID = pipeline_perf_mdn;\n"
+             "  TASK = mdn_expected_value_inference;\n"
+             "  COMPONENT_ID = channel_context_mdn_v1;\n"
+             "  OPTIMIZER = adam;\n"
+             "  LEARNING_RATE = 0.001;\n"
+             "  MAX_STEPS = 0;\n"
+             "  BATCH_SIZE = 8;\n"
+             "  GRAD_CLIP_NORM = 0.0;\n"
+             "  CHECKPOINT_EVERY = 1;\n"
+             "  REPORT_EVERY = 1;\n"
+             "  VALIDATION_EVERY = 0;\n"
+             "  SEED = 31;\n"
+             "  FREEZE_REPRESENTATION = true;\n"
+             "  INPUT_REPRESENTATION_CHECKPOINT = ;\n"
+             "  INPUT_MDN_CHECKPOINT = ;\n"
+             "  ALLOW_UNTRAINED_REPRESENTATION = true;\n"
+             "};\n");
+
   write_text(
       config,
       std::string(
@@ -183,8 +281,8 @@ std::filesystem::path make_config(const std::filesystem::path &dir,
           "\n"
           "kikijyeba_settings_wave_dsl_bnf_path = "
           "/cuwacunu/src/config/grammar/kikijyeba.settings.wave.dsl.bnf\n"
-          "kikijyeba_settings_wave_dsl_path = "
-          "/cuwacunu/src/config/kikijyeba.settings.wave.dsl"
+          "kikijyeba_settings_wave_dsl_path = " +
+          wave_dsl.string() +
           "\n\n"
           "[WIKIMYEI]\n"
           "wikimyei_expression_nodelift_srl_dsl_bnf_path = "
@@ -195,36 +293,39 @@ std::filesystem::path make_config(const std::filesystem::path &dir,
           "wikimyei_representation_vicreg_dsl_bnf_path = "
           "/cuwacunu/src/config/grammar/"
           "wikimyei.representation.vicreg.dsl.bnf\n"
-          "wikimyei_representation_vicreg_dsl_path = "
-          "/cuwacunu/src/config/wikimyei.representation.vicreg.dsl\n"
+          "wikimyei_representation_vicreg_dsl_path = " +
+          vicreg_dsl.string() +
+          "\n"
           "wikimyei_representation_vicreg_net_bnf_path = "
           "/cuwacunu/src/config/grammar/"
           "wikimyei.representation.vicreg.net.bnf\n"
-          "wikimyei_representation_vicreg_net_path = "
-          "/cuwacunu/src/config/wikimyei.representation.vicreg.net\n"
+          "wikimyei_representation_vicreg_net_path = " +
+          vicreg_net.string() +
+          "\n"
           "wikimyei_inference_expected_value_mdn_dsl_bnf_path = "
           "/cuwacunu/src/config/grammar/"
           "wikimyei.inference.expected_value.mdn.dsl.bnf\n"
-          "wikimyei_inference_expected_value_mdn_dsl_path = "
-          "/cuwacunu/src/config/"
-          "wikimyei.inference.expected_value.mdn.dsl\n\n"
+          "wikimyei_inference_expected_value_mdn_dsl_path = " +
+          mdn_dsl.string() +
+          "\n\n"
           "wikimyei_inference_expected_value_mdn_net_bnf_path = "
           "/cuwacunu/src/config/grammar/"
           "wikimyei.inference.expected_value.mdn.net.bnf\n"
-          "wikimyei_inference_expected_value_mdn_net_path = "
-          "/cuwacunu/src/config/"
-          "wikimyei.inference.expected_value.mdn.net\n\n"
+          "wikimyei_inference_expected_value_mdn_net_path = " +
+          mdn_net.string() +
+          "\n\n"
           "[JKIMYEI]\n"
           "wikimyei_representation_vicreg_jkimyei_bnf_path = "
-          "/cuwacunu/src/config/grammar/wikimyei.representation.vicreg.jkimyei.bnf\n"
-          "wikimyei_representation_vicreg_jkimyei_path = "
-          "/cuwacunu/src/config/wikimyei.representation.vicreg.jkimyei\n"
+          "/cuwacunu/src/config/grammar/"
+          "wikimyei.representation.vicreg.jkimyei.bnf\n"
+          "wikimyei_representation_vicreg_jkimyei_path = " +
+          vicreg_jkimyei.string() +
+          "\n"
           "wikimyei_inference_expected_value_mdn_jkimyei_bnf_path = "
           "/cuwacunu/src/config/grammar/"
           "wikimyei.inference.expected_value.mdn.jkimyei.bnf\n"
-          "wikimyei_inference_expected_value_mdn_jkimyei_path = "
-          "/cuwacunu/src/config/"
-          "wikimyei.inference.expected_value.mdn.jkimyei\n");
+          "wikimyei_inference_expected_value_mdn_jkimyei_path = " +
+          mdn_jkimyei.string() + "\n");
   return config;
 }
 
@@ -245,13 +346,13 @@ template <typename Fn> double timed_ms(Fn &&fn) {
 }
 
 perf_result_t
-run_graph_first_pipeline(const std::filesystem::path &config_path) {
-  auto bundle =
-      builder::load_graph_first_config_bundle_from_config(config_path.string());
+run_channel_graph_first_pipeline(const std::filesystem::path &config_path) {
+  auto bundle = builder::load_channel_graph_first_config_bundle_from_config(
+      config_path.string());
   builder::graph_first_pipeline_builder_options_t options{};
   options.batch_size = kBatchSize;
   options.compute_alignment_diagnostics = false;
-  builder::graph_first_pipeline_builder_t<Kline> pipe(bundle, options);
+  builder::channel_graph_first_pipeline_builder_t<Kline> pipe(bundle, options);
 
   auto source = pipe.make_graph_source();
   const std::size_t source_size = source.size();
@@ -332,17 +433,18 @@ int main() {
 
     // Warm cache creation/materialization before timing steady-state fetch.
     {
-      auto bundle =
-          builder::load_graph_first_config_bundle_from_config(config.string());
+      auto bundle = builder::load_channel_graph_first_config_bundle_from_config(
+          config.string());
       builder::graph_first_pipeline_builder_options_t options{};
       options.batch_size = kBatchSize;
       options.force_rebuild_cache = true;
-      builder::graph_first_pipeline_builder_t<Kline> pipe(bundle, options);
+      builder::channel_graph_first_pipeline_builder_t<Kline> pipe(bundle,
+                                                                  options);
       auto source = pipe.make_graph_source();
       (void)source.size();
     }
 
-    const auto result = run_graph_first_pipeline(config);
+    const auto result = run_channel_graph_first_pipeline(config);
     check(result.node_count == kNodeCount, "unexpected graph node count");
     check(result.edge_count == kNodeCount * (kNodeCount - 1),
           "unexpected discovered directed edge count");

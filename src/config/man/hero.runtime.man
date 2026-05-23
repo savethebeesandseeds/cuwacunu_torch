@@ -128,6 +128,7 @@ nuance = Default child-process timeout for cuwacunu_exec invocations.
 hero.runtime.status = policy, executable, active wave, and runtime-root summary
 hero.runtime.schema = policy key registry
 hero.runtime.wave = active wave intent decoded from kikijyeba.settings.wave.dsl
+hero.runtime.wave nuance = migrated canonical VICReg/MDN TARGET values decode to channel job kinds; legacy_inference_mdn remains the node compatibility target.
 hero.runtime.dry_run = guarded cuwacunu_exec --dry-run with stdout/stderr and artifacts
 hero.runtime.execute = guarded cuwacunu_exec invocation; dry_run defaults true; non-dry-run requires policy and confirm_execute
 hero.runtime.dev_nuke = guarded developer reset of runtime-root contents; dry_run defaults true; non-dry-run requires policy and confirm_dev_nuke

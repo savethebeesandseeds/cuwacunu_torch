@@ -23,7 +23,7 @@
 #include "kikijyeba/protocol/pipeline_builder.h"
 #include "kikijyeba/topology/dock_binding.h"
 #include "wikimyei/assembly.h"
-#include "wikimyei/inference/expected_value/mdn/stream/mdn_adapter.h"
+#include "wikimyei/inference/expected_value/mdn/stream/legacy_node_mdn_adapter.h"
 
 namespace cuwacunu::jkimyei::training::inference {
 
@@ -41,6 +41,14 @@ struct graph_first_inference_launcher_options_t {
 struct graph_first_inference_training_report_t {
   std::string training_id{};
   std::string config_path{};
+  std::string component_id{};
+  std::string input_representation_id{};
+  std::string context_mode{"global_node_context"};
+  std::string context_contract{"graph_order.node_representation.v1"};
+  std::string context_value_shape{"[B_node,D_e]"};
+  std::string output_contract{"graph_order.node_expected_value.v1"};
+  std::string output_value_shape{
+      "log_pi:[B,N,C,Hf,K];mu_sigma:[B,N,C,Hf,K,Df]"};
   std::string graph_order_fingerprint{};
   std::vector<std::string> node_ids{};
   std::vector<std::string> edge_ids{};
@@ -162,6 +170,13 @@ struct graph_first_inference_training_report_t {
     std::ostringstream oss;
     oss << "training_id=" << training_id << "\n";
     oss << "config_path=" << config_path << "\n";
+    oss << "component_id=" << component_id << "\n";
+    oss << "input_representation_id=" << input_representation_id << "\n";
+    oss << "context_mode=" << context_mode << "\n";
+    oss << "context_contract=" << context_contract << "\n";
+    oss << "context_value_shape=" << context_value_shape << "\n";
+    oss << "output_contract=" << output_contract << "\n";
+    oss << "output_value_shape=" << output_value_shape << "\n";
     oss << "graph_order_fingerprint=" << graph_order_fingerprint << "\n";
     oss << "context_dim=" << context_dim << "\n";
     oss << "head_policy=" << head_policy << "\n";
@@ -910,6 +925,8 @@ public:
     graph_first_inference_training_report_t out{};
     out.training_id = builder_.bundle().mdn_training.training_id;
     out.config_path = builder_.bundle().config_path;
+    out.component_id = builder_.bundle().mdn.component_id;
+    out.input_representation_id = builder_.bundle().mdn.input_representation_id;
     out.graph_order_fingerprint = plan.graph_order_fingerprint;
     out.node_ids = plan.node_ids;
     out.edge_ids = plan.edge_ids;

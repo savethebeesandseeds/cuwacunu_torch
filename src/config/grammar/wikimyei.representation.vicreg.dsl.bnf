@@ -1,6 +1,6 @@
 <instruction> ::= "VICREG" [<whitespace>] "{" <line_end> {<assignment>} [<whitespace>] "}" [<whitespace>] ";" [<line_end>] ;
 <assignment>  ::= [<whitespace>] <key> [<whitespace>] "=" [<whitespace>] <value> [<whitespace>] ";" <line_end> ;
-<key>         ::= "VERSION" | "COMPONENT_ID" | "INPUT_ROUTE" | "INPUT_WIDTH" | "MASK_PROFILE" | "REQUIRED_FEATURE_COORDS" | "DTYPE" | "DEVICE" ;
+<key>         ::= "VERSION" | "COMPONENT_ID" | "INPUT_ROUTE" | "CHANNEL_COUNT" | "HISTORY_LENGTH" | "INPUT_WIDTH" | "CELL_VALID_POLICY" | "REQUIRED_FEATURE_COORDS" | "MIN_VALID_FRACTION" | "USE_MISSINGNESS_INDICATORS" | "DTYPE" | "DEVICE" ;
 <value>       ::= <value_char> {<value_char>} ;
 <value_char>  ::= <letter> | <digit> | "_" | "." | "-" | "," | ":" | "+" ;
 <line_end>    ::= [<whitespace>] <break_block> ;

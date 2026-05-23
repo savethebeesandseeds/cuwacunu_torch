@@ -331,6 +331,17 @@ void test_dry_run_launcher_report() {
   const auto report = graph_launcher.dry_run_report();
   check(report.training_id == "smoke_vicreg_node_representation",
         "dry-run training id");
+  check(report.component_id == "node_vicreg_v1",
+        "dry-run fused representation component id");
+  check(report.representation_architecture ==
+            "global_fused_temporal_node_encoder.v1",
+        "dry-run fused representation architecture");
+  check(report.representation_contract == "graph_order.node_representation.v1",
+        "dry-run fused representation contract");
+  check(report.primary_value_shape == "[B,N,D_e] or [B,N,Hx,D_e]",
+        "dry-run fused representation value shape");
+  check(report.channel_axis_policy == "fused_before_primary_output",
+        "dry-run fused representation channel-axis policy");
   check(!report.graph_order_fingerprint.empty(), "dry-run graph fingerprint");
   check(report.node_ids.size() == 3, "dry-run node count");
   check(report.edge_ids.size() == 4, "dry-run edge count");
@@ -397,6 +408,22 @@ void test_config_backed_training_run_and_report_checkpoint() {
   check(report_text.find("training_id=smoke_vicreg_node_representation") !=
             std::string::npos,
         "report contains training id");
+  check(report_text.find("component_id=node_vicreg_v1") != std::string::npos,
+        "report contains fused representation component id");
+  check(report_text.find("representation_architecture="
+                         "global_fused_temporal_node_encoder.v1") !=
+            std::string::npos,
+        "report contains fused representation architecture");
+  check(report_text.find("representation_contract="
+                         "graph_order.node_representation.v1") !=
+            std::string::npos,
+        "report contains fused representation contract");
+  check(report_text.find("primary_value_shape=[B,N,D_e] or [B,N,Hx,D_e]") !=
+            std::string::npos,
+        "report contains fused representation value shape");
+  check(report_text.find("channel_axis_policy=fused_before_primary_output") !=
+            std::string::npos,
+        "report contains fused representation channel-axis policy");
   check(report_text.find("wave_source_range_policy=all") != std::string::npos,
         "report contains wave range policy");
   check(report_text.find("wave_pulses_attempted=") != std::string::npos,

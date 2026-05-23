@@ -21,6 +21,8 @@ namespace cuwacunu::kikijyeba::runtime {
 enum class runtime_job_kind_t {
   representation_vicreg,
   inference_mdn,
+  channel_representation_vicreg,
+  channel_inference_mdn,
 };
 
 [[nodiscard]] inline const char *
@@ -30,6 +32,10 @@ runtime_job_kind_name(runtime_job_kind_t kind) {
     return "representation_vicreg";
   case runtime_job_kind_t::inference_mdn:
     return "inference_mdn";
+  case runtime_job_kind_t::channel_representation_vicreg:
+    return "channel_representation_vicreg";
+  case runtime_job_kind_t::channel_inference_mdn:
+    return "channel_inference_mdn";
   }
   return "unknown";
 }
@@ -202,6 +208,24 @@ execution_chain_for_job(runtime_job_kind_t job_kind,
                  "wikimyei.expression.nodelift.srl:run -> "
                  "wikimyei.representation.encoding.vicreg:run_frozen -> "
                  "wikimyei.inference.expected_value.mdn:run";
+  case runtime_job_kind_t::channel_representation_vicreg:
+    return wave_action == "train"
+               ? "ujcamei.source.registry:run -> "
+                 "wikimyei.expression.nodelift.srl:run -> "
+                 "wikimyei.representation.encoding.vicreg:train"
+               : "ujcamei.source.registry:run -> "
+                 "wikimyei.expression.nodelift.srl:run -> "
+                 "wikimyei.representation.encoding.vicreg:run";
+  case runtime_job_kind_t::channel_inference_mdn:
+    return wave_action == "train"
+               ? "ujcamei.source.registry:run -> "
+                 "wikimyei.expression.nodelift.srl:run -> "
+                 "wikimyei.representation.encoding.vicreg:run_frozen "
+                 "-> wikimyei.inference.expected_value.mdn:train"
+               : "ujcamei.source.registry:run -> "
+                 "wikimyei.expression.nodelift.srl:run -> "
+                 "wikimyei.representation.encoding.vicreg:run_frozen "
+                 "-> wikimyei.inference.expected_value.mdn:run";
   }
   return {};
 }
@@ -217,6 +241,10 @@ mutated_components_for_job(runtime_job_kind_t job_kind,
     return "wikimyei.representation.encoding.vicreg";
   case runtime_job_kind_t::inference_mdn:
     return "wikimyei.inference.expected_value.mdn";
+  case runtime_job_kind_t::channel_representation_vicreg:
+    return "wikimyei.representation.encoding.vicreg";
+  case runtime_job_kind_t::channel_inference_mdn:
+    return "wikimyei.inference.expected_value.mdn";
   }
   return {};
 }
@@ -227,6 +255,10 @@ frozen_components_for_job(runtime_job_kind_t job_kind) {
   case runtime_job_kind_t::representation_vicreg:
     return {};
   case runtime_job_kind_t::inference_mdn:
+    return "wikimyei.representation.encoding.vicreg";
+  case runtime_job_kind_t::channel_representation_vicreg:
+    return {};
+  case runtime_job_kind_t::channel_inference_mdn:
     return "wikimyei.representation.encoding.vicreg";
   }
   return {};
@@ -288,6 +320,32 @@ source_file_receipts_for_bundle(const BundleT &bundle) {
 }
 
 } // namespace job_manifest_detail
+
+[[nodiscard]] inline const cuwacunu::jkimyei::training::training_run_spec_t &
+representation_training_for_manifest(
+    const cuwacunu::kikijyeba::protocol::graph_first_config_bundle_t &bundle) {
+  return bundle.vicreg_training;
+}
+
+[[nodiscard]] inline const cuwacunu::jkimyei::training::training_run_spec_t &
+representation_training_for_manifest(
+    const cuwacunu::kikijyeba::protocol::channel_graph_first_config_bundle_t
+        &bundle) {
+  return bundle.vicreg_training;
+}
+
+[[nodiscard]] inline const cuwacunu::jkimyei::training::training_run_spec_t &
+inference_training_for_manifest(
+    const cuwacunu::kikijyeba::protocol::graph_first_config_bundle_t &bundle) {
+  return bundle.mdn_training;
+}
+
+[[nodiscard]] inline const cuwacunu::jkimyei::training::training_run_spec_t &
+inference_training_for_manifest(
+    const cuwacunu::kikijyeba::protocol::channel_graph_first_config_bundle_t
+        &bundle) {
+  return bundle.channel_mdn_training;
+}
 
 template <typename BuilderT>
 [[nodiscard]] inline job_manifest_t
@@ -354,12 +412,15 @@ make_job_manifest(const BuilderT &builder, const wave_plan_t &wave_plan,
   out.dock_binding_fingerprint = dry_run.dock_binding_fingerprint;
   out.dock_binding_token = dry_run.dock_binding_token;
   out.stream_plan = dry_run.stream_plan.summary();
-  out.representation_training_id = builder.bundle().vicreg_training.training_id;
-  out.inference_training_id = builder.bundle().mdn_training.training_id;
+  const auto &representation_training =
+      representation_training_for_manifest(builder.bundle());
+  const auto &inference_training =
+      inference_training_for_manifest(builder.bundle());
+  out.representation_training_id = representation_training.training_id;
+  out.inference_training_id = inference_training.training_id;
   out.input_representation_checkpoint_path =
-      builder.bundle().mdn_training.input_representation_checkpoint_path;
-  out.input_mdn_checkpoint_path =
-      builder.bundle().mdn_training.input_mdn_checkpoint_path;
+      inference_training.input_representation_checkpoint_path;
+  out.input_mdn_checkpoint_path = inference_training.input_mdn_checkpoint_path;
   return out;
 }
 

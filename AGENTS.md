@@ -9,6 +9,11 @@ training/inference pipelines, and DSL-driven system configuration.
 - Use Makefiles instead of CMake when possible.
 - Prefer `rg` for search.
 
+# Goal Usage
+- Keep `/goals` finite and scoped to a concrete, achievable objective.
+- Avoid forever goals, broad umbrella goals, or indefinite monitoring goals; split
+  broad work into bounded milestones with clear completion criteria.
+
 # Build Commands
 - Do not run/build when confidence in changes is high.
 - When building, use `make -j12` (builds are long in this environment).

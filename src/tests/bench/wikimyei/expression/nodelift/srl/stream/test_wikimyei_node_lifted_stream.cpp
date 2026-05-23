@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "wikimyei/expression/nodelift/srl/stream/node_lifted_stream.h"
-#include "wikimyei/inference/expected_value/mdn/stream/mdn_adapter.h"
+#include "wikimyei/inference/expected_value/mdn/stream/legacy_node_mdn_adapter.h"
 #include "wikimyei/representation/encoding/vicreg/stream/node_representation_stream.h"
 
 #include <cmath>
@@ -24,8 +24,7 @@ namespace mdnstream =
     cuwacunu::wikimyei::inference::expected_value::mdn::stream;
 namespace repstream =
     cuwacunu::wikimyei::representation::encoding::vicreg::stream;
-namespace runtime_lls =
-    cuwacunu::kikijyeba::lattice::runtime_report;
+namespace runtime_lls = cuwacunu::kikijyeba::lattice::runtime_report;
 namespace source = cuwacunu::ujcamei::source;
 namespace types = cuwacunu::ujcamei::source::registry::types;
 
@@ -546,8 +545,7 @@ void test_node_lifted_stream() {
       range_options);
   check(range_stream.begin_anchor_index() == 1,
         "node-lifted stream range begin");
-  check(range_stream.end_anchor_index() == 3,
-        "node-lifted stream range end");
+  check(range_stream.end_anchor_index() == 3, "node-lifted stream range end");
   auto range_first = range_stream.next();
   check(range_first.cursor.begin_anchor_index == 1,
         "range stream first batch cursor begin");

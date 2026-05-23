@@ -13,11 +13,20 @@ Current migrated sections:
 - `HERO`: Config Hero, Runtime Hero, and Lattice Hero policy paths.
 
 `kikijyeba.settings.wave.dsl` selects the focal runtime component with `TARGET`.
-The current graph-first targets are `wikimyei.representation.encoding.vicreg`
-for node representation training and `wikimyei.inference.expected_value.mdn`
-for node ExpectedValue MDN. `MODE=run` executes the target dependency closure
-without optimizer steps. `MODE=train` mutates only `TARGET`; upstream
-dependencies run frozen.
+The default graph-first path is now the strict channel-preserving pair:
+`wikimyei.representation.encoding.vicreg` and
+`wikimyei.inference.expected_value.mdn`. The channel MDN path consumes
+the `[B,N,C,De]` representation contract and freezes VICReg when the
+MDN target trains. `CONTEXT_MODE=channel_context_strict` keeps the strict
+baseline; `channel_context_plus_global` is reserved for the explicit
+post-representation global branch and requires `GLOBAL_CONTEXT_DIM>0` in the
+channel MDN net file. Channel config surfaces have their own BNF paths in
+`.config`; keep those BNF files in sync with the VICReg/MDN DSL, net,
+and Jkimyei keys. The legacy fused targets
+`wikimyei.representation.encoding.vicreg` and
+`wikimyei.inference.expected_value.mdn` remain available for compatibility.
+`MODE=run` executes the target dependency closure without optimizer steps.
+`MODE=train` mutates only `TARGET`; upstream dependencies run frozen.
 
 MDN training is node-centered and expects a frozen representation encoder.
 `wikimyei.inference.expected_value.mdn.jkimyei` should normally provide
@@ -26,7 +35,14 @@ explicit smoke-mode escape hatch for running the pipeline before a VICReg
 checkpoint exists. `INPUT_REPRESENTATION_CHECKPOINT` and
 `INPUT_MDN_CHECKPOINT` are runtime model-state inputs. They are recorded and
 proven through manifests/reports/exposure facts/checkpoint lineage, and must not
-change the protocol contract fingerprint.
+change the protocol contract fingerprint. `ALLOW_UNTRAINED_REPRESENTATION`
+is runtime model-state admission policy and also does not change the protocol
+contract fingerprint. Keep the repository default MDN
+`.jkimyei` checkpoint fields empty; operational waves should receive concrete
+checkpoint paths by resolving Lattice Hero plan-input references or by applying
+runtime-local overlays. Channel MDN run/evaluation also requires
+`INPUT_MDN_CHECKPOINT`; the runtime rejects evaluation with a fresh untrained
+channel-context MDN.
 
 Config Hero starts from:
 
@@ -100,6 +116,10 @@ checks still use observed/target source-row footprints from runtime exposure
 facts. The split policy has a deterministic fingerprint. It appears in Lattice
 Hero evaluation output, and exposure facts that record a split-policy
 fingerprint are rejected when evaluated under a different split policy.
+Concrete named-split exposure facts that omit the split-policy fingerprint are
+also rejected during evaluation filtering when a split policy is active. Proof
+certificate self-check applies the same split-policy identity rule to concrete
+named-split facts and causal exposures while the proof is split-policy-bound.
 Target evaluation requires the active contract/component fingerprints when a
 target asks for identity matching. Anchor-index targets and exposure checks also
 require the active graph-order fingerprint and source cursor token because
@@ -119,10 +139,21 @@ source footprints: observed input covers
 still fall back to `anchor_range_v0`. When the graph-anchor cursor has a regular
 reference key step, manifests also emit `graph_anchor_key_window_v1` key
 windows. Those key windows are for source-key/timestamp audit; v0 exposure
-coverage and forbidden-overlap checks still use row-index intervals. Manifests
-also include compact active source-file receipts so runtime evidence can be
-traced back to the concrete Ujcamei source files without inspecting the original
-DSL.
+coverage and forbidden-overlap checks still use row-index intervals. Lattice
+Hero exposes a structured `source_key_window_audit` preview so agents can inspect
+whether the auxiliary row-to-source-key map is complete, numeric, monotone,
+order-preserving, and affine-consistent with the inferred regular key step
+without making it the leakage authority. Manifests also include
+compact active source-file receipts so runtime evidence can be traced back to the
+concrete Ujcamei source files without inspecting the original DSL. Lattice Hero
+reports `source_receipt_policy_vocabulary` to make that boundary explicit:
+compact receipts are audit metadata, not coverage/leakage proof authority,
+contract identity inputs, or replacements for row-index footprints. Structured
+source receipt facts remain future index/audit work.
+`source_receipt_policy_summary` self-checks that boundary with one row-index
+coverage/leakage authority row, three audit-only receipt rows, no contract
+identity authority, no structured receipt facts in V1, and declared compact and
+future structured receipt fields.
 Manifests, job state, component reports, and exposure facts also carry
 graph-anchor domain health: candidate anchors, accepted anchors/fraction,
 skipped anchors by reason, duplicate anchors, common/reference key bounds, and
@@ -150,15 +181,35 @@ coverage but two cursor epochs of exposure" without marking the target failed.
 `LATTICE_WARN` is the explicit non-failing warning layer over those summaries.
 It can flag high exposure load, high optimizer effort density, or source-domain
 health issues while leaving target status, planning, and max-attempt accounting
-unchanged. Repeated exposure is therefore visible without being treated as an
-implicit readiness failure.
+unchanged. Warning results name their `evidence_basis` so agents can distinguish
+exposure-load summaries, filtered node-support summaries,
+representation-health facts, and anchor-domain facts. Availability booleans mark
+which summary envelope is a real warning basis and which is only an empty
+placeholder. Every warning kind may use `SPLIT` or explicit
+`ANCHOR_INDEX_BEGIN`/`ANCHOR_INDEX_END`; warning measurements are scoped to that
+anchor interval, defaulting to the target range. Warning interval overlap may
+use anchor-range visibility when trusted completed coverage is unavailable; that
+does not make untrusted coverage satisfy readiness. Hero JSON exposes the
+resolved interval as `warning_results[].warning_anchor_range`;
+`hero.lattice.explain_target` exposes the same pre-evaluation scope as
+`warning_scope_previews[].resolved_warning_anchor_range`; and
+`warning_anchor_scope_policy_vocabulary` describes the visibility-only fallback
+rules for both surfaces. Repeated exposure is therefore visible without being
+treated as an implicit readiness failure.
 Targets can use `CHECKPOINT_SOURCE = latest_satisfying:<target_id>` to inspect
 the checkpoint proven by another satisfied target. This is how read-only guards
 such as `node_mdn_train_core_no_validation_leakage` check validation leakage on
 the current train-core MDN checkpoint without creating a fake training target.
 `node_mdn_train_core_no_test_leakage` then applies the same split-backed guard
 to `test_holdout`, so the operational chain has both validation and test
-holdout cleanliness before validation evaluation.
+holdout cleanliness before validation evaluation. Hero JSON includes
+`checkpoint_selection_policy_vocabulary`: `latest_satisfying` is a deterministic
+readiness selector over the referenced satisfied target, not a best-model,
+Pareto, performance, or deployment selector.
+`checkpoint_selection_policy_summary` self-checks the same boundary: 4 selector
+policy rows, 3 deterministic readiness-selection rows, 2 exact runtime binding
+rows, and zero performance, Pareto, contract-identity, or runtime-executor
+authority.
 If the source target is not satisfied, the guard blocks and reports the source
 target's suggested wave.
 Validation evaluation targets use `MIN_EVALUATION_METRIC_COVERAGE` /
@@ -168,8 +219,79 @@ on the holdout-clean guard for the training checkpoint they evaluate.
 For node-centered MDN reports, the lattice scanner also derives read-only
 `node_exposure` facts from `node_ids`, per-node routed/active/trained/evaluated
 row counts, `valid_target_count_by_node`, and `mean_nll_by_node`. These facts
-are per-node MDN support evidence linked to the parent exposure fact; they do
-not claim per-node VICReg readiness because VICReg is a shared encoder.
+are per-node MDN support evidence linked to the parent exposure fact. Derived
+node-support summaries include support-row/unique-node counts, exposure-use and
+mutation incidence counts, and aggregate/weakest-node Wilson support bounds for
+statistical visibility. Mutating node-support summaries must be backed by the
+checkpoint closure's causal MDN exposure, while non-mutating validation/evaluation
+node support is row-parent exposure evidence tied to the exact evaluated
+checkpoint dependency. Hero JSON includes `valid_target_uncertainty_vocabulary`
+for the Wilson method, field bindings, and no-trials policy.
+`valid_target_uncertainty_summary` self-checks the three support scopes,
+Wilson-95/binomial method, success/opportunity and interval field bindings,
+non-claiming no-trials policy, and support-visibility-only boundary. Node-support
+warnings filter those support rows by
+`USE` and `EFFECT`, defaulting to target-supervision rows that mutated the MDN
+component. When a node-support warning declares `SPLIT` or explicit anchor
+bounds, it derives a warning-range node matrix instead of reusing only the
+target-wide certificate matrix. These warnings do not claim per-node VICReg
+readiness because VICReg is a shared encoder. Hero JSON includes
+`node_support_scope_policy_vocabulary` to make that scope boundary explicit: V1
+MDN node-support rows are MDN-head support visibility, future VICReg node-local
+support must come from NodeLift or representation-emitted support facts, and
+synthetic backfill from MDN rows is not allowed.
+`node_support_scope_policy_summary` self-checks the same boundary: four policy
+rows, three available V1 visibility rows, one deferred representation-node row,
+no VICReg per-node readiness authority, no synthetic backfill, and no runtime
+executor authority.
+`LATTICE_WARN KIND=mdn_distribution_calibration` adds the first non-blocking
+distributional MDN warning surface. V3-D evaluates aggregate `mean_nll`,
+runtime-emitted channel/horizon max-NLL summaries, and per-node max NLL from
+node exposure facts as warning-only diagnostics. PIT KS statistic, predictive
+interval coverage error, tail coverage error, and calibration slope error remain
+future metrics until runtime emits samples and uncertainty. Hero JSON includes
+`mdn_distribution_calibration_vocabulary` and
+`mdn_distribution_calibration_summary` for the legacy metric policy, plus
+`mdn_distribution_calibration_diagnostic_vocabulary` and
+`mdn_distribution_calibration_diagnostic_summary` to self-check exact checkpoint
+binding, representation checkpoint binding, validation split, active identity,
+sample count, uncertainty method, warning-only effect, and zero performance-gate
+authority.
+`representation_geometry_vocabulary` names the VICReg representation-health
+warning metrics, including loss components, gradient norms, projection support,
+finite-parameter checks, and embedding-spectrum geometry. These remain V1
+non-blocking warning visibility, not performance or geometry gates.
+`representation_geometry_summary` self-checks the 18-row boundary: all metrics
+are V1-visible `representation_health` warnings, seven are embedding-geometry
+metrics, eleven are future hard-gate candidates, and none grant active
+performance-gate authority.
+`performance_uncertainty_policy_vocabulary` records the statistical boundary:
+V1 support intervals are visibility, and future performance gates must compare
+conservative confidence bounds with an explicit uncertainty method and
+selection-leakage policy instead of raw point estimates.
+`performance_uncertainty_policy_summary` self-checks that six-row boundary: one
+V1 support-visibility row, five deferred future performance-gate rows, no V1
+performance-gate authority, no point-estimate gates, confidence bounds required,
+and selection-leakage policy required.
+`validation_performance_evidence_policy_vocabulary` is the V3-C validation
+performance evidence contract: it names metric family, split field, checkpoint
+identity fields, exact evaluated-checkpoint binding, sample-count field,
+point-estimate field, uncertainty method, confidence-bound fields, target
+syntax, selection-leakage policy, and fail-closed cases for each finite row.
+`validation_performance_evidence_policy_summary` self-checks that V3-C does not
+grant performance-gate authority, available point estimates are bounded or
+warning-only, mean NLL stays warning-only until uncertainty is emitted, exact
+checkpoint binding and active identity are required, and missing uncertainty,
+wrong checkpoint binding, stale identity, and selector leakage fail closed.
+Hero JSON also includes `validation_performance_scope_policy_vocabulary`:
+validation eval readiness proves clean run-mode evaluation, exact checkpoint
+binding, and trusted evaluation coverage, but it does not claim model quality,
+deployability, or performance approval. Future performance gates require
+explicit metrics, uncertainty, and selection-leakage policy.
+`validation_performance_scope_policy_summary` self-checks that boundary: three
+V1 validation-readiness/visibility rows, one deferred future performance row, no
+V1 performance-gate authority, uncertainty required for future gates, and no
+runtime executor authority.
 
 Runtime now writes canonical `lattice.exposure.fact` sidecars after successful
 terminal jobs and a `lattice.checkpoint.fact` sidecar when a checkpoint exists.
@@ -184,17 +306,297 @@ Lattice Hero is the read-only agent surface for these checks. It provides
 `hero.lattice.explain_target`, `hero.lattice.evaluate_target`,
 `hero.lattice.plan_target`, `hero.lattice.scan_exposure`, and
 `hero.lattice.checkpoint_closure`. `explain_target` reports the compiled target
-proof object and fingerprint without scanning runtime evidence; evaluation and
-planning then read the in-memory exposure ledger built from runtime files. A
-future lattice DB should be a rebuildable query/index cache over immutable
-runtime/fact files, not the primary writer of evidence.
+proof object, fingerprint, derived query vocabulary, proof obligation
+vocabulary, proof digest policy, checkpoint selection policy, plan-advice
+policy, contract identity boundary, mathematical readiness crosswalk,
+operational V1 scope/gate crosswalks, static mathematical policy vocabularies,
+deficit priority and evidence-order vocabularies, and numeric dimension
+vocabulary without scanning runtime evidence; evaluation and planning then read
+the in-memory exposure ledger built from runtime files. A
+future lattice DB should be a
+rebuildable query/index cache over immutable runtime/fact files, not the primary
+writer of evidence.
+Hero MCP schema hygiene is separate from lattice proof authority. Sourced Hero
+catalog generation validates each tool `inputSchema` as a harness-safety gate:
+the root must be `type=object`, and top-level `oneOf`, `anyOf`, `allOf`,
+`enum`, and `not` are rejected with a message naming the tool, schema path, and
+offending construct. The schema smoke covers Config, Runtime, Hashimyei, and
+Lattice catalogs and specifically protects the prior
+`hero.lattice.checkpoint_closure` failure mode.
+Target compilation applies small dimensional checks: fractions stay in `[0,1]`,
+counts are non-negative integral thresholds, and representation condition-number
+thresholds must be at least `1`. Representation-health warnings also reject
+inverted one-sided directions, so high-bad metrics use `ABOVE` and low-bad
+metrics use `BELOW`. Anchor-domain warning clauses carry exactly one metric
+threshold.
+Evaluations expose proof certificates, deficits, plan basis, and an
+`evidence_order_vector` that keeps Pareto evidence dimensions separate instead
+of emitting a single score. The vector separates total warning results,
+triggered warning count, unavailable warning-measurement count, source-key audit
+counts/issues/affine mismatches, unresolved lineage count, selector-leakage
+participation state, node-support imbalance maxima, and the legacy
+`warning_count` alias for triggered warnings. `hero.lattice.compare_evidence`
+evaluates two targets from one scan and reports the vectors, per-dimension
+dominance reasons, and the relation `left_dominates`, `right_dominates`,
+`equivalent`, `incomparable`, `selector_leaked`, or `unavailable`; it emits no
+scalar score and makes no deployment decision. Hero JSON includes
+`exposure_measure_algebra_vocabulary` so clients can distinguish idempotent
+unique coverage from additive repeated load.
+`exposure_measure_algebra_summary` self-checks that boundary with exactly two
+measures, one idempotent coverage measure, one additive load measure, no
+dual-role measure, and distinct coverage-fraction versus cursor-epoch units.
+It also includes `source_key_coordinate_policy_vocabulary` so clients can see
+that row-index intervals are the coverage/leakage authority and source-key
+windows are audit-only order-preserving/affine map checks.
+`source_key_coordinate_policy_summary` self-checks the coordinate boundary:
+exactly one row-index coverage/leakage authority row, three audit-only
+source-key rows, declared order-preserving/affine fields, and no source-key
+audit row with coverage or leakage authority.
+It also includes `leakage_rule_vocabulary` so clients can identify protected
+split dilation as the leakage predicate. `leakage_rule_summary` self-checks that
+the V1 leakage rule is a single protected-split temporal dilation with empty
+forbidden-use intersection over complete checkpoint closure and labeled
+causal-exposure witnesses. Hero JSON also includes `causal_edge_vocabulary` so
+clients can render closure as a labeled causal graph. `causal_edge_summary`
+self-checks the seven V1 edge labels, four source-row use edges, two checkpoint
+reachability edges, one mutation edge, and the separation between checkpoint
+reachability and direct forbidden-use leakage edges. Hero JSON also includes
+`selection_signal_policy_vocabulary` so clients can see that V1 forbids known
+selection-signal causal exposure without claiming first-class selector event
+provenance. `selection_signal_policy_summary` self-checks the four-row
+boundary: known selection-signal is forbidden and causal-anchor based,
+first-class selector event streams and arbitrary selector-path proofs remain
+future/non-claiming, all rows require closure completeness, and Lattice has no
+executor authority. Hero JSON also includes `derived_query_rule_vocabulary` so
+clients can name the
+read-only Datalog-style relations behind identity,
+dependency, aggregate dependency, coverage, aggregate coverage, closure,
+checkpoint ancestry, unresolved lineage, guarded closure-cleanliness, leakage,
+guarded no-overlap, warning, cache-staleness, planning, certificate-check,
+blocking-deficit, and status/satisfaction proofs. Rule rows also declare
+`projection_scope`, `projection_quantifier`, and
+`empty_projection_policy`, making target-wide, per-row, compact aggregate,
+all-row, any-witness, none-exists, and zero-row relation shapes discoverable
+before evaluation. They also declare the emitted result shape with
+`result_projection_scope`, `result_projection_quantifier`, and
+`result_empty_projection_policy`, so Hero can compare live result rows against the
+vocabulary instead of a private hardcoded shape table.
+`derived_query_rule_vocabulary_digest_schema` and
+`derived_query_rule_vocabulary_digest` bind that declared rule vocabulary so
+clients can compare explain/evaluate/plan surfaces without recomputing the
+canonical text. `derived_query_projection_semantics_vocabulary` defines the
+allowed projection-scope, quantifier, empty-policy, and compatibility-alias
+values used by rule vocabulary and live result rows.
+`evaluate_target` and `plan_target` also expose `derived_query_results`, a
+read-only projection of those relation truth values from the existing proof
+result; it is query metadata only and does not affect status, evidence
+authority, or certificate digests. The envelope declares
+`schema=kikijyeba.lattice.derived_query_results.v1`,
+`rule_vocabulary_digest_schema`, and `result_projection_digest_schema`, and
+includes `projection_target_id`, `projection_target_spec_fingerprint`,
+`projection_certificate_digest`, `projection_status`,
+`projection_basis_complete`, `projection_basis_field_count`,
+`result_projection_digest_rule_vocabulary_bound`,
+`result_projection_digest_basis_field_count`, `rule_vocabulary_digest`,
+`result_projection_digest`, `result_count`, `known_count`, `unknown_count`,
+`known_true_count`, `known_false_count`, `aggregate_projection_count`, and
+`single_projection_count` for whole-set sanity checks. The result projection
+digest binds the rule-vocabulary schema and digest plus target id, target spec
+fingerprint, certificate digest, status, and emitted rows; the digest basis
+field count is `6`. The basis check requires target id, target spec fingerprint,
+certificate digest, and status before the projection can self-check cleanly.
+It names
+`summary_source=emitted_result_rows` and reports `summary_self_check_passed`,
+`summary_issue_count`, and `summary_issues` for count/quantifier, projection
+scope, declared rule/result projection-shape compatibility, empty-policy
+compatibility, vocabulary-coverage, basis, and projection-semantics consistency.
+It
+also reports `rule_vocabulary_relation_count`, `result_covers_rule_vocabulary`,
+`unique_result_relation_count`, `missing_rule_relation_count`,
+`extra_result_relation_count`, `duplicate_result_relation_count`, plus
+`missing_rule_relations`, `extra_result_relations`, and
+`duplicate_result_relations`, so agents can detect stale, extra, missing, or
+non-unique projections relative to the declared rule vocabulary.
+Live result rows include `rule_projection_scope` and
+`rule_projection_quantifier` for the declared relation shape, plus
+`result_projection_scope` and `result_projection_quantifier` for the emitted
+compact projection. `projection_scope` and `projection_quantifier` remain
+compatibility aliases for the result fields, so compact booleans such as
+dependency, coverage, warning, and plan-deficit projections state whether they
+summarize all rows or any witness. Compact rows also expose
+`rule_empty_projection_policy`, `result_empty_projection_policy`,
+`empty_projection_policy`, `projection_row_source`, `projection_row_count`,
+`projection_true_count`, and `projection_false_count`, making empty, all-pass,
+partial, and any-witness summaries auditable without parsing messages.
+`db_cache_policy_vocabulary`
+keeps the future DB boundary explicit:
+runtime files/facts are source of truth, cache rows are rebuildable read models,
+cached plans are advice rather than evidence, checkpoint ids/digests are cache
+previews until v2 identity promotion, and Runtime Hero remains the only
+executor. `evidence_abstraction_vocabulary` names the concrete runtime/fact
+inputs, abstract proof outputs, soundness condition, conservative policy, and
+join semantics for identity, coverage/load, closure, leakage, node support,
+source-receipt audit, warnings, planning, and evidence order; a future DB/cache
+must preserve those rules rather than becoming evidence authority.
+`product_evidence_state_vocabulary` names the product proof factors, including
+identity, coverage lattice, exposure-load monoid, closure graph, leakage
+predicate, metric/warning vector, node-support matrix, source-receipt audit set,
+and deficit vector, with their partial orders and identity-scoped join rules.
+V3-A adds `hero.lattice.index_query` as a read-only audit query over the
+rebuildable index rows. It filters by relation/key/digest and reports whether a
+stored cache answer matches a fresh live scan; invalid or mismatched cache rows
+fall back to live scan and do not affect target satisfaction. A separate
+`validation_strength=header_only`, `allow_unproven_cache=true`,
+`compare_live_scan=false` mode gives agents a fast read-only cache query while
+marking the answer unproven and still non-authoritative for target readiness.
+V3-B adds `hero.lattice.evaluate_targets` for one-scan multi-target readiness
+checks and strengthens cache files with `watched_file_metadata_digest`,
+`row_set_digest`, and `relation_counts`; `watched_file_manifest` is a bounded
+freshness mode, while `header_only` is the explicit unproven fast lane.
+V3-E adds `hero.lattice.derived_query`, a read-only witness surface for a finite
+pilot rule set: `target_satisfied`, `checkpoint_ancestor`,
+`forbidden_overlap`, `stale_cache`, and `unresolved_lineage`. The response
+includes the rule row, result source, concrete witnesses, and fail-closed flags;
+cache rows remain non-authoritative for target satisfaction.
+`join_law_vocabulary` makes those joins cache-safe and machine-readable:
+coverage/closure/leakage/warnings/deficits join idempotently inside one
+identity scope, repeated exposure load and distinct node-support rows are
+additive, and unsafe joins fail closed instead of claiming readiness.
+`mdn_distribution_calibration_vocabulary` names warning-only aggregate,
+channel, horizon, per-node, and future MDN calibration metrics.
+`mdn_distribution_calibration_summary` keeps the legacy metric policy visible.
+`mdn_distribution_calibration_diagnostic_vocabulary` and
+`mdn_distribution_calibration_diagnostic_summary` self-check the V3-D
+diagnostic binding fields: exact MDN checkpoint, representation checkpoint,
+validation split, active identity, sample count, uncertainty method, and
+warning-only/non-performance effect. `representation_geometry_vocabulary` names
+the V1 VICReg health and geometry warning metrics plus their bad-direction
+semantics.
+`representation_geometry_summary` checks that those metrics remain non-blocking
+representation-health visibility rather than performance or geometry gates.
+`performance_uncertainty_policy_vocabulary` names the conservative-bound rule
+for future support, loss, calibration, PIT, and node-stratified performance
+gates.
+`performance_uncertainty_policy_summary` checks that the V1 row is support
+visibility only and every future gate row requires confidence bounds and
+selection-leakage policy while disallowing point-estimate gates.
+`mathematical_readiness_v1_vocabulary` is the compact audit crosswalk: it maps
+the V1 mathematical claims to the Hero fields that prove or expose them, while
+preserving the read-only/no-performance/no-DB-source-of-truth boundary.
+`mathematical_readiness_v1_summary` is the machine-checkable companion: it counts
+the 16 V1 mathematical items and reports that all are included, read-only,
+non-executing, non-performance, non-DB-source-of-truth, and backed by at least
+one Hero surface.
+`validation_performance_scope_policy_vocabulary` records that V1
+validation evaluation is readiness evidence, not a performance gate.
+`validation_performance_scope_policy_summary` checks that future validation
+performance authority stays deferred until explicit metrics, uncertainty, and
+selection-leakage policy exist.
+`target_numeric_dimension_vocabulary`
+exposes the unit/bounds table used by the target compiler for numeric target and
+warning fields, including integrality and threshold direction.
+`target_numeric_dimension_summary` self-checks that the table has V1's expected
+rows, unique context/field pairs, declared units and numeric kinds, well-formed
+bounds, known threshold directions, and separate coverage/load units.
+`monotonicity_invariant_vocabulary` names the clean-growth assumptions behind
+target satisfaction, coverage union, additive load, leakage cleanliness,
+deficits, warnings, Pareto order, and visibility-only dimensions.
+`checkpoint_selection_policy_vocabulary` keeps checkpoint-source resolution
+separate from that Pareto order: V1 `latest_satisfying` does not optimize or
+rank model quality.
+`checkpoint_selection_policy_summary` makes that separation self-checking by
+counting the selection policy rows and proving no row is a performance selector,
+Pareto optimizer, contract identity authority, or runtime executor.
+It also includes `proof_obligation_vocabulary`, which maps certificate fields to derived
+relations, required scopes, status effects, deficit kinds, non-claiming
+conditions, digest participation, and planner relevance.
+`proof_certificate_digest_policy_vocabulary` makes the digest boundary explicit:
+the required canonical certificate digest binds proof content such as
+target/split identity, identity matches, dependency checkpoint bindings,
+coverage/load, closure, leakage, checkpoint-preview audit fields, and MDN node
+support, while warnings, deficits, plan advice, evidence-order projections,
+policy vocabularies, and the digest field itself stay outside the digest.
+`proof_certificate_digest_policy_summary` self-checks that boundary by counting
+the 11 digest-policy rows, 8 hashed proof surfaces, 3 excluded report/policy
+surfaces, zero advisory digest overlap, and zero visibility-only status
+authority.
+`checkpoint_identity_policy_vocabulary` states that V1 closure authority is
+path/exposure-fact based, checkpoint ids/file digests are audit previews, exact
+validation bindings use runtime-loaded checkpoint paths, and id/digest promotion
+is future DB/cache work rather than protocol contract identity.
+`contract_identity_boundary_vocabulary` separates protocol/graph/component and
+target proof identity from runtime-loaded checkpoint paths, advisory plan
+inputs, warning visibility, and audit-only source receipt/key-window metadata.
+`contract_identity_boundary_summary` self-checks that runtime model-state,
+planning advice, warning visibility, and audit metadata have zero overlap with
+protocol contract or target proof identity while the active identity surfaces are
+present.
+Hero JSON also includes
+`dimension_vocabulary` and relation
+vocabulary metadata from the same C++ source used by the comparator; comparison
+uses `triggered_warning_count` while `warning_count` remains compatibility
+metadata. Warning results carry a structured `measurement_available`
+bit; unavailable-warning counts come from that bit rather than diagnostic message
+wording.
+Warning results also carry `threshold_direction`, so clients can distinguish
+above-threshold and below-threshold warnings without parsing message text.
+They also carry `threshold_triggered` and `threshold_relation`, so trigger
+counts and projections do not depend on parsing status strings. Hero JSON
+includes `warning_threshold_relation_vocabulary` for the allowed relation
+values. It also includes `warning_summary`, an aggregate projection with total,
+triggered, unavailable, clear measured, compatibility `warning_count`, and
+per-relation counts.
+Deficits carry deterministic priority metadata, and `plan_basis` exposes the
+primary plan-relevant deficit key/message/priority/class derived from those
+priorities plus the addressed deficit priority classes. Hero JSON also includes
+the deficit priority vocabulary. `plan_advice_scope_policy_vocabulary` records
+that `plan_basis`, `suggested_wave`, and `PLAN_INPUT_*` are advisory projections
+from deficits, not evidence, scheduler authority, contract identity, or
+execution. `PLAN_INPUT_*` carries symbolic `latest_satisfying` source-target
+hints; the resulting runtime report remains the proof of the concrete
+checkpoint path that was loaded. `PLAN_MAX_ATTEMPTS`/`MAX_WAVES` only guard
+whether another suggestion is advertised.
+`deficit_vector_planning_summary` self-checks the combined planning boundary:
+12 ordered deficit priority classes, 5 plan-advice policy rows, 4 advisory
+planning surfaces, zero evidence/contract-identity authority, zero Lattice
+execution authority, and a single Runtime Hero executor boundary.
 Split-backed MDN training targets should use trained-node-head evidence;
 evaluated-node-head evidence is for run/evaluation targets.
+`operational_readiness_v1_scope_vocabulary` summarizes the V1 gate itself:
+read-only evidence authority is included; DB/index, performance gates,
+checkpoint id/file digest primary identity, structured source receipts,
+first-class selection events, and VICReg node-support facts are deferred.
+`operational_readiness_v1_scope_summary` self-checks that those 12 scope rows
+partition into 6 included read-only claims and 6 deferred items, with zero
+runtime-executor/performance/DB authority and no empty claim-boundary fields.
+`operational_readiness_v1_gate_vocabulary` exposes the concrete acceptance
+checklist for V1: identity binding, train-core VICReg/MDN readiness, validation
+and test leakage guards, validation exact-checkpoint evaluation, warnings and
+MDN node-support visibility, and Hero read/plan/closure inspection.
+`operational_readiness_v1_gate_summary` self-checks that the 10 V1 gates are
+required, read-only, non-executing, non-performance, non-DB-source-of-truth, have
+pass/fail conditions and Hero surfaces, and reference all five required V1
+targets.
+The fixture
+`src/tests/fixtures/kikijyeba/lattice_validation_eval_wrong_mdn` is a
+Hero-inspectable negative runtime root for the exact-checkpoint validation
+binding: train-core readiness and leakage guard pass, but validation evaluation
+fails because the run loaded the wrong MDN checkpoint, producing both a
+`dependency:mdn_checkpoint` deficit and a certificate-check mismatch issue.
 
 DEV_WARNING: the current graph-first contract fingerprint still includes some
 Jkimyei training selectors. Runtime model-state fields such as loaded checkpoint
 paths are excluded from contract identity and must be proven through job
-reports, exposure facts, and checkpoint lineage.
+reports, exposure facts, and checkpoint lineage. Use the
+`contract_identity_boundary_vocabulary` Hero field as the machine-readable
+boundary when deciding whether a field is contract identity, target proof
+identity, model-state input, plan advice, warning visibility, or audit metadata.
+The companion `contract_identity_boundary_summary` should report zero identity
+overlap for model-state, advice, warning, and audit rows.
+Compact source-file receipt strings are the same kind of non-contract audit
+metadata: they can identify source files for review, but target identity and
+overlap proof remain anchored by the active graph/order/source identity and
+row-index facts.
 
 The legacy Hero split into default/temp/objective/optim file surfaces is not
 part of the fresh path. Hashimyei identity receipts, TSODAO optim checkpoints,

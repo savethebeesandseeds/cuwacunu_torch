@@ -40,6 +40,12 @@ struct graph_first_representation_launcher_options_t {
 struct graph_first_representation_training_report_t {
   std::string training_id{};
   std::string config_path{};
+  std::string component_id{};
+  std::string representation_architecture{
+      "global_fused_temporal_node_encoder.v1"};
+  std::string representation_contract{"graph_order.node_representation.v1"};
+  std::string primary_value_shape{"[B,N,D_e] or [B,N,Hx,D_e]"};
+  std::string channel_axis_policy{"fused_before_primary_output"};
   std::string graph_order_fingerprint{};
   std::vector<std::string> node_ids{};
   std::vector<std::string> edge_ids{};
@@ -137,6 +143,12 @@ struct graph_first_representation_training_report_t {
     std::ostringstream oss;
     oss << "training_id=" << training_id << "\n";
     oss << "config_path=" << config_path << "\n";
+    oss << "component_id=" << component_id << "\n";
+    oss << "representation_architecture=" << representation_architecture
+        << "\n";
+    oss << "representation_contract=" << representation_contract << "\n";
+    oss << "primary_value_shape=" << primary_value_shape << "\n";
+    oss << "channel_axis_policy=" << channel_axis_policy << "\n";
     oss << "graph_order_fingerprint=" << graph_order_fingerprint << "\n";
     oss << "encoding_dim=" << encoding_dim << "\n";
     oss << "mask_profile=" << mask_profile << "\n";
@@ -561,6 +573,7 @@ public:
     graph_first_representation_training_report_t out{};
     out.training_id = builder_.bundle().vicreg_training.training_id;
     out.config_path = builder_.bundle().config_path;
+    out.component_id = builder_.bundle().vicreg.component_id;
     out.graph_order_fingerprint = plan.graph_order_fingerprint;
     out.node_ids = plan.node_ids;
     out.edge_ids = plan.edge_ids;
