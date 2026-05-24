@@ -14,6 +14,10 @@ HERO_RUNTIME_OBJS := \
 HERO_LATTICE_OBJS := \
   $(OUTPUT_PATH)/common/hero_lattice_tools.o
 
+HERO_MARSHAL_OBJS := \
+  $(HERO_RUNTIME_OBJS) \
+  $(HERO_LATTICE_OBJS)
+
 $(OUTPUT_PATH)/common/hero_config_store.o: \
 	$(IMPL_PATH)/hero/config_hero/hero_config_store.cpp \
 	$(SRC_ROOT)/Makefile.config
@@ -74,6 +78,19 @@ $(OBJTMP)/hero_lattice_mcp.o: \
 	      -c $(abspath $<) -o $@
 	$(Q)$(LOG_END)
 
+$(OBJTMP)/hero_marshal_mcp.o: \
+	$(HERE_PATH)/hero_marshal_mcp.cpp \
+	$(HERE_PATH)/Makefile \
+	$(SRC_ROOT)/Makefile.config
+	$(Q)mkdir -p $(@D) $(DEPDIR)
+	$(Q)$(LOG_START)
+	$(Q)$(LOCAL_CLEAN)
+	$(Q)$(CXX_COMPILE) $(CXXFLAGS) \
+	      -MMD -MP -MF $(DEPDIR)/hero_marshal_mcp.d -MT $@ \
+	      $(USUAL_INCLUDE_PATHS) \
+	      -c $(abspath $<) -o $@
+	$(Q)$(LOG_END)
+
 $(BIN_OUT)/hero_config.mcp: \
 	$(OBJTMP)/hero_config_mcp.o \
 	$(HERO_CONFIG_OBJS) \
@@ -119,9 +136,24 @@ $(BIN_OUT)/hero_lattice.mcp: \
 	      -o $@
 	$(Q)$(LOG_END)
 
-.PHONY: all build-config-hero build-runtime-hero build-lattice-hero run-config-hero run-runtime-hero run-lattice-hero install-config-hero install-runtime-hero install-lattice-hero clean
+$(BIN_OUT)/hero_marshal.mcp: \
+	$(OBJTMP)/hero_marshal_mcp.o \
+	$(HERO_MARSHAL_OBJS) \
+	$(HERE_PATH)/Makefile \
+	$(SRC_ROOT)/Makefile.config
+	$(Q)mkdir -p $(@D)
+	$(Q)$(LOG_START)
+	$(Q)$(LOCAL_CLEAN)
+	$(Q)$(CXX_LINK) $(LDFLAGS_E) \
+	      $(OBJTMP)/hero_marshal_mcp.o \
+	      $(HERO_MARSHAL_OBJS) \
+	      $(LDLIBS_common) \
+	      -o $@
+	$(Q)$(LOG_END)
 
-all: $(BIN_OUT)/hero_config.mcp $(BIN_OUT)/hero_runtime.mcp $(BIN_OUT)/hero_lattice.mcp
+.PHONY: all build-config-hero build-runtime-hero build-lattice-hero build-marshal-hero run-config-hero run-runtime-hero run-lattice-hero run-marshal-hero install-config-hero install-runtime-hero install-lattice-hero install-marshal-hero clean
+
+all: $(BIN_OUT)/hero_config.mcp $(BIN_OUT)/hero_runtime.mcp $(BIN_OUT)/hero_lattice.mcp $(BIN_OUT)/hero_marshal.mcp
 	@$(LOG_SUCCESS)
 
 build-config-hero: $(BIN_OUT)/hero_config.mcp
@@ -133,6 +165,9 @@ build-runtime-hero: $(BIN_OUT)/hero_runtime.mcp
 build-lattice-hero: $(BIN_OUT)/hero_lattice.mcp
 	@$(LOG_SUCCESS)
 
+build-marshal-hero: $(BIN_OUT)/hero_marshal.mcp
+	@$(LOG_SUCCESS)
+
 run-config-hero: $(BIN_OUT)/hero_config.mcp
 	$(Q)$(RUN_MODE) $(BIN_OUT)/hero_config.mcp --tool hero.config.status --args-json '{}'
 
@@ -141,6 +176,9 @@ run-runtime-hero: $(BIN_OUT)/hero_runtime.mcp
 
 run-lattice-hero: $(BIN_OUT)/hero_lattice.mcp
 	$(Q)$(RUN_MODE) $(BIN_OUT)/hero_lattice.mcp --tool hero.lattice.status --args-json '{}'
+
+run-marshal-hero: $(BIN_OUT)/hero_marshal.mcp
+	$(Q)$(RUN_MODE) $(BIN_OUT)/hero_marshal.mcp --list-tools-json
 
 install-config-hero: $(BIN_OUT)/hero_config.mcp
 	@mode="$$(stat -c '%a' "$(BIN_OUT)/hero_config.mcp" 2>/dev/null || echo missing)"; \
@@ -163,5 +201,12 @@ install-lattice-hero: $(BIN_OUT)/hero_lattice.mcp
 		printf "\033[2;33m[\033[90mHERO: \033[2;32mINSTALLED\033[2;33m]\033[0m \033[90m%s\033[0m\n" "$(BIN_OUT)/hero_lattice.mcp"; \
 	fi
 
+install-marshal-hero: $(BIN_OUT)/hero_marshal.mcp
+	@mode="$$(stat -c '%a' "$(BIN_OUT)/hero_marshal.mcp" 2>/dev/null || echo missing)"; \
+	if [ "$$mode" != "700" ]; then \
+		chmod 700 "$(BIN_OUT)/hero_marshal.mcp"; \
+		printf "\033[2;33m[\033[90mHERO: \033[2;32mINSTALLED\033[2;33m]\033[0m \033[90m%s\033[0m\n" "$(BIN_OUT)/hero_marshal.mcp"; \
+	fi
+
 clean:
-	$(Q)$(CLEAN_RM_CMD) $(BIN_OUT)/hero_config.mcp $(BIN_OUT)/hero_runtime.mcp $(BIN_OUT)/hero_lattice.mcp $(OBJTMP)/hero_config_mcp.o $(OBJTMP)/hero_runtime_mcp.o $(OBJTMP)/hero_lattice_mcp.o
+	$(Q)$(CLEAN_RM_CMD) $(BIN_OUT)/hero_config.mcp $(BIN_OUT)/hero_runtime.mcp $(BIN_OUT)/hero_lattice.mcp $(BIN_OUT)/hero_marshal.mcp $(OBJTMP)/hero_config_mcp.o $(OBJTMP)/hero_runtime_mcp.o $(OBJTMP)/hero_lattice_mcp.o $(OBJTMP)/hero_marshal_mcp.o

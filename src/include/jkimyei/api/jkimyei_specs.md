@@ -3,7 +3,7 @@
 `jkimyei_specs` now parses the `JKSPEC` block syntax and materializes:
 
 - Input requires explicit `COMPONENT "<canonical_type>" { ... }`
-  blocks (`component_id` is derived from canonical type; one DSL file per component
+  blocks (`component_assembly_id` is derived from canonical type; one DSL file per component
   is supported by contract-space merging).
 - Duplicate component canonical types are rejected across merged jkimyei DSL sources.
 

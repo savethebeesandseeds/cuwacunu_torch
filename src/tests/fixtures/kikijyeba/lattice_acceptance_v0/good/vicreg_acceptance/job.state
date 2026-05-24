@@ -1,7 +1,7 @@
 state_format=kikijyeba.runtime.job_state.v1
 status=completed
 job_id=cwu_01v_accept_vicreg_0029_0031.train.representation_vicreg
-target_component=wikimyei.representation.encoding.vicreg
+target_component_family_id=wikimyei.representation.encoding.vicreg
 wave_id=cwu_01v_accept_vicreg_0029_0031
 wave_action=train
 resolved_anchor_index_begin=29

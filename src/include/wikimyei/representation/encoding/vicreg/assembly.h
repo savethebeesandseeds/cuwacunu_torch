@@ -9,13 +9,13 @@ namespace cuwacunu::wikimyei::representation::encoding::vicreg {
 
 [[nodiscard]] inline cuwacunu::wikimyei::assembly::wikimyei_assembly_t
 make_vicreg_assembly(
-    std::string component_id = "vicreg_v1",
+    std::string component_assembly_id = "vicreg_v1",
     std::string version_token = "wikimyei.representation.vicreg.v1") {
   namespace wa = cuwacunu::wikimyei::assembly;
 
   wa::wikimyei_assembly_t out{};
   out.family = "wikimyei.representation.encoding.vicreg";
-  out.component_id = std::move(component_id);
+  out.component_assembly_id = std::move(component_assembly_id);
   out.version_token = std::move(version_token);
   out.trainability = wa::assembly_trainability_t::trainable;
   out.docks.push_back(wa::make_dock(
@@ -40,14 +40,14 @@ make_vicreg_assembly(
 
 [[nodiscard]] inline cuwacunu::wikimyei::assembly::wikimyei_assembly_t
 make_channel_global_fusion_assembly(
-    std::string component_id = "channel_global_fusion_v1",
+    std::string component_assembly_id = "channel_global_fusion_v1",
     std::string version_token =
         "wikimyei.representation.channel_global_fusion.v1") {
   namespace wa = cuwacunu::wikimyei::assembly;
 
   wa::wikimyei_assembly_t out{};
   out.family = "wikimyei.representation.encoding.channel_global_fusion";
-  out.component_id = std::move(component_id);
+  out.component_assembly_id = std::move(component_assembly_id);
   out.version_token = std::move(version_token);
   out.trainability = wa::assembly_trainability_t::trainable;
   out.docks.push_back(wa::make_dock(

@@ -9,6 +9,10 @@ support.
 This is not a portable runtime fixture. The referenced `/cuwacunu/.runtime`
 artifacts remain runtime evidence, not source-tree evidence.
 
+Historical note: this V1 receipt predates the channel-only active target DSL and
+uses node-MDN target names. Keep it as an audit record; do not treat these names
+as active dispatch targets.
+
 Receipt refreshed after warning availability/direction/summary, affine
 source-key audit, evidence-order vocabulary, unit-typing hardening, mathematical
 readiness crosswalks, and derived-query projection self-checks on 2026-05-22.

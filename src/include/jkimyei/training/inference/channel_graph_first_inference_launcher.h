@@ -45,8 +45,8 @@ struct channel_graph_first_inference_launcher_options_t {
 struct channel_graph_first_inference_training_report_t {
   std::string training_id{};
   std::string config_path{};
-  std::string component_id{};
-  std::string input_representation_id{};
+  std::string component_assembly_id{};
+  std::string input_representation_assembly_id{};
   std::string context_contract{"graph_order.channel_node_representation.v1"};
   std::string context_value_shape{"[B_node,C,De]"};
   std::string output_contract{
@@ -88,8 +88,11 @@ struct channel_graph_first_inference_training_report_t {
   std::string wave_mode{};
   std::string target_action{};
   std::string wave_source_range_policy{};
+  std::string wave_source_order_policy{};
   int64_t requested_anchor_index_begin{-1};
   int64_t requested_anchor_index_end{-1};
+  std::string requested_source_key_begin{};
+  std::string requested_source_key_end{};
   std::string runtime_report_mode{};
   std::string stream_plan{};
   std::string source_cursor_token{};
@@ -160,8 +163,9 @@ struct channel_graph_first_inference_training_report_t {
     std::ostringstream oss;
     oss << "training_id=" << training_id << "\n";
     oss << "config_path=" << config_path << "\n";
-    oss << "component_id=" << component_id << "\n";
-    oss << "input_representation_id=" << input_representation_id << "\n";
+    oss << "component_assembly_id=" << component_assembly_id << "\n";
+    oss << "input_representation_assembly_id="
+        << input_representation_assembly_id << "\n";
     oss << "context_contract=" << context_contract << "\n";
     oss << "context_value_shape=" << context_value_shape << "\n";
     oss << "output_contract=" << output_contract << "\n";
@@ -202,9 +206,12 @@ struct channel_graph_first_inference_training_report_t {
     oss << "wave_mode=" << wave_mode << "\n";
     oss << "target_action=" << target_action << "\n";
     oss << "wave_source_range_policy=" << wave_source_range_policy << "\n";
+    oss << "wave_source_order_policy=" << wave_source_order_policy << "\n";
     oss << "requested_anchor_index_begin=" << requested_anchor_index_begin
         << "\n";
     oss << "requested_anchor_index_end=" << requested_anchor_index_end << "\n";
+    oss << "requested_source_key_begin=" << requested_source_key_begin << "\n";
+    oss << "requested_source_key_end=" << requested_source_key_end << "\n";
     oss << "runtime_report_mode=" << runtime_report_mode << "\n";
     oss << "stream_plan=" << stream_plan << "\n";
     oss << "source_cursor_token=" << source_cursor_token << "\n";
@@ -521,7 +528,7 @@ inline std::string make_channel_mdn_runtime_lls(
         channel_mdn_input_batch_t<KeyT> &batch,
     const cuwacunu::wikimyei::inference::expected_value::mdn::
         channel_context_mdn_train_step_result_t &step,
-    const std::string &component_id, const std::string &assembly_token,
+    const std::string &component_assembly_id, const std::string &assembly_token,
     const std::string &dock_binding_token,
     const cuwacunu::kikijyeba::protocol::component_stream_wave_t &stream_wave,
     cuwacunu::kikijyeba::lattice::runtime_report::runtime_report_mode_t
@@ -531,8 +538,8 @@ inline std::string make_channel_mdn_runtime_lls(
   auto stream_report =
       cuwacunu::kikijyeba::protocol::make_component_stream_report(
           cuwacunu::kikijyeba::protocol::component_stream_identity_t{
-              .component_family = "wikimyei.inference.expected_value.mdn",
-              .component_id = component_id,
+              .component_family_id = "wikimyei.inference.expected_value.mdn",
+              .component_assembly_id = component_assembly_id,
               .assembly_token = assembly_token,
               .dock_binding_token = dock_binding_token,
               .graph_order_fingerprint = batch.graph_order_fingerprint,
@@ -620,7 +627,8 @@ inline void move_channel_mdn_input_to_device(
 template <typename EncoderT>
 inline void load_vicreg_encoder_checkpoint_file(
     const std::filesystem::path &path, EncoderT &encoder,
-    const torch::Device &device, const std::string &expected_component_id,
+    const torch::Device &device,
+    const std::string &expected_component_assembly_id,
     const std::string &expected_representation_contract,
     const std::string &expected_channel_axis_policy,
     const std::string &expected_graph_order_fingerprint,
@@ -631,7 +639,12 @@ inline void load_vicreg_encoder_checkpoint_file(
     int64_t expected_input_width, int64_t expected_encoding_dim,
     int64_t expected_feature_hidden_dim, int64_t expected_temporal_depth,
     double expected_recency_decay, double expected_min_valid_fraction,
-    bool expected_use_missingness_indicators) {
+    bool expected_use_missingness_indicators,
+    double expected_vicreg_invariance_weight,
+    double expected_vicreg_variance_weight,
+    double expected_vicreg_covariance_weight,
+    double expected_vicreg_variance_floor, double expected_vicreg_eps,
+    int64_t expected_min_valid_rows, bool expected_skip_non_finite_loss) {
   TORCH_CHECK(!path.empty(),
               "[channel_graph_first_inference_launcher] representation "
               "checkpoint path is empty");
@@ -651,7 +664,14 @@ inline void load_vicreg_encoder_checkpoint_file(
   torch::Tensor saved_recency_decay{};
   torch::Tensor saved_min_valid_fraction{};
   torch::Tensor saved_use_missingness_indicators{};
-  torch::Tensor saved_component_id{};
+  torch::Tensor saved_vicreg_invariance_weight{};
+  torch::Tensor saved_vicreg_variance_weight{};
+  torch::Tensor saved_vicreg_covariance_weight{};
+  torch::Tensor saved_vicreg_variance_floor{};
+  torch::Tensor saved_vicreg_eps{};
+  torch::Tensor saved_min_valid_rows{};
+  torch::Tensor saved_skip_non_finite_loss{};
+  torch::Tensor saved_component_assembly_id{};
   torch::Tensor saved_representation_contract{};
   torch::Tensor saved_channel_axis_policy{};
   torch::Tensor saved_cell_valid_policy{};
@@ -669,7 +689,14 @@ inline void load_vicreg_encoder_checkpoint_file(
   root.read("meta/min_valid_fraction", saved_min_valid_fraction);
   root.read("meta/use_missingness_indicators",
             saved_use_missingness_indicators);
-  root.read("meta/component_id_bytes", saved_component_id);
+  root.read("meta/vicreg_invariance_weight", saved_vicreg_invariance_weight);
+  root.read("meta/vicreg_variance_weight", saved_vicreg_variance_weight);
+  root.read("meta/vicreg_covariance_weight", saved_vicreg_covariance_weight);
+  root.read("meta/vicreg_variance_floor", saved_vicreg_variance_floor);
+  root.read("meta/vicreg_eps", saved_vicreg_eps);
+  root.read("meta/min_valid_rows", saved_min_valid_rows);
+  root.read("meta/skip_non_finite_loss", saved_skip_non_finite_loss);
+  root.read("meta/component_assembly_id_bytes", saved_component_assembly_id);
   root.read("meta/representation_contract_bytes",
             saved_representation_contract);
   root.read("meta/channel_axis_policy_bytes", saved_channel_axis_policy);
@@ -718,9 +745,39 @@ inline void load_vicreg_encoder_checkpoint_file(
               "checkpoint use_missingness_indicators does not match current "
               "config");
   TORCH_CHECK(
-      metadata_string_matches(saved_component_id, expected_component_id),
+      metadata_double_matches(saved_vicreg_invariance_weight,
+                              expected_vicreg_invariance_weight),
       "[channel_graph_first_inference_launcher] representation "
-      "checkpoint component_id does not match current config");
+      "checkpoint VICReg invariance weight does not match current config");
+  TORCH_CHECK(
+      metadata_double_matches(saved_vicreg_variance_weight,
+                              expected_vicreg_variance_weight),
+      "[channel_graph_first_inference_launcher] representation "
+      "checkpoint VICReg variance weight does not match current config");
+  TORCH_CHECK(
+      metadata_double_matches(saved_vicreg_covariance_weight,
+                              expected_vicreg_covariance_weight),
+      "[channel_graph_first_inference_launcher] representation "
+      "checkpoint VICReg covariance weight does not match current config");
+  TORCH_CHECK(metadata_double_matches(saved_vicreg_variance_floor,
+                                      expected_vicreg_variance_floor),
+              "[channel_graph_first_inference_launcher] representation "
+              "checkpoint VICReg variance floor does not match current config");
+  TORCH_CHECK(metadata_double_matches(saved_vicreg_eps, expected_vicreg_eps),
+              "[channel_graph_first_inference_launcher] representation "
+              "checkpoint VICReg eps does not match current config");
+  TORCH_CHECK(
+      metadata_i64_matches(saved_min_valid_rows, expected_min_valid_rows),
+      "[channel_graph_first_inference_launcher] representation "
+      "checkpoint min_valid_rows does not match current config");
+  TORCH_CHECK(metadata_bool_matches(saved_skip_non_finite_loss,
+                                    expected_skip_non_finite_loss),
+              "[channel_graph_first_inference_launcher] representation "
+              "checkpoint skip_non_finite_loss does not match current config");
+  TORCH_CHECK(metadata_string_matches(saved_component_assembly_id,
+                                      expected_component_assembly_id),
+              "[channel_graph_first_inference_launcher] representation "
+              "checkpoint component_assembly_id does not match current config");
   TORCH_CHECK(metadata_string_matches(saved_representation_contract,
                                       expected_representation_contract),
               "[channel_graph_first_inference_launcher] representation "
@@ -795,11 +852,12 @@ inline void save_channel_mdn_checkpoint_file(
              torch::tensor({report.residual_depth}, i64));
   root.write("meta/optimizer_steps",
              torch::tensor({report.optimizer_steps}, i64));
-  root.write("meta/component_id_bytes",
-             int64_tensor_from_vector(string_to_bytes(report.component_id)));
-  root.write("meta/input_representation_id_bytes",
+  root.write(
+      "meta/component_assembly_id_bytes",
+      int64_tensor_from_vector(string_to_bytes(report.component_assembly_id)));
+  root.write("meta/input_representation_assembly_id_bytes",
              int64_tensor_from_vector(
-                 string_to_bytes(report.input_representation_id)));
+                 string_to_bytes(report.input_representation_assembly_id)));
   root.write(
       "meta/context_contract_bytes",
       int64_tensor_from_vector(string_to_bytes(report.context_contract)));
@@ -831,8 +889,8 @@ inline void save_channel_mdn_checkpoint_file(
 }
 
 struct channel_mdn_checkpoint_identity_t {
-  std::string component_id{};
-  std::string input_representation_id{};
+  std::string component_assembly_id{};
+  std::string input_representation_assembly_id{};
   std::string context_contract{};
   std::string output_contract{};
   std::string context_mode{};
@@ -857,8 +915,9 @@ struct channel_mdn_checkpoint_identity_t {
 checkpoint_identity_from_report(
     const channel_graph_first_inference_training_report_t &report) {
   channel_mdn_checkpoint_identity_t out{};
-  out.component_id = report.component_id;
-  out.input_representation_id = report.input_representation_id;
+  out.component_assembly_id = report.component_assembly_id;
+  out.input_representation_assembly_id =
+      report.input_representation_assembly_id;
   out.context_contract = report.context_contract;
   out.output_contract = report.output_contract;
   out.context_mode = report.context_mode;
@@ -903,8 +962,8 @@ inline void load_channel_mdn_checkpoint_file(
   torch::Tensor saved_mixture_count{};
   torch::Tensor saved_hidden_width{};
   torch::Tensor saved_residual_depth{};
-  torch::Tensor saved_component_id{};
-  torch::Tensor saved_input_representation_id{};
+  torch::Tensor saved_component_assembly_id{};
+  torch::Tensor saved_input_representation_assembly_id{};
   torch::Tensor saved_context_contract{};
   torch::Tensor saved_output_contract{};
   torch::Tensor saved_context_mode{};
@@ -924,9 +983,9 @@ inline void load_channel_mdn_checkpoint_file(
   root.read("meta/mixture_count", saved_mixture_count);
   root.read("meta/hidden_width", saved_hidden_width);
   root.read("meta/residual_depth", saved_residual_depth);
-  root.read("meta/component_id_bytes", saved_component_id);
-  root.read("meta/input_representation_id_bytes",
-            saved_input_representation_id);
+  root.read("meta/component_assembly_id_bytes", saved_component_assembly_id);
+  root.read("meta/input_representation_assembly_id_bytes",
+            saved_input_representation_assembly_id);
   root.read("meta/context_contract_bytes", saved_context_contract);
   root.read("meta/output_contract_bytes", saved_output_contract);
   root.read("meta/context_mode_bytes", saved_context_mode);
@@ -973,15 +1032,17 @@ inline void load_channel_mdn_checkpoint_file(
                                      expected_identity->residual_depth),
                 "[channel_graph_first_inference_launcher] MDN checkpoint "
                 "residual_depth does not match current config");
-    TORCH_CHECK(metadata_string_matches(saved_component_id,
-                                        expected_identity->component_id),
-                "[channel_graph_first_inference_launcher] MDN checkpoint "
-                "component_id does not match current config");
     TORCH_CHECK(
-        metadata_string_matches(saved_input_representation_id,
-                                expected_identity->input_representation_id),
+        metadata_string_matches(saved_component_assembly_id,
+                                expected_identity->component_assembly_id),
         "[channel_graph_first_inference_launcher] MDN checkpoint "
-        "input_representation_id does not match current config");
+        "component_assembly_id does not match current config");
+    TORCH_CHECK(
+        metadata_string_matches(
+            saved_input_representation_assembly_id,
+            expected_identity->input_representation_assembly_id),
+        "[channel_graph_first_inference_launcher] MDN checkpoint "
+        "input_representation_assembly_id does not match current config");
     TORCH_CHECK(metadata_string_matches(saved_context_contract,
                                         expected_identity->context_contract),
                 "[channel_graph_first_inference_launcher] MDN checkpoint "
@@ -1070,9 +1131,10 @@ public:
     channel_graph_first_inference_training_report_t out{};
     out.training_id = builder_.bundle().channel_mdn_training.training_id;
     out.config_path = builder_.bundle().config_path;
-    out.component_id = builder_.bundle().channel_mdn.component_id;
-    out.input_representation_id =
-        builder_.bundle().channel_mdn.input_representation_id;
+    out.component_assembly_id =
+        builder_.bundle().channel_mdn.component_assembly_id;
+    out.input_representation_assembly_id =
+        builder_.bundle().channel_mdn.input_representation_assembly_id;
     out.graph_order_fingerprint = plan.graph_order_fingerprint;
     out.node_ids = plan.node_ids;
     out.edge_ids = plan.edge_ids;
@@ -1112,8 +1174,11 @@ public:
     out.wave_mode = plan.wave_mode;
     out.target_action = effective_train_target() ? "train" : "run";
     out.wave_source_range_policy = plan.wave_source_range_policy;
+    out.wave_source_order_policy = plan.wave_source_order_policy;
     out.requested_anchor_index_begin = plan.requested_anchor_index_begin;
     out.requested_anchor_index_end = plan.requested_anchor_index_end;
+    out.requested_source_key_begin = plan.requested_source_key_begin;
+    out.requested_source_key_end = plan.requested_source_key_end;
     out.runtime_report_mode =
         cuwacunu::kikijyeba::settings::runtime_report_mode_name(
             cuwacunu::kikijyeba::protocol::graph_first_pipeline_builder_detail::
@@ -1156,7 +1221,8 @@ public:
       channel_graph_first_inference_launcher_detail::
           load_vicreg_encoder_checkpoint_file(
               training_spec.input_representation_checkpoint_path, encoder,
-              builder_.options().device, builder_.bundle().vicreg.component_id,
+              builder_.options().device,
+              builder_.bundle().vicreg.component_assembly_id,
               "graph_order.channel_node_representation.v1",
               "preserved_primary_output",
               builder_.bundle()
@@ -1174,7 +1240,14 @@ public:
               builder_.bundle().vicreg.temporal_depth,
               builder_.bundle().vicreg.recency_decay,
               builder_.bundle().vicreg.min_valid_fraction,
-              builder_.bundle().vicreg.use_missingness_indicators);
+              builder_.bundle().vicreg.use_missingness_indicators,
+              builder_.bundle().vicreg.vicreg_invariance_weight,
+              builder_.bundle().vicreg.vicreg_variance_weight,
+              builder_.bundle().vicreg.vicreg_covariance_weight,
+              builder_.bundle().vicreg.vicreg_variance_floor,
+              builder_.bundle().vicreg.vicreg_eps,
+              builder_.bundle().vicreg.min_valid_rows,
+              builder_.bundle().vicreg.skip_non_finite_loss);
       representation_checkpoint_loaded = true;
     } else if (!training_spec.allow_untrained_representation) {
       throw std::runtime_error(
@@ -1319,8 +1392,16 @@ public:
     };
 
     const int64_t max_steps = training_spec.max_steps;
-    while (representation_stream.has_next() &&
-           (max_steps == 0 || report.steps_attempted < max_steps)) {
+    while (max_steps == 0 || report.steps_attempted < max_steps) {
+      if (!representation_stream.has_next()) {
+        if (!train_target || max_steps == 0) {
+          break;
+        }
+        representation_stream.reset();
+        if (!representation_stream.has_next()) {
+          break;
+        }
+      }
       ++report.steps_attempted;
       ++report.wave_pulses_attempted;
       auto channel_batch = representation_stream.next();
@@ -1392,7 +1473,7 @@ public:
           step.skipped = true;
           step.loss = torch::zeros({}, input.context.options());
         } else {
-          auto out = model_ptr->forward(input.context);
+          auto out = model_ptr->forward(input.context, input.context_mask);
           step.nonfinite_output_count =
               cuwacunu::wikimyei::inference::expected_value::mdn::
                   channel_context_mdn_train_detail::nonfinite_count(out);
@@ -1513,10 +1594,12 @@ public:
         report.representation_runtime_lls = batch.representation_runtime_lls;
         report.mdn_runtime_lls = channel_graph_first_inference_launcher_detail::
             make_channel_mdn_runtime_lls(
-                batch, step, builder_.bundle().channel_mdn.component_id,
+                batch, step,
+                builder_.bundle().channel_mdn.component_assembly_id,
                 cuwacunu::wikimyei::assembly::make_assembly_token(
                     builder_.bundle().channel_mdn_assembly.family,
-                    builder_.bundle().channel_mdn_assembly.component_id,
+                    builder_.bundle()
+                        .channel_mdn_assembly.component_assembly_id,
                     builder_.bundle().channel_mdn_assembly.version_token),
                 cuwacunu::kikijyeba::topology::dock_binding_token(
                     builder_.bundle().dock_binding),

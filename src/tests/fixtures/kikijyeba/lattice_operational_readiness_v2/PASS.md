@@ -135,11 +135,11 @@ The validation eval wrote no checkpoint fact and did not mutate model state.
 
 ## Node Evidence
 
-The earlier node V2 Core evidence remains present under the same runtime root
-and still satisfies the node targets:
+Historical node V2 Core evidence remains present under the same runtime root
+for replay/audit compatibility only. Active V2 readiness is channel-based:
 
 ```text
-legacy_node_vicreg_train_core_ready = satisfied
+historical_node_vicreg_train_core_ready = satisfied
 node_mdn_train_core_ready = satisfied
 node_mdn_train_core_no_validation_leakage = satisfied
 node_mdn_train_core_no_test_leakage = satisfied

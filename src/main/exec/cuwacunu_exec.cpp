@@ -61,7 +61,7 @@ int main(int argc, char **argv) {
         runtime::run_graph_first_job<types::kline_t>(config_path, options);
     std::cout << "job_id=" << result.manifest.job_id << "\n";
     std::cout << "job_kind=" << result.manifest.job_kind << "\n";
-    std::cout << "target_component=" << result.manifest.target_component
+    std::cout << "target_component_family_id=" << result.manifest.target_component_family_id
               << "\n";
     std::cout << "wave_action=" << result.manifest.wave_action << "\n";
     std::cout << "status=" << result.state.status << "\n";

@@ -7,7 +7,7 @@ TRAINING {
   VERSION = wikimyei.representation.vicreg.jkimyei.v1;
   TRAINING_ID = smoke_vicreg_representation;
   TASK = vicreg_representation;
-  COMPONENT_ID = vicreg_v1;
+  COMPONENT_ASSEMBLY_ID = vicreg_v1;
   OPTIMIZER = adam;
   LEARNING_RATE = 0.001;
   MAX_STEPS = 0;

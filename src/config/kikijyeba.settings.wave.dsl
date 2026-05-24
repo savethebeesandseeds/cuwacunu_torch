@@ -21,23 +21,13 @@
 
       Supported values:
         wikimyei.representation.encoding.vicreg
-          Target the node representation. In MODE=train this mutates VICReg;
-          in MODE=run it executes the representation path forward only.
-
-        wikimyei.inference.expected_value.mdn
-          Target node ExpectedValue. The representation encoder still runs as a
-          frozen dependency because MDN needs node encodings. In MODE=train only
-          the MDN heads mutate; in MODE=run no optimizer step is applied.
-
-        wikimyei.representation.encoding.vicreg
           Target the channel-preserving node representation. In MODE=train this
           mutates VICReg; in MODE=run it executes the channel
           representation path forward only.
 
         wikimyei.inference.expected_value.mdn
-          Target channel ExpectedValue. The channel representation encoder runs
-          frozen because Channel MDN consumes `[B,N,C,De]` context. In
-          MODE=train only Channel MDN mutates.
+          Target ExpectedValue. The representation encoder runs frozen because
+          MDN consumes `[B,N,C,De]` context. In MODE=train only MDN mutates.
 
     MODE:
       One or more mode atoms, joined with "|".
@@ -84,9 +74,38 @@
         interval is over the accepted graph-anchor cursor after all graph/source
         coverage checks, so it applies to the whole active graph, not one edge.
 
+      source_key
+        Stream a graph-wide half-open accepted-anchor key interval:
+          [SOURCE_KEY_BEGIN, SOURCE_KEY_END)
+
+        This is the stable authoring form for source-keyed records such as
+        kline millisecond close times. Runtime resolves the key interval to the
+        accepted graph-anchor index domain before execution, then reports both
+        requested source-key bounds and resolved anchor-index bounds. The alias
+        `anchor_key` and fields `ANCHOR_KEY_BEGIN/END` are accepted for graph
+        anchor terminology, but `source_key` is the canonical emitted policy.
+
+    SOURCE_ORDER:
+      If omitted, MODE=train defaults to random_per_epoch and MODE=run defaults
+      to sequential. A train wave may explicitly request sequential for
+      reproducible/debug runs, but Runtime emits a SOURCE_ORDER warning because
+      stochastic graph-anchor train loading is disabled.
+
+      sequential
+        Yield graph anchors in canonical accepted-anchor order.
+
+      random_per_epoch
+        Use Torch RandomSampler over graph-anchor indices once per stream
+        epoch. Each selected anchor still fetches all graph edges together,
+        preserving graph synchronization.
+
     ANCHOR_INDEX_BEGIN / ANCHOR_INDEX_END:
       Required when SOURCE_RANGE = anchor_index. Both are zero-based positions
       in the accepted graph-anchor domain, and END must be greater than BEGIN.
+
+    SOURCE_KEY_BEGIN / SOURCE_KEY_END:
+      Required when SOURCE_RANGE = source_key. Bounds are integral graph-anchor
+      source-key values and use half-open semantics over accepted anchors.
 */
 WAVE_SETTINGS {
   WAVE_ID = cwu_01v_channel_validation_eval_mdn_1800_2050;

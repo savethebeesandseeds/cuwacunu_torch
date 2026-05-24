@@ -9,7 +9,7 @@
 */
 VICREG {
   VERSION = wikimyei.representation.vicreg.v1;
-  COMPONENT_ID = vicreg_v1;
+  COMPONENT_ASSEMBLY_ID = vicreg_v1;
   INPUT_ROUTE = channel_node_stream;
   CHANNEL_COUNT = 3;
   HISTORY_LENGTH = 30;

@@ -19,8 +19,6 @@
 namespace cuwacunu::kikijyeba::runtime {
 
 enum class runtime_job_kind_t {
-  representation_vicreg,
-  inference_mdn,
   channel_representation_vicreg,
   channel_inference_mdn,
 };
@@ -28,10 +26,6 @@ enum class runtime_job_kind_t {
 [[nodiscard]] inline const char *
 runtime_job_kind_name(runtime_job_kind_t kind) {
   switch (kind) {
-  case runtime_job_kind_t::representation_vicreg:
-    return "representation_vicreg";
-  case runtime_job_kind_t::inference_mdn:
-    return "inference_mdn";
   case runtime_job_kind_t::channel_representation_vicreg:
     return "channel_representation_vicreg";
   case runtime_job_kind_t::channel_inference_mdn:
@@ -44,15 +38,29 @@ struct job_manifest_t {
   std::string job_id{};
   std::string job_kind{};
   std::string config_path{};
+  std::string config_bundle_id{};
+  std::string config_receipt_id{};
+  std::string component_spawn_registry_id{};
+  std::string component_family_id{};
+  std::string component_spawn_schema{"kikijyeba.component_spawn.v1"};
+  std::string component_spawn_fingerprint{};
+  std::string component_spawn_id{};
+  std::string component_spawn_label{};
   std::string topology_id{"kikijyeba.topology.graph.v1"};
   std::string wave_id{};
-  std::string target_component{};
+  std::string target_component_family_id{};
   std::string wave_action{};
   std::string wave_mode{};
   std::string execution_chain{};
   std::string mutated_components{};
   std::string frozen_components{};
   std::string source_range_policy{};
+  std::string source_order_policy{};
+  bool source_order_policy_explicit{false};
+  std::string source_order_warning_level{"none"};
+  std::string source_order_warnings{};
+  std::string requested_source_key_begin{};
+  std::string requested_source_key_end{};
   std::size_t resolved_anchor_index_begin{0};
   std::size_t resolved_anchor_index_end{0};
   std::size_t accepted_anchor_count{0};
@@ -107,15 +115,32 @@ struct job_manifest_t {
     out << "job_id=" << job_id << "\n";
     out << "job_kind=" << job_kind << "\n";
     out << "config_path=" << config_path << "\n";
+    out << "config_bundle_id=" << config_bundle_id << "\n";
+    out << "config_receipt_id=" << config_receipt_id << "\n";
+    out << "component_spawn_registry_id=" << component_spawn_registry_id
+        << "\n";
+    out << "component_family_id=" << component_family_id << "\n";
+    out << "component_spawn_schema=" << component_spawn_schema << "\n";
+    out << "component_spawn_fingerprint=" << component_spawn_fingerprint
+        << "\n";
+    out << "component_spawn_id=" << component_spawn_id << "\n";
+    out << "component_spawn_label=" << component_spawn_label << "\n";
     out << "topology_id=" << topology_id << "\n";
     out << "wave_id=" << wave_id << "\n";
-    out << "target_component=" << target_component << "\n";
+    out << "target_component_family_id=" << target_component_family_id << "\n";
     out << "wave_action=" << wave_action << "\n";
     out << "wave_mode=" << wave_mode << "\n";
     out << "execution_chain=" << execution_chain << "\n";
     out << "mutated_components=" << mutated_components << "\n";
     out << "frozen_components=" << frozen_components << "\n";
     out << "source_range_policy=" << source_range_policy << "\n";
+    out << "source_order_policy=" << source_order_policy << "\n";
+    out << "source_order_policy_explicit="
+        << (source_order_policy_explicit ? "true" : "false") << "\n";
+    out << "source_order_warning_level=" << source_order_warning_level << "\n";
+    out << "source_order_warnings=" << source_order_warnings << "\n";
+    out << "requested_source_key_begin=" << requested_source_key_begin << "\n";
+    out << "requested_source_key_end=" << requested_source_key_end << "\n";
     out << "resolved_anchor_index_begin=" << resolved_anchor_index_begin
         << "\n";
     out << "resolved_anchor_index_end=" << resolved_anchor_index_end << "\n";
@@ -190,24 +215,6 @@ struct job_manifest_t {
 execution_chain_for_job(runtime_job_kind_t job_kind,
                         const std::string &wave_action) {
   switch (job_kind) {
-  case runtime_job_kind_t::representation_vicreg:
-    return wave_action == "train"
-               ? "ujcamei.source.registry:run -> "
-                 "wikimyei.expression.nodelift.srl:run -> "
-                 "wikimyei.representation.encoding.vicreg:train"
-               : "ujcamei.source.registry:run -> "
-                 "wikimyei.expression.nodelift.srl:run -> "
-                 "wikimyei.representation.encoding.vicreg:run";
-  case runtime_job_kind_t::inference_mdn:
-    return wave_action == "train"
-               ? "ujcamei.source.registry:run -> "
-                 "wikimyei.expression.nodelift.srl:run -> "
-                 "wikimyei.representation.encoding.vicreg:run_frozen -> "
-                 "wikimyei.inference.expected_value.mdn:train"
-               : "ujcamei.source.registry:run -> "
-                 "wikimyei.expression.nodelift.srl:run -> "
-                 "wikimyei.representation.encoding.vicreg:run_frozen -> "
-                 "wikimyei.inference.expected_value.mdn:run";
   case runtime_job_kind_t::channel_representation_vicreg:
     return wave_action == "train"
                ? "ujcamei.source.registry:run -> "
@@ -237,10 +244,6 @@ mutated_components_for_job(runtime_job_kind_t job_kind,
     return {};
   }
   switch (job_kind) {
-  case runtime_job_kind_t::representation_vicreg:
-    return "wikimyei.representation.encoding.vicreg";
-  case runtime_job_kind_t::inference_mdn:
-    return "wikimyei.inference.expected_value.mdn";
   case runtime_job_kind_t::channel_representation_vicreg:
     return "wikimyei.representation.encoding.vicreg";
   case runtime_job_kind_t::channel_inference_mdn:
@@ -252,10 +255,6 @@ mutated_components_for_job(runtime_job_kind_t job_kind,
 [[nodiscard]] inline std::string
 frozen_components_for_job(runtime_job_kind_t job_kind) {
   switch (job_kind) {
-  case runtime_job_kind_t::representation_vicreg:
-    return {};
-  case runtime_job_kind_t::inference_mdn:
-    return "wikimyei.representation.encoding.vicreg";
   case runtime_job_kind_t::channel_representation_vicreg:
     return {};
   case runtime_job_kind_t::channel_inference_mdn:
@@ -323,21 +322,9 @@ source_file_receipts_for_bundle(const BundleT &bundle) {
 
 [[nodiscard]] inline const cuwacunu::jkimyei::training::training_run_spec_t &
 representation_training_for_manifest(
-    const cuwacunu::kikijyeba::protocol::graph_first_config_bundle_t &bundle) {
-  return bundle.vicreg_training;
-}
-
-[[nodiscard]] inline const cuwacunu::jkimyei::training::training_run_spec_t &
-representation_training_for_manifest(
     const cuwacunu::kikijyeba::protocol::channel_graph_first_config_bundle_t
         &bundle) {
   return bundle.vicreg_training;
-}
-
-[[nodiscard]] inline const cuwacunu::jkimyei::training::training_run_spec_t &
-inference_training_for_manifest(
-    const cuwacunu::kikijyeba::protocol::graph_first_config_bundle_t &bundle) {
-  return bundle.mdn_training;
 }
 
 [[nodiscard]] inline const cuwacunu::jkimyei::training::training_run_spec_t &
@@ -361,7 +348,7 @@ make_job_manifest(const BuilderT &builder, const wave_plan_t &wave_plan,
   out.job_kind = runtime_job_kind_name(job_kind);
   out.config_path = builder.bundle().config_path;
   out.wave_id = wave_plan.wave_id;
-  out.target_component = wave_plan.target_component;
+  out.target_component_family_id = wave_plan.target_component_family_id;
   out.wave_action = wave_plan.action;
   out.wave_mode = wave_plan.mode_text;
   out.execution_chain = execution_chain_for_job(job_kind, wave_plan.action);
@@ -369,6 +356,18 @@ make_job_manifest(const BuilderT &builder, const wave_plan_t &wave_plan,
       mutated_components_for_job(job_kind, wave_plan.action);
   out.frozen_components = frozen_components_for_job(job_kind);
   out.source_range_policy = wave_plan.source_range_policy;
+  out.source_order_policy = wave_plan.source_order_policy;
+  out.source_order_policy_explicit = wave_plan.source_order_policy_explicit;
+  out.source_order_warning_level = wave_plan.source_order_warning_level;
+  out.source_order_warnings = wave_plan.source_order_warnings;
+  if (wave_plan.requested_source_key_begin.has_value()) {
+    out.requested_source_key_begin =
+        std::to_string(*wave_plan.requested_source_key_begin);
+  }
+  if (wave_plan.requested_source_key_end.has_value()) {
+    out.requested_source_key_end =
+        std::to_string(*wave_plan.requested_source_key_end);
+  }
   out.resolved_anchor_index_begin = wave_plan.resolved_anchor_index_begin;
   out.resolved_anchor_index_end = wave_plan.resolved_anchor_index_end;
   out.accepted_anchor_count = wave_plan.accepted_anchor_count;

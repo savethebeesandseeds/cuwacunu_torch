@@ -3,7 +3,9 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cctype>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <filesystem>
@@ -70,14 +72,21 @@ struct lattice_exposure_fact_t {
   std::string contract_fingerprint{};
   std::string graph_order_fingerprint{};
   std::string component_assembly_fingerprint{};
-  std::string target_component{};
+  std::string target_component_family_id{};
+  std::string config_bundle_id{};
+  std::string config_receipt_id{};
+  std::string component_spawn_registry_id{};
+  std::string component_family_id{};
+  std::string component_spawn_fingerprint{};
+  std::string component_spawn_id{};
+  std::string component_spawn_label{};
   std::string representation_architecture{};
   std::string representation_contract{};
   std::string representation_value_shape{};
   std::string representation_sequence_value_shape{};
   std::string channel_axis_policy{};
   std::string temporal_reduction{};
-  std::string input_representation_id{};
+  std::string input_representation_assembly_id{};
   std::string context_mode{};
   std::string context_contract{};
   std::string context_value_shape{};
@@ -202,7 +211,7 @@ struct forbidden_exposure_overlap_t {
   std::string fact_digest{};
   std::string job_id{};
   std::string wave_id{};
-  std::string target_component{};
+  std::string target_component_family_id{};
   std::string split_name{};
   exposure_use_t use{exposure_use_t::observed_input};
   bool mutated_component{false};
@@ -547,8 +556,7 @@ lattice_source_key_coordinate_policy_summary() {
   out.source_key_rows_are_audit_only =
       source_key_window_policy != vocabulary.end() &&
       order_preserving_policy != vocabulary.end() &&
-      affine_policy != vocabulary.end() &&
-      gap_policy != vocabulary.end() &&
+      affine_policy != vocabulary.end() && gap_policy != vocabulary.end() &&
       source_key_window_policy->audit_only &&
       order_preserving_policy->audit_only && affine_policy->audit_only &&
       gap_policy->audit_only;
@@ -1125,7 +1133,7 @@ struct exposure_load_summary_t {
   anchor_interval_t target_range{};
   exposure_use_t use{exposure_use_t::observed_input};
   std::string component_scope{"all_components"};
-  std::string target_component{};
+  std::string target_component_family_id{};
   bool require_mutated_component{true};
   std::string unique_coverage_algebra{k_unique_coverage_algebra};
   std::string load_algebra{k_load_algebra};
@@ -1164,7 +1172,7 @@ struct lattice_node_exposure_fact_t {
   std::string source_cursor_token{};
   std::string split_policy_fingerprint{};
   std::string component_assembly_fingerprint{};
-  std::string target_component{};
+  std::string target_component_family_id{};
   std::string job_id{};
   std::string wave_id{};
   std::string job_status{};
@@ -1206,7 +1214,7 @@ struct node_support_row_t {
 
 struct node_support_summary_t {
   std::string schema{"kikijyeba.lattice.node_support_summary.v1"};
-  std::string target_component{};
+  std::string target_component_family_id{};
   std::string split_name{};
   exposure_use_set_t use{};
   std::vector<node_support_row_t> support_rows{};
@@ -1264,7 +1272,7 @@ struct lattice_representation_support_fact_t {
   std::string source_cursor_token{};
   std::string split_policy_fingerprint{};
   std::string component_assembly_fingerprint{};
-  std::string target_component{};
+  std::string target_component_family_id{};
   std::string job_id{};
   std::string wave_id{};
   std::string job_status{};
@@ -1395,12 +1403,14 @@ struct checkpoint_closure_result_t {
   std::vector<std::filesystem::path> unresolved_input_checkpoints{};
   std::string resolution_authority{"legacy_path"};
   bool legacy_path_fallback{false};
+  bool root_producer_found{false};
   std::string root_checkpoint_id{};
   std::string root_checkpoint_file_digest{};
   std::vector<std::string> identity_mismatches{};
 
   [[nodiscard]] bool complete() const {
-    return unresolved_input_checkpoints.empty() && identity_mismatches.empty();
+    return root_producer_found && unresolved_input_checkpoints.empty() &&
+           identity_mismatches.empty();
   }
 };
 
@@ -1419,7 +1429,7 @@ struct lattice_checkpoint_fact_t {
   std::string representation_sequence_value_shape{};
   std::string channel_axis_policy{};
   std::string temporal_reduction{};
-  std::string input_representation_id{};
+  std::string input_representation_assembly_id{};
   std::string context_mode{};
   std::string context_contract{};
   std::string context_value_shape{};
@@ -1474,7 +1484,7 @@ struct lattice_source_receipt_fact_t {
   std::string source_cursor_token{};
   std::string split_policy_fingerprint{};
   std::string component_assembly_fingerprint{};
-  std::string target_component{};
+  std::string target_component_family_id{};
   std::string job_id{};
   std::string wave_id{};
   std::string split_name{"unknown"};
@@ -1570,7 +1580,7 @@ struct lattice_selection_signal_fact_t {
   std::string source_cursor_token{};
   std::string split_policy_fingerprint{};
   std::string component_assembly_fingerprint{};
-  std::string target_component{};
+  std::string target_component_family_id{};
   std::string job_id{};
   std::string wave_id{};
   std::string split_name{"unknown"};
@@ -2020,7 +2030,7 @@ inline void append_double_list(std::ostringstream &out, const char *key,
 
 [[nodiscard]] inline std::string component_fingerprint_from_manifest(
     const std::unordered_map<std::string, std::string> &manifest) {
-  const auto target = map_get(manifest, "target_component");
+  const auto target = map_get(manifest, "target_component_family_id");
   if (target == "wikimyei.representation.encoding.vicreg" ||
       target == "wikimyei.representation.encoding.vicreg") {
     return map_get(manifest, "vicreg_assembly_fingerprint");
@@ -2202,16 +2212,14 @@ audit_source_key_window(const lattice_exposure_fact_t &fact) {
                        });
   };
   const auto count_issue_containing = [&](const std::string &needle) {
-    return static_cast<std::int64_t>(
-        std::count_if(out.issues.begin(), out.issues.end(),
-                      [&](const std::string &issue) {
-                        return issue.find(needle) != std::string::npos;
-                      }));
+    return static_cast<std::int64_t>(std::count_if(
+        out.issues.begin(), out.issues.end(), [&](const std::string &issue) {
+          return issue.find(needle) != std::string::npos;
+        }));
   };
   out.missing_endpoint_pair_count = count_issue_containing("pair_incomplete");
-  out.irregular_key_warning_count =
-      count_issue_containing("step_irregular") +
-      count_issue_containing("step_nonpositive");
+  out.irregular_key_warning_count = count_issue_containing("step_irregular") +
+                                    count_issue_containing("step_nonpositive");
   out.row_source_key_mismatch_count =
       count_issue_containing("affine_mismatch") +
       count_issue_containing("affine_overflow");
@@ -2314,7 +2322,7 @@ make_source_receipt_facts_from_exposure_fact(
     fact.source_cursor_token = parent.source_cursor_token;
     fact.split_policy_fingerprint = parent.split_policy_fingerprint;
     fact.component_assembly_fingerprint = parent.component_assembly_fingerprint;
-    fact.target_component = parent.target_component;
+    fact.target_component_family_id = parent.target_component_family_id;
     fact.job_id = parent.job_id;
     fact.wave_id = parent.wave_id;
     fact.split_name = parent.split_name;
@@ -2353,7 +2361,8 @@ canonical_source_receipt_fact_text(const lattice_source_receipt_fact_t &fact) {
   out << "split_policy_fingerprint=" << fact.split_policy_fingerprint << "\n";
   out << "component_assembly_fingerprint="
       << fact.component_assembly_fingerprint << "\n";
-  out << "target_component=" << fact.target_component << "\n";
+  out << "target_component_family_id=" << fact.target_component_family_id
+      << "\n";
   out << "job_id=" << fact.job_id << "\n";
   out << "wave_id=" << fact.wave_id << "\n";
   out << "split_name=" << fact.split_name << "\n";
@@ -2736,7 +2745,7 @@ make_selection_signal_fact_from_exposure_fact(
   out.source_cursor_token = parent.source_cursor_token;
   out.split_policy_fingerprint = parent.split_policy_fingerprint;
   out.component_assembly_fingerprint = parent.component_assembly_fingerprint;
-  out.target_component = parent.target_component;
+  out.target_component_family_id = parent.target_component_family_id;
   out.job_id = parent.job_id;
   out.wave_id = parent.wave_id;
   out.split_name = parent.split_name;
@@ -2789,7 +2798,8 @@ make_selection_signal_facts_from_exposure_fact(
   out << "split_policy_fingerprint=" << fact.split_policy_fingerprint << "\n";
   out << "component_assembly_fingerprint="
       << fact.component_assembly_fingerprint << "\n";
-  out << "target_component=" << fact.target_component << "\n";
+  out << "target_component_family_id=" << fact.target_component_family_id
+      << "\n";
   out << "job_id=" << fact.job_id << "\n";
   out << "wave_id=" << fact.wave_id << "\n";
   out << "split_name=" << fact.split_name << "\n";
@@ -2916,14 +2926,15 @@ selection_signal_fact_issues(const lattice_selection_signal_fact_t &fact) {
   return out;
 }
 
-[[nodiscard]] inline bool
-is_representation_component_name(const std::string &target_component) {
-  return target_component == "wikimyei.representation.encoding.vicreg";
+[[nodiscard]] inline bool is_representation_component_name(
+    const std::string &target_component_family_id) {
+  return target_component_family_id ==
+         "wikimyei.representation.encoding.vicreg";
 }
 
 [[nodiscard]] inline bool
 is_representation_component(const lattice_exposure_fact_t &fact) {
-  return is_representation_component_name(fact.target_component);
+  return is_representation_component_name(fact.target_component_family_id);
 }
 
 [[nodiscard]] inline bool representation_support_fact_has_payload(
@@ -2976,7 +2987,7 @@ make_representation_support_facts_from_job_dir(
   fact.source_cursor_token = parent.source_cursor_token;
   fact.split_policy_fingerprint = parent.split_policy_fingerprint;
   fact.component_assembly_fingerprint = parent.component_assembly_fingerprint;
-  fact.target_component = parent.target_component;
+  fact.target_component_family_id = parent.target_component_family_id;
   fact.job_id = parent.job_id;
   fact.wave_id = parent.wave_id;
   fact.job_status = parent.job_status;
@@ -3155,7 +3166,8 @@ make_representation_support_facts_from_job_dir(
   out << "split_policy_fingerprint=" << fact.split_policy_fingerprint << "\n";
   out << "component_assembly_fingerprint="
       << fact.component_assembly_fingerprint << "\n";
-  out << "target_component=" << fact.target_component << "\n";
+  out << "target_component_family_id=" << fact.target_component_family_id
+      << "\n";
   out << "job_id=" << fact.job_id << "\n";
   out << "wave_id=" << fact.wave_id << "\n";
   out << "job_status=" << fact.job_status << "\n";
@@ -3258,7 +3270,7 @@ representation_support_fact_issues(
   if (fact.parent_exposure_fact_digest.empty()) {
     issues.emplace_back("missing_parent_exposure_fact_digest");
   }
-  if (!is_representation_component_name(fact.target_component)) {
+  if (!is_representation_component_name(fact.target_component_family_id)) {
     issues.emplace_back("not_representation_component");
   }
   if (fact.node_indexed) {
@@ -3490,6 +3502,9 @@ make_exposure_fact_from_job_dir(const std::filesystem::path &job_dir,
   }
   const auto state = detail::parse_assignment_file(job_dir / "job.state");
   const auto job_kind = detail::map_get(manifest, "job_kind");
+  // Historical read-only support: V1 receipts may contain
+  // representation_vicreg node-VICReg reports. Runtime no longer emits that
+  // job kind; active representation jobs are channel_representation_vicreg.
   const auto report_leaf =
       job_kind == "representation_vicreg" ? "representation.report"
       : job_kind == "channel_representation_vicreg"
@@ -3498,7 +3513,8 @@ make_exposure_fact_from_job_dir(const std::filesystem::path &job_dir,
                                             : "inference.report";
   const auto report_path = job_dir / report_leaf;
   const auto report = detail::parse_assignment_file(report_path);
-  const auto target_component = detail::map_get(manifest, "target_component");
+  const auto target_component_family_id =
+      detail::map_get(manifest, "target_component_family_id");
   const auto wave_action = detail::map_get(
       manifest, "wave_action", detail::map_get(state, "wave_action"));
 
@@ -3509,7 +3525,17 @@ make_exposure_fact_from_job_dir(const std::filesystem::path &job_dir,
       detail::map_get(manifest, "graph_order_fingerprint");
   out.component_assembly_fingerprint =
       detail::component_fingerprint_from_manifest(manifest);
-  out.target_component = target_component;
+  out.target_component_family_id = target_component_family_id;
+  out.config_bundle_id = detail::map_get(manifest, "config_bundle_id");
+  out.config_receipt_id = detail::map_get(manifest, "config_receipt_id");
+  out.component_spawn_registry_id =
+      detail::map_get(manifest, "component_spawn_registry_id");
+  out.component_family_id = detail::map_get(manifest, "component_family_id");
+  out.component_spawn_fingerprint =
+      detail::map_get(manifest, "component_spawn_fingerprint");
+  out.component_spawn_id = detail::map_get(manifest, "component_spawn_id");
+  out.component_spawn_label =
+      detail::map_get(manifest, "component_spawn_label");
   out.representation_architecture =
       detail::first_string(report, state, {"representation_architecture"});
   out.representation_contract =
@@ -3522,8 +3548,8 @@ make_exposure_fact_from_job_dir(const std::filesystem::path &job_dir,
       detail::first_string(report, state, {"channel_axis_policy"});
   out.temporal_reduction =
       detail::first_string(report, state, {"temporal_reduction"});
-  out.input_representation_id =
-      detail::first_string(report, state, {"input_representation_id"});
+  out.input_representation_assembly_id =
+      detail::first_string(report, state, {"input_representation_assembly_id"});
   out.context_mode = detail::first_string(report, state, {"context_mode"});
   out.context_contract =
       detail::first_string(report, state, {"context_contract"});
@@ -3645,6 +3671,9 @@ make_exposure_fact_from_job_dir(const std::filesystem::path &job_dir,
   out.split_role = context.split_role;
   out.split_policy_fingerprint = std::move(context.split_policy_fingerprint);
   out.use.observed_input = true;
+  // `inference_mdn` is historical node-MDN evidence. Runtime no longer emits
+  // it as an active wave target, but Lattice keeps it readable for audit
+  // replay of older runtime roots.
   out.use.target_supervision =
       job_kind == "inference_mdn" || job_kind == "channel_inference_mdn";
   out.use.evaluation_metric = !report.empty();
@@ -3681,7 +3710,7 @@ make_exposure_fact_from_job_dir(const std::filesystem::path &job_dir,
       out.job_status == "completed" && wave_action == "train" &&
       out.optimizer_steps > 0 &&
       detail::contains_token(detail::map_get(manifest, "mutated_components"),
-                             target_component);
+                             target_component_family_id);
   out.valid_target_count = detail::first_i64(
       report, state, {"total_valid_target_count", "last_valid_target_count"},
       0);
@@ -3829,7 +3858,17 @@ canonical_exposure_fact_text(const lattice_exposure_fact_t &fact) {
   out << "graph_order_fingerprint=" << fact.graph_order_fingerprint << "\n";
   out << "component_assembly_fingerprint="
       << fact.component_assembly_fingerprint << "\n";
-  out << "target_component=" << fact.target_component << "\n";
+  out << "target_component_family_id=" << fact.target_component_family_id
+      << "\n";
+  out << "config_bundle_id=" << fact.config_bundle_id << "\n";
+  out << "config_receipt_id=" << fact.config_receipt_id << "\n";
+  out << "component_spawn_registry_id=" << fact.component_spawn_registry_id
+      << "\n";
+  out << "component_family_id=" << fact.component_family_id << "\n";
+  out << "component_spawn_fingerprint=" << fact.component_spawn_fingerprint
+      << "\n";
+  out << "component_spawn_id=" << fact.component_spawn_id << "\n";
+  out << "component_spawn_label=" << fact.component_spawn_label << "\n";
   out << "representation_architecture=" << fact.representation_architecture
       << "\n";
   out << "representation_contract=" << fact.representation_contract << "\n";
@@ -3839,7 +3878,8 @@ canonical_exposure_fact_text(const lattice_exposure_fact_t &fact) {
       << fact.representation_sequence_value_shape << "\n";
   out << "channel_axis_policy=" << fact.channel_axis_policy << "\n";
   out << "temporal_reduction=" << fact.temporal_reduction << "\n";
-  out << "input_representation_id=" << fact.input_representation_id << "\n";
+  out << "input_representation_assembly_id="
+      << fact.input_representation_assembly_id << "\n";
   out << "context_mode=" << fact.context_mode << "\n";
   out << "context_contract=" << fact.context_contract << "\n";
   out << "context_value_shape=" << fact.context_value_shape << "\n";
@@ -4003,7 +4043,17 @@ make_exposure_fact_from_sidecar_text(const std::string &text,
   out.graph_order_fingerprint = detail::map_get(map, "graph_order_fingerprint");
   out.component_assembly_fingerprint =
       detail::map_get(map, "component_assembly_fingerprint");
-  out.target_component = detail::map_get(map, "target_component");
+  out.target_component_family_id =
+      detail::map_get(map, "target_component_family_id");
+  out.config_bundle_id = detail::map_get(map, "config_bundle_id");
+  out.config_receipt_id = detail::map_get(map, "config_receipt_id");
+  out.component_spawn_registry_id =
+      detail::map_get(map, "component_spawn_registry_id");
+  out.component_family_id = detail::map_get(map, "component_family_id");
+  out.component_spawn_fingerprint =
+      detail::map_get(map, "component_spawn_fingerprint");
+  out.component_spawn_id = detail::map_get(map, "component_spawn_id");
+  out.component_spawn_label = detail::map_get(map, "component_spawn_label");
   out.representation_architecture =
       detail::map_get(map, "representation_architecture");
   out.representation_contract = detail::map_get(map, "representation_contract");
@@ -4013,7 +4063,8 @@ make_exposure_fact_from_sidecar_text(const std::string &text,
       detail::map_get(map, "representation_sequence_value_shape");
   out.channel_axis_policy = detail::map_get(map, "channel_axis_policy");
   out.temporal_reduction = detail::map_get(map, "temporal_reduction");
-  out.input_representation_id = detail::map_get(map, "input_representation_id");
+  out.input_representation_assembly_id =
+      detail::map_get(map, "input_representation_assembly_id");
   out.context_mode = detail::map_get(map, "context_mode");
   out.context_contract = detail::map_get(map, "context_contract");
   out.context_value_shape = detail::map_get(map, "context_value_shape");
@@ -4223,7 +4274,8 @@ make_exposure_fact_from_sidecar_file(const std::filesystem::path &path,
 make_node_exposure_facts_from_job_dir(const std::filesystem::path &job_dir,
                                       const lattice_exposure_fact_t &parent) {
   namespace detail = exposure_detail;
-  if (parent.target_component != "wikimyei.inference.expected_value.mdn") {
+  if (parent.target_component_family_id !=
+      "wikimyei.inference.expected_value.mdn") {
     return {};
   }
 
@@ -4277,7 +4329,7 @@ make_node_exposure_facts_from_job_dir(const std::filesystem::path &job_dir,
     fact.source_cursor_token = parent.source_cursor_token;
     fact.split_policy_fingerprint = parent.split_policy_fingerprint;
     fact.component_assembly_fingerprint = parent.component_assembly_fingerprint;
-    fact.target_component = parent.target_component;
+    fact.target_component_family_id = parent.target_component_family_id;
     fact.job_id = parent.job_id;
     fact.wave_id = parent.wave_id;
     fact.job_status = parent.job_status;
@@ -4325,12 +4377,18 @@ make_node_exposure_facts_from_job_dir(const std::filesystem::path &job_dir,
   return out;
 }
 
-[[nodiscard]] inline std::string
-file_content_digest(const std::filesystem::path &path) {
+struct file_content_digest_result_t {
+  bool ok{false};
+  std::string digest{};
+  std::string error{};
+};
+
+[[nodiscard]] inline file_content_digest_result_t
+file_content_digest_checked(const std::filesystem::path &path) {
   namespace assembly_detail = cuwacunu::wikimyei::assembly::assembly_detail;
   std::ifstream in(path, std::ios::binary);
   if (!in) {
-    return {};
+    return file_content_digest_result_t{false, {}, "open_failed"};
   }
   std::uint64_t hash = assembly_detail::kFnvOffsetBasis;
   assembly_detail::mix_hash_string(hash, "kikijyeba.lattice.exposure.v1");
@@ -4352,11 +4410,20 @@ file_content_digest(const std::filesystem::path &path) {
           static_cast<unsigned char>(buffer[static_cast<std::size_t>(i)]));
     }
   }
+  if (in.bad()) {
+    return file_content_digest_result_t{false, {}, "read_failed"};
+  }
   if (!saw_byte) {
-    return {};
+    return file_content_digest_result_t{false, {}, "empty_file"};
   }
   assembly_detail::mix_hash_byte(hash, 0xffu);
-  return assembly_detail::hash_hex(hash);
+  return file_content_digest_result_t{
+      true, assembly_detail::hash_hex(hash), {}};
+}
+
+[[nodiscard]] inline std::string
+file_content_digest(const std::filesystem::path &path) {
+  return file_content_digest_checked(path).digest;
 }
 
 [[nodiscard]] inline lattice_checkpoint_fact_t
@@ -4364,7 +4431,7 @@ make_checkpoint_fact_from_exposure_fact(const lattice_exposure_fact_t &fact) {
   lattice_checkpoint_fact_t out{};
   out.checkpoint_path = fact.output_checkpoint.lexically_normal();
   out.checkpoint_file_digest = file_content_digest(out.checkpoint_path);
-  out.component = fact.target_component;
+  out.component = fact.target_component_family_id;
   out.contract_fingerprint = fact.contract_fingerprint;
   out.graph_order_fingerprint = fact.graph_order_fingerprint;
   out.representation_architecture = fact.representation_architecture;
@@ -4374,7 +4441,7 @@ make_checkpoint_fact_from_exposure_fact(const lattice_exposure_fact_t &fact) {
       fact.representation_sequence_value_shape;
   out.channel_axis_policy = fact.channel_axis_policy;
   out.temporal_reduction = fact.temporal_reduction;
-  out.input_representation_id = fact.input_representation_id;
+  out.input_representation_assembly_id = fact.input_representation_assembly_id;
   out.context_mode = fact.context_mode;
   out.context_contract = fact.context_contract;
   out.context_value_shape = fact.context_value_shape;
@@ -4414,7 +4481,8 @@ canonical_checkpoint_fact_text(const lattice_checkpoint_fact_t &fact) {
       << fact.representation_sequence_value_shape << "\n";
   out << "channel_axis_policy=" << fact.channel_axis_policy << "\n";
   out << "temporal_reduction=" << fact.temporal_reduction << "\n";
-  out << "input_representation_id=" << fact.input_representation_id << "\n";
+  out << "input_representation_assembly_id="
+      << fact.input_representation_assembly_id << "\n";
   out << "context_mode=" << fact.context_mode << "\n";
   out << "context_contract=" << fact.context_contract << "\n";
   out << "context_value_shape=" << fact.context_value_shape << "\n";
@@ -4470,7 +4538,8 @@ make_checkpoint_fact_from_sidecar_text(const std::string &text,
       detail::map_get(map, "representation_sequence_value_shape");
   out.channel_axis_policy = detail::map_get(map, "channel_axis_policy");
   out.temporal_reduction = detail::map_get(map, "temporal_reduction");
-  out.input_representation_id = detail::map_get(map, "input_representation_id");
+  out.input_representation_assembly_id =
+      detail::map_get(map, "input_representation_assembly_id");
   out.context_mode = detail::map_get(map, "context_mode");
   out.context_contract = detail::map_get(map, "context_contract");
   out.context_value_shape = detail::map_get(map, "context_value_shape");
@@ -4504,7 +4573,15 @@ make_checkpoint_fact_from_sidecar_file(const std::filesystem::path &path,
 
 inline void write_text_file_atomically(const std::filesystem::path &path,
                                        const std::string &text) {
-  const auto tmp = path.string() + ".tmp";
+  static std::atomic<std::uint64_t> tmp_counter{0};
+  const auto tmp =
+      path.string() + "." +
+      exposure_digest_for_text(
+          path.string() + "|" + text + "|" +
+          std::to_string(
+              std::chrono::steady_clock::now().time_since_epoch().count()) +
+          "|" + std::to_string(tmp_counter.fetch_add(1))) +
+      ".tmp";
   {
     std::ofstream out(tmp, std::ios::trunc | std::ios::binary);
     if (!out) {
@@ -4517,7 +4594,15 @@ inline void write_text_file_atomically(const std::filesystem::path &path,
           "[lattice_exposure] failed to write sidecar tmp: " + tmp);
     }
   }
-  std::filesystem::rename(tmp, path);
+  std::error_code ec;
+  std::filesystem::rename(tmp, path, ec);
+  if (ec) {
+    std::error_code remove_ec;
+    std::filesystem::remove(tmp, remove_ec);
+    throw std::runtime_error(
+        "[lattice_exposure] failed to rename sidecar tmp " + tmp + " to " +
+        path.string() + ": " + ec.message());
+  }
 }
 
 inline void write_exposure_fact_sidecar(const std::filesystem::path &path,
@@ -4697,6 +4782,13 @@ public:
                             seen_facts, seen_identity_bindings,
                             /*is_root=*/true);
     finalize_checkpoint_closure_authority(out);
+    if (out.root_checkpoint_id != checkpoint_id ||
+        out.root_checkpoint_file_digest != checkpoint_file_digest) {
+      out.identity_mismatches.push_back(
+          "resolved root checkpoint identity does not match requested "
+          "checkpoint_id/checkpoint_file_digest");
+      finalize_checkpoint_closure_authority(out);
+    }
     return out;
   }
 
@@ -4780,6 +4872,9 @@ private:
       for (const auto fact_index : fact_it->second) {
         const auto &fact = facts_.at(fact_index);
         found_producer = true;
+        if (is_root) {
+          out.root_producer_found = true;
+        }
         const auto current_fact_digest = exposure_fact_digest(fact);
         const auto fact_key = fact.job_id + "|" + current_fact_digest;
         validate_checkpoint_identity_for_producer(
@@ -4795,7 +4890,7 @@ private:
         }
       }
     }
-    if (!found_producer && !is_root) {
+    if (!found_producer) {
       out.unresolved_input_checkpoints.emplace_back(checkpoint_key);
     }
   }
@@ -4891,9 +4986,15 @@ private:
             checkpoint_key);
       }
       const auto actual_file_digest =
-          file_content_digest(checkpoint_fact->checkpoint_path);
-      if (!actual_file_digest.empty() &&
-          actual_file_digest != checkpoint_fact->checkpoint_file_digest) {
+          file_content_digest_checked(checkpoint_fact->checkpoint_path);
+      if (!actual_file_digest.ok) {
+        out.identity_mismatches.push_back(
+            "checkpoint bytes could not be verified for " + checkpoint_key +
+            ": " + actual_file_digest.error);
+        continue;
+      }
+      if (actual_file_digest.digest !=
+          checkpoint_fact->checkpoint_file_digest) {
         out.identity_mismatches.push_back("checkpoint_file_digest does not "
                                           "match checkpoint file content for " +
                                           checkpoint_key);
@@ -4910,6 +5011,10 @@ private:
   finalize_checkpoint_closure_authority(checkpoint_closure_result_t &out) {
     if (!out.identity_mismatches.empty()) {
       out.resolution_authority = "checkpoint_identity_failed";
+      return;
+    }
+    if (!out.root_producer_found || !out.unresolved_input_checkpoints.empty()) {
+      out.resolution_authority = "unresolved_lineage";
       return;
     }
     if (!out.legacy_path_fallback && !out.root_checkpoint_id.empty() &&
@@ -5033,7 +5138,8 @@ inline bool supplement_representation_health_from_derived(
     const lattice_exposure_fact_t &derived_fact,
     const std::unordered_map<std::string, std::string> &sidecar_map = {}) {
   if (!derived_fact.representation_health_available ||
-      sidecar_fact.target_component != derived_fact.target_component ||
+      sidecar_fact.target_component_family_id !=
+          derived_fact.target_component_family_id ||
       sidecar_fact.job_id != derived_fact.job_id) {
     return false;
   }
@@ -5172,7 +5278,8 @@ inline bool supplement_inference_health_from_derived(
     const lattice_exposure_fact_t &derived_fact,
     const std::unordered_map<std::string, std::string> &sidecar_map = {}) {
   if (!derived_fact.inference_health_available ||
-      sidecar_fact.target_component != derived_fact.target_component ||
+      sidecar_fact.target_component_family_id !=
+          derived_fact.target_component_family_id ||
       sidecar_fact.job_id != derived_fact.job_id) {
     return false;
   }
@@ -5295,6 +5402,7 @@ read_lattice_job_artifacts(const std::filesystem::path &job_dir,
   out.state_text = detail::read_text_file_or_empty(job_dir / "job.state");
   out.state = detail::parse_assignment_text(out.state_text);
   out.job_kind = detail::map_get(out.manifest, "job_kind");
+  // Historical read-only support only; see make_exposure_fact_from_job_dir.
   out.report_leaf =
       out.job_kind == "representation_vicreg" ? "representation.report"
       : out.job_kind == "channel_representation_vicreg"
@@ -5657,6 +5765,7 @@ runtime_index_watched_file_is_relevant(const std::filesystem::path &path) {
 [[nodiscard]] inline std::string metadata_digest_for_runtime_files(
     const std::filesystem::path &runtime_root, std::string_view schema,
     const std::function<bool(const std::filesystem::path &)> &include_file) {
+  // Freshness digest only: records path, size, and mtime, not file content.
   namespace fs = std::filesystem;
   std::vector<std::string> records;
   std::error_code ec;
@@ -5822,6 +5931,17 @@ make_runtime_index_cache_from_scan(const std::filesystem::path &runtime_root,
   };
   for (const auto &fact : scan.ledger.facts()) {
     add_row("exposure", fact.job_id, exposure_fact_digest(fact));
+    if (!fact.config_bundle_id.empty()) {
+      add_row("config_provenance",
+              fact.job_id + "|" + fact.target_component_family_id,
+              fact.config_bundle_id);
+    }
+    if (!fact.component_spawn_fingerprint.empty()) {
+      add_row("component_spawn",
+              fact.component_spawn_registry_id + "|" +
+                  fact.component_family_id + "|" + fact.component_spawn_id,
+              fact.component_spawn_fingerprint);
+    }
   }
   for (const auto &fact : scan.ledger.node_facts()) {
     add_row("node_exposure",
@@ -6306,7 +6426,7 @@ forbidden_exposure_overlaps(const std::vector<lattice_exposure_fact_t> &facts,
           .fact_digest = exposure_fact_digest(fact),
           .job_id = fact.job_id,
           .wave_id = fact.wave_id,
-          .target_component = fact.target_component,
+          .target_component_family_id = fact.target_component_family_id,
           .split_name = fact.split_name,
           .use = use,
           .mutated_component = fact.use.mutated_component,
@@ -6455,20 +6575,21 @@ wilson_score_interval_95(std::int64_t successes, std::int64_t trials) {
 exposure_load_for_use(const std::vector<lattice_exposure_fact_t> &facts,
                       anchor_interval_t target_range, exposure_use_t use,
                       bool require_mutated_component = true,
-                      std::string target_component_filter = {}) {
+                      std::string target_component_family_id_filter = {}) {
   exposure_load_summary_t out{};
   out.target_range = target_range;
   out.use = use;
   out.require_mutated_component = require_mutated_component;
-  out.target_component = std::move(target_component_filter);
-  out.component_scope =
-      out.target_component.empty() ? "all_components" : "target_component";
+  out.target_component_family_id = std::move(target_component_family_id_filter);
+  out.component_scope = out.target_component_family_id.empty()
+                            ? "all_components"
+                            : "target_component_family_id";
 
   std::vector<anchor_interval_t> intervals;
   std::set<std::string> seen_fact_digests;
   for (const auto &fact : facts) {
-    if (!out.target_component.empty() &&
-        fact.target_component != out.target_component) {
+    if (!out.target_component_family_id.empty() &&
+        fact.target_component_family_id != out.target_component_family_id) {
       continue;
     }
     if (require_mutated_component && !fact.use.mutated_component) {
@@ -6600,12 +6721,13 @@ exposure_load_for_use(const std::vector<lattice_exposure_fact_t> &facts,
 
 [[nodiscard]] inline node_support_summary_t
 summarize_node_support(const std::vector<lattice_node_exposure_fact_t> &facts,
-                       std::string target_component_filter = {},
+                       std::string target_component_family_id_filter = {},
                        std::string split_name_filter = {}) {
   node_support_summary_t out{};
-  const bool filter_target_component = !target_component_filter.empty();
+  const bool filter_target_component_family_id =
+      !target_component_family_id_filter.empty();
   const bool filter_split_name = !split_name_filter.empty();
-  out.target_component = std::move(target_component_filter);
+  out.target_component_family_id = std::move(target_component_family_id_filter);
   out.split_name = std::move(split_name_filter);
 
   std::vector<double> valid_counts;
@@ -6613,15 +6735,15 @@ summarize_node_support(const std::vector<lattice_node_exposure_fact_t> &facts,
   double valid_fraction_sum = 0.0;
   bool have_weakest = false;
   for (const auto &fact : facts) {
-    if (filter_target_component &&
-        fact.target_component != out.target_component) {
+    if (filter_target_component_family_id &&
+        fact.target_component_family_id != out.target_component_family_id) {
       continue;
     }
     if (filter_split_name && fact.split_name != out.split_name) {
       continue;
     }
-    if (out.target_component.empty()) {
-      out.target_component = fact.target_component;
+    if (out.target_component_family_id.empty()) {
+      out.target_component_family_id = fact.target_component_family_id;
     }
     if (out.split_name.empty()) {
       out.split_name = fact.split_name;
@@ -6880,7 +7002,8 @@ range_scope_node_support_fact(const lattice_node_exposure_fact_t &fact,
 
 [[nodiscard]] inline node_support_summary_t summarize_node_support_for_range(
     const std::vector<lattice_node_exposure_fact_t> &facts,
-    anchor_interval_t target_range, std::string target_component_filter = {},
+    anchor_interval_t target_range,
+    std::string target_component_family_id_filter = {},
     std::string split_name_filter = {}) {
   std::vector<lattice_node_exposure_fact_t> scoped_facts;
   scoped_facts.reserve(facts.size());
@@ -6891,20 +7014,20 @@ range_scope_node_support_fact(const lattice_node_exposure_fact_t &fact,
     }
   }
   return summarize_node_support(scoped_facts,
-                                std::move(target_component_filter),
+                                std::move(target_component_family_id_filter),
                                 std::move(split_name_filter));
 }
 
 [[nodiscard]] inline node_support_summary_t
 summarize_node_support_rows(const std::vector<node_support_row_t> &rows,
-                            std::string target_component_filter = {},
+                            std::string target_component_family_id_filter = {},
                             std::string split_name_filter = {}) {
   std::vector<lattice_node_exposure_fact_t> facts;
   facts.reserve(rows.size());
   for (const auto &row : rows) {
     lattice_node_exposure_fact_t fact{};
     fact.parent_exposure_fact_digest = row.parent_exposure_fact_digest;
-    fact.target_component = target_component_filter;
+    fact.target_component_family_id = target_component_family_id_filter;
     fact.split_name = split_name_filter;
     fact.node_id = row.node_id;
     fact.node_index = row.node_index;
@@ -6919,7 +7042,7 @@ summarize_node_support_rows(const std::vector<node_support_row_t> &rows,
     facts.push_back(std::move(fact));
   }
   return summarize_node_support(std::move(facts),
-                                std::move(target_component_filter),
+                                std::move(target_component_family_id_filter),
                                 std::move(split_name_filter));
 }
 
@@ -6938,7 +7061,7 @@ filter_node_support_summary(const node_support_summary_t &summary,
     }
     rows.push_back(row);
   }
-  return summarize_node_support_rows(rows, summary.target_component,
+  return summarize_node_support_rows(rows, summary.target_component_family_id,
                                      summary.split_name);
 }
 

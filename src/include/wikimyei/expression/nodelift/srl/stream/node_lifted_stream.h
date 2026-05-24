@@ -5,6 +5,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstddef>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -22,8 +23,7 @@ namespace cuwacunu::wikimyei::expression::nodelift::srl::stream {
 
 namespace node_lifted_stream_detail {
 
-namespace lls =
-    cuwacunu::kikijyeba::lattice::runtime_report;
+namespace lls = cuwacunu::kikijyeba::lattice::runtime_report;
 
 inline double tensor_mean_or_nan(const torch::Tensor &tensor) {
   if (!tensor.defined() || tensor.numel() == 0) {
@@ -139,7 +139,7 @@ template <typename KeyT>
         cuwacunu::wikimyei::expression::nodelift::srl::nodelift_output_t>
         &future,
     const std::string &graph_fingerprint, bool lift_future, double elapsed_ms,
-    const std::string &component_id = "nodelift_srl_v1",
+    const std::string &component_assembly_id = "nodelift_srl_v1",
     const std::string &assembly_token = "wikimyei.expression.nodelift.srl.v1",
     const std::string &dock_binding_token = {},
     const cuwacunu::kikijyeba::protocol::component_stream_wave_t &stream_wave =
@@ -147,16 +147,16 @@ template <typename KeyT>
   auto stream_report =
       cuwacunu::kikijyeba::protocol::make_component_stream_report(
           cuwacunu::kikijyeba::protocol::component_stream_identity_t{
-              .component_family = "wikimyei.expression.nodelift.srl",
-              .component_id = component_id,
+              .component_family_id = "wikimyei.expression.nodelift.srl",
+              .component_assembly_id = component_assembly_id,
               .assembly_token = assembly_token,
               .dock_binding_token = dock_binding_token,
               .graph_order_fingerprint = graph_fingerprint,
           },
           cuwacunu::kikijyeba::protocol::make_component_stream_cursor(
               stream_wave, batch_cursor),
-          cuwacunu::kikijyeba::lattice::runtime_report::
-              runtime_report_mode_t::debug,
+          cuwacunu::kikijyeba::lattice::runtime_report::runtime_report_mode_t::
+              debug,
           elapsed_ms,
           static_cast<std::uint64_t>(graph_batch.edge_features.numel()),
           static_cast<std::uint64_t>(observed.node_features.numel()));
@@ -274,11 +274,10 @@ template <typename KeyT>
     const cuwacunu::wikimyei::expression::nodelift::srl::nodelift_options_t
         &options = {},
     bool compute_alignment_diagnostics = true, bool lift_future = true,
-    cuwacunu::kikijyeba::lattice::runtime_report::
-        runtime_report_mode_t runtime_report_mode =
-            cuwacunu::kikijyeba::lattice::runtime_report::
-                runtime_report_mode_t::normal,
-    std::string component_id = "nodelift_srl_v1",
+    cuwacunu::kikijyeba::lattice::runtime_report::runtime_report_mode_t
+        runtime_report_mode = cuwacunu::kikijyeba::lattice::runtime_report::
+            runtime_report_mode_t::normal,
+    std::string component_assembly_id = "nodelift_srl_v1",
     std::string assembly_token = "wikimyei.expression.nodelift.srl.v1",
     std::string dock_binding_token = {},
     cuwacunu::kikijyeba::protocol::component_stream_wave_t stream_wave = {}) {
@@ -363,19 +362,19 @@ template <typename KeyT>
         cuwacunu::ujcamei::source::retrieval::dataloader::
             compute_graph_anchor_edge_alignment_diagnostics<KeyT>(graph_batch);
   }
-  if (cuwacunu::kikijyeba::lattice::runtime_report::
-          runtime_report_enabled(runtime_report_mode)) {
+  if (cuwacunu::kikijyeba::lattice::runtime_report::runtime_report_enabled(
+          runtime_report_mode)) {
     out.runtime_lls = node_lifted_stream_detail::make_nodelift_runtime_lls(
         graph_batch, batch_cursor, graph, lifted, future_lifted_for_report,
         graph_fingerprint, lift_future,
         node_lifted_stream_detail::elapsed_millis(lift_begin, lift_end),
-        component_id, assembly_token, dock_binding_token, stream_wave);
+        component_assembly_id, assembly_token, dock_binding_token, stream_wave);
   }
   out.stream_report =
       cuwacunu::kikijyeba::protocol::make_component_stream_report(
           cuwacunu::kikijyeba::protocol::component_stream_identity_t{
-              .component_family = "wikimyei.expression.nodelift.srl",
-              .component_id = std::move(component_id),
+              .component_family_id = "wikimyei.expression.nodelift.srl",
+              .component_assembly_id = std::move(component_assembly_id),
               .assembly_token = std::move(assembly_token),
               .dock_binding_token = std::move(dock_binding_token),
               .graph_order_fingerprint = graph_fingerprint,
@@ -390,6 +389,22 @@ template <typename KeyT>
   return out;
 }
 
+enum class node_lifted_source_order_t {
+  sequential,
+  random_per_epoch,
+};
+
+[[nodiscard]] inline const char *
+node_lifted_source_order_name(node_lifted_source_order_t order) {
+  switch (order) {
+  case node_lifted_source_order_t::sequential:
+    return "sequential";
+  case node_lifted_source_order_t::random_per_epoch:
+    return "random_per_epoch";
+  }
+  return "unknown";
+}
+
 template <typename DatatypeT> struct node_lifted_stream_options_t {
   std::size_t batch_size{64};
   std::optional<cuwacunu::ujcamei::source::retrieval::dataloader::
@@ -401,14 +416,15 @@ template <typename DatatypeT> struct node_lifted_stream_options_t {
   bool lift_future{true};
   std::size_t begin_anchor_index{0};
   std::optional<std::size_t> end_anchor_index{std::nullopt};
-  std::string component_id{"nodelift_srl_v1"};
+  node_lifted_source_order_t source_order{
+      node_lifted_source_order_t::sequential};
+  std::string component_assembly_id{"nodelift_srl_v1"};
   std::string assembly_token{"wikimyei.expression.nodelift.srl.v1"};
   std::string dock_binding_token{};
   cuwacunu::kikijyeba::protocol::component_stream_wave_t stream_wave{};
-  cuwacunu::kikijyeba::lattice::runtime_report::
-      runtime_report_mode_t runtime_report_mode{
-          cuwacunu::kikijyeba::lattice::runtime_report::
-              runtime_report_mode_t::normal};
+  cuwacunu::kikijyeba::lattice::runtime_report::runtime_report_mode_t
+      runtime_report_mode{cuwacunu::kikijyeba::lattice::runtime_report::
+                              runtime_report_mode_t::normal};
 };
 
 template <typename DatatypeT> class node_lifted_stream_t {
@@ -416,34 +432,60 @@ public:
   using key_t = typename DatatypeT::key_type_t;
   using source_t = cuwacunu::ujcamei::source::retrieval::dataloader::
       graph_anchor_edge_dataset_t<DatatypeT>;
+  using dataloader_options_t = cuwacunu::ujcamei::source::retrieval::
+      dataloader::graph_anchor_edge_dataloader_options_t<DatatypeT>;
+  using sequential_loader_t = cuwacunu::ujcamei::source::retrieval::dataloader::
+      graph_anchor_edge_dataloader_t<DatatypeT,
+                                     torch::data::samplers::SequentialSampler>;
+  using random_loader_t = cuwacunu::ujcamei::source::retrieval::dataloader::
+      graph_anchor_edge_dataloader_t<DatatypeT,
+                                     torch::data::samplers::RandomSampler>;
   using batch_t = node_lifted_batch_t<key_t>;
 
   node_lifted_stream_t(
       source_t &&source,
       cuwacunu::wikimyei::expression::nodelift::srl::graph_t graph,
       node_lifted_stream_options_t<DatatypeT> options = {})
-      : source_(std::move(source)), graph_(std::move(graph)),
-        options_(std::move(options)), cursor_(options_.begin_anchor_index),
+      : graph_(std::move(graph)), options_(std::move(options)),
         stream_end_anchor_index_(
-            options_.end_anchor_index.value_or(source_.size())) {
+            options_.end_anchor_index.value_or(source.size())) {
     TORCH_CHECK(options_.batch_size > 0,
                 "[node_lifted_stream_t] batch_size must be positive");
-    TORCH_CHECK(options_.begin_anchor_index <= source_.size(),
+    TORCH_CHECK(options_.begin_anchor_index <= source.size(),
                 "[node_lifted_stream_t] begin_anchor_index is outside source "
                 "anchor domain");
-    TORCH_CHECK(stream_end_anchor_index_ <= source_.size(),
+    TORCH_CHECK(stream_end_anchor_index_ <= source.size(),
                 "[node_lifted_stream_t] end_anchor_index is outside source "
                 "anchor domain");
     TORCH_CHECK(stream_end_anchor_index_ >= options_.begin_anchor_index,
                 "[node_lifted_stream_t] end_anchor_index must be >= "
                 "begin_anchor_index");
+    dataloader_options_t loader_options{};
+    loader_options.batch_size = options_.batch_size;
+    loader_options.begin_anchor_index = options_.begin_anchor_index;
+    loader_options.end_anchor_index = stream_end_anchor_index_;
+    loader_options.graph_batch_options = options_.graph_batch_options;
+    if (options_.source_order == node_lifted_source_order_t::random_per_epoch) {
+      random_loader_ = std::make_unique<random_loader_t>(
+          std::move(source), std::move(loader_options));
+    } else {
+      sequential_loader_ = std::make_unique<sequential_loader_t>(
+          std::move(source), std::move(loader_options));
+    }
   }
 
-  [[nodiscard]] bool has_next() const {
-    return cursor_ < stream_end_anchor_index_;
+  [[nodiscard]] bool has_next() const { return active_loader_has_next_(); }
+
+  [[nodiscard]] std::size_t cursor() const {
+    return last_cursor_.has_value() ? *last_cursor_
+                                    : options_.begin_anchor_index;
   }
 
-  [[nodiscard]] std::size_t cursor() const { return cursor_; }
+  [[nodiscard]] std::size_t epoch_index() const { return epoch_index_; }
+
+  [[nodiscard]] node_lifted_source_order_t source_order() const {
+    return options_.source_order;
+  }
 
   [[nodiscard]] std::size_t begin_anchor_index() const {
     return options_.begin_anchor_index;
@@ -453,9 +495,20 @@ public:
     return stream_end_anchor_index_;
   }
 
-  void reset() { cursor_ = options_.begin_anchor_index; }
+  void reset() {
+    ++epoch_index_;
+    if (random_loader_) {
+      random_loader_->reset();
+    } else {
+      sequential_loader_->reset();
+    }
+    last_cursor_ = options_.begin_anchor_index;
+  }
 
-  [[nodiscard]] const source_t &source() const { return source_; }
+  [[nodiscard]] const source_t &source() const {
+    return random_loader_ ? random_loader_->source()
+                          : sequential_loader_->source();
+  }
 
   [[nodiscard]] const cuwacunu::wikimyei::expression::nodelift::srl::graph_t &
   graph() const {
@@ -464,25 +517,30 @@ public:
 
   batch_t next() {
     TORCH_CHECK(has_next(), "[node_lifted_stream_t] stream is exhausted");
-    const auto remaining = stream_end_anchor_index_ - cursor_;
-    const auto batch_size = std::min(options_.batch_size, remaining);
-    auto graph_batch = source_.get_graph_batch(cursor_, batch_size,
-                                               options_.graph_batch_options);
-    cursor_ += static_cast<std::size_t>(graph_batch.anchor_keys.size(0));
+    auto graph_batch =
+        random_loader_ ? random_loader_->next() : sequential_loader_->next();
+    last_cursor_ = graph_batch.cursor.end_anchor_index;
     return node_lift_graph_anchor_edge_batch<key_t>(
         graph_batch, graph_, options_.nodelift_options,
         options_.compute_alignment_diagnostics, options_.lift_future,
-        options_.runtime_report_mode, options_.component_id,
+        options_.runtime_report_mode, options_.component_assembly_id,
         options_.assembly_token, options_.dock_binding_token,
         options_.stream_wave);
   }
 
 private:
-  source_t source_{};
+  [[nodiscard]] bool active_loader_has_next_() const {
+    return random_loader_ ? random_loader_->has_next()
+                          : sequential_loader_->has_next();
+  }
+
   cuwacunu::wikimyei::expression::nodelift::srl::graph_t graph_{};
   node_lifted_stream_options_t<DatatypeT> options_{};
-  std::size_t cursor_{0};
+  std::size_t epoch_index_{0};
   std::size_t stream_end_anchor_index_{0};
+  std::optional<std::size_t> last_cursor_{std::nullopt};
+  std::unique_ptr<sequential_loader_t> sequential_loader_{};
+  std::unique_ptr<random_loader_t> random_loader_{};
 };
 
 } // namespace cuwacunu::wikimyei::expression::nodelift::srl::stream

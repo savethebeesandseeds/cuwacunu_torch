@@ -26,7 +26,7 @@ The active wave file remains on the final validation-eval wave:
 
 ```text
 wave_id = cwu_01v_channel_validation_eval_mdn_1800_2050
-target_component = wikimyei.inference.expected_value.mdn
+target_component_family_id = wikimyei.inference.expected_value.mdn
 mode = run|debug
 action = run
 job_kind = channel_inference_mdn

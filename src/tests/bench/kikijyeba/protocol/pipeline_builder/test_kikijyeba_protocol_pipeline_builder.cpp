@@ -206,7 +206,7 @@ fixture_paths_t make_config_fixture(const std::string &label,
 
   write_text(vicreg_dsl, "VICREG {\n"
                          "  VERSION = wikimyei.representation.vicreg.v1;\n"
-                         "  COMPONENT_ID = vicreg_v1;\n"
+                         "  COMPONENT_ASSEMBLY_ID = vicreg_v1;\n"
                          "  INPUT_ROUTE = channel_node_stream;\n"
                          "  CHANNEL_COUNT = 1;\n"
                          "  HISTORY_LENGTH = 2;\n"
@@ -226,13 +226,23 @@ fixture_paths_t make_config_fixture(const std::string &label,
                          "  VICREG_PROJECTOR_DIM = 6;\n"
                          "  VICREG_PROJECTOR_HIDDEN_DIM = 8;\n"
                          "  VICREG_PROJECTOR_DEPTH = 1;\n"
+                         "  VICREG_INVARIANCE_WEIGHT = 25.0;\n"
+                         "  VICREG_VARIANCE_WEIGHT = 25.0;\n"
+                         "  VICREG_COVARIANCE_WEIGHT = 1.0;\n"
+                         "  VICREG_VARIANCE_FLOOR = 1.0;\n"
+                         "  VICREG_EPS = 0.0001;\n"
                          "  GLOBAL_AUX_WEIGHT = 0.0;\n"
+                         "  MIN_VALID_ROWS = 2;\n"
+                         "  SKIP_NON_FINITE_LOSS = true;\n"
+                         "  JITTER_STD = 0.01;\n"
+                         "  FEATURE_DROPOUT_PROB = 0.0;\n"
+                         "  HISTORY_DROPOUT_PROB = 0.0;\n"
                          "};\n");
   write_text(channel_mdn_dsl,
              "MDN {\n"
              "  VERSION = wikimyei.inference.expected_value.mdn.v1;\n"
-             "  COMPONENT_ID = channel_context_mdn_v1;\n"
-             "  INPUT_REPRESENTATION_ID = vicreg_v1;\n"
+             "  COMPONENT_ASSEMBLY_ID = mdn_v1;\n"
+             "  INPUT_REPRESENTATION_ASSEMBLY_ID = vicreg_v1;\n"
              "  CONTEXT_MODE = channel_context_strict;\n"
              "  TARGET_DOMAIN = channel_node_future;\n"
              "  TARGET_COORDS = 0,1,2,3;\n"
@@ -248,13 +258,14 @@ fixture_paths_t make_config_fixture(const std::string &label,
                               "  MIXTURE_COUNT = 2;\n"
                               "  HIDDEN_WIDTH = 8;\n"
                               "  RESIDUAL_DEPTH = 1;\n"
+                              "  GLOBAL_CONTEXT_DIM = 0;\n"
                               "};\n");
   write_text(vicreg_jkimyei,
              "TRAINING {\n"
              "  VERSION = wikimyei.representation.vicreg.jkimyei.v1;\n"
              "  TRAINING_ID = fixture_vicreg;\n"
              "  TASK = vicreg_representation;\n"
-             "  COMPONENT_ID = vicreg_v1;\n"
+             "  COMPONENT_ASSEMBLY_ID = vicreg_v1;\n"
              "  OPTIMIZER = adam;\n"
              "  LEARNING_RATE = 0.001;\n"
              "  MAX_STEPS = 0;\n"
@@ -270,9 +281,9 @@ fixture_paths_t make_config_fixture(const std::string &label,
              "TRAINING {\n"
              "  VERSION = wikimyei.inference.expected_value.mdn."
              "jkimyei.v1;\n"
-             "  TRAINING_ID = fixture_channel_mdn;\n"
+             "  TRAINING_ID = fixture_mdn;\n"
              "  TASK = mdn_expected_value_inference;\n"
-             "  COMPONENT_ID = channel_context_mdn_v1;\n"
+             "  COMPONENT_ASSEMBLY_ID = mdn_v1;\n"
              "  OPTIMIZER = adam;\n"
              "  LEARNING_RATE = 0.01;\n"
              "  MAX_STEPS = 0;\n"
@@ -393,175 +404,6 @@ fixture_paths_t make_config_fixture(const std::string &label,
   return out;
 }
 
-std::vector<torch::Tensor>
-collect_head_parameters(std::vector<mdn::MdnModel> &heads) {
-  std::vector<torch::Tensor> params;
-  for (auto &head : heads) {
-    for (auto &param : head->parameters()) {
-      params.push_back(param);
-    }
-  }
-  return params;
-}
-
-void test_default_config_dry_run_report() {
-  const auto bundle = builder::load_graph_first_config_bundle_from_config(
-      "/cuwacunu/src/config/.config");
-  const auto contract = builder::load_graph_first_protocol_contract_from_config(
-      "/cuwacunu/src/config/.config");
-  check(!bundle.source_universe.source_forms.empty(),
-        "default bundle has Ujcamei source universe");
-  check(!builder::graph_first_protocol_contract_fingerprint(contract).empty(),
-        "default protocol contract has fingerprint");
-  check(builder::graph_first_protocol_contract_token(contract).find(
-            "kikijyeba.protocol.graph_first.contract.v1/") == 0,
-        "default protocol contract has token");
-  check(bundle.source_universe.data_analytics_policy.declared,
-        "default bundle keeps source analytics policy in Ujcamei universe");
-  check(bundle.source_dock.channel_forms.size() == 14,
-        "default bundle keeps channels in Kikijyeba source dock");
-  check(bundle.source_plan.market_graph.node_ids.size() == 3,
-        "default resolved source plan has graph nodes");
-  check(bundle.source_plan.market_graph.edge_ids.size() == 3,
-        "default resolved source plan has graph edges");
-  check(bundle.source_plan.edge_instruments.size() == 3,
-        "default resolved source plan has edge instruments");
-  check(bundle.source_resolution_report.active_node_count == 3,
-        "default resolver sees active nodes");
-  check(bundle.source_resolution_report.possible_directed_edge_count == 6,
-        "default resolver sees complete directed pair count");
-  check(bundle.source_resolution_report.available_source_directed_edge_count ==
-            3,
-        "default resolver sees available source source edges");
-  check(bundle.source_resolution_report.fetch_mode == "parallel_by_edge",
-        "default resolver carries fetch mode");
-  check(bundle.source_dock.fetch_mode ==
-            builder::graph_first_fetch_mode_t::parallel_by_edge,
-        "default source dock uses parallel edge fetch");
-  check(bundle.source_resolution_report.selected_edge_count == 3,
-        "default resolver sees selected graph edges");
-  check(bundle.source_resolution_report.missing_directed_pair_count == 3,
-        "default resolver records missing directed source pairs");
-  check(bundle.source_resolution_report.available_unselected_edge_count == 0,
-        "default resolver has no unused available source edges");
-  check(bundle.source_resolution_report.selected_missing_source_edge_count == 0,
-        "default resolver selected edges all have source coverage");
-  check(bundle.source_resolution_report.connected_component_count == 1,
-        "default resolver graph is connected");
-  check(bundle.source_resolution_report.selected_cycle_dimension == 1,
-        "default resolver reports one selected graph cycle");
-  builder::graph_first_pipeline_builder_options_t options{};
-  options.dry_run = true;
-  builder::graph_first_pipeline_builder_t<Kline> pipe(bundle, options);
-  const auto report = pipe.dry_run_report();
-
-  check(pipe.options().batch_size ==
-            static_cast<std::size_t>(bundle.mdn_training.batch_size),
-        "default builder batch size derives from config");
-  check(pipe.batch_size_source() == "derived",
-        "default builder reports derived batch size");
-  check(pipe.options().dtype == torch::kFloat32,
-        "default builder dtype derives from config");
-  check(pipe.options().device.is_cpu(),
-        "default builder device derives from config");
-  check(report.effective_batch_size ==
-            static_cast<std::size_t>(bundle.mdn_training.batch_size),
-        "dry-run reports effective batch size");
-  check(report.batch_size_source == "derived",
-        "dry-run reports batch size source");
-  check(report.fetch_mode == "parallel_by_edge", "dry-run reports fetch mode");
-  check(report.parallel_min_work_items == 16,
-        "dry-run reports parallel threshold");
-  check(report.dtype == "float32", "dry-run reports dtype");
-  check(report.device == "cpu", "dry-run reports device");
-  check(report.stream_plan.steps.size() == 4,
-        "dry-run reports four stream plan steps");
-  check(!report.dock_binding_fingerprint.empty(),
-        "dry-run reports dock binding fingerprint");
-  check(report.dock_binding_token.find(
-            "kikijyeba.topology.graph.dock_binding.v1/") == 0,
-        "dry-run reports dock binding token");
-  check(report.dock_binding_warning_count == 0,
-        "dry-run reports no dock binding warnings");
-  check(report.dock_binding_warnings.empty(),
-        "dry-run warning list is empty for clean dock binding");
-  check(!report.protocol_contract_fingerprint.empty(),
-        "dry-run reports protocol contract fingerprint");
-  check(report.protocol_contract_token.find(
-            "kikijyeba.protocol.graph_first.contract.v1/") == 0,
-        "dry-run reports protocol contract token");
-  check(report.stream_plan.steps.at(1).component_family ==
-            "wikimyei.expression.nodelift.srl",
-        "dry-run stream plan includes NodeLift");
-  check(report.stream_plan.steps.at(1).dock_binding_token ==
-            report.dock_binding_token,
-        "dry-run NodeLift step carries dock binding token");
-  check(report.stream_plan.steps.at(2).output_batch ==
-            "node_representation_batch_t",
-        "dry-run stream plan includes representation output");
-  check(report.stream_plan.steps.at(3).dock_binding_token ==
-            report.dock_binding_token,
-        "dry-run inference step carries dock binding token");
-  check(report.mdn_seed == bundle.mdn_training.seed, "dry-run reports seed");
-  check(report.mdn_checkpoint_every == bundle.mdn_training.checkpoint_every,
-        "dry-run reports checkpoint cadence");
-  check(report.mdn_report_every == bundle.mdn_training.report_every,
-        "dry-run reports report cadence");
-  check(report.mdn_validation_every == 0, "dry-run reports validation cadence");
-  check(report.analytics_status == "decoded_validated_not_emitted",
-        "dry-run reports analytics status");
-  check(report.wave_source_range_policy ==
-            cuwacunu::kikijyeba::settings::source_range_policy_name(
-                bundle.wave_settings.source_range_policy),
-        "dry-run reports configured wave source range");
-  if (bundle.wave_settings.anchor_index_begin.has_value()) {
-    check(report.requested_anchor_index_begin ==
-              static_cast<int64_t>(*bundle.wave_settings.anchor_index_begin),
-          "dry-run reports configured wave begin");
-  } else {
-    check(report.requested_anchor_index_begin == -1,
-          "dry-run reports unbounded wave begin");
-  }
-  if (bundle.wave_settings.anchor_index_end.has_value()) {
-    check(report.requested_anchor_index_end ==
-              static_cast<int64_t>(*bundle.wave_settings.anchor_index_end),
-          "dry-run reports configured wave end");
-  } else {
-    check(report.requested_anchor_index_end == -1,
-          "dry-run reports unbounded wave end");
-  }
-  check(report.node_count == 3, "default dry-run node count");
-  check(report.edge_count == 3, "default dry-run edge count");
-  check(report.active_channel_count == 3, "default dry-run active channels");
-  check(report.possible_directed_edge_count == 6,
-        "default dry-run possible directed edges");
-  check(report.available_source_directed_edge_count == 3,
-        "default dry-run available source edges");
-  check(report.missing_directed_pair_count == 3,
-        "default dry-run missing directed pairs");
-  check(report.selected_missing_source_edge_count == 0,
-        "default dry-run selected edges have source coverage");
-  check(report.connected_component_count == 1,
-        "default dry-run connected component count");
-  check(report.selected_cycle_dimension == 1,
-        "default dry-run selected cycle dimension");
-  check(report.input_length == 30, "default dry-run Hx");
-  check(report.future_length == 1, "default dry-run Hf");
-  check(report.target_coords ==
-            std::vector<int64_t>({0, 1, 2, 3, 4, 5, 6, 7, 8}),
-        "default target coords");
-  check(report.required_feature_coords == std::vector<int64_t>({0, 1, 2, 3}),
-        "default mask profile coords");
-  check(report.mask_profile == "price_only", "default mask profile");
-  check(report.head_policy == "per_node", "default head policy");
-  check(report.target_domain == "node_future", "default target domain");
-  check(report.context_dim == 8, "default context dim");
-  check(!report.graph_order_fingerprint.empty(),
-        "default graph fingerprint available");
-  std::cout << "[protocol_pipeline_builder dry-run] " << report.summary()
-            << "\n";
-}
-
 void test_default_channel_config_dry_run_report() {
   const auto bundle =
       builder::load_channel_graph_first_config_bundle_from_config(
@@ -575,11 +417,11 @@ void test_default_channel_config_dry_run_report() {
   check(builder::channel_graph_first_protocol_contract_token(contract).find(
             "kikijyeba.protocol.channel_graph_first.contract.v1/") == 0,
         "default channel protocol contract has token");
-  check(bundle.vicreg.component_id == "vicreg_v1",
+  check(bundle.vicreg.component_assembly_id == "vicreg_v1",
         "default channel VICReg component id");
-  check(bundle.channel_mdn.input_representation_id ==
-            bundle.vicreg.component_id,
-        "default channel MDN points to channel VICReg");
+  check(bundle.channel_mdn.input_representation_assembly_id ==
+            bundle.vicreg.component_assembly_id,
+        "default MDN points to channel VICReg");
   check(bundle.vicreg.channel_count ==
             builder::active_channel_count(bundle.source_dock),
         "default channel VICReg count matches source dock");
@@ -588,7 +430,7 @@ void test_default_channel_config_dry_run_report() {
         "default channel VICReg Hx matches source dock");
   check(bundle.channel_mdn.future_horizon ==
             builder::max_future_length(bundle.source_dock),
-        "default channel MDN Hf matches source dock");
+        "default MDN Hf matches source dock");
 
   builder::graph_first_pipeline_builder_options_t options{};
   options.dry_run = true;
@@ -604,18 +446,18 @@ void test_default_channel_config_dry_run_report() {
         "channel dry-run reports channel protocol token");
   check(report.stream_plan.steps.size() == 4,
         "channel dry-run reports four stream plan steps");
-  check(report.stream_plan.steps.at(2).component_family ==
+  check(report.stream_plan.steps.at(2).component_family_id ==
             "wikimyei.representation.encoding.vicreg",
         "channel stream plan includes channel VICReg");
   check(report.stream_plan.steps.at(2).output_batch ==
             "channel_representation_batch_t",
         "channel stream plan exports channel representation batch");
-  check(report.stream_plan.steps.at(3).component_family ==
+  check(report.stream_plan.steps.at(3).component_family_id ==
             "wikimyei.inference.expected_value.mdn",
-        "channel stream plan includes channel MDN");
+        "channel stream plan includes MDN");
   check(report.stream_plan.steps.at(3).output_batch ==
             "channel_mdn_input_batch_t",
-        "channel stream plan exports channel MDN input batch");
+        "channel stream plan exports MDN input batch");
   check(report.head_policy == "per_channel_strict",
         "channel dry-run reports strict channel head policy");
   check(report.target_domain == "channel_node_future",
@@ -646,9 +488,9 @@ void test_channel_contract_ignores_runtime_model_state_inputs() {
              "TRAINING {\n"
              "  VERSION = wikimyei.inference.expected_value.mdn."
              "jkimyei.v1;\n"
-             "  TRAINING_ID = fixture_channel_mdn;\n"
+             "  TRAINING_ID = fixture_mdn;\n"
              "  TASK = mdn_expected_value_inference;\n"
-             "  COMPONENT_ID = channel_context_mdn_v1;\n"
+             "  COMPONENT_ASSEMBLY_ID = mdn_v1;\n"
              "  OPTIMIZER = adam;\n"
              "  LEARNING_RATE = 0.01;\n"
              "  MAX_STEPS = 0;\n"
@@ -685,114 +527,6 @@ void test_channel_contract_ignores_runtime_model_state_inputs() {
         "model-state inputs do not alter channel protocol contract identity");
 }
 
-void test_config_backed_forward_nll_smoke() {
-  torch::manual_seed(41);
-  const auto fixture = make_config_fixture("forward_nll");
-  const auto bundle =
-      builder::load_graph_first_config_bundle_from_config(fixture.config);
-  check(bundle.source_universe.source_forms.size() == 4,
-        "fixture source universe contains only source rows");
-  check(bundle.source_dock.channel_forms.size() == 1,
-        "fixture source dock contains channel activation rows");
-  check(bundle.source_plan.edge_instruments.size() == 4,
-        "fixture source plan resolves edge instruments");
-  check(bundle.source_resolution_report.possible_directed_edge_count == 6,
-        "fixture resolver sees complete directed pair count");
-  check(bundle.source_resolution_report.available_source_directed_edge_count ==
-            4,
-        "fixture resolver sees four real source edges");
-  check(bundle.source_resolution_report.selected_edge_count == 4,
-        "fixture resolver sees selected source edges");
-  check(bundle.source_resolution_report.reverse_pair_count == 2,
-        "fixture resolver sees two selected reverse pairs");
-  check(bundle.source_resolution_report.missing_directed_pair_count == 2,
-        "fixture resolver records two missing directed pairs");
-  check(bundle.source_resolution_report.connected_component_count == 1,
-        "fixture resolver graph is connected");
-  check(bundle.source_resolution_report.selected_cycle_dimension == 2,
-        "fixture resolver reports reverse-pair cycle dimension");
-
-  builder::graph_first_pipeline_builder_options_t options{};
-  options.force_rebuild_cache = true;
-  options.batch_size = 2;
-  builder::graph_first_pipeline_builder_t<Kline> pipe(bundle, options);
-  const auto report = pipe.dry_run_report();
-  check(report.node_count == 3, "fixture dry-run node count");
-  check(report.edge_count == 4, "fixture dry-run edge count");
-  check(report.active_channel_count == 1, "fixture active channels");
-  check(report.available_source_directed_edge_count == 4,
-        "fixture dry-run available source edges");
-  check(report.reverse_pair_count == 2, "fixture dry-run reverse pair count");
-  check(report.selected_cycle_dimension == 2,
-        "fixture dry-run cycle dimension");
-  check(report.input_length == 2, "fixture Hx");
-  check(report.future_length == 1, "fixture Hf");
-
-  auto graph_source = pipe.make_graph_source();
-  check(graph_source.size() >= 2, "fixture graph source has anchors");
-  auto srl_graph = pipe.srl_graph();
-  auto lifted_stream = pipe.make_node_lifted_stream(std::move(graph_source));
-  auto encoder = pipe.make_vicreg_encoder();
-  auto representation_stream =
-      pipe.make_node_representation_stream(std::move(lifted_stream), encoder);
-  check(representation_stream.has_next(),
-        "fixture representation stream has batch");
-  auto node_batch = representation_stream.next();
-  auto mdn_batch =
-      mdnstream::make_mdn_input_batch(node_batch, pipe.mdn_adapter_options());
-  check(node_batch.nodelift_stream_report.identity.component_family ==
-            "wikimyei.expression.nodelift.srl",
-        "fixture carries NodeLift stream report");
-  check(node_batch.stream_report.identity.component_family ==
-            "wikimyei.representation.encoding.vicreg",
-        "fixture carries representation stream report");
-  check(mdn_batch.representation_stream_report.cursor.batch_cursor_token ==
-            node_batch.stream_report.cursor.batch_cursor_token,
-        "MDN adapter preserves representation stream cursor");
-
-  check(mdn_batch.context.sizes() ==
-            torch::IntArrayRef({6, pipe.context_dim()}),
-        "fixture MDN context shape");
-  check(mdn_batch.future.sizes() == torch::IntArrayRef({6, 1, 1, 9}),
-        "fixture future shape");
-
-  auto heads = pipe.make_mdn_heads(
-      /*context_dim=*/mdn_batch.context.size(1),
-      /*channel_count=*/mdn_batch.future.size(1),
-      /*horizon_count=*/mdn_batch.future.size(2));
-  const auto nll_options = mdn::mdn_nll_options_from_spec(pipe.bundle().mdn);
-  auto targets = mdn_batch.future;
-  auto mask = mdnstream::combine_mdn_context_and_future_mask(
-      mdn_batch.context_mask, mdn_batch.future_mask);
-  check(mask.sum().item<int64_t>() > 0, "fixture has valid MDN targets");
-
-  std::vector<torch::Tensor> loss_sums;
-  std::vector<torch::Tensor> valid_counts;
-  for (int64_t node_slot = 0; node_slot < report.node_count; ++node_slot) {
-    auto rows = mdnstream::mdn_rows_for_node(mdn_batch, node_slot);
-    auto mask_n = mask.index_select(0, rows);
-    if (!mask_n.any().item<bool>()) {
-      continue;
-    }
-    auto context_n = mdn_batch.context.index_select(0, rows);
-    auto target_n = targets.index_select(0, rows);
-    auto out = heads[node_slot]->forward_from_encoding(context_n);
-    check(torch::isfinite(out.log_pi).all().item<bool>(), "MDN log_pi finite");
-    check(torch::isfinite(out.mu).all().item<bool>(), "MDN mu finite");
-    check(torch::isfinite(out.sigma).all().item<bool>(), "MDN sigma finite");
-    auto nll = mdn::mdn_nll_map(out, target_n, mask_n, nll_options);
-    check(torch::isfinite(nll).all().item<bool>(), "MDN NLL finite");
-    loss_sums.push_back(nll.sum());
-    valid_counts.push_back(mask_n.to(nll.scalar_type()).sum().clamp_min(1.0));
-  }
-  check(!loss_sums.empty(), "at least one node contributed NLL");
-  auto loss = torch::stack(loss_sums).sum() /
-              torch::stack(valid_counts).sum().clamp_min(1.0);
-  check(std::isfinite(loss.item<double>()), "fixture total NLL finite");
-  check(torch::isfinite(node_batch.node_encoding).all().item<bool>(),
-        "node encoding finite");
-}
-
 void test_channel_config_backed_forward_nll_smoke() {
   torch::manual_seed(43);
   const auto fixture = make_config_fixture("channel_forward_nll");
@@ -801,7 +535,7 @@ void test_channel_config_backed_forward_nll_smoke() {
           fixture.config);
   check(bundle.vicreg.channel_count == 1, "fixture channel VICReg count");
   check(bundle.vicreg.history_length == 2, "fixture channel VICReg Hx");
-  check(bundle.channel_mdn.future_horizon == 1, "fixture channel MDN Hf");
+  check(bundle.channel_mdn.future_horizon == 1, "fixture MDN Hf");
 
   builder::graph_first_pipeline_builder_options_t options{};
   options.force_rebuild_cache = true;
@@ -813,7 +547,7 @@ void test_channel_config_backed_forward_nll_smoke() {
         "fixture channel stream plan includes channel representation");
   check(report.stream_plan.steps.at(3).output_batch ==
             "channel_mdn_input_batch_t",
-        "fixture channel stream plan includes channel MDN input");
+        "fixture channel stream plan includes MDN input");
 
   auto graph_source = pipe.make_graph_source();
   check(graph_source.size() >= 2, "fixture channel graph source has anchors");
@@ -830,7 +564,7 @@ void test_channel_config_backed_forward_nll_smoke() {
   check(channel_batch.node_encoding_mask.sizes() ==
             torch::IntArrayRef({2, 3, 1}),
         "fixture channel representation mask shape");
-  check(channel_batch.stream_report.identity.component_family ==
+  check(channel_batch.stream_report.identity.component_family_id ==
             "wikimyei.representation.encoding.vicreg",
         "fixture channel stream report uses channel VICReg family");
   check(torch::isfinite(channel_batch.node_encoding).all().item<bool>(),
@@ -840,12 +574,12 @@ void test_channel_config_backed_forward_nll_smoke() {
       channel_batch, pipe.channel_mdn_adapter_options());
   check(mdn_batch.context.sizes() ==
             torch::IntArrayRef({6, 1, pipe.context_dim()}),
-        "fixture channel MDN context shape");
+        "fixture MDN context shape");
   check(mdn_batch.future.sizes() == torch::IntArrayRef({6, 1, 1, 4}),
-        "fixture channel MDN future shape");
+        "fixture MDN future shape");
   check(mdn_batch.representation_stream_report.cursor.batch_cursor_token ==
             channel_batch.stream_report.cursor.batch_cursor_token,
-        "channel MDN adapter preserves representation stream cursor");
+        "MDN adapter preserves representation stream cursor");
 
   auto mdn_model = pipe.make_channel_context_mdn(
       /*context_dim=*/mdn_batch.context.size(2),
@@ -853,23 +587,20 @@ void test_channel_config_backed_forward_nll_smoke() {
       /*horizon_count=*/mdn_batch.future.size(2));
   auto params = builder::channel_graph_first_pipeline_builder_t<
       Kline>::collect_channel_mdn_parameters(mdn_model);
-  check(!params.empty(), "channel MDN exposes trainable parameters");
+  check(!params.empty(), "MDN exposes trainable parameters");
 
   const auto mask = mdn::combine_channel_context_and_future_mask(
       mdn_batch.context_mask, mdn_batch.future_mask);
-  check(mask.sum().item<int64_t>() > 0,
-        "fixture channel MDN has valid targets");
+  check(mask.sum().item<int64_t>() > 0, "fixture MDN has valid targets");
   const auto nll_options =
       mdn::channel_mdn_nll_options_from_spec(pipe.bundle().channel_mdn);
   auto out = mdn_model->forward(mdn_batch.context);
-  check(torch::isfinite(out.log_pi).all().item<bool>(),
-        "channel MDN log_pi finite");
-  check(torch::isfinite(out.mu).all().item<bool>(), "channel MDN mu finite");
-  check(torch::isfinite(out.sigma).all().item<bool>(),
-        "channel MDN sigma finite");
+  check(torch::isfinite(out.log_pi).all().item<bool>(), "MDN log_pi finite");
+  check(torch::isfinite(out.mu).all().item<bool>(), "MDN mu finite");
+  check(torch::isfinite(out.sigma).all().item<bool>(), "MDN sigma finite");
   auto nll = cuwacunu::wikimyei::inference::expected_value::mdn::mdn_nll_map(
       out, mdn_batch.future, mask, nll_options);
-  check(torch::isfinite(nll).all().item<bool>(), "channel MDN NLL finite");
+  check(torch::isfinite(nll).all().item<bool>(), "MDN NLL finite");
   auto loss = nll.sum() / mask.to(nll.scalar_type()).sum().clamp_min(1.0);
   check(std::isfinite(loss.item<double>()), "fixture channel total NLL finite");
 }

@@ -2,6 +2,7 @@
 
 #include "hero/config_hero/hero_config.h"
 #include "hero/mcp_schema_compat.h"
+#include "kikijyeba/protocol/config_provenance.h"
 
 #include <algorithm>
 #include <array>
@@ -57,6 +58,9 @@ constexpr tool_descriptor_t kTools[] = {
     {"hero.config.map",
      "Map global config path references with existence and optional sha256.",
      R"({"type":"object","properties":{"include_sha256":{"type":"boolean"}},"additionalProperties":false})"},
+    {"hero.config.capture_bundle",
+     "Capture an exact config bundle provenance receipt.",
+     R"({"type":"object","properties":{"config_path":{"type":"string"},"include_text":{"type":"boolean"}},"additionalProperties":false})"},
     {"hero.config.resolve",
      "Resolve one Config Hero path and report policy gates before use.",
      R"({"type":"object","properties":{"path":{"type":"string"},"for_write":{"type":"boolean"},"include_sha256":{"type":"boolean"}},"required":["path"],"additionalProperties":false})"},
@@ -85,9 +89,9 @@ constexpr tool_descriptor_t kTools[] = {
   return name == "hero.config.status" || name == "hero.config.schema" ||
          name == "hero.config.show" || name == "hero.config.get" ||
          name == "hero.config.validate" || name == "hero.config.diff" ||
-         name == "hero.config.map" || name == "hero.config.resolve" ||
-         name == "hero.config.backups" || name == "hero.config.list" ||
-         name == "hero.config.read";
+         name == "hero.config.map" || name == "hero.config.capture_bundle" ||
+         name == "hero.config.resolve" || name == "hero.config.backups" ||
+         name == "hero.config.list" || name == "hero.config.read";
 }
 
 [[nodiscard]] bool tool_is_destructive(std::string_view name) {
@@ -1144,6 +1148,54 @@ build_global_config_map_json(const hero_config_store_t &store,
   return out.str();
 }
 
+[[nodiscard]] std::string config_bundle_receipt_json(
+    const cuwacunu::kikijyeba::protocol::config_provenance::
+        config_bundle_receipt_t &receipt,
+    bool include_text) {
+  std::ostringstream out;
+  out << "{\"schema\":" << json_quote(receipt.schema)
+      << ",\"global_config_path\":"
+      << json_quote(receipt.global_config_path.string())
+      << ",\"config_bundle_id\":" << json_quote(receipt.config_bundle_id)
+      << ",\"config_receipt_id\":" << json_quote(receipt.config_receipt_id)
+      << ",\"captured_at_utc\":" << json_quote(receipt.captured_at_utc)
+      << ",\"complete\":" << bool_json(receipt.complete)
+      << ",\"file_count\":" << receipt.files.size() << ",\"files\":[";
+  for (std::size_t i = 0; i < receipt.files.size(); ++i) {
+    if (i != 0) {
+      out << ",";
+    }
+    const auto &file = receipt.files[i];
+    out << "{\"config_key\":" << json_quote(file.config_key)
+        << ",\"path\":" << json_quote(file.path.string())
+        << ",\"exists\":" << bool_json(file.exists)
+        << ",\"is_regular_file\":" << bool_json(file.is_regular_file)
+        << ",\"size_known\":" << bool_json(file.size_known) << ",\"size\":";
+    if (file.size_known) {
+      out << file.size;
+    } else {
+      out << "null";
+    }
+    out << ",\"content_digest\":" << json_quote(file.content_digest)
+        << ",\"error\":" << json_quote(file.error) << "}";
+  }
+  out << "],\"issues\":[";
+  for (std::size_t i = 0; i < receipt.issues.size(); ++i) {
+    if (i != 0) {
+      out << ",";
+    }
+    out << json_quote(receipt.issues[i]);
+  }
+  out << "]";
+  if (include_text) {
+    out << ",\"receipt_text\":"
+        << json_quote(cuwacunu::kikijyeba::protocol::config_provenance::
+                          canonical_config_bundle_receipt_text(receipt));
+  }
+  out << "}";
+  return out.str();
+}
+
 [[nodiscard]] bool handle_status(const std::string &,
                                  hero_config_store_t *store, std::string *out,
                                  std::string *) {
@@ -1263,6 +1315,40 @@ build_global_config_map_json(const hero_config_store_t &store,
   }
   bool valid = false;
   *out = build_global_config_map_json(*store, include_sha256, &valid);
+  return true;
+}
+
+[[nodiscard]] bool handle_capture_bundle(const std::string &args,
+                                         hero_config_store_t *store,
+                                         std::string *out, std::string *err) {
+  bool include_text = false;
+  if (extract_json_raw_field(args, "include_text", nullptr) &&
+      !extract_json_bool_field(args, "include_text", &include_text)) {
+    *err = "include_text must be boolean";
+    return false;
+  }
+  std::string config_arg;
+  fs::path config_path;
+  if (extract_json_string_field(args, "config_path", &config_arg) &&
+      !trim_ascii(config_arg).empty()) {
+    if (!resolve_managed_path(*store, config_arg, false, &config_path, err)) {
+      return false;
+    }
+  } else {
+    config_path = fs::path(store->global_config_path());
+    if (!resolve_managed_path(*store, config_path.string(), false, &config_path,
+                              err)) {
+      return false;
+    }
+  }
+  try {
+    const auto receipt = cuwacunu::kikijyeba::protocol::config_provenance::
+        capture_config_bundle_receipt(config_path);
+    *out = config_bundle_receipt_json(receipt, include_text);
+  } catch (const std::exception &ex) {
+    *err = ex.what();
+    return false;
+  }
   return true;
 }
 
@@ -1688,6 +1774,9 @@ using handler_fn = bool (*)(const std::string &, hero_config_store_t *,
   }
   if (name == "hero.config.map") {
     return handle_map;
+  }
+  if (name == "hero.config.capture_bundle") {
+    return handle_capture_bundle;
   }
   if (name == "hero.config.resolve") {
     return handle_resolve;

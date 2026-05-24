@@ -39,7 +39,7 @@ ret_conf(const cuwacunu::jkimyei::specs::jkimyei_specs_t &inst,
  */
 struct jkimyei_component_t {
   std::string name;
-  std::string resolved_component_id;
+  std::string resolved_component_assembly_id;
   std::string resolved_profile_id;
   std::string resolved_profile_row_id;
   jkimyei_conf_t opt_conf;
@@ -110,7 +110,7 @@ struct jkimyei_component_t {
           continue;
         if (trim_ascii_copy(profile_it->second) != profile_hint)
           continue;
-        const auto component_it = candidate.find("component_id");
+        const auto component_it = candidate.find("component_assembly_id");
         const auto type_it = candidate.find("component_type");
         const std::string candidate_component =
             (component_it == candidate.end())
@@ -151,16 +151,16 @@ struct jkimyei_component_t {
 
     if (from_component_profile_row) {
       resolved_profile_row_id = row_id;
-      resolved_component_id =
-          cuwacunu::jkimyei::specs::require_column(row, "component_id");
+      resolved_component_assembly_id =
+          cuwacunu::jkimyei::specs::require_column(row, "component_assembly_id");
       resolved_profile_id =
           cuwacunu::jkimyei::specs::require_column(row, "profile_id");
     } else {
-      resolved_component_id = row_id;
+      resolved_component_assembly_id = row_id;
       resolved_profile_id =
           cuwacunu::jkimyei::specs::require_column(row, "active_profile");
       resolved_profile_row_id =
-          resolved_component_id + "@" + resolved_profile_id;
+          resolved_component_assembly_id + "@" + resolved_profile_id;
     }
 
     name = runtime_component_name.empty() ? component_lookup_name

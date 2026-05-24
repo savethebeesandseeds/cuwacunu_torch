@@ -10,9 +10,9 @@ topology primitives live in `topology/graph`; wave runtime settings live in
 `settings`.
 
 - `config_bundle.h` loads and cross-validates Ujcamei, Kikijyeba, Wikimyei,
-  and Jkimyei specs from `.config` into
-  `graph_first_protocol_contract_t`. The older
-  `graph_first_config_bundle_t` name is retained as a compatibility alias.
+  and Jkimyei specs from `.config` into the channel graph-first protocol
+  contract. The earlier node-only VICReg contract/bundle path has been removed;
+  historical lattice receipts remain readable as evidence only.
 - `source_dock.h` separates Ujcamei source/channel availability from protocol
   topology. Ujcamei sources and channel rows define retrievable source evidence;
   active graph rows are decoded by `kikijyeba/topology/graph` and resolved

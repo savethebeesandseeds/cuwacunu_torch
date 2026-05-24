@@ -16,7 +16,7 @@ namespace inference_launcher = cuwacunu::jkimyei::training::inference;
 namespace representation_launcher = cuwacunu::jkimyei::training::representation;
 namespace runtime_report = cuwacunu::kikijyeba::lattice::runtime_report;
 namespace types = cuwacunu::ujcamei::source::registry::types;
-namespace ch_mdn = cuwacunu::wikimyei::inference::expected_value::mdn;
+namespace mdn = cuwacunu::wikimyei::inference::expected_value::mdn;
 
 namespace {
 
@@ -233,7 +233,7 @@ fixture_paths_t make_config_fixture(const std::string &label,
 
   write_text(vicreg_dsl, "VICREG {\n"
                          "  VERSION = wikimyei.representation.vicreg.v1;\n"
-                         "  COMPONENT_ID = vicreg_v1;\n"
+                         "  COMPONENT_ASSEMBLY_ID = vicreg_v1;\n"
                          "  INPUT_ROUTE = channel_node_stream;\n"
                          "  CHANNEL_COUNT = 1;\n"
                          "  HISTORY_LENGTH = 2;\n"
@@ -253,13 +253,23 @@ fixture_paths_t make_config_fixture(const std::string &label,
                          "  VICREG_PROJECTOR_DIM = 6;\n"
                          "  VICREG_PROJECTOR_HIDDEN_DIM = 8;\n"
                          "  VICREG_PROJECTOR_DEPTH = 1;\n"
+                         "  VICREG_INVARIANCE_WEIGHT = 25.0;\n"
+                         "  VICREG_VARIANCE_WEIGHT = 25.0;\n"
+                         "  VICREG_COVARIANCE_WEIGHT = 1.0;\n"
+                         "  VICREG_VARIANCE_FLOOR = 1.0;\n"
+                         "  VICREG_EPS = 0.0001;\n"
                          "  GLOBAL_AUX_WEIGHT = 0.0;\n"
+                         "  MIN_VALID_ROWS = 2;\n"
+                         "  SKIP_NON_FINITE_LOSS = true;\n"
+                         "  JITTER_STD = 0.01;\n"
+                         "  FEATURE_DROPOUT_PROB = 0.0;\n"
+                         "  HISTORY_DROPOUT_PROB = 0.0;\n"
                          "};\n");
   write_text(channel_mdn_dsl,
              "MDN {\n"
              "  VERSION = wikimyei.inference.expected_value.mdn.v1;\n"
-             "  COMPONENT_ID = channel_context_mdn_v1;\n"
-             "  INPUT_REPRESENTATION_ID = vicreg_v1;\n"
+             "  COMPONENT_ASSEMBLY_ID = mdn_v1;\n"
+             "  INPUT_REPRESENTATION_ASSEMBLY_ID = vicreg_v1;\n"
              "  CONTEXT_MODE = channel_context_strict;\n"
              "  TARGET_DOMAIN = channel_node_future;\n"
              "  TARGET_COORDS = 0,1,2,3;\n"
@@ -275,6 +285,7 @@ fixture_paths_t make_config_fixture(const std::string &label,
                               "  MIXTURE_COUNT = 2;\n"
                               "  HIDDEN_WIDTH = 8;\n"
                               "  RESIDUAL_DEPTH = 1;\n"
+                              "  GLOBAL_CONTEXT_DIM = 0;\n"
                               "};\n");
   write_text(vicreg_jkimyei,
              std::string("TRAINING {\n"
@@ -282,7 +293,7 @@ fixture_paths_t make_config_fixture(const std::string &label,
                          "wikimyei.representation.vicreg.jkimyei.v1;\n"
                          "  TRAINING_ID = fixture_vicreg;\n"
                          "  TASK = vicreg_representation;\n"
-                         "  COMPONENT_ID = vicreg_v1;\n"
+                         "  COMPONENT_ASSEMBLY_ID = vicreg_v1;\n"
                          "  OPTIMIZER = adam;\n"
                          "  LEARNING_RATE = 0.001;\n"
                          "  MAX_STEPS = ") +
@@ -307,9 +318,9 @@ fixture_paths_t make_config_fixture(const std::string &label,
                          "  VERSION = "
                          "wikimyei.inference.expected_value.mdn."
                          "jkimyei.v1;\n"
-                         "  TRAINING_ID = fixture_channel_mdn;\n"
+                         "  TRAINING_ID = fixture_mdn;\n"
                          "  TASK = mdn_expected_value_inference;\n"
-                         "  COMPONENT_ID = channel_context_mdn_v1;\n"
+                         "  COMPONENT_ASSEMBLY_ID = mdn_v1;\n"
                          "  OPTIMIZER = adam;\n"
                          "  LEARNING_RATE = 0.01;\n"
                          "  MAX_STEPS = ") +
@@ -508,7 +519,7 @@ void test_channel_representation_dry_run() {
   const auto report = launcher.dry_run_report();
   check(report.training_id == "fixture_vicreg",
         "representation dry-run training id");
-  check(report.component_id == "vicreg_v1",
+  check(report.component_assembly_id == "vicreg_v1",
         "representation dry-run component id");
   check(report.representation_architecture ==
             "channel_preserving_local_node_encoder.v1",
@@ -640,7 +651,7 @@ void test_channel_representation_training_run() {
   check(std::filesystem::exists(report.checkpoint_path),
         "representation checkpoint file exists");
   const auto report_text = read_text(fixture.report);
-  check(report_text.find("component_id=vicreg_v1") != std::string::npos,
+  check(report_text.find("component_assembly_id=vicreg_v1") != std::string::npos,
         "representation report component id");
   check(report_text.find("representation_architecture="
                          "channel_preserving_local_node_encoder.v1") !=
@@ -713,14 +724,14 @@ void test_channel_representation_debug_lls() {
   check(report.runtime_report_mode == "debug",
         "channel representation debug runtime mode");
   check(report.nodelift_runtime_lls.find(
-            "component_id:str = nodelift_srl_v1") != std::string::npos,
+            "component_assembly_id:str = nodelift_srl_v1") != std::string::npos,
         "channel representation debug NodeLift LLS component");
   check(report.representation_training_runtime_lls.find(
             "wikimyei.representation.vicreg.training.runtime.v1") !=
             std::string::npos,
         "channel representation training LLS schema");
   check(report.representation_training_runtime_lls.find(
-            "component_id:str = vicreg_v1") != std::string::npos,
+            "component_assembly_id:str = vicreg_v1") != std::string::npos,
         "channel representation training LLS component");
   check(report.representation_training_runtime_lls.find(
             "valid_feature_fraction") != std::string::npos,
@@ -834,8 +845,8 @@ void test_channel_mdn_training_run() {
   check(report.sigma_min == 0.001, "MDN sigma min");
   check(report.sigma_max == 0.0, "MDN sigma max");
   check(report.eps == 0.000001, "MDN eps");
-  check(report.component_id == "channel_context_mdn_v1", "MDN component id");
-  check(report.input_representation_id == "vicreg_v1",
+  check(report.component_assembly_id == "mdn_v1", "MDN component id");
+  check(report.input_representation_assembly_id == "vicreg_v1",
         "MDN input representation id");
   check(report.context_contract == "graph_order.channel_node_representation.v1",
         "MDN context contract");
@@ -856,10 +867,9 @@ void test_channel_mdn_training_run() {
   check(report_text.find("context_mode=channel_context_strict") !=
             std::string::npos,
         "MDN report context mode");
-  check(report_text.find("component_id=channel_context_mdn_v1") !=
-            std::string::npos,
+  check(report_text.find("component_assembly_id=mdn_v1") != std::string::npos,
         "MDN report component id");
-  check(report_text.find("input_representation_id=vicreg_v1") !=
+  check(report_text.find("input_representation_assembly_id=vicreg_v1") !=
             std::string::npos,
         "MDN report input representation id");
   check(report_text.find("context_contract="
@@ -914,46 +924,45 @@ void test_channel_mdn_debug_lls() {
   inference_launcher::channel_graph_first_inference_launcher_t<Kline> launcher(
       std::move(pipe), options);
   const auto report = launcher.run();
-  check(report.runtime_lls_emitted, "channel MDN debug LLS emitted");
-  check(report.runtime_report_mode == "debug",
-        "channel MDN debug runtime mode");
+  check(report.runtime_lls_emitted, "MDN debug LLS emitted");
+  check(report.runtime_report_mode == "debug", "MDN debug runtime mode");
   check(report.nodelift_runtime_lls.find(
-            "component_id:str = nodelift_srl_v1") != std::string::npos,
-        "channel MDN debug NodeLift LLS component");
+            "component_assembly_id:str = nodelift_srl_v1") != std::string::npos,
+        "MDN debug NodeLift LLS component");
   check(report.representation_runtime_lls.find(
             "wikimyei.representation.vicreg.runtime.v1") != std::string::npos,
-        "channel MDN debug representation LLS schema");
+        "MDN debug representation LLS schema");
   check(report.representation_runtime_lls.find("node_encoding_mask_fraction") !=
             std::string::npos,
-        "channel MDN debug representation mask fraction");
+        "MDN debug representation mask fraction");
   check(report.representation_runtime_lls.find("reducer_weight_entropy") !=
             std::string::npos,
-        "channel MDN debug representation reducer entropy");
+        "MDN debug representation reducer entropy");
   check(report.mdn_runtime_lls.find(
             "wikimyei.inference.expected_value.mdn.runtime.v1") !=
             std::string::npos,
-        "channel MDN debug runtime LLS schema");
-  check(report.mdn_runtime_lls.find(
-            "component_id:str = channel_context_mdn_v1") != std::string::npos,
-        "channel MDN debug runtime LLS component");
+        "MDN debug runtime LLS schema");
+  check(report.mdn_runtime_lls.find("component_assembly_id:str = mdn_v1") !=
+            std::string::npos,
+        "MDN debug runtime LLS component");
   check(report.mdn_runtime_lls.find("valid_target_fraction") !=
             std::string::npos,
-        "channel MDN debug runtime LLS valid target fraction");
+        "MDN debug runtime LLS valid target fraction");
   check(report.mdn_runtime_lls.find("context_mask_fraction") !=
             std::string::npos,
-        "channel MDN debug runtime LLS context mask fraction");
+        "MDN debug runtime LLS context mask fraction");
   check(report.mdn_runtime_lls.find("future_mask_fraction") !=
             std::string::npos,
-        "channel MDN debug runtime LLS future mask fraction");
+        "MDN debug runtime LLS future mask fraction");
   check(report.mdn_runtime_lls.find("sigma_mean_valid") != std::string::npos,
-        "channel MDN debug runtime LLS masked sigma mean");
+        "MDN debug runtime LLS masked sigma mean");
   check(std::filesystem::exists(fixture.report.string() + ".nodelift.lls"),
-        "channel MDN debug NodeLift LLS sidecar exists");
+        "MDN debug NodeLift LLS sidecar exists");
   check(
       std::filesystem::exists(fixture.report.string() + ".representation.lls"),
-      "channel MDN debug representation LLS sidecar exists");
+      "MDN debug representation LLS sidecar exists");
   check(std::filesystem::exists(fixture.report.string() + ".mdn.lls"),
-        "channel MDN debug MDN LLS sidecar exists");
+        "MDN debug MDN LLS sidecar exists");
 }
 
 void test_channel_mdn_run_requires_mdn_checkpoint() {
@@ -1106,8 +1115,8 @@ void test_channel_mdn_checkpoint_identity_rejects_representation_id_mismatch() {
   const auto checkpoint_path = dir / "channel_mdn.pt";
 
   inference_launcher::channel_graph_first_inference_training_report_t report{};
-  report.component_id = "channel_context_mdn_v1";
-  report.input_representation_id = "vicreg_v1";
+  report.component_assembly_id = "mdn_v1";
+  report.input_representation_assembly_id = "vicreg_v1";
   report.context_contract = "graph_order.channel_node_representation.v1";
   report.output_contract = "graph_order.channel_node_future_distribution.v1";
   report.context_mode = "channel_context_strict";
@@ -1125,31 +1134,31 @@ void test_channel_mdn_checkpoint_identity_rejects_representation_id_mismatch() {
   report.sigma_max = 0.0;
   report.eps = 0.000001;
 
-  auto mdn = ch_mdn::ChannelContextMdn(/*context_dim=*/4, /*target_dim=*/2,
-                                       /*channel_count=*/1,
-                                       /*horizon_count=*/1,
-                                       /*mixture_count=*/2,
-                                       /*hidden_width=*/8,
-                                       /*residual_depth=*/1);
-  ch_mdn::channel_context_mdn_train_model_t model(std::move(mdn), 0.001);
+  auto mdn = mdn::ChannelContextMdn(/*context_dim=*/4, /*target_dim=*/2,
+                                    /*channel_count=*/1,
+                                    /*horizon_count=*/1,
+                                    /*mixture_count=*/2,
+                                    /*hidden_width=*/8,
+                                    /*residual_depth=*/1);
+  mdn::channel_context_mdn_train_model_t model(std::move(mdn), 0.001);
   inference_launcher::channel_graph_first_inference_launcher_detail::
       save_channel_mdn_checkpoint_file(checkpoint_path, report, model);
 
-  auto restore = ch_mdn::ChannelContextMdn(
+  auto restore = mdn::ChannelContextMdn(
       /*context_dim=*/4, /*target_dim=*/2, /*channel_count=*/1,
       /*horizon_count=*/1, /*mixture_count=*/2, /*hidden_width=*/8,
       /*residual_depth=*/1);
   auto expected =
       inference_launcher::channel_graph_first_inference_launcher_detail::
           checkpoint_identity_from_report(report);
-  expected.input_representation_id = "other_channel_representation";
+  expected.input_representation_assembly_id = "other_channel_representation";
   bool threw = false;
   try {
     inference_launcher::channel_graph_first_inference_launcher_detail::
         load_channel_mdn_checkpoint_file(checkpoint_path, restore, nullptr,
                                          &expected);
   } catch (const std::exception &ex) {
-    threw = std::string(ex.what()).find("input_representation_id") !=
+    threw = std::string(ex.what()).find("input_representation_assembly_id") !=
             std::string::npos;
   }
   check(threw, "MDN checkpoint rejects mismatched input representation id");

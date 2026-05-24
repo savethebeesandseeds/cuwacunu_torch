@@ -5,7 +5,7 @@ dispatch list for future `/goal` runs, not as an invitation to expand V1.
 
 ## Current Roadmap State
 
-As of `2026-05-23`, the finite completed milestones are:
+As of `2026-05-24`, the finite completed milestones are:
 
 ```text
 V1   complete: read-only operational readiness authority
@@ -20,11 +20,23 @@ V3-C complete: validation performance evidence policy
 V3-D complete: MDN distribution calibration diagnostics
 V3-E complete: Datalog-style derived query pilot
 V3-F complete: Pareto evidence comparison
+V3-G complete: source-key map audit
+V3-H complete: representation geometry gate promotion review
 V3-J complete: Hero MCP schema compatibility hygiene
+V3-K complete: evidence retention and compaction policy
+V3-L complete: benchmark and regression budget
+V3-M complete: checkpoint closure hardening
+V3-N complete: config provenance and component spawn bridge
 ```
 
-Future work should be opened only from the `Next Finite Dispatch Goals` section
-near the end of this file. Earlier V2 sections are kept as completed receipts
+Current finite candidate:
+
+```text
+None. V3-I remains parked optional work, not an active roadmap item.
+```
+
+Future work should be added as a new bounded packet near the end of this file.
+Earlier V2/V3 sections are kept as completed receipts, parked optional packets,
 and design history, not as active instructions.
 
 Active boundaries remain:
@@ -56,11 +68,10 @@ explains suggested next waves without executing them.
 This gate is complete and kept here as design history. V2 fact-schema work
 started only after the Wikimyei migration report shape was inventoried.
 
-Current inventory artifact:
+Current inventory section:
 
 ```text
-src/include/kikijyeba/lattice/V2_FACT_INVENTORY.md
-src/include/kikijyeba/lattice/FACT_EMISSION_CONTRACT.md
+src/include/kikijyeba/lattice/README.md#fact-emission-contract-and-inventory
 ```
 
 Achievable goal:
@@ -178,13 +189,13 @@ Acceptance:
 - every promoted V2 fact has an emitting component/report field or sidecar
 - diagnostic metrics are explicitly kept out of readiness unless a target rule
   promotes them
-- V2_FACT_INVENTORY.md records the final classification and known gaps
+- README.md records the final classification and known gaps
 ```
 
 Current status:
 
 ```text
-Complete for V2. V2_FACT_INVENTORY.md and FACT_EMISSION_CONTRACT.md classify
+Complete for V2. README.md classifies
 node and channel report fields, model-state inputs, checkpoints, exposure
 support, source receipts, warning diagnostics, and deferred performance metrics.
 Promoted fact families now have component/report fields or sidecars, and known
@@ -221,7 +232,7 @@ Acceptance:
 Current status:
 
 ```text
-FACT_EMISSION_CONTRACT.md records the current read-only boundary between
+README.md records the current read-only boundary between
 component report fields, runtime artifacts, normalized lattice facts, derived
 summaries, target proof certificates, and rebuildable DB/index cache rows. The
 contract has been refreshed for channel representation/MDN reports, runtime
@@ -276,8 +287,8 @@ Acceptance:
 ```text
 - direct Runtime Hero and MCP Runtime Hero agree on active wave decoding after
   any required server refresh
-- a wave whose intent is channel execution cannot silently decode to the node
-  inference_mdn or representation_vicreg job kind
+- a wave whose intent is channel execution cannot silently decode to a
+  non-channel job kind
 - channel-vs-node routing comes from an explicit profile/component selector, not
   from a wave-id naming convention alone
 - runtime policy remains dry-run/non-executing unless the user deliberately
@@ -293,8 +304,8 @@ The runtime runner maps the migrated canonical VICReg/MDN wave targets to
 channel_representation_vicreg and channel_inference_mdn. Runtime Hero's rebuilt
 direct binary now previews the same channel job kind for the active channel MDN
 wave, and run-test_hero_runtime_wave_preview covers canonical channel targets
-plus the legacy node compatibility target. Long-running MCP Hero servers may
-still need restart/refresh before their cached tool output reflects the rebuilt
+without a legacy MDN compatibility target. Long-running MCP Hero servers may
+still need restart/refresh before their cached tool output reflects rebuilt
 binaries.
 ```
 
@@ -1140,13 +1151,13 @@ direct CLI benchmark:
 Do not open a broad performance goal unless it names the slow path, records the
 baseline timing layer, and defines the expected proof-boundary behavior.
 
-## Next Finite Dispatch Goals
+## Archived Completed And Parked V3 Dispatch Packets
 
-These are the only active roadmap items. Each item is bounded enough to become
-one `/goal`. Complete them in order unless the user explicitly promotes a later
-item.
+This section records completed V3 packets and one optional parked packet. It is
+not the active dispatch list. The active list starts at `Next Finite Dispatch
+Goals` near the end of this file.
 
-Recommended dependency order:
+Historical dependency order:
 
 ```text
 V3-C before V3-D and V3-F:
@@ -1182,6 +1193,10 @@ V3-K should run before pruning or compacting runtime evidence:
 V3-L can run after V3-B and after any new fast-path change:
   benchmarks must preserve separate library, long-lived MCP, and direct-CLI
   timing layers and must name the proof mode being measured.
+
+V3-M can run after checkpoint identity promotion:
+  closure completeness must fail closed for missing checkpoint bytes, stale
+  requested identities, and unknown root checkpoint paths.
 ```
 
 ### V3-C: Validation Performance Evidence Policy
@@ -1401,9 +1416,18 @@ Out of scope:
 Current status:
 
 ```text
-Not started. Source-key coordinate policy exists as audit vocabulary, but
-runtime source-key maps are not yet checked for monotonicity, affine-step
-consistency, gaps, or row/source-key mismatch in a dedicated audit.
+Implemented in the V3-G worktree. Source-key window audits now expose
+complete/numeric/monotone/order-preserving/affine checks plus explicit gap and
+row/source-key mismatch counters for missing endpoint pairs, irregular anchor
+steps, and affine row-to-key mismatches. `hero.lattice.scan_exposure` reports
+`source_key_map_audit_summary`, binding available audits to graph-order
+identity, source-cursor identity, and source-receipt parent facts while
+preserving row-index coverage/leakage authority. Non-monotone, irregular, and
+mismatched source-key maps remain audit warnings unless a future explicit
+target rule promotes them. Focused tests cover monotone affine keys, irregular
+monotone keys, nonmonotone keys, order inversion, and row/source-key mismatch.
+The V3-G receipt is
+`src/tests/fixtures/kikijyeba/lattice_operational_readiness_v3_g/SOURCE_KEY_AUDIT.md`.
 ```
 
 ### V3-H: Representation Geometry Gate Promotion Review
@@ -1437,9 +1461,17 @@ Out of scope:
 Current status:
 
 ```text
-Not started. Representation geometry remains warning-only visibility. Promotion
-requires observed distributions, opt-in target syntax, and missing/warning
-negative tests.
+Implemented in the V3-H worktree. `representation_geometry_gate_review_summary`
+reviews observed VICReg geometry distributions from runtime exposure facts,
+records that no default thresholds were promoted, and keeps default VICReg
+readiness warning-only. Explicit hard checks are available only through
+`LATTICE_REQUIRES KIND=representation_geometry`; low-bad metrics require
+`OP=ge`, high-bad metrics require `OP=le`, and the existing numeric unit checks
+apply to `VALUE`. Missing geometry facts and warning-triggering geometry fail
+closed only when that opt-in gate is enabled. Focused tests cover missing
+geometry, clear geometry, warning geometry, opt-in hard-gate failure, direction
+validation, and condition-number unit validation. The V3-H receipt is
+`src/tests/fixtures/kikijyeba/lattice_operational_readiness_v3_h/GEOMETRY_GATE_REVIEW.md`.
 ```
 
 ### V3-I: SQLite Read-Model Cache Format
@@ -1569,9 +1601,18 @@ Out of scope:
 Current status:
 
 ```text
-Not started. Runtime evidence is still treated as durable source material; no
-pruning or compaction should be done under lattice authority until this packet
-is implemented.
+Implemented in the V3-K worktree. `evidence_retention_policy_vocabulary`
+classifies runtime reports, lattice sidecars, checkpoint files, source receipt
+facts, selection-signal facts, proof certificates, runtime-index cache rows,
+human receipts, and archive manifests by retention role. Runtime reports,
+sidecars, checkpoint material, and selection-signal evidence remain replay
+authority; proof certificates, PASS files, compact receipts, and cache rows are
+non-authoritative audit/read-model metadata. Archive manifests must bind active
+identity, split policy, source cursor, graph order, and checkpoint identity.
+`evidence_retention_audit_scenario_vocabulary` covers complete archive replay,
+missing lineage after pruning, stale cache after archive movement, and compact
+receipt non-authority. The V3-K receipt is
+`src/tests/fixtures/kikijyeba/lattice_operational_readiness_v3_k/RETENTION_POLICY.md`.
 ```
 
 ### V3-L: Lattice Benchmark And Regression Budget
@@ -1612,9 +1653,319 @@ Out of scope:
 Current status:
 
 ```text
-Not started. V3-B added fast paths and one direct-CLI benchmark receipt, but
-there is not yet a committed regression budget that tracks library, long-lived
-MCP, and direct-CLI timing layers separately.
+Implemented in the V3-L worktree. `benchmark_regression_budget_vocabulary` and
+`benchmark_regression_budget_summary` define nine finite timing rows across
+library-function, long-lived MCP, and direct CLI layers and require proof-mode
+labels for `header_only`, `watched_file_manifest`,
+`full_runtime_metadata_digest`, `live_scan`, and `live_parity`. The focused
+library benchmark/regression target
+`run-test_kikijyeba_lattice_performance_budget` records in-process timings and
+asserts that header-only validation avoids metadata digests while still
+checking internal cache integrity. The V3-L receipt records runtime root,
+active identity, row counts, target counts, relation counts, baseline timings,
+and Hero smoke evidence that header-only unproven audit queries use cache rows
+without live parity or target-satisfaction authority. The V3-L receipt is
+`src/tests/fixtures/kikijyeba/lattice_operational_readiness_v3_l/BENCHMARK_BUDGET.md`.
+```
+
+### V3-M: Checkpoint Closure Hardening
+
+Objective:
+
+```text
+Patch checkpoint closure edge cases so absence of checkpoint bytes, stale
+identity lookups, and unknown root checkpoint paths cannot look complete or
+identity-authoritative.
+```
+
+Acceptance:
+
+```text
+- missing or unreadable checkpoint files fail checkpoint identity closure
+- empty checkpoint files fail checkpoint identity closure
+- direct lookup by checkpoint_id/checkpoint_file_digest verifies the returned
+  root identity still equals the requested identity
+- unknown root checkpoint paths become unresolved lineage, not complete
+  zero-fact closures
+- metadata freshness digests are documented as path/size/mtime freshness, not
+  content-proof authority
+- atomic sidecar/cache writes use unique temp paths and report rename failures
+- focused regressions cover missing bytes, empty bytes, stale identity lookup,
+  and unknown root paths
+```
+
+Out of scope:
+
+```text
+- changing cache rows into target-satisfaction authority
+- replacing runtime reports, facts, or sidecars as source of truth
+- production backup/restore scheduling
+```
+
+Current status:
+
+```text
+Implemented in the V3-M worktree. Checkpoint byte verification now returns an
+explicit status, and checkpoint identity validation records an identity
+mismatch when bytes cannot be opened, read, or are empty. Closure completeness
+requires a found root producer and no unresolved lineage. Unknown root
+checkpoint paths are added to unresolved_input_checkpoints and receive
+resolution_authority=unresolved_lineage. Identity lookup by checkpoint id and
+file digest verifies that the finalized root identity still equals the
+requested identity; stale sidecars that only share a path now fail closed with
+resolution_authority=checkpoint_identity_failed. Metadata freshness docs now
+state that runtime metadata digests are path/size/mtime cache freshness checks,
+not content-proof authority. Atomic text writes use unique temp paths and
+surface rename errors with source and destination paths. The V3-M receipt is
+`src/tests/fixtures/kikijyeba/lattice_operational_readiness_v3_m/CHECKPOINT_CLOSURE_HARDENING.md`.
+```
+
+## Completed And Parked Finite Dispatch Goals
+
+This section records recent bounded packets and parked optional work. No item in
+this section is active unless it is explicitly marked as the current candidate.
+Do not reopen completed V1/V2/V3 proof work unless a regression requires a
+repair.
+
+### V3-N: Config Provenance And Component Spawn Bridge
+
+Status: complete as of `2026-05-24`.
+
+Implementation receipt:
+
+```text
+- shared config provenance helper:
+  src/include/kikijyeba/protocol/config_provenance.h
+- Config Hero receipt surface:
+  hero.config.capture_bundle
+- runtime manifest/evidence fields:
+  config_bundle_id, config_receipt_id, component_spawn_registry_id,
+  component_family_id, component_spawn_fingerprint, component_spawn_id,
+  component_spawn_label
+- local scoped component spawn registry:
+  .lattice_spawn_registry/component_spawn_registry.v1.lls
+- Lattice exposure/evidence/proof/Hero JSON surfaces propagate the provenance
+  and component spawn fields
+- missing config receipt remains a provenance warning rather than proof failure
+```
+
+Objective:
+
+```text
+Connect runtime evidence to exact component config bundles and stable component
+spawn references, without turning Lattice into a config archive or changing
+target proof authority.
+```
+
+Vocabulary:
+
+```text
+component evidence bundle:
+  all artifacts produced or referenced by runtime for a component/run.
+
+lattice facts:
+  structured lattice assertions inside the evidence bundle.
+
+component config bundle:
+  exact settings/config inputs used by a component/run.
+
+component family:
+  stable component kind or family name, e.g. wikimyei.inference.expected_value.mdn.
+
+component spawn:
+  configured instantiation of a component family. A spawn is produced from the
+  identity-relevant part of the configuration bundle plus protocol/graph/source
+  and assembly fingerprints. Facts and evidence are recorded against a spawn.
+
+component spawn fingerprint:
+  full canonical digest of the component spawn tuple. It is the audit authority,
+  but it is not the operator-facing id.
+
+component spawn id:
+  short scoped base26 handle for a component spawn.
+```
+
+Facts are a subset of evidence. Do not call every artifact a fact. `.lls` is a
+common structured text format, not the category itself. Many lattice facts and
+receipts may be `.lls`; checkpoints, raw source data, and some settings files
+are not `.lls`.
+
+Naming boundary:
+
+```text
+component_family_id:
+  family/kind name. It is stable across spawns.
+
+component_spawn_id:
+  readable scoped handle for one configured family instantiation.
+
+component_spawn_fingerprint:
+  full canonical digest. It is audit authority, but do not call it an id in
+  operator-facing text.
+
+target proof context:
+  target/split proof obligation. It is separate from component spawn identity.
+
+active identity:
+  live protocol/graph/source/component fingerprints used to reject stale
+  evidence. It is not the component_spawn_id.
+```
+
+Spawn and receipt ids:
+
+```text
+config_bundle_id:
+  content identity for the exact component config bundle.
+
+config_receipt_id:
+  capture-event identity for the receipt that archived or described a config
+  bundle.
+
+component_spawn_fingerprint:
+  full digest of the canonical component spawn tuple.
+
+component_spawn_id:
+  short scoped registry handle for a component spawn.
+
+component_spawn_label:
+  `<component_family_id>#<component_spawn_id>`, e.g.
+  `wikimyei.inference.expected_value.mdn#efq`.
+```
+
+The full `component_spawn_fingerprint` remains the authority. The short
+`component_spawn_id` is for operator display, retrieval, and conversation
+inside a scoped registry/family scope. It is not globally unique and is not a
+proof primitive.
+
+Short reference rule:
+
+```text
+component_spawn_id:
+  three lowercase base26 letters, e.g. efq or mra
+
+scope:
+  component_spawn_registry_id + component_family_id
+
+derivation:
+  start from component_spawn_fingerprint and choose a three-letter base26
+  candidate that is unused in the local component-spawn registry scope.
+
+collision handling:
+  if the preferred three-letter id collides in the same scope, derive the next
+  deterministic candidate. If no collision-free three-letter id is available,
+  try four letters. If that still cannot resolve, fail fast and require the
+  full fingerprint in operator-facing output.
+```
+
+Component spawn registry entry:
+
+```text
+component_spawn_registry_id
+component_family_id
+component_spawn_id
+component_spawn_label
+component_spawn_fingerprint
+config_bundle_id
+config_receipt_id, when available
+first_seen_runtime_root
+first_seen_timestamp
+last_seen_timestamp
+```
+
+Resolver behavior:
+
+```text
+input:
+  component_spawn_registry_id
+  component_family_id
+  component_spawn_id
+
+success:
+  exactly one registry entry resolves to a full component_spawn_fingerprint and
+  config bundle linkage
+
+failure:
+  no entry, multiple entries, missing fingerprint, or missing config linkage
+  returns unresolved and asks the operator/tool to use the full fingerprint or
+  Config Hero receipt id
+```
+
+Stability invariant:
+
+```text
+same meaningful settings -> same component_spawn_fingerprint
+same meaningful settings -> same component_spawn_id when the same registry
+  entry is present, or when the preferred id is still collision-free
+  in the same registry scope
+different meaningful settings -> different component_spawn_fingerprint
+```
+
+Therefore:
+
+```text
+run under spawn A
+change spawn-relevant settings -> spawn B
+restore spawn-relevant settings -> spawn A again
+old A evidence may count again, if lineage/leakage/closure still pass
+```
+
+If the local registry is lost, the full fingerprint still restores spawn A. The
+short spawn id may be reallocated; proof correctness must be unchanged.
+
+Initial component spawn tuple:
+
+```text
+component_spawn_schema = kikijyeba.component_spawn.v1
+component_family_id
+protocol_contract_fingerprint
+graph_order_fingerprint
+source_cursor_token
+component_assembly_fingerprint
+```
+
+The tuple should include only spawn-relevant semantic fields. Target spec and
+split policy are proof-context fields; they must not change the component spawn.
+Runtime model-state inputs such as checkpoint paths are execution inputs, not
+protocol contract or spawn identity. Runtime reports and checkpoint lineage must
+still prove the exact loaded checkpoint.
+
+Acceptance:
+
+```text
+- docs state facts are a subset of evidence
+- docs state not every artifact is .lls
+- Config Hero can capture or describe exact component config bundles
+- config receipts record file list, canonical paths, content digests, and
+  config_bundle_id
+- repeated capture of identical contents keeps the same config_bundle_id
+- repeated capture events get distinct config_receipt_id values
+- component_spawn_fingerprint is derived from the canonical semantic tuple
+- three-letter component_spawn_id is collision-checked in a scoped local
+  registry/catalog
+- restoring settings restores the same fingerprint
+- restoring settings restores the same spawn id when the original registry entry
+  persists
+- runtime job evidence records config_bundle_id, config_receipt_id when
+  available, component_spawn_fingerprint, and the short spawn id as readability
+  and retrieval hint only
+- Lattice target/explain surfaces show component_spawn_registry_id,
+  component_family_id, component_spawn_id, component_spawn_label, full
+  fingerprint, config_bundle_id, and config_receipt_id when present
+- spawn-id retrieval fails closed if the registry entry is missing, ambiguous,
+  or lacks the full fingerprint/config linkage
+- missing config receipt is a provenance warning, not automatic target proof
+  failure for this packet
+```
+
+Out of scope:
+
+```text
+- Lattice becoming a config editor or archive owner
+- Lattice executing waves
+- short component spawn ids satisfying targets, leakage checks, closure checks,
+  evidence matching, or contract fingerprints
+- config receipts satisfying lattice targets by themselves
+- runtime checkpoint paths becoming protocol contract identity
 ```
 
 ## Not Yet Dispatchable

@@ -25,7 +25,7 @@ enum class vicreg_input_route_t {
 
 struct vicreg_spec_t {
   std::string version_token{"wikimyei.representation.vicreg.v1"};
-  std::string component_id{};
+  std::string component_assembly_id{};
   vicreg_input_route_t input_route{vicreg_input_route_t::channel_node_stream};
   int64_t channel_count{0};
   int64_t history_length{0};
@@ -44,7 +44,14 @@ struct vicreg_spec_t {
   int64_t vicreg_projector_dim{0};
   int64_t vicreg_projector_hidden_dim{0};
   int64_t vicreg_projector_depth{1};
+  double vicreg_invariance_weight{25.0};
+  double vicreg_variance_weight{25.0};
+  double vicreg_covariance_weight{1.0};
+  double vicreg_variance_floor{1.0};
+  double vicreg_eps{1e-4};
   double global_aux_weight{0.0};
+  int64_t min_valid_rows{2};
+  bool skip_non_finite_loss{true};
   double jitter_std{0.01};
   double feature_dropout_prob{0.0};
   double history_dropout_prob{0.0};
@@ -132,8 +139,8 @@ inline void validate_vicreg_spec(const vicreg_spec_t &spec) {
   if (spec.version_token != "wikimyei.representation.vicreg.v1") {
     throw std::runtime_error("[vicreg_spec] unsupported version token");
   }
-  if (spec.component_id.empty()) {
-    throw std::runtime_error("[vicreg_spec] component_id is required");
+  if (spec.component_assembly_id.empty()) {
+    throw std::runtime_error("[vicreg_spec] component_assembly_id is required");
   }
   if (spec.input_route != vicreg_input_route_t::channel_node_stream) {
     throw std::runtime_error(
@@ -153,9 +160,14 @@ inline void validate_vicreg_spec(const vicreg_spec_t &spec) {
   }
   if (!(spec.recency_decay > 0.0 && spec.recency_decay <= 1.0) ||
       !(spec.min_valid_fraction > 0.0 && spec.min_valid_fraction <= 1.0) ||
-      spec.global_aux_weight < 0.0 || spec.jitter_std < 0.0 ||
-      spec.feature_dropout_prob < 0.0 || spec.feature_dropout_prob > 1.0 ||
-      spec.history_dropout_prob < 0.0 || spec.history_dropout_prob > 1.0) {
+      spec.vicreg_invariance_weight < 0.0 ||
+      spec.vicreg_variance_weight < 0.0 ||
+      spec.vicreg_covariance_weight < 0.0 ||
+      !(spec.vicreg_variance_floor > 0.0) || !(spec.vicreg_eps > 0.0) ||
+      spec.global_aux_weight < 0.0 || spec.min_valid_rows <= 0 ||
+      spec.jitter_std < 0.0 || spec.feature_dropout_prob < 0.0 ||
+      spec.feature_dropout_prob > 1.0 || spec.history_dropout_prob < 0.0 ||
+      spec.history_dropout_prob > 1.0) {
     throw std::runtime_error("[vicreg_spec] invalid scalar option");
   }
   if (spec.cell_valid_policy == cell_valid_policy_t::required_features &&
@@ -181,23 +193,33 @@ inline void decode_vicreg_net_into_spec(const std::string &net_text,
   spec.encoding_dim = kv::parse_i64(kv::required(block, "ENCODING_DIM"));
   spec.feature_hidden_dim =
       kv::parse_i64(kv::required(block, "FEATURE_HIDDEN_DIM"));
-  spec.temporal_depth =
-      kv::parse_i64(kv::optional(block, "TEMPORAL_DEPTH", "1"));
-  spec.recency_decay =
-      kv::parse_double(kv::optional(block, "RECENCY_DECAY", "0.85"));
+  spec.temporal_depth = kv::parse_i64(kv::required(block, "TEMPORAL_DEPTH"));
+  spec.recency_decay = kv::parse_double(kv::required(block, "RECENCY_DECAY"));
   spec.vicreg_projector_dim =
       kv::parse_i64(kv::required(block, "VICREG_PROJECTOR_DIM"));
   spec.vicreg_projector_hidden_dim =
       kv::parse_i64(kv::required(block, "VICREG_PROJECTOR_HIDDEN_DIM"));
   spec.vicreg_projector_depth =
-      kv::parse_i64(kv::optional(block, "VICREG_PROJECTOR_DEPTH", "1"));
+      kv::parse_i64(kv::required(block, "VICREG_PROJECTOR_DEPTH"));
+  spec.vicreg_invariance_weight =
+      kv::parse_double(kv::required(block, "VICREG_INVARIANCE_WEIGHT"));
+  spec.vicreg_variance_weight =
+      kv::parse_double(kv::required(block, "VICREG_VARIANCE_WEIGHT"));
+  spec.vicreg_covariance_weight =
+      kv::parse_double(kv::required(block, "VICREG_COVARIANCE_WEIGHT"));
+  spec.vicreg_variance_floor =
+      kv::parse_double(kv::required(block, "VICREG_VARIANCE_FLOOR"));
+  spec.vicreg_eps = kv::parse_double(kv::required(block, "VICREG_EPS"));
   spec.global_aux_weight =
-      kv::parse_double(kv::optional(block, "GLOBAL_AUX_WEIGHT", "0.0"));
-  spec.jitter_std = kv::parse_double(kv::optional(block, "JITTER_STD", "0.01"));
+      kv::parse_double(kv::required(block, "GLOBAL_AUX_WEIGHT"));
+  spec.min_valid_rows = kv::parse_i64(kv::required(block, "MIN_VALID_ROWS"));
+  spec.skip_non_finite_loss =
+      kv::parse_bool(kv::required(block, "SKIP_NON_FINITE_LOSS"));
+  spec.jitter_std = kv::parse_double(kv::required(block, "JITTER_STD"));
   spec.feature_dropout_prob =
-      kv::parse_double(kv::optional(block, "FEATURE_DROPOUT_PROB", "0.0"));
+      kv::parse_double(kv::required(block, "FEATURE_DROPOUT_PROB"));
   spec.history_dropout_prob =
-      kv::parse_double(kv::optional(block, "HISTORY_DROPOUT_PROB", "0.0"));
+      kv::parse_double(kv::required(block, "HISTORY_DROPOUT_PROB"));
 }
 
 [[nodiscard]] inline vicreg_spec_t
@@ -206,27 +228,25 @@ decode_vicreg_spec_from_split_dsl(const std::string &dsl_text,
   namespace kv = cuwacunu::piaabo::parse::simple_kv;
   const auto &block = kv::single_block(dsl_text, "VICREG");
   vicreg_spec_t spec{};
-  spec.version_token = kv::optional(block, "VERSION", spec.version_token);
-  spec.component_id = kv::required(block, "COMPONENT_ID");
-  spec.input_route = vicreg_spec_detail::parse_input_route(
-      kv::optional(block, "INPUT_ROUTE", "channel_node_stream"));
+  spec.version_token = kv::required(block, "VERSION");
+  spec.component_assembly_id = kv::required(block, "COMPONENT_ASSEMBLY_ID");
+  spec.input_route =
+      vicreg_spec_detail::parse_input_route(kv::required(block, "INPUT_ROUTE"));
   spec.channel_count = kv::parse_i64(kv::required(block, "CHANNEL_COUNT"));
   spec.history_length = kv::parse_i64(kv::required(block, "HISTORY_LENGTH"));
-  spec.input_width = kv::parse_i64(
-      kv::optional(block, "INPUT_WIDTH", std::to_string(spec.input_width)));
+  spec.input_width = kv::parse_i64(kv::required(block, "INPUT_WIDTH"));
   spec.cell_valid_policy = vicreg_spec_detail::parse_cell_valid_policy(
-      kv::optional(block, "CELL_VALID_POLICY", "required_features"));
-  const auto coord_text =
-      kv::optional(block, "REQUIRED_FEATURE_COORDS", "0,1,2,3");
+      kv::required(block, "CELL_VALID_POLICY"));
+  const auto coord_text = kv::required(block, "REQUIRED_FEATURE_COORDS");
   if (!coord_text.empty()) {
     spec.required_feature_coords = kv::parse_i64_list(coord_text);
   }
   spec.min_valid_fraction =
-      kv::parse_double(kv::optional(block, "MIN_VALID_FRACTION", "1.0"));
+      kv::parse_double(kv::required(block, "MIN_VALID_FRACTION"));
   spec.use_missingness_indicators =
-      kv::parse_bool(kv::optional(block, "USE_MISSINGNESS_INDICATORS", "true"));
-  spec.dtype = kv::optional(block, "DTYPE", spec.dtype);
-  spec.device = kv::optional(block, "DEVICE", spec.device);
+      kv::parse_bool(kv::required(block, "USE_MISSINGNESS_INDICATORS"));
+  spec.dtype = kv::required(block, "DTYPE");
+  spec.device = kv::required(block, "DEVICE");
   decode_vicreg_net_into_spec(net_text, spec);
   validate_vicreg_spec(spec);
   return spec;
@@ -269,7 +289,14 @@ channel_projector_options_from_spec(const vicreg_spec_t &spec) {
 vicreg_train_options_from_spec(const vicreg_spec_t &spec) {
   validate_vicreg_spec(spec);
   vicreg_train_options_t out{};
+  out.vicreg.invariance_weight = spec.vicreg_invariance_weight;
+  out.vicreg.variance_weight = spec.vicreg_variance_weight;
+  out.vicreg.covariance_weight = spec.vicreg_covariance_weight;
+  out.vicreg.variance_floor = spec.vicreg_variance_floor;
+  out.vicreg.eps = spec.vicreg_eps;
   out.vicreg.global_aux_weight = spec.global_aux_weight;
+  out.min_valid_rows = spec.min_valid_rows;
+  out.skip_non_finite_loss = spec.skip_non_finite_loss;
   out.jitter_std = spec.jitter_std;
   out.feature_dropout_prob = spec.feature_dropout_prob;
   out.history_dropout_prob = spec.history_dropout_prob;

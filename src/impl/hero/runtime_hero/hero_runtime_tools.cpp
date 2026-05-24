@@ -15,6 +15,7 @@
 #include <fcntl.h>
 #include <filesystem>
 #include <fstream>
+#include <initializer_list>
 #include <iostream>
 #include <optional>
 #include <sstream>
@@ -58,7 +59,7 @@ constexpr tool_descriptor_t kTools[] = {
      R"({"type":"object","properties":{"config_path":{"type":"string"},"job_dir":{"type":"string"},"force_rebuild_cache":{"type":"boolean"},"timeout_seconds":{"type":"integer"}},"additionalProperties":false})"},
     {"hero.runtime.execute",
      "Run cuwacunu_exec with policy guards; dry_run defaults to true.",
-     R"({"type":"object","properties":{"config_path":{"type":"string"},"job_dir":{"type":"string"},"dry_run":{"type":"boolean"},"force_rebuild_cache":{"type":"boolean"},"confirm_execute":{"type":"boolean"},"timeout_seconds":{"type":"integer"}},"additionalProperties":false})"},
+     R"({"type":"object","properties":{"config_path":{"type":"string"},"job_dir":{"type":"string"},"dry_run":{"type":"boolean"},"force_rebuild_cache":{"type":"boolean"},"confirm_execute":{"type":"boolean"},"timeout_seconds":{"type":"integer"},"marshal_expected_wave":{"type":"object","properties":{"target_component_family_id":{"type":"string"},"mode":{"type":"string"},"wave_target":{"type":"string"},"wave_mode":{"type":"string"},"source_range":{"type":"string"},"source_order":{"type":"string"},"anchor_index_begin":{"type":"string"},"anchor_index_end":{"type":"string"},"source_key_begin":{"type":"string"},"source_key_end":{"type":"string"},"model_state_inputs":{"type":"object"}}}},"additionalProperties":false})"},
     {"hero.runtime.dev_nuke",
      "Developer reset for runtime-root contents with dry-run, idle checks, and "
      "optional backup snapshot.",
@@ -395,6 +396,69 @@ void skip_ws(const std::string &s, std::size_t *idx) {
     *out = std::move(value);
   }
   return true;
+}
+
+[[nodiscard]] bool
+extract_json_first_string_field(const std::string &json,
+                                std::initializer_list<std::string_view> keys,
+                                std::string *out) {
+  for (const auto key : keys) {
+    if (extract_json_string_field(json, key, out)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+[[nodiscard]] bool
+extract_json_string_object(const std::string &json,
+                           std::unordered_map<std::string, std::string> *out) {
+  std::size_t idx = 0;
+  skip_ws(json, &idx);
+  if (idx >= json.size() || json[idx] != '{') {
+    return false;
+  }
+  ++idx;
+  std::unordered_map<std::string, std::string> values;
+  while (idx < json.size()) {
+    skip_ws(json, &idx);
+    if (idx < json.size() && json[idx] == '}') {
+      ++idx;
+      skip_ws(json, &idx);
+      if (idx != json.size()) {
+        return false;
+      }
+      if (out) {
+        *out = std::move(values);
+      }
+      return true;
+    }
+    std::string key;
+    if (!parse_json_string_token(json, &idx, &key)) {
+      return false;
+    }
+    skip_ws(json, &idx);
+    if (idx >= json.size() || json[idx] != ':') {
+      return false;
+    }
+    ++idx;
+    skip_ws(json, &idx);
+    std::string value;
+    if (!parse_json_string_token(json, &idx, &value)) {
+      return false;
+    }
+    values[std::move(key)] = std::move(value);
+    skip_ws(json, &idx);
+    if (idx < json.size() && json[idx] == ',') {
+      ++idx;
+      continue;
+    }
+    if (idx < json.size() && json[idx] == '}') {
+      continue;
+    }
+    return false;
+  }
+  return false;
 }
 
 [[nodiscard]] bool extract_json_bool_field(const std::string &json,
@@ -787,13 +851,15 @@ struct wave_info_t {
   return lowercase_ascii(mode).find("debug") != std::string::npos;
 }
 
+[[nodiscard]] std::string canonical_source_range(std::string_view value) {
+  const std::string lower = lowercase_ascii(trim_ascii(value));
+  return lower == "anchor_key" ? "source_key" : lower;
+}
+
 [[nodiscard]] std::string job_kind_from_target(std::string_view target) {
   const std::string lower = lowercase_ascii(target);
-  if (lower == "legacy_inference_mdn") {
-    return "inference_mdn";
-  }
   if (lower == "wikimyei.representation.encoding.vicreg" ||
-      lower == "representation_vicreg" || lower == "vicreg_representation") {
+      lower == "vicreg_representation") {
     return "channel_representation_vicreg";
   }
   if (lower == "wikimyei.inference.expected_value.mdn" ||
@@ -804,11 +870,47 @@ struct wave_info_t {
   return "invalid_wave_target";
 }
 
+[[nodiscard]] std::unordered_map<std::string, std::string>
+wave_model_state_inputs(const wave_info_t &info) {
+  std::unordered_map<std::string, std::string> inputs;
+  for (const auto &[key, value] : info.values) {
+    if (key.rfind("INPUT_", 0) != 0 || value.empty()) {
+      continue;
+    }
+    inputs["PLAN_" + key] = fs::path(value).lexically_normal().string();
+  }
+  return inputs;
+}
+
+[[nodiscard]] bool wave_source_order_is_explicit(const wave_info_t &info) {
+  const auto it = info.values.find("SOURCE_ORDER");
+  return it != info.values.end() && !trim_ascii(it->second).empty();
+}
+
+[[nodiscard]] std::string wave_source_order_from_info(const wave_info_t &info,
+                                                      std::string_view action) {
+  if (wave_source_order_is_explicit(info)) {
+    return lowercase_ascii(trim_ascii(info.values.at("SOURCE_ORDER")));
+  }
+  return action == "train" ? "random_per_epoch" : "sequential";
+}
+
+[[nodiscard]] std::string
+wave_source_order_warning_token(std::string_view action,
+                                std::string_view source_order,
+                                bool source_order_explicit) {
+  if (action != "train" ||
+      lowercase_ascii(trim_ascii(source_order)) != "sequential") {
+    return {};
+  }
+  return source_order_explicit ? "train_wave_explicit_sequential_source_order"
+                               : "train_wave_effective_sequential_source_order";
+}
+
 [[nodiscard]] std::string execution_chain(std::string_view target,
                                           std::string_view action) {
   const std::string job_kind = job_kind_from_target(target);
-  if (job_kind == "representation_vicreg" ||
-      job_kind == "channel_representation_vicreg") {
+  if (job_kind == "channel_representation_vicreg") {
     if (action == "train") {
       return "ujcamei.source.registry:run -> "
              "wikimyei.expression.nodelift.srl:run -> "
@@ -818,7 +920,7 @@ struct wave_info_t {
            "wikimyei.expression.nodelift.srl:run -> "
            "wikimyei.representation.encoding.vicreg:run";
   }
-  if (job_kind == "inference_mdn" || job_kind == "channel_inference_mdn") {
+  if (job_kind == "channel_inference_mdn") {
     if (action == "train") {
       return "ujcamei.source.registry:run -> "
              "wikimyei.expression.nodelift.srl:run -> "
@@ -844,9 +946,13 @@ struct wave_info_t {
                                ? info.values.at("MODE")
                                : std::string{"run"};
   const std::string action = wave_action_from_mode(mode);
-  const std::string source_range = info.values.count("SOURCE_RANGE") != 0
-                                       ? info.values.at("SOURCE_RANGE")
-                                       : std::string{"all"};
+  const std::string source_range = canonical_source_range(
+      info.values.count("SOURCE_RANGE") != 0 ? info.values.at("SOURCE_RANGE")
+                                             : std::string{"all"});
+  const bool source_order_explicit = wave_source_order_is_explicit(info);
+  const std::string source_order = wave_source_order_from_info(info, action);
+  const std::string source_order_warning = wave_source_order_warning_token(
+      action, source_order, source_order_explicit);
   const std::string cursor_kind = info.values.count("SOURCE_CURSOR_KIND") != 0
                                       ? info.values.at("SOURCE_CURSOR_KIND")
                                       : std::string{"graph_anchor"};
@@ -861,13 +967,18 @@ struct wave_info_t {
     out << ",\"error\":" << json_quote(info.error);
   }
   out << ",\"wave_id\":" << json_quote(wave_id)
-      << ",\"target_component\":" << json_quote(target)
+      << ",\"target_component_family_id\":" << json_quote(target)
       << ",\"mode\":" << json_quote(mode)
       << ",\"action\":" << json_quote(action)
       << ",\"debug\":" << bool_json(wave_debug_from_mode(mode))
       << ",\"source_cursor_kind\":" << json_quote(cursor_kind)
       << ",\"source_cursor_scope\":" << json_quote(cursor_scope)
       << ",\"source_range\":" << json_quote(source_range)
+      << ",\"source_order\":" << json_quote(source_order)
+      << ",\"source_order_explicit\":" << bool_json(source_order_explicit)
+      << ",\"source_order_warning_level\":"
+      << json_quote(source_order_warning.empty() ? "none" : "warning")
+      << ",\"source_order_warnings\":" << json_quote(source_order_warning)
       << ",\"anchor_index_begin\":";
   if (info.values.count("ANCHOR_INDEX_BEGIN") != 0) {
     out << json_quote(info.values.at("ANCHOR_INDEX_BEGIN"));
@@ -880,10 +991,27 @@ struct wave_info_t {
   } else {
     out << "null";
   }
+  out << ",\"source_key_begin\":";
+  if (info.values.count("SOURCE_KEY_BEGIN") != 0) {
+    out << json_quote(info.values.at("SOURCE_KEY_BEGIN"));
+  } else if (info.values.count("ANCHOR_KEY_BEGIN") != 0) {
+    out << json_quote(info.values.at("ANCHOR_KEY_BEGIN"));
+  } else {
+    out << "null";
+  }
+  out << ",\"source_key_end\":";
+  if (info.values.count("SOURCE_KEY_END") != 0) {
+    out << json_quote(info.values.at("SOURCE_KEY_END"));
+  } else if (info.values.count("ANCHOR_KEY_END") != 0) {
+    out << json_quote(info.values.at("ANCHOR_KEY_END"));
+  } else {
+    out << "null";
+  }
   out << ",\"job_kind\":" << json_quote(job_kind_from_target(target))
       << ",\"train_target\":" << bool_json(action == "train")
       << ",\"execution_chain\":" << json_quote(execution_chain(target, action))
-      << "}";
+      << ",\"model_state_inputs\":"
+      << kv_map_to_json(wave_model_state_inputs(info)) << "}";
   return out.str();
 }
 
@@ -1588,6 +1716,168 @@ active_jobs_json(const std::vector<active_job_marker_t> &active_jobs) {
   return true;
 }
 
+[[nodiscard]] bool expected_wave_matches_runtime_wave(const std::string &args,
+                                                      const wave_info_t &wave,
+                                                      std::string *err) {
+  std::string expected_raw;
+  if (!extract_json_raw_field(args, "marshal_expected_wave", &expected_raw)) {
+    return true;
+  }
+
+  std::string expected_target;
+  if (extract_json_first_string_field(
+          expected_raw,
+          {"target_component_family_id", "target_component", "wave_target"},
+          &expected_target)) {
+    const std::string actual_target = wave.values.count("TARGET") != 0
+                                          ? wave.values.at("TARGET")
+                                          : std::string{};
+    if (expected_target != actual_target) {
+      if (err) {
+        *err = "E_RUNTIME_EXPECTED_WAVE_MISMATCH: "
+               "target_component_family_id differs";
+      }
+      return false;
+    }
+  }
+
+  std::string expected_mode;
+  if (extract_json_first_string_field(expected_raw, {"mode", "wave_mode"},
+                                      &expected_mode)) {
+    const std::string actual_mode = wave.values.count("MODE") != 0
+                                        ? wave.values.at("MODE")
+                                        : std::string{"run"};
+    if (expected_mode != actual_mode) {
+      if (err) {
+        *err = "E_RUNTIME_EXPECTED_WAVE_MISMATCH: mode differs";
+      }
+      return false;
+    }
+  }
+
+  std::string expected_source_range;
+  if (extract_json_string_field(expected_raw, "source_range",
+                                &expected_source_range)) {
+    expected_source_range = canonical_source_range(expected_source_range);
+    const std::string actual_source_range = canonical_source_range(
+        wave.values.count("SOURCE_RANGE") != 0 ? wave.values.at("SOURCE_RANGE")
+                                               : std::string{"all"});
+    if (expected_source_range != actual_source_range) {
+      if (err) {
+        *err = "E_RUNTIME_EXPECTED_WAVE_MISMATCH: source_range differs";
+      }
+      return false;
+    }
+  }
+
+  std::string expected_source_order;
+  if (extract_json_string_field(expected_raw, "source_order",
+                                &expected_source_order)) {
+    expected_source_order = lowercase_ascii(trim_ascii(expected_source_order));
+    const std::string actual_mode = wave.values.count("MODE") != 0
+                                        ? wave.values.at("MODE")
+                                        : std::string{"run"};
+    const std::string actual_source_order =
+        wave_source_order_from_info(wave, wave_action_from_mode(actual_mode));
+    if (expected_source_order != actual_source_order) {
+      if (err) {
+        *err = "E_RUNTIME_EXPECTED_WAVE_MISMATCH: source_order differs";
+      }
+      return false;
+    }
+  }
+
+  std::string expected_begin;
+  if (extract_json_string_field(expected_raw, "anchor_index_begin",
+                                &expected_begin)) {
+    const std::string actual_begin =
+        wave.values.count("ANCHOR_INDEX_BEGIN") != 0
+            ? wave.values.at("ANCHOR_INDEX_BEGIN")
+            : std::string{};
+    if (expected_begin != actual_begin) {
+      if (err) {
+        *err = "E_RUNTIME_EXPECTED_WAVE_MISMATCH: anchor_index_begin differs";
+      }
+      return false;
+    }
+  }
+
+  std::string expected_end;
+  if (extract_json_string_field(expected_raw, "anchor_index_end",
+                                &expected_end)) {
+    const std::string actual_end = wave.values.count("ANCHOR_INDEX_END") != 0
+                                       ? wave.values.at("ANCHOR_INDEX_END")
+                                       : std::string{};
+    if (expected_end != actual_end) {
+      if (err) {
+        *err = "E_RUNTIME_EXPECTED_WAVE_MISMATCH: anchor_index_end differs";
+      }
+      return false;
+    }
+  }
+
+  std::string expected_source_key_begin;
+  if (extract_json_string_field(expected_raw, "source_key_begin",
+                                &expected_source_key_begin)) {
+    const std::string actual_begin =
+        wave.values.count("SOURCE_KEY_BEGIN") != 0
+            ? wave.values.at("SOURCE_KEY_BEGIN")
+            : (wave.values.count("ANCHOR_KEY_BEGIN") != 0
+                   ? wave.values.at("ANCHOR_KEY_BEGIN")
+                   : std::string{});
+    if (expected_source_key_begin != actual_begin) {
+      if (err) {
+        *err = "E_RUNTIME_EXPECTED_WAVE_MISMATCH: source_key_begin differs";
+      }
+      return false;
+    }
+  }
+
+  std::string expected_source_key_end;
+  if (extract_json_string_field(expected_raw, "source_key_end",
+                                &expected_source_key_end)) {
+    const std::string actual_end =
+        wave.values.count("SOURCE_KEY_END") != 0
+            ? wave.values.at("SOURCE_KEY_END")
+            : (wave.values.count("ANCHOR_KEY_END") != 0
+                   ? wave.values.at("ANCHOR_KEY_END")
+                   : std::string{});
+    if (expected_source_key_end != actual_end) {
+      if (err) {
+        *err = "E_RUNTIME_EXPECTED_WAVE_MISMATCH: source_key_end differs";
+      }
+      return false;
+    }
+  }
+
+  std::string expected_inputs_raw;
+  if (extract_json_raw_field(expected_raw, "model_state_inputs",
+                             &expected_inputs_raw)) {
+    std::unordered_map<std::string, std::string> expected_inputs;
+    if (!extract_json_string_object(expected_inputs_raw, &expected_inputs)) {
+      if (err) {
+        *err = "E_RUNTIME_EXPECTED_WAVE_MISMATCH: model_state_inputs malformed";
+      }
+      return false;
+    }
+    const auto actual_inputs = wave_model_state_inputs(wave);
+    for (const auto &[key, expected_value] : expected_inputs) {
+      const auto found = actual_inputs.find(key);
+      const std::string normalized_expected =
+          fs::path(expected_value).lexically_normal().string();
+      if (found == actual_inputs.end() ||
+          found->second != normalized_expected) {
+        if (err) {
+          *err = "E_RUNTIME_EXPECTED_WAVE_MISMATCH: model_state_inputs differs";
+        }
+        return false;
+      }
+    }
+  }
+
+  return true;
+}
+
 [[nodiscard]] bool handle_status(const std::string &, runtime_context_t *ctx,
                                  std::string *out, std::string *) {
   const fs::path exec_path = policy_path(ctx->policy, "runtime_exec_path");
@@ -1698,6 +1988,9 @@ active_jobs_json(const std::vector<active_job_marker_t> &active_jobs) {
   }
   const fs::path config_path = effective_config_path(*ctx, config_arg);
   const wave_info_t wave = load_wave_info(*ctx, config_path);
+  if (!expected_wave_matches_runtime_wave(args, wave, err)) {
+    return false;
+  }
   const std::string mode = wave.values.count("MODE") != 0
                                ? wave.values.at("MODE")
                                : std::string{"run"};
@@ -2009,9 +2302,9 @@ active_jobs_json(const std::vector<active_job_marker_t> &active_jobs) {
          << ",\"job_kind\":"
          << json_quote(manifest.count("job_kind") != 0 ? manifest.at("job_kind")
                                                        : "")
-         << ",\"target_component\":"
-         << json_quote(manifest.count("target_component") != 0
-                           ? manifest.at("target_component")
+         << ",\"target_component_family_id\":"
+         << json_quote(manifest.count("target_component_family_id") != 0
+                           ? manifest.at("target_component_family_id")
                            : "")
          << ",\"wave_action\":"
          << json_quote(manifest.count("wave_action") != 0

@@ -9,7 +9,6 @@
 #include <vector>
 
 #include "jkimyei/api/training_spec.h"
-#include "jkimyei/training/inference/mdn_trainer.h"
 #include "kikijyeba/protocol/config_bundle.h"
 #include "piaabo/parse/simple_kv_block.h"
 #include "ujcamei/source/registry/types/kline_feature_registry.h"
@@ -88,7 +87,7 @@ std::string valid_nodelift_srl_dsl() {
   return R"(
 NODELIFT_SRL {
   VERSION = wikimyei.expression.nodelift.srl.v1;
-  COMPONENT_ID = nodelift_srl_v1;
+  COMPONENT_ASSEMBLY_ID = nodelift_srl_v1;
   FEATURE_WIDTH = 9;
   PRICE_COORDS = kline_price;
   ACTIVITY_COORDS = kline_activity;
@@ -108,171 +107,6 @@ std::string replace_first(std::string text, const std::string &from,
   }
   text.replace(pos, from.size(), to);
   return text;
-}
-
-void test_config_backed_specs_decode_and_validate() {
-  namespace vicreg = cuwacunu::wikimyei::representation::encoding::vicreg;
-  namespace mdn = cuwacunu::wikimyei::inference::expected_value::mdn;
-  namespace nodelift = cuwacunu::wikimyei::expression::nodelift::srl;
-  namespace protocol = cuwacunu::kikijyeba::protocol;
-  namespace training = cuwacunu::jkimyei::training;
-
-  const auto paths = read_config_paths("/cuwacunu/src/config/.config");
-  const auto nodelift_spec = nodelift::decode_nodelift_srl_spec_from_dsl(
-      read_text(paths.at("wikimyei_expression_nodelift_srl_dsl_path")));
-  const auto vicreg_spec =
-      vicreg::decode_vicreg_node_representation_spec_from_split_dsl(
-          read_text(paths.at("wikimyei_representation_vicreg_dsl_path")),
-          read_text(paths.at("wikimyei_representation_vicreg_net_path")));
-  const auto mdn_spec = mdn::decode_mdn_spec_from_split_dsl(
-      read_text(paths.at("wikimyei_inference_expected_value_mdn_dsl_path")),
-      read_text(paths.at("wikimyei_inference_expected_value_mdn_net_path")));
-  const auto vicreg_training_spec = training::decode_training_run_spec_from_dsl(
-      read_text(paths.at("wikimyei_representation_vicreg_jkimyei_path")));
-  const auto mdn_training_spec =
-      training::decode_training_run_spec_from_dsl(read_text(
-          paths.at("wikimyei_inference_expected_value_mdn_jkimyei_path")));
-
-  auto bundle = protocol::load_graph_first_config_bundle_from_config(
-      "/cuwacunu/src/config/.config");
-  bundle.nodelift = nodelift_spec;
-  bundle.vicreg = vicreg_spec;
-  bundle.mdn = mdn_spec;
-  bundle.vicreg_training = vicreg_training_spec;
-  bundle.mdn_training = mdn_training_spec;
-  protocol::validate_graph_first_config_bundle(bundle);
-  if (bundle.wave_settings.wave_id.empty() ||
-      bundle.wave_settings.source_cursor_kind != "graph_anchor" ||
-      bundle.wave_settings.source_cursor_scope != "wave_batch") {
-    throw std::runtime_error("Kikijyeba wave settings mismatch");
-  }
-
-  if (nodelift_spec.component_id != "nodelift_srl_v1") {
-    throw std::runtime_error("unexpected NodeLift SRL component id");
-  }
-  if (nodelift_spec.price_coords !=
-          coords_from_array(cuwacunu::ujcamei::source::registry::types::
-                                kKlinePriceFeatureCoords) ||
-      nodelift_spec.activity_coords !=
-          coords_from_array(cuwacunu::ujcamei::source::registry::types::
-                                kKlineActivityFeatureCoords)) {
-    throw std::runtime_error("NodeLift SRL kline coordinate selector mismatch");
-  }
-  if (vicreg_spec.component_id != "node_vicreg_v1") {
-    throw std::runtime_error("unexpected VICReg component id");
-  }
-  if (mdn_spec.input_representation_id != vicreg_spec.component_id) {
-    throw std::runtime_error("MDN representation reference mismatch");
-  }
-  if (vicreg_training_spec.component_id != vicreg_spec.component_id) {
-    throw std::runtime_error("VICReg training component reference mismatch");
-  }
-  if (mdn_training_spec.component_id != mdn_spec.component_id) {
-    throw std::runtime_error("MDN training component reference mismatch");
-  }
-  if (!mdn_training_spec.input_representation_checkpoint_path.empty() ||
-      !mdn_training_spec.input_mdn_checkpoint_path.empty()) {
-    throw std::runtime_error(
-        "repository MDN training config must not carry checkpoint paths");
-  }
-  if (!mdn_training_spec.allow_untrained_representation) {
-    throw std::runtime_error(
-        "repository MDN training config should remain smoke-valid without "
-        "checkpoint paths");
-  }
-  if (bundle.nodelift_assembly.family != "wikimyei.expression.nodelift.srl" ||
-      bundle.vicreg_assembly.family !=
-          "wikimyei.representation.encoding.vicreg" ||
-      bundle.mdn_assembly.family != "wikimyei.inference.expected_value.mdn") {
-    throw std::runtime_error("Wikimyei assembly family mismatch");
-  }
-  cuwacunu::kikijyeba::topology::validate_node_value_assembly_chain(
-      bundle.nodelift_assembly, bundle.vicreg_assembly, bundle.mdn_assembly);
-  if (cuwacunu::wikimyei::assembly::assembly_fingerprint(
-          bundle.nodelift_assembly)
-          .empty() ||
-      cuwacunu::wikimyei::assembly::assembly_fingerprint(bundle.vicreg_assembly)
-          .empty() ||
-      cuwacunu::wikimyei::assembly::assembly_fingerprint(bundle.mdn_assembly)
-          .empty()) {
-    throw std::runtime_error("Wikimyei assembly fingerprint missing");
-  }
-  if (bundle.wikimyei_registry.require_component(mdn_spec.component_id)
-          .family != "wikimyei.inference.expected_value.mdn") {
-    throw std::runtime_error("Wikimyei assembly registry mismatch");
-  }
-  if (cuwacunu::kikijyeba::topology::dock_binding_fingerprint(
-          bundle.dock_binding)
-          .empty() ||
-      cuwacunu::kikijyeba::topology::dock_binding_token(bundle.dock_binding)
-              .find("kikijyeba.topology.graph.dock_binding.v1/") != 0) {
-    throw std::runtime_error("dock binding token missing");
-  }
-  if (!bundle.dock_binding_report.warnings.empty()) {
-    throw std::runtime_error("dock binding unexpectedly has warnings");
-  }
-  cuwacunu::kikijyeba::topology::require_runtime_binding(
-      bundle.dock_binding, "B", "test wave batch");
-  cuwacunu::kikijyeba::topology::require_static_i64_binding_value(
-      bundle.dock_binding, "N",
-      static_cast<int64_t>(bundle.source_plan.market_graph.node_ids.size()),
-      "test graph node count");
-  cuwacunu::kikijyeba::topology::require_static_i64_binding_value(
-      bundle.dock_binding, "L",
-      static_cast<int64_t>(bundle.source_plan.market_graph.edge_ids.size()),
-      "test graph edge count");
-  cuwacunu::kikijyeba::topology::require_static_i64_binding_value(
-      bundle.dock_binding, "C",
-      cuwacunu::kikijyeba::protocol::active_channel_count(bundle.source_dock),
-      "test active channel count");
-  cuwacunu::kikijyeba::topology::require_static_i64_binding_value(
-      bundle.dock_binding, "Hx",
-      cuwacunu::kikijyeba::protocol::max_input_length(bundle.source_dock),
-      "test input length");
-  cuwacunu::kikijyeba::topology::require_static_i64_binding_value(
-      bundle.dock_binding, "Hf",
-      cuwacunu::kikijyeba::protocol::max_future_length(bundle.source_dock),
-      "test future length");
-  cuwacunu::kikijyeba::topology::require_static_i64_binding_value(
-      bundle.dock_binding, "F",
-      cuwacunu::ujcamei::source::registry::types::kKlineFeatureWidth,
-      "test feature width");
-  cuwacunu::kikijyeba::topology::require_static_i64_binding_value(
-      bundle.dock_binding, "De", vicreg_spec.encoding_dim,
-      "test encoding dimension");
-  cuwacunu::kikijyeba::topology::require_static_i64_binding_value(
-      bundle.dock_binding, "Df",
-      static_cast<int64_t>(mdn_spec.target_coords.size()),
-      "test MDN target width");
-  cuwacunu::kikijyeba::topology::require_static_i64_binding_value(
-      bundle.dock_binding, "K", mdn_spec.mixture_count,
-      "test MDN mixture count");
-  const auto node_opts =
-      vicreg::node_adapter_options_from_vicreg_spec(vicreg_spec,
-                                                    /*training=*/true);
-  if (!node_opts.compact_valid_nodes_for_training ||
-      node_opts.required_feature_coords != std::vector<int64_t>({0, 1, 2, 3})) {
-    throw std::runtime_error("VICReg node adapter options mismatch");
-  }
-
-  const auto mdn_adapter_opts = mdn::mdn_adapter_options_from_spec(mdn_spec);
-  if (mdn_adapter_opts.context_reduction !=
-      cuwacunu::wikimyei::inference::expected_value::mdn::stream::
-          context_reduction_policy_t::last) {
-    throw std::runtime_error("MDN context reduction mismatch");
-  }
-  if (mdn_adapter_opts.target_coords !=
-      std::vector<int64_t>({0, 1, 2, 3, 4, 5, 6, 7, 8})) {
-    throw std::runtime_error("MDN target coordinate mismatch");
-  }
-
-  const auto trainer_opts =
-      training::mdn_training_options_from_specs(mdn_training_spec, mdn_spec);
-  if (trainer_opts.target_coords !=
-          std::vector<int64_t>({0, 1, 2, 3, 4, 5, 6, 7, 8}) ||
-      trainer_opts.nll_options.sigma_min != 0.001) {
-    throw std::runtime_error("training options mismatch");
-  }
 }
 
 void test_runtime_checkpoint_inputs_do_not_change_protocol_contract_identity() {
@@ -359,33 +193,37 @@ void test_channel_protocol_contract_identity_binds_strict_channel_config() {
 
   auto feature_stem_bundle = bundle;
   ++feature_stem_bundle.vicreg.feature_hidden_dim;
-  require_changed(feature_stem_bundle, "channel VICReg feature hidden dim");
+  require_changed(feature_stem_bundle, "VICReg feature hidden dim");
 
   auto cell_policy_bundle = bundle;
   cell_policy_bundle.vicreg.cell_valid_policy =
       vicreg::cell_valid_policy_t::min_valid_fraction;
   cell_policy_bundle.vicreg.min_valid_fraction = 0.5;
-  require_changed(cell_policy_bundle, "channel VICReg cell-valid policy");
+  require_changed(cell_policy_bundle, "VICReg cell-valid policy");
 
   auto projector_bundle = bundle;
   ++projector_bundle.vicreg.vicreg_projector_dim;
-  require_changed(projector_bundle, "channel VICReg projector dim");
+  require_changed(projector_bundle, "VICReg projector dim");
 
   auto augmentation_bundle = bundle;
   augmentation_bundle.vicreg.feature_dropout_prob = 0.25;
-  require_changed(augmentation_bundle, "channel VICReg augmentation policy");
+  require_changed(augmentation_bundle, "VICReg augmentation policy");
+
+  auto vicreg_loss_bundle = bundle;
+  vicreg_loss_bundle.vicreg.vicreg_variance_floor *= 1.5;
+  require_changed(vicreg_loss_bundle, "VICReg objective policy");
 
   auto mdn_hidden_bundle = bundle;
   ++mdn_hidden_bundle.channel_mdn.hidden_width;
-  require_changed(mdn_hidden_bundle, "channel MDN hidden width");
+  require_changed(mdn_hidden_bundle, "MDN hidden width");
 
   auto mdn_nll_bundle = bundle;
   mdn_nll_bundle.channel_mdn.sigma_min *= 2.0;
-  require_changed(mdn_nll_bundle, "channel MDN NLL bounds");
+  require_changed(mdn_nll_bundle, "MDN NLL bounds");
 
   auto training_bundle = bundle;
   training_bundle.channel_mdn_training.learning_rate *= 2.0;
-  require_changed(training_bundle, "channel MDN training optimizer config");
+  require_changed(training_bundle, "MDN training optimizer config");
 }
 
 void test_channel_specs_decode_and_validate() {
@@ -409,6 +247,8 @@ void test_channel_specs_decode_and_validate() {
       paths.at("wikimyei_inference_expected_value_mdn_jkimyei_bnf_path"));
   if (vicreg_dsl_bnf.find("VICREG") == std::string::npos ||
       vicreg_net_bnf.find("VICREG_NET") == std::string::npos ||
+      vicreg_net_bnf.find("VICREG_INVARIANCE_WEIGHT") == std::string::npos ||
+      vicreg_net_bnf.find("MIN_VALID_ROWS") == std::string::npos ||
       vicreg_net_bnf.find("JITTER_STD") == std::string::npos ||
       vicreg_net_bnf.find("FEATURE_DROPOUT_PROB") == std::string::npos ||
       vicreg_net_bnf.find("HISTORY_DROPOUT_PROB") == std::string::npos ||
@@ -420,12 +260,18 @@ void test_channel_specs_decode_and_validate() {
           std::string::npos) {
     throw std::runtime_error("channel config BNF surface mismatch");
   }
+  const auto representation_dsl_text =
+      read_text(paths.at("wikimyei_representation_vicreg_dsl_path"));
+  const auto representation_net_text =
+      read_text(paths.at("wikimyei_representation_vicreg_net_path"));
+  const auto mdn_dsl_text =
+      read_text(paths.at("wikimyei_inference_expected_value_mdn_dsl_path"));
+  const auto mdn_net_text =
+      read_text(paths.at("wikimyei_inference_expected_value_mdn_net_path"));
   const auto representation_spec = vicreg::decode_vicreg_spec_from_split_dsl(
-      read_text(paths.at("wikimyei_representation_vicreg_dsl_path")),
-      read_text(paths.at("wikimyei_representation_vicreg_net_path")));
-  const auto mdn_spec = mdn::decode_channel_mdn_spec_from_split_dsl(
-      read_text(paths.at("wikimyei_inference_expected_value_mdn_dsl_path")),
-      read_text(paths.at("wikimyei_inference_expected_value_mdn_net_path")));
+      representation_dsl_text, representation_net_text);
+  const auto mdn_spec =
+      mdn::decode_channel_mdn_spec_from_split_dsl(mdn_dsl_text, mdn_net_text);
   const auto representation_training =
       training::decode_training_run_spec_from_dsl(
           read_text(paths.at("wikimyei_representation_vicreg_jkimyei_path")));
@@ -433,28 +279,64 @@ void test_channel_specs_decode_and_validate() {
       training::decode_training_run_spec_from_dsl(read_text(
           paths.at("wikimyei_inference_expected_value_mdn_jkimyei_path")));
 
-  if (representation_spec.component_id != "vicreg_v1") {
-    throw std::runtime_error("channel VICReg component id mismatch");
+  if (representation_spec.component_assembly_id != "vicreg_v1") {
+    throw std::runtime_error("VICReg component id mismatch");
   }
-  if (mdn_spec.input_representation_id != representation_spec.component_id) {
-    throw std::runtime_error("channel MDN representation reference mismatch");
+  if (mdn_spec.input_representation_assembly_id != representation_spec.component_assembly_id) {
+    throw std::runtime_error("MDN representation reference mismatch");
   }
+  expect_throw(
+      [&] {
+        const auto ignored = vicreg::decode_vicreg_spec_from_split_dsl(
+            replace_first(representation_dsl_text,
+                          "  CELL_VALID_POLICY = required_features;\n", ""),
+            representation_net_text);
+        (void)ignored;
+      },
+      "VICReg DSL must not use implicit cell-valid default");
+  expect_throw(
+      [&] {
+        const auto ignored = vicreg::decode_vicreg_spec_from_split_dsl(
+            representation_dsl_text,
+            replace_first(representation_net_text,
+                          "  VICREG_VARIANCE_FLOOR = 1.0;\n", ""));
+        (void)ignored;
+      },
+      "VICReg NET must not use implicit loss default");
+  expect_throw(
+      [&] {
+        const auto ignored = mdn::decode_channel_mdn_spec_from_split_dsl(
+            replace_first(mdn_dsl_text,
+                          "  TARGET_MASK_POLICY = all_target_features_valid;\n",
+                          ""),
+            mdn_net_text);
+        (void)ignored;
+      },
+      "MDN DSL must not use implicit target-mask default");
+  expect_throw(
+      [&] {
+        const auto ignored = mdn::decode_channel_mdn_spec_from_split_dsl(
+            mdn_dsl_text,
+            replace_first(mdn_net_text, "  GLOBAL_CONTEXT_DIM = 0;\n", ""));
+        (void)ignored;
+      },
+      "MDN NET must not use implicit global-context default");
   if (mdn_spec.context_mode !=
           mdn::channel_mdn_context_mode_t::channel_context_strict ||
       mdn_spec.global_context_dim != 0) {
-    throw std::runtime_error("channel MDN strict context spec mismatch");
+    throw std::runtime_error("MDN strict context spec mismatch");
   }
   if (representation_training.task !=
           training::training_task_t::vicreg_representation ||
-      representation_training.component_id !=
-          representation_spec.component_id) {
-    throw std::runtime_error("channel VICReg training spec mismatch");
+      representation_training.component_assembly_id !=
+          representation_spec.component_assembly_id) {
+    throw std::runtime_error("VICReg training spec mismatch");
   }
   if (mdn_training.task !=
           training::training_task_t::mdn_expected_value_inference ||
-      mdn_training.component_id != mdn_spec.component_id ||
+      mdn_training.component_assembly_id != mdn_spec.component_assembly_id ||
       !mdn_training.freeze_representation) {
-    throw std::runtime_error("channel MDN training spec mismatch");
+    throw std::runtime_error("MDN training spec mismatch");
   }
 
   auto channel_bundle =
@@ -473,10 +355,10 @@ void test_channel_specs_decode_and_validate() {
     throw std::runtime_error(
         "channel graph-first BNF paths missing from bundle");
   }
-  if (channel_bundle.vicreg.component_id != representation_spec.component_id ||
-      channel_bundle.channel_mdn.component_id != mdn_spec.component_id ||
-      channel_bundle.channel_mdn.input_representation_id !=
-          representation_spec.component_id) {
+  if (channel_bundle.vicreg.component_assembly_id != representation_spec.component_assembly_id ||
+      channel_bundle.channel_mdn.component_assembly_id != mdn_spec.component_assembly_id ||
+      channel_bundle.channel_mdn.input_representation_assembly_id !=
+          representation_spec.component_assembly_id) {
     throw std::runtime_error("channel graph-first bundle component mismatch");
   }
   if (channel_bundle.vicreg_assembly.family !=
@@ -541,14 +423,27 @@ void test_channel_specs_decode_and_validate() {
   }
   const auto vicreg_train_options =
       vicreg::vicreg_train_options_from_spec(representation_spec);
-  if (vicreg_train_options.vicreg.global_aux_weight !=
+  if (vicreg_train_options.vicreg.invariance_weight !=
+          representation_spec.vicreg_invariance_weight ||
+      vicreg_train_options.vicreg.variance_weight !=
+          representation_spec.vicreg_variance_weight ||
+      vicreg_train_options.vicreg.covariance_weight !=
+          representation_spec.vicreg_covariance_weight ||
+      vicreg_train_options.vicreg.variance_floor !=
+          representation_spec.vicreg_variance_floor ||
+      vicreg_train_options.vicreg.eps != representation_spec.vicreg_eps ||
+      vicreg_train_options.vicreg.global_aux_weight !=
           representation_spec.global_aux_weight ||
+      vicreg_train_options.min_valid_rows !=
+          representation_spec.min_valid_rows ||
+      vicreg_train_options.skip_non_finite_loss !=
+          representation_spec.skip_non_finite_loss ||
       vicreg_train_options.jitter_std != representation_spec.jitter_std ||
       vicreg_train_options.feature_dropout_prob !=
           representation_spec.feature_dropout_prob ||
       vicreg_train_options.history_dropout_prob !=
           representation_spec.history_dropout_prob) {
-    throw std::runtime_error("channel VICReg train options mismatch");
+    throw std::runtime_error("VICReg train options mismatch");
   }
 
   const auto mdn_adapter_options =
@@ -557,19 +452,19 @@ void test_channel_specs_decode_and_validate() {
       mdn_adapter_options.target_mask_policy !=
           mdn::stream::channel_target_mask_policy_t::
               all_target_features_valid) {
-    throw std::runtime_error("channel MDN adapter options mismatch");
+    throw std::runtime_error("MDN adapter options mismatch");
   }
   const auto nll_options = mdn::channel_mdn_nll_options_from_spec(mdn_spec);
   if (nll_options.sigma_min != mdn_spec.sigma_min ||
       nll_options.sigma_max != mdn_spec.sigma_max ||
       nll_options.eps != mdn_spec.eps) {
-    throw std::runtime_error("channel MDN NLL options mismatch");
+    throw std::runtime_error("MDN NLL options mismatch");
   }
 
   const auto representation_assembly =
-      vicreg::make_vicreg_assembly(representation_spec.component_id);
+      vicreg::make_vicreg_assembly(representation_spec.component_assembly_id);
   const auto mdn_assembly =
-      mdn::make_channel_context_mdn_assembly(mdn_spec.component_id);
+      mdn::make_channel_context_mdn_assembly(mdn_spec.component_assembly_id);
   if (!cuwacunu::wikimyei::assembly::dock_domain_compatible(
           representation_assembly.docks.at(1), mdn_assembly.docks.at(0))) {
     throw std::runtime_error("channel assemblies are not compatible");
@@ -583,28 +478,28 @@ void test_channel_specs_decode_and_validate() {
       /*required=*/true, /*target_side_only=*/false, {"B", "N", "De"});
   if (cuwacunu::wikimyei::assembly::dock_domain_compatible(
           old_fused_producer, mdn_assembly.docks.at(0))) {
-    throw std::runtime_error("old fused representation bound channel MDN");
+    throw std::runtime_error("old fused representation bound MDN");
   }
 
   auto bad_representation = representation_spec;
   bad_representation.history_length = 0;
   expect_throw([&] { vicreg::validate_vicreg_spec(bad_representation); },
-               "channel VICReg history length");
+               "VICReg history length");
 
   auto bad_augmentation = representation_spec;
   bad_augmentation.feature_dropout_prob = 1.5;
   expect_throw([&] { vicreg::validate_vicreg_spec(bad_augmentation); },
-               "channel VICReg augmentation bounds");
+               "VICReg augmentation bounds");
 
   auto bad_mdn = mdn_spec;
   bad_mdn.target_coords = {0, 0};
   expect_throw([&] { mdn::validate_channel_mdn_spec(bad_mdn); },
-               "channel MDN duplicate target coord");
+               "MDN duplicate target coord");
 
   auto bad_strict_global = mdn_spec;
   bad_strict_global.global_context_dim = 4;
   expect_throw([&] { mdn::validate_channel_mdn_spec(bad_strict_global); },
-               "channel MDN strict rejects global context dim");
+               "MDN strict rejects global context dim");
 
   auto plus_global_mdn = mdn_spec;
   plus_global_mdn.context_mode =
@@ -614,8 +509,8 @@ void test_channel_specs_decode_and_validate() {
   const auto plus_global_dsl =
       std::string("MDN {\n"
                   "  VERSION = wikimyei.inference.expected_value.mdn.v1;\n"
-                  "  COMPONENT_ID = channel_context_plus_global_mdn_v1;\n"
-                  "  INPUT_REPRESENTATION_ID = vicreg_v1;\n"
+                  "  COMPONENT_ASSEMBLY_ID = mdn_plus_global_v1;\n"
+                  "  INPUT_REPRESENTATION_ASSEMBLY_ID = vicreg_v1;\n"
                   "  CONTEXT_MODE = channel_context_plus_global;\n"
                   "  TARGET_DOMAIN = channel_node_future;\n"
                   "  TARGET_COORDS = 0,1;\n"
@@ -638,12 +533,12 @@ void test_channel_specs_decode_and_validate() {
   if (decoded_plus_global.context_mode !=
           mdn::channel_mdn_context_mode_t::channel_context_plus_global ||
       decoded_plus_global.global_context_dim != 4) {
-    throw std::runtime_error("channel MDN plus-global spec decode mismatch");
+    throw std::runtime_error("MDN plus-global spec decode mismatch");
   }
   auto bad_plus_global = decoded_plus_global;
   bad_plus_global.global_context_dim = 0;
   expect_throw([&] { mdn::validate_channel_mdn_spec(bad_plus_global); },
-               "channel MDN plus-global requires global context dim");
+               "MDN plus-global requires global context dim");
 }
 
 void test_invalid_specs_fail_fast() {
@@ -685,41 +580,44 @@ void test_invalid_specs_fail_fast() {
       },
       "NodeLift price coords must match kline registry");
 
-  auto bad_vicreg = vicreg::vicreg_node_representation_spec_t{};
-  bad_vicreg.component_id = "bad";
+  auto bad_vicreg = vicreg::vicreg_spec_t{};
+  bad_vicreg.component_assembly_id = "bad";
+  bad_vicreg.channel_count = 1;
+  bad_vicreg.history_length = 2;
   bad_vicreg.input_width = 8;
   bad_vicreg.encoding_dim = 1;
-  bad_vicreg.channel_expansion_dim = 1;
-  bad_vicreg.fused_feature_dim = 1;
-  bad_vicreg.encoder_hidden_dim = 1;
-  bad_vicreg.encoder_depth = 1;
-  expect_throw(
-      [&] { vicreg::validate_vicreg_node_representation_spec(bad_vicreg); },
-      "VICReg width");
+  bad_vicreg.feature_hidden_dim = 1;
+  bad_vicreg.temporal_depth = 1;
+  bad_vicreg.vicreg_projector_dim = 1;
+  bad_vicreg.vicreg_projector_hidden_dim = 1;
+  bad_vicreg.vicreg_projector_depth = 1;
+  expect_throw([&] { vicreg::validate_vicreg_spec(bad_vicreg); },
+               "VICReg width");
 
   bad_vicreg.input_width = 9;
   bad_vicreg.dtype = "float16";
-  expect_throw(
-      [&] { vicreg::validate_vicreg_node_representation_spec(bad_vicreg); },
-      "VICReg dtype");
+  expect_throw([&] { vicreg::validate_vicreg_spec(bad_vicreg); },
+               "VICReg dtype");
 
   bad_vicreg.dtype = "float32";
   bad_vicreg.device = "gpu:0";
-  expect_throw(
-      [&] { vicreg::validate_vicreg_node_representation_spec(bad_vicreg); },
-      "VICReg device");
+  expect_throw([&] { vicreg::validate_vicreg_spec(bad_vicreg); },
+               "VICReg device");
 
-  auto bad_mdn = mdn::mdn_spec_t{};
-  bad_mdn.component_id = "mdn";
-  bad_mdn.input_representation_id = "rep";
+  auto bad_mdn = mdn::channel_mdn_spec_t{};
+  bad_mdn.component_assembly_id = "mdn";
+  bad_mdn.input_representation_assembly_id = "rep";
   bad_mdn.target_coords = {99};
+  bad_mdn.channel_count = 1;
+  bad_mdn.future_horizon = 1;
   bad_mdn.mixture_count = 2;
   bad_mdn.hidden_width = 4;
-  expect_throw([&] { mdn::validate_mdn_spec(bad_mdn); }, "MDN target coord");
+  expect_throw([&] { mdn::validate_channel_mdn_spec(bad_mdn); },
+               "MDN target coord");
 
   auto bad_training = training::training_run_spec_t{};
   bad_training.training_id = "train";
-  bad_training.component_id = "mdn";
+  bad_training.component_assembly_id = "mdn";
   bad_training.learning_rate = 0.01;
   bad_training.batch_size = 1;
   bad_training.freeze_representation = false;
@@ -743,12 +641,12 @@ void test_cross_reference_failures() {
   auto channel_bundle =
       protocol::load_channel_graph_first_config_bundle_from_config(
           "/cuwacunu/src/config/.config");
-  channel_bundle.channel_mdn.input_representation_id = "other_channel_rep";
+  channel_bundle.channel_mdn.input_representation_assembly_id = "other_channel_rep";
   expect_throw(
       [&] {
         protocol::validate_channel_graph_first_config_bundle(channel_bundle);
       },
-      "channel MDN representation mismatch");
+      "MDN representation mismatch");
 
   channel_bundle = protocol::load_channel_graph_first_config_bundle_from_config(
       "/cuwacunu/src/config/.config");

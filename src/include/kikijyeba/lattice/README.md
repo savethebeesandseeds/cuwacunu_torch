@@ -1,4 +1,4 @@
-#Kikijyeba Lattice
+# Kikijyeba Lattice
 
 The Kikijyeba lattice language records latent lineage state
     : typed values,
@@ -36,12 +36,15 @@ lattice reasoning. Runtime now emits `lattice.exposure.fact` sidecars after
 successful terminal jobs and records that sidecar path in `job.state`. The
 scanner prefers those sidecars and falls back to deriving an exposure fact from
 `job.manifest`, `job.state`, `representation.report`, and `inference.report`
-when a sidecar is absent. Exposure facts record contract/component identity,
-Ujcamei graph-anchor cursor range, observed/target/evaluation/selection use
-flags, optimizer effort, valid-target evidence, checkpoint inputs, and
-checkpoint outputs. Each fact also has an explicit `fact_type`; v0 primarily
-emits `exposure`, but the lattice should eventually hold other fact types such
-as metrics and source split declarations. Current runtime manifests emit
+when a sidecar is absent. Facts are a subset of the broader runtime evidence
+bundle; checkpoints, reports, raw source data, and config files remain evidence
+even when they are not `.lls` facts. Exposure facts record
+contract/component/config identity, Ujcamei graph-anchor cursor range,
+observed/target/evaluation/selection use flags, optimizer effort,
+valid-target evidence, checkpoint inputs, and checkpoint outputs. Each fact
+also has an explicit `fact_type`; v0 primarily emits `exposure`, but the
+lattice should eventually hold other fact types such as metrics and source
+split declarations. Current runtime manifests emit
 `graph_anchor_row_index_v1` footprints derived from the resolved graph-anchor
 range and the Hx/Hf source windows:
 observed input uses `[anchor_begin - (Hx - 1), anchor_end)`, while future
@@ -58,20 +61,26 @@ intervals so split checks remain deterministic. Lattice scans warn when a
 source-key window is incomplete, non-numeric, internally non-monotone, when its
 numeric key endpoints invert the row-endpoint ordering, or when a regular
 anchor-key step can be inferred but the observed/target windows do not match the
-affine row-to-key map. That treats the source-key map as an audit-only
-order-preserving coordinate system; row-index leakage math remains authoritative.
+affine row-to-key map. It also counts missing endpoint pairs, irregular anchor
+steps, and row/source-key mismatches as explicit gap warnings. That treats the
+source-key map as an audit-only order-preserving coordinate system; row-index
+leakage math remains authoritative.
 `hero.lattice.scan_exposure` also exposes a structured
 `source_key_window_audit` object with the parsed endpoints,
 completeness/numeric/monotonicity/order-preservation/affine-consistency booleans,
-the inferred reference key step when available, and issue ids so agents do not
-have to parse warning text to inspect the auxiliary coordinate map.
+the inferred reference key step when available, gap/mismatch counters, and issue
+ids so agents do not have to parse warning text to inspect the auxiliary
+coordinate map. `scan_exposure` also returns
+`source_key_map_audit_summary`, which binds available audits to graph-order
+identity, source-cursor identity, and source-receipt parent facts while keeping
+the summary audit-only.
 Evaluation and planning JSON also emit
 `source_key_coordinate_policy_vocabulary`, which makes the coordinate policy
 explicit: row-index intervals are the coverage/leakage authority, while
 source-key windows are audit-only order-preserving map checks.
 `source_key_coordinate_policy_summary` self-checks that boundary with one
-row-index coverage/leakage authority row, three audit-only source-key rows,
-declared order-preserving/affine fields, and no source-key audit row with
+row-index coverage/leakage authority row, four audit-only source-key rows,
+declared order-preserving/affine/gap fields, and no source-key audit row with
 coverage or leakage authority.
 The manifest also carries active source-file receipts
 (`edge|instrument|interval|record_type|source`) so a lattice fact can be traced
@@ -85,6 +94,147 @@ receipts for audit/provenance and remain outside V1 readiness authority.
 coverage/leakage authority row, three audit-only receipt rows, no contract
 identity authority, one available structured source-receipt fact surface, and
 declared compact plus structured receipt fields.
+
+## Fact Emission Contract And Inventory
+
+This README is the source of truth for the former V2 fact inventory and
+fact-emission contract. The old standalone inventory/contract files were review
+artifacts; their durable content is consolidated here.
+
+Use `fact` only for a durable normalized evidence row with schema, identity,
+source range, and authority semantics. Do not call every report field a fact.
+
+```text
+component report field:
+  raw component-owned output, such as optimizer_steps, mean_loss,
+  checkpoint_path, valid target counts, geometry diagnostics, or support counts
+
+runtime artifact:
+  runtime-owned job.manifest, job.state, component report path, checkpoint path,
+  and emitted lattice sidecar paths
+
+lattice fact:
+  normalized evidence row consumed by the exposure ledger or target evaluator
+
+derived summary:
+  scanner/Hero aggregate over facts; useful for inspection, not source of truth
+
+proof certificate:
+  target-evaluation proof object; proves why a target status was returned, but
+  is not itself runtime evidence
+```
+
+Runtime/components write what happened. The lattice scans, normalizes,
+evaluates, certifies, and explains those artifacts; it does not execute waves or
+invent missing evidence. Runtime model-state paths, loaded checkpoint paths,
+output checkpoint paths, and admission flags such as
+`ALLOW_UNTRAINED_REPRESENTATION` are evidence, not protocol contract identity.
+They become proof-relevant only when reports, facts, checkpoint closure, and
+target rules bind them to the active identity.
+
+Promoted fact rows bind, where applicable, to:
+
+```text
+contract_fingerprint
+graph_order_fingerprint
+source_cursor_token
+split_policy_fingerprint
+component_assembly_fingerprint
+target_component_family_id
+job_id
+wave_id
+job_status
+wave_action
+anchor/completed row-index intervals
+checkpoint_id and checkpoint_file_digest for checkpoint facts
+parent_exposure_fact_digest for derived fact families
+```
+
+Current fact families:
+
+```text
+kikijyeba.lattice.exposure.v1
+  Runtime sidecar after terminal jobs; scanner fallback may derive it from
+  manifest/state/reports. Completed rows can provide coverage, load, lineage,
+  and leakage evidence. Dry-run/running/failed rows are audit visibility only.
+
+kikijyeba.lattice.checkpoint.v1
+  Runtime sidecar when a checkpoint exists. checkpoint_id plus
+  checkpoint_file_digest is preferred closure authority; path-only closure is
+  explicit legacy compatibility and must be reported.
+
+kikijyeba.lattice.source_receipt.v1
+  Scanner-derived audit/provenance rows from exposure.source_file_receipts.
+  These rows do not replace row-index coverage/leakage math and do not alter
+  contract identity.
+
+kikijyeba.lattice.selection_signal.v1
+  Scanner-derived causal leakage visibility from exposure rows with
+  use_selection_signal=true. It is not a scheduler, selector, or model chooser.
+
+kikijyeba.lattice.node_exposure.v1
+  Scanner-derived MDN-head support visibility from MDN per-node report fields.
+  These rows are not VICReg or NodeLift support evidence.
+
+kikijyeba.lattice.representation_support.v1
+  Scanner-derived shared-representation support visibility from representation
+  reports and NodeLift .lls sidecars when honest support payloads exist. These
+  rows are warning/visibility evidence only and are never backfilled from
+  downstream MDN node rows.
+```
+
+The inventory classifies current report and fact fields as follows:
+
+```text
+runtime identity:
+  training_id, config_path, component_assembly_id, graph_order_fingerprint,
+  wave_id, wave_mode, target_action, source cursor policy, stream_plan
+
+normalized proof identity:
+  contract_fingerprint, graph_order_fingerprint,
+  component_assembly_fingerprint, target_component_family_id, job_id, wave_id,
+  job_status, wave_action, cursor_domain, source_cursor_token
+
+model-state input/output:
+  representation_checkpoint_path, mdn_checkpoint_path, checkpoint_written,
+  checkpoint_path, input_checkpoints, output_checkpoint, mutated_component,
+  optimizer_steps
+
+exposure support:
+  source anchor counts, accepted/skipped anchor counts, row-index footprints,
+  completed ranges, source_input_length, source_future_length, and use flags
+
+checkpoint lineage:
+  checkpoint_id, checkpoint_file_digest, component, direct exposure digest,
+  input_checkpoints, closure digest, producer job/wave, and fact digest
+
+source receipts:
+  compact source_file_receipts normalized into structured audit-only receipt
+  facts, with malformed non-empty receipts warning and missing receipts treated
+  as audit absence
+
+node and representation support:
+  MDN per-node support rows for MDN heads; representation/NodeLift aggregate and
+  node-indexed support rows for shared representation visibility
+
+diagnostic warning metrics:
+  VICReg health/geometry metrics and MDN loss/support/distribution diagnostics;
+  these remain warnings/visibility unless a target explicitly promotes them
+```
+
+Guardrails:
+
+```text
+- completed runtime evidence can satisfy targets; dry-run evidence can only
+  validate wiring
+- row-index intervals remain coverage and leakage authority
+- source-key windows and source receipts remain audit coordinates
+- model-state inputs remain outside contract identity
+- diagnostic metrics remain warnings/visibility unless a target rule promotes
+  them
+- DB/index rows must be rebuildable cache rows, not truth
+- Lattice Hero never executes waves
+```
 
 Exposure facts also carry Ujcamei graph-anchor domain health. This reports the
 candidate anchor count, accepted anchor count/fraction, skipped anchors by
@@ -109,6 +259,11 @@ units, high-bad/low-bad threshold direction, and V1 non-blocking warning scope.
 Hero JSON also emits `representation_geometry_summary`, which self-checks that
 the 18 VICReg health/geometry metrics remain V1 non-blocking warnings, not
 active performance or geometry gates.
+V3-H adds `representation_geometry_gate_review_summary`: it reports observed
+VICReg geometry distributions, confirms that no default threshold was promoted,
+and documents the only hard-gate path as explicit
+`LATTICE_REQUIRES KIND=representation_geometry`. Missing geometry facts fail
+that opt-in gate closed; they do not silently satisfy it.
 
 For node-centered MDN jobs, the scanner also derives
 `kikijyeba.lattice.node_exposure.v1` facts from the existing
@@ -229,7 +384,7 @@ It also emits `mathematical_readiness_v1_summary`, a compact self-check that the
 crosswalk has 16 included read-only items, zero runtime-executor/performance/DB
 authority items, and no empty Hero-surface rows.
 Hero JSON also emits `validation_performance_scope_policy_vocabulary`, which
-keeps `node_mdn_validation_eval_ready` as clean evaluation-readiness evidence:
+keeps `channel_mdn_validation_eval_ready` as clean evaluation-readiness evidence:
 evaluation coverage, zero optimizer mutation, exact MDN checkpoint binding,
 exact evaluated checkpoint input edges, and matching representation lineage. It
 does not claim model quality or performance approval; future performance gates
@@ -310,7 +465,7 @@ model:
 
 ```text
 LATTICE_DEPENDS
-  declares the upstream target relationship, currently used by node MDN to bind
+  declares the upstream target relationship, currently used by channel MDN to bind
   to the loaded representation checkpoint proof.
 
 LATTICE_REQUIRES
@@ -395,6 +550,10 @@ representation-health checks neutral: the lattice reports evidence shape, but
 does not call the model overtrained, promote representation-geometry visibility
 into a performance gate, split proof identity, or change the proof certificate
 digest for the same proof evidence.
+When a target explicitly opts into `KIND=representation_geometry`, the gate
+compares the worst finite representation-health metric in the target evidence
+against the declared value and returns a metric deficit on failure. This opt-in
+gate is readiness/health evidence only, not validation performance.
 Warning results expose `threshold_direction` (`above` or `below`) next to the
 numeric threshold, `threshold_triggered` as a structured trigger bit, and
 `threshold_relation` values such as `above_threshold`,
@@ -424,12 +583,16 @@ minimum-variance, and isotropy warnings use `BELOW`. Anchor-domain warning
 clauses carry exactly one metric threshold so one warning result cannot hide
 another measurement. These checks make the DSL safer for agents without changing
 how runtime facts are evaluated.
+Opt-in representation-geometry gates use the same unit checks with `VALUE`:
+low-bad metrics require `OP=ge`, high-bad metrics require `OP=le`, count values
+must be integral, fractions stay in `[0,1]`, and condition-number values are at
+least `1`.
 Targets may also set `CHECKPOINT_SOURCE = latest_satisfying:<target_id>`.
 This is for read-only guard targets that inspect a checkpoint produced by
 another target instead of matching their own runtime job. For example,
-`node_mdn_train_core_no_validation_leakage` inspects the latest checkpoint from
-`node_mdn_train_core_ready`, then applies validation split protection to that
-checkpoint closure. `node_mdn_train_core_no_test_leakage` chains from that
+`channel_mdn_train_core_no_validation_leakage` inspects the latest checkpoint from
+`channel_mdn_train_core_ready`, then applies validation split protection to that
+checkpoint closure. `channel_mdn_train_core_no_test_leakage` chains from that
 validation-clean target and applies `test_holdout` protection to the same
 checkpoint. If the source target is not satisfied, the guard target blocks and
 forwards the source target's suggested wave; it still does not execute anything.
@@ -445,9 +608,9 @@ Pareto, contract identity, or runtime execution authority.
 
 Evaluation targets can bind to a previously proven checkpoint with
 `EVALUATED_CHECKPOINT_SOURCE = latest_satisfying:<target_id>`. For example,
-`node_mdn_validation_eval_ready` proves run-mode validation evidence only if the
+`channel_mdn_validation_eval_ready` proves run-mode validation evidence only if the
 MDN report loaded the exact checkpoint selected by
-`node_mdn_train_core_no_test_leakage`, and the representation checkpoint loaded
+`channel_mdn_train_core_no_test_leakage`, and the representation checkpoint loaded
 for the run matches that checkpoint lineage. Suggested waves may carry
 `PLAN_INPUT_MDN_CHECKPOINT` and `PLAN_INPUT_REPRESENTATION_CHECKPOINT` model
 state hints, but those are symbolic `latest_satisfying` source-target
@@ -459,12 +622,17 @@ source hint used to run the next wave. Likewise, advisory planning knobs such as
 `WAVE_MODE`, `PLAN_MODE`, `PLAN_MAX_ATTEMPTS`, and `MAX_WAVES` lower into
 suggested-wave behavior but do not change `target_spec_fingerprint`.
 Hero JSON emits `contract_identity_boundary_vocabulary` to make the split
-machine-readable: protocol/graph/component/target proof identity fields are
+machine-readable: protocol/graph/component/target proof fields are
 separate from runtime-loaded checkpoint paths, plan advice, warning visibility,
 and audit-only source receipt/key-window metadata.
+It also surfaces config provenance and component spawn fields:
+`config_bundle_id`, `config_receipt_id`, `component_spawn_registry_id`,
+`component_family_id`, `component_spawn_fingerprint`, scoped
+`component_spawn_id`, and `component_spawn_label`. The full fingerprint is the
+audit authority; the spawn id is only a readability and retrieval hint.
 It also emits `contract_identity_boundary_summary`, a compact self-check that
 model-state, planning advice, warning visibility, and audit metadata have zero
-overlap with protocol contract or target proof identity while active identity
+overlap with protocol contract or target proof context while active identity
 surfaces are present.
 The target remains a readiness proof, not a performance gate. Validation metric
 coverage proves that the checkpoint was evaluated over enough trusted anchors;
@@ -580,8 +748,11 @@ source-key windows and row-to-source-key monotonicity/affine checks are
 auxiliary audit coordinates.
 Hero JSON also emits `source_key_coordinate_policy_summary`, the compact
 self-check for the row-index authority row, audit-only source-key coordinate
-rows, order-preserving/affine audit fields, and no coverage/leakage authority
-on source-key audit rows.
+rows, order-preserving/affine/gap audit fields, and no coverage/leakage
+authority on source-key audit rows. `hero.lattice.scan_exposure` emits
+`source_key_map_audit_summary`, a runtime summary of monotonicity,
+order-preservation, affine consistency, gap/irregular-key warnings,
+row/source-key mismatches, and source-receipt binding counts.
 The certificate self-check recomputes the merged idempotent union from the
 contributing intervals, requires covered intervals to be canonical
 non-overlapping intervals inside the target range, and recomputes the missing
@@ -717,11 +888,32 @@ Hero JSON also emits `target_numeric_dimension_vocabulary`, the unit/bounds
 vocabulary behind the target compiler's numeric checks. It names DSL contexts,
 fields, units, numeric kinds, lower/upper bounds, integrality, and threshold
 direction for readiness thresholds, warning thresholds, node-support metrics,
-and representation-health metrics.
+representation-health metrics, and opt-in representation-geometry gates.
 Hero JSON also emits `target_numeric_dimension_summary`, the compact read-side
 self-check for that vocabulary. It proves declared units/kinds, unique
 context/field pairs, well-formed bounds, known threshold directions, required
 V1 rows, and separate coverage/load units.
+Hero JSON also emits `evidence_retention_policy_vocabulary`,
+`evidence_retention_audit_scenario_vocabulary`, and
+`evidence_retention_policy_summary`. These classify reports, sidecars,
+checkpoints, source receipts, selection signals, proof certificates, cache rows,
+human receipts, and archive manifests by retention role before any pruning or
+compaction is allowed. Compact receipts, PASS files, proof certificates, and
+cache rows remain audit/read-model metadata; runtime reports, sidecars,
+checkpoint material, and selection-signal evidence remain the replay authority.
+Pruning must refuse or warn when required checkpoint lineage would become
+unresolved, and archive manifests must bind active identity, split policy,
+source cursor, graph order, and checkpoint identity.
+Hero JSON also emits `benchmark_regression_budget_vocabulary` and
+`benchmark_regression_budget_summary`. These define the V3-L performance
+budget as finite timing rows over three separate layers: library functions,
+long-lived MCP calls with session reuse, and direct CLI calls with process
+startup included. Each row names its proof mode (`header_only`,
+`watched_file_manifest`, `full_runtime_metadata_digest`, `live_scan`, or
+`live_parity`), required measurement, regression guard, and whether a full live
+scan is allowed. Header-only fast audit rows explicitly forbid live scans and
+metadata digests, and no benchmark row grants target-satisfaction authority to
+cache rows.
 Hero JSON also emits `monotonicity_invariant_vocabulary`, which makes the
 clean-growth boundary explicit. Target satisfaction is an upper set only under
 clean evidence growth; forbidden overlaps, stale identity, checkpoint mismatch,
@@ -1027,19 +1219,25 @@ Agent runbook:
    result carries the same proof certificate/check and deficits as evaluation,
    plus `plan_basis`, so the suggested wave is auditable against the proof
    deficits it is intended to resolve.
-7. `hero.lattice.compare_evidence`
+7. `hero.lattice.resolve_latest_satisfying`
+   Use this when a plan carries a symbolic
+   `latest_satisfying:<target_id>` model-state hint. Lattice resolves the hint
+   only when the source target is cleanly satisfied and its checkpoint closure
+   is complete. The tool is read-only, does not rank alternatives, and does not
+   execute or select a fallback checkpoint.
+8. `hero.lattice.compare_evidence`
    Use this to compare two clean satisfying checkpoint targets by Pareto
    evidence vector. The tool reports each vector, per-dimension dominance
    reasons, explicit incomparable/unavailable/selector-leaked states, and the
    boundary that `latest_satisfying` remains separate. It never emits a scalar
    lattice score or deployment decision.
-8. `hero.lattice.checkpoint_closure`
+9. `hero.lattice.checkpoint_closure`
    Use this for checkpoint lineage. The tool accepts either a checkpoint path
    or `checkpoint_id` plus `checkpoint_file_digest`. Missing upstream producer
    evidence or id/digest mismatch must fail closed and should be reported as a
    blocker, not ignored. The JSON reports whether closure authority came from
    `checkpoint_id_file_digest` or `legacy_path` compatibility.
-9. `hero.lattice.derived_query`
+10. `hero.lattice.derived_query`
    Use this when the question is "show the proof witnesses for one named
    derived rule." The V3-E pilot supports `target_satisfied`,
    `checkpoint_ancestor`, `forbidden_overlap`, `stale_cache`, and
@@ -1097,7 +1295,7 @@ contract/runtime root:
    satisfy a target.
 
 2. Readiness
-   legacy_node_vicreg_train_core_ready and node_mdn_train_core_ready are
+   vicreg_train_core_ready and channel_mdn_train_core_ready are
    satisfied from completed normal runtime evidence, not debug-only reports.
    MDN readiness proves the exact representation checkpoint loaded by the MDN
    report. The migrated channel target `vicreg_train_core_ready` is a V2/channel
@@ -1105,14 +1303,14 @@ contract/runtime root:
    evidence exists.
 
 3. Holdout cleanliness
-   node_mdn_train_core_no_validation_leakage and
-   node_mdn_train_core_no_test_leakage inspect the checkpoint closure from the
+   channel_mdn_train_core_no_validation_leakage and
+   channel_mdn_train_core_no_test_leakage inspect the checkpoint closure from the
    train-core MDN target and fail closed on protected split overlap. Split
    protection expands holdout footprints by Hx/Hf purge policy before checking
    source-row exposure overlap.
 
 4. Validation evaluation
-   node_mdn_validation_eval_ready is satisfied only by run/evaluation evidence
+   channel_mdn_validation_eval_ready is satisfied only by run/evaluation evidence
    over validation_holdout. It must prove evaluation_metric coverage, zero
    training mutation, the exact MDN checkpoint selected by the no-test leakage
    guard, and the matching representation checkpoint lineage; the local
@@ -1171,7 +1369,7 @@ The companion fixture
 `src/tests/fixtures/kikijyeba/lattice_validation_eval_wrong_mdn` preserves the
 negative validation case where the run loads the wrong MDN checkpoint. It is
 small enough for Hero inspection and should fail
-`fixture_node_mdn_validation_eval_ready` with a `dependency:mdn_checkpoint`
+`fixture_channel_mdn_validation_eval_ready` with a `dependency:mdn_checkpoint`
 mismatch and a certificate-check checkpoint-source mismatch issue.
 
 When the target language feels too low-level, prefer the calmer authoring layer:
@@ -1212,9 +1410,22 @@ unproven audit-cache fast path. That path reports
 `cache_valid_for_audit_query=false`, and still never affects target
 satisfaction. Missing, stale, or mismatched proof-mode cache rows fall back to
 live scan.
+The `runtime_metadata_digest` and `watched_file_metadata_digest` fields are
+metadata freshness digests: they hash the relevant path, size, and mtime
+records, not file contents. They are cache invalidation hints for read-model
+freshness, not content-proof authority. Runtime reports, sidecars, checkpoint
+facts, and target evaluation remain the proof source of truth.
 `db_cache_policy_vocabulary` is the Hero-facing version of that rule. A stale,
 missing, identity-mismatched, or digest-mismatched cache must be rebuilt from
 runtime files before cache rows can be reported as current.
+V3-L adds `benchmark_regression_budget_vocabulary` and
+`benchmark_regression_budget_summary` so performance receipts stay bounded.
+Future benchmark reports must separate library function timings, long-lived MCP
+session timings, and direct CLI timings; every row must name the proof mode it
+is measuring. The explicit header-only audit-cache fast path is allowed to be
+fast because it is marked unproven and non-authoritative, while full metadata,
+live-scan, and parity rows are allowed to be slower because their proof cost is
+named.
 
 DEV_WARNING: the current graph-first protocol contract fingerprint still
 includes some Jkimyei training selectors. Runtime model-state fields such as

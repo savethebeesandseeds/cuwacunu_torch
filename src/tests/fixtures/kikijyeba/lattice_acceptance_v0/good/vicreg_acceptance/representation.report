@@ -1,4 +1,4 @@
-training_id=smoke_vicreg_node_representation
+training_id=smoke_vicreg_representation
 target_action=train
 wave_id=cwu_01v_accept_vicreg_0029_0031
 wave_mode=train|debug

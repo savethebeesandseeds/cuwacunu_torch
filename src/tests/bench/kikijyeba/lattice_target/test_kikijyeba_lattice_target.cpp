@@ -366,7 +366,7 @@ std::string target_dsl() {
   return R"DSL(
 LATTICE_TARGET {
   TARGET_ID = vicreg_representation_ready;
-  TARGET_KIND = representation_ready;
+  TARGET_KIND = legacy_node_vicreg_ready;
   COMPONENT = wikimyei.representation.encoding.vicreg;
   SOURCE_RANGE = all;
   REQUIRE_CONTRACT_MATCH = true;
@@ -379,8 +379,8 @@ LATTICE_TARGET {
 };
 
 LATTICE_TARGET {
-  TARGET_ID = node_mdn_ready;
-  TARGET_KIND = node_mdn_ready;
+  TARGET_ID = legacy_node_mdn_ready;
+  TARGET_KIND = legacy_node_mdn_ready;
   COMPONENT = wikimyei.inference.expected_value.mdn;
   SOURCE_RANGE = all;
   UPSTREAM_TARGET_ID = vicreg_representation_ready;
@@ -401,15 +401,16 @@ LATTICE_TARGET {
 void write_representation_job(const std::filesystem::path &root,
                               const std::filesystem::path &checkpoint) {
   const auto dir = root / "rep_ready";
-  write_text(dir / "job.manifest",
-             "job_id=rep_ready\n"
-             "job_kind=representation_vicreg\n"
-             "target_component=wikimyei.representation.encoding.vicreg\n"
-             "source_range_policy=all\n"
-             "protocol_contract_fingerprint=contract_1\n"
-             "graph_order_fingerprint=graph_1\n"
-             "source_cursor_token=cursor_ranged\n"
-             "vicreg_assembly_fingerprint=vicreg_1\n");
+  write_text(
+      dir / "job.manifest",
+      "job_id=rep_ready\n"
+      "job_kind=representation_vicreg\n"
+      "target_component_family_id=wikimyei.representation.encoding.vicreg\n"
+      "source_range_policy=all\n"
+      "protocol_contract_fingerprint=contract_1\n"
+      "graph_order_fingerprint=graph_1\n"
+      "source_cursor_token=cursor_ranged\n"
+      "vicreg_assembly_fingerprint=vicreg_1\n");
   write_text(dir / "job.state", std::string("status=completed\n"
                                             "optimizer_steps=2\n"
                                             "last_loss=0.25\n"
@@ -429,24 +430,25 @@ void write_ranged_representation_job(const std::filesystem::path &root,
                                      const std::filesystem::path &checkpoint,
                                      std::int64_t begin, std::int64_t end) {
   const auto dir = root / "rep_ranged";
-  write_text(dir / "job.manifest",
-             "job_id=rep_ranged\n"
-             "wave_id=wave_ranged\n"
-             "job_kind=representation_vicreg\n"
-             "target_component=wikimyei.representation.encoding.vicreg\n"
-             "wave_action=train\n"
-             "mutated_components=wikimyei.representation.encoding.vicreg\n"
-             "source_range_policy=anchor_index\n"
-             "resolved_anchor_index_begin=" +
-                 std::to_string(begin) +
-                 "\n"
-                 "resolved_anchor_index_end=" +
-                 std::to_string(end) +
-                 "\n"
-                 "protocol_contract_fingerprint=contract_1\n"
-                 "graph_order_fingerprint=graph_1\n"
-                 "source_cursor_token=cursor_ranged\n"
-                 "vicreg_assembly_fingerprint=vicreg_1\n");
+  write_text(
+      dir / "job.manifest",
+      "job_id=rep_ranged\n"
+      "wave_id=wave_ranged\n"
+      "job_kind=representation_vicreg\n"
+      "target_component_family_id=wikimyei.representation.encoding.vicreg\n"
+      "wave_action=train\n"
+      "mutated_components=wikimyei.representation.encoding.vicreg\n"
+      "source_range_policy=anchor_index\n"
+      "resolved_anchor_index_begin=" +
+          std::to_string(begin) +
+          "\n"
+          "resolved_anchor_index_end=" +
+          std::to_string(end) +
+          "\n"
+          "protocol_contract_fingerprint=contract_1\n"
+          "graph_order_fingerprint=graph_1\n"
+          "source_cursor_token=cursor_ranged\n"
+          "vicreg_assembly_fingerprint=vicreg_1\n");
   write_text(dir / "job.state", std::string("status=completed\n"
                                             "optimizer_steps=2\n"
                                             "last_loss=0.25\n"
@@ -477,7 +479,7 @@ make_rep_exposure_fact(const std::filesystem::path &checkpoint,
   fact.contract_fingerprint = "contract_1";
   fact.graph_order_fingerprint = std::move(graph_order_fingerprint);
   fact.component_assembly_fingerprint = "vicreg_1";
-  fact.target_component = "wikimyei.representation.encoding.vicreg";
+  fact.target_component_family_id = "wikimyei.representation.encoding.vicreg";
   fact.representation_architecture = "global_fused_temporal_node_encoder.v1";
   fact.representation_contract = "graph_order.node_representation.v1";
   fact.representation_value_shape = "[B,N,D_e] or [B,N,Hx,D_e]";
@@ -533,8 +535,8 @@ make_mdn_exposure_fact(const std::filesystem::path &checkpoint,
   fact.contract_fingerprint = "contract_1";
   fact.graph_order_fingerprint = std::move(graph_order_fingerprint);
   fact.component_assembly_fingerprint = "mdn_1";
-  fact.target_component = "wikimyei.inference.expected_value.mdn";
-  fact.input_representation_id = "node_vicreg_v1";
+  fact.target_component_family_id = "wikimyei.inference.expected_value.mdn";
+  fact.input_representation_assembly_id = "node_vicreg_v1";
   fact.context_mode = "global_node_context";
   fact.context_contract = "graph_order.node_representation.v1";
   fact.context_value_shape = "[B_node,D_e]";
@@ -572,24 +574,25 @@ void write_ranged_channel_representation_job(
     const std::filesystem::path &root, const std::filesystem::path &checkpoint,
     std::int64_t begin, std::int64_t end) {
   const auto dir = root / "channel_rep_ranged";
-  write_text(dir / "job.manifest",
-             "job_id=channel_rep_ranged\n"
-             "wave_id=wave_channel_rep_ranged\n"
-             "job_kind=channel_representation_vicreg\n"
-             "target_component=wikimyei.representation.encoding.vicreg\n"
-             "wave_action=train\n"
-             "mutated_components=wikimyei.representation.encoding.vicreg\n"
-             "source_range_policy=anchor_index\n"
-             "resolved_anchor_index_begin=" +
-                 std::to_string(begin) +
-                 "\n"
-                 "resolved_anchor_index_end=" +
-                 std::to_string(end) +
-                 "\n"
-                 "protocol_contract_fingerprint=contract_1\n"
-                 "graph_order_fingerprint=graph_1\n"
-                 "source_cursor_token=cursor_ranged\n"
-                 "vicreg_assembly_fingerprint=vicreg_1\n");
+  write_text(
+      dir / "job.manifest",
+      "job_id=channel_rep_ranged\n"
+      "wave_id=wave_channel_rep_ranged\n"
+      "job_kind=channel_representation_vicreg\n"
+      "target_component_family_id=wikimyei.representation.encoding.vicreg\n"
+      "wave_action=train\n"
+      "mutated_components=wikimyei.representation.encoding.vicreg\n"
+      "source_range_policy=anchor_index\n"
+      "resolved_anchor_index_begin=" +
+          std::to_string(begin) +
+          "\n"
+          "resolved_anchor_index_end=" +
+          std::to_string(end) +
+          "\n"
+          "protocol_contract_fingerprint=contract_1\n"
+          "graph_order_fingerprint=graph_1\n"
+          "source_cursor_token=cursor_ranged\n"
+          "vicreg_assembly_fingerprint=vicreg_1\n");
   write_text(dir / "job.state", std::string("status=completed\n"
                                             "optimizer_steps=2\n"
                                             "last_loss=0.18\n"
@@ -625,24 +628,25 @@ void write_ranged_channel_mdn_job(
     const std::filesystem::path &representation_checkpoint, std::int64_t begin,
     std::int64_t end) {
   const auto dir = root / "channel_mdn_ranged";
-  write_text(dir / "job.manifest",
-             "job_id=channel_mdn_ranged\n"
-             "wave_id=wave_channel_mdn_ranged\n"
-             "job_kind=channel_inference_mdn\n"
-             "target_component=wikimyei.inference.expected_value.mdn\n"
-             "wave_action=train\n"
-             "mutated_components=wikimyei.inference.expected_value.mdn\n"
-             "source_range_policy=anchor_index\n"
-             "resolved_anchor_index_begin=" +
-                 std::to_string(begin) +
-                 "\n"
-                 "resolved_anchor_index_end=" +
-                 std::to_string(end) +
-                 "\n"
-                 "protocol_contract_fingerprint=contract_1\n"
-                 "graph_order_fingerprint=graph_1\n"
-                 "source_cursor_token=cursor_ranged\n"
-                 "mdn_assembly_fingerprint=mdn_1\n");
+  write_text(
+      dir / "job.manifest",
+      "job_id=channel_mdn_ranged\n"
+      "wave_id=wave_channel_mdn_ranged\n"
+      "job_kind=channel_inference_mdn\n"
+      "target_component_family_id=wikimyei.inference.expected_value.mdn\n"
+      "wave_action=train\n"
+      "mutated_components=wikimyei.inference.expected_value.mdn\n"
+      "source_range_policy=anchor_index\n"
+      "resolved_anchor_index_begin=" +
+          std::to_string(begin) +
+          "\n"
+          "resolved_anchor_index_end=" +
+          std::to_string(end) +
+          "\n"
+          "protocol_contract_fingerprint=contract_1\n"
+          "graph_order_fingerprint=graph_1\n"
+          "source_cursor_token=cursor_ranged\n"
+          "mdn_assembly_fingerprint=mdn_1\n");
   write_text(dir / "job.state", std::string("status=completed\n"
                                             "optimizer_steps=2\n"
                                             "last_loss=0.32\n"
@@ -658,7 +662,7 @@ void write_ranged_channel_mdn_job(
   write_text(dir / "channel_inference.report",
              std::string("optimizer_steps=2\n"
                          "mean_loss=0.32\n"
-                         "input_representation_id=vicreg_v1\n"
+                         "input_representation_assembly_id=vicreg_v1\n"
                          "context_mode=channel_context_strict\n"
                          "context_contract="
                          "graph_order.channel_node_representation.v1\n"
@@ -696,23 +700,24 @@ void write_ranged_channel_mdn_eval_job(
     const std::filesystem::path &representation_checkpoint, std::int64_t begin,
     std::int64_t end) {
   const auto dir = root / "channel_mdn_validation_eval";
-  write_text(dir / "job.manifest",
-             "job_id=channel_mdn_validation_eval\n"
-             "wave_id=wave_channel_mdn_validation_eval\n"
-             "job_kind=channel_inference_mdn\n"
-             "target_component=wikimyei.inference.expected_value.mdn\n"
-             "wave_action=run\n"
-             "source_range_policy=anchor_index\n"
-             "resolved_anchor_index_begin=" +
-                 std::to_string(begin) +
-                 "\n"
-                 "resolved_anchor_index_end=" +
-                 std::to_string(end) +
-                 "\n"
-                 "protocol_contract_fingerprint=contract_1\n"
-                 "graph_order_fingerprint=graph_1\n"
-                 "source_cursor_token=cursor_ranged\n"
-                 "mdn_assembly_fingerprint=mdn_1\n");
+  write_text(
+      dir / "job.manifest",
+      "job_id=channel_mdn_validation_eval\n"
+      "wave_id=wave_channel_mdn_validation_eval\n"
+      "job_kind=channel_inference_mdn\n"
+      "target_component_family_id=wikimyei.inference.expected_value.mdn\n"
+      "wave_action=run\n"
+      "source_range_policy=anchor_index\n"
+      "resolved_anchor_index_begin=" +
+          std::to_string(begin) +
+          "\n"
+          "resolved_anchor_index_end=" +
+          std::to_string(end) +
+          "\n"
+          "protocol_contract_fingerprint=contract_1\n"
+          "graph_order_fingerprint=graph_1\n"
+          "source_cursor_token=cursor_ranged\n"
+          "mdn_assembly_fingerprint=mdn_1\n");
   write_text(dir / "job.state", std::string("status=completed\n"
                                             "optimizer_steps=0\n"
                                             "last_loss=0.35\n"
@@ -727,7 +732,7 @@ void write_ranged_channel_mdn_eval_job(
   write_text(dir / "channel_inference.report",
              std::string("optimizer_steps=0\n"
                          "mean_loss=0.35\n"
-                         "input_representation_id=vicreg_v1\n"
+                         "input_representation_assembly_id=vicreg_v1\n"
                          "representation_checkpoint_loaded=true\n"
                          "mdn_checkpoint_loaded=true\n"
                          "allow_untrained_representation=false\n"
@@ -766,7 +771,7 @@ exposure::lattice_exposure_fact_t make_channel_rep_exposure_fact(
   auto fact = make_rep_exposure_fact(checkpoint, begin, end,
                                      std::move(graph_order_fingerprint),
                                      std::move(source_cursor_token));
-  fact.target_component = "wikimyei.representation.encoding.vicreg";
+  fact.target_component_family_id = "wikimyei.representation.encoding.vicreg";
   fact.representation_architecture = "channel_preserving_local_node_encoder.v1";
   fact.representation_contract = "graph_order.channel_node_representation.v1";
   fact.representation_value_shape = "[B,N,C,De]";
@@ -786,8 +791,8 @@ exposure::lattice_exposure_fact_t make_channel_mdn_exposure_fact(
   auto fact = make_mdn_exposure_fact(
       checkpoint, representation_checkpoint, begin, end,
       std::move(graph_order_fingerprint), std::move(source_cursor_token));
-  fact.target_component = "wikimyei.inference.expected_value.mdn";
-  fact.input_representation_id = "vicreg_v1";
+  fact.target_component_family_id = "wikimyei.inference.expected_value.mdn";
+  fact.input_representation_assembly_id = "vicreg_v1";
   fact.context_mode = "channel_context_strict";
   fact.context_contract = "graph_order.channel_node_representation.v1";
   fact.context_value_shape = "[B_node,C,De]";
@@ -811,28 +816,31 @@ exposure::lattice_exposure_fact_t make_channel_mdn_exposure_fact(
   return fact;
 }
 
-void write_ranged_mdn_job(
+void write_ranged_legacy_node_mdn_job(
     const std::filesystem::path &root, const std::filesystem::path &checkpoint,
     const std::filesystem::path &representation_checkpoint, std::int64_t begin,
     std::int64_t end) {
+  // Historical node-MDN fixture. Active runtime waves use
+  // channel_inference_mdn.
   const auto dir = root / "mdn_ranged";
-  write_text(dir / "job.manifest",
-             "job_id=mdn_ranged\n"
-             "job_kind=inference_mdn\n"
-             "target_component=wikimyei.inference.expected_value.mdn\n"
-             "wave_action=train\n"
-             "mutated_components=wikimyei.inference.expected_value.mdn\n"
-             "source_range_policy=anchor_index\n"
-             "resolved_anchor_index_begin=" +
-                 std::to_string(begin) +
-                 "\n"
-                 "resolved_anchor_index_end=" +
-                 std::to_string(end) +
-                 "\n"
-                 "protocol_contract_fingerprint=contract_1\n"
-                 "graph_order_fingerprint=graph_1\n"
-                 "source_cursor_token=cursor_ranged\n"
-                 "mdn_assembly_fingerprint=mdn_1\n");
+  write_text(
+      dir / "job.manifest",
+      "job_id=mdn_ranged\n"
+      "job_kind=inference_mdn\n"
+      "target_component_family_id=wikimyei.inference.expected_value.mdn\n"
+      "wave_action=train\n"
+      "mutated_components=wikimyei.inference.expected_value.mdn\n"
+      "source_range_policy=anchor_index\n"
+      "resolved_anchor_index_begin=" +
+          std::to_string(begin) +
+          "\n"
+          "resolved_anchor_index_end=" +
+          std::to_string(end) +
+          "\n"
+          "protocol_contract_fingerprint=contract_1\n"
+          "graph_order_fingerprint=graph_1\n"
+          "source_cursor_token=cursor_ranged\n"
+          "mdn_assembly_fingerprint=mdn_1\n");
   write_text(dir / "job.state", std::string("status=completed\n"
                                             "optimizer_steps=2\n"
                                             "last_loss=0.40\n"
@@ -864,31 +872,34 @@ void write_ranged_mdn_job(
   write_text(representation_checkpoint, "representation checkpoint");
 }
 
-void write_ranged_mdn_eval_job(
+void write_ranged_legacy_node_mdn_eval_job(
     const std::filesystem::path &root,
     const std::filesystem::path &mdn_checkpoint,
     const std::filesystem::path &representation_checkpoint, std::int64_t begin,
     std::int64_t end, bool load_mdn_checkpoint = true,
     bool load_representation_checkpoint = true,
     bool write_output_checkpoint = false) {
+  // Historical node-MDN fixture. Active runtime waves use
+  // channel_inference_mdn.
   const auto dir = root / "mdn_validation_eval";
   const auto output_checkpoint = root / "mdn_validation_eval_output.pt";
-  write_text(dir / "job.manifest",
-             "job_id=mdn_validation_eval\n"
-             "job_kind=inference_mdn\n"
-             "target_component=wikimyei.inference.expected_value.mdn\n"
-             "wave_action=run\n"
-             "source_range_policy=anchor_index\n"
-             "resolved_anchor_index_begin=" +
-                 std::to_string(begin) +
-                 "\n"
-                 "resolved_anchor_index_end=" +
-                 std::to_string(end) +
-                 "\n"
-                 "protocol_contract_fingerprint=contract_1\n"
-                 "graph_order_fingerprint=graph_1\n"
-                 "source_cursor_token=cursor_ranged\n"
-                 "mdn_assembly_fingerprint=mdn_1\n");
+  write_text(
+      dir / "job.manifest",
+      "job_id=mdn_validation_eval\n"
+      "job_kind=inference_mdn\n"
+      "target_component_family_id=wikimyei.inference.expected_value.mdn\n"
+      "wave_action=run\n"
+      "source_range_policy=anchor_index\n"
+      "resolved_anchor_index_begin=" +
+          std::to_string(begin) +
+          "\n"
+          "resolved_anchor_index_end=" +
+          std::to_string(end) +
+          "\n"
+          "protocol_contract_fingerprint=contract_1\n"
+          "graph_order_fingerprint=graph_1\n"
+          "source_cursor_token=cursor_ranged\n"
+          "mdn_assembly_fingerprint=mdn_1\n");
   write_text(dir / "job.state",
              std::string("status=completed\n"
                          "optimizer_steps=0\n"
@@ -942,17 +953,20 @@ void write_ranged_mdn_eval_job(
   write_text(dir / "inference.report", report_text);
 }
 
-void write_mdn_job(const std::filesystem::path &root,
-                   const std::filesystem::path &checkpoint,
-                   const std::filesystem::path &representation_checkpoint) {
+void write_legacy_node_mdn_job(
+    const std::filesystem::path &root, const std::filesystem::path &checkpoint,
+    const std::filesystem::path &representation_checkpoint) {
+  // Historical node-MDN fixture. Active runtime waves use
+  // channel_inference_mdn.
   const auto dir = root / "mdn_ready";
-  write_text(dir / "job.manifest",
-             "job_id=mdn_ready\n"
-             "job_kind=inference_mdn\n"
-             "target_component=wikimyei.inference.expected_value.mdn\n"
-             "source_range_policy=all\n"
-             "protocol_contract_fingerprint=contract_1\n"
-             "mdn_assembly_fingerprint=mdn_1\n");
+  write_text(
+      dir / "job.manifest",
+      "job_id=mdn_ready\n"
+      "job_kind=inference_mdn\n"
+      "target_component_family_id=wikimyei.inference.expected_value.mdn\n"
+      "source_range_policy=all\n"
+      "protocol_contract_fingerprint=contract_1\n"
+      "mdn_assembly_fingerprint=mdn_1\n");
   write_text(dir / "job.state", std::string("status=completed\n"
                                             "optimizer_steps=1\n"
                                             "last_loss=0.5\n"
@@ -977,17 +991,20 @@ void write_mdn_job(const std::filesystem::path &root,
   write_text(representation_checkpoint, "representation checkpoint");
 }
 
-void write_mdn_without_representation_checkpoint(
+void write_legacy_node_mdn_without_representation_checkpoint(
     const std::filesystem::path &root,
     const std::filesystem::path &checkpoint) {
+  // Historical node-MDN fixture. Active runtime waves use
+  // channel_inference_mdn.
   const auto dir = root / "mdn_no_representation";
-  write_text(dir / "job.manifest",
-             "job_id=mdn_no_representation\n"
-             "job_kind=inference_mdn\n"
-             "target_component=wikimyei.inference.expected_value.mdn\n"
-             "source_range_policy=all\n"
-             "protocol_contract_fingerprint=contract_1\n"
-             "mdn_assembly_fingerprint=mdn_1\n");
+  write_text(
+      dir / "job.manifest",
+      "job_id=mdn_no_representation\n"
+      "job_kind=inference_mdn\n"
+      "target_component_family_id=wikimyei.inference.expected_value.mdn\n"
+      "source_range_policy=all\n"
+      "protocol_contract_fingerprint=contract_1\n"
+      "mdn_assembly_fingerprint=mdn_1\n");
   write_text(dir / "job.state", std::string("status=completed\n"
                                             "optimizer_steps=1\n"
                                             "last_loss=0.5\n"
@@ -1012,15 +1029,16 @@ void write_bad_representation_job(const std::filesystem::path &root,
                                   const std::string &label,
                                   const std::string &status = "completed") {
   const auto dir = root / label;
-  write_text(dir / "job.manifest",
-             "job_id=" + label +
-                 "\n"
-                 "job_kind=representation_vicreg\n"
-                 "target_component=wikimyei.representation.encoding.vicreg\n"
-                 "wave_action=train\n"
-                 "source_range_policy=all\n"
-                 "protocol_contract_fingerprint=contract_1\n"
-                 "vicreg_assembly_fingerprint=vicreg_1\n");
+  write_text(
+      dir / "job.manifest",
+      "job_id=" + label +
+          "\n"
+          "job_kind=representation_vicreg\n"
+          "target_component_family_id=wikimyei.representation.encoding.vicreg\n"
+          "wave_action=train\n"
+          "source_range_policy=all\n"
+          "protocol_contract_fingerprint=contract_1\n"
+          "vicreg_assembly_fingerprint=vicreg_1\n");
   write_text(dir / "job.state", "status=" + status +
                                     "\n"
                                     "optimizer_steps=1\n"
@@ -1035,7 +1053,7 @@ std::string single_rep_target_dsl(std::int64_t max_waves) {
   return std::string(R"DSL(
 LATTICE_TARGET {
   TARGET_ID = vicreg_representation_ready;
-  TARGET_KIND = representation_ready;
+  TARGET_KIND = legacy_node_vicreg_ready;
   COMPONENT = wikimyei.representation.encoding.vicreg;
   SOURCE_RANGE = all;
   REQUIRE_CONTRACT_MATCH = true;
@@ -1120,7 +1138,7 @@ std::string acceptance_target_dsl() {
   return R"DSL(
 LATTICE_TARGET {
   TARGET_ID = vicreg_acceptance_smoke_ready;
-  TARGET_KIND = representation_ready;
+  TARGET_KIND = legacy_node_vicreg_ready;
   COMPONENT = wikimyei.representation.encoding.vicreg;
   SOURCE_RANGE = anchor_index;
   TRAIN_SPLIT = acceptance_smoke;
@@ -1137,8 +1155,8 @@ LATTICE_TARGET {
 };
 
 LATTICE_TARGET {
-  TARGET_ID = node_mdn_acceptance_smoke_ready;
-  TARGET_KIND = node_mdn_ready;
+  TARGET_ID = legacy_node_mdn_acceptance_smoke_ready;
+  TARGET_KIND = legacy_node_mdn_ready;
   COMPONENT = wikimyei.inference.expected_value.mdn;
   SOURCE_RANGE = anchor_index;
   TRAIN_SPLIT = acceptance_smoke;
@@ -1159,11 +1177,11 @@ LATTICE_TARGET {
 };
 
 LATTICE_TARGET {
-  TARGET_ID = node_mdn_acceptance_no_validation_leakage;
+  TARGET_ID = legacy_node_mdn_acceptance_no_validation_leakage;
   TARGET_CLASS = leakage_guard;
-  TARGET_KIND = node_mdn_ready;
+  TARGET_KIND = legacy_node_mdn_ready;
   COMPONENT = wikimyei.inference.expected_value.mdn;
-  CHECKPOINT_SOURCE = latest_satisfying:node_mdn_acceptance_smoke_ready;
+  CHECKPOINT_SOURCE = latest_satisfying:legacy_node_mdn_acceptance_smoke_ready;
   SOURCE_RANGE = all;
   REQUIRE_CONTRACT_MATCH = true;
   REQUIRE_COMPONENT_MATCH = true;
@@ -1202,14 +1220,15 @@ void run_acceptance_fixture_regression() {
   const auto good_vicreg = good_eval.evaluate("vicreg_acceptance_smoke_ready");
   check(good_vicreg.status == target::lattice_target_status_t::satisfied,
         "acceptance fixture VICReg target should be satisfied");
-  const auto good_mdn = good_eval.evaluate("node_mdn_acceptance_smoke_ready");
+  const auto good_mdn =
+      good_eval.evaluate("legacy_node_mdn_acceptance_smoke_ready");
   check(good_mdn.status == target::lattice_target_status_t::satisfied,
-        "acceptance fixture node MDN target should be satisfied");
+        "acceptance fixture legacy node MDN target should be satisfied");
   const auto good_no_validation_leakage =
-      good_eval.evaluate("node_mdn_acceptance_no_validation_leakage");
+      good_eval.evaluate("legacy_node_mdn_acceptance_no_validation_leakage");
   check(good_no_validation_leakage.status ==
             target::lattice_target_status_t::satisfied,
-        "acceptance fixture node MDN validation leakage guard should be "
+        "acceptance fixture legacy node MDN validation leakage guard should be "
         "satisfied");
 
   const auto good_scan =
@@ -1233,11 +1252,11 @@ void run_acceptance_fixture_regression() {
   check(broken_vicreg.status == target::lattice_target_status_t::satisfied,
         "broken fixture keeps upstream VICReg target satisfied");
   const auto broken_mdn =
-      broken_eval.evaluate("node_mdn_acceptance_smoke_ready");
+      broken_eval.evaluate("legacy_node_mdn_acceptance_smoke_ready");
   check(broken_mdn.status == target::lattice_target_status_t::exposure_failed,
         "broken lineage fixture should fail closed");
   const auto broken_no_validation_leakage =
-      broken_eval.evaluate("node_mdn_acceptance_no_validation_leakage");
+      broken_eval.evaluate("legacy_node_mdn_acceptance_no_validation_leakage");
   check(broken_no_validation_leakage.status ==
             target::lattice_target_status_t::blocked,
         "validation leakage guard should block when its CHECKPOINT_SOURCE "
@@ -1272,16 +1291,16 @@ void run_acceptance_fixture_regression() {
   target::lattice_target_evaluator_t wrong_mdn_eval(wrong_mdn_specs,
                                                     wrong_mdn_options);
   const auto wrong_mdn_train =
-      wrong_mdn_eval.evaluate("fixture_node_mdn_train_core_ready");
+      wrong_mdn_eval.evaluate("fixture_legacy_node_mdn_train_core_ready");
   check(wrong_mdn_train.status == target::lattice_target_status_t::satisfied,
         "wrong-MDN fixture should keep train-core MDN target satisfied");
   const auto wrong_mdn_guard =
-      wrong_mdn_eval.evaluate("fixture_node_mdn_no_validation_leakage");
+      wrong_mdn_eval.evaluate("fixture_legacy_node_mdn_no_validation_leakage");
   check(wrong_mdn_guard.status == target::lattice_target_status_t::satisfied,
         "wrong-MDN fixture should keep the no-validation-leakage guard "
         "satisfied");
   const auto wrong_mdn_validation =
-      wrong_mdn_eval.evaluate("fixture_node_mdn_validation_eval_ready");
+      wrong_mdn_eval.evaluate("fixture_legacy_node_mdn_validation_eval_ready");
   check(wrong_mdn_validation.status ==
             target::lattice_target_status_t::exposure_failed,
         "wrong-MDN validation fixture should fail validation evaluation");
@@ -1422,7 +1441,7 @@ LATTICE_WARN {
   WARNING_ID = high_channel_mdn_mean_nll;
   KIND = mdn_distribution_calibration;
   USE = target_supervision;
-  SCOPE = target_component;
+  SCOPE = target_component_family_id;
   EFFECT = mutated_component;
   METRIC = mean_nll;
   ABOVE = 0.30;
@@ -1965,14 +1984,14 @@ int main() {
       target::decode_lattice_targets_from_dsl(R"DSL(
 LATTICE_TARGET {
   TARGET_ID = rep_ready_a;
-  TARGET_KIND = representation_ready;
+  TARGET_KIND = legacy_node_vicreg_ready;
   COMPONENT = wikimyei.representation.encoding.vicreg;
   SOURCE_RANGE = all;
 };
 
 LATTICE_TARGET {
   TARGET_ID = rep_ready_b;
-  TARGET_KIND = representation_ready;
+  TARGET_KIND = legacy_node_vicreg_ready;
   COMPONENT = wikimyei.representation.encoding.vicreg;
   SOURCE_RANGE = all;
 };
@@ -1982,14 +2001,14 @@ LATTICE_TARGET {
   expect_decode_error(R"DSL(
 LATTICE_TARGET {
   TARGET_ID = duplicate_target_id;
-  TARGET_KIND = representation_ready;
+  TARGET_KIND = legacy_node_vicreg_ready;
   COMPONENT = wikimyei.representation.encoding.vicreg;
   SOURCE_RANGE = all;
 };
 
 LATTICE_TARGET {
   TARGET_ID = duplicate_target_id;
-  TARGET_KIND = node_mdn_ready;
+  TARGET_KIND = legacy_node_mdn_ready;
   COMPONENT = wikimyei.inference.expected_value.mdn;
   SOURCE_RANGE = all;
 };
@@ -1998,9 +2017,31 @@ LATTICE_TARGET {
                       "duplicate target identifiers should fail fast");
   expect_decode_error(R"DSL(
 LATTICE_TARGET {
+  TARGET_ID = removed_node_mdn_spelling;
+  TARGET_KIND = node_mdn_ready;
+  COMPONENT = wikimyei.inference.expected_value.mdn;
+  SOURCE_RANGE = all;
+};
+)DSL",
+                      "TARGET_KIND node_mdn_ready was removed",
+                      "removed node_mdn_ready spelling should fail instead of "
+                      "silently selecting legacy compatibility");
+  expect_decode_error(R"DSL(
+LATTICE_TARGET {
+  TARGET_ID = removed_representation_spelling;
+  TARGET_KIND = representation_ready;
+  COMPONENT = wikimyei.representation.encoding.vicreg;
+  SOURCE_RANGE = all;
+};
+)DSL",
+                      "TARGET_KIND representation_ready was removed",
+                      "removed representation_ready spelling should fail "
+                      "instead of silently selecting legacy compatibility");
+  expect_decode_error(R"DSL(
+LATTICE_TARGET {
   TARGET_ID = premature_performance_gate;
   TARGET_CLASS = validation_performance;
-  TARGET_KIND = node_mdn_ready;
+  TARGET_KIND = legacy_node_mdn_ready;
   COMPONENT = wikimyei.inference.expected_value.mdn;
   SOURCE_RANGE = anchor_index;
   ANCHOR_INDEX_BEGIN = 0;
@@ -2014,13 +2055,13 @@ LATTICE_TARGET {
   expect_decode_error(R"DSL(
 LATTICE_PROFILE {
   PROFILE_ID = duplicate_profile_id;
-  TARGET_KIND = representation_ready;
+  TARGET_KIND = legacy_node_vicreg_ready;
   SUBJECT_COMPONENT = wikimyei.representation.encoding.vicreg;
 };
 
 LATTICE_PROFILE {
   PROFILE_ID = duplicate_profile_id;
-  TARGET_KIND = node_mdn_ready;
+  TARGET_KIND = legacy_node_mdn_ready;
   SUBJECT_COMPONENT = wikimyei.inference.expected_value.mdn;
 };
 )DSL",
@@ -2056,7 +2097,7 @@ LATTICE_TARGET {
   expect_decode_error(R"DSL(
 LATTICE_TARGET {
   TARGET_ID = unknown_guard_target;
-  TARGET_KIND = representation_ready;
+  TARGET_KIND = legacy_node_vicreg_ready;
   COMPONENT = wikimyei.representation.encoding.vicreg;
   SOURCE_RANGE = anchor_index;
   OVER_SPLIT = train_core;
@@ -2069,7 +2110,7 @@ LATTICE_TARGET {
   expect_decode_error(R"DSL(
 LATTICE_TARGET {
   TARGET_ID = bad_missing_anchor_region;
-  TARGET_KIND = representation_ready;
+  TARGET_KIND = legacy_node_vicreg_ready;
   COMPONENT = wikimyei.representation.encoding.vicreg;
   SOURCE_RANGE = anchor_index;
 };
@@ -2081,7 +2122,7 @@ LATTICE_TARGET {
   expect_decode_error(R"DSL(
 LATTICE_TARGET {
   TARGET_ID = bad_anchor_region_order;
-  TARGET_KIND = representation_ready;
+  TARGET_KIND = legacy_node_vicreg_ready;
   COMPONENT = wikimyei.representation.encoding.vicreg;
   SOURCE_RANGE = anchor_index;
   ANCHOR_INDEX_BEGIN = 10;
@@ -2094,7 +2135,7 @@ LATTICE_TARGET {
   expect_decode_error(R"DSL(
 LATTICE_TARGET {
   TARGET_ID = bad_split_and_anchor_region;
-  TARGET_KIND = representation_ready;
+  TARGET_KIND = legacy_node_vicreg_ready;
   COMPONENT = wikimyei.representation.encoding.vicreg;
   SOURCE_RANGE = anchor_index;
   OVER_SPLIT = train_core;
@@ -2109,7 +2150,7 @@ LATTICE_TARGET {
   const auto ranged_specs = target::decode_lattice_targets_from_dsl(R"DSL(
 LATTICE_TARGET {
   TARGET_ID = ranged_representation_ready;
-  TARGET_KIND = representation_ready;
+  TARGET_KIND = legacy_node_vicreg_ready;
   COMPONENT = wikimyei.representation.encoding.vicreg;
   SOURCE_RANGE = anchor_index;
   ANCHOR_INDEX_BEGIN = 2;
@@ -2126,7 +2167,7 @@ LATTICE_TARGET {
       target::decode_lattice_targets_from_dsl(R"DSL(
 LATTICE_TARGET {
   TARGET_ID = ranged_warning_ready;
-  TARGET_KIND = node_mdn_ready;
+  TARGET_KIND = legacy_node_mdn_ready;
   COMPONENT = wikimyei.inference.expected_value.mdn;
   SOURCE_RANGE = anchor_index;
   ANCHOR_INDEX_BEGIN = 0;
@@ -2194,7 +2235,7 @@ LATTICE_GUARD {
 
 LATTICE_PROFILE {
   PROFILE_ID = vicreg_training_readiness;
-  TARGET_KIND = representation_ready;
+  TARGET_KIND = legacy_node_vicreg_ready;
   SUBJECT_COMPONENT = wikimyei.representation.encoding.vicreg;
   SOURCE_RANGE = anchor_index;
   REQUIRE_CHECKPOINT_EXISTS = true;
@@ -2217,7 +2258,7 @@ LATTICE_REQUIRES {
   KIND = exposure_coverage;
   USE = observed_input;
   SPLIT = train_core;
-  SCOPE = target_component;
+  SCOPE = target_component_family_id;
   EFFECT = mutated_component;
   COORDINATE = graph_anchor_coverage;
   MIN_COVERAGE = 0.95;
@@ -2252,22 +2293,22 @@ LATTICE_PLAN {
 
   const auto clause_specs = target::decode_lattice_targets_from_dsl(R"DSL(
 LATTICE_TARGET {
-  TARGET_ID = clause_node_mdn_ready;
-  TARGET_KIND = node_mdn_ready;
+  TARGET_ID = clause_legacy_node_mdn_ready;
+  TARGET_KIND = legacy_node_mdn_ready;
   SUBJECT_COMPONENT = wikimyei.inference.expected_value.mdn;
   SOURCE_RANGE = anchor_index;
   OVER_SPLIT = train_core;
 };
 
 LATTICE_DEPENDS {
-  TARGET_ID = clause_node_mdn_ready;
+  TARGET_ID = clause_legacy_node_mdn_ready;
   UPSTREAM_TARGET_ID = vicreg_train_core_ready;
   BINDING = loaded_representation_checkpoint;
   REQUIRE_EXACT_LOADED_CHECKPOINT = true;
 };
 
 LATTICE_REQUIRES {
-  TARGET_ID = clause_node_mdn_ready;
+  TARGET_ID = clause_legacy_node_mdn_ready;
   REQUIREMENT_ID = checkpoint_output;
   KIND = artifact;
   ARTIFACT = output_checkpoint;
@@ -2275,7 +2316,7 @@ LATTICE_REQUIRES {
 };
 
 LATTICE_REQUIRES {
-  TARGET_ID = clause_node_mdn_ready;
+  TARGET_ID = clause_legacy_node_mdn_ready;
   REQUIREMENT_ID = finite_nll;
   KIND = metric;
   METRIC = mean_nll;
@@ -2283,7 +2324,7 @@ LATTICE_REQUIRES {
 };
 
 LATTICE_REQUIRES {
-  TARGET_ID = clause_node_mdn_ready;
+  TARGET_ID = clause_legacy_node_mdn_ready;
   REQUIREMENT_ID = optimizer_effort;
   KIND = effort;
   COUNTER = optimizer_steps;
@@ -2292,7 +2333,7 @@ LATTICE_REQUIRES {
 };
 
 LATTICE_REQUIRES {
-  TARGET_ID = clause_node_mdn_ready;
+  TARGET_ID = clause_legacy_node_mdn_ready;
   REQUIREMENT_ID = target_density;
   KIND = valid_target_fraction;
   OP = ge;
@@ -2300,7 +2341,7 @@ LATTICE_REQUIRES {
 };
 
 LATTICE_REQUIRES {
-  TARGET_ID = clause_node_mdn_ready;
+  TARGET_ID = clause_legacy_node_mdn_ready;
   REQUIREMENT_ID = active_heads;
   KIND = node_head_count;
   HEAD = active;
@@ -2309,7 +2350,7 @@ LATTICE_REQUIRES {
 };
 
 LATTICE_REQUIRES {
-  TARGET_ID = clause_node_mdn_ready;
+  TARGET_ID = clause_legacy_node_mdn_ready;
   REQUIREMENT_ID = trained_heads;
   KIND = node_head_count;
   HEAD = trained;
@@ -2318,19 +2359,19 @@ LATTICE_REQUIRES {
 };
 
 LATTICE_REQUIRES {
-  TARGET_ID = clause_node_mdn_ready;
+  TARGET_ID = clause_legacy_node_mdn_ready;
   REQUIREMENT_ID = target_supervision_train_core_coverage;
   KIND = exposure_coverage;
   USE = target_supervision;
   SPLIT = train_core;
-  SCOPE = target_component;
+  SCOPE = target_component_family_id;
   EFFECT = mutated_component;
   COORDINATE = graph_anchor_coverage;
   CURSOR_EPOCHS = 0.8;
 };
 
 LATTICE_FORBIDS {
-  TARGET_ID = clause_node_mdn_ready;
+  TARGET_ID = clause_legacy_node_mdn_ready;
   FORBID_ID = no_validation_training_leakage;
   KIND = exposure_overlap;
   SPLIT = validation_holdout;
@@ -2341,11 +2382,11 @@ LATTICE_FORBIDS {
 };
 
 LATTICE_PLAN {
-  TARGET_ID = clause_node_mdn_ready;
+  TARGET_ID = clause_legacy_node_mdn_ready;
   WAVE_TARGET = wikimyei.inference.expected_value.mdn;
   WAVE_MODE = train|debug;
   WAVE_RANGE = split:train_core;
-  PLAN_INPUT_MDN_CHECKPOINT = latest_satisfying:clean_node_mdn_no_validation_leakage;
+  PLAN_INPUT_MDN_CHECKPOINT = latest_satisfying:clean_legacy_node_mdn_no_validation_leakage;
   PLAN_INPUT_REPRESENTATION_CHECKPOINT = latest_satisfying:vicreg_train_core_ready;
   PLAN_MAX_ATTEMPTS = 4;
 };
@@ -2373,44 +2414,45 @@ LATTICE_PLAN {
         "LATTICE_FORBIDS should lower forbidden uses");
   check(clause_spec.plan_mode == "train|debug" && clause_spec.max_waves == 4,
         "LATTICE_PLAN should lower wave mode and max attempts");
-  check(clause_spec.plan_input_mdn_checkpoint ==
-                "latest_satisfying:clean_node_mdn_no_validation_leakage" &&
-            clause_spec.plan_input_representation_checkpoint ==
-                "latest_satisfying:vicreg_train_core_ready",
-        "LATTICE_PLAN should lower model-state input recommendations");
+  check(
+      clause_spec.plan_input_mdn_checkpoint ==
+              "latest_satisfying:clean_legacy_node_mdn_no_validation_leakage" &&
+          clause_spec.plan_input_representation_checkpoint ==
+              "latest_satisfying:vicreg_train_core_ready",
+      "LATTICE_PLAN should lower model-state input recommendations");
 
   const auto compiled_clause_targets =
       target::decode_lattice_compiled_targets_from_dsl(R"DSL(
 LATTICE_TARGET {
-  TARGET_ID = compiled_node_mdn_ready;
+  TARGET_ID = compiled_legacy_node_mdn_ready;
   TARGET_CLASS = readiness;
-  TARGET_KIND = node_mdn_ready;
+  TARGET_KIND = legacy_node_mdn_ready;
   SUBJECT_COMPONENT = wikimyei.inference.expected_value.mdn;
   SOURCE_RANGE = anchor_index;
   OVER_SPLIT = train_core;
 };
 
 LATTICE_DEPENDS {
-  TARGET_ID = compiled_node_mdn_ready;
+  TARGET_ID = compiled_legacy_node_mdn_ready;
   UPSTREAM_TARGET_ID = vicreg_train_core_ready;
   BINDING = loaded_representation_checkpoint;
   REQUIRE_EXACT_LOADED_CHECKPOINT = true;
 };
 
 LATTICE_REQUIRES {
-  TARGET_ID = compiled_node_mdn_ready;
+  TARGET_ID = compiled_legacy_node_mdn_ready;
   REQUIREMENT_ID = target_supervision_train_core_coverage;
   KIND = exposure_coverage;
   USE = target_supervision;
   SPLIT = train_core;
-  SCOPE = target_component;
+  SCOPE = target_component_family_id;
   EFFECT = mutated_component;
   COORDINATE = graph_anchor_coverage;
   MIN_COVERAGE = 0.8;
 };
 
 LATTICE_PLAN {
-  TARGET_ID = compiled_node_mdn_ready;
+  TARGET_ID = compiled_legacy_node_mdn_ready;
   PLAN_ID = train_mdn_train_core;
   WAVE_TARGET = wikimyei.inference.expected_value.mdn;
   WAVE_MODE = train|debug;
@@ -2419,12 +2461,12 @@ LATTICE_PLAN {
 };
 
 LATTICE_WARN {
-  TARGET_ID = compiled_node_mdn_ready;
+  TARGET_ID = compiled_legacy_node_mdn_ready;
   WARNING_ID = high_target_supervision_load;
   KIND = exposure_load;
   USE = target_supervision;
   SPLIT = train_core;
-  SCOPE = target_component;
+  SCOPE = target_component_family_id;
   EFFECT = mutated_component;
   CURSOR_EPOCHS_ABOVE = 3.0;
 };
@@ -2432,7 +2474,8 @@ LATTICE_WARN {
   check(compiled_clause_targets.size() == 1,
         "compiled target decoder should return one target");
   const auto &compiled_clause = compiled_clause_targets.front();
-  check(compiled_clause.lowered_v0.target_id == "compiled_node_mdn_ready",
+  check(compiled_clause.lowered_v0.target_id ==
+            "compiled_legacy_node_mdn_ready",
         "compiled target should preserve lowered target");
   check(compiled_clause.lowered_v0.target_class == "readiness",
         "compiled target should preserve target class");
@@ -2464,32 +2507,32 @@ LATTICE_WARN {
   const auto compiled_clause_changed =
       target::decode_lattice_compiled_targets_from_dsl(R"DSL(
 LATTICE_TARGET {
-  TARGET_ID = compiled_node_mdn_ready;
-  TARGET_KIND = node_mdn_ready;
+  TARGET_ID = compiled_legacy_node_mdn_ready;
+  TARGET_KIND = legacy_node_mdn_ready;
   SUBJECT_COMPONENT = wikimyei.inference.expected_value.mdn;
   SOURCE_RANGE = anchor_index;
   OVER_SPLIT = train_core;
 };
 
 LATTICE_REQUIRES {
-  TARGET_ID = compiled_node_mdn_ready;
+  TARGET_ID = compiled_legacy_node_mdn_ready;
   REQUIREMENT_ID = target_supervision_train_core_coverage;
   KIND = exposure_coverage;
   USE = target_supervision;
   SPLIT = train_core;
-  SCOPE = target_component;
+  SCOPE = target_component_family_id;
   EFFECT = mutated_component;
   COORDINATE = graph_anchor_coverage;
   MIN_COVERAGE = 0.9;
 };
 
 LATTICE_WARN {
-  TARGET_ID = compiled_node_mdn_ready;
+  TARGET_ID = compiled_legacy_node_mdn_ready;
   WARNING_ID = high_target_supervision_load;
   KIND = exposure_load;
   USE = target_supervision;
   SPLIT = train_core;
-  SCOPE = target_component;
+  SCOPE = target_component_family_id;
   EFFECT = mutated_component;
   CURSOR_EPOCHS_ABOVE = 3.0;
 };
@@ -2501,7 +2544,7 @@ LATTICE_WARN {
       target::decode_lattice_compiled_targets_from_dsl(R"DSL(
 LATTICE_TARGET {
   TARGET_ID = runtime_model_state_input_ready;
-  TARGET_KIND = node_mdn_ready;
+  TARGET_KIND = legacy_node_mdn_ready;
   SUBJECT_COMPONENT = wikimyei.inference.expected_value.mdn;
   SOURCE_RANGE = anchor_index;
   OVER_SPLIT = validation_holdout;
@@ -2518,7 +2561,7 @@ LATTICE_PLAN {
       target::decode_lattice_compiled_targets_from_dsl(R"DSL(
 LATTICE_TARGET {
   TARGET_ID = runtime_model_state_input_ready;
-  TARGET_KIND = node_mdn_ready;
+  TARGET_KIND = legacy_node_mdn_ready;
   SUBJECT_COMPONENT = wikimyei.inference.expected_value.mdn;
   SOURCE_RANGE = anchor_index;
   OVER_SPLIT = validation_holdout;
@@ -2550,7 +2593,7 @@ LATTICE_PLAN {
       target::decode_lattice_compiled_targets_from_dsl(R"DSL(
 LATTICE_TARGET {
   TARGET_ID = advisory_plan_ready;
-  TARGET_KIND = representation_ready;
+  TARGET_KIND = legacy_node_vicreg_ready;
   SUBJECT_COMPONENT = wikimyei.representation.encoding.vicreg;
   SOURCE_RANGE = anchor_index;
   OVER_SPLIT = train_core;
@@ -2562,7 +2605,7 @@ LATTICE_TARGET {
       target::decode_lattice_compiled_targets_from_dsl(R"DSL(
 LATTICE_TARGET {
   TARGET_ID = advisory_plan_ready;
-  TARGET_KIND = representation_ready;
+  TARGET_KIND = legacy_node_vicreg_ready;
   SUBJECT_COMPONENT = wikimyei.representation.encoding.vicreg;
   SOURCE_RANGE = anchor_index;
   OVER_SPLIT = train_core;
@@ -2587,7 +2630,7 @@ LATTICE_PLAN {
       target::decode_lattice_compiled_targets_from_dsl(R"DSL(
 LATTICE_TARGET {
   TARGET_ID = warning_policy_ready;
-  TARGET_KIND = representation_ready;
+  TARGET_KIND = legacy_node_vicreg_ready;
   SUBJECT_COMPONENT = wikimyei.representation.encoding.vicreg;
   SOURCE_RANGE = anchor_index;
   OVER_SPLIT = train_core;
@@ -2599,7 +2642,7 @@ LATTICE_WARN {
   KIND = exposure_load;
   USE = observed_input;
   SPLIT = train_core;
-  SCOPE = target_component;
+  SCOPE = target_component_family_id;
   EFFECT = mutated_component;
   CURSOR_EPOCHS_ABOVE = 2.0;
 };
@@ -2608,7 +2651,7 @@ LATTICE_WARN {
       target::decode_lattice_compiled_targets_from_dsl(R"DSL(
 LATTICE_TARGET {
   TARGET_ID = warning_policy_ready;
-  TARGET_KIND = representation_ready;
+  TARGET_KIND = legacy_node_vicreg_ready;
   SUBJECT_COMPONENT = wikimyei.representation.encoding.vicreg;
   SOURCE_RANGE = anchor_index;
   OVER_SPLIT = train_core;
@@ -2620,7 +2663,7 @@ LATTICE_WARN {
   KIND = exposure_load;
   USE = observed_input;
   SPLIT = train_core;
-  SCOPE = target_component;
+  SCOPE = target_component_family_id;
   EFFECT = mutated_component;
   CURSOR_EPOCHS_ABOVE = 5.0;
 };
@@ -2629,7 +2672,7 @@ LATTICE_WARN {
       target::decode_lattice_compiled_targets_from_dsl(R"DSL(
 LATTICE_TARGET {
   TARGET_ID = warning_policy_ready;
-  TARGET_KIND = representation_ready;
+  TARGET_KIND = legacy_node_vicreg_ready;
   SUBJECT_COMPONENT = wikimyei.representation.encoding.vicreg;
   SOURCE_RANGE = anchor_index;
   OVER_SPLIT = train_core;
@@ -2683,17 +2726,17 @@ LATTICE_TARGET {
   check(compiled_warning_policy_a.front().target_spec_fingerprint ==
             compiled_warning_policy_b.front().target_spec_fingerprint,
         "non-blocking warning threshold changes should not alter target "
-        "identity");
+        "proof_context");
   check(
       compiled_warning_policy_a.front().target_spec_fingerprint ==
           compiled_warning_policy_c.front().target_spec_fingerprint,
       "adding or removing non-blocking warning clauses should not alter target "
-      "identity");
+      "proof_context");
 
   const auto mixed_alias_specs = target::decode_lattice_targets_from_dsl(R"DSL(
 LATTICE_TARGET {
   TARGET_ID = mixed_alias_representation_ready;
-  TARGET_KIND = representation_ready;
+  TARGET_KIND = legacy_node_vicreg_ready;
   COMPONENT = wikimyei.representation.encoding.vicreg;
   SUBJECT_COMPONENT = wikimyei.representation.encoding.vicreg;
   SOURCE_RANGE = all;
@@ -2708,7 +2751,7 @@ LATTICE_TARGET {
   expect_decode_error(R"DSL(
 LATTICE_TARGET {
   TARGET_ID = bad_fraction_mdn_ready;
-  TARGET_KIND = node_mdn_ready;
+  TARGET_KIND = legacy_node_mdn_ready;
   COMPONENT = wikimyei.inference.expected_value.mdn;
   SOURCE_RANGE = all;
   MIN_VALID_TARGET_FRACTION = 1.2;
@@ -2719,7 +2762,7 @@ LATTICE_TARGET {
   expect_decode_error(R"DSL(
 LATTICE_TARGET {
   TARGET_ID = bad_cursor_epoch_requirement;
-  TARGET_KIND = representation_ready;
+  TARGET_KIND = legacy_node_vicreg_ready;
   COMPONENT = wikimyei.representation.encoding.vicreg;
   SOURCE_RANGE = anchor_index;
   OVER_SPLIT = train_core;
@@ -2740,7 +2783,7 @@ LATTICE_REQUIRES {
   expect_decode_error(R"DSL(
 LATTICE_TARGET {
   TARGET_ID = bad_requires_kind;
-  TARGET_KIND = representation_ready;
+  TARGET_KIND = legacy_node_vicreg_ready;
   COMPONENT = wikimyei.representation.encoding.vicreg;
   SOURCE_RANGE = anchor_index;
   OVER_SPLIT = train_core;
@@ -2763,7 +2806,7 @@ LATTICE_GUARD {
 
 LATTICE_TARGET {
   TARGET_ID = bad_guard_kind_target;
-  TARGET_KIND = representation_ready;
+  TARGET_KIND = legacy_node_vicreg_ready;
   COMPONENT = wikimyei.representation.encoding.vicreg;
   SOURCE_RANGE = anchor_index;
   OVER_SPLIT = train_core;
@@ -2775,7 +2818,7 @@ LATTICE_TARGET {
   expect_decode_error(R"DSL(
 LATTICE_TARGET {
   TARGET_ID = bad_node_gini_warning;
-  TARGET_KIND = node_mdn_ready;
+  TARGET_KIND = legacy_node_mdn_ready;
   COMPONENT = wikimyei.inference.expected_value.mdn;
   SOURCE_RANGE = anchor_index;
   OVER_SPLIT = train_core;
@@ -2794,7 +2837,7 @@ LATTICE_WARN {
   expect_decode_error(R"DSL(
 LATTICE_TARGET {
   TARGET_ID = bad_node_entropy_warning;
-  TARGET_KIND = node_mdn_ready;
+  TARGET_KIND = legacy_node_mdn_ready;
   COMPONENT = wikimyei.inference.expected_value.mdn;
   SOURCE_RANGE = anchor_index;
   OVER_SPLIT = train_core;
@@ -2813,7 +2856,7 @@ LATTICE_WARN {
   expect_decode_error(R"DSL(
 LATTICE_TARGET {
   TARGET_ID = bad_node_count_warning;
-  TARGET_KIND = node_mdn_ready;
+  TARGET_KIND = legacy_node_mdn_ready;
   COMPONENT = wikimyei.inference.expected_value.mdn;
   SOURCE_RANGE = anchor_index;
   OVER_SPLIT = train_core;
@@ -2832,7 +2875,7 @@ LATTICE_WARN {
   expect_decode_error(R"DSL(
 LATTICE_TARGET {
   TARGET_ID = bad_node_fraction_warning;
-  TARGET_KIND = node_mdn_ready;
+  TARGET_KIND = legacy_node_mdn_ready;
   COMPONENT = wikimyei.inference.expected_value.mdn;
   SOURCE_RANGE = anchor_index;
   OVER_SPLIT = train_core;
@@ -2852,7 +2895,7 @@ LATTICE_WARN {
       R"DSL(
 LATTICE_TARGET {
   TARGET_ID = bad_node_wilson_warning;
-  TARGET_KIND = node_mdn_ready;
+  TARGET_KIND = legacy_node_mdn_ready;
   COMPONENT = wikimyei.inference.expected_value.mdn;
   SOURCE_RANGE = anchor_index;
   OVER_SPLIT = train_core;
@@ -2871,7 +2914,7 @@ LATTICE_WARN {
   expect_decode_error(R"DSL(
 LATTICE_TARGET {
   TARGET_ID = bad_representation_boolean_warning;
-  TARGET_KIND = representation_ready;
+  TARGET_KIND = legacy_node_vicreg_ready;
   COMPONENT = wikimyei.representation.encoding.vicreg;
   SOURCE_RANGE = anchor_index;
   OVER_SPLIT = train_core;
@@ -2890,7 +2933,7 @@ LATTICE_WARN {
   expect_decode_error(R"DSL(
 LATTICE_TARGET {
   TARGET_ID = bad_representation_count_warning;
-  TARGET_KIND = representation_ready;
+  TARGET_KIND = legacy_node_vicreg_ready;
   COMPONENT = wikimyei.representation.encoding.vicreg;
   SOURCE_RANGE = anchor_index;
   OVER_SPLIT = train_core;
@@ -2909,7 +2952,7 @@ LATTICE_WARN {
   expect_decode_error(R"DSL(
 LATTICE_TARGET {
   TARGET_ID = bad_representation_missing_threshold_warning;
-  TARGET_KIND = representation_ready;
+  TARGET_KIND = legacy_node_vicreg_ready;
   COMPONENT = wikimyei.representation.encoding.vicreg;
   SOURCE_RANGE = anchor_index;
   OVER_SPLIT = train_core;
@@ -2928,7 +2971,7 @@ LATTICE_WARN {
   expect_decode_error(R"DSL(
 LATTICE_TARGET {
   TARGET_ID = bad_representation_double_threshold_warning;
-  TARGET_KIND = representation_ready;
+  TARGET_KIND = legacy_node_vicreg_ready;
   COMPONENT = wikimyei.representation.encoding.vicreg;
   SOURCE_RANGE = anchor_index;
   OVER_SPLIT = train_core;
@@ -2949,7 +2992,7 @@ LATTICE_WARN {
   expect_decode_error(R"DSL(
 LATTICE_TARGET {
   TARGET_ID = bad_representation_unknown_metric_warning;
-  TARGET_KIND = representation_ready;
+  TARGET_KIND = legacy_node_vicreg_ready;
   COMPONENT = wikimyei.representation.encoding.vicreg;
   SOURCE_RANGE = anchor_index;
   OVER_SPLIT = train_core;
@@ -2969,7 +3012,7 @@ LATTICE_WARN {
       R"DSL(
 LATTICE_TARGET {
   TARGET_ID = bad_representation_condition_number_warning;
-  TARGET_KIND = representation_ready;
+  TARGET_KIND = legacy_node_vicreg_ready;
   COMPONENT = wikimyei.representation.encoding.vicreg;
   SOURCE_RANGE = anchor_index;
   OVER_SPLIT = train_core;
@@ -2988,7 +3031,7 @@ LATTICE_WARN {
   expect_decode_error(R"DSL(
 LATTICE_TARGET {
   TARGET_ID = bad_representation_condition_number_direction;
-  TARGET_KIND = representation_ready;
+  TARGET_KIND = legacy_node_vicreg_ready;
   COMPONENT = wikimyei.representation.encoding.vicreg;
   SOURCE_RANGE = anchor_index;
   OVER_SPLIT = train_core;
@@ -3007,7 +3050,7 @@ LATTICE_WARN {
   expect_decode_error(R"DSL(
 LATTICE_TARGET {
   TARGET_ID = bad_representation_effective_rank_direction;
-  TARGET_KIND = representation_ready;
+  TARGET_KIND = legacy_node_vicreg_ready;
   COMPONENT = wikimyei.representation.encoding.vicreg;
   SOURCE_RANGE = anchor_index;
   OVER_SPLIT = train_core;
@@ -3025,8 +3068,48 @@ LATTICE_WARN {
                       "inverted threshold direction");
   expect_decode_error(R"DSL(
 LATTICE_TARGET {
+  TARGET_ID = bad_representation_geometry_gate_direction;
+  TARGET_KIND = legacy_node_vicreg_ready;
+  COMPONENT = wikimyei.representation.encoding.vicreg;
+  SOURCE_RANGE = anchor_index;
+  OVER_SPLIT = train_core;
+};
+
+LATTICE_REQUIRES {
+  TARGET_ID = bad_representation_geometry_gate_direction;
+  KIND = representation_geometry;
+  METRIC = representation_effective_rank_fraction;
+  OP = le;
+  VALUE = 0.5;
+};
+)DSL",
+                      "representation_effective_rank_fraction uses OP=ge",
+                      "opt-in representation geometry gates should reject "
+                      "inverted low-bad metric directions");
+  expect_decode_error(R"DSL(
+LATTICE_TARGET {
+  TARGET_ID = bad_representation_geometry_condition_value;
+  TARGET_KIND = legacy_node_vicreg_ready;
+  COMPONENT = wikimyei.representation.encoding.vicreg;
+  SOURCE_RANGE = anchor_index;
+  OVER_SPLIT = train_core;
+};
+
+LATTICE_REQUIRES {
+  TARGET_ID = bad_representation_geometry_condition_value;
+  KIND = representation_geometry;
+  METRIC = representation_condition_number;
+  OP = le;
+  VALUE = 0.5;
+};
+)DSL",
+                      "VALUE must be a condition_number value >= 1",
+                      "opt-in representation geometry gates should unit-check "
+                      "condition-number thresholds");
+  expect_decode_error(R"DSL(
+LATTICE_TARGET {
   TARGET_ID = bad_anchor_fraction_warning;
-  TARGET_KIND = representation_ready;
+  TARGET_KIND = legacy_node_vicreg_ready;
   COMPONENT = wikimyei.representation.encoding.vicreg;
   SOURCE_RANGE = anchor_index;
   OVER_SPLIT = train_core;
@@ -3044,7 +3127,7 @@ LATTICE_WARN {
   expect_decode_error(R"DSL(
 LATTICE_TARGET {
   TARGET_ID = bad_anchor_warning_half_range;
-  TARGET_KIND = representation_ready;
+  TARGET_KIND = legacy_node_vicreg_ready;
   COMPONENT = wikimyei.representation.encoding.vicreg;
   SOURCE_RANGE = anchor_index;
   OVER_SPLIT = train_core;
@@ -3064,7 +3147,7 @@ LATTICE_WARN {
   expect_decode_error(R"DSL(
 LATTICE_TARGET {
   TARGET_ID = bad_node_warning_range_order;
-  TARGET_KIND = node_mdn_ready;
+  TARGET_KIND = legacy_node_mdn_ready;
   COMPONENT = wikimyei.inference.expected_value.mdn;
   SOURCE_RANGE = anchor_index;
   OVER_SPLIT = train_core;
@@ -3085,7 +3168,7 @@ LATTICE_WARN {
   expect_decode_error(R"DSL(
 LATTICE_TARGET {
   TARGET_ID = bad_anchor_failed_fetch_warning;
-  TARGET_KIND = representation_ready;
+  TARGET_KIND = legacy_node_vicreg_ready;
   COMPONENT = wikimyei.representation.encoding.vicreg;
   SOURCE_RANGE = anchor_index;
   OVER_SPLIT = train_core;
@@ -3103,7 +3186,7 @@ LATTICE_WARN {
   expect_decode_error(R"DSL(
 LATTICE_TARGET {
   TARGET_ID = bad_anchor_domain_empty_warning;
-  TARGET_KIND = representation_ready;
+  TARGET_KIND = legacy_node_vicreg_ready;
   COMPONENT = wikimyei.representation.encoding.vicreg;
   SOURCE_RANGE = anchor_index;
   OVER_SPLIT = train_core;
@@ -3121,7 +3204,7 @@ LATTICE_WARN {
   expect_decode_error(R"DSL(
 LATTICE_TARGET {
   TARGET_ID = bad_anchor_domain_double_warning;
-  TARGET_KIND = representation_ready;
+  TARGET_KIND = legacy_node_vicreg_ready;
   COMPONENT = wikimyei.representation.encoding.vicreg;
   SOURCE_RANGE = anchor_index;
   OVER_SPLIT = train_core;
@@ -3140,7 +3223,7 @@ LATTICE_WARN {
   expect_decode_error(R"DSL(
 LATTICE_TARGET {
   TARGET_ID = bad_forbids_kind;
-  TARGET_KIND = representation_ready;
+  TARGET_KIND = legacy_node_vicreg_ready;
   COMPONENT = wikimyei.representation.encoding.vicreg;
   SOURCE_RANGE = anchor_index;
   OVER_SPLIT = train_core;
@@ -3158,7 +3241,7 @@ LATTICE_FORBIDS {
   expect_decode_error(R"DSL(
 LATTICE_TARGET {
   TARGET_ID = bad_warning_kind;
-  TARGET_KIND = representation_ready;
+  TARGET_KIND = legacy_node_vicreg_ready;
   COMPONENT = wikimyei.representation.encoding.vicreg;
   SOURCE_RANGE = anchor_index;
   OVER_SPLIT = train_core;
@@ -3175,7 +3258,7 @@ LATTICE_WARN {
   expect_decode_error(R"DSL(
 LATTICE_TARGET {
   TARGET_ID = bad_mdn_calibration_fraction_warning;
-  TARGET_KIND = node_mdn_ready;
+  TARGET_KIND = legacy_node_mdn_ready;
   COMPONENT = wikimyei.inference.expected_value.mdn;
   SOURCE_RANGE = anchor_index;
   OVER_SPLIT = train_core;
@@ -3194,7 +3277,7 @@ LATTICE_WARN {
   expect_decode_error(R"DSL(
 LATTICE_TARGET {
   TARGET_ID = bad_mdn_calibration_direction_warning;
-  TARGET_KIND = node_mdn_ready;
+  TARGET_KIND = legacy_node_mdn_ready;
   COMPONENT = wikimyei.inference.expected_value.mdn;
   SOURCE_RANGE = anchor_index;
   OVER_SPLIT = train_core;
@@ -3213,7 +3296,7 @@ LATTICE_WARN {
   expect_decode_error(R"DSL(
 LATTICE_TARGET {
   TARGET_ID = bad_mdn_calibration_unknown_metric;
-  TARGET_KIND = node_mdn_ready;
+  TARGET_KIND = legacy_node_mdn_ready;
   COMPONENT = wikimyei.inference.expected_value.mdn;
   SOURCE_RANGE = anchor_index;
   OVER_SPLIT = train_core;
@@ -3231,7 +3314,7 @@ LATTICE_WARN {
   expect_decode_error(R"DSL(
 LATTICE_TARGET {
   TARGET_ID = bad_plan_wave_target;
-  TARGET_KIND = representation_ready;
+  TARGET_KIND = legacy_node_vicreg_ready;
   COMPONENT = wikimyei.representation.encoding.vicreg;
   SOURCE_RANGE = anchor_index;
   OVER_SPLIT = train_core;
@@ -3248,7 +3331,7 @@ LATTICE_PLAN {
   expect_decode_error(R"DSL(
 LATTICE_TARGET {
   TARGET_ID = bad_plan_wave_range;
-  TARGET_KIND = representation_ready;
+  TARGET_KIND = legacy_node_vicreg_ready;
   COMPONENT = wikimyei.representation.encoding.vicreg;
   SOURCE_RANGE = anchor_index;
   OVER_SPLIT = train_core;
@@ -3264,7 +3347,7 @@ LATTICE_PLAN {
   expect_decode_error(R"DSL(
 LATTICE_TARGET {
   TARGET_ID = bad_plan_attempt_budget;
-  TARGET_KIND = representation_ready;
+  TARGET_KIND = legacy_node_vicreg_ready;
   COMPONENT = wikimyei.representation.encoding.vicreg;
   SOURCE_RANGE = anchor_index;
   OVER_SPLIT = train_core;
@@ -3280,7 +3363,7 @@ LATTICE_PLAN {
   expect_decode_error(R"DSL(
 LATTICE_TARGET {
   TARGET_ID = known_plan_target;
-  TARGET_KIND = representation_ready;
+  TARGET_KIND = legacy_node_vicreg_ready;
   COMPONENT = wikimyei.representation.encoding.vicreg;
   SOURCE_RANGE = anchor_index;
   OVER_SPLIT = train_core;
@@ -3297,7 +3380,7 @@ LATTICE_PLAN {
   expect_decode_error(R"DSL(
 LATTICE_TARGET {
   TARGET_ID = bad_plan_input_conflict;
-  TARGET_KIND = node_mdn_ready;
+  TARGET_KIND = legacy_node_mdn_ready;
   COMPONENT = wikimyei.inference.expected_value.mdn;
   SOURCE_RANGE = anchor_index;
   OVER_SPLIT = train_core;
@@ -3315,7 +3398,7 @@ LATTICE_PLAN {
   expect_decode_error(R"DSL(
 LATTICE_TARGET {
   TARGET_ID = bad_representation_plan_input_conflict;
-  TARGET_KIND = node_mdn_ready;
+  TARGET_KIND = legacy_node_mdn_ready;
   COMPONENT = wikimyei.inference.expected_value.mdn;
   SOURCE_RANGE = anchor_index;
   OVER_SPLIT = train_core;
@@ -3334,7 +3417,7 @@ LATTICE_PLAN {
   expect_decode_error(R"DSL(
 LATTICE_TARGET {
   TARGET_ID = bad_plan_split_conflict;
-  TARGET_KIND = representation_ready;
+  TARGET_KIND = legacy_node_vicreg_ready;
   COMPONENT = wikimyei.representation.encoding.vicreg;
   SOURCE_RANGE = anchor_index;
   OVER_SPLIT = train_core;
@@ -3362,7 +3445,7 @@ LATTICE_PLAN {
   const auto split_backed_specs = target::decode_lattice_targets_from_dsl(R"DSL(
 LATTICE_TARGET {
   TARGET_ID = split_representation_ready;
-  TARGET_KIND = representation_ready;
+  TARGET_KIND = legacy_node_vicreg_ready;
   COMPONENT = wikimyei.representation.encoding.vicreg;
   SOURCE_RANGE = anchor_index;
   TRAIN_SPLIT = train_core;
@@ -3519,7 +3602,7 @@ LATTICE_TARGET {
       priority_vocabulary.begin(), priority_vocabulary.end(),
       [](const auto &entry) { return entry.priority_class == "artifact"; });
   check(priority_vocabulary.size() == 12 &&
-            priority_vocabulary.front().priority_class == "identity" &&
+            priority_vocabulary.front().priority_class == "proof_context" &&
             priority_vocabulary.front().priority == 10 &&
             certificate_priority_entry != priority_vocabulary.end() &&
             certificate_priority_entry->priority == 15 &&
@@ -3781,7 +3864,8 @@ LATTICE_TARGET {
       find_source_key_policy("order_preserving_map_check");
   const auto affine_policy =
       find_source_key_policy("affine_step_consistency_check");
-  check(source_key_policy_vocabulary.size() == 4 &&
+  const auto gap_policy = find_source_key_policy("gap_and_irregular_key_check");
+  check(source_key_policy_vocabulary.size() == 5 &&
             row_index_policy != source_key_policy_vocabulary.end() &&
             row_index_policy->coverage_authority &&
             row_index_policy->leakage_authority &&
@@ -3797,26 +3881,32 @@ LATTICE_TARGET {
                 order_preserving_policy->audit_fields.end() &&
             affine_policy != source_key_policy_vocabulary.end() &&
             std::find(affine_policy->audit_fields.begin(),
-                      affine_policy->audit_fields.end(),
-                      "affine_consistent") != affine_policy->audit_fields.end(),
+                      affine_policy->audit_fields.end(), "affine_consistent") !=
+                affine_policy->audit_fields.end() &&
+            gap_policy != source_key_policy_vocabulary.end() &&
+            std::find(gap_policy->audit_fields.begin(),
+                      gap_policy->audit_fields.end(),
+                      "source_key_gap_warning_count") !=
+                gap_policy->audit_fields.end(),
         "source-key coordinate policy vocabulary should keep row-index "
         "intervals authoritative and source-key maps audit-only");
   const auto source_key_policy_summary =
       exposure::lattice_source_key_coordinate_policy_summary();
   check(source_key_policy_summary.schema ==
                 "kikijyeba.lattice.source_key_coordinate_policy.summary.v1" &&
-            source_key_policy_summary.policy_count == 4 &&
+            source_key_policy_summary.policy_count == 5 &&
             source_key_policy_summary.coverage_authority_count == 1 &&
             source_key_policy_summary.leakage_authority_count == 1 &&
-            source_key_policy_summary.audit_only_count == 3 &&
+            source_key_policy_summary.audit_only_count == 4 &&
             source_key_policy_summary.row_index_coordinate_count == 1 &&
             source_key_policy_summary.source_key_coordinate_count == 1 &&
-            source_key_policy_summary.row_to_source_key_map_count == 2 &&
+            source_key_policy_summary.row_to_source_key_map_count == 3 &&
             source_key_policy_summary.empty_field_count == 0 &&
             source_key_policy_summary.row_index_authority_present &&
             source_key_policy_summary.source_key_window_audit_present &&
             source_key_policy_summary.order_preserving_map_check_present &&
             source_key_policy_summary.affine_step_consistency_check_present &&
+            source_key_policy_summary.gap_and_irregular_key_check_present &&
             source_key_policy_summary
                 .row_index_is_coverage_and_leakage_authority &&
             source_key_policy_summary.source_key_rows_are_audit_only &&
@@ -3824,6 +3914,7 @@ LATTICE_TARGET {
                 .audit_rows_have_no_coverage_or_leakage_authority &&
             source_key_policy_summary.order_preserving_fields_declared &&
             source_key_policy_summary.affine_fields_declared &&
+            source_key_policy_summary.gap_fields_declared &&
             source_key_policy_summary.all_policies_have_claim_text &&
             source_key_policy_summary.summary_self_check_passed &&
             source_key_policy_summary.summary_issue_count == 0 &&
@@ -4541,6 +4632,233 @@ LATTICE_TARGET {
         "DB cache policy vocabulary should keep runtime files authoritative, "
         "cache rows rebuildable, planning non-evidence, and Runtime Hero the "
         "only executor");
+  const auto retention_policy_vocabulary =
+      target::lattice_evidence_retention_policy_vocabulary();
+  const auto find_retention_policy = [&](const std::string &family) {
+    return std::find_if(
+        retention_policy_vocabulary.begin(), retention_policy_vocabulary.end(),
+        [&](const auto &entry) { return entry.artifact_family == family; });
+  };
+  const auto reports_policy = find_retention_policy("runtime_reports");
+  const auto sidecars_policy = find_retention_policy("lattice_sidecars");
+  const auto checkpoints_policy = find_retention_policy("checkpoint_files");
+  const auto receipts_policy = find_retention_policy("source_receipt_facts");
+  const auto selection_policy = find_retention_policy("selection_signal_facts");
+  const auto certificates_policy = find_retention_policy("proof_certificates");
+  const auto cache_rows_policy =
+      find_retention_policy("runtime_index_cache_rows");
+  const auto human_receipts_policy = find_retention_policy("human_receipts");
+  const auto archive_manifest_policy =
+      find_retention_policy("archive_manifest");
+  check(retention_policy_vocabulary.size() == 9 &&
+            std::all_of(retention_policy_vocabulary.begin(),
+                        retention_policy_vocabulary.end(),
+                        [](const auto &entry) {
+                          return !entry.runtime_executor &&
+                                 !entry.required_bindings.empty();
+                        }) &&
+            reports_policy != retention_policy_vocabulary.end() &&
+            reports_policy->source_of_truth &&
+            reports_policy->proof_replay_obligation.find("target status") !=
+                std::string::npos &&
+            sidecars_policy != retention_policy_vocabulary.end() &&
+            sidecars_policy->source_of_truth &&
+            sidecars_policy->proof_replay_obligation.find("exposure facts") !=
+                std::string::npos &&
+            checkpoints_policy != retention_policy_vocabulary.end() &&
+            checkpoints_policy->source_of_truth &&
+            checkpoints_policy->prune_policy.find("unresolved lineage") !=
+                std::string::npos &&
+            receipts_policy != retention_policy_vocabulary.end() &&
+            !receipts_policy->source_of_truth &&
+            !receipts_policy->compact_receipt_authority &&
+            selection_policy != retention_policy_vocabulary.end() &&
+            selection_policy->source_of_truth &&
+            certificates_policy != retention_policy_vocabulary.end() &&
+            !certificates_policy->source_of_truth &&
+            certificates_policy->prune_policy.find("cannot satisfy target") !=
+                std::string::npos &&
+            cache_rows_policy != retention_policy_vocabulary.end() &&
+            cache_rows_policy->cache_row &&
+            !cache_rows_policy->source_of_truth &&
+            human_receipts_policy != retention_policy_vocabulary.end() &&
+            human_receipts_policy->human_receipt &&
+            !human_receipts_policy->source_of_truth &&
+            archive_manifest_policy != retention_policy_vocabulary.end() &&
+            std::find(archive_manifest_policy->required_bindings.begin(),
+                      archive_manifest_policy->required_bindings.end(),
+                      "checkpoint_file_digest") !=
+                archive_manifest_policy->required_bindings.end(),
+        "evidence retention policy should classify replay material, audit "
+        "metadata, cache rows, human receipts, and archive manifests");
+  const auto retention_audit_scenarios =
+      target::lattice_evidence_retention_audit_scenario_vocabulary();
+  const auto find_retention_scenario = [&](const std::string &scenario) {
+    return std::find_if(
+        retention_audit_scenarios.begin(), retention_audit_scenarios.end(),
+        [&](const auto &entry) { return entry.scenario == scenario; });
+  };
+  const auto complete_archive =
+      find_retention_scenario("complete_archive_replay");
+  const auto missing_lineage =
+      find_retention_scenario("missing_lineage_after_pruning");
+  const auto stale_archive_cache =
+      find_retention_scenario("stale_cache_after_archive_movement");
+  const auto compact_receipt =
+      find_retention_scenario("compact_receipt_non_authority");
+  check(retention_audit_scenarios.size() == 4 &&
+            complete_archive != retention_audit_scenarios.end() &&
+            complete_archive->preserves_replay_authority &&
+            missing_lineage != retention_audit_scenarios.end() &&
+            missing_lineage->refuses_or_warns &&
+            stale_archive_cache != retention_audit_scenarios.end() &&
+            stale_archive_cache->cache_non_authority &&
+            compact_receipt != retention_audit_scenarios.end() &&
+            compact_receipt->compact_receipt_non_authority,
+        "evidence retention audit scenarios should cover archive replay, "
+        "missing lineage, stale cache, and compact receipt non-authority");
+  const auto retention_summary =
+      target::lattice_evidence_retention_policy_summary();
+  check(retention_summary.schema ==
+                "kikijyeba.lattice.evidence_retention_policy.summary.v1" &&
+            retention_summary.policy_count == 9 &&
+            retention_summary.source_of_truth_count == 4 &&
+            retention_summary.compact_receipt_authority_count == 0 &&
+            retention_summary.cache_row_count == 1 &&
+            retention_summary.human_receipt_count == 1 &&
+            retention_summary.runtime_executor_count == 0 &&
+            retention_summary.scenario_count == 4 &&
+            retention_summary.replay_preserving_scenario_count == 1 &&
+            retention_summary.refuse_or_warn_scenario_count == 3 &&
+            retention_summary.empty_binding_count == 0 &&
+            retention_summary.reports_preserved_for_replay &&
+            retention_summary.sidecars_preserved_for_replay &&
+            retention_summary.checkpoints_preserved_for_lineage &&
+            retention_summary.source_receipts_audit_only &&
+            retention_summary.selection_signals_preserved_for_leakage &&
+            retention_summary.proof_certificates_non_authority &&
+            retention_summary.cache_rows_rebuildable_non_authority &&
+            retention_summary.human_receipts_non_authority &&
+            retention_summary.archive_manifest_binds_identity &&
+            retention_summary.compact_receipts_non_authority &&
+            retention_summary.pruning_checks_unresolved_lineage &&
+            retention_summary.stale_cache_after_archive_non_authority &&
+            retention_summary.complete_archive_replay_scenario_present &&
+            retention_summary.summary_self_check_passed &&
+            retention_summary.summary_issue_count == 0,
+        "evidence retention policy summary should self-check replay authority "
+        "and non-authority receipts/cache rows before compaction");
+  const auto benchmark_budget_vocabulary =
+      target::lattice_benchmark_regression_budget_vocabulary();
+  const auto find_benchmark_budget = [&](const std::string &benchmark_id) {
+    return std::find_if(
+        benchmark_budget_vocabulary.begin(), benchmark_budget_vocabulary.end(),
+        [&](const auto &entry) { return entry.benchmark_id == benchmark_id; });
+  };
+  const auto library_header_budget =
+      find_benchmark_budget("library_header_only_index_query");
+  const auto library_watched_budget =
+      find_benchmark_budget("library_watched_manifest_index_query");
+  const auto library_full_metadata_budget =
+      find_benchmark_budget("library_full_metadata_index_status");
+  const auto library_live_scan_budget =
+      find_benchmark_budget("library_live_scan_index_build");
+  const auto mcp_header_budget =
+      find_benchmark_budget("long_lived_mcp_header_only_index_query");
+  const auto mcp_batch_budget =
+      find_benchmark_budget("long_lived_mcp_evaluate_targets_batch");
+  const auto direct_header_budget =
+      find_benchmark_budget("direct_cli_header_only_index_query");
+  const auto direct_parity_budget =
+      find_benchmark_budget("direct_cli_live_parity_index_query");
+  const auto direct_batch_budget =
+      find_benchmark_budget("direct_cli_evaluate_targets_batch");
+  check(
+      benchmark_budget_vocabulary.size() == 9 &&
+          std::all_of(benchmark_budget_vocabulary.begin(),
+                      benchmark_budget_vocabulary.end(),
+                      [](const auto &entry) {
+                        return !entry.cache_target_authority &&
+                               entry.regression_smoke_required &&
+                               entry.baseline_receipt_required &&
+                               !entry.measured_surface.empty() &&
+                               !entry.required_measurement.empty() &&
+                               !entry.regression_guard.empty();
+                      }) &&
+          library_header_budget != benchmark_budget_vocabulary.end() &&
+          library_header_budget->proof_mode == "header_only" &&
+          !library_header_budget->full_live_scan_allowed &&
+          !library_header_budget->metadata_digest_allowed &&
+          library_header_budget->regression_guard.find(
+              "selected_answer_parity.checked=false") != std::string::npos &&
+          library_watched_budget != benchmark_budget_vocabulary.end() &&
+          library_watched_budget->proof_mode == "watched_file_manifest" &&
+          !library_watched_budget->full_live_scan_allowed &&
+          library_full_metadata_budget != benchmark_budget_vocabulary.end() &&
+          library_full_metadata_budget->proof_mode ==
+              "full_runtime_metadata_digest" &&
+          library_full_metadata_budget->metadata_digest_allowed &&
+          library_live_scan_budget != benchmark_budget_vocabulary.end() &&
+          library_live_scan_budget->proof_mode == "live_scan" &&
+          library_live_scan_budget->full_live_scan_allowed &&
+          mcp_header_budget != benchmark_budget_vocabulary.end() &&
+          mcp_header_budget->timing_layer == "long_lived_mcp" &&
+          mcp_header_budget->session_reuse_required &&
+          !mcp_header_budget->full_live_scan_allowed &&
+          mcp_batch_budget != benchmark_budget_vocabulary.end() &&
+          mcp_batch_budget->session_reuse_required &&
+          direct_header_budget != benchmark_budget_vocabulary.end() &&
+          direct_header_budget->process_startup_included &&
+          direct_header_budget->regression_guard.find(
+              "cache_used_for_target_satisfaction=false") !=
+              std::string::npos &&
+          direct_parity_budget != benchmark_budget_vocabulary.end() &&
+          direct_parity_budget->proof_mode == "live_parity" &&
+          direct_parity_budget->full_live_scan_allowed &&
+          direct_parity_budget->regression_guard.find(
+              "selected_answer_parity.checked=true") != std::string::npos &&
+          direct_batch_budget != benchmark_budget_vocabulary.end() &&
+          direct_batch_budget->process_startup_included &&
+          direct_batch_budget->regression_guard.find(
+              "target satisfaction never uses cache rows") != std::string::npos,
+      "benchmark regression budget should name finite library, long-lived MCP, "
+      "and direct CLI timing rows without granting cache target authority");
+  const auto benchmark_budget_summary =
+      target::lattice_benchmark_regression_budget_summary();
+  check(benchmark_budget_summary.schema ==
+                "kikijyeba.lattice.benchmark_regression_budget.summary.v1" &&
+            benchmark_budget_summary.budget_count == 9 &&
+            benchmark_budget_summary.library_layer_count == 4 &&
+            benchmark_budget_summary.long_lived_mcp_layer_count == 2 &&
+            benchmark_budget_summary.direct_cli_layer_count == 3 &&
+            benchmark_budget_summary.header_only_mode_count == 3 &&
+            benchmark_budget_summary.watched_manifest_mode_count == 1 &&
+            benchmark_budget_summary.full_metadata_mode_count == 1 &&
+            benchmark_budget_summary.live_scan_mode_count == 3 &&
+            benchmark_budget_summary.live_parity_mode_count == 1 &&
+            benchmark_budget_summary.full_live_scan_allowed_count == 4 &&
+            benchmark_budget_summary.metadata_digest_allowed_count == 5 &&
+            benchmark_budget_summary.cache_target_authority_count == 0 &&
+            benchmark_budget_summary.process_startup_included_count == 3 &&
+            benchmark_budget_summary.session_reuse_required_count == 2 &&
+            benchmark_budget_summary.regression_smoke_required_count == 9 &&
+            benchmark_budget_summary.baseline_receipt_required_count == 9 &&
+            benchmark_budget_summary.empty_field_count == 0 &&
+            benchmark_budget_summary.all_required_layers_present &&
+            benchmark_budget_summary.all_required_proof_modes_present &&
+            benchmark_budget_summary.header_only_fast_paths_forbid_live_scan &&
+            benchmark_budget_summary.proof_modes_separate_from_fast_path &&
+            benchmark_budget_summary.long_lived_mcp_session_reuse_present &&
+            benchmark_budget_summary.direct_cli_startup_separated &&
+            benchmark_budget_summary.regression_smoke_declared &&
+            benchmark_budget_summary.baseline_receipt_required_for_all_rows &&
+            benchmark_budget_summary.no_cache_target_satisfaction_authority &&
+            benchmark_budget_summary.all_rows_have_measurement_and_guard &&
+            benchmark_budget_summary.summary_self_check_passed &&
+            benchmark_budget_summary.summary_issue_count == 0,
+        "benchmark regression budget summary should self-check timing layers, "
+        "proof modes, header-only fast guards, receipts, and cache "
+        "non-authority");
   const auto evidence_abstraction_vocabulary =
       target::lattice_evidence_abstraction_vocabulary();
   const auto find_abstraction = [&](const std::string &abstraction) {
@@ -4590,7 +4908,7 @@ LATTICE_TARGET {
         product_state_vocabulary.begin(), product_state_vocabulary.end(),
         [&](const auto &entry) { return entry.factor == factor; });
   };
-  const auto identity_factor = find_product_state_factor("identity");
+  const auto identity_factor = find_product_state_factor("proof_context");
   const auto coverage_factor = find_product_state_factor("coverage_lattice");
   const auto load_factor = find_product_state_factor("exposure_load_monoid");
   const auto leakage_factor = find_product_state_factor("leakage_predicate");
@@ -4986,6 +5304,27 @@ LATTICE_TARGET {
               representation_geometry_summary.metric_names.end(),
       "representation geometry summary should self-check V1 non-blocking "
       "VICReg health and embedding-geometry visibility");
+  const auto empty_geometry_gate_review =
+      target::summarize_representation_geometry_gate_review({});
+  check(empty_geometry_gate_review.schema ==
+                "kikijyeba.lattice.representation_geometry_gate_review."
+                "summary.v1" &&
+            empty_geometry_gate_review.metric_count == 18 &&
+            empty_geometry_gate_review.geometry_metric_count == 7 &&
+            empty_geometry_gate_review.future_hard_gate_candidate_count == 11 &&
+            empty_geometry_gate_review.observed_run_count == 0 &&
+            empty_geometry_gate_review.proposed_threshold_count == 0 &&
+            empty_geometry_gate_review.promoted_hard_gate_count == 0 &&
+            empty_geometry_gate_review.opt_in_target_syntax_required &&
+            empty_geometry_gate_review.missing_geometry_fails_closed_for_gate &&
+            !empty_geometry_gate_review.hard_gate_default_enabled &&
+            empty_geometry_gate_review.thresholds_justified_by_observed_data &&
+            empty_geometry_gate_review.default_readiness_unchanged &&
+            empty_geometry_gate_review.no_performance_gate_authority &&
+            empty_geometry_gate_review.summary_self_check_passed &&
+            empty_geometry_gate_review.summary_issue_count == 0,
+        "representation geometry gate review should keep hard gates opt-in "
+        "and decline default threshold promotion without observed history");
   const auto performance_uncertainty_vocabulary =
       target::lattice_performance_uncertainty_policy_vocabulary();
   const auto find_performance_uncertainty_policy =
@@ -5386,7 +5725,7 @@ LATTICE_TARGET {
       "LATTICE_WARN.mdn_distribution_calibration.mean_nll", "ABOVE");
   const auto mdn_fraction_dimension = find_numeric_dimension(
       "LATTICE_WARN.mdn_distribution_calibration.fraction_metrics", "ABOVE");
-  check(numeric_dimension_vocabulary.size() == 26 &&
+  check(numeric_dimension_vocabulary.size() == 30 &&
             coverage_dimension != numeric_dimension_vocabulary.end() &&
             coverage_dimension->unit == "coverage_fraction" &&
             coverage_dimension->has_minimum &&
@@ -5417,19 +5756,19 @@ LATTICE_TARGET {
   check(
       numeric_dimension_summary.schema ==
               "kikijyeba.lattice.target_numeric_dimension.summary.v1" &&
-          numeric_dimension_summary.dimension_count == 26 &&
+          numeric_dimension_summary.dimension_count == 30 &&
           numeric_dimension_summary.unit_count == 8 &&
           numeric_dimension_summary.numeric_kind_count == 4 &&
-          numeric_dimension_summary.closed_unit_interval_count == 12 &&
-          numeric_dimension_summary.non_negative_integer_count == 8 &&
-          numeric_dimension_summary.non_negative_real_count == 5 &&
-          numeric_dimension_summary.real_at_least_one_count == 1 &&
-          numeric_dimension_summary.integral_count == 8 &&
-          numeric_dimension_summary.bounded_unit_interval_count == 12 &&
+          numeric_dimension_summary.closed_unit_interval_count == 13 &&
+          numeric_dimension_summary.non_negative_integer_count == 9 &&
+          numeric_dimension_summary.non_negative_real_count == 6 &&
+          numeric_dimension_summary.real_at_least_one_count == 2 &&
+          numeric_dimension_summary.integral_count == 9 &&
+          numeric_dimension_summary.bounded_unit_interval_count == 13 &&
           numeric_dimension_summary.minimum_direction_count == 10 &&
           numeric_dimension_summary.above_direction_count == 8 &&
           numeric_dimension_summary.below_direction_count == 4 &&
-          numeric_dimension_summary.metric_declared_direction_count == 3 &&
+          numeric_dimension_summary.metric_declared_direction_count == 7 &&
           numeric_dimension_summary.planning_budget_direction_count == 1 &&
           numeric_dimension_summary.empty_field_count == 0 &&
           numeric_dimension_summary.malformed_bound_count == 0 &&
@@ -5502,7 +5841,7 @@ LATTICE_TARGET {
         proof_obligation_vocabulary.begin(), proof_obligation_vocabulary.end(),
         [&](const auto &entry) { return entry.obligation == obligation; });
   };
-  const auto identity_obligation = find_obligation("identity");
+  const auto identity_obligation = find_obligation("proof_context");
   const auto leakage_obligation = find_obligation("leakage");
   const auto node_support_obligation = find_obligation("node_support");
   const auto deficits_obligation = find_obligation("deficits");
@@ -5511,7 +5850,7 @@ LATTICE_TARGET {
   check(proof_obligation_vocabulary.size() == 10 &&
             identity_obligation != proof_obligation_vocabulary.end() &&
             identity_obligation->certificate_field ==
-                "proof_certificate.identity" &&
+                "proof_certificate.proof_context" &&
             identity_obligation->required_for_target_satisfaction &&
             identity_obligation->planner_relevant &&
             leakage_obligation != proof_obligation_vocabulary.end() &&
@@ -5552,7 +5891,7 @@ LATTICE_TARGET {
   const auto digest_self_policy = find_digest_policy("certificate_digest");
   const auto target_split_digest_policy =
       find_digest_policy("target_and_split_identity");
-  const auto identity_digest_policy = find_digest_policy("identity_proof");
+  const auto identity_digest_policy = find_digest_policy("proof_context");
   const auto dependency_digest_policy = find_digest_policy("dependency_proofs");
   const auto coverage_digest_policy = find_digest_policy("coverage_proofs");
   const auto closure_digest_policy = find_digest_policy("closure_causal_graph");
@@ -5965,9 +6304,8 @@ LATTICE_TARGET {
   const auto read_only_gate =
       find_operational_gate("read_only_authority_boundary");
   const auto identity_gate = find_operational_gate("active_identity_binding");
-  const auto vicreg_gate =
-      find_operational_gate("legacy_node_vicreg_train_core_ready");
-  const auto mdn_gate = find_operational_gate("node_mdn_train_core_ready");
+  const auto vicreg_gate = find_operational_gate("vicreg_train_core_ready");
+  const auto mdn_gate = find_operational_gate("channel_mdn_train_core_ready");
   const auto validation_leakage_gate =
       find_operational_gate("train_core_no_validation_leakage");
   const auto test_leakage_gate =
@@ -6025,7 +6363,7 @@ LATTICE_TARGET {
           identity_gate != operational_gate_vocabulary.end() &&
           std::find(identity_gate->target_ids.begin(),
                     identity_gate->target_ids.end(),
-                    "node_mdn_validation_eval_ready") !=
+                    "channel_mdn_validation_eval_ready") !=
               identity_gate->target_ids.end() &&
           identity_gate->v1_boundary.find("checkpoint paths") !=
               std::string::npos &&
@@ -6628,7 +6966,7 @@ LATTICE_TARGET {
   auto symbolic_plan_specs = target::decode_lattice_targets_from_dsl(R"DSL(
 LATTICE_TARGET {
   TARGET_ID = malformed_plan_input_source;
-  TARGET_KIND = node_mdn_ready;
+  TARGET_KIND = legacy_node_mdn_ready;
   COMPONENT = wikimyei.inference.expected_value.mdn;
   SOURCE_RANGE = all;
   REQUIRE_CHECKPOINT_EXISTS = true;
@@ -6638,7 +6976,7 @@ LATTICE_TARGET {
 
 LATTICE_TARGET {
   TARGET_ID = symbolic_plan_input_receiver;
-  TARGET_KIND = node_mdn_ready;
+  TARGET_KIND = legacy_node_mdn_ready;
   COMPONENT = wikimyei.inference.expected_value.mdn;
   SOURCE_RANGE = all;
   PLAN_MODE = run|debug;
@@ -6711,18 +7049,19 @@ LATTICE_TARGET {
         "non-claiming proof envelope: " +
             join_strings(missing_rep.proof_certificate_check.issues, "; "));
 
-  const auto blocked_mdn = empty_eval.evaluate("node_mdn_ready");
+  const auto blocked_mdn = empty_eval.evaluate("legacy_node_mdn_ready");
   check(blocked_mdn.status == target::lattice_target_status_t::blocked,
-        "node MDN should block on missing representation target");
+        "legacy node MDN should block on missing representation target");
   check(blocked_mdn.suggested_wave.target ==
             "wikimyei.representation.encoding.vicreg",
-        "blocked node MDN should reuse upstream wave plan");
-  check(!blocked_mdn.deficits.empty() &&
-            blocked_mdn.deficits.front().key == "dependency:upstream_target" &&
-            blocked_mdn.deficits.front().kind == "dependency" &&
-            blocked_mdn.deficits.front().priority == 30 &&
-            blocked_mdn.deficits.front().priority_class == "dependency",
-        "blocked node MDN should include an upstream dependency deficit");
+        "blocked legacy node MDN should reuse upstream wave plan");
+  check(
+      !blocked_mdn.deficits.empty() &&
+          blocked_mdn.deficits.front().key == "dependency:upstream_target" &&
+          blocked_mdn.deficits.front().kind == "dependency" &&
+          blocked_mdn.deficits.front().priority == 30 &&
+          blocked_mdn.deficits.front().priority_class == "dependency",
+      "blocked legacy node MDN should include an upstream dependency deficit");
   check(blocked_mdn.plan_basis.available &&
             !blocked_mdn.plan_basis.deficit_keys.empty() &&
             blocked_mdn.plan_basis.deficit_keys.front() ==
@@ -6735,9 +7074,11 @@ LATTICE_TARGET {
             blocked_mdn.plan_basis.primary_deficit_priority == 30 &&
             blocked_mdn.plan_basis.primary_deficit_priority_class ==
                 "dependency",
-        "blocked node MDN plan basis points at the upstream proof deficit");
+        "blocked legacy node MDN plan basis points at the upstream proof "
+        "deficit");
   expect_plan_basis_projects_deficits(
-      blocked_mdn, "blocked node MDN plan basis should project proof deficits");
+      blocked_mdn,
+      "blocked legacy node MDN plan basis should project proof deficits");
   check(blocked_mdn.proof_certificate_check.passed &&
             blocked_mdn.proof_certificate_check.issues.empty(),
         "blocked dependency certificate should self-check as a non-claiming "
@@ -6747,7 +7088,7 @@ LATTICE_TARGET {
       R"DSL(
 LATTICE_TARGET {
   TARGET_ID = cyclic_dependency_a;
-  TARGET_KIND = representation_ready;
+  TARGET_KIND = legacy_node_vicreg_ready;
   COMPONENT = wikimyei.representation.encoding.vicreg;
   SOURCE_RANGE = all;
   REQUIRE_CONTRACT_MATCH = true;
@@ -6758,7 +7099,7 @@ LATTICE_TARGET {
 
 LATTICE_TARGET {
   TARGET_ID = cyclic_dependency_b;
-  TARGET_KIND = representation_ready;
+  TARGET_KIND = legacy_node_vicreg_ready;
   COMPONENT = wikimyei.representation.encoding.vicreg;
   SOURCE_RANGE = all;
   REQUIRE_CONTRACT_MATCH = true;
@@ -6803,7 +7144,7 @@ LATTICE_DEPENDS {
       target::decode_lattice_targets_from_dsl(R"DSL(
 LATTICE_TARGET {
   TARGET_ID = missing_upstream_consumer;
-  TARGET_KIND = representation_ready;
+  TARGET_KIND = legacy_node_vicreg_ready;
   COMPONENT = wikimyei.representation.encoding.vicreg;
   SOURCE_RANGE = all;
   UPSTREAM_TARGET_ID = absent_upstream_target;
@@ -6817,7 +7158,7 @@ LATTICE_TARGET {
 
 LATTICE_TARGET {
   TARGET_ID = missing_checkpoint_source_consumer;
-  TARGET_KIND = representation_ready;
+  TARGET_KIND = legacy_node_vicreg_ready;
   COMPONENT = wikimyei.representation.encoding.vicreg;
   CHECKPOINT_SOURCE = latest_satisfying:absent_checkpoint_source_target;
   SOURCE_RANGE = all;
@@ -6831,7 +7172,7 @@ LATTICE_TARGET {
 
 LATTICE_TARGET {
   TARGET_ID = missing_evaluated_source_consumer;
-  TARGET_KIND = node_mdn_ready;
+  TARGET_KIND = legacy_node_mdn_ready;
   COMPONENT = wikimyei.inference.expected_value.mdn;
   EVALUATED_CHECKPOINT_SOURCE = latest_satisfying:absent_evaluated_source_target;
   SOURCE_RANGE = all;
@@ -6930,18 +7271,18 @@ LATTICE_TARGET {
   check(rep_ready.status == target::lattice_target_status_t::satisfied,
         "representation should be satisfied");
 
-  const auto mdn_missing = rep_eval.evaluate("node_mdn_ready");
+  const auto mdn_missing = rep_eval.evaluate("legacy_node_mdn_ready");
   check(mdn_missing.status == target::lattice_target_status_t::missing_report,
-        "node MDN should be missing_report before an MDN job exists");
+        "legacy node MDN should be missing_report before an MDN job exists");
   check(mdn_missing.suggested_wave.target ==
             "wikimyei.inference.expected_value.mdn",
-        "node MDN should plan MDN wave once representation is ready");
+        "legacy node MDN should plan MDN wave once representation is ready");
 
-  write_mdn_job(root, root / "mdn.pt", root / "rep.pt");
+  write_legacy_node_mdn_job(root, root / "mdn.pt", root / "rep.pt");
   target::lattice_target_evaluator_t full_eval(specs, options);
-  const auto mdn_ready = full_eval.evaluate("node_mdn_ready");
+  const auto mdn_ready = full_eval.evaluate("legacy_node_mdn_ready");
   check(mdn_ready.status == target::lattice_target_status_t::satisfied,
-        "node MDN should be satisfied, got " +
+        "legacy node MDN should be satisfied, got " +
             std::string(target::lattice_target_status_name(mdn_ready.status)) +
             " certificate_issues=" +
             join_strings(mdn_ready.proof_certificate_check.issues, "; "));
@@ -6957,7 +7298,7 @@ LATTICE_TARGET {
   target::lattice_target_evaluator_t malformed_upstream_eval(
       malformed_upstream_specs, options);
   const auto mdn_blocked_by_malformed_upstream =
-      malformed_upstream_eval.evaluate("node_mdn_ready");
+      malformed_upstream_eval.evaluate("legacy_node_mdn_ready");
   check(
       mdn_blocked_by_malformed_upstream.status ==
               target::lattice_target_status_t::blocked &&
@@ -6975,47 +7316,51 @@ LATTICE_TARGET {
   no_identity_options.runtime_root = root;
   target::lattice_target_evaluator_t no_identity_eval(specs,
                                                       no_identity_options);
-  const auto blocked_missing_identity =
+  const auto blocked_missing_proof_context =
       no_identity_eval.evaluate("vicreg_representation_ready");
-  check(blocked_missing_identity.status ==
+  check(blocked_missing_proof_context.status ==
             target::lattice_target_status_t::blocked,
         "required active identity should block when not provided");
-  check(std::any_of(blocked_missing_identity.deficits.begin(),
-                    blocked_missing_identity.deficits.end(),
-                    [](const auto &deficit) {
-                      return deficit.key == "identity:contract_fingerprint" &&
-                             deficit.kind == "identity" &&
-                             deficit.status == "missing" &&
-                             deficit.priority == 10 &&
-                             deficit.priority_class == "identity";
-                    }),
-        "missing active contract identity should expose an identity deficit");
+  check(
+      std::any_of(blocked_missing_proof_context.deficits.begin(),
+                  blocked_missing_proof_context.deficits.end(),
+                  [](const auto &deficit) {
+                    return deficit.key ==
+                               "proof_context:contract_fingerprint" &&
+                           deficit.kind == "proof_context" &&
+                           deficit.status == "missing" &&
+                           deficit.priority == 10 &&
+                           deficit.priority_class == "proof_context";
+                  }),
+      "missing active contract identity should expose a proof-context deficit");
   expect_plan_basis_projects_deficits(
-      blocked_missing_identity,
+      blocked_missing_proof_context,
       "missing active contract identity should project proof deficits");
 
-  auto no_component_identity_options = options;
-  no_component_identity_options.active_identity.vicreg_assembly_fingerprint
+  auto no_component_fingerprint_options = options;
+  no_component_fingerprint_options.active_identity.vicreg_assembly_fingerprint
       .clear();
-  target::lattice_target_evaluator_t no_component_identity_eval(
-      specs, no_component_identity_options);
-  const auto blocked_missing_component_identity =
-      no_component_identity_eval.evaluate("vicreg_representation_ready");
-  check(std::any_of(blocked_missing_component_identity.deficits.begin(),
-                    blocked_missing_component_identity.deficits.end(),
-                    [](const auto &deficit) {
-                      return deficit.key ==
-                                 "identity:component_assembly_fingerprint" &&
-                             deficit.kind == "identity" &&
-                             deficit.status == "missing";
-                    }),
-        "missing active component identity should expose an identity deficit");
+  target::lattice_target_evaluator_t no_component_fingerprint_eval(
+      specs, no_component_fingerprint_options);
+  const auto blocked_missing_component_fingerprint =
+      no_component_fingerprint_eval.evaluate("vicreg_representation_ready");
+  check(
+      std::any_of(blocked_missing_component_fingerprint.deficits.begin(),
+                  blocked_missing_component_fingerprint.deficits.end(),
+                  [](const auto &deficit) {
+                    return deficit.key ==
+                               "proof_context:component_assembly_fingerprint" &&
+                           deficit.kind == "proof_context" &&
+                           deficit.status == "missing";
+                  }),
+      "missing active component fingerprint should expose a proof-context "
+      "deficit");
 
   const auto graph_anchor_identity_specs =
       target::decode_lattice_targets_from_dsl(R"DSL(
 LATTICE_TARGET {
   TARGET_ID = graph_anchor_identity_required;
-  TARGET_KIND = representation_ready;
+  TARGET_KIND = legacy_node_vicreg_ready;
   COMPONENT = wikimyei.representation.encoding.vicreg;
   SOURCE_RANGE = anchor_index;
   ANCHOR_INDEX_BEGIN = 0;
@@ -7032,17 +7377,17 @@ LATTICE_TARGET {
   no_graph_identity_options.active_identity.graph_order_fingerprint.clear();
   target::lattice_target_evaluator_t no_graph_identity_eval(
       graph_anchor_identity_specs, no_graph_identity_options);
-  const auto blocked_missing_graph_identity =
+  const auto blocked_missing_graph_proof_context =
       no_graph_identity_eval.evaluate("graph_anchor_identity_required");
-  check(std::any_of(blocked_missing_graph_identity.deficits.begin(),
-                    blocked_missing_graph_identity.deficits.end(),
+  check(std::any_of(blocked_missing_graph_proof_context.deficits.begin(),
+                    blocked_missing_graph_proof_context.deficits.end(),
                     [](const auto &deficit) {
                       return deficit.key ==
-                                 "identity:graph_order_fingerprint" &&
-                             deficit.kind == "identity" &&
+                                 "proof_context:graph_order_fingerprint" &&
+                             deficit.kind == "proof_context" &&
                              deficit.status == "missing";
                     }),
-        "missing active graph-order identity should expose an identity "
+        "missing active graph-order identity should expose a proof-context "
         "deficit");
 
   auto no_source_cursor_options = options;
@@ -7054,112 +7399,118 @@ LATTICE_TARGET {
   check(std::any_of(blocked_missing_source_cursor.deficits.begin(),
                     blocked_missing_source_cursor.deficits.end(),
                     [](const auto &deficit) {
-                      return deficit.key == "identity:source_cursor_token" &&
-                             deficit.kind == "identity" &&
+                      return deficit.key ==
+                                 "proof_context:source_cursor_token" &&
+                             deficit.kind == "proof_context" &&
                              deficit.status == "missing";
                     }),
-        "missing active source-cursor identity should expose an identity "
+        "missing active source-cursor identity should expose a proof-context "
         "deficit");
 
   const auto stale_graph_root = make_tmp_dir("stale_graph_runtime_identity");
   const auto stale_graph_dir = stale_graph_root / "stale_graph_representation";
-  write_text(stale_graph_dir / "job.manifest",
-             "job_id=stale_graph_representation\n"
-             "job_kind=representation_vicreg\n"
-             "target_component=wikimyei.representation.encoding.vicreg\n"
-             "wave_action=train\n"
-             "source_range_policy=anchor_index\n"
-             "resolved_anchor_index_begin=0\n"
-             "resolved_anchor_index_end=10\n"
-             "protocol_contract_fingerprint=contract_1\n"
-             "graph_order_fingerprint=old_graph\n"
-             "source_cursor_token=cursor_ranged\n"
-             "vicreg_assembly_fingerprint=vicreg_1\n");
+  write_text(
+      stale_graph_dir / "job.manifest",
+      "job_id=stale_graph_representation\n"
+      "job_kind=representation_vicreg\n"
+      "target_component_family_id=wikimyei.representation.encoding.vicreg\n"
+      "wave_action=train\n"
+      "source_range_policy=anchor_index\n"
+      "resolved_anchor_index_begin=0\n"
+      "resolved_anchor_index_end=10\n"
+      "protocol_contract_fingerprint=contract_1\n"
+      "graph_order_fingerprint=old_graph\n"
+      "source_cursor_token=cursor_ranged\n"
+      "vicreg_assembly_fingerprint=vicreg_1\n");
   write_text(stale_graph_dir / "job.state", "status=completed\n");
   auto stale_graph_options = options;
   stale_graph_options.runtime_root = stale_graph_root;
   target::lattice_target_evaluator_t stale_graph_eval(
       graph_anchor_identity_specs, stale_graph_options);
-  const auto stale_graph_identity =
+  const auto stale_graph_proof_context =
       stale_graph_eval.evaluate("graph_anchor_identity_required");
-  check(stale_graph_identity.status ==
+  check(stale_graph_proof_context.status ==
             target::lattice_target_status_t::stale_contract,
         "stale graph-order runtime evidence should be stale");
-  check(std::any_of(stale_graph_identity.deficits.begin(),
-                    stale_graph_identity.deficits.end(),
+  check(std::any_of(stale_graph_proof_context.deficits.begin(),
+                    stale_graph_proof_context.deficits.end(),
                     [](const auto &deficit) {
                       return deficit.key ==
-                                 "identity:graph_order_fingerprint" &&
-                             deficit.kind == "identity" &&
+                                 "proof_context:graph_order_fingerprint" &&
+                             deficit.kind == "proof_context" &&
                              deficit.status == "mismatch" &&
                              deficit.priority == 10 &&
-                             deficit.priority_class == "identity";
+                             deficit.priority_class == "proof_context";
                     }),
-        "stale graph-order runtime evidence should expose an identity deficit");
+        "stale graph-order runtime evidence should expose a proof-context "
+        "deficit");
   expect_plan_basis_projects_deficits(
-      stale_graph_identity,
+      stale_graph_proof_context,
       "stale graph-order runtime evidence should project proof deficits");
   std::filesystem::remove_all(stale_graph_root);
 
   const auto stale_cursor_root = make_tmp_dir("stale_cursor_runtime_identity");
   const auto stale_cursor_dir =
       stale_cursor_root / "stale_cursor_representation";
-  write_text(stale_cursor_dir / "job.manifest",
-             "job_id=stale_cursor_representation\n"
-             "job_kind=representation_vicreg\n"
-             "target_component=wikimyei.representation.encoding.vicreg\n"
-             "wave_action=train\n"
-             "source_range_policy=anchor_index\n"
-             "resolved_anchor_index_begin=0\n"
-             "resolved_anchor_index_end=10\n"
-             "protocol_contract_fingerprint=contract_1\n"
-             "graph_order_fingerprint=graph_1\n"
-             "source_cursor_token=old_cursor\n"
-             "vicreg_assembly_fingerprint=vicreg_1\n");
+  write_text(
+      stale_cursor_dir / "job.manifest",
+      "job_id=stale_cursor_representation\n"
+      "job_kind=representation_vicreg\n"
+      "target_component_family_id=wikimyei.representation.encoding.vicreg\n"
+      "wave_action=train\n"
+      "source_range_policy=anchor_index\n"
+      "resolved_anchor_index_begin=0\n"
+      "resolved_anchor_index_end=10\n"
+      "protocol_contract_fingerprint=contract_1\n"
+      "graph_order_fingerprint=graph_1\n"
+      "source_cursor_token=old_cursor\n"
+      "vicreg_assembly_fingerprint=vicreg_1\n");
   write_text(stale_cursor_dir / "job.state", "status=completed\n");
   auto stale_cursor_options = options;
   stale_cursor_options.runtime_root = stale_cursor_root;
   target::lattice_target_evaluator_t stale_cursor_eval(
       graph_anchor_identity_specs, stale_cursor_options);
-  const auto stale_cursor_identity =
+  const auto stale_cursor_proof_context =
       stale_cursor_eval.evaluate("graph_anchor_identity_required");
-  check(stale_cursor_identity.status ==
+  check(stale_cursor_proof_context.status ==
             target::lattice_target_status_t::stale_contract,
         "stale source-cursor runtime evidence should be stale");
-  check(std::any_of(stale_cursor_identity.deficits.begin(),
-                    stale_cursor_identity.deficits.end(),
+  check(std::any_of(stale_cursor_proof_context.deficits.begin(),
+                    stale_cursor_proof_context.deficits.end(),
                     [](const auto &deficit) {
-                      return deficit.key == "identity:source_cursor_token" &&
-                             deficit.kind == "identity" &&
+                      return deficit.key ==
+                                 "proof_context:source_cursor_token" &&
+                             deficit.kind == "proof_context" &&
                              deficit.status == "mismatch" &&
                              deficit.priority == 10 &&
-                             deficit.priority_class == "identity";
+                             deficit.priority_class == "proof_context";
                     }),
         "stale source-cursor runtime evidence should expose an identity "
         "deficit");
   expect_plan_basis_projects_deficits(
-      stale_cursor_identity,
+      stale_cursor_proof_context,
       "stale source-cursor runtime evidence should project proof deficits");
   std::filesystem::remove_all(stale_cursor_root);
 
   const auto no_rep_root = make_tmp_dir("no_rep");
   write_representation_job(no_rep_root, no_rep_root / "rep.pt");
-  write_mdn_without_representation_checkpoint(no_rep_root,
-                                              no_rep_root / "mdn.pt");
+  write_legacy_node_mdn_without_representation_checkpoint(
+      no_rep_root, no_rep_root / "mdn.pt");
   target::lattice_target_evaluator_options_t no_rep_options = options;
   no_rep_options.runtime_root = no_rep_root;
   target::lattice_target_evaluator_t no_rep_eval(specs, no_rep_options);
-  const auto no_rep_mdn = no_rep_eval.evaluate("node_mdn_ready");
+  const auto no_rep_mdn = no_rep_eval.evaluate("legacy_node_mdn_ready");
   check(no_rep_mdn.status ==
             target::lattice_target_status_t::missing_checkpoint,
-        "node MDN readiness should require a loaded representation checkpoint");
+        "legacy node MDN readiness should require a loaded representation "
+        "checkpoint");
   check(std::any_of(no_rep_mdn.deficits.begin(), no_rep_mdn.deficits.end(),
                     [](const auto &deficit) {
                       return deficit.key ==
                                  "model_state:representation_checkpoint" &&
                              deficit.status == "missing";
                     }),
-        "node MDN missing representation checkpoint should expose a "
+        "legacy node MDN missing representation checkpoint should expose a "
         "model-state deficit");
   std::filesystem::remove_all(no_rep_root);
 
@@ -7242,14 +7593,15 @@ LATTICE_TARGET {
 
   const auto stale_budget_root = make_tmp_dir("stale_budget");
   const auto stale_dir = stale_budget_root / "stale_representation";
-  write_text(stale_dir / "job.manifest",
-             "job_id=stale_representation\n"
-             "job_kind=representation_vicreg\n"
-             "target_component=wikimyei.representation.encoding.vicreg\n"
-             "wave_action=train\n"
-             "source_range_policy=all\n"
-             "protocol_contract_fingerprint=contract_old\n"
-             "vicreg_assembly_fingerprint=vicreg_1\n");
+  write_text(
+      stale_dir / "job.manifest",
+      "job_id=stale_representation\n"
+      "job_kind=representation_vicreg\n"
+      "target_component_family_id=wikimyei.representation.encoding.vicreg\n"
+      "wave_action=train\n"
+      "source_range_policy=all\n"
+      "protocol_contract_fingerprint=contract_old\n"
+      "vicreg_assembly_fingerprint=vicreg_1\n");
   write_text(stale_dir / "job.state", "status=completed\n"
                                       "optimizer_steps=1\n"
                                       "last_loss=0.20\n"
@@ -7269,20 +7621,21 @@ LATTICE_TARGET {
   check(std::any_of(stale_budget_result.deficits.begin(),
                     stale_budget_result.deficits.end(),
                     [](const auto &deficit) {
-                      return deficit.key == "identity:contract_fingerprint" &&
-                             deficit.kind == "identity" &&
+                      return deficit.key ==
+                                 "proof_context:contract_fingerprint" &&
+                             deficit.kind == "proof_context" &&
                              deficit.status == "mismatch" &&
                              deficit.priority == 10 &&
-                             deficit.priority_class == "identity";
+                             deficit.priority_class == "proof_context";
                     }),
-        "stale contract evidence should expose an identity deficit");
+        "stale contract evidence should expose a proof-context deficit");
   check(stale_budget_result.plan_basis.available &&
             stale_budget_result.plan_basis.primary_deficit_key ==
-                "identity:contract_fingerprint" &&
+                "proof_context:contract_fingerprint" &&
             stale_budget_result.plan_basis.primary_deficit_priority == 10 &&
             stale_budget_result.plan_basis.primary_deficit_priority_class ==
-                "identity",
-        "stale contract plan basis should point at the identity deficit");
+                "proof_context",
+        "stale contract plan basis should point at the proof-context deficit");
   expect_plan_basis_projects_deficits(
       stale_budget_result,
       "stale contract evidence should project deficits into plan_basis");
@@ -7294,14 +7647,15 @@ LATTICE_TARGET {
   const auto stale_component_root = make_tmp_dir("stale_component");
   const auto stale_component_dir =
       stale_component_root / "stale_component_representation";
-  write_text(stale_component_dir / "job.manifest",
-             "job_id=stale_component_representation\n"
-             "job_kind=representation_vicreg\n"
-             "target_component=wikimyei.representation.encoding.vicreg\n"
-             "wave_action=train\n"
-             "source_range_policy=all\n"
-             "protocol_contract_fingerprint=contract_1\n"
-             "vicreg_assembly_fingerprint=old_vicreg\n");
+  write_text(
+      stale_component_dir / "job.manifest",
+      "job_id=stale_component_representation\n"
+      "job_kind=representation_vicreg\n"
+      "target_component_family_id=wikimyei.representation.encoding.vicreg\n"
+      "wave_action=train\n"
+      "source_range_policy=all\n"
+      "protocol_contract_fingerprint=contract_1\n"
+      "vicreg_assembly_fingerprint=old_vicreg\n");
   write_text(stale_component_dir / "job.state", "status=completed\n"
                                                 "optimizer_steps=1\n"
                                                 "last_loss=0.20\n"
@@ -7319,17 +7673,17 @@ LATTICE_TARGET {
   check(stale_component_result.status ==
             target::lattice_target_status_t::stale_component,
         "stale component attempts should be reported as stale");
-  check(std::any_of(stale_component_result.deficits.begin(),
-                    stale_component_result.deficits.end(),
-                    [](const auto &deficit) {
-                      return deficit.key ==
-                                 "identity:component_assembly_fingerprint" &&
-                             deficit.kind == "identity" &&
-                             deficit.status == "mismatch" &&
-                             deficit.priority == 10 &&
-                             deficit.priority_class == "identity";
-                    }),
-        "stale component evidence should expose an identity deficit");
+  check(std::any_of(
+            stale_component_result.deficits.begin(),
+            stale_component_result.deficits.end(),
+            [](const auto &deficit) {
+              return deficit.key ==
+                         "proof_context:component_assembly_fingerprint" &&
+                     deficit.kind == "proof_context" &&
+                     deficit.status == "mismatch" && deficit.priority == 10 &&
+                     deficit.priority_class == "proof_context";
+            }),
+        "stale component evidence should expose a proof-context deficit");
   expect_plan_basis_projects_deficits(
       stale_component_result,
       "stale component evidence should project deficits into plan_basis");
@@ -7337,14 +7691,15 @@ LATTICE_TARGET {
 
   const auto missing_report_root = make_tmp_dir("missing_component_report");
   const auto missing_report_dir = missing_report_root / "rep_missing_report";
-  write_text(missing_report_dir / "job.manifest",
-             "job_id=rep_missing_report\n"
-             "job_kind=representation_vicreg\n"
-             "target_component=wikimyei.representation.encoding.vicreg\n"
-             "wave_action=train\n"
-             "source_range_policy=all\n"
-             "protocol_contract_fingerprint=contract_1\n"
-             "vicreg_assembly_fingerprint=vicreg_1\n");
+  write_text(
+      missing_report_dir / "job.manifest",
+      "job_id=rep_missing_report\n"
+      "job_kind=representation_vicreg\n"
+      "target_component_family_id=wikimyei.representation.encoding.vicreg\n"
+      "wave_action=train\n"
+      "source_range_policy=all\n"
+      "protocol_contract_fingerprint=contract_1\n"
+      "vicreg_assembly_fingerprint=vicreg_1\n");
   write_text(missing_report_dir / "job.state",
              "status=completed\n"
              "optimizer_steps=2\n"
@@ -7379,14 +7734,15 @@ LATTICE_TARGET {
 
   const auto missing_state_root = make_tmp_dir("missing_state");
   const auto missing_state_dir = missing_state_root / "rep_missing_state";
-  write_text(missing_state_dir / "job.manifest",
-             "job_id=rep_missing_state\n"
-             "job_kind=representation_vicreg\n"
-             "target_component=wikimyei.representation.encoding.vicreg\n"
-             "wave_action=train\n"
-             "source_range_policy=all\n"
-             "protocol_contract_fingerprint=contract_1\n"
-             "vicreg_assembly_fingerprint=vicreg_1\n");
+  write_text(
+      missing_state_dir / "job.manifest",
+      "job_id=rep_missing_state\n"
+      "job_kind=representation_vicreg\n"
+      "target_component_family_id=wikimyei.representation.encoding.vicreg\n"
+      "wave_action=train\n"
+      "source_range_policy=all\n"
+      "protocol_contract_fingerprint=contract_1\n"
+      "vicreg_assembly_fingerprint=vicreg_1\n");
   write_text(missing_state_dir / "representation.report",
              "optimizer_steps=2\n"
              "mean_loss=0.20\n"
@@ -7420,16 +7776,17 @@ LATTICE_TARGET {
   const auto low_optimizer_root = make_tmp_dir("low_optimizer_metric");
   const auto low_optimizer_dir = low_optimizer_root / "rep_low_optimizer";
   const auto low_optimizer_checkpoint = low_optimizer_root / "rep_low.pt";
-  write_text(low_optimizer_dir / "job.manifest",
-             "job_id=rep_low_optimizer\n"
-             "job_kind=representation_vicreg\n"
-             "target_component=wikimyei.representation.encoding.vicreg\n"
-             "wave_action=train\n"
-             "source_range_policy=all\n"
-             "protocol_contract_fingerprint=contract_1\n"
-             "graph_order_fingerprint=graph_1\n"
-             "source_cursor_token=cursor_ranged\n"
-             "vicreg_assembly_fingerprint=vicreg_1\n");
+  write_text(
+      low_optimizer_dir / "job.manifest",
+      "job_id=rep_low_optimizer\n"
+      "job_kind=representation_vicreg\n"
+      "target_component_family_id=wikimyei.representation.encoding.vicreg\n"
+      "wave_action=train\n"
+      "source_range_policy=all\n"
+      "protocol_contract_fingerprint=contract_1\n"
+      "graph_order_fingerprint=graph_1\n"
+      "source_cursor_token=cursor_ranged\n"
+      "vicreg_assembly_fingerprint=vicreg_1\n");
   write_text(low_optimizer_dir / "job.state",
              std::string("status=completed\n"
                          "optimizer_steps=1\n"
@@ -7480,13 +7837,14 @@ LATTICE_TARGET {
 
   const auto relative_root = make_tmp_dir("relative");
   const auto relative_job_dir = relative_root / "rep_relative";
-  write_text(relative_job_dir / "job.manifest",
-             "job_id=rep_relative\n"
-             "job_kind=representation_vicreg\n"
-             "target_component=wikimyei.representation.encoding.vicreg\n"
-             "source_range_policy=all\n"
-             "protocol_contract_fingerprint=contract_1\n"
-             "vicreg_assembly_fingerprint=vicreg_1\n");
+  write_text(
+      relative_job_dir / "job.manifest",
+      "job_id=rep_relative\n"
+      "job_kind=representation_vicreg\n"
+      "target_component_family_id=wikimyei.representation.encoding.vicreg\n"
+      "source_range_policy=all\n"
+      "protocol_contract_fingerprint=contract_1\n"
+      "vicreg_assembly_fingerprint=vicreg_1\n");
   write_text(relative_job_dir / "job.state",
              "status=completed\n"
              "optimizer_steps=2\n"
@@ -7514,7 +7872,7 @@ LATTICE_TARGET {
   const auto coverage_specs = target::decode_lattice_targets_from_dsl(R"DSL(
 LATTICE_TARGET {
   TARGET_ID = ranged_representation_ready;
-  TARGET_KIND = representation_ready;
+  TARGET_KIND = legacy_node_vicreg_ready;
   COMPONENT = wikimyei.representation.encoding.vicreg;
   SOURCE_RANGE = anchor_index;
   ANCHOR_INDEX_BEGIN = 0;
@@ -7562,10 +7920,10 @@ LATTICE_TARGET {
             exposure_ready.exposure_summaries.front().load_algebra ==
                 exposure::k_load_algebra,
         "target exposure summary carries algebra names for coverage and load");
-  check(exposure_ready.proof_certificate.identity.contract_match &&
-            exposure_ready.proof_certificate.identity.component_match &&
-            exposure_ready.proof_certificate.identity.graph_order_match &&
-            exposure_ready.proof_certificate.identity.source_cursor_match,
+  check(exposure_ready.proof_certificate.proof_context.contract_match &&
+            exposure_ready.proof_certificate.proof_context.component_match &&
+            exposure_ready.proof_certificate.proof_context.graph_order_match &&
+            exposure_ready.proof_certificate.proof_context.source_cursor_match,
         "proof certificate records active identity matches");
   check(!exposure_ready.proof_certificate.target_spec_fingerprint.empty() &&
             exposure_ready.proof_certificate.target_spec_fingerprint ==
@@ -8017,7 +8375,7 @@ LATTICE_TARGET {
   tampered_load_filter_certificate.coverage.front()
       .load_summary.component_scope = "all_components";
   tampered_load_filter_certificate.coverage.front()
-      .load_summary.target_component.clear();
+      .load_summary.target_component_family_id.clear();
   check(!target::verify_lattice_target_proof_certificate(
              tampered_load_filter_certificate)
              .passed,
@@ -8026,7 +8384,7 @@ LATTICE_TARGET {
   tampered_load_filter_certificate = exposure_ready.proof_certificate;
   tampered_load_filter_certificate.certificate_digest.clear();
   tampered_load_filter_certificate.coverage.front()
-      .load_summary.target_component.clear();
+      .load_summary.target_component_family_id.clear();
   check(!target::verify_lattice_target_proof_certificate(
              tampered_load_filter_certificate)
              .passed,
@@ -8093,8 +8451,9 @@ LATTICE_TARGET {
         "estimates without trials");
   auto tampered_identity_certificate = exposure_ready.proof_certificate;
   tampered_identity_certificate.certificate_digest.clear();
-  tampered_identity_certificate.identity.source_cursor_match = true;
-  tampered_identity_certificate.identity.evidence_source_cursor_token = "wrong";
+  tampered_identity_certificate.proof_context.source_cursor_match = true;
+  tampered_identity_certificate.proof_context.evidence_source_cursor_token =
+      "wrong";
   check(!target::verify_lattice_target_proof_certificate(
              tampered_identity_certificate)
              .passed,
@@ -8102,9 +8461,11 @@ LATTICE_TARGET {
         "booleans");
   tampered_identity_certificate = exposure_ready.proof_certificate;
   tampered_identity_certificate.certificate_digest.clear();
-  tampered_identity_certificate.identity.active_contract_fingerprint.clear();
-  tampered_identity_certificate.identity.evidence_contract_fingerprint.clear();
-  tampered_identity_certificate.identity.contract_match = true;
+  tampered_identity_certificate.proof_context.active_contract_fingerprint
+      .clear();
+  tampered_identity_certificate.proof_context.evidence_contract_fingerprint
+      .clear();
+  tampered_identity_certificate.proof_context.contract_match = true;
   check(!target::verify_lattice_target_proof_certificate(
              tampered_identity_certificate)
              .passed,
@@ -8112,9 +8473,11 @@ LATTICE_TARGET {
         "identity matches");
   tampered_identity_certificate = exposure_ready.proof_certificate;
   tampered_identity_certificate.certificate_digest.clear();
-  tampered_identity_certificate.identity.expected_component_fingerprint.clear();
-  tampered_identity_certificate.identity.evidence_component_fingerprint.clear();
-  tampered_identity_certificate.identity.component_match = true;
+  tampered_identity_certificate.proof_context.expected_component_fingerprint
+      .clear();
+  tampered_identity_certificate.proof_context.evidence_component_fingerprint
+      .clear();
+  tampered_identity_certificate.proof_context.component_match = true;
   check(!target::verify_lattice_target_proof_certificate(
              tampered_identity_certificate)
              .passed,
@@ -8122,10 +8485,11 @@ LATTICE_TARGET {
         "identity matches");
   tampered_identity_certificate = exposure_ready.proof_certificate;
   tampered_identity_certificate.certificate_digest.clear();
-  tampered_identity_certificate.identity.active_graph_order_fingerprint.clear();
-  tampered_identity_certificate.identity.evidence_graph_order_fingerprint
+  tampered_identity_certificate.proof_context.active_graph_order_fingerprint
       .clear();
-  tampered_identity_certificate.identity.graph_order_match = true;
+  tampered_identity_certificate.proof_context.evidence_graph_order_fingerprint
+      .clear();
+  tampered_identity_certificate.proof_context.graph_order_match = true;
   check(!target::verify_lattice_target_proof_certificate(
              tampered_identity_certificate)
              .passed,
@@ -8133,9 +8497,11 @@ LATTICE_TARGET {
         "identity matches");
   tampered_identity_certificate = exposure_ready.proof_certificate;
   tampered_identity_certificate.certificate_digest.clear();
-  tampered_identity_certificate.identity.active_source_cursor_token.clear();
-  tampered_identity_certificate.identity.evidence_source_cursor_token.clear();
-  tampered_identity_certificate.identity.source_cursor_match = true;
+  tampered_identity_certificate.proof_context.active_source_cursor_token
+      .clear();
+  tampered_identity_certificate.proof_context.evidence_source_cursor_token
+      .clear();
+  tampered_identity_certificate.proof_context.source_cursor_match = true;
   check(!target::verify_lattice_target_proof_certificate(
              tampered_identity_certificate)
              .passed,
@@ -8335,7 +8701,7 @@ LATTICE_TARGET {
         "proof certificate records complete checkpoint closure proof");
   check(exposure_ready.proof_certificate.closure.causal_exposures.size() == 1 &&
             exposure_ready.proof_certificate.closure.causal_exposures.front()
-                    .target_component ==
+                    .target_component_family_id ==
                 "wikimyei.representation.encoding.vicreg" &&
             exposure_ready.proof_certificate.closure.causal_exposures.front()
                     .uses.size() == 1 &&
@@ -8419,7 +8785,7 @@ LATTICE_TARGET {
   tampered_causal_certificate = exposure_ready.proof_certificate;
   tampered_causal_certificate.certificate_digest.clear();
   tampered_causal_certificate.closure.causal_exposures.front()
-      .target_component.clear();
+      .target_component_family_id.clear();
   check(!target::verify_lattice_target_proof_certificate(
              tampered_causal_certificate)
              .passed,
@@ -8886,7 +9252,7 @@ LATTICE_TARGET {
       target::decode_lattice_targets_from_dsl(R"DSL(
 LATTICE_TARGET {
   TARGET_ID = clean_growth_with_external_guard;
-  TARGET_KIND = representation_ready;
+  TARGET_KIND = legacy_node_vicreg_ready;
   COMPONENT = wikimyei.representation.encoding.vicreg;
   SOURCE_RANGE = anchor_index;
   ANCHOR_INDEX_BEGIN = 0;
@@ -8945,7 +9311,7 @@ LATTICE_TARGET {
   const auto warning_specs = target::decode_lattice_targets_from_dsl(R"DSL(
 LATTICE_TARGET {
   TARGET_ID = warned_representation_ready;
-  TARGET_KIND = representation_ready;
+  TARGET_KIND = legacy_node_vicreg_ready;
   COMPONENT = wikimyei.representation.encoding.vicreg;
   SOURCE_RANGE = anchor_index;
   ANCHOR_INDEX_BEGIN = 0;
@@ -8966,7 +9332,7 @@ LATTICE_WARN {
   KIND = exposure_load;
   USE = observed_input;
   SPLIT = train_core;
-  SCOPE = target_component;
+  SCOPE = target_component_family_id;
   EFFECT = mutated_component;
   CURSOR_EPOCHS_ABOVE = 1.5;
 };
@@ -8977,7 +9343,7 @@ LATTICE_WARN {
   KIND = effort_density;
   USE = observed_input;
   SPLIT = train_core;
-  SCOPE = target_component;
+  SCOPE = target_component_family_id;
   EFFECT = mutated_component;
   METRIC = optimizer_steps_per_cursor_epoch;
   ABOVE = 2.0;
@@ -9002,7 +9368,7 @@ LATTICE_WARN {
   WARNING_ID = high_representation_variance_loss;
   KIND = representation_health;
   METRIC = mean_variance_loss;
-  SCOPE = target_component;
+  SCOPE = target_component_family_id;
   EFFECT = mutated_component;
   ABOVE = 0.25;
 };
@@ -9012,7 +9378,7 @@ LATTICE_WARN {
   WARNING_ID = low_representation_valid_channel_fraction;
   KIND = representation_health;
   METRIC = mean_adapter_valid_channel_time_fraction;
-  SCOPE = target_component;
+  SCOPE = target_component_family_id;
   EFFECT = mutated_component;
   BELOW = 0.80;
 };
@@ -9022,7 +9388,7 @@ LATTICE_WARN {
   WARNING_ID = low_representation_effective_rank_fraction;
   KIND = representation_health;
   METRIC = representation_effective_rank_fraction;
-  SCOPE = target_component;
+  SCOPE = target_component_family_id;
   EFFECT = mutated_component;
   BELOW = 0.75;
 };
@@ -9032,7 +9398,7 @@ LATTICE_WARN {
   WARNING_ID = high_representation_condition_number;
   KIND = representation_health;
   METRIC = representation_condition_number;
-  SCOPE = target_component;
+  SCOPE = target_component_family_id;
   EFFECT = mutated_component;
   ABOVE = 100;
 };
@@ -9042,7 +9408,7 @@ LATTICE_WARN {
   WARNING_ID = acceptable_representation_covariance_loss;
   KIND = representation_health;
   METRIC = mean_covariance_loss;
-  SCOPE = target_component;
+  SCOPE = target_component_family_id;
   EFFECT = mutated_component;
   ABOVE = 0.10;
 };
@@ -9052,7 +9418,7 @@ LATTICE_WARN {
   WARNING_ID = passing_representation_parameter_check;
   KIND = representation_health;
   METRIC = finite_parameter_check;
-  SCOPE = target_component;
+  SCOPE = target_component_family_id;
   EFFECT = mutated_component;
   BELOW = 0.50;
 };
@@ -9165,7 +9531,7 @@ LATTICE_WARN {
       target::decode_lattice_targets_from_dsl(R"DSL(
 LATTICE_TARGET {
   TARGET_ID = untrusted_anchor_warning_ready;
-  TARGET_KIND = representation_ready;
+  TARGET_KIND = legacy_node_vicreg_ready;
   COMPONENT = wikimyei.representation.encoding.vicreg;
   SOURCE_RANGE = anchor_index;
   ANCHOR_INDEX_BEGIN = 0;
@@ -9338,7 +9704,7 @@ LATTICE_WARN {
       target::decode_lattice_targets_from_dsl(R"DSL(
 LATTICE_TARGET {
   TARGET_ID = proof_neutral_warning_ready;
-  TARGET_KIND = representation_ready;
+  TARGET_KIND = legacy_node_vicreg_ready;
   COMPONENT = wikimyei.representation.encoding.vicreg;
   SOURCE_RANGE = anchor_index;
   ANCHOR_INDEX_BEGIN = 0;
@@ -9357,7 +9723,7 @@ LATTICE_WARN {
   KIND = exposure_load;
   USE = observed_input;
   SPLIT = train_core;
-  SCOPE = target_component;
+  SCOPE = target_component_family_id;
   EFFECT = mutated_component;
   CURSOR_EPOCHS_ABOVE = 1.5;
 };
@@ -9366,7 +9732,7 @@ LATTICE_WARN {
       target::decode_lattice_targets_from_dsl(R"DSL(
 LATTICE_TARGET {
   TARGET_ID = proof_neutral_warning_ready;
-  TARGET_KIND = representation_ready;
+  TARGET_KIND = legacy_node_vicreg_ready;
   COMPONENT = wikimyei.representation.encoding.vicreg;
   SOURCE_RANGE = anchor_index;
   ANCHOR_INDEX_BEGIN = 0;
@@ -9385,7 +9751,7 @@ LATTICE_WARN {
   KIND = exposure_load;
   USE = observed_input;
   SPLIT = train_core;
-  SCOPE = target_component;
+  SCOPE = target_component_family_id;
   EFFECT = mutated_component;
   CURSOR_EPOCHS_ABOVE = 3.0;
 };
@@ -9394,7 +9760,7 @@ LATTICE_WARN {
       target::decode_lattice_targets_from_dsl(R"DSL(
 LATTICE_TARGET {
   TARGET_ID = proof_neutral_warning_ready;
-  TARGET_KIND = representation_ready;
+  TARGET_KIND = legacy_node_vicreg_ready;
   COMPONENT = wikimyei.representation.encoding.vicreg;
   SOURCE_RANGE = anchor_index;
   ANCHOR_INDEX_BEGIN = 0;
@@ -9414,7 +9780,7 @@ LATTICE_WARN {
   USE = observed_input;
   ANCHOR_INDEX_BEGIN = 100;
   ANCHOR_INDEX_END = 200;
-  SCOPE = target_component;
+  SCOPE = target_component_family_id;
   EFFECT = mutated_component;
   CURSOR_EPOCHS_ABOVE = 1.5;
 };
@@ -9580,6 +9946,122 @@ LATTICE_WARN {
       "missing representation-health warning list should project warning "
       "results");
 
+  const auto geometry_gate_specs =
+      target::decode_lattice_targets_from_dsl(R"DSL(
+LATTICE_TARGET {
+  TARGET_ID = geometry_gated_representation_ready;
+  TARGET_KIND = legacy_node_vicreg_ready;
+  COMPONENT = wikimyei.representation.encoding.vicreg;
+  SOURCE_RANGE = anchor_index;
+  ANCHOR_INDEX_BEGIN = 0;
+  ANCHOR_INDEX_END = 100;
+  REQUIRE_CONTRACT_MATCH = true;
+  REQUIRE_COMPONENT_MATCH = true;
+  REQUIRE_CHECKPOINT_EXISTS = true;
+  REQUIRE_FINITE_LOSS = true;
+  MIN_OPTIMIZER_STEPS = 1;
+  MIN_OBSERVED_INPUT_COVERAGE = 1.0;
+};
+
+LATTICE_REQUIRES {
+  TARGET_ID = geometry_gated_representation_ready;
+  REQUIREMENT_ID = min_effective_rank_fraction_gate;
+  KIND = representation_geometry;
+  METRIC = representation_effective_rank_fraction;
+  OP = ge;
+  VALUE = 0.75;
+};
+)DSL");
+  auto clear_geometry_fact =
+      make_rep_exposure_fact(exposure_checkpoint, 0, 100);
+  clear_geometry_fact.representation_effective_rank_fraction = 0.85;
+  exposure::lattice_exposure_ledger_t clear_geometry_gate_ledger{};
+  clear_geometry_gate_ledger.add(clear_geometry_fact);
+  target::lattice_target_evaluator_options_t geometry_gate_options =
+      exposure_options;
+  geometry_gate_options.exposure_ledger = &clear_geometry_gate_ledger;
+  target::lattice_target_evaluator_t clear_geometry_gate_eval(
+      geometry_gate_specs, geometry_gate_options);
+  const auto clear_geometry_gate_ready =
+      clear_geometry_gate_eval.evaluate("geometry_gated_representation_ready");
+  check(
+      clear_geometry_gate_ready.status ==
+              target::lattice_target_status_t::satisfied &&
+          clear_geometry_gate_ready.representation_geometry_gate_results
+                  .size() == 1 &&
+          clear_geometry_gate_ready.representation_geometry_gate_results.front()
+              .passed &&
+          clear_geometry_gate_ready.representation_geometry_gate_results.front()
+                  .status == "satisfied" &&
+          std::abs(
+              clear_geometry_gate_ready.representation_geometry_gate_results
+                  .front()
+                  .measured_value -
+              0.85) < 1e-12,
+      "explicit representation geometry gates should pass on clear geometry");
+
+  exposure::lattice_exposure_ledger_t warning_geometry_gate_ledger{};
+  warning_geometry_gate_ledger.add(warning_fact);
+  geometry_gate_options.exposure_ledger = &warning_geometry_gate_ledger;
+  target::lattice_target_evaluator_t warning_geometry_gate_eval(
+      geometry_gate_specs, geometry_gate_options);
+  const auto warning_geometry_gate_ready = warning_geometry_gate_eval.evaluate(
+      "geometry_gated_representation_ready");
+  check(warning_geometry_gate_ready.status ==
+                target::lattice_target_status_t::metric_failed &&
+            warning_geometry_gate_ready.representation_geometry_gate_results
+                    .size() == 1 &&
+            !warning_geometry_gate_ready.representation_geometry_gate_results
+                 .front()
+                 .passed &&
+            warning_geometry_gate_ready.representation_geometry_gate_results
+                    .front()
+                    .status == "failed" &&
+            std::any_of(warning_geometry_gate_ready.deficits.begin(),
+                        warning_geometry_gate_ready.deficits.end(),
+                        [](const auto &deficit) {
+                          return deficit.key ==
+                                     "metric:representation_geometry" &&
+                                 deficit.status == "failed";
+                        }),
+        "warning geometry should fail only when a hard geometry gate is "
+        "explicitly enabled");
+
+  exposure::lattice_exposure_ledger_t missing_geometry_gate_ledger{};
+  missing_geometry_gate_ledger.add(no_rep_health_fact);
+  geometry_gate_options.exposure_ledger = &missing_geometry_gate_ledger;
+  target::lattice_target_evaluator_t missing_geometry_gate_eval(
+      geometry_gate_specs, geometry_gate_options);
+  const auto missing_geometry_gate_ready = missing_geometry_gate_eval.evaluate(
+      "geometry_gated_representation_ready");
+  check(missing_geometry_gate_ready.status ==
+                target::lattice_target_status_t::metric_failed &&
+            missing_geometry_gate_ready.representation_geometry_gate_results
+                    .size() == 1 &&
+            missing_geometry_gate_ready.representation_geometry_gate_results
+                    .front()
+                    .status == "missing" &&
+            !missing_geometry_gate_ready.representation_geometry_gate_results
+                 .front()
+                 .measurement_available,
+        "missing representation geometry facts should fail explicit geometry "
+        "gates closed");
+
+  const auto observed_geometry_review =
+      target::summarize_representation_geometry_gate_review(
+          {clear_geometry_fact, warning_fact, no_rep_health_fact});
+  check(observed_geometry_review.observed_run_count >= 1 &&
+            observed_geometry_review.observed_geometry_fact_count == 2 &&
+            observed_geometry_review.missing_geometry_fact_count == 1 &&
+            observed_geometry_review.observed_candidate_metric_count == 11 &&
+            observed_geometry_review.proposed_threshold_count == 0 &&
+            observed_geometry_review.promoted_hard_gate_count == 0 &&
+            observed_geometry_review.opt_in_target_syntax_required &&
+            observed_geometry_review.missing_geometry_fails_closed_for_gate &&
+            observed_geometry_review.summary_self_check_passed,
+        "representation geometry gate review should summarize observed VICReg "
+        "geometry distributions without promoting default thresholds");
+
   target::lattice_target_evaluator_options_t auto_ledger_options = options;
   auto_ledger_options.runtime_root = exposure_root;
   target::lattice_target_evaluator_t auto_ledger_eval(coverage_specs,
@@ -9621,7 +10103,7 @@ LATTICE_WARN {
       target::decode_lattice_targets_from_dsl(R"DSL(
 LATTICE_TARGET {
   TARGET_ID = unknown_split_representation_ready;
-  TARGET_KIND = representation_ready;
+  TARGET_KIND = legacy_node_vicreg_ready;
   COMPONENT = wikimyei.representation.encoding.vicreg;
   SOURCE_RANGE = anchor_index;
   TRAIN_SPLIT = missing_train_split;
@@ -9654,7 +10136,7 @@ LATTICE_TARGET {
       target::decode_lattice_targets_from_dsl(R"DSL(
 LATTICE_TARGET {
   TARGET_ID = malformed_warning_split_target;
-  TARGET_KIND = representation_ready;
+  TARGET_KIND = legacy_node_vicreg_ready;
   COMPONENT = wikimyei.representation.encoding.vicreg;
   SOURCE_RANGE = anchor_index;
   TRAIN_SPLIT = train_core;
@@ -9725,7 +10207,7 @@ LATTICE_WARN {
   const auto split_forbid_specs = target::decode_lattice_targets_from_dsl(R"DSL(
 LATTICE_TARGET {
   TARGET_ID = split_representation_leaks_train;
-  TARGET_KIND = representation_ready;
+  TARGET_KIND = legacy_node_vicreg_ready;
   COMPONENT = wikimyei.representation.encoding.vicreg;
   SOURCE_RANGE = anchor_index;
   TRAIN_SPLIT = train_core;
@@ -9787,7 +10269,7 @@ LATTICE_SPLIT {
   const auto boundary_specs = target::decode_lattice_targets_from_dsl(R"DSL(
 LATTICE_TARGET {
   TARGET_ID = split_representation_left_context_leak;
-  TARGET_KIND = representation_ready;
+  TARGET_KIND = legacy_node_vicreg_ready;
   COMPONENT = wikimyei.representation.encoding.vicreg;
   SOURCE_RANGE = anchor_index;
   TRAIN_SPLIT = train_core;
@@ -9903,7 +10385,7 @@ LATTICE_SPLIT {
       target::decode_lattice_targets_from_dsl(R"DSL(
 LATTICE_TARGET {
   TARGET_ID = selection_signal_validation_leak;
-  TARGET_KIND = representation_ready;
+  TARGET_KIND = legacy_node_vicreg_ready;
   COMPONENT = wikimyei.representation.encoding.vicreg;
   SOURCE_RANGE = anchor_index;
   TRAIN_SPLIT = train_core;
@@ -10182,7 +10664,7 @@ LATTICE_TARGET {
   tampered_leakage_certificate = boundary_forbidden.proof_certificate;
   tampered_leakage_certificate.certificate_digest.clear();
   tampered_leakage_certificate.leakage.overlap_witnesses.front()
-      .target_component.clear();
+      .target_component_family_id.clear();
   check(!target::verify_lattice_target_proof_certificate(
              tampered_leakage_certificate)
              .passed,
@@ -10191,7 +10673,7 @@ LATTICE_TARGET {
   tampered_leakage_certificate = boundary_forbidden.proof_certificate;
   tampered_leakage_certificate.certificate_digest.clear();
   tampered_leakage_certificate.leakage.overlap_witnesses.front()
-      .target_component = "wikimyei.inference.expected_value.mdn";
+      .target_component_family_id = "wikimyei.inference.expected_value.mdn";
   check(!target::verify_lattice_target_proof_certificate(
              tampered_leakage_certificate)
              .passed,
@@ -10466,7 +10948,7 @@ LATTICE_TARGET {
   const auto forbid_specs = target::decode_lattice_targets_from_dsl(R"DSL(
 LATTICE_TARGET {
   TARGET_ID = ranged_representation_no_validation_leak;
-  TARGET_KIND = representation_ready;
+  TARGET_KIND = legacy_node_vicreg_ready;
   COMPONENT = wikimyei.representation.encoding.vicreg;
   SOURCE_RANGE = anchor_index;
   ANCHOR_INDEX_BEGIN = 0;
@@ -10514,12 +10996,12 @@ LATTICE_TARGET {
   const auto mdn_exposure_root = make_tmp_dir("mdn_exposure");
   const auto mdn_exposure_checkpoint = mdn_exposure_root / "mdn_ranged.pt";
   const auto mdn_rep_checkpoint = mdn_exposure_root / "rep_ranged.pt";
-  write_ranged_mdn_job(mdn_exposure_root, mdn_exposure_checkpoint,
-                       mdn_rep_checkpoint, 100, 200);
+  write_ranged_legacy_node_mdn_job(mdn_exposure_root, mdn_exposure_checkpoint,
+                                   mdn_rep_checkpoint, 100, 200);
   const auto mdn_coverage_specs = target::decode_lattice_targets_from_dsl(R"DSL(
 LATTICE_TARGET {
-  TARGET_ID = ranged_node_mdn_ready;
-  TARGET_KIND = node_mdn_ready;
+  TARGET_ID = ranged_legacy_node_mdn_ready;
+  TARGET_KIND = legacy_node_mdn_ready;
   COMPONENT = wikimyei.inference.expected_value.mdn;
   SOURCE_RANGE = anchor_index;
   ANCHOR_INDEX_BEGIN = 100;
@@ -10538,7 +11020,7 @@ LATTICE_TARGET {
 };
 
 LATTICE_WARN {
-  TARGET_ID = ranged_node_mdn_ready;
+  TARGET_ID = ranged_legacy_node_mdn_ready;
   WARNING_ID = imbalanced_node_support;
   KIND = node_support_balance;
   ANCHOR_INDEX_BEGIN = 100;
@@ -10548,7 +11030,7 @@ LATTICE_WARN {
 };
 
 LATTICE_WARN {
-  TARGET_ID = ranged_node_mdn_ready;
+  TARGET_ID = ranged_legacy_node_mdn_ready;
   WARNING_ID = low_node_support_entropy;
   KIND = node_support_balance;
   ANCHOR_INDEX_BEGIN = 100;
@@ -10558,7 +11040,7 @@ LATTICE_WARN {
 };
 
 LATTICE_WARN {
-  TARGET_ID = ranged_node_mdn_ready;
+  TARGET_ID = ranged_legacy_node_mdn_ready;
   WARNING_ID = weak_node_support;
   KIND = node_support_floor;
   ANCHOR_INDEX_BEGIN = 100;
@@ -10568,7 +11050,7 @@ LATTICE_WARN {
 };
 
 LATTICE_WARN {
-  TARGET_ID = ranged_node_mdn_ready;
+  TARGET_ID = ranged_legacy_node_mdn_ready;
   WARNING_ID = weak_left_half_node_support;
   KIND = node_support_floor;
   ANCHOR_INDEX_BEGIN = 100;
@@ -10578,7 +11060,7 @@ LATTICE_WARN {
 };
 
 LATTICE_WARN {
-  TARGET_ID = ranged_node_mdn_ready;
+  TARGET_ID = ranged_legacy_node_mdn_ready;
   WARNING_ID = low_aggregate_node_support_confidence;
   KIND = node_support_floor;
   ANCHOR_INDEX_BEGIN = 100;
@@ -10588,7 +11070,7 @@ LATTICE_WARN {
 };
 
 LATTICE_WARN {
-  TARGET_ID = ranged_node_mdn_ready;
+  TARGET_ID = ranged_legacy_node_mdn_ready;
   WARNING_ID = missing_node_fraction_support;
   KIND = node_support_floor;
   ANCHOR_INDEX_BEGIN = 100;
@@ -10598,7 +11080,7 @@ LATTICE_WARN {
 };
 
 LATTICE_WARN {
-  TARGET_ID = ranged_node_mdn_ready;
+  TARGET_ID = ranged_legacy_node_mdn_ready;
   WARNING_ID = high_mdn_mean_nll;
   KIND = mdn_distribution_calibration;
   USE = target_supervision;
@@ -10608,8 +11090,8 @@ LATTICE_WARN {
 };
 
 LATTICE_WARN {
-  TARGET_ID = ranged_node_mdn_ready;
-  WARNING_ID = high_per_node_mdn_mean_nll;
+  TARGET_ID = ranged_legacy_node_mdn_ready;
+  WARNING_ID = high_per_legacy_node_mdn_mean_nll;
   KIND = mdn_distribution_calibration;
   USE = target_supervision;
   EFFECT = mutated_component;
@@ -10618,7 +11100,7 @@ LATTICE_WARN {
 };
 
 LATTICE_WARN {
-  TARGET_ID = ranged_node_mdn_ready;
+  TARGET_ID = ranged_legacy_node_mdn_ready;
   WARNING_ID = unavailable_mdn_pit_statistic;
   KIND = mdn_distribution_calibration;
   USE = target_supervision;
@@ -10648,7 +11130,8 @@ LATTICE_WARN {
     node_fact.graph_order_fingerprint = "graph_1";
     node_fact.source_cursor_token = "cursor_ranged";
     node_fact.component_assembly_fingerprint = "mdn_1";
-    node_fact.target_component = "wikimyei.inference.expected_value.mdn";
+    node_fact.target_component_family_id =
+        "wikimyei.inference.expected_value.mdn";
     node_fact.job_id = "mdn_ranged";
     node_fact.wave_id = "wave_mdn_ranged";
     node_fact.job_status = "completed";
@@ -10672,20 +11155,20 @@ LATTICE_WARN {
   target::lattice_target_evaluator_t mdn_exposure_eval(mdn_coverage_specs,
                                                        mdn_exposure_options);
   const auto mdn_exposure_ready =
-      mdn_exposure_eval.evaluate("ranged_node_mdn_ready");
+      mdn_exposure_eval.evaluate("ranged_legacy_node_mdn_ready");
   check(mdn_exposure_ready.status == target::lattice_target_status_t::satisfied,
         "target supervision coverage should use anchor coverage, not shifted "
         "future rows");
   check(mdn_exposure_ready.exposure_summaries.size() == 1 &&
             mdn_exposure_ready.exposure_summaries.front().use ==
                 exposure::exposure_use_t::target_supervision,
-        "node MDN summary reports target supervision use");
+        "legacy node MDN summary reports target supervision use");
   check(mdn_exposure_ready.exposure_summaries.front().component_scope ==
-            "target_component",
-        "node MDN summary is target-component scoped");
-  check(mdn_exposure_ready.exposure_summaries.front().loaded_anchor_events ==
-            100,
-        "node MDN summary counts local target-supervision anchor events");
+            "target_component_family_id",
+        "legacy node MDN summary is target-component scoped");
+  check(
+      mdn_exposure_ready.exposure_summaries.front().loaded_anchor_events == 100,
+      "legacy node MDN summary counts local target-supervision anchor events");
   const auto [mdn_ready_support_lower, mdn_ready_support_upper] =
       exposure::wilson_score_interval_95(25, 100);
   check(mdn_exposure_ready.exposure_summaries.front()
@@ -10701,7 +11184,8 @@ LATTICE_WARN {
             std::abs(mdn_exposure_ready.exposure_summaries.front()
                          .valid_target_wilson_upper_95 -
                      mdn_ready_support_upper) < 1e-12,
-        "node MDN exposure summary carries valid-target uncertainty interval");
+        "legacy node MDN exposure summary carries valid-target uncertainty "
+        "interval");
   auto tampered_support_certificate = mdn_exposure_ready.proof_certificate;
   tampered_support_certificate.certificate_digest.clear();
   tampered_support_certificate.coverage.front()
@@ -10751,7 +11235,7 @@ LATTICE_WARN {
                   .non_mutating_support_row_count == 0 &&
           mdn_exposure_ready.node_support_summaries.front()
                   .weakest_valid_target_node_id == "ETH",
-      "node MDN readiness includes derived node-support matrix summary");
+      "legacy node MDN readiness includes derived node-support matrix summary");
   check(mdn_exposure_ready.proof_certificate.node_support_summaries.size() ==
                 1 &&
             mdn_exposure_ready.proof_certificate.node_support_summaries.front()
@@ -10766,7 +11250,8 @@ LATTICE_WARN {
                     .weakest_valid_target_node_id == "ETH" &&
             mdn_exposure_ready.proof_certificate.node_support_summaries.front()
                     .weakest_valid_target_denominator == 10,
-        "node MDN certificate includes derived node-support matrix summary");
+        "legacy node MDN certificate includes derived node-support matrix "
+        "summary");
   const auto [expected_mdn_node_support_lower,
               expected_mdn_node_support_upper] =
       exposure::wilson_score_interval_95(82, 110);
@@ -10784,7 +11269,8 @@ LATTICE_WARN {
                          .front()
                          .valid_target_wilson_upper_95 -
                      expected_mdn_node_support_upper) < 1e-12,
-        "node MDN certificate includes aggregate node-support Wilson interval");
+        "legacy node MDN certificate includes aggregate node-support Wilson "
+        "interval");
   const auto [expected_weak_mdn_node_lower, expected_weak_mdn_node_upper] =
       exposure::wilson_score_interval_95(2, 10);
   (void)expected_weak_mdn_node_upper;
@@ -10815,7 +11301,7 @@ LATTICE_WARN {
             mdn_exposure_ready.proof_certificate.node_support_summaries.front()
                 .valid_target_count_normalized_entropy -
             expected_mdn_node_entropy) < 1e-12,
-        "node MDN certificate includes normalized support entropy");
+        "legacy node MDN certificate includes normalized support entropy");
   check(mdn_exposure_ready.proof_certificate.node_support_summaries.front()
                     .support_rows.size() == 2 &&
             mdn_exposure_ready.proof_certificate.node_support_summaries.front()
@@ -10830,28 +11316,31 @@ LATTICE_WARN {
             mdn_exposure_ready.proof_certificate.node_support_summaries.front()
                     .support_rows.back()
                     .parent_exposure_fact_digest == mdn_target_fact_digest,
-        "node MDN certificate carries ordered, provenance-bound support matrix "
+        "legacy node MDN certificate carries ordered, provenance-bound support "
+        "matrix "
         "rows");
   const auto wide_node_root = make_tmp_dir("wide_node_support");
-  const auto wide_node_mdn_checkpoint = wide_node_root / "wide_mdn.pt";
+  const auto wide_legacy_node_mdn_checkpoint = wide_node_root / "wide_mdn.pt";
   const auto wide_node_rep_checkpoint = wide_node_root / "wide_rep.pt";
-  write_ranged_mdn_job(wide_node_root, wide_node_mdn_checkpoint,
-                       wide_node_rep_checkpoint, 100, 200);
+  write_ranged_legacy_node_mdn_job(wide_node_root,
+                                   wide_legacy_node_mdn_checkpoint,
+                                   wide_node_rep_checkpoint, 100, 200);
   exposure::lattice_exposure_ledger_t wide_node_ledger{};
   const auto wide_node_rep_fact =
       make_rep_exposure_fact(wide_node_rep_checkpoint, 100, 300);
   wide_node_ledger.add(wide_node_rep_fact);
   wide_node_ledger.add_checkpoint(
       exposure::make_checkpoint_fact_from_exposure_fact(wide_node_rep_fact));
-  const auto wide_node_mdn_fact = make_mdn_exposure_fact(
-      wide_node_mdn_checkpoint, wide_node_rep_checkpoint, 100, 300);
-  const auto wide_node_mdn_digest =
-      exposure::exposure_fact_digest(wide_node_mdn_fact);
-  wide_node_ledger.add(wide_node_mdn_fact);
+  const auto wide_legacy_node_mdn_fact = make_mdn_exposure_fact(
+      wide_legacy_node_mdn_checkpoint, wide_node_rep_checkpoint, 100, 300);
+  const auto wide_legacy_node_mdn_digest =
+      exposure::exposure_fact_digest(wide_legacy_node_mdn_fact);
+  wide_node_ledger.add(wide_legacy_node_mdn_fact);
   wide_node_ledger.add_checkpoint(
-      exposure::make_checkpoint_fact_from_exposure_fact(wide_node_mdn_fact));
+      exposure::make_checkpoint_fact_from_exposure_fact(
+          wide_legacy_node_mdn_fact));
   auto outside_mdn_warning_fact = make_mdn_exposure_fact(
-      wide_node_mdn_checkpoint, wide_node_rep_checkpoint, 200, 300);
+      wide_legacy_node_mdn_checkpoint, wide_node_rep_checkpoint, 200, 300);
   outside_mdn_warning_fact.job_id = "mdn_ranged_outside_warning";
   outside_mdn_warning_fact.wave_id = "wave_mdn_ranged_outside_warning";
   outside_mdn_warning_fact.output_checkpoint =
@@ -10860,12 +11349,13 @@ LATTICE_WARN {
   wide_node_ledger.add(outside_mdn_warning_fact);
   for (std::int64_t i = 0; i < 2; ++i) {
     exposure::lattice_node_exposure_fact_t node_fact{};
-    node_fact.parent_exposure_fact_digest = wide_node_mdn_digest;
+    node_fact.parent_exposure_fact_digest = wide_legacy_node_mdn_digest;
     node_fact.contract_fingerprint = "contract_1";
     node_fact.graph_order_fingerprint = "graph_1";
     node_fact.source_cursor_token = "cursor_ranged";
     node_fact.component_assembly_fingerprint = "mdn_1";
-    node_fact.target_component = "wikimyei.inference.expected_value.mdn";
+    node_fact.target_component_family_id =
+        "wikimyei.inference.expected_value.mdn";
     node_fact.job_id = "mdn_ranged";
     node_fact.wave_id = "wave_mdn_ranged";
     node_fact.job_status = "completed";
@@ -10875,13 +11365,13 @@ LATTICE_WARN {
     node_fact.anchor_range =
         exposure::anchor_interval_t{.begin = 100, .end = 300};
     node_fact.completed_anchor_range = node_fact.anchor_range;
-    node_fact.use = wide_node_mdn_fact.use;
+    node_fact.use = wide_legacy_node_mdn_fact.use;
     node_fact.active_row_count = i == 0 ? 100 : 20;
     node_fact.trained_row_count = node_fact.active_row_count;
     node_fact.valid_target_count = i == 0 ? 80 : 10;
     node_fact.valid_target_opportunity_count = i == 0 ? 100 : 20;
     node_fact.valid_target_fraction = i == 0 ? 0.80 : 0.50;
-    node_fact.output_checkpoint = wide_node_mdn_checkpoint;
+    node_fact.output_checkpoint = wide_legacy_node_mdn_checkpoint;
     wide_node_ledger.add_node(node_fact);
   }
   auto outside_node_fact = wide_node_ledger.node_facts().front();
@@ -10901,40 +11391,45 @@ LATTICE_WARN {
   wide_node_options.exposure_ledger = &wide_node_ledger;
   target::lattice_target_evaluator_t wide_node_eval(mdn_coverage_specs,
                                                     wide_node_options);
-  const auto wide_node_ready = wide_node_eval.evaluate("ranged_node_mdn_ready");
+  const auto wide_node_ready =
+      wide_node_eval.evaluate("ranged_legacy_node_mdn_ready");
   const auto [wide_node_lower, wide_node_upper] =
       exposure::wilson_score_interval_95(45, 60);
-  check(wide_node_ready.status == target::lattice_target_status_t::satisfied &&
-            wide_node_ready.proof_certificate.node_support_summaries.size() ==
-                1 &&
-            wide_node_ready.proof_certificate.node_support_summaries.front()
-                    .node_count == 2 &&
-            wide_node_ready.proof_certificate.node_support_summaries.front()
-                    .active_row_count_total == 60 &&
-            wide_node_ready.proof_certificate.node_support_summaries.front()
-                    .valid_target_count_total == 45 &&
-            wide_node_ready.proof_certificate.node_support_summaries.front()
-                    .valid_target_opportunity_count_total == 60 &&
-            wide_node_ready.proof_certificate.node_support_summaries.front()
-                    .weakest_valid_target_count == 5 &&
-            std::abs(
-                wide_node_ready.proof_certificate.node_support_summaries.front()
-                    .valid_target_wilson_lower_95 -
-                wide_node_lower) < 1e-12 &&
-            std::abs(
-                wide_node_ready.proof_certificate.node_support_summaries.front()
-                    .valid_target_wilson_upper_95 -
-                wide_node_upper) < 1e-12,
-        "node MDN certificate range-scopes wide node-support facts to the "
-        "target anchor interval");
-  const auto wide_node_mdn_nll_warning = std::find_if(
+  check(
+      wide_node_ready.status == target::lattice_target_status_t::satisfied &&
+          wide_node_ready.proof_certificate.node_support_summaries.size() ==
+              1 &&
+          wide_node_ready.proof_certificate.node_support_summaries.front()
+                  .node_count == 2 &&
+          wide_node_ready.proof_certificate.node_support_summaries.front()
+                  .active_row_count_total == 60 &&
+          wide_node_ready.proof_certificate.node_support_summaries.front()
+                  .valid_target_count_total == 45 &&
+          wide_node_ready.proof_certificate.node_support_summaries.front()
+                  .valid_target_opportunity_count_total == 60 &&
+          wide_node_ready.proof_certificate.node_support_summaries.front()
+                  .weakest_valid_target_count == 5 &&
+          std::abs(
+              wide_node_ready.proof_certificate.node_support_summaries.front()
+                  .valid_target_wilson_lower_95 -
+              wide_node_lower) < 1e-12 &&
+          std::abs(
+              wide_node_ready.proof_certificate.node_support_summaries.front()
+                  .valid_target_wilson_upper_95 -
+              wide_node_upper) < 1e-12,
+      "legacy node MDN certificate range-scopes wide node-support facts to the "
+      "target anchor interval");
+  const auto wide_legacy_node_mdn_nll_warning = std::find_if(
       wide_node_ready.warning_results.begin(),
       wide_node_ready.warning_results.end(), [](const auto &warning) {
         return warning.warning_id == "high_mdn_mean_nll";
       });
-  check(wide_node_mdn_nll_warning != wide_node_ready.warning_results.end() &&
-            wide_node_mdn_nll_warning->exposure_summary.fact_count == 1 &&
-            std::abs(wide_node_mdn_nll_warning->measured_value - 0.40) < 1e-12,
+  check(wide_legacy_node_mdn_nll_warning !=
+                wide_node_ready.warning_results.end() &&
+            wide_legacy_node_mdn_nll_warning->exposure_summary.fact_count ==
+                1 &&
+            std::abs(wide_legacy_node_mdn_nll_warning->measured_value - 0.40) <
+                1e-12,
         "MDN distribution warnings ignore outside-checkpoint facts outside the "
         "target anchor interval");
   const auto &checkpoint_previews =
@@ -10947,10 +11442,10 @@ LATTICE_WARN {
                .empty() &&
           !mdn_exposure_ready.proof_certificate.closure
                .root_checkpoint_file_digest.empty(),
-      "node MDN certificate records checkpoint id/digest as closure "
+      "legacy node MDN certificate records checkpoint id/digest as closure "
       "authority when complete checkpoint facts are available");
   check(checkpoint_previews.size() == 2,
-        "node MDN certificate includes checkpoint identity previews for "
+        "legacy node MDN certificate includes checkpoint identity previews for "
         "closure checkpoints");
   const auto mdn_checkpoint_preview =
       std::find_if(checkpoint_previews.begin(), checkpoint_previews.end(),
@@ -10964,20 +11459,21 @@ LATTICE_WARN {
                 "wikimyei.inference.expected_value.mdn" &&
             mdn_checkpoint_preview->direct_exposure_digest ==
                 mdn_target_fact_digest,
-        "node MDN certificate binds the MDN checkpoint identity preview to "
+        "legacy node MDN certificate binds the MDN checkpoint identity preview "
+        "to "
         "the direct exposure digest");
   const auto rep_checkpoint_preview =
       std::find_if(checkpoint_previews.begin(), checkpoint_previews.end(),
                    [&](const auto &preview) {
                      return preview.checkpoint_path == mdn_rep_checkpoint;
                    });
-  check(rep_checkpoint_preview != checkpoint_previews.end() &&
-            rep_checkpoint_preview->component ==
-                "wikimyei.representation.encoding.vicreg" &&
-            rep_checkpoint_preview->direct_exposure_digest ==
-                mdn_rep_fact_digest,
-        "node MDN certificate includes upstream representation checkpoint "
-        "identity preview");
+  check(
+      rep_checkpoint_preview != checkpoint_previews.end() &&
+          rep_checkpoint_preview->component ==
+              "wikimyei.representation.encoding.vicreg" &&
+          rep_checkpoint_preview->direct_exposure_digest == mdn_rep_fact_digest,
+      "legacy node MDN certificate includes upstream representation checkpoint "
+      "identity preview");
   const auto [expected_mdn_node_lower, expected_mdn_node_upper] =
       exposure::wilson_score_interval_95(2, 10);
   check(std::abs(
@@ -10988,9 +11484,10 @@ LATTICE_WARN {
                          .front()
                          .weakest_valid_target_wilson_upper_95 -
                      expected_mdn_node_upper) < 1e-12,
-        "node MDN certificate includes weakest-node Wilson support interval");
+        "legacy node MDN certificate includes weakest-node Wilson support "
+        "interval");
   check(mdn_exposure_ready.proof_certificate_check.passed,
-        "node MDN certificate passes local self-check");
+        "legacy node MDN certificate passes local self-check");
   auto tampered_checkpoint_preview_certificate =
       mdn_exposure_ready.proof_certificate;
   tampered_checkpoint_preview_certificate.certificate_digest.clear();
@@ -11138,8 +11635,8 @@ LATTICE_WARN {
         "schemas");
   tampered_node_certificate = mdn_exposure_ready.proof_certificate;
   tampered_node_certificate.certificate_digest.clear();
-  tampered_node_certificate.node_support_summaries.front().target_component =
-      "wikimyei.representation.encoding.vicreg";
+  tampered_node_certificate.node_support_summaries.front()
+      .target_component_family_id = "wikimyei.representation.encoding.vicreg";
   check(!target::verify_lattice_target_proof_certificate(
              tampered_node_certificate)
              .passed,
@@ -11152,7 +11649,7 @@ LATTICE_WARN {
                      tampered_node_certificate.closure.causal_exposures.end(),
                      [](const target::lattice_target_proof_certificate_t::
                             closure_proof_t::causal_exposure_t &causal) {
-                       return causal.target_component ==
+                       return causal.target_component_family_id ==
                               "wikimyei.inference.expected_value.mdn";
                      }),
       tampered_node_certificate.closure.causal_exposures.end());
@@ -11774,34 +12271,38 @@ LATTICE_WARN {
               std::string::npos,
       "MDN distribution warning can trigger on high mean NLL without "
       "changing readiness");
-  const auto high_per_node_mdn_mean_nll_warning = std::find_if(
+  const auto high_per_legacy_node_mdn_mean_nll_warning = std::find_if(
       mdn_exposure_ready.warning_results.begin(),
       mdn_exposure_ready.warning_results.end(), [](const auto &warning) {
-        return warning.warning_id == "high_per_node_mdn_mean_nll";
+        return warning.warning_id == "high_per_legacy_node_mdn_mean_nll";
       });
-  check(high_per_node_mdn_mean_nll_warning !=
-                mdn_exposure_ready.warning_results.end() &&
-            high_per_node_mdn_mean_nll_warning->kind ==
-                "mdn_distribution_calibration" &&
-            high_per_node_mdn_mean_nll_warning->evidence_basis ==
-                "filtered_node_exposure_facts" &&
-            high_per_node_mdn_mean_nll_warning->unit == "nll" &&
-            high_per_node_mdn_mean_nll_warning->threshold_triggered &&
-            high_per_node_mdn_mean_nll_warning->measurement_available &&
-            high_per_node_mdn_mean_nll_warning->exposure_summary_available &&
-            high_per_node_mdn_mean_nll_warning->exposure_summary.fact_count ==
-                2 &&
-            high_per_node_mdn_mean_nll_warning->exposure_summary
-                    .valid_target_count_total == 82 &&
-            high_per_node_mdn_mean_nll_warning->diagnostic_metric_family ==
-                "node_stratified_scoring_loss" &&
-            high_per_node_mdn_mean_nll_warning->diagnostic_uncertainty_method ==
-                "none_point_estimate_only" &&
-            high_per_node_mdn_mean_nll_warning->diagnostic_sample_count == 82 &&
-            std::abs(high_per_node_mdn_mean_nll_warning->measured_value -
-                     0.40) < 1e-12,
-        "MDN distribution diagnostics can warn on per-node mean NLL while "
-        "remaining non-blocking");
+  check(
+      high_per_legacy_node_mdn_mean_nll_warning !=
+              mdn_exposure_ready.warning_results.end() &&
+          high_per_legacy_node_mdn_mean_nll_warning->kind ==
+              "mdn_distribution_calibration" &&
+          high_per_legacy_node_mdn_mean_nll_warning->evidence_basis ==
+              "filtered_node_exposure_facts" &&
+          high_per_legacy_node_mdn_mean_nll_warning->unit == "nll" &&
+          high_per_legacy_node_mdn_mean_nll_warning->threshold_triggered &&
+          high_per_legacy_node_mdn_mean_nll_warning->measurement_available &&
+          high_per_legacy_node_mdn_mean_nll_warning
+              ->exposure_summary_available &&
+          high_per_legacy_node_mdn_mean_nll_warning->exposure_summary
+                  .fact_count == 2 &&
+          high_per_legacy_node_mdn_mean_nll_warning->exposure_summary
+                  .valid_target_count_total == 82 &&
+          high_per_legacy_node_mdn_mean_nll_warning->diagnostic_metric_family ==
+              "node_stratified_scoring_loss" &&
+          high_per_legacy_node_mdn_mean_nll_warning
+                  ->diagnostic_uncertainty_method ==
+              "none_point_estimate_only" &&
+          high_per_legacy_node_mdn_mean_nll_warning->diagnostic_sample_count ==
+              82 &&
+          std::abs(high_per_legacy_node_mdn_mean_nll_warning->measured_value -
+                   0.40) < 1e-12,
+      "MDN distribution diagnostics can warn on per-node mean NLL while "
+      "remaining non-blocking");
   const auto unavailable_mdn_pit_warning = std::find_if(
       mdn_exposure_ready.warning_results.begin(),
       mdn_exposure_ready.warning_results.end(), [](const auto &warning) {
@@ -11835,7 +12336,8 @@ LATTICE_WARN {
     node_fact.graph_order_fingerprint = "graph_1";
     node_fact.source_cursor_token = "cursor_ranged";
     node_fact.component_assembly_fingerprint = "mdn_1";
-    node_fact.target_component = "wikimyei.inference.expected_value.mdn";
+    node_fact.target_component_family_id =
+        "wikimyei.inference.expected_value.mdn";
     node_fact.job_id = "mdn_ranged";
     node_fact.wave_id = "wave_mdn_ranged";
     node_fact.job_status = "completed";
@@ -11855,7 +12357,7 @@ LATTICE_WARN {
   target::lattice_target_evaluator_t no_fraction_node_eval(
       mdn_coverage_specs, no_fraction_node_options);
   const auto no_fraction_node_ready =
-      no_fraction_node_eval.evaluate("ranged_node_mdn_ready");
+      no_fraction_node_eval.evaluate("ranged_legacy_node_mdn_ready");
   const auto missing_node_fraction_warning = std::find_if(
       no_fraction_node_ready.warning_results.begin(),
       no_fraction_node_ready.warning_results.end(), [](const auto &warning) {
@@ -11895,7 +12397,7 @@ LATTICE_WARN {
   target::lattice_target_evaluator_t no_node_support_eval(
       mdn_coverage_specs, no_node_support_options);
   const auto no_node_support_ready =
-      no_node_support_eval.evaluate("ranged_node_mdn_ready");
+      no_node_support_eval.evaluate("ranged_legacy_node_mdn_ready");
   const auto missing_summary_warning = std::find_if(
       no_node_support_ready.warning_results.begin(),
       no_node_support_ready.warning_results.end(), [](const auto &warning) {
@@ -11907,7 +12409,8 @@ LATTICE_WARN {
             !missing_summary_warning->measurement_available &&
             missing_summary_warning->message.find(
                 "node-support summary is unavailable for "
-                "ranged_node_mdn_ready for threshold 5") != std::string::npos,
+                "ranged_legacy_node_mdn_ready for threshold 5") !=
+                std::string::npos,
         "clear node-support warning message should report unavailable "
         "summaries with the configured threshold");
   check(
@@ -11923,19 +12426,20 @@ LATTICE_WARN {
       "missing node-support warning list should project warning results");
   check(mdn_exposure_ready.proof_certificate.closure.causal_exposures.size() ==
             2,
-        "node MDN closure proof includes both MDN and upstream VICReg causal "
+        "legacy node MDN closure proof includes both MDN and upstream VICReg "
+        "causal "
         "exposures");
   check(mdn_exposure_ready.proof_certificate_check.passed,
-        "node MDN closure causal graph passes certificate self-check");
+        "legacy node MDN closure causal graph passes certificate self-check");
   auto tampered_duplicate_digest_certificate =
       mdn_exposure_ready.proof_certificate;
   tampered_duplicate_digest_certificate.certificate_digest.clear();
-  check(tampered_duplicate_digest_certificate.closure.fact_digests.size() >=
-                2 &&
-            tampered_duplicate_digest_certificate.closure.causal_exposures
-                    .size() >= 2,
-        "node MDN closure proof has enough causal facts to test duplicate "
-        "digests");
+  check(
+      tampered_duplicate_digest_certificate.closure.fact_digests.size() >= 2 &&
+          tampered_duplicate_digest_certificate.closure.causal_exposures
+                  .size() >= 2,
+      "legacy node MDN closure proof has enough causal facts to test duplicate "
+      "digests");
   tampered_duplicate_digest_certificate.closure.fact_digests[1] =
       tampered_duplicate_digest_certificate.closure.fact_digests.front();
   tampered_duplicate_digest_certificate.closure.causal_exposures[1]
@@ -11958,7 +12462,8 @@ LATTICE_WARN {
       });
   check(target_supervision_causal !=
             tampered_mdn_causal_certificate.closure.causal_exposures.end(),
-        "node MDN closure proof includes target-supervision causal exposure");
+        "legacy node MDN closure proof includes target-supervision causal "
+        "exposure");
   if (target_supervision_causal !=
       tampered_mdn_causal_certificate.closure.causal_exposures.end()) {
     target_supervision_causal->target_footprint = {};
@@ -11991,7 +12496,7 @@ LATTICE_WARN {
       });
   check(detached_causal_output !=
             tampered_closure_graph_certificate.closure.causal_exposures.end(),
-        "node MDN closure proof includes a non-root upstream producer");
+        "legacy node MDN closure proof includes a non-root upstream producer");
   if (detached_causal_output !=
       tampered_closure_graph_certificate.closure.causal_exposures.end()) {
     detached_causal_output->output_checkpoint =
@@ -12028,7 +12533,8 @@ LATTICE_WARN {
   tampered_closure_graph_certificate = mdn_exposure_ready.proof_certificate;
   tampered_closure_graph_certificate.certificate_digest.clear();
   check(tampered_closure_graph_certificate.closure.causal_exposures.size() >= 2,
-        "node MDN closure proof has enough causal facts to test disconnected "
+        "legacy node MDN closure proof has enough causal facts to test "
+        "disconnected "
         "cycles");
   auto disconnected_cycle_a =
       tampered_closure_graph_certificate.closure.causal_exposures.front();
@@ -12110,11 +12616,12 @@ LATTICE_WARN {
       validation_eval_root / "mdn_train.pt";
   const auto validation_eval_rep_checkpoint =
       validation_eval_root / "rep_train.pt";
-  write_ranged_mdn_job(validation_eval_root, validation_eval_mdn_checkpoint,
-                       validation_eval_rep_checkpoint, 100, 160);
-  write_ranged_mdn_eval_job(validation_eval_root,
-                            validation_eval_mdn_checkpoint,
-                            validation_eval_rep_checkpoint, 200, 210);
+  write_ranged_legacy_node_mdn_job(validation_eval_root,
+                                   validation_eval_mdn_checkpoint,
+                                   validation_eval_rep_checkpoint, 100, 160);
+  write_ranged_legacy_node_mdn_eval_job(
+      validation_eval_root, validation_eval_mdn_checkpoint,
+      validation_eval_rep_checkpoint, 200, 210);
   exposure::lattice_exposure_ledger_t validation_eval_ledger{};
   validation_eval_ledger.add(
       make_rep_exposure_fact(validation_eval_rep_checkpoint, 100, 160));
@@ -12134,8 +12641,8 @@ LATTICE_WARN {
   const auto validation_eval_specs = target::decode_lattice_targets_from_dsl(
       R"DSL(
 LATTICE_TARGET {
-  TARGET_ID = clean_node_mdn_train_ready;
-  TARGET_KIND = node_mdn_ready;
+  TARGET_ID = clean_legacy_node_mdn_train_ready;
+  TARGET_KIND = legacy_node_mdn_ready;
   COMPONENT = wikimyei.inference.expected_value.mdn;
   SOURCE_RANGE = anchor_index;
   ANCHOR_INDEX_BEGIN = 100;
@@ -12154,11 +12661,11 @@ LATTICE_TARGET {
 };
 
 LATTICE_TARGET {
-  TARGET_ID = clean_node_mdn_no_validation_leakage;
+  TARGET_ID = clean_legacy_node_mdn_no_validation_leakage;
   TARGET_CLASS = leakage_guard;
-  TARGET_KIND = node_mdn_ready;
+  TARGET_KIND = legacy_node_mdn_ready;
   COMPONENT = wikimyei.inference.expected_value.mdn;
-  CHECKPOINT_SOURCE = latest_satisfying:clean_node_mdn_train_ready;
+  CHECKPOINT_SOURCE = latest_satisfying:clean_legacy_node_mdn_train_ready;
   SOURCE_RANGE = all;
   REQUIRE_CONTRACT_MATCH = true;
   REQUIRE_COMPONENT_MATCH = true;
@@ -12174,14 +12681,14 @@ LATTICE_TARGET {
 };
 
 LATTICE_TARGET {
-  TARGET_ID = clean_node_mdn_validation_eval_ready;
+  TARGET_ID = clean_legacy_node_mdn_validation_eval_ready;
   TARGET_CLASS = evaluation_readiness;
-  TARGET_KIND = node_mdn_ready;
+  TARGET_KIND = legacy_node_mdn_ready;
   COMPONENT = wikimyei.inference.expected_value.mdn;
   SOURCE_RANGE = anchor_index;
   ANCHOR_INDEX_BEGIN = 200;
   ANCHOR_INDEX_END = 210;
-  UPSTREAM_TARGET_ID = clean_node_mdn_no_validation_leakage;
+  UPSTREAM_TARGET_ID = clean_legacy_node_mdn_no_validation_leakage;
   REQUIRE_CONTRACT_MATCH = true;
   REQUIRE_COMPONENT_MATCH = true;
   REQUIRE_CHECKPOINT_EXISTS = false;
@@ -12189,7 +12696,7 @@ LATTICE_TARGET {
   MIN_OPTIMIZER_STEPS = 0;
   MIN_VALID_TARGET_FRACTION = 0.05;
   REQUIRE_EVALUATED_NODE_HEAD_COUNT = 1;
-  EVALUATED_CHECKPOINT_SOURCE = latest_satisfying:clean_node_mdn_no_validation_leakage;
+  EVALUATED_CHECKPOINT_SOURCE = latest_satisfying:clean_legacy_node_mdn_no_validation_leakage;
   MIN_EVALUATION_METRIC_COVERAGE = 1.0;
   PROTECT_SPLIT = validation_holdout;
   PLAN_MODE = run|debug;
@@ -12197,7 +12704,7 @@ LATTICE_TARGET {
 };
 
 LATTICE_WARN {
-  TARGET_ID = clean_node_mdn_validation_eval_ready;
+  TARGET_ID = clean_legacy_node_mdn_validation_eval_ready;
   WARNING_ID = validation_eval_high_mean_nll;
   KIND = mdn_distribution_calibration;
   USE = evaluation_metric;
@@ -12207,7 +12714,7 @@ LATTICE_WARN {
 };
 
 LATTICE_WARN {
-  TARGET_ID = clean_node_mdn_validation_eval_ready;
+  TARGET_ID = clean_legacy_node_mdn_validation_eval_ready;
   WARNING_ID = validation_eval_high_per_node_mean_nll;
   KIND = mdn_distribution_calibration;
   USE = evaluation_metric;
@@ -12222,7 +12729,7 @@ LATTICE_WARN {
   target::lattice_target_evaluator_t validation_eval(validation_eval_specs,
                                                      validation_eval_options);
   const auto validation_eval_ready =
-      validation_eval.evaluate("clean_node_mdn_validation_eval_ready");
+      validation_eval.evaluate("clean_legacy_node_mdn_validation_eval_ready");
   check(validation_eval_ready.status ==
             target::lattice_target_status_t::satisfied,
         "run-mode validation evaluation should satisfy evaluation_metric "
@@ -12579,7 +13086,7 @@ LATTICE_WARN {
   target::lattice_target_proof_certificate_t::dependency_proof_t
       upstream_dependency{};
   upstream_dependency.kind = "upstream_target";
-  upstream_dependency.source_target_id = "node_mdn_train_core_ready";
+  upstream_dependency.source_target_id = "legacy_node_mdn_train_core_ready";
   upstream_dependency.status = "satisfied";
   upstream_dependency.expected_mdn_checkpoint = validation_eval_mdn_checkpoint;
   upstream_dependency.actual_mdn_checkpoint = validation_eval_mdn_checkpoint;
@@ -12624,7 +13131,7 @@ LATTICE_WARN {
   target::lattice_target_evaluator_t mutated_eval(validation_eval_specs,
                                                   mutated_eval_options);
   const auto mutated_eval_ready =
-      mutated_eval.evaluate("clean_node_mdn_validation_eval_ready");
+      mutated_eval.evaluate("clean_legacy_node_mdn_validation_eval_ready");
   check(
       mutated_eval_ready.status ==
               target::lattice_target_status_t::exposure_failed &&
@@ -12657,7 +13164,7 @@ LATTICE_WARN {
   target::lattice_target_evaluator_t optimizer_eval(validation_eval_specs,
                                                     optimizer_eval_options);
   const auto optimizer_eval_ready =
-      optimizer_eval.evaluate("clean_node_mdn_validation_eval_ready");
+      optimizer_eval.evaluate("clean_legacy_node_mdn_validation_eval_ready");
   check(optimizer_eval_ready.status ==
                 target::lattice_target_status_t::exposure_failed &&
             optimizer_eval_ready.proof_certificate.coverage.size() == 1 &&
@@ -12691,7 +13198,7 @@ LATTICE_WARN {
   target::lattice_target_evaluator_t output_eval(validation_eval_specs,
                                                  output_eval_options);
   const auto output_eval_ready =
-      output_eval.evaluate("clean_node_mdn_validation_eval_ready");
+      output_eval.evaluate("clean_legacy_node_mdn_validation_eval_ready");
   check(output_eval_ready.status ==
                 target::lattice_target_status_t::exposure_failed &&
             output_eval_ready.proof_certificate.coverage.size() == 1 &&
@@ -12724,7 +13231,7 @@ LATTICE_WARN {
   target::lattice_target_evaluator_t mixed_eval(validation_eval_specs,
                                                 mixed_eval_options);
   const auto mixed_eval_ready =
-      mixed_eval.evaluate("clean_node_mdn_validation_eval_ready");
+      mixed_eval.evaluate("clean_legacy_node_mdn_validation_eval_ready");
   check(mixed_eval_ready.status ==
                 target::lattice_target_status_t::exposure_failed &&
             mixed_eval_ready.proof_certificate.coverage.size() == 1 &&
@@ -12760,7 +13267,7 @@ LATTICE_WARN {
   target::lattice_target_evaluator_t mixed_output_eval(
       validation_eval_specs, mixed_output_eval_options);
   const auto mixed_output_eval_ready =
-      mixed_output_eval.evaluate("clean_node_mdn_validation_eval_ready");
+      mixed_output_eval.evaluate("clean_legacy_node_mdn_validation_eval_ready");
   check(mixed_output_eval_ready.status ==
                 target::lattice_target_status_t::exposure_failed &&
             mixed_output_eval_ready.proof_certificate.coverage.size() == 1 &&
@@ -12811,8 +13318,8 @@ LATTICE_WARN {
   out_of_range_bad_eval_options.exposure_ledger = &out_of_range_bad_eval_ledger;
   target::lattice_target_evaluator_t out_of_range_bad_eval(
       validation_eval_specs, out_of_range_bad_eval_options);
-  const auto out_of_range_bad_eval_ready =
-      out_of_range_bad_eval.evaluate("clean_node_mdn_validation_eval_ready");
+  const auto out_of_range_bad_eval_ready = out_of_range_bad_eval.evaluate(
+      "clean_legacy_node_mdn_validation_eval_ready");
   check(out_of_range_bad_eval_ready.status ==
                 target::lattice_target_status_t::satisfied &&
             out_of_range_bad_eval_ready.proof_certificate_check.passed &&
@@ -12857,7 +13364,7 @@ LATTICE_WARN {
   target::lattice_target_evaluator_t non_eval_model_state_eval(
       validation_eval_specs, non_eval_model_state_options);
   const auto non_eval_model_state_ready = non_eval_model_state_eval.evaluate(
-      "clean_node_mdn_validation_eval_ready");
+      "clean_legacy_node_mdn_validation_eval_ready");
   check(non_eval_model_state_ready.status ==
                 target::lattice_target_status_t::satisfied &&
             non_eval_model_state_ready.proof_certificate_check.passed &&
@@ -13049,7 +13556,7 @@ LATTICE_WARN {
       malformed_evaluated_source_specs.begin(),
       malformed_evaluated_source_specs.end(),
       [](const target::lattice_target_spec_t &spec) {
-        return spec.target_id == "clean_node_mdn_no_validation_leakage";
+        return spec.target_id == "clean_legacy_node_mdn_no_validation_leakage";
       });
   check(malformed_evaluated_source != malformed_evaluated_source_specs.end(),
         "validation eval fixture should include evaluated checkpoint source "
@@ -13059,7 +13566,7 @@ LATTICE_WARN {
       malformed_evaluated_source_specs.begin(),
       malformed_evaluated_source_specs.end(),
       [](const target::lattice_target_spec_t &spec) {
-        return spec.target_id == "clean_node_mdn_validation_eval_ready";
+        return spec.target_id == "clean_legacy_node_mdn_validation_eval_ready";
       });
   check(malformed_evaluated_consumer != malformed_evaluated_source_specs.end(),
         "validation eval fixture should include evaluated checkpoint consumer "
@@ -13069,7 +13576,7 @@ LATTICE_WARN {
       malformed_evaluated_source_specs, validation_eval_options);
   const auto blocked_by_malformed_evaluated_source =
       malformed_evaluated_source_eval.evaluate(
-          "clean_node_mdn_validation_eval_ready");
+          "clean_legacy_node_mdn_validation_eval_ready");
   check(blocked_by_malformed_evaluated_source.status ==
                 target::lattice_target_status_t::blocked &&
             std::any_of(blocked_by_malformed_evaluated_source.deficits.begin(),
@@ -13089,14 +13596,17 @@ LATTICE_WARN {
   const auto checkpointless_eval_source_dir =
       checkpointless_eval_source_root / "mdn_without_checkpoint";
   write_text(checkpointless_eval_rep, "representation checkpoint");
-  write_text(checkpointless_eval_source_dir / "job.manifest",
-             "job_id=mdn_without_checkpoint\n"
-             "job_kind=inference_mdn\n"
-             "target_component=wikimyei.inference.expected_value.mdn\n"
-             "wave_action=train\n"
-             "source_range_policy=all\n"
-             "protocol_contract_fingerprint=contract_1\n"
-             "mdn_assembly_fingerprint=mdn_1\n");
+  // Historical node-MDN fixture. Active runtime waves use
+  // channel_inference_mdn.
+  write_text(
+      checkpointless_eval_source_dir / "job.manifest",
+      "job_id=mdn_without_checkpoint\n"
+      "job_kind=inference_mdn\n"
+      "target_component_family_id=wikimyei.inference.expected_value.mdn\n"
+      "wave_action=train\n"
+      "source_range_policy=all\n"
+      "protocol_contract_fingerprint=contract_1\n"
+      "mdn_assembly_fingerprint=mdn_1\n");
   write_text(checkpointless_eval_source_dir / "job.state",
              "status=completed\n"
              "optimizer_steps=0\n"
@@ -13118,7 +13628,7 @@ LATTICE_WARN {
       target::decode_lattice_targets_from_dsl(R"DSL(
 LATTICE_TARGET {
   TARGET_ID = mdn_without_checkpoint_ready;
-  TARGET_KIND = node_mdn_ready;
+  TARGET_KIND = legacy_node_mdn_ready;
   COMPONENT = wikimyei.inference.expected_value.mdn;
   SOURCE_RANGE = all;
   REQUIRE_CONTRACT_MATCH = true;
@@ -13132,7 +13642,7 @@ LATTICE_TARGET {
 
 LATTICE_TARGET {
   TARGET_ID = validation_eval_requires_checkpoint_source;
-  TARGET_KIND = node_mdn_ready;
+  TARGET_KIND = legacy_node_mdn_ready;
   COMPONENT = wikimyei.inference.expected_value.mdn;
   EVALUATED_CHECKPOINT_SOURCE = latest_satisfying:mdn_without_checkpoint_ready;
   SOURCE_RANGE = anchor_index;
@@ -13202,7 +13712,7 @@ LATTICE_TARGET {
   target::lattice_target_evaluator_t missing_eval(validation_eval_specs,
                                                   missing_eval_options);
   const auto missing_eval_ready =
-      missing_eval.evaluate("clean_node_mdn_validation_eval_ready");
+      missing_eval.evaluate("clean_legacy_node_mdn_validation_eval_ready");
   check(missing_eval_ready.status ==
             target::lattice_target_status_t::exposure_failed,
         "validation evaluation target should fail without evaluation_metric "
@@ -13223,7 +13733,7 @@ LATTICE_TARGET {
   target::lattice_target_evaluator_t extra_eval_input(validation_eval_specs,
                                                       extra_eval_input_options);
   const auto extra_eval_input_ready =
-      extra_eval_input.evaluate("clean_node_mdn_validation_eval_ready");
+      extra_eval_input.evaluate("clean_legacy_node_mdn_validation_eval_ready");
   check(extra_eval_input_ready.status ==
             target::lattice_target_status_t::exposure_failed,
         "validation evaluation target should fail when an evaluation witness "
@@ -13258,8 +13768,8 @@ LATTICE_TARGET {
       &mixed_extra_eval_input_ledger;
   target::lattice_target_evaluator_t mixed_extra_eval_input(
       validation_eval_specs, mixed_extra_eval_input_options);
-  const auto mixed_extra_eval_input_ready =
-      mixed_extra_eval_input.evaluate("clean_node_mdn_validation_eval_ready");
+  const auto mixed_extra_eval_input_ready = mixed_extra_eval_input.evaluate(
+      "clean_legacy_node_mdn_validation_eval_ready");
   check(mixed_extra_eval_input_ready.status ==
             target::lattice_target_status_t::exposure_failed,
         "clean validation evaluation coverage must not mask a second "
@@ -13304,8 +13814,8 @@ LATTICE_TARGET {
       &partial_bad_input_eval_ledger;
   target::lattice_target_evaluator_t partial_bad_input_eval(
       validation_eval_specs, partial_bad_input_eval_options);
-  const auto partial_bad_input_eval_ready =
-      partial_bad_input_eval.evaluate("clean_node_mdn_validation_eval_ready");
+  const auto partial_bad_input_eval_ready = partial_bad_input_eval.evaluate(
+      "clean_legacy_node_mdn_validation_eval_ready");
   check(partial_bad_input_eval_ready.status ==
                 target::lattice_target_status_t::exposure_failed &&
             partial_bad_input_eval_ready.proof_certificate.coverage.size() ==
@@ -13354,8 +13864,8 @@ LATTICE_TARGET {
   partial_mutating_eval_options.exposure_ledger = &partial_mutating_eval_ledger;
   target::lattice_target_evaluator_t partial_mutating_eval(
       validation_eval_specs, partial_mutating_eval_options);
-  const auto partial_mutating_eval_ready =
-      partial_mutating_eval.evaluate("clean_node_mdn_validation_eval_ready");
+  const auto partial_mutating_eval_ready = partial_mutating_eval.evaluate(
+      "clean_legacy_node_mdn_validation_eval_ready");
   check(partial_mutating_eval_ready.status ==
                 target::lattice_target_status_t::exposure_failed &&
             partial_mutating_eval_ready.proof_certificate.coverage.size() ==
@@ -13403,8 +13913,8 @@ LATTICE_TARGET {
   partial_output_eval_options.exposure_ledger = &partial_output_eval_ledger;
   target::lattice_target_evaluator_t partial_output_eval(
       validation_eval_specs, partial_output_eval_options);
-  const auto partial_output_eval_ready =
-      partial_output_eval.evaluate("clean_node_mdn_validation_eval_ready");
+  const auto partial_output_eval_ready = partial_output_eval.evaluate(
+      "clean_legacy_node_mdn_validation_eval_ready");
   check(
       partial_output_eval_ready.status ==
               target::lattice_target_status_t::exposure_failed &&
@@ -13438,14 +13948,15 @@ LATTICE_TARGET {
     const auto root = make_tmp_dir(label);
     const auto trained_mdn = root / "mdn_train.pt";
     const auto trained_rep = root / "rep_train.pt";
-    write_ranged_mdn_job(root, trained_mdn, trained_rep, 100, 160);
+    write_ranged_legacy_node_mdn_job(root, trained_mdn, trained_rep, 100, 160);
     const auto eval_mdn = use_correct_mdn ? trained_mdn : root / "wrong_mdn.pt";
     const auto eval_rep = use_correct_rep ? trained_rep : root / "wrong_rep.pt";
     if (!use_correct_rep) {
       write_text(eval_rep, "representation checkpoint");
     }
-    write_ranged_mdn_eval_job(root, eval_mdn, eval_rep, 200, 210, load_mdn,
-                              load_rep, write_output_checkpoint);
+    write_ranged_legacy_node_mdn_eval_job(root, eval_mdn, eval_rep, 200, 210,
+                                          load_mdn, load_rep,
+                                          write_output_checkpoint);
     exposure::lattice_exposure_ledger_t ledger{};
     ledger.add(make_rep_exposure_fact(trained_rep, 100, 160));
     ledger.add(make_mdn_exposure_fact(trained_mdn, trained_rep, 100, 160));
@@ -13457,7 +13968,7 @@ LATTICE_TARGET {
     target::lattice_target_evaluator_t evaluator(validation_eval_specs,
                                                  eval_options);
     const auto eval =
-        evaluator.evaluate("clean_node_mdn_validation_eval_ready");
+        evaluator.evaluate("clean_legacy_node_mdn_validation_eval_ready");
     std::filesystem::remove_all(root);
     return eval;
   };
@@ -13581,8 +14092,8 @@ LATTICE_TARGET {
   const auto latest_checkpoint_guard_specs =
       target::decode_lattice_targets_from_dsl(R"DSL(
 LATTICE_TARGET {
-  TARGET_ID = ranged_node_mdn_ready;
-  TARGET_KIND = node_mdn_ready;
+  TARGET_ID = ranged_legacy_node_mdn_ready;
+  TARGET_KIND = legacy_node_mdn_ready;
   COMPONENT = wikimyei.inference.expected_value.mdn;
   SOURCE_RANGE = anchor_index;
   ANCHOR_INDEX_BEGIN = 100;
@@ -13601,11 +14112,11 @@ LATTICE_TARGET {
 };
 
 LATTICE_TARGET {
-  TARGET_ID = ranged_node_mdn_no_validation_leakage;
+  TARGET_ID = ranged_legacy_node_mdn_no_validation_leakage;
   TARGET_CLASS = leakage_guard;
-  TARGET_KIND = node_mdn_ready;
+  TARGET_KIND = legacy_node_mdn_ready;
   COMPONENT = wikimyei.inference.expected_value.mdn;
-  CHECKPOINT_SOURCE = latest_satisfying:ranged_node_mdn_ready;
+  CHECKPOINT_SOURCE = latest_satisfying:ranged_legacy_node_mdn_ready;
   SOURCE_RANGE = all;
   REQUIRE_CONTRACT_MATCH = true;
   REQUIRE_COMPONENT_MATCH = true;
@@ -13620,7 +14131,7 @@ LATTICE_TARGET {
   target::lattice_target_evaluator_t latest_checkpoint_guard_eval(
       latest_checkpoint_guard_specs, mdn_exposure_options);
   const auto latest_checkpoint_guard = latest_checkpoint_guard_eval.evaluate(
-      "ranged_node_mdn_no_validation_leakage");
+      "ranged_legacy_node_mdn_no_validation_leakage");
   check(latest_checkpoint_guard.status ==
             target::lattice_target_status_t::exposure_failed,
         "CHECKPOINT_SOURCE latest_satisfying guard should inspect the source "
@@ -13630,7 +14141,7 @@ LATTICE_TARGET {
       std::find_if(malformed_latest_checkpoint_guard_specs.begin(),
                    malformed_latest_checkpoint_guard_specs.end(),
                    [](const target::lattice_target_spec_t &spec) {
-                     return spec.target_id == "ranged_node_mdn_ready";
+                     return spec.target_id == "ranged_legacy_node_mdn_ready";
                    });
   check(malformed_latest_source !=
             malformed_latest_checkpoint_guard_specs.end(),
@@ -13640,7 +14151,7 @@ LATTICE_TARGET {
       malformed_latest_checkpoint_guard_specs, mdn_exposure_options);
   const auto malformed_latest_checkpoint_guard =
       malformed_latest_checkpoint_guard_eval.evaluate(
-          "ranged_node_mdn_no_validation_leakage");
+          "ranged_legacy_node_mdn_no_validation_leakage");
   check(malformed_latest_checkpoint_guard.status ==
                 target::lattice_target_status_t::blocked &&
             std::any_of(malformed_latest_checkpoint_guard.deficits.begin(),
@@ -13657,14 +14168,15 @@ LATTICE_TARGET {
       make_tmp_dir("checkpointless_source_guard");
   const auto checkpointless_source_dir =
       checkpointless_source_root / "rep_without_checkpoint";
-  write_text(checkpointless_source_dir / "job.manifest",
-             "job_id=rep_without_checkpoint\n"
-             "job_kind=representation_vicreg\n"
-             "target_component=wikimyei.representation.encoding.vicreg\n"
-             "wave_action=train\n"
-             "source_range_policy=all\n"
-             "protocol_contract_fingerprint=contract_1\n"
-             "vicreg_assembly_fingerprint=vicreg_1\n");
+  write_text(
+      checkpointless_source_dir / "job.manifest",
+      "job_id=rep_without_checkpoint\n"
+      "job_kind=representation_vicreg\n"
+      "target_component_family_id=wikimyei.representation.encoding.vicreg\n"
+      "wave_action=train\n"
+      "source_range_policy=all\n"
+      "protocol_contract_fingerprint=contract_1\n"
+      "vicreg_assembly_fingerprint=vicreg_1\n");
   write_text(checkpointless_source_dir / "job.state",
              "status=completed\n"
              "checkpoint_written=false\n");
@@ -13672,7 +14184,7 @@ LATTICE_TARGET {
       target::decode_lattice_targets_from_dsl(R"DSL(
 LATTICE_TARGET {
   TARGET_ID = rep_without_checkpoint_ready;
-  TARGET_KIND = representation_ready;
+  TARGET_KIND = legacy_node_vicreg_ready;
   COMPONENT = wikimyei.representation.encoding.vicreg;
   SOURCE_RANGE = all;
   REQUIRE_CONTRACT_MATCH = true;
@@ -13687,7 +14199,7 @@ LATTICE_TARGET {
 LATTICE_TARGET {
   TARGET_ID = rep_checkpoint_source_guard;
   TARGET_CLASS = leakage_guard;
-  TARGET_KIND = representation_ready;
+  TARGET_KIND = legacy_node_vicreg_ready;
   COMPONENT = wikimyei.representation.encoding.vicreg;
   CHECKPOINT_SOURCE = latest_satisfying:rep_without_checkpoint_ready;
   SOURCE_RANGE = all;
@@ -13744,8 +14256,9 @@ LATTICE_TARGET {
       test_holdout_root / "mdn_test_guard.pt";
   const auto test_holdout_rep_checkpoint =
       test_holdout_root / "rep_test_guard.pt";
-  write_ranged_mdn_job(test_holdout_root, test_holdout_mdn_checkpoint,
-                       test_holdout_rep_checkpoint, 100, 198);
+  write_ranged_legacy_node_mdn_job(test_holdout_root,
+                                   test_holdout_mdn_checkpoint,
+                                   test_holdout_rep_checkpoint, 100, 198);
   exposure::lattice_exposure_ledger_t test_holdout_ledger{};
   test_holdout_ledger.add(
       make_rep_exposure_fact(test_holdout_rep_checkpoint, 100, 198));
@@ -13792,7 +14305,7 @@ LATTICE_SPLIT {
       target::decode_lattice_targets_from_dsl(R"DSL(
 LATTICE_TARGET {
   TARGET_ID = mdn_train_ready_for_holdout_guard;
-  TARGET_KIND = node_mdn_ready;
+  TARGET_KIND = legacy_node_mdn_ready;
   COMPONENT = wikimyei.inference.expected_value.mdn;
   SOURCE_RANGE = anchor_index;
   TRAIN_SPLIT = train_core;
@@ -13812,7 +14325,7 @@ LATTICE_TARGET {
 LATTICE_TARGET {
   TARGET_ID = mdn_no_validation_leakage_for_holdout_guard;
   TARGET_CLASS = leakage_guard;
-  TARGET_KIND = node_mdn_ready;
+  TARGET_KIND = legacy_node_mdn_ready;
   COMPONENT = wikimyei.inference.expected_value.mdn;
   CHECKPOINT_SOURCE = latest_satisfying:mdn_train_ready_for_holdout_guard;
   SOURCE_RANGE = all;
@@ -13829,7 +14342,7 @@ LATTICE_TARGET {
 LATTICE_TARGET {
   TARGET_ID = mdn_no_test_leakage_for_holdout_guard;
   TARGET_CLASS = leakage_guard;
-  TARGET_KIND = node_mdn_ready;
+  TARGET_KIND = legacy_node_mdn_ready;
   COMPONENT = wikimyei.inference.expected_value.mdn;
   CHECKPOINT_SOURCE = latest_satisfying:mdn_no_validation_leakage_for_holdout_guard;
   SOURCE_RANGE = all;
@@ -13866,7 +14379,7 @@ LATTICE_TARGET {
   target::lattice_target_evaluator_t unresolved_mdn_eval(
       mdn_coverage_specs, unresolved_mdn_options);
   const auto unresolved_mdn_ready =
-      unresolved_mdn_eval.evaluate("ranged_node_mdn_ready");
+      unresolved_mdn_eval.evaluate("ranged_legacy_node_mdn_ready");
   check(unresolved_mdn_ready.status ==
             target::lattice_target_status_t::exposure_failed,
         "MDN checkpoint exposure must fail closed when the loaded "
@@ -13895,7 +14408,7 @@ LATTICE_TARGET {
   target::lattice_target_evaluator_t stale_rep_producer_eval(
       mdn_coverage_specs, stale_rep_producer_options);
   const auto stale_rep_producer_ready =
-      stale_rep_producer_eval.evaluate("ranged_node_mdn_ready");
+      stale_rep_producer_eval.evaluate("ranged_legacy_node_mdn_ready");
   check(stale_rep_producer_ready.status ==
             target::lattice_target_status_t::exposure_failed,
         "MDN readiness must fail when the loaded representation checkpoint has "
@@ -13926,18 +14439,18 @@ LATTICE_TARGET {
   target::lattice_target_evaluator_t no_target_component_eval(
       mdn_coverage_specs, no_target_component_options);
   const auto no_target_component_ready =
-      no_target_component_eval.evaluate("ranged_node_mdn_ready");
+      no_target_component_eval.evaluate("ranged_legacy_node_mdn_ready");
   check(no_target_component_ready.status ==
             target::lattice_target_status_t::exposure_failed,
         "checkpoint closure must include target-component-local evidence");
-  check(std::any_of(no_target_component_ready.deficits.begin(),
-                    no_target_component_ready.deficits.end(),
-                    [](const auto &deficit) {
-                      return deficit.key ==
-                                 "artifact:target_component_exposure_fact" &&
-                             deficit.kind == "artifact" &&
-                             deficit.status == "missing";
-                    }),
+  check(std::any_of(
+            no_target_component_ready.deficits.begin(),
+            no_target_component_ready.deficits.end(),
+            [](const auto &deficit) {
+              return deficit.key ==
+                         "artifact:target_component_family_exposure_fact" &&
+                     deficit.kind == "artifact" && deficit.status == "missing";
+            }),
         "checkpoint closures without target-component-local exposure should "
         "expose an artifact deficit");
   expect_plan_basis_projects_deficits(
@@ -13947,8 +14460,8 @@ LATTICE_TARGET {
   const auto mdn_observed_coverage_specs =
       target::decode_lattice_targets_from_dsl(R"DSL(
 LATTICE_TARGET {
-  TARGET_ID = ranged_node_mdn_observed_ready;
-  TARGET_KIND = node_mdn_ready;
+  TARGET_ID = ranged_legacy_node_mdn_observed_ready;
+  TARGET_KIND = legacy_node_mdn_ready;
   COMPONENT = wikimyei.inference.expected_value.mdn;
   SOURCE_RANGE = anchor_index;
   ANCHOR_INDEX_BEGIN = 100;
@@ -13977,7 +14490,7 @@ LATTICE_TARGET {
   target::lattice_target_evaluator_t component_scope_eval(
       mdn_observed_coverage_specs, component_scope_options);
   const auto component_scope_ready =
-      component_scope_eval.evaluate("ranged_node_mdn_observed_ready");
+      component_scope_eval.evaluate("ranged_legacy_node_mdn_observed_ready");
   check(component_scope_ready.status ==
             target::lattice_target_status_t::exposure_failed,
         "MDN readiness coverage must be target-component-local and not "
@@ -13985,8 +14498,8 @@ LATTICE_TARGET {
 
   const auto mdn_forbid_specs = target::decode_lattice_targets_from_dsl(R"DSL(
 LATTICE_TARGET {
-  TARGET_ID = ranged_node_mdn_no_future_leak;
-  TARGET_KIND = node_mdn_ready;
+  TARGET_ID = ranged_legacy_node_mdn_no_future_leak;
+  TARGET_KIND = legacy_node_mdn_ready;
   COMPONENT = wikimyei.inference.expected_value.mdn;
   SOURCE_RANGE = anchor_index;
   ANCHOR_INDEX_BEGIN = 100;
@@ -14009,7 +14522,7 @@ LATTICE_TARGET {
   target::lattice_target_evaluator_t mdn_forbid_eval(mdn_forbid_specs,
                                                      mdn_exposure_options);
   const auto mdn_forbidden =
-      mdn_forbid_eval.evaluate("ranged_node_mdn_no_future_leak");
+      mdn_forbid_eval.evaluate("ranged_legacy_node_mdn_no_future_leak");
   check(mdn_forbidden.status ==
             target::lattice_target_status_t::exposure_failed,
         "forbidden overlap should still use shifted target source-row "

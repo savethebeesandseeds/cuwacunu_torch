@@ -22,7 +22,7 @@ enum class future_lift_policy_t {
 
 struct nodelift_srl_spec_t {
   std::string version_token{kCanonicalToken};
-  std::string component_id{};
+  std::string component_assembly_id{};
   int64_t feature_width{kFeatureWidth};
   std::vector<int64_t> price_coords{kDefaultPriceCoords.begin(),
                                     kDefaultPriceCoords.end()};
@@ -179,8 +179,8 @@ inline void validate_nodelift_srl_spec(const nodelift_srl_spec_t &spec) {
   if (spec.version_token != kCanonicalToken) {
     throw std::runtime_error("[nodelift_spec] unsupported version token");
   }
-  if (spec.component_id.empty()) {
-    throw std::runtime_error("[nodelift_spec] component_id is required");
+  if (spec.component_assembly_id.empty()) {
+    throw std::runtime_error("[nodelift_spec] component_assembly_id is required");
   }
   if (spec.feature_width != kFeatureWidth) {
     throw std::runtime_error("[nodelift_spec] feature_width must be 9");
@@ -213,7 +213,7 @@ decode_nodelift_srl_spec_from_dsl(const std::string &dsl_text) {
   const auto &block = kv::single_block(dsl_text, "NODELIFT_SRL");
   nodelift_srl_spec_t spec{};
   spec.version_token = kv::optional(block, "VERSION", spec.version_token);
-  spec.component_id = kv::required(block, "COMPONENT_ID");
+  spec.component_assembly_id = kv::required(block, "COMPONENT_ASSEMBLY_ID");
   spec.feature_width = kv::parse_i64(
       kv::optional(block, "FEATURE_WIDTH", std::to_string(spec.feature_width)));
   spec.price_coords = nodelift_spec_detail::parse_coord_selector(

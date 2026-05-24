@@ -272,8 +272,40 @@ public:
 
     const std::size_t end_anchor_index =
         std::min(anchor_keys_.size(), begin_anchor_index + batch_size);
-    auto samples =
-        collect_samples_for_anchor_range_(begin_anchor_index, end_anchor_index);
+    std::vector<std::size_t> anchor_indices;
+    anchor_indices.reserve(end_anchor_index - begin_anchor_index);
+    for (std::size_t i = begin_anchor_index; i < end_anchor_index; ++i) {
+      anchor_indices.push_back(i);
+    }
+    return get_graph_batch_for_anchor_indices(anchor_indices, batch_size,
+                                              std::move(collator_options));
+  }
+
+  [[nodiscard]] graph_batch_t get_graph_batch_for_anchor_indices(
+      const std::vector<std::size_t> &anchor_indices,
+      std::size_t requested_batch_size,
+      std::optional<graph_anchor_edge_batch_options_t> collator_options =
+          std::nullopt) {
+    TORCH_CHECK(requested_batch_size > 0,
+                "[graph_anchor_edge_dataset_t] requested_batch_size must be "
+                "positive");
+    validate_anchor_indices_(anchor_indices);
+
+    auto samples = collect_samples_for_anchor_indices_(anchor_indices);
+    return make_graph_batch_from_anchor_samples(
+        anchor_indices, std::move(samples), requested_batch_size,
+        std::move(collator_options));
+  }
+
+  [[nodiscard]] graph_batch_t make_graph_batch_from_anchor_samples(
+      const std::vector<std::size_t> &anchor_indices,
+      std::vector<anchor_sample_t> samples, std::size_t requested_batch_size,
+      std::optional<graph_anchor_edge_batch_options_t> collator_options =
+          std::nullopt) const {
+    TORCH_CHECK(requested_batch_size > 0,
+                "[graph_anchor_edge_dataset_t] requested_batch_size must be "
+                "positive");
+    validate_anchor_indices_(anchor_indices);
 
     auto options = collator_options.value_or(graph_anchor_edge_batch_options());
     if (options.edge_ids.empty()) {
@@ -285,14 +317,26 @@ public:
         "edge order");
     auto batch = make_graph_anchor_edge_batch<key_t>(samples, options);
     batch.graph_order_fingerprint = graph_order_fingerprint_;
+    std::vector<std::size_t> cursor_anchor_indices = anchor_indices;
+    if (options.anchor_order == graph_anchor_order_policy_t::sorted) {
+      std::sort(cursor_anchor_indices.begin(), cursor_anchor_indices.end(),
+                [&](const auto lhs, const auto rhs) {
+                  return anchor_keys_[lhs] < anchor_keys_[rhs];
+                });
+    }
     std::vector<key_t> cursor_anchors;
-    cursor_anchors.reserve(end_anchor_index - begin_anchor_index);
-    for (std::size_t i = begin_anchor_index; i < end_anchor_index; ++i) {
-      cursor_anchors.push_back(anchor_keys_[i]);
+    cursor_anchors.reserve(cursor_anchor_indices.size());
+    std::size_t begin_anchor_index = cursor_anchor_indices.front();
+    std::size_t end_anchor_index = cursor_anchor_indices.front() + 1;
+    for (const auto anchor_index : cursor_anchor_indices) {
+      cursor_anchors.push_back(anchor_keys_[anchor_index]);
+      begin_anchor_index = std::min(begin_anchor_index, anchor_index);
+      end_anchor_index = std::max(end_anchor_index, anchor_index + 1);
     }
     batch.cursor = make_graph_anchor_cursor<key_t>(
         graph_order_fingerprint_, begin_anchor_index, end_anchor_index,
-        batch_size, std::move(cursor_anchors));
+        requested_batch_size, std::move(cursor_anchors),
+        std::move(cursor_anchor_indices));
     return batch;
   }
 
@@ -443,22 +487,20 @@ private:
   }
 
   [[nodiscard]] std::vector<anchor_sample_t>
-  collect_samples_for_anchor_range_(std::size_t begin_anchor_index,
-                                    std::size_t end_anchor_index) {
+  collect_samples_for_anchor_indices_(
+      const std::vector<std::size_t> &anchor_indices) {
     if (options_.fetch_mode == fetch_mode_t::parallel_by_edge) {
       const std::size_t work_items =
-          (end_anchor_index - begin_anchor_index) * graph_.edge_ids.size();
+          anchor_indices.size() * graph_.edge_ids.size();
       if (work_items >= static_cast<std::size_t>(std::max<int64_t>(
                             1, options_.parallel_min_work_items))) {
-        return collect_samples_parallel_by_edge_(begin_anchor_index,
-                                                 end_anchor_index);
+        return collect_samples_parallel_by_edge_(anchor_indices);
       }
     }
     std::vector<anchor_sample_t> samples;
-    samples.reserve((end_anchor_index - begin_anchor_index) *
-                    graph_.edge_ids.size());
-    for (std::size_t i = begin_anchor_index; i < end_anchor_index; ++i) {
-      auto edge_samples = get_edge_samples(i);
+    samples.reserve(anchor_indices.size() * graph_.edge_ids.size());
+    for (const auto anchor_index : anchor_indices) {
+      auto edge_samples = get_edge_samples(anchor_index);
       samples.insert(samples.end(),
                      std::make_move_iterator(edge_samples.begin()),
                      std::make_move_iterator(edge_samples.end()));
@@ -466,16 +508,15 @@ private:
     return samples;
   }
 
-  [[nodiscard]] std::vector<anchor_sample_t>
-  collect_samples_parallel_by_edge_(std::size_t begin_anchor_index,
-                                    std::size_t end_anchor_index) {
-    const std::size_t B = end_anchor_index - begin_anchor_index;
+  [[nodiscard]] std::vector<anchor_sample_t> collect_samples_parallel_by_edge_(
+      const std::vector<std::size_t> &anchor_indices) {
+    const std::size_t B = anchor_indices.size();
     const std::size_t L = graph_.edge_ids.size();
 
     std::vector<key_t> anchors;
     anchors.reserve(B);
-    for (std::size_t i = begin_anchor_index; i < end_anchor_index; ++i) {
-      anchors.push_back(anchor_keys_[i]);
+    for (const auto anchor_index : anchor_indices) {
+      anchors.push_back(anchor_keys_[anchor_index]);
     }
 
     std::vector<
@@ -566,6 +607,23 @@ private:
       }
     }
     return samples;
+  }
+
+  void validate_anchor_indices_(
+      const std::vector<std::size_t> &anchor_indices) const {
+    TORCH_CHECK(!anchor_indices.empty(),
+                "[graph_anchor_edge_dataset_t] anchor index list must not be "
+                "empty");
+    std::vector<std::size_t> sorted = anchor_indices;
+    std::sort(sorted.begin(), sorted.end());
+    for (const auto anchor_index : sorted) {
+      TORCH_CHECK(anchor_index < anchor_keys_.size(),
+                  "[graph_anchor_edge_dataset_t] anchor_index out of range");
+    }
+    TORCH_CHECK(std::adjacent_find(sorted.begin(), sorted.end()) ==
+                    sorted.end(),
+                "[graph_anchor_edge_dataset_t] duplicate anchor_index in "
+                "graph batch request");
   }
 
   void build_anchor_keys_() {
@@ -666,6 +724,211 @@ private:
   std::string graph_order_fingerprint_{};
   nodelift_compatibility_report_t validation_report_{};
   nodelift_compatibility_identity_t validation_identity_{};
+};
+
+template <typename KeyT> struct graph_anchor_edge_dataloader_sample_t {
+  std::size_t anchor_index{0};
+  KeyT anchor_key{};
+  std::vector<graph_anchor_edge_sample_t<KeyT>> edge_samples{};
+};
+
+template <typename DatatypeT>
+class graph_anchor_edge_torch_dataset_t
+    : public torch::data::datasets::Dataset<
+          graph_anchor_edge_torch_dataset_t<DatatypeT>,
+          graph_anchor_edge_dataloader_sample_t<
+              typename DatatypeT::key_type_t>> {
+public:
+  using key_t = typename DatatypeT::key_type_t;
+  using source_t = graph_anchor_edge_dataset_t<DatatypeT>;
+  using sample_t = graph_anchor_edge_dataloader_sample_t<key_t>;
+
+  graph_anchor_edge_torch_dataset_t() = default;
+
+  graph_anchor_edge_torch_dataset_t(source_t *source,
+                                    std::size_t begin_anchor_index,
+                                    std::size_t end_anchor_index)
+      : source_(source), begin_anchor_index_(begin_anchor_index),
+        end_anchor_index_(end_anchor_index) {
+    TORCH_CHECK(source_ != nullptr,
+                "[graph_anchor_edge_torch_dataset_t] source must not be null");
+    TORCH_CHECK(begin_anchor_index_ <= source_->size(),
+                "[graph_anchor_edge_torch_dataset_t] begin_anchor_index is "
+                "outside source anchor domain");
+    TORCH_CHECK(end_anchor_index_ <= source_->size(),
+                "[graph_anchor_edge_torch_dataset_t] end_anchor_index is "
+                "outside source anchor domain");
+    TORCH_CHECK(end_anchor_index_ >= begin_anchor_index_,
+                "[graph_anchor_edge_torch_dataset_t] end_anchor_index must be "
+                ">= begin_anchor_index");
+  }
+
+  sample_t get(std::size_t index) override {
+    TORCH_CHECK(source_ != nullptr,
+                "[graph_anchor_edge_torch_dataset_t] source must not be null");
+    TORCH_CHECK(index < size().value(),
+                "[graph_anchor_edge_torch_dataset_t] index out of range");
+    const auto anchor_index = begin_anchor_index_ + index;
+    return sample_t{
+        .anchor_index = anchor_index,
+        .anchor_key = source_->anchor_keys().at(anchor_index),
+        .edge_samples = source_->get_edge_samples(anchor_index),
+    };
+  }
+
+  torch::optional<std::size_t> size() const override {
+    return end_anchor_index_ - begin_anchor_index_;
+  }
+
+  [[nodiscard]] std::size_t begin_anchor_index() const {
+    return begin_anchor_index_;
+  }
+
+  [[nodiscard]] std::size_t end_anchor_index() const {
+    return end_anchor_index_;
+  }
+
+  torch::data::samplers::SequentialSampler SequentialSampler() const {
+    return torch::data::samplers::SequentialSampler(size().value());
+  }
+
+  torch::data::samplers::RandomSampler RandomSampler() const {
+    return torch::data::samplers::RandomSampler(size().value());
+  }
+
+private:
+  source_t *source_{nullptr};
+  std::size_t begin_anchor_index_{0};
+  std::size_t end_anchor_index_{0};
+};
+
+template <typename DatatypeT> struct graph_anchor_edge_dataloader_options_t {
+  std::size_t batch_size{64};
+  std::size_t workers{0};
+  std::size_t begin_anchor_index{0};
+  std::optional<std::size_t> end_anchor_index{std::nullopt};
+  std::optional<graph_anchor_edge_batch_options_t> graph_batch_options{
+      std::nullopt};
+};
+
+template <typename DatatypeT,
+          typename SamplerT = torch::data::samplers::SequentialSampler>
+class graph_anchor_edge_dataloader_t {
+  static_assert(
+      std::is_same_v<SamplerT, torch::data::samplers::SequentialSampler> ||
+          std::is_same_v<SamplerT, torch::data::samplers::RandomSampler>,
+      "graph_anchor_edge_dataloader_t v1 supports SequentialSampler or "
+      "RandomSampler");
+
+public:
+  using source_t = graph_anchor_edge_dataset_t<DatatypeT>;
+  using key_t = typename DatatypeT::key_type_t;
+  using dataset_t = graph_anchor_edge_torch_dataset_t<DatatypeT>;
+  using sample_t = graph_anchor_edge_dataloader_sample_t<key_t>;
+  using graph_batch_t = graph_anchor_edge_batch_t<key_t>;
+  using backend_loader_t =
+      torch::data::StatelessDataLoader<dataset_t, SamplerT>;
+  using iterator_t = decltype(std::declval<backend_loader_t &>().begin());
+
+  graph_anchor_edge_dataloader_t(
+      source_t &&source,
+      graph_anchor_edge_dataloader_options_t<DatatypeT> options = {})
+      : source_(std::move(source)), options_(validate_options_(options)),
+        dataset_(&source_, options_.begin_anchor_index,
+                 options_.end_anchor_index.value_or(source_.size())),
+        sampler_(make_sampler_(dataset_)),
+        data_loader_options_(torch::data::DataLoaderOptions()
+                                 .batch_size(options_.batch_size)
+                                 .workers(options_.workers)),
+        loader_(dataset_, sampler_, data_loader_options_),
+        iterator_(loader_.begin()), end_(loader_.end()) {}
+
+  [[nodiscard]] bool has_next() const { return iterator_ != end_; }
+
+  graph_batch_t next() {
+    TORCH_CHECK(has_next(),
+                "[graph_anchor_edge_dataloader_t] dataloader is exhausted");
+    auto samples = *iterator_;
+    ++iterator_;
+    return make_graph_batch_(std::move(samples));
+  }
+
+  void reset() {
+    // StatelessDataLoader::begin() is the public reset path; it resets the
+    // sampler internally, including RandomSampler.
+    iterator_ = loader_.begin();
+    end_ = loader_.end();
+  }
+
+  [[nodiscard]] std::size_t begin_anchor_index() const {
+    return dataset_.begin_anchor_index();
+  }
+
+  [[nodiscard]] std::size_t end_anchor_index() const {
+    return dataset_.end_anchor_index();
+  }
+
+  [[nodiscard]] std::size_t cursor() const {
+    if (!has_next()) {
+      return end_anchor_index();
+    }
+    return dataset_.begin_anchor_index();
+  }
+
+  [[nodiscard]] const source_t &source() const { return source_; }
+  [[nodiscard]] source_t &source() { return source_; }
+
+private:
+  static graph_anchor_edge_dataloader_options_t<DatatypeT>
+  validate_options_(graph_anchor_edge_dataloader_options_t<DatatypeT> options) {
+    TORCH_CHECK(options.batch_size > 0,
+                "[graph_anchor_edge_dataloader_t] batch_size must be "
+                "positive");
+    TORCH_CHECK(options.workers == 0,
+                "[graph_anchor_edge_dataloader_t] workers>0 is not enabled in "
+                "v1 because the synchronized graph source is owned by the "
+                "loader");
+    return options;
+  }
+
+  static SamplerT make_sampler_(const dataset_t &dataset) {
+    if constexpr (std::is_same_v<SamplerT,
+                                 torch::data::samplers::SequentialSampler>) {
+      return dataset.SequentialSampler();
+    } else {
+      return dataset.RandomSampler();
+    }
+  }
+
+  graph_batch_t make_graph_batch_(std::vector<sample_t> samples) {
+    TORCH_CHECK(!samples.empty(),
+                "[graph_anchor_edge_dataloader_t] empty dataloader batch");
+    std::vector<std::size_t> anchor_indices;
+    std::vector<graph_anchor_edge_sample_t<key_t>> edge_samples;
+    anchor_indices.reserve(samples.size());
+    for (auto &sample : samples) {
+      anchor_indices.push_back(sample.anchor_index);
+      edge_samples.insert(edge_samples.end(),
+                          std::make_move_iterator(sample.edge_samples.begin()),
+                          std::make_move_iterator(sample.edge_samples.end()));
+    }
+
+    auto batch_options = options_.graph_batch_options.value_or(
+        source_.graph_anchor_edge_batch_options());
+    batch_options.anchor_order = graph_anchor_order_policy_t::first_seen;
+    return source_.make_graph_batch_from_anchor_samples(
+        anchor_indices, std::move(edge_samples), options_.batch_size,
+        batch_options);
+  }
+
+  source_t source_{};
+  graph_anchor_edge_dataloader_options_t<DatatypeT> options_{};
+  dataset_t dataset_{};
+  SamplerT sampler_;
+  torch::data::DataLoaderOptions data_loader_options_{};
+  backend_loader_t loader_;
+  iterator_t iterator_;
+  iterator_t end_;
 };
 
 } // namespace cuwacunu::ujcamei::source::retrieval::dataloader

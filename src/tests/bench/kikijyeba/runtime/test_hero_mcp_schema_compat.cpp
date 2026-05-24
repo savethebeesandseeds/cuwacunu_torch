@@ -212,6 +212,10 @@ int main() {
                 first_existing({hero_root / "hero_lattice.mcp",
                                 hero_root / "hero_lattice_mcp"}),
                 true);
+  check_catalog("Marshal",
+                first_existing({hero_root / "hero_marshal.mcp",
+                                hero_root / "hero_marshal_mcp"}),
+                false);
 
   return 0;
 }

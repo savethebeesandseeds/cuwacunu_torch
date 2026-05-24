@@ -31,7 +31,7 @@
 */
 NODELIFT_SRL {
   VERSION = wikimyei.expression.nodelift.srl.v1;
-  COMPONENT_ID = nodelift_srl_v1;
+  COMPONENT_ASSEMBLY_ID = nodelift_srl_v1;
   FEATURE_WIDTH = 9;
   PRICE_COORDS = kline_price;
   ACTIVITY_COORDS = kline_activity;

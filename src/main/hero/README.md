@@ -1,7 +1,7 @@
-#Config Hero
+# Config Hero
 
-The fresh Hero migration currently has Config Hero, Runtime Hero, and Lattice
-Hero.
+The fresh Hero migration currently has Config Hero, Runtime Hero, Lattice Hero,
+and Marshal Hero.
 
 Each Hero binary has two entry modes:
 
@@ -15,6 +15,7 @@ Build:
 make -C /cuwacunu/src/main/hero build-config-hero
 make -C /cuwacunu/src/main/hero build-runtime-hero
 make -C /cuwacunu/src/main/hero build-lattice-hero
+make -C /cuwacunu/src/main/hero build-marshal-hero
 ```
 
 Direct smoke:
@@ -34,10 +35,14 @@ Direct smoke:
   --global-config /cuwacunu/src/config/.config \
   --tool hero.lattice.status \
   --args-json '{}'
+
+/cuwacunu/.build/hero/hero_marshal.mcp \
+  --global-config /cuwacunu/src/config/.config \
+  --list-tools-json
 ```
 
 MCP schema hygiene is a harness-safety gate. Tool catalogs emitted by the
-sourced Config, Runtime, and Lattice Heroes validate each `inputSchema` before
+Config, Runtime, Lattice, and Marshal Heroes validate each `inputSchema` before
 `--list-tools-json` or JSON-RPC `tools/list` returns it: the root schema must
 have `type=object`, and top-level `oneOf`, `anyOf`, `allOf`, `enum`, and `not`
 are rejected with a message naming the tool, schema path, and offending
@@ -54,6 +59,25 @@ The default policy paths are `[HERO].config_hero_dsl_path` and
 `/cuwacunu/src/config/hero.runtime.dsl` and
 `/cuwacunu/src/config/hero.lattice.dsl`.
 
+Marshal Hero has no policy DSL of its own yet. It is a deterministic
+coordination surface over explicit Lattice advice and Runtime Hero policy/wave
+snapshots. It validates advice, builds dispatch previews, checks execution
+gates, replays Marshal receipts, reports status, previews batches, and can ask
+Lattice Hero to materialize target-id plan advice through
+`hero.marshal.lookup_target_advice`. That wrapper calls
+`hero.lattice.plan_target`, converts the plan into explicit Marshal advice and
+request objects, and does not dispatch from free-form target text. Marshal does
+not prove target satisfaction and does not execute waves by itself; execution
+handoff still goes through Runtime Hero.
+
+For operator-facing target pursuit, use
+`hero.marshal.prepare_target_dispatch`. It prepares one small packet for a
+single `target_id`: Lattice owns the plan and `latest_satisfying` resolution,
+Marshal validates the materialized request and checks Runtime policy/wave
+alignment, and Runtime still owns dry-run/execution. The tool stops before
+Runtime dry-run unless `include_runtime_dry_run=true`, and it never edits wave
+DSL files or marks the target satisfied.
+
 This v2 surface intentionally removes legacy Config Hero responsibilities that
 belonged to retired migration layers:
 
@@ -64,15 +88,22 @@ belonged to retired migration layers:
 
 Config Hero is now a small policy-controlled config file surface. It can list,
 read, write, and delete files under configured roots, while domain-specific DSL
-validation remains owned by Ujcamei, Kikijyeba, Wikimyei, and Jkimyei.
+validation remains owned by Ujcamei, Kikijyeba, Wikimyei, and Jkimyei. It can
+also describe an exact global config bundle with `hero.config.capture_bundle`:
+the receipt records every `_path`/`_filename` entry, canonical file paths,
+content digests, a stable `config_bundle_id`, and a per-capture
+`config_receipt_id`.
 
 Agent workflow:
 
 1. `hero.config.status` checks policy health.
 2. `hero.config.map` finds global config path references and missing files.
-3. `hero.config.resolve` preflights a target path before read or mutation.
-4. `hero.config.read` returns file content plus `sha256`.
-5. `hero.config.write` uses `dry_run=true`, then writes with
+3. `hero.config.capture_bundle` records the current config provenance receipt
+   when runtime spawn evidence or target proof context needs an exact config
+   link.
+4. `hero.config.resolve` preflights a target path before read or mutation.
+5. `hero.config.read` returns file content plus `sha256`.
+6. `hero.config.write` uses `dry_run=true`, then writes with
    `expected_sha256` when replacing an existing file.
 
 `hero.config.delete` also supports `dry_run=true` and requires
@@ -89,9 +120,8 @@ Runtime agent workflow:
 
 1. `hero.runtime.status` checks policy, executable availability, and active
    wave intent.
-2. `hero.runtime.wave` decodes `kikijyeba.settings.wave.dsl`. Migrated
-   canonical VICReg/MDN targets report channel job kinds; `legacy_inference_mdn`
-   is the node compatibility target.
+2. `hero.runtime.wave` decodes `kikijyeba.settings.wave.dsl`. Canonical
+   VICReg/MDN targets report channel job kinds; there is no legacy MDN target.
 3. `hero.runtime.dry_run` builds and validates the protocol contract through
    `cuwacunu_exec --dry-run` and returns job artifacts.
 4. `hero.runtime.list_jobs` and `hero.runtime.get_job` inspect prior job
@@ -120,7 +150,12 @@ does not execute waves. Named train/validation/test ranges live in
 `OVER_SPLIT` from that file before planning and can apply split-level holdout
 defaults through `PROTECT_SPLIT`. The future lattice DB should index immutable
 runtime/fact files for faster queries; runtime remains the producer of durable
-evidence files.
+evidence files. Runtime manifests and exposure facts carry
+`config_bundle_id`, `config_receipt_id`, `component_spawn_registry_id`,
+`component_family_id`, `component_spawn_fingerprint`, the scoped base26
+`component_spawn_id`, and `component_spawn_label` as `<family>#<spawn_id>`.
+The full fingerprint is the audit authority; the spawn id is only an operator
+display and retrieval handle inside its registry/family scope.
 
 Lattice Hero agent runbook:
 
@@ -152,8 +187,12 @@ Lattice Hero agent runbook:
    non-monotone, row-order-inverting, or affine-inconsistent source-key windows
    produce scan warnings while row-index footprints remain the leakage authority.
    The audit object exposes parsed endpoints, order-preservation booleans, and
-   inferred key-step/affine-consistency fields so agents can inspect the
-   auxiliary source-key coordinate map without parsing warning text.
+   inferred key-step/affine-consistency fields, gap-warning counts, and
+   row/source-key mismatch counts so agents can inspect the auxiliary source-key
+   coordinate map without parsing warning text. `scan_exposure` also emits
+   `source_key_map_audit_summary`, binding audits to graph-order identity,
+   source-cursor identity, and source-receipt parent facts while preserving
+   row-index authority.
    MDN jobs also produce derived
    `node_exposure` previews from per-node report fields, including
    routed/active/trained/evaluated row counts, valid targets,
@@ -187,7 +226,8 @@ Lattice Hero agent runbook:
    adapter valid-channel fraction, finite-parameter check, and optional
    geometry metrics such as embedding dimension, effective rank/fraction,
    min/max dimension variance, condition number, and isotropy; treat these as
-   visibility fields unless a future target explicitly gates on them.
+   visibility fields unless a target explicitly gates on them with
+   `LATTICE_REQUIRES KIND=representation_geometry`.
 5. Call `hero.lattice.evaluate_target` to ask whether a target is satisfied by
    evidence. Call `hero.lattice.plan_target` when the user asks what should run
    next; it returns the same proof certificate/check plus any suggested wave,
@@ -325,6 +365,9 @@ Lattice Hero agent runbook:
    `watched_file_metadata_digest`, `row_set_digest`, and `relation_counts`;
    `validation_strength=watched_file_manifest` is a bounded freshness check,
    while `header_only` remains the explicit fastest unproven inspection mode.
+   Runtime metadata digests are metadata freshness checks over path, size, and
+   mtime records. They are not content digests and do not make cache rows target
+   proof authority.
    Hero JSON also exposes `evidence_abstraction_vocabulary`, the
    abstract-interpretation vocabulary that maps concrete runtime/fact inputs
    into abstract proof outputs with soundness, conservative, and join semantics.
@@ -347,6 +390,25 @@ Lattice Hero agent runbook:
    Hero JSON also exposes `representation_geometry_summary`, checking that the
    18 VICReg health/geometry metrics remain non-blocking warning visibility and
    do not grant active performance-gate authority.
+   Hero JSON also exposes `representation_geometry_gate_review_summary`, which
+   reviews observed VICReg geometry distributions, records that no default
+   threshold was promoted, and confirms that hard geometry checks are opt-in and
+   fail closed when geometry facts are missing.
+   Hero JSON also exposes `evidence_retention_policy_vocabulary`,
+   `evidence_retention_audit_scenario_vocabulary`, and
+   `evidence_retention_policy_summary`. These are the retention/compaction
+   guardrails: runtime reports, sidecars, checkpoint material, and
+   selection-signal evidence remain replay authority; proof certificates, PASS
+   files, compact receipts, and cache rows remain non-authoritative audit or
+   read-model metadata.
+   Hero JSON also exposes `benchmark_regression_budget_vocabulary` and
+   `benchmark_regression_budget_summary`. These are the V3-L performance
+   guardrails: benchmark rows are finite, split library-function, long-lived
+   MCP, and direct CLI timing layers, and label proof modes as `header_only`,
+   `watched_file_manifest`, `full_runtime_metadata_digest`, `live_scan`, or
+   `live_parity`. Header-only fast audit rows must not trigger live scans or
+   metadata digests; proof/parity rows may be slower, but their cost is named
+   separately from the fast path.
    Hero JSON also exposes `performance_uncertainty_policy_vocabulary`,
    recording that future performance gates must use declared uncertainty
    methods and conservative confidence bounds, not raw point estimates, with
@@ -423,10 +485,10 @@ Lattice Hero agent runbook:
    self-check proving the coverage/load algebra partition and unit boundary.
    Evaluations also expose `source_key_coordinate_policy_vocabulary`, recording
    that row-index intervals are authoritative for coverage/leakage and
-   source-key windows are audit-only order-preserving/affine map checks.
+   source-key windows are audit-only order-preserving/affine/gap map checks.
    Evaluations also expose `source_key_coordinate_policy_summary`, which
    self-checks the coordinate boundary: one row-index coverage/leakage authority
-   row, three audit-only source-key rows, declared order-preserving/affine
+   row, four audit-only source-key rows, declared order-preserving/affine/gap
    fields, and no source-key audit row with coverage or leakage authority.
    Evaluations also expose `source_receipt_policy_vocabulary`, recording that
    compact `source_file_receipts` are audit metadata only: they trace source
@@ -622,6 +684,10 @@ Lattice Hero agent runbook:
    suspicious VICReg health metrics such as high variance/covariance loss, low
    adapter valid-channel fraction, low effective-rank fraction, or high
    condition number; those warnings remain visibility only.
+   `LATTICE_REQUIRES KIND=representation_geometry` is the explicit opt-in gate
+   form. It is readiness/health evidence, not validation performance, and it
+   produces a metric deficit if the worst matching geometry measurement is
+   missing or outside the declared bound.
    Coverage proofs use idempotent interval union and expose contributing,
    merged covered, and missing complement intervals; repeated exposure load
    remains an additive visibility summary. Exposure summaries expose these
@@ -650,7 +716,8 @@ Lattice Hero agent runbook:
    such as valid projection rows, finite parameter checks, rank, minimum
    dimension variance, and isotropy use `BELOW`. Anchor-domain warning clauses
    carry exactly one metric threshold. Treat these as authoring errors, not
-   runtime evidence failures.
+   runtime evidence failures. Opt-in representation-geometry gates use `VALUE`
+   with `OP=ge` for low-bad metrics and `OP=le` for high-bad metrics.
    Exposure summaries may include valid-target support uncertainty when runtime
    evidence provides both `valid_target_count` and a finite
    `valid_target_fraction`: inferred success/opportunity counts, an aggregate

@@ -8,6 +8,9 @@ It names the current wave, selects the Wikimyei family to run with
 graph-wide source range and Ujcamei cursor family used to ground runtime `.lls`
 reports. A wave range is larger than a batch: the stream generator yields
 graph-anchor batches until the requested range is exhausted.
+`SOURCE_RANGE=source_key` is the stable authoring form for key-valued sources;
+it resolves to the accepted graph-anchor index domain before execution while
+preserving requested source-key bounds in runtime evidence.
 
 `TARGET` is the focal component, not the whole execution chain. For example,
 `TARGET=wikimyei.inference.expected_value.mdn` still runs NodeLift and a frozen

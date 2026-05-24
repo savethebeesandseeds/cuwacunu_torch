@@ -41,13 +41,16 @@ struct component_stream_wave_t {
   std::string source_cursor_kind{"graph_anchor"};
   std::string source_cursor_scope{"wave_batch"};
   std::string source_range_policy{"all"};
+  std::string source_order_policy{"sequential"};
   std::optional<std::size_t> anchor_index_begin{std::nullopt};
   std::optional<std::size_t> anchor_index_end{std::nullopt};
+  std::optional<std::int64_t> source_key_begin{std::nullopt};
+  std::optional<std::int64_t> source_key_end{std::nullopt};
 };
 
 struct component_stream_identity_t {
-  std::string component_family{};
-  std::string component_id{};
+  std::string component_family_id{};
+  std::string component_assembly_id{};
   std::string assembly_token{};
   std::string dock_binding_token{};
   std::string graph_order_fingerprint{};
@@ -59,18 +62,20 @@ struct component_stream_cursor_t {
   std::string source_cursor_kind{};
   std::string source_cursor_scope{};
   std::string source_range_policy{};
+  std::string source_order_policy{};
   std::optional<std::size_t> anchor_index_begin{std::nullopt};
   std::optional<std::size_t> anchor_index_end{std::nullopt};
+  std::optional<std::int64_t> source_key_begin{std::nullopt};
+  std::optional<std::int64_t> source_key_end{std::nullopt};
   std::string batch_cursor_token{};
 };
 
 struct component_stream_report_t {
   component_stream_identity_t identity{};
   component_stream_cursor_t cursor{};
-  cuwacunu::kikijyeba::lattice::runtime_report::
-      runtime_report_mode_t runtime_report_mode{
-          cuwacunu::kikijyeba::lattice::runtime_report::
-              runtime_report_mode_t::normal};
+  cuwacunu::kikijyeba::lattice::runtime_report::runtime_report_mode_t
+      runtime_report_mode{cuwacunu::kikijyeba::lattice::runtime_report::
+                              runtime_report_mode_t::normal};
   double elapsed_ms{std::numeric_limits<double>::quiet_NaN()};
   std::uint64_t input_count{0};
   std::uint64_t output_count{0};
@@ -84,8 +89,8 @@ struct component_stream_report_t {
 
 struct component_stream_plan_step_t {
   std::string name{};
-  std::string component_family{};
-  std::string component_id{};
+  std::string component_family_id{};
+  std::string component_assembly_id{};
   std::string assembly_token{};
   std::string dock_binding_token{};
   std::string input_batch{};
@@ -102,8 +107,8 @@ struct component_stream_plan_t {
         out << " -> ";
       }
       const auto &step = steps[i];
-      out << step.name << "(" << step.component_family << ":"
-          << step.component_id << ")";
+      out << step.name << "(" << step.component_family_id << ":"
+          << step.component_assembly_id << ")";
     }
     return out.str();
   }
@@ -111,9 +116,9 @@ struct component_stream_plan_t {
 
 inline void validate_component_stream_identity(
     const component_stream_identity_t &identity) {
-  if (component_stream_detail::trim_stream_token(identity.component_family)
+  if (component_stream_detail::trim_stream_token(identity.component_family_id)
           .empty() ||
-      component_stream_detail::trim_stream_token(identity.component_id)
+      component_stream_detail::trim_stream_token(identity.component_assembly_id)
           .empty() ||
       component_stream_detail::trim_stream_token(identity.assembly_token)
           .empty() ||
@@ -136,11 +141,13 @@ validate_component_stream_cursor(const component_stream_cursor_t &cursor) {
           .empty() ||
       component_stream_detail::trim_stream_token(cursor.source_range_policy)
           .empty() ||
+      component_stream_detail::trim_stream_token(cursor.source_order_policy)
+          .empty() ||
       component_stream_detail::trim_stream_token(cursor.batch_cursor_token)
           .empty()) {
     throw std::runtime_error(
         "[component_stream] wave id/mode, source cursor kind/scope, source "
-        "range policy, and batch cursor token are required");
+        "range/order policy, and batch cursor token are required");
   }
 }
 
@@ -155,8 +162,13 @@ component_stream_wave_from_settings(
       .source_range_policy =
           cuwacunu::kikijyeba::settings::source_range_policy_name(
               settings.source_range_policy),
+      .source_order_policy =
+          cuwacunu::kikijyeba::settings::source_order_policy_name(
+              settings.source_order_policy),
       .anchor_index_begin = settings.anchor_index_begin,
       .anchor_index_end = settings.anchor_index_end,
+      .source_key_begin = settings.source_key_begin,
+      .source_key_end = settings.source_key_end,
   };
 }
 
@@ -171,17 +183,20 @@ template <typename KeyT>
       .source_cursor_kind = wave.source_cursor_kind,
       .source_cursor_scope = wave.source_cursor_scope,
       .source_range_policy = wave.source_range_policy,
+      .source_order_policy = wave.source_order_policy,
       .anchor_index_begin = wave.anchor_index_begin,
       .anchor_index_end = wave.anchor_index_end,
-      .batch_cursor_token = cuwacunu::kikijyeba::lattice::
-          runtime_report::require_graph_anchor_cursor_token(cursor),
+      .source_key_begin = wave.source_key_begin,
+      .source_key_end = wave.source_key_end,
+      .batch_cursor_token = cuwacunu::kikijyeba::lattice::runtime_report::
+          require_graph_anchor_cursor_token(cursor),
   };
 }
 
 [[nodiscard]] inline component_stream_report_t make_component_stream_report(
     component_stream_identity_t identity, component_stream_cursor_t cursor,
-    cuwacunu::kikijyeba::lattice::runtime_report::
-        runtime_report_mode_t runtime_report_mode,
+    cuwacunu::kikijyeba::lattice::runtime_report::runtime_report_mode_t
+        runtime_report_mode,
     double elapsed_ms = std::numeric_limits<double>::quiet_NaN(),
     std::uint64_t input_count = 0, std::uint64_t output_count = 0,
     std::uint64_t warning_count = 0) {
@@ -198,20 +213,19 @@ template <typename KeyT>
   };
 }
 
-[[nodiscard]] inline cuwacunu::kikijyeba::lattice::
-    runtime_report::runtime_lls_document_t
+[[nodiscard]] inline cuwacunu::kikijyeba::lattice::runtime_report::
+    runtime_lls_document_t
     make_component_stream_runtime_document(
         const std::string &schema, const component_stream_report_t &report) {
-  namespace lls =
-      cuwacunu::kikijyeba::lattice::runtime_report;
+  namespace lls = cuwacunu::kikijyeba::lattice::runtime_report;
   validate_component_stream_identity(report.identity);
   validate_component_stream_cursor(report.cursor);
 
   auto document =
       lls::make_component_runtime_document(lls::component_runtime_identity_t{
           .schema = schema,
-          .component_family = report.identity.component_family,
-          .component_id = report.identity.component_id,
+          .component_family_id = report.identity.component_family_id,
+          .component_assembly_id = report.identity.component_assembly_id,
           .batch_cursor_token = report.cursor.batch_cursor_token,
           .graph_order_fingerprint = report.identity.graph_order_fingerprint,
       });
@@ -233,6 +247,8 @@ template <typename KeyT>
       "source_cursor_scope", report.cursor.source_cursor_scope));
   document.entries.push_back(lls::make_component_runtime_lls_string_entry(
       "source_range_policy", report.cursor.source_range_policy));
+  document.entries.push_back(lls::make_component_runtime_lls_string_entry(
+      "source_order_policy", report.cursor.source_order_policy));
   if (report.cursor.anchor_index_begin.has_value()) {
     document.entries.push_back(lls::make_component_runtime_lls_uint_entry(
         "requested_anchor_index_begin",
@@ -242,6 +258,14 @@ template <typename KeyT>
     document.entries.push_back(lls::make_component_runtime_lls_uint_entry(
         "requested_anchor_index_end",
         static_cast<std::uint64_t>(*report.cursor.anchor_index_end)));
+  }
+  if (report.cursor.source_key_begin.has_value()) {
+    document.entries.push_back(lls::make_component_runtime_lls_int_entry(
+        "requested_source_key_begin", *report.cursor.source_key_begin));
+  }
+  if (report.cursor.source_key_end.has_value()) {
+    document.entries.push_back(lls::make_component_runtime_lls_int_entry(
+        "requested_source_key_end", *report.cursor.source_key_end));
   }
   document.entries.push_back(lls::make_component_runtime_lls_string_entry(
       "runtime_report_mode",

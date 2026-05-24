@@ -1,6 +1,6 @@
 job_id=fixture_mdn_train
 job_kind=inference_mdn
-target_component=wikimyei.inference.expected_value.mdn
+target_component_family_id=wikimyei.inference.expected_value.mdn
 wave_id=fixture_mdn_train
 wave_action=train
 mutated_components=wikimyei.inference.expected_value.mdn

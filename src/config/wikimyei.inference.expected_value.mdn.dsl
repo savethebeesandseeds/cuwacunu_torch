@@ -9,8 +9,8 @@
 */
 MDN {
   VERSION = wikimyei.inference.expected_value.mdn.v1;
-  COMPONENT_ID = channel_context_mdn_v1;
-  INPUT_REPRESENTATION_ID = vicreg_v1;
+  COMPONENT_ASSEMBLY_ID = mdn_v1;
+  INPUT_REPRESENTATION_ASSEMBLY_ID = vicreg_v1;
   CONTEXT_MODE = channel_context_strict;
   TARGET_DOMAIN = channel_node_future;
   TARGET_COORDS = 0,1,2,3,4,5,6,7,8;

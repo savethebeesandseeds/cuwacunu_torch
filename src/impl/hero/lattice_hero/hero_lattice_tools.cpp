@@ -62,7 +62,7 @@ constexpr tool_descriptor_t
              "Summarize Lattice Hero policy, target DSL, runtime root, "
              "exposure "
              "facts, "
-             "and inferred active identity.",
+             "and inferred active proof_context.",
              R"({"type":"object","properties":{"config_path":{"type":"string"},"runtime_root":{"type":"string"}},"additionalProperties":false})"},
             {"hero.lattice.schema",
              "List Lattice Hero policy keys and constraints.",
@@ -106,6 +106,12 @@ constexpr tool_descriptor_t
              "and "
              "non-blocking warning results.",
              R"({"type":"object","properties":{"target_id":{"type":"string"},"config_path":{"type":"string"},"runtime_root":{"type":"string"},"protocol_contract_fingerprint":{"type":"string"},"graph_order_fingerprint":{"type":"string"},"source_cursor_token":{"type":"string"},"vicreg_assembly_fingerprint":{"type":"string"},"mdn_assembly_fingerprint":{"type":"string"}},"required":["target_id"],"additionalProperties":false})"},
+            {"hero.lattice.resolve_latest_satisfying",
+             "Resolve one latest_satisfying:<target_id> model-state hint to "
+             "a concrete checkpoint path using Lattice target satisfaction "
+             "and checkpoint-closure proof semantics; read-only, no ranking "
+             "or fallback selection.",
+             R"({"type":"object","properties":{"symbolic_hint":{"type":"string"},"target_id":{"type":"string"},"config_path":{"type":"string"},"runtime_root":{"type":"string"},"protocol_contract_fingerprint":{"type":"string"},"graph_order_fingerprint":{"type":"string"},"source_cursor_token":{"type":"string"},"vicreg_assembly_fingerprint":{"type":"string"},"mdn_assembly_fingerprint":{"type":"string"}},"additionalProperties":false})"},
             {"hero.lattice.scan_exposure",
              "Scan runtime jobs into an in-memory lattice exposure ledger "
              "preview, "
@@ -148,6 +154,7 @@ constexpr tool_descriptor_t
          name == "hero.lattice.evaluate_targets" ||
          name == "hero.lattice.compare_evidence" ||
          name == "hero.lattice.plan_target" ||
+         name == "hero.lattice.resolve_latest_satisfying" ||
          name == "hero.lattice.scan_exposure" ||
          name == "hero.lattice.index_status" ||
          name == "hero.lattice.index_query" ||
@@ -1029,6 +1036,30 @@ exposure_uses_json(const std::vector<exposure::exposure_use_t> &uses) {
   return out.str();
 }
 
+[[nodiscard]] std::string representation_geometry_requirement_specs_json(
+    const std::vector<
+        target::lattice_representation_geometry_requirement_spec_t>
+        &requirements) {
+  std::ostringstream out;
+  out << "[";
+  for (std::size_t i = 0; i < requirements.size(); ++i) {
+    if (i != 0) {
+      out << ",";
+    }
+    const auto &requirement = requirements[i];
+    out << "{\"requirement_id\":" << json_quote(requirement.requirement_id)
+        << ",\"metric\":" << json_quote(requirement.metric)
+        << ",\"op\":" << json_quote(requirement.op)
+        << ",\"value\":" << double_json(requirement.value) << ",\"effect\":"
+        << json_quote(requirement.require_mutated_component
+                          ? "mutated_component"
+                          : "any")
+        << "}";
+  }
+  out << "]";
+  return out.str();
+}
+
 [[nodiscard]] std::string warning_scope_previews_json(
     const target::lattice_target_spec_t &spec,
     const std::optional<
@@ -1180,7 +1211,11 @@ target_spec_json(const target::lattice_target_spec_t &spec) {
       << ",\"plan_input_representation_checkpoint\":"
       << json_quote(spec.plan_input_representation_checkpoint)
       << ",\"max_waves\":" << spec.max_waves
-      << ",\"warning_specs\":" << warning_specs_json(spec.warning_specs) << "}";
+      << ",\"warning_specs\":" << warning_specs_json(spec.warning_specs)
+      << ",\"representation_geometry_requirements\":"
+      << representation_geometry_requirement_specs_json(
+             spec.representation_geometry_requirements)
+      << "}";
   return out.str();
 }
 
@@ -1358,6 +1393,16 @@ evidence_json(const target::lattice_target_evidence_t &evidence) {
       << ",\"source_cursor_token\":" << json_quote(evidence.source_cursor_token)
       << ",\"component_fingerprint\":"
       << json_quote(evidence.component_fingerprint)
+      << ",\"config_bundle_id\":" << json_quote(evidence.config_bundle_id)
+      << ",\"config_receipt_id\":" << json_quote(evidence.config_receipt_id)
+      << ",\"component_spawn_registry_id\":"
+      << json_quote(evidence.component_spawn_registry_id)
+      << ",\"component_family_id\":" << json_quote(evidence.component_family_id)
+      << ",\"component_spawn_fingerprint\":"
+      << json_quote(evidence.component_spawn_fingerprint)
+      << ",\"component_spawn_id\":" << json_quote(evidence.component_spawn_id)
+      << ",\"component_spawn_label\":"
+      << json_quote(evidence.component_spawn_label)
       << ",\"status\":" << json_quote(evidence.status)
       << ",\"matching_job_count\":" << evidence.matching_job_count
       << ",\"matching_train_attempt_count\":"
@@ -1387,7 +1432,8 @@ exposure_load_summary_json(const exposure::exposure_load_summary_t &summary) {
   std::ostringstream out;
   out << "{\"use\":" << json_quote(exposure::exposure_use_name(summary.use))
       << ",\"component_scope\":" << json_quote(summary.component_scope)
-      << ",\"target_component\":" << json_quote(summary.target_component)
+      << ",\"target_component_family_id\":"
+      << json_quote(summary.target_component_family_id)
       << ",\"require_mutated_component\":"
       << bool_json(summary.require_mutated_component)
       << ",\"unique_coverage_algebra\":"
@@ -1552,8 +1598,7 @@ exposure_load_summary_json(const exposure::exposure_load_summary_t &summary) {
       << bool_json(summary.order_preserving_fields_declared)
       << ",\"affine_fields_declared\":"
       << bool_json(summary.affine_fields_declared)
-      << ",\"gap_fields_declared\":"
-      << bool_json(summary.gap_fields_declared)
+      << ",\"gap_fields_declared\":" << bool_json(summary.gap_fields_declared)
       << ",\"all_policies_have_claim_text\":"
       << bool_json(summary.all_policies_have_claim_text)
       << ",\"summary_self_check_passed\":"
@@ -1774,8 +1819,7 @@ source_key_window_audit_json(const exposure::source_key_window_audit_t &audit) {
       << audit.source_key_gap_warning_count
       << ",\"row_source_key_mismatch_count\":"
       << audit.row_source_key_mismatch_count
-      << ",\"source_key_gap_found\":"
-      << bool_json(audit.source_key_gap_found)
+      << ",\"source_key_gap_found\":" << bool_json(audit.source_key_gap_found)
       << ",\"row_source_key_mismatch_found\":"
       << bool_json(audit.row_source_key_mismatch_found)
       << ",\"issues\":" << string_array_json(audit.issues)
@@ -1821,7 +1865,8 @@ node_support_rows_json(const std::vector<exposure::node_support_row_t> &rows) {
 node_support_summary_json(const exposure::node_support_summary_t &summary) {
   std::ostringstream out;
   out << "{\"schema\":" << json_quote(summary.schema)
-      << ",\"target_component\":" << json_quote(summary.target_component)
+      << ",\"target_component_family_id\":"
+      << json_quote(summary.target_component_family_id)
       << ",\"split_name\":" << json_quote(summary.split_name)
       << ",\"use\":" << exposure_use_set_json(summary.use)
       << ",\"support_rows\":" << node_support_rows_json(summary.support_rows)
@@ -2010,6 +2055,39 @@ node_support_summary_json(const exposure::node_support_summary_t &summary) {
   return out.str();
 }
 
+[[nodiscard]] std::string representation_geometry_gate_result_json(
+    const target::lattice_target_evaluation_t::
+        representation_geometry_gate_result_t &gate) {
+  std::ostringstream out;
+  out << "{\"requirement_id\":" << json_quote(gate.requirement_id)
+      << ",\"metric\":" << json_quote(gate.metric)
+      << ",\"op\":" << json_quote(gate.op)
+      << ",\"threshold\":" << double_json(gate.threshold)
+      << ",\"measured_value\":" << double_json(gate.measured_value)
+      << ",\"unit\":" << json_quote(gate.unit)
+      << ",\"fact_count\":" << gate.fact_count
+      << ",\"measurement_available\":" << bool_json(gate.measurement_available)
+      << ",\"passed\":" << bool_json(gate.passed)
+      << ",\"status\":" << json_quote(gate.status)
+      << ",\"message\":" << json_quote(gate.message) << "}";
+  return out.str();
+}
+
+[[nodiscard]] std::string representation_geometry_gate_results_json(
+    const std::vector<target::lattice_target_evaluation_t::
+                          representation_geometry_gate_result_t> &gates) {
+  std::ostringstream out;
+  out << "[";
+  for (std::size_t i = 0; i < gates.size(); ++i) {
+    if (i != 0) {
+      out << ",";
+    }
+    out << representation_geometry_gate_result_json(gates[i]);
+  }
+  out << "]";
+  return out.str();
+}
+
 [[nodiscard]] std::string warning_threshold_relation_vocabulary_json() {
   std::ostringstream out;
   out << "[";
@@ -2055,8 +2133,8 @@ node_support_summary_json(const exposure::node_support_summary_t &summary) {
   return out.str();
 }
 
-[[nodiscard]] std::string identity_proof_json(
-    const target::lattice_target_proof_certificate_t::identity_proof_t &proof) {
+[[nodiscard]] std::string proof_context_json(
+    const target::lattice_target_proof_certificate_t::proof_context_t &proof) {
   std::ostringstream out;
   out << "{\"require_contract_match\":"
       << bool_json(proof.require_contract_match)
@@ -2084,7 +2162,30 @@ node_support_summary_json(const exposure::node_support_summary_t &summary) {
       << ",\"evidence_source_cursor_token\":"
       << json_quote(proof.evidence_source_cursor_token)
       << ",\"source_cursor_match\":" << bool_json(proof.source_cursor_match)
-      << "}";
+      << ",\"component_spawn_schema\":"
+      << json_quote(proof.component_spawn_schema)
+      << ",\"component_family_id\":" << json_quote(proof.component_family_id)
+      << ",\"target_spec_fingerprint\":"
+      << json_quote(proof.target_spec_fingerprint)
+      << ",\"split_policy_fingerprint\":"
+      << json_quote(proof.split_policy_fingerprint)
+      << ",\"config_bundle_id\":" << json_quote(proof.config_bundle_id)
+      << ",\"config_receipt_id\":" << json_quote(proof.config_receipt_id)
+      << ",\"component_spawn_registry_id\":"
+      << json_quote(proof.component_spawn_registry_id)
+      << ",\"component_spawn_id\":" << json_quote(proof.component_spawn_id)
+      << ",\"component_spawn_label\":"
+      << json_quote(proof.component_spawn_label)
+      << ",\"evidence_component_spawn_fingerprint\":"
+      << json_quote(proof.evidence_component_spawn_fingerprint)
+      << ",\"computed_component_spawn_fingerprint\":"
+      << json_quote(proof.computed_component_spawn_fingerprint)
+      << ",\"config_receipt_available\":"
+      << bool_json(proof.config_receipt_available)
+      << ",\"spawn_id_readability_hint_only\":"
+      << bool_json(proof.spawn_id_readability_hint_only)
+      << ",\"provenance_warnings\":"
+      << string_array_json(proof.provenance_warnings) << "}";
   return out.str();
 }
 
@@ -2183,7 +2284,8 @@ causal_exposure_json(const target::lattice_target_proof_certificate_t::
       << ",\"wave_id\":" << json_quote(exposure.wave_id)
       << ",\"wave_action\":" << json_quote(exposure.wave_action)
       << ",\"job_status\":" << json_quote(exposure.job_status)
-      << ",\"target_component\":" << json_quote(exposure.target_component)
+      << ",\"target_component_family_id\":"
+      << json_quote(exposure.target_component_family_id)
       << ",\"uses\":" << string_array_json(exposure.uses)
       << ",\"mutated_component\":" << bool_json(exposure.mutated_component)
       << ",\"split_name\":" << json_quote(exposure.split_name)
@@ -2297,7 +2399,8 @@ causal_exposure_json(const target::lattice_target_proof_certificate_t::
   out << "{\"fact_digest\":" << json_quote(witness.fact_digest)
       << ",\"job_id\":" << json_quote(witness.job_id)
       << ",\"wave_id\":" << json_quote(witness.wave_id)
-      << ",\"target_component\":" << json_quote(witness.target_component)
+      << ",\"target_component_family_id\":"
+      << json_quote(witness.target_component_family_id)
       << ",\"split_name\":" << json_quote(witness.split_name)
       << ",\"use\":" << json_quote(exposure::exposure_use_name(witness.use))
       << ",\"mutated_component\":" << bool_json(witness.mutated_component)
@@ -2666,6 +2769,212 @@ find_derived_query_rule_entry(const std::string &relation) {
         << bool_json(vocabulary[i].contract_identity_authority) << "}";
   }
   out << "]";
+  return out.str();
+}
+
+[[nodiscard]] std::string evidence_retention_policy_vocabulary_json() {
+  std::ostringstream out;
+  out << "[";
+  const auto vocabulary =
+      target::lattice_evidence_retention_policy_vocabulary();
+  for (std::size_t i = 0; i < vocabulary.size(); ++i) {
+    if (i != 0) {
+      out << ",";
+    }
+    out << "{\"artifact_family\":" << json_quote(vocabulary[i].artifact_family)
+        << ",\"retention_role\":" << json_quote(vocabulary[i].retention_role)
+        << ",\"proof_replay_obligation\":"
+        << json_quote(vocabulary[i].proof_replay_obligation)
+        << ",\"required_bindings\":"
+        << string_array_json(vocabulary[i].required_bindings)
+        << ",\"prune_policy\":" << json_quote(vocabulary[i].prune_policy)
+        << ",\"source_of_truth\":" << bool_json(vocabulary[i].source_of_truth)
+        << ",\"compact_receipt_authority\":"
+        << bool_json(vocabulary[i].compact_receipt_authority)
+        << ",\"cache_row\":" << bool_json(vocabulary[i].cache_row)
+        << ",\"human_receipt\":" << bool_json(vocabulary[i].human_receipt)
+        << ",\"runtime_executor\":" << bool_json(vocabulary[i].runtime_executor)
+        << "}";
+  }
+  out << "]";
+  return out.str();
+}
+
+[[nodiscard]] std::string evidence_retention_audit_scenario_vocabulary_json() {
+  std::ostringstream out;
+  out << "[";
+  const auto vocabulary =
+      target::lattice_evidence_retention_audit_scenario_vocabulary();
+  for (std::size_t i = 0; i < vocabulary.size(); ++i) {
+    if (i != 0) {
+      out << ",";
+    }
+    out << "{\"scenario\":" << json_quote(vocabulary[i].scenario)
+        << ",\"expected_result\":" << json_quote(vocabulary[i].expected_result)
+        << ",\"evidence_required\":"
+        << json_quote(vocabulary[i].evidence_required)
+        << ",\"preserves_replay_authority\":"
+        << bool_json(vocabulary[i].preserves_replay_authority)
+        << ",\"refuses_or_warns\":" << bool_json(vocabulary[i].refuses_or_warns)
+        << ",\"cache_non_authority\":"
+        << bool_json(vocabulary[i].cache_non_authority)
+        << ",\"compact_receipt_non_authority\":"
+        << bool_json(vocabulary[i].compact_receipt_non_authority) << "}";
+  }
+  out << "]";
+  return out.str();
+}
+
+[[nodiscard]] std::string evidence_retention_policy_summary_json() {
+  const auto summary = target::lattice_evidence_retention_policy_summary();
+  std::ostringstream out;
+  out << "{\"schema\":" << json_quote(summary.schema)
+      << ",\"policy_count\":" << summary.policy_count
+      << ",\"source_of_truth_count\":" << summary.source_of_truth_count
+      << ",\"compact_receipt_authority_count\":"
+      << summary.compact_receipt_authority_count
+      << ",\"cache_row_count\":" << summary.cache_row_count
+      << ",\"human_receipt_count\":" << summary.human_receipt_count
+      << ",\"runtime_executor_count\":" << summary.runtime_executor_count
+      << ",\"scenario_count\":" << summary.scenario_count
+      << ",\"replay_preserving_scenario_count\":"
+      << summary.replay_preserving_scenario_count
+      << ",\"refuse_or_warn_scenario_count\":"
+      << summary.refuse_or_warn_scenario_count
+      << ",\"empty_binding_count\":" << summary.empty_binding_count
+      << ",\"reports_preserved_for_replay\":"
+      << bool_json(summary.reports_preserved_for_replay)
+      << ",\"sidecars_preserved_for_replay\":"
+      << bool_json(summary.sidecars_preserved_for_replay)
+      << ",\"checkpoints_preserved_for_lineage\":"
+      << bool_json(summary.checkpoints_preserved_for_lineage)
+      << ",\"source_receipts_audit_only\":"
+      << bool_json(summary.source_receipts_audit_only)
+      << ",\"selection_signals_preserved_for_leakage\":"
+      << bool_json(summary.selection_signals_preserved_for_leakage)
+      << ",\"proof_certificates_non_authority\":"
+      << bool_json(summary.proof_certificates_non_authority)
+      << ",\"cache_rows_rebuildable_non_authority\":"
+      << bool_json(summary.cache_rows_rebuildable_non_authority)
+      << ",\"human_receipts_non_authority\":"
+      << bool_json(summary.human_receipts_non_authority)
+      << ",\"archive_manifest_binds_identity\":"
+      << bool_json(summary.archive_manifest_binds_identity)
+      << ",\"compact_receipts_non_authority\":"
+      << bool_json(summary.compact_receipts_non_authority)
+      << ",\"pruning_checks_unresolved_lineage\":"
+      << bool_json(summary.pruning_checks_unresolved_lineage)
+      << ",\"stale_cache_after_archive_non_authority\":"
+      << bool_json(summary.stale_cache_after_archive_non_authority)
+      << ",\"complete_archive_replay_scenario_present\":"
+      << bool_json(summary.complete_archive_replay_scenario_present)
+      << ",\"summary_self_check_passed\":"
+      << bool_json(summary.summary_self_check_passed)
+      << ",\"summary_issue_count\":" << summary.summary_issue_count
+      << ",\"artifact_families\":"
+      << string_array_json(summary.artifact_families)
+      << ",\"scenario_names\":" << string_array_json(summary.scenario_names)
+      << ",\"summary_issues\":" << string_array_json(summary.summary_issues)
+      << "}";
+  return out.str();
+}
+
+[[nodiscard]] std::string benchmark_regression_budget_vocabulary_json() {
+  std::ostringstream out;
+  out << "[";
+  const auto vocabulary =
+      target::lattice_benchmark_regression_budget_vocabulary();
+  for (std::size_t i = 0; i < vocabulary.size(); ++i) {
+    if (i != 0) {
+      out << ",";
+    }
+    out << "{\"benchmark_id\":" << json_quote(vocabulary[i].benchmark_id)
+        << ",\"timing_layer\":" << json_quote(vocabulary[i].timing_layer)
+        << ",\"proof_mode\":" << json_quote(vocabulary[i].proof_mode)
+        << ",\"measured_surface\":"
+        << json_quote(vocabulary[i].measured_surface)
+        << ",\"required_measurement\":"
+        << json_quote(vocabulary[i].required_measurement)
+        << ",\"regression_guard\":"
+        << json_quote(vocabulary[i].regression_guard)
+        << ",\"expected_fast_path\":"
+        << json_quote(vocabulary[i].expected_fast_path)
+        << ",\"full_live_scan_allowed\":"
+        << bool_json(vocabulary[i].full_live_scan_allowed)
+        << ",\"metadata_digest_allowed\":"
+        << bool_json(vocabulary[i].metadata_digest_allowed)
+        << ",\"cache_target_authority\":"
+        << bool_json(vocabulary[i].cache_target_authority)
+        << ",\"process_startup_included\":"
+        << bool_json(vocabulary[i].process_startup_included)
+        << ",\"session_reuse_required\":"
+        << bool_json(vocabulary[i].session_reuse_required)
+        << ",\"regression_smoke_required\":"
+        << bool_json(vocabulary[i].regression_smoke_required)
+        << ",\"baseline_receipt_required\":"
+        << bool_json(vocabulary[i].baseline_receipt_required) << "}";
+  }
+  out << "]";
+  return out.str();
+}
+
+[[nodiscard]] std::string benchmark_regression_budget_summary_json() {
+  const auto summary = target::lattice_benchmark_regression_budget_summary();
+  std::ostringstream out;
+  out << "{\"schema\":" << json_quote(summary.schema)
+      << ",\"budget_count\":" << summary.budget_count
+      << ",\"library_layer_count\":" << summary.library_layer_count
+      << ",\"long_lived_mcp_layer_count\":"
+      << summary.long_lived_mcp_layer_count
+      << ",\"direct_cli_layer_count\":" << summary.direct_cli_layer_count
+      << ",\"header_only_mode_count\":" << summary.header_only_mode_count
+      << ",\"watched_manifest_mode_count\":"
+      << summary.watched_manifest_mode_count
+      << ",\"full_metadata_mode_count\":" << summary.full_metadata_mode_count
+      << ",\"live_scan_mode_count\":" << summary.live_scan_mode_count
+      << ",\"live_parity_mode_count\":" << summary.live_parity_mode_count
+      << ",\"full_live_scan_allowed_count\":"
+      << summary.full_live_scan_allowed_count
+      << ",\"metadata_digest_allowed_count\":"
+      << summary.metadata_digest_allowed_count
+      << ",\"cache_target_authority_count\":"
+      << summary.cache_target_authority_count
+      << ",\"process_startup_included_count\":"
+      << summary.process_startup_included_count
+      << ",\"session_reuse_required_count\":"
+      << summary.session_reuse_required_count
+      << ",\"regression_smoke_required_count\":"
+      << summary.regression_smoke_required_count
+      << ",\"baseline_receipt_required_count\":"
+      << summary.baseline_receipt_required_count
+      << ",\"empty_field_count\":" << summary.empty_field_count
+      << ",\"all_required_layers_present\":"
+      << bool_json(summary.all_required_layers_present)
+      << ",\"all_required_proof_modes_present\":"
+      << bool_json(summary.all_required_proof_modes_present)
+      << ",\"header_only_fast_paths_forbid_live_scan\":"
+      << bool_json(summary.header_only_fast_paths_forbid_live_scan)
+      << ",\"proof_modes_separate_from_fast_path\":"
+      << bool_json(summary.proof_modes_separate_from_fast_path)
+      << ",\"long_lived_mcp_session_reuse_present\":"
+      << bool_json(summary.long_lived_mcp_session_reuse_present)
+      << ",\"direct_cli_startup_separated\":"
+      << bool_json(summary.direct_cli_startup_separated)
+      << ",\"regression_smoke_declared\":"
+      << bool_json(summary.regression_smoke_declared)
+      << ",\"baseline_receipt_required_for_all_rows\":"
+      << bool_json(summary.baseline_receipt_required_for_all_rows)
+      << ",\"no_cache_target_satisfaction_authority\":"
+      << bool_json(summary.no_cache_target_satisfaction_authority)
+      << ",\"all_rows_have_measurement_and_guard\":"
+      << bool_json(summary.all_rows_have_measurement_and_guard)
+      << ",\"summary_self_check_passed\":"
+      << bool_json(summary.summary_self_check_passed)
+      << ",\"summary_issue_count\":" << summary.summary_issue_count
+      << ",\"benchmark_ids\":" << string_array_json(summary.benchmark_ids)
+      << ",\"proof_modes\":" << string_array_json(summary.proof_modes)
+      << ",\"summary_issues\":" << string_array_json(summary.summary_issues)
+      << "}";
   return out.str();
 }
 
@@ -3103,6 +3412,91 @@ validation_performance_evidence_policy_summary_json() {
       << ",\"summary_issues\":" << string_array_json(summary.summary_issues)
       << "}";
   return out.str();
+}
+
+[[nodiscard]] std::string representation_geometry_gate_review_metric_json(
+    const target::lattice_representation_geometry_gate_review_metric_t
+        &metric) {
+  std::ostringstream out;
+  out << "{\"metric\":" << json_quote(metric.metric)
+      << ",\"unit\":" << json_quote(metric.unit)
+      << ",\"future_hard_gate_candidate\":"
+      << bool_json(metric.future_hard_gate_candidate)
+      << ",\"geometry_metric\":" << bool_json(metric.geometry_metric)
+      << ",\"observed_count\":" << metric.observed_count
+      << ",\"min_value\":" << double_json(metric.min_value)
+      << ",\"max_value\":" << double_json(metric.max_value)
+      << ",\"mean_value\":" << double_json(metric.mean_value)
+      << ",\"observed_distribution_available\":"
+      << bool_json(metric.observed_distribution_available)
+      << ",\"proposed_threshold\":" << bool_json(metric.proposed_threshold)
+      << ",\"promoted_hard_gate\":" << bool_json(metric.promoted_hard_gate)
+      << "}";
+  return out.str();
+}
+
+[[nodiscard]] std::string representation_geometry_gate_review_metrics_json(
+    const std::vector<
+        target::lattice_representation_geometry_gate_review_metric_t>
+        &metrics) {
+  std::ostringstream out;
+  out << "[";
+  for (std::size_t i = 0; i < metrics.size(); ++i) {
+    if (i != 0) {
+      out << ",";
+    }
+    out << representation_geometry_gate_review_metric_json(metrics[i]);
+  }
+  out << "]";
+  return out.str();
+}
+
+[[nodiscard]] std::string representation_geometry_gate_review_summary_json(
+    const target::lattice_representation_geometry_gate_review_summary_t
+        &summary) {
+  std::ostringstream out;
+  out << "{\"schema\":" << json_quote(summary.schema)
+      << ",\"metric_count\":" << summary.metric_count
+      << ",\"geometry_metric_count\":" << summary.geometry_metric_count
+      << ",\"future_hard_gate_candidate_count\":"
+      << summary.future_hard_gate_candidate_count
+      << ",\"observed_run_count\":" << summary.observed_run_count
+      << ",\"observed_geometry_fact_count\":"
+      << summary.observed_geometry_fact_count
+      << ",\"observed_candidate_metric_count\":"
+      << summary.observed_candidate_metric_count
+      << ",\"observed_metric_sample_count\":"
+      << summary.observed_metric_sample_count
+      << ",\"missing_geometry_fact_count\":"
+      << summary.missing_geometry_fact_count
+      << ",\"proposed_threshold_count\":" << summary.proposed_threshold_count
+      << ",\"promoted_hard_gate_count\":" << summary.promoted_hard_gate_count
+      << ",\"opt_in_target_syntax_required\":"
+      << bool_json(summary.opt_in_target_syntax_required)
+      << ",\"missing_geometry_fails_closed_for_gate\":"
+      << bool_json(summary.missing_geometry_fails_closed_for_gate)
+      << ",\"hard_gate_default_enabled\":"
+      << bool_json(summary.hard_gate_default_enabled)
+      << ",\"thresholds_justified_by_observed_data\":"
+      << bool_json(summary.thresholds_justified_by_observed_data)
+      << ",\"default_readiness_unchanged\":"
+      << bool_json(summary.default_readiness_unchanged)
+      << ",\"no_performance_gate_authority\":"
+      << bool_json(summary.no_performance_gate_authority)
+      << ",\"summary_self_check_passed\":"
+      << bool_json(summary.summary_self_check_passed)
+      << ",\"summary_issue_count\":" << summary.summary_issue_count
+      << ",\"metric_summaries\":"
+      << representation_geometry_gate_review_metrics_json(
+             summary.metric_summaries)
+      << ",\"summary_issues\":" << string_array_json(summary.summary_issues)
+      << "}";
+  return out.str();
+}
+
+[[nodiscard]] std::string representation_geometry_gate_review_summary_json() {
+  return representation_geometry_gate_review_summary_json(
+      target::summarize_representation_geometry_gate_review({}));
 }
 
 [[nodiscard]] std::string performance_uncertainty_policy_vocabulary_json() {
@@ -4068,7 +4462,7 @@ mdn_distribution_calibration_diagnostic_summary_json() {
       << json_quote(proof.target_spec_fingerprint)
       << ",\"split_policy_fingerprint\":"
       << json_quote(proof.split_policy_fingerprint)
-      << ",\"identity\":" << identity_proof_json(proof.identity)
+      << ",\"proof_context\":" << proof_context_json(proof.proof_context)
       << ",\"dependencies\":" << dependency_proofs_json(proof.dependencies)
       << ",\"coverage\":" << coverage_proofs_json(proof.coverage)
       << ",\"closure\":" << closure_proof_json(proof.closure)
@@ -4360,13 +4754,16 @@ mdn_distribution_calibration_diagnostic_summary_json() {
                      [](const auto &proof) { return proof.passed; });
 }
 
-[[nodiscard]] bool identity_result_satisfied(
-    const target::lattice_target_proof_certificate_t::identity_proof_t
-        &identity) {
-  return (!identity.require_contract_match || identity.contract_match) &&
-         (!identity.require_component_match || identity.component_match) &&
-         (!identity.require_graph_anchor_identity ||
-          (identity.graph_order_match && identity.source_cursor_match));
+[[nodiscard]] bool proof_context_result_satisfied(
+    const target::lattice_target_proof_certificate_t::proof_context_t
+        &proof_context) {
+  return (!proof_context.require_contract_match ||
+          proof_context.contract_match) &&
+         (!proof_context.require_component_match ||
+          proof_context.component_match) &&
+         (!proof_context.require_graph_anchor_identity ||
+          (proof_context.graph_order_match &&
+           proof_context.source_cursor_match));
 }
 
 [[nodiscard]] std::string
@@ -4534,7 +4931,8 @@ derived_query_results_json(const target::lattice_target_evaluation_t &eval) {
                     [](const auto &deficit) { return deficit.plan_relevant; }));
   const auto blocking_deficit_count =
       static_cast<std::int64_t>(eval.deficits.size());
-  const bool identity_match = identity_result_satisfied(proof.identity);
+  const bool identity_match =
+      proof_context_result_satisfied(proof.proof_context);
   const bool dependency_satisfied =
       dependency_results_satisfied(proof.dependencies);
   const bool coverage_satisfied = coverage_results_satisfied(proof.coverage);
@@ -4571,7 +4969,7 @@ derived_query_results_json(const target::lattice_target_evaluation_t &eval) {
   std::vector<derived_query_result_row_t> results;
   results.push_back(make_derived_query_result(
       "identity_match", /*known=*/true, identity_match,
-      "proof_certificate.identity",
+      "proof_certificate.proof_context",
       "derived from required identity fields and active/evidence match "
       "booleans"));
   results.push_back(make_derived_query_result(
@@ -5139,6 +5537,16 @@ evaluation_json(const target::lattice_target_evaluation_t &eval) {
       << derived_query_projection_semantics_vocabulary_json()
       << ",\"derived_query_results\":" << derived_query_results_json(eval)
       << ",\"db_cache_policy_vocabulary\":" << db_cache_policy_vocabulary_json()
+      << ",\"evidence_retention_policy_vocabulary\":"
+      << evidence_retention_policy_vocabulary_json()
+      << ",\"evidence_retention_audit_scenario_vocabulary\":"
+      << evidence_retention_audit_scenario_vocabulary_json()
+      << ",\"evidence_retention_policy_summary\":"
+      << evidence_retention_policy_summary_json()
+      << ",\"benchmark_regression_budget_vocabulary\":"
+      << benchmark_regression_budget_vocabulary_json()
+      << ",\"benchmark_regression_budget_summary\":"
+      << benchmark_regression_budget_summary_json()
       << ",\"evidence_abstraction_vocabulary\":"
       << evidence_abstraction_vocabulary_json()
       << ",\"product_evidence_state_vocabulary\":"
@@ -5168,6 +5576,8 @@ evaluation_json(const target::lattice_target_evaluation_t &eval) {
       << representation_geometry_vocabulary_json()
       << ",\"representation_geometry_summary\":"
       << representation_geometry_summary_json()
+      << ",\"representation_geometry_gate_review_summary\":"
+      << representation_geometry_gate_review_summary_json()
       << ",\"performance_uncertainty_policy_vocabulary\":"
       << performance_uncertainty_policy_vocabulary_json()
       << ",\"performance_uncertainty_policy_summary\":"
@@ -5222,6 +5632,9 @@ evaluation_json(const target::lattice_target_evaluation_t &eval) {
       << ",\"warnings\":" << string_array_json(eval.warnings)
       << ",\"warning_results\":" << warning_results_json(eval.warning_results)
       << ",\"warning_summary\":" << warning_summary_json(eval.warning_summary)
+      << ",\"representation_geometry_gate_results\":"
+      << representation_geometry_gate_results_json(
+             eval.representation_geometry_gate_results)
       << ",\"warning_threshold_relation_vocabulary\":"
       << warning_threshold_relation_vocabulary_json()
       << ",\"warning_anchor_scope_policy_vocabulary\":"
@@ -5247,7 +5660,17 @@ fact_json(const exposure::lattice_exposure_fact_t &f) {
       << json_quote(f.graph_order_fingerprint)
       << ",\"component_assembly_fingerprint\":"
       << json_quote(f.component_assembly_fingerprint)
-      << ",\"target_component\":" << json_quote(f.target_component)
+      << ",\"target_component_family_id\":"
+      << json_quote(f.target_component_family_id)
+      << ",\"config_bundle_id\":" << json_quote(f.config_bundle_id)
+      << ",\"config_receipt_id\":" << json_quote(f.config_receipt_id)
+      << ",\"component_spawn_registry_id\":"
+      << json_quote(f.component_spawn_registry_id)
+      << ",\"component_family_id\":" << json_quote(f.component_family_id)
+      << ",\"component_spawn_fingerprint\":"
+      << json_quote(f.component_spawn_fingerprint)
+      << ",\"component_spawn_id\":" << json_quote(f.component_spawn_id)
+      << ",\"component_spawn_label\":" << json_quote(f.component_spawn_label)
       << ",\"job_id\":" << json_quote(f.job_id)
       << ",\"wave_id\":" << json_quote(f.wave_id)
       << ",\"job_status\":" << json_quote(f.job_status)
@@ -5373,7 +5796,8 @@ facts_json(const std::vector<exposure::lattice_exposure_fact_t> &facts,
       << json_quote(receipt.split_policy_fingerprint)
       << ",\"component_assembly_fingerprint\":"
       << json_quote(receipt.component_assembly_fingerprint)
-      << ",\"target_component\":" << json_quote(receipt.target_component)
+      << ",\"target_component_family_id\":"
+      << json_quote(receipt.target_component_family_id)
       << ",\"job_id\":" << json_quote(receipt.job_id)
       << ",\"wave_id\":" << json_quote(receipt.wave_id)
       << ",\"split_name\":" << json_quote(receipt.split_name)
@@ -5451,21 +5875,18 @@ source_receipt_summary_json(const exposure::source_receipt_summary_t &summary) {
   std::ostringstream out;
   out << "{\"schema\":" << json_quote(summary.schema)
       << ",\"exposure_fact_count\":" << summary.exposure_fact_count
-      << ",\"source_receipt_fact_count\":"
-      << summary.source_receipt_fact_count
+      << ",\"source_receipt_fact_count\":" << summary.source_receipt_fact_count
       << ",\"source_receipt_bound_parent_count\":"
       << summary.source_receipt_bound_parent_count
       << ",\"available_audit_count\":" << summary.available_audit_count
       << ",\"unavailable_audit_count\":" << summary.unavailable_audit_count
       << ",\"complete_count\":" << summary.complete_count
       << ",\"numeric_count\":" << summary.numeric_count
-      << ",\"internally_monotone_count\":"
-      << summary.internally_monotone_count
+      << ",\"internally_monotone_count\":" << summary.internally_monotone_count
       << ",\"order_preserving_count\":" << summary.order_preserving_count
       << ",\"affine_step_available_count\":"
       << summary.affine_step_available_count
-      << ",\"affine_consistent_count\":"
-      << summary.affine_consistent_count
+      << ",\"affine_consistent_count\":" << summary.affine_consistent_count
       << ",\"source_key_gap_warning_count\":"
       << summary.source_key_gap_warning_count
       << ",\"irregular_key_warning_count\":"
@@ -5475,8 +5896,7 @@ source_receipt_summary_json(const exposure::source_receipt_summary_t &summary) {
       << ",\"row_source_key_mismatch_count\":"
       << summary.row_source_key_mismatch_count
       << ",\"non_numeric_issue_count\":" << summary.non_numeric_issue_count
-      << ",\"nonmonotone_issue_count\":"
-      << summary.nonmonotone_issue_count
+      << ",\"nonmonotone_issue_count\":" << summary.nonmonotone_issue_count
       << ",\"order_inverted_issue_count\":"
       << summary.order_inverted_issue_count
       << ",\"issue_count\":" << summary.issue_count
@@ -5486,8 +5906,7 @@ source_receipt_summary_json(const exposure::source_receipt_summary_t &summary) {
       << summary.audits_with_source_cursor_count
       << ",\"audits_with_source_receipts_count\":"
       << summary.audits_with_source_receipts_count
-      << ",\"unique_graph_order_count\":"
-      << summary.unique_graph_order_count
+      << ",\"unique_graph_order_count\":" << summary.unique_graph_order_count
       << ",\"unique_source_cursor_count\":"
       << summary.unique_source_cursor_count
       << ",\"audit_only\":" << bool_json(summary.audit_only)
@@ -5521,7 +5940,8 @@ source_receipt_summary_json(const exposure::source_receipt_summary_t &summary) {
       << json_quote(fact.split_policy_fingerprint)
       << ",\"component_assembly_fingerprint\":"
       << json_quote(fact.component_assembly_fingerprint)
-      << ",\"target_component\":" << json_quote(fact.target_component)
+      << ",\"target_component_family_id\":"
+      << json_quote(fact.target_component_family_id)
       << ",\"job_id\":" << json_quote(fact.job_id)
       << ",\"wave_id\":" << json_quote(fact.wave_id)
       << ",\"split_name\":" << json_quote(fact.split_name) << ",\"split_role\":"
@@ -5618,7 +6038,8 @@ source_receipt_summary_json(const exposure::source_receipt_summary_t &summary) {
       << json_quote(fact.split_policy_fingerprint)
       << ",\"component_assembly_fingerprint\":"
       << json_quote(fact.component_assembly_fingerprint)
-      << ",\"target_component\":" << json_quote(fact.target_component)
+      << ",\"target_component_family_id\":"
+      << json_quote(fact.target_component_family_id)
       << ",\"job_id\":" << json_quote(fact.job_id)
       << ",\"wave_id\":" << json_quote(fact.wave_id)
       << ",\"job_status\":" << json_quote(fact.job_status)
@@ -5975,7 +6396,8 @@ node_fact_json(const exposure::lattice_node_exposure_fact_t &f) {
       << json_quote(f.split_policy_fingerprint)
       << ",\"component_assembly_fingerprint\":"
       << json_quote(f.component_assembly_fingerprint)
-      << ",\"target_component\":" << json_quote(f.target_component)
+      << ",\"target_component_family_id\":"
+      << json_quote(f.target_component_family_id)
       << ",\"job_id\":" << json_quote(f.job_id)
       << ",\"wave_id\":" << json_quote(f.wave_id)
       << ",\"job_status\":" << json_quote(f.job_status)
@@ -6029,7 +6451,7 @@ node_support_summaries_from_facts(
            std::vector<exposure::lattice_node_exposure_fact_t>>
       grouped;
   for (const auto &fact : facts) {
-    grouped[{fact.target_component, fact.split_name}].push_back(fact);
+    grouped[{fact.target_component_family_id, fact.split_name}].push_back(fact);
   }
   std::vector<exposure::node_support_summary_t> out;
   out.reserve(grouped.size());
@@ -6332,6 +6754,9 @@ build_target_evaluator(const std::string &args, lattice_context_t *ctx,
   } catch (...) {
   }
   const auto validation = target::validate_lattice_target_specs(targets);
+  const auto geometry_gate_review_summary =
+      target::summarize_representation_geometry_gate_review(
+          scan.ledger.facts());
   std::ostringstream json;
   json << "{\"ok\":true"
        << ",\"policy_path\":" << json_quote(ctx->policy_path.string())
@@ -6357,6 +6782,9 @@ build_target_evaluator(const std::string &args, lattice_context_t *ctx,
        << scan.ledger.selection_signal_facts().size()
        << ",\"representation_support_fact_count\":"
        << scan.ledger.representation_support_facts().size()
+       << ",\"representation_geometry_gate_review_summary\":"
+       << representation_geometry_gate_review_summary_json(
+              geometry_gate_review_summary)
        << ",\"warnings\":" << string_array_json(scan.warnings)
        << ",\"target_warnings\":" << string_array_json(validation.warnings)
        << ",\"active_identity\":" << active_identity_json(identity) << "}";
@@ -6525,6 +6953,23 @@ build_target_evaluator(const std::string &args, lattice_context_t *ctx,
         std::to_string(spec.require_evaluated_node_head_count));
   }
   for (const auto &clause : found->requirements) {
+    if (clause.kind == "representation_geometry") {
+      const auto metric =
+          target::lattice_clause_field_value(clause.fields, "METRIC", "");
+      const auto op =
+          target::lattice_clause_field_value(clause.fields, "OP", "");
+      auto value =
+          target::lattice_clause_field_value(clause.fields, "VALUE", "");
+      if (value.empty()) {
+        value =
+            target::lattice_clause_field_value(clause.fields, "MIN_VALUE", "");
+      }
+      if (!metric.empty() && !value.empty()) {
+        requirements.push_back("representation_geometry " + metric + " " +
+                               (op.empty() ? "passes" : op) + " " + value);
+      }
+      continue;
+    }
     if (clause.kind != "exposure_coverage") {
       continue;
     }
@@ -6619,6 +7064,16 @@ build_target_evaluator(const std::string &args, lattice_context_t *ctx,
        << derived_query_projection_semantics_vocabulary_json()
        << ",\"db_cache_policy_vocabulary\":"
        << db_cache_policy_vocabulary_json()
+       << ",\"evidence_retention_policy_vocabulary\":"
+       << evidence_retention_policy_vocabulary_json()
+       << ",\"evidence_retention_audit_scenario_vocabulary\":"
+       << evidence_retention_audit_scenario_vocabulary_json()
+       << ",\"evidence_retention_policy_summary\":"
+       << evidence_retention_policy_summary_json()
+       << ",\"benchmark_regression_budget_vocabulary\":"
+       << benchmark_regression_budget_vocabulary_json()
+       << ",\"benchmark_regression_budget_summary\":"
+       << benchmark_regression_budget_summary_json()
        << ",\"evidence_abstraction_vocabulary\":"
        << evidence_abstraction_vocabulary_json()
        << ",\"product_evidence_state_vocabulary\":"
@@ -6648,6 +7103,8 @@ build_target_evaluator(const std::string &args, lattice_context_t *ctx,
        << representation_geometry_vocabulary_json()
        << ",\"representation_geometry_summary\":"
        << representation_geometry_summary_json()
+       << ",\"representation_geometry_gate_review_summary\":"
+       << representation_geometry_gate_review_summary_json()
        << ",\"performance_uncertainty_policy_vocabulary\":"
        << performance_uncertainty_policy_vocabulary_json()
        << ",\"performance_uncertainty_policy_summary\":"
@@ -6702,6 +7159,17 @@ build_target_evaluator(const std::string &args, lattice_context_t *ctx,
        << warning_anchor_scope_policy_vocabulary_json()
        << ",\"warning_scope_previews\":"
        << warning_scope_previews_json(spec, split_policy)
+       << ",\"component_spawn_policy\":{"
+       << "\"schema\":" << json_quote("kikijyeba.component_spawn.v1")
+       << ",\"required_tuple\":[" << json_quote("component_family_id") << ","
+       << json_quote("protocol_contract_fingerprint") << ","
+       << json_quote("graph_order_fingerprint") << ","
+       << json_quote("source_cursor_token") << ","
+       << json_quote("component_assembly_fingerprint") << "]"
+       << ",\"config_bridge\":"
+       << json_quote("config_bundle_id/config_receipt_id")
+       << ",\"spawn_id_readability_hint_only\":true"
+       << ",\"full_fingerprint_required_for_proof\":true}"
        << ",\"text\":" << json_quote(text.str()) << ",\"over\":{"
        << "\"source_range\":" << json_quote(spec.source_range)
        << ",\"split\":" << json_quote(spec.train_split)
@@ -6836,6 +7304,16 @@ build_target_evaluator(const std::string &args, lattice_context_t *ctx,
          << ",\"derived_query_results\":" << derived_query_results_json(eval)
          << ",\"db_cache_policy_vocabulary\":"
          << db_cache_policy_vocabulary_json()
+         << ",\"evidence_retention_policy_vocabulary\":"
+         << evidence_retention_policy_vocabulary_json()
+         << ",\"evidence_retention_audit_scenario_vocabulary\":"
+         << evidence_retention_audit_scenario_vocabulary_json()
+         << ",\"evidence_retention_policy_summary\":"
+         << evidence_retention_policy_summary_json()
+         << ",\"benchmark_regression_budget_vocabulary\":"
+         << benchmark_regression_budget_vocabulary_json()
+         << ",\"benchmark_regression_budget_summary\":"
+         << benchmark_regression_budget_summary_json()
          << ",\"evidence_abstraction_vocabulary\":"
          << evidence_abstraction_vocabulary_json()
          << ",\"product_evidence_state_vocabulary\":"
@@ -6865,6 +7343,8 @@ build_target_evaluator(const std::string &args, lattice_context_t *ctx,
          << representation_geometry_vocabulary_json()
          << ",\"representation_geometry_summary\":"
          << representation_geometry_summary_json()
+         << ",\"representation_geometry_gate_review_summary\":"
+         << representation_geometry_gate_review_summary_json()
          << ",\"performance_uncertainty_policy_vocabulary\":"
          << performance_uncertainty_policy_vocabulary_json()
          << ",\"performance_uncertainty_policy_summary\":"
@@ -6922,6 +7402,9 @@ build_target_evaluator(const std::string &args, lattice_context_t *ctx,
          << warning_results_json(eval.warning_results)
          << ",\"warning_summary\":"
          << warning_summary_json(eval.warning_summary)
+         << ",\"representation_geometry_gate_results\":"
+         << representation_geometry_gate_results_json(
+                eval.representation_geometry_gate_results)
          << ",\"warning_threshold_relation_vocabulary\":"
          << warning_threshold_relation_vocabulary_json()
          << ",\"warning_anchor_scope_policy_vocabulary\":"
@@ -7067,6 +7550,189 @@ build_target_evaluator(const std::string &args, lattice_context_t *ctx,
   return evaluate_target_common(args, ctx, true, out, err);
 }
 
+[[nodiscard]] bool evaluate_target_for_derived_query(
+    const std::string &args, lattice_context_t *ctx,
+    const std::string &target_id, target::lattice_target_evaluation_t *eval_out,
+    fs::path *config_path_out, fs::path *runtime_root_out,
+    target::lattice_target_active_identity_t *identity_out,
+    exposure::exposure_ledger_scan_result_t *scan_out, std::string *err);
+
+[[nodiscard]] bool target_satisfied_relation_value(
+    const target::lattice_target_evaluation_t &eval);
+
+[[nodiscard]] bool handle_resolve_latest_satisfying(const std::string &args,
+                                                    lattice_context_t *ctx,
+                                                    std::string *out,
+                                                    std::string *err) {
+  std::string symbolic_hint;
+  if (!parse_optional_string_arg(args, "symbolic_hint", {}, &symbolic_hint,
+                                 err)) {
+    return false;
+  }
+  std::string source_target_id;
+  if (!parse_optional_string_arg(args, "target_id", {}, &source_target_id,
+                                 err)) {
+    return false;
+  }
+  symbolic_hint = trim_ascii(symbolic_hint);
+  source_target_id = trim_ascii(source_target_id);
+  if (!symbolic_hint.empty()) {
+    const auto from_hint = target::lattice_target_eval_detail::
+        latest_satisfying_target_id_from_reference(symbolic_hint);
+    if (from_hint.empty()) {
+      if (err) {
+        *err = "symbolic_hint must be latest_satisfying:<target_id>";
+      }
+      return false;
+    }
+    if (!source_target_id.empty() && source_target_id != from_hint) {
+      if (err) {
+        *err = "symbolic_hint target_id differs from target_id";
+      }
+      return false;
+    }
+    source_target_id = from_hint;
+  }
+  if (source_target_id.empty()) {
+    if (err) {
+      *err = "symbolic_hint or target_id is required";
+    }
+    return false;
+  }
+  if (symbolic_hint.empty()) {
+    symbolic_hint = "latest_satisfying:" + source_target_id;
+  }
+
+  target::lattice_target_evaluation_t eval;
+  fs::path config_path;
+  fs::path runtime_root;
+  target::lattice_target_active_identity_t identity;
+  exposure::exposure_ledger_scan_result_t scan;
+  if (!evaluate_target_for_derived_query(args, ctx, source_target_id, &eval,
+                                         &config_path, &runtime_root, &identity,
+                                         &scan, err)) {
+    return false;
+  }
+
+  const auto &closure = eval.proof_certificate.closure;
+  const bool clean_satisfied = target_satisfied_relation_value(eval);
+  const bool closure_checked = closure.checked;
+  const bool closure_complete = closure.checked && closure.complete;
+  const bool checkpoint_path_present = !closure.checkpoint_path.empty();
+  const bool resolved = clean_satisfied && closure_checked &&
+                        closure_complete && checkpoint_path_present &&
+                        eval.proof_certificate_check.passed;
+  const bool target_status_satisfied =
+      eval.status == target::lattice_target_status_t::satisfied;
+  std::string resolution_status = "resolved";
+  if (!eval.proof_certificate_check.passed) {
+    resolution_status = "proof_certificate_check_failed";
+  } else if (!target_status_satisfied) {
+    resolution_status = "target_not_satisfied";
+  } else if (!closure_checked) {
+    resolution_status = "checkpoint_closure_not_checked";
+  } else if (!closure_complete) {
+    resolution_status = "checkpoint_closure_incomplete";
+  } else if (!checkpoint_path_present) {
+    resolution_status = "checkpoint_path_missing";
+  } else if (!clean_satisfied) {
+    resolution_status = "target_not_satisfied";
+  }
+
+  const std::string concrete_path =
+      resolved ? closure.checkpoint_path.lexically_normal().string()
+               : std::string{};
+  std::ostringstream receipt_text;
+  receipt_text
+      << "symbolic_hint=" << symbolic_hint << "\n"
+      << "source_target_id=" << source_target_id << "\n"
+      << "config_path=" << config_path.lexically_normal().string() << "\n"
+      << "runtime_root=" << runtime_root.lexically_normal().string() << "\n"
+      << "protocol_contract_fingerprint="
+      << identity.protocol_contract_fingerprint << "\n"
+      << "graph_order_fingerprint=" << identity.graph_order_fingerprint << "\n"
+      << "source_cursor_token=" << identity.source_cursor_token << "\n"
+      << "vicreg_assembly_fingerprint=" << identity.vicreg_assembly_fingerprint
+      << "\n"
+      << "mdn_assembly_fingerprint=" << identity.mdn_assembly_fingerprint
+      << "\n"
+      << "target_status=" << target::lattice_target_status_name(eval.status)
+      << "\n"
+      << "resolved=" << bool_json(resolved) << "\n"
+      << "resolution_status=" << resolution_status << "\n"
+      << "concrete_path=" << concrete_path << "\n"
+      << "certificate_digest=" << eval.proof_certificate.certificate_digest
+      << "\n"
+      << "closure_checked=" << bool_json(closure_checked) << "\n"
+      << "closure_complete=" << bool_json(closure_complete) << "\n"
+      << "closure_fact_count=" << closure.fact_count << "\n"
+      << "proof_certificate_check_passed="
+      << bool_json(eval.proof_certificate_check.passed) << "\n"
+      << "root_checkpoint_id=" << closure.root_checkpoint_id << "\n"
+      << "root_checkpoint_file_digest=" << closure.root_checkpoint_file_digest
+      << "\n";
+  const std::string resolver_receipt_digest =
+      exposure::exposure_digest_for_text(receipt_text.str());
+
+  std::ostringstream json;
+  json << "{\"schema\":\"kikijyeba.lattice.latest_satisfying_resolution.v1\""
+       << ",\"schema_version\":1"
+       << ",\"ok\":true"
+       << ",\"read_only\":true"
+       << ",\"runtime_executor\":false"
+       << ",\"writes_evidence\":false"
+       << ",\"model_selector\":false"
+       << ",\"selection_basis\":\"latest_satisfying\""
+       << ",\"symbolic_hint\":" << json_quote(symbolic_hint)
+       << ",\"source_target_id\":" << json_quote(source_target_id)
+       << ",\"config_path\":"
+       << json_quote(config_path.lexically_normal().string())
+       << ",\"runtime_root\":"
+       << json_quote(runtime_root.lexically_normal().string())
+       << ",\"active_identity\":{\"protocol_contract_fingerprint\":"
+       << json_quote(identity.protocol_contract_fingerprint)
+       << ",\"graph_order_fingerprint\":"
+       << json_quote(identity.graph_order_fingerprint)
+       << ",\"source_cursor_token\":"
+       << json_quote(identity.source_cursor_token)
+       << ",\"vicreg_assembly_fingerprint\":"
+       << json_quote(identity.vicreg_assembly_fingerprint)
+       << ",\"mdn_assembly_fingerprint\":"
+       << json_quote(identity.mdn_assembly_fingerprint) << "}"
+       << ",\"target_status\":"
+       << json_quote(target::lattice_target_status_name(eval.status))
+       << ",\"resolved\":" << bool_json(resolved)
+       << ",\"resolution_status\":" << json_quote(resolution_status)
+       << ",\"concrete_path\":";
+  if (resolved) {
+    json << json_quote(concrete_path);
+  } else {
+    json << "null";
+  }
+  json << ",\"checkpoint_closure_checked\":" << bool_json(closure_checked)
+       << ",\"checkpoint_closure_complete\":" << bool_json(closure_complete)
+       << ",\"closure_fact_count\":" << closure.fact_count
+       << ",\"checkpoint_fact_count\":" << closure.fact_count
+       << ",\"checkpoint_path_present\":" << bool_json(checkpoint_path_present)
+       << ",\"checkpoint_id\":" << json_quote(closure.root_checkpoint_id)
+       << ",\"checkpoint_file_digest\":"
+       << json_quote(closure.root_checkpoint_file_digest)
+       << ",\"certificate_digest\":"
+       << json_quote(eval.proof_certificate.certificate_digest)
+       << ",\"proof_certificate_check_passed\":"
+       << bool_json(eval.proof_certificate_check.passed)
+       << ",\"resolver_receipt_digest\":" << json_quote(resolver_receipt_digest)
+       << ",\"exposure_fact_count\":" << scan.ledger.facts().size()
+       << ",\"node_exposure_fact_count\":" << scan.ledger.node_facts().size()
+       << ",\"checkpoint_fact_count_total\":"
+       << scan.ledger.checkpoint_facts().size() << ",\"identity_mismatches\":"
+       << string_array_json(closure.identity_mismatches)
+       << ",\"unresolved_input_checkpoints\":"
+       << path_array_json(closure.unresolved_input_checkpoints) << "}";
+  *out = json.str();
+  return true;
+}
+
 [[nodiscard]] bool handle_scan_exposure(const std::string &args,
                                         lattice_context_t *ctx,
                                         std::string *out, std::string *err) {
@@ -7097,6 +7763,9 @@ build_target_evaluator(const std::string &args, lattice_context_t *ctx,
   const auto representation_support_summary =
       exposure::summarize_representation_support(
           scan.ledger.facts(), scan.ledger.representation_support_facts());
+  const auto representation_geometry_gate_review_summary =
+      target::summarize_representation_geometry_gate_review(
+          scan.ledger.facts());
   std::ostringstream json;
   json << "{\"runtime_root\":" << json_quote(runtime_root.string())
        << ",\"fact_count\":" << scan.ledger.facts().size()
@@ -7155,6 +7824,9 @@ build_target_evaluator(const std::string &args, lattice_context_t *ctx,
               static_cast<std::size_t>(limit))
        << ",\"representation_support_summary\":"
        << representation_support_summary_json(representation_support_summary)
+       << ",\"representation_geometry_gate_review_summary\":"
+       << representation_geometry_gate_review_summary_json(
+              representation_geometry_gate_review_summary)
        << "}";
   *out = json.str();
   return true;
@@ -7448,7 +8120,7 @@ canonical_derived_query_relation(std::string relation) {
     const target::lattice_target_evaluation_t &eval) {
   const auto &proof = eval.proof_certificate;
   return eval.status == target::lattice_target_status_t::satisfied &&
-         identity_result_satisfied(proof.identity) &&
+         proof_context_result_satisfied(proof.proof_context) &&
          dependency_results_satisfied(proof.dependencies) &&
          coverage_results_satisfied(proof.coverage) &&
          (!proof.closure.checked || proof.closure.complete) &&
@@ -8089,7 +8761,8 @@ find_checkpoint_fact_for_path(
         << json_quote(exposure::exposure_fact_digest(fact))
         << ",\"job_id\":" << json_quote(fact.job_id)
         << ",\"wave_id\":" << json_quote(fact.wave_id)
-        << ",\"target_component\":" << json_quote(fact.target_component)
+        << ",\"target_component_family_id\":"
+        << json_quote(fact.target_component_family_id)
         << ",\"output_checkpoint\":"
         << json_quote(fact.output_checkpoint.lexically_normal().string())
         << ",\"checkpoint_id\":"
@@ -8566,6 +9239,9 @@ using handler_fn = bool (*)(const std::string &, lattice_context_t *,
   }
   if (name == "hero.lattice.plan_target") {
     return handle_plan_target;
+  }
+  if (name == "hero.lattice.resolve_latest_satisfying") {
+    return handle_resolve_latest_satisfying;
   }
   if (name == "hero.lattice.scan_exposure") {
     return handle_scan_exposure;

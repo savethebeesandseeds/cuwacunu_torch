@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "ujcamei/source/retrieval/dataloader/graph_anchor_edge_dataset.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdlib>
 #include <filesystem>
@@ -121,10 +122,10 @@ make_signature(std::string symbol, std::string base, std::string quote) {
   };
 }
 
-contract::source_spec_t
-make_source_spec(const std::vector<std::pair<source::registry::instrument_signature_t,
-                                             std::filesystem::path>> &sources,
-                 std::string normalization_policy = "log_returns") {
+contract::source_spec_t make_source_spec(
+    const std::vector<std::pair<source::registry::instrument_signature_t,
+                                std::filesystem::path>> &sources,
+    std::string normalization_policy = "log_returns") {
   contract::source_spec_t spec{};
   spec.csv_bootstrap_deltas = 2;
   for (const auto &[signature, csv] : sources) {
@@ -281,6 +282,72 @@ void test_reference_grid_common_coverage_and_fetch() {
       0.0, 1e-8, "parallel futures equal serial");
   check(parallel_batch.edge_ids == batch.edge_ids,
         "parallel preserves edge order");
+}
+
+void test_graph_anchor_torch_dataloader_yields_synchronized_anchors() {
+  const auto dir = make_tmp_dir("torch_dataloader");
+  const auto csv0 = dir / "e0.csv";
+  const auto csv1 = dir / "e1.csv";
+  write_kline_csv(csv0, {1000, 1001, 1002, 1003, 1004, 1005}, 10.0);
+  write_kline_csv(csv1, {1000, 1001, 1002, 1003, 1004, 1005}, 20.0);
+
+  auto sequential_source = make_source(csv0, csv1);
+  const auto sequential_anchor_keys = sequential_source.anchor_keys();
+  dl::graph_anchor_edge_dataloader_options_t<Kline> loader_options{};
+  loader_options.batch_size = 2;
+  dl::graph_anchor_edge_dataloader_t<Kline> sequential_loader(
+      std::move(sequential_source), loader_options);
+
+  auto first = sequential_loader.next();
+  check(first.edge_features.sizes() == torch::IntArrayRef({2, 2, 1, 2, 9}),
+        "sequential graph-anchor dataloader feature shape");
+  check(first.edge_present.all().item<bool>(),
+        "sequential graph-anchor dataloader carries all edges");
+  check(first.cursor.anchor_indices == std::vector<std::size_t>({0, 1}),
+        "sequential graph-anchor dataloader first indices");
+  close(scalar(first.anchor_keys.index({0})),
+        static_cast<double>(sequential_anchor_keys[0]), 1e-6,
+        "sequential dataloader first anchor key");
+  close(scalar(first.anchor_keys.index({1})),
+        static_cast<double>(sequential_anchor_keys[1]), 1e-6,
+        "sequential dataloader second anchor key");
+
+  auto second = sequential_loader.next();
+  check(second.cursor.anchor_indices == std::vector<std::size_t>({2, 3}),
+        "sequential graph-anchor dataloader second indices");
+  check(!sequential_loader.has_next(),
+        "sequential graph-anchor dataloader exhausts epoch");
+
+  auto random_source = make_source(csv0, csv1);
+  const auto random_anchor_keys = random_source.anchor_keys();
+  dl::graph_anchor_edge_dataloader_t<Kline,
+                                     torch::data::samplers::RandomSampler>
+      random_loader(std::move(random_source), loader_options);
+
+  std::vector<std::size_t> observed_indices;
+  while (random_loader.has_next()) {
+    auto batch = random_loader.next();
+    check(batch.edge_present.all().item<bool>(),
+          "random graph-anchor dataloader carries all edges");
+    check(batch.cursor.anchor_indices.size() ==
+              static_cast<std::size_t>(batch.anchor_keys.size(0)),
+          "random graph-anchor cursor matches batch size");
+    for (std::size_t i = 0; i < batch.cursor.anchor_indices.size(); ++i) {
+      const auto anchor_index = batch.cursor.anchor_indices[i];
+      observed_indices.push_back(anchor_index);
+      close(scalar(batch.anchor_keys.index({static_cast<int64_t>(i)})),
+            static_cast<double>(random_anchor_keys[anchor_index]), 1e-6,
+            "random dataloader anchor key follows sampled anchor index");
+    }
+  }
+
+  std::sort(observed_indices.begin(), observed_indices.end());
+  check(observed_indices.size() == random_anchor_keys.size(),
+        "random graph-anchor dataloader covers all anchors once");
+  for (std::size_t i = 0; i < observed_indices.size(); ++i) {
+    check(observed_indices[i] == i,
+          "random graph-anchor dataloader anchor coverage");
+  }
 }
 
 void test_required_future_window_excludes_right_raw_boundary() {
@@ -488,6 +555,7 @@ void test_reverse_edge_policy() {
 
 int main() {
   test_reference_grid_common_coverage_and_fetch();
+  test_graph_anchor_torch_dataloader_yields_synchronized_anchors();
   test_required_future_window_excludes_right_raw_boundary();
   test_explicit_reference_edge();
   test_validation_failures();

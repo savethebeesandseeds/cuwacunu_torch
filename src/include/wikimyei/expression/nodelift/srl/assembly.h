@@ -15,7 +15,7 @@ make_nodelift_srl_assembly(const nodelift_srl_spec_t &spec) {
 
   wa::wikimyei_assembly_t out{};
   out.family = "wikimyei.expression.nodelift.srl";
-  out.component_id = spec.component_id;
+  out.component_assembly_id = spec.component_assembly_id;
   out.version_token = spec.version_token;
   out.trainability = wa::assembly_trainability_t::deterministic;
   out.docks.push_back(wa::make_dock(

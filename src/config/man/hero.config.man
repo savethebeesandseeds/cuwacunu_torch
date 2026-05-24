@@ -96,6 +96,7 @@ hero.config.get = one policy value
 hero.config.set = in-memory policy edit
 hero.config.validate = policy validation plus global config path existence checks
 hero.config.map = global config path-reference map with existence and optional sha256
+hero.config.capture_bundle = exact config bundle provenance receipt with file list, canonical paths, content digests, stable config_bundle_id, and per-capture config_receipt_id
 hero.config.resolve = resolve one path and report read/write policy gates
 hero.config.diff = pending policy save preview
 hero.config.save = persist policy after write policy checks

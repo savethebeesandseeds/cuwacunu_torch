@@ -6,6 +6,7 @@ surfaces that are actively used by the node-centered pipeline:
 - `assembly.h`
 - `expression/nodelift/`
 - `representation/encoding/vicreg/`
+- `representation/time_mae/`
 - `inference/expected_value/mdn/`
 
 Ujcamei is intentionally not nested under Wikimyei. Wikimyei consumes input or
@@ -34,10 +35,18 @@ Fresh Wikimyei C++ namespaces mirror the room path:
 - `cuwacunu::wikimyei::inference::expected_value`
 - `cuwacunu::wikimyei::inference::expected_value::mdn`
 
-The fresh VICReg surface is intentionally small: node-stream adapter, node
-representation stream, rank-4 encoder, node training model, and config/spec
-helpers. Representation code should stay node-stream centered and keep training
-orchestration in Jkimyei.
+The active VICReg surface is the strict channel-preserving representation path:
+feature-level NodeLift masks enter the channel node adapter, the encoder keeps
+`C` through `[M,C,Hx,De]`, temporal reduction is mask-aware inside the
+representation boundary, and graph export emits `[B,N,C,De]`. Legacy fused/node
+VICReg headers have been removed from the active source tree. Historical lattice
+receipts that mention the old node representation job remain audit data only.
+The legacy node MDN path has been removed; the active MDN surface is the
+channel-context MDN.
+
+`representation/time_mae/` is reserved for a future standalone TimeMAE family.
+The eventual VICReg+TimeMAE model should be introduced as a separate family once
+both standalone paths are stable.
 
 The matching implementation subtree lives under `src/impl/wikimyei` and keeps
 Makefiles rather than README files.

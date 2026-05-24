@@ -43,7 +43,7 @@ struct channel_graph_first_representation_launcher_options_t {
 struct channel_graph_first_representation_training_report_t {
   std::string training_id{};
   std::string config_path{};
-  std::string component_id{};
+  std::string component_assembly_id{};
   std::string representation_architecture{
       "channel_preserving_local_node_encoder.v1"};
   std::string representation_contract{
@@ -69,7 +69,14 @@ struct channel_graph_first_representation_training_report_t {
   int64_t projector_dim{0};
   int64_t projector_hidden_dim{0};
   int64_t projector_depth{0};
+  double vicreg_invariance_weight{std::numeric_limits<double>::quiet_NaN()};
+  double vicreg_variance_weight{std::numeric_limits<double>::quiet_NaN()};
+  double vicreg_covariance_weight{std::numeric_limits<double>::quiet_NaN()};
+  double vicreg_variance_floor{std::numeric_limits<double>::quiet_NaN()};
+  double vicreg_eps{std::numeric_limits<double>::quiet_NaN()};
   double global_aux_weight{std::numeric_limits<double>::quiet_NaN()};
+  int64_t min_valid_rows{0};
+  bool skip_non_finite_loss{true};
   double jitter_std{std::numeric_limits<double>::quiet_NaN()};
   double feature_dropout_prob{std::numeric_limits<double>::quiet_NaN()};
   double history_dropout_prob{std::numeric_limits<double>::quiet_NaN()};
@@ -86,8 +93,11 @@ struct channel_graph_first_representation_training_report_t {
   std::string wave_mode{};
   std::string target_action{};
   std::string wave_source_range_policy{};
+  std::string wave_source_order_policy{};
   int64_t requested_anchor_index_begin{-1};
   int64_t requested_anchor_index_end{-1};
+  std::string requested_source_key_begin{};
+  std::string requested_source_key_end{};
   std::string runtime_report_mode{};
   std::string stream_plan{};
   std::string source_cursor_token{};
@@ -204,7 +214,7 @@ struct channel_graph_first_representation_training_report_t {
     std::ostringstream oss;
     oss << "training_id=" << training_id << "\n";
     oss << "config_path=" << config_path << "\n";
-    oss << "component_id=" << component_id << "\n";
+    oss << "component_assembly_id=" << component_assembly_id << "\n";
     oss << "representation_architecture=" << representation_architecture
         << "\n";
     oss << "representation_contract=" << representation_contract << "\n";
@@ -227,7 +237,15 @@ struct channel_graph_first_representation_training_report_t {
     oss << "projector_dim=" << projector_dim << "\n";
     oss << "projector_hidden_dim=" << projector_hidden_dim << "\n";
     oss << "projector_depth=" << projector_depth << "\n";
+    oss << "vicreg_invariance_weight=" << vicreg_invariance_weight << "\n";
+    oss << "vicreg_variance_weight=" << vicreg_variance_weight << "\n";
+    oss << "vicreg_covariance_weight=" << vicreg_covariance_weight << "\n";
+    oss << "vicreg_variance_floor=" << vicreg_variance_floor << "\n";
+    oss << "vicreg_eps=" << vicreg_eps << "\n";
     oss << "global_aux_weight=" << global_aux_weight << "\n";
+    oss << "min_valid_rows=" << min_valid_rows << "\n";
+    oss << "skip_non_finite_loss=" << (skip_non_finite_loss ? "true" : "false")
+        << "\n";
     oss << "jitter_std=" << jitter_std << "\n";
     oss << "feature_dropout_prob=" << feature_dropout_prob << "\n";
     oss << "history_dropout_prob=" << history_dropout_prob << "\n";
@@ -244,9 +262,12 @@ struct channel_graph_first_representation_training_report_t {
     oss << "wave_mode=" << wave_mode << "\n";
     oss << "target_action=" << target_action << "\n";
     oss << "wave_source_range_policy=" << wave_source_range_policy << "\n";
+    oss << "wave_source_order_policy=" << wave_source_order_policy << "\n";
     oss << "requested_anchor_index_begin=" << requested_anchor_index_begin
         << "\n";
     oss << "requested_anchor_index_end=" << requested_anchor_index_end << "\n";
+    oss << "requested_source_key_begin=" << requested_source_key_begin << "\n";
+    oss << "requested_source_key_end=" << requested_source_key_end << "\n";
     oss << "runtime_report_mode=" << runtime_report_mode << "\n";
     oss << "stream_plan=" << stream_plan << "\n";
     oss << "source_cursor_token=" << source_cursor_token << "\n";
@@ -807,7 +828,7 @@ inline std::string make_channel_representation_training_runtime_lls(
         channel_node_encoder_input_t &input,
     const cuwacunu::wikimyei::representation::encoding::vicreg::
         vicreg_train_step_result_t &step,
-    const std::string &component_id, const std::string &assembly_token,
+    const std::string &component_assembly_id, const std::string &assembly_token,
     const std::string &dock_binding_token,
     const cuwacunu::kikijyeba::protocol::component_stream_wave_t &stream_wave,
     cuwacunu::kikijyeba::lattice::runtime_report::runtime_report_mode_t
@@ -817,8 +838,8 @@ inline std::string make_channel_representation_training_runtime_lls(
   auto stream_report =
       cuwacunu::kikijyeba::protocol::make_component_stream_report(
           cuwacunu::kikijyeba::protocol::component_stream_identity_t{
-              .component_family = "wikimyei.representation.encoding.vicreg",
-              .component_id = component_id,
+              .component_family_id = "wikimyei.representation.encoding.vicreg",
+              .component_assembly_id = component_assembly_id,
               .assembly_token = assembly_token,
               .dock_binding_token = dock_binding_token,
               .graph_order_fingerprint = lifted.graph_order_fingerprint,
@@ -952,12 +973,26 @@ inline void save_vicreg_checkpoint_file(
              torch::tensor({report.projector_hidden_dim}, i64));
   root.write("meta/projector_depth",
              torch::tensor({report.projector_depth}, i64));
+  root.write("meta/vicreg_invariance_weight",
+             torch::tensor({report.vicreg_invariance_weight}, f64));
+  root.write("meta/vicreg_variance_weight",
+             torch::tensor({report.vicreg_variance_weight}, f64));
+  root.write("meta/vicreg_covariance_weight",
+             torch::tensor({report.vicreg_covariance_weight}, f64));
+  root.write("meta/vicreg_variance_floor",
+             torch::tensor({report.vicreg_variance_floor}, f64));
+  root.write("meta/vicreg_eps", torch::tensor({report.vicreg_eps}, f64));
   root.write("meta/global_aux_weight",
              torch::tensor({report.global_aux_weight}, f64));
+  root.write("meta/min_valid_rows",
+             torch::tensor({report.min_valid_rows}, i64));
+  root.write("meta/skip_non_finite_loss",
+             torch::tensor({report.skip_non_finite_loss ? 1 : 0}, i64));
   root.write("meta/optimizer_steps",
              torch::tensor({report.optimizer_steps}, i64));
-  root.write("meta/component_id_bytes",
-             int64_tensor_from_vector(string_to_bytes(report.component_id)));
+  root.write(
+      "meta/component_assembly_id_bytes",
+      int64_tensor_from_vector(string_to_bytes(report.component_assembly_id)));
   root.write("meta/representation_contract_bytes",
              int64_tensor_from_vector(
                  string_to_bytes(report.representation_contract)));
@@ -1001,7 +1036,7 @@ public:
     channel_graph_first_representation_training_report_t out{};
     out.training_id = builder_.bundle().vicreg_training.training_id;
     out.config_path = builder_.bundle().config_path;
-    out.component_id = builder_.bundle().vicreg.component_id;
+    out.component_assembly_id = builder_.bundle().vicreg.component_assembly_id;
     out.graph_order_fingerprint = plan.graph_order_fingerprint;
     out.node_ids = plan.node_ids;
     out.edge_ids = plan.edge_ids;
@@ -1023,7 +1058,17 @@ public:
     out.projector_hidden_dim =
         builder_.bundle().vicreg.vicreg_projector_hidden_dim;
     out.projector_depth = builder_.bundle().vicreg.vicreg_projector_depth;
+    out.vicreg_invariance_weight =
+        builder_.bundle().vicreg.vicreg_invariance_weight;
+    out.vicreg_variance_weight =
+        builder_.bundle().vicreg.vicreg_variance_weight;
+    out.vicreg_covariance_weight =
+        builder_.bundle().vicreg.vicreg_covariance_weight;
+    out.vicreg_variance_floor = builder_.bundle().vicreg.vicreg_variance_floor;
+    out.vicreg_eps = builder_.bundle().vicreg.vicreg_eps;
     out.global_aux_weight = builder_.bundle().vicreg.global_aux_weight;
+    out.min_valid_rows = builder_.bundle().vicreg.min_valid_rows;
+    out.skip_non_finite_loss = builder_.bundle().vicreg.skip_non_finite_loss;
     out.jitter_std = builder_.bundle().vicreg.jitter_std;
     out.feature_dropout_prob = builder_.bundle().vicreg.feature_dropout_prob;
     out.history_dropout_prob = builder_.bundle().vicreg.history_dropout_prob;
@@ -1042,8 +1087,11 @@ public:
     out.wave_mode = plan.wave_mode;
     out.target_action = effective_train_target() ? "train" : "run";
     out.wave_source_range_policy = plan.wave_source_range_policy;
+    out.wave_source_order_policy = plan.wave_source_order_policy;
     out.requested_anchor_index_begin = plan.requested_anchor_index_begin;
     out.requested_anchor_index_end = plan.requested_anchor_index_end;
+    out.requested_source_key_begin = plan.requested_source_key_begin;
+    out.requested_source_key_end = plan.requested_source_key_end;
     out.runtime_report_mode =
         cuwacunu::kikijyeba::settings::runtime_report_mode_name(
             cuwacunu::kikijyeba::protocol::graph_first_pipeline_builder_detail::
@@ -1272,8 +1320,16 @@ public:
     };
 
     const int64_t max_steps = builder_.bundle().vicreg_training.max_steps;
-    while (lifted_stream.has_next() &&
-           (max_steps == 0 || report.steps_attempted < max_steps)) {
+    while (max_steps == 0 || report.steps_attempted < max_steps) {
+      if (!lifted_stream.has_next()) {
+        if (!train_target || max_steps == 0) {
+          break;
+        }
+        lifted_stream.reset();
+        if (!lifted_stream.has_next()) {
+          break;
+        }
+      }
       ++report.steps_attempted;
       ++report.wave_pulses_attempted;
       auto lifted = lifted_stream.next();
@@ -1391,10 +1447,11 @@ public:
         report.representation_training_runtime_lls =
             channel_graph_first_representation_launcher_detail::
                 make_channel_representation_training_runtime_lls(
-                    lifted, input, step, builder_.bundle().vicreg.component_id,
+                    lifted, input, step,
+                    builder_.bundle().vicreg.component_assembly_id,
                     cuwacunu::wikimyei::assembly::make_assembly_token(
                         builder_.bundle().vicreg_assembly.family,
-                        builder_.bundle().vicreg_assembly.component_id,
+                        builder_.bundle().vicreg_assembly.component_assembly_id,
                         builder_.bundle().vicreg_assembly.version_token),
                     cuwacunu::kikijyeba::topology::dock_binding_token(
                         builder_.bundle().dock_binding),

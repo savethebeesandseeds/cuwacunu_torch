@@ -15,13 +15,11 @@ The manifest records both sides of the launch:
 - wave identity: target component family, mode, and resolved graph-wide Ujcamei
   cursor range.
 
-`job_runner_t` resolves the Jkimyei delegate from `TARGET` by default:
-`wikimyei.representation.encoding.vicreg` runs the representation launcher,
-while `wikimyei.inference.expected_value.mdn` runs the frozen-representation
-node MDN launcher. The channel-preserving production path is selected with
-`wikimyei.representation.encoding.vicreg` and
-`wikimyei.inference.expected_value.mdn`; the latter runs VICReg
-as a frozen dependency and mutates only Channel MDN in `MODE=train`. `MODE=run`
+`job_runner_t` resolves the Jkimyei delegate from `TARGET` by default.
+`wikimyei.representation.encoding.vicreg` runs the channel-preserving
+representation launcher, while `wikimyei.inference.expected_value.mdn` runs
+the channel-context MDN launcher. The latter runs VICReg as a frozen dependency
+and mutates only Channel MDN in `MODE=train`. `MODE=run`
 executes the target dependency closure without optimizer steps; `MODE=train`
 mutates only the target component and runs upstream dependencies frozen.
 

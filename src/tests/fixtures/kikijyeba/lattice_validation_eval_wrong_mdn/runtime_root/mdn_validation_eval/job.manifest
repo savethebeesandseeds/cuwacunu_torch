@@ -1,6 +1,6 @@
 job_id=fixture_mdn_validation_eval
 job_kind=inference_mdn
-target_component=wikimyei.inference.expected_value.mdn
+target_component_family_id=wikimyei.inference.expected_value.mdn
 wave_id=fixture_mdn_validation_eval
 wave_action=run
 source_range_policy=anchor_index

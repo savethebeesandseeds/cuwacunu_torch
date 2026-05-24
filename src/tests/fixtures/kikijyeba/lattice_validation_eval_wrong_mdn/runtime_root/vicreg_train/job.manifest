@@ -1,6 +1,6 @@
 job_id=fixture_vicreg_train
 job_kind=representation_vicreg
-target_component=wikimyei.representation.encoding.vicreg
+target_component_family_id=wikimyei.representation.encoding.vicreg
 wave_id=fixture_vicreg_train
 wave_action=train
 mutated_components=wikimyei.representation.encoding.vicreg

@@ -269,6 +269,13 @@ public:
     return model_->forward(context);
   }
 
+  [[nodiscard]] cuwacunu::wikimyei::inference::expected_value::mdn::MdnOut
+  forward(const torch::Tensor &context, const torch::Tensor &context_mask) {
+    model_->eval();
+    torch::NoGradGuard no_grad;
+    return model_->forward(context, context_mask);
+  }
+
   [[nodiscard]] channel_context_mdn_train_step_result_t
   train_one_batch(const channel_mdn_input_t &input) {
     const auto clean_input =
@@ -293,7 +300,8 @@ public:
 
     model_->train();
     optimizer_->zero_grad();
-    auto mdn_out = model_->forward(clean_input.context);
+    auto mdn_out =
+        model_->forward(clean_input.context, clean_input.context_mask);
     out.nonfinite_output_count =
         channel_context_mdn_train_detail::nonfinite_count(mdn_out);
     auto nll_map =

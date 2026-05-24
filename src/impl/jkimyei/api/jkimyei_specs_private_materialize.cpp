@@ -72,7 +72,7 @@ void materialize_profile_tables(const component_t& component,
   {
     cuwacunu::jkimyei::specs::jkimyei_specs_t::row_t row{};
     row[ROW_ID_COLUMN_HEADER] = profile_id;
-    row["component_id"] = component.id;
+    row["component_assembly_id"] = component.id;
     row["component_type"] = component.canonical_type;
     row["profile_id"] = profile.name;
     row["optimizer"] = optimizer_id;
@@ -86,7 +86,7 @@ void materialize_profile_tables(const component_t& component,
   if (profile.numerics_present) {
     cuwacunu::jkimyei::specs::jkimyei_specs_t::row_t row{};
     row[ROW_ID_COLUMN_HEADER] = profile_id;
-    row["component_id"] = component.id;
+    row["component_assembly_id"] = component.id;
     append_kv_to_row(profile.numerics, &row);
     push_row(out, "component_numerics_table", std::move(row));
   }
@@ -94,7 +94,7 @@ void materialize_profile_tables(const component_t& component,
   if (profile.gradient_present) {
     cuwacunu::jkimyei::specs::jkimyei_specs_t::row_t row{};
     row[ROW_ID_COLUMN_HEADER] = profile_id;
-    row["component_id"] = component.id;
+    row["component_assembly_id"] = component.id;
     append_kv_to_row(profile.gradient, &row);
     push_row(out, "component_gradient_table", std::move(row));
   }
@@ -102,7 +102,7 @@ void materialize_profile_tables(const component_t& component,
   if (profile.checkpoint_present) {
     cuwacunu::jkimyei::specs::jkimyei_specs_t::row_t row{};
     row[ROW_ID_COLUMN_HEADER] = profile_id;
-    row["component_id"] = component.id;
+    row["component_assembly_id"] = component.id;
     append_kv_to_row(profile.checkpoint, &row);
     push_row(out, "component_checkpoint_table", std::move(row));
   }
@@ -110,7 +110,7 @@ void materialize_profile_tables(const component_t& component,
   if (profile.metrics_present) {
     cuwacunu::jkimyei::specs::jkimyei_specs_t::row_t row{};
     row[ROW_ID_COLUMN_HEADER] = profile_id;
-    row["component_id"] = component.id;
+    row["component_assembly_id"] = component.id;
     append_kv_to_row(profile.metrics, &row);
     push_row(out, "component_metrics_table", std::move(row));
   }
@@ -118,7 +118,7 @@ void materialize_profile_tables(const component_t& component,
   if (profile.data_ref_present) {
     cuwacunu::jkimyei::specs::jkimyei_specs_t::row_t row{};
     row[ROW_ID_COLUMN_HEADER] = profile_id;
-    row["component_id"] = component.id;
+    row["component_assembly_id"] = component.id;
     append_kv_to_row(profile.data_ref, &row);
     push_row(out, "component_data_ref_table", std::move(row));
   }
@@ -152,7 +152,7 @@ void materialize_profile_augmentations(const component_t& component,
         "%s::augmentation::%zu",
         profile_row_id.c_str(),
         curve_index);
-    row["component_id"] = component.id;
+    row["component_assembly_id"] = component.id;
     row["component_type"] = component.canonical_type;
     row["profile_id"] = profile.name;
     row["profile_row_id"] = profile_row_id;

@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: MIT
 #include "wikimyei/expression/nodelift/srl/stream/node_lifted_stream.h"
-#include "wikimyei/inference/expected_value/mdn/stream/legacy_node_mdn_adapter.h"
-#include "wikimyei/representation/encoding/vicreg/stream/node_representation_stream.h"
+#include "wikimyei/inference/expected_value/mdn/stream/mdn_adapter.h"
+#include "wikimyei/representation/encoding/vicreg/channel_preserving_encoder.h"
+#include "wikimyei/representation/encoding/vicreg/stream/channel_representation_stream.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdlib>
 #include <filesystem>
@@ -22,6 +24,7 @@ namespace srl = cuwacunu::wikimyei::expression::nodelift::srl;
 namespace stream = cuwacunu::wikimyei::expression::nodelift::srl::stream;
 namespace mdnstream =
     cuwacunu::wikimyei::inference::expected_value::mdn::stream;
+namespace vicreg = cuwacunu::wikimyei::representation::encoding::vicreg;
 namespace repstream =
     cuwacunu::wikimyei::representation::encoding::vicreg::stream;
 namespace runtime_lls = cuwacunu::kikijyeba::lattice::runtime_report;
@@ -74,13 +77,20 @@ void close(double actual, double expected, double tol, const std::string &msg) {
   }
 }
 
-struct MeanNodeEncoder {
-  torch::Tensor forward(const torch::Tensor &data, const torch::Tensor &mask) {
-    auto mask_f = mask.to(data.scalar_type()).unsqueeze(-1);
-    auto denom = mask_f.sum(std::vector<int64_t>{1, 2}).clamp_min(1.0); // [M,1]
-    return (data * mask_f).sum(std::vector<int64_t>{1, 2}) / denom;
-  }
-};
+vicreg::ChannelPreservingEncoder
+make_test_vicreg_encoder(int64_t channel_count, int64_t history_length,
+                         int64_t input_width) {
+  vicreg::channel_preserving_encoder_options_t opts{};
+  opts.channel_count = channel_count;
+  opts.history_length = history_length;
+  opts.input_width = input_width;
+  opts.encoding_dim = 4;
+  opts.feature_hidden_dim = 8;
+  opts.temporal_depth = 0;
+  opts.cell_valid_policy = vicreg::cell_valid_policy_t::required_features;
+  opts.required_feature_coords = {0, 1, 2, 3};
+  return vicreg::ChannelPreservingEncoder(opts);
+}
 
 template <typename Fn> void expect_throw(Fn &&fn, const std::string &msg) {
   try {
@@ -258,18 +268,20 @@ void test_future_nodelift_is_target_side_only() {
             1e-4,
         "future changes should affect future NodeLift sidecars");
 
-  MeanNodeEncoder encoder{};
+  auto encoder = make_test_vicreg_encoder(lifted_a.node_features.size(1),
+                                          lifted_a.node_features.size(2),
+                                          lifted_a.node_features.size(4));
+  encoder->eval();
+  torch::NoGradGuard no_grad;
   auto rep_a =
-      repstream::make_node_representation_batch<MeanNodeEncoder, int64_t>(
-          encoder, lifted_a);
+      repstream::make_channel_representation_stream_batch(encoder, lifted_a);
   auto rep_b =
-      repstream::make_node_representation_batch<MeanNodeEncoder, int64_t>(
-          encoder, lifted_b);
+      repstream::make_channel_representation_stream_batch(encoder, lifted_b);
   close(max_abs(rep_a.node_encoding - rep_b.node_encoding), 0.0, 1e-8,
         "future changes must not change node encodings");
 
-  auto mdn_a = mdnstream::make_mdn_input_batch(rep_a);
-  auto mdn_b = mdnstream::make_mdn_input_batch(rep_b);
+  auto mdn_a = mdnstream::make_channel_mdn_input_batch(rep_a);
+  auto mdn_b = mdnstream::make_channel_mdn_input_batch(rep_b);
   close(max_abs(mdn_a.context - mdn_b.context), 0.0, 1e-8,
         "future changes must not change MDN conditioning context");
   close(max_abs(mdn_a.context_mask.to(torch::kInt64) -
@@ -503,23 +515,22 @@ void test_node_lifted_stream() {
         "NodeLift runtime LLS carries batch cursor token");
   check(first.runtime_lls.find("source_cursor_token") == std::string::npos,
         "NodeLift runtime LLS does not mislabel batch cursor as source cursor");
-  check(first.runtime_lls.find("component_id:str = nodelift_srl_v1") !=
+  check(first.runtime_lls.find("component_assembly_id:str = nodelift_srl_v1") !=
             std::string::npos,
         "NodeLift runtime LLS carries component id");
-  MeanNodeEncoder encoder{};
-  auto rep_debug =
-      repstream::make_node_representation_batch<MeanNodeEncoder,
-                                                typename Kline::key_type_t>(
-          encoder, first,
-          cuwacunu::wikimyei::representation::encoding::vicreg::
-              node_vicreg_encoding_adapter_options(),
-          /*use_swa=*/true, /*detach_to_cpu=*/false,
-          runtime_lls::runtime_report_mode_t::debug);
+  auto encoder = make_test_vicreg_encoder(first.node_features.size(1),
+                                          first.node_features.size(2),
+                                          first.node_features.size(4));
+  encoder->eval();
+  torch::NoGradGuard no_grad;
+  auto rep_debug = repstream::make_channel_representation_stream_batch(
+      encoder, first, /*require_finite_valid_features=*/true,
+      /*detach_to_cpu=*/false, runtime_lls::runtime_report_mode_t::debug);
   check(rep_debug.runtime_lls.find(
             "schema:str = wikimyei.representation.vicreg.runtime.v1") !=
             std::string::npos,
         "representation runtime LLS emitted in debug mode");
-  check(rep_debug.runtime_lls.find("component_id:str = node_vicreg_v1") !=
+  check(rep_debug.runtime_lls.find("component_assembly_id:str = vicreg_v1") !=
             std::string::npos,
         "representation runtime LLS carries component id");
   check(rep_debug.nodelift_runtime_lls == first.runtime_lls,
@@ -572,6 +583,53 @@ void test_node_lifted_stream() {
   auto no_diag_batch = no_diag_loader.next();
   check(!no_diag_batch.alignment_diagnostics.max_past_lag_by_anchor.defined(),
         "node-lifted stream alignment diagnostics can be disabled");
+
+  dl::graph_anchor_edge_dataset_t<Kline>::edge_dataset_map_t random_datasets;
+  random_datasets.emplace("e0", make_edge_dataset(csv0));
+  random_datasets.emplace("e1", make_edge_dataset(csv1));
+  dl::graph_anchor_edge_dataset_t<Kline> random_source(
+      market, std::move(random_datasets), source_options);
+  const auto random_anchor_keys = random_source.anchor_keys();
+
+  stream::node_lifted_stream_options_t<Kline> random_options{};
+  random_options.batch_size = 2;
+  random_options.source_order =
+      stream::node_lifted_source_order_t::random_per_epoch;
+  stream::node_lifted_stream_t<Kline> random_stream(
+      std::move(random_source), make_srl_graph_from_market(market),
+      random_options);
+
+  auto random_first = random_stream.next();
+  check(random_first.cursor.anchor_indices.size() == 2,
+        "random stream first cursor carries anchor indices");
+  auto random_second = random_stream.next();
+  check(!random_stream.has_next(), "random stream exhausts one epoch");
+
+  std::vector<std::size_t> observed_indices;
+  observed_indices.insert(observed_indices.end(),
+                          random_first.cursor.anchor_indices.begin(),
+                          random_first.cursor.anchor_indices.end());
+  observed_indices.insert(observed_indices.end(),
+                          random_second.cursor.anchor_indices.begin(),
+                          random_second.cursor.anchor_indices.end());
+  std::sort(observed_indices.begin(), observed_indices.end());
+  check(observed_indices.size() == random_anchor_keys.size(),
+        "random stream covers all anchors once");
+  for (std::size_t i = 0; i < observed_indices.size(); ++i) {
+    check(observed_indices[i] == i, "random stream anchor index coverage");
+  }
+  for (std::size_t i = 0; i < random_first.cursor.anchor_indices.size(); ++i) {
+    close(scalar(random_first.anchor_keys.index({static_cast<int64_t>(i)})),
+          static_cast<double>(
+              random_anchor_keys[random_first.cursor.anchor_indices[i]]),
+          1e-6, "random stream anchor key follows sampled index");
+  }
+
+  random_stream.reset();
+  check(random_stream.epoch_index() == 1, "random stream epoch increments");
+  auto random_epoch_two = random_stream.next();
+  check(random_epoch_two.cursor.anchor_indices.size() == 2,
+        "random stream reset yields another dataloader batch");
 }
 
 void test_source_spec_to_nodelift_contract_smoke() {

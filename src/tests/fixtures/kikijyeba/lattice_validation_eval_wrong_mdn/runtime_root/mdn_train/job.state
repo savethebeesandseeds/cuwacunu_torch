@@ -1,7 +1,7 @@
 state_format=kikijyeba.runtime.job_state.v1
 status=completed
 job_id=fixture_mdn_train
-target_component=wikimyei.inference.expected_value.mdn
+target_component_family_id=wikimyei.inference.expected_value.mdn
 wave_id=fixture_mdn_train
 wave_action=train
 resolved_anchor_index_begin=100

@@ -4,9 +4,11 @@ job_kind=channel_inference_mdn
 status=dry_run
 error_message=
 wave_id=runtime_test_wave
-target_component=wikimyei.inference.expected_value.mdn
+target_component_family_id=wikimyei.inference.expected_value.mdn
 wave_action=train
 source_cursor_token=version=ujcamei.graph_anchor_cursor_report.v1|graph=ceb68a6ad4aae096|reference_edge=BTCUSDT|Hx=2|Hf=1|edges=4|accepted=4|candidates=4|skipped=0|first=1001|last=1004
+requested_source_key_begin=
+requested_source_key_end=
 resolved_anchor_index_begin=0
 resolved_anchor_index_end=4
 accepted_anchor_count=4

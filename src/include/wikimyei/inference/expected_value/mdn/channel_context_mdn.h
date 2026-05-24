@@ -185,6 +185,28 @@ struct ChannelContextMdnImpl : torch::nn::Module {
     auto h = backbone->forward(x.reshape({rows * C, De})).view({rows, C, H});
     return heads->forward(h);
   }
+
+  cuwacunu::wikimyei::inference::expected_value::mdn::MdnOut
+  forward(const torch::Tensor &channel_context,
+          const torch::Tensor &context_mask) {
+    TORCH_CHECK(context_mask.defined() && context_mask.dim() == 2,
+                "[ChannelContextMdn] context_mask must be [B_node,C]");
+    TORCH_CHECK(channel_context.defined() && channel_context.dim() == 3,
+                "[ChannelContextMdn] context must be [B_node,C,De]");
+    TORCH_CHECK(context_mask.size(0) == channel_context.size(0) &&
+                    context_mask.size(1) == channel_context.size(1),
+                "[ChannelContextMdn] context/mask shape mismatch");
+    auto mask = context_mask.to(torch::TensorOptions()
+                                    .dtype(torch::kBool)
+                                    .device(channel_context.device()));
+    auto finite_or_masked = torch::isfinite(channel_context)
+                                .logical_or(mask.unsqueeze(-1).logical_not());
+    TORCH_CHECK(finite_or_masked.all().template item<bool>(),
+                "[ChannelContextMdn] non-finite context value under true mask");
+    auto clean_context = torch::where(mask.unsqueeze(-1), channel_context,
+                                      torch::zeros_like(channel_context));
+    return forward(clean_context);
+  }
 };
 
 TORCH_MODULE(ChannelContextMdn);

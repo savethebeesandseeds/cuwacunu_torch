@@ -9,11 +9,10 @@
 #include <utility>
 
 #include "jkimyei/training/inference/channel_graph_first_inference_launcher.h"
-#include "jkimyei/training/inference/graph_first_inference_launcher.h"
 #include "jkimyei/training/representation/channel_graph_first_representation_launcher.h"
-#include "jkimyei/training/representation/graph_first_representation_launcher.h"
 #include "kikijyeba/lattice/exposure/exposure_ledger.h"
 #include "kikijyeba/protocol/config_bundle.h"
+#include "kikijyeba/protocol/config_provenance.h"
 #include "kikijyeba/protocol/pipeline_builder.h"
 #include "kikijyeba/runtime/job_manifest.h"
 #include "kikijyeba/runtime/job_state.h"
@@ -105,10 +104,6 @@ state_path_for_job_dir(const std::filesystem::path &job_dir) {
 delegated_report_path_for_job(const std::filesystem::path &job_dir,
                               runtime_job_kind_t kind) {
   switch (kind) {
-  case runtime_job_kind_t::representation_vicreg:
-    return job_dir / "representation.report";
-  case runtime_job_kind_t::inference_mdn:
-    return job_dir / "inference.report";
   case runtime_job_kind_t::channel_representation_vicreg:
     return job_dir / "channel_representation.report";
   case runtime_job_kind_t::channel_inference_mdn:
@@ -120,10 +115,8 @@ delegated_report_path_for_job(const std::filesystem::path &job_dir,
 [[nodiscard]] inline runtime_job_kind_t runtime_job_kind_from_target(
     cuwacunu::kikijyeba::settings::wave_target_t target) {
   switch (target) {
-  case cuwacunu::kikijyeba::settings::wave_target_t::representation_vicreg:
+  case cuwacunu::kikijyeba::settings::wave_target_t::vicreg_representation:
     return runtime_job_kind_t::channel_representation_vicreg;
-  case cuwacunu::kikijyeba::settings::wave_target_t::inference_mdn:
-    return runtime_job_kind_t::inference_mdn;
   case cuwacunu::kikijyeba::settings::wave_target_t::inference_channel_mdn:
     return runtime_job_kind_t::channel_inference_mdn;
   }
@@ -170,12 +163,79 @@ inline void write_lattice_fact_sidecars(const std::filesystem::path &job_dir,
   }
 }
 
+[[nodiscard]] inline std::filesystem::path
+runtime_root_for_job_dir(const std::filesystem::path &job_dir) {
+  if (job_dir.empty()) {
+    return std::filesystem::current_path() / ".runtime" / "cuwacunu_exec";
+  }
+  const auto parent = job_dir.parent_path();
+  return parent.empty() ? std::filesystem::current_path() : parent;
+}
+
+[[nodiscard]] inline std::string
+component_assembly_fingerprint_for_manifest(const job_manifest_t &manifest) {
+  if (manifest.target_component_family_id ==
+      "wikimyei.representation.encoding.vicreg") {
+    return manifest.vicreg_assembly_fingerprint;
+  }
+  if (manifest.target_component_family_id ==
+      "wikimyei.inference.expected_value.mdn") {
+    return manifest.mdn_assembly_fingerprint;
+  }
+  return {};
+}
+
+inline void
+populate_manifest_config_provenance(const std::filesystem::path &job_dir,
+                                    job_manifest_t *manifest) {
+  if (manifest == nullptr || manifest->config_path.empty()) {
+    return;
+  }
+  namespace provenance = cuwacunu::kikijyeba::protocol::config_provenance;
+  try {
+    const auto receipt = provenance::capture_config_bundle_receipt(
+        manifest->config_path, manifest->job_id + "|" + job_dir.string());
+    manifest->config_bundle_id = receipt.config_bundle_id;
+    manifest->config_receipt_id = receipt.config_receipt_id;
+  } catch (...) {
+    return;
+  }
+
+  manifest->component_family_id = manifest->target_component_family_id;
+  manifest->component_spawn_schema = "kikijyeba.component_spawn.v1";
+  const auto runtime_root = runtime_root_for_job_dir(job_dir);
+  manifest->component_spawn_registry_id =
+      provenance::component_spawn_registry_id_for_runtime_root(runtime_root);
+  provenance::component_spawn_tuple_t spawn{};
+  spawn.component_family_id = manifest->component_family_id;
+  spawn.protocol_contract_fingerprint = manifest->protocol_contract_fingerprint;
+  spawn.graph_order_fingerprint = manifest->graph_order_fingerprint;
+  spawn.source_cursor_token = manifest->source_cursor_token;
+  spawn.component_assembly_fingerprint =
+      component_assembly_fingerprint_for_manifest(*manifest);
+  manifest->component_spawn_fingerprint =
+      provenance::component_spawn_fingerprint(spawn);
+
+  try {
+    provenance::component_spawn_registry_entry_t entry{};
+    entry.component_family_id = manifest->component_family_id;
+    entry.component_spawn_fingerprint = manifest->component_spawn_fingerprint;
+    entry.config_bundle_id = manifest->config_bundle_id;
+    entry.config_receipt_id = manifest->config_receipt_id;
+    const auto registered = provenance::upsert_component_spawn_registry_entry(
+        runtime_root, std::move(entry));
+    manifest->component_spawn_id = registered.component_spawn_id;
+    manifest->component_spawn_label = registered.component_spawn_label;
+  } catch (...) {
+    manifest->component_spawn_id.clear();
+    manifest->component_spawn_label.clear();
+  }
+}
+
 } // namespace job_runner_detail
 
 template <typename DatatypeT> class job_runner_t {
 public:
-  using builder_t =
-      cuwacunu::kikijyeba::protocol::graph_first_pipeline_builder_t<DatatypeT>;
   using channel_builder_t =
       cuwacunu::kikijyeba::protocol::channel_graph_first_pipeline_builder_t<
           DatatypeT>;
@@ -200,9 +260,6 @@ public:
             : options_.job_kind;
 
     switch (resolved_job_kind) {
-    case runtime_job_kind_t::representation_vicreg:
-    case runtime_job_kind_t::inference_mdn:
-      return run_graph_first(resolved_job_kind);
     case runtime_job_kind_t::channel_representation_vicreg:
     case runtime_job_kind_t::channel_inference_mdn:
       return run_channel_graph_first(resolved_job_kind);
@@ -211,105 +268,6 @@ public:
   }
 
 private:
-  [[nodiscard]] job_run_result_t
-  run_graph_first(runtime_job_kind_t resolved_job_kind) const {
-    auto bundle = cuwacunu::kikijyeba::protocol::
-        load_graph_first_protocol_contract_from_config(config_path_);
-    cuwacunu::kikijyeba::protocol::graph_first_pipeline_builder_options_t
-        builder_options{};
-    builder_options.dry_run = false;
-    builder_options.force_rebuild_cache = options_.force_rebuild_cache;
-    builder_options.batch_size = options_.batch_size;
-    builder_options.compute_alignment_diagnostics =
-        options_.compute_alignment_diagnostics;
-    builder_options.display_mdn_model = options_.display_mdn_model;
-    builder_options.runtime_report_mode = options_.runtime_report_mode;
-
-    builder_t builder(bundle, builder_options);
-    auto graph_source = builder.make_graph_source();
-    auto wave_plan = cuwacunu::kikijyeba::runtime::make_wave_plan(
-        bundle.wave_settings, graph_source);
-    const auto train_target = job_runner_detail::train_target_from_wave_action(
-        bundle.wave_settings.action);
-    auto manifest = make_job_manifest(builder, wave_plan, resolved_job_kind,
-                                      options_.job_id);
-    auto job_dir = options_.job_dir.empty()
-                       ? job_runner_detail::default_job_dir_for_manifest(
-                             config_path_, manifest)
-                       : options_.job_dir;
-    job_runner_detail::ensure_job_dir(job_dir);
-
-    job_run_result_t result{};
-    result.manifest = manifest;
-    result.wave_plan = wave_plan;
-    result.manifest_path =
-        job_runner_detail::manifest_path_for_job_dir(job_dir);
-    result.state_path = job_runner_detail::state_path_for_job_dir(job_dir);
-    result.delegated_report_path =
-        job_runner_detail::delegated_report_path_for_job(job_dir,
-                                                         resolved_job_kind);
-    write_job_manifest_file(result.manifest_path, manifest);
-
-    try {
-      result.state = run_graph_delegate(std::move(builder), manifest, wave_plan,
-                                        result.delegated_report_path,
-                                        resolved_job_kind, train_target);
-      write_job_state_file(result.state_path, result.state);
-      job_runner_detail::write_lattice_fact_sidecars(job_dir, &result.state);
-      write_job_state_file(result.state_path, result.state);
-      return result;
-    } catch (const std::exception &ex) {
-      result.state = make_failed_job_state(manifest, wave_plan, ex.what());
-      write_job_state_file(result.state_path, result.state);
-      throw;
-    }
-  }
-
-  [[nodiscard]] job_state_t
-  run_graph_delegate(builder_t builder, const job_manifest_t &manifest,
-                     const wave_plan_t &wave_plan,
-                     const std::filesystem::path &delegated_report_path,
-                     runtime_job_kind_t job_kind, bool train_target) const {
-    switch (job_kind) {
-    case runtime_job_kind_t::representation_vicreg: {
-      cuwacunu::jkimyei::training::representation::
-          graph_first_representation_launcher_options_t launcher_options{};
-      launcher_options.dry_run = options_.dry_run;
-      launcher_options.train_target_from_wave = false;
-      launcher_options.train_target = train_target;
-      launcher_options.write_report = options_.write_report;
-      launcher_options.report_path = delegated_report_path;
-      launcher_options.runtime_report_mode = options_.runtime_report_mode;
-      cuwacunu::jkimyei::training::representation::
-          graph_first_representation_launcher_t<DatatypeT>
-              launcher(std::move(builder), launcher_options);
-      const auto report = launcher.run();
-      return make_completed_job_state(manifest, wave_plan, report,
-                                      options_.dry_run);
-    }
-    case runtime_job_kind_t::inference_mdn: {
-      cuwacunu::jkimyei::training::inference::
-          graph_first_inference_launcher_options_t launcher_options{};
-      launcher_options.dry_run = options_.dry_run;
-      launcher_options.train_target_from_wave = false;
-      launcher_options.train_target = train_target;
-      launcher_options.write_report = options_.write_report;
-      launcher_options.report_path = delegated_report_path;
-      launcher_options.runtime_report_mode = options_.runtime_report_mode;
-      cuwacunu::jkimyei::training::inference::graph_first_inference_launcher_t<
-          DatatypeT>
-          launcher(std::move(builder), launcher_options);
-      const auto report = launcher.run();
-      return make_completed_job_state(manifest, wave_plan, report,
-                                      options_.dry_run);
-    }
-    case runtime_job_kind_t::channel_representation_vicreg:
-    case runtime_job_kind_t::channel_inference_mdn:
-      break;
-    }
-    throw std::runtime_error("[kikijyeba_job_runner] unknown runtime job kind");
-  }
-
   [[nodiscard]] job_run_result_t
   run_channel_graph_first(runtime_job_kind_t resolved_job_kind) const {
     auto bundle = cuwacunu::kikijyeba::protocol::
@@ -337,6 +295,7 @@ private:
                              config_path_, manifest)
                        : options_.job_dir;
     job_runner_detail::ensure_job_dir(job_dir);
+    job_runner_detail::populate_manifest_config_provenance(job_dir, &manifest);
 
     job_run_result_t result{};
     result.manifest = manifest;
@@ -411,9 +370,6 @@ private:
       return make_completed_job_state(manifest, wave_plan, report,
                                       options_.dry_run);
     }
-    case runtime_job_kind_t::representation_vicreg:
-    case runtime_job_kind_t::inference_mdn:
-      break;
     }
     throw std::runtime_error("[kikijyeba_job_runner] unknown runtime job kind");
   }

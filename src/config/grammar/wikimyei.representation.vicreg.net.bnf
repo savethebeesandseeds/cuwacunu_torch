@@ -1,6 +1,6 @@
 <instruction> ::= "VICREG_NET" [<whitespace>] "{" <line_end> {<assignment>} [<whitespace>] "}" [<whitespace>] ";" [<line_end>] ;
 <assignment>  ::= [<whitespace>] <key> [<whitespace>] "=" [<whitespace>] <value> [<whitespace>] ";" <line_end> ;
-<key>         ::= "ENCODING_DIM" | "FEATURE_HIDDEN_DIM" | "TEMPORAL_DEPTH" | "RECENCY_DECAY" | "VICREG_PROJECTOR_DIM" | "VICREG_PROJECTOR_HIDDEN_DIM" | "VICREG_PROJECTOR_DEPTH" | "GLOBAL_AUX_WEIGHT" | "JITTER_STD" | "FEATURE_DROPOUT_PROB" | "HISTORY_DROPOUT_PROB" ;
+<key>         ::= "ENCODING_DIM" | "FEATURE_HIDDEN_DIM" | "TEMPORAL_DEPTH" | "RECENCY_DECAY" | "VICREG_PROJECTOR_DIM" | "VICREG_PROJECTOR_HIDDEN_DIM" | "VICREG_PROJECTOR_DEPTH" | "VICREG_INVARIANCE_WEIGHT" | "VICREG_VARIANCE_WEIGHT" | "VICREG_COVARIANCE_WEIGHT" | "VICREG_VARIANCE_FLOOR" | "VICREG_EPS" | "GLOBAL_AUX_WEIGHT" | "MIN_VALID_ROWS" | "SKIP_NON_FINITE_LOSS" | "JITTER_STD" | "FEATURE_DROPOUT_PROB" | "HISTORY_DROPOUT_PROB" ;
 <value>       ::= <value_char> {<value_char>} ;
 <value_char>  ::= <letter> | <digit> | "_" | "." | "-" | "+" ;
 <line_end>    ::= [<whitespace>] <break_block> ;

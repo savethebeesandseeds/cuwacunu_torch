@@ -15,14 +15,20 @@ namespace cuwacunu::kikijyeba::runtime {
 
 struct wave_plan_t {
   std::string wave_id{};
-  std::string target_component{};
+  std::string target_component_family_id{};
   std::string action{};
   std::string mode_text{};
   std::string source_cursor_kind{};
   std::string source_cursor_scope{};
   std::string source_range_policy{};
+  std::string source_order_policy{};
+  bool source_order_policy_explicit{false};
+  std::string source_order_warning_level{"none"};
+  std::string source_order_warnings{};
   std::optional<std::size_t> requested_anchor_index_begin{std::nullopt};
   std::optional<std::size_t> requested_anchor_index_end{std::nullopt};
+  std::optional<std::int64_t> requested_source_key_begin{std::nullopt};
+  std::optional<std::int64_t> requested_source_key_end{std::nullopt};
   std::size_t resolved_anchor_index_begin{0};
   std::size_t resolved_anchor_index_end{0};
   std::size_t accepted_anchor_count{0};
@@ -63,12 +69,17 @@ struct wave_plan_t {
   [[nodiscard]] std::string to_text() const {
     std::ostringstream out;
     out << "wave_id=" << wave_id << "\n";
-    out << "target_component=" << target_component << "\n";
+    out << "target_component_family_id=" << target_component_family_id << "\n";
     out << "action=" << action << "\n";
     out << "mode_text=" << mode_text << "\n";
     out << "source_cursor_kind=" << source_cursor_kind << "\n";
     out << "source_cursor_scope=" << source_cursor_scope << "\n";
     out << "source_range_policy=" << source_range_policy << "\n";
+    out << "source_order_policy=" << source_order_policy << "\n";
+    out << "source_order_policy_explicit="
+        << (source_order_policy_explicit ? "true" : "false") << "\n";
+    out << "source_order_warning_level=" << source_order_warning_level << "\n";
+    out << "source_order_warnings=" << source_order_warnings << "\n";
     out << "requested_anchor_index_begin=";
     if (requested_anchor_index_begin.has_value()) {
       out << *requested_anchor_index_begin;
@@ -80,6 +91,14 @@ struct wave_plan_t {
       out << *requested_anchor_index_end;
     } else {
       out << -1;
+    }
+    out << "\nrequested_source_key_begin=";
+    if (requested_source_key_begin.has_value()) {
+      out << *requested_source_key_begin;
+    }
+    out << "\nrequested_source_key_end=";
+    if (requested_source_key_end.has_value()) {
+      out << *requested_source_key_end;
     }
     out << "\nresolved_anchor_index_begin=" << resolved_anchor_index_begin
         << "\n";
@@ -186,6 +205,20 @@ inline void populate_anchor_domain_warning(wave_plan_t &plan) {
   }
 }
 
+inline void populate_source_order_warning(
+    wave_plan_t &plan,
+    const cuwacunu::kikijyeba::settings::wave_settings_t &settings) {
+  plan.source_order_warning_level = "none";
+  plan.source_order_warnings.clear();
+  const std::string warning =
+      cuwacunu::kikijyeba::settings::source_order_warning_token(settings);
+  if (warning.empty()) {
+    return;
+  }
+  plan.source_order_warning_level = "warning";
+  append_warning_token(plan.source_order_warnings, warning);
+}
+
 template <typename KeyT>
 [[nodiscard]] inline std::string key_offset_to_string(const KeyT &value,
                                                       const KeyT &step,
@@ -278,7 +311,7 @@ make_wave_plan(const cuwacunu::kikijyeba::settings::wave_settings_t &settings,
   const auto cursor_report = source.cursor_report();
   wave_plan_t out{};
   out.wave_id = settings.wave_id;
-  out.target_component =
+  out.target_component_family_id =
       cuwacunu::kikijyeba::settings::wave_target_name(settings.target);
   out.action = cuwacunu::kikijyeba::settings::wave_action_name(settings.action);
   out.mode_text = settings.mode_text;
@@ -287,8 +320,14 @@ make_wave_plan(const cuwacunu::kikijyeba::settings::wave_settings_t &settings,
   out.source_range_policy =
       cuwacunu::kikijyeba::settings::source_range_policy_name(
           settings.source_range_policy);
+  out.source_order_policy =
+      cuwacunu::kikijyeba::settings::source_order_policy_name(
+          settings.source_order_policy);
+  out.source_order_policy_explicit = settings.source_order_policy_explicit;
   out.requested_anchor_index_begin = settings.anchor_index_begin;
   out.requested_anchor_index_end = settings.anchor_index_end;
+  out.requested_source_key_begin = settings.source_key_begin;
+  out.requested_source_key_end = settings.source_key_end;
   out.accepted_anchor_count = cursor_report.accepted_anchor_count;
   out.candidate_anchor_count = cursor_report.candidate_anchor_count;
   out.skipped_outside_common_range = cursor_report.skipped_outside_common_range;
@@ -297,6 +336,7 @@ make_wave_plan(const cuwacunu::kikijyeba::settings::wave_settings_t &settings,
   out.skipped_failed_fetch_probe = cursor_report.skipped_failed_fetch_probe;
   out.duplicate_anchor_count = cursor_report.duplicate_anchor_count;
   wave_plan_detail::populate_anchor_domain_warning(out);
+  wave_plan_detail::populate_source_order_warning(out, settings);
   out.source_cursor_token = cursor_report.cursor_token();
   out.source_input_length = cursor_report.max_input_length;
   out.source_future_length = cursor_report.max_future_length;
@@ -309,32 +349,11 @@ make_wave_plan(const cuwacunu::kikijyeba::settings::wave_settings_t &settings,
   out.reference_right_key = wave_plan_detail::optional_key_to_string(
       cursor_report.reference_right_key);
 
-  if (settings.source_range_policy ==
-      cuwacunu::kikijyeba::settings::wave_source_range_policy_t::all) {
-    out.resolved_anchor_index_begin = 0;
-    out.resolved_anchor_index_end = out.accepted_anchor_count;
-    populate_source_footprint(out);
-    wave_plan_detail::populate_resolved_anchor_keys(out, cursor_report);
-    wave_plan_detail::populate_source_key_footprint(out, cursor_report);
-    return out;
-  }
-
-  if (!settings.anchor_index_begin.has_value() ||
-      !settings.anchor_index_end.has_value()) {
-    throw std::runtime_error(
-        "[kikijyeba_job_runner] anchor_index wave range is missing bounds");
-  }
-  if (*settings.anchor_index_begin > *settings.anchor_index_end) {
-    throw std::runtime_error(
-        "[kikijyeba_job_runner] anchor_index wave range begin exceeds end");
-  }
-  if (*settings.anchor_index_end > out.accepted_anchor_count) {
-    throw std::runtime_error(
-        "[kikijyeba_job_runner] anchor_index wave range exceeds accepted graph "
-        "anchor domain");
-  }
-  out.resolved_anchor_index_begin = *settings.anchor_index_begin;
-  out.resolved_anchor_index_end = *settings.anchor_index_end;
+  const auto resolved =
+      cuwacunu::kikijyeba::settings::resolve_source_range_to_anchor_indices(
+          settings, cursor_report);
+  out.resolved_anchor_index_begin = resolved.anchor_index_begin;
+  out.resolved_anchor_index_end = resolved.anchor_index_end;
   populate_source_footprint(out);
   wave_plan_detail::populate_resolved_anchor_keys(out, cursor_report);
   wave_plan_detail::populate_source_key_footprint(out, cursor_report);

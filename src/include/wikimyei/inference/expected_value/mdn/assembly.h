@@ -9,13 +9,13 @@ namespace cuwacunu::wikimyei::inference::expected_value::mdn {
 
 [[nodiscard]] inline cuwacunu::wikimyei::assembly::wikimyei_assembly_t
 make_channel_context_mdn_assembly(
-    std::string component_id = "channel_context_mdn_v1",
+    std::string component_assembly_id = "mdn_v1",
     std::string version_token = "wikimyei.inference.expected_value.mdn.v1") {
   namespace wa = cuwacunu::wikimyei::assembly;
 
   wa::wikimyei_assembly_t out{};
   out.family = "wikimyei.inference.expected_value.mdn";
-  out.component_id = std::move(component_id);
+  out.component_assembly_id = std::move(component_assembly_id);
   out.version_token = std::move(version_token);
   out.trainability = wa::assembly_trainability_t::trainable;
   out.docks.push_back(wa::make_dock(
@@ -46,14 +46,14 @@ make_channel_context_mdn_assembly(
 
 [[nodiscard]] inline cuwacunu::wikimyei::assembly::wikimyei_assembly_t
 make_channel_context_plus_global_mdn_assembly(
-    std::string component_id = "channel_context_plus_global_mdn_v1",
+    std::string component_assembly_id = "mdn_plus_global_v1",
     std::string version_token =
         "wikimyei.inference.expected_value.mdn.plus_global.v1") {
   namespace wa = cuwacunu::wikimyei::assembly;
 
   wa::wikimyei_assembly_t out{};
   out.family = "wikimyei.inference.expected_value.mdn";
-  out.component_id = std::move(component_id);
+  out.component_assembly_id = std::move(component_assembly_id);
   out.version_token = std::move(version_token);
   out.trainability = wa::assembly_trainability_t::trainable;
   out.docks.push_back(wa::make_dock(

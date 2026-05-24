@@ -23,8 +23,12 @@
 namespace cuwacunu::kikijyeba::lattice::target {
 
 enum class lattice_target_kind_t {
-  representation_ready,
-  node_mdn_ready,
+  // Historical node-centered VICReg compatibility. Active targets should use
+  // vicreg_ready.
+  legacy_node_vicreg_ready,
+  // Historical node-centered MDN compatibility. Active targets should use
+  // channel_mdn_ready.
+  legacy_node_mdn_ready,
   vicreg_ready,
   channel_mdn_ready,
 };
@@ -48,7 +52,7 @@ struct lattice_warning_spec_t {
   std::optional<std::size_t> anchor_index_end{std::nullopt};
   cuwacunu::kikijyeba::lattice::exposure::exposure_use_t use{
       cuwacunu::kikijyeba::lattice::exposure::exposure_use_t::observed_input};
-  std::string scope{"target_component"};
+  std::string scope{"target_component_family_id"};
   bool require_mutated_component{true};
   double cursor_epochs_above{std::numeric_limits<double>::quiet_NaN()};
   std::string metric{};
@@ -58,13 +62,21 @@ struct lattice_warning_spec_t {
   std::optional<std::int64_t> skipped_failed_fetch_probe_above{std::nullopt};
 };
 
+struct lattice_representation_geometry_requirement_spec_t {
+  std::string requirement_id{};
+  std::string metric{};
+  std::string op{"ge"};
+  double value{std::numeric_limits<double>::quiet_NaN()};
+  bool require_mutated_component{true};
+};
+
 struct lattice_target_spec_t {
   std::string target_id{};
   std::string target_spec_fingerprint{};
   std::string use_profile{};
   std::string guard_id{};
   std::string target_class{"readiness"};
-  lattice_target_kind_t kind{lattice_target_kind_t::node_mdn_ready};
+  lattice_target_kind_t kind{lattice_target_kind_t::channel_mdn_ready};
   std::string component{};
   std::string checkpoint_source{"output_checkpoint"};
   std::string evaluated_checkpoint_source{};
@@ -97,6 +109,8 @@ struct lattice_target_spec_t {
   std::string plan_input_representation_checkpoint{};
   std::int64_t max_waves{1};
   std::vector<lattice_warning_spec_t> warning_specs{};
+  std::vector<lattice_representation_geometry_requirement_spec_t>
+      representation_geometry_requirements{};
   std::vector<std::string> language_warnings{};
 };
 
@@ -210,6 +224,13 @@ struct lattice_target_evidence_t {
   std::string component_fingerprint{};
   std::string graph_order_fingerprint{};
   std::string source_cursor_token{};
+  std::string config_bundle_id{};
+  std::string config_receipt_id{};
+  std::string component_spawn_registry_id{};
+  std::string component_family_id{};
+  std::string component_spawn_fingerprint{};
+  std::string component_spawn_id{};
+  std::string component_spawn_label{};
   std::string status{};
   std::int64_t matching_job_count{0};
   std::int64_t matching_train_attempt_count{0};
@@ -780,7 +801,7 @@ lattice_derived_query_rule_vocabulary() {
        "identity_match(T) :- active_identity(I), evidence_identity(T,I), "
        "required_identity_fields_match(T)",
        {"active_identity", "target_evidence"},
-       "proof_certificate.identity",
+       "proof_certificate.proof_context",
        "missing or mismatched required identity blocks satisfaction",
        true,
        true,
@@ -1257,6 +1278,670 @@ lattice_db_cache_policy_vocabulary() {
        false}};
 }
 
+struct lattice_evidence_retention_policy_entry_t {
+  std::string artifact_family{};
+  std::string retention_role{};
+  std::string proof_replay_obligation{};
+  std::vector<std::string> required_bindings{};
+  std::string prune_policy{};
+  bool source_of_truth{false};
+  bool compact_receipt_authority{false};
+  bool cache_row{false};
+  bool human_receipt{false};
+  bool runtime_executor{false};
+};
+
+[[nodiscard]] inline std::vector<lattice_evidence_retention_policy_entry_t>
+lattice_evidence_retention_policy_vocabulary() {
+  const std::vector<std::string> active_bindings{
+      "protocol_contract_fingerprint", "target_spec_fingerprint",
+      "split_policy_fingerprint", "graph_order_fingerprint",
+      "source_cursor_token"};
+  const std::vector<std::string> checkpoint_bindings{
+      "checkpoint_path", "checkpoint_id", "checkpoint_file_digest",
+      "component_assembly_fingerprint"};
+  return {
+      {"runtime_reports", "durable_source_material",
+       "recompute target status, optimizer effort, loaded model-state inputs, "
+       "loss/support metrics, and warning measurements",
+       active_bindings,
+       "retain or archive with manifest; pruning before replay is forbidden",
+       true, false, false, false, false},
+      {"lattice_sidecars", "durable_source_material",
+       "recompute exposure facts, checkpoint facts, source receipts, selection "
+       "signals, and representation support",
+       active_bindings,
+       "retain or archive with manifest; malformed/missing sidecars fail "
+       "closed",
+       true, false, false, false, false},
+      {"checkpoint_files", "model_state_source_material",
+       "verify checkpoint existence, byte digest in strict audit, and loaded "
+       "model-state lineage",
+       checkpoint_bindings,
+       "retain while any proof refers to path/id/digest; unresolved lineage "
+       "blocks pruning",
+       true, false, false, false, false},
+      {"source_receipt_facts",
+       "audit_metadata",
+       "replay source-key and source-file traceability without granting "
+       "coverage or leakage authority",
+       {"graph_order_fingerprint", "source_cursor_token",
+        "parent_exposure_fact_digest"},
+       "may be compacted only as audit metadata; never replaces row-index "
+       "proof facts",
+       false,
+       false,
+       false,
+       false,
+       false},
+      {"selection_signal_facts", "durable_leakage_material",
+       "recompute known selector paths and forbidden selection-signal overlap",
+       active_bindings,
+       "retain with parent exposure/checkpoint links; pruning selector edges "
+       "requires leakage replay",
+       true, false, false, false, false},
+      {"proof_certificates",
+       "derived_audit_receipt",
+       "explain a prior evaluation but not replace runtime proof authority",
+       {"target_spec_fingerprint", "split_policy_fingerprint",
+        "certificate_digest"},
+       "may be retained as receipt; cannot satisfy target without replay or "
+       "future promoted proof format",
+       false,
+       false,
+       false,
+       false,
+       false},
+      {"runtime_index_cache_rows",
+       "rebuildable_read_model",
+       "speed audit queries but never upgrade target satisfaction",
+       {"runtime_metadata_digest", "watched_file_metadata_digest",
+        "row_set_digest"},
+       "stale cache after archive movement is discarded or rebuilt from "
+       "runtime files",
+       false,
+       false,
+       true,
+       false,
+       false},
+      {"human_receipts",
+       "human_audit_receipt",
+       "summarize a run for review without becoming source-of-truth evidence",
+       {"runtime_root", "active_identity", "target_statuses"},
+       "retain as narrative receipt; never replaces reports, sidecars, "
+       "checkpoints, or closure facts",
+       false,
+       false,
+       false,
+       true,
+       false},
+      {"archive_manifest",
+       "archive_binding",
+       "bind archived evidence to identity, split policy, source cursor, graph "
+       "order, and checkpoint identities for replay",
+       {"protocol_contract_fingerprint", "target_spec_fingerprint",
+        "split_policy_fingerprint", "graph_order_fingerprint",
+        "source_cursor_token", "checkpoint_path", "checkpoint_id",
+        "checkpoint_file_digest"},
+       "archive publication must be atomic and replayable; missing required "
+       "bindings warn or block compaction",
+       false,
+       false,
+       false,
+       false,
+       false}};
+}
+
+struct lattice_evidence_retention_audit_scenario_entry_t {
+  std::string scenario{};
+  std::string expected_result{};
+  std::string evidence_required{};
+  bool preserves_replay_authority{false};
+  bool refuses_or_warns{false};
+  bool cache_non_authority{false};
+  bool compact_receipt_non_authority{false};
+};
+
+[[nodiscard]] inline std::vector<
+    lattice_evidence_retention_audit_scenario_entry_t>
+lattice_evidence_retention_audit_scenario_vocabulary() {
+  return {
+      {"complete_archive_replay",
+       "target status, checkpoint closure, leakage witnesses, and warning "
+       "summaries recompute from archived runtime material",
+       "reports, sidecars, checkpoint facts/files, split policy, active "
+       "identity, and archive manifest",
+       true, false, false, false},
+      {"missing_lineage_after_pruning",
+       "pruning refuses or reports unresolved upstream lineage before archive "
+       "is accepted",
+       "checkpoint closure facts and upstream checkpoint producer evidence",
+       false, true, false, false},
+      {"stale_cache_after_archive_movement",
+       "cache rows are rejected or rebuilt; target satisfaction stays live "
+       "runtime evidence based",
+       "runtime metadata digest, watched-file digest, row-set digest, relation "
+       "counts",
+       false, true, true, false},
+      {"compact_receipt_non_authority",
+       "PASS.md or compact receipts remain review metadata and cannot satisfy "
+       "coverage, leakage, or closure alone",
+       "runtime reports, exposure facts, checkpoint facts, and sidecars", false,
+       true, false, true}};
+}
+
+struct lattice_evidence_retention_policy_summary_t {
+  std::string schema{"kikijyeba.lattice.evidence_retention_policy.summary.v1"};
+  std::int64_t policy_count{0};
+  std::int64_t source_of_truth_count{0};
+  std::int64_t compact_receipt_authority_count{0};
+  std::int64_t cache_row_count{0};
+  std::int64_t human_receipt_count{0};
+  std::int64_t runtime_executor_count{0};
+  std::int64_t scenario_count{0};
+  std::int64_t replay_preserving_scenario_count{0};
+  std::int64_t refuse_or_warn_scenario_count{0};
+  std::int64_t empty_binding_count{0};
+  bool reports_preserved_for_replay{false};
+  bool sidecars_preserved_for_replay{false};
+  bool checkpoints_preserved_for_lineage{false};
+  bool source_receipts_audit_only{false};
+  bool selection_signals_preserved_for_leakage{false};
+  bool proof_certificates_non_authority{false};
+  bool cache_rows_rebuildable_non_authority{false};
+  bool human_receipts_non_authority{false};
+  bool archive_manifest_binds_identity{false};
+  bool compact_receipts_non_authority{false};
+  bool pruning_checks_unresolved_lineage{false};
+  bool stale_cache_after_archive_non_authority{false};
+  bool complete_archive_replay_scenario_present{false};
+  bool summary_self_check_passed{false};
+  std::int64_t summary_issue_count{0};
+  std::vector<std::string> artifact_families{};
+  std::vector<std::string> scenario_names{};
+  std::vector<std::string> summary_issues{};
+};
+
+[[nodiscard]] inline lattice_evidence_retention_policy_summary_t
+lattice_evidence_retention_policy_summary() {
+  lattice_evidence_retention_policy_summary_t out{};
+  const auto policies = lattice_evidence_retention_policy_vocabulary();
+  const auto scenarios = lattice_evidence_retention_audit_scenario_vocabulary();
+  out.policy_count = static_cast<std::int64_t>(policies.size());
+  out.scenario_count = static_cast<std::int64_t>(scenarios.size());
+
+  const auto find_policy = [&](const std::string &family) {
+    return std::find_if(
+        policies.begin(), policies.end(),
+        [&](const auto &entry) { return entry.artifact_family == family; });
+  };
+  const auto find_scenario = [&](const std::string &scenario) {
+    return std::find_if(
+        scenarios.begin(), scenarios.end(),
+        [&](const auto &entry) { return entry.scenario == scenario; });
+  };
+
+  for (const auto &entry : policies) {
+    out.artifact_families.push_back(entry.artifact_family);
+    if (entry.source_of_truth) {
+      ++out.source_of_truth_count;
+    }
+    if (entry.compact_receipt_authority) {
+      ++out.compact_receipt_authority_count;
+    }
+    if (entry.cache_row) {
+      ++out.cache_row_count;
+    }
+    if (entry.human_receipt) {
+      ++out.human_receipt_count;
+    }
+    if (entry.runtime_executor) {
+      ++out.runtime_executor_count;
+    }
+    if (entry.required_bindings.empty()) {
+      ++out.empty_binding_count;
+    }
+  }
+  for (const auto &entry : scenarios) {
+    out.scenario_names.push_back(entry.scenario);
+    if (entry.preserves_replay_authority) {
+      ++out.replay_preserving_scenario_count;
+    }
+    if (entry.refuses_or_warns) {
+      ++out.refuse_or_warn_scenario_count;
+    }
+  }
+
+  const auto reports = find_policy("runtime_reports");
+  const auto sidecars = find_policy("lattice_sidecars");
+  const auto checkpoints = find_policy("checkpoint_files");
+  const auto receipts = find_policy("source_receipt_facts");
+  const auto selection = find_policy("selection_signal_facts");
+  const auto certificates = find_policy("proof_certificates");
+  const auto cache = find_policy("runtime_index_cache_rows");
+  const auto human = find_policy("human_receipts");
+  const auto archive = find_policy("archive_manifest");
+  const auto complete = find_scenario("complete_archive_replay");
+  const auto missing_lineage = find_scenario("missing_lineage_after_pruning");
+  const auto stale_cache = find_scenario("stale_cache_after_archive_movement");
+  const auto compact_non_authority =
+      find_scenario("compact_receipt_non_authority");
+
+  out.reports_preserved_for_replay =
+      reports != policies.end() && reports->source_of_truth &&
+      reports->proof_replay_obligation.find("target status") !=
+          std::string::npos;
+  out.sidecars_preserved_for_replay =
+      sidecars != policies.end() && sidecars->source_of_truth &&
+      sidecars->proof_replay_obligation.find("exposure facts") !=
+          std::string::npos;
+  out.checkpoints_preserved_for_lineage =
+      checkpoints != policies.end() && checkpoints->source_of_truth &&
+      checkpoints->prune_policy.find("unresolved lineage") != std::string::npos;
+  out.source_receipts_audit_only =
+      receipts != policies.end() && !receipts->source_of_truth &&
+      !receipts->compact_receipt_authority &&
+      receipts->proof_replay_obligation.find("without granting coverage") !=
+          std::string::npos;
+  out.selection_signals_preserved_for_leakage =
+      selection != policies.end() && selection->source_of_truth &&
+      selection->proof_replay_obligation.find("selector paths") !=
+          std::string::npos;
+  out.proof_certificates_non_authority =
+      certificates != policies.end() && !certificates->source_of_truth &&
+      certificates->prune_policy.find("cannot satisfy target") !=
+          std::string::npos;
+  out.cache_rows_rebuildable_non_authority =
+      cache != policies.end() && cache->cache_row && !cache->source_of_truth &&
+      cache->prune_policy.find("rebuilt from runtime files") !=
+          std::string::npos;
+  out.human_receipts_non_authority =
+      human != policies.end() && human->human_receipt &&
+      !human->source_of_truth &&
+      human->prune_policy.find("never replaces") != std::string::npos;
+  out.archive_manifest_binds_identity =
+      archive != policies.end() &&
+      std::find(archive->required_bindings.begin(),
+                archive->required_bindings.end(),
+                "protocol_contract_fingerprint") !=
+          archive->required_bindings.end() &&
+      std::find(archive->required_bindings.begin(),
+                archive->required_bindings.end(),
+                "checkpoint_file_digest") != archive->required_bindings.end();
+  out.compact_receipts_non_authority =
+      out.compact_receipt_authority_count == 0 &&
+      compact_non_authority != scenarios.end() &&
+      compact_non_authority->compact_receipt_non_authority;
+  out.pruning_checks_unresolved_lineage =
+      missing_lineage != scenarios.end() && missing_lineage->refuses_or_warns;
+  out.stale_cache_after_archive_non_authority =
+      stale_cache != scenarios.end() && stale_cache->cache_non_authority;
+  out.complete_archive_replay_scenario_present =
+      complete != scenarios.end() && complete->preserves_replay_authority;
+
+  if (out.policy_count != 9) {
+    out.summary_issues.push_back(
+        "evidence retention policy vocabulary must contain 9 artifact "
+        "families");
+  }
+  if (out.scenario_count != 4) {
+    out.summary_issues.push_back(
+        "evidence retention audit vocabulary must contain 4 scenarios");
+  }
+  if (!out.reports_preserved_for_replay || !out.sidecars_preserved_for_replay ||
+      !out.checkpoints_preserved_for_lineage) {
+    out.summary_issues.push_back(
+        "reports, sidecars, and checkpoints must remain replayable proof "
+        "material");
+  }
+  if (!out.source_receipts_audit_only || !out.compact_receipts_non_authority) {
+    out.summary_issues.push_back(
+        "compact/source receipts must stay audit metadata, not proof "
+        "authority");
+  }
+  if (!out.selection_signals_preserved_for_leakage) {
+    out.summary_issues.push_back(
+        "selection-signal facts must be retained for leakage replay");
+  }
+  if (!out.proof_certificates_non_authority ||
+      !out.human_receipts_non_authority) {
+    out.summary_issues.push_back(
+        "proof certificates and human receipts must not replace runtime "
+        "evidence");
+  }
+  if (!out.cache_rows_rebuildable_non_authority ||
+      !out.stale_cache_after_archive_non_authority) {
+    out.summary_issues.push_back(
+        "cache rows must be rebuildable and non-authoritative after archive "
+        "movement");
+  }
+  if (!out.archive_manifest_binds_identity) {
+    out.summary_issues.push_back(
+        "archive manifests must bind identity, split policy, source cursor, "
+        "graph order, and checkpoint identity");
+  }
+  if (!out.pruning_checks_unresolved_lineage ||
+      !out.complete_archive_replay_scenario_present) {
+    out.summary_issues.push_back(
+        "retention audit scenarios must cover replay and unresolved lineage");
+  }
+  if (out.runtime_executor_count != 0 || out.empty_binding_count != 0) {
+    out.summary_issues.push_back(
+        "retention policy must be read-only and every row must declare "
+        "bindings");
+  }
+
+  out.summary_issue_count =
+      static_cast<std::int64_t>(out.summary_issues.size());
+  out.summary_self_check_passed = out.summary_issues.empty();
+  return out;
+}
+
+struct lattice_benchmark_regression_budget_entry_t {
+  std::string benchmark_id{};
+  std::string timing_layer{};
+  std::string proof_mode{};
+  std::string measured_surface{};
+  std::string required_measurement{};
+  std::string regression_guard{};
+  std::string expected_fast_path{};
+  bool full_live_scan_allowed{false};
+  bool metadata_digest_allowed{false};
+  bool cache_target_authority{false};
+  bool process_startup_included{false};
+  bool session_reuse_required{false};
+  bool regression_smoke_required{true};
+  bool baseline_receipt_required{true};
+};
+
+[[nodiscard]] inline std::vector<lattice_benchmark_regression_budget_entry_t>
+lattice_benchmark_regression_budget_vocabulary() {
+  return {
+      {"library_header_only_index_query", "library_function", "header_only",
+       "read_runtime_index_cache + validate_runtime_index_cache + "
+       "query_runtime_index_cache",
+       "in-process cache read, header-only validation, row-set integrity, "
+       "relation counts, and row query timing without process startup",
+       "metadata_checked=false, watched_metadata_checked=false, "
+       "compare_live_scan=false, selected_answer_parity.checked=false",
+       "no recursive runtime metadata digest and no live scan", false, false,
+       false, false, false, true, true},
+      {"library_watched_manifest_index_query", "library_function",
+       "watched_file_manifest",
+       "read_runtime_index_cache + watched_runtime_metadata_digest + "
+       "query_runtime_index_cache",
+       "in-process watched-file freshness timing without direct CLI startup",
+       "metadata_checked=false, watched_metadata_checked=true, "
+       "full_runtime_metadata_digest not computed",
+       "watch only files that can change runtime-index rows", false, false,
+       false, false, false, true, true},
+      {"library_full_metadata_index_status", "library_function",
+       "full_runtime_metadata_digest", "validate_runtime_index_cache",
+       "in-process recursive runtime metadata digest timing, separated from "
+       "cache row-query timing",
+       "metadata_checked=true and timing row labelled "
+       "full_runtime_metadata_digest",
+       "proof cost is named instead of hidden inside fast audit queries", false,
+       true, false, false, false, true, true},
+      {"library_live_scan_index_build", "library_function", "live_scan",
+       "build_runtime_index_cache",
+       "in-process live scan and cache-row rebuild timing without process "
+       "startup",
+       "timing row uses proof_mode=live_scan and may rebuild evidence from "
+       "runtime files",
+       "live scan cost is separated from cache query cost", true, true, false,
+       false, false, true, true},
+      {"long_lived_mcp_header_only_index_query", "long_lived_mcp",
+       "header_only", "hero.lattice.index_query",
+       "one Hero MCP process, repeated header-only audit queries, and session "
+       "cache behavior visible",
+       "compare_live_scan=false, allow_unproven_cache=true, "
+       "validation_strength=header_only, result_source=cache",
+       "no live scan inside the fast audit query after cache is present", false,
+       false, false, false, true, true, true},
+      {"long_lived_mcp_evaluate_targets_batch", "long_lived_mcp", "live_scan",
+       "hero.lattice.evaluate_targets",
+       "one Hero MCP process, multiple targets evaluated through one loaded "
+       "target evaluator and session-scanned runtime ledger",
+       "result_source=target_evaluation_batch and cache_used_for_target_"
+       "satisfaction=false",
+       "batch scan reuse is measured separately from cache audit queries", true,
+       true, false, false, true, true, true},
+      {"direct_cli_header_only_index_query", "direct_cli", "header_only",
+       "hero_lattice.mcp --tool hero.lattice.index_query",
+       "full direct process call timing for explicit header-only unproven "
+       "audit-cache query",
+       "compare_live_scan=false, allow_unproven_cache=true, "
+       "validation_strength=header_only, cache_used_for_target_"
+       "satisfaction=false",
+       "direct CLI startup is charged to this row, not to library timings",
+       false, false, false, true, false, true, true},
+      {"direct_cli_live_parity_index_query", "direct_cli", "live_parity",
+       "hero_lattice.mcp --tool hero.lattice.index_query",
+       "full direct process call timing for cache validation plus live-scan "
+       "parity proof",
+       "compare_live_scan=true and selected_answer_parity.checked=true",
+       "proof/parity cost is allowed and named separately from fast audit mode",
+       true, true, false, true, false, true, true},
+      {"direct_cli_evaluate_targets_batch", "direct_cli", "live_scan",
+       "hero_lattice.mcp --tool hero.lattice.evaluate_targets",
+       "full direct process call timing for batch target evaluation over live "
+       "runtime evidence",
+       "result_source=target_evaluation_batch and target satisfaction never "
+       "uses cache rows",
+       "direct CLI batch timing includes process startup and live evidence "
+       "scan",
+       true, true, false, true, false, true, true}};
+}
+
+struct lattice_benchmark_regression_budget_summary_t {
+  std::string schema{
+      "kikijyeba.lattice.benchmark_regression_budget.summary.v1"};
+  std::int64_t budget_count{0};
+  std::int64_t library_layer_count{0};
+  std::int64_t long_lived_mcp_layer_count{0};
+  std::int64_t direct_cli_layer_count{0};
+  std::int64_t header_only_mode_count{0};
+  std::int64_t watched_manifest_mode_count{0};
+  std::int64_t full_metadata_mode_count{0};
+  std::int64_t live_scan_mode_count{0};
+  std::int64_t live_parity_mode_count{0};
+  std::int64_t full_live_scan_allowed_count{0};
+  std::int64_t metadata_digest_allowed_count{0};
+  std::int64_t cache_target_authority_count{0};
+  std::int64_t process_startup_included_count{0};
+  std::int64_t session_reuse_required_count{0};
+  std::int64_t regression_smoke_required_count{0};
+  std::int64_t baseline_receipt_required_count{0};
+  std::int64_t empty_field_count{0};
+  bool all_required_layers_present{false};
+  bool all_required_proof_modes_present{false};
+  bool header_only_fast_paths_forbid_live_scan{false};
+  bool proof_modes_separate_from_fast_path{false};
+  bool long_lived_mcp_session_reuse_present{false};
+  bool direct_cli_startup_separated{false};
+  bool regression_smoke_declared{false};
+  bool baseline_receipt_required_for_all_rows{false};
+  bool no_cache_target_satisfaction_authority{false};
+  bool all_rows_have_measurement_and_guard{false};
+  bool summary_self_check_passed{false};
+  std::int64_t summary_issue_count{0};
+  std::vector<std::string> benchmark_ids{};
+  std::vector<std::string> proof_modes{};
+  std::vector<std::string> summary_issues{};
+};
+
+[[nodiscard]] inline lattice_benchmark_regression_budget_summary_t
+lattice_benchmark_regression_budget_summary() {
+  lattice_benchmark_regression_budget_summary_t out{};
+  const auto rows = lattice_benchmark_regression_budget_vocabulary();
+  out.budget_count = static_cast<std::int64_t>(rows.size());
+
+  const auto has_row = [&](const std::string &benchmark_id) {
+    return std::any_of(rows.begin(), rows.end(), [&](const auto &entry) {
+      return entry.benchmark_id == benchmark_id;
+    });
+  };
+  const auto proof_mode_present = [&](const std::string &mode) {
+    return std::any_of(rows.begin(), rows.end(), [&](const auto &entry) {
+      return entry.proof_mode == mode;
+    });
+  };
+
+  for (const auto &entry : rows) {
+    out.benchmark_ids.push_back(entry.benchmark_id);
+    if (std::find(out.proof_modes.begin(), out.proof_modes.end(),
+                  entry.proof_mode) == out.proof_modes.end()) {
+      out.proof_modes.push_back(entry.proof_mode);
+    }
+    if (entry.timing_layer == "library_function") {
+      ++out.library_layer_count;
+    }
+    if (entry.timing_layer == "long_lived_mcp") {
+      ++out.long_lived_mcp_layer_count;
+    }
+    if (entry.timing_layer == "direct_cli") {
+      ++out.direct_cli_layer_count;
+    }
+    if (entry.proof_mode == "header_only") {
+      ++out.header_only_mode_count;
+    }
+    if (entry.proof_mode == "watched_file_manifest") {
+      ++out.watched_manifest_mode_count;
+    }
+    if (entry.proof_mode == "full_runtime_metadata_digest") {
+      ++out.full_metadata_mode_count;
+    }
+    if (entry.proof_mode == "live_scan") {
+      ++out.live_scan_mode_count;
+    }
+    if (entry.proof_mode == "live_parity") {
+      ++out.live_parity_mode_count;
+    }
+    if (entry.full_live_scan_allowed) {
+      ++out.full_live_scan_allowed_count;
+    }
+    if (entry.metadata_digest_allowed) {
+      ++out.metadata_digest_allowed_count;
+    }
+    if (entry.cache_target_authority) {
+      ++out.cache_target_authority_count;
+    }
+    if (entry.process_startup_included) {
+      ++out.process_startup_included_count;
+    }
+    if (entry.session_reuse_required) {
+      ++out.session_reuse_required_count;
+    }
+    if (entry.regression_smoke_required) {
+      ++out.regression_smoke_required_count;
+    }
+    if (entry.baseline_receipt_required) {
+      ++out.baseline_receipt_required_count;
+    }
+    if (entry.benchmark_id.empty() || entry.timing_layer.empty() ||
+        entry.proof_mode.empty() || entry.measured_surface.empty() ||
+        entry.required_measurement.empty() || entry.regression_guard.empty() ||
+        entry.expected_fast_path.empty()) {
+      ++out.empty_field_count;
+    }
+  }
+
+  out.all_required_layers_present = out.library_layer_count > 0 &&
+                                    out.long_lived_mcp_layer_count > 0 &&
+                                    out.direct_cli_layer_count > 0;
+  out.all_required_proof_modes_present =
+      proof_mode_present("header_only") &&
+      proof_mode_present("watched_file_manifest") &&
+      proof_mode_present("full_runtime_metadata_digest") &&
+      proof_mode_present("live_scan") && proof_mode_present("live_parity");
+  out.header_only_fast_paths_forbid_live_scan =
+      std::all_of(rows.begin(), rows.end(), [](const auto &entry) {
+        return entry.proof_mode != "header_only" ||
+               (!entry.full_live_scan_allowed &&
+                !entry.metadata_digest_allowed &&
+                entry.regression_guard.find("compare_live_scan=false") !=
+                    std::string::npos);
+      });
+  out.proof_modes_separate_from_fast_path =
+      has_row("library_header_only_index_query") &&
+      has_row("library_full_metadata_index_status") &&
+      has_row("library_live_scan_index_build") &&
+      has_row("direct_cli_live_parity_index_query");
+  out.long_lived_mcp_session_reuse_present =
+      has_row("long_lived_mcp_header_only_index_query") &&
+      has_row("long_lived_mcp_evaluate_targets_batch") &&
+      out.session_reuse_required_count >= 2;
+  out.direct_cli_startup_separated =
+      has_row("direct_cli_header_only_index_query") &&
+      has_row("direct_cli_live_parity_index_query") &&
+      has_row("direct_cli_evaluate_targets_batch") &&
+      out.process_startup_included_count == 3;
+  out.regression_smoke_declared =
+      out.regression_smoke_required_count == out.budget_count &&
+      out.header_only_fast_paths_forbid_live_scan;
+  out.baseline_receipt_required_for_all_rows =
+      out.baseline_receipt_required_count == out.budget_count;
+  out.no_cache_target_satisfaction_authority =
+      out.cache_target_authority_count == 0;
+  out.all_rows_have_measurement_and_guard = out.empty_field_count == 0;
+
+  if (out.budget_count != 9) {
+    out.summary_issues.push_back(
+        "benchmark regression budget must contain 9 finite timing rows");
+  }
+  if (!out.all_required_layers_present) {
+    out.summary_issues.push_back(
+        "benchmark budget must separate library, long-lived MCP, and direct "
+        "CLI timing layers");
+  }
+  if (!out.all_required_proof_modes_present) {
+    out.summary_issues.push_back(
+        "benchmark budget must cover header_only, watched_file_manifest, "
+        "full_runtime_metadata_digest, live_scan, and live_parity proof "
+        "modes");
+  }
+  if (!out.header_only_fast_paths_forbid_live_scan) {
+    out.summary_issues.push_back(
+        "header-only fast audit rows must forbid full live scans and metadata "
+        "digests");
+  }
+  if (!out.proof_modes_separate_from_fast_path) {
+    out.summary_issues.push_back(
+        "metadata, live-scan, and parity proof costs must be separated from "
+        "header-only fast audit paths");
+  }
+  if (!out.long_lived_mcp_session_reuse_present) {
+    out.summary_issues.push_back(
+        "long-lived MCP benchmark rows must require session reuse");
+  }
+  if (!out.direct_cli_startup_separated) {
+    out.summary_issues.push_back(
+        "direct CLI benchmark rows must explicitly include process startup");
+  }
+  if (!out.regression_smoke_declared ||
+      !out.baseline_receipt_required_for_all_rows) {
+    out.summary_issues.push_back(
+        "every benchmark row must require a regression smoke and committed "
+        "baseline receipt");
+  }
+  if (!out.no_cache_target_satisfaction_authority) {
+    out.summary_issues.push_back(
+        "benchmark cache rows must never become target-satisfaction "
+        "authority");
+  }
+  if (!out.all_rows_have_measurement_and_guard) {
+    out.summary_issues.push_back(
+        "benchmark rows must declare measured surface, measurement, guard, "
+        "and expected path");
+  }
+
+  out.summary_issue_count =
+      static_cast<std::int64_t>(out.summary_issues.size());
+  out.summary_self_check_passed = out.summary_issues.empty();
+  return out;
+}
+
 struct lattice_evidence_abstraction_entry_t {
   std::string abstraction{};
   std::vector<std::string> concrete_inputs{};
@@ -1274,7 +1959,7 @@ lattice_evidence_abstraction_vocabulary() {
       {"identity_abstraction",
        {"active_identity", "runtime_manifest", "runtime_report",
         "lattice.exposure.fact"},
-       {"proof_certificate.identity", "evidence_order_vector.identity_*"},
+       {"proof_certificate.proof_context", "evidence_order_vector.identity_*"},
        "required active identity fields must exactly match the evidence "
        "identity before satisfaction can be claimed",
        "missing or mismatched identity fields block rather than degrade to a "
@@ -1407,14 +2092,14 @@ struct lattice_join_law_entry_t {
 [[nodiscard]] inline std::vector<lattice_product_evidence_state_entry_t>
 lattice_product_evidence_state_vocabulary() {
   return {
-      {"identity",
+      {"proof_context",
        "discrete_exact_match_identity",
        "equal_identity_or_incomparable",
        "no join across mismatched contract, component assembly, graph order, "
        "or source cursor identity",
-       {"proof_certificate.identity", "evidence_order_vector.identity_*"},
+       {"proof_certificate.proof_context", "evidence_order_vector.identity_*"},
        "clean growth preserves the active contract/component/graph/source "
-       "identity",
+       "proof_context",
        "missing identity blocks; stale or mismatched identity prevents "
        "satisfaction",
        true,
@@ -1524,7 +2209,7 @@ lattice_product_evidence_state_vocabulary() {
 [[nodiscard]] inline std::vector<lattice_join_law_entry_t>
 lattice_join_law_vocabulary() {
   return {
-      {"identity",
+      {"proof_context",
        "exact_match_meet_or_incomparable",
        {"associative", "commutative", "idempotent"},
        "protocol_contract_fingerprint, component assembly fingerprint, graph "
@@ -1768,14 +2453,14 @@ struct lattice_validation_performance_evidence_policy_entry_t {
     lattice_validation_performance_scope_policy_entry_t>
 lattice_validation_performance_scope_policy_vocabulary() {
   return {
-      {"validation_eval_readiness_scope", "node_mdn_validation_eval_ready",
+      {"validation_eval_readiness_scope", "channel_mdn_validation_eval_ready",
        "clean_evaluation_readiness",
        "run-mode evaluation evidence over validation_holdout with "
        "evaluation_metric coverage, zero optimizer mutation, exact MDN "
        "checkpoint binding, exact input checkpoint edges, matching "
        "representation lineage, and no output checkpoint",
        "model quality, deployability, or performance superiority",
-       "future node_mdn_validation_performance_ready target with explicit "
+       "future channel_mdn_validation_performance_ready target with explicit "
        "metrics, uncertainty, and thresholds",
        true, false, true, true, false},
       {"evaluation_metric_coverage_not_quality",
@@ -1796,7 +2481,7 @@ lattice_validation_performance_scope_policy_vocabulary() {
        "gate semantics",
        false, false, true, true, false},
       {"future_validation_performance_target",
-       "future node_mdn_validation_performance_ready",
+       "future channel_mdn_validation_performance_ready",
        "future_performance_authority",
        "future hard or warning performance checks after metrics, sample size, "
        "uncertainty, and selection-signal policy are explicit",
@@ -2382,8 +3067,9 @@ lattice_node_support_scope_policy_vocabulary() {
        "per-node VICReg readiness or shared-encoder representation coverage",
        "none for V1 MDN support visibility", true, false, false, true, false},
       {"vicreg_shared_encoder_boundary",
-       "representation_vicreg exposure facts, checkpoint facts, and "
-       "representation_health_facts",
+       "channel_representation_vicreg exposure facts, checkpoint facts, and "
+       "representation_health_facts; historical representation_vicreg facts "
+       "remain replay-readable",
        "shared_encoder_readiness",
        "shared VICReg train-core readiness, checkpoint lineage, leakage "
        "cleanliness, and representation-health warnings",
@@ -2843,6 +3529,46 @@ struct lattice_representation_geometry_summary_t {
   std::vector<std::string> summary_issues{};
 };
 
+struct lattice_representation_geometry_gate_review_metric_t {
+  std::string metric{};
+  std::string unit{};
+  bool future_hard_gate_candidate{false};
+  bool geometry_metric{false};
+  std::int64_t observed_count{0};
+  double min_value{std::numeric_limits<double>::quiet_NaN()};
+  double max_value{std::numeric_limits<double>::quiet_NaN()};
+  double mean_value{std::numeric_limits<double>::quiet_NaN()};
+  bool observed_distribution_available{false};
+  bool proposed_threshold{false};
+  bool promoted_hard_gate{false};
+};
+
+struct lattice_representation_geometry_gate_review_summary_t {
+  std::string schema{
+      "kikijyeba.lattice.representation_geometry_gate_review.summary.v1"};
+  std::int64_t metric_count{0};
+  std::int64_t geometry_metric_count{0};
+  std::int64_t future_hard_gate_candidate_count{0};
+  std::int64_t observed_run_count{0};
+  std::int64_t observed_geometry_fact_count{0};
+  std::int64_t observed_candidate_metric_count{0};
+  std::int64_t observed_metric_sample_count{0};
+  std::int64_t missing_geometry_fact_count{0};
+  std::int64_t proposed_threshold_count{0};
+  std::int64_t promoted_hard_gate_count{0};
+  bool opt_in_target_syntax_required{true};
+  bool missing_geometry_fails_closed_for_gate{true};
+  bool hard_gate_default_enabled{false};
+  bool thresholds_justified_by_observed_data{false};
+  bool default_readiness_unchanged{true};
+  bool no_performance_gate_authority{true};
+  bool summary_self_check_passed{false};
+  std::int64_t summary_issue_count{0};
+  std::vector<lattice_representation_geometry_gate_review_metric_t>
+      metric_summaries{};
+  std::vector<std::string> summary_issues{};
+};
+
 [[nodiscard]] inline lattice_representation_geometry_summary_t
 lattice_representation_geometry_summary() {
   lattice_representation_geometry_summary_t out{};
@@ -3004,6 +3730,298 @@ lattice_representation_geometry_summary() {
   return out;
 }
 
+[[nodiscard]] inline std::optional<lattice_representation_geometry_entry_t>
+lattice_representation_geometry_metric_entry(const std::string &metric) {
+  const auto vocabulary = lattice_representation_geometry_vocabulary();
+  const auto found =
+      std::find_if(vocabulary.begin(), vocabulary.end(),
+                   [&](const auto &entry) { return entry.metric == metric; });
+  if (found == vocabulary.end()) {
+    return std::nullopt;
+  }
+  return *found;
+}
+
+[[nodiscard]] inline bool
+lattice_representation_geometry_metric_high_is_bad(const std::string &metric) {
+  static const std::set<std::string> high_is_bad{
+      "mean_invariance_loss",
+      "mean_variance_loss",
+      "mean_covariance_loss",
+      "last_grad_norm",
+      "max_grad_norm",
+      "representation_max_dimension_variance",
+      "representation_condition_number",
+  };
+  return high_is_bad.count(metric) != 0;
+}
+
+[[nodiscard]] inline bool
+lattice_representation_geometry_metric_low_is_bad(const std::string &metric) {
+  static const std::set<std::string> low_is_bad{
+      "total_valid_projection_rows",
+      "mean_adapter_valid_channel_time_fraction",
+      "augmented_valid_feature_count",
+      "mean_augmented_valid_feature_fraction",
+      "mean_augmented_feature_retention_fraction",
+      "finite_parameter_check",
+      "representation_embedding_dim",
+      "representation_effective_rank",
+      "representation_effective_rank_fraction",
+      "representation_min_dimension_variance",
+      "representation_isotropy_score",
+  };
+  return low_is_bad.count(metric) != 0;
+}
+
+[[nodiscard]] inline std::optional<double>
+lattice_representation_geometry_metric_value(
+    const cuwacunu::kikijyeba::lattice::exposure::lattice_exposure_fact_t &fact,
+    const std::string &metric) {
+  if (!fact.representation_health_available) {
+    return std::nullopt;
+  }
+  if (metric == "mean_invariance_loss") {
+    return fact.mean_invariance_loss;
+  }
+  if (metric == "mean_variance_loss") {
+    return fact.mean_variance_loss;
+  }
+  if (metric == "mean_covariance_loss") {
+    return fact.mean_covariance_loss;
+  }
+  if (metric == "last_grad_norm") {
+    return fact.last_grad_norm;
+  }
+  if (metric == "max_grad_norm") {
+    return fact.max_grad_norm;
+  }
+  if (metric == "total_valid_projection_rows") {
+    return static_cast<double>(fact.total_valid_projection_rows);
+  }
+  if (metric == "mean_adapter_valid_channel_time_fraction") {
+    return fact.mean_adapter_valid_channel_time_fraction;
+  }
+  if (metric == "augmented_valid_feature_count") {
+    return static_cast<double>(fact.augmented_valid_feature_count);
+  }
+  if (metric == "mean_augmented_valid_feature_fraction") {
+    return fact.mean_augmented_valid_feature_fraction;
+  }
+  if (metric == "mean_augmented_feature_retention_fraction") {
+    return fact.mean_augmented_feature_retention_fraction;
+  }
+  if (metric == "finite_parameter_check") {
+    return fact.finite_parameter_check ? 1.0 : 0.0;
+  }
+  if (metric == "representation_embedding_dim") {
+    return static_cast<double>(fact.representation_embedding_dim);
+  }
+  if (metric == "representation_effective_rank") {
+    return fact.representation_effective_rank;
+  }
+  if (metric == "representation_effective_rank_fraction") {
+    return fact.representation_effective_rank_fraction;
+  }
+  if (metric == "representation_min_dimension_variance") {
+    return fact.representation_min_dimension_variance;
+  }
+  if (metric == "representation_max_dimension_variance") {
+    return fact.representation_max_dimension_variance;
+  }
+  if (metric == "representation_condition_number") {
+    return fact.representation_condition_number;
+  }
+  if (metric == "representation_isotropy_score") {
+    return fact.representation_isotropy_score;
+  }
+  return std::nullopt;
+}
+
+inline void require_representation_geometry_threshold_dimension(
+    const std::string &metric, double value, const std::string &field,
+    const std::string &target_id) {
+  const auto require_finite = [&]() {
+    if (!std::isfinite(value)) {
+      throw std::runtime_error("[lattice_target] " + field +
+                               " must be finite for " + target_id);
+    }
+  };
+  const auto require_non_negative = [&]() {
+    require_finite();
+    if (value < 0.0) {
+      throw std::runtime_error("[lattice_target] " + field +
+                               " must be non-negative for " + target_id);
+    }
+  };
+  if (metric == "mean_adapter_valid_channel_time_fraction" ||
+      metric == "mean_augmented_valid_feature_fraction" ||
+      metric == "mean_augmented_feature_retention_fraction" ||
+      metric == "finite_parameter_check" ||
+      metric == "representation_effective_rank_fraction" ||
+      metric == "representation_isotropy_score") {
+    require_finite();
+    if (value < 0.0 || value > 1.0) {
+      throw std::runtime_error("[lattice_target] " + field +
+                               " must be a fraction in [0, 1] for " +
+                               target_id);
+    }
+  } else if (metric == "total_valid_projection_rows" ||
+             metric == "augmented_valid_feature_count" ||
+             metric == "representation_embedding_dim") {
+    require_non_negative();
+    if (std::floor(value) != value) {
+      throw std::runtime_error("[lattice_target] " + field +
+                               " must be an integral count threshold for " +
+                               target_id);
+    }
+  } else if (metric == "representation_condition_number") {
+    require_finite();
+    if (value < 1.0) {
+      throw std::runtime_error("[lattice_target] " + field +
+                               " must be a condition_number value >= 1 for " +
+                               target_id);
+    }
+  } else {
+    require_non_negative();
+  }
+}
+
+[[nodiscard]] inline lattice_representation_geometry_gate_review_summary_t
+summarize_representation_geometry_gate_review(
+    const std::vector<
+        cuwacunu::kikijyeba::lattice::exposure::lattice_exposure_fact_t>
+        &facts) {
+  lattice_representation_geometry_gate_review_summary_t out{};
+  const auto vocabulary = lattice_representation_geometry_vocabulary();
+  out.metric_count = static_cast<std::int64_t>(vocabulary.size());
+
+  std::set<std::string> observed_jobs;
+  for (const auto &entry : vocabulary) {
+    lattice_representation_geometry_gate_review_metric_t metric{};
+    metric.metric = entry.metric;
+    metric.unit = entry.unit;
+    metric.future_hard_gate_candidate = entry.future_hard_gate_candidate;
+    metric.geometry_metric = entry.geometry_metric;
+    if (entry.geometry_metric) {
+      ++out.geometry_metric_count;
+    }
+    if (entry.future_hard_gate_candidate) {
+      ++out.future_hard_gate_candidate_count;
+    }
+    double sum = 0.0;
+    for (const auto &fact : facts) {
+      if (fact.target_component_family_id !=
+          "wikimyei.representation.encoding.vicreg") {
+        continue;
+      }
+      if (fact.representation_health_available) {
+        observed_jobs.insert(fact.job_id);
+      }
+      const auto value =
+          lattice_representation_geometry_metric_value(fact, entry.metric);
+      if (!value.has_value() || !std::isfinite(*value)) {
+        continue;
+      }
+      ++metric.observed_count;
+      ++out.observed_metric_sample_count;
+      sum += *value;
+      metric.min_value = std::isfinite(metric.min_value)
+                             ? std::min(metric.min_value, *value)
+                             : *value;
+      metric.max_value = std::isfinite(metric.max_value)
+                             ? std::max(metric.max_value, *value)
+                             : *value;
+    }
+    if (metric.observed_count > 0) {
+      metric.mean_value = sum / static_cast<double>(metric.observed_count);
+      metric.observed_distribution_available = true;
+      if (metric.future_hard_gate_candidate) {
+        ++out.observed_candidate_metric_count;
+      }
+    }
+    out.metric_summaries.push_back(metric);
+  }
+
+  for (const auto &fact : facts) {
+    if (fact.target_component_family_id !=
+        "wikimyei.representation.encoding.vicreg") {
+      continue;
+    }
+    if (!fact.representation_health_available) {
+      ++out.missing_geometry_fact_count;
+      continue;
+    }
+    bool has_geometry_metric = false;
+    for (const auto &entry : vocabulary) {
+      if (!entry.geometry_metric && !entry.future_hard_gate_candidate) {
+        continue;
+      }
+      const auto value =
+          lattice_representation_geometry_metric_value(fact, entry.metric);
+      if (value.has_value() && std::isfinite(*value)) {
+        has_geometry_metric = true;
+        break;
+      }
+    }
+    if (has_geometry_metric) {
+      ++out.observed_geometry_fact_count;
+    } else {
+      ++out.missing_geometry_fact_count;
+    }
+  }
+  out.observed_run_count = static_cast<std::int64_t>(observed_jobs.size());
+
+  out.proposed_threshold_count = static_cast<std::int64_t>(std::count_if(
+      out.metric_summaries.begin(), out.metric_summaries.end(),
+      [](const auto &metric) { return metric.proposed_threshold; }));
+  out.promoted_hard_gate_count = static_cast<std::int64_t>(std::count_if(
+      out.metric_summaries.begin(), out.metric_summaries.end(),
+      [](const auto &metric) { return metric.promoted_hard_gate; }));
+  out.thresholds_justified_by_observed_data = out.proposed_threshold_count == 0;
+
+  if (out.metric_count != 18) {
+    out.summary_issues.push_back(
+        "representation geometry gate review must inspect 18 warning metrics");
+  }
+  if (out.geometry_metric_count != 7) {
+    out.summary_issues.push_back(
+        "representation geometry gate review must include 7 geometry metrics");
+  }
+  if (out.future_hard_gate_candidate_count != 11) {
+    out.summary_issues.push_back(
+        "representation geometry gate review must track 11 future hard-gate "
+        "candidates");
+  }
+  if (!out.opt_in_target_syntax_required) {
+    out.summary_issues.push_back(
+        "representation geometry gates must require opt-in target syntax");
+  }
+  if (!out.missing_geometry_fails_closed_for_gate) {
+    out.summary_issues.push_back(
+        "missing representation geometry must fail an explicit gate closed");
+  }
+  if (out.hard_gate_default_enabled) {
+    out.summary_issues.push_back(
+        "representation geometry gates must not be enabled by default");
+  }
+  if (out.proposed_threshold_count != 0 || out.promoted_hard_gate_count != 0) {
+    out.summary_issues.push_back(
+        "V3-H review must not promote or propose thresholds without stronger "
+        "observed history");
+  }
+  if (!out.default_readiness_unchanged || !out.no_performance_gate_authority) {
+    out.summary_issues.push_back(
+        "representation geometry review must not change default readiness or "
+        "performance authority");
+  }
+
+  out.summary_issue_count =
+      static_cast<std::int64_t>(out.summary_issues.size());
+  out.summary_self_check_passed = out.summary_issues.empty();
+  return out;
+}
+
 [[nodiscard]] inline std::vector<lattice_performance_uncertainty_policy_entry_t>
 lattice_performance_uncertainty_policy_vocabulary() {
   return {
@@ -3099,7 +4117,7 @@ lattice_performance_uncertainty_policy_vocabulary() {
        true},
       {"selection_safe_performance_gate_future",
        "gate_policy",
-       {"node_mdn_validation_performance_ready",
+       {"channel_mdn_validation_performance_ready",
         "future best_nondominated_satisfying selectors"},
        "conservative_bound_with_declared_selection_policy",
        "performance gates require uncertainty and selection-signal leakage "
@@ -3961,6 +4979,25 @@ lattice_target_numeric_dimension_vocabulary() {
        "minimum",
        "v0 exposure coverage requirements are cursor-coverage fractions in "
        "[0,1]"},
+      {"LATTICE_REQUIRES.representation_geometry.fraction_metrics", "VALUE",
+       "fraction", "closed_unit_interval", true, 0.0, true, 1.0, false,
+       "metric_declared",
+       "opt-in representation geometry fraction gates are bounded in [0,1]"},
+      {"LATTICE_REQUIRES.representation_geometry.count_metrics", "VALUE",
+       "count", "non_negative_integer", true, 0.0, false, 0.0, true,
+       "metric_declared",
+       "opt-in representation geometry count gates are non-negative integral "
+       "counts"},
+      {"LATTICE_REQUIRES.representation_geometry.representation_condition_"
+       "number",
+       "VALUE", "condition_number", "real_at_least_one", true, 1.0, false, 0.0,
+       false, "metric_declared",
+       "opt-in representation condition-number gates use finite values >= 1"},
+      {"LATTICE_REQUIRES.representation_geometry.non_negative_metrics", "VALUE",
+       "metric_specific", "non_negative_real", true, 0.0, false, 0.0, false,
+       "metric_declared",
+       "opt-in representation geometry loss, rank, and variance gates use "
+       "non-negative metric-specific values"},
       {"LATTICE_WARN.exposure_load", "CURSOR_EPOCHS_ABOVE", "cursor_epoch",
        "non_negative_real", true, 0.0, false, 0.0, false, "above",
        "repeated exposure-load warnings compare additive cursor epochs"},
@@ -4255,9 +5292,9 @@ lattice_target_numeric_dimension_summary() {
       coverage->unit != repeated_load->unit &&
       coverage->numeric_kind != repeated_load->numeric_kind;
 
-  if (out.dimension_count != 26) {
+  if (out.dimension_count != 30) {
     out.summary_issues.push_back(
-        "target numeric dimension vocabulary must contain 26 V1 rows");
+        "target numeric dimension vocabulary must contain 30 V1 rows");
   }
   if (out.unit_count != 8) {
     out.summary_issues.push_back(
@@ -4296,10 +5333,11 @@ lattice_target_numeric_dimension_summary() {
   }
   if (out.minimum_direction_count != 10 || out.above_direction_count != 8 ||
       out.below_direction_count != 4 ||
-      out.metric_declared_direction_count != 3 ||
+      out.metric_declared_direction_count != 7 ||
       out.planning_budget_direction_count != 1) {
     out.summary_issues.push_back(
-        "numeric dimension threshold-direction counts must match V1 table");
+        "numeric dimension threshold-direction counts must match lattice "
+        "target table");
   }
   if (!out.coverage_cursor_epochs_dimension_present) {
     out.summary_issues.push_back(
@@ -4521,9 +5559,9 @@ struct lattice_proof_obligation_entry_t {
 [[nodiscard]] inline std::vector<lattice_proof_obligation_entry_t>
 lattice_proof_obligation_vocabulary() {
   return {
-      {"identity", "proof_certificate.identity", "identity_match",
+      {"proof_context", "proof_certificate.proof_context", "identity_match",
        "all graph-anchor targets that require active identity",
-       "stale_contract|stale_component|blocked", "identity",
+       "stale_contract|stale_component|blocked", "proof_context",
        "missing active identity is blocking, not a stale-evidence claim",
        "required identity fields and match booleans recompute from active "
        "identity and evidence identity",
@@ -4641,8 +5679,9 @@ lattice_proof_certificate_digest_policy_vocabulary() {
        "target proof identity is separate from protocol contract identity and "
        "from advisory plan inputs",
        true, true, false, false, false},
-      {"identity_proof", "active/evidence identity match proof",
-       "identity.require_* flags; active/evidence contract, component, graph "
+      {"proof_context", "active/evidence identity match proof",
+       "proof_context.require_* flags; active/evidence contract, component, "
+       "graph "
        "order, and source cursor token fields; match booleans",
        "checkpoint ids; checkpoint file digests; source receipt strings; "
        "runtime scan order",
@@ -4829,7 +5868,7 @@ lattice_proof_certificate_digest_policy_summary() {
   const std::vector<std::string> required_surfaces{
       "certificate_digest",
       "target_and_split_identity",
-      "identity_proof",
+      "proof_context",
       "dependency_proofs",
       "coverage_proofs",
       "closure_causal_graph",
@@ -4857,7 +5896,7 @@ lattice_proof_certificate_digest_policy_summary() {
 
   out.digest_has_core_status_authority_surfaces = true;
   const std::vector<std::string> core_status_surfaces{
-      "target_and_split_identity", "identity_proof",       "dependency_proofs",
+      "target_and_split_identity", "proof_context",        "dependency_proofs",
       "coverage_proofs",           "closure_causal_graph", "leakage_proof"};
   for (const auto &surface : core_status_surfaces) {
     const auto policy = find_policy(surface);
@@ -4979,8 +6018,8 @@ lattice_checkpoint_identity_policy_vocabulary() {
        "audit/index preview bound to the current path-based closure",
        {"checkpoint_path", "checkpoint_id", "checkpoint_file_digest",
         "direct_exposure_digest", "representation_contract",
-        "input_representation_id", "context_contract", "output_contract",
-        "created_by_job_id", "created_by_wave_id"},
+        "input_representation_assembly_id", "context_contract",
+        "output_contract", "created_by_job_id", "created_by_wave_id"},
        "direct_exposure_digest must be present in the current closure fact "
        "digests before preview fields can be emitted",
        "sidecars whose direct exposure digest is not in closure are rejected "
@@ -5597,12 +6636,12 @@ lattice_operational_readiness_v1_gate_vocabulary() {
       {"active_identity_binding",
        "active protocol contract fingerprint, graph order fingerprint, source "
        "cursor token, and component assembly fingerprints",
-       {"legacy_node_vicreg_train_core_ready", "node_mdn_train_core_ready",
-        "node_mdn_train_core_no_validation_leakage",
-        "node_mdn_train_core_no_test_leakage",
-        "node_mdn_validation_eval_ready"},
-       {"proof_certificate.identity", "contract_identity_boundary_vocabulary",
-        "proof_certificate_check"},
+       {"vicreg_train_core_ready", "channel_mdn_train_core_ready",
+        "channel_mdn_train_core_no_validation_leakage",
+        "channel_mdn_train_core_no_test_leakage",
+        "channel_mdn_validation_eval_ready"},
+       {"proof_certificate.proof_context",
+        "contract_identity_boundary_vocabulary", "proof_certificate_check"},
        "all graph-anchor targets prove active/evidence identity match under "
        "the compiled target spec and split policy",
        "missing active identity, stale contract, stale component, wrong graph "
@@ -5614,10 +6653,10 @@ lattice_operational_readiness_v1_gate_vocabulary() {
        false,
        false,
        false},
-      {"legacy_node_vicreg_train_core_ready",
-       "completed normal train-core legacy-node VICReg runtime evidence with "
+      {"vicreg_train_core_ready",
+       "completed normal train-core channel VICReg runtime evidence with "
        "checkpoint and observed-input coverage",
-       {"legacy_node_vicreg_train_core_ready"},
+       {"vicreg_train_core_ready"},
        {"proof_certificate", "proof_certificate.coverage",
         "proof_certificate.closure", "proof_certificate_check",
         "representation_geometry_vocabulary",
@@ -5626,17 +6665,17 @@ lattice_operational_readiness_v1_gate_vocabulary() {
        "checkpoint belongs to the active VICReg component identity",
        "debug-only evidence, stale identity, missing checkpoint, missing "
        "coverage, unresolved closure, or malformed certificate is accepted",
-       "channel VICReg readiness is a migration target; V1 uses the "
-       "legacy-node VICReg target until channel runtime evidence exists",
+       "VICReg readiness is shared representation evidence; per-node "
+       "representation support remains future evidence, not inferred from MDN",
        true,
        true,
        false,
        false,
        false},
-      {"node_mdn_train_core_ready",
+      {"channel_mdn_train_core_ready",
        "completed normal train-core MDN runtime evidence with target "
        "supervision coverage and exact representation checkpoint dependency",
-       {"node_mdn_train_core_ready"},
+       {"channel_mdn_train_core_ready"},
        {"proof_certificate", "proof_certificate.dependencies[]",
         "proof_certificate.coverage", "node_support_summaries",
         "proof_certificate_check"},
@@ -5656,7 +6695,7 @@ lattice_operational_readiness_v1_gate_vocabulary() {
       {"train_core_no_validation_leakage",
        "complete MDN checkpoint closure checked against validation_holdout "
        "protected split",
-       {"node_mdn_train_core_no_validation_leakage"},
+       {"channel_mdn_train_core_no_validation_leakage"},
        {"proof_certificate.closure", "proof_certificate.leakage",
         "leakage_rule_vocabulary", "leakage_rule_summary",
         "proof_certificate_check"},
@@ -5674,7 +6713,7 @@ lattice_operational_readiness_v1_gate_vocabulary() {
       {"train_core_no_test_leakage",
        "complete MDN checkpoint closure checked against test_holdout protected "
        "split",
-       {"node_mdn_train_core_no_test_leakage"},
+       {"channel_mdn_train_core_no_test_leakage"},
        {"proof_certificate.closure", "proof_certificate.leakage",
         "leakage_rule_vocabulary", "selection_signal_policy_vocabulary",
         "selection_signal_policy_summary", "leakage_rule_summary",
@@ -5696,7 +6735,7 @@ lattice_operational_readiness_v1_gate_vocabulary() {
        "run-mode validation_holdout evaluation evidence with zero optimizer "
        "mutation, no output checkpoint, exact loaded checkpoint bindings, "
        "and no extra checkpoint input edges",
-       {"node_mdn_validation_eval_ready"},
+       {"channel_mdn_validation_eval_ready"},
        {"proof_certificate.dependencies[]", "proof_certificate.coverage",
         "checkpoint_selection_policy_vocabulary",
         "checkpoint_selection_policy_summary",
@@ -5723,8 +6762,8 @@ lattice_operational_readiness_v1_gate_vocabulary() {
       {"warnings_visibility_nonblocking",
        "structured warning results and summaries for source health, repeated "
        "load, optimizer effort, representation health, and MDN calibration",
-       {"legacy_node_vicreg_train_core_ready", "node_mdn_train_core_ready",
-        "node_mdn_validation_eval_ready"},
+       {"vicreg_train_core_ready", "channel_mdn_train_core_ready",
+        "channel_mdn_validation_eval_ready"},
        {"warning_results", "warning_summary",
         "warning_threshold_relation_vocabulary",
         "warning_anchor_scope_policy_vocabulary",
@@ -5751,7 +6790,7 @@ lattice_operational_readiness_v1_gate_vocabulary() {
       {"mdn_node_support_visibility",
        "MDN node exposure facts summarized as node-by-use support, valid "
        "target uncertainty, weakest-node, and balance metrics",
-       {"node_mdn_train_core_ready", "node_mdn_validation_eval_ready"},
+       {"channel_mdn_train_core_ready", "channel_mdn_validation_eval_ready"},
        {"node_support_summaries", "node_support_scope_policy_vocabulary",
         "node_support_scope_policy_summary",
         "valid_target_uncertainty_vocabulary",
@@ -5772,10 +6811,10 @@ lattice_operational_readiness_v1_gate_vocabulary() {
       {"proof_receipt_and_hero_surface",
        "PASS receipt plus Hero status/list/explain/scan/evaluate/plan/closure "
        "surfaces over the same proof vocabulary",
-       {"legacy_node_vicreg_train_core_ready", "node_mdn_train_core_ready",
-        "node_mdn_train_core_no_validation_leakage",
-        "node_mdn_train_core_no_test_leakage",
-        "node_mdn_validation_eval_ready"},
+       {"vicreg_train_core_ready", "channel_mdn_train_core_ready",
+        "channel_mdn_train_core_no_validation_leakage",
+        "channel_mdn_train_core_no_test_leakage",
+        "channel_mdn_validation_eval_ready"},
        {"proof_certificate",
         "proof_certificate_check",
         "proof_certificate_digest_policy_vocabulary",
@@ -5886,9 +6925,10 @@ lattice_operational_readiness_v1_gate_summary() {
       static_cast<std::int64_t>(out.referenced_target_ids.size());
 
   const std::vector<std::string> required_targets{
-      "legacy_node_vicreg_train_core_ready", "node_mdn_train_core_ready",
-      "node_mdn_train_core_no_validation_leakage",
-      "node_mdn_train_core_no_test_leakage", "node_mdn_validation_eval_ready"};
+      "vicreg_train_core_ready", "channel_mdn_train_core_ready",
+      "channel_mdn_train_core_no_validation_leakage",
+      "channel_mdn_train_core_no_test_leakage",
+      "channel_mdn_validation_eval_ready"};
   for (const auto &target_id : required_targets) {
     if (referenced_target_ids.find(target_id) == referenced_target_ids.end()) {
       out.missing_v1_target_ids.push_back(target_id);
@@ -5992,7 +7032,7 @@ struct lattice_mathematical_readiness_v1_entry_t {
 lattice_contract_identity_boundary_vocabulary() {
   return {
       {"protocol_contract_fingerprint", "protocol_contract_identity",
-       "active identity and proof_certificate.identity contract match",
+       "active identity and proof_certificate.proof_context contract match",
        "runtime model-state checkpoint paths, plan hints, warning clauses, and "
        "source receipts",
        "graph-anchor readiness evidence must match the active protocol "
@@ -6001,7 +7041,7 @@ lattice_contract_identity_boundary_vocabulary() {
        true, false, true, false, false, false, false},
       {"graph_order_fingerprint|source_cursor_token", "active_runtime_identity",
        "row-index comparability, split overlap authority, and "
-       "proof_certificate.identity graph-anchor match",
+       "proof_certificate.proof_context graph-anchor match",
        "runtime model-state inputs, source receipts, and plan advice",
        "coverage and leakage proofs compare evidence only under the active "
        "graph order and source cursor token",
@@ -6667,7 +7707,7 @@ struct lattice_target_proof_certificate_t {
   std::string target_spec_fingerprint{};
   std::string split_policy_fingerprint{};
 
-  struct identity_proof_t {
+  struct proof_context_t {
     bool require_contract_match{false};
     bool require_component_match{false};
     bool require_graph_anchor_identity{false};
@@ -6683,6 +7723,20 @@ struct lattice_target_proof_certificate_t {
     std::string active_source_cursor_token{};
     std::string evidence_source_cursor_token{};
     bool source_cursor_match{false};
+    std::string component_spawn_schema{"kikijyeba.component_spawn.v1"};
+    std::string component_family_id{};
+    std::string target_spec_fingerprint{};
+    std::string split_policy_fingerprint{};
+    std::string config_bundle_id{};
+    std::string config_receipt_id{};
+    std::string component_spawn_registry_id{};
+    std::string component_spawn_id{};
+    std::string component_spawn_label{};
+    std::string evidence_component_spawn_fingerprint{};
+    std::string computed_component_spawn_fingerprint{};
+    bool config_receipt_available{false};
+    bool spawn_id_readability_hint_only{true};
+    std::vector<std::string> provenance_warnings{};
   };
 
   struct dependency_proof_t {
@@ -6734,14 +7788,14 @@ struct lattice_target_proof_certificate_t {
       std::string wave_id{};
       std::string wave_action{};
       std::string job_status{};
-      std::string target_component{};
+      std::string target_component_family_id{};
       std::string representation_architecture{};
       std::string representation_contract{};
       std::string representation_value_shape{};
       std::string representation_sequence_value_shape{};
       std::string channel_axis_policy{};
       std::string temporal_reduction{};
-      std::string input_representation_id{};
+      std::string input_representation_assembly_id{};
       std::string context_mode{};
       std::string context_contract{};
       std::string context_value_shape{};
@@ -6785,7 +7839,7 @@ struct lattice_target_proof_certificate_t {
       std::string representation_sequence_value_shape{};
       std::string channel_axis_policy{};
       std::string temporal_reduction{};
-      std::string input_representation_id{};
+      std::string input_representation_assembly_id{};
       std::string context_mode{};
       std::string context_contract{};
       std::string context_value_shape{};
@@ -6828,7 +7882,7 @@ struct lattice_target_proof_certificate_t {
     bool passed{true};
   };
 
-  identity_proof_t identity{};
+  proof_context_t proof_context{};
   std::vector<dependency_proof_t> dependencies{};
   std::vector<coverage_proof_t> coverage{};
   closure_proof_t closure{};
@@ -6844,7 +7898,7 @@ struct lattice_target_proof_certificate_check_t {
 
 struct lattice_target_evaluation_t {
   std::string target_id{};
-  lattice_target_kind_t kind{lattice_target_kind_t::node_mdn_ready};
+  lattice_target_kind_t kind{lattice_target_kind_t::channel_mdn_ready};
   std::string component{};
   std::string split_policy_fingerprint{};
   lattice_target_status_t status{lattice_target_status_t::missing_report};
@@ -6916,6 +7970,21 @@ struct lattice_target_evaluation_t {
     std::int64_t unknown_direction_relation_count{0};
   };
   warning_summary_t warning_summary{};
+  struct representation_geometry_gate_result_t {
+    std::string requirement_id{};
+    std::string metric{};
+    std::string op{};
+    double threshold{std::numeric_limits<double>::quiet_NaN()};
+    double measured_value{std::numeric_limits<double>::quiet_NaN()};
+    std::string unit{};
+    std::int64_t fact_count{0};
+    bool measurement_available{false};
+    bool passed{false};
+    std::string status{"unchecked"};
+    std::string message{};
+  };
+  std::vector<representation_geometry_gate_result_t>
+      representation_geometry_gate_results{};
   lattice_target_proof_certificate_t proof_certificate{};
   lattice_target_proof_certificate_check_t proof_certificate_check{};
   struct proof_deficit_t {
@@ -7010,17 +8079,18 @@ lattice_warning_threshold_relation_vocabulary() {
 
 [[nodiscard]] inline std::vector<lattice_deficit_priority_entry_t>
 lattice_deficit_priority_vocabulary() {
-  return {{"identity", 10},    {"certificate", 15}, {"checkpoint_binding", 20},
-          {"model_state", 25}, {"dependency", 30},  {"artifact", 35},
-          {"lineage", 40},     {"leakage", 50},     {"coverage", 60},
-          {"metric", 70},      {"status", 90},      {"fallback", 1000}};
+  return {
+      {"proof_context", 10}, {"certificate", 15}, {"checkpoint_binding", 20},
+      {"model_state", 25},   {"dependency", 30},  {"artifact", 35},
+      {"lineage", 40},       {"leakage", 50},     {"coverage", 60},
+      {"metric", 70},        {"status", 90},      {"fallback", 1000}};
 }
 
 [[nodiscard]] inline std::pair<std::int64_t, std::string>
 lattice_deficit_priority_for(std::string_view kind,
                              std::string_view dimension) {
-  if (kind == "identity") {
-    return {10, "identity"};
+  if (kind == "proof_context") {
+    return {10, "proof_context"};
   }
   if (kind == "certificate") {
     return {15, "certificate"};
@@ -7152,7 +8222,7 @@ lattice_deficit_vector_planning_summary() {
   const auto [dependency_priority, dependency_class] =
       lattice_deficit_priority_for("dependency", "target_dependency");
   const auto [identity_priority, identity_class] =
-      lattice_deficit_priority_for("identity", "");
+      lattice_deficit_priority_for("proof_context", "");
   const auto [certificate_priority, certificate_class] =
       lattice_deficit_priority_for("certificate", "proof_certificate_check");
   const auto [leakage_priority, leakage_class] =
@@ -7176,7 +8246,7 @@ lattice_deficit_vector_planning_summary() {
       dependency_class == "dependency";
   out.identity_outranks_certificate =
       identity_priority < certificate_priority &&
-      identity_class == "identity" && certificate_class == "certificate";
+      identity_class == "proof_context" && certificate_class == "certificate";
   out.leakage_outranks_coverage = leakage_priority < coverage_priority &&
                                   leakage_class == "leakage" &&
                                   coverage_class == "coverage";
@@ -7508,10 +8578,10 @@ struct lattice_target_validation_report_t {
 [[nodiscard]] inline const char *
 lattice_target_kind_name(lattice_target_kind_t kind) {
   switch (kind) {
-  case lattice_target_kind_t::representation_ready:
-    return "representation_ready";
-  case lattice_target_kind_t::node_mdn_ready:
-    return "node_mdn_ready";
+  case lattice_target_kind_t::legacy_node_vicreg_ready:
+    return "legacy_node_vicreg_ready";
+  case lattice_target_kind_t::legacy_node_mdn_ready:
+    return "legacy_node_mdn_ready";
   case lattice_target_kind_t::vicreg_ready:
     return "vicreg_ready";
   case lattice_target_kind_t::channel_mdn_ready:
@@ -7524,11 +8594,23 @@ lattice_target_kind_name(lattice_target_kind_t kind) {
 parse_lattice_target_kind(std::string value) {
   namespace kv = cuwacunu::piaabo::parse::simple_kv;
   value = kv::lowercase(kv::trim(std::move(value)));
+  if (value == "legacy_node_vicreg_ready") {
+    return lattice_target_kind_t::legacy_node_vicreg_ready;
+  }
   if (value == "representation_ready") {
-    return lattice_target_kind_t::representation_ready;
+    throw std::runtime_error(
+        "[lattice_target] TARGET_KIND representation_ready was removed from "
+        "the active vocabulary; use vicreg_ready for current targets or "
+        "legacy_node_vicreg_ready for explicit historical fixtures");
   }
   if (value == "node_mdn_ready") {
-    return lattice_target_kind_t::node_mdn_ready;
+    throw std::runtime_error(
+        "[lattice_target] TARGET_KIND node_mdn_ready was removed from the "
+        "active vocabulary; use channel_mdn_ready for current targets or "
+        "legacy_node_mdn_ready for explicit historical fixtures");
+  }
+  if (value == "legacy_node_mdn_ready") {
+    return lattice_target_kind_t::legacy_node_mdn_ready;
   }
   if (value == "vicreg_ready") {
     return lattice_target_kind_t::vicreg_ready;
@@ -7542,10 +8624,10 @@ parse_lattice_target_kind(std::string value) {
 [[nodiscard]] inline bool
 lattice_target_kind_is_mdn(lattice_target_kind_t kind) {
   switch (kind) {
-  case lattice_target_kind_t::representation_ready:
+  case lattice_target_kind_t::legacy_node_vicreg_ready:
   case lattice_target_kind_t::vicreg_ready:
     return false;
-  case lattice_target_kind_t::node_mdn_ready:
+  case lattice_target_kind_t::legacy_node_mdn_ready:
   case lattice_target_kind_t::channel_mdn_ready:
     return true;
   }
@@ -7555,11 +8637,11 @@ lattice_target_kind_is_mdn(lattice_target_kind_t kind) {
 [[nodiscard]] inline bool
 lattice_target_kind_has_node_heads(lattice_target_kind_t kind) {
   switch (kind) {
-  case lattice_target_kind_t::representation_ready:
+  case lattice_target_kind_t::legacy_node_vicreg_ready:
   case lattice_target_kind_t::vicreg_ready:
   case lattice_target_kind_t::channel_mdn_ready:
     return false;
-  case lattice_target_kind_t::node_mdn_ready:
+  case lattice_target_kind_t::legacy_node_mdn_ready:
     return true;
   }
   throw std::runtime_error("[lattice_target] unknown target kind");
@@ -7568,8 +8650,8 @@ lattice_target_kind_has_node_heads(lattice_target_kind_t kind) {
 [[nodiscard]] inline std::string
 upstream_representation_component_for_target_kind(lattice_target_kind_t kind) {
   switch (kind) {
-  case lattice_target_kind_t::representation_ready:
-  case lattice_target_kind_t::node_mdn_ready:
+  case lattice_target_kind_t::legacy_node_vicreg_ready:
+  case lattice_target_kind_t::legacy_node_mdn_ready:
     return "wikimyei.representation.encoding.vicreg";
   case lattice_target_kind_t::vicreg_ready:
   case lattice_target_kind_t::channel_mdn_ready:
@@ -7604,9 +8686,9 @@ lattice_target_status_name(lattice_target_status_t status) {
 [[nodiscard]] inline std::string
 default_component_for_target_kind(lattice_target_kind_t kind) {
   switch (kind) {
-  case lattice_target_kind_t::representation_ready:
+  case lattice_target_kind_t::legacy_node_vicreg_ready:
     return "wikimyei.representation.encoding.vicreg";
-  case lattice_target_kind_t::node_mdn_ready:
+  case lattice_target_kind_t::legacy_node_mdn_ready:
     return "wikimyei.inference.expected_value.mdn";
   case lattice_target_kind_t::vicreg_ready:
     return "wikimyei.representation.encoding.vicreg";
@@ -7619,9 +8701,9 @@ default_component_for_target_kind(lattice_target_kind_t kind) {
 [[nodiscard]] inline std::string
 job_kind_for_target_kind(lattice_target_kind_t kind) {
   switch (kind) {
-  case lattice_target_kind_t::representation_ready:
+  case lattice_target_kind_t::legacy_node_vicreg_ready:
     return "representation_vicreg";
-  case lattice_target_kind_t::node_mdn_ready:
+  case lattice_target_kind_t::legacy_node_mdn_ready:
     return "inference_mdn";
   case lattice_target_kind_t::vicreg_ready:
     return "channel_representation_vicreg";
@@ -7634,10 +8716,10 @@ job_kind_for_target_kind(lattice_target_kind_t kind) {
 [[nodiscard]] inline std::string
 component_fingerprint_key_for_target_kind(lattice_target_kind_t kind) {
   switch (kind) {
-  case lattice_target_kind_t::representation_ready:
+  case lattice_target_kind_t::legacy_node_vicreg_ready:
   case lattice_target_kind_t::vicreg_ready:
     return "vicreg_assembly_fingerprint";
-  case lattice_target_kind_t::node_mdn_ready:
+  case lattice_target_kind_t::legacy_node_mdn_ready:
   case lattice_target_kind_t::channel_mdn_ready:
     return "mdn_assembly_fingerprint";
   }
@@ -8527,20 +9609,22 @@ inline void apply_lattice_requires_clause(
     }
     const auto evidence_scope = kv::lowercase(
         kv::optional(block, "EVIDENCE_SCOPE", "output_checkpoint_closure"));
-    const auto scope = kv::lowercase(
-        kv::optional(block, "COMPONENT_SCOPE",
-                     kv::optional(block, "SCOPE", "target_component")));
+    const auto scope = kv::lowercase(kv::optional(
+        block, "COMPONENT_SCOPE",
+        kv::optional(block, "SCOPE", "target_component_family_id")));
     const auto effect =
         kv::lowercase(kv::optional(block, "EFFECT", "mutated_component"));
     const auto coordinate = kv::lowercase(
         kv::optional(block, "COORDINATE", "graph_anchor_coverage"));
     if ((evidence_scope != "output_checkpoint_closure" &&
-         evidence_scope != "target_component") ||
-        scope != "target_component" || coordinate != "graph_anchor_coverage") {
+         evidence_scope != "target_component_family_id") ||
+        scope != "target_component_family_id" ||
+        coordinate != "graph_anchor_coverage") {
       throw std::runtime_error(
           "[lattice_target] LATTICE_REQUIRES exposure_coverage v0 requires "
-          "EVIDENCE_SCOPE=output_checkpoint_closure or target_component, "
-          "COMPONENT_SCOPE=target_component, and "
+          "EVIDENCE_SCOPE=output_checkpoint_closure or "
+          "target_component_family_id, "
+          "COMPONENT_SCOPE=target_component_family_id, and "
           "COORDINATE=graph_anchor_coverage for " +
           spec.target_id);
     }
@@ -8593,6 +9677,89 @@ inline void apply_lattice_requires_clause(
           "observed_input, target_supervision, or evaluation_metric for " +
           spec.target_id);
     }
+    return;
+  }
+  if (kind == "representation_geometry") {
+    if (spec.kind != lattice_target_kind_t::legacy_node_vicreg_ready &&
+        spec.kind != lattice_target_kind_t::vicreg_ready) {
+      throw std::runtime_error(
+          "[lattice_target] LATTICE_REQUIRES representation_geometry only "
+          "supports legacy_node_vicreg_ready or vicreg_ready targets for " +
+          spec.target_id);
+    }
+    lattice_representation_geometry_requirement_spec_t requirement{};
+    requirement.requirement_id = kv::optional(
+        block, "REQUIREMENT_ID",
+        auto_clause_id("requires_geometry", spec.target_id,
+                       spec.representation_geometry_requirements.size()));
+    requirement.metric = kv::lowercase(kv::required(block, "METRIC"));
+    const auto metric_entry =
+        lattice_representation_geometry_metric_entry(requirement.metric);
+    if (!metric_entry.has_value()) {
+      throw std::runtime_error(
+          "[lattice_target] LATTICE_REQUIRES representation_geometry METRIC "
+          "is unsupported for " +
+          spec.target_id);
+    }
+    if (!metric_entry->future_hard_gate_candidate) {
+      throw std::runtime_error(
+          "[lattice_target] LATTICE_REQUIRES representation_geometry METRIC "
+          "is not a future hard-gate candidate for " +
+          spec.target_id);
+    }
+    const auto default_op =
+        lattice_representation_geometry_metric_high_is_bad(requirement.metric)
+            ? "le"
+            : "ge";
+    requirement.op = kv::lowercase(kv::optional(block, "OP", default_op));
+    if (requirement.op == "gte") {
+      requirement.op = "ge";
+    } else if (requirement.op == "lte") {
+      requirement.op = "le";
+    }
+    if (requirement.op != "ge" && requirement.op != "le") {
+      throw std::runtime_error(
+          "[lattice_target] LATTICE_REQUIRES representation_geometry only "
+          "supports OP=ge or OP=le for " +
+          spec.target_id);
+    }
+    if (lattice_representation_geometry_metric_high_is_bad(
+            requirement.metric) &&
+        requirement.op != "le") {
+      throw std::runtime_error(
+          "[lattice_target] LATTICE_REQUIRES representation_geometry " +
+          requirement.metric + " uses OP=le for " + spec.target_id);
+    }
+    if (lattice_representation_geometry_metric_low_is_bad(requirement.metric) &&
+        requirement.op != "ge") {
+      throw std::runtime_error(
+          "[lattice_target] LATTICE_REQUIRES representation_geometry " +
+          requirement.metric + " uses OP=ge for " + spec.target_id);
+    }
+    const auto value_raw =
+        kv::optional(block, "VALUE", kv::optional(block, "MIN_VALUE", ""));
+    if (kv::trim(value_raw).empty()) {
+      throw std::runtime_error(
+          "[lattice_target] LATTICE_REQUIRES representation_geometry "
+          "requires VALUE for " +
+          spec.target_id);
+    }
+    requirement.value = kv::parse_double(value_raw);
+    require_representation_geometry_threshold_dimension(
+        requirement.metric, requirement.value, "VALUE", spec.target_id);
+    const auto effect =
+        kv::lowercase(kv::optional(block, "EFFECT", "mutated_component"));
+    if (effect == "mutated_component") {
+      requirement.require_mutated_component = true;
+    } else if (effect == "any" || effect == "none") {
+      requirement.require_mutated_component = false;
+    } else {
+      throw std::runtime_error(
+          "[lattice_target] LATTICE_REQUIRES representation_geometry EFFECT "
+          "must be mutated_component, any, or none for " +
+          spec.target_id);
+    }
+    spec.representation_geometry_requirements.push_back(std::move(requirement));
     return;
   }
   throw std::runtime_error(
@@ -8826,12 +9993,13 @@ inline void apply_lattice_warn_clause(
   warning.split = kv::optional(block, "SPLIT", "");
   warning.scope = kv::lowercase(
       kv::optional(block, "COMPONENT_SCOPE",
-                   kv::optional(block, "SCOPE", "target_component")));
-  if (warning.scope != "target_component" &&
+                   kv::optional(block, "SCOPE", "target_component_family_id")));
+  if (warning.scope != "target_component_family_id" &&
       warning.scope != "all_components") {
-    throw std::runtime_error("[lattice_target] LATTICE_WARN SCOPE must be "
-                             "target_component or all_components for " +
-                             spec.target_id);
+    throw std::runtime_error(
+        "[lattice_target] LATTICE_WARN SCOPE must be "
+        "target_component_family_id or all_components for " +
+        spec.target_id);
   }
   const auto effect =
       kv::lowercase(kv::optional(block, "EFFECT", "mutated_component"));
@@ -9364,7 +10532,9 @@ inline void append_load_summary_text(
       << cuwacunu::kikijyeba::lattice::exposure::exposure_use_name(summary.use)
       << "\n";
   out << prefix << ".component_scope=" << summary.component_scope << "\n";
-  out << prefix << ".target_component=" << summary.target_component << "\n";
+  out << prefix
+      << ".target_component_family_id=" << summary.target_component_family_id
+      << "\n";
   out << prefix << ".require_mutated_component="
       << (summary.require_mutated_component ? "true" : "false") << "\n";
   out << prefix
@@ -9454,8 +10624,9 @@ inline void append_source_key_window_audit_text(
   out << prefix
       << ".irregular_key_warning_count=" << audit.irregular_key_warning_count
       << "\n";
-  out << prefix << ".source_key_gap_warning_count="
-      << audit.source_key_gap_warning_count << "\n";
+  out << prefix
+      << ".source_key_gap_warning_count=" << audit.source_key_gap_warning_count
+      << "\n";
   out << prefix << ".row_source_key_mismatch_count="
       << audit.row_source_key_mismatch_count << "\n";
   out << prefix << ".source_key_gap_found="
@@ -9501,7 +10672,9 @@ inline void append_node_support_summary_text(
     const cuwacunu::kikijyeba::lattice::exposure::node_support_summary_t
         &summary) {
   out << prefix << ".schema=" << summary.schema << "\n";
-  out << prefix << ".target_component=" << summary.target_component << "\n";
+  out << prefix
+      << ".target_component_family_id=" << summary.target_component_family_id
+      << "\n";
   out << prefix << ".split_name=" << summary.split_name << "\n";
   append_exposure_use_set_text(out, prefix + ".use", summary.use);
   out << prefix << ".support_rows.count=" << summary.support_rows.size()
@@ -9591,37 +10764,67 @@ canonical_lattice_target_proof_certificate_text(
   out << "target_spec_fingerprint=" << proof.target_spec_fingerprint << "\n";
   out << "split_policy_fingerprint=" << proof.split_policy_fingerprint << "\n";
 
-  const auto &identity = proof.identity;
-  out << "identity.require_contract_match="
-      << (identity.require_contract_match ? "true" : "false") << "\n";
-  out << "identity.require_component_match="
-      << (identity.require_component_match ? "true" : "false") << "\n";
-  out << "identity.require_graph_anchor_identity="
-      << (identity.require_graph_anchor_identity ? "true" : "false") << "\n";
-  out << "identity.active_contract_fingerprint="
-      << identity.active_contract_fingerprint << "\n";
-  out << "identity.evidence_contract_fingerprint="
-      << identity.evidence_contract_fingerprint << "\n";
-  out << "identity.contract_match="
-      << (identity.contract_match ? "true" : "false") << "\n";
-  out << "identity.expected_component_fingerprint="
-      << identity.expected_component_fingerprint << "\n";
-  out << "identity.evidence_component_fingerprint="
-      << identity.evidence_component_fingerprint << "\n";
-  out << "identity.component_match="
-      << (identity.component_match ? "true" : "false") << "\n";
-  out << "identity.active_graph_order_fingerprint="
-      << identity.active_graph_order_fingerprint << "\n";
-  out << "identity.evidence_graph_order_fingerprint="
-      << identity.evidence_graph_order_fingerprint << "\n";
-  out << "identity.graph_order_match="
-      << (identity.graph_order_match ? "true" : "false") << "\n";
-  out << "identity.active_source_cursor_token="
-      << identity.active_source_cursor_token << "\n";
-  out << "identity.evidence_source_cursor_token="
-      << identity.evidence_source_cursor_token << "\n";
-  out << "identity.source_cursor_match="
-      << (identity.source_cursor_match ? "true" : "false") << "\n";
+  const auto &proof_context = proof.proof_context;
+  out << "proof_context.require_contract_match="
+      << (proof_context.require_contract_match ? "true" : "false") << "\n";
+  out << "proof_context.require_component_match="
+      << (proof_context.require_component_match ? "true" : "false") << "\n";
+  out << "proof_context.require_graph_anchor_identity="
+      << (proof_context.require_graph_anchor_identity ? "true" : "false")
+      << "\n";
+  out << "proof_context.active_contract_fingerprint="
+      << proof_context.active_contract_fingerprint << "\n";
+  out << "proof_context.evidence_contract_fingerprint="
+      << proof_context.evidence_contract_fingerprint << "\n";
+  out << "proof_context.contract_match="
+      << (proof_context.contract_match ? "true" : "false") << "\n";
+  out << "proof_context.expected_component_fingerprint="
+      << proof_context.expected_component_fingerprint << "\n";
+  out << "proof_context.evidence_component_fingerprint="
+      << proof_context.evidence_component_fingerprint << "\n";
+  out << "proof_context.component_match="
+      << (proof_context.component_match ? "true" : "false") << "\n";
+  out << "proof_context.active_graph_order_fingerprint="
+      << proof_context.active_graph_order_fingerprint << "\n";
+  out << "proof_context.evidence_graph_order_fingerprint="
+      << proof_context.evidence_graph_order_fingerprint << "\n";
+  out << "proof_context.graph_order_match="
+      << (proof_context.graph_order_match ? "true" : "false") << "\n";
+  out << "proof_context.active_source_cursor_token="
+      << proof_context.active_source_cursor_token << "\n";
+  out << "proof_context.evidence_source_cursor_token="
+      << proof_context.evidence_source_cursor_token << "\n";
+  out << "proof_context.source_cursor_match="
+      << (proof_context.source_cursor_match ? "true" : "false") << "\n";
+  out << "proof_context.component_spawn_schema="
+      << proof_context.component_spawn_schema << "\n";
+  out << "proof_context.component_family_id="
+      << proof_context.component_family_id << "\n";
+  out << "proof_context.target_spec_fingerprint="
+      << proof_context.target_spec_fingerprint << "\n";
+  out << "proof_context.split_policy_fingerprint="
+      << proof_context.split_policy_fingerprint << "\n";
+  out << "proof_context.config_bundle_id=" << proof_context.config_bundle_id
+      << "\n";
+  out << "proof_context.config_receipt_id=" << proof_context.config_receipt_id
+      << "\n";
+  out << "proof_context.component_spawn_registry_id="
+      << proof_context.component_spawn_registry_id << "\n";
+  out << "proof_context.component_spawn_id=" << proof_context.component_spawn_id
+      << "\n";
+  out << "proof_context.component_spawn_label="
+      << proof_context.component_spawn_label << "\n";
+  out << "proof_context.evidence_component_spawn_fingerprint="
+      << proof_context.evidence_component_spawn_fingerprint << "\n";
+  out << "proof_context.computed_component_spawn_fingerprint="
+      << proof_context.computed_component_spawn_fingerprint << "\n";
+  out << "proof_context.config_receipt_available="
+      << (proof_context.config_receipt_available ? "true" : "false") << "\n";
+  out << "proof_context.spawn_id_readability_hint_only="
+      << (proof_context.spawn_id_readability_hint_only ? "true" : "false")
+      << "\n";
+  append_string_vector_text(out, "proof_context.provenance_warnings",
+                            proof_context.provenance_warnings);
 
   auto dependencies = proof.dependencies;
   std::sort(
@@ -9773,14 +10976,14 @@ canonical_lattice_target_proof_certificate_text(
               << causal.wave_id << "\n"
               << causal.wave_action << "\n"
               << causal.job_status << "\n"
-              << causal.target_component << "\n"
+              << causal.target_component_family_id << "\n"
               << causal.representation_architecture << "\n"
               << causal.representation_contract << "\n"
               << causal.representation_value_shape << "\n"
               << causal.representation_sequence_value_shape << "\n"
               << causal.channel_axis_policy << "\n"
               << causal.temporal_reduction << "\n"
-              << causal.input_representation_id << "\n"
+              << causal.input_representation_assembly_id << "\n"
               << causal.context_mode << "\n"
               << causal.context_contract << "\n"
               << causal.context_value_shape << "\n"
@@ -9836,7 +11039,9 @@ canonical_lattice_target_proof_certificate_text(
     out << prefix << ".wave_id=" << causal.wave_id << "\n";
     out << prefix << ".wave_action=" << causal.wave_action << "\n";
     out << prefix << ".job_status=" << causal.job_status << "\n";
-    out << prefix << ".target_component=" << causal.target_component << "\n";
+    out << prefix
+        << ".target_component_family_id=" << causal.target_component_family_id
+        << "\n";
     out << prefix
         << ".representation_architecture=" << causal.representation_architecture
         << "\n";
@@ -9852,9 +11057,8 @@ canonical_lattice_target_proof_certificate_text(
         << "\n";
     out << prefix << ".temporal_reduction=" << causal.temporal_reduction
         << "\n";
-    out << prefix
-        << ".input_representation_id=" << causal.input_representation_id
-        << "\n";
+    out << prefix << ".input_representation_assembly_id="
+        << causal.input_representation_assembly_id << "\n";
     out << prefix << ".context_mode=" << causal.context_mode << "\n";
     out << prefix << ".context_contract=" << causal.context_contract << "\n";
     out << prefix << ".context_value_shape=" << causal.context_value_shape
@@ -9938,9 +11142,8 @@ canonical_lattice_target_proof_certificate_text(
         << "\n";
     out << prefix << ".temporal_reduction=" << preview.temporal_reduction
         << "\n";
-    out << prefix
-        << ".input_representation_id=" << preview.input_representation_id
-        << "\n";
+    out << prefix << ".input_representation_assembly_id="
+        << preview.input_representation_assembly_id << "\n";
     out << prefix << ".context_mode=" << preview.context_mode << "\n";
     out << prefix << ".context_contract=" << preview.context_contract << "\n";
     out << prefix << ".context_value_shape=" << preview.context_value_shape
@@ -9979,7 +11182,7 @@ canonical_lattice_target_proof_certificate_text(
                 out << witness.fact_digest << "\n"
                     << witness.job_id << "\n"
                     << witness.wave_id << "\n"
-                    << witness.target_component << "\n"
+                    << witness.target_component_family_id << "\n"
                     << witness.split_name << "\n"
                     << static_cast<int>(witness.use) << "\n"
                     << (witness.mutated_component ? "1" : "0") << "\n";
@@ -10003,7 +11206,9 @@ canonical_lattice_target_proof_certificate_text(
     out << prefix << ".fact_digest=" << witness.fact_digest << "\n";
     out << prefix << ".job_id=" << witness.job_id << "\n";
     out << prefix << ".wave_id=" << witness.wave_id << "\n";
-    out << prefix << ".target_component=" << witness.target_component << "\n";
+    out << prefix
+        << ".target_component_family_id=" << witness.target_component_family_id
+        << "\n";
     out << prefix << ".split_name=" << witness.split_name << "\n";
     out << prefix << ".use="
         << cuwacunu::kikijyeba::lattice::exposure::exposure_use_name(
@@ -10219,8 +11424,7 @@ certificate_source_footprint_for_causal_use(
       a.row_source_key_mismatch_count != b.row_source_key_mismatch_count ||
       a.source_key_gap_found != b.source_key_gap_found ||
       a.row_source_key_mismatch_found != b.row_source_key_mismatch_found ||
-      a.issues != b.issues ||
-      a.endpoints.size() != b.endpoints.size()) {
+      a.issues != b.issues || a.endpoints.size() != b.endpoints.size()) {
     return false;
   }
   for (std::size_t i = 0; i < a.endpoints.size(); ++i) {
@@ -10240,8 +11444,8 @@ certificate_source_footprint_for_causal_use(
   namespace exposure = cuwacunu::kikijyeba::lattice::exposure;
   std::ostringstream out;
   out << witness.fact_digest << "|" << witness.job_id << "|" << witness.wave_id
-      << "|" << witness.target_component << "|" << witness.split_name << "|"
-      << exposure::exposure_use_name(witness.use) << "|"
+      << "|" << witness.target_component_family_id << "|" << witness.split_name
+      << "|" << exposure::exposure_use_name(witness.use) << "|"
       << (witness.mutated_component ? "mutated" : "read_only") << "|"
       << witness.selector_id << "|" << witness.selector_kind << "|"
       << witness.selection_event_digest << "|"
@@ -10411,25 +11615,25 @@ verify_lattice_target_proof_certificate(
     append_certificate_issue(check, "certificate_digest mismatch");
   }
 
-  const auto &identity = proof.identity;
-  if (identity.require_contract_match &&
-      (identity.active_contract_fingerprint.empty() ||
-       identity.evidence_contract_fingerprint.empty())) {
+  const auto &proof_context = proof.proof_context;
+  if (proof_context.require_contract_match &&
+      (proof_context.active_contract_fingerprint.empty() ||
+       proof_context.evidence_contract_fingerprint.empty())) {
     append_certificate_issue(check, "identity missing required contract");
   }
-  if (identity.require_component_match &&
-      (identity.expected_component_fingerprint.empty() ||
-       identity.evidence_component_fingerprint.empty())) {
+  if (proof_context.require_component_match &&
+      (proof_context.expected_component_fingerprint.empty() ||
+       proof_context.evidence_component_fingerprint.empty())) {
     append_certificate_issue(check, "identity missing required component");
   }
-  if (identity.require_graph_anchor_identity &&
-      (identity.active_graph_order_fingerprint.empty() ||
-       identity.evidence_graph_order_fingerprint.empty())) {
+  if (proof_context.require_graph_anchor_identity &&
+      (proof_context.active_graph_order_fingerprint.empty() ||
+       proof_context.evidence_graph_order_fingerprint.empty())) {
     append_certificate_issue(check, "identity missing required graph order");
   }
-  if (identity.require_graph_anchor_identity &&
-      (identity.active_source_cursor_token.empty() ||
-       identity.evidence_source_cursor_token.empty())) {
+  if (proof_context.require_graph_anchor_identity &&
+      (proof_context.active_source_cursor_token.empty() ||
+       proof_context.evidence_source_cursor_token.empty())) {
     append_certificate_issue(check, "identity missing required source cursor");
   }
   const auto expected_identity_match = [](bool required,
@@ -10440,30 +11644,32 @@ verify_lattice_target_proof_certificate(
     }
     return !left.empty() && !right.empty() && left == right;
   };
-  const bool expected_contract_match = expected_identity_match(
-      identity.require_contract_match, identity.active_contract_fingerprint,
-      identity.evidence_contract_fingerprint);
-  if (identity.contract_match != expected_contract_match) {
+  const bool expected_contract_match =
+      expected_identity_match(proof_context.require_contract_match,
+                              proof_context.active_contract_fingerprint,
+                              proof_context.evidence_contract_fingerprint);
+  if (proof_context.contract_match != expected_contract_match) {
     append_certificate_issue(check, "identity contract_match mismatch");
   }
-  const bool expected_component_match = expected_identity_match(
-      identity.require_component_match, identity.expected_component_fingerprint,
-      identity.evidence_component_fingerprint);
-  if (identity.component_match != expected_component_match) {
+  const bool expected_component_match =
+      expected_identity_match(proof_context.require_component_match,
+                              proof_context.expected_component_fingerprint,
+                              proof_context.evidence_component_fingerprint);
+  if (proof_context.component_match != expected_component_match) {
     append_certificate_issue(check, "identity component_match mismatch");
   }
   const bool expected_graph_order_match =
-      expected_identity_match(identity.require_graph_anchor_identity,
-                              identity.active_graph_order_fingerprint,
-                              identity.evidence_graph_order_fingerprint);
-  if (identity.graph_order_match != expected_graph_order_match) {
+      expected_identity_match(proof_context.require_graph_anchor_identity,
+                              proof_context.active_graph_order_fingerprint,
+                              proof_context.evidence_graph_order_fingerprint);
+  if (proof_context.graph_order_match != expected_graph_order_match) {
     append_certificate_issue(check, "identity graph_order_match mismatch");
   }
   const bool expected_source_cursor_match =
-      expected_identity_match(identity.require_graph_anchor_identity,
-                              identity.active_source_cursor_token,
-                              identity.evidence_source_cursor_token);
-  if (identity.source_cursor_match != expected_source_cursor_match) {
+      expected_identity_match(proof_context.require_graph_anchor_identity,
+                              proof_context.active_source_cursor_token,
+                              proof_context.evidence_source_cursor_token);
+  if (proof_context.source_cursor_match != expected_source_cursor_match) {
     append_certificate_issue(check, "identity source_cursor_match mismatch");
   }
 
@@ -10658,29 +11864,31 @@ verify_lattice_target_proof_certificate(
         append_certificate_issue(check,
                                  fact_prefix + " digest binding mismatch");
       }
-      if (fact.target_component != load.target_component) {
+      if (fact.target_component_family_id != load.target_component_family_id) {
         append_certificate_issue(check,
                                  fact_prefix + " target component mismatch");
       }
-      if (identity.require_contract_match &&
-          fact.contract_fingerprint != identity.active_contract_fingerprint) {
+      if (proof_context.require_contract_match &&
+          fact.contract_fingerprint !=
+              proof_context.active_contract_fingerprint) {
         append_certificate_issue(check,
                                  fact_prefix + " contract identity mismatch");
       }
-      if (identity.require_graph_anchor_identity &&
+      if (proof_context.require_graph_anchor_identity &&
           fact.graph_order_fingerprint !=
-              identity.active_graph_order_fingerprint) {
+              proof_context.active_graph_order_fingerprint) {
         append_certificate_issue(check, fact_prefix +
                                             " graph-order identity mismatch");
       }
-      if (identity.require_graph_anchor_identity &&
-          fact.source_cursor_token != identity.active_source_cursor_token) {
+      if (proof_context.require_graph_anchor_identity &&
+          fact.source_cursor_token !=
+              proof_context.active_source_cursor_token) {
         append_certificate_issue(check, fact_prefix +
                                             " source-cursor identity mismatch");
       }
-      if (identity.require_component_match &&
+      if (proof_context.require_component_match &&
           fact.component_assembly_fingerprint !=
-              identity.expected_component_fingerprint) {
+              proof_context.expected_component_fingerprint) {
         append_certificate_issue(check,
                                  fact_prefix + " component assembly mismatch");
       }
@@ -10895,21 +12103,22 @@ verify_lattice_target_proof_certificate(
       append_certificate_issue(check,
                                prefix + " load mutation requirement mismatch");
     }
-    if (load.component_scope != "target_component" &&
+    if (load.component_scope != "target_component_family_id" &&
         load.component_scope != "all_components") {
       append_certificate_issue(check, prefix + " load component scope unknown");
     }
-    if (load.component_scope != "target_component") {
+    if (load.component_scope != "target_component_family_id") {
       append_certificate_issue(
-          check, prefix + " coverage load scope must be target_component");
+          check,
+          prefix + " coverage load scope must be target_component_family_id");
     }
-    if (load.component_scope == "target_component" &&
-        load.target_component.empty()) {
+    if (load.component_scope == "target_component_family_id" &&
+        load.target_component_family_id.empty()) {
       append_certificate_issue(check,
                                prefix + " load target component missing");
     }
     if (load.component_scope == "all_components" &&
-        !load.target_component.empty()) {
+        !load.target_component_family_id.empty()) {
       append_certificate_issue(
           check, prefix + " all-components load has target component");
     }
@@ -10944,15 +12153,16 @@ verify_lattice_target_proof_certificate(
           append_certificate_issue(
               check, prefix + " contributing digest missing from closure list");
         }
-        if (load.component_scope == "target_component" &&
-            causal->target_component != load.target_component) {
+        if (load.component_scope == "target_component_family_id" &&
+            causal->target_component_family_id !=
+                load.target_component_family_id) {
           append_certificate_issue(
               check, prefix + " contributing digest component mismatch");
         }
-        if (load.component_scope == "target_component" &&
-            identity.require_component_match &&
+        if (load.component_scope == "target_component_family_id" &&
+            proof_context.require_component_match &&
             causal->component_assembly_fingerprint !=
-                identity.expected_component_fingerprint) {
+                proof_context.expected_component_fingerprint) {
           append_certificate_issue(
               check, prefix + " contributing digest assembly mismatch");
         }
@@ -10979,14 +12189,15 @@ verify_lattice_target_proof_certificate(
         !coverage.contributing_intervals.empty()) {
       std::vector<exposure::anchor_interval_t> causal_support_intervals;
       for (const auto &causal : proof.closure.causal_exposures) {
-        if (load.component_scope == "target_component" &&
-            causal.target_component != load.target_component) {
+        if (load.component_scope == "target_component_family_id" &&
+            causal.target_component_family_id !=
+                load.target_component_family_id) {
           continue;
         }
-        if (load.component_scope == "target_component" &&
-            identity.require_component_match &&
+        if (load.component_scope == "target_component_family_id" &&
+            proof_context.require_component_match &&
             causal.component_assembly_fingerprint !=
-                identity.expected_component_fingerprint) {
+                proof_context.expected_component_fingerprint) {
           continue;
         }
         if (coverage.require_mutated_component && !causal.mutated_component) {
@@ -11293,9 +12504,9 @@ verify_lattice_target_proof_certificate(
           certificate_paths_equal(causal.output_checkpoint,
                                   proof.closure.checkpoint_path)) {
         root_checkpoint_producer_found = true;
-        if (!identity.require_component_match ||
+        if (!proof_context.require_component_match ||
             causal.component_assembly_fingerprint ==
-                identity.expected_component_fingerprint) {
+                proof_context.expected_component_fingerprint) {
           root_checkpoint_producer_assembly_found = true;
         }
       }
@@ -11306,18 +12517,20 @@ verify_lattice_target_proof_certificate(
       if (causal.cursor_domain != "ujcamei.graph_anchor") {
         append_certificate_issue(check, prefix + " cursor_domain mismatch");
       }
-      if (identity.require_contract_match &&
-          causal.contract_fingerprint != identity.active_contract_fingerprint) {
+      if (proof_context.require_contract_match &&
+          causal.contract_fingerprint !=
+              proof_context.active_contract_fingerprint) {
         append_certificate_issue(check, prefix + " contract identity mismatch");
       }
-      if (identity.require_graph_anchor_identity &&
+      if (proof_context.require_graph_anchor_identity &&
           causal.graph_order_fingerprint !=
-              identity.active_graph_order_fingerprint) {
+              proof_context.active_graph_order_fingerprint) {
         append_certificate_issue(check,
                                  prefix + " graph-order identity mismatch");
       }
-      if (identity.require_graph_anchor_identity &&
-          causal.source_cursor_token != identity.active_source_cursor_token) {
+      if (proof_context.require_graph_anchor_identity &&
+          causal.source_cursor_token !=
+              proof_context.active_source_cursor_token) {
         append_certificate_issue(check,
                                  prefix + " source-cursor identity mismatch");
       }
@@ -11352,8 +12565,9 @@ verify_lattice_target_proof_certificate(
       if (causal.job_status != "completed") {
         append_certificate_issue(check, prefix + " job_status not completed");
       }
-      if (causal.target_component.empty()) {
-        append_certificate_issue(check, prefix + " missing target_component");
+      if (causal.target_component_family_id.empty()) {
+        append_certificate_issue(
+            check, prefix + " missing target_component_family_id");
       }
       if (causal.component_assembly_fingerprint.empty()) {
         append_certificate_issue(check, prefix + " missing component assembly");
@@ -11553,7 +12767,7 @@ verify_lattice_target_proof_certificate(
     if (!root_checkpoint_producer_found) {
       append_certificate_issue(check,
                                "closure missing root checkpoint producer");
-    } else if (identity.require_component_match &&
+    } else if (proof_context.require_component_match &&
                !root_checkpoint_producer_assembly_found) {
       append_certificate_issue(
           check, "closure root checkpoint producer assembly mismatch");
@@ -11619,7 +12833,7 @@ verify_lattice_target_proof_certificate(
                         checkpoint_path);
           });
       if (causal != proof.closure.causal_exposures.end()) {
-        if (preview.component != causal->target_component) {
+        if (preview.component != causal->target_component_family_id) {
           append_certificate_issue(check, prefix + " component mismatch");
         }
         if (preview.component_assembly_fingerprint !=
@@ -11655,8 +12869,8 @@ verify_lattice_target_proof_certificate(
                                  preview.temporal_reduction,
                                  causal->temporal_reduction);
         append_optional_mismatch("input representation id",
-                                 preview.input_representation_id,
-                                 causal->input_representation_id);
+                                 preview.input_representation_assembly_id,
+                                 causal->input_representation_assembly_id);
         append_optional_mismatch("context mode", preview.context_mode,
                                  causal->context_mode);
         append_optional_mismatch("context contract", preview.context_contract,
@@ -11775,7 +12989,7 @@ verify_lattice_target_proof_certificate(
         expected.fact_digest = causal.fact_digest;
         expected.job_id = causal.job_id;
         expected.wave_id = causal.wave_id;
-        expected.target_component = causal.target_component;
+        expected.target_component_family_id = causal.target_component_family_id;
         expected.split_name = causal.split_name;
         expected.use = *use;
         expected.mutated_component = causal.mutated_component;
@@ -11792,7 +13006,8 @@ verify_lattice_target_proof_certificate(
               causal.split_policy_fingerprint;
           selection_fact.component_assembly_fingerprint =
               causal.component_assembly_fingerprint;
-          selection_fact.target_component = causal.target_component;
+          selection_fact.target_component_family_id =
+              causal.target_component_family_id;
           selection_fact.job_id = causal.job_id;
           selection_fact.wave_id = causal.wave_id;
           selection_fact.job_status = causal.job_status;
@@ -11869,7 +13084,7 @@ verify_lattice_target_proof_certificate(
       if (witness.wave_id.empty()) {
         append_certificate_issue(check, prefix + " missing wave_id");
       }
-      if (witness.target_component.empty()) {
+      if (witness.target_component_family_id.empty()) {
         append_certificate_issue(check, prefix + " missing target component");
       }
       const auto witness_use = exposure::exposure_use_name(witness.use);
@@ -11885,7 +13100,8 @@ verify_lattice_target_proof_certificate(
         if (witness.wave_id != causal_exposure->wave_id) {
           append_certificate_issue(check, prefix + " causal wave mismatch");
         }
-        if (witness.target_component != causal_exposure->target_component) {
+        if (witness.target_component_family_id !=
+            causal_exposure->target_component_family_id) {
           append_certificate_issue(check,
                                    prefix + " causal component mismatch");
         }
@@ -11952,7 +13168,7 @@ verify_lattice_target_proof_certificate(
     const auto &summary = proof.node_support_summaries[i];
     const auto prefix = "node_support_summary[" + std::to_string(i) + "]";
     std::ostringstream signature;
-    signature << summary.target_component << "\n"
+    signature << summary.target_component_family_id << "\n"
               << summary.split_name << "\n"
               << (summary.use.observed_input ? "1" : "0")
               << (summary.use.target_supervision ? "1" : "0")
@@ -12313,7 +13529,8 @@ verify_lattice_target_proof_certificate(
         summary.node_count) {
       append_certificate_issue(check, prefix + " mutation-use count mismatch");
     }
-    if (summary.target_component != "wikimyei.inference.expected_value.mdn") {
+    if (summary.target_component_family_id !=
+        "wikimyei.inference.expected_value.mdn") {
       append_certificate_issue(check, prefix + " non-MDN target component");
     }
     if (proof.closure.checked && summary.use.mutated_component) {
@@ -12322,7 +13539,8 @@ verify_lattice_target_proof_certificate(
           proof.closure.causal_exposures.end(),
           [&](const lattice_target_proof_certificate_t::closure_proof_t::
                   causal_exposure_t &causal) {
-            if (causal.target_component != summary.target_component) {
+            if (causal.target_component_family_id !=
+                summary.target_component_family_id) {
               return false;
             }
             if (!certificate_causal_exposure_has_use_set(causal, summary.use)) {
@@ -12332,9 +13550,9 @@ verify_lattice_target_proof_certificate(
                 causal.split_name != summary.split_name) {
               return false;
             }
-            if (identity.require_component_match &&
+            if (proof_context.require_component_match &&
                 causal.component_assembly_fingerprint !=
-                    identity.expected_component_fingerprint) {
+                    proof_context.expected_component_fingerprint) {
               return false;
             }
             return true;
@@ -12345,7 +13563,7 @@ verify_lattice_target_proof_certificate(
       }
     }
     if (summary.node_count > 0) {
-      if (summary.target_component.empty()) {
+      if (summary.target_component_family_id.empty()) {
         append_certificate_issue(check, prefix + " missing target component");
       }
       if (!summary.use.observed_input && !summary.use.target_supervision &&
@@ -12638,6 +13856,17 @@ canonical_lattice_target_spec_text(const lattice_target_spec_t &spec) {
   out << "forbid_exposure_requires_mutated_component="
       << (spec.forbid_exposure_requires_mutated_component ? "true" : "false")
       << "\n";
+  for (const auto &requirement : spec.representation_geometry_requirements) {
+    out << "representation_geometry_requirement=" << requirement.requirement_id
+        << "\n";
+    out << "representation_geometry_requirement.metric=" << requirement.metric
+        << "\n";
+    out << "representation_geometry_requirement.op=" << requirement.op << "\n";
+    out << "representation_geometry_requirement.value=" << requirement.value
+        << "\n";
+    out << "representation_geometry_requirement.require_mutated_component="
+        << (requirement.require_mutated_component ? "true" : "false") << "\n";
+  }
   return out.str();
 }
 

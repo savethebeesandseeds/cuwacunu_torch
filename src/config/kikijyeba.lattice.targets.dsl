@@ -23,13 +23,9 @@
     through job reports, exposure facts, and checkpoint lineage.
 
   TARGET_KIND:
-    representation_ready
-      Checks the VICReg node representation target.
-
-    node_mdn_ready
-      Checks the node-centered ExpectedValue MDN target. V0 treats
-      UPSTREAM_TARGET_ID as a prerequisite; if representation readiness is not
-      satisfied, the node MDN target plans the upstream representation wave.
+    legacy_node_vicreg_ready
+      Historical node-representation compatibility kind. The active target DSL
+      below uses the channel-preserving VICReg representation target instead.
 
     vicreg_ready
       Checks the channel-preserving VICReg representation target.
@@ -37,7 +33,7 @@
     channel_mdn_ready
       Checks the strict channel-context ExpectedValue MDN target. V0 treats
       UPSTREAM_TARGET_ID as a prerequisite; if VICReg readiness is not
-      satisfied, the channel MDN target plans the upstream channel
+      satisfied, the MDN target plans the upstream channel
       representation wave.
 
   PLAN_MODE:
@@ -175,6 +171,8 @@
       representation condition-number thresholds as finite values >= 1.
       Representation-health warning metrics also enforce their one-sided bad
       direction: high-bad metrics use ABOVE and low-bad metrics use BELOW.
+      Opt-in representation-geometry gates use VALUE with OP=ge for low-bad
+      metrics and OP=le for high-bad metrics.
       Anchor-domain warning clauses carry exactly one metric threshold.
       This is intentionally small dimensional analysis: it prevents common
       authoring mistakes without changing runtime evidence or target semantics.
@@ -300,6 +298,22 @@
       Hero JSON also includes representation_geometry_summary: 18 V1-visible
       representation_health warning metrics, 7 embedding-geometry metrics, 11
       future hard-gate candidates, and 0 active performance gates.
+      Hero JSON also includes representation_geometry_gate_review_summary:
+      observed VICReg geometry distributions, 0 promoted default thresholds,
+      opt-in LATTICE_REQUIRES KIND=representation_geometry syntax, and
+      fail-closed missing geometry facts for that explicit gate.
+      Hero JSON also includes evidence_retention_policy_vocabulary,
+      evidence_retention_audit_scenario_vocabulary, and
+      evidence_retention_policy_summary: reports, sidecars, checkpoints, source
+      receipts, selection signals, proof certificates, cache rows, human
+      receipts, and archive manifests classified for replay-safe compaction.
+      Hero JSON also includes benchmark_regression_budget_vocabulary and
+      benchmark_regression_budget_summary: finite performance rows split
+      library-function, long-lived MCP, and direct CLI timing layers while
+      naming proof modes header_only, watched_file_manifest,
+      full_runtime_metadata_digest, live_scan, and live_parity. Header-only
+      fast audit rows forbid live scans and metadata digests; cache rows remain
+      non-authoritative for target satisfaction.
       Hero JSON also includes performance_uncertainty_policy_vocabulary:
       future performance gates must use declared uncertainty methods and
       conservative confidence bounds, not raw point estimates; selection-leakage
@@ -436,15 +450,14 @@
           KIND = exposure_load;
           USE = observed_input;
           SPLIT = train_core;
-          SCOPE = target_component;
+          SCOPE = target_component_family_id;
           EFFECT = mutated_component;
           CURSOR_EPOCHS_ABOVE = 3.0;
         };
 
     REQUIRE_TRAINED_NODE_HEAD_COUNT
-      Training-readiness check for node-centered MDN waves. Use this for train
-      targets. REQUIRE_EVALUATED_NODE_HEAD_COUNT is reserved for run/evaluation
-      targets where heads are evaluated without optimizer mutation.
+      Historical compatibility check for explicit legacy_node_mdn_ready
+      fixtures. Active channel-MDN targets do not use this field.
 
     FORBID_EXPOSURE_ANCHOR_INDEX_BEGIN / END + FORBID_EXPOSURE_USES
       Reject readiness if the checkpoint exposure closure overlaps the forbidden
@@ -495,7 +508,7 @@
       Graph-anchor ranged targets and exposure checks require the active graph
       order fingerprint and source cursor token. Checkpoint closure resolution is
       fail-closed: unresolved input checkpoint lineage returns exposure_failed.
-      Node MDN exposure readiness also verifies that the exact representation
+      MDN exposure readiness also verifies that the exact representation
       checkpoint loaded by the MDN report has an active compatible VICReg
       producer fact.
 
@@ -511,40 +524,11 @@
         it is not a best-model or performance-ranking selector.
         if the source target is unsatisfied, this target blocks and forwards the
         source target's suggested wave.
+
+      Active definitions below are channel-context only. Historical node-MDN
+      compatibility remains in scanners and focused fixtures where old runtime
+      artifacts must be readable, but it is not part of this active target DSL.
 */
-LATTICE_PROFILE {
-  PROFILE_ID = legacy_node_vicreg_training_readiness;
-  TARGET_KIND = representation_ready;
-  SUBJECT_COMPONENT = wikimyei.representation.encoding.vicreg;
-  SOURCE_RANGE = anchor_index;
-  REQUIRE_CONTRACT_MATCH = true;
-  REQUIRE_COMPONENT_MATCH = true;
-  REQUIRE_CHECKPOINT_EXISTS = true;
-  REQUIRE_FINITE_LOSS = true;
-  MIN_OPTIMIZER_STEPS = 1;
-  PROTECT_SPLIT = validation_holdout;
-  WAVE_MODE = train|debug;
-  PLAN_MAX_ATTEMPTS = 3;
-};
-
-LATTICE_PROFILE {
-  PROFILE_ID = node_mdn_training_readiness;
-  TARGET_KIND = node_mdn_ready;
-  SUBJECT_COMPONENT = wikimyei.inference.expected_value.mdn;
-  SOURCE_RANGE = anchor_index;
-  REQUIRE_CONTRACT_MATCH = true;
-  REQUIRE_COMPONENT_MATCH = true;
-  REQUIRE_CHECKPOINT_EXISTS = true;
-  REQUIRE_FINITE_LOSS = true;
-  MIN_OPTIMIZER_STEPS = 1;
-  MIN_VALID_TARGET_FRACTION = 0.05;
-  REQUIRE_ACTIVE_NODE_HEAD_COUNT = 1;
-  REQUIRE_TRAINED_NODE_HEAD_COUNT = 1;
-  PROTECT_SPLIT = validation_holdout;
-  WAVE_MODE = train|debug;
-  PLAN_MAX_ATTEMPTS = 3;
-};
-
 LATTICE_PROFILE {
   PROFILE_ID = vicreg_training_readiness;
   TARGET_KIND = vicreg_ready;
@@ -572,38 +556,6 @@ LATTICE_PROFILE {
   MIN_OPTIMIZER_STEPS = 1;
   MIN_VALID_TARGET_FRACTION = 0.05;
   PROTECT_SPLIT = validation_holdout;
-  WAVE_MODE = train|debug;
-  PLAN_MAX_ATTEMPTS = 3;
-};
-
-LATTICE_TARGET {
-  TARGET_ID = legacy_node_vicreg_representation_ready;
-  TARGET_KIND = representation_ready;
-  SUBJECT_COMPONENT = wikimyei.representation.encoding.vicreg;
-  SOURCE_RANGE = all;
-  REQUIRE_CONTRACT_MATCH = true;
-  REQUIRE_COMPONENT_MATCH = true;
-  REQUIRE_CHECKPOINT_EXISTS = true;
-  REQUIRE_FINITE_LOSS = true;
-  MIN_OPTIMIZER_STEPS = 1;
-  WAVE_MODE = train|debug;
-  PLAN_MAX_ATTEMPTS = 3;
-};
-
-LATTICE_TARGET {
-  TARGET_ID = node_mdn_ready;
-  TARGET_KIND = node_mdn_ready;
-  SUBJECT_COMPONENT = wikimyei.inference.expected_value.mdn;
-  SOURCE_RANGE = all;
-  UPSTREAM_TARGET_ID = legacy_node_vicreg_representation_ready;
-  REQUIRE_CONTRACT_MATCH = true;
-  REQUIRE_COMPONENT_MATCH = true;
-  REQUIRE_CHECKPOINT_EXISTS = true;
-  REQUIRE_FINITE_LOSS = true;
-  MIN_OPTIMIZER_STEPS = 1;
-  MIN_VALID_TARGET_FRACTION = 0.05;
-  REQUIRE_ACTIVE_NODE_HEAD_COUNT = 1;
-  REQUIRE_EVALUATED_NODE_HEAD_COUNT = 1;
   WAVE_MODE = train|debug;
   PLAN_MAX_ATTEMPTS = 3;
 };
@@ -651,61 +603,9 @@ LATTICE_TARGET {
 };
 
 LATTICE_TARGET {
-  TARGET_ID = node_mdn_train_core_ready;
-  USE_PROFILE = node_mdn_training_readiness;
-  OVER_SPLIT = train_core;
-};
-
-LATTICE_TARGET {
-  TARGET_ID = legacy_node_vicreg_train_core_ready;
-  USE_PROFILE = legacy_node_vicreg_training_readiness;
-  OVER_SPLIT = train_core;
-};
-
-LATTICE_TARGET {
-  TARGET_ID = legacy_node_vicreg_acceptance_smoke_ready;
-  USE_PROFILE = legacy_node_vicreg_training_readiness;
-  OVER_SPLIT = acceptance_smoke;
-};
-
-LATTICE_TARGET {
   TARGET_ID = channel_mdn_train_core_ready;
   USE_PROFILE = channel_mdn_training_readiness;
   OVER_SPLIT = train_core;
-};
-
-LATTICE_TARGET {
-  TARGET_ID = node_mdn_train_core_no_validation_leakage;
-  TARGET_CLASS = leakage_guard;
-  TARGET_KIND = node_mdn_ready;
-  SUBJECT_COMPONENT = wikimyei.inference.expected_value.mdn;
-  CHECKPOINT_SOURCE = latest_satisfying:node_mdn_train_core_ready;
-  SOURCE_RANGE = all;
-  REQUIRE_CONTRACT_MATCH = true;
-  REQUIRE_COMPONENT_MATCH = true;
-  REQUIRE_CHECKPOINT_EXISTS = true;
-  REQUIRE_FINITE_LOSS = false;
-  MIN_OPTIMIZER_STEPS = 0;
-  PROTECT_SPLIT = validation_holdout;
-  WAVE_MODE = run|debug;
-  PLAN_MAX_ATTEMPTS = 0;
-};
-
-LATTICE_TARGET {
-  TARGET_ID = node_mdn_train_core_no_test_leakage;
-  TARGET_CLASS = leakage_guard;
-  TARGET_KIND = node_mdn_ready;
-  SUBJECT_COMPONENT = wikimyei.inference.expected_value.mdn;
-  CHECKPOINT_SOURCE = latest_satisfying:node_mdn_train_core_no_validation_leakage;
-  SOURCE_RANGE = all;
-  REQUIRE_CONTRACT_MATCH = true;
-  REQUIRE_COMPONENT_MATCH = true;
-  REQUIRE_CHECKPOINT_EXISTS = true;
-  REQUIRE_FINITE_LOSS = false;
-  MIN_OPTIMIZER_STEPS = 0;
-  PROTECT_SPLIT = test_holdout;
-  WAVE_MODE = run|debug;
-  PLAN_MAX_ATTEMPTS = 0;
 };
 
 LATTICE_TARGET {
@@ -743,27 +643,6 @@ LATTICE_TARGET {
 };
 
 LATTICE_TARGET {
-  TARGET_ID = node_mdn_validation_eval_ready;
-  TARGET_CLASS = evaluation_readiness;
-  TARGET_KIND = node_mdn_ready;
-  SUBJECT_COMPONENT = wikimyei.inference.expected_value.mdn;
-  SOURCE_RANGE = anchor_index;
-  OVER_SPLIT = validation_holdout;
-  UPSTREAM_TARGET_ID = node_mdn_train_core_no_test_leakage;
-  REQUIRE_CONTRACT_MATCH = true;
-  REQUIRE_COMPONENT_MATCH = true;
-  REQUIRE_CHECKPOINT_EXISTS = false;
-  REQUIRE_FINITE_LOSS = true;
-  MIN_OPTIMIZER_STEPS = 0;
-  MIN_VALID_TARGET_FRACTION = 0.05;
-  REQUIRE_EVALUATED_NODE_HEAD_COUNT = 1;
-  EVALUATED_CHECKPOINT_SOURCE = latest_satisfying:node_mdn_train_core_no_test_leakage;
-  PROTECT_SPLIT = validation_holdout;
-  WAVE_MODE = run|debug;
-  PLAN_MAX_ATTEMPTS = 1;
-};
-
-LATTICE_TARGET {
   TARGET_ID = channel_mdn_validation_eval_ready;
   TARGET_CLASS = evaluation_readiness;
   TARGET_KIND = channel_mdn_ready;
@@ -784,32 +663,9 @@ LATTICE_TARGET {
 };
 
 LATTICE_TARGET {
-  TARGET_ID = node_mdn_acceptance_smoke_ready;
-  USE_PROFILE = node_mdn_training_readiness;
-  OVER_SPLIT = acceptance_smoke;
-};
-
-LATTICE_TARGET {
   TARGET_ID = channel_mdn_acceptance_smoke_ready;
   USE_PROFILE = channel_mdn_training_readiness;
   OVER_SPLIT = acceptance_smoke;
-};
-
-LATTICE_TARGET {
-  TARGET_ID = node_mdn_acceptance_no_validation_leakage;
-  TARGET_CLASS = leakage_guard;
-  TARGET_KIND = node_mdn_ready;
-  SUBJECT_COMPONENT = wikimyei.inference.expected_value.mdn;
-  CHECKPOINT_SOURCE = latest_satisfying:node_mdn_acceptance_smoke_ready;
-  SOURCE_RANGE = all;
-  REQUIRE_CONTRACT_MATCH = true;
-  REQUIRE_COMPONENT_MATCH = true;
-  REQUIRE_CHECKPOINT_EXISTS = true;
-  REQUIRE_FINITE_LOSS = false;
-  MIN_OPTIMIZER_STEPS = 0;
-  PROTECT_SPLIT = validation_holdout;
-  WAVE_MODE = run|debug;
-  PLAN_MAX_ATTEMPTS = 0;
 };
 
 LATTICE_TARGET {
@@ -830,65 +686,12 @@ LATTICE_TARGET {
 };
 
 LATTICE_REQUIRES {
-  TARGET_ID = legacy_node_vicreg_train_core_ready;
-  REQUIREMENT_ID = observed_input_train_core_coverage;
-  KIND = exposure_coverage;
-  USE = observed_input;
-  SPLIT = train_core;
-  SCOPE = target_component;
-  EFFECT = mutated_component;
-  COORDINATE = graph_anchor_coverage;
-  CURSOR_EPOCHS = 0.95;
-};
-
-LATTICE_WARN {
-  TARGET_ID = legacy_node_vicreg_train_core_ready;
-  WARNING_ID = high_observed_input_train_core_load;
-  KIND = exposure_load;
-  USE = observed_input;
-  SPLIT = train_core;
-  SCOPE = target_component;
-  EFFECT = mutated_component;
-  CURSOR_EPOCHS_ABOVE = 3.0;
-};
-
-LATTICE_WARN {
-  TARGET_ID = legacy_node_vicreg_train_core_ready;
-  WARNING_ID = low_vicreg_anchor_acceptance_fraction;
-  KIND = anchor_domain_health;
-  SCOPE = target_component;
-  EFFECT = any;
-  ACCEPTED_FRACTION_BELOW = 0.80;
-};
-
-LATTICE_WARN {
-  TARGET_ID = legacy_node_vicreg_train_core_ready;
-  WARNING_ID = vicreg_fetch_probe_skips_present;
-  KIND = anchor_domain_health;
-  SCOPE = target_component;
-  EFFECT = any;
-  SKIPPED_FAILED_FETCH_PROBE_ABOVE = 0;
-};
-
-LATTICE_REQUIRES {
-  TARGET_ID = legacy_node_vicreg_acceptance_smoke_ready;
-  REQUIREMENT_ID = observed_input_acceptance_coverage;
-  KIND = exposure_coverage;
-  USE = observed_input;
-  SPLIT = acceptance_smoke;
-  SCOPE = target_component;
-  EFFECT = mutated_component;
-  COORDINATE = graph_anchor_coverage;
-  CURSOR_EPOCHS = 1.0;
-};
-
-LATTICE_REQUIRES {
   TARGET_ID = vicreg_train_core_ready;
   REQUIREMENT_ID = channel_observed_input_train_core_coverage;
   KIND = exposure_coverage;
   USE = observed_input;
   SPLIT = train_core;
-  SCOPE = target_component;
+  SCOPE = target_component_family_id;
   EFFECT = mutated_component;
   COORDINATE = graph_anchor_coverage;
   CURSOR_EPOCHS = 0.95;
@@ -900,29 +703,10 @@ LATTICE_REQUIRES {
   KIND = exposure_coverage;
   USE = observed_input;
   SPLIT = acceptance_smoke;
-  SCOPE = target_component;
+  SCOPE = target_component_family_id;
   EFFECT = mutated_component;
   COORDINATE = graph_anchor_coverage;
   CURSOR_EPOCHS = 1.0;
-};
-
-LATTICE_DEPENDS {
-  TARGET_ID = node_mdn_train_core_ready;
-  UPSTREAM_TARGET_ID = legacy_node_vicreg_train_core_ready;
-  BINDING = loaded_representation_checkpoint;
-  REQUIRE_EXACT_LOADED_CHECKPOINT = true;
-};
-
-LATTICE_REQUIRES {
-  TARGET_ID = node_mdn_train_core_ready;
-  REQUIREMENT_ID = target_supervision_train_core_coverage;
-  KIND = exposure_coverage;
-  USE = target_supervision;
-  SPLIT = train_core;
-  SCOPE = target_component;
-  EFFECT = mutated_component;
-  COORDINATE = graph_anchor_coverage;
-  CURSOR_EPOCHS = 0.95;
 };
 
 LATTICE_DEPENDS {
@@ -938,7 +722,7 @@ LATTICE_REQUIRES {
   KIND = exposure_coverage;
   USE = target_supervision;
   SPLIT = train_core;
-  SCOPE = target_component;
+  SCOPE = target_component_family_id;
   EFFECT = mutated_component;
   COORDINATE = graph_anchor_coverage;
   CURSOR_EPOCHS = 0.95;
@@ -955,97 +739,12 @@ LATTICE_PLAN {
 };
 
 LATTICE_WARN {
-  TARGET_ID = node_mdn_train_core_ready;
-  WARNING_ID = high_target_supervision_train_core_load;
-  KIND = exposure_load;
-  USE = target_supervision;
-  SPLIT = train_core;
-  SCOPE = target_component;
-  EFFECT = mutated_component;
-  CURSOR_EPOCHS_ABOVE = 3.0;
-};
-
-LATTICE_WARN {
-  TARGET_ID = node_mdn_train_core_ready;
-  WARNING_ID = high_mdn_optimizer_effort_density;
-  KIND = effort_density;
-  USE = target_supervision;
-  SPLIT = train_core;
-  SCOPE = target_component;
-  EFFECT = mutated_component;
-  METRIC = optimizer_steps_per_cursor_epoch;
-  ABOVE = 10.0;
-};
-
-LATTICE_WARN {
-  TARGET_ID = node_mdn_train_core_ready;
-  WARNING_ID = low_mdn_anchor_acceptance_fraction;
-  KIND = anchor_domain_health;
-  SCOPE = target_component;
-  EFFECT = any;
-  ACCEPTED_FRACTION_BELOW = 0.80;
-};
-
-LATTICE_WARN {
-  TARGET_ID = node_mdn_train_core_ready;
-  WARNING_ID = mdn_fetch_probe_skips_present;
-  KIND = anchor_domain_health;
-  SCOPE = target_component;
-  EFFECT = any;
-  SKIPPED_FAILED_FETCH_PROBE_ABOVE = 0;
-};
-
-LATTICE_WARN {
-  TARGET_ID = node_mdn_train_core_ready;
-  WARNING_ID = imbalanced_mdn_node_target_support;
-  KIND = node_support_balance;
-  SPLIT = train_core;
-  USE = target_supervision;
-  EFFECT = mutated_component;
-  METRIC = valid_target_count_gini;
-  ABOVE = 0.75;
-};
-
-LATTICE_WARN {
-  TARGET_ID = node_mdn_train_core_ready;
-  WARNING_ID = low_mdn_node_target_support_entropy;
-  KIND = node_support_balance;
-  SPLIT = train_core;
-  USE = target_supervision;
-  EFFECT = mutated_component;
-  METRIC = valid_target_count_normalized_entropy;
-  BELOW = 0.25;
-};
-
-LATTICE_WARN {
-  TARGET_ID = node_mdn_train_core_ready;
-  WARNING_ID = low_mdn_node_target_support_confidence;
-  KIND = node_support_floor;
-  SPLIT = train_core;
-  USE = target_supervision;
-  EFFECT = mutated_component;
-  METRIC = valid_target_wilson_lower_95;
-  BELOW = 0.90;
-};
-
-LATTICE_WARN {
-  TARGET_ID = node_mdn_train_core_ready;
-  WARNING_ID = weak_mdn_node_target_support;
-  KIND = node_support_floor;
-  SPLIT = train_core;
-  USE = target_supervision;
-  EFFECT = mutated_component;
-  METRIC = weakest_valid_target_count;
-  BELOW = 1;
-};
-
-LATTICE_WARN {
   TARGET_ID = channel_mdn_train_core_ready;
   WARNING_ID = high_channel_target_supervision_train_core_load;
   KIND = exposure_load;
   USE = target_supervision;
   SPLIT = train_core;
-  SCOPE = target_component;
+  SCOPE = target_component_family_id;
   EFFECT = mutated_component;
   CURSOR_EPOCHS_ABOVE = 3.0;
 };
@@ -1056,7 +755,7 @@ LATTICE_WARN {
   KIND = effort_density;
   USE = target_supervision;
   SPLIT = train_core;
-  SCOPE = target_component;
+  SCOPE = target_component_family_id;
   EFFECT = mutated_component;
   METRIC = optimizer_steps_per_cursor_epoch;
   ABOVE = 10.0;
@@ -1068,29 +767,10 @@ LATTICE_WARN {
   KIND = mdn_distribution_calibration;
   USE = target_supervision;
   SPLIT = train_core;
-  SCOPE = target_component;
+  SCOPE = target_component_family_id;
   EFFECT = mutated_component;
   METRIC = mean_nll;
   ABOVE = 2.0;
-};
-
-LATTICE_DEPENDS {
-  TARGET_ID = node_mdn_acceptance_smoke_ready;
-  UPSTREAM_TARGET_ID = legacy_node_vicreg_acceptance_smoke_ready;
-  BINDING = loaded_representation_checkpoint;
-  REQUIRE_EXACT_LOADED_CHECKPOINT = true;
-};
-
-LATTICE_REQUIRES {
-  TARGET_ID = node_mdn_acceptance_smoke_ready;
-  REQUIREMENT_ID = target_supervision_acceptance_coverage;
-  KIND = exposure_coverage;
-  USE = target_supervision;
-  SPLIT = acceptance_smoke;
-  SCOPE = target_component;
-  EFFECT = mutated_component;
-  COORDINATE = graph_anchor_coverage;
-  CURSOR_EPOCHS = 1.0;
 };
 
 LATTICE_DEPENDS {
@@ -1106,7 +786,7 @@ LATTICE_REQUIRES {
   KIND = exposure_coverage;
   USE = target_supervision;
   SPLIT = acceptance_smoke;
-  SCOPE = target_component;
+  SCOPE = target_component_family_id;
   EFFECT = mutated_component;
   COORDINATE = graph_anchor_coverage;
   CURSOR_EPOCHS = 1.0;
@@ -1123,35 +803,12 @@ LATTICE_PLAN {
 };
 
 LATTICE_REQUIRES {
-  TARGET_ID = node_mdn_validation_eval_ready;
-  REQUIREMENT_ID = validation_evaluation_metric_coverage;
-  KIND = exposure_coverage;
-  USE = evaluation_metric;
-  SPLIT = validation_holdout;
-  SCOPE = target_component;
-  EFFECT = none;
-  COORDINATE = graph_anchor_coverage;
-  CURSOR_EPOCHS = 0.95;
-};
-
-LATTICE_PLAN {
-  TARGET_ID = node_mdn_validation_eval_ready;
-  PLAN_ID = run_mdn_validation_eval;
-  WAVE_TARGET = wikimyei.inference.expected_value.mdn;
-  WAVE_MODE = run|debug;
-  WAVE_RANGE = split:validation_holdout;
-  PLAN_INPUT_MDN_CHECKPOINT = latest_satisfying:node_mdn_train_core_no_test_leakage;
-  PLAN_INPUT_REPRESENTATION_CHECKPOINT = latest_satisfying:legacy_node_vicreg_train_core_ready;
-  PLAN_MAX_ATTEMPTS = 1;
-};
-
-LATTICE_REQUIRES {
   TARGET_ID = channel_mdn_validation_eval_ready;
   REQUIREMENT_ID = channel_validation_evaluation_metric_coverage;
   KIND = exposure_coverage;
   USE = evaluation_metric;
   SPLIT = validation_holdout;
-  SCOPE = target_component;
+  SCOPE = target_component_family_id;
   EFFECT = none;
   COORDINATE = graph_anchor_coverage;
   CURSOR_EPOCHS = 0.95;

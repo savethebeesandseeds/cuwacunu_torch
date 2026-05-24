@@ -79,7 +79,7 @@ template <typename KeyT>
                 "feature mask");
   }
   auto feature_mask = raw_mask.logical_and(finite);
-  auto clean_features = torch::where(finite, batch.node_features,
+  auto clean_features = torch::where(feature_mask, batch.node_features,
                                      torch::zeros_like(batch.node_features));
 
   auto data = clean_features.permute({0, 3, 1, 2, 4})

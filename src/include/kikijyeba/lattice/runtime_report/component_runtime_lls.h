@@ -96,8 +96,8 @@ emit_component_runtime_lls_canonical(const runtime_lls_document_t &document) {
 
 struct component_runtime_identity_t {
   std::string schema{};
-  std::string component_family{};
-  std::string component_id{};
+  std::string component_family_id{};
+  std::string component_assembly_id{};
   std::string batch_cursor_token{};
   std::string graph_order_fingerprint{};
 };
@@ -108,20 +108,20 @@ make_component_runtime_document(component_runtime_identity_t identity) {
     throw std::runtime_error(
         "[component_runtime_lls] batch_cursor_token is required");
   }
-  if (identity.schema.empty() || identity.component_family.empty() ||
-      identity.component_id.empty() ||
+  if (identity.schema.empty() || identity.component_family_id.empty() ||
+      identity.component_assembly_id.empty() ||
       identity.graph_order_fingerprint.empty()) {
-    throw std::runtime_error(
-        "[component_runtime_lls] schema, component_family, component_id, and "
-        "graph_order_fingerprint are required");
+    throw std::runtime_error("[component_runtime_lls] schema, "
+                             "component_family_id, component_assembly_id, and "
+                             "graph_order_fingerprint are required");
   }
   runtime_lls_document_t document{};
   document.entries.push_back(make_component_runtime_lls_string_entry(
       "schema", std::move(identity.schema)));
   document.entries.push_back(make_component_runtime_lls_string_entry(
-      "component_family", std::move(identity.component_family)));
+      "component_family_id", std::move(identity.component_family_id)));
   document.entries.push_back(make_component_runtime_lls_string_entry(
-      "component_id", std::move(identity.component_id)));
+      "component_assembly_id", std::move(identity.component_assembly_id)));
   document.entries.push_back(make_component_runtime_lls_string_entry(
       "batch_cursor_token", std::move(identity.batch_cursor_token)));
   document.entries.push_back(make_component_runtime_lls_string_entry(
@@ -177,6 +177,21 @@ inline void append_graph_anchor_cursor_entries(
   if (const auto last = cursor.last_anchor_key(); last.has_value()) {
     document.entries.push_back(make_component_runtime_lls_int_entry(
         prefix + "_last_anchor_key", static_cast<std::int64_t>(*last)));
+  }
+  if (!cursor.anchor_indices.empty()) {
+    document.entries.push_back(make_component_runtime_lls_uint_entry(
+        prefix + "_anchor_index_count",
+        static_cast<std::uint64_t>(cursor.anchor_indices.size())));
+    document.entries.push_back(make_component_runtime_lls_uint_entry(
+        prefix + "_first_anchor_index",
+        static_cast<std::uint64_t>(cursor.anchor_indices.front())));
+    document.entries.push_back(make_component_runtime_lls_uint_entry(
+        prefix + "_last_anchor_index",
+        static_cast<std::uint64_t>(cursor.anchor_indices.back())));
+    document.entries.push_back(make_component_runtime_lls_string_entry(
+        prefix + "_anchor_index_fingerprint",
+        cuwacunu::ujcamei::source::retrieval::dataloader::source_cursor_detail::
+            fingerprint_anchor_indices(cursor.anchor_indices)));
   }
 }
 

@@ -1,6 +1,6 @@
 job_id=cwu_01v_accept_mdn_0029_0031.train.inference_mdn
 job_kind=inference_mdn
-target_component=wikimyei.inference.expected_value.mdn
+target_component_family_id=wikimyei.inference.expected_value.mdn
 wave_id=cwu_01v_accept_mdn_0029_0031
 wave_action=train
 mutated_components=wikimyei.inference.expected_value.mdn

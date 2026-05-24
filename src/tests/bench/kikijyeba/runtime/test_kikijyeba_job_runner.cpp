@@ -13,6 +13,7 @@
 
 namespace runtime = cuwacunu::kikijyeba::runtime;
 namespace runtime_report = cuwacunu::kikijyeba::lattice::runtime_report;
+namespace provenance = cuwacunu::kikijyeba::protocol::config_provenance;
 namespace types = cuwacunu::ujcamei::source::registry::types;
 
 namespace {
@@ -217,7 +218,7 @@ fixture_paths_t make_config_fixture(
 
   write_text(vicreg_dsl, "VICREG {\n"
                          "  VERSION = wikimyei.representation.vicreg.v1;\n"
-                         "  COMPONENT_ID = vicreg_v1;\n"
+                         "  COMPONENT_ASSEMBLY_ID = vicreg_v1;\n"
                          "  INPUT_ROUTE = channel_node_stream;\n"
                          "  CHANNEL_COUNT = 1;\n"
                          "  HISTORY_LENGTH = 2;\n"
@@ -237,13 +238,23 @@ fixture_paths_t make_config_fixture(
                          "  VICREG_PROJECTOR_DIM = 6;\n"
                          "  VICREG_PROJECTOR_HIDDEN_DIM = 8;\n"
                          "  VICREG_PROJECTOR_DEPTH = 1;\n"
+                         "  VICREG_INVARIANCE_WEIGHT = 25.0;\n"
+                         "  VICREG_VARIANCE_WEIGHT = 25.0;\n"
+                         "  VICREG_COVARIANCE_WEIGHT = 1.0;\n"
+                         "  VICREG_VARIANCE_FLOOR = 1.0;\n"
+                         "  VICREG_EPS = 0.0001;\n"
                          "  GLOBAL_AUX_WEIGHT = 0.0;\n"
+                         "  MIN_VALID_ROWS = 2;\n"
+                         "  SKIP_NON_FINITE_LOSS = true;\n"
+                         "  JITTER_STD = 0.01;\n"
+                         "  FEATURE_DROPOUT_PROB = 0.0;\n"
+                         "  HISTORY_DROPOUT_PROB = 0.0;\n"
                          "};\n");
   write_text(channel_mdn_dsl,
              "MDN {\n"
              "  VERSION = wikimyei.inference.expected_value.mdn.v1;\n"
-             "  COMPONENT_ID = channel_context_mdn_v1;\n"
-             "  INPUT_REPRESENTATION_ID = vicreg_v1;\n"
+             "  COMPONENT_ASSEMBLY_ID = mdn_v1;\n"
+             "  INPUT_REPRESENTATION_ASSEMBLY_ID = vicreg_v1;\n"
              "  CONTEXT_MODE = channel_context_strict;\n"
              "  TARGET_DOMAIN = channel_node_future;\n"
              "  TARGET_COORDS = 0,1,2,3;\n"
@@ -259,13 +270,14 @@ fixture_paths_t make_config_fixture(
                               "  MIXTURE_COUNT = 2;\n"
                               "  HIDDEN_WIDTH = 8;\n"
                               "  RESIDUAL_DEPTH = 1;\n"
+                              "  GLOBAL_CONTEXT_DIM = 0;\n"
                               "};\n");
   write_text(vicreg_jkimyei,
              "TRAINING {\n"
              "  VERSION = wikimyei.representation.vicreg.jkimyei.v1;\n"
              "  TRAINING_ID = runtime_vicreg;\n"
              "  TASK = vicreg_representation;\n"
-             "  COMPONENT_ID = vicreg_v1;\n"
+             "  COMPONENT_ASSEMBLY_ID = vicreg_v1;\n"
              "  OPTIMIZER = adam;\n"
              "  LEARNING_RATE = 0.001;\n"
              "  MAX_STEPS = 0;\n"
@@ -283,7 +295,7 @@ fixture_paths_t make_config_fixture(
              "wikimyei.inference.expected_value.mdn.jkimyei.v1;\n"
              "  TRAINING_ID = runtime_channel_mdn;\n"
              "  TASK = mdn_expected_value_inference;\n"
-             "  COMPONENT_ID = channel_context_mdn_v1;\n"
+             "  COMPONENT_ASSEMBLY_ID = mdn_v1;\n"
              "  OPTIMIZER = adam;\n"
              "  LEARNING_RATE = 0.01;\n"
              "  MAX_STEPS = 0;\n"
@@ -419,7 +431,7 @@ void test_inference_dry_run_writes_manifest_and_state() {
       make_config_fixture("inference_dry_run", "  SOURCE_RANGE = all;\n");
   const auto job_dir = fixture.dir / "job";
   runtime::job_runner_options_t options{};
-  options.job_kind = runtime::runtime_job_kind_t::inference_mdn;
+  options.job_kind = runtime::runtime_job_kind_t::channel_inference_mdn;
   options.dry_run = true;
   options.batch_size = 2;
   options.job_dir = job_dir;
@@ -428,6 +440,23 @@ void test_inference_dry_run_writes_manifest_and_state() {
 
   check(result.manifest.job_kind == "channel_inference_mdn",
         "manifest job kind");
+  check(!result.manifest.config_bundle_id.empty(),
+        "manifest records config bundle id");
+  check(!result.manifest.config_receipt_id.empty(),
+        "manifest records config receipt id");
+  check(!result.manifest.component_spawn_registry_id.empty(),
+        "manifest records component spawn registry id");
+  check(result.manifest.component_family_id ==
+            "wikimyei.inference.expected_value.mdn",
+        "manifest records component family id");
+  check(!result.manifest.component_spawn_fingerprint.empty(),
+        "manifest records component spawn fingerprint");
+  check(!result.manifest.component_spawn_id.empty(),
+        "manifest records scoped component spawn id");
+  check(result.manifest.component_spawn_label ==
+            result.manifest.component_family_id + "#" +
+                result.manifest.component_spawn_id,
+        "manifest records component spawn label");
   check(result.manifest.node_ids.size() == 3, "manifest node ids");
   check(result.manifest.edge_ids.size() == 4, "manifest edge ids");
   check(!result.manifest.graph_order_fingerprint.empty(),
@@ -441,7 +470,7 @@ void test_inference_dry_run_writes_manifest_and_state() {
         "healthy fixture records full accepted-anchor fraction");
   check(result.wave_plan.anchor_domain_warning_level == "none",
         "healthy fixture has no anchor-domain warning");
-  check(result.wave_plan.target_component ==
+  check(result.wave_plan.target_component_family_id ==
             "wikimyei.inference.expected_value.mdn",
         "wave target component is inference");
   check(result.wave_plan.action == "run", "wave action is run");
@@ -491,6 +520,54 @@ void test_inference_dry_run_writes_manifest_and_state() {
         "manifest file exists");
   check(std::filesystem::exists(job_dir / "job.state"), "state file exists");
   const auto manifest_text = read_text(job_dir / "job.manifest");
+  check(manifest_text.find("config_bundle_id=" +
+                           result.manifest.config_bundle_id) !=
+            std::string::npos,
+        "manifest text records config bundle id");
+  check(manifest_text.find("config_receipt_id=" +
+                           result.manifest.config_receipt_id) !=
+            std::string::npos,
+        "manifest text records config receipt id");
+  check(manifest_text.find("component_spawn_registry_id=" +
+                           result.manifest.component_spawn_registry_id) !=
+            std::string::npos,
+        "manifest text records component spawn registry id");
+  check(manifest_text.find("component_spawn_fingerprint=" +
+                           result.manifest.component_spawn_fingerprint) !=
+            std::string::npos,
+        "manifest text records component spawn fingerprint");
+  const auto registry_path =
+      provenance::component_spawn_registry_path(job_dir.parent_path());
+  check(std::filesystem::exists(registry_path),
+        "component spawn registry exists");
+  const auto registry_text = read_text(registry_path);
+  check(registry_text.find(result.manifest.component_spawn_fingerprint) !=
+            std::string::npos,
+        "registry records component spawn fingerprint");
+  check(registry_text.find(result.manifest.config_bundle_id) !=
+            std::string::npos,
+        "registry records config bundle link");
+  const auto resolved_spawn = provenance::resolve_component_spawn_id(
+      job_dir.parent_path(), result.manifest.component_spawn_registry_id,
+      result.manifest.component_family_id, result.manifest.component_spawn_id);
+  check(resolved_spawn.resolved,
+        "component spawn id resolves with full fingerprint");
+  check(resolved_spawn.entry.component_spawn_fingerprint ==
+            result.manifest.component_spawn_fingerprint,
+        "resolved component spawn id preserves full fingerprint");
+  const auto missing_spawn = provenance::resolve_component_spawn_id(
+      job_dir.parent_path(), result.manifest.component_spawn_registry_id,
+      result.manifest.component_family_id, "notaspawn");
+  check(!missing_spawn.resolved,
+        "component spawn resolver fails closed on missing id");
+  const auto receipt_a =
+      provenance::capture_config_bundle_receipt(fixture.config, "a");
+  const auto receipt_b =
+      provenance::capture_config_bundle_receipt(fixture.config, "b");
+  check(receipt_a.config_bundle_id == receipt_b.config_bundle_id,
+        "identical config bundle captures have stable bundle id");
+  check(receipt_a.config_receipt_id != receipt_b.config_receipt_id,
+        "distinct config bundle captures have distinct receipt ids");
   check(manifest_text.find("dock_binding_fingerprint=") != std::string::npos,
         "manifest records dock fingerprint");
   check(manifest_text.find("protocol_contract_fingerprint=") !=
@@ -501,7 +578,7 @@ void test_inference_dry_run_writes_manifest_and_state() {
   check(manifest_text.find("job_kind=channel_inference_mdn") !=
             std::string::npos,
         "manifest records inference kind");
-  check(manifest_text.find("target_component=wikimyei.inference.expected_"
+  check(manifest_text.find("target_component_family_id=wikimyei.inference.expected_"
                            "value.mdn") != std::string::npos,
         "manifest records inference target component");
   check(manifest_text.find("wave_action=run") != std::string::npos,
@@ -553,7 +630,7 @@ void test_inference_dry_run_writes_manifest_and_state() {
   const auto state_text = read_text(job_dir / "job.state");
   check(state_text.find("status=dry_run") != std::string::npos,
         "state records dry-run status");
-  check(state_text.find("target_component=wikimyei.inference.expected_value."
+  check(state_text.find("target_component_family_id=wikimyei.inference.expected_value."
                         "mdn") != std::string::npos,
         "state records inference target component");
   check(state_text.find("wave_action=run") != std::string::npos,
@@ -581,6 +658,14 @@ void test_inference_dry_run_writes_manifest_and_state() {
       read_text(result.state.lattice_exposure_fact_path);
   check(dry_run_exposure_text.find("job_status=dry_run") != std::string::npos,
         "dry-run exposure fact records dry-run status");
+  check(dry_run_exposure_text.find("config_bundle_id=" +
+                                   result.manifest.config_bundle_id) !=
+            std::string::npos,
+        "dry-run exposure fact records config bundle id");
+  check(dry_run_exposure_text.find(
+            "component_spawn_fingerprint=" +
+            result.manifest.component_spawn_fingerprint) != std::string::npos,
+        "dry-run exposure fact records component spawn fingerprint");
   check(dry_run_exposure_text.find(
             "coverage_precision=requested_range_untrusted_v0") !=
             std::string::npos,
@@ -606,7 +691,7 @@ void test_representation_dry_run_anchor_range() {
       runtime::run_graph_first_job<Kline>(fixture.config.string(), options);
   check(result.manifest.job_kind == "channel_representation_vicreg",
         "representation manifest kind");
-  check(result.wave_plan.target_component ==
+  check(result.wave_plan.target_component_family_id ==
             "wikimyei.representation.encoding.vicreg",
         "representation target component");
   check(result.wave_plan.resolved_anchor_index_begin == 1,
@@ -634,6 +719,55 @@ void test_representation_dry_run_anchor_range() {
   check(result.wave_plan.target_source_key_end == "1005",
         "ranged target source-key footprint end");
   check(result.state.status == "dry_run", "representation dry-run status");
+}
+
+void test_representation_dry_run_source_key_range() {
+  const auto fixture = make_config_fixture("representation_source_key_range",
+                                           "  SOURCE_RANGE = source_key;\n"
+                                           "  SOURCE_KEY_BEGIN = 1002;\n"
+                                           "  SOURCE_KEY_END = 1004;\n",
+                                           "wikimyei.representation.encoding."
+                                           "vicreg");
+  runtime::job_runner_options_t options{};
+  options.dry_run = true;
+  options.batch_size = 2;
+  const auto result =
+      runtime::run_graph_first_job<Kline>(fixture.config.string(), options);
+  check(result.wave_plan.source_range_policy == "source_key",
+        "source-key range keeps canonical policy");
+  check(result.wave_plan.requested_source_key_begin.has_value() &&
+            *result.wave_plan.requested_source_key_begin == 1002,
+        "source-key range records requested begin");
+  check(result.wave_plan.requested_source_key_end.has_value() &&
+            *result.wave_plan.requested_source_key_end == 1004,
+        "source-key range records requested end");
+  check(result.wave_plan.resolved_anchor_index_begin == 1,
+        "source-key range resolves begin to accepted anchor index");
+  check(result.wave_plan.resolved_anchor_index_end == 3,
+        "source-key range resolves end to accepted anchor index");
+  check(result.wave_plan.first_anchor_key == "1002",
+        "source-key range records first selected anchor key");
+  check(result.wave_plan.last_anchor_key == "1003",
+        "source-key range records last selected anchor key");
+  check(result.wave_plan.observed_source_row_begin == 0,
+        "source-key range preserves row-space proof footprint");
+  check(result.wave_plan.observed_source_key_begin == "1001",
+        "source-key range records observed source-key footprint");
+  check(result.wave_plan.target_source_key_end == "1005",
+        "source-key range records target source-key footprint");
+  const auto manifest_text = read_text(result.manifest_path);
+  check(manifest_text.find("source_range_policy=source_key") !=
+            std::string::npos,
+        "manifest records source-key range policy");
+  check(manifest_text.find("requested_source_key_begin=1002") !=
+            std::string::npos,
+        "manifest records requested source-key begin");
+  check(manifest_text.find("resolved_anchor_index_begin=1") !=
+            std::string::npos,
+        "manifest records resolved anchor-index begin");
+  const auto state_text = read_text(result.state_path);
+  check(state_text.find("requested_source_key_end=1004") != std::string::npos,
+        "state records requested source-key end");
 }
 
 void test_train_mode_manifest_mutation_policy() {
@@ -674,7 +808,7 @@ void test_channel_targets_dispatch_to_channel_runner() {
   check(representation_result.manifest.job_kind ==
             "channel_representation_vicreg",
         "channel representation manifest kind");
-  check(representation_result.wave_plan.target_component ==
+  check(representation_result.wave_plan.target_component_family_id ==
             "wikimyei.representation.encoding.vicreg",
         "channel representation target component");
   check(representation_result.manifest.execution_chain.find(
@@ -698,12 +832,12 @@ void test_channel_targets_dispatch_to_channel_runner() {
       inference_fixture.config.string(), inference_options);
   check(inference_result.manifest.job_kind == "channel_inference_mdn",
         "channel inference manifest kind");
-  check(inference_result.wave_plan.target_component ==
+  check(inference_result.wave_plan.target_component_family_id ==
             "wikimyei.inference.expected_value.mdn",
         "channel inference target component");
   check(inference_result.manifest.mutated_components ==
             "wikimyei.inference.expected_value.mdn",
-        "channel inference mutates only channel MDN");
+        "channel inference mutates only MDN");
   check(inference_result.manifest.frozen_components ==
             "wikimyei.representation.encoding.vicreg",
         "channel inference freezes channel representation");
@@ -907,13 +1041,13 @@ void test_strict_channel_baseline_runs_through_runtime() {
       "strict baseline inference writes representation LLS sidecar");
   check(std::filesystem::exists(
             inference_result.delegated_report_path.string() + ".mdn.lls"),
-        "strict baseline inference writes channel MDN LLS sidecar");
+        "strict baseline inference writes MDN LLS sidecar");
   const auto channel_mdn_lls =
       read_text(inference_result.delegated_report_path.string() + ".mdn.lls");
   check(channel_mdn_lls.find(
             "wikimyei.inference.expected_value.mdn.runtime.v1") !=
             std::string::npos,
-        "strict baseline inference LLS carries channel MDN schema");
+        "strict baseline inference LLS carries MDN schema");
   check(channel_mdn_lls.find("context_mask_fraction") != std::string::npos &&
             channel_mdn_lls.find("future_mask_fraction") != std::string::npos,
         "strict baseline inference LLS carries context/future mask fractions");
@@ -921,10 +1055,10 @@ void test_strict_channel_baseline_runs_through_runtime() {
         "strict baseline inference LLS carries masked sigma mean");
   const auto inference_exposure_fact =
       read_text(inference_result.state.lattice_exposure_fact_path);
-  check(inference_exposure_fact.find("target_component=wikimyei.inference."
+  check(inference_exposure_fact.find("target_component_family_id=wikimyei.inference."
                                      "expected_value.mdn") != std::string::npos,
         "strict baseline exposure fact keeps MDN component");
-  check(inference_exposure_fact.find("input_representation_id="
+  check(inference_exposure_fact.find("input_representation_assembly_id="
                                      "vicreg_v1") != std::string::npos,
         "strict baseline exposure fact carries input representation id");
   check(inference_exposure_fact.find("context_mode=channel_context_strict") !=
@@ -1094,7 +1228,7 @@ void test_invalid_wave_range_fails_before_launch() {
                                            "  ANCHOR_INDEX_BEGIN = 0;\n"
                                            "  ANCHOR_INDEX_END = 200;\n");
   runtime::job_runner_options_t options{};
-  options.job_kind = runtime::runtime_job_kind_t::inference_mdn;
+  options.job_kind = runtime::runtime_job_kind_t::channel_inference_mdn;
   options.dry_run = true;
   options.batch_size = 2;
   bool threw = false;
@@ -1105,6 +1239,27 @@ void test_invalid_wave_range_fails_before_launch() {
                 "exceeds accepted graph anchor domain") != std::string::npos;
   }
   check(threw, "invalid wave range fails with domain error");
+}
+
+void test_invalid_source_key_wave_range_fails_before_launch() {
+  const auto fixture =
+      make_config_fixture("invalid_source_key_range",
+                          "  SOURCE_RANGE = source_key;\n"
+                          "  SOURCE_KEY_BEGIN = 1000;\n"
+                          "  SOURCE_KEY_END = 1002;\n");
+  runtime::job_runner_options_t options{};
+  options.job_kind = runtime::runtime_job_kind_t::channel_inference_mdn;
+  options.dry_run = true;
+  options.batch_size = 2;
+  bool threw = false;
+  try {
+    (void)runtime::run_graph_first_job<Kline>(fixture.config.string(), options);
+  } catch (const std::exception &ex) {
+    threw = std::string(ex.what()).find(
+                "begins before accepted graph anchor domain") !=
+            std::string::npos;
+  }
+  check(threw, "invalid source-key wave range fails with domain error");
 }
 
 void test_invalid_wave_mode_fails() {
@@ -1167,10 +1322,12 @@ int main() {
   try {
     test_inference_dry_run_writes_manifest_and_state();
     test_representation_dry_run_anchor_range();
+    test_representation_dry_run_source_key_range();
     test_train_mode_manifest_mutation_policy();
     test_channel_targets_dispatch_to_channel_runner();
     test_strict_channel_baseline_runs_through_runtime();
     test_invalid_wave_range_fails_before_launch();
+    test_invalid_source_key_wave_range_fails_before_launch();
     test_invalid_wave_mode_fails();
     test_resume_and_default_job_dir();
     std::cout << "[Kikijyeba JobRunner test] all checks passed\n";

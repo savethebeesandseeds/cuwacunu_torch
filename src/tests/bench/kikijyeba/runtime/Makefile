@@ -56,7 +56,7 @@ $(TEST_OUT)/test_kikijyeba_job_runner: kikijyeba_job_runner_objects
 
 .PHONY: hero_mcp_schema_catalogs
 hero_mcp_schema_catalogs:
-	$(MAKE) -C $(SRC_ROOT)/main/hero build-config-hero build-runtime-hero build-lattice-hero
+	$(MAKE) -C $(SRC_ROOT)/main/hero build-config-hero build-runtime-hero build-lattice-hero build-marshal-hero
 
 $(TEST_OUT)/test_hero_mcp_schema_compat: hero_mcp_schema_catalogs
 

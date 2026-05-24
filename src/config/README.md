@@ -15,18 +15,22 @@ Current migrated sections:
 `kikijyeba.settings.wave.dsl` selects the focal runtime component with `TARGET`.
 The default graph-first path is now the strict channel-preserving pair:
 `wikimyei.representation.encoding.vicreg` and
-`wikimyei.inference.expected_value.mdn`. The channel MDN path consumes
-the `[B,N,C,De]` representation contract and freezes VICReg when the
-MDN target trains. `CONTEXT_MODE=channel_context_strict` keeps the strict
-baseline; `channel_context_plus_global` is reserved for the explicit
+`wikimyei.inference.expected_value.mdn`. The MDN path consumes the
+`[B,N,C,De]` representation contract and freezes VICReg when the MDN target
+trains. `CONTEXT_MODE=channel_context_strict` keeps the strict baseline;
+`channel_context_plus_global` is reserved for the explicit
 post-representation global branch and requires `GLOBAL_CONTEXT_DIM>0` in the
-channel MDN net file. Channel config surfaces have their own BNF paths in
+MDN net file. Channel-bearing config surfaces have their own BNF paths in
 `.config`; keep those BNF files in sync with the VICReg/MDN DSL, net,
-and Jkimyei keys. The legacy fused targets
-`wikimyei.representation.encoding.vicreg` and
-`wikimyei.inference.expected_value.mdn` remain available for compatibility.
+and Jkimyei keys. Legacy fused/node implementations remain only under explicit
+`legacy_node_*` source names for compatibility and are not the default model.
 `MODE=run` executes the target dependency closure without optimizer steps.
 `MODE=train` mutates only `TARGET`; upstream dependencies run frozen.
+Wave source ranges may be authored as `SOURCE_RANGE=anchor_index` for explicit
+accepted-anchor positions or `SOURCE_RANGE=source_key` for stable integral
+graph-anchor source keys such as kline millisecond close times. Runtime resolves
+source-key ranges into anchor-index intervals before execution and records both
+coordinates in manifests, states, reports, and component stream `.lls` payloads.
 
 MDN training is node-centered and expects a frozen representation encoder.
 `wikimyei.inference.expected_value.mdn.jkimyei` should normally provide
@@ -40,9 +44,15 @@ is runtime model-state admission policy and also does not change the protocol
 contract fingerprint. Keep the repository default MDN
 `.jkimyei` checkpoint fields empty; operational waves should receive concrete
 checkpoint paths by resolving Lattice Hero plan-input references or by applying
-runtime-local overlays. Channel MDN run/evaluation also requires
+runtime-local overlays. MDN run/evaluation also requires
 `INPUT_MDN_CHECKPOINT`; the runtime rejects evaluation with a fresh untrained
 channel-context MDN.
+
+`wikimyei.representation.vicreg.net` owns both architecture and VICReg objective
+settings. Loss weights, variance floor, loss epsilon, minimum valid rows,
+non-finite loss policy, and augmentation probabilities must be declared there;
+they are part of the channel graph-first protocol contract and checkpoint audit
+surface.
 
 Config Hero starts from:
 
@@ -80,9 +90,14 @@ Fresh Config Hero is intentionally a small policy-controlled config file
 surface. It lists, reads, writes, and deletes managed config files under
 configured roots; it does not own domain-specific DSL validation. Validation for
 Ujcamei, Kikijyeba, Wikimyei, and Jkimyei remains with those domain modules.
+`hero.config.capture_bundle` is a read-only provenance tool over the same
+global config: it records every `_path`/`_filename` entry with canonical path,
+content digest, stable `config_bundle_id`, and per-capture
+`config_receipt_id`.
 
 Agent-facing Config Hero tools should prefer `hero.config.map` for global path
-discovery and `hero.config.resolve` for path preflight before reading or
+discovery, `hero.config.capture_bundle` when runtime spawn evidence needs a
+config receipt, and `hero.config.resolve` for path preflight before reading or
 mutating. Reads return `sha256`; replacements and deletions require
 `expected_sha256` by default, and both mutating file tools support
 `dry_run=true`.
@@ -90,7 +105,11 @@ mutating. Reads return `sha256`; replacements and deletions require
 Runtime Hero is the agent-facing control and inspection surface for
 `/cuwacunu/.build/exec/cuwacunu_exec`. It decodes the active wave, performs
 guarded dry-runs/executions, and reads runtime artifacts under
-`.runtime/cuwacunu_exec`.
+`.runtime/cuwacunu_exec`. Runtime manifests record config provenance and
+component spawn links: `config_bundle_id`, `config_receipt_id`,
+`component_spawn_registry_id`, `component_family_id`,
+`component_spawn_fingerprint`, scoped `component_spawn_id`, and
+`component_spawn_label`.
 
 Developer runtime reset is owned by Runtime Hero as `hero.runtime.dev_nuke`, not
 by Config Hero. The tool defaults to dry-run, reports the exact runtime-root
@@ -132,7 +151,9 @@ Lattice target v0 can evaluate normal job artifacts; it does not require every
 wave to run with `MODE=...|debug`. Debug `.lls` facts are intended as richer
 lineage evidence for cursor coverage, exposure accounting, and leakage checks.
 The new lattice exposure ledger normalizes those normal job artifacts into
-cursor-indexed facts. New runtime manifests emit `graph_anchor_row_index_v1`
+cursor-indexed facts. Facts are a subset of runtime evidence, and not every
+evidence artifact is a `.lls` file. New runtime manifests emit
+`graph_anchor_row_index_v1`
 source footprints: observed input covers
 `[anchor_begin - (Hx - 1), anchor_end)`, while future supervision covers
 `[anchor_begin + 1, anchor_end + Hf)`. Older artifacts without those fields
@@ -143,7 +164,12 @@ coverage and forbidden-overlap checks still use row-index intervals. Lattice
 Hero exposes a structured `source_key_window_audit` preview so agents can inspect
 whether the auxiliary row-to-source-key map is complete, numeric, monotone,
 order-preserving, and affine-consistent with the inferred regular key step
-without making it the leakage authority. Manifests also include
+without making it the leakage authority. The audit also counts missing endpoint
+pairs, irregular anchor steps, and row/source-key mismatches as explicit gap
+warnings. `hero.lattice.scan_exposure` adds `source_key_map_audit_summary`,
+which binds available audits to graph-order identity, source-cursor identity,
+and source-receipt parent facts while preserving row-index authority. Manifests
+also include
 compact active source-file receipts so runtime evidence can be traced back to the
 concrete Ujcamei source files without inspecting the original DSL. Lattice Hero
 reports `source_receipt_policy_vocabulary` to make that boundary explicit:
@@ -160,6 +186,14 @@ skipped anchors by reason, duplicate anchors, common/reference key bounds, and
 a warning level. This does not change graph-first training semantics. Ujcamei
 still restricts waves to the accepted common graph-anchor cursor domain; the new
 fields make source-range clipping visible through Runtime/Lattice Hero.
+`WAVE_SETTINGS.SOURCE_ORDER` controls only the yield order inside that resolved
+graph-anchor domain. If omitted, `MODE=train` defaults to `random_per_epoch`
+and `MODE=run` defaults to `sequential`. `sequential` preserves canonical
+accepted-anchor order; `random_per_epoch` uses a Torch `RandomSampler` over
+graph-anchor indices per training epoch while each selected anchor still fetches
+every graph edge together. An explicit train-wave `SOURCE_ORDER=sequential` is
+allowed for reproducible/debug runs, but Runtime reports it as a warning because
+stochastic graph-anchor train loading is disabled.
 Targets may now require exposure coverage over explicit anchor-index ranges or
 forbid checkpoint exposure overlap with protected ranges. Those checks are
 evaluated from the checkpoint exposure closure and fail as `exposure_failed`
@@ -169,7 +203,7 @@ enough for v0 readiness checks. Coverage and leakage use different coordinates:
 readiness coverage is measured over target-component-local graph-anchor coverage
 intervals, while forbidden exposure checks use full-closure observed/target
 source-row footprints. Checkpoint closure is fail-closed when an input checkpoint
-has no producer fact, and node MDN exposure readiness verifies that the exact
+has no producer fact, and channel MDN exposure readiness verifies that the exact
 loaded representation checkpoint has a compatible VICReg producer fact. A
 completed train job only counts as mutating a component when it records
 optimizer effort and the manifest explicitly lists the component in
@@ -198,11 +232,11 @@ rules for both surfaces. Repeated exposure is therefore visible without being
 treated as an implicit readiness failure.
 Targets can use `CHECKPOINT_SOURCE = latest_satisfying:<target_id>` to inspect
 the checkpoint proven by another satisfied target. This is how read-only guards
-such as `node_mdn_train_core_no_validation_leakage` check validation leakage on
-the current train-core MDN checkpoint without creating a fake training target.
-`node_mdn_train_core_no_test_leakage` then applies the same split-backed guard
-to `test_holdout`, so the operational chain has both validation and test
-holdout cleanliness before validation evaluation. Hero JSON includes
+such as `channel_mdn_train_core_no_validation_leakage` check validation leakage
+on the current train-core MDN checkpoint without creating a fake training
+target. `channel_mdn_train_core_no_test_leakage` then applies the same
+split-backed guard to `test_holdout`, so the operational chain has both
+validation and test holdout cleanliness before validation evaluation. Hero JSON includes
 `checkpoint_selection_policy_vocabulary`: `latest_satisfying` is a deterministic
 readiness selector over the referenced satisfied target, not a best-model,
 Pareto, performance, or deployment selector.
@@ -216,10 +250,11 @@ Validation evaluation targets use `MIN_EVALUATION_METRIC_COVERAGE` /
 `USE=evaluation_metric` over the validation split. These targets expect
 run-mode evidence, allow zero optimizer steps and no new checkpoint, and depend
 on the holdout-clean guard for the training checkpoint they evaluate.
-For node-centered MDN reports, the lattice scanner also derives read-only
-`node_exposure` facts from `node_ids`, per-node routed/active/trained/evaluated
-row counts, `valid_target_count_by_node`, and `mean_nll_by_node`. These facts
-are per-node MDN support evidence linked to the parent exposure fact. Derived
+For MDN reports with node-support fields, the lattice scanner also derives
+read-only `node_exposure` facts from `node_ids`, per-node
+routed/active/trained/evaluated row counts, `valid_target_count_by_node`, and
+`mean_nll_by_node`. These facts are per-node MDN support evidence linked to the
+parent exposure fact. Derived
 node-support summaries include support-row/unique-node counts, exposure-use and
 mutation incidence counts, and aggregate/weakest-node Wilson support bounds for
 statistical visibility. Mutating node-support summaries must be backed by the
@@ -265,6 +300,10 @@ non-blocking warning visibility, not performance or geometry gates.
 are V1-visible `representation_health` warnings, seven are embedding-geometry
 metrics, eleven are future hard-gate candidates, and none grant active
 performance-gate authority.
+`representation_geometry_gate_review_summary` reviews observed VICReg geometry
+distributions and records that no default threshold has been promoted. Hard
+geometry checks require explicit `LATTICE_REQUIRES KIND=representation_geometry`
+syntax, and missing geometry facts fail that opt-in gate closed.
 `performance_uncertainty_policy_vocabulary` records the statistical boundary:
 V1 support intervals are visibility, and future performance gates must compare
 conservative confidence bounds with an explicit uncertainty method and
@@ -329,6 +368,8 @@ thresholds must be at least `1`. Representation-health warnings also reject
 inverted one-sided directions, so high-bad metrics use `ABOVE` and low-bad
 metrics use `BELOW`. Anchor-domain warning clauses carry exactly one metric
 threshold.
+Opt-in representation-geometry gates use the same units through `VALUE`, with
+low-bad metrics using `OP=ge` and high-bad metrics using `OP=le`.
 Evaluations expose proof certificates, deficits, plan basis, and an
 `evidence_order_vector` that keeps Pareto evidence dimensions separate instead
 of emitting a single score. The vector separates total warning results,
@@ -347,10 +388,10 @@ measures, one idempotent coverage measure, one additive load measure, no
 dual-role measure, and distinct coverage-fraction versus cursor-epoch units.
 It also includes `source_key_coordinate_policy_vocabulary` so clients can see
 that row-index intervals are the coverage/leakage authority and source-key
-windows are audit-only order-preserving/affine map checks.
+windows are audit-only order-preserving/affine/gap map checks.
 `source_key_coordinate_policy_summary` self-checks the coordinate boundary:
-exactly one row-index coverage/leakage authority row, three audit-only
-source-key rows, declared order-preserving/affine fields, and no source-key
+exactly one row-index coverage/leakage authority row, four audit-only
+source-key rows, declared order-preserving/affine/gap fields, and no source-key
 audit row with coverage or leakage authority.
 It also includes `leakage_rule_vocabulary` so clients can identify protected
 split dilation as the leakage predicate. `leakage_rule_summary` self-checks that
@@ -453,6 +494,9 @@ V3-B adds `hero.lattice.evaluate_targets` for one-scan multi-target readiness
 checks and strengthens cache files with `watched_file_metadata_digest`,
 `row_set_digest`, and `relation_counts`; `watched_file_manifest` is a bounded
 freshness mode, while `header_only` is the explicit unproven fast lane.
+The runtime metadata digests are metadata freshness checks over path, size, and
+mtime records. They are not content digests and do not make cache rows proof
+authority for target satisfaction.
 V3-E adds `hero.lattice.derived_query`, a read-only witness surface for a finite
 pilot rule set: `target_satisfied`, `checkpoint_ancestor`,
 `forbidden_overlap`, `stale_cache`, and `unresolved_lineage`. The response
@@ -474,6 +518,25 @@ the V1 VICReg health and geometry warning metrics plus their bad-direction
 semantics.
 `representation_geometry_summary` checks that those metrics remain non-blocking
 representation-health visibility rather than performance or geometry gates.
+`representation_geometry_gate_review_summary` records observed distributions,
+no promoted default thresholds, opt-in target syntax, and fail-closed missing
+geometry behavior.
+`evidence_retention_policy_vocabulary`,
+`evidence_retention_audit_scenario_vocabulary`, and
+`evidence_retention_policy_summary` define the V3-K retention boundary:
+runtime reports, sidecars, checkpoint material, and selection-signal evidence
+remain replay authority; proof certificates, PASS files, compact receipts, and
+cache rows remain non-authoritative audit/read-model metadata. Archive manifests
+must bind active identity, split policy, source cursor, graph order, and
+checkpoint identity, and pruning must warn or refuse unresolved lineage.
+`benchmark_regression_budget_vocabulary` and
+`benchmark_regression_budget_summary` define the V3-L performance budget:
+benchmark rows are finite, split library-function, long-lived MCP, and direct
+CLI timing layers, and label proof modes as `header_only`,
+`watched_file_manifest`, `full_runtime_metadata_digest`, `live_scan`, or
+`live_parity`. Header-only fast audit rows forbid live scans and metadata
+digests; proof/parity rows may be slower, but that cost is named. Cache rows
+remain non-authoritative for target satisfaction in every benchmark mode.
 `performance_uncertainty_policy_vocabulary` names the conservative-bound rule
 for future support, loss, calibration, PIT, and node-stratified performance
 gates.

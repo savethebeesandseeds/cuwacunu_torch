@@ -64,7 +64,7 @@ void write_representation_job(const std::filesystem::path &dir,
   write_text(dir / "job.manifest",
              "job_id=rep_job\n"
              "job_kind=representation_vicreg\n"
-             "target_component=wikimyei.representation.encoding.vicreg\n"
+             "target_component_family_id=wikimyei.representation.encoding.vicreg\n"
              "wave_id=wave_rep\n"
              "wave_action=train\n"
              "mutated_components=wikimyei.representation.encoding.vicreg\n"
@@ -178,7 +178,7 @@ void write_representation_job(const std::filesystem::path &dir,
                  checkpoint_name + "\n");
   write_text(dir / "representation.report.nodelift.lls",
              "schema:str = wikimyei.expression.nodelift.srl.runtime.v1\n"
-             "component_family:str = wikimyei.expression.nodelift.srl\n"
+             "component_family_id:str = wikimyei.expression.nodelift.srl\n"
              "anchor_count[0,+inf):uint = 64\n"
              "node_count[0,+inf):uint = 3\n"
              "edge_count[0,+inf):uint = 3\n"
@@ -197,14 +197,15 @@ void write_representation_job(const std::filesystem::path &dir,
   write_text(dir / checkpoint_name, "representation checkpoint");
 }
 
-void write_mdn_job(const std::filesystem::path &dir, std::int64_t begin,
-                   std::int64_t end,
-                   const std::filesystem::path &representation_checkpoint,
-                   const std::string &checkpoint_name) {
+void write_legacy_node_mdn_job(
+    const std::filesystem::path &dir, std::int64_t begin, std::int64_t end,
+    const std::filesystem::path &representation_checkpoint,
+    const std::string &checkpoint_name) {
   write_text(dir / "job.manifest",
              "job_id=mdn_job\n"
+             // Historical node-MDN evidence compatibility.
              "job_kind=inference_mdn\n"
-             "target_component=wikimyei.inference.expected_value.mdn\n"
+             "target_component_family_id=wikimyei.inference.expected_value.mdn\n"
              "wave_id=wave_mdn\n"
              "wave_action=train\n"
              "mutated_components=wikimyei.inference.expected_value.mdn\n"
@@ -258,7 +259,7 @@ void write_mdn_job(const std::filesystem::path &dir, std::int64_t begin,
                                     checkpoint_name + "\n");
   write_text(dir / "inference.report", "optimizer_steps=7\n"
                                        "mean_loss=0.50\n"
-                                       "input_representation_id="
+                                       "input_representation_assembly_id="
                                        "node_vicreg_v1\n"
                                        "context_mode=global_node_context\n"
                                        "context_contract=graph_order.node_"
@@ -292,7 +293,7 @@ void write_channel_mdn_job(
   write_text(dir / "job.manifest",
              "job_id=channel_mdn_job\n"
              "job_kind=channel_inference_mdn\n"
-             "target_component=wikimyei.inference.expected_value.mdn\n"
+             "target_component_family_id=wikimyei.inference.expected_value.mdn\n"
              "wave_id=wave_channel_mdn\n"
              "wave_action=train\n"
              "mutated_components=wikimyei.inference.expected_value."
@@ -343,7 +344,7 @@ void write_channel_mdn_job(
              "mean_valid_target_fraction=0.50\n"
              "target_coords=0,1\n"
              "node_ids=BTC,ETH\n"
-             "input_representation_id=vicreg_v1\n"
+             "input_representation_assembly_id=vicreg_v1\n"
              "context_mode=channel_context_strict\n"
              "context_contract=graph_order.channel_node_representation.v1\n"
              "context_value_shape=[B_node,C,De]\n"
@@ -375,7 +376,7 @@ void write_unproven_mutation_job(const std::filesystem::path &dir,
   write_text(dir / "job.manifest",
              "job_id=unproven_mutation\n"
              "job_kind=representation_vicreg\n"
-             "target_component=wikimyei.representation.encoding.vicreg\n"
+             "target_component_family_id=wikimyei.representation.encoding.vicreg\n"
              "wave_id=wave_unproven\n"
              "wave_action=train\n"
              "source_range_policy=anchor_index\n"
@@ -400,7 +401,7 @@ void write_anchor_domain_warning_job(const std::filesystem::path &dir) {
   write_text(dir / "job.manifest",
              "job_id=domain_warning\n"
              "job_kind=representation_vicreg\n"
-             "target_component=wikimyei.representation.encoding.vicreg\n"
+             "target_component_family_id=wikimyei.representation.encoding.vicreg\n"
              "wave_id=wave_domain_warning\n"
              "wave_action=train\n"
              "mutated_components=wikimyei.representation.encoding.vicreg\n"
@@ -432,7 +433,7 @@ void write_bad_source_key_window_job(const std::filesystem::path &dir) {
   write_text(dir / "job.manifest",
              "job_id=bad_source_key_window\n"
              "job_kind=representation_vicreg\n"
-             "target_component=wikimyei.representation.encoding.vicreg\n"
+             "target_component_family_id=wikimyei.representation.encoding.vicreg\n"
              "wave_id=wave_bad_source_key_window\n"
              "wave_action=train\n"
              "mutated_components=wikimyei.representation.encoding.vicreg\n"
@@ -475,7 +476,7 @@ void write_bad_source_key_order_job(const std::filesystem::path &dir) {
   write_text(dir / "job.manifest",
              "job_id=bad_source_key_order\n"
              "job_kind=representation_vicreg\n"
-             "target_component=wikimyei.representation.encoding.vicreg\n"
+             "target_component_family_id=wikimyei.representation.encoding.vicreg\n"
              "wave_id=wave_bad_source_key_order\n"
              "wave_action=train\n"
              "mutated_components=wikimyei.representation.encoding.vicreg\n"
@@ -519,7 +520,7 @@ void write_bad_source_key_affine_job(const std::filesystem::path &dir) {
   write_text(dir / "job.manifest",
              "job_id=bad_source_key_affine\n"
              "job_kind=representation_vicreg\n"
-             "target_component=wikimyei.representation.encoding.vicreg\n"
+             "target_component_family_id=wikimyei.representation.encoding.vicreg\n"
              "wave_id=wave_bad_source_key_affine\n"
              "wave_action=train\n"
              "mutated_components=wikimyei.representation.encoding.vicreg\n"
@@ -563,7 +564,7 @@ void write_irregular_source_key_job(const std::filesystem::path &dir) {
   write_text(dir / "job.manifest",
              "job_id=irregular_source_key\n"
              "job_kind=representation_vicreg\n"
-             "target_component=wikimyei.representation.encoding.vicreg\n"
+             "target_component_family_id=wikimyei.representation.encoding.vicreg\n"
              "wave_id=wave_irregular_source_key\n"
              "wave_action=train\n"
              "mutated_components=wikimyei.representation.encoding.vicreg\n"
@@ -609,7 +610,7 @@ void write_malformed_source_receipt_job(const std::filesystem::path &dir) {
   write_text(dir / "job.manifest",
              "job_id=bad_source_receipt\n"
              "job_kind=representation_vicreg\n"
-             "target_component=wikimyei.representation.encoding.vicreg\n"
+             "target_component_family_id=wikimyei.representation.encoding.vicreg\n"
              "wave_id=wave_bad_source_receipt\n"
              "wave_action=train\n"
              "mutated_components=wikimyei.representation.encoding.vicreg\n"
@@ -644,9 +645,10 @@ int main() {
   const auto bad_source_key_dir = root / "bad_source_key";
   const auto bad_source_key_order_dir = root / "bad_source_key_order";
   const auto bad_source_key_affine_dir = root / "bad_source_key_affine";
+  const auto irregular_source_key_dir = root / "irregular_source_key";
 
   write_representation_job(rep_dir, 0, 100, "rep.pt");
-  write_mdn_job(mdn_dir, 100, 200, rep_dir / "rep.pt", "mdn.pt");
+  write_legacy_node_mdn_job(mdn_dir, 100, 200, rep_dir / "rep.pt", "mdn.pt");
   write_channel_mdn_job(channel_mdn_dir, 200, 320, rep_dir / "rep.pt",
                         "channel_mdn.pt");
   write_unproven_mutation_job(unproven_dir, "unproven.pt");
@@ -1006,7 +1008,7 @@ int main() {
             scan_receipt_summary.issues.empty(),
         "source receipt summary preserves audit-only V2 receipt facts");
 
-  check(rep_fact.target_component == "wikimyei.representation.encoding.vicreg",
+  check(rep_fact.target_component_family_id == "wikimyei.representation.encoding.vicreg",
         "representation component decoded");
   check(rep_fact.fact_type == "exposure", "exposure fact type");
   check(exposure::canonical_exposure_fact_text(rep_fact).find(
@@ -1042,6 +1044,12 @@ int main() {
             rep_source_key_audit.affine_step_available &&
             rep_source_key_audit.reference_key_step == 1 &&
             rep_source_key_audit.affine_consistent &&
+            rep_source_key_audit.missing_endpoint_pair_count == 0 &&
+            rep_source_key_audit.irregular_key_warning_count == 0 &&
+            rep_source_key_audit.source_key_gap_warning_count == 0 &&
+            rep_source_key_audit.row_source_key_mismatch_count == 0 &&
+            !rep_source_key_audit.source_key_gap_found &&
+            !rep_source_key_audit.row_source_key_mismatch_found &&
             rep_source_key_audit.issues.empty() &&
             rep_source_key_audit.endpoints.size() == 6,
         "source-key window audit treats regular key windows as an "
@@ -1054,6 +1062,35 @@ int main() {
             rep_receipts.malformed_receipt_count == 0 &&
             rep_receipts.facts.size() == 1,
         "valid compact source receipts parse into structured receipt facts");
+  const auto rep_source_key_summary =
+      exposure::summarize_source_key_map_audits({rep_fact}, rep_receipts.facts);
+  check(
+      rep_source_key_summary.schema ==
+              "kikijyeba.lattice.source_key_map_audit.summary.v1" &&
+          rep_source_key_summary.exposure_fact_count == 1 &&
+          rep_source_key_summary.source_receipt_fact_count == 1 &&
+          rep_source_key_summary.source_receipt_bound_parent_count == 1 &&
+          rep_source_key_summary.available_audit_count == 1 &&
+          rep_source_key_summary.complete_count == 1 &&
+          rep_source_key_summary.numeric_count == 1 &&
+          rep_source_key_summary.internally_monotone_count == 1 &&
+          rep_source_key_summary.order_preserving_count == 1 &&
+          rep_source_key_summary.affine_step_available_count == 1 &&
+          rep_source_key_summary.affine_consistent_count == 1 &&
+          rep_source_key_summary.audits_with_graph_order_count == 1 &&
+          rep_source_key_summary.audits_with_source_cursor_count == 1 &&
+          rep_source_key_summary.audits_with_source_receipts_count == 1 &&
+          rep_source_key_summary.source_key_gap_warning_count == 0 &&
+          rep_source_key_summary.issue_count == 0 &&
+          rep_source_key_summary.audit_only &&
+          !rep_source_key_summary.coverage_authority &&
+          !rep_source_key_summary.leakage_authority &&
+          rep_source_key_summary.row_index_authority_preserved &&
+          rep_source_key_summary.explicit_target_rule_required_for_blocking &&
+          rep_source_key_summary.summary_self_check_passed &&
+          rep_source_key_summary.summary_issue_count == 0,
+      "source-key map audit summary binds audits to graph/source identity and "
+      "source receipt facts while preserving row-index authority");
   const auto &rep_receipt = rep_receipts.facts.front();
   check(rep_receipt.parent_exposure_fact_digest ==
                 exposure::exposure_fact_digest(rep_fact) &&
@@ -1574,7 +1611,7 @@ int main() {
                  pref_fact.mean_loss) < 1e-12,
         "scanner prefers sidecar fact over changed runtime report");
 
-  check(mdn_fact.target_component == "wikimyei.inference.expected_value.mdn",
+  check(mdn_fact.target_component_family_id == "wikimyei.inference.expected_value.mdn",
         "MDN component decoded");
   check(mdn_fact.use.observed_input, "MDN consumes observed context");
   check(mdn_fact.use.target_supervision, "MDN consumes future supervision");
@@ -1587,9 +1624,9 @@ int main() {
   check(mdn_fact.context_mode == "global_node_context" &&
             mdn_fact.context_contract == "graph_order.node_representation.v1" &&
             mdn_fact.context_value_shape == "[B_node,D_e]" &&
-            mdn_fact.input_representation_id == "node_vicreg_v1",
+            mdn_fact.input_representation_assembly_id == "node_vicreg_v1",
         "old fused MDN context contract fields decoded");
-  check(channel_mdn_fact.target_component ==
+  check(channel_mdn_fact.target_component_family_id ==
             "wikimyei.inference.expected_value.mdn",
         "channel MDN component decoded");
   check(channel_mdn_fact.component_assembly_fingerprint == "channel_mdn_1",
@@ -1616,7 +1653,7 @@ int main() {
             std::abs(channel_mdn_fact.max_grad_norm - 1.80) < 1e-12 &&
             channel_mdn_fact.finite_parameter_check,
         "channel MDN health fields are decoded from strict-channel report");
-  check(channel_mdn_fact.input_representation_id == "vicreg_v1" &&
+  check(channel_mdn_fact.input_representation_assembly_id == "vicreg_v1" &&
             channel_mdn_fact.context_mode == "channel_context_strict" &&
             channel_mdn_fact.context_contract ==
                 "graph_order.channel_node_representation.v1" &&
@@ -1760,7 +1797,7 @@ int main() {
       exposure::make_checkpoint_fact_from_exposure_fact(channel_mdn_fact);
   const auto channel_mdn_checkpoint_text =
       exposure::canonical_checkpoint_fact_text(channel_mdn_checkpoint_fact);
-  check(channel_mdn_checkpoint_fact.input_representation_id == "vicreg_v1" &&
+  check(channel_mdn_checkpoint_fact.input_representation_assembly_id == "vicreg_v1" &&
             channel_mdn_checkpoint_fact.context_mode ==
                 "channel_context_strict" &&
             channel_mdn_checkpoint_fact.context_contract ==
@@ -1779,8 +1816,8 @@ int main() {
       exposure::make_checkpoint_fact_from_sidecar_file(
           exposure::checkpoint_fact_path_for_job_dir(channel_mdn_dir),
           channel_mdn_dir);
-  check(channel_mdn_checkpoint_sidecar_fact.input_representation_id ==
-                channel_mdn_checkpoint_fact.input_representation_id &&
+  check(channel_mdn_checkpoint_sidecar_fact.input_representation_assembly_id ==
+                channel_mdn_checkpoint_fact.input_representation_assembly_id &&
             channel_mdn_checkpoint_sidecar_fact.context_contract ==
                 channel_mdn_checkpoint_fact.context_contract &&
             channel_mdn_checkpoint_sidecar_fact.output_contract ==
@@ -1920,7 +1957,7 @@ int main() {
         "third MDN node valid target count decoded");
   check(!node_facts[2].parent_exposure_fact_digest.empty(),
         "MDN node fact links to parent exposure fact digest");
-  check(node_facts[2].target_component ==
+  check(node_facts[2].target_component_family_id ==
             "wikimyei.inference.expected_value.mdn",
         "MDN node fact keeps component identity");
   const auto node_summary = exposure::summarize_node_support(
@@ -2074,7 +2111,9 @@ int main() {
   check(bad_source_key_audit.available &&
             !bad_source_key_audit.issues.empty() &&
             bad_source_key_audit.complete && bad_source_key_audit.numeric &&
-            !bad_source_key_audit.internally_monotone,
+            !bad_source_key_audit.internally_monotone &&
+            bad_source_key_audit.irregular_key_warning_count == 1 &&
+            bad_source_key_audit.source_key_gap_found,
         "source-key window audit reports non-monotone key intervals as "
         "structured evidence");
   check(std::any_of(bad_source_key_scan.warnings.begin(),
@@ -2128,6 +2167,9 @@ int main() {
             bad_source_key_affine_audit.affine_step_available &&
             bad_source_key_affine_audit.reference_key_step == 1 &&
             !bad_source_key_affine_audit.affine_consistent &&
+            bad_source_key_affine_audit.row_source_key_mismatch_found &&
+            bad_source_key_affine_audit.row_source_key_mismatch_count == 1 &&
+            bad_source_key_affine_audit.source_key_gap_warning_count == 1 &&
             std::any_of(bad_source_key_affine_audit.issues.begin(),
                         bad_source_key_affine_audit.issues.end(),
                         [](const auto &issue) {
@@ -2147,6 +2189,49 @@ int main() {
                     }),
         "source-key window audit warns when a regular key window violates the "
         "affine row-to-key map");
+
+  write_irregular_source_key_job(irregular_source_key_dir);
+  const auto irregular_source_key_scan =
+      exposure::scan_exposure_ledger_from_runtime_root(irregular_source_key_dir,
+                                                       train_context);
+  const auto irregular_source_key_audit = exposure::audit_source_key_window(
+      irregular_source_key_scan.ledger.facts().front());
+  check(irregular_source_key_audit.available &&
+            irregular_source_key_audit.complete &&
+            irregular_source_key_audit.numeric &&
+            irregular_source_key_audit.internally_monotone &&
+            irregular_source_key_audit.order_preserving &&
+            !irregular_source_key_audit.affine_step_available &&
+            !irregular_source_key_audit.affine_consistent &&
+            irregular_source_key_audit.irregular_key_warning_count == 1 &&
+            irregular_source_key_audit.source_key_gap_warning_count == 1 &&
+            irregular_source_key_audit.source_key_gap_found &&
+            std::any_of(irregular_source_key_audit.issues.begin(),
+                        irregular_source_key_audit.issues.end(),
+                        [](const auto &issue) {
+                          return issue == "anchor_source_key_step_irregular";
+                        }),
+        "source-key window audit reports irregular monotone key steps as gap "
+        "warnings without making row-index coverage non-authoritative");
+  const auto irregular_source_key_summary =
+      exposure::summarize_source_key_map_audits(
+          irregular_source_key_scan.ledger.facts(),
+          irregular_source_key_scan.ledger.source_receipt_facts());
+  check(irregular_source_key_summary.available_audit_count == 1 &&
+            irregular_source_key_summary.irregular_key_warning_count == 1 &&
+            irregular_source_key_summary.source_key_gap_warning_count == 1 &&
+            irregular_source_key_summary.audits_with_graph_order_count == 1 &&
+            irregular_source_key_summary.audits_with_source_cursor_count == 1 &&
+            irregular_source_key_summary.audits_with_source_receipts_count ==
+                1 &&
+            irregular_source_key_summary.issue_count == 1 &&
+            irregular_source_key_summary.audit_only &&
+            !irregular_source_key_summary.coverage_authority &&
+            !irregular_source_key_summary.leakage_authority &&
+            irregular_source_key_summary.row_index_authority_preserved &&
+            irregular_source_key_summary.summary_self_check_passed,
+        "source-key map summary keeps irregular key warnings audit-only and "
+        "bound to receipts/identity");
 
   const auto bad_source_receipt_dir = root / "bad_source_receipt";
   write_malformed_source_receipt_job(bad_source_receipt_dir);
@@ -2214,6 +2299,18 @@ int main() {
         "checkpoint closure resolves directly by checkpoint id and file "
         "digest");
 
+  const auto unknown_root_closure =
+      identity_ledger.checkpoint_closure_result(root / "missing_root.pt");
+  check(!unknown_root_closure.complete() &&
+            unknown_root_closure.facts.empty() &&
+            unknown_root_closure.resolution_authority == "unresolved_lineage" &&
+            std::find(unknown_root_closure.unresolved_input_checkpoints.begin(),
+                      unknown_root_closure.unresolved_input_checkpoints.end(),
+                      root / "missing_root.pt") !=
+                unknown_root_closure.unresolved_input_checkpoints.end(),
+        "unknown root checkpoint paths should be unresolved instead of "
+        "complete with zero facts");
+
   auto legacy_mdn_checkpoint_fact = mdn_identity_fact;
   legacy_mdn_checkpoint_fact.checkpoint_id.clear();
   legacy_mdn_checkpoint_fact.checkpoint_file_digest.clear();
@@ -2256,6 +2353,109 @@ int main() {
                         }),
         "checkpoint closure fails closed when checkpoint file digest does not "
         "match runtime checkpoint bytes");
+
+  auto missing_bytes_fact = mdn_fact;
+  missing_bytes_fact.output_checkpoint = root / "missing_bytes.pt";
+  auto missing_bytes_checkpoint_fact = mdn_identity_fact;
+  missing_bytes_checkpoint_fact.checkpoint_path =
+      missing_bytes_fact.output_checkpoint;
+  missing_bytes_checkpoint_fact.checkpoint_file_digest = "1111111111111111";
+  missing_bytes_checkpoint_fact.direct_exposure_digest =
+      exposure::exposure_fact_digest(missing_bytes_fact);
+  missing_bytes_checkpoint_fact.checkpoint_id =
+      exposure::exposure_digest_for_text(
+          std::string("checkpoint|") +
+          missing_bytes_checkpoint_fact.checkpoint_path.lexically_normal()
+              .string() +
+          "|" + missing_bytes_checkpoint_fact.checkpoint_file_digest + "|" +
+          missing_bytes_checkpoint_fact.direct_exposure_digest);
+  exposure::lattice_exposure_ledger_t missing_bytes_ledger;
+  missing_bytes_ledger.add(missing_bytes_fact);
+  missing_bytes_ledger.add_checkpoint(missing_bytes_checkpoint_fact);
+  const auto missing_bytes_closure =
+      missing_bytes_ledger.checkpoint_closure_result(
+          missing_bytes_fact.output_checkpoint);
+  check(!missing_bytes_closure.complete() &&
+            missing_bytes_closure.resolution_authority ==
+                "checkpoint_identity_failed" &&
+            std::any_of(
+                missing_bytes_closure.identity_mismatches.begin(),
+                missing_bytes_closure.identity_mismatches.end(),
+                [](const auto &mismatch) {
+                  return mismatch.find(
+                             "checkpoint bytes could not be verified") !=
+                             std::string::npos &&
+                         mismatch.find("open_failed") != std::string::npos;
+                }),
+        "checkpoint closure fails closed when checkpoint bytes are missing");
+
+  auto empty_bytes_fact = mdn_fact;
+  empty_bytes_fact.output_checkpoint = root / "empty_bytes.pt";
+  write_text(empty_bytes_fact.output_checkpoint, "");
+  auto empty_bytes_checkpoint_fact = mdn_identity_fact;
+  empty_bytes_checkpoint_fact.checkpoint_path =
+      empty_bytes_fact.output_checkpoint;
+  empty_bytes_checkpoint_fact.checkpoint_file_digest = "2222222222222222";
+  empty_bytes_checkpoint_fact.direct_exposure_digest =
+      exposure::exposure_fact_digest(empty_bytes_fact);
+  empty_bytes_checkpoint_fact
+      .checkpoint_id = exposure::exposure_digest_for_text(
+      std::string("checkpoint|") +
+      empty_bytes_checkpoint_fact.checkpoint_path.lexically_normal().string() +
+      "|" + empty_bytes_checkpoint_fact.checkpoint_file_digest + "|" +
+      empty_bytes_checkpoint_fact.direct_exposure_digest);
+  exposure::lattice_exposure_ledger_t empty_bytes_ledger;
+  empty_bytes_ledger.add(empty_bytes_fact);
+  empty_bytes_ledger.add_checkpoint(empty_bytes_checkpoint_fact);
+  const auto empty_bytes_closure = empty_bytes_ledger.checkpoint_closure_result(
+      empty_bytes_fact.output_checkpoint);
+  check(
+      !empty_bytes_closure.complete() &&
+          empty_bytes_closure.resolution_authority ==
+              "checkpoint_identity_failed" &&
+          std::any_of(empty_bytes_closure.identity_mismatches.begin(),
+                      empty_bytes_closure.identity_mismatches.end(),
+                      [](const auto &mismatch) {
+                        return mismatch.find(
+                                   "checkpoint bytes could not be verified") !=
+                                   std::string::npos &&
+                               mismatch.find("empty_file") != std::string::npos;
+                      }),
+      "checkpoint closure fails closed when checkpoint bytes are empty");
+
+  auto stale_identity_fact = mdn_identity_fact;
+  stale_identity_fact.checkpoint_file_digest = "3333333333333333";
+  stale_identity_fact.direct_exposure_digest = "4444444444444444";
+  stale_identity_fact.checkpoint_id = exposure::exposure_digest_for_text(
+      std::string("checkpoint|") +
+      stale_identity_fact.checkpoint_path.lexically_normal().string() + "|" +
+      stale_identity_fact.checkpoint_file_digest + "|" +
+      stale_identity_fact.direct_exposure_digest);
+  exposure::lattice_exposure_ledger_t stale_identity_lookup_ledger;
+  stale_identity_lookup_ledger.add(rep_fact);
+  stale_identity_lookup_ledger.add(mdn_fact);
+  stale_identity_lookup_ledger.add_checkpoint(rep_identity_fact);
+  stale_identity_lookup_ledger.add_checkpoint(mdn_identity_fact);
+  stale_identity_lookup_ledger.add_checkpoint(stale_identity_fact);
+  const auto stale_identity_lookup =
+      stale_identity_lookup_ledger.checkpoint_closure_result_for_identity(
+          stale_identity_fact.checkpoint_id,
+          stale_identity_fact.checkpoint_file_digest);
+  check(!stale_identity_lookup.complete() &&
+            stale_identity_lookup.resolution_authority ==
+                "checkpoint_identity_failed" &&
+            stale_identity_lookup.root_checkpoint_id ==
+                mdn_identity_fact.checkpoint_id &&
+            std::any_of(stale_identity_lookup.identity_mismatches.begin(),
+                        stale_identity_lookup.identity_mismatches.end(),
+                        [](const auto &mismatch) {
+                          return mismatch.find(
+                                     "resolved root checkpoint identity does "
+                                     "not match requested") !=
+                                 std::string::npos;
+                        }),
+        "checkpoint identity lookup should fail closed when a stale "
+        "id/digest resolves to a path whose current producer identity differs");
 
   auto wrong_id_checkpoint_fact = mdn_identity_fact;
   wrong_id_checkpoint_fact.checkpoint_id = "ffffffffffffffff";
@@ -2427,13 +2627,13 @@ int main() {
       exposure::lattice_source_key_coordinate_policy_summary();
   check(source_key_policy_summary.schema ==
                 "kikijyeba.lattice.source_key_coordinate_policy.summary.v1" &&
-            source_key_policy_summary.policy_count == 4 &&
+            source_key_policy_summary.policy_count == 5 &&
             source_key_policy_summary.coverage_authority_count == 1 &&
             source_key_policy_summary.leakage_authority_count == 1 &&
-            source_key_policy_summary.audit_only_count == 3 &&
+            source_key_policy_summary.audit_only_count == 4 &&
             source_key_policy_summary.row_index_coordinate_count == 1 &&
             source_key_policy_summary.source_key_coordinate_count == 1 &&
-            source_key_policy_summary.row_to_source_key_map_count == 2 &&
+            source_key_policy_summary.row_to_source_key_map_count == 3 &&
             source_key_policy_summary.empty_field_count == 0 &&
             source_key_policy_summary
                 .row_index_is_coverage_and_leakage_authority &&
@@ -2442,6 +2642,8 @@ int main() {
                 .audit_rows_have_no_coverage_or_leakage_authority &&
             source_key_policy_summary.order_preserving_fields_declared &&
             source_key_policy_summary.affine_fields_declared &&
+            source_key_policy_summary.gap_and_irregular_key_check_present &&
+            source_key_policy_summary.gap_fields_declared &&
             source_key_policy_summary.all_policies_have_claim_text &&
             source_key_policy_summary.summary_self_check_passed &&
             source_key_policy_summary.summary_issue_count == 0 &&
@@ -2652,7 +2854,7 @@ int main() {
         "non-mutated facts do not count when mutation is required");
 
   auto wrong_component = rep_fact;
-  wrong_component.target_component = "other.component";
+  wrong_component.target_component_family_id = "other.component";
   const auto component_scoped_load = exposure::exposure_load_for_use(
       std::vector<exposure::lattice_exposure_fact_t>{wrong_component},
       exposure::anchor_interval_t{.begin = 0, .end = 100},

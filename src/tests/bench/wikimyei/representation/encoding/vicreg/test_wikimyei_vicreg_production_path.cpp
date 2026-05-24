@@ -21,11 +21,11 @@
 #include <torch/torch.h>
 
 namespace assembly = cuwacunu::wikimyei::assembly;
-namespace ch_mdn = cuwacunu::wikimyei::inference::expected_value::mdn;
-namespace ch_mdn_stream =
+namespace mdn = cuwacunu::wikimyei::inference::expected_value::mdn;
+namespace mdn_stream =
     cuwacunu::wikimyei::inference::expected_value::mdn::stream;
-namespace ch_vicreg = cuwacunu::wikimyei::representation::encoding::vicreg;
-namespace ch_vicreg_stream =
+namespace vicreg = cuwacunu::wikimyei::representation::encoding::vicreg;
+namespace vicreg_stream =
     cuwacunu::wikimyei::representation::encoding::vicreg::stream;
 namespace runtime_lls = cuwacunu::kikijyeba::lattice::runtime_report;
 namespace nodelift = cuwacunu::wikimyei::expression::nodelift::srl::stream;
@@ -85,8 +85,8 @@ nodelift::node_lifted_batch_t<int64_t> make_lifted_batch() {
   return out;
 }
 
-ch_vicreg::channel_preserving_encoder_options_t make_encoder_options() {
-  ch_vicreg::channel_preserving_encoder_options_t opts{};
+vicreg::channel_preserving_encoder_options_t make_encoder_options() {
+  vicreg::channel_preserving_encoder_options_t opts{};
   opts.channel_count = 2;
   opts.history_length = 4;
   opts.input_width = 3;
@@ -94,7 +94,7 @@ ch_vicreg::channel_preserving_encoder_options_t make_encoder_options() {
   opts.feature_hidden_dim = 7;
   opts.temporal_depth = 1;
   opts.recency_decay = 0.5;
-  opts.cell_valid_policy = ch_vicreg::cell_valid_policy_t::all_features;
+  opts.cell_valid_policy = vicreg::cell_valid_policy_t::all_features;
   return opts;
 }
 
@@ -104,13 +104,13 @@ void test_vicreg_production_components() {
   lifted.node_mask.index_put_(
       {0, 1, torch::indexing::Slice(), 0, torch::indexing::Slice()}, false);
 
-  auto input = ch_vicreg::make_channel_node_encoder_input(lifted);
+  auto input = vicreg::make_channel_node_encoder_input(lifted);
   check(input.data.sizes() == torch::IntArrayRef({4, 2, 4, 3}),
         "production adapter preserves [M,C,Hx,Dx]");
   check(input.feature_mask.sizes() == torch::IntArrayRef({4, 2, 4, 3}),
         "production adapter preserves feature masks");
 
-  auto encoder = ch_vicreg::ChannelPreservingEncoder(make_encoder_options());
+  auto encoder = vicreg::ChannelPreservingEncoder(make_encoder_options());
   encoder->eval();
   torch::NoGradGuard no_grad;
   const auto encoded = encoder->forward(input.data, input.feature_mask);
@@ -119,18 +119,18 @@ void test_vicreg_production_components() {
   check(encoded.reduced.sizes() == torch::IntArrayRef({4, 2, 5}),
         "production encoder emits reduced [M,C,De]");
 
-  ch_vicreg::vicreg_projector_options_t popts{};
+  vicreg::vicreg_projector_options_t popts{};
   popts.input_dim = 5;
   popts.projector_dim = 6;
   popts.hidden_dim = 8;
-  auto projector = ch_vicreg::VicregProjector(popts);
+  auto projector = vicreg::VicregProjector(popts);
   const auto projected = projector->forward(encoded.reduced);
   check(projected.sizes() == torch::IntArrayRef({4, 2, 6}),
         "production VICReg projector preserves channel rank");
 
-  auto batch = ch_vicreg::make_channel_representation_batch(
+  auto batch = vicreg::make_channel_representation_batch(
       encoded.reduced, encoded.reduced_mask,
-      ch_vicreg::make_graph_row_index(input), input.anchor_keys, input.node_ids,
+      vicreg::make_graph_row_index(input), input.anchor_keys, input.node_ids,
       encoded.reducer_weights);
   check(batch.node_encoding.sizes() == torch::IntArrayRef({2, 2, 2, 5}),
         "production adapter exports [B,N,C,De]");
@@ -141,18 +141,18 @@ void test_vicreg_production_components() {
 void test_channel_train_models_and_streams() {
   torch::manual_seed(23);
   auto lifted = make_lifted_batch();
-  auto input = ch_vicreg::make_channel_node_encoder_input(lifted);
+  auto input = vicreg::make_channel_node_encoder_input(lifted);
 
-  auto encoder = ch_vicreg::ChannelPreservingEncoder(make_encoder_options());
-  ch_vicreg::vicreg_projector_options_t popts{};
+  auto encoder = vicreg::ChannelPreservingEncoder(make_encoder_options());
+  vicreg::vicreg_projector_options_t popts{};
   popts.input_dim = 5;
   popts.projector_dim = 6;
   popts.hidden_dim = 8;
-  auto projector = ch_vicreg::VicregProjector(popts);
-  ch_vicreg::vicreg_train_options_t train_opts{};
+  auto projector = vicreg::VicregProjector(popts);
+  vicreg::vicreg_train_options_t train_opts{};
   train_opts.jitter_std = 0.001;
-  ch_vicreg::vicreg_train_model_t vicreg_train(encoder, projector, 0.001,
-                                               train_opts);
+  vicreg::vicreg_train_model_t vicreg_train(encoder, projector, 0.001,
+                                            train_opts);
   auto train_result =
       vicreg_train.train_one_batch(input.data, input.feature_mask);
   check(!train_result.skipped, "VICReg train step is applied");
@@ -171,15 +171,14 @@ void test_channel_train_models_and_streams() {
         "VICReg train result reports finite view retention fractions");
 
   auto stream_batch =
-      ch_vicreg_stream::make_channel_representation_stream_batch(encoder,
-                                                                 lifted);
+      vicreg_stream::make_channel_representation_stream_batch(encoder, lifted);
   check(stream_batch.node_encoding.sizes() == torch::IntArrayRef({2, 2, 2, 5}),
         "production channel representation stream exports [B,N,C,De]");
   check(stream_batch.reducer_weights.sizes() ==
             torch::IntArrayRef({2, 2, 2, 4}),
         "production channel representation stream carries reducer weights");
   auto debug_stream_batch =
-      ch_vicreg_stream::make_channel_representation_stream_batch(
+      vicreg_stream::make_channel_representation_stream_batch(
           encoder, lifted,
           /*require_finite_valid_features=*/true, /*detach_to_cpu=*/false,
           runtime_lls::runtime_report_mode_t::debug);
@@ -200,7 +199,7 @@ void test_channel_train_models_and_streams() {
       torch::tensor({true, true, true, true, true, false}, torch::kBool)
           .view({1, 1, 2, 3});
   close(
-      ch_vicreg_stream::channel_representation_stream_detail::
+      vicreg_stream::channel_representation_stream_detail::
           reducer_last_valid_weight_mean_or_nan(reducer_weights, reducer_mask),
       0.7, 1e-6,
       "reducer diagnostic gathers the anchor-nearest valid history weight");
@@ -209,45 +208,44 @@ void test_channel_train_models_and_streams() {
           std::string::npos,
       "debug channel representation runtime LLS records anchor reducer weight");
 
-  ch_mdn_stream::channel_mdn_adapter_options_t mdn_adapter_opts{};
+  mdn_stream::channel_mdn_adapter_options_t mdn_adapter_opts{};
   mdn_adapter_opts.target_coords = {0, 1};
-  auto mdn_input_batch = ch_mdn_stream::make_channel_mdn_input_batch(
-      stream_batch, mdn_adapter_opts);
+  auto mdn_input_batch =
+      mdn_stream::make_channel_mdn_input_batch(stream_batch, mdn_adapter_opts);
   check(mdn_input_batch.context.sizes() == torch::IntArrayRef({4, 2, 5}),
-        "production channel MDN adapter emits [B_node,C,De]");
+        "production MDN adapter emits [B_node,C,De]");
   check(mdn_input_batch.future.sizes() == torch::IntArrayRef({4, 2, 3, 2}),
-        "production channel MDN adapter emits [B_node,C,Hf,Df]");
+        "production MDN adapter emits [B_node,C,Hf,Df]");
 
-  auto mdn = ch_mdn::ChannelContextMdn(5, 2, 2, 3, 2, 7, 1);
-  ch_mdn::channel_context_mdn_train_model_t mdn_train(mdn, 0.001);
-  auto mdn_input = ch_mdn_stream::to_channel_mdn_input(mdn_input_batch);
+  auto mdn = mdn::ChannelContextMdn(5, 2, 2, 3, 2, 7, 1);
+  mdn::channel_context_mdn_train_model_t mdn_train(mdn, 0.001);
+  auto mdn_input = mdn_stream::to_channel_mdn_input(mdn_input_batch);
   auto mdn_result = mdn_train.train_one_batch(mdn_input);
-  check(!mdn_result.skipped, "channel MDN train step is applied");
-  check(mdn_result.optimizer_step_applied,
-        "channel MDN optimizer step is applied");
+  check(!mdn_result.skipped, "MDN train step is applied");
+  check(mdn_result.optimizer_step_applied, "MDN optimizer step is applied");
   check(mdn_result.nll_per_channel.sizes() == torch::IntArrayRef({2}),
-        "channel MDN reports NLL per channel");
+        "MDN reports NLL per channel");
   check(mdn_result.nll_per_horizon.sizes() == torch::IntArrayRef({3}),
-        "channel MDN reports NLL per horizon");
+        "MDN reports NLL per horizon");
   check(mdn_result.mixture_usage.sizes() == torch::IntArrayRef({2}),
-        "channel MDN reports mixture usage");
-  check(std::isfinite(mdn_result.sigma_mean), "channel MDN sigma mean finite");
+        "MDN reports mixture usage");
+  check(std::isfinite(mdn_result.sigma_mean), "MDN sigma mean finite");
   check(std::isfinite(mdn_result.sigma_mean_valid),
-        "channel MDN masked sigma mean finite");
+        "MDN masked sigma mean finite");
   check(std::isfinite(mdn_result.sigma_min_valid),
-        "channel MDN masked sigma min finite");
+        "MDN masked sigma min finite");
   check(std::isfinite(mdn_result.sigma_max_valid),
-        "channel MDN masked sigma max finite");
+        "MDN masked sigma max finite");
 }
 
 void test_channel_global_fusion_is_explicit_and_mask_safe() {
   torch::manual_seed(67);
-  ch_vicreg::channel_global_fusion_options_t opts{};
+  vicreg::channel_global_fusion_options_t opts{};
   opts.channel_count = 3;
   opts.encoding_dim = 5;
   opts.global_dim = 4;
   opts.hidden_dim = 6;
-  auto fusion = ch_vicreg::ChannelGlobalFusion(opts);
+  auto fusion = vicreg::ChannelGlobalFusion(opts);
 
   auto context = torch::randn({2, 2, 3, 5}, torch::kFloat32);
   auto mask = torch::ones({2, 2, 3}, torch::kBool);
@@ -319,7 +317,7 @@ void test_channel_mdn_plus_global_is_separate_and_mask_safe() {
   sentinel_global.index_put_({2, torch::indexing::Slice()},
                              std::numeric_limits<float>::quiet_NaN());
 
-  auto mdn = ch_mdn::ChannelContextPlusGlobalMdn(De, Dg, Df, C, Hf, 2, 7, 1);
+  auto mdn = mdn::ChannelContextPlusGlobalMdn(De, Dg, Df, C, Hf, 2, 7, 1);
   mdn->eval();
   torch::NoGradGuard no_grad;
   const auto baseline_out = mdn->forward(baseline_channel, channel_mask,
@@ -340,7 +338,7 @@ void test_channel_mdn_plus_global_is_separate_and_mask_safe() {
   check(torch::allclose(sentinel_out.sigma, baseline_out.sigma, 1e-6, 1e-6),
         "masked invalid plus-global context does not affect sigma");
 
-  ch_mdn::channel_mdn_plus_global_input_t input{};
+  mdn::channel_mdn_plus_global_input_t input{};
   input.channel.context = baseline_channel;
   input.channel.context_mask = channel_mask;
   input.channel.future = torch::randn({Bn, C, Hf, Df}, torch::kFloat32);
@@ -348,7 +346,7 @@ void test_channel_mdn_plus_global_is_separate_and_mask_safe() {
   input.global_context = baseline_global;
   input.global_mask = global_mask;
   const auto combined =
-      ch_mdn::combine_channel_plus_global_context_and_future_mask(
+      mdn::combine_channel_plus_global_context_and_future_mask(
           input.channel.context_mask, input.global_mask,
           input.channel.future_mask);
   check(!combined.index({1, 2, 0}).item<bool>(),
@@ -356,7 +354,7 @@ void test_channel_mdn_plus_global_is_separate_and_mask_safe() {
   check(combined.index({2}).sum().item<int64_t>() == 0,
         "plus-global mask rejects every target for invalid global context");
   const auto nll =
-      ch_mdn::compute_channel_context_plus_global_mdn_nll(baseline_out, input);
+      mdn::compute_channel_context_plus_global_mdn_nll(baseline_out, input);
   check(torch::isfinite(nll).item<bool>(),
         "plus-global MDN masked NLL is finite");
 }
@@ -369,7 +367,7 @@ void test_channel_mdn_plus_global_train_model_sanitizes_masked_sentinels() {
   constexpr int64_t Hf = 2;
   constexpr int64_t Df = 2;
 
-  ch_mdn::channel_mdn_plus_global_input_t baseline{};
+  mdn::channel_mdn_plus_global_input_t baseline{};
   baseline.channel.context = torch::randn({Bn, C, De}, torch::kFloat32);
   baseline.channel.context_mask = torch::ones({Bn, C}, torch::kBool);
   baseline.channel.context_mask.index_put_({1, 1}, false);
@@ -394,10 +392,10 @@ void test_channel_mdn_plus_global_train_model_sanitizes_masked_sentinels() {
   sentinel.global_context.index_put_({2, torch::indexing::Slice()},
                                      std::numeric_limits<float>::quiet_NaN());
 
-  auto train_once = [=](const ch_mdn::channel_mdn_plus_global_input_t &input) {
+  auto train_once = [=](const mdn::channel_mdn_plus_global_input_t &input) {
     torch::manual_seed(89);
-    auto mdn = ch_mdn::ChannelContextPlusGlobalMdn(De, Dg, Df, C, Hf, 2, 7, 1);
-    ch_mdn::channel_context_plus_global_mdn_train_model_t mdn_train(mdn, 0.001);
+    auto mdn = mdn::ChannelContextPlusGlobalMdn(De, Dg, Df, C, Hf, 2, 7, 1);
+    mdn::channel_context_plus_global_mdn_train_model_t mdn_train(mdn, 0.001);
     return mdn_train.train_one_batch(input);
   };
 
@@ -417,8 +415,8 @@ void test_channel_mdn_plus_global_train_model_sanitizes_masked_sentinels() {
 
   auto no_global = baseline;
   no_global.global_mask = torch::zeros({Bn}, torch::kBool);
-  auto mdn = ch_mdn::ChannelContextPlusGlobalMdn(De, Dg, Df, C, Hf, 2, 7, 1);
-  ch_mdn::channel_context_plus_global_mdn_train_model_t mdn_train(mdn, 0.001);
+  auto mdn = mdn::ChannelContextPlusGlobalMdn(De, Dg, Df, C, Hf, 2, 7, 1);
+  mdn::channel_context_plus_global_mdn_train_model_t mdn_train(mdn, 0.001);
   const auto no_global_result = mdn_train.train_one_batch(no_global);
   check(no_global_result.skipped,
         "plus-global MDN skips batches with no valid global context");
@@ -433,49 +431,48 @@ void test_vicreg_safe_augmentations() {
   mask.index_put_({0, 1, 2, 3}, false);
   data.index_put_({0, 1, 2, 3}, 1.0e20);
 
-  ch_vicreg::vicreg_train_options_t jitter_opts{};
+  vicreg::vicreg_train_options_t jitter_opts{};
   jitter_opts.jitter_std = 0.05;
-  const auto jittered = ch_vicreg::vicreg_train_detail::augment_channel_view(
+  const auto jittered = vicreg::vicreg_train_detail::augment_channel_view(
       data, mask, jitter_opts);
   check(torch::equal(jittered.feature_mask, mask),
         "valid-only jitter preserves the feature mask");
   close(jittered.data.index({0, 1, 2, 3}).item<double>(), 0.0, 1e-8,
         "valid-only jitter zeros invalid sentinel values");
 
-  ch_vicreg::vicreg_train_options_t feature_drop_opts{};
+  vicreg::vicreg_train_options_t feature_drop_opts{};
   feature_drop_opts.jitter_std = 0.0;
   feature_drop_opts.feature_dropout_prob = 1.0;
   const auto feature_dropped =
-      ch_vicreg::vicreg_train_detail::augment_channel_view(data, mask,
-                                                           feature_drop_opts);
+      vicreg::vicreg_train_detail::augment_channel_view(data, mask,
+                                                        feature_drop_opts);
   check(feature_dropped.feature_mask.sum().item<int64_t>() == 0,
         "feature dropout updates every dropped feature mask");
   close(feature_dropped.data.abs().sum().item<double>(), 0.0, 1e-8,
         "feature dropout zeros every dropped feature value");
 
-  ch_vicreg::vicreg_train_options_t history_drop_opts{};
+  vicreg::vicreg_train_options_t history_drop_opts{};
   history_drop_opts.jitter_std = 0.0;
   history_drop_opts.history_dropout_prob = 1.0;
   const auto history_dropped =
-      ch_vicreg::vicreg_train_detail::augment_channel_view(data, mask,
-                                                           history_drop_opts);
+      vicreg::vicreg_train_detail::augment_channel_view(data, mask,
+                                                        history_drop_opts);
   check(history_dropped.feature_mask.sum().item<int64_t>() == 0,
         "history dropout updates feature masks for dropped history cells");
   close(history_dropped.data.abs().sum().item<double>(), 0.0, 1e-8,
         "history dropout zeros values for dropped history cells");
 
-  auto encoder = ch_vicreg::ChannelPreservingEncoder(make_encoder_options());
-  ch_vicreg::vicreg_projector_options_t popts{};
+  auto encoder = vicreg::ChannelPreservingEncoder(make_encoder_options());
+  vicreg::vicreg_projector_options_t popts{};
   popts.input_dim = 5;
   popts.projector_dim = 6;
   popts.hidden_dim = 8;
-  auto projector = ch_vicreg::VicregProjector(popts);
-  ch_vicreg::vicreg_train_options_t full_drop_opts{};
+  auto projector = vicreg::VicregProjector(popts);
+  vicreg::vicreg_train_options_t full_drop_opts{};
   full_drop_opts.jitter_std = 0.0;
   full_drop_opts.feature_dropout_prob = 1.0;
   full_drop_opts.min_valid_rows = 1;
-  ch_vicreg::vicreg_train_model_t model(encoder, projector, 0.001,
-                                        full_drop_opts);
+  vicreg::vicreg_train_model_t model(encoder, projector, 0.001, full_drop_opts);
   auto full_drop_result =
       model.train_one_batch(torch::ones({2, 2, 4, 3}, torch::kFloat32),
                             torch::ones({2, 2, 4, 3}, torch::kBool));
@@ -491,20 +488,20 @@ void test_vicreg_safe_augmentations() {
 }
 
 void test_production_assemblies() {
-  const auto representation = ch_vicreg::make_vicreg_assembly();
-  const auto global_fusion = ch_vicreg::make_channel_global_fusion_assembly();
-  const auto mdn = ch_mdn::make_channel_context_mdn_assembly();
+  const auto representation = vicreg::make_vicreg_assembly();
+  const auto global_fusion = vicreg::make_channel_global_fusion_assembly();
+  const auto mdn = mdn::make_channel_context_mdn_assembly();
   const auto mdn_plus_global =
-      ch_mdn::make_channel_context_plus_global_mdn_assembly();
+      mdn::make_channel_context_plus_global_mdn_assembly();
   check(assembly::dock_domain_compatible(representation.docks.at(1),
                                          mdn.docks.at(0)),
-        "production channel representation binds channel MDN");
+        "production channel representation binds MDN");
   check(assembly::dock_domain_compatible(representation.docks.at(1),
                                          global_fusion.docks.at(0)),
         "production channel representation binds explicit global fusion");
   check(!assembly::dock_domain_compatible(global_fusion.docks.at(1),
                                           mdn.docks.at(0)),
-        "auxiliary global context cannot bind strict channel MDN");
+        "auxiliary global context cannot bind strict MDN");
   check(assembly::dock_domain_compatible(representation.docks.at(1),
                                          mdn_plus_global.docks.at(0)),
         "production channel representation binds plus-global MDN");
@@ -513,7 +510,7 @@ void test_production_assemblies() {
         "explicit global fusion binds plus-global MDN");
   check(mdn.docks.at(2).coordinate_space ==
             "graph_order.channel_node_future_distribution.v1",
-        "production channel MDN output coordinate space is channel-explicit");
+        "production MDN output coordinate space is channel-explicit");
 
   const auto old_fused_producer = assembly::make_dock(
       "old_fused_node_representation", assembly::dock_direction_t::produces,
@@ -522,25 +519,25 @@ void test_production_assemblies() {
       "graph_order.node_representation.v1", "[B,N,De]", "[B,N]",
       /*required=*/true, /*target_side_only=*/false, {"B", "N", "De"});
   check(!assembly::dock_domain_compatible(old_fused_producer, mdn.docks.at(0)),
-        "old fused representation cannot bind production channel MDN");
+        "old fused representation cannot bind production MDN");
 }
 
 void test_channel_mdn_zero_valid_targets() {
-  auto input = ch_mdn::channel_mdn_input_t{};
+  auto input = mdn::channel_mdn_input_t{};
   input.context = torch::randn({4, 2, 5}, torch::kFloat32);
   input.context_mask = torch::zeros({4, 2}, torch::kBool);
   input.future = torch::randn({4, 2, 3, 2}, torch::kFloat32);
   input.future_mask = torch::zeros({4, 2, 3}, torch::kBool);
-  auto mdn = ch_mdn::ChannelContextMdn(5, 2, 2, 3, 2, 7, 1);
-  ch_mdn::channel_context_mdn_train_model_t mdn_train(mdn, 0.001);
+  auto mdn = mdn::ChannelContextMdn(5, 2, 2, 3, 2, 7, 1);
+  mdn::channel_context_mdn_train_model_t mdn_train(mdn, 0.001);
   auto result = mdn_train.train_one_batch(input);
-  check(result.skipped, "zero-valid channel MDN batch is skipped");
+  check(result.skipped, "zero-valid MDN batch is skipped");
   close(result.loss.item<double>(), 0.0, 1e-8,
-        "zero-valid channel MDN batch has zero loss");
+        "zero-valid MDN batch has zero loss");
 }
 
 void test_channel_mdn_train_model_sanitizes_masked_sentinels() {
-  auto baseline = ch_mdn::channel_mdn_input_t{};
+  auto baseline = mdn::channel_mdn_input_t{};
   baseline.context = torch::randn({3, 2, 5}, torch::kFloat32);
   baseline.context_mask = torch::ones({3, 2}, torch::kBool);
   baseline.context_mask.index_put_({1, 1}, false);
@@ -558,24 +555,24 @@ void test_channel_mdn_train_model_sanitizes_masked_sentinels() {
   sentinel.future.index_put_({0, 1, 1, torch::indexing::Slice()},
                              std::numeric_limits<float>::quiet_NaN());
 
-  auto train_once = [](const ch_mdn::channel_mdn_input_t &input) {
+  auto train_once = [](const mdn::channel_mdn_input_t &input) {
     torch::manual_seed(71);
-    auto mdn = ch_mdn::ChannelContextMdn(5, 2, 2, 2, 2, 7, 1);
-    ch_mdn::channel_context_mdn_train_model_t mdn_train(mdn, 0.001);
+    auto mdn = mdn::ChannelContextMdn(5, 2, 2, 2, 2, 7, 1);
+    mdn::channel_context_mdn_train_model_t mdn_train(mdn, 0.001);
     return mdn_train.train_one_batch(input);
   };
 
   const auto baseline_result = train_once(baseline);
   const auto sentinel_result = train_once(sentinel);
   check(!baseline_result.skipped && !sentinel_result.skipped,
-        "masked channel MDN sentinels do not skip valid batches");
+        "masked MDN sentinels do not skip valid batches");
   check(baseline_result.optimizer_step_applied &&
             sentinel_result.optimizer_step_applied,
-        "masked channel MDN sentinels still allow optimizer steps");
+        "masked MDN sentinels still allow optimizer steps");
   check(sentinel_result.nonfinite_output_count == 0,
         "masked invalid context is sanitized before MDN forward");
   check(std::isfinite(sentinel_result.sigma_mean_valid),
-        "masked channel MDN sigma mean is finite");
+        "masked MDN sigma mean is finite");
   close(sentinel_result.nll.item<double>(), baseline_result.nll.item<double>(),
         1e-6, "masked invalid future values are sanitized before MDN NLL");
 }

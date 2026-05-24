@@ -5,9 +5,9 @@
 */
 TRAINING {
   VERSION = wikimyei.inference.expected_value.mdn.jkimyei.v1;
-  TRAINING_ID = smoke_channel_context_mdn;
+  TRAINING_ID = smoke_mdn;
   TASK = mdn_expected_value_inference;
-  COMPONENT_ID = channel_context_mdn_v1;
+  COMPONENT_ASSEMBLY_ID = mdn_v1;
   OPTIMIZER = adam;
   LEARNING_RATE = 0.01;
   MAX_STEPS = 0;

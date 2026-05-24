@@ -3,6 +3,8 @@
 
 #include <cctype>
 #include <cstddef>
+#include <cstdint>
+#include <iomanip>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -18,6 +20,30 @@ inline constexpr std::string_view kSourceRuntimeCursorVersion =
     "ujcamei.source_runtime_cursor.v1";
 inline constexpr std::string_view kGraphAnchorCursorReportVersion =
     "ujcamei.graph_anchor_cursor_report.v1";
+
+namespace source_cursor_detail {
+
+inline void mix_u64(std::uint64_t &hash, std::uint64_t value) {
+  constexpr std::uint64_t prime = 1099511628211ULL;
+  for (int byte = 0; byte < 8; ++byte) {
+    hash ^= (value >> (8 * byte)) & 0xffU;
+    hash *= prime;
+  }
+}
+
+[[nodiscard]] inline std::string
+fingerprint_anchor_indices(const std::vector<std::size_t> &indices) {
+  std::uint64_t hash = 14695981039346656037ULL;
+  mix_u64(hash, static_cast<std::uint64_t>(indices.size()));
+  for (const auto index : indices) {
+    mix_u64(hash, static_cast<std::uint64_t>(index));
+  }
+  std::ostringstream out;
+  out << std::hex << std::setw(16) << std::setfill('0') << hash;
+  return out.str();
+}
+
+} // namespace source_cursor_detail
 
 [[nodiscard]] inline std::string trim_cursor_token(std::string_view text) {
   std::size_t begin = 0;
@@ -106,6 +132,7 @@ template <typename KeyT> struct graph_anchor_cursor_t {
   std::size_t end_anchor_index{0};
   std::size_t requested_batch_size{0};
   std::vector<KeyT> anchor_keys{};
+  std::vector<std::size_t> anchor_indices{};
 
   [[nodiscard]] std::size_t anchor_count() const { return anchor_keys.size(); }
   [[nodiscard]] bool empty() const { return anchor_keys.empty(); }
@@ -124,6 +151,20 @@ template <typename KeyT> struct graph_anchor_cursor_t {
     return anchor_keys.back();
   }
 
+  [[nodiscard]] std::optional<std::size_t> first_anchor_index() const {
+    if (anchor_indices.empty()) {
+      return std::nullopt;
+    }
+    return anchor_indices.front();
+  }
+
+  [[nodiscard]] std::optional<std::size_t> last_anchor_index() const {
+    if (anchor_indices.empty()) {
+      return std::nullopt;
+    }
+    return anchor_indices.back();
+  }
+
   [[nodiscard]] std::string cursor_token() const {
     std::ostringstream oss;
     oss << "graph=" << graph_order_fingerprint
@@ -132,6 +173,12 @@ template <typename KeyT> struct graph_anchor_cursor_t {
         << "|anchors=" << anchor_keys.size();
     if (!anchor_keys.empty()) {
       oss << "|first=" << anchor_keys.front() << "|last=" << anchor_keys.back();
+    }
+    if (!anchor_indices.empty()) {
+      oss << "|index_count=" << anchor_indices.size()
+          << "|index_first=" << anchor_indices.front()
+          << "|index_last=" << anchor_indices.back() << "|index_hash="
+          << source_cursor_detail::fingerprint_anchor_indices(anchor_indices);
     }
     return oss.str();
   }
@@ -209,13 +256,15 @@ template <typename KeyT>
 [[nodiscard]] graph_anchor_cursor_t<KeyT> make_graph_anchor_cursor(
     std::string graph_order_fingerprint, std::size_t begin_anchor_index,
     std::size_t end_anchor_index, std::size_t requested_batch_size,
-    std::vector<KeyT> anchor_keys) {
+    std::vector<KeyT> anchor_keys,
+    std::vector<std::size_t> anchor_indices = {}) {
   graph_anchor_cursor_t<KeyT> out{};
   out.graph_order_fingerprint = std::move(graph_order_fingerprint);
   out.begin_anchor_index = begin_anchor_index;
   out.end_anchor_index = end_anchor_index;
   out.requested_batch_size = requested_batch_size;
   out.anchor_keys = std::move(anchor_keys);
+  out.anchor_indices = std::move(anchor_indices);
   return out;
 }
 

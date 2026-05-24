@@ -140,7 +140,7 @@ analyze_dock_binding_against_assemblies(
         used_variables.insert(variable);
         if (bound_variables.find(variable) == bound_variables.end()) {
           throw std::runtime_error(
-              "[dock_binding] assembly " + assembly.component_id + " dock " +
+              "[dock_binding] assembly " + assembly.component_assembly_id + " dock " +
               dock.name + " requires unbound variable: " + variable);
         }
       }

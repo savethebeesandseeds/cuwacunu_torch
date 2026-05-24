@@ -161,7 +161,7 @@ enum class assembly_trainability_t {
 
 struct wikimyei_assembly_t {
   std::string family{};
-  std::string component_id{};
+  std::string component_assembly_id{};
   std::string version_token{};
   assembly_trainability_t trainability{assembly_trainability_t::deterministic};
   std::vector<dock_t> docks{};
@@ -180,13 +180,13 @@ assembly_trainability_name(assembly_trainability_t trainability) {
 }
 
 [[nodiscard]] inline std::string
-make_assembly_token(const std::string &family, const std::string &component_id,
+make_assembly_token(const std::string &family, const std::string &component_assembly_id,
                     const std::string &version_token) {
-  if (family.empty() || component_id.empty() || version_token.empty()) {
-    throw std::runtime_error("[wikimyei_assembly] family, component_id, and "
+  if (family.empty() || component_assembly_id.empty() || version_token.empty()) {
+    throw std::runtime_error("[wikimyei_assembly] family, component_assembly_id, and "
                              "version_token are required");
   }
-  return family + "/" + component_id + "/" + version_token;
+  return family + "/" + component_assembly_id + "/" + version_token;
 }
 
 namespace assembly_detail {
@@ -218,7 +218,7 @@ inline void mix_hash_string(std::uint64_t &hash, std::string_view value) {
 canonical_assembly_text(const wikimyei_assembly_t &assembly) {
   std::ostringstream out;
   out << "family=" << assembly.family << "\n";
-  out << "component_id=" << assembly.component_id << "\n";
+  out << "component_assembly_id=" << assembly.component_assembly_id << "\n";
   out << "version_token=" << assembly.version_token << "\n";
   out << "trainability=" << assembly_trainability_name(assembly.trainability)
       << "\n";
@@ -248,11 +248,11 @@ assembly_fingerprint(const wikimyei_assembly_t &assembly) {
 }
 
 inline void validate_wikimyei_assembly(const wikimyei_assembly_t &assembly) {
-  (void)make_assembly_token(assembly.family, assembly.component_id,
+  (void)make_assembly_token(assembly.family, assembly.component_assembly_id,
                             assembly.version_token);
   if (assembly.docks.empty()) {
     throw std::runtime_error("[wikimyei_assembly] assembly has no docks: " +
-                             assembly.component_id);
+                             assembly.component_assembly_id);
   }
 
   std::unordered_set<std::string> seen_docks;
@@ -282,7 +282,7 @@ inline void require_dock(const wikimyei_assembly_t &assembly,
                          const char *label) {
   if (!find_dock(assembly, direction, domain).has_value()) {
     throw std::runtime_error(std::string("[wikimyei_assembly] missing ") +
-                             label + " dock for " + assembly.component_id);
+                             label + " dock for " + assembly.component_assembly_id);
   }
 }
 
@@ -298,8 +298,8 @@ inline void require_compatible_docks(const wikimyei_assembly_t &producer,
   if (!produced.has_value() || !consumed.has_value() ||
       !dock_domain_compatible(*produced, *consumed)) {
     throw std::runtime_error(std::string("[wikimyei_assembly] incompatible ") +
-                             label + " docks: " + producer.component_id +
-                             " -> " + consumer.component_id);
+                             label + " docks: " + producer.component_assembly_id +
+                             " -> " + consumer.component_assembly_id);
   }
 }
 

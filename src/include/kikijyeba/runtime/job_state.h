@@ -21,9 +21,13 @@ struct job_state_t {
   std::string status{"created"};
   std::string error_message{};
   std::string wave_id{};
-  std::string target_component{};
+  std::string target_component_family_id{};
   std::string wave_action{};
   std::string source_cursor_token{};
+  std::string source_order_warning_level{"none"};
+  std::string source_order_warnings{};
+  std::string requested_source_key_begin{};
+  std::string requested_source_key_end{};
   std::size_t resolved_anchor_index_begin{0};
   std::size_t resolved_anchor_index_end{0};
   std::size_t accepted_anchor_count{0};
@@ -82,9 +86,13 @@ struct job_state_t {
     out << "status=" << status << "\n";
     out << "error_message=" << error_message << "\n";
     out << "wave_id=" << wave_id << "\n";
-    out << "target_component=" << target_component << "\n";
+    out << "target_component_family_id=" << target_component_family_id << "\n";
     out << "wave_action=" << wave_action << "\n";
     out << "source_cursor_token=" << source_cursor_token << "\n";
+    out << "source_order_warning_level=" << source_order_warning_level << "\n";
+    out << "source_order_warnings=" << source_order_warnings << "\n";
+    out << "requested_source_key_begin=" << requested_source_key_begin << "\n";
+    out << "requested_source_key_end=" << requested_source_key_end << "\n";
     out << "resolved_anchor_index_begin=" << resolved_anchor_index_begin
         << "\n";
     out << "resolved_anchor_index_end=" << resolved_anchor_index_end << "\n";
@@ -153,9 +161,19 @@ inline job_state_t make_initial_job_state(const job_manifest_t &manifest,
   out.job_id = manifest.job_id;
   out.job_kind = manifest.job_kind;
   out.wave_id = wave_plan.wave_id;
-  out.target_component = wave_plan.target_component;
+  out.target_component_family_id = wave_plan.target_component_family_id;
   out.wave_action = wave_plan.action;
   out.source_cursor_token = wave_plan.source_cursor_token;
+  out.source_order_warning_level = wave_plan.source_order_warning_level;
+  out.source_order_warnings = wave_plan.source_order_warnings;
+  if (wave_plan.requested_source_key_begin.has_value()) {
+    out.requested_source_key_begin =
+        std::to_string(*wave_plan.requested_source_key_begin);
+  }
+  if (wave_plan.requested_source_key_end.has_value()) {
+    out.requested_source_key_end =
+        std::to_string(*wave_plan.requested_source_key_end);
+  }
   out.resolved_anchor_index_begin = wave_plan.resolved_anchor_index_begin;
   out.resolved_anchor_index_end = wave_plan.resolved_anchor_index_end;
   out.accepted_anchor_count = wave_plan.accepted_anchor_count;

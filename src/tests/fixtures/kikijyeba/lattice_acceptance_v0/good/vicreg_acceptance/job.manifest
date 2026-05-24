@@ -1,6 +1,6 @@
 job_id=cwu_01v_accept_vicreg_0029_0031.train.representation_vicreg
 job_kind=representation_vicreg
-target_component=wikimyei.representation.encoding.vicreg
+target_component_family_id=wikimyei.representation.encoding.vicreg
 wave_id=cwu_01v_accept_vicreg_0029_0031
 wave_action=train
 mutated_components=wikimyei.representation.encoding.vicreg

@@ -110,8 +110,8 @@ AGENT RUNBOOK
     policy vocabularies for coverage/load algebra, leakage, causal closure,
     DB/cache, evidence abstraction, joins, deficit priority, evidence order,
     support scope, performance scope, geometry, uncertainty, calibration,
-    monotonicity, source audit, and checkpoint identity. This makes proof/query
-    logic, digest and identity
+    monotonicity, source audit, benchmark budgets, and checkpoint identity. This
+    makes proof/query logic, digest and identity
     boundaries, advisory planning boundaries, readiness crosswalks, numeric
     units/bounds, warning trigger semantics, and interval-scope rules available
     before runtime evidence is scanned.
@@ -131,8 +131,12 @@ AGENT RUNBOOK
     affine-inconsistent source-key windows produce scan warnings while row-index
     footprints remain the leakage authority. The audit object exposes parsed
     endpoints, order-preservation booleans, and inferred
-    key-step/affine-consistency fields so agents can inspect the auxiliary
-    source-key coordinate map without parsing warning text. Evaluation and
+    key-step/affine-consistency fields, gap-warning counts, and row/source-key
+    mismatch counts so agents can inspect the auxiliary source-key coordinate
+    map without parsing warning text. scan_exposure also emits
+    source_key_map_audit_summary, binding audits to graph-order identity,
+    source-cursor identity, and source-receipt parent facts while preserving
+    row-index authority. Evaluation and
     planning JSON also expose source_receipt_policy_vocabulary, recording that
     compact source_file_receipts are source-audit metadata only; they do not
     satisfy coverage, prove leakage cleanliness, alter contract identity, or
@@ -313,11 +317,11 @@ AGENT RUNBOOK
     dual-role measure, and distinct coverage/load units.
     source_key_coordinate_policy_vocabulary records that row-index intervals
     are authoritative for coverage/leakage and source-key windows are audit-only
-    order-preserving/affine map checks.
+    order-preserving/affine/gap map checks.
     source_key_coordinate_policy_summary self-checks exactly one row-index
-    coverage/leakage authority row, three audit-only source-key rows, declared
-    order-preserving/affine fields, and no source-key audit row with coverage or
-    leakage authority.
+    coverage/leakage authority row, four audit-only source-key rows, declared
+    order-preserving/affine/gap fields, and no source-key audit row with
+    coverage or leakage authority.
     warning_count remains the compatibility alias for triggered warnings. It is
     projected from warning_summary. The vector is not a scalar lattice score, and
     dimensions can remain incomparable. Internal callers can use
@@ -443,6 +447,9 @@ AGENT RUNBOOK
     of truth, DB/cache rows are rebuildable read models, cached plans are not
     evidence, checkpoint ids/digests are preview cache keys until v2, and
     Runtime Hero remains the only executor.
+    runtime_metadata_digest and watched_file_metadata_digest are metadata
+    freshness digests over path, size, and mtime records. They are not content
+    digests and never make cache rows target-satisfaction authority.
     evidence_abstraction_vocabulary names the abstract-interpretation layer
     from concrete runtime files and fact sidecars into proof summaries. Each
     entry lists concrete inputs, abstract outputs, soundness condition,
@@ -463,6 +470,24 @@ AGENT RUNBOOK
     V1-visible representation_health warnings, seven are embedding-geometry
     metrics, eleven are future hard-gate candidates, and none are active
     performance gates.
+    representation_geometry_gate_review_summary reviews observed VICReg
+    geometry distributions, records that no default threshold was promoted, and
+    confirms that hard geometry checks require explicit LATTICE_REQUIRES
+    KIND=representation_geometry syntax.
+    evidence_retention_policy_vocabulary,
+    evidence_retention_audit_scenario_vocabulary, and
+    evidence_retention_policy_summary classify reports, sidecars, checkpoints,
+    source receipts, selection signals, proof certificates, cache rows, human
+    receipts, and archive manifests before any future compaction. Runtime
+    evidence remains replay authority; compact receipts, PASS files, proof
+    certificates, and cache rows remain non-authoritative metadata.
+    benchmark_regression_budget_vocabulary and
+    benchmark_regression_budget_summary define the V3-L performance budget:
+    finite benchmark rows separated by library-function, long-lived MCP, and
+    direct CLI timing layers, with proof modes named as header_only,
+    watched_file_manifest, full_runtime_metadata_digest, live_scan, or
+    live_parity. Header-only fast audit rows forbid live scans and metadata
+    digests; parity/proof rows may be slower, but their cost is explicit.
     performance_uncertainty_policy_vocabulary records that future performance
     gates must compare conservative uncertainty bounds under a declared method,
     not raw point estimates, and must include selection-leakage policy.
@@ -602,7 +627,9 @@ AGENT RUNBOOK
     suspicious VICReg health metrics such
     as high variance/covariance loss, low adapter valid-channel fraction, low
     effective-rank fraction, or high condition number; those warnings remain
-    visibility only. Repeated exposure load remains a
+    visibility only. LATTICE_REQUIRES KIND=representation_geometry is the
+    opt-in hard gate form; missing geometry facts fail that gate closed and do
+    not satisfy it. Repeated exposure load remains a
     separate additive summary. Exposure summaries expose algebra and unit labels
     directly, distinguishing coverage fraction, cursor epochs, and anchor-event
     counts.
@@ -614,9 +641,10 @@ AGENT RUNBOOK
     integral counts. Representation condition-number thresholds must be finite
     values at least 1. Representation-health warning thresholds also reject
     inverted one-sided directions: high-bad metrics use ABOVE and low-bad
-    metrics use BELOW. Anchor-domain warning clauses carry exactly one metric
-    threshold. Treat these errors as authoring mistakes, not runtime evidence
-    failures.
+    metrics use BELOW. Opt-in representation-geometry gates use VALUE with
+    OP=ge for low-bad metrics and OP=le for high-bad metrics.
+    Anchor-domain warning clauses carry exactly one metric threshold. Treat
+    these errors as authoring mistakes, not runtime evidence failures.
     Exposure summaries may also include valid-target support uncertainty:
     success/opportunity counts inferred from valid_target_count and
     valid_target_fraction, plus a Wilson 95% interval. Report it as support

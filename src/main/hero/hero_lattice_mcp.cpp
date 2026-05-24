@@ -68,7 +68,7 @@ void print_help(const char *argv0) {
       << "  " << argv0
       << " --global-config /cuwacunu/src/config/.config --tool "
          "hero.lattice.explain_target --args-json "
-         "'{\"target_id\":\"node_mdn_train_core_ready\"}'\n"
+         "'{\"target_id\":\"channel_mdn_train_core_ready\"}'\n"
       << "  " << argv0
       << " --global-config /cuwacunu/src/config/.config --tool "
          "hero.lattice.scan_exposure --args-json "
@@ -103,6 +103,10 @@ void print_help(const char *argv0) {
          "hero.lattice.derived_query --args-json "
          "'{\"relation\":\"target_satisfied\","
          "\"target_id\":\"channel_mdn_validation_eval_ready\"}'\n"
+      << "  " << argv0
+      << " --global-config /cuwacunu/src/config/.config --tool "
+         "hero.lattice.resolve_latest_satisfying --args-json "
+         "'{\"symbolic_hint\":\"latest_satisfying:vicreg_train_core_ready\"}'\n"
       << "\n"
       << "Tool roles:\n"
       << "  hero.lattice.status             policy, configured paths, "
@@ -132,6 +136,9 @@ void print_help(const char *argv0) {
          "deployment decision\n"
       << "  hero.lattice.plan_target        evaluate and return only "
          "next-wave recommendation\n"
+      << "  hero.lattice.resolve_latest_satisfying resolve one "
+         "latest_satisfying model-state hint with Lattice-owned proof "
+         "semantics\n"
       << "  hero.lattice.checkpoint_closure checkpoint exposure lineage "
          "and unresolved inputs\n";
 }

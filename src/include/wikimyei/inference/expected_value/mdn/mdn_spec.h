@@ -31,8 +31,8 @@ enum class channel_mdn_activity_target_t {
 
 struct channel_mdn_spec_t {
   std::string version_token{"wikimyei.inference.expected_value.mdn.v1"};
-  std::string component_id{};
-  std::string input_representation_id{};
+  std::string component_assembly_id{};
+  std::string input_representation_assembly_id{};
   channel_mdn_context_mode_t context_mode{
       channel_mdn_context_mode_t::channel_context_strict};
   channel_mdn_target_domain_t target_domain{
@@ -123,12 +123,12 @@ inline void validate_channel_mdn_spec(const channel_mdn_spec_t &spec) {
   if (spec.version_token != "wikimyei.inference.expected_value.mdn.v1") {
     throw std::runtime_error("[channel_mdn_spec] unsupported version token");
   }
-  if (spec.component_id.empty()) {
-    throw std::runtime_error("[channel_mdn_spec] component_id is required");
+  if (spec.component_assembly_id.empty()) {
+    throw std::runtime_error("[channel_mdn_spec] component_assembly_id is required");
   }
-  if (spec.input_representation_id.empty()) {
+  if (spec.input_representation_assembly_id.empty()) {
     throw std::runtime_error(
-        "[channel_mdn_spec] input_representation_id is required");
+        "[channel_mdn_spec] input_representation_assembly_id is required");
   }
   if (spec.target_domain != channel_mdn_target_domain_t::channel_node_future) {
     throw std::runtime_error(
@@ -180,10 +180,9 @@ inline void decode_channel_mdn_net_into_spec(const std::string &net_text,
   spec.future_horizon = kv::parse_i64(kv::required(block, "FUTURE_HORIZON"));
   spec.mixture_count = kv::parse_i64(kv::required(block, "MIXTURE_COUNT"));
   spec.hidden_width = kv::parse_i64(kv::required(block, "HIDDEN_WIDTH"));
-  spec.residual_depth =
-      kv::parse_i64(kv::optional(block, "RESIDUAL_DEPTH", "0"));
+  spec.residual_depth = kv::parse_i64(kv::required(block, "RESIDUAL_DEPTH"));
   spec.global_context_dim =
-      kv::parse_i64(kv::optional(block, "GLOBAL_CONTEXT_DIM", "0"));
+      kv::parse_i64(kv::required(block, "GLOBAL_CONTEXT_DIM"));
 }
 
 [[nodiscard]] inline channel_mdn_spec_t
@@ -192,21 +191,21 @@ decode_channel_mdn_spec_from_split_dsl(const std::string &dsl_text,
   namespace kv = cuwacunu::piaabo::parse::simple_kv;
   const auto &block = kv::single_block(dsl_text, "MDN");
   channel_mdn_spec_t spec{};
-  spec.version_token = kv::optional(block, "VERSION", spec.version_token);
-  spec.component_id = kv::required(block, "COMPONENT_ID");
-  spec.input_representation_id = kv::required(block, "INPUT_REPRESENTATION_ID");
+  spec.version_token = kv::required(block, "VERSION");
+  spec.component_assembly_id = kv::required(block, "COMPONENT_ASSEMBLY_ID");
+  spec.input_representation_assembly_id = kv::required(block, "INPUT_REPRESENTATION_ASSEMBLY_ID");
   spec.context_mode = channel_mdn_spec_detail::parse_context_mode(
-      kv::optional(block, "CONTEXT_MODE", "channel_context_strict"));
+      kv::required(block, "CONTEXT_MODE"));
   spec.target_domain = channel_mdn_spec_detail::parse_target_domain(
-      kv::optional(block, "TARGET_DOMAIN", "channel_node_future"));
+      kv::required(block, "TARGET_DOMAIN"));
   spec.target_coords = kv::parse_i64_list(kv::required(block, "TARGET_COORDS"));
   spec.target_mask_policy = channel_mdn_spec_detail::parse_target_mask_policy(
-      kv::optional(block, "TARGET_MASK_POLICY", "all_target_features_valid"));
+      kv::required(block, "TARGET_MASK_POLICY"));
   spec.activity_target = channel_mdn_spec_detail::parse_activity_target(
-      kv::optional(block, "ACTIVITY_TARGET", "node_feature_support_mean"));
-  spec.sigma_min = kv::parse_double(kv::optional(block, "SIGMA_MIN", "0.001"));
-  spec.sigma_max = kv::parse_double(kv::optional(block, "SIGMA_MAX", "0.0"));
-  spec.eps = kv::parse_double(kv::optional(block, "EPS", "0.000001"));
+      kv::required(block, "ACTIVITY_TARGET"));
+  spec.sigma_min = kv::parse_double(kv::required(block, "SIGMA_MIN"));
+  spec.sigma_max = kv::parse_double(kv::required(block, "SIGMA_MAX"));
+  spec.eps = kv::parse_double(kv::required(block, "EPS"));
   decode_channel_mdn_net_into_spec(net_text, spec);
   validate_channel_mdn_spec(spec);
   return spec;
