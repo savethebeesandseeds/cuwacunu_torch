@@ -96,8 +96,9 @@
 
       random_per_epoch
         Use Torch RandomSampler over graph-anchor indices once per stream
-        epoch. Each selected anchor still fetches all graph edges together,
-        preserving graph synchronization.
+        epoch, seeded from the target component's training SEED. Each selected
+        anchor still fetches all graph edges together, preserving graph
+        synchronization.
 
     ANCHOR_INDEX_BEGIN / ANCHOR_INDEX_END:
       Required when SOURCE_RANGE = anchor_index. Both are zero-based positions

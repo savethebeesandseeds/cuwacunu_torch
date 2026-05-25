@@ -17,23 +17,23 @@
 namespace cuwacunu::wikimyei::inference::expected_value::mdn::stream {
 
 enum class channel_target_mask_policy_t {
-  all_target_features_valid,
+  per_target_feature_valid,
 };
 
 struct channel_mdn_adapter_options_t {
   channel_target_mask_policy_t target_mask_policy{
-      channel_target_mask_policy_t::all_target_features_valid};
+      channel_target_mask_policy_t::per_target_feature_valid};
   std::vector<int64_t> target_coords{0, 1, 2, 3, 4, 5, 6, 7, 8};
 };
 
 template <typename KeyT> struct channel_mdn_input_batch_t {
-  torch::Tensor context{};      // [B_node,C,De]
-  torch::Tensor context_mask{}; // [B_node,C], bool
-  torch::Tensor future{};       // [B_node,C,Hf,Df]
-  torch::Tensor future_mask{};  // [B_node,C,Hf], bool
+  torch::Tensor context{};      // [B,N,C,De]
+  torch::Tensor context_mask{}; // [B,N,C], bool
+  torch::Tensor future{};       // [B,N,C,Df]
+  torch::Tensor future_mask{};  // [B,N,C,Df], bool
 
-  torch::Tensor node_index{};   // [B_node], int64
-  torch::Tensor anchor_index{}; // [B_node], int64
+  torch::Tensor node_index{};   // [B,N], int64
+  torch::Tensor anchor_index{}; // [B,N], int64
   torch::Tensor anchor_keys{};  // [B_anchor]
 
   std::vector<std::string> node_ids{};
@@ -143,29 +143,29 @@ to_channel_mdn_input(const channel_mdn_input_batch_t<KeyT> &batch) {
 
 template <typename KeyT>
 [[nodiscard]] torch::Tensor
-channel_mdn_rows_for_node(const channel_mdn_input_batch_t<KeyT> &batch,
-                          int64_t node_slot) {
+channel_mdn_anchor_slots_for_node(const channel_mdn_input_batch_t<KeyT> &batch,
+                                  int64_t node_slot) {
   TORCH_CHECK(batch.node_index.defined(),
               "[channel_mdn_adapter] node_index is undefined");
-  TORCH_CHECK(batch.node_index.dim() == 1,
-              "[channel_mdn_adapter] node_index must be [B_node]");
+  TORCH_CHECK(batch.node_index.dim() == 2,
+              "[channel_mdn_adapter] node_index must be [B,N]");
   TORCH_CHECK(node_slot >= 0, "[channel_mdn_adapter] node slot is negative");
   if (!batch.node_ids.empty()) {
     TORCH_CHECK(node_slot < static_cast<int64_t>(batch.node_ids.size()),
                 "[channel_mdn_adapter] node slot out of node_ids range");
   }
-  auto rows = torch::nonzero(batch.node_index == node_slot).reshape({-1});
-  TORCH_CHECK(rows.numel() > 0, "[channel_mdn_adapter] no rows for node slot ",
+  auto slots = torch::nonzero(batch.node_index == node_slot);
+  TORCH_CHECK(slots.numel() > 0,
+              "[channel_mdn_adapter] no anchor slots for node slot ",
               node_slot);
-  return rows.to(torch::TensorOptions()
-                     .dtype(torch::kInt64)
-                     .device(batch.node_index.device()));
+  return slots.to(torch::TensorOptions()
+                      .dtype(torch::kInt64)
+                      .device(batch.node_index.device()));
 }
 
 template <typename KeyT>
-[[nodiscard]] torch::Tensor
-channel_mdn_rows_for_node_id(const channel_mdn_input_batch_t<KeyT> &batch,
-                             const std::string &node_id) {
+[[nodiscard]] torch::Tensor channel_mdn_anchor_slots_for_node_id(
+    const channel_mdn_input_batch_t<KeyT> &batch, const std::string &node_id) {
   TORCH_CHECK(!batch.node_ids.empty(),
               "[channel_mdn_adapter] node_ids are required for node-id "
               "routing");
@@ -173,7 +173,7 @@ channel_mdn_rows_for_node_id(const channel_mdn_input_batch_t<KeyT> &batch,
       std::find(batch.node_ids.begin(), batch.node_ids.end(), node_id);
   TORCH_CHECK(it != batch.node_ids.end(),
               "[channel_mdn_adapter] unknown node_id: ", node_id);
-  return channel_mdn_rows_for_node(
+  return channel_mdn_anchor_slots_for_node(
       batch, static_cast<int64_t>(std::distance(batch.node_ids.begin(), it)));
 }
 

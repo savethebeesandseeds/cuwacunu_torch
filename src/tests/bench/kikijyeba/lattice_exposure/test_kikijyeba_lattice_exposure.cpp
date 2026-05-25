@@ -347,16 +347,15 @@ void write_channel_mdn_job(
              "input_representation_assembly_id=vicreg_v1\n"
              "context_mode=channel_context_strict\n"
              "context_contract=graph_order.channel_node_representation.v1\n"
-             "context_value_shape=[B_node,C,De]\n"
+             "context_value_shape=[B,N,C,De]\n"
              "output_contract=graph_order.channel_node_future_distribution.v1\n"
-             "output_value_shape=log_pi:[B_node,C,Hf,K];mu_sigma:[B_node,C,Hf,"
-             "K,Df]\n"
+             "output_value_shape=log_pi:[B,N,C,Df,K];mu_sigma:[B,N,C,Df,K]\n"
              "mean_sigma_mean=0.80\n"
              "min_sigma_min=0.10\n"
              "max_sigma_max=1.50\n"
              "mean_mixture_entropy=0.60\n"
              "mean_nll_per_channel=0.40,0.60,0.80\n"
-             "mean_nll_per_horizon=0.50,0.70\n"
+             "mean_nll_per_target_feature=0.50,0.70\n"
              "mean_mixture_usage=0.25,0.75\n"
              "nonfinite_output_count=2\n"
              "last_grad_norm=1.20\n"
@@ -1644,8 +1643,8 @@ int main() {
             std::abs(channel_mdn_fact.mean_mixture_entropy - 0.60) < 1e-12 &&
             channel_mdn_fact.mean_nll_per_channel.size() == 3 &&
             std::abs(channel_mdn_fact.mean_nll_per_channel[2] - 0.80) < 1e-12 &&
-            channel_mdn_fact.mean_nll_per_horizon.size() == 2 &&
-            std::abs(channel_mdn_fact.mean_nll_per_horizon[1] - 0.70) < 1e-12 &&
+            channel_mdn_fact.mean_nll_per_target_feature.size() == 2 &&
+            std::abs(channel_mdn_fact.mean_nll_per_target_feature[1] - 0.70) < 1e-12 &&
             channel_mdn_fact.mean_mixture_usage.size() == 2 &&
             std::abs(channel_mdn_fact.mean_mixture_usage[0] - 0.25) < 1e-12 &&
             channel_mdn_fact.nonfinite_output_count == 2 &&
@@ -1657,7 +1656,7 @@ int main() {
             channel_mdn_fact.context_mode == "channel_context_strict" &&
             channel_mdn_fact.context_contract ==
                 "graph_order.channel_node_representation.v1" &&
-            channel_mdn_fact.context_value_shape == "[B_node,C,De]" &&
+            channel_mdn_fact.context_value_shape == "[B,N,C,De]" &&
             channel_mdn_fact.output_contract ==
                 "graph_order.channel_node_future_distribution.v1",
         "channel MDN contract fields are decoded from strict-channel report");
@@ -1712,7 +1711,7 @@ int main() {
   legacy_channel_mdn_sidecar_fact.mean_mixture_entropy =
       std::numeric_limits<double>::quiet_NaN();
   legacy_channel_mdn_sidecar_fact.mean_nll_per_channel.clear();
-  legacy_channel_mdn_sidecar_fact.mean_nll_per_horizon.clear();
+  legacy_channel_mdn_sidecar_fact.mean_nll_per_target_feature.clear();
   legacy_channel_mdn_sidecar_fact.mean_mixture_usage.clear();
   legacy_channel_mdn_sidecar_fact.nonfinite_output_count = 0;
   legacy_channel_mdn_sidecar_fact.last_grad_norm =

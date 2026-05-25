@@ -99,6 +99,8 @@ struct graph_first_pipeline_dry_run_report_t {
   bool wave_source_order_policy_explicit{false};
   std::string wave_source_order_warning_level{"none"};
   std::string wave_source_order_warnings{};
+  int64_t wave_source_order_random_seed{0};
+  std::string wave_source_order_random_seed_source{"none"};
   int64_t requested_anchor_index_begin{-1};
   int64_t requested_anchor_index_end{-1};
   std::string requested_source_key_begin{};
@@ -140,6 +142,9 @@ struct graph_first_pipeline_dry_run_report_t {
         << " source_order=" << wave_source_order_policy
         << " source_order_warning_level=" << wave_source_order_warning_level
         << " source_order_warnings=" << wave_source_order_warnings
+        << " source_order_random_seed=" << wave_source_order_random_seed
+        << " source_order_random_seed_source="
+        << wave_source_order_random_seed_source
         << " runtime_report_mode=" << runtime_report_mode
         << " protocol_contract=" << protocol_contract_fingerprint
         << " nodelift_assembly=" << nodelift_assembly_fingerprint
@@ -183,6 +188,39 @@ resolve_batch_size(const channel_graph_first_config_bundle_t &bundle,
         "required when Channel VICReg and Channel MDN training specs disagree");
   }
   return mdn_batch;
+}
+
+[[nodiscard]] inline bool
+uses_random_source_order(const channel_graph_first_config_bundle_t &bundle) {
+  return bundle.wave_settings.source_order_policy ==
+         cuwacunu::kikijyeba::settings::wave_source_order_policy_t::
+             random_per_epoch;
+}
+
+[[nodiscard]] inline int64_t
+source_order_random_seed(const channel_graph_first_config_bundle_t &bundle) {
+  switch (bundle.wave_settings.target) {
+  case cuwacunu::kikijyeba::settings::wave_target_t::vicreg_representation:
+    return bundle.vicreg_training.seed;
+  case cuwacunu::kikijyeba::settings::wave_target_t::inference_channel_mdn:
+    return bundle.channel_mdn_training.seed;
+  }
+  throw std::runtime_error(
+      "[graph_first_pipeline_builder] unknown wave TARGET for source-order "
+      "seed");
+}
+
+[[nodiscard]] inline const char *source_order_random_seed_source(
+    const channel_graph_first_config_bundle_t &bundle) {
+  switch (bundle.wave_settings.target) {
+  case cuwacunu::kikijyeba::settings::wave_target_t::vicreg_representation:
+    return "vicreg_training.seed";
+  case cuwacunu::kikijyeba::settings::wave_target_t::inference_channel_mdn:
+    return "channel_mdn_training.seed";
+  }
+  throw std::runtime_error(
+      "[graph_first_pipeline_builder] unknown wave TARGET for source-order "
+      "seed source");
 }
 
 [[nodiscard]] inline torch::Dtype resolve_dtype(const std::string &value) {
@@ -427,6 +465,15 @@ public:
             bundle_.wave_settings);
     out.wave_source_order_warning_level =
         out.wave_source_order_warnings.empty() ? "none" : "warning";
+    if (graph_first_pipeline_builder_detail::uses_random_source_order(
+            bundle_)) {
+      out.wave_source_order_random_seed =
+          graph_first_pipeline_builder_detail::source_order_random_seed(
+              bundle_);
+      out.wave_source_order_random_seed_source =
+          graph_first_pipeline_builder_detail::source_order_random_seed_source(
+              bundle_);
+    }
     if (bundle_.wave_settings.anchor_index_begin.has_value()) {
       out.requested_anchor_index_begin =
           static_cast<int64_t>(*bundle_.wave_settings.anchor_index_begin);
@@ -613,6 +660,12 @@ public:
                   node_lifted_source_order_t::random_per_epoch
             : cuwacunu::wikimyei::expression::nodelift::srl::stream::
                   node_lifted_source_order_t::sequential;
+    if (graph_first_pipeline_builder_detail::uses_random_source_order(
+            bundle_)) {
+      stream_options.source_order_random_seed = static_cast<std::uint64_t>(
+          graph_first_pipeline_builder_detail::source_order_random_seed(
+              bundle_));
+    }
     const auto source_order_warning =
         cuwacunu::kikijyeba::settings::source_order_warning_token(
             bundle_.wave_settings);
@@ -687,6 +740,11 @@ public:
       throw std::runtime_error(
           "[channel_graph_first_pipeline_builder] dry-run mode does not "
           "materialize Channel MDN");
+    }
+    if (horizon_count != 1) {
+      throw std::runtime_error(
+          "[channel_graph_first_pipeline_builder] active Channel MDN is "
+          "one-step; horizon_count must be 1");
     }
     return cuwacunu::wikimyei::inference::expected_value::mdn::
         ChannelContextMdn(

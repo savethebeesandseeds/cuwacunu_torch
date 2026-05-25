@@ -830,8 +830,8 @@ strict_channel_semantic_contract_mismatch(
                         "graph_order.channel_node_representation.v1")) {
       return mismatch;
     }
-    if (auto mismatch = check_field(
-            "context_value_shape", fact.context_value_shape, "[B_node,C,De]")) {
+    if (auto mismatch = check_field("context_value_shape",
+                                    fact.context_value_shape, "[B,N,C,De]")) {
       return mismatch;
     }
     if (auto mismatch =
@@ -1072,8 +1072,8 @@ strict_channel_mdn_health_mismatch(
                                                 fact.mean_nll_per_channel)) {
     return mismatch;
   }
-  if (const auto mismatch = check_finite_vector("mean_nll_per_horizon",
-                                                fact.mean_nll_per_horizon)) {
+  if (const auto mismatch = check_finite_vector(
+          "mean_nll_per_target_feature", fact.mean_nll_per_target_feature)) {
     return mismatch;
   }
   if (const auto mismatch =
@@ -2681,8 +2681,8 @@ private:
     if (metric == "mean_nll_per_channel_max") {
       return max_finite(fact.mean_nll_per_channel);
     }
-    if (metric == "mean_nll_per_horizon_max") {
-      return max_finite(fact.mean_nll_per_horizon);
+    if (metric == "mean_nll_per_target_feature_max") {
+      return max_finite(fact.mean_nll_per_target_feature);
     }
     return std::nullopt;
   }
@@ -2695,8 +2695,8 @@ private:
     if (metric == "mean_nll_per_channel_max") {
       return "channel_stratified_scoring_loss";
     }
-    if (metric == "mean_nll_per_horizon_max") {
-      return "horizon_stratified_scoring_loss";
+    if (metric == "mean_nll_per_target_feature_max") {
+      return "target_feature_stratified_scoring_loss";
     }
     if (metric == "per_node_mean_nll_max") {
       return "node_stratified_scoring_loss";
@@ -2719,7 +2719,7 @@ private:
   [[nodiscard]] static std::string
   mdn_distribution_uncertainty_method(const std::string &metric) {
     if (metric == "mean_nll" || metric == "mean_nll_per_channel_max" ||
-        metric == "mean_nll_per_horizon_max" ||
+        metric == "mean_nll_per_target_feature_max" ||
         metric == "per_node_mean_nll_max") {
       return "none_point_estimate_only";
     }
@@ -2741,7 +2741,7 @@ private:
   [[nodiscard]] static std::string
   mdn_distribution_metric_unit(const std::string &metric) {
     if (metric == "mean_nll" || metric == "mean_nll_per_channel_max" ||
-        metric == "mean_nll_per_horizon_max" ||
+        metric == "mean_nll_per_target_feature_max" ||
         metric == "per_node_mean_nll_max") {
       return "nll";
     }

@@ -630,6 +630,54 @@ void test_node_lifted_stream() {
   auto random_epoch_two = random_stream.next();
   check(random_epoch_two.cursor.anchor_indices.size() == 2,
         "random stream reset yields another dataloader batch");
+
+  auto collect_stream_indices = [](auto &stream) {
+    std::vector<std::size_t> indices;
+    while (stream.has_next()) {
+      auto batch = stream.next();
+      indices.insert(indices.end(), batch.cursor.anchor_indices.begin(),
+                     batch.cursor.anchor_indices.end());
+    }
+    return indices;
+  };
+
+  stream::node_lifted_stream_options_t<Kline> seeded_options{};
+  seeded_options.batch_size = 2;
+  seeded_options.source_order =
+      stream::node_lifted_source_order_t::random_per_epoch;
+  seeded_options.source_order_random_seed = 1701;
+
+  dl::graph_anchor_edge_dataset_t<Kline>::edge_dataset_map_t seeded_datasets_a;
+  seeded_datasets_a.emplace("e0", make_edge_dataset(csv0));
+  seeded_datasets_a.emplace("e1", make_edge_dataset(csv1));
+  dl::graph_anchor_edge_dataset_t<Kline> seeded_source_a(
+      market, std::move(seeded_datasets_a), source_options);
+  stream::node_lifted_stream_t<Kline> seeded_stream_a(
+      std::move(seeded_source_a), make_srl_graph_from_market(market),
+      seeded_options);
+
+  dl::graph_anchor_edge_dataset_t<Kline>::edge_dataset_map_t seeded_datasets_b;
+  seeded_datasets_b.emplace("e0", make_edge_dataset(csv0));
+  seeded_datasets_b.emplace("e1", make_edge_dataset(csv1));
+  dl::graph_anchor_edge_dataset_t<Kline> seeded_source_b(
+      market, std::move(seeded_datasets_b), source_options);
+  stream::node_lifted_stream_t<Kline> seeded_stream_b(
+      std::move(seeded_source_b), make_srl_graph_from_market(market),
+      seeded_options);
+
+  check(seeded_stream_a.source_order_random_seed().value() == 1701,
+        "node-lifted random stream carries source-order seed");
+  const auto seeded_epoch_a = collect_stream_indices(seeded_stream_a);
+  const auto seeded_epoch_b = collect_stream_indices(seeded_stream_b);
+  check(seeded_epoch_a == seeded_epoch_b,
+        "seeded node-lifted streams reproduce epoch order");
+
+  seeded_stream_a.reset();
+  seeded_stream_b.reset();
+  const auto seeded_epoch_two_a = collect_stream_indices(seeded_stream_a);
+  const auto seeded_epoch_two_b = collect_stream_indices(seeded_stream_b);
+  check(seeded_epoch_two_a == seeded_epoch_two_b,
+        "seeded node-lifted streams reproduce reset epoch order");
 }
 
 void test_source_spec_to_nodelift_contract_smoke() {

@@ -52,7 +52,7 @@ nodelift::node_lifted_batch_t<int64_t> make_lifted_batch() {
   constexpr int64_t Hx = 4;
   constexpr int64_t N = 2;
   constexpr int64_t Dx = 3;
-  constexpr int64_t Hf = 3;
+  constexpr int64_t Hf = 1;
 
   nodelift::node_lifted_batch_t<int64_t> out{};
   out.node_features = torch::empty({B, C, Hx, N, Dx}, torch::kFloat32);
@@ -72,7 +72,7 @@ nodelift::node_lifted_batch_t<int64_t> make_lifted_batch() {
   out.node_mask = torch::ones({B, C, Hx, N, Dx}, torch::kBool);
   out.future_node_features = torch::randn({B, C, Hf, N, Dx}, torch::kFloat32);
   out.future_node_mask = torch::ones({B, C, Hf, N, Dx}, torch::kBool);
-  out.future_node_mask.index_put_({0, 1, 2, 0, 2}, false);
+  out.future_node_mask.index_put_({0, 1, 0, 0, 2}, false);
   out.anchor_keys = torch::tensor({100, 200}, torch::kInt64);
   out.node_ids = {"n0", "n1"};
   out.edge_ids = {"e0", "e1"};
@@ -212,12 +212,12 @@ void test_channel_train_models_and_streams() {
   mdn_adapter_opts.target_coords = {0, 1};
   auto mdn_input_batch =
       mdn_stream::make_channel_mdn_input_batch(stream_batch, mdn_adapter_opts);
-  check(mdn_input_batch.context.sizes() == torch::IntArrayRef({4, 2, 5}),
-        "production MDN adapter emits [B_node,C,De]");
-  check(mdn_input_batch.future.sizes() == torch::IntArrayRef({4, 2, 3, 2}),
-        "production MDN adapter emits [B_node,C,Hf,Df]");
+  check(mdn_input_batch.context.sizes() == torch::IntArrayRef({2, 2, 2, 5}),
+        "production MDN adapter emits [B,N,C,De]");
+  check(mdn_input_batch.future.sizes() == torch::IntArrayRef({2, 2, 2, 2}),
+        "production MDN adapter emits [B,N,C,Df]");
 
-  auto mdn = mdn::ChannelContextMdn(5, 2, 2, 3, 2, 7, 1);
+  auto mdn = mdn::ChannelContextMdn(5, 2, 2, 1, 2, 7, 1);
   mdn::channel_context_mdn_train_model_t mdn_train(mdn, 0.001);
   auto mdn_input = mdn_stream::to_channel_mdn_input(mdn_input_batch);
   auto mdn_result = mdn_train.train_one_batch(mdn_input);
@@ -225,8 +225,8 @@ void test_channel_train_models_and_streams() {
   check(mdn_result.optimizer_step_applied, "MDN optimizer step is applied");
   check(mdn_result.nll_per_channel.sizes() == torch::IntArrayRef({2}),
         "MDN reports NLL per channel");
-  check(mdn_result.nll_per_horizon.sizes() == torch::IntArrayRef({3}),
-        "MDN reports NLL per horizon");
+  check(mdn_result.nll_per_target_feature.sizes() == torch::IntArrayRef({2}),
+        "MDN reports NLL per target feature");
   check(mdn_result.mixture_usage.sizes() == torch::IntArrayRef({2}),
         "MDN reports mixture usage");
   check(std::isfinite(mdn_result.sigma_mean), "MDN sigma mean finite");
@@ -292,29 +292,30 @@ void test_channel_global_fusion_is_explicit_and_mask_safe() {
 
 void test_channel_mdn_plus_global_is_separate_and_mask_safe() {
   torch::manual_seed(73);
-  constexpr int64_t Bn = 4;
+  constexpr int64_t B = 2;
+  constexpr int64_t N = 2;
   constexpr int64_t C = 3;
   constexpr int64_t De = 5;
   constexpr int64_t Dg = 4;
-  constexpr int64_t Hf = 2;
+  constexpr int64_t Hf = 1;
   constexpr int64_t Df = 2;
 
-  auto channel_context = torch::randn({Bn, C, De}, torch::kFloat32);
-  auto channel_mask = torch::ones({Bn, C}, torch::kBool);
-  channel_mask.index_put_({1, 2}, false);
-  auto global_context = torch::randn({Bn, Dg}, torch::kFloat32);
-  auto global_mask = torch::ones({Bn}, torch::kBool);
-  global_mask.index_put_({2}, false);
+  auto channel_context = torch::randn({B, N, C, De}, torch::kFloat32);
+  auto channel_mask = torch::ones({B, N, C}, torch::kBool);
+  channel_mask.index_put_({0, 1, 2}, false);
+  auto global_context = torch::randn({B, N, Dg}, torch::kFloat32);
+  auto global_mask = torch::ones({B, N}, torch::kBool);
+  global_mask.index_put_({1, 0}, false);
   auto baseline_channel = channel_context.clone();
-  baseline_channel.index_put_({1, 2, torch::indexing::Slice()}, 0.0);
+  baseline_channel.index_put_({0, 1, 2, torch::indexing::Slice()}, 0.0);
   auto baseline_global = global_context.clone();
-  baseline_global.index_put_({2, torch::indexing::Slice()}, 0.0);
+  baseline_global.index_put_({1, 0, torch::indexing::Slice()}, 0.0);
 
   auto sentinel_channel = baseline_channel.clone();
-  sentinel_channel.index_put_({1, 2, torch::indexing::Slice()},
+  sentinel_channel.index_put_({0, 1, 2, torch::indexing::Slice()},
                               std::numeric_limits<float>::quiet_NaN());
   auto sentinel_global = baseline_global.clone();
-  sentinel_global.index_put_({2, torch::indexing::Slice()},
+  sentinel_global.index_put_({1, 0, torch::indexing::Slice()},
                              std::numeric_limits<float>::quiet_NaN());
 
   auto mdn = mdn::ChannelContextPlusGlobalMdn(De, Dg, Df, C, Hf, 2, 7, 1);
@@ -325,11 +326,11 @@ void test_channel_mdn_plus_global_is_separate_and_mask_safe() {
   const auto sentinel_out = mdn->forward(sentinel_channel, channel_mask,
                                          sentinel_global, global_mask);
 
-  check(baseline_out.log_pi.sizes() == torch::IntArrayRef({Bn, C, Hf, 2}),
+  check(baseline_out.log_pi.sizes() == torch::IntArrayRef({B, N, C, Df, 2}),
         "plus-global MDN emits channel log_pi shape");
-  check(baseline_out.mu.sizes() == torch::IntArrayRef({Bn, C, Hf, 2, Df}),
+  check(baseline_out.mu.sizes() == torch::IntArrayRef({B, N, C, Df, 2}),
         "plus-global MDN emits channel mu shape");
-  check(baseline_out.sigma.sizes() == torch::IntArrayRef({Bn, C, Hf, 2, Df}),
+  check(baseline_out.sigma.sizes() == torch::IntArrayRef({B, N, C, Df, 2}),
         "plus-global MDN emits channel sigma shape");
   check(torch::allclose(sentinel_out.log_pi, baseline_out.log_pi, 1e-6, 1e-6),
         "masked invalid plus-global context does not affect log_pi");
@@ -341,17 +342,17 @@ void test_channel_mdn_plus_global_is_separate_and_mask_safe() {
   mdn::channel_mdn_plus_global_input_t input{};
   input.channel.context = baseline_channel;
   input.channel.context_mask = channel_mask;
-  input.channel.future = torch::randn({Bn, C, Hf, Df}, torch::kFloat32);
-  input.channel.future_mask = torch::ones({Bn, C, Hf}, torch::kBool);
+  input.channel.future = torch::randn({B, N, C, Df}, torch::kFloat32);
+  input.channel.future_mask = torch::ones({B, N, C, Df}, torch::kBool);
   input.global_context = baseline_global;
   input.global_mask = global_mask;
   const auto combined =
       mdn::combine_channel_plus_global_context_and_future_mask(
           input.channel.context_mask, input.global_mask,
           input.channel.future_mask);
-  check(!combined.index({1, 2, 0}).item<bool>(),
+  check(!combined.index({0, 1, 2, 0}).item<bool>(),
         "plus-global mask rejects invalid channel context rows");
-  check(combined.index({2}).sum().item<int64_t>() == 0,
+  check(combined.index({1, 0}).sum().item<int64_t>() == 0,
         "plus-global mask rejects every target for invalid global context");
   const auto nll =
       mdn::compute_channel_context_plus_global_mdn_nll(baseline_out, input);
@@ -360,36 +361,37 @@ void test_channel_mdn_plus_global_is_separate_and_mask_safe() {
 }
 
 void test_channel_mdn_plus_global_train_model_sanitizes_masked_sentinels() {
-  constexpr int64_t Bn = 4;
+  constexpr int64_t B = 2;
+  constexpr int64_t N = 2;
   constexpr int64_t C = 2;
   constexpr int64_t De = 5;
   constexpr int64_t Dg = 3;
-  constexpr int64_t Hf = 2;
+  constexpr int64_t Hf = 1;
   constexpr int64_t Df = 2;
 
   mdn::channel_mdn_plus_global_input_t baseline{};
-  baseline.channel.context = torch::randn({Bn, C, De}, torch::kFloat32);
-  baseline.channel.context_mask = torch::ones({Bn, C}, torch::kBool);
-  baseline.channel.context_mask.index_put_({1, 1}, false);
-  baseline.channel.context.index_put_({1, 1, torch::indexing::Slice()}, 0.0);
-  baseline.channel.future = torch::randn({Bn, C, Hf, Df}, torch::kFloat32);
-  baseline.channel.future_mask = torch::ones({Bn, C, Hf}, torch::kBool);
-  baseline.channel.future_mask.index_put_({0, 1, 1}, false);
-  baseline.channel.future.index_put_({0, 1, 1, torch::indexing::Slice()}, 0.0);
-  baseline.global_context = torch::randn({Bn, Dg}, torch::kFloat32);
-  baseline.global_mask = torch::ones({Bn}, torch::kBool);
-  baseline.global_mask.index_put_({2}, false);
-  baseline.global_context.index_put_({2, torch::indexing::Slice()}, 0.0);
+  baseline.channel.context = torch::randn({B, N, C, De}, torch::kFloat32);
+  baseline.channel.context_mask = torch::ones({B, N, C}, torch::kBool);
+  baseline.channel.context_mask.index_put_({0, 1, 1}, false);
+  baseline.channel.context.index_put_({0, 1, 1, torch::indexing::Slice()}, 0.0);
+  baseline.channel.future = torch::randn({B, N, C, Df}, torch::kFloat32);
+  baseline.channel.future_mask = torch::ones({B, N, C, Df}, torch::kBool);
+  baseline.channel.future_mask.index_put_({0, 1, 1, 0}, false);
+  baseline.channel.future.index_put_({0, 1, 1, 0}, 0.0);
+  baseline.global_context = torch::randn({B, N, Dg}, torch::kFloat32);
+  baseline.global_mask = torch::ones({B, N}, torch::kBool);
+  baseline.global_mask.index_put_({1, 0}, false);
+  baseline.global_context.index_put_({1, 0, torch::indexing::Slice()}, 0.0);
 
   auto sentinel = baseline;
   sentinel.channel.context = baseline.channel.context.clone();
   sentinel.channel.future = baseline.channel.future.clone();
   sentinel.global_context = baseline.global_context.clone();
-  sentinel.channel.context.index_put_({1, 1, torch::indexing::Slice()},
+  sentinel.channel.context.index_put_({0, 1, 1, torch::indexing::Slice()},
                                       std::numeric_limits<float>::quiet_NaN());
-  sentinel.channel.future.index_put_({0, 1, 1, torch::indexing::Slice()},
+  sentinel.channel.future.index_put_({0, 1, 1, 0},
                                      std::numeric_limits<float>::quiet_NaN());
-  sentinel.global_context.index_put_({2, torch::indexing::Slice()},
+  sentinel.global_context.index_put_({1, 0, torch::indexing::Slice()},
                                      std::numeric_limits<float>::quiet_NaN());
 
   auto train_once = [=](const mdn::channel_mdn_plus_global_input_t &input) {
@@ -414,7 +416,7 @@ void test_channel_mdn_plus_global_train_model_sanitizes_masked_sentinels() {
         1e-6, "masked plus-global invalid values are sanitized before NLL");
 
   auto no_global = baseline;
-  no_global.global_mask = torch::zeros({Bn}, torch::kBool);
+  no_global.global_mask = torch::zeros({B, N}, torch::kBool);
   auto mdn = mdn::ChannelContextPlusGlobalMdn(De, Dg, Df, C, Hf, 2, 7, 1);
   mdn::channel_context_plus_global_mdn_train_model_t mdn_train(mdn, 0.001);
   const auto no_global_result = mdn_train.train_one_batch(no_global);
@@ -524,11 +526,11 @@ void test_production_assemblies() {
 
 void test_channel_mdn_zero_valid_targets() {
   auto input = mdn::channel_mdn_input_t{};
-  input.context = torch::randn({4, 2, 5}, torch::kFloat32);
-  input.context_mask = torch::zeros({4, 2}, torch::kBool);
-  input.future = torch::randn({4, 2, 3, 2}, torch::kFloat32);
-  input.future_mask = torch::zeros({4, 2, 3}, torch::kBool);
-  auto mdn = mdn::ChannelContextMdn(5, 2, 2, 3, 2, 7, 1);
+  input.context = torch::randn({2, 2, 2, 5}, torch::kFloat32);
+  input.context_mask = torch::zeros({2, 2, 2}, torch::kBool);
+  input.future = torch::randn({2, 2, 2, 2}, torch::kFloat32);
+  input.future_mask = torch::zeros({2, 2, 2, 2}, torch::kBool);
+  auto mdn = mdn::ChannelContextMdn(5, 2, 2, 1, 2, 7, 1);
   mdn::channel_context_mdn_train_model_t mdn_train(mdn, 0.001);
   auto result = mdn_train.train_one_batch(input);
   check(result.skipped, "zero-valid MDN batch is skipped");
@@ -538,26 +540,26 @@ void test_channel_mdn_zero_valid_targets() {
 
 void test_channel_mdn_train_model_sanitizes_masked_sentinels() {
   auto baseline = mdn::channel_mdn_input_t{};
-  baseline.context = torch::randn({3, 2, 5}, torch::kFloat32);
-  baseline.context_mask = torch::ones({3, 2}, torch::kBool);
-  baseline.context_mask.index_put_({1, 1}, false);
-  baseline.context.index_put_({1, 1, torch::indexing::Slice()}, 0.0);
+  baseline.context = torch::randn({3, 2, 2, 5}, torch::kFloat32);
+  baseline.context_mask = torch::ones({3, 2, 2}, torch::kBool);
+  baseline.context_mask.index_put_({1, 1, 1}, false);
+  baseline.context.index_put_({1, 1, 1, torch::indexing::Slice()}, 0.0);
   baseline.future = torch::randn({3, 2, 2, 2}, torch::kFloat32);
-  baseline.future_mask = torch::ones({3, 2, 2}, torch::kBool);
-  baseline.future_mask.index_put_({0, 1, 1}, false);
-  baseline.future.index_put_({0, 1, 1, torch::indexing::Slice()}, 0.0);
+  baseline.future_mask = torch::ones({3, 2, 2, 2}, torch::kBool);
+  baseline.future_mask.index_put_({0, 1, 1, 1}, false);
+  baseline.future.index_put_({0, 1, 1, 1}, 0.0);
 
   auto sentinel = baseline;
   sentinel.context = baseline.context.clone();
   sentinel.future = baseline.future.clone();
-  sentinel.context.index_put_({1, 1, torch::indexing::Slice()},
+  sentinel.context.index_put_({1, 1, 1, torch::indexing::Slice()},
                               std::numeric_limits<float>::quiet_NaN());
-  sentinel.future.index_put_({0, 1, 1, torch::indexing::Slice()},
+  sentinel.future.index_put_({0, 1, 1, 1},
                              std::numeric_limits<float>::quiet_NaN());
 
   auto train_once = [](const mdn::channel_mdn_input_t &input) {
     torch::manual_seed(71);
-    auto mdn = mdn::ChannelContextMdn(5, 2, 2, 2, 2, 7, 1);
+    auto mdn = mdn::ChannelContextMdn(5, 2, 2, 1, 2, 7, 1);
     mdn::channel_context_mdn_train_model_t mdn_train(mdn, 0.001);
     return mdn_train.train_one_batch(input);
   };

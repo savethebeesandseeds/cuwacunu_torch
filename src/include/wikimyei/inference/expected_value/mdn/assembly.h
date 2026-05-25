@@ -33,11 +33,13 @@ make_channel_context_mdn_assembly(
       "future_channel_node_distribution", wa::dock_direction_t::produces,
       wa::dock_role_t::output, wa::dock_domain_t::future_node_distribution,
       "graph_order.channel_node_future_distribution.v1",
-      "log_pi[B,N,C,Hf,K];mu/sigma[B,N,C,Hf,K,Df]", "[B,N,C,Hf]",
+      "log_pi[B,N,C,Df,K];mu/sigma[B,N,C,Df,K]", "[B,N,C,Df]",
       /*required=*/true, /*target_side_only=*/false,
-      {"B", "N", "C", "Hf", "Df", "K"}));
+      {"B", "N", "C", "Df", "K"}));
   out.constraints.push_back("context_mode=channel_context_strict");
   out.constraints.push_back("each target channel consumes its own context row");
+  out.constraints.push_back(
+      "active prediction is one-step with independent target feature mixtures");
   out.constraints.push_back(
       "global_context mode must use a different dock/assembly identity");
   wa::validate_wikimyei_assembly(out);
@@ -76,12 +78,14 @@ make_channel_context_plus_global_mdn_assembly(
       "future_channel_node_distribution", wa::dock_direction_t::produces,
       wa::dock_role_t::output, wa::dock_domain_t::future_node_distribution,
       "graph_order.channel_node_future_distribution.v1",
-      "log_pi[B,N,C,Hf,K];mu/sigma[B,N,C,Hf,K,Df]", "[B,N,C,Hf]",
+      "log_pi[B,N,C,Df,K];mu/sigma[B,N,C,Df,K]", "[B,N,C,Df]",
       /*required=*/true, /*target_side_only=*/false,
-      {"B", "N", "C", "Hf", "Df", "K"}));
+      {"B", "N", "C", "Df", "K"}));
   out.constraints.push_back("context_mode=channel_context_plus_global");
   out.constraints.push_back("target channel consumes its own context row plus "
                             "explicit global branch");
+  out.constraints.push_back(
+      "active prediction is one-step with independent target feature mixtures");
   out.constraints.push_back(
       "global branch must be produced after channel representation exists");
   wa::validate_wikimyei_assembly(out);

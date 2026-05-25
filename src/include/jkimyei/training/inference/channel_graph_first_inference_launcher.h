@@ -48,11 +48,10 @@ struct channel_graph_first_inference_training_report_t {
   std::string component_assembly_id{};
   std::string input_representation_assembly_id{};
   std::string context_contract{"graph_order.channel_node_representation.v1"};
-  std::string context_value_shape{"[B_node,C,De]"};
+  std::string context_value_shape{"[B,N,C,De]"};
   std::string output_contract{
       "graph_order.channel_node_future_distribution.v1"};
-  std::string output_value_shape{
-      "log_pi:[B_node,C,Hf,K];mu_sigma:[B_node,C,Hf,K,Df]"};
+  std::string output_value_shape{"log_pi:[B,N,C,Df,K];mu_sigma:[B,N,C,Df,K]"};
   std::string graph_order_fingerprint{};
   std::vector<std::string> node_ids{};
   std::vector<std::string> edge_ids{};
@@ -62,7 +61,7 @@ struct channel_graph_first_inference_training_report_t {
   int64_t future_horizon{0};
   std::string context_mode{"channel_context_strict"};
   std::string target_domain{"channel_node_future"};
-  std::string target_mask_policy{"all_target_features_valid"};
+  std::string target_mask_policy{"per_target_feature_valid"};
   std::string activity_target{"node_feature_support_mean"};
   int64_t mixture_count{0};
   int64_t hidden_width{0};
@@ -126,7 +125,7 @@ struct channel_graph_first_inference_training_report_t {
   double max_sigma_max_valid{std::numeric_limits<double>::quiet_NaN()};
   double mean_mixture_entropy{std::numeric_limits<double>::quiet_NaN()};
   std::vector<double> mean_nll_per_channel{};
-  std::vector<double> mean_nll_per_horizon{};
+  std::vector<double> mean_nll_per_target_feature{};
   std::vector<double> mean_mixture_usage{};
   int64_t nonfinite_output_count{0};
   double last_grad_norm{std::numeric_limits<double>::quiet_NaN()};
@@ -265,7 +264,8 @@ struct channel_graph_first_inference_training_report_t {
     oss << "max_sigma_max_valid=" << max_sigma_max_valid << "\n";
     oss << "mean_mixture_entropy=" << mean_mixture_entropy << "\n";
     append_double_list(oss, "mean_nll_per_channel", mean_nll_per_channel);
-    append_double_list(oss, "mean_nll_per_horizon", mean_nll_per_horizon);
+    append_double_list(oss, "mean_nll_per_target_feature",
+                       mean_nll_per_target_feature);
     append_double_list(oss, "mean_mixture_usage", mean_mixture_usage);
     oss << "nonfinite_output_count=" << nonfinite_output_count << "\n";
     oss << "last_grad_norm=" << last_grad_norm << "\n";
@@ -560,13 +560,19 @@ inline std::string make_channel_mdn_runtime_lls(
   document.entries.push_back(lls::make_component_runtime_lls_uint_entry(
       "wave_pulse_index", static_cast<std::uint64_t>(wave_pulse_index)));
   document.entries.push_back(lls::make_component_runtime_lls_uint_entry(
-      "context_row_count", static_cast<std::uint64_t>(batch.context.size(0))));
+      "context_anchor_count",
+      static_cast<std::uint64_t>(batch.context.size(0))));
   document.entries.push_back(lls::make_component_runtime_lls_uint_entry(
-      "channel_count", static_cast<std::uint64_t>(batch.context.size(1))));
+      "node_count", static_cast<std::uint64_t>(batch.context.size(1))));
   document.entries.push_back(lls::make_component_runtime_lls_uint_entry(
-      "context_dim", static_cast<std::uint64_t>(batch.context.size(2))));
+      "context_slot_count", static_cast<std::uint64_t>(batch.context.size(0) *
+                                                       batch.context.size(1))));
   document.entries.push_back(lls::make_component_runtime_lls_uint_entry(
-      "future_horizon", static_cast<std::uint64_t>(batch.future.size(2))));
+      "channel_count", static_cast<std::uint64_t>(batch.context.size(2))));
+  document.entries.push_back(lls::make_component_runtime_lls_uint_entry(
+      "context_dim", static_cast<std::uint64_t>(batch.context.size(3))));
+  document.entries.push_back(
+      lls::make_component_runtime_lls_uint_entry("future_horizon", 1));
   document.entries.push_back(lls::make_component_runtime_lls_uint_entry(
       "target_coord_count",
       static_cast<std::uint64_t>(batch.target_coords.size())));
@@ -1305,8 +1311,8 @@ public:
     double max_grad_norm = -std::numeric_limits<double>::infinity();
     std::vector<double> nll_per_channel_sum;
     std::vector<int64_t> nll_per_channel_count;
-    std::vector<double> nll_per_horizon_sum;
-    std::vector<int64_t> nll_per_horizon_count;
+    std::vector<double> nll_per_target_feature_sum;
+    std::vector<int64_t> nll_per_target_feature_count;
     std::vector<double> mixture_usage_sum;
     std::vector<int64_t> mixture_usage_count;
 
@@ -1348,9 +1354,9 @@ public:
       report.mean_nll_per_channel =
           channel_graph_first_inference_launcher_detail::mean_vector(
               nll_per_channel_sum, nll_per_channel_count);
-      report.mean_nll_per_horizon =
+      report.mean_nll_per_target_feature =
           channel_graph_first_inference_launcher_detail::mean_vector(
-              nll_per_horizon_sum, nll_per_horizon_count);
+              nll_per_target_feature_sum, nll_per_target_feature_count);
       report.mean_mixture_usage =
           channel_graph_first_inference_launcher_detail::mean_vector(
               mixture_usage_sum, mixture_usage_count);
@@ -1430,9 +1436,9 @@ public:
 
       if (model_ptr == nullptr) {
         auto mdn = builder_.make_channel_context_mdn(
-            /*context_dim=*/input.context.size(2),
-            /*channel_count=*/input.context.size(1),
-            /*horizon_count=*/input.future.size(2));
+            /*context_dim=*/input.context.size(3),
+            /*channel_count=*/input.context.size(2),
+            /*horizon_count=*/1);
         auto train_options = cuwacunu::wikimyei::inference::expected_value::
             mdn::channel_context_mdn_train_options_from_spec(
                 builder_.bundle().channel_mdn);
@@ -1485,8 +1491,9 @@ public:
                           builder_.bundle().channel_mdn));
           step.nll_per_channel = cuwacunu::wikimyei::inference::expected_value::
               mdn::mdn_masked_mean_per_channel(nll_map, combined_mask);
-          step.nll_per_horizon = cuwacunu::wikimyei::inference::expected_value::
-              mdn::mdn_masked_mean_per_horizon(nll_map, combined_mask);
+          step.nll_per_target_feature =
+              cuwacunu::wikimyei::inference::expected_value::mdn::
+                  mdn_masked_mean_per_target_feature(nll_map, combined_mask);
           step.loss = cuwacunu::wikimyei::inference::expected_value::mdn::
               compute_channel_context_mdn_nll(
                   out, input,
@@ -1582,7 +1589,8 @@ public:
       channel_graph_first_inference_launcher_detail::accumulate_finite_vector(
           step.nll_per_channel, nll_per_channel_sum, nll_per_channel_count);
       channel_graph_first_inference_launcher_detail::accumulate_finite_vector(
-          step.nll_per_horizon, nll_per_horizon_sum, nll_per_horizon_count);
+          step.nll_per_target_feature, nll_per_target_feature_sum,
+          nll_per_target_feature_count);
       channel_graph_first_inference_launcher_detail::accumulate_finite_vector(
           step.mixture_usage, mixture_usage_sum, mixture_usage_count);
       report.finite_parameter_check =

@@ -5,6 +5,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -418,6 +419,7 @@ template <typename DatatypeT> struct node_lifted_stream_options_t {
   std::optional<std::size_t> end_anchor_index{std::nullopt};
   node_lifted_source_order_t source_order{
       node_lifted_source_order_t::sequential};
+  std::optional<std::uint64_t> source_order_random_seed{std::nullopt};
   std::string component_assembly_id{"nodelift_srl_v1"};
   std::string assembly_token{"wikimyei.expression.nodelift.srl.v1"};
   std::string dock_binding_token{};
@@ -464,6 +466,9 @@ public:
     loader_options.batch_size = options_.batch_size;
     loader_options.begin_anchor_index = options_.begin_anchor_index;
     loader_options.end_anchor_index = stream_end_anchor_index_;
+    if (options_.source_order == node_lifted_source_order_t::random_per_epoch) {
+      loader_options.random_seed = options_.source_order_random_seed;
+    }
     loader_options.graph_batch_options = options_.graph_batch_options;
     if (options_.source_order == node_lifted_source_order_t::random_per_epoch) {
       random_loader_ = std::make_unique<random_loader_t>(
@@ -485,6 +490,10 @@ public:
 
   [[nodiscard]] node_lifted_source_order_t source_order() const {
     return options_.source_order;
+  }
+
+  [[nodiscard]] std::optional<std::uint64_t> source_order_random_seed() const {
+    return options_.source_order_random_seed;
   }
 
   [[nodiscard]] std::size_t begin_anchor_index() const {

@@ -3,9 +3,11 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
 #include <exception>
 #include <future>
 #include <iterator>
+#include <mutex>
 #include <optional>
 #include <sstream>
 #include <stdexcept>
@@ -18,6 +20,8 @@
 
 #include <torch/torch.h>
 
+#include <ATen/Context.h>
+
 #include "kikijyeba/topology/graph/graph.h"
 #include "ujcamei/source/contract/contract.h"
 #include "ujcamei/source/contract/validation/nodelift_compatibility.h"
@@ -27,6 +31,55 @@
 #include "ujcamei/source/retrieval/storage/memory_mapped/memory_mapped_dataset.h"
 
 namespace cuwacunu::ujcamei::source::retrieval::dataloader {
+
+namespace graph_anchor_edge_dataloader_detail {
+
+[[nodiscard]] inline std::uint64_t epoch_seed(std::uint64_t base_seed,
+                                              std::size_t epoch_index) {
+  return base_seed + static_cast<std::uint64_t>(epoch_index);
+}
+
+class scoped_cpu_rng_seed_t {
+public:
+  explicit scoped_cpu_rng_seed_t(std::uint64_t seed)
+      : generator_(at::globalContext().defaultGenerator(c10::DeviceType::CPU)),
+        active_(true) {
+    {
+      std::lock_guard<std::mutex> lock(generator_.mutex());
+      saved_state_ = generator_.get_state();
+      generator_.set_current_seed(seed);
+    }
+  }
+
+  scoped_cpu_rng_seed_t(const scoped_cpu_rng_seed_t &) = delete;
+  scoped_cpu_rng_seed_t &operator=(const scoped_cpu_rng_seed_t &) = delete;
+
+  ~scoped_cpu_rng_seed_t() {
+    if (!active_) {
+      return;
+    }
+    std::lock_guard<std::mutex> lock(generator_.mutex());
+    generator_.set_state(saved_state_);
+  }
+
+private:
+  at::Generator generator_;
+  at::Tensor saved_state_{};
+  bool active_{false};
+};
+
+template <typename Fn>
+inline void with_optional_cpu_rng_seed(std::optional<std::uint64_t> seed,
+                                       Fn &&fn) {
+  if (!seed.has_value()) {
+    fn();
+    return;
+  }
+  scoped_cpu_rng_seed_t guard(*seed);
+  fn();
+}
+
+} // namespace graph_anchor_edge_dataloader_detail
 
 enum class fetch_mode_t {
   serial,
@@ -807,6 +860,7 @@ template <typename DatatypeT> struct graph_anchor_edge_dataloader_options_t {
   std::size_t workers{0};
   std::size_t begin_anchor_index{0};
   std::optional<std::size_t> end_anchor_index{std::nullopt};
+  std::optional<std::uint64_t> random_seed{std::nullopt};
   std::optional<graph_anchor_edge_batch_options_t> graph_batch_options{
       std::nullopt};
 };
@@ -841,7 +895,9 @@ public:
                                  .batch_size(options_.batch_size)
                                  .workers(options_.workers)),
         loader_(dataset_, sampler_, data_loader_options_),
-        iterator_(loader_.begin()), end_(loader_.end()) {}
+        iterator_(loader_.end()), end_(loader_.end()) {
+    reset_loader_();
+  }
 
   [[nodiscard]] bool has_next() const { return iterator_ != end_; }
 
@@ -853,12 +909,7 @@ public:
     return make_graph_batch_(std::move(samples));
   }
 
-  void reset() {
-    // StatelessDataLoader::begin() is the public reset path; it resets the
-    // sampler internally, including RandomSampler.
-    iterator_ = loader_.begin();
-    end_ = loader_.end();
-  }
+  void reset() { reset_loader_(); }
 
   [[nodiscard]] std::size_t begin_anchor_index() const {
     return dataset_.begin_anchor_index();
@@ -900,6 +951,30 @@ private:
     }
   }
 
+  void reset_loader_() {
+    if constexpr (std::is_same_v<SamplerT,
+                                 torch::data::samplers::RandomSampler>) {
+      const auto seed =
+          options_.random_seed.has_value()
+              ? std::optional<std::uint64_t>(
+                    graph_anchor_edge_dataloader_detail::epoch_seed(
+                        *options_.random_seed, random_epoch_index_))
+              : std::nullopt;
+      graph_anchor_edge_dataloader_detail::with_optional_cpu_rng_seed(
+          seed, [&] { reset_loader_unseeded_(); });
+      ++random_epoch_index_;
+    } else {
+      reset_loader_unseeded_();
+    }
+  }
+
+  void reset_loader_unseeded_() {
+    // StatelessDataLoader::begin() is the public reset path; it resets the
+    // sampler internally, including RandomSampler.
+    iterator_ = loader_.begin();
+    end_ = loader_.end();
+  }
+
   graph_batch_t make_graph_batch_(std::vector<sample_t> samples) {
     TORCH_CHECK(!samples.empty(),
                 "[graph_anchor_edge_dataloader_t] empty dataloader batch");
@@ -929,6 +1004,7 @@ private:
   backend_loader_t loader_;
   iterator_t iterator_;
   iterator_t end_;
+  std::size_t random_epoch_index_{0};
 };
 
 } // namespace cuwacunu::ujcamei::source::retrieval::dataloader

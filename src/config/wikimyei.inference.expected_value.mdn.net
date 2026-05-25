@@ -1,7 +1,7 @@
 /*
   wikimyei.inference.expected_value.mdn.net
   ================================================
-  Neural architecture for the strict channel-context ExpectedValue MDN.
+  Neural architecture for the strict one-step channel-context ExpectedValue MDN.
 */
 MDN_NET {
   CHANNEL_COUNT = 3;

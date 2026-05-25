@@ -39,7 +39,7 @@ struct channel_mdn_spec_t {
       channel_mdn_target_domain_t::channel_node_future};
   std::vector<int64_t> target_coords{0, 1, 2, 3, 4, 5, 6, 7, 8};
   stream::channel_target_mask_policy_t target_mask_policy{
-      stream::channel_target_mask_policy_t::all_target_features_valid};
+      stream::channel_target_mask_policy_t::per_target_feature_valid};
   channel_mdn_activity_target_t activity_target{
       channel_mdn_activity_target_t::node_feature_support_mean};
   int64_t channel_count{0};
@@ -83,7 +83,12 @@ parse_target_domain(std::string value) {
 parse_target_mask_policy(std::string value) {
   value = kv::lowercase(kv::trim(value));
   if (value == "all_target_features_valid") {
-    return stream::channel_target_mask_policy_t::all_target_features_valid;
+    // Historical spelling accepted while active runtime now preserves the
+    // per-feature target mask.
+    return stream::channel_target_mask_policy_t::per_target_feature_valid;
+  }
+  if (value == "per_target_feature_valid") {
+    return stream::channel_target_mask_policy_t::per_target_feature_valid;
   }
   throw std::runtime_error("[channel_mdn_spec] invalid TARGET_MASK_POLICY: " +
                            value);
@@ -124,7 +129,8 @@ inline void validate_channel_mdn_spec(const channel_mdn_spec_t &spec) {
     throw std::runtime_error("[channel_mdn_spec] unsupported version token");
   }
   if (spec.component_assembly_id.empty()) {
-    throw std::runtime_error("[channel_mdn_spec] component_assembly_id is required");
+    throw std::runtime_error(
+        "[channel_mdn_spec] component_assembly_id is required");
   }
   if (spec.input_representation_assembly_id.empty()) {
     throw std::runtime_error(
@@ -135,9 +141,9 @@ inline void validate_channel_mdn_spec(const channel_mdn_spec_t &spec) {
         "[channel_mdn_spec] v1 requires channel_node_future target");
   }
   if (spec.target_mask_policy !=
-      stream::channel_target_mask_policy_t::all_target_features_valid) {
+      stream::channel_target_mask_policy_t::per_target_feature_valid) {
     throw std::runtime_error(
-        "[channel_mdn_spec] v1 requires all_target_features_valid");
+        "[channel_mdn_spec] v1 requires per_target_feature_valid");
   }
   if (spec.activity_target !=
       channel_mdn_activity_target_t::node_feature_support_mean) {
@@ -148,6 +154,11 @@ inline void validate_channel_mdn_spec(const channel_mdn_spec_t &spec) {
       spec.mixture_count <= 0 || spec.hidden_width <= 0 ||
       spec.residual_depth < 0 || spec.global_context_dim < 0) {
     throw std::runtime_error("[channel_mdn_spec] invalid dimensions");
+  }
+  if (spec.future_horizon != 1) {
+    throw std::runtime_error(
+        "[channel_mdn_spec] active channel MDN is one-step; FUTURE_HORIZON "
+        "must be 1");
   }
   if (spec.context_mode == channel_mdn_context_mode_t::channel_context_strict &&
       spec.global_context_dim != 0) {
@@ -193,7 +204,8 @@ decode_channel_mdn_spec_from_split_dsl(const std::string &dsl_text,
   channel_mdn_spec_t spec{};
   spec.version_token = kv::required(block, "VERSION");
   spec.component_assembly_id = kv::required(block, "COMPONENT_ASSEMBLY_ID");
-  spec.input_representation_assembly_id = kv::required(block, "INPUT_REPRESENTATION_ASSEMBLY_ID");
+  spec.input_representation_assembly_id =
+      kv::required(block, "INPUT_REPRESENTATION_ASSEMBLY_ID");
   spec.context_mode = channel_mdn_spec_detail::parse_context_mode(
       kv::required(block, "CONTEXT_MODE"));
   spec.target_domain = channel_mdn_spec_detail::parse_target_domain(

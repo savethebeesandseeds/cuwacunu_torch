@@ -4602,19 +4602,19 @@ lattice_mdn_distribution_calibration_diagnostic_vocabulary() {
            true,
            true,
            false},
-          {"mean_nll_per_horizon_max",
-           "horizon_stratified_scoring_loss",
+          {"mean_nll_per_target_feature_max",
+           "target_feature_stratified_scoring_loss",
            "mdn_distribution_facts",
-           {"lattice.exposure.fact.mean_nll_per_horizon"},
+           {"lattice.exposure.fact.mean_nll_per_target_feature"},
            "valid_target_count",
-           "max(mean_nll_per_horizon)",
+           "max(mean_nll_per_target_feature)",
            "none_point_estimate_only",
            {},
            "warning_result.diagnostic_evaluated_mdn_checkpoint",
            "warning_result.split|warning_anchor_range",
            "warning_result.diagnostic_active_*",
            "LATTICE_WARN KIND=mdn_distribution_calibration "
-           "METRIC=mean_nll_per_horizon_max",
+           "METRIC=mean_nll_per_target_feature_max",
            "available_when_report_field_present",
            true,
            true,
@@ -4779,7 +4779,7 @@ lattice_mdn_distribution_calibration_diagnostic_summary() {
 
   const auto mean_nll = find_metric("mean_nll");
   const auto channel_nll = find_metric("mean_nll_per_channel_max");
-  const auto horizon_nll = find_metric("mean_nll_per_horizon_max");
+  const auto feature_nll = find_metric("mean_nll_per_target_feature_max");
   const auto per_node = find_metric("per_node_mean_nll_max");
   const auto pit = find_metric("pit_ks_statistic");
   const auto interval = find_metric("predictive_interval_coverage_error");
@@ -4832,13 +4832,13 @@ lattice_mdn_distribution_calibration_diagnostic_summary() {
 
   out.finite_first_set_declared =
       out.diagnostic_count == 8 && mean_nll != vocabulary.end() &&
-      channel_nll != vocabulary.end() && horizon_nll != vocabulary.end() &&
+      channel_nll != vocabulary.end() && feature_nll != vocabulary.end() &&
       per_node != vocabulary.end() && pit != vocabulary.end() &&
       interval != vocabulary.end() && tail != vocabulary.end();
   out.proper_scoring_metrics_present =
       mean_nll != vocabulary.end() &&
       mean_nll->diagnostic_family == "proper_scoring_loss" &&
-      channel_nll != vocabulary.end() && horizon_nll != vocabulary.end();
+      channel_nll != vocabulary.end() && feature_nll != vocabulary.end();
   out.pit_histogram_summary_deferred =
       pit != vocabulary.end() &&
       pit->runtime_fields.front().find("pit_histogram") != std::string::npos &&
@@ -10249,7 +10249,7 @@ inline void apply_lattice_warn_clause(
     const std::set<std::string> allowed_metrics{
         "mean_nll",
         "mean_nll_per_channel_max",
-        "mean_nll_per_horizon_max",
+        "mean_nll_per_target_feature_max",
         "per_node_mean_nll_max",
         "crps",
         "pit_ks_statistic",

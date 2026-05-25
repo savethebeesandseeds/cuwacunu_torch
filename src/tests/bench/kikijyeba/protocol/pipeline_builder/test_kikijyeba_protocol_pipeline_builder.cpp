@@ -76,7 +76,8 @@ struct fixture_paths_t {
 };
 
 fixture_paths_t make_config_fixture(const std::string &label,
-                                    bool discover_edges = false) {
+                                    bool discover_edges = false,
+                                    const std::string &wave_mode = "run") {
   fixture_paths_t out{};
   out.dir = make_tmp_dir(label);
   const auto btc_csv = out.dir / "BTCUSDT.csv";
@@ -195,14 +196,18 @@ fixture_paths_t make_config_fixture(const std::string &label,
                   "-------------------/\n";
   }
   write_text(graph_dsl, graph_text);
-  write_text(wave_dsl, "WAVE_SETTINGS {\n"
-                       "  WAVE_ID = fixture_graph_first_pipeline;\n"
-                       "  TARGET = wikimyei.inference.expected_value.mdn;\n"
-                       "  MODE = run;\n"
-                       "  SOURCE_CURSOR_KIND = graph_anchor;\n"
-                       "  SOURCE_CURSOR_SCOPE = wave_batch;\n"
-                       "  SOURCE_RANGE = all;\n"
-                       "};\n");
+  const std::string wave_text =
+      "WAVE_SETTINGS {\n"
+      "  WAVE_ID = fixture_graph_first_pipeline;\n"
+      "  TARGET = wikimyei.inference.expected_value.mdn;\n"
+      "  MODE = " +
+      wave_mode +
+      ";\n"
+      "  SOURCE_CURSOR_KIND = graph_anchor;\n"
+      "  SOURCE_CURSOR_SCOPE = wave_batch;\n"
+      "  SOURCE_RANGE = all;\n"
+      "};\n";
+  write_text(wave_dsl, wave_text);
 
   write_text(vicreg_dsl, "VICREG {\n"
                          "  VERSION = wikimyei.representation.vicreg.v1;\n"
@@ -246,7 +251,7 @@ fixture_paths_t make_config_fixture(const std::string &label,
              "  CONTEXT_MODE = channel_context_strict;\n"
              "  TARGET_DOMAIN = channel_node_future;\n"
              "  TARGET_COORDS = 0,1,2,3;\n"
-             "  TARGET_MASK_POLICY = all_target_features_valid;\n"
+             "  TARGET_MASK_POLICY = per_target_feature_valid;\n"
              "  ACTIVITY_TARGET = node_feature_support_mean;\n"
              "  SIGMA_MIN = 0.001;\n"
              "  SIGMA_MAX = 0.0;\n"
@@ -474,6 +479,44 @@ void test_default_channel_config_dry_run_report() {
             << report.summary() << "\n";
 }
 
+void test_train_wave_defaults_to_random_source_order_in_pipeline() {
+  const auto fixture =
+      make_config_fixture("train_random_source_order", false, "train");
+  const auto bundle =
+      builder::load_channel_graph_first_config_bundle_from_config(
+          fixture.config);
+  check(bundle.wave_settings.source_order_policy ==
+            cuwacunu::kikijyeba::settings::wave_source_order_policy_t::
+                random_per_epoch,
+        "train fixture defaults to random_per_epoch source order");
+  check(!bundle.wave_settings.source_order_policy_explicit,
+        "train fixture source order is implicit");
+
+  builder::graph_first_pipeline_builder_options_t options{};
+  options.dry_run = true;
+  options.batch_size = 2;
+  builder::channel_graph_first_pipeline_builder_t<Kline> pipe(bundle, options);
+  const auto report = pipe.dry_run_report();
+  check(report.wave_source_order_policy == "random_per_epoch",
+        "pipeline dry-run reports train default random source order");
+  check(!report.wave_source_order_policy_explicit,
+        "pipeline dry-run reports train default source order as implicit");
+  check(
+      report.wave_source_order_warning_level == "none",
+      "pipeline dry-run does not warn for implicit train random source order");
+  check(report.wave_source_order_random_seed == 31,
+        "pipeline dry-run seeds train random source order from MDN seed");
+  check(report.wave_source_order_random_seed_source ==
+            "channel_mdn_training.seed",
+        "pipeline dry-run reports source-order seed source");
+  check(report.summary().find("source_order=random_per_epoch") !=
+            std::string::npos,
+        "pipeline summary includes train random source order");
+  check(report.summary().find("source_order_random_seed=31") !=
+            std::string::npos,
+        "pipeline summary includes source-order random seed");
+}
+
 void test_channel_contract_ignores_runtime_model_state_inputs() {
   const auto fixture = make_config_fixture("channel_contract_model_state");
   const auto base_contract =
@@ -573,18 +616,18 @@ void test_channel_config_backed_forward_nll_smoke() {
   auto mdn_batch = mdnstream::make_channel_mdn_input_batch(
       channel_batch, pipe.channel_mdn_adapter_options());
   check(mdn_batch.context.sizes() ==
-            torch::IntArrayRef({6, 1, pipe.context_dim()}),
+            torch::IntArrayRef({2, 3, 1, pipe.context_dim()}),
         "fixture MDN context shape");
-  check(mdn_batch.future.sizes() == torch::IntArrayRef({6, 1, 1, 4}),
+  check(mdn_batch.future.sizes() == torch::IntArrayRef({2, 3, 1, 4}),
         "fixture MDN future shape");
   check(mdn_batch.representation_stream_report.cursor.batch_cursor_token ==
             channel_batch.stream_report.cursor.batch_cursor_token,
         "MDN adapter preserves representation stream cursor");
 
   auto mdn_model = pipe.make_channel_context_mdn(
-      /*context_dim=*/mdn_batch.context.size(2),
-      /*channel_count=*/mdn_batch.context.size(1),
-      /*horizon_count=*/mdn_batch.future.size(2));
+      /*context_dim=*/mdn_batch.context.size(3),
+      /*channel_count=*/mdn_batch.context.size(2),
+      /*horizon_count=*/1);
   auto params = builder::channel_graph_first_pipeline_builder_t<
       Kline>::collect_channel_mdn_parameters(mdn_model);
   check(!params.empty(), "MDN exposes trainable parameters");
@@ -673,6 +716,7 @@ void test_edge_discovery_policy() {
 int main() {
   try {
     test_default_channel_config_dry_run_report();
+    test_train_wave_defaults_to_random_source_order_in_pipeline();
     test_channel_contract_ignores_runtime_model_state_inputs();
     test_edge_discovery_policy();
     test_channel_config_backed_forward_nll_smoke();

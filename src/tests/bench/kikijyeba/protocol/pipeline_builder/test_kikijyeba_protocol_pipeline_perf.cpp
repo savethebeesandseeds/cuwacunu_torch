@@ -217,7 +217,7 @@ std::filesystem::path make_config(const std::filesystem::path &dir,
                       "  CONTEXT_MODE = channel_context_strict;\n"
                       "  TARGET_DOMAIN = channel_node_future;\n"
                       "  TARGET_COORDS = 0,1,2,3;\n"
-                      "  TARGET_MASK_POLICY = all_target_features_valid;\n"
+                      "  TARGET_MASK_POLICY = per_target_feature_valid;\n"
                       "  ACTIVITY_TARGET = node_feature_support_mean;\n"
                       "  SIGMA_MIN = 0.001;\n"
                       "  SIGMA_MAX = 0.0;\n"

@@ -247,8 +247,8 @@ channel_target_domain_name(cuwacunu::wikimyei::inference::expected_value::mdn::
         channel_target_mask_policy_t policy) {
   namespace stream = cuwacunu::wikimyei::inference::expected_value::mdn::stream;
   switch (policy) {
-  case stream::channel_target_mask_policy_t::all_target_features_valid:
-    return "all_target_features_valid";
+  case stream::channel_target_mask_policy_t::per_target_feature_valid:
+    return "per_target_feature_valid";
   }
   return "unknown";
 }

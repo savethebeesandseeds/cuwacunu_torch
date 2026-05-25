@@ -273,7 +273,7 @@ fixture_paths_t make_config_fixture(const std::string &label,
              "  CONTEXT_MODE = channel_context_strict;\n"
              "  TARGET_DOMAIN = channel_node_future;\n"
              "  TARGET_COORDS = 0,1,2,3;\n"
-             "  TARGET_MASK_POLICY = all_target_features_valid;\n"
+             "  TARGET_MASK_POLICY = per_target_feature_valid;\n"
              "  ACTIVITY_TARGET = node_feature_support_mean;\n"
              "  SIGMA_MIN = 0.001;\n"
              "  SIGMA_MAX = 0.0;\n"
@@ -651,7 +651,8 @@ void test_channel_representation_training_run() {
   check(std::filesystem::exists(report.checkpoint_path),
         "representation checkpoint file exists");
   const auto report_text = read_text(fixture.report);
-  check(report_text.find("component_assembly_id=vicreg_v1") != std::string::npos,
+  check(report_text.find("component_assembly_id=vicreg_v1") !=
+            std::string::npos,
         "representation report component id");
   check(report_text.find("representation_architecture="
                          "channel_preserving_local_node_encoder.v1") !=
@@ -824,9 +825,10 @@ void test_channel_mdn_training_run() {
   check(report.mean_nll_per_channel.size() == 1, "MDN per-channel NLL count");
   check(std::isfinite(report.mean_nll_per_channel[0]),
         "MDN per-channel NLL finite");
-  check(report.mean_nll_per_horizon.size() == 1, "MDN per-horizon NLL count");
-  check(std::isfinite(report.mean_nll_per_horizon[0]),
-        "MDN per-horizon NLL finite");
+  check(report.mean_nll_per_target_feature.size() == 4,
+        "MDN per-target-feature NLL count");
+  check(std::isfinite(report.mean_nll_per_target_feature[0]),
+        "MDN per-target-feature NLL finite");
   check(report.mean_mixture_usage.size() == 2, "MDN mixture usage count");
   check(std::isfinite(report.mean_mixture_usage[0]) &&
             std::isfinite(report.mean_mixture_usage[1]),
@@ -836,7 +838,7 @@ void test_channel_mdn_training_run() {
   check(report.finite_parameter_check == 1.0, "MDN finite parameter check");
   check(report.context_mode == "channel_context_strict", "MDN context mode");
   check(report.target_domain == "channel_node_future", "MDN target domain");
-  check(report.target_mask_policy == "all_target_features_valid",
+  check(report.target_mask_policy == "per_target_feature_valid",
         "MDN target mask policy");
   check(report.activity_target == "node_feature_support_mean",
         "MDN activity target");
@@ -850,8 +852,7 @@ void test_channel_mdn_training_run() {
         "MDN input representation id");
   check(report.context_contract == "graph_order.channel_node_representation.v1",
         "MDN context contract");
-  check(report.context_value_shape == "[B_node,C,De]",
-        "MDN context value shape");
+  check(report.context_value_shape == "[B,N,C,De]", "MDN context value shape");
   check(report.output_contract ==
             "graph_order.channel_node_future_distribution.v1",
         "MDN output contract");
@@ -876,8 +877,7 @@ void test_channel_mdn_training_run() {
                          "graph_order.channel_node_representation.v1") !=
             std::string::npos,
         "MDN report context contract");
-  check(report_text.find("context_value_shape=[B_node,C,De]") !=
-            std::string::npos,
+  check(report_text.find("context_value_shape=[B,N,C,De]") != std::string::npos,
         "MDN report context value shape");
   check(report_text.find("output_contract="
                          "graph_order.channel_node_future_distribution.v1") !=
@@ -886,7 +886,7 @@ void test_channel_mdn_training_run() {
   check(report_text.find("target_domain=channel_node_future") !=
             std::string::npos,
         "MDN report target domain");
-  check(report_text.find("target_mask_policy=all_target_features_valid") !=
+  check(report_text.find("target_mask_policy=per_target_feature_valid") !=
             std::string::npos,
         "MDN report target mask policy");
   check(report_text.find("sigma_min=0.001") != std::string::npos,
@@ -899,8 +899,8 @@ void test_channel_mdn_training_run() {
         "MDN report masked sigma min");
   check(report_text.find("max_sigma_max_valid=") != std::string::npos,
         "MDN report masked sigma max");
-  check(report_text.find("mean_nll_per_horizon=") != std::string::npos,
-        "MDN report per-horizon NLL");
+  check(report_text.find("mean_nll_per_target_feature=") != std::string::npos,
+        "MDN report per-target-feature NLL");
   check(report_text.find("mean_mixture_usage=") != std::string::npos,
         "MDN report mixture usage");
   check(report_text.find("max_grad_norm=") != std::string::npos,

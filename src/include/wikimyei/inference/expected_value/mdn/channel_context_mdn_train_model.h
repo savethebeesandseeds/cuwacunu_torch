@@ -25,7 +25,7 @@ struct channel_context_mdn_train_step_result_t {
   torch::Tensor loss{};
   torch::Tensor nll{};
   torch::Tensor nll_per_channel{};
-  torch::Tensor nll_per_horizon{};
+  torch::Tensor nll_per_target_feature{};
   torch::Tensor mixture_usage{};
   int64_t valid_target_count{0};
   double valid_target_fraction{0.0};
@@ -47,26 +47,29 @@ namespace channel_context_mdn_train_detail {
 
 [[nodiscard]] inline channel_mdn_input_t
 sanitize_train_input(const channel_mdn_input_t &input) {
-  TORCH_CHECK(input.context.defined() && input.context.dim() == 3,
+  TORCH_CHECK(input.context.defined() && input.context.dim() == 4,
               "[channel_context_mdn_train_model] context must be "
-              "[B_node,C,De]");
-  TORCH_CHECK(input.context_mask.defined() && input.context_mask.dim() == 2,
+              "[B,N,C,De]");
+  TORCH_CHECK(input.context_mask.defined() && input.context_mask.dim() == 3,
               "[channel_context_mdn_train_model] context_mask must be "
-              "[B_node,C]");
+              "[B,N,C]");
   TORCH_CHECK(input.future.defined() && input.future.dim() == 4,
               "[channel_context_mdn_train_model] future must be "
-              "[B_node,C,Hf,Df]");
-  TORCH_CHECK(input.future_mask.defined() && input.future_mask.dim() == 3,
+              "[B,N,C,Df]");
+  TORCH_CHECK(input.future_mask.defined() && input.future_mask.dim() == 4,
               "[channel_context_mdn_train_model] future_mask must be "
-              "[B_node,C,Hf]");
+              "[B,N,C,Df]");
   TORCH_CHECK(input.context.size(0) == input.context_mask.size(0) &&
-                  input.context.size(1) == input.context_mask.size(1),
+                  input.context.size(1) == input.context_mask.size(1) &&
+                  input.context.size(2) == input.context_mask.size(2),
               "[channel_context_mdn_train_model] context/mask shape mismatch");
   TORCH_CHECK(input.future.size(0) == input.context.size(0) &&
                   input.future.size(1) == input.context.size(1) &&
+                  input.future.size(2) == input.context.size(2) &&
                   input.future.size(0) == input.future_mask.size(0) &&
                   input.future.size(1) == input.future_mask.size(1) &&
-                  input.future.size(2) == input.future_mask.size(2),
+                  input.future.size(2) == input.future_mask.size(2) &&
+                  input.future.size(3) == input.future_mask.size(3),
               "[channel_context_mdn_train_model] future/mask shape mismatch");
 
   auto context_mask =
@@ -84,8 +87,7 @@ sanitize_train_input(const channel_mdn_input_t &input) {
               "under true context mask");
 
   auto future_finite_or_masked =
-      torch::isfinite(input.future)
-          .logical_or(future_mask.unsqueeze(-1).logical_not());
+      torch::isfinite(input.future).logical_or(future_mask.logical_not());
   TORCH_CHECK(future_finite_or_masked.all().template item<bool>(),
               "[channel_context_mdn_train_model] non-finite future value "
               "under true future mask");
@@ -94,8 +96,8 @@ sanitize_train_input(const channel_mdn_input_t &input) {
   out.context = torch::where(context_mask.unsqueeze(-1), input.context,
                              torch::zeros_like(input.context));
   out.context_mask = context_mask;
-  out.future = torch::where(future_mask.unsqueeze(-1), input.future,
-                            torch::zeros_like(input.future));
+  out.future =
+      torch::where(future_mask, input.future, torch::zeros_like(input.future));
   out.future_mask = future_mask;
   return out;
 }
@@ -103,14 +105,17 @@ sanitize_train_input(const channel_mdn_input_t &input) {
 [[nodiscard]] inline channel_mdn_plus_global_input_t
 sanitize_plus_global_train_input(const channel_mdn_plus_global_input_t &input) {
   auto clean_channel = sanitize_train_input(input.channel);
-  TORCH_CHECK(input.global_context.defined() && input.global_context.dim() == 2,
+  TORCH_CHECK(input.global_context.defined() && input.global_context.dim() == 3,
               "[channel_context_plus_global_mdn_train_model] global_context "
-              "must be [B_node,Dg]");
-  TORCH_CHECK(input.global_mask.defined() && input.global_mask.dim() == 1,
+              "must be [B,N,Dg]");
+  TORCH_CHECK(input.global_mask.defined() && input.global_mask.dim() == 2,
               "[channel_context_plus_global_mdn_train_model] global_mask must "
-              "be [B_node]");
+              "be [B,N]");
   TORCH_CHECK(input.global_context.size(0) == clean_channel.context.size(0) &&
-                  input.global_mask.size(0) == clean_channel.context.size(0),
+                  input.global_context.size(1) ==
+                      clean_channel.context.size(1) &&
+                  input.global_mask.size(0) == clean_channel.context.size(0) &&
+                  input.global_mask.size(1) == clean_channel.context.size(1),
               "[channel_context_plus_global_mdn_train_model] global/context "
               "shape mismatch");
 
@@ -224,7 +229,6 @@ inline masked_sigma_summary_t masked_sigma_summary(
                            .dtype(torch::kBool)
                            .device(out.sigma.device()))
                    .unsqueeze(-1)
-                   .unsqueeze(-1)
                    .expand_as(out.sigma);
   auto values = out.sigma.masked_select(valid);
   if (values.numel() == 0) {
@@ -241,7 +245,8 @@ inline torch::Tensor mixture_usage(
     const torch::Tensor &mask) {
   auto valid = mask.to(out.log_pi.dtype()).unsqueeze(-1);
   auto denom = valid.sum().clamp_min(1.0);
-  return (out.log_pi.exp() * valid).sum(std::vector<int64_t>{0, 1, 2}) / denom;
+  return (out.log_pi.exp() * valid).sum(std::vector<int64_t>{0, 1, 2, 3}) /
+         denom;
 }
 
 } // namespace channel_context_mdn_train_detail
@@ -309,8 +314,8 @@ public:
             mdn_out, clean_input.future, combined_mask, options_.nll);
     out.nll_per_channel = cuwacunu::wikimyei::inference::expected_value::mdn::
         mdn_masked_mean_per_channel(nll_map, combined_mask);
-    out.nll_per_horizon = cuwacunu::wikimyei::inference::expected_value::mdn::
-        mdn_masked_mean_per_horizon(nll_map, combined_mask);
+    out.nll_per_target_feature = cuwacunu::wikimyei::inference::expected_value::
+        mdn::mdn_masked_mean_per_target_feature(nll_map, combined_mask);
     out.nll =
         compute_channel_context_mdn_nll(mdn_out, clean_input, options_.nll);
     out.loss = out.nll;
@@ -436,8 +441,8 @@ public:
             mdn_out, clean_input.channel.future, combined_mask, options_.nll);
     out.nll_per_channel = cuwacunu::wikimyei::inference::expected_value::mdn::
         mdn_masked_mean_per_channel(nll_map, combined_mask);
-    out.nll_per_horizon = cuwacunu::wikimyei::inference::expected_value::mdn::
-        mdn_masked_mean_per_horizon(nll_map, combined_mask);
+    out.nll_per_target_feature = cuwacunu::wikimyei::inference::expected_value::
+        mdn::mdn_masked_mean_per_target_feature(nll_map, combined_mask);
     out.nll = compute_channel_context_plus_global_mdn_nll(mdn_out, clean_input,
                                                           options_.nll);
     out.loss = out.nll;

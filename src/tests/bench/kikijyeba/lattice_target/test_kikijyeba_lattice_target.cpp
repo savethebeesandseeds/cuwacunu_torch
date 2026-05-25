@@ -666,11 +666,11 @@ void write_ranged_channel_mdn_job(
                          "context_mode=channel_context_strict\n"
                          "context_contract="
                          "graph_order.channel_node_representation.v1\n"
-                         "context_value_shape=[B_node,C,De]\n"
+                         "context_value_shape=[B,N,C,De]\n"
                          "output_contract="
                          "graph_order.channel_node_future_distribution.v1\n"
-                         "output_value_shape=log_pi:[B_node,C,Hf,K];mu_sigma:"
-                         "[B_node,C,Hf,K,Df]\n"
+                         "output_value_shape=log_pi:[B,N,C,Df,K];mu_sigma:"
+                         "[B,N,C,Df,K]\n"
                          "representation_checkpoint_loaded=true\n"
                          "allow_untrained_representation=false\n"
                          "representation_checkpoint_path=") +
@@ -683,7 +683,7 @@ void write_ranged_channel_mdn_job(
                  "max_sigma_max=1.20\n"
                  "mean_mixture_entropy=0.60\n"
                  "mean_nll_per_channel=0.31,0.33\n"
-                 "mean_nll_per_horizon=0.32\n"
+                 "mean_nll_per_target_feature=0.32\n"
                  "mean_mixture_usage=0.55,0.45\n"
                  "nonfinite_output_count=0\n"
                  "finite_parameter_check=true\n"
@@ -744,11 +744,11 @@ void write_ranged_channel_mdn_eval_job(
                  "\n"
                  "context_mode=channel_context_strict\n"
                  "context_contract=graph_order.channel_node_representation.v1\n"
-                 "context_value_shape=[B_node,C,De]\n"
+                 "context_value_shape=[B,N,C,De]\n"
                  "output_contract="
                  "graph_order.channel_node_future_distribution.v1\n"
-                 "output_value_shape=log_pi:[B_node,C,Hf,K];mu_sigma:[B_node,C,"
-                 "Hf,K,Df]\n"
+                 "output_value_shape=log_pi:[B,N,C,Df,K];mu_sigma:[B,N,C,Df,"
+                 "K]\n"
                  "total_valid_target_count=8\n"
                  "mean_valid_target_fraction=0.25\n"
                  "mean_sigma_mean=0.50\n"
@@ -756,7 +756,7 @@ void write_ranged_channel_mdn_eval_job(
                  "max_sigma_max=1.20\n"
                  "mean_mixture_entropy=0.60\n"
                  "mean_nll_per_channel=0.34,0.36\n"
-                 "mean_nll_per_horizon=0.35\n"
+                 "mean_nll_per_target_feature=0.35\n"
                  "mean_mixture_usage=0.50,0.50\n"
                  "nonfinite_output_count=0\n"
                  "finite_parameter_check=true\n"
@@ -795,10 +795,10 @@ exposure::lattice_exposure_fact_t make_channel_mdn_exposure_fact(
   fact.input_representation_assembly_id = "vicreg_v1";
   fact.context_mode = "channel_context_strict";
   fact.context_contract = "graph_order.channel_node_representation.v1";
-  fact.context_value_shape = "[B_node,C,De]";
+  fact.context_value_shape = "[B,N,C,De]";
   fact.output_contract = "graph_order.channel_node_future_distribution.v1";
   fact.output_value_shape =
-      "log_pi:[B_node,C,Hf,K];mu_sigma:[B_node,C,Hf,K,Df]";
+      "log_pi:[B,N,C,Df,K];mu_sigma:[B,N,C,Df,K]";
   fact.job_id = "channel_mdn_ranged";
   fact.wave_id = "wave_channel_mdn_ranged";
   fact.mean_loss = 0.32;
@@ -809,7 +809,7 @@ exposure::lattice_exposure_fact_t make_channel_mdn_exposure_fact(
   fact.max_sigma_max = 1.20;
   fact.mean_mixture_entropy = 0.60;
   fact.mean_nll_per_channel = {0.31, 0.33};
-  fact.mean_nll_per_horizon = {0.32};
+  fact.mean_nll_per_target_feature = {0.32};
   fact.mean_mixture_usage = {0.55, 0.45};
   fact.nonfinite_output_count = 0;
   fact.finite_parameter_check = true;
@@ -5620,7 +5620,7 @@ LATTICE_TARGET {
   const auto channel_nll_diagnostic =
       find_mdn_diagnostic_metric("mean_nll_per_channel_max");
   const auto horizon_nll_diagnostic =
-      find_mdn_diagnostic_metric("mean_nll_per_horizon_max");
+      find_mdn_diagnostic_metric("mean_nll_per_target_feature_max");
   const auto per_node_nll_diagnostic =
       find_mdn_diagnostic_metric("per_node_mean_nll_max");
   const auto pit_diagnostic = find_mdn_diagnostic_metric("pit_ks_statistic");

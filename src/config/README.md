@@ -191,9 +191,12 @@ graph-anchor domain. If omitted, `MODE=train` defaults to `random_per_epoch`
 and `MODE=run` defaults to `sequential`. `sequential` preserves canonical
 accepted-anchor order; `random_per_epoch` uses a Torch `RandomSampler` over
 graph-anchor indices per training epoch while each selected anchor still fetches
-every graph edge together. An explicit train-wave `SOURCE_ORDER=sequential` is
-allowed for reproducible/debug runs, but Runtime reports it as a warning because
-stochastic graph-anchor train loading is disabled.
+every graph edge together. The random order is seeded from the target
+component's training `SEED` (`vicreg_training.seed` or
+`channel_mdn_training.seed`) so graph-anchor sampling is reproducible by config.
+An explicit train-wave `SOURCE_ORDER=sequential` is allowed for
+reproducible/debug runs, but Runtime reports it as a warning because stochastic
+graph-anchor train loading is disabled.
 Targets may now require exposure coverage over explicit anchor-index ranges or
 forbid checkpoint exposure overlap with protected ranges. Those checks are
 evaluated from the checkpoint exposure closure and fail as `exposure_failed`

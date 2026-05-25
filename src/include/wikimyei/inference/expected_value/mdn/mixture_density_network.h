@@ -1,7 +1,8 @@
 /* mixture_density_network.h
  *
- * Mixture Density Network with a shared backbone and per-channel, per-horizon
- * heads. This header declares the MdnModelImpl module (no training loop here).
+ * Mixture Density Network with a shared backbone and per-channel one-step
+ * target-feature heads. This header declares the MdnModelImpl module (no
+ * training loop here).
  */
 #pragma once
 #include <cstdint>
@@ -22,8 +23,8 @@ namespace mdn {
 
 /**
  * # MdnModelImpl
- * Mixture Density Network with a **shared trunk** (Backbone) and **per-channel,
- * per-horizon heads** (ChannelHeads).
+ * Mixture Density Network with a **shared trunk** (Backbone) and per-channel,
+ * per-target-feature one-step heads (ChannelHeads).
  *
  * ## What this file is (and isn't)
  * - **Pure architecture only**: no optimizer, scheduler, loss, or training loop
@@ -39,9 +40,9 @@ namespace mdn {
  *       Temporal sequence reduction belongs to the MDN stream adapter, where
  *       the representation mask and reducer policy are available.
  * - Outputs (per batch, channel, horizon, mixture component, future feature):
- *     - `log_pi : [B, C, Hf, K]`
- *     - `mu     : [B, C, Hf, K, Df]`
- *     - `sigma  : [B, C, Hf, K, Df]` (positive; diagonal covariance)
+ *     - `log_pi : [B, 1, C, Df, K]`
+ *     - `mu     : [B, 1, C, Df, K]`
+ *     - `sigma  : [B, 1, C, Df, K]` (positive)
  *
  * ## Key symbols
  * - `B`  : batch size
@@ -50,7 +51,7 @@ namespace mdn {
  * then Df=1;
  * `{high,close}` then Df=2)
  * - `C`  : number of channels
- * - `Hf` : number of future horizons (time steps ahead)
+ * - `Hf` : compatibility field; active MDN requires one-step `Hf == 1`
  * - `K`  : number of mixture components
  * - `H`  : hidden feature width of the trunk
  * - `depth` : number of residual blocks in the trunk
@@ -66,17 +67,17 @@ namespace mdn {
  * - **Df must match your future feature selection**: If predict `{1,3}` from
  * `future_features[..., Dx]`, then construct the model with `Df=2` and make
  * sure the loss selects those same two dims.
- * - **C and Hf are architectural**: the head is built to output for *all*
- * channels and horizons. Pass the values intended to train/evaluate with.
+ * - **C is architectural**: the head is built to output for all channels.
+ *   Active MDN uses one-step prediction, so `Hf` must be 1.
  * - **Temporal reduction**: this class intentionally rejects `[B,Hx',De]`.
  *   Use the MDN adapter's explicit reducer policy before calling the MDN.
  */
 struct MdnModelImpl : torch::nn::Module {
   // --- Architecture hyperparameters (immutable after construction)
   int64_t De{0};      ///< Input embedding dimension
-  int64_t Df{0};      ///< Selected future width per (channel,horizon)
+  int64_t Df{0};      ///< Selected one-step target feature width
   int64_t C_axes{1};  ///< Number of channels (heads are replicated C times)
-  int64_t Hf_axes{1}; ///< Future horizons per channel
+  int64_t Hf_axes{1}; ///< Compatibility field; must be 1
   int64_t K{0};       ///< Mixture components
   int64_t H{0};       ///< Trunk hidden width
   int64_t depth{0};   ///< Trunk residual depth
@@ -87,7 +88,7 @@ struct MdnModelImpl : torch::nn::Module {
 
   // --- Submodules
   Backbone backbone{nullptr};     ///< Residual MLP trunk: [B,De] -> [B,H]
-  ChannelHeads ch_heads{nullptr}; ///< Per-(C,Hf) MDN heads: [B,H] -> MdnOut
+  ChannelHeads ch_heads{nullptr}; ///< Per-channel heads: [B,H] -> MdnOut
 
   /**
    * ## Constructor (explicit; recommended)
@@ -96,7 +97,7 @@ struct MdnModelImpl : torch::nn::Module {
    * @param De_    Input embedding dim
    * @param Df_    Selected future dim per (channel,horizon)
    * @param C_     Number of channels (>=1)
-   * @param Hf_    Number of future horizons per channel (>=1)
+   * @param Hf_    Compatibility horizon count; active MDN requires 1
    * @param K_     Mixture components
    * @param H_     Trunk hidden width
    * @param depth_ Trunk residual depth (number of ResMLP blocks)

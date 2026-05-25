@@ -154,6 +154,8 @@ struct lattice_exposure_fact_t {
   double max_sigma_max{std::numeric_limits<double>::quiet_NaN()};
   double mean_mixture_entropy{std::numeric_limits<double>::quiet_NaN()};
   std::vector<double> mean_nll_per_channel{};
+  std::vector<double> mean_nll_per_target_feature{};
+  // Historical field kept only to replay older MDN reports.
   std::vector<double> mean_nll_per_horizon{};
   std::vector<double> mean_mixture_usage{};
   std::int64_t nonfinite_output_count{0};
@@ -3734,6 +3736,7 @@ make_exposure_fact_from_job_dir(const std::filesystem::path &job_dir,
         report.find("max_sigma_max") != report.end() ||
         report.find("mean_mixture_entropy") != report.end() ||
         report.find("mean_nll_per_channel") != report.end() ||
+        report.find("mean_nll_per_target_feature") != report.end() ||
         report.find("mean_nll_per_horizon") != report.end() ||
         report.find("mean_mixture_usage") != report.end() ||
         report.find("nonfinite_output_count") != report.end() ||
@@ -3750,8 +3753,14 @@ make_exposure_fact_from_job_dir(const std::filesystem::path &job_dir,
         report, state, {"mean_mixture_entropy", "last_mixture_entropy"});
     out.mean_nll_per_channel = detail::parse_double_list_fallback(
         detail::map_get(report, "mean_nll_per_channel"));
+    out.mean_nll_per_target_feature = detail::parse_double_list_fallback(
+        detail::map_get(report, "mean_nll_per_target_feature"));
     out.mean_nll_per_horizon = detail::parse_double_list_fallback(
         detail::map_get(report, "mean_nll_per_horizon"));
+    if (out.mean_nll_per_target_feature.empty() &&
+        !out.mean_nll_per_horizon.empty()) {
+      out.mean_nll_per_target_feature = out.mean_nll_per_horizon;
+    }
     out.mean_mixture_usage = detail::parse_double_list_fallback(
         detail::map_get(report, "mean_mixture_usage"));
     out.nonfinite_output_count =
@@ -3974,6 +3983,8 @@ canonical_exposure_fact_text(const lattice_exposure_fact_t &fact) {
   out << "mean_mixture_entropy=" << fact.mean_mixture_entropy << "\n";
   exposure_detail::append_double_list(out, "mean_nll_per_channel",
                                       fact.mean_nll_per_channel);
+  exposure_detail::append_double_list(out, "mean_nll_per_target_feature",
+                                      fact.mean_nll_per_target_feature);
   exposure_detail::append_double_list(out, "mean_nll_per_horizon",
                                       fact.mean_nll_per_horizon);
   exposure_detail::append_double_list(out, "mean_mixture_usage",
@@ -4195,8 +4206,14 @@ make_exposure_fact_from_sidecar_text(const std::string &text,
       std::numeric_limits<double>::quiet_NaN());
   out.mean_nll_per_channel = detail::parse_double_list_fallback(
       detail::map_get(map, "mean_nll_per_channel"));
+  out.mean_nll_per_target_feature = detail::parse_double_list_fallback(
+      detail::map_get(map, "mean_nll_per_target_feature"));
   out.mean_nll_per_horizon = detail::parse_double_list_fallback(
       detail::map_get(map, "mean_nll_per_horizon"));
+  if (out.mean_nll_per_target_feature.empty() &&
+      !out.mean_nll_per_horizon.empty()) {
+    out.mean_nll_per_target_feature = out.mean_nll_per_horizon;
+  }
   out.mean_mixture_usage = detail::parse_double_list_fallback(
       detail::map_get(map, "mean_mixture_usage"));
   out.nonfinite_output_count = detail::parse_i64_fallback(
@@ -5295,6 +5312,8 @@ inline bool supplement_inference_health_from_derived(
     sidecar_fact.max_sigma_max = derived_fact.max_sigma_max;
     sidecar_fact.mean_mixture_entropy = derived_fact.mean_mixture_entropy;
     sidecar_fact.mean_nll_per_channel = derived_fact.mean_nll_per_channel;
+    sidecar_fact.mean_nll_per_target_feature =
+        derived_fact.mean_nll_per_target_feature;
     sidecar_fact.mean_nll_per_horizon = derived_fact.mean_nll_per_horizon;
     sidecar_fact.mean_mixture_usage = derived_fact.mean_mixture_usage;
     sidecar_fact.nonfinite_output_count = derived_fact.nonfinite_output_count;
@@ -5326,6 +5345,12 @@ inline bool supplement_inference_health_from_derived(
   if (sidecar_fact.mean_nll_per_channel.empty() &&
       !derived_fact.mean_nll_per_channel.empty()) {
     sidecar_fact.mean_nll_per_channel = derived_fact.mean_nll_per_channel;
+    changed = true;
+  }
+  if (sidecar_fact.mean_nll_per_target_feature.empty() &&
+      !derived_fact.mean_nll_per_target_feature.empty()) {
+    sidecar_fact.mean_nll_per_target_feature =
+        derived_fact.mean_nll_per_target_feature;
     changed = true;
   }
   if (sidecar_fact.mean_nll_per_horizon.empty() &&

@@ -282,7 +282,8 @@ void test_channel_specs_decode_and_validate() {
   if (representation_spec.component_assembly_id != "vicreg_v1") {
     throw std::runtime_error("VICReg component id mismatch");
   }
-  if (mdn_spec.input_representation_assembly_id != representation_spec.component_assembly_id) {
+  if (mdn_spec.input_representation_assembly_id !=
+      representation_spec.component_assembly_id) {
     throw std::runtime_error("MDN representation reference mismatch");
   }
   expect_throw(
@@ -307,7 +308,7 @@ void test_channel_specs_decode_and_validate() {
       [&] {
         const auto ignored = mdn::decode_channel_mdn_spec_from_split_dsl(
             replace_first(mdn_dsl_text,
-                          "  TARGET_MASK_POLICY = all_target_features_valid;\n",
+                          "  TARGET_MASK_POLICY = per_target_feature_valid;\n",
                           ""),
             mdn_net_text);
         (void)ignored;
@@ -355,8 +356,10 @@ void test_channel_specs_decode_and_validate() {
     throw std::runtime_error(
         "channel graph-first BNF paths missing from bundle");
   }
-  if (channel_bundle.vicreg.component_assembly_id != representation_spec.component_assembly_id ||
-      channel_bundle.channel_mdn.component_assembly_id != mdn_spec.component_assembly_id ||
+  if (channel_bundle.vicreg.component_assembly_id !=
+          representation_spec.component_assembly_id ||
+      channel_bundle.channel_mdn.component_assembly_id !=
+          mdn_spec.component_assembly_id ||
       channel_bundle.channel_mdn.input_representation_assembly_id !=
           representation_spec.component_assembly_id) {
     throw std::runtime_error("channel graph-first bundle component mismatch");
@@ -450,8 +453,7 @@ void test_channel_specs_decode_and_validate() {
       mdn::channel_mdn_adapter_options_from_spec(mdn_spec);
   if (mdn_adapter_options.target_coords != mdn_spec.target_coords ||
       mdn_adapter_options.target_mask_policy !=
-          mdn::stream::channel_target_mask_policy_t::
-              all_target_features_valid) {
+          mdn::stream::channel_target_mask_policy_t::per_target_feature_valid) {
     throw std::runtime_error("MDN adapter options mismatch");
   }
   const auto nll_options = mdn::channel_mdn_nll_options_from_spec(mdn_spec);
@@ -514,7 +516,7 @@ void test_channel_specs_decode_and_validate() {
                   "  CONTEXT_MODE = channel_context_plus_global;\n"
                   "  TARGET_DOMAIN = channel_node_future;\n"
                   "  TARGET_COORDS = 0,1;\n"
-                  "  TARGET_MASK_POLICY = all_target_features_valid;\n"
+                  "  TARGET_MASK_POLICY = per_target_feature_valid;\n"
                   "  ACTIVITY_TARGET = node_feature_support_mean;\n"
                   "  SIGMA_MIN = 0.001;\n"
                   "  SIGMA_MAX = 0.0;\n"
@@ -641,7 +643,8 @@ void test_cross_reference_failures() {
   auto channel_bundle =
       protocol::load_channel_graph_first_config_bundle_from_config(
           "/cuwacunu/src/config/.config");
-  channel_bundle.channel_mdn.input_representation_assembly_id = "other_channel_rep";
+  channel_bundle.channel_mdn.input_representation_assembly_id =
+      "other_channel_rep";
   expect_throw(
       [&] {
         protocol::validate_channel_graph_first_config_bundle(channel_bundle);

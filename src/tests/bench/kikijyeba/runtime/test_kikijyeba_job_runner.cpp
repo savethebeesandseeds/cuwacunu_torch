@@ -258,7 +258,7 @@ fixture_paths_t make_config_fixture(
              "  CONTEXT_MODE = channel_context_strict;\n"
              "  TARGET_DOMAIN = channel_node_future;\n"
              "  TARGET_COORDS = 0,1,2,3;\n"
-             "  TARGET_MASK_POLICY = all_target_features_valid;\n"
+             "  TARGET_MASK_POLICY = per_target_feature_valid;\n"
              "  ACTIVITY_TARGET = node_feature_support_mean;\n"
              "  SIGMA_MIN = 0.001;\n"
              "  SIGMA_MAX = 0.0;\n"
@@ -578,8 +578,9 @@ void test_inference_dry_run_writes_manifest_and_state() {
   check(manifest_text.find("job_kind=channel_inference_mdn") !=
             std::string::npos,
         "manifest records inference kind");
-  check(manifest_text.find("target_component_family_id=wikimyei.inference.expected_"
-                           "value.mdn") != std::string::npos,
+  check(manifest_text.find(
+            "target_component_family_id=wikimyei.inference.expected_"
+            "value.mdn") != std::string::npos,
         "manifest records inference target component");
   check(manifest_text.find("wave_action=run") != std::string::npos,
         "manifest records run action");
@@ -630,8 +631,9 @@ void test_inference_dry_run_writes_manifest_and_state() {
   const auto state_text = read_text(job_dir / "job.state");
   check(state_text.find("status=dry_run") != std::string::npos,
         "state records dry-run status");
-  check(state_text.find("target_component_family_id=wikimyei.inference.expected_value."
-                        "mdn") != std::string::npos,
+  check(state_text.find(
+            "target_component_family_id=wikimyei.inference.expected_value."
+            "mdn") != std::string::npos,
         "state records inference target component");
   check(state_text.find("wave_action=run") != std::string::npos,
         "state records run action");
@@ -999,7 +1001,7 @@ void test_strict_channel_baseline_runs_through_runtime() {
                               "graph_order.channel_node_representation.v1") !=
             std::string::npos,
         "strict baseline inference records channel context contract");
-  check(inference_report.find("context_value_shape=[B_node,C,De]") !=
+  check(inference_report.find("context_value_shape=[B,N,C,De]") !=
             std::string::npos,
         "strict baseline inference records channel context shape");
   check(inference_report.find("output_contract="
@@ -1018,8 +1020,9 @@ void test_strict_channel_baseline_runs_through_runtime() {
         "strict baseline inference checkpoint format");
   check(inference_report.find("mean_nll_per_channel=") != std::string::npos,
         "strict baseline inference emits per-channel NLL");
-  check(inference_report.find("mean_nll_per_horizon=") != std::string::npos,
-        "strict baseline inference emits per-horizon NLL");
+  check(inference_report.find("mean_nll_per_target_feature=") !=
+            std::string::npos,
+        "strict baseline inference emits per-target-feature NLL");
   check(inference_report.find("mean_mixture_usage=") != std::string::npos,
         "strict baseline inference emits mixture usage");
   check(inference_report.find("mean_sigma_mean_valid=") != std::string::npos,
@@ -1055,8 +1058,9 @@ void test_strict_channel_baseline_runs_through_runtime() {
         "strict baseline inference LLS carries masked sigma mean");
   const auto inference_exposure_fact =
       read_text(inference_result.state.lattice_exposure_fact_path);
-  check(inference_exposure_fact.find("target_component_family_id=wikimyei.inference."
-                                     "expected_value.mdn") != std::string::npos,
+  check(inference_exposure_fact.find(
+            "target_component_family_id=wikimyei.inference."
+            "expected_value.mdn") != std::string::npos,
         "strict baseline exposure fact keeps MDN component");
   check(inference_exposure_fact.find("input_representation_assembly_id="
                                      "vicreg_v1") != std::string::npos,
@@ -1068,7 +1072,7 @@ void test_strict_channel_baseline_runs_through_runtime() {
                                      "channel_node_representation.v1") !=
             std::string::npos,
         "strict baseline exposure fact carries channel context contract");
-  check(inference_exposure_fact.find("context_value_shape=[B_node,C,De]") !=
+  check(inference_exposure_fact.find("context_value_shape=[B,N,C,De]") !=
             std::string::npos,
         "strict baseline exposure fact carries channel context shape");
   check(inference_exposure_fact.find("output_contract=graph_order."
@@ -1089,9 +1093,9 @@ void test_strict_channel_baseline_runs_through_runtime() {
   check(inference_exposure_fact.find("mean_nll_per_channel=") !=
             std::string::npos,
         "strict baseline exposure fact carries per-channel NLL");
-  check(inference_exposure_fact.find("mean_nll_per_horizon=") !=
+  check(inference_exposure_fact.find("mean_nll_per_target_feature=") !=
             std::string::npos,
-        "strict baseline exposure fact carries per-horizon NLL");
+        "strict baseline exposure fact carries per-target-feature NLL");
   check(inference_exposure_fact.find("mean_mixture_usage=") !=
             std::string::npos,
         "strict baseline exposure fact carries mixture usage");
@@ -1242,11 +1246,10 @@ void test_invalid_wave_range_fails_before_launch() {
 }
 
 void test_invalid_source_key_wave_range_fails_before_launch() {
-  const auto fixture =
-      make_config_fixture("invalid_source_key_range",
-                          "  SOURCE_RANGE = source_key;\n"
-                          "  SOURCE_KEY_BEGIN = 1000;\n"
-                          "  SOURCE_KEY_END = 1002;\n");
+  const auto fixture = make_config_fixture("invalid_source_key_range",
+                                           "  SOURCE_RANGE = source_key;\n"
+                                           "  SOURCE_KEY_BEGIN = 1000;\n"
+                                           "  SOURCE_KEY_END = 1002;\n");
   runtime::job_runner_options_t options{};
   options.job_kind = runtime::runtime_job_kind_t::channel_inference_mdn;
   options.dry_run = true;
@@ -1255,9 +1258,9 @@ void test_invalid_source_key_wave_range_fails_before_launch() {
   try {
     (void)runtime::run_graph_first_job<Kline>(fixture.config.string(), options);
   } catch (const std::exception &ex) {
-    threw = std::string(ex.what()).find(
-                "begins before accepted graph anchor domain") !=
-            std::string::npos;
+    threw =
+        std::string(ex.what()).find(
+            "begins before accepted graph anchor domain") != std::string::npos;
   }
   check(threw, "invalid source-key wave range fails with domain error");
 }

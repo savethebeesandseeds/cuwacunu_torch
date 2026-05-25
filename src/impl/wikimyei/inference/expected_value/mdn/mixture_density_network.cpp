@@ -52,7 +52,8 @@ MdnModelImpl::MdnModelImpl(int64_t De_, int64_t Df_, int64_t C_, int64_t Hf_,
     : De(De_), Df(Df_), C_axes(C_), Hf_axes(Hf_), K(K_), H(H_), depth(depth_),
       dtype(dtype_), device(device_) {
   TORCH_CHECK(C_axes > 0, "[MdnModelImpl] C (channels) must be >= 1");
-  TORCH_CHECK(Hf_axes > 0, "[MdnModelImpl] Hf (horizons) must be >= 1");
+  TORCH_CHECK(Hf_axes == 1,
+              "[MdnModelImpl] active MDN is one-step; Hf must be 1");
   TORCH_CHECK(De > 0 && Df > 0 && K > 0 && H > 0 && depth >= 0,
               "[MdnModelImpl] invalid dims: De,Df,K,H must be >0; depth >=0");
 
@@ -159,14 +160,14 @@ MdnModelImpl::inference(const torch::Tensor & /*enc*/,
 // --- pretty print ---
 void MdnModelImpl::display_model() const {
   std::string dev = device.str();
-  const char *fmt = "\n%s \t[MDN-per-channel] %s\n"
+  const char *fmt = "\n%s \t[MDN-channel-feature-one-step] %s\n"
                     "\t\t%s%-25s%s %s%-8lld%s\n" // De
                     "\t\t%s%-25s%s %s%-8lld%s\n" // Df
                     "\t\t%s%-25s%s %s%-8lld%s\n" // K
                     "\t\t%s%-25s%s %s%-8lld%s\n" // feature_dim
                     "\t\t%s%-25s%s %s%-8lld%s\n" // depth
                     "\t\t%s%-25s%s %s%-8lld%s\n" // channels C
-                    "\t\t%s%-25s%s %s%-8lld%s\n" // horizons Hf
+                    "\t\t%s%-25s%s %s%-8lld%s\n" // one-step Hf
                     "\t\t%s%-25s%s %s%-8s%s\n";  // device
 
   log_dbg(fmt, ANSI_COLOR_Dim_Green, ANSI_COLOR_RESET, ANSI_COLOR_Bright_Grey,
@@ -181,7 +182,7 @@ void MdnModelImpl::display_model() const {
           ANSI_COLOR_Bright_Blue, depth, ANSI_COLOR_RESET,
           ANSI_COLOR_Bright_Grey, "Channels (C):", ANSI_COLOR_RESET,
           ANSI_COLOR_Bright_Blue, C_axes, ANSI_COLOR_RESET,
-          ANSI_COLOR_Bright_Grey, "Horizons (Hf):", ANSI_COLOR_RESET,
+          ANSI_COLOR_Bright_Grey, "One-step Hf:", ANSI_COLOR_RESET,
           ANSI_COLOR_Bright_Blue, Hf_axes, ANSI_COLOR_RESET,
           ANSI_COLOR_Bright_Grey, "Device:", ANSI_COLOR_RESET,
           ANSI_COLOR_Bright_Blue, dev.c_str(), ANSI_COLOR_RESET);

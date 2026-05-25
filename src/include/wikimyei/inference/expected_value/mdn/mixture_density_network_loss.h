@@ -27,20 +27,14 @@ struct MdnNLLLoss {
   explicit MdnNLLLoss(const MdnNllOptions &options = {},
                       bool reduce_mean = true)
       : eps_(options.eps), sigma_min_(options.sigma_min),
-        sigma_max_(options.sigma_max), reduce_mean_(reduce_mean) {
-  }
+        sigma_max_(options.sigma_max), reduce_mean_(reduce_mean) {}
 
-  // Generalized masked NLL with optional weights:
-  // out: log_pi [B,C,Hf,K], mu/sigma [B,C,Hf,K,Df]
-  // f  : [B,C,Hf,Df]
-  // mask         (optional): [B,C,Hf] — 1 valid, 0 invalid
-  // weights_ch   (optional): [C]     /* loss weights across the channel rank */
-  // weights_tau  (optional): [Hf]    /* loss weights across the temporal rank
-  // */ weights_dim  (optional): [Df]    /* pseudo-likelihood feature weights */
-  //
-  // NOTE: weights_dim is multiplied into per-feature log-probabilities before
-  // mixture aggregation. That changes component responsibilities and is not the
-  // same as ordinary per-target weighting after the joint NLL is computed.
+  // Active masked NLL with optional weights:
+  // out: log_pi/mu/sigma [B,N,C,Df,K]
+  // f  : [B,N,C,Df]
+  // mask        (optional): [B,N,C,Df] - 1 valid, 0 invalid
+  // weights_ch  (optional): [C]
+  // weights_dim (optional): [Df]
   torch::Tensor
   compute(const MdnOut &out, const torch::Tensor &f,
           const torch::Tensor &mask = torch::Tensor(),
@@ -51,29 +45,26 @@ struct MdnNLLLoss {
     TORCH_CHECK(out.log_pi.defined() && out.mu.defined() && out.sigma.defined(),
                 "[MdnNLLLoss] output tensors must be defined");
 
-    TORCH_CHECK(out.log_pi.dim() == 4,
-                "[MdnNLLLoss] log_pi must be [B,C,Hf,K]");
+    TORCH_CHECK(out.log_pi.dim() == 5,
+                "[MdnNLLLoss] log_pi must be [B,N,C,Df,K]");
     TORCH_CHECK(out.mu.dim() == 5 && out.sigma.dim() == 5,
-                "[MdnNLLLoss] mu/sigma must be [B,C,Hf,K,Df]");
-    TORCH_CHECK(f.dim() == 4, "[MdnNLLLoss] f must be [B,C,Hf,Df]");
+                "[MdnNLLLoss] mu/sigma must be [B,N,C,Df,K]");
+    TORCH_CHECK(f.dim() == 4, "[MdnNLLLoss] f must be [B,N,C,Df]");
 
     const auto B = f.size(0);
-    const auto C = f.size(1);
-    const auto Hf = f.size(2);
+    const auto N = f.size(1);
+    const auto C = f.size(2);
     const auto Df = f.size(3);
-    const auto K = out.log_pi.size(3);
 
-    TORCH_CHECK(out.mu.size(0) == B && out.mu.size(1) == C &&
-                    out.mu.size(2) == Hf && out.mu.size(4) == Df,
-                "[MdnNLLLoss] shape mismatch (mu)");
-    TORCH_CHECK(out.sigma.sizes() == out.mu.sizes(),
-                "[MdnNLLLoss] mu/sigma size mismatch");
-    TORCH_CHECK(out.log_pi.size(0) == B && out.log_pi.size(1) == C &&
-                    out.log_pi.size(2) == Hf && out.log_pi.size(3) == K,
+    TORCH_CHECK(out.log_pi.size(0) == B && out.log_pi.size(1) == N &&
+                    out.log_pi.size(2) == C && out.log_pi.size(3) == Df,
                 "[MdnNLLLoss] shape mismatch (log_pi)");
+    TORCH_CHECK(out.mu.sizes() == out.log_pi.sizes(),
+                "[MdnNLLLoss] shape mismatch (mu)");
+    TORCH_CHECK(out.sigma.sizes() == out.log_pi.sizes(),
+                "[MdnNLLLoss] mu/sigma size mismatch");
 
-    // broadcast f -> [B,C,Hf,K,Df]
-    auto f_b = f.unsqueeze(3).expand({B, C, Hf, K, Df});
+    auto f_b = f.unsqueeze(-1).expand_as(out.mu);
 
     // clamp sigma
     auto eps_t = out.sigma.new_full({}, eps_);
@@ -85,39 +76,34 @@ struct MdnNLLLoss {
 
     static constexpr double LOG2PI = 1.8378770664093453; // log(2π)
 
-    // per-feature log-prob (do not sum over Df yet)
     auto diff = (f_b - out.mu) / sigma;
-    auto perdim =
-        -0.5 * diff.pow(2) - sigma.log() - 0.5 * LOG2PI; // [B,C,Hf,K,Df]
+    auto per_component_logp =
+        -0.5 * diff.pow(2) - sigma.log() - 0.5 * LOG2PI; // [B,N,C,Df,K]
 
-    // (NEW) optional feature weights w_d
-    if (weights_dim.defined()) {
-      TORCH_CHECK(weights_dim.dim() == 1 && weights_dim.size(0) == Df,
-                  "[MdnNLLLoss] weights_dim must be [Df]");
-      auto wd = weights_dim.to(perdim.dtype()).view({1, 1, 1, 1, Df});
-      perdim = perdim * wd;
-    }
-
-    // sum over Df → component log-prob
-    auto comp_logp = perdim.sum(-1);                            // [B,C,Hf,K]
-    auto log_mix = torch::logsumexp(out.log_pi + comp_logp, 3); // [B,C,Hf]
-    auto nll = -log_mix;                                        // [B,C,Hf]
+    auto log_mix =
+        torch::logsumexp(out.log_pi + per_component_logp, /*dim=*/-1);
+    auto nll = -log_mix; // [B,N,C,Df]
 
     // --- unified weighting/masking/mean ---
-    auto w = torch::ones_like(nll); // [B,C,Hf]
+    auto w = torch::ones_like(nll); // [B,N,C,Df]
     if (weights_ch.defined()) {
       TORCH_CHECK(weights_ch.dim() == 1 && weights_ch.size(0) == C,
                   "[MdnNLLLoss] weights_ch must be [C]");
-      w = w * weights_ch.to(nll.dtype()).view({1, C, 1});
+      w = w * weights_ch.to(nll.dtype()).view({1, 1, C, 1});
     }
     if (weights_tau.defined()) {
-      TORCH_CHECK(weights_tau.dim() == 1 && weights_tau.size(0) == Hf,
-                  "[MdnNLLLoss] weights_tau must be [Hf]");
-      w = w * weights_tau.to(nll.dtype()).view({1, 1, Hf});
+      TORCH_CHECK(false,
+                  "[MdnNLLLoss] weights_tau is not valid for the one-step "
+                  "feature-slot MDN");
+    }
+    if (weights_dim.defined()) {
+      TORCH_CHECK(weights_dim.dim() == 1 && weights_dim.size(0) == Df,
+                  "[MdnNLLLoss] weights_dim must be [Df]");
+      w = w * weights_dim.to(nll.dtype()).view({1, 1, 1, Df});
     }
     if (mask.defined()) {
-      TORCH_CHECK(mask.sizes() == torch::IntArrayRef({B, C, Hf}),
-                  "[MdnNLLLoss] mask must be [B,C,Hf]");
+      TORCH_CHECK(mask.sizes() == torch::IntArrayRef({B, N, C, Df}),
+                  "[MdnNLLLoss] mask must be [B,N,C,Df]");
       w = w * mask.to(nll.dtype());
     }
 

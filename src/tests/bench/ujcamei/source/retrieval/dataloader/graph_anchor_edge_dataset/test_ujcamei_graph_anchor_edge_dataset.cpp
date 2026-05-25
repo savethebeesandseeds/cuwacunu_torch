@@ -348,6 +348,37 @@ void test_graph_anchor_torch_dataloader_yields_synchronized_anchors() {
     check(observed_indices[i] == i,
           "random graph-anchor dataloader anchor coverage");
   }
+
+  auto collect_random_indices = [](auto &loader) {
+    std::vector<std::size_t> indices;
+    while (loader.has_next()) {
+      auto batch = loader.next();
+      indices.insert(indices.end(), batch.cursor.anchor_indices.begin(),
+                     batch.cursor.anchor_indices.end());
+    }
+    return indices;
+  };
+
+  loader_options.random_seed = 1701;
+  auto seeded_source_a = make_source(csv0, csv1);
+  dl::graph_anchor_edge_dataloader_t<Kline,
+                                     torch::data::samplers::RandomSampler>
+      seeded_loader_a(std::move(seeded_source_a), loader_options);
+  auto seeded_source_b = make_source(csv0, csv1);
+  dl::graph_anchor_edge_dataloader_t<Kline,
+                                     torch::data::samplers::RandomSampler>
+      seeded_loader_b(std::move(seeded_source_b), loader_options);
+  const auto seeded_epoch_a = collect_random_indices(seeded_loader_a);
+  const auto seeded_epoch_b = collect_random_indices(seeded_loader_b);
+  check(seeded_epoch_a == seeded_epoch_b,
+        "seeded random graph-anchor dataloaders reproduce epoch order");
+
+  seeded_loader_a.reset();
+  seeded_loader_b.reset();
+  const auto seeded_epoch_two_a = collect_random_indices(seeded_loader_a);
+  const auto seeded_epoch_two_b = collect_random_indices(seeded_loader_b);
+  check(seeded_epoch_two_a == seeded_epoch_two_b,
+        "seeded random graph-anchor dataloaders reproduce reset epoch order");
 }
 
 void test_required_future_window_excludes_right_raw_boundary() {
