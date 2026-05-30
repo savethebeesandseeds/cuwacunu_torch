@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
+#include <algorithm>
 #include <cstdint>
 #include <string>
 #include <unordered_set>
@@ -51,6 +52,21 @@ inline void validate_target_coords(const std::vector<int64_t> &coords,
   }
 }
 
+inline void validate_target_coord_ids(const std::vector<int64_t> &coords,
+                                      int64_t target_feature_dim) {
+  TORCH_CHECK(static_cast<int64_t>(coords.size()) == target_feature_dim,
+              "[channel_context_mdn] target coord id count must match Df");
+  std::unordered_set<int64_t> seen;
+  seen.reserve(coords.size());
+  for (const int64_t coord : coords) {
+    TORCH_CHECK(
+        coord >= 0,
+        "[channel_context_mdn] target coord id must be nonnegative: ", coord);
+    TORCH_CHECK(seen.insert(coord).second,
+                "[channel_context_mdn] duplicate target coord id: ", coord);
+  }
+}
+
 } // namespace channel_context_mdn_detail
 
 [[nodiscard]] inline torch::Tensor
@@ -83,70 +99,6 @@ combine_channel_plus_global_context_and_future_mask(
       global_mask.to(torch::kBool).unsqueeze(-1).unsqueeze(-1));
 }
 
-struct ChannelContextHeadsImpl : torch::nn::Module {
-  int64_t C{0};
-  int64_t Hf{0};
-  int64_t Df{0};
-  int64_t K{0};
-  int64_t H{0};
-  std::vector<cuwacunu::wikimyei::inference::expected_value::mdn::MdnHead>
-      heads{};
-
-  ChannelContextHeadsImpl(int64_t C_, int64_t Hf_, int64_t Df_, int64_t K_,
-                          int64_t H_)
-      : C(C_), Hf(Hf_), Df(Df_), K(K_), H(H_) {
-    TORCH_CHECK(C > 0 && Hf > 0 && Df > 0 && K > 0 && H > 0,
-                "[ChannelContextHeads] invalid dimensions");
-    TORCH_CHECK(Hf == 1,
-                "[ChannelContextHeads] active channel MDN is one-step; Hf "
-                "must be 1");
-    heads.reserve(static_cast<std::size_t>(C));
-    for (int64_t c = 0; c < C; ++c) {
-      cuwacunu::wikimyei::inference::expected_value::mdn::MdnHeadOptions opts{
-          H, Df, K, Hf};
-      auto head =
-          cuwacunu::wikimyei::inference::expected_value::mdn::MdnHead(opts);
-      heads.push_back(
-          register_module("channel_head_" + std::to_string(c), head));
-    }
-  }
-
-  cuwacunu::wikimyei::inference::expected_value::mdn::MdnOut
-  forward(const torch::Tensor &h) {
-    TORCH_CHECK(h.defined() && h.dim() == 4,
-                "[ChannelContextHeads] h must be [B,N,C,H]");
-    TORCH_CHECK(h.size(2) == C && h.size(3) == H,
-                "[ChannelContextHeads] h shape mismatch");
-    using torch::indexing::Slice;
-    const auto B = h.size(0);
-    const auto N = h.size(1);
-    std::vector<torch::Tensor> log_pi;
-    std::vector<torch::Tensor> mu;
-    std::vector<torch::Tensor> sigma;
-    log_pi.reserve(static_cast<std::size_t>(C));
-    mu.reserve(static_cast<std::size_t>(C));
-    sigma.reserve(static_cast<std::size_t>(C));
-    for (int64_t c = 0; c < C; ++c) {
-      auto hc = h.index({Slice(), Slice(), c, Slice()}).reshape({B * N, H});
-      auto out = heads[static_cast<std::size_t>(c)]->forward(hc);
-      TORCH_CHECK(out.log_pi.sizes() ==
-                      torch::IntArrayRef({B * N, 1, 1, Df, K}),
-                  "[ChannelContextHeads] per-channel log_pi shape mismatch");
-      TORCH_CHECK(out.mu.sizes() == torch::IntArrayRef({B * N, 1, 1, Df, K}),
-                  "[ChannelContextHeads] per-channel mu shape mismatch");
-      TORCH_CHECK(out.sigma.sizes() == torch::IntArrayRef({B * N, 1, 1, Df, K}),
-                  "[ChannelContextHeads] per-channel sigma shape mismatch");
-      log_pi.push_back(out.log_pi.reshape({B, N, 1, Df, K}));
-      mu.push_back(out.mu.reshape({B, N, 1, Df, K}));
-      sigma.push_back(out.sigma.reshape({B, N, 1, Df, K}));
-    }
-    return {torch::cat(log_pi, /*dim=*/2), torch::cat(mu, /*dim=*/2),
-            torch::cat(sigma, /*dim=*/2)};
-  }
-};
-
-TORCH_MODULE(ChannelContextHeads);
-
 struct ChannelContextMdnImpl : torch::nn::Module {
   int64_t De{0};
   int64_t Df{0};
@@ -155,31 +107,72 @@ struct ChannelContextMdnImpl : torch::nn::Module {
   int64_t K{0};
   int64_t H{0};
   int64_t depth{0};
+  int64_t feature_embedding_dim{0};
+  int64_t channel_adapter_rank{0};
+  std::vector<int64_t> target_coords{};
+  double sigma_floor{1e-3};
   torch::Dtype dtype{torch::kFloat32};
   torch::Device device{torch::kCPU};
 
   cuwacunu::wikimyei::inference::expected_value::mdn::Backbone backbone{
       nullptr};
-  ChannelContextHeads heads{nullptr};
+  cuwacunu::wikimyei::inference::expected_value::mdn::ChannelAdapterStack
+      channel_adapters{nullptr};
+  cuwacunu::wikimyei::inference::expected_value::mdn::FeatureConditionedMdnHead
+      head{nullptr};
 
   ChannelContextMdnImpl(int64_t De_, int64_t Df_, int64_t C_, int64_t Hf_,
                         int64_t K_, int64_t H_, int64_t depth_,
                         torch::Dtype dtype_ = torch::kFloat32,
-                        torch::Device device_ = torch::kCPU)
+                        torch::Device device_ = torch::kCPU,
+                        int64_t feature_embedding_dim_ = 0,
+                        int64_t channel_adapter_rank_ = 0,
+                        std::vector<int64_t> target_coords_ = {},
+                        double sigma_floor_ = 1e-3)
       : De(De_), Df(Df_), C(C_), Hf(Hf_), K(K_), H(H_), depth(depth_),
+        feature_embedding_dim(
+            feature_embedding_dim_ > 0
+                ? feature_embedding_dim_
+                : std::max<int64_t>(1, std::min<int64_t>(8, H / 4))),
+        channel_adapter_rank(
+            channel_adapter_rank_ > 0
+                ? channel_adapter_rank_
+                : std::max<int64_t>(1, std::min<int64_t>(8, H / 2))),
+        target_coords(std::move(target_coords_)), sigma_floor(sigma_floor_),
         dtype(dtype_), device(device_) {
     TORCH_CHECK(De > 0 && Df > 0 && C > 0 && Hf > 0 && K > 0 && H > 0 &&
-                    depth >= 0,
+                    depth >= 0 && feature_embedding_dim > 0 &&
+                    channel_adapter_rank > 0 && channel_adapter_rank <= H,
                 "[ChannelContextMdn] invalid dimensions");
     TORCH_CHECK(Hf == 1,
                 "[ChannelContextMdn] active channel MDN is one-step; Hf must "
                 "be 1");
+    TORCH_CHECK(sigma_floor >= 0.0,
+                "[ChannelContextMdn] sigma_floor must be nonnegative");
+    if (!target_coords.empty()) {
+      channel_context_mdn_detail::validate_target_coord_ids(target_coords, Df);
+    }
     cuwacunu::wikimyei::inference::expected_value::mdn::BackboneOptions bopts{
         De, H, depth};
     backbone = register_module(
         "backbone",
         cuwacunu::wikimyei::inference::expected_value::mdn::Backbone(bopts));
-    heads = register_module("heads", ChannelContextHeads(C, Hf, Df, K, H));
+    channel_adapters = register_module(
+        "channel_adapters",
+        cuwacunu::wikimyei::inference::expected_value::mdn::ChannelAdapterStack(
+            C, H, channel_adapter_rank));
+    head = register_module(
+        "head", cuwacunu::wikimyei::inference::expected_value::mdn::
+                    FeatureConditionedMdnHead(
+                        cuwacunu::wikimyei::inference::expected_value::mdn::
+                            FeatureConditionedMdnHeadOptions{
+                                .feature_dim = H,
+                                .target_feature_dim = Df,
+                                .mixture_count = K,
+                                .feature_embedding_dim = feature_embedding_dim,
+                                .source_feature_vocab_size = 0,
+                                .target_coords = target_coords,
+                                .sigma_floor = sigma_floor}));
     this->to(device, dtype);
   }
 
@@ -194,7 +187,8 @@ struct ChannelContextMdnImpl : torch::nn::Module {
     auto x =
         channel_context.to(torch::TensorOptions().dtype(dtype).device(device));
     auto h = backbone->forward(x.reshape({B * N * C, De})).view({B, N, C, H});
-    return heads->forward(h);
+    h = channel_adapters->forward(h);
+    return head->forward(h);
   }
 
   cuwacunu::wikimyei::inference::expected_value::mdn::MdnOut
@@ -232,31 +226,73 @@ struct ChannelContextPlusGlobalMdnImpl : torch::nn::Module {
   int64_t K{0};
   int64_t H{0};
   int64_t depth{0};
+  int64_t feature_embedding_dim{0};
+  int64_t channel_adapter_rank{0};
+  std::vector<int64_t> target_coords{};
+  double sigma_floor{1e-3};
   torch::Dtype dtype{torch::kFloat32};
   torch::Device device{torch::kCPU};
 
   cuwacunu::wikimyei::inference::expected_value::mdn::Backbone backbone{
       nullptr};
-  ChannelContextHeads heads{nullptr};
+  cuwacunu::wikimyei::inference::expected_value::mdn::ChannelAdapterStack
+      channel_adapters{nullptr};
+  cuwacunu::wikimyei::inference::expected_value::mdn::FeatureConditionedMdnHead
+      head{nullptr};
 
   ChannelContextPlusGlobalMdnImpl(int64_t De_, int64_t Dg_, int64_t Df_,
                                   int64_t C_, int64_t Hf_, int64_t K_,
                                   int64_t H_, int64_t depth_,
                                   torch::Dtype dtype_ = torch::kFloat32,
-                                  torch::Device device_ = torch::kCPU)
+                                  torch::Device device_ = torch::kCPU,
+                                  int64_t feature_embedding_dim_ = 0,
+                                  int64_t channel_adapter_rank_ = 0,
+                                  std::vector<int64_t> target_coords_ = {},
+                                  double sigma_floor_ = 1e-3)
       : De(De_), Dg(Dg_), Df(Df_), C(C_), Hf(Hf_), K(K_), H(H_), depth(depth_),
+        feature_embedding_dim(
+            feature_embedding_dim_ > 0
+                ? feature_embedding_dim_
+                : std::max<int64_t>(1, std::min<int64_t>(8, H / 4))),
+        channel_adapter_rank(
+            channel_adapter_rank_ > 0
+                ? channel_adapter_rank_
+                : std::max<int64_t>(1, std::min<int64_t>(8, H / 2))),
+        target_coords(std::move(target_coords_)), sigma_floor(sigma_floor_),
         dtype(dtype_), device(device_) {
     TORCH_CHECK(De > 0 && Dg > 0 && Df > 0 && C > 0 && Hf > 0 && K > 0 &&
-                    H > 0 && depth >= 0,
+                    H > 0 && depth >= 0 && feature_embedding_dim > 0 &&
+                    channel_adapter_rank > 0 && channel_adapter_rank <= H,
                 "[ChannelContextPlusGlobalMdn] invalid dimensions");
     TORCH_CHECK(Hf == 1, "[ChannelContextPlusGlobalMdn] active channel MDN is "
                          "one-step; Hf must be 1");
+    TORCH_CHECK(sigma_floor >= 0.0,
+                "[ChannelContextPlusGlobalMdn] sigma_floor must be "
+                "nonnegative");
+    if (!target_coords.empty()) {
+      channel_context_mdn_detail::validate_target_coord_ids(target_coords, Df);
+    }
     cuwacunu::wikimyei::inference::expected_value::mdn::BackboneOptions bopts{
         De + Dg + C, H, depth};
     backbone = register_module(
         "backbone",
         cuwacunu::wikimyei::inference::expected_value::mdn::Backbone(bopts));
-    heads = register_module("heads", ChannelContextHeads(C, Hf, Df, K, H));
+    channel_adapters = register_module(
+        "channel_adapters",
+        cuwacunu::wikimyei::inference::expected_value::mdn::ChannelAdapterStack(
+            C, H, channel_adapter_rank));
+    head = register_module(
+        "head", cuwacunu::wikimyei::inference::expected_value::mdn::
+                    FeatureConditionedMdnHead(
+                        cuwacunu::wikimyei::inference::expected_value::mdn::
+                            FeatureConditionedMdnHeadOptions{
+                                .feature_dim = H,
+                                .target_feature_dim = Df,
+                                .mixture_count = K,
+                                .feature_embedding_dim = feature_embedding_dim,
+                                .source_feature_vocab_size = 0,
+                                .target_coords = target_coords,
+                                .sigma_floor = sigma_floor}));
     this->to(device, dtype);
   }
 
@@ -322,7 +358,9 @@ struct ChannelContextPlusGlobalMdnImpl : torch::nn::Module {
     auto h = backbone->forward(x.reshape({B * N * C, De + Dg + C}))
                  .view({B, N, C, H});
     h = h.masked_fill(active_mask.logical_not().unsqueeze(-1), 0.0);
-    return heads->forward(h);
+    h = channel_adapters->forward(h);
+    h = h.masked_fill(active_mask.logical_not().unsqueeze(-1), 0.0);
+    return head->forward(h);
   }
 };
 

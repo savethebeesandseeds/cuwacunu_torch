@@ -15,6 +15,10 @@ MODULE_NAME := $(notdir $(HERE_PATH))
 encoding_vicreg:
 	$(MAKE) -C $(HERE_PATH)/encoding/vicreg all
 
+.PHONY: encoding_mtf_jepa_mae_vicreg
+encoding_mtf_jepa_mae_vicreg:
+	$(MAKE) -C $(HERE_PATH)/encoding/mtf_jepa_mae_vicreg all
+
 .PHONY: all
-all: encoding_vicreg
+all: encoding_vicreg encoding_mtf_jepa_mae_vicreg
 	@$(LOG_SUCCESS)

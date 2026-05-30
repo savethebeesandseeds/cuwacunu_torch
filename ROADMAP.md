@@ -1,52 +1,119 @@
 # Active Roadmap
 
-This is the short operator-facing roadmap for the current cleanup thread. It is
-intentionally small: completed Lattice, Marshal, Runtime wave-ownership, stable
-source-range, dataloader, and legacy-cleanup work should not stay here as active
-dispatch items.
+This is the short operator-facing index for current work. Keep it finite. Do
+not use this file as a history log for completed Lattice, Runtime, Marshal,
+source-range, dataloader, legacy-cleanup, or MDN-shape work.
 
-Subsystem roadmap files may keep design history and receipts. This file names
-only the work we still intend to reason about next.
+Detailed subsystem records live in:
+
+```text
+src/include/kikijyeba/lattice/ROADMAP.md
+src/include/kikijyeba/marshal/ROADMAP.md
+src/include/wikimyei/inference/expected_value/mdn/README.md
+.deprecated/src_legacy/MIGRATION_INVENTORY.md
+```
+
+## North Star
+
+```text
+Runtime executes and writes durable evidence.
+Lattice proves target satisfaction from Runtime evidence.
+Marshal prepares bounded handoffs and explains state.
+```
+
+The system should keep these boundaries:
+
+```text
+Runtime is not proof authority.
+Lattice is not an executor or scheduler.
+Marshal is not proof authority, a config editor, a checkpoint selector, or an
+unbounded scheduler.
+```
 
 ## Active Item
 
-No active cleanup item is currently queued in this file.
+### Source Facts And Analytics Into Lattice
 
-## Completed In This Pass
+Status: queued.
 
-### MDN Semantics And Tensor Shape
+Add source-side evidence to Lattice without changing the current authority
+boundaries. Existing source receipts and source-key windows remain audit
+metadata; row-index intervals stay authoritative for coverage and leakage.
 
-Status: implemented for the active channel-context MDN.
+Initial scope:
 
-Settled contract:
+- Carry source analytics such as source entropic load, entropy rate,
+  information density, compression ratio, power-spectrum entropy, sample
+  validity, and related source-health measurements into Lattice evidence.
+- Bind those facts to source receipts, source cursor identity, graph order,
+  split/window, and parent exposure fact digests.
+- Start as read-only summaries and `LATTICE_WARN` diagnostics, not hard
+  readiness gates, performance gates, contract identity, or executor authority.
+- Update the Lattice roadmap, DSL/man docs, and tests when implementation
+  begins.
 
-- Input context is `[B,N,C,De]`.
-- Input target is one-step `[B,N,C,Df]`.
-- Output distributions are `log_pi/mu/sigma [B,N,C,Df,K]`.
-- `B` is anchor batch, `N` is graph node, `C` is channel, `Df` is selected
-  target feature, and `K` is mixture component.
-- The trunk is shared across all slots.
-- Heads are channel-specific, not node-specific.
-- Target features are independent univariate mixture slots.
-- There is no active horizon output axis; `FUTURE_HORIZON` must be `1`.
+### Forecast Quality Evidence Into Lattice
 
-Acceptance completed:
+Status: queued.
 
-- A short design note describes the active MDN tensor contract.
-- Code names match that contract.
-- Tests assert representative input/output ranks and mask behavior.
-- Any redesign is deliberately scoped instead of mixed with cleanup.
-- Runtime/Lattice report fields continue to describe MDN evidence using the
-  settled contract.
+Add a compact forecast-evaluation evidence contract so Lattice can answer
+whether an end-to-end protocol is forecasting well enough to inspect, without
+turning Lattice into a model runner, checkpoint selector, or performance gate.
+
+Initial scope:
+
+- Emit protocol-bound validation facts for MDN forecasting runs, including the
+  evaluated protocol id, representation checkpoint, MDN checkpoint, split,
+  source cursor identity, graph order, and parent exposure/checkpoint digests.
+- Add protocol-specific validation targets such as
+  `cwu_02v_mdn_validation_eval_ready` that depend on the matching
+  protocol-specific representation and MDN train-core readiness targets.
+- Carry forecast-quality visibility fields such as mean NLL, expected-value
+  MAE/RMSE, signed error, directional accuracy, naive-baseline error,
+  skill-versus-naive, valid target support, and calibration coverage summaries.
+- Bind every forecast metric to target-transform facts: target feature ids,
+  horizon, raw/return/log-return mode, normalization and inverse transform,
+  units, and target mask policy. A forecast error without this contract is not
+  interpretable evidence.
+- Emit baseline facts next to model facts, starting with previous-value,
+  zero-return, moving-average, and last-valid-channel baselines. Lattice should
+  see skill versus baseline, not only raw error numbers.
+- Add selection-signal facts before any checkpoint is chosen by validation
+  performance: candidate checkpoints, chosen checkpoint, selector split,
+  selector metric, tie policy, and parent evaluation facts. These remain
+  read-only evidence and are required to audit validation leakage.
+- Track evaluation support by node, channel, target feature, and horizon,
+  including weakest-support rows, so aggregate quality cannot hide unsupported
+  forecast surfaces.
+- Add MDN calibration visibility: interval coverage, PIT summaries,
+  sigma/scale sanity over valid targets, and overconfidence or underconfidence
+  warnings.
+- Carry source/regime-shift visibility between train and validation windows:
+  missingness drift, volatility drift, feature variance drift, support drift,
+  and source entropy/complexity drift.
+- Keep these as read-only facts and `LATTICE_WARN` diagnostics first. Do not
+  promote them to hard readiness or deployment gates until uncertainty,
+  baselines, split leakage policy, and threshold policy are explicit.
+- Preserve the existing Lattice boundary: Runtime produces forecast evidence;
+  Lattice scans, explains, evaluates readiness, and reports warnings. Lattice
+  does not execute runs, train models, choose best checkpoints, or claim market
+  readiness from a single point estimate.
 
 ## Not Active Here
 
-The following have been resolved or moved out of this active queue and should
-not be redispatched from this file:
+Do not redispatch these from this root roadmap:
 
-- Source loading, dataloader behavior, and training stochasticity.
-- Stable key-based source ranges.
-- Runtime wave ownership.
-- Lattice `latest_satisfying` plan-input resolution.
-- Marshal target-dispatch simplification.
-- Active MDN/VICReg legacy cleanup.
+```text
+multi-target scheduling
+dependency traversal
+automatic config editing
+checkpoint ranking by validation metric
+best-model selection
+Marshal-owned performance gates
+Codex-in-the-loop public evaluation
+unbounded objective agents
+completed cleanup/testing receipts
+```
+
+Open a new finite goal and update the relevant subsystem roadmap when one of
+those items becomes current work.

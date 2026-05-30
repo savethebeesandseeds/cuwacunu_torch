@@ -20,10 +20,42 @@ mu     [B,N,C,Df,K]
 sigma  [B,N,C,Df,K]
 ```
 
-The trunk is shared across all slots. Channel heads remain channel-specific.
-There is no per-node head in the active architecture; node identity is carried by
-the representation tensor and the explicit `N` axis. Multi-step prediction is a
-future rollout/objective-weighting problem, not an active MDN output axis.
+The active architecture is:
+
+```text
+shared slot trunk
++ low-rank channel adapters
++ shared feature-conditioned MDN head
+```
+
+There are no full per-channel heads and no per-node heads. Node identity is
+carried by the representation tensor and the explicit `N` axis. Channel
+specialization is constrained to residual low-rank adapters, while target
+features use learned feature identities inside one shared head. Multi-step
+prediction is a future rollout/objective-weighting problem, not an active MDN
+output axis.
+
+Feature identities are keyed by the original `TARGET_COORDS` source feature
+ids, not by transient output ordinal. The output order is still `[Df]`, but the
+embedding table and checkpoint metadata keep the source-coordinate semantics
+visible.
+
+`sigma` is emitted with the configured smooth floor already applied:
+
+```text
+sigma = sigma_floor + softplus(raw_sigma)
+```
+
+The NLL path may still apply an emergency cap/floor for numerical protection,
+but Runtime reports should treat emitted `sigma` as the model-space positive
+scale.
+
+The active loss is a balanced channel/target-feature NLL: each supported
+channel-feature cell contributes through its own masked mean before global
+aggregation, so dense validity patterns do not silently dominate sparse ones.
 
 `FUTURE_HORIZON` remains in the config identity for source alignment, but the
 active MDN requires it to be `1`.
+
+The single-embedding `[B,De]` MDN wrapper has been removed. The graph-first
+production front door is `ChannelContextMdn`.

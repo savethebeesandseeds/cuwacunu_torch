@@ -81,7 +81,7 @@ valid_advice(const std::filesystem::path &config_path,
   advice.recommendation_attempt_count = 0;
   advice.required_plan_inputs = {"PLAN_INPUT_MDN_CHECKPOINT",
                                  "PLAN_INPUT_REPRESENTATION_CHECKPOINT"};
-  advice.source_lattice_tool = "hero.lattice.plan_target";
+  advice.source_lattice_tool = "hero.lattice.target_deficit";
   advice.source_lattice_timestamp = "2026-05-23T00:00:00Z";
   return advice;
 }
@@ -177,17 +177,24 @@ int main() {
                               "\n"
                               "max_capture_bytes:int = 4096\n"
                               "max_runtime_seconds:int = 5\n");
-  write_text(wave_path,
-             "KIKIJYEBA_WAVE {\n"
-             "  WAVE_ID = cwu_01v_channel_validation_eval_mdn_1800_2050;\n"
-             "  TARGET = wikimyei.inference.expected_value.mdn;\n"
-             "  MODE = run|debug;\n"
-             "  SOURCE_CURSOR_KIND = graph_anchor;\n"
-             "  SOURCE_CURSOR_SCOPE = wave_batch;\n"
-             "  SOURCE_RANGE = anchor_index;\n"
-             "  ANCHOR_INDEX_BEGIN = 1800;\n"
-             "  ANCHOR_INDEX_END = 2050;\n"
-             "};\n");
+  const std::string wave_text =
+      "KIKIJYEBA_WAVE {\n"
+      "  WAVE_ID = cwu_01v_channel_validation_eval_mdn_1800_2050;\n"
+      "  TARGET = wikimyei.inference.expected_value.mdn;\n"
+      "  MODE = run|debug;\n"
+      "  SOURCE_CURSOR_KIND = graph_anchor;\n"
+      "  SOURCE_CURSOR_SCOPE = wave_batch;\n"
+      "  SOURCE_RANGE = anchor_index;\n"
+      "  ANCHOR_INDEX_BEGIN = 1800;\n"
+      "  ANCHOR_INDEX_END = 2050;\n"
+      "  INPUT_MDN_CHECKPOINT = " +
+      (runtime_root / "jobs/mdn/checkpoint.pt").string() +
+      ";\n"
+      "  INPUT_REPRESENTATION_CHECKPOINT = " +
+      (runtime_root / "jobs/vicreg/checkpoint.pt").string() +
+      ";\n"
+      "};\n";
+  write_text(wave_path, wave_text);
 
   const auto advice = valid_advice(config_path, runtime_root);
   const auto request = request_for(advice);

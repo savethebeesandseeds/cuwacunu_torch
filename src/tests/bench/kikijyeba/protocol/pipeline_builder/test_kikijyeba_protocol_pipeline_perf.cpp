@@ -129,7 +129,7 @@ std::string make_channels_dsl() {
       "|----------------------------------------------------------------"
       "-----------------------------------------------|\n"
       "|    1m       |   true    |    kline     |     8        |       "
-      "2       |      1.0       |  log_returns         |\n"
+      "1       |      1.0       |  log_returns         |\n"
       "\\---------------------------------------------------------------"
       "------------------------------------------------/\n");
 }
@@ -225,10 +225,12 @@ std::filesystem::path make_config(const std::filesystem::path &dir,
                       "};\n");
   write_text(mdn_net, "MDN_NET {\n"
                       "  CHANNEL_COUNT = 1;\n"
-                      "  FUTURE_HORIZON = 2;\n"
+                      "  FUTURE_HORIZON = 1;\n"
                       "  MIXTURE_COUNT = 2;\n"
                       "  HIDDEN_WIDTH = 8;\n"
                       "  RESIDUAL_DEPTH = 1;\n"
+                      "  FEATURE_EMBEDDING_DIM = 2;\n"
+                      "  CHANNEL_ADAPTER_RANK = 2;\n"
                       "  GLOBAL_CONTEXT_DIM = 0;\n"
                       "};\n");
   write_text(vicreg_jkimyei,

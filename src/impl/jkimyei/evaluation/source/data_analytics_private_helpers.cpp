@@ -39,7 +39,8 @@ constexpr std::size_t kPowerSpectrumMaxBins = 64;
 constexpr double kAutocorrelationDecayThreshold = 0.36787944117144233;
 constexpr double kPi = 3.14159265358979323846;
 
-using runtime_lls_document_t = cuwacunu::kikijyeba::lattice::runtime_report::runtime_lls_document_t;
+using runtime_lls_document_t =
+    cuwacunu::kikijyeba::lattice::runtime_report::runtime_lls_document_t;
 
 [[nodiscard]] inline double clamp_nonneg(double v) {
   return (v > 0.0) ? v : 0.0;
@@ -83,7 +84,9 @@ contract_hash_path_token_(std::string_view contract_hash) {
       env && *env) {
     return std::filesystem::path(env);
   }
-  return std::filesystem::path(".runtime") / "jkimyei" / "evaluation";
+  return std::filesystem::path("/cuwacunu/.runtime") / "cuwacunu_exec" /
+         "components" / "jkimyei.evaluation.source.data_analytics" /
+         "spawns" / "standalone_runtime" / "artifacts" / "retrieval";
 }
 
 [[nodiscard]] std::filesystem::path
@@ -191,26 +194,24 @@ void append_string_entry_if_nonempty_(runtime_lls_document_t *document,
 void append_bool_entry_(runtime_lls_document_t *document, std::string_view key,
                         bool value) {
   document->entries.push_back(
-      cuwacunu::kikijyeba::lattice::runtime_report::
-          make_runtime_lls_bool_entry(std::string(key), value));
+      cuwacunu::kikijyeba::lattice::runtime_report::make_runtime_lls_bool_entry(
+          std::string(key), value));
 }
 
 void append_u64_entry_(
     runtime_lls_document_t *document, std::string_view key, std::uint64_t value,
     std::string_view declared_domain = kRefRangeNonNegative) {
   document->entries.push_back(
-      cuwacunu::kikijyeba::lattice::runtime_report::
-          make_runtime_lls_uint_entry(std::string(key), value,
-                                      std::string(declared_domain)));
+      cuwacunu::kikijyeba::lattice::runtime_report::make_runtime_lls_uint_entry(
+          std::string(key), value, std::string(declared_domain)));
 }
 
 void append_i64_entry_(runtime_lls_document_t *document, std::string_view key,
                        std::int64_t value,
                        std::string_view declared_domain = kRefRangeSigned) {
   document->entries.push_back(
-      cuwacunu::kikijyeba::lattice::runtime_report::
-          make_runtime_lls_int_entry(std::string(key), value,
-                                     std::string(declared_domain)));
+      cuwacunu::kikijyeba::lattice::runtime_report::make_runtime_lls_int_entry(
+          std::string(key), value, std::string(declared_domain)));
 }
 
 void append_double_entry_(runtime_lls_document_t *document,

@@ -49,7 +49,7 @@ It covers:
 - valid sample object schema
 - generated Config Hero catalog
 - generated Runtime Hero catalog
-- generated Hashimyei Hero catalog
+- generated Marshal Hero catalog
 - generated Lattice Hero catalog
 - hero.lattice.checkpoint_closure is present and schema-compatible
 ```

@@ -64,7 +64,7 @@ Observed:
 ```text
 hero.lattice.derived_query
   relation = stale_cache
-  index_path = .lattice_index/missing_v3e_cache.lls
+  index_path = indexes/missing_v3e_cache.lls
   validation_strength = header_only
 
 Observed:

@@ -25,6 +25,9 @@ plan advice. It intentionally does not execute or dry-run Runtime Hero.
 Implemented surface:
 
 ```text
+src/include/hero/marshal_hero/hero_marshal.def
+src/include/hero/marshal_hero/hero_marshal.h
+src/include/hero/marshal_hero/hero_marshal_tools.h
 src/include/kikijyeba/marshal/dispatch_advice.h
 src/include/kikijyeba/marshal/dispatch_adapter.h
 src/include/kikijyeba/marshal/runtime_hero_handoff.h
@@ -32,6 +35,7 @@ src/include/kikijyeba/marshal/dispatch_operation.h
 src/include/kikijyeba/marshal/execution_gate.h
 src/include/kikijyeba/marshal/dispatch_receipt.h
 src/include/kikijyeba/marshal/status.h
+src/include/kikijyeba/marshal/operational_report.h
 src/include/kikijyeba/marshal/batch_preview.h
 src/include/kikijyeba/marshal/codex_assist.h
 src/include/kikijyeba/marshal/tool_schema.h
@@ -39,6 +43,15 @@ src/include/kikijyeba/marshal/tool_handler.h
 src/include/kikijyeba/marshal/performance_budget.h
 src/main/hero/hero_marshal_mcp.cpp
 ```
+
+`src/include/hero/marshal_hero` is the thin Hero symmetry layer: it owns the
+public Marshal Hero tool registry and the MCP-facing facade. The implementation
+stays in `src/include/kikijyeba/marshal`, where the deterministic dispatch,
+evaluation, receipt, and target-driver methods live.
+
+`src/config/hero.marshal.dsl` is intentionally minimal and exists for Hero
+policy-path symmetry only. Runtime Hero policy still owns execution authority,
+and Lattice Hero still owns proof authority.
 
 The M1 API provides:
 
@@ -135,6 +148,132 @@ performance gates
 After Runtime Hero writes artifacts, Lattice Hero must re-read runtime evidence
 and prove the target.
 
+## Public Operator Surface
+
+The current high-level Marshal surface is intentionally small:
+
+```text
+hero.marshal.status
+hero.marshal.reach_lattice_target
+hero.marshal.evaluate
+```
+
+`reach_lattice_target` is the deterministic Marshal for moving one lattice
+target toward readiness. It has two explicit drive modes:
+
+```text
+drive_mode = one_step
+drive_mode = budgeted
+```
+
+`one_step` computes one Lattice-backed move, optionally dry-runs it, emits a
+target-driver ledger, and stops. `budgeted` performs a finite driver loop: it
+asks Lattice for the current target deficit, materializes model-state inputs,
+checks Runtime wave/policy alignment, dry-runs Runtime, and either stops before
+execution or executes only when `requested_mode=execute`, `driver_policy`
+allows execution, Runtime policy allows execution, and the existing execution
+gate accepts the dry-run evidence. The target is reported reached only after
+Lattice reports satisfaction.
+
+Warning stops use typed Runtime/Lattice warning envelopes rather than loose JSON
+sniffing. A warning used for driver policy must carry `warning_id`, `severity`,
+`source`, `component`, `scope`, `blocking`, and `evidence_digest`. Unknown or
+missing severity fails closed when the matching stop policy is enabled; a
+blocking warning stops even below the configured severity threshold.
+
+The operator packet presents a compact `operator_summary`, `stop_reason`,
+`wave_panel`, `runtime_panel`, `lattice_panel`, and `audit_panel`, followed by
+the compatibility fields for target, blocker, advised wave, concrete
+model-state inputs, Runtime wave match, dry-run result, target-driver terminal
+state, target-driver ledger, and next safe action.
+
+`evaluate` is the high-level deterministic evaluator. It supports:
+
+```text
+subject = run
+subject = target
+subject = protocol
+subject = spawn
+subject = component
+```
+
+`subject=run` wraps the operational report and comparison paths through
+`latest_chain`, `training_state`, `single_job`, and `compare` modes.
+`subject=target` asks Lattice for the target deficit and explains the plan or
+blocker. It labels target status as sourced from `hero.lattice.target_deficit`
+and only suggests certificate inspection when Lattice returned certificate
+material. `subject=protocol` checks observed Runtime identity fields against
+the requested protocol/graph/source/assembly identity. Its default
+`identity_mode=report` treats observed-only identity as an operator observation,
+not as strict verification; `identity_mode=strict` requires explicit expected
+identity fields and reports `identity_verified=true` only when they all match.
+`subject=spawn` and `subject=component` group Runtime evidence for one
+component spawn or component family with `evidence_scope=runtime_jobs_only`.
+All subjects explain evidence without execution, proof claims, model selection,
+or checkpoint selection.
+
+The lower-level behavior is implementation detail, not a public tool surface:
+
+```text
+target advice materialization
+dispatch validation
+Runtime dry-run handoff
+execution-gate validation
+receipt replay
+batch preview
+```
+
+These remain ordinary C++ methods where needed. They are not registered as
+Marshal Hero tools and cannot be invoked through MCP/CLI tool names.
+
+Standalone scheduler research notes were removed from this folder. Scheduler
+ideas remain intentionally out of scope for Marshal's current public surface;
+the active roadmap keeps them in the `Not Now` section instead of carrying a
+separate research artifact.
+
+## Marshal Operational Report v1
+
+`hero.marshal.evaluate` with `subject=run` is the read-only operator report
+surface. Its `latest_chain`, `training_state`, and `single_job` modes answer:
+
+```text
+Where are we, what just happened, and what is safe to do next?
+```
+
+It reads Runtime job directories, `job.state`, Runtime terminal facts, component
+reports, checkpoint load/write fields, and Lattice target statuses. Runtime
+terminal facts are preferred when present; component reports remain the
+fallback for older jobs. The current packet includes:
+
+```text
+evidence_scope
+operator_summary
+stop_reason
+runtime_panel
+lattice_panel
+audit_panel
+current_state
+job_chain
+chain_summary
+target_blockers
+warnings
+suspicious_items
+next_safe_actions
+```
+
+`chain_summary` groups each Runtime job by component family, component spawn
+identity, wave action/mode, source range, checkpoint I/O, handoff identity, and
+terminal-fact availability.
+
+When `include_machine_payload=true`, the report also includes full job rows,
+checkpoint rows, the target-status map, and detailed metrics under
+`machine_payload`.
+
+The report does not execute, dry-run, edit config, select checkpoints, or claim
+target satisfaction. Lattice remains the only proof authority; Marshal only
+quotes Lattice statuses, proof-check issues, deficits, and warnings, then turns
+Runtime artifacts into an operator-readable summary.
+
 ## M2 Preview And Handoff Core
 
 The M2 adapter core can turn validated M1 advice plus Runtime Hero policy/wave
@@ -163,29 +302,45 @@ The public M2 operation accepts explicit fresh Lattice Hero advice, refuses
 unproven advice, calls the handoff helper, and includes the live Runtime Hero
 dry-run result in the Marshal response.
 
-`hero.marshal.lookup_target_advice` is the target-id convenience wrapper. It
-asks Lattice Hero `hero.lattice.plan_target` for a specific `target_id`, maps
-the returned plan into the same explicit `marshal_dispatch_advice_t` and
-`marshal_dispatch_request_t` objects used by M1/M2, and stops before any Runtime
-dispatch. It rejects free-form target text through the tool schema; dispatch
-still requires the explicit advice path, concrete `PLAN_INPUT_*` model-state
-paths, and the normal M1/M2 validation.
+`hero.marshal.reach_lattice_target` is the operator-facing wrapper for
+“pursue lattice target X.” The target wrapper calls the current Lattice target
+advice query, asks Marshal's read-only Lattice callback to materialize symbolic
+`latest_satisfying:<target_id>` model-state hints, validates the materialized
+advice, inspects Runtime policy and active wave shape, and returns one compact
+operator packet.
 
-`hero.marshal.prepare_target_dispatch` is the operator-facing target-first
-wrapper for “pursue lattice target X.” It calls Lattice `plan_target`, asks
-Lattice read-only to resolve symbolic `latest_satisfying:<target_id>` model
-state hints, validates the materialized advice, inspects Runtime policy and
-active wave shape, and returns one compact operator packet. By default it does
-not execute and does not even dry-run; `include_runtime_dry_run=true` is an
-explicit opt-in and still stops before the execution gate. Marshal reports
-desired wave differences but does not edit wave config, select checkpoints, or
-claim target satisfaction.
+In `one_step` mode, `include_runtime_dry_run=true` is still an explicit opt-in.
+In `budgeted` mode, Runtime dry-run is part of the driver loop and is bounded by
+`driver_policy.max_waves`. `budgeted` execution also requires
+`driver_policy.max_wall_clock_seconds`, `driver_policy.allow_execute=true`, and
+Runtime `allow_execute=true`. Train waves additionally require both
+`driver_policy.allow_train_execute=true` and Runtime `allow_train_execute=true`.
+Marshal reports desired wave differences but does not edit wave config, select
+checkpoints, or claim target satisfaction.
+
+Every target-driver run emits a ledger with the driver policy digest,
+per-iteration Lattice target-deficit digest, suggested-wave digest, Runtime
+handoff/request digests, terminal Runtime evidence digests, terminal state, and
+non-authority statement. When `require_runtime_job_completion=true`, Marshal
+requires durable `runtime.result.fact` plus `job.manifest`; a completed
+`job.state` alone is not enough. If Runtime reports checkpoint writes or loaded
+model-state checkpoints, `runtime.checkpoint_io.fact` must also be present and
+is bound into the ledger. A compact `resume_ledger` may be supplied to continue
+a bounded run without forgetting spent handoff/execution budget; stale target,
+mode, policy identity, missing terminal evidence identity, missing manifest
+identity, or missing handoff identity blocks resume.
+
+Target-driver replay audit is also available internally for retention drills.
+Full ledger replay recomputes iteration and ledger digests. Compact ledger
+replay accepts removed iteration bodies only when `compacted_fields` says so and
+the durable Runtime evidence identities remain. Replay rejects stale target,
+protocol, graph order, target spec, split policy, driver policy, and Runtime
+policy identities. It remains audit-only and never proves target satisfaction.
 
 Runtime Hero owns the active wave. Marshal compares advice to Runtime's decoded
 wave using the canonical fields `target_component_family_id`, `mode`,
 `source_range`, range bounds, `job_kind`, `train_target`, and
-`model_state_inputs`. `wave_target` and `wave_mode` remain accepted only as
-handoff compatibility aliases.
+`model_state_inputs`.
 
 ## M3 Execution Gate
 
@@ -232,9 +387,19 @@ It cannot be called from a plain dry-run decision. Immediately before calling
 `hero.runtime.execute`, Marshal asks Runtime Hero to decode the active wave and
 compares target, mode, source range, and anchor bounds against the derived
 request, including concrete `PLAN_INPUT_*` model-state inputs. The Runtime Hero
-execute schema also accepts a `marshal_expected_wave` object with the canonical
-Runtime active-wave field names and rejects mismatched expected wave fields,
-including checkpoint/model-state input differences.
+execute schema accepts a canonical `runtime_handoff` object. The object carries
+handoff schema/id/digest, creator/timestamp, target id, base config path/hash,
+concrete wave fields, concrete checkpoint inputs, Runtime policy path/hash,
+dry-run or execute intent, and an `unresolved_symbols` list. Runtime rejects
+non-empty `unresolved_symbols`, symbolic `latest_satisfying:*` inputs,
+mismatched intent, and mismatched active-wave fields before launching
+`cuwacunu_exec`. Accepted handoffs are echoed back through the Runtime job
+manifest, terminal result fact, and derived lattice exposure fact using
+`runtime_handoff_id` and `runtime_handoff_digest`.
+
+`marshal_expected_wave` remains as compatibility scaffolding with the same
+canonical Runtime active-wave field names. Runtime also rejects symbolic
+model-state inputs on that legacy path.
 
 ## M4 Dispatch Receipts
 
@@ -277,10 +442,50 @@ policy. It reports last accepted dry-run, last execution handoff, latest refusal
 reason, and Lattice advice surface availability. It does not evaluate lattice
 targets.
 
-Batch preview is a dry-run-only wrapper over independent M1/M2 decisions. It
-preserves per-item ids plus advice/request, validation-context, Runtime-policy,
-and Runtime-wave digests for traceability. It does not infer dependency order,
-retries, execution order, or target selection.
+## Marshal Run Comparison
+
+`hero.marshal.evaluate` with `subject=run` and `mode=compare` compares two
+Runtime jobs descriptively. It reads the same Runtime job state, terminal facts,
+checkpoint I/O facts, health facts, and raw report fallback fields used by the
+operational report, then returns:
+
+```text
+operator_summary
+stop_reason
+runtime_panel
+lattice_panel
+audit_panel
+run_pair
+comparability
+config_identity_deltas
+wave_range_deltas
+metric_deltas
+checkpoint_deltas
+warning_deltas
+proof_context
+```
+
+`config_identity_deltas` and `wave_range_deltas` make config identity, protocol
+identity, graph/source identity, wave action/mode, source-range policy, anchor
+bounds, and accepted anchor count visible before metric differences. When
+`include_machine_payload=true`, comparison also returns full baseline and
+candidate job rows, full performance visibility panels, checkpoint lineage
+details, and per-run metric maps.
+
+The comparison surface is read-only. It does not execute, edit config, select a
+checkpoint, choose a winner, or claim target satisfaction. Lattice cleanliness
+is reported as a boundary: comparison can say that Lattice replay is required,
+but it cannot prove cleanliness by itself.
+
+Invariant:
+
+```text
+Compare does not choose. Compare explains.
+```
+
+Use `mode=compare` for run-to-run comparison, `mode=latest_chain` for the
+latest training/eval chain, and `mode=single_job` for a bounded inspection of
+one job.
 
 ## M5, M9, And M10
 

@@ -411,11 +411,10 @@ capture_config_bundle_receipt(const std::filesystem::path &global_config_path,
 }
 
 struct component_spawn_tuple_t {
-  std::string schema{"kikijyeba.component_spawn.v1"};
+  std::string schema{"kikijyeba.component_spawn.v2"};
   std::string component_family_id{};
   std::string protocol_contract_fingerprint{};
   std::string graph_order_fingerprint{};
-  std::string source_cursor_token{};
   std::string component_assembly_fingerprint{};
 };
 
@@ -427,7 +426,6 @@ canonical_component_spawn_text(const component_spawn_tuple_t &spawn) {
   out << "protocol_contract_fingerprint=" << spawn.protocol_contract_fingerprint
       << "\n";
   out << "graph_order_fingerprint=" << spawn.graph_order_fingerprint << "\n";
-  out << "source_cursor_token=" << spawn.source_cursor_token << "\n";
   out << "component_assembly_fingerprint="
       << spawn.component_assembly_fingerprint << "\n";
   return out.str();
@@ -435,7 +433,7 @@ canonical_component_spawn_text(const component_spawn_tuple_t &spawn) {
 
 [[nodiscard]] inline std::string
 component_spawn_fingerprint(const component_spawn_tuple_t &spawn) {
-  return detail::digest_text("kikijyeba.component_spawn.v1",
+  return detail::digest_text("kikijyeba.component_spawn.v2",
                              canonical_component_spawn_text(spawn));
 }
 
@@ -466,8 +464,7 @@ struct component_spawn_registry_t {
 
 [[nodiscard]] inline std::filesystem::path
 component_spawn_registry_path(const std::filesystem::path &runtime_root) {
-  return runtime_root / ".lattice_spawn_registry" /
-         "component_spawn_registry.v1.lls";
+  return runtime_root / "system" / "component_spawn_registry.v1.lls";
 }
 
 [[nodiscard]] inline std::string

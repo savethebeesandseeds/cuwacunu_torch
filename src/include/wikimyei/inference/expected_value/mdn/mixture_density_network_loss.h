@@ -15,8 +15,9 @@ namespace mdn {
 // Wikimyei owns the density math; Jkimyei owns training policy decoding.
 // Configure this loss with MdnNllOptions produced by the MDN spec/trainer:
 //   eps=<float>           (default 1e-6)
-//   sigma_min=<float>     (default 1e-3)
-//   sigma_max=<float>     (default 0.0 → disabled)
+//   sigma_min=<float>     (default 1e-3, safety floor; the active head also
+//                          emits sigma with its smooth floor already applied)
+//   sigma_max=<float>     (default 0.0 -> disabled)
 //   reduction=<mean|sum>  (default mean)
 struct MdnNLLLoss {
   double eps_{1e-6};
@@ -64,55 +65,29 @@ struct MdnNLLLoss {
     TORCH_CHECK(out.sigma.sizes() == out.log_pi.sizes(),
                 "[MdnNLLLoss] mu/sigma size mismatch");
 
-    auto f_b = f.unsqueeze(-1).expand_as(out.mu);
-
-    // clamp sigma
-    auto eps_t = out.sigma.new_full({}, eps_);
-    auto sigma = out.sigma + eps_t; // additive ε floor
-    if (sigma_min_ > 0.0)
-      sigma = sigma.clamp_min(sigma_min_); // optional hard floor
-    if (sigma_max_ > 0.0)
-      sigma = sigma.clamp_max(sigma_max_);
-
-    static constexpr double LOG2PI = 1.8378770664093453; // log(2π)
-
-    auto diff = (f_b - out.mu) / sigma;
-    auto per_component_logp =
-        -0.5 * diff.pow(2) - sigma.log() - 0.5 * LOG2PI; // [B,N,C,Df,K]
-
-    auto log_mix =
-        torch::logsumexp(out.log_pi + per_component_logp, /*dim=*/-1);
-    auto nll = -log_mix; // [B,N,C,Df]
-
-    // --- unified weighting/masking/mean ---
-    auto w = torch::ones_like(nll); // [B,N,C,Df]
-    if (weights_ch.defined()) {
-      TORCH_CHECK(weights_ch.dim() == 1 && weights_ch.size(0) == C,
-                  "[MdnNLLLoss] weights_ch must be [C]");
-      w = w * weights_ch.to(nll.dtype()).view({1, 1, C, 1});
-    }
     if (weights_tau.defined()) {
       TORCH_CHECK(false,
                   "[MdnNLLLoss] weights_tau is not valid for the one-step "
                   "feature-slot MDN");
     }
-    if (weights_dim.defined()) {
-      TORCH_CHECK(weights_dim.dim() == 1 && weights_dim.size(0) == Df,
-                  "[MdnNLLLoss] weights_dim must be [Df]");
-      w = w * weights_dim.to(nll.dtype()).view({1, 1, 1, Df});
-    }
+    MdnNllOptions nll_options{};
+    nll_options.eps = eps_;
+    nll_options.sigma_min = sigma_min_;
+    nll_options.sigma_max = sigma_max_;
+    auto nll = mdn_nll_map(out, f, nll_options);
+    auto valid = torch::ones_like(nll); // [B,N,C,Df]
     if (mask.defined()) {
       TORCH_CHECK(mask.sizes() == torch::IntArrayRef({B, N, C, Df}),
                   "[MdnNLLLoss] mask must be [B,N,C,Df]");
-      w = w * mask.to(nll.dtype());
+      valid = mask.to(nll.dtype());
     }
 
-    auto loss_sum = (nll * w).sum();
+    auto loss_sum = (nll * valid).sum();
     if (!reduce_mean_)
       return loss_sum;
 
-    auto denom = w.sum().clamp_min(1.0);
-    return loss_sum / denom;
+    return mdn_balanced_channel_feature_nll(nll, valid, weights_ch,
+                                            weights_dim);
   }
 
   // Compatibility operator (no mask/weights) — still available

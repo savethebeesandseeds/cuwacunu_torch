@@ -263,6 +263,8 @@ fixture_paths_t make_config_fixture(const std::string &label,
                               "  MIXTURE_COUNT = 2;\n"
                               "  HIDDEN_WIDTH = 8;\n"
                               "  RESIDUAL_DEPTH = 1;\n"
+                              "  FEATURE_EMBEDDING_DIM = 2;\n"
+                              "  CHANNEL_ADAPTER_RANK = 2;\n"
                               "  GLOBAL_CONTEXT_DIM = 0;\n"
                               "};\n");
   write_text(vicreg_jkimyei,
@@ -436,6 +438,9 @@ void test_default_channel_config_dry_run_report() {
   check(bundle.channel_mdn.future_horizon ==
             builder::max_future_length(bundle.source_dock),
         "default MDN Hf matches source dock");
+  check(bundle.channel_mdn.feature_embedding_dim == 8 &&
+            bundle.channel_mdn.channel_adapter_rank == 16,
+        "default MDN v2 adapter/head dimensions decode");
 
   builder::graph_first_pipeline_builder_options_t options{};
   options.dry_run = true;
@@ -579,6 +584,9 @@ void test_channel_config_backed_forward_nll_smoke() {
   check(bundle.vicreg.channel_count == 1, "fixture channel VICReg count");
   check(bundle.vicreg.history_length == 2, "fixture channel VICReg Hx");
   check(bundle.channel_mdn.future_horizon == 1, "fixture MDN Hf");
+  check(bundle.channel_mdn.feature_embedding_dim == 2 &&
+            bundle.channel_mdn.channel_adapter_rank == 2,
+        "fixture MDN v2 adapter/head dimensions");
 
   builder::graph_first_pipeline_builder_options_t options{};
   options.force_rebuild_cache = true;
@@ -642,9 +650,10 @@ void test_channel_config_backed_forward_nll_smoke() {
   check(torch::isfinite(out.mu).all().item<bool>(), "MDN mu finite");
   check(torch::isfinite(out.sigma).all().item<bool>(), "MDN sigma finite");
   auto nll = cuwacunu::wikimyei::inference::expected_value::mdn::mdn_nll_map(
-      out, mdn_batch.future, mask, nll_options);
+      out, mdn_batch.future, nll_options);
   check(torch::isfinite(nll).all().item<bool>(), "MDN NLL finite");
-  auto loss = nll.sum() / mask.to(nll.scalar_type()).sum().clamp_min(1.0);
+  auto loss = (nll * mask.to(nll.scalar_type())).sum() /
+              mask.to(nll.scalar_type()).sum().clamp_min(1.0);
   check(std::isfinite(loss.item<double>()), "fixture channel total NLL finite");
 }
 

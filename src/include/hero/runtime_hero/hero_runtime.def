@@ -55,17 +55,18 @@ HERO_RUNTIME_POLICY_KEY(
     "true,false",
     "Require confirm_dev_nuke=true for non-dry-run runtime state reset.")
 HERO_RUNTIME_POLICY_KEY(
-    "dev_nuke_backup_enabled", "bool", 1, "true", "true|false",
+    "dev_nuke_backup_enabled", "bool", 1, "false", "true|false",
     "true,false",
     "Move runtime state into a backup snapshot before clearing it.")
 HERO_RUNTIME_POLICY_KEY(
     "dev_nuke_backup_root", "path", 1,
-    "/cuwacunu/.runtime/.backups/hero.runtime_dev_nuke", "directory path",
+    "/tmp/cuwacunu_runtime_dev_nuke_backups/hero.runtime_dev_nuke",
+    "directory path",
     "absolute_or_relative_path",
     "Root for hero.runtime.dev_nuke backup snapshots.")
 HERO_RUNTIME_POLICY_KEY(
-    "allowed_dev_nuke_roots", "path_list", 1,
-    "/cuwacunu/.runtime/cuwacunu_exec", "comma-separated path list",
+    "allowed_dev_nuke_roots", "path_list", 1, "/cuwacunu/.runtime",
+    "comma-separated path list",
     "absolute_or_relative_paths",
     "Runtime roots that hero.runtime.dev_nuke may clear.")
 HERO_RUNTIME_POLICY_KEY(

@@ -285,6 +285,8 @@ fixture_paths_t make_config_fixture(const std::string &label,
                               "  MIXTURE_COUNT = 2;\n"
                               "  HIDDEN_WIDTH = 8;\n"
                               "  RESIDUAL_DEPTH = 1;\n"
+                              "  FEATURE_EMBEDDING_DIM = 2;\n"
+                              "  CHANNEL_ADAPTER_RANK = 2;\n"
                               "  GLOBAL_CONTEXT_DIM = 0;\n"
                               "};\n");
   write_text(vicreg_jkimyei,
@@ -829,6 +831,28 @@ void test_channel_mdn_training_run() {
         "MDN per-target-feature NLL count");
   check(std::isfinite(report.mean_nll_per_target_feature[0]),
         "MDN per-target-feature NLL finite");
+  check(report.mean_nll_per_channel_target_feature.size() == 4,
+        "MDN per-channel/target-feature NLL count");
+  check(std::isfinite(report.mean_nll_per_channel_target_feature[0]),
+        "MDN per-channel/target-feature NLL finite");
+  check(report.valid_target_count_per_channel.size() == 1 &&
+            report.valid_target_count_per_channel[0] > 0,
+        "MDN per-channel support count");
+  check(report.valid_target_count_per_target_feature.size() == 4 &&
+            report.valid_target_count_per_target_feature[0] > 0,
+        "MDN per-feature support count");
+  check(report.valid_target_count_per_channel_target_feature.size() == 4 &&
+            report.valid_target_count_per_channel_target_feature[0] > 0,
+        "MDN per-channel/feature support count");
+  check(report.mdn_architecture ==
+                "shared_slot_trunk.channel_adapter.shared_feature_head.v2" &&
+            report.loss_reduction == "balanced_channel_feature_mean" &&
+            report.feature_embedding_dim == 2 &&
+            report.channel_adapter_rank == 2 && report.shared_trunk &&
+            report.channel_adapters_enabled && report.shared_feature_head &&
+            report.feature_embedding_enabled && !report.node_id_embedding &&
+            !report.cross_node_attention && !report.cross_channel_attention,
+        "MDN architecture and loss contract recorded");
   check(report.mean_mixture_usage.size() == 2, "MDN mixture usage count");
   check(std::isfinite(report.mean_mixture_usage[0]) &&
             std::isfinite(report.mean_mixture_usage[1]),
@@ -860,7 +884,7 @@ void test_channel_mdn_training_run() {
   check(report.report_written, "MDN report written");
   check(std::filesystem::exists(fixture.report), "MDN report path exists");
   check(report.checkpoint_written, "MDN checkpoint metadata");
-  check(report.checkpoint_format == "torch_archive_channel_mdn_v1",
+  check(report.checkpoint_format == "torch_archive_channel_mdn_v2",
         "MDN checkpoint format");
   check(std::filesystem::exists(report.checkpoint_path),
         "MDN checkpoint file exists");
@@ -901,6 +925,19 @@ void test_channel_mdn_training_run() {
         "MDN report masked sigma max");
   check(report_text.find("mean_nll_per_target_feature=") != std::string::npos,
         "MDN report per-target-feature NLL");
+  check(report_text.find("mean_nll_per_channel_target_feature=") !=
+            std::string::npos,
+        "MDN report per-channel/target-feature NLL");
+  check(report_text.find("valid_target_count_per_channel=") !=
+            std::string::npos,
+        "MDN report per-channel support");
+  check(report_text.find("mdn_architecture="
+                         "shared_slot_trunk.channel_adapter."
+                         "shared_feature_head.v2") != std::string::npos,
+        "MDN report architecture");
+  check(report_text.find("loss_reduction=balanced_channel_feature_mean") !=
+            std::string::npos,
+        "MDN report balanced loss reduction");
   check(report_text.find("mean_mixture_usage=") != std::string::npos,
         "MDN report mixture usage");
   check(report_text.find("max_grad_norm=") != std::string::npos,
@@ -956,6 +993,15 @@ void test_channel_mdn_debug_lls() {
         "MDN debug runtime LLS future mask fraction");
   check(report.mdn_runtime_lls.find("sigma_mean_valid") != std::string::npos,
         "MDN debug runtime LLS masked sigma mean");
+  check(report.mdn_runtime_lls.find(
+            "loss_reduction:str = balanced_channel_feature_mean") !=
+            std::string::npos,
+        "MDN debug runtime LLS balanced loss reduction");
+  check(report.mdn_runtime_lls.find(
+            "mdn_architecture:str = "
+            "shared_slot_trunk.channel_adapter.shared_feature_head.v2") !=
+            std::string::npos,
+        "MDN debug runtime LLS architecture");
   check(std::filesystem::exists(fixture.report.string() + ".nodelift.lls"),
         "MDN debug NodeLift LLS sidecar exists");
   check(
@@ -1130,6 +1176,8 @@ void test_channel_mdn_checkpoint_identity_rejects_representation_id_mismatch() {
   report.mixture_count = 2;
   report.hidden_width = 8;
   report.residual_depth = 1;
+  report.feature_embedding_dim = 2;
+  report.channel_adapter_rank = 2;
   report.sigma_min = 0.001;
   report.sigma_max = 0.0;
   report.eps = 0.000001;

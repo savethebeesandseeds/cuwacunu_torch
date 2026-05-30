@@ -23,12 +23,12 @@
     through job reports, exposure facts, and checkpoint lineage.
 
   TARGET_KIND:
-    legacy_node_vicreg_ready
-      Historical node-representation compatibility kind. The active target DSL
-      below uses the channel-preserving VICReg representation target instead.
-
     vicreg_ready
       Checks the channel-preserving VICReg representation target.
+
+    mtf_representation_ready
+      Checks the experimental MTF-JEPA-MAE-VICReg representation target as a
+      separate representation producer. It does not satisfy VICReg identity.
 
     channel_mdn_ready
       Checks the strict channel-context ExpectedValue MDN target. V0 treats
@@ -193,7 +193,8 @@
     LATTICE_WARN
       Non-blocking warning clauses over evidence summaries. Supported v0 warning
       kinds are exposure_load, effort_density, anchor_domain_health,
-      node_support_balance, node_support_floor, and representation_health.
+      node_support_balance, node_support_floor, representation_health, and
+      runtime_health.
       Warnings never change target status, plan readiness, suggested waves, or
       PLAN_MAX_ATTEMPTS accounting. They only report suspicious repeated
       exposure, high optimizer effort density, source-domain health issues,
@@ -201,10 +202,18 @@
       aggregate Wilson lower-bound support, or VICReg representation-health
       metrics including optional geometry summaries such as effective-rank
       fraction and condition number. KIND=mdn_distribution_calibration can
-      warn on aggregate, channel, horizon, and per-node MDN NLL diagnostics;
+      warn on aggregate, channel, target-feature, channel/target-feature, and
+      per-node MDN NLL diagnostics;
       PIT KS statistic, predictive interval coverage error, tail coverage
       error, and calibration slope error are future non-gating calibration
       metrics until runtime emits samples and uncertainty.
+      KIND=runtime_health reads Runtime terminal facts when present and falls
+      back to report-derived exposure fields for older jobs. It covers
+      correctness-adjacent checks such as finite_parameter_check,
+      nonfinite_output_count, checkpoint_written, model_state_mutated,
+      representation_checkpoint_loaded, mdn_checkpoint_loaded, and health
+      observations such as grad_norm_max_pre_clip, sigma_min/sigma_max,
+      mixture_entropy, and valid_target_fraction.
       Any warning kind may declare SPLIT or explicit ANCHOR_INDEX_BEGIN/END.
       Measurements are scoped to that warning interval, defaulting to the
       target range. If trusted completed coverage is unavailable, warning
@@ -341,16 +350,17 @@
       Hero JSON also includes mdn_distribution_calibration_vocabulary: the V1
       mean_nll warning metric and future non-gating distribution calibration
       metrics.
-      Hero JSON also includes mdn_distribution_calibration_summary: the legacy
-      six-row metric policy keeps mean_nll V1-visible, five calibration metrics
-      future, all rows non-blocking, and no performance gates.
+      Hero JSON also includes mdn_distribution_calibration_summary: the
+      warning-only metric policy keeps mean_nll V1-visible, future calibration
+      metrics deferred, all rows non-blocking, and no performance gates.
       Hero JSON also includes
       mdn_distribution_calibration_diagnostic_vocabulary and
       mdn_distribution_calibration_diagnostic_summary: V3-D diagnostics bind
-      aggregate/channel/horizon/per-node NLL warnings and future calibration
-      rows to exact evaluated MDN checkpoint, representation checkpoint, split
-      policy, active identity, validation split, sample count, uncertainty
-      method, and warning-only/non-performance effect.
+      aggregate/channel/target-feature/channel-target-feature/per-node NLL
+      warnings and future calibration rows to exact evaluated MDN checkpoint,
+      representation checkpoint, split policy, active identity, validation
+      split, sample count, uncertainty method, and warning-only/non-performance
+      effect.
       Hero JSON also includes validation_performance_scope_policy_vocabulary:
       validation eval readiness is clean evaluation evidence, not a performance
       gate; future performance targets require explicit metrics, uncertainty,
@@ -455,10 +465,6 @@
           CURSOR_EPOCHS_ABOVE = 3.0;
         };
 
-    REQUIRE_TRAINED_NODE_HEAD_COUNT
-      Historical compatibility check for explicit legacy_node_mdn_ready
-      fixtures. Active channel-MDN targets do not use this field.
-
     FORBID_EXPOSURE_ANCHOR_INDEX_BEGIN / END + FORBID_EXPOSURE_USES
       Reject readiness if the checkpoint exposure closure overlaps the forbidden
       source-row footprint interval for any listed use. Forbidden-overlap checks
@@ -526,13 +532,28 @@
         source target's suggested wave.
 
       Active definitions below are channel-context only. Historical node-MDN
-      compatibility remains in scanners and focused fixtures where old runtime
-      artifacts must be readable, but it is not part of this active target DSL.
+      artifacts belong to frozen receipts or migration notes, not to this active
+      target DSL.
 */
 LATTICE_PROFILE {
   PROFILE_ID = vicreg_training_readiness;
   TARGET_KIND = vicreg_ready;
   SUBJECT_COMPONENT = wikimyei.representation.encoding.vicreg;
+  SOURCE_RANGE = anchor_index;
+  REQUIRE_CONTRACT_MATCH = true;
+  REQUIRE_COMPONENT_MATCH = true;
+  REQUIRE_CHECKPOINT_EXISTS = true;
+  REQUIRE_FINITE_LOSS = true;
+  MIN_OPTIMIZER_STEPS = 1;
+  PROTECT_SPLIT = validation_holdout;
+  WAVE_MODE = train|debug;
+  PLAN_MAX_ATTEMPTS = 3;
+};
+
+LATTICE_PROFILE {
+  PROFILE_ID = mtf_representation_training_readiness;
+  TARGET_KIND = mtf_representation_ready;
+  SUBJECT_COMPONENT = wikimyei.representation.encoding.mtf_jepa_mae_vicreg;
   SOURCE_RANGE = anchor_index;
   REQUIRE_CONTRACT_MATCH = true;
   REQUIRE_COMPONENT_MATCH = true;
@@ -597,6 +618,12 @@ LATTICE_TARGET {
 };
 
 LATTICE_TARGET {
+  TARGET_ID = mtf_jepa_mae_vicreg_train_core_ready;
+  USE_PROFILE = mtf_representation_training_readiness;
+  OVER_SPLIT = train_core;
+};
+
+LATTICE_TARGET {
   TARGET_ID = vicreg_acceptance_smoke_ready;
   USE_PROFILE = vicreg_training_readiness;
   OVER_SPLIT = acceptance_smoke;
@@ -605,6 +632,41 @@ LATTICE_TARGET {
 LATTICE_TARGET {
   TARGET_ID = channel_mdn_train_core_ready;
   USE_PROFILE = channel_mdn_training_readiness;
+  OVER_SPLIT = train_core;
+};
+
+/*
+  Protocol-scoped readiness aliases.
+
+  These are the explicit protocol variant targets. The older unscoped target
+  IDs above remain for compatibility while current training continues on
+  cwu_01v.
+*/
+LATTICE_TARGET {
+  TARGET_ID = cwu_01v_representation_train_core_ready;
+  USE_PROFILE = vicreg_training_readiness;
+  PROTOCOL_ID = cwu_01v;
+  OVER_SPLIT = train_core;
+};
+
+LATTICE_TARGET {
+  TARGET_ID = cwu_02v_representation_train_core_ready;
+  USE_PROFILE = mtf_representation_training_readiness;
+  PROTOCOL_ID = cwu_02v;
+  OVER_SPLIT = train_core;
+};
+
+LATTICE_TARGET {
+  TARGET_ID = cwu_01v_mdn_train_core_ready;
+  USE_PROFILE = channel_mdn_training_readiness;
+  PROTOCOL_ID = cwu_01v;
+  OVER_SPLIT = train_core;
+};
+
+LATTICE_TARGET {
+  TARGET_ID = cwu_02v_mdn_train_core_ready;
+  USE_PROFILE = channel_mdn_training_readiness;
+  PROTOCOL_ID = cwu_02v;
   OVER_SPLIT = train_core;
 };
 
@@ -698,6 +760,135 @@ LATTICE_REQUIRES {
 };
 
 LATTICE_REQUIRES {
+  TARGET_ID = mtf_jepa_mae_vicreg_train_core_ready;
+  REQUIREMENT_ID = mtf_observed_input_train_core_coverage;
+  KIND = exposure_coverage;
+  USE = observed_input;
+  SPLIT = train_core;
+  SCOPE = target_component_family_id;
+  EFFECT = mutated_component;
+  COORDINATE = graph_anchor_coverage;
+  CURSOR_EPOCHS = 0.95;
+};
+
+LATTICE_REQUIRES {
+  TARGET_ID = cwu_01v_representation_train_core_ready;
+  REQUIREMENT_ID = cwu_01v_observed_input_train_core_coverage;
+  KIND = exposure_coverage;
+  USE = observed_input;
+  SPLIT = train_core;
+  SCOPE = target_component_family_id;
+  EFFECT = mutated_component;
+  COORDINATE = graph_anchor_coverage;
+  CURSOR_EPOCHS = 0.95;
+};
+
+LATTICE_REQUIRES {
+  TARGET_ID = cwu_02v_representation_train_core_ready;
+  REQUIREMENT_ID = cwu_02v_observed_input_train_core_coverage;
+  KIND = exposure_coverage;
+  USE = observed_input;
+  SPLIT = train_core;
+  SCOPE = target_component_family_id;
+  EFFECT = mutated_component;
+  COORDINATE = graph_anchor_coverage;
+  CURSOR_EPOCHS = 0.95;
+};
+
+LATTICE_PLAN {
+  TARGET_ID = mtf_jepa_mae_vicreg_train_core_ready;
+  PLAN_ID = train_mtf_jepa_mae_vicreg_train_core;
+  WAVE_TARGET = wikimyei.representation.encoding.mtf_jepa_mae_vicreg;
+  WAVE_MODE = train|debug;
+  WAVE_RANGE = split:train_core;
+  PLAN_MAX_ATTEMPTS = 3;
+};
+
+LATTICE_WARN {
+  TARGET_ID = mtf_jepa_mae_vicreg_train_core_ready;
+  WARNING_ID = mtf_representation_effective_rank_fraction_low;
+  KIND = representation_health;
+  USE = observed_input;
+  SPLIT = train_core;
+  SCOPE = target_component_family_id;
+  EFFECT = mutated_component;
+  METRIC = representation_effective_rank_fraction;
+  BELOW = 0.25;
+};
+
+LATTICE_WARN {
+  TARGET_ID = mtf_jepa_mae_vicreg_train_core_ready;
+  WARNING_ID = mtf_representation_condition_number_high;
+  KIND = representation_health;
+  USE = observed_input;
+  SPLIT = train_core;
+  SCOPE = target_component_family_id;
+  EFFECT = mutated_component;
+  METRIC = representation_condition_number;
+  ABOVE = 1000.0;
+};
+
+LATTICE_WARN {
+  TARGET_ID = mtf_jepa_mae_vicreg_train_core_ready;
+  WARNING_ID = mtf_context_starvation_seen;
+  KIND = representation_health;
+  USE = observed_input;
+  SPLIT = train_core;
+  SCOPE = target_component_family_id;
+  EFFECT = mutated_component;
+  METRIC = context_starved_sample_count;
+  ABOVE = 0.0;
+};
+
+LATTICE_WARN {
+  TARGET_ID = mtf_jepa_mae_vicreg_train_core_ready;
+  WARNING_ID = mtf_targets_reduced_for_context_seen;
+  KIND = representation_health;
+  USE = observed_input;
+  SPLIT = train_core;
+  SCOPE = target_component_family_id;
+  EFFECT = mutated_component;
+  METRIC = reduced_targets_for_context_count;
+  ABOVE = 0.0;
+};
+
+LATTICE_WARN {
+  TARGET_ID = mtf_jepa_mae_vicreg_train_core_ready;
+  WARNING_ID = mtf_tf_pair_support_missing;
+  KIND = representation_health;
+  USE = observed_input;
+  SPLIT = train_core;
+  SCOPE = target_component_family_id;
+  EFFECT = mutated_component;
+  METRIC = tf_pair_valid_count;
+  BELOW = 1.0;
+};
+
+LATTICE_WARN {
+  TARGET_ID = mtf_jepa_mae_vicreg_train_core_ready;
+  WARNING_ID = mtf_vicreg_global_rows_missing;
+  KIND = representation_health;
+  USE = observed_input;
+  SPLIT = train_core;
+  SCOPE = target_component_family_id;
+  EFFECT = mutated_component;
+  METRIC = vicreg_global_valid_rows;
+  BELOW = 1.0;
+};
+
+LATTICE_WARN {
+  TARGET_ID = mtf_jepa_mae_vicreg_train_core_ready;
+  WARNING_ID = mtf_vicreg_channel_rows_missing;
+  KIND = representation_health;
+  USE = observed_input;
+  SPLIT = train_core;
+  SCOPE = target_component_family_id;
+  EFFECT = mutated_component;
+  METRIC = vicreg_channel_valid_rows;
+  BELOW = 1.0;
+};
+
+LATTICE_REQUIRES {
   TARGET_ID = vicreg_acceptance_smoke_ready;
   REQUIREMENT_ID = channel_observed_input_acceptance_coverage;
   KIND = exposure_coverage;
@@ -728,6 +919,30 @@ LATTICE_REQUIRES {
   CURSOR_EPOCHS = 0.95;
 };
 
+LATTICE_REQUIRES {
+  TARGET_ID = cwu_01v_mdn_train_core_ready;
+  REQUIREMENT_ID = cwu_01v_channel_target_supervision_train_core_coverage;
+  KIND = exposure_coverage;
+  USE = target_supervision;
+  SPLIT = train_core;
+  SCOPE = target_component_family_id;
+  EFFECT = mutated_component;
+  COORDINATE = graph_anchor_coverage;
+  CURSOR_EPOCHS = 0.95;
+};
+
+LATTICE_REQUIRES {
+  TARGET_ID = cwu_02v_mdn_train_core_ready;
+  REQUIREMENT_ID = cwu_02v_channel_target_supervision_train_core_coverage;
+  KIND = exposure_coverage;
+  USE = target_supervision;
+  SPLIT = train_core;
+  SCOPE = target_component_family_id;
+  EFFECT = mutated_component;
+  COORDINATE = graph_anchor_coverage;
+  CURSOR_EPOCHS = 0.95;
+};
+
 LATTICE_PLAN {
   TARGET_ID = channel_mdn_train_core_ready;
   PLAN_ID = train_channel_mdn_train_core;
@@ -735,6 +950,40 @@ LATTICE_PLAN {
   WAVE_MODE = train|debug;
   WAVE_RANGE = split:train_core;
   PLAN_INPUT_REPRESENTATION_CHECKPOINT = latest_satisfying:vicreg_train_core_ready;
+  PLAN_MAX_ATTEMPTS = 3;
+};
+
+LATTICE_DEPENDS {
+  TARGET_ID = cwu_01v_mdn_train_core_ready;
+  UPSTREAM_TARGET_ID = cwu_01v_representation_train_core_ready;
+  BINDING = loaded_representation_checkpoint;
+  REQUIRE_EXACT_LOADED_CHECKPOINT = true;
+};
+
+LATTICE_PLAN {
+  TARGET_ID = cwu_01v_mdn_train_core_ready;
+  PLAN_ID = train_cwu_01v_channel_mdn_train_core;
+  WAVE_TARGET = wikimyei.inference.expected_value.mdn;
+  WAVE_MODE = train|debug;
+  WAVE_RANGE = split:train_core;
+  PLAN_INPUT_REPRESENTATION_CHECKPOINT = latest_satisfying:cwu_01v_representation_train_core_ready;
+  PLAN_MAX_ATTEMPTS = 3;
+};
+
+LATTICE_DEPENDS {
+  TARGET_ID = cwu_02v_mdn_train_core_ready;
+  UPSTREAM_TARGET_ID = cwu_02v_representation_train_core_ready;
+  BINDING = loaded_representation_checkpoint;
+  REQUIRE_EXACT_LOADED_CHECKPOINT = true;
+};
+
+LATTICE_PLAN {
+  TARGET_ID = cwu_02v_mdn_train_core_ready;
+  PLAN_ID = train_cwu_02v_channel_mdn_train_core;
+  WAVE_TARGET = wikimyei.inference.expected_value.mdn;
+  WAVE_MODE = train|debug;
+  WAVE_RANGE = split:train_core;
+  PLAN_INPUT_REPRESENTATION_CHECKPOINT = latest_satisfying:cwu_02v_representation_train_core_ready;
   PLAN_MAX_ATTEMPTS = 3;
 };
 
@@ -771,6 +1020,78 @@ LATTICE_WARN {
   EFFECT = mutated_component;
   METRIC = mean_nll;
   ABOVE = 2.0;
+};
+
+LATTICE_WARN {
+  TARGET_ID = channel_mdn_train_core_ready;
+  WARNING_ID = channel_mdn_train_finite_parameter_check_failed;
+  KIND = runtime_health;
+  USE = target_supervision;
+  SPLIT = train_core;
+  SCOPE = target_component_family_id;
+  EFFECT = mutated_component;
+  METRIC = finite_parameter_check;
+  BELOW = 1.0;
+};
+
+LATTICE_WARN {
+  TARGET_ID = channel_mdn_train_core_ready;
+  WARNING_ID = channel_mdn_train_nonfinite_output_count;
+  KIND = runtime_health;
+  USE = target_supervision;
+  SPLIT = train_core;
+  SCOPE = target_component_family_id;
+  EFFECT = mutated_component;
+  METRIC = nonfinite_output_count;
+  ABOVE = 0.0;
+};
+
+LATTICE_WARN {
+  TARGET_ID = channel_mdn_train_core_ready;
+  WARNING_ID = channel_mdn_train_checkpoint_missing;
+  KIND = runtime_health;
+  USE = target_supervision;
+  SPLIT = train_core;
+  SCOPE = target_component_family_id;
+  EFFECT = mutated_component;
+  METRIC = checkpoint_written;
+  BELOW = 1.0;
+};
+
+LATTICE_WARN {
+  TARGET_ID = channel_mdn_train_core_ready;
+  WARNING_ID = channel_mdn_train_representation_checkpoint_missing;
+  KIND = runtime_health;
+  USE = target_supervision;
+  SPLIT = train_core;
+  SCOPE = target_component_family_id;
+  EFFECT = mutated_component;
+  METRIC = representation_checkpoint_loaded;
+  BELOW = 1.0;
+};
+
+LATTICE_WARN {
+  TARGET_ID = channel_mdn_train_core_ready;
+  WARNING_ID = high_channel_mdn_pre_clip_grad_norm;
+  KIND = runtime_health;
+  USE = target_supervision;
+  SPLIT = train_core;
+  SCOPE = target_component_family_id;
+  EFFECT = mutated_component;
+  METRIC = grad_norm_max_pre_clip;
+  ABOVE = 1000.0;
+};
+
+LATTICE_WARN {
+  TARGET_ID = channel_mdn_train_core_ready;
+  WARNING_ID = channel_mdn_valid_target_fraction_low;
+  KIND = runtime_health;
+  USE = target_supervision;
+  SPLIT = train_core;
+  SCOPE = target_component_family_id;
+  EFFECT = mutated_component;
+  METRIC = valid_target_fraction;
+  BELOW = 0.05;
 };
 
 LATTICE_DEPENDS {
@@ -823,4 +1144,64 @@ LATTICE_PLAN {
   PLAN_INPUT_MDN_CHECKPOINT = latest_satisfying:channel_mdn_train_core_no_test_leakage;
   PLAN_INPUT_REPRESENTATION_CHECKPOINT = latest_satisfying:vicreg_train_core_ready;
   PLAN_MAX_ATTEMPTS = 1;
+};
+
+LATTICE_WARN {
+  TARGET_ID = channel_mdn_validation_eval_ready;
+  WARNING_ID = channel_mdn_validation_eval_mutated_model_state;
+  KIND = runtime_health;
+  USE = evaluation_metric;
+  SPLIT = validation_holdout;
+  SCOPE = target_component_family_id;
+  EFFECT = any;
+  METRIC = model_state_mutated;
+  ABOVE = 0.0;
+};
+
+LATTICE_WARN {
+  TARGET_ID = channel_mdn_validation_eval_ready;
+  WARNING_ID = channel_mdn_validation_eval_checkpoint_written;
+  KIND = runtime_health;
+  USE = evaluation_metric;
+  SPLIT = validation_holdout;
+  SCOPE = target_component_family_id;
+  EFFECT = any;
+  METRIC = checkpoint_written;
+  ABOVE = 0.0;
+};
+
+LATTICE_WARN {
+  TARGET_ID = channel_mdn_validation_eval_ready;
+  WARNING_ID = channel_mdn_validation_eval_representation_checkpoint_missing;
+  KIND = runtime_health;
+  USE = evaluation_metric;
+  SPLIT = validation_holdout;
+  SCOPE = target_component_family_id;
+  EFFECT = any;
+  METRIC = representation_checkpoint_loaded;
+  BELOW = 1.0;
+};
+
+LATTICE_WARN {
+  TARGET_ID = channel_mdn_validation_eval_ready;
+  WARNING_ID = channel_mdn_validation_eval_mdn_checkpoint_missing;
+  KIND = runtime_health;
+  USE = evaluation_metric;
+  SPLIT = validation_holdout;
+  SCOPE = target_component_family_id;
+  EFFECT = any;
+  METRIC = mdn_checkpoint_loaded;
+  BELOW = 1.0;
+};
+
+LATTICE_WARN {
+  TARGET_ID = channel_mdn_validation_eval_ready;
+  WARNING_ID = channel_mdn_validation_eval_nonfinite_output_count;
+  KIND = runtime_health;
+  USE = evaluation_metric;
+  SPLIT = validation_holdout;
+  SCOPE = target_component_family_id;
+  EFFECT = any;
+  METRIC = nonfinite_output_count;
+  ABOVE = 0.0;
 };

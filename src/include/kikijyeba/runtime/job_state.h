@@ -17,6 +17,10 @@ namespace cuwacunu::kikijyeba::runtime {
 struct job_state_t {
   std::string state_format{"kikijyeba.runtime.job_state.v1"};
   std::string job_id{};
+  std::string job_stable_id{};
+  std::string job_attempt_id{};
+  std::size_t job_attempt_index{0};
+  std::string job_attempt_policy{};
   std::string job_kind{};
   std::string status{"created"};
   std::string error_message{};
@@ -77,11 +81,22 @@ struct job_state_t {
   bool lattice_checkpoint_fact_written{false};
   std::string lattice_checkpoint_fact_path{};
   std::string lattice_fact_error{};
+  bool runtime_result_fact_written{false};
+  std::string runtime_result_fact_path{};
+  bool runtime_checkpoint_io_fact_written{false};
+  std::string runtime_checkpoint_io_fact_path{};
+  bool runtime_health_measurement_fact_written{false};
+  std::string runtime_health_measurement_fact_path{};
+  std::string runtime_terminal_fact_error{};
 
   [[nodiscard]] std::string to_text() const {
     std::ostringstream out;
     out << "state_format=" << state_format << "\n";
     out << "job_id=" << job_id << "\n";
+    out << "job_stable_id=" << job_stable_id << "\n";
+    out << "job_attempt_id=" << job_attempt_id << "\n";
+    out << "job_attempt_index=" << job_attempt_index << "\n";
+    out << "job_attempt_policy=" << job_attempt_policy << "\n";
     out << "job_kind=" << job_kind << "\n";
     out << "status=" << status << "\n";
     out << "error_message=" << error_message << "\n";
@@ -151,6 +166,19 @@ struct job_state_t {
     out << "lattice_checkpoint_fact_path=" << lattice_checkpoint_fact_path
         << "\n";
     out << "lattice_fact_error=" << lattice_fact_error << "\n";
+    out << "runtime_result_fact_written="
+        << (runtime_result_fact_written ? "true" : "false") << "\n";
+    out << "runtime_result_fact_path=" << runtime_result_fact_path << "\n";
+    out << "runtime_checkpoint_io_fact_written="
+        << (runtime_checkpoint_io_fact_written ? "true" : "false") << "\n";
+    out << "runtime_checkpoint_io_fact_path=" << runtime_checkpoint_io_fact_path
+        << "\n";
+    out << "runtime_health_measurement_fact_written="
+        << (runtime_health_measurement_fact_written ? "true" : "false") << "\n";
+    out << "runtime_health_measurement_fact_path="
+        << runtime_health_measurement_fact_path << "\n";
+    out << "runtime_terminal_fact_error=" << runtime_terminal_fact_error
+        << "\n";
     return out.str();
   }
 };
@@ -159,6 +187,10 @@ inline job_state_t make_initial_job_state(const job_manifest_t &manifest,
                                           const wave_plan_t &wave_plan) {
   job_state_t out{};
   out.job_id = manifest.job_id;
+  out.job_stable_id = manifest.job_stable_id;
+  out.job_attempt_id = manifest.job_attempt_id;
+  out.job_attempt_index = manifest.job_attempt_index;
+  out.job_attempt_policy = manifest.job_attempt_policy;
   out.job_kind = manifest.job_kind;
   out.wave_id = wave_plan.wave_id;
   out.target_component_family_id = wave_plan.target_component_family_id;
@@ -221,12 +253,9 @@ make_completed_job_state(const job_manifest_t &manifest,
   out.wave_pulses_completed = report.wave_pulses_completed;
   out.wave_pulses_skipped = report.wave_pulses_skipped;
   out.wave_streamed_anchor_count = report.wave_streamed_anchor_count;
-  if (!report.wave_first_anchor_key.empty()) {
-    out.wave_first_anchor_key = report.wave_first_anchor_key;
-  }
-  if (!report.wave_last_anchor_key.empty()) {
-    out.wave_last_anchor_key = report.wave_last_anchor_key;
-  }
+  // Wave key bounds are Runtime plan identity, not component stream order.
+  // Train-mode samplers may visit anchors randomly, so component report keys
+  // must not override the canonical planned range recorded in the manifest.
   out.last_loss = report.last_loss;
   out.checkpoint_written = report.checkpoint_written;
   out.checkpoint_write_count = report.checkpoint_write_count;

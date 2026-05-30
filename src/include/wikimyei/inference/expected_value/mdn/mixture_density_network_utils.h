@@ -55,11 +55,23 @@ inline torch::Tensor safe_softplus(const torch::Tensor &x, double eps = 1e-6) {
   return y + eps_t;
 }
 
+inline torch::Tensor positive_sigma_from_raw(const torch::Tensor &raw,
+                                             double sigma_floor = 1e-3) {
+  TORCH_CHECK(sigma_floor >= 0.0,
+              "[positive_sigma_from_raw] sigma_floor must be nonnegative");
+  auto sigma = torch::softplus(raw);
+  if (sigma_floor > 0.0) {
+    sigma = sigma + sigma.new_full({}, sigma_floor);
+  }
+  return sigma;
+}
+
 inline double softplus_inv(double y) {
-  // inverse of softplus: x = log(exp(y) - 1)
-  // guard against y→0 for numerical stability
   const double y_safe = std::max(y, 1e-12);
-  return std::log(std::exp(y_safe) - 1.0);
+  if (y_safe > 20.0) {
+    return y_safe;
+  }
+  return std::log(std::expm1(y_safe));
 }
 
 inline torch::Tensor mdn_log_prob(const MdnOut &out, const torch::Tensor &f,
@@ -89,11 +101,12 @@ inline torch::Tensor mdn_mode(const MdnOut &out) {
 }
 
 inline torch::Tensor mdn_topk_expectation(const MdnOut &out, int64_t topk) {
+  TORCH_CHECK(topk > 0, "[mdn_topk_expectation] topk must be positive");
   topk = std::min<int64_t>(topk, out.log_pi.size(-1));
-  auto top = std::get<0>(
-      out.log_pi.topk(topk, /*dim=*/-1, /*largest=*/true, /*sorted=*/true));
-  auto idx = std::get<1>(
-      out.log_pi.topk(topk, /*dim=*/-1, /*largest=*/true, /*sorted=*/true));
+  auto topk_result =
+      out.log_pi.topk(topk, /*dim=*/-1, /*largest=*/true, /*sorted=*/true);
+  auto top = std::get<0>(topk_result);
+  auto idx = std::get<1>(topk_result);
   auto pi_top = torch::softmax(top, /*dim=*/-1);
   auto mu_top = out.mu.gather(/*dim=*/-1, idx);
   return (pi_top * mu_top).sum(/*dim=*/-1); // [B,N,C,Df]
@@ -106,13 +119,11 @@ struct MdnNllOptions {
   double sigma_max{0.0};  // 0 disables
 };
 
-// Returns per-(B,N,C,Df) negative log-likelihood map. If mask is defined, it
-// is applied (0=ignore, 1=valid).
-inline torch::Tensor
-mdn_nll_map(const MdnOut &out,
-            const torch::Tensor &f,         // [B,N,C,Df]
-            const torch::Tensor &mask = {}, // [B,N,C,Df] or undef
-            const MdnNllOptions &opt = {}) {
+// Returns raw per-(B,N,C,Df) negative log-likelihood. Masked reductions should
+// apply the mask explicitly so invalid slots are never hidden as real zero NLL.
+inline torch::Tensor mdn_nll_map(const MdnOut &out,
+                                 const torch::Tensor &f, // [B,N,C,Df]
+                                 const MdnNllOptions &opt = {}) {
   TORCH_CHECK(f.dim() == 4, "[mdn_nll_map] f must be [B,N,C,Df]");
   const auto B = f.size(0), N = f.size(1), C = f.size(2), Df = f.size(3);
   TORCH_CHECK(out.log_pi.dim() == 5 && out.mu.sizes() == out.log_pi.sizes() &&
@@ -136,10 +147,17 @@ mdn_nll_map(const MdnOut &out,
   auto diff = (f_b - out.mu) / sigma;
   auto perd = -0.5 * diff.pow(2) - sigma.log() - 0.5 * LOG2PI; // [B,N,C,Df,K]
   auto logp = torch::logsumexp(out.log_pi + perd, /*dim=*/-1); // [B,N,C,Df]
-  auto nll = -logp;                                            // [B,N,C,Df]
+  return -logp;                                                // [B,N,C,Df]
+}
+
+inline torch::Tensor mdn_masked_nll_map(const MdnOut &out,
+                                        const torch::Tensor &f,
+                                        const torch::Tensor &mask,
+                                        const MdnNllOptions &opt = {}) {
+  auto nll = mdn_nll_map(out, f, opt);
   if (mask.defined()) {
     TORCH_CHECK(mask.sizes() == f.sizes(),
-                "[mdn_nll_map] mask must be [B,N,C,Df]");
+                "[mdn_masked_nll_map] mask must be [B,N,C,Df]");
     nll = nll * mask.to(nll.dtype());
   }
   return nll;
@@ -166,6 +184,81 @@ mdn_masked_mean_per_target_feature(const torch::Tensor &nll,
   auto sum = (nll * valid).sum(/*dim=*/std::vector<int64_t>{0, 1, 2});
   auto den = valid.sum(/*dim=*/std::vector<int64_t>{0, 1, 2}).clamp_min(1.0);
   return sum / den; // [Df]
+}
+
+// Average NLL per channel/target-feature cell (mean over B and N with mask)
+inline torch::Tensor
+mdn_masked_mean_per_channel_target_feature(const torch::Tensor &nll,
+                                           const torch::Tensor &mask) {
+  TORCH_CHECK(nll.dim() == 4,
+              "[mdn_masked_mean_per_channel_target_feature] nll must be "
+              "[B,N,C,Df]");
+  auto valid = mask.defined() ? mask.to(nll.dtype()) : torch::ones_like(nll);
+  auto sum = (nll * valid).sum(/*dim=*/std::vector<int64_t>{0, 1});
+  auto den = valid.sum(/*dim=*/std::vector<int64_t>{0, 1}).clamp_min(1.0);
+  return sum / den; // [C,Df]
+}
+
+inline torch::Tensor mdn_valid_count_per_channel(const torch::Tensor &mask) {
+  TORCH_CHECK(mask.defined() && mask.dim() == 4,
+              "[mdn_valid_count_per_channel] mask must be [B,N,C,Df]");
+  return mask.to(torch::kInt64).sum(/*dim=*/std::vector<int64_t>{0, 1, 3});
+}
+
+inline torch::Tensor
+mdn_valid_count_per_target_feature(const torch::Tensor &mask) {
+  TORCH_CHECK(mask.defined() && mask.dim() == 4,
+              "[mdn_valid_count_per_target_feature] mask must be [B,N,C,Df]");
+  return mask.to(torch::kInt64).sum(/*dim=*/std::vector<int64_t>{0, 1, 2});
+}
+
+inline torch::Tensor
+mdn_valid_count_per_channel_target_feature(const torch::Tensor &mask) {
+  TORCH_CHECK(mask.defined() && mask.dim() == 4,
+              "[mdn_valid_count_per_channel_target_feature] mask must be "
+              "[B,N,C,Df]");
+  return mask.to(torch::kInt64).sum(/*dim=*/std::vector<int64_t>{0, 1});
+}
+
+inline torch::Tensor mdn_balanced_channel_feature_nll(
+    const torch::Tensor &nll, const torch::Tensor &mask,
+    const torch::Tensor &weights_ch = torch::Tensor(),
+    const torch::Tensor &weights_dim = torch::Tensor()) {
+  TORCH_CHECK(nll.dim() == 4,
+              "[mdn_balanced_channel_feature_nll] nll must be [B,N,C,Df]");
+  const auto C = nll.size(2);
+  const auto Df = nll.size(3);
+  auto valid = mask.defined() ? mask.to(nll.dtype()) : torch::ones_like(nll);
+  TORCH_CHECK(valid.sizes() == nll.sizes(),
+              "[mdn_balanced_channel_feature_nll] mask must be [B,N,C,Df]");
+  auto support = valid.sum(/*dim=*/std::vector<int64_t>{0, 1}); // [C,Df]
+  auto sum = (nll * valid).sum(/*dim=*/std::vector<int64_t>{0, 1});
+  auto mean = sum / support.clamp_min(1.0);
+  auto active = support.gt(0).to(nll.dtype());
+  auto weight = active;
+  if (weights_ch.defined()) {
+    TORCH_CHECK(weights_ch.dim() == 1 && weights_ch.size(0) == C,
+                "[mdn_balanced_channel_feature_nll] weights_ch must be [C]");
+    auto wch = weights_ch.to(nll.options()).view({C, 1});
+    TORCH_CHECK(wch.ge(0).all().template item<bool>(),
+                "[mdn_balanced_channel_feature_nll] weights_ch must be "
+                "nonnegative");
+    weight = weight * wch;
+  }
+  if (weights_dim.defined()) {
+    TORCH_CHECK(weights_dim.dim() == 1 && weights_dim.size(0) == Df,
+                "[mdn_balanced_channel_feature_nll] weights_dim must be [Df]");
+    auto wdf = weights_dim.to(nll.options()).view({1, Df});
+    TORCH_CHECK(wdf.ge(0).all().template item<bool>(),
+                "[mdn_balanced_channel_feature_nll] weights_dim must be "
+                "nonnegative");
+    weight = weight * wdf;
+  }
+  const auto weight_sum = weight.sum();
+  TORCH_CHECK(weight_sum.template item<double>() > 0.0,
+              "[mdn_balanced_channel_feature_nll] no positive active "
+              "channel-feature weights");
+  return (mean * weight).sum() / weight_sum;
 }
 
 // ---------- Conditional expectation ----------

@@ -26,6 +26,10 @@ struct channel_context_mdn_train_step_result_t {
   torch::Tensor nll{};
   torch::Tensor nll_per_channel{};
   torch::Tensor nll_per_target_feature{};
+  torch::Tensor nll_per_channel_target_feature{};
+  torch::Tensor valid_count_per_channel{};
+  torch::Tensor valid_count_per_target_feature{};
+  torch::Tensor valid_count_per_channel_target_feature{};
   torch::Tensor mixture_usage{};
   int64_t valid_target_count{0};
   double valid_target_fraction{0.0};
@@ -311,11 +315,21 @@ public:
         channel_context_mdn_train_detail::nonfinite_count(mdn_out);
     auto nll_map =
         cuwacunu::wikimyei::inference::expected_value::mdn::mdn_nll_map(
-            mdn_out, clean_input.future, combined_mask, options_.nll);
+            mdn_out, clean_input.future, options_.nll);
     out.nll_per_channel = cuwacunu::wikimyei::inference::expected_value::mdn::
         mdn_masked_mean_per_channel(nll_map, combined_mask);
     out.nll_per_target_feature = cuwacunu::wikimyei::inference::expected_value::
         mdn::mdn_masked_mean_per_target_feature(nll_map, combined_mask);
+    out.nll_per_channel_target_feature =
+        cuwacunu::wikimyei::inference::expected_value::mdn::
+            mdn_masked_mean_per_channel_target_feature(nll_map, combined_mask);
+    out.valid_count_per_channel = cuwacunu::wikimyei::inference::
+        expected_value::mdn::mdn_valid_count_per_channel(combined_mask);
+    out.valid_count_per_target_feature = cuwacunu::wikimyei::inference::
+        expected_value::mdn::mdn_valid_count_per_target_feature(combined_mask);
+    out.valid_count_per_channel_target_feature =
+        cuwacunu::wikimyei::inference::expected_value::mdn::
+            mdn_valid_count_per_channel_target_feature(combined_mask);
     out.nll =
         compute_channel_context_mdn_nll(mdn_out, clean_input, options_.nll);
     out.loss = out.nll;
@@ -438,11 +452,21 @@ public:
         channel_context_mdn_train_detail::nonfinite_count(mdn_out);
     auto nll_map =
         cuwacunu::wikimyei::inference::expected_value::mdn::mdn_nll_map(
-            mdn_out, clean_input.channel.future, combined_mask, options_.nll);
+            mdn_out, clean_input.channel.future, options_.nll);
     out.nll_per_channel = cuwacunu::wikimyei::inference::expected_value::mdn::
         mdn_masked_mean_per_channel(nll_map, combined_mask);
     out.nll_per_target_feature = cuwacunu::wikimyei::inference::expected_value::
         mdn::mdn_masked_mean_per_target_feature(nll_map, combined_mask);
+    out.nll_per_channel_target_feature =
+        cuwacunu::wikimyei::inference::expected_value::mdn::
+            mdn_masked_mean_per_channel_target_feature(nll_map, combined_mask);
+    out.valid_count_per_channel = cuwacunu::wikimyei::inference::
+        expected_value::mdn::mdn_valid_count_per_channel(combined_mask);
+    out.valid_count_per_target_feature = cuwacunu::wikimyei::inference::
+        expected_value::mdn::mdn_valid_count_per_target_feature(combined_mask);
+    out.valid_count_per_channel_target_feature =
+        cuwacunu::wikimyei::inference::expected_value::mdn::
+            mdn_valid_count_per_channel_target_feature(combined_mask);
     out.nll = compute_channel_context_plus_global_mdn_nll(mdn_out, clean_input,
                                                           options_.nll);
     out.loss = out.nll;

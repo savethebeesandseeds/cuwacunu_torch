@@ -1,8 +1,9 @@
 # Iinuji
 
-Iinuji is the terminal UI toolkit used by operator-facing command interfaces.
+Iinuji is the terminal UI toolkit used by cuwacunu command interfaces.
 
-This migrated surface is intentionally toolkit-only:
+This surface contains both the reusable toolkit primitives and the
+`cuwacunu_cmd` command shell:
 
 - object tree, layout, events, and shared focus state in `iinuji_types.h`
 - toolkit-level key codes in `iinuji_keys.h`
@@ -13,7 +14,27 @@ This migrated surface is intentionally toolkit-only:
 - layout/render glue in `iinuji_render.h` and `render/`
 - ncurses bootstrap, renderer, and key translation adapters in `ncurses/`
 - reusable widgets and drawing primitives in `primitives/`
+- command UI state, routing, views, and Home assets in `iinuji_cmd/`
 
-The legacy `iinuji_cmd` shell is not part of this migration pass. Future command
-interfaces should build on this toolkit without depending on old `iitepi`
-contract state, legacy Hero screens, or Config Hero policy internals.
+## Command Shell
+
+The primary installed command is `cuwacunu_cmd`. Additional shell aliases
+`cuwacunu.cmd` and `iinuji_cmd` point to the same interface binary when
+installed with:
+
+```bash
+make -C src/main/interface AUTO_PREP=0 install-cuwacunu-cmd
+```
+
+The restored top-level screen order is:
+
+- `F1` Home: animated waajacamaya/Cuwacunu showcase and splash diagnostics.
+- `F2` Workbench: core workspace; content is modeled separately from the
+  restored chrome.
+- `F3` Runtime: runtime device, job, manifest, log, and trace evidence.
+- `F4` Lattice: target catalog and proof preview.
+- `F8` Shell Logs: command/status feed and log control deck.
+- `F9` Config: managed config catalog and read-only preview.
+
+Use the Workbench name for F2 in visible navigation, menus, help, and catalog
+output. Historical F2 aliases remain internal to command routing.

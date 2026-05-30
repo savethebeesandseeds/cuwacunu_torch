@@ -89,7 +89,8 @@ selected_answer_parity.passed = true
 matching_row_count = 2
 ```
 
-Default active runtime has no persisted `.lattice_index` file, so the tool also
+Default active runtime has no persisted `indexes/lattice_runtime_index.v1.lls`
+file, so the tool also
 proved the fallback path:
 
 ```text

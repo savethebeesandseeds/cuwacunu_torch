@@ -20,9 +20,8 @@ KEYS
 
   allowed_runtime_roots
     Comma-separated roots under which explicit runtime_root/checkpoint_path
-    arguments are allowed. The checked-in wrong-MDN validation fixture runtime
-    root is included so agents can inspect that negative case through Lattice
-    Hero without copying it into /tmp.
+    arguments are allowed. Use /tmp for temporary smoke roots; checked-in
+    historical receipts under src/tests/fixtures are not active runtime roots.
 
   auto_build_exposure_ledger
     When true, target evaluation derives exposure facts from normal runtime
@@ -56,7 +55,7 @@ MCP SCHEMA HYGIENE
   tools/list JSON: the root must have type=object, and top-level oneOf, anyOf,
   allOf, enum, and not are rejected. Failure messages name the tool,
   schema_path, offending construct, and message. The focused schema smoke covers
-  Config, Runtime, Hashimyei, and Lattice catalogs and protects the prior
+  Config, Runtime, Lattice, and Marshal catalogs and protects the prior
   hero.lattice.checkpoint_closure harness failure.
 
 AGENT RUNBOOK
@@ -70,7 +69,8 @@ AGENT RUNBOOK
   list_targets
     Shows every LATTICE_TARGET block compiled from the active target DSL. V0 has
     one active targets file per global config, but that file can contain many
-    targets.
+    targets. Protocol-scoped targets may set PROTOCOL_ID; evidence for one
+    protocol variant must not satisfy another.
 
   explain_target
     Explains one compiled proof object without scanning runtime evidence. Use
@@ -142,7 +142,8 @@ AGENT RUNBOOK
     satisfy coverage, prove leakage cleanliness, alter contract identity, or
     replace row-index footprints.
     V2 scan_exposure also emits structured source_receipt_facts and a
-    source_receipt_summary. These rows are audit/provenance evidence only:
+    source_receipt_summary. These rows inherit protocol identity from their
+    parent exposure fact and are audit/provenance evidence only:
     malformed non-empty compact receipts produce scan warnings, missing receipts
     are counted as audit absence, and row-index intervals remain the
     coverage/leakage authority.
@@ -152,7 +153,8 @@ AGENT RUNBOOK
     structured receipt fields.
     MDN jobs also expose derived node_exposure previews from per-node
     report fields including routed/active/trained/evaluated row counts, valid
-    targets, valid-target opportunity counts, and mean NLL.
+    targets, valid-target opportunity counts, mean NLL, and inherited protocol
+    identity.
     node_support_summaries add support-row and unique-node counts, support-row
     incidence counts by exposure use and mutation, ordered support rows,
     aggregate support, weakest-node, Wilson support-bound, and support-balance
@@ -174,6 +176,12 @@ AGENT RUNBOOK
     metrics such as embedding dimension, effective rank/fraction, min/max
     dimension variance, condition number, and isotropy score. These are
     visibility fields unless a future target explicitly gates on them.
+    MTF-JEPA-MAE-VICReg previews use the same compact evidence boundary:
+    identity/lineage, finite health, sample/channel support, valid latent rows,
+    split JEPA/MAE/TF/VICReg loss means, TF-pair support, VICReg row counts,
+    context/EMA diagnostics, and geometry summaries. Raw embeddings, token
+    tensors, per-token masks, unbounded histograms, and downstream forecast
+    claims are not Lattice facts.
 
   evaluate_target
     Proves whether one target is satisfied by the runtime evidence. For
@@ -254,7 +262,7 @@ AGENT RUNBOOK
     digest, schema, target fingerprint presence, dependency kind/status
     vocabulary, split-policy identity for concrete named-split facts, and proof
     arithmetic. Evaluation filtering rejects concrete named-split exposure facts
-    that omit split-policy identity while a split policy is active; legacy
+    that omit split-policy identity while a split policy is active; historical
     unknown-split facts remain admissible. Unsatisfied targets may still pass
     this check when the
     certificate is a well-formed non-claiming envelope; use
@@ -513,8 +521,9 @@ AGENT RUNBOOK
     non-executing, non-performance, non-DB-source-of-truth, and backed by at
     least one Hero surface.
     mdn_distribution_calibration_vocabulary names warning-only aggregate,
-    channel, horizon, per-node, and future distribution-calibration metrics.
-    mdn_distribution_calibration_summary keeps the legacy six-row metric policy
+    channel, target-feature, channel/target-feature, per-node, and future
+    distribution-calibration metrics.
+    mdn_distribution_calibration_summary keeps the warning-only metric policy
     visible and self-checks that no MDN calibration row is a performance gate.
     mdn_distribution_calibration_diagnostic_vocabulary and
     mdn_distribution_calibration_diagnostic_summary self-check V3-D diagnostic
@@ -583,9 +592,9 @@ AGENT RUNBOOK
     V2 scan_exposure emits selection_signal_facts and a
     selection_signal_summary when an exposure fact carries
     use_selection_signal=true. These facts identify selector id/kind/rule,
-    selected checkpoint path, parent exposure digest, and selector footprint;
-    they are read-only provenance and do not become coverage, contract identity,
-    execution, or performance authority.
+    selected checkpoint path, parent exposure digest, protocol id, and selector
+    footprint; they are read-only provenance and do not become coverage,
+    contract identity, execution, or performance authority.
     operational_readiness_v1_scope_summary self-checks that those 12 scope rows
     partition into 6 included read-only claims and 6 deferred items, with zero
     runtime-executor/performance/DB authority and no empty claim-boundary fields.
@@ -614,7 +623,8 @@ AGENT RUNBOOK
     by the warning interval and then by USE/EFFECT, defaulting to
     target_supervision/mutated_component, and remain non-blocking.
     LATTICE_WARN KIND=mdn_distribution_calibration can flag aggregate, channel,
-    horizon, and per-node MDN NLL diagnostics as warning-only evidence. Future
+    target-feature, channel/target-feature, and per-node MDN NLL diagnostics as
+    warning-only evidence. Future
     distribution-calibration metrics such as PIT KS statistic, predictive
     interval coverage error, tail coverage error, and calibration slope error
     are named but report unavailable until runtime emits samples and
@@ -674,9 +684,9 @@ AGENT RUNBOOK
     Inspects checkpoint lineage by checkpoint_path or by checkpoint_id plus
     checkpoint_file_digest. Missing upstream checkpoint producer evidence and
     id/digest mismatches must fail closed and should be treated as blockers.
-    Results report resolution_authority, legacy_path_fallback,
-    root_checkpoint_id, root_checkpoint_file_digest, and identity_mismatches so
-    agents can tell id/digest authority from V1 legacy path compatibility.
+    Results report resolution_authority, root_checkpoint_id,
+    root_checkpoint_file_digest, and identity_mismatches so agents can verify
+    id/digest authority.
 
   derived_query
     Answers one read-only named rule query with concrete witnesses. The V3-E
@@ -706,15 +716,17 @@ AGENT RUNBOOK
       not as coverage, leakage, or contract identity authority.
     - Treat scan_exposure node_exposure facts and node_support_summaries as MDN
       per-node support visibility. They include routed/active/trained/evaluated
-      row counts, valid targets, mean NLL, aggregate support, weakest-node, and
-      balance metrics. Node-support warnings filter those rows by the warning
-      interval and USE/EFFECT, defaulting to
+      row counts, valid targets, mean NLL, inherited protocol identity,
+      aggregate support, weakest-node, and balance metrics. Node-support
+      warnings filter those rows by the warning interval and USE/EFFECT,
+      defaulting to
       target_supervision/mutated_component. Do not infer per-node VICReg
       support from them.
     - Treat scan_exposure representation_support_facts and
       representation_support_summary as aggregate shared-VICReg support
       visibility from representation reports and NodeLift .lls sidecars. These
-      facts bind to the parent representation exposure digest, do not reuse MDN
+      facts bind to the parent representation exposure digest, inherit protocol
+      identity, do not reuse MDN
       node rows, and are not hard readiness gates.
     - Treat exposure_summaries as load visibility. Treat LATTICE_WARN results
       as non-blocking warnings, not readiness failures.

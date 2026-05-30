@@ -18,7 +18,7 @@ runtime_root:path = /cuwacunu/.runtime/cuwacunu_exec
 
 # Explicit runtime_root and checkpoint_path arguments must live below one of
 # these roots.
-allowed_runtime_roots:path_list = /cuwacunu/.runtime/cuwacunu_exec,/tmp,/cuwacunu/src/tests/fixtures/kikijyeba/lattice_validation_eval_wrong_mdn/runtime_root
+allowed_runtime_roots:path_list = /cuwacunu/.runtime/cuwacunu_exec,/tmp
 
 # Build an in-memory exposure ledger from normal runtime artifacts during
 # target evaluation. This should stay true unless a future DB index is used as a

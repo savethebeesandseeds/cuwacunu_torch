@@ -179,13 +179,15 @@ template <typename KeyT>
     const torch::Tensor &reducer_weights, bool detach_to_cpu, double elapsed_ms,
     const std::string &component_assembly_id, const std::string &assembly_token,
     const std::string &dock_binding_token,
+    const std::string &component_family_id,
+    const std::string &runtime_document_schema_id,
     const cuwacunu::kikijyeba::protocol::component_stream_wave_t &stream_wave,
     cuwacunu::kikijyeba::lattice::runtime_report::runtime_report_mode_t
         runtime_report_mode) {
   auto stream_report =
       cuwacunu::kikijyeba::protocol::make_component_stream_report(
           cuwacunu::kikijyeba::protocol::component_stream_identity_t{
-              .component_family_id = "wikimyei.representation.encoding.vicreg",
+              .component_family_id = component_family_id,
               .component_assembly_id = component_assembly_id,
               .assembly_token = assembly_token,
               .dock_binding_token = dock_binding_token,
@@ -198,7 +200,7 @@ template <typename KeyT>
           static_cast<std::uint64_t>(node_encoding.numel()));
   auto document =
       cuwacunu::kikijyeba::protocol::make_component_stream_runtime_document(
-          "wikimyei.representation.vicreg.runtime.v1", stream_report);
+          runtime_document_schema_id, stream_report);
   lls::append_graph_anchor_cursor_entries(document, lifted.cursor, "batch",
                                           false);
   document.entries.push_back(lls::make_component_runtime_lls_uint_entry(
@@ -254,6 +256,9 @@ make_channel_representation_stream_batch(
     std::string component_assembly_id = "vicreg_v1",
     std::string assembly_token = "wikimyei.representation.vicreg.v1",
     std::string dock_binding_token = {},
+    std::string component_family_id = "wikimyei.representation.encoding.vicreg",
+    std::string runtime_document_schema_id =
+        "wikimyei.representation.vicreg.runtime.v1",
     cuwacunu::kikijyeba::protocol::component_stream_wave_t stream_wave = {}) {
   auto input =
       make_channel_node_encoder_input(lifted, require_finite_valid_features);
@@ -308,13 +313,13 @@ make_channel_representation_stream_batch(
         make_channel_representation_runtime_lls(
             lifted, input, out.node_encoding, out.node_encoding_mask,
             out.reducer_weights, detach_to_cpu, elapsed_ms, component_assembly_id,
-            assembly_token, dock_binding_token, stream_wave,
-            runtime_report_mode);
+            assembly_token, dock_binding_token, component_family_id,
+            runtime_document_schema_id, stream_wave, runtime_report_mode);
   }
   out.stream_report =
       cuwacunu::kikijyeba::protocol::make_component_stream_report(
           cuwacunu::kikijyeba::protocol::component_stream_identity_t{
-              .component_family_id = "wikimyei.representation.encoding.vicreg",
+              .component_family_id = std::move(component_family_id),
               .component_assembly_id = std::move(component_assembly_id),
               .assembly_token = std::move(assembly_token),
               .dock_binding_token = std::move(dock_binding_token),
@@ -346,6 +351,10 @@ public:
       std::string component_assembly_id = "vicreg_v1",
       std::string assembly_token = "wikimyei.representation.vicreg.v1",
       std::string dock_binding_token = {},
+      std::string component_family_id =
+          "wikimyei.representation.encoding.vicreg",
+      std::string runtime_document_schema_id =
+          "wikimyei.representation.vicreg.runtime.v1",
       cuwacunu::kikijyeba::protocol::component_stream_wave_t stream_wave = {})
       : lifted_stream_(std::move(lifted_stream)), encoder_(&encoder),
         require_finite_valid_features_(require_finite_valid_features),
@@ -354,6 +363,8 @@ public:
         component_assembly_id_(std::move(component_assembly_id)),
         assembly_token_(std::move(assembly_token)),
         dock_binding_token_(std::move(dock_binding_token)),
+        component_family_id_(std::move(component_family_id)),
+        runtime_document_schema_id_(std::move(runtime_document_schema_id)),
         stream_wave_(std::move(stream_wave)) {
     TORCH_CHECK(encoder_ != nullptr,
                 "[channel_representation_stream_t] encoder must not be null");
@@ -372,7 +383,8 @@ public:
     return make_channel_representation_stream_batch<EncoderT, key_t>(
         *encoder_, lifted, require_finite_valid_features_, detach_to_cpu_,
         runtime_report_mode_, component_assembly_id_, assembly_token_,
-        dock_binding_token_, stream_wave_);
+        dock_binding_token_, component_family_id_, runtime_document_schema_id_,
+        stream_wave_);
   }
 
 private:
@@ -386,6 +398,9 @@ private:
   std::string component_assembly_id_{"vicreg_v1"};
   std::string assembly_token_{"wikimyei.representation.vicreg.v1"};
   std::string dock_binding_token_{};
+  std::string component_family_id_{"wikimyei.representation.encoding.vicreg"};
+  std::string runtime_document_schema_id_{
+      "wikimyei.representation.vicreg.runtime.v1"};
   cuwacunu::kikijyeba::protocol::component_stream_wave_t stream_wave_{};
 };
 

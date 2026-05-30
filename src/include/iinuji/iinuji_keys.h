@@ -20,6 +20,7 @@ inline constexpr int key_page_down = key_special_base + 8;
 inline constexpr int key_backspace = key_special_base + 9;
 inline constexpr int key_delete = key_special_base + 10;
 inline constexpr int key_enter = key_special_base + 11;
+inline constexpr int key_shift_tab = key_special_base + 12;
 
 inline constexpr int key_ctrl_a = 1;
 inline constexpr int key_ctrl_b = 2;
@@ -110,6 +111,7 @@ enum class key_action_t {
   case '\r':
     return key_action_t::Enter;
   case '\t':
+  case key_shift_tab:
     return key_action_t::Tab;
   case key_ctrl_k:
     return key_action_t::DeleteToEndOfLine;

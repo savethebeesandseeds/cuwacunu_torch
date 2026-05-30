@@ -5,14 +5,22 @@
 
   A wave is the runtime instruction surface that says how the procedure is
   being launched. In v1 it does not define topology or worker assemblies; it
-  names the wave, declares mode flags, declares the graph-wide source range to
-  stream, and declares the Ujcamei cursor family used by runtime `.lls`
-  reports.
+  names the wave, declares mode flags, optionally declares the graph-wide source
+  range to stream, and declares the Ujcamei cursor family used by runtime `.lls`
+  reports. Reusable profiles should generally leave SOURCE_RANGE as all and let
+  Runtime Hero apply a launch-time wave_overlay for concrete anchor/source-key
+  ranges.
 
   Fields:
     WAVE_ID:
       Human-readable runtime wave name. It is copied into reports so generated
       artifacts can be tied back to the launch intent.
+
+    COMPATIBLE_PROTOCOLS:
+      Optional comma-separated protocol allow-list for this launch profile.
+      This guards against running a reusable wave profile under the wrong
+      static protocol. It does not select the architecture; `.config` selects
+      the active `kikijyeba.protocol.*.dsl`.
 
     TARGET:
       Selects the focal Wikimyei component family for this wave. Upstream
@@ -109,7 +117,8 @@
       source-key values and use half-open semantics over accepted anchors.
 */
 WAVE_SETTINGS {
-  WAVE_ID = cwu_01v_channel_validation_eval_mdn_1800_2050;
+  WAVE_ID = cwu_02v_channel_validation_eval_mdn_1800_2050;
+  COMPATIBLE_PROTOCOLS = cwu_02v;
   TARGET = wikimyei.inference.expected_value.mdn;
   MODE = run|debug;
   SOURCE_CURSOR_KIND = graph_anchor;

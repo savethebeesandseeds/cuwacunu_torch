@@ -304,7 +304,7 @@ The runtime runner maps the migrated canonical VICReg/MDN wave targets to
 channel_representation_vicreg and channel_inference_mdn. Runtime Hero's rebuilt
 direct binary now previews the same channel job kind for the active channel MDN
 wave, and run-test_hero_runtime_wave_preview covers canonical channel targets
-without a legacy MDN compatibility target. Long-running MCP Hero servers may
+without the old MDN compatibility target. Long-running MCP Hero servers may
 still need restart/refresh before their cached tool output reflects rebuilt
 binaries.
 ```
@@ -370,7 +370,7 @@ Acceptance:
 - direct Hero and MCP Hero target catalogs agree after rebuild/restart
 - V2 PASS records all satisfied, blocked, missing_report, and deferred targets
 - stable checkpoint_id/checkpoint_file_digest authority is recorded wherever
-  available, with legacy_path fallback called out explicitly
+  available; missing or mismatched identity fails closed
 - source receipts, selection-signal facts, representation support summaries, and
   certificate checks are included in the receipt
 - deferred V3/math work remains listed as roadmap work, not hidden inside V2
@@ -471,8 +471,8 @@ stable identity policy based on `checkpoint_id` and `checkpoint_file_digest`.
 Achievable goal:
 
 ```text
-Make checkpoint_id/checkpoint_file_digest primary closure identity while keeping
-path compatibility for legacy V1 evidence.
+Make checkpoint_id/checkpoint_file_digest primary closure identity and fail
+closed when current checkpoint identity cannot be proven.
 ```
 
 Acceptance:
@@ -480,10 +480,10 @@ Acceptance:
 ```text
 - checkpoint facts carry stable id and file digest
 - closure can resolve by checkpoint id/digest
-- path-only closure remains accepted only as legacy compatibility
+- path-only closure is not a satisfying checkpoint identity
 - wrong digest or mismatched id fails closed
-- Hero explains whether closure authority was id/digest or path compatibility
-- tests cover correct id, missing id, wrong digest, and legacy path fallback
+- Hero explains whether closure authority was id/digest or identity failure
+- tests cover correct id, missing id, wrong digest, and missing checkpoint bytes
 ```
 
 Current status:
@@ -491,9 +491,8 @@ Current status:
 ```text
 Implemented in the V2 worktree. Closure promotes canonical checkpoint_id plus
 checkpoint_file_digest when the checkpoint fact binds to the current producer
-exposure digest and the file digest matches runtime bytes. Stale V1 sidecars or
-placeholder ids downgrade to explicit legacy_path compatibility. Wrong digest
-or mismatched id fails closed.
+exposure digest and the file digest matches runtime bytes. Missing, stale, or
+mismatched identity fails closed.
 ```
 
 ## V2 Goal 2: Structured Source Receipt Facts
@@ -792,7 +791,7 @@ Acceptance:
 Current status:
 
 ```text
-Implemented in the V2 worktree. `evaluate_target` and `plan_target` emit
+Implemented in the V2 worktree. `evaluate_target` and `target_deficit` emit
 versioned proof certificates with identity, coverage, closure, leakage,
 dependency, warning, node-support, and digest/check sections. Focused target
 tests assert required sections and fail-closed certificate validation.
@@ -934,7 +933,7 @@ Acceptance:
   required
 - compiler or loader diagnostics name the offending field and expected unit
 - existing valid targets load unchanged or with explicit compatible defaults
-- tests cover incompatible unit, out-of-range fraction, and valid legacy syntax
+- tests cover incompatible unit, out-of-range fraction, and valid current syntax
 ```
 
 Current status:
@@ -944,7 +943,7 @@ Implemented in the V2 worktree. Target numeric dimensions distinguish coverage
 fractions, cursor epochs, counts, optimizer effort, rates, loss/NLL, and
 calibration fractions. Loader diagnostics name the offending field and unit, and
 focused target tests cover invalid units, out-of-range fractions, negative
-counts/rates, and valid legacy syntax.
+counts/rates, and valid current syntax.
 ```
 
 ## V2 Goal 11: Node-Support Matrices and Balance Warnings
@@ -1533,7 +1532,7 @@ Acceptance:
 - Hero MCP schema generation rejects top-level oneOf, anyOf, allOf, enum, and
   other harness-incompatible root parameter shapes
 - every Hero tool parameter schema has top-level type object
-- schema smoke covers Config, Runtime, Hashimyei, and Lattice catalogs
+- schema smoke covers Config, Runtime, Lattice, and Marshal catalogs
 - regression covers hero_lattice_checkpoint_closure and any other tool that
   previously emitted an incompatible schema
 - failure output names the tool, schema path, and offending construct
@@ -1557,7 +1556,7 @@ tool parameter schemas before sourced Hero catalogs are emitted, requiring
 top-level `type=object` and rejecting top-level oneOf, anyOf, allOf, enum, and
 not. Failure messages include the tool name, schema path, offending construct,
 and message. The focused runtime bench `test_hero_mcp_schema_compat` covers
-bad sample schemas, generated Config, Runtime, Hashimyei, and Lattice tool
+bad sample schemas, generated Config, Runtime, Lattice, and Marshal tool
 catalogs, and the `hero.lattice.checkpoint_closure` regression. This remains a
 harness-safety gate only; it does not change lattice evidence semantics or
 runtime execution policy.
@@ -1743,7 +1742,7 @@ Implementation receipt:
   component_family_id, component_spawn_fingerprint, component_spawn_id,
   component_spawn_label
 - local scoped component spawn registry:
-  .lattice_spawn_registry/component_spawn_registry.v1.lls
+  system/component_spawn_registry.v1.lls
 - Lattice exposure/evidence/proof/Hero JSON surfaces propagate the provenance
   and component spawn fields
 - missing config receipt remains a provenance warning rather than proof failure
@@ -1915,18 +1914,19 @@ short spawn id may be reallocated; proof correctness must be unchanged.
 Initial component spawn tuple:
 
 ```text
-component_spawn_schema = kikijyeba.component_spawn.v1
+component_spawn_schema = kikijyeba.component_spawn.v2
 component_family_id
 protocol_contract_fingerprint
 graph_order_fingerprint
-source_cursor_token
 component_assembly_fingerprint
 ```
 
 The tuple should include only spawn-relevant semantic fields. Target spec and
 split policy are proof-context fields; they must not change the component spawn.
-Runtime model-state inputs such as checkpoint paths are execution inputs, not
-protocol contract or spawn identity. Runtime reports and checkpoint lineage must
+Runtime wave/source fields such as source cursor token, requested source range,
+completed source range, and model-state inputs such as checkpoint paths are
+execution/evidence inputs, not protocol contract or spawn identity. Runtime
+reports and checkpoint lineage must
 still prove the exact loaded checkpoint.
 
 Acceptance:

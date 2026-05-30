@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "jkimyei/api/training_spec.h"
+#include "kikijyeba/protocol/protocol_variant.h"
 #include "kikijyeba/protocol/source_dock.h"
 #include "kikijyeba/settings/wave.h"
 #include "kikijyeba/topology/dock_binding.h"
@@ -23,6 +24,8 @@
 #include "wikimyei/expression/nodelift/srl/nodelift_spec.h"
 #include "wikimyei/inference/expected_value/mdn/assembly.h"
 #include "wikimyei/inference/expected_value/mdn/mdn_spec.h"
+#include "wikimyei/representation/encoding/mtf_jepa_mae_vicreg/assembly.h"
+#include "wikimyei/representation/encoding/mtf_jepa_mae_vicreg/mtf_jepa_mae_vicreg_spec.h"
 #include "wikimyei/representation/encoding/vicreg/assembly.h"
 #include "wikimyei/representation/encoding/vicreg/vicreg_spec.h"
 
@@ -62,35 +65,82 @@ struct channel_graph_first_protocol_contract_t {
   std::string wikimyei_representation_vicreg_dsl_path{};
   std::string wikimyei_representation_vicreg_net_bnf_path{};
   std::string wikimyei_representation_vicreg_net_path{};
+  std::string wikimyei_representation_mtf_jepa_mae_vicreg_dsl_bnf_path{};
+  std::string wikimyei_representation_mtf_jepa_mae_vicreg_dsl_path{};
+  std::string wikimyei_representation_mtf_jepa_mae_vicreg_net_bnf_path{};
+  std::string wikimyei_representation_mtf_jepa_mae_vicreg_net_path{};
   std::string wikimyei_inference_expected_value_mdn_dsl_bnf_path{};
   std::string wikimyei_inference_expected_value_mdn_dsl_path{};
   std::string wikimyei_inference_expected_value_mdn_net_bnf_path{};
   std::string wikimyei_inference_expected_value_mdn_net_path{};
   std::string wikimyei_representation_vicreg_jkimyei_bnf_path{};
   std::string wikimyei_representation_vicreg_jkimyei_path{};
+  std::string wikimyei_representation_mtf_jepa_mae_vicreg_jkimyei_bnf_path{};
+  std::string wikimyei_representation_mtf_jepa_mae_vicreg_jkimyei_path{};
   std::string wikimyei_inference_expected_value_mdn_jkimyei_bnf_path{};
   std::string wikimyei_inference_expected_value_mdn_jkimyei_path{};
   std::string kikijyeba_settings_wave_dsl_bnf_path{};
   std::string kikijyeba_settings_wave_dsl_path{};
+  std::string kikijyeba_protocol_dsl_bnf_path{};
+  std::string kikijyeba_protocol_dsl_path{};
 
+  cuwacunu::kikijyeba::protocol::protocol_variant_t protocol_variant{};
   cuwacunu::kikijyeba::settings::wave_settings_t wave_settings{};
   cuwacunu::wikimyei::expression::nodelift::srl::nodelift_srl_spec_t nodelift{};
   cuwacunu::wikimyei::representation::encoding::vicreg::vicreg_spec_t vicreg{};
+  cuwacunu::wikimyei::representation::encoding::mtf_jepa_mae_vicreg::
+      mtf_jepa_mae_vicreg_spec_t mtf_jepa_mae_vicreg{};
   cuwacunu::wikimyei::inference::expected_value::mdn::channel_mdn_spec_t
       channel_mdn{};
   cuwacunu::wikimyei::assembly::wikimyei_assembly_t nodelift_assembly{};
   cuwacunu::wikimyei::assembly::wikimyei_assembly_t vicreg_assembly{};
+  cuwacunu::wikimyei::assembly::wikimyei_assembly_t
+      mtf_jepa_mae_vicreg_assembly{};
   cuwacunu::wikimyei::assembly::wikimyei_assembly_t channel_mdn_assembly{};
   cuwacunu::kikijyeba::topology::wikimyei_registry_t wikimyei_registry{};
   cuwacunu::kikijyeba::topology::dock_binding_t dock_binding{};
   cuwacunu::kikijyeba::topology::dock_binding_validation_report_t
       dock_binding_report{};
   cuwacunu::jkimyei::training::training_run_spec_t vicreg_training{};
+  cuwacunu::jkimyei::training::training_run_spec_t
+      mtf_jepa_mae_vicreg_training{};
   cuwacunu::jkimyei::training::training_run_spec_t channel_mdn_training{};
 };
 
 using channel_graph_first_config_bundle_t =
     channel_graph_first_protocol_contract_t;
+
+[[nodiscard]] inline bool active_protocol_uses_mtf_jepa_mae_vicreg(
+    const channel_graph_first_config_bundle_t &bundle) {
+  return bundle.protocol_variant.representation_family ==
+         protocol_representation_family_t::mtf_jepa_mae_vicreg;
+}
+
+[[nodiscard]] inline const cuwacunu::wikimyei::assembly::wikimyei_assembly_t &
+active_representation_assembly(
+    const channel_graph_first_config_bundle_t &bundle) {
+  return active_protocol_uses_mtf_jepa_mae_vicreg(bundle)
+             ? bundle.mtf_jepa_mae_vicreg_assembly
+             : bundle.vicreg_assembly;
+}
+
+[[nodiscard]] inline std::string active_representation_family_id(
+    const channel_graph_first_config_bundle_t &bundle) {
+  return protocol_representation_family_name(
+      bundle.protocol_variant.representation_family);
+}
+
+[[nodiscard]] inline std::string active_representation_component_assembly_id(
+    const channel_graph_first_config_bundle_t &bundle) {
+  return active_representation_assembly(bundle).component_assembly_id;
+}
+
+[[nodiscard]] inline std::int64_t active_representation_encoding_dim(
+    const channel_graph_first_config_bundle_t &bundle) {
+  return active_protocol_uses_mtf_jepa_mae_vicreg(bundle)
+             ? bundle.mtf_jepa_mae_vicreg.config.latent_dim
+             : bundle.vicreg.encoding_dim;
+}
 
 inline void populate_channel_graph_first_source_plan(
     channel_graph_first_config_bundle_t &bundle) {
@@ -150,8 +200,8 @@ make_channel_graph_first_dock_binding(
           "F", "ujcamei.source.registry.kline_feature_width",
           cuwacunu::ujcamei::source::registry::types::kKlineFeatureWidth),
       topo::make_static_i64_variable(
-          "De", "wikimyei.representation.encoding.vicreg.encoding_dim",
-          bundle.vicreg.encoding_dim),
+          "De", "wikimyei.representation.active.encoding_dim",
+          active_representation_encoding_dim(bundle)),
       topo::make_static_i64_variable(
           "Df", "wikimyei.inference.expected_value.mdn.target_coord_count",
           static_cast<std::int64_t>(bundle.channel_mdn.target_coords.size())),
@@ -160,9 +210,15 @@ make_channel_graph_first_dock_binding(
           bundle.channel_mdn.mixture_count),
   };
   out.constraints.push_back(
-      "NodeLift.node_lifted_state -> VICReg.node_lifted_state");
-  out.constraints.push_back("VICReg.channel_node_representation -> "
-                            "ChannelMDN.channel_node_representation");
+      active_protocol_uses_mtf_jepa_mae_vicreg(bundle)
+          ? "NodeLift.node_lifted_state -> MTF-JEPA-MAE-VICReg.adapter"
+          : "NodeLift.node_lifted_state -> VICReg.node_lifted_state");
+  out.constraints.push_back(
+      active_protocol_uses_mtf_jepa_mae_vicreg(bundle)
+          ? "MTF-JEPA-MAE-VICReg.graph_restored_channel_representation -> "
+            "ChannelMDN.channel_node_representation"
+          : "VICReg.channel_node_representation -> "
+            "ChannelMDN.channel_node_representation");
   out.constraints.push_back("NodeLift.future_node_lifted_state -> "
                             "ChannelMDN.future_node_lifted_state");
   out.constraints.push_back("B is runtime-bound per wave pulse");
@@ -175,7 +231,7 @@ make_channel_graph_first_dock_binding(
 channel_graph_first_wikimyei_assemblies(
     const channel_graph_first_config_bundle_t &bundle) {
   return {bundle.nodelift_assembly, bundle.vicreg_assembly,
-          bundle.channel_mdn_assembly};
+          bundle.mtf_jepa_mae_vicreg_assembly, bundle.channel_mdn_assembly};
 }
 
 namespace config_bundle_detail {
@@ -272,6 +328,8 @@ training_task_name(cuwacunu::jkimyei::training::training_task_t task) {
     return "mdn_expected_value_inference";
   case training::training_task_t::vicreg_representation:
     return "vicreg_representation";
+  case training::training_task_t::mtf_jepa_mae_vicreg_representation:
+    return "mtf_jepa_mae_vicreg_representation";
   }
   return "unknown";
 }
@@ -317,6 +375,20 @@ canonical_channel_graph_first_protocol_contract_text(
 
   std::ostringstream out;
   out << "schema=kikijyeba.protocol.channel_graph_first.contract.v1\n";
+  out << "protocol_id=" << contract.protocol_variant.protocol_id << "\n";
+  out << "protocol_kind=" << contract.protocol_variant.protocol_kind << "\n";
+  out << "protocol_graph_topology=" << contract.protocol_variant.graph_topology
+      << "\n";
+  out << "protocol_nodelift=" << contract.protocol_variant.nodelift_family
+      << "\n";
+  out << "protocol_representation="
+      << protocol_representation_family_name(
+             contract.protocol_variant.representation_family)
+      << "\n";
+  out << "protocol_inference=" << contract.protocol_variant.inference_family
+      << "\n";
+  out << "protocol_representation_contract="
+      << contract.protocol_variant.representation_contract << "\n";
   out << "source_count=" << contract.source_universe.source_forms.size()
       << "\n";
   for (const auto &source : contract.source_universe.source_forms) {
@@ -358,8 +430,19 @@ canonical_channel_graph_first_protocol_contract_text(
       << "\n";
   out << "nodelift_assembly="
       << assembly::assembly_fingerprint(contract.nodelift_assembly) << "\n";
+  out << "active_representation_family="
+      << active_representation_family_id(contract) << "\n";
+  out << "active_representation_component_assembly_id="
+      << active_representation_component_assembly_id(contract) << "\n";
+  out << "active_representation_assembly="
+      << assembly::assembly_fingerprint(
+             active_representation_assembly(contract))
+      << "\n";
   out << "vicreg_assembly="
       << assembly::assembly_fingerprint(contract.vicreg_assembly) << "\n";
+  out << "mtf_jepa_mae_vicreg_assembly="
+      << assembly::assembly_fingerprint(contract.mtf_jepa_mae_vicreg_assembly)
+      << "\n";
   out << "channel_mdn_assembly="
       << assembly::assembly_fingerprint(contract.channel_mdn_assembly) << "\n";
   out << "dock_binding="
@@ -420,6 +503,51 @@ canonical_channel_graph_first_protocol_contract_text(
       << "\n";
   out << "vicreg_dtype=" << contract.vicreg.dtype << "\n";
   out << "vicreg_device=" << contract.vicreg.device << "\n";
+  const auto &mtf_cfg = contract.mtf_jepa_mae_vicreg.config;
+  out << "mtf_jepa_mae_vicreg_version="
+      << contract.mtf_jepa_mae_vicreg.version_token << "\n";
+  out << "mtf_jepa_mae_vicreg_component_assembly_id="
+      << contract.mtf_jepa_mae_vicreg.component_assembly_id << "\n";
+  out << "mtf_jepa_mae_vicreg_channel_count=" << mtf_cfg.channel_count << "\n";
+  out << "mtf_jepa_mae_vicreg_history_length=" << mtf_cfg.history_length
+      << "\n";
+  out << "mtf_jepa_mae_vicreg_input_width=" << mtf_cfg.input_width << "\n";
+  out << "mtf_jepa_mae_vicreg_d_model=" << mtf_cfg.d_model << "\n";
+  out << "mtf_jepa_mae_vicreg_latent_dim=" << mtf_cfg.latent_dim << "\n";
+  out << "mtf_jepa_mae_vicreg_projector_dim=" << mtf_cfg.projector_dim << "\n";
+  out << "mtf_jepa_mae_vicreg_predictor_hidden_dim="
+      << mtf_cfg.predictor_hidden_dim << "\n";
+  out << "mtf_jepa_mae_vicreg_num_encoder_layers=" << mtf_cfg.num_encoder_layers
+      << "\n";
+  out << "mtf_jepa_mae_vicreg_num_predictor_layers="
+      << mtf_cfg.num_predictor_layers << "\n";
+  out << "mtf_jepa_mae_vicreg_num_decoder_layers=" << mtf_cfg.num_decoder_layers
+      << "\n";
+  out << "mtf_jepa_mae_vicreg_num_heads=" << mtf_cfg.num_heads << "\n";
+  out << "mtf_jepa_mae_vicreg_dropout=" << mtf_cfg.dropout << "\n";
+  out << "mtf_jepa_mae_vicreg_time_scales=";
+  config_bundle_detail::append_i64_list(out, mtf_cfg.time_scales);
+  out << "\n";
+  out << "mtf_jepa_mae_vicreg_scale_strides=";
+  config_bundle_detail::append_i64_list(out, mtf_cfg.scale_strides);
+  out << "\n";
+  out << "mtf_jepa_mae_vicreg_frequency_num_bins=" << mtf_cfg.frequency_num_bins
+      << "\n";
+  out << "mtf_jepa_mae_vicreg_mask_ratio_time=" << mtf_cfg.mask_ratio_time
+      << "\n";
+  out << "mtf_jepa_mae_vicreg_mask_ratio_frequency="
+      << mtf_cfg.mask_ratio_frequency << "\n";
+  out << "mtf_jepa_mae_vicreg_mask_ratio_channel=" << mtf_cfg.mask_ratio_channel
+      << "\n";
+  out << "mtf_jepa_mae_vicreg_min_context_ratio=" << mtf_cfg.min_context_ratio
+      << "\n";
+  out << "mtf_jepa_mae_vicreg_lambda_jepa=" << mtf_cfg.lambda_jepa << "\n";
+  out << "mtf_jepa_mae_vicreg_lambda_mae=" << mtf_cfg.lambda_mae << "\n";
+  out << "mtf_jepa_mae_vicreg_lambda_tf_align=" << mtf_cfg.lambda_tf_align
+      << "\n";
+  out << "mtf_jepa_mae_vicreg_lambda_vicreg=" << mtf_cfg.lambda_vicreg << "\n";
+  out << "mtf_jepa_mae_vicreg_target_ema_tau=" << mtf_cfg.target_ema_tau
+      << "\n";
   out << "channel_mdn_version=" << contract.channel_mdn.version_token << "\n";
   out << "channel_mdn_component_assembly_id="
       << contract.channel_mdn.component_assembly_id << "\n";
@@ -458,6 +586,10 @@ canonical_channel_graph_first_protocol_contract_text(
       << "\n";
   out << "channel_mdn_residual_depth=" << contract.channel_mdn.residual_depth
       << "\n";
+  out << "channel_mdn_feature_embedding_dim="
+      << contract.channel_mdn.feature_embedding_dim << "\n";
+  out << "channel_mdn_channel_adapter_rank="
+      << contract.channel_mdn.channel_adapter_rank << "\n";
   out << "channel_mdn_global_context_dim="
       << contract.channel_mdn.global_context_dim << "\n";
   out << "channel_mdn_sigma_min=" << contract.channel_mdn.sigma_min << "\n";
@@ -465,6 +597,9 @@ canonical_channel_graph_first_protocol_contract_text(
   out << "channel_mdn_eps=" << contract.channel_mdn.eps << "\n";
   config_bundle_detail::append_training_contract_fields(
       out, "vicreg_training", contract.vicreg_training);
+  config_bundle_detail::append_training_contract_fields(
+      out, "mtf_jepa_mae_vicreg_training",
+      contract.mtf_jepa_mae_vicreg_training);
   config_bundle_detail::append_training_contract_fields(
       out, "channel_mdn_training", contract.channel_mdn_training);
   return out.str();
@@ -524,9 +659,9 @@ inline void validate_channel_graph_first_dock_binding(
       bundle.dock_binding, "F",
       cuwacunu::ujcamei::source::registry::types::kKlineFeatureWidth,
       "kline feature width");
-  topo::require_static_i64_binding_value(bundle.dock_binding, "De",
-                                         bundle.vicreg.encoding_dim,
-                                         "VICReg encoding dimension");
+  topo::require_static_i64_binding_value(
+      bundle.dock_binding, "De", active_representation_encoding_dim(bundle),
+      "active representation encoding dimension");
   topo::require_static_i64_binding_value(
       bundle.dock_binding, "Df",
       static_cast<std::int64_t>(bundle.channel_mdn.target_coords.size()),
@@ -540,12 +675,16 @@ inline void validate_channel_graph_first_dock_binding(
 inline void validate_channel_graph_first_protocol_contract(
     const channel_graph_first_protocol_contract_t &bundle) {
   namespace mdn = cuwacunu::wikimyei::inference::expected_value::mdn;
+  namespace mtf =
+      cuwacunu::wikimyei::representation::encoding::mtf_jepa_mae_vicreg;
   namespace vicreg = cuwacunu::wikimyei::representation::encoding::vicreg;
   namespace nodelift = cuwacunu::wikimyei::expression::nodelift::srl;
   namespace training = cuwacunu::jkimyei::training;
 
+  validate_protocol_variant(bundle.protocol_variant);
   nodelift::validate_nodelift_srl_spec(bundle.nodelift);
   vicreg::validate_vicreg_spec(bundle.vicreg);
+  mtf::validate_mtf_jepa_mae_vicreg_spec(bundle.mtf_jepa_mae_vicreg);
   mdn::validate_channel_mdn_spec(bundle.channel_mdn);
   if (bundle.nodelift_assembly.component_assembly_id !=
           bundle.nodelift.component_assembly_id ||
@@ -561,6 +700,14 @@ inline void validate_channel_graph_first_protocol_contract(
         "[channel_graph_first_config] VICReg assembly does not match "
         "VICReg spec");
   }
+  if (bundle.mtf_jepa_mae_vicreg_assembly.component_assembly_id !=
+          bundle.mtf_jepa_mae_vicreg.component_assembly_id ||
+      bundle.mtf_jepa_mae_vicreg_assembly.version_token !=
+          bundle.mtf_jepa_mae_vicreg.version_token) {
+    throw std::runtime_error(
+        "[channel_graph_first_config] MTF-JEPA-MAE-VICReg assembly does not "
+        "match MTF spec");
+  }
   if (bundle.channel_mdn_assembly.component_assembly_id !=
           bundle.channel_mdn.component_assembly_id ||
       bundle.channel_mdn_assembly.version_token !=
@@ -569,14 +716,24 @@ inline void validate_channel_graph_first_protocol_contract(
         "[channel_graph_first_config] Channel MDN assembly does not match "
         "Channel MDN spec");
   }
-  cuwacunu::kikijyeba::topology::validate_node_value_assembly_chain(
-      bundle.nodelift_assembly, bundle.vicreg_assembly,
-      bundle.channel_mdn_assembly);
-  if (bundle.wikimyei_registry.assemblies.size() != 3) {
+  if (!active_protocol_uses_mtf_jepa_mae_vicreg(bundle)) {
+    cuwacunu::kikijyeba::topology::validate_node_value_assembly_chain(
+        bundle.nodelift_assembly, bundle.vicreg_assembly,
+        bundle.channel_mdn_assembly);
+  } else {
+    cuwacunu::wikimyei::assembly::validate_wikimyei_assembly(
+        bundle.nodelift_assembly);
+    cuwacunu::wikimyei::assembly::validate_wikimyei_assembly(
+        bundle.mtf_jepa_mae_vicreg_assembly);
+    cuwacunu::wikimyei::assembly::validate_wikimyei_assembly(
+        bundle.channel_mdn_assembly);
+  }
+  if (bundle.wikimyei_registry.assemblies.size() != 4) {
     throw std::runtime_error(
-        "[channel_graph_first_config] expected three Wikimyei assemblies");
+        "[channel_graph_first_config] expected four Wikimyei assemblies");
   }
   training::validate_training_run_spec(bundle.vicreg_training);
+  training::validate_training_run_spec(bundle.mtf_jepa_mae_vicreg_training);
   training::validate_training_run_spec(bundle.channel_mdn_training);
   cuwacunu::kikijyeba::settings::validate_wave_settings(bundle.wave_settings);
   if (bundle.source_universe.empty()) {
@@ -596,15 +753,43 @@ inline void validate_channel_graph_first_protocol_contract(
   const auto channel_count = active_channel_count(bundle.source_dock);
   const auto input_length = max_input_length(bundle.source_dock);
   const auto future_length = max_future_length(bundle.source_dock);
-  if (bundle.vicreg.channel_count != channel_count ||
+  const bool active_mtf = active_protocol_uses_mtf_jepa_mae_vicreg(bundle);
+  if (!cuwacunu::kikijyeba::settings::wave_supports_protocol(
+          bundle.wave_settings, bundle.protocol_variant.protocol_id)) {
+    throw std::runtime_error("[channel_graph_first_config] active protocol " +
+                             bundle.protocol_variant.protocol_id +
+                             " is not declared by wave COMPATIBLE_PROTOCOLS");
+  }
+  if (bundle.wave_settings.target ==
+          cuwacunu::kikijyeba::settings::wave_target_t::vicreg_representation &&
+      active_mtf) {
+    throw std::runtime_error(
+        "[channel_graph_first_config] active protocol docks "
+        "MTF-JEPA-MAE-VICReg but active wave targets VICReg");
+  }
+  if (bundle.wave_settings.target ==
+          cuwacunu::kikijyeba::settings::wave_target_t::
+              mtf_jepa_mae_vicreg_representation &&
+      !active_mtf) {
+    throw std::runtime_error(
+        "[channel_graph_first_config] active protocol docks VICReg but active "
+        "wave targets MTF-JEPA-MAE-VICReg");
+  }
+  const auto active_representation_channel_count =
+      active_mtf ? bundle.mtf_jepa_mae_vicreg.config.channel_count
+                 : bundle.vicreg.channel_count;
+  const auto active_representation_history_length =
+      active_mtf ? bundle.mtf_jepa_mae_vicreg.config.history_length
+                 : bundle.vicreg.history_length;
+  if (active_representation_channel_count != channel_count ||
       bundle.channel_mdn.channel_count != channel_count) {
     throw std::runtime_error(
         "[channel_graph_first_config] channel counts do not match active "
         "source channels");
   }
-  if (bundle.vicreg.history_length != input_length) {
+  if (active_representation_history_length != input_length) {
     throw std::runtime_error(
-        "[channel_graph_first_config] VICReg history length does not "
+        "[channel_graph_first_config] representation history length does not "
         "match source input length");
   }
   if (bundle.channel_mdn.future_horizon != future_length) {
@@ -612,8 +797,9 @@ inline void validate_channel_graph_first_protocol_contract(
         "[channel_graph_first_config] channel MDN future horizon does not "
         "match source future length");
   }
-  if (bundle.channel_mdn.input_representation_assembly_id !=
-      bundle.vicreg.component_assembly_id) {
+  if (!active_protocol_uses_mtf_jepa_mae_vicreg(bundle) &&
+      bundle.channel_mdn.input_representation_assembly_id !=
+          bundle.vicreg.component_assembly_id) {
     throw std::runtime_error(
         "[channel_graph_first_config] channel MDN input representation id does "
         "not match VICReg component id");
@@ -708,6 +894,16 @@ required_config_value(const std::unordered_map<std::string, std::string> &cfg,
   return it->second;
 }
 
+[[nodiscard]] inline std::string
+optional_config_value(const std::unordered_map<std::string, std::string> &cfg,
+                      const std::string &key, std::string fallback) {
+  const auto it = cfg.find(key);
+  if (it == cfg.end() || kv::trim(it->second).empty()) {
+    return fallback;
+  }
+  return it->second;
+}
+
 } // namespace graph_first_config_detail
 
 [[nodiscard]] inline cuwacunu::kikijyeba::settings::wave_settings_t
@@ -789,6 +985,26 @@ load_channel_graph_first_protocol_contract_from_config(
   out.wikimyei_representation_vicreg_net_path =
       graph_first_config_detail::required_config_value(
           cfg, "wikimyei_representation_vicreg_net_path", config_path);
+  out.wikimyei_representation_mtf_jepa_mae_vicreg_dsl_bnf_path =
+      graph_first_config_detail::optional_config_value(
+          cfg, "wikimyei_representation_mtf_jepa_mae_vicreg_dsl_bnf_path",
+          "/cuwacunu/src/config/grammar/"
+          "wikimyei.representation.mtf_jepa_mae_vicreg.dsl.bnf");
+  out.wikimyei_representation_mtf_jepa_mae_vicreg_dsl_path =
+      graph_first_config_detail::optional_config_value(
+          cfg, "wikimyei_representation_mtf_jepa_mae_vicreg_dsl_path",
+          "/cuwacunu/src/config/"
+          "wikimyei.representation.mtf_jepa_mae_vicreg.dsl");
+  out.wikimyei_representation_mtf_jepa_mae_vicreg_net_bnf_path =
+      graph_first_config_detail::optional_config_value(
+          cfg, "wikimyei_representation_mtf_jepa_mae_vicreg_net_bnf_path",
+          "/cuwacunu/src/config/grammar/"
+          "wikimyei.representation.mtf_jepa_mae_vicreg.net.bnf");
+  out.wikimyei_representation_mtf_jepa_mae_vicreg_net_path =
+      graph_first_config_detail::optional_config_value(
+          cfg, "wikimyei_representation_mtf_jepa_mae_vicreg_net_path",
+          "/cuwacunu/src/config/"
+          "wikimyei.representation.mtf_jepa_mae_vicreg.net");
   out.wikimyei_inference_expected_value_mdn_dsl_bnf_path =
       graph_first_config_detail::required_config_value(
           cfg, "wikimyei_inference_expected_value_mdn_dsl_bnf_path",
@@ -809,6 +1025,16 @@ load_channel_graph_first_protocol_contract_from_config(
   out.wikimyei_representation_vicreg_jkimyei_path =
       graph_first_config_detail::required_config_value(
           cfg, "wikimyei_representation_vicreg_jkimyei_path", config_path);
+  out.wikimyei_representation_mtf_jepa_mae_vicreg_jkimyei_bnf_path =
+      graph_first_config_detail::optional_config_value(
+          cfg, "wikimyei_representation_mtf_jepa_mae_vicreg_jkimyei_bnf_path",
+          "/cuwacunu/src/config/grammar/"
+          "wikimyei.representation.mtf_jepa_mae_vicreg.jkimyei.bnf");
+  out.wikimyei_representation_mtf_jepa_mae_vicreg_jkimyei_path =
+      graph_first_config_detail::optional_config_value(
+          cfg, "wikimyei_representation_mtf_jepa_mae_vicreg_jkimyei_path",
+          "/cuwacunu/src/config/"
+          "wikimyei.representation.mtf_jepa_mae_vicreg.jkimyei");
   out.wikimyei_inference_expected_value_mdn_jkimyei_bnf_path =
       graph_first_config_detail::required_config_value(
           cfg, "wikimyei_inference_expected_value_mdn_jkimyei_bnf_path",
@@ -823,6 +1049,14 @@ load_channel_graph_first_protocol_contract_from_config(
   out.kikijyeba_settings_wave_dsl_path =
       graph_first_config_detail::required_config_value(
           cfg, "kikijyeba_settings_wave_dsl_path", config_path);
+  out.kikijyeba_protocol_dsl_bnf_path =
+      graph_first_config_detail::optional_config_value(
+          cfg, "kikijyeba_protocol_dsl_bnf_path",
+          "/cuwacunu/src/config/grammar/kikijyeba.protocol.dsl.bnf");
+  out.kikijyeba_protocol_dsl_path =
+      graph_first_config_detail::optional_config_value(
+          cfg, "kikijyeba_protocol_dsl_path",
+          "/cuwacunu/src/config/kikijyeba.protocol.cwu_01v.dsl");
 
   (void)graph_first_config_detail::read_text_file_or_throw(
       out.wikimyei_expression_nodelift_srl_dsl_bnf_path);
@@ -831,16 +1065,27 @@ load_channel_graph_first_protocol_contract_from_config(
   (void)graph_first_config_detail::read_text_file_or_throw(
       out.wikimyei_representation_vicreg_net_bnf_path);
   (void)graph_first_config_detail::read_text_file_or_throw(
+      out.wikimyei_representation_mtf_jepa_mae_vicreg_dsl_bnf_path);
+  (void)graph_first_config_detail::read_text_file_or_throw(
+      out.wikimyei_representation_mtf_jepa_mae_vicreg_net_bnf_path);
+  (void)graph_first_config_detail::read_text_file_or_throw(
       out.wikimyei_inference_expected_value_mdn_dsl_bnf_path);
   (void)graph_first_config_detail::read_text_file_or_throw(
       out.wikimyei_inference_expected_value_mdn_net_bnf_path);
   (void)graph_first_config_detail::read_text_file_or_throw(
       out.wikimyei_representation_vicreg_jkimyei_bnf_path);
   (void)graph_first_config_detail::read_text_file_or_throw(
+      out.wikimyei_representation_mtf_jepa_mae_vicreg_jkimyei_bnf_path);
+  (void)graph_first_config_detail::read_text_file_or_throw(
       out.wikimyei_inference_expected_value_mdn_jkimyei_bnf_path);
   (void)graph_first_config_detail::read_text_file_or_throw(
       out.kikijyeba_settings_wave_dsl_bnf_path);
+  (void)graph_first_config_detail::read_text_file_or_throw(
+      out.kikijyeba_protocol_dsl_bnf_path);
 
+  out.protocol_variant = decode_protocol_variant_from_dsl(
+      graph_first_config_detail::read_text_file_or_throw(
+          out.kikijyeba_protocol_dsl_path));
   out.wave_settings =
       cuwacunu::kikijyeba::settings::decode_wave_settings_from_dsl(
           graph_first_config_detail::read_text_file_or_throw(
@@ -855,6 +1100,12 @@ load_channel_graph_first_protocol_contract_from_config(
               out.wikimyei_representation_vicreg_dsl_path),
           graph_first_config_detail::read_text_file_or_throw(
               out.wikimyei_representation_vicreg_net_path));
+  out.mtf_jepa_mae_vicreg = cuwacunu::wikimyei::representation::encoding::
+      mtf_jepa_mae_vicreg::decode_mtf_jepa_mae_vicreg_spec_from_split_dsl(
+          graph_first_config_detail::read_text_file_or_throw(
+              out.wikimyei_representation_mtf_jepa_mae_vicreg_dsl_path),
+          graph_first_config_detail::read_text_file_or_throw(
+              out.wikimyei_representation_mtf_jepa_mae_vicreg_net_path));
   out.channel_mdn = cuwacunu::wikimyei::inference::expected_value::mdn::
       decode_channel_mdn_spec_from_split_dsl(
           graph_first_config_detail::read_text_file_or_throw(
@@ -867,16 +1118,25 @@ load_channel_graph_first_protocol_contract_from_config(
   out.vicreg_assembly = cuwacunu::wikimyei::representation::encoding::vicreg::
       make_vicreg_assembly(out.vicreg.component_assembly_id,
                            out.vicreg.version_token);
+  out.mtf_jepa_mae_vicreg_assembly = cuwacunu::wikimyei::representation::
+      encoding::mtf_jepa_mae_vicreg::make_mtf_jepa_mae_vicreg_assembly(
+          out.mtf_jepa_mae_vicreg.component_assembly_id,
+          out.mtf_jepa_mae_vicreg.version_token);
   out.channel_mdn_assembly = cuwacunu::wikimyei::inference::expected_value::
       mdn::make_channel_context_mdn_assembly(
           out.channel_mdn.component_assembly_id, out.channel_mdn.version_token);
   out.wikimyei_registry.add(out.nodelift_assembly);
   out.wikimyei_registry.add(out.vicreg_assembly);
+  out.wikimyei_registry.add(out.mtf_jepa_mae_vicreg_assembly);
   out.wikimyei_registry.add(out.channel_mdn_assembly);
   out.vicreg_training =
       cuwacunu::jkimyei::training::decode_training_run_spec_from_dsl(
           graph_first_config_detail::read_text_file_or_throw(
               out.wikimyei_representation_vicreg_jkimyei_path));
+  out.mtf_jepa_mae_vicreg_training =
+      cuwacunu::jkimyei::training::decode_training_run_spec_from_dsl(
+          graph_first_config_detail::read_text_file_or_throw(
+              out.wikimyei_representation_mtf_jepa_mae_vicreg_jkimyei_path));
   out.channel_mdn_training =
       cuwacunu::jkimyei::training::decode_training_run_spec_from_dsl(
           graph_first_config_detail::read_text_file_or_throw(

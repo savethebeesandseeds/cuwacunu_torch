@@ -21,6 +21,7 @@
 #include "kikijyeba/lattice/split/split_policy.h"
 #include "kikijyeba/lattice/target/lattice_target.h"
 #include "kikijyeba/protocol/config_provenance.h"
+#include "kikijyeba/runtime/job_layout.h"
 #include "piaabo/parse/simple_kv_block.h"
 
 namespace cuwacunu::kikijyeba::lattice::target {
@@ -38,10 +39,12 @@ inline constexpr const char
         "optimizer steps";
 
 struct lattice_target_active_identity_t {
+  std::string protocol_id{};
   std::string protocol_contract_fingerprint{};
   std::string graph_order_fingerprint{};
   std::string source_cursor_token{};
   std::string vicreg_assembly_fingerprint{};
+  std::string mtf_jepa_mae_vicreg_assembly_fingerprint{};
   std::string mdn_assembly_fingerprint{};
 };
 
@@ -225,10 +228,10 @@ first_i64(const std::unordered_map<std::string, std::string> &a,
 expected_component_fingerprint(const lattice_target_active_identity_t &identity,
                                lattice_target_kind_t kind) {
   switch (kind) {
-  case lattice_target_kind_t::legacy_node_vicreg_ready:
   case lattice_target_kind_t::vicreg_ready:
     return identity.vicreg_assembly_fingerprint;
-  case lattice_target_kind_t::legacy_node_mdn_ready:
+  case lattice_target_kind_t::mtf_representation_ready:
+    return identity.mtf_jepa_mae_vicreg_assembly_fingerprint;
   case lattice_target_kind_t::channel_mdn_ready:
     return identity.mdn_assembly_fingerprint;
   }
@@ -238,11 +241,8 @@ expected_component_fingerprint(const lattice_target_active_identity_t &identity,
 [[nodiscard]] inline std::string
 report_leaf_for_target_kind(lattice_target_kind_t kind) {
   switch (kind) {
-  case lattice_target_kind_t::legacy_node_vicreg_ready:
-    return "representation.report";
-  case lattice_target_kind_t::legacy_node_mdn_ready:
-    return "inference.report";
   case lattice_target_kind_t::vicreg_ready:
+  case lattice_target_kind_t::mtf_representation_ready:
     return "channel_representation.report";
   case lattice_target_kind_t::channel_mdn_ready:
     return "channel_inference.report";
@@ -533,17 +533,19 @@ find_job_candidates(const fs::path &runtime_root,
   if (!fs::is_directory(runtime_root, ec)) {
     return out;
   }
-  for (fs::directory_iterator it(runtime_root, ec), end; !ec && it != end;
-       it.increment(ec)) {
-    if (!it->is_directory(ec)) {
-      continue;
-    }
-    const fs::path manifest_path = it->path() / "job.manifest";
+  for (const auto &job_dir :
+       cuwacunu::kikijyeba::runtime::job_layout::discover_runtime_job_dirs(
+           runtime_root)) {
+    const fs::path manifest_path = job_dir.manifest_path;
     const auto manifest = parse_assignment_file_if_exists(manifest_path);
     if (manifest.empty()) {
       continue;
     }
     if (map_get(manifest, "job_kind") != job_kind_for_target_kind(spec.kind)) {
+      continue;
+    }
+    if (!spec.protocol_id.empty() &&
+        map_get(manifest, "protocol_id") != spec.protocol_id) {
       continue;
     }
     if (map_get(manifest, "target_component_family_id") != spec.component) {
@@ -567,12 +569,12 @@ find_job_candidates(const fs::path &runtime_root,
     }
     std::error_code time_ec;
     auto marker_time =
-        fs::last_write_time(newest_marker_path(it->path()), time_ec);
+        fs::last_write_time(newest_marker_path(job_dir.dir), time_ec);
     if (time_ec) {
       marker_time = fs::file_time_type::min();
     }
     out.push_back(job_candidate_t{
-        .dir = it->path(),
+        .dir = job_dir.dir,
         .time = marker_time,
         .manifest = manifest,
     });
@@ -597,7 +599,31 @@ make_evidence_from_candidate(const job_candidate_t &candidate,
   out.report_exists = fs::exists(out.report_path);
   const auto state = parse_assignment_file_if_exists(out.state_path);
   const auto report = parse_assignment_file_if_exists(out.report_path);
+  const auto checkpoint_io = parse_assignment_file_if_exists(
+      candidate.dir / "runtime.checkpoint_io.fact");
+  const auto first_non_empty =
+      [](std::initializer_list<std::string> values) -> std::string {
+    for (const auto &value : values) {
+      if (!value.empty()) {
+        return value;
+      }
+    }
+    return {};
+  };
+  const auto resolve_job_path = [&](const std::string &value) -> fs::path {
+    if (value.empty()) {
+      return {};
+    }
+    const fs::path raw(value);
+    return raw.is_absolute() ? raw : candidate.dir / raw;
+  };
 
+  out.report_schema_id = map_get(report, "report_schema_id");
+  out.report_schema_version =
+      parse_i64_fallback(map_get(report, "report_schema_version"), 0);
+  out.report_writer_id = map_get(report, "report_writer_id");
+  out.report_writer_version = map_get(report, "report_writer_version");
+  out.protocol_id = map_get(candidate.manifest, "protocol_id");
   out.protocol_contract_fingerprint =
       map_get(candidate.manifest, "protocol_contract_fingerprint");
   out.component_fingerprint = map_get(
@@ -641,15 +667,37 @@ make_evidence_from_candidate(const job_candidate_t &candidate,
       parse_bool_fallback(map_get(state, "checkpoint_written"), false) ||
       parse_bool_fallback(map_get(report, "checkpoint_written"), false) ||
       first_i64(state, report, {"checkpoint_write_count"}, 0) > 0;
-  const auto checkpoint_path = !map_get(state, "checkpoint_path").empty()
-                                   ? map_get(state, "checkpoint_path")
-                                   : map_get(report, "checkpoint_path");
-  if (!checkpoint_path.empty()) {
-    const fs::path raw_checkpoint_path(checkpoint_path);
-    out.checkpoint_path = raw_checkpoint_path.is_absolute()
-                              ? raw_checkpoint_path
-                              : candidate.dir / raw_checkpoint_path;
+  const auto checkpoint_path = first_non_empty(
+      {map_get(state, "checkpoint_path"), map_get(report, "checkpoint_path"),
+       map_get(checkpoint_io, "checkpoint_path")});
+  out.checkpoint_path = resolve_job_path(checkpoint_path);
+  out.checkpoint_path_reported = resolve_job_path(first_non_empty(
+      {map_get(checkpoint_io, "checkpoint_path_reported"),
+       map_get(report, "checkpoint_path_reported"), checkpoint_path}));
+  out.checkpoint_digest_reported =
+      first_non_empty({map_get(checkpoint_io, "checkpoint_digest_reported"),
+                       map_get(report, "checkpoint_digest_reported"),
+                       map_get(checkpoint_io, "checkpoint_artifact_hash")});
+  out.checkpoint_file_exists =
+      !out.checkpoint_path.empty() && fs::exists(out.checkpoint_path);
+  out.checkpoint_bytes =
+      first_i64(checkpoint_io, report, {"checkpoint_bytes"}, 0);
+  if (out.checkpoint_file_exists) {
+    const auto digest =
+        cuwacunu::kikijyeba::lattice::exposure::file_content_digest_checked(
+            out.checkpoint_path);
+    if (digest.ok) {
+      out.checkpoint_digest_actual = digest.digest;
+    }
   }
+  const bool reported_verified = parse_bool_fallback(
+      first_non_empty({map_get(checkpoint_io, "checkpoint_digest_verified"),
+                       map_get(report, "checkpoint_digest_verified")}),
+      false);
+  out.checkpoint_digest_verified =
+      reported_verified && out.checkpoint_file_exists &&
+      !out.checkpoint_digest_reported.empty() &&
+      out.checkpoint_digest_reported == out.checkpoint_digest_actual;
   const auto representation_checkpoint_path =
       map_get(report, "representation_checkpoint_path");
   if (!representation_checkpoint_path.empty()) {
@@ -684,6 +732,15 @@ make_evidence_from_candidate(const job_candidate_t &candidate,
       parse_assignment_file_if_exists(candidate.dir / "job.state");
   const auto status = map_get(state, "status");
   if (status != "completed" && status != "failed") {
+    return false;
+  }
+  if (!active_identity.protocol_id.empty() &&
+      map_get(candidate.manifest, "protocol_id") !=
+          active_identity.protocol_id) {
+    return false;
+  }
+  if (!spec.protocol_id.empty() &&
+      map_get(candidate.manifest, "protocol_id") != spec.protocol_id) {
     return false;
   }
   if (map_get(candidate.manifest, "wave_action",
@@ -741,6 +798,13 @@ make_evidence_from_candidate(const job_candidate_t &candidate,
   if (spec.require_contract_match &&
       fact.contract_fingerprint !=
           active_identity.protocol_contract_fingerprint) {
+    return false;
+  }
+  if (!active_identity.protocol_id.empty() &&
+      fact.protocol_id != active_identity.protocol_id) {
+    return false;
+  }
+  if (!spec.protocol_id.empty() && fact.protocol_id != spec.protocol_id) {
     return false;
   }
   if (target_requires_graph_anchor_identity(spec)) {
@@ -815,6 +879,56 @@ strict_channel_semantic_contract_mismatch(
     }
     return std::nullopt;
 
+  case lattice_target_kind_t::mtf_representation_ready:
+    if (auto mismatch = check_field("representation_architecture",
+                                    fact.representation_architecture,
+                                    "mtf_jepa_mae_vicreg.v1")) {
+      return mismatch;
+    }
+    if (auto mismatch =
+            check_field("representation_contract", fact.representation_contract,
+                        "standalone.mtf_jepa_mae_vicreg.v1")) {
+      return mismatch;
+    }
+    if (auto mismatch =
+            check_field("representation_value_shape",
+                        fact.representation_value_shape, "[B_flat,De]")) {
+      return mismatch;
+    }
+    if (auto mismatch =
+            check_field("channel_axis_policy", fact.channel_axis_policy,
+                        "optional_channel_output")) {
+      return mismatch;
+    }
+    if (auto mismatch =
+            check_field("temporal_reduction", fact.temporal_reduction,
+                        "mask_aware_token_pool")) {
+      return mismatch;
+    }
+    if (auto mismatch =
+            check_field("input_nodelift_shape", fact.input_nodelift_shape,
+                        "[B,C,Hx,N,F]")) {
+      return mismatch;
+    }
+    if (auto mismatch = check_field(
+            "mtf_training_shape", fact.mtf_training_shape, "[B_flat,C,Hx,F]")) {
+      return mismatch;
+    }
+    if (auto mismatch =
+            check_field("flattening_contract", fact.flattening_contract,
+                        "anchor_node_flatten.v1")) {
+      return mismatch;
+    }
+    if (auto mismatch =
+            check_field("recommended_graph_restore_shape",
+                        fact.recommended_graph_restore_shape, "[B,N,C,De]")) {
+      return mismatch;
+    }
+    if (!fact.reshape_lossless) {
+      return "reshape_lossless expected true but got false";
+    }
+    return std::nullopt;
+
   case lattice_target_kind_t::channel_mdn_ready:
     if (auto mismatch =
             check_field("input_representation_assembly_id",
@@ -839,10 +953,6 @@ strict_channel_semantic_contract_mismatch(
                         "graph_order.channel_node_future_distribution.v1")) {
       return mismatch;
     }
-    return std::nullopt;
-
-  case lattice_target_kind_t::legacy_node_vicreg_ready:
-  case lattice_target_kind_t::legacy_node_mdn_ready:
     return std::nullopt;
   }
   throw std::runtime_error("[lattice_target] unknown target kind");
@@ -974,6 +1084,128 @@ strict_channel_representation_health_mismatch(
           check_fraction("representation_isotropy_score",
                          fact.representation_isotropy_score)) {
     return mismatch;
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] inline std::optional<std::string>
+strict_mtf_representation_health_mismatch(
+    const cuwacunu::kikijyeba::lattice::exposure::lattice_exposure_fact_t
+        &fact) {
+  const auto check_finite = [](const char *field_name,
+                               double value) -> std::optional<std::string> {
+    if (std::isfinite(value)) {
+      return std::nullopt;
+    }
+    std::ostringstream out;
+    out << field_name << " must be finite";
+    return out.str();
+  };
+  const auto check_fraction = [&](const char *field_name,
+                                  double value) -> std::optional<std::string> {
+    if (const auto mismatch = check_finite(field_name, value)) {
+      return mismatch;
+    }
+    if (value > 0.0 && value <= 1.0) {
+      return std::nullopt;
+    }
+    std::ostringstream out;
+    out << field_name << " expected in (0,1] but got " << value;
+    return out.str();
+  };
+
+  if (!fact.representation_health_available) {
+    return "representation_health_available expected true but got false";
+  }
+  if (!fact.finite_parameter_check) {
+    return "finite_parameter_check expected true but got false";
+  }
+  if (!fact.gradients_finite) {
+    return "gradients_finite expected true but got false";
+  }
+  if (fact.sample_valid_count <= 0) {
+    std::ostringstream out;
+    out << "sample_valid_count expected positive but got "
+        << fact.sample_valid_count;
+    return out.str();
+  }
+  if (const auto mismatch =
+          check_fraction("sample_valid_fraction", fact.sample_valid_fraction)) {
+    return mismatch;
+  }
+  if (fact.channel_valid_count <= 0) {
+    std::ostringstream out;
+    out << "channel_valid_count expected positive but got "
+        << fact.channel_valid_count;
+    return out.str();
+  }
+  if (const auto mismatch = check_fraction("channel_valid_fraction",
+                                           fact.channel_valid_fraction)) {
+    return mismatch;
+  }
+  if (fact.valid_latent_rows <= 0) {
+    std::ostringstream out;
+    out << "valid_latent_rows expected positive but got "
+        << fact.valid_latent_rows;
+    return out.str();
+  }
+  if (fact.total_valid_projection_rows <= 0) {
+    std::ostringstream out;
+    out << "total_valid_projection_rows expected positive but got "
+        << fact.total_valid_projection_rows;
+    return out.str();
+  }
+  if (fact.representation_embedding_dim <= 0) {
+    std::ostringstream out;
+    out << "representation_embedding_dim expected positive but got "
+        << fact.representation_embedding_dim;
+    return out.str();
+  }
+  if (const auto mismatch = check_finite("latent_std", fact.latent_std)) {
+    return mismatch;
+  }
+  if (fact.latent_std <= 0.0) {
+    std::ostringstream out;
+    out << "latent_std expected positive but got " << fact.latent_std;
+    return out.str();
+  }
+  if (const auto mismatch = check_finite("latent_norm", fact.latent_norm)) {
+    return mismatch;
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] inline std::optional<std::string>
+strict_mtf_report_schema_mismatch(const lattice_target_evidence_t &evidence) {
+  const auto check =
+      [](const char *field_name, const std::string &actual,
+         const std::string &expected) -> std::optional<std::string> {
+    if (actual == expected) {
+      return std::nullopt;
+    }
+    std::ostringstream out;
+    out << field_name << " expected " << expected << " but got "
+        << (actual.empty() ? "<empty>" : actual);
+    return out.str();
+  };
+  if (const auto mismatch =
+          check("report_schema_id", evidence.report_schema_id,
+                "wikimyei.representation.mtf_jepa_mae_vicreg.report.v1")) {
+    return mismatch;
+  }
+  if (evidence.report_schema_version != 1) {
+    std::ostringstream out;
+    out << "report_schema_version expected 1 but got "
+        << evidence.report_schema_version;
+    return out.str();
+  }
+  if (const auto mismatch = check("report_writer_id", evidence.report_writer_id,
+                                  "jkimyei.training.representation."
+                                  "mtf_jepa_mae_vicreg_graph_first_launcher")) {
+    return mismatch;
+  }
+  if (evidence.report_writer_version.empty()) {
+    return "report_writer_version expected non-empty but got <empty>";
   }
   return std::nullopt;
 }
@@ -1172,7 +1404,6 @@ make_proof_context(const lattice_target_spec_t &spec,
   spawn.component_family_id = out.component_family_id;
   spawn.protocol_contract_fingerprint = out.active_contract_fingerprint;
   spawn.graph_order_fingerprint = out.active_graph_order_fingerprint;
-  spawn.source_cursor_token = out.active_source_cursor_token;
   spawn.component_assembly_fingerprint = expected_component_fingerprint;
   out.computed_component_spawn_fingerprint =
       provenance::component_spawn_fingerprint(spawn);
@@ -1764,19 +1995,26 @@ private:
                      "matching job exists but component report is missing")) {
         append_deficit(result, "artifact", "component_report", "missing",
                        reason);
+      } else if (reason.starts_with("MTF report schema mismatch: ")) {
+        append_deficit(result, "artifact", "report_schema", "mismatch", reason);
       } else if (reason == "candidate job status is missing") {
         append_deficit(result, "artifact", "job_state", "missing", reason);
       } else if (reason.starts_with("candidate job status is not completed")) {
         append_deficit(result, "artifact", "job_status", "not_completed",
                        reason);
       } else if (reason == "compatible checkpoint artifact is missing" ||
+                 reason == "MTF checkpoint digest verification failed" ||
                  reason.starts_with("CHECKPOINT_SOURCE "
                                     "latest_satisfying target has no "
                                     "checkpoint artifact") ||
                  reason.starts_with("EVALUATED_CHECKPOINT_SOURCE "
                                     "latest_satisfying target has no "
                                     "checkpoint artifact")) {
-        append_deficit(result, "artifact", "checkpoint", "missing", reason);
+        append_deficit(result, "artifact", "checkpoint",
+                       reason == "MTF checkpoint digest verification failed"
+                           ? "digest_mismatch"
+                           : "missing",
+                       reason);
       } else if (reason.starts_with(
                      "exposure ledger has no checkpoint closure facts for ")) {
         append_deficit(result, "artifact", "checkpoint_closure_fact", "missing",
@@ -1802,9 +2040,7 @@ private:
                        "target_component_family_exposure_fact", "missing",
                        reason);
       } else if (reason == "MDN readiness requires a loaded compatible "
-                           "representation checkpoint" ||
-                 reason == "legacy node MDN readiness requires a loaded "
-                           "compatible representation checkpoint") {
+                           "representation checkpoint") {
         append_deficit(result, "model_state", "representation_checkpoint",
                        "missing", reason);
       } else if (reason.starts_with(
@@ -1985,6 +2221,25 @@ private:
       result.plan_ready = false;
       result.suggested_wave = {};
       return result;
+    }
+
+    if (!spec.protocol_id.empty()) {
+      if (options_.active_identity.protocol_id.empty()) {
+        result.status = lattice_target_status_t::blocked;
+        result.reasons.push_back(
+            "active protocol id is required but was not provided");
+        result.plan_ready = false;
+        result.suggested_wave = {};
+        return result;
+      }
+      if (options_.active_identity.protocol_id != spec.protocol_id) {
+        result.status = lattice_target_status_t::blocked;
+        result.reasons.push_back("target protocol id does not match active "
+                                 "protocol id");
+        result.plan_ready = false;
+        result.suggested_wave = {};
+        return result;
+      }
     }
 
     const auto expected_component_fingerprint =
@@ -2245,6 +2500,16 @@ private:
       return result;
     }
 
+    if (spec.kind == lattice_target_kind_t::mtf_representation_ready) {
+      if (const auto mismatch =
+              detail::strict_mtf_report_schema_mismatch(result.evidence)) {
+        result.status = lattice_target_status_t::exposure_failed;
+        result.reasons.push_back("MTF report schema mismatch: " + *mismatch);
+        result.plan_ready = plan_budget_remaining;
+        return result;
+      }
+    }
+
     if (result.evidence.status != "completed") {
       result.status = lattice_target_status_t::metric_failed;
       result.reasons.push_back(result.evidence.status.empty()
@@ -2261,6 +2526,24 @@ private:
       result.status = lattice_target_status_t::stale_contract;
       result.reasons.push_back("candidate contract fingerprint does not match "
                                "active contract fingerprint");
+      result.plan_ready = plan_budget_remaining;
+      return result;
+    }
+
+    if (!options_.active_identity.protocol_id.empty() &&
+        result.evidence.protocol_id != options_.active_identity.protocol_id) {
+      result.status = lattice_target_status_t::stale_contract;
+      result.reasons.push_back("candidate protocol id does not match active "
+                               "protocol id");
+      result.plan_ready = plan_budget_remaining;
+      return result;
+    }
+
+    if (!spec.protocol_id.empty() &&
+        result.evidence.protocol_id != spec.protocol_id) {
+      result.status = lattice_target_status_t::stale_contract;
+      result.reasons.push_back(
+          "candidate protocol id does not match target protocol id");
       result.plan_ready = plan_budget_remaining;
       return result;
     }
@@ -2300,6 +2583,14 @@ private:
           !std::filesystem::exists(result.evidence.checkpoint_path)) {
         result.status = lattice_target_status_t::missing_checkpoint;
         result.reasons.push_back("compatible checkpoint artifact is missing");
+        result.plan_ready = plan_budget_remaining;
+        return result;
+      }
+      if (spec.kind == lattice_target_kind_t::mtf_representation_ready &&
+          (!result.evidence.checkpoint_file_exists ||
+           !result.evidence.checkpoint_digest_verified)) {
+        result.status = lattice_target_status_t::exposure_failed;
+        result.reasons.push_back("MTF checkpoint digest verification failed");
         result.plan_ready = plan_budget_remaining;
         return result;
       }
@@ -2421,31 +2712,14 @@ private:
       }
     }
 
-    if (lattice_target_kind_has_node_heads(spec.kind)) {
-      if (result.evidence.active_node_head_count <
-          spec.require_active_node_head_count) {
-        result.status = lattice_target_status_t::metric_failed;
-        result.reasons.push_back(
-            "active node head count below REQUIRE_ACTIVE_NODE_HEAD_COUNT");
-        result.plan_ready = plan_budget_remaining;
-        return result;
-      }
-      if (result.evidence.trained_node_head_count <
-          spec.require_trained_node_head_count) {
-        result.status = lattice_target_status_t::metric_failed;
-        result.reasons.push_back(
-            "trained node head count below REQUIRE_TRAINED_NODE_HEAD_COUNT");
-        result.plan_ready = plan_budget_remaining;
-        return result;
-      }
-      if (result.evidence.evaluated_node_head_count <
-          spec.require_evaluated_node_head_count) {
-        result.status = lattice_target_status_t::metric_failed;
-        result.reasons.push_back("evaluated node head count below "
-                                 "REQUIRE_EVALUATED_NODE_HEAD_COUNT");
-        result.plan_ready = plan_budget_remaining;
-        return result;
-      }
+    if (spec.require_active_node_head_count > 0 ||
+        spec.require_trained_node_head_count > 0 ||
+        spec.require_evaluated_node_head_count > 0) {
+      result.status = lattice_target_status_t::blocked;
+      result.reasons.push_back(
+          "node head count requirements were removed with node MDN readiness");
+      result.plan_ready = false;
+      return result;
     }
 
     if (!evaluate_exposure_requirements(spec, result, plan_budget_remaining,
@@ -2476,6 +2750,24 @@ private:
     if (metric == "mean_covariance_loss") {
       return fact.mean_covariance_loss;
     }
+    if (metric == "loss_jepa_mean") {
+      return fact.loss_jepa_mean;
+    }
+    if (metric == "loss_mae_time_mean") {
+      return fact.loss_mae_time_mean;
+    }
+    if (metric == "loss_mae_frequency_mean") {
+      return fact.loss_mae_frequency_mean;
+    }
+    if (metric == "loss_tf_align_mean") {
+      return fact.loss_tf_align_mean;
+    }
+    if (metric == "loss_vicreg_global_mean") {
+      return fact.loss_vicreg_global_mean;
+    }
+    if (metric == "loss_vicreg_channel_mean") {
+      return fact.loss_vicreg_channel_mean;
+    }
     if (metric == "last_grad_norm") {
       return fact.last_grad_norm;
     }
@@ -2499,6 +2791,54 @@ private:
     }
     if (metric == "finite_parameter_check") {
       return fact.finite_parameter_check ? 1.0 : 0.0;
+    }
+    if (metric == "gradients_finite") {
+      return fact.gradients_finite ? 1.0 : 0.0;
+    }
+    if (metric == "sample_valid_count") {
+      return static_cast<double>(fact.sample_valid_count);
+    }
+    if (metric == "sample_valid_fraction") {
+      return fact.sample_valid_fraction;
+    }
+    if (metric == "channel_valid_count") {
+      return static_cast<double>(fact.channel_valid_count);
+    }
+    if (metric == "channel_valid_fraction") {
+      return fact.channel_valid_fraction;
+    }
+    if (metric == "valid_latent_rows") {
+      return static_cast<double>(fact.valid_latent_rows);
+    }
+    if (metric == "tf_pair_count") {
+      return static_cast<double>(fact.tf_pair_count);
+    }
+    if (metric == "tf_pair_valid_count") {
+      return static_cast<double>(fact.tf_pair_valid_count);
+    }
+    if (metric == "vicreg_global_valid_rows") {
+      return static_cast<double>(fact.vicreg_global_valid_rows);
+    }
+    if (metric == "vicreg_channel_valid_rows") {
+      return static_cast<double>(fact.vicreg_channel_valid_rows);
+    }
+    if (metric == "context_starved_sample_count") {
+      return static_cast<double>(fact.context_starved_sample_count);
+    }
+    if (metric == "reduced_targets_for_context_count") {
+      return static_cast<double>(fact.reduced_targets_for_context_count);
+    }
+    if (metric == "min_context_satisfied_count") {
+      return static_cast<double>(fact.min_context_satisfied_count);
+    }
+    if (metric == "target_ema_distance") {
+      return fact.target_ema_distance;
+    }
+    if (metric == "latent_std") {
+      return fact.latent_std;
+    }
+    if (metric == "latent_norm") {
+      return fact.latent_norm;
     }
     if (metric == "representation_embedding_dim") {
       return static_cast<double>(fact.representation_embedding_dim);
@@ -2528,6 +2868,14 @@ private:
   representation_health_unit(const std::string &metric) {
     if (metric == "total_valid_projection_rows" ||
         metric == "augmented_valid_feature_count" ||
+        metric == "sample_valid_count" || metric == "channel_valid_count" ||
+        metric == "valid_latent_rows" || metric == "tf_pair_count" ||
+        metric == "tf_pair_valid_count" ||
+        metric == "vicreg_global_valid_rows" ||
+        metric == "vicreg_channel_valid_rows" ||
+        metric == "context_starved_sample_count" ||
+        metric == "reduced_targets_for_context_count" ||
+        metric == "min_context_satisfied_count" ||
         metric == "representation_embedding_dim") {
       return "count";
     }
@@ -2537,17 +2885,29 @@ private:
     if (metric == "mean_adapter_valid_channel_time_fraction" ||
         metric == "mean_augmented_valid_feature_fraction" ||
         metric == "mean_augmented_feature_retention_fraction" ||
+        metric == "sample_valid_fraction" ||
+        metric == "channel_valid_fraction" ||
         metric == "representation_effective_rank_fraction" ||
         metric == "representation_isotropy_score") {
       return "fraction";
     }
-    if (metric == "finite_parameter_check") {
+    if (metric == "finite_parameter_check" || metric == "gradients_finite") {
       return "boolean";
     }
     if (metric == "last_grad_norm" || metric == "max_grad_norm") {
       return "gradient_norm";
     }
-    if (metric == "representation_min_dimension_variance" ||
+    if (metric == "loss_jepa_mean" || metric == "loss_mae_time_mean" ||
+        metric == "loss_mae_frequency_mean" || metric == "loss_tf_align_mean" ||
+        metric == "loss_vicreg_global_mean" ||
+        metric == "loss_vicreg_channel_mean") {
+      return "loss";
+    }
+    if (metric == "target_ema_distance" || metric == "latent_norm") {
+      return "distance";
+    }
+    if (metric == "latent_std" ||
+        metric == "representation_min_dimension_variance" ||
         metric == "representation_max_dimension_variance") {
       return "variance";
     }
@@ -2555,6 +2915,124 @@ private:
       return "condition_number";
     }
     return "loss";
+  }
+
+  [[nodiscard]] static std::optional<double> runtime_health_metric(
+      const cuwacunu::kikijyeba::lattice::exposure::lattice_exposure_fact_t
+          &fact,
+      const std::string &metric) {
+    const bool has_runtime_health_surface =
+        fact.runtime_result_fact_available ||
+        fact.runtime_checkpoint_io_fact_available ||
+        fact.runtime_health_measurement_fact_available ||
+        fact.inference_health_available || fact.representation_health_available;
+    if (metric == "finite_parameter_check") {
+      return has_runtime_health_surface
+                 ? std::optional<double>(fact.finite_parameter_check ? 1.0
+                                                                     : 0.0)
+                 : std::nullopt;
+    }
+    if (metric == "nonfinite_output_count") {
+      return has_runtime_health_surface
+                 ? std::optional<double>(
+                       static_cast<double>(fact.nonfinite_output_count))
+                 : std::nullopt;
+    }
+    if (metric == "checkpoint_written") {
+      return fact.checkpoint_written || !fact.output_checkpoint.empty() ? 1.0
+                                                                        : 0.0;
+    }
+    if (metric == "model_state_mutated") {
+      return fact.model_state_mutated || fact.use.mutated_component ? 1.0 : 0.0;
+    }
+    if (metric == "representation_checkpoint_loaded") {
+      return fact.runtime_checkpoint_io_fact_available ||
+                     !fact.input_checkpoints.empty()
+                 ? std::optional<double>(
+                       fact.representation_checkpoint_loaded ? 1.0 : 0.0)
+                 : std::nullopt;
+    }
+    if (metric == "mdn_checkpoint_loaded") {
+      return fact.runtime_checkpoint_io_fact_available ||
+                     !fact.input_checkpoints.empty()
+                 ? std::optional<double>(fact.mdn_checkpoint_loaded ? 1.0 : 0.0)
+                 : std::nullopt;
+    }
+    if (metric == "grad_norm_max_pre_clip" || metric == "max_grad_norm") {
+      return fact.max_grad_norm;
+    }
+    if (metric == "grad_norm_clip_ratio") {
+      if (std::isfinite(fact.max_grad_norm) &&
+          std::isfinite(fact.grad_clip_norm) && fact.grad_clip_norm > 0.0) {
+        return fact.max_grad_norm / fact.grad_clip_norm;
+      }
+      return std::nullopt;
+    }
+    if (metric == "sigma_min") {
+      return fact.min_sigma_min;
+    }
+    if (metric == "sigma_mean") {
+      return fact.mean_sigma_mean;
+    }
+    if (metric == "sigma_max") {
+      return fact.max_sigma_max;
+    }
+    if (metric == "sigma_min_valid") {
+      return fact.sigma_min_valid;
+    }
+    if (metric == "sigma_mean_valid") {
+      return fact.sigma_mean_valid;
+    }
+    if (metric == "sigma_max_valid") {
+      return fact.sigma_max_valid;
+    }
+    if (metric == "mixture_entropy") {
+      return fact.mean_mixture_entropy;
+    }
+    if (metric == "valid_target_fraction") {
+      return fact.valid_target_fraction;
+    }
+    return std::nullopt;
+  }
+
+  [[nodiscard]] static std::string
+  runtime_health_unit(const std::string &metric) {
+    if (metric == "finite_parameter_check" || metric == "checkpoint_written" ||
+        metric == "model_state_mutated" ||
+        metric == "representation_checkpoint_loaded" ||
+        metric == "mdn_checkpoint_loaded") {
+      return "boolean";
+    }
+    if (metric == "nonfinite_output_count") {
+      return "count";
+    }
+    if (metric == "valid_target_fraction") {
+      return "fraction";
+    }
+    if (metric == "grad_norm_max_pre_clip" || metric == "max_grad_norm") {
+      return "gradient_norm";
+    }
+    if (metric == "grad_norm_clip_ratio") {
+      return "ratio";
+    }
+    if (metric == "sigma_min" || metric == "sigma_mean" ||
+        metric == "sigma_max" || metric == "sigma_min_valid" ||
+        metric == "sigma_mean_valid" || metric == "sigma_max_valid") {
+      return "sigma";
+    }
+    if (metric == "mixture_entropy") {
+      return "entropy";
+    }
+    return "metric";
+  }
+
+  [[nodiscard]] static bool
+  runtime_health_metric_is_severe(const std::string &metric) {
+    return metric == "finite_parameter_check" ||
+           metric == "nonfinite_output_count" ||
+           metric == "checkpoint_written" || metric == "model_state_mutated" ||
+           metric == "representation_checkpoint_loaded" ||
+           metric == "mdn_checkpoint_loaded";
   }
 
   [[nodiscard]] bool evaluate_representation_geometry_requirements(
@@ -2684,6 +3162,9 @@ private:
     if (metric == "mean_nll_per_target_feature_max") {
       return max_finite(fact.mean_nll_per_target_feature);
     }
+    if (metric == "mean_nll_per_channel_target_feature_max") {
+      return max_finite(fact.mean_nll_per_channel_target_feature);
+    }
     return std::nullopt;
   }
 
@@ -2697,6 +3178,9 @@ private:
     }
     if (metric == "mean_nll_per_target_feature_max") {
       return "target_feature_stratified_scoring_loss";
+    }
+    if (metric == "mean_nll_per_channel_target_feature_max") {
+      return "channel_target_feature_stratified_scoring_loss";
     }
     if (metric == "per_node_mean_nll_max") {
       return "node_stratified_scoring_loss";
@@ -2720,6 +3204,7 @@ private:
   mdn_distribution_uncertainty_method(const std::string &metric) {
     if (metric == "mean_nll" || metric == "mean_nll_per_channel_max" ||
         metric == "mean_nll_per_target_feature_max" ||
+        metric == "mean_nll_per_channel_target_feature_max" ||
         metric == "per_node_mean_nll_max") {
       return "none_point_estimate_only";
     }
@@ -2742,6 +3227,7 @@ private:
   mdn_distribution_metric_unit(const std::string &metric) {
     if (metric == "mean_nll" || metric == "mean_nll_per_channel_max" ||
         metric == "mean_nll_per_target_feature_max" ||
+        metric == "mean_nll_per_channel_target_feature_max" ||
         metric == "per_node_mean_nll_max") {
       return "nll";
     }
@@ -3131,6 +3617,87 @@ private:
         continue;
       }
 
+      if (warning.kind == "runtime_health") {
+        out.evidence_basis = "runtime_exposure_facts";
+        out.metric = warning.metric;
+        out.unit = runtime_health_unit(warning.metric);
+        const bool use_above = std::isfinite(warning.above);
+        out.threshold = use_above ? warning.above : warning.below;
+        out.threshold_direction = use_above ? "above" : "below";
+        std::int64_t fact_count = 0;
+        std::int64_t sample_count = 0;
+        bool saw_terminal_fact = false;
+        double measured = std::numeric_limits<double>::quiet_NaN();
+        for (const auto &fact : facts) {
+          if (!warning_fact_overlaps_anchor_range(spec, warning, fact,
+                                                  warning.use)) {
+            continue;
+          }
+          if (!exposure_use_set_has(fact.use, warning.use)) {
+            continue;
+          }
+          if (warning.require_mutated_component &&
+              !fact.use.mutated_component) {
+            continue;
+          }
+          const auto value = runtime_health_metric(fact, warning.metric);
+          if (!value.has_value() || !std::isfinite(*value)) {
+            continue;
+          }
+          ++fact_count;
+          sample_count += fact.valid_target_count;
+          saw_terminal_fact = saw_terminal_fact ||
+                              fact.runtime_result_fact_available ||
+                              fact.runtime_checkpoint_io_fact_available ||
+                              fact.runtime_health_measurement_fact_available;
+          measured = std::isfinite(measured)
+                         ? (use_above ? std::max(measured, *value)
+                                      : std::min(measured, *value))
+                         : *value;
+        }
+        if (saw_terminal_fact) {
+          out.evidence_basis = "runtime_terminal_facts";
+        }
+        out.exposure_summary.fact_count = fact_count;
+        out.exposure_summary.valid_target_count_total = sample_count;
+        out.exposure_summary_available = fact_count > 0;
+        out.measured_value = measured;
+        out.measurement_available = std::isfinite(out.measured_value);
+        const bool triggered = std::isfinite(out.threshold) &&
+                               std::isfinite(out.measured_value) &&
+                               (use_above ? out.measured_value > out.threshold
+                                          : out.measured_value < out.threshold);
+        std::ostringstream message;
+        message << "runtime-health " << warning.metric;
+        if (!out.split.empty()) {
+          message << " over " << out.split;
+        }
+        message << " for " << out.use;
+        if (std::isfinite(out.measured_value)) {
+          message << " is " << out.measured_value;
+          if (std::isfinite(out.threshold)) {
+            message << threshold_comparison_phrase(triggered, use_above)
+                    << out.threshold;
+          }
+        } else {
+          message << " is unavailable";
+          if (std::isfinite(out.threshold)) {
+            message << " for threshold " << out.threshold;
+          }
+        }
+        out.message = message.str();
+        assign_warning_threshold_relation(out, triggered);
+        if (triggered) {
+          out.status = "warning";
+          out.severity = runtime_health_metric_is_severe(warning.metric)
+                             ? "severe"
+                             : "warn";
+          result.warnings.push_back(out.message);
+        }
+        result.warning_results.push_back(std::move(out));
+        continue;
+      }
+
       if (warning.kind == "mdn_distribution_calibration") {
         out.evidence_basis = "mdn_distribution_facts";
         out.metric = warning.metric;
@@ -3419,8 +3986,6 @@ private:
           static_cast<std::int64_t>(closure.facts.size());
       result.proof_certificate.closure.resolution_authority =
           closure.resolution_authority;
-      result.proof_certificate.closure.legacy_path_fallback =
-          closure.legacy_path_fallback;
       result.proof_certificate.closure.root_checkpoint_id =
           closure.root_checkpoint_id;
       result.proof_certificate.closure.root_checkpoint_file_digest =
@@ -3454,6 +4019,9 @@ private:
         causal.wave_id = fact.wave_id;
         causal.wave_action = fact.wave_action;
         causal.job_status = fact.job_status;
+        causal.runtime_handoff_id = fact.runtime_handoff_id;
+        causal.runtime_handoff_digest = fact.runtime_handoff_digest;
+        causal.marshal_target_driver_run_id = fact.marshal_target_driver_run_id;
         causal.target_component_family_id = fact.target_component_family_id;
         causal.representation_architecture = fact.representation_architecture;
         causal.representation_contract = fact.representation_contract;
@@ -3637,15 +4205,25 @@ private:
       auto rep_facts = detail::filter_facts_for_active_identity(
           rep_closure.facts, options_.active_identity, spec,
           expected_component_fingerprint, expected_split_policy_fingerprint);
-      const auto rep_ready_fact = std::find_if(
-          rep_facts.begin(), rep_facts.end(),
-          [&](const exposure::lattice_exposure_fact_t &fact) {
-            return fact.target_component_family_id ==
-                       upstream_representation_component_for_target_kind(
-                           spec.kind) &&
-                   fact.component_assembly_fingerprint ==
-                       options_.active_identity.vicreg_assembly_fingerprint;
-          });
+      const bool expect_mtf_representation = spec.protocol_id == "cwu_02v";
+      const std::string expected_representation_component =
+          expect_mtf_representation
+              ? std::string{"wikimyei.representation.encoding.mtf_jepa_mae_"
+                            "vicreg"}
+              : upstream_representation_component_for_target_kind(spec.kind);
+      const std::string expected_representation_fingerprint =
+          expect_mtf_representation
+              ? options_.active_identity
+                    .mtf_jepa_mae_vicreg_assembly_fingerprint
+              : options_.active_identity.vicreg_assembly_fingerprint;
+      const auto rep_ready_fact =
+          std::find_if(rep_facts.begin(), rep_facts.end(),
+                       [&](const exposure::lattice_exposure_fact_t &fact) {
+                         return fact.target_component_family_id ==
+                                    expected_representation_component &&
+                                fact.component_assembly_fingerprint ==
+                                    expected_representation_fingerprint;
+                       });
       if (rep_ready_fact == rep_facts.end()) {
         result.status = lattice_target_status_t::exposure_failed;
         result.reasons.push_back(
@@ -3711,6 +4289,16 @@ private:
           return false;
         }
       }
+      if (spec.kind == lattice_target_kind_t::mtf_representation_ready) {
+        if (const auto mismatch =
+                detail::strict_mtf_representation_health_mismatch(fact)) {
+          result.status = lattice_target_status_t::exposure_failed;
+          result.reasons.push_back(
+              "target MTF representation health mismatch: " + *mismatch);
+          result.plan_ready = plan_budget_remaining;
+          return false;
+        }
+      }
       if (spec.kind == lattice_target_kind_t::channel_mdn_ready) {
         if (const auto mismatch =
                 detail::strict_channel_mdn_health_mismatch(fact)) {
@@ -3730,29 +4318,6 @@ private:
 
     const auto target_range = detail::target_anchor_interval(spec);
     std::vector<exposure::lattice_node_exposure_fact_t> node_facts;
-    if (lattice_target_kind_has_node_heads(spec.kind)) {
-      std::unordered_set<std::string> target_component_family_fact_digests;
-      for (const auto &fact : target_component_family_facts) {
-        target_component_family_fact_digests.insert(
-            exposure::exposure_fact_digest(fact));
-      }
-      for (const auto &node_fact : ledger->node_facts()) {
-        if (!target_component_family_fact_digests.count(
-                node_fact.parent_exposure_fact_digest)) {
-          continue;
-        }
-        node_facts.push_back(node_fact);
-      }
-      if (!node_facts.empty()) {
-        auto summary = exposure::summarize_node_support_for_range(
-            node_facts, target_range, spec.component);
-        if (summary.node_count > 0) {
-          result.node_support_summaries.push_back(std::move(summary));
-        }
-      }
-      result.proof_certificate.node_support_summaries =
-          result.node_support_summaries;
-    }
     evaluate_warning_specs(spec, result, exposure_facts,
                            target_component_family_facts, node_facts,
                            result.node_support_summaries);

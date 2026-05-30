@@ -1,4 +1,4 @@
-#include "kikijyeba/marshal/tool_handler.h"
+#include "hero/marshal_hero/hero_marshal_tools.h"
 
 #include "hero/lattice_hero/hero_lattice_tools.h"
 
@@ -110,25 +110,22 @@ int main(int argc, char **argv) {
     return 2;
   }
 
-  cuwacunu::kikijyeba::marshal::set_marshal_lattice_tool_callback(
-      call_lattice_tool);
+  cuwacunu::hero::marshal::set_marshal_lattice_tool_callback(call_lattice_tool);
 
   if (list_tools_json) {
-    std::cout
-        << cuwacunu::kikijyeba::marshal::build_marshal_tools_list_result_json()
-        << "\n";
+    std::cout << cuwacunu::hero::marshal::build_tools_list_result_json()
+              << "\n";
     return 0;
   }
   if (list_tools) {
-    std::cout
-        << cuwacunu::kikijyeba::marshal::build_marshal_tools_list_human_text();
+    std::cout << cuwacunu::hero::marshal::build_tools_list_human_text();
     return 0;
   }
 
   if (direct_tool_mode) {
     std::string result;
     std::string error;
-    const bool ok = cuwacunu::kikijyeba::marshal::execute_marshal_tool_json(
+    const bool ok = cuwacunu::hero::marshal::execute_tool_json(
         direct_tool_name, direct_tool_args_json, &result, &error);
     if (!result.empty()) {
       std::cout << result << "\n";
@@ -146,6 +143,6 @@ int main(int argc, char **argv) {
     return 2;
   }
 
-  cuwacunu::kikijyeba::marshal::run_marshal_jsonrpc_stdio_loop();
+  cuwacunu::hero::marshal::run_jsonrpc_stdio_loop();
   return 0;
 }

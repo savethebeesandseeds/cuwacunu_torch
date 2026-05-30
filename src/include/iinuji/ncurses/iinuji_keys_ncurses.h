@@ -32,6 +32,8 @@ namespace iinuji {
     return key_delete;
   case KEY_ENTER:
     return key_enter;
+  case KEY_BTAB:
+    return key_shift_tab;
   default:
     return ch;
   }

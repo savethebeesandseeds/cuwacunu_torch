@@ -13,6 +13,7 @@
 #include <utility>
 #include <vector>
 
+#include "iinuji/iinuji_color.h"
 #include "iinuji/iinuji_keys.h"
 #include "iinuji/iinuji_utils.h"
 #include "iinuji/primitives/primitive.h"
@@ -109,6 +110,354 @@ struct editor_box_opts_t {
 };
 
 namespace primitives {
+
+enum class editor_syntax_kind_t {
+  Plain = 0,
+  Assignment,
+  Bnf,
+  Markdown,
+};
+
+inline std::string editor_syntax_lower(std::string_view value) {
+  std::string out(value);
+  std::transform(out.begin(), out.end(), out.begin(), [](unsigned char ch) {
+    return static_cast<char>(std::tolower(ch));
+  });
+  return out;
+}
+
+inline editor_syntax_kind_t editor_syntax_kind_for_path(std::string_view path) {
+  const std::string lower = editor_syntax_lower(path);
+  if (lower.ends_with(".bnf"))
+    return editor_syntax_kind_t::Bnf;
+  if (lower.ends_with(".md"))
+    return editor_syntax_kind_t::Markdown;
+  if (lower.ends_with(".dsl") || lower.ends_with(".man") ||
+      lower.ends_with(".jkimyei") || lower.ends_with(".net") ||
+      lower.ends_with(".manifest") || lower.ends_with(".state") ||
+      lower.ends_with(".config") || lower.ends_with("/.config") ||
+      lower == ".config") {
+    return editor_syntax_kind_t::Assignment;
+  }
+  return editor_syntax_kind_t::Plain;
+}
+
+inline short editor_syntax_pair(std::string_view fg, std::string_view bg,
+                                short fallback) {
+  const short pair =
+      static_cast<short>(get_color_pair(std::string(fg), std::string(bg)));
+  return pair == 0 ? fallback : pair;
+}
+
+inline void editor_syntax_apply(std::vector<short> &colors, std::size_t begin,
+                                std::size_t end, short pair) {
+  if (begin >= colors.size())
+    return;
+  end = std::min(end, colors.size());
+  for (std::size_t i = begin; i < end; ++i)
+    colors[i] = pair;
+}
+
+inline bool editor_syntax_ident_char(unsigned char ch) {
+  return std::isalnum(ch) || ch == '_' || ch == '-' || ch == '.';
+}
+
+inline std::size_t editor_syntax_first_nonspace(std::string_view line,
+                                                std::size_t end) {
+  std::size_t i = 0;
+  end = std::min(end, line.size());
+  while (i < end && std::isspace(static_cast<unsigned char>(line[i])))
+    ++i;
+  return i;
+}
+
+inline std::size_t editor_syntax_find_comment(std::string_view line) {
+  bool single_quote = false;
+  bool double_quote = false;
+  bool escaped = false;
+  for (std::size_t i = 0; i < line.size(); ++i) {
+    const char ch = line[i];
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if ((single_quote || double_quote) && ch == '\\') {
+      escaped = true;
+      continue;
+    }
+    if (!single_quote && ch == '"') {
+      double_quote = !double_quote;
+      continue;
+    }
+    if (!double_quote && ch == '\'') {
+      single_quote = !single_quote;
+      continue;
+    }
+    if (single_quote || double_quote)
+      continue;
+    if (ch == '#')
+      return i;
+    if (ch == '/' && i + 1u < line.size() && line[i + 1u] == '/' &&
+        (i == 0u || std::isspace(static_cast<unsigned char>(line[i - 1u])))) {
+      return i;
+    }
+  }
+  return std::string_view::npos;
+}
+
+inline std::size_t editor_syntax_find_unquoted(std::string_view line,
+                                               char wanted, std::size_t end) {
+  bool single_quote = false;
+  bool double_quote = false;
+  bool escaped = false;
+  end = std::min(end, line.size());
+  for (std::size_t i = 0; i < end; ++i) {
+    const char ch = line[i];
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if ((single_quote || double_quote) && ch == '\\') {
+      escaped = true;
+      continue;
+    }
+    if (!single_quote && ch == '"') {
+      double_quote = !double_quote;
+      continue;
+    }
+    if (!double_quote && ch == '\'') {
+      single_quote = !single_quote;
+      continue;
+    }
+    if (!single_quote && !double_quote && ch == wanted)
+      return i;
+  }
+  return std::string_view::npos;
+}
+
+inline bool editor_syntax_number_token(std::string_view token) {
+  if (token.empty())
+    return false;
+  bool digit = false;
+  std::size_t i = (token.front() == '-' || token.front() == '+') ? 1u : 0u;
+  for (; i < token.size(); ++i) {
+    const unsigned char ch = static_cast<unsigned char>(token[i]);
+    if (std::isdigit(ch)) {
+      digit = true;
+      continue;
+    }
+    if (token[i] == '.' || token[i] == '_')
+      continue;
+    return false;
+  }
+  return digit;
+}
+
+inline void editor_syntax_color_strings(std::string_view line, std::size_t end,
+                                        std::vector<short> &colors,
+                                        short pair) {
+  end = std::min(end, line.size());
+  for (std::size_t i = 0; i < end; ++i) {
+    const char quote = line[i];
+    if (quote != '"' && quote != '\'')
+      continue;
+    const std::size_t begin = i++;
+    bool escaped = false;
+    for (; i < end; ++i) {
+      const char ch = line[i];
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (ch == '\\') {
+        escaped = true;
+        continue;
+      }
+      if (ch == quote) {
+        ++i;
+        break;
+      }
+    }
+    editor_syntax_apply(colors, begin, i, pair);
+    if (i > 0)
+      --i;
+  }
+}
+
+inline void editor_syntax_color_value_tokens(std::string_view line,
+                                             std::size_t begin, std::size_t end,
+                                             std::vector<short> &colors,
+                                             short value_pair, short bool_pair,
+                                             short number_pair,
+                                             short path_pair) {
+  std::size_t i = begin;
+  while (i < end) {
+    while (i < end && (std::isspace(static_cast<unsigned char>(line[i])) ||
+                       line[i] == ','))
+      ++i;
+    const std::size_t token_begin = i;
+    while (i < end && !std::isspace(static_cast<unsigned char>(line[i])) &&
+           line[i] != ',')
+      ++i;
+    if (token_begin == i)
+      continue;
+    std::string token(line.substr(token_begin, i - token_begin));
+    while (!token.empty() &&
+           (token.back() == ';' || token.back() == ',' || token.back() == ')'))
+      token.pop_back();
+    const std::string lower = editor_syntax_lower(token);
+    short pair = value_pair;
+    if (lower == "true" || lower == "false" || lower == "yes" ||
+        lower == "no") {
+      pair = bool_pair;
+    } else if (editor_syntax_number_token(token)) {
+      pair = number_pair;
+    } else if (token.find('/') != std::string::npos ||
+               token.starts_with("./") || token.starts_with("../")) {
+      pair = path_pair;
+    }
+    editor_syntax_apply(colors, token_begin, token_begin + token.size(), pair);
+  }
+}
+
+inline void editor_colorize_assignment_line(const editor_box_data_t &, int,
+                                            const std::string &line,
+                                            std::vector<short> &colors,
+                                            short base_pair,
+                                            const std::string &bg) {
+  const short key_pair = editor_syntax_pair("#8BD5CA", bg, base_pair);
+  const short type_pair = editor_syntax_pair("#88C0D0", bg, base_pair);
+  const short value_pair = editor_syntax_pair("#D8DEE9", bg, base_pair);
+  const short string_pair = editor_syntax_pair("#A3BE8C", bg, base_pair);
+  const short number_pair = editor_syntax_pair("#D08770", bg, base_pair);
+  const short bool_pair = editor_syntax_pair("#B48EAD", bg, base_pair);
+  const short op_pair = editor_syntax_pair("#E3C779", bg, base_pair);
+  const short comment_pair = editor_syntax_pair("#6D7890", bg, base_pair);
+  const short section_pair = editor_syntax_pair("#F2B880", bg, base_pair);
+
+  const std::size_t comment = editor_syntax_find_comment(line);
+  const std::size_t code_end =
+      comment == std::string_view::npos ? line.size() : comment;
+  const std::size_t first = editor_syntax_first_nonspace(line, code_end);
+
+  if (first < code_end && line[first] == '[') {
+    const std::size_t close = line.find(']', first + 1u);
+    if (close != std::string::npos && close < code_end)
+      editor_syntax_apply(colors, first, close + 1u, section_pair);
+  }
+
+  const std::size_t eq = editor_syntax_find_unquoted(line, '=', code_end);
+  const std::size_t lhs_end = eq == std::string_view::npos ? code_end : eq;
+  std::size_t key_end = lhs_end;
+  while (key_end > first &&
+         std::isspace(static_cast<unsigned char>(line[key_end - 1u])))
+    --key_end;
+  const std::size_t colon = editor_syntax_find_unquoted(line, ':', lhs_end);
+  if (colon != std::string_view::npos && colon >= first) {
+    key_end = colon;
+    editor_syntax_apply(colors, colon, lhs_end, type_pair);
+  }
+  if (first < key_end)
+    editor_syntax_apply(colors, first, key_end, key_pair);
+
+  for (std::size_t i = first; i < code_end; ++i) {
+    const char ch = line[i];
+    if (ch == '=' || ch == ':' || ch == ',' || ch == '[' || ch == ']' ||
+        ch == '|') {
+      colors[i] = op_pair;
+    }
+  }
+
+  if (eq != std::string_view::npos && eq + 1u < code_end) {
+    editor_syntax_color_value_tokens(line, eq + 1u, code_end, colors,
+                                     value_pair, bool_pair, number_pair,
+                                     string_pair);
+  }
+  editor_syntax_color_strings(line, code_end, colors, string_pair);
+  if (comment != std::string_view::npos)
+    editor_syntax_apply(colors, comment, line.size(), comment_pair);
+}
+
+inline void editor_colorize_bnf_line(const editor_box_data_t &, int,
+                                     const std::string &line,
+                                     std::vector<short> &colors,
+                                     short base_pair, const std::string &bg) {
+  const short nonterminal_pair = editor_syntax_pair("#8BD5CA", bg, base_pair);
+  const short terminal_pair = editor_syntax_pair("#A3BE8C", bg, base_pair);
+  const short op_pair = editor_syntax_pair("#E3C779", bg, base_pair);
+  const short comment_pair = editor_syntax_pair("#6D7890", bg, base_pair);
+  const std::size_t comment = editor_syntax_find_comment(line);
+  const std::size_t code_end =
+      comment == std::string_view::npos ? line.size() : comment;
+
+  for (std::size_t i = 0; i < code_end; ++i) {
+    if (line[i] == '<') {
+      const std::size_t close = line.find('>', i + 1u);
+      if (close != std::string::npos && close < code_end) {
+        editor_syntax_apply(colors, i, close + 1u, nonterminal_pair);
+        i = close;
+        continue;
+      }
+    }
+    if (line[i] == ':' || line[i] == '=' || line[i] == '|' || line[i] == '[' ||
+        line[i] == ']' || line[i] == '(' || line[i] == ')' || line[i] == '*' ||
+        line[i] == '+' || line[i] == '?') {
+      colors[i] = op_pair;
+    }
+  }
+  editor_syntax_color_strings(line, code_end, colors, terminal_pair);
+  if (comment != std::string_view::npos)
+    editor_syntax_apply(colors, comment, line.size(), comment_pair);
+}
+
+inline void editor_colorize_markdown_line(
+    const editor_box_data_t &editor, int line_index, const std::string &line,
+    std::vector<short> &colors, short base_pair, const std::string &bg) {
+  const short heading_pair = editor_syntax_pair("#F2B880", bg, base_pair);
+  const short op_pair = editor_syntax_pair("#E3C779", bg, base_pair);
+  const std::size_t first = editor_syntax_first_nonspace(line, line.size());
+  if (first < line.size() && line[first] == '#') {
+    editor_syntax_apply(colors, first, line.size(), heading_pair);
+    return;
+  }
+  if (first + 2u < line.size() && line.substr(first, 3) == "```") {
+    editor_syntax_apply(colors, first, line.size(), op_pair);
+    return;
+  }
+  if (first + 1u < line.size() && (line[first] == '-' || line[first] == '*') &&
+      std::isspace(static_cast<unsigned char>(line[first + 1u]))) {
+    colors[first] = op_pair;
+  }
+  if (editor_syntax_find_unquoted(line, '=', line.size()) !=
+      std::string_view::npos) {
+    editor_colorize_assignment_line(editor, line_index, line, colors, base_pair,
+                                    bg);
+  }
+}
+
+inline editor_box_data_t::line_colorizer_t
+editor_make_syntax_colorizer(editor_syntax_kind_t kind) {
+  switch (kind) {
+  case editor_syntax_kind_t::Assignment:
+    return editor_colorize_assignment_line;
+  case editor_syntax_kind_t::Bnf:
+    return editor_colorize_bnf_line;
+  case editor_syntax_kind_t::Markdown:
+    return editor_colorize_markdown_line;
+  case editor_syntax_kind_t::Plain:
+  default:
+    return {};
+  }
+}
+
+inline void editor_configure_syntax(editor_box_data_t &editor,
+                                    editor_syntax_kind_t kind) {
+  editor.line_colorizer = editor_make_syntax_colorizer(kind);
+}
+
+inline void editor_configure_syntax_from_path(editor_box_data_t &editor) {
+  editor_configure_syntax(editor, editor_syntax_kind_for_path(editor.path));
+}
 
 [[nodiscard]] inline std::string
 editor_join_lines(const std::vector<std::string> &lines) {
@@ -1229,6 +1578,7 @@ create_editor_box(const std::string &id, editor_box_opts_t opts) {
   auto ed = std::make_shared<editor_box_data_t>(std::move(opts.path));
   ed->read_only = opts.read_only;
   editor_set_text(*ed, opts.text);
+  editor_configure_syntax_from_path(*ed);
   ed->dirty = false;
   obj->data = ed;
   return obj;

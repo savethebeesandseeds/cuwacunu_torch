@@ -231,10 +231,8 @@ struct document_t {
 };
 
 constexpr const char* kAugmentationCurveKey = "time_warp_curve";
-constexpr const char* kLegacyAugmentationCurveKey = "name";
 
 [[nodiscard]] std::string canonicalize_augmentation_curve_key(std::string key) {
-  if (key == kLegacyAugmentationCurveKey) return std::string(kAugmentationCurveKey);
   return key;
 }
 
@@ -640,7 +638,7 @@ class parser_t {
           } else {
             if (peek_is_identifier("CURVE")) {
               throw std::runtime_error(cuwacunu::piaabo::core::string_format(
-                  "legacy CURVE augmentation format requires braces in PROFILE '%s'",
+                  "CURVE augmentation format requires braces in PROFILE '%s'",
                   p.name.c_str()));
             }
             p.augmentations = parse_augmentations_ascii_table(p.name, /*expect_block_end=*/false);
@@ -969,11 +967,10 @@ class parser_t {
         got << first_row[i];
       }
       throw std::runtime_error(cuwacunu::piaabo::core::string_format(
-          "AUGMENTATIONS table header mismatch in PROFILE '%s'. expected row-header=[%s] or transposed first-row starting with '%s' (legacy alias '%s' also accepted), got=[%s]",
+          "AUGMENTATIONS table header mismatch in PROFILE '%s'. expected row-header=[%s] or transposed first-row starting with '%s', got=[%s]",
           profile_name.c_str(),
           expected.str().c_str(),
           kAugmentationCurveKey,
-          kLegacyAugmentationCurveKey,
           got.str().c_str()));
     }
 

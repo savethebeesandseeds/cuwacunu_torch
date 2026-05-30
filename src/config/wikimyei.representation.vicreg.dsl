@@ -21,5 +21,5 @@ VICREG {
   USE_MISSINGNESS_INDICATORS = true;
 
   DTYPE = float32;
-  DEVICE = cpu;
+  DEVICE = cuda;
 };

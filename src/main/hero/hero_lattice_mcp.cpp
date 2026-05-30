@@ -105,7 +105,7 @@ void print_help(const char *argv0) {
          "\"target_id\":\"channel_mdn_validation_eval_ready\"}'\n"
       << "  " << argv0
       << " --global-config /cuwacunu/src/config/.config --tool "
-         "hero.lattice.resolve_latest_satisfying --args-json "
+         "hero.lattice.latest_satisfying_checkpoint --args-json "
          "'{\"symbolic_hint\":\"latest_satisfying:vicreg_train_core_ready\"}'\n"
       << "\n"
       << "Tool roles:\n"
@@ -134,10 +134,10 @@ void print_help(const char *argv0) {
       << "  hero.lattice.compare_evidence   Pareto comparison of two clean "
          "satisfying checkpoint evidence vectors; no scalar score or "
          "deployment decision\n"
-      << "  hero.lattice.plan_target        evaluate and return only "
-         "next-wave recommendation\n"
-      << "  hero.lattice.resolve_latest_satisfying resolve one "
-         "latest_satisfying model-state hint with Lattice-owned proof "
+      << "  hero.lattice.target_deficit     target status, proof deficits, "
+         "and any target-authored suggested wave; read-only\n"
+      << "  hero.lattice.latest_satisfying_checkpoint report one "
+         "latest_satisfying checkpoint candidate with Lattice-owned proof "
          "semantics\n"
       << "  hero.lattice.checkpoint_closure checkpoint exposure lineage "
          "and unresolved inputs\n";

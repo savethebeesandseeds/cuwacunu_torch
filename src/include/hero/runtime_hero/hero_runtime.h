@@ -55,9 +55,9 @@ allow_force_rebuild_cache:bool = false
 require_confirm_execute:bool = true
 allow_dev_nuke:bool = false
 require_confirm_dev_nuke:bool = true
-dev_nuke_backup_enabled:bool = true
-dev_nuke_backup_root:path = /cuwacunu/.runtime/.backups/hero.runtime_dev_nuke
-allowed_dev_nuke_roots:path_list = /cuwacunu/.runtime/cuwacunu_exec
+dev_nuke_backup_enabled:bool = false
+dev_nuke_backup_root:path = /tmp/cuwacunu_runtime_dev_nuke_backups/hero.runtime_dev_nuke
+allowed_dev_nuke_roots:path_list = /cuwacunu/.runtime
 max_capture_bytes:int = 65536
 max_runtime_seconds:int = 600
 )";

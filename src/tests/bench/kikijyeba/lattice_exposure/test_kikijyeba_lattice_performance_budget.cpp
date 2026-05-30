@@ -54,7 +54,7 @@ int main() {
   }
 
   const auto index_path =
-      runtime_root / ".lattice_index" / "lattice_runtime_index.v1.lls";
+      runtime_root / "indexes" / "lattice_runtime_index.v1.lls";
   const auto live_cache = exposure::build_runtime_index_cache(runtime_root);
   fs::create_directories(index_path.parent_path());
   exposure::write_runtime_index_cache(index_path, live_cache);

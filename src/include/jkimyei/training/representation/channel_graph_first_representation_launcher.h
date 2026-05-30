@@ -1335,14 +1335,6 @@ public:
       auto lifted = lifted_stream.next();
       report.wave_streamed_anchor_count +=
           static_cast<int64_t>(lifted.cursor.anchor_count());
-      if (report.wave_first_anchor_key.empty()) {
-        report.wave_first_anchor_key =
-            channel_graph_first_representation_launcher_detail::
-                optional_key_to_string(lifted.cursor.first_anchor_key());
-      }
-      report.wave_last_anchor_key =
-          channel_graph_first_representation_launcher_detail::
-              optional_key_to_string(lifted.cursor.last_anchor_key());
 
       auto input = cuwacunu::wikimyei::representation::encoding::vicreg::
           make_channel_node_encoder_input(lifted);

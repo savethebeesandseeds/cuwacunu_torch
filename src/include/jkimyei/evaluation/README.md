@@ -25,9 +25,9 @@ strict runtime `.lls` surface:
 - capacity-comparison reports derive `capacity_margin`, `capacity_ratio`, and
   `capacity_regime`
 
-Source analytics artifact paths default under
-`.runtime/jkimyei/evaluation/ujcamei/source/retrieval`; set
-`CUWACUNU_EVALUATION_STORE_ROOT` to redirect that store.
+Source analytics artifact paths default under the canonical runtime root at
+`.runtime/cuwacunu_exec/components/jkimyei.evaluation.source.data_analytics/spawns/standalone_runtime/artifacts/retrieval/ujcamei/source/retrieval`;
+set `CUWACUNU_EVALUATION_STORE_ROOT` to redirect that store.
 
 Ujcamei forms source tensors. Piaabo owns generic utilities. Jkimyei owns
 evaluation/report helper surfaces.

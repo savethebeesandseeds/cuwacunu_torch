@@ -6,7 +6,6 @@
 #include <fstream>
 #include <iostream>
 #include <limits>
-#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -41,71 +40,56 @@ void write_text(const std::filesystem::path &path, const std::string &text) {
   out << text;
 }
 
-std::string remove_lines_with_prefix(const std::string &text,
-                                     const std::vector<std::string> &prefixes) {
-  std::istringstream lines(text);
-  std::ostringstream out;
-  std::string line;
-  while (std::getline(lines, line)) {
-    const bool remove = std::any_of(prefixes.begin(), prefixes.end(),
-                                    [&](const std::string &prefix) {
-                                      return line.rfind(prefix, /*pos=*/0) == 0;
-                                    });
-    if (!remove) {
-      out << line << "\n";
-    }
-  }
-  return out.str();
-}
-
 void write_representation_job(const std::filesystem::path &dir,
                               std::int64_t begin, std::int64_t end,
                               const std::string &checkpoint_name) {
-  write_text(dir / "job.manifest",
-             "job_id=rep_job\n"
-             "job_kind=representation_vicreg\n"
-             "target_component_family_id=wikimyei.representation.encoding.vicreg\n"
-             "wave_id=wave_rep\n"
-             "wave_action=train\n"
-             "mutated_components=wikimyei.representation.encoding.vicreg\n"
-             "graph_order_fingerprint=graph_1\n"
-             "source_range_policy=anchor_index\n"
-             "resolved_anchor_index_begin=" +
-                 std::to_string(begin) +
-                 "\n"
-                 "resolved_anchor_index_end=" +
-                 std::to_string(end) +
-                 "\n"
-                 "source_input_length=2\n"
-                 "source_future_length=1\n"
-                 "observed_source_row_begin=" +
-                 std::to_string(begin - 1) +
-                 "\n"
-                 "observed_source_row_end=" +
-                 std::to_string(end) +
-                 "\n"
-                 "target_source_row_begin=" +
-                 std::to_string(begin + 1) +
-                 "\n"
-                 "target_source_row_end=" +
-                 std::to_string(end + 1) +
-                 "\n"
-                 "source_footprint_precision=graph_anchor_row_index_v1\n"
-                 "first_anchor_key=1000\n"
-                 "last_anchor_key=1099\n"
-                 "observed_source_key_begin=999\n"
-                 "observed_source_key_end=1100\n"
-                 "target_source_key_begin=1001\n"
-                 "target_source_key_end=1101\n"
-                 "source_key_footprint_precision=graph_anchor_key_window_v1\n"
-                 "source_file_receipts=edge=BTCUSDT|instrument=BTCUSDT|"
-                 "interval=1m|record_type=kline|source=/tmp/BTCUSDT.csv\n"
-                 "accepted_anchor_count=" +
-                 std::to_string(end - begin) +
-                 "\n"
-                 "source_cursor_token=cursor_rep\n"
-                 "protocol_contract_fingerprint=contract_1\n"
-                 "vicreg_assembly_fingerprint=vicreg_1\n");
+  write_text(
+      dir / "job.manifest",
+      "job_id=rep_job\n"
+      "job_kind=representation_vicreg\n"
+      "protocol_id=cwu_01v\n"
+      "target_component_family_id=wikimyei.representation.encoding.vicreg\n"
+      "wave_id=wave_rep\n"
+      "wave_action=train\n"
+      "mutated_components=wikimyei.representation.encoding.vicreg\n"
+      "graph_order_fingerprint=graph_1\n"
+      "source_range_policy=anchor_index\n"
+      "resolved_anchor_index_begin=" +
+          std::to_string(begin) +
+          "\n"
+          "resolved_anchor_index_end=" +
+          std::to_string(end) +
+          "\n"
+          "source_input_length=2\n"
+          "source_future_length=1\n"
+          "observed_source_row_begin=" +
+          std::to_string(begin - 1) +
+          "\n"
+          "observed_source_row_end=" +
+          std::to_string(end) +
+          "\n"
+          "target_source_row_begin=" +
+          std::to_string(begin + 1) +
+          "\n"
+          "target_source_row_end=" +
+          std::to_string(end + 1) +
+          "\n"
+          "source_footprint_precision=graph_anchor_row_index_v1\n"
+          "first_anchor_key=1000\n"
+          "last_anchor_key=1099\n"
+          "observed_source_key_begin=999\n"
+          "observed_source_key_end=1100\n"
+          "target_source_key_begin=1001\n"
+          "target_source_key_end=1101\n"
+          "source_key_footprint_precision=graph_anchor_key_window_v1\n"
+          "source_file_receipts=edge=BTCUSDT|instrument=BTCUSDT|"
+          "interval=1m|record_type=kline|source=/tmp/BTCUSDT.csv\n"
+          "accepted_anchor_count=" +
+          std::to_string(end - begin) +
+          "\n"
+          "source_cursor_token=cursor_rep\n"
+          "protocol_contract_fingerprint=contract_1\n"
+          "vicreg_assembly_fingerprint=vicreg_1\n");
   write_text(dir / "job.state", "status=completed\n"
                                 "optimizer_steps=10\n"
                                 "last_loss=0.25\n"
@@ -197,136 +181,48 @@ void write_representation_job(const std::filesystem::path &dir,
   write_text(dir / checkpoint_name, "representation checkpoint");
 }
 
-void write_legacy_node_mdn_job(
-    const std::filesystem::path &dir, std::int64_t begin, std::int64_t end,
-    const std::filesystem::path &representation_checkpoint,
-    const std::string &checkpoint_name) {
-  write_text(dir / "job.manifest",
-             "job_id=mdn_job\n"
-             // Historical node-MDN evidence compatibility.
-             "job_kind=inference_mdn\n"
-             "target_component_family_id=wikimyei.inference.expected_value.mdn\n"
-             "wave_id=wave_mdn\n"
-             "wave_action=train\n"
-             "mutated_components=wikimyei.inference.expected_value.mdn\n"
-             "graph_order_fingerprint=graph_1\n"
-             "source_range_policy=anchor_index\n"
-             "resolved_anchor_index_begin=" +
-                 std::to_string(begin) +
-                 "\n"
-                 "resolved_anchor_index_end=" +
-                 std::to_string(end) +
-                 "\n"
-                 "source_input_length=2\n"
-                 "source_future_length=1\n"
-                 "observed_source_row_begin=" +
-                 std::to_string(begin - 1) +
-                 "\n"
-                 "observed_source_row_end=" +
-                 std::to_string(end) +
-                 "\n"
-                 "target_source_row_begin=" +
-                 std::to_string(begin + 1) +
-                 "\n"
-                 "target_source_row_end=" +
-                 std::to_string(end + 1) +
-                 "\n"
-                 "source_footprint_precision=graph_anchor_row_index_v1\n"
-                 "first_anchor_key=1100\n"
-                 "last_anchor_key=1199\n"
-                 "observed_source_key_begin=1099\n"
-                 "observed_source_key_end=1200\n"
-                 "target_source_key_begin=1101\n"
-                 "target_source_key_end=1201\n"
-                 "source_key_footprint_precision=graph_anchor_key_window_v1\n"
-                 "source_file_receipts=edge=BTCUSDT|instrument=BTCUSDT|"
-                 "interval=1m|record_type=kline|source=/tmp/BTCUSDT.csv\n"
-                 "accepted_anchor_count=" +
-                 std::to_string(end - begin) +
-                 "\n"
-                 "source_cursor_token=cursor_mdn\n"
-                 "protocol_contract_fingerprint=contract_1\n"
-                 "mdn_assembly_fingerprint=mdn_1\n");
-  write_text(dir / "job.state", "status=completed\n"
-                                "optimizer_steps=7\n"
-                                "last_loss=0.55\n"
-                                "wave_streamed_anchor_count=" +
-                                    std::to_string(end - begin) +
-                                    "\n"
-                                    "wave_pulses_completed=3\n"
-                                    "checkpoint_written=true\n"
-                                    "checkpoint_path=" +
-                                    checkpoint_name + "\n");
-  write_text(dir / "inference.report", "optimizer_steps=7\n"
-                                       "mean_loss=0.50\n"
-                                       "input_representation_assembly_id="
-                                       "node_vicreg_v1\n"
-                                       "context_mode=global_node_context\n"
-                                       "context_contract=graph_order.node_"
-                                       "representation.v1\n"
-                                       "context_value_shape=[B_node,D_e]\n"
-                                       "output_contract=graph_order.node_"
-                                       "expected_value.v1\n"
-                                       "total_valid_target_count=42\n"
-                                       "mean_valid_node_target_fraction=0.25\n"
-                                       "target_coords=0,1\n"
-                                       "node_ids=BTC,ETH,SOL\n"
-                                       "routed_row_count_by_node=12,8,10\n"
-                                       "active_row_count_by_node=10,0,5\n"
-                                       "trained_row_count_by_node=10,0,5\n"
-                                       "evaluated_row_count_by_node=0,0,0\n"
-                                       "valid_target_count_by_node=10,0,5\n"
-                                       "mean_nll_by_node=0.50,nan,0.75\n"
-                                       "representation_checkpoint_path=" +
-                                           representation_checkpoint.string() +
-                                           "\n"
-                                           "checkpoint_written=true\n"
-                                           "checkpoint_path=" +
-                                           checkpoint_name + "\n");
-  write_text(dir / checkpoint_name, "mdn checkpoint");
-}
-
 void write_channel_mdn_job(
     const std::filesystem::path &dir, std::int64_t begin, std::int64_t end,
     const std::filesystem::path &representation_checkpoint,
     const std::string &checkpoint_name) {
-  write_text(dir / "job.manifest",
-             "job_id=channel_mdn_job\n"
-             "job_kind=channel_inference_mdn\n"
-             "target_component_family_id=wikimyei.inference.expected_value.mdn\n"
-             "wave_id=wave_channel_mdn\n"
-             "wave_action=train\n"
-             "mutated_components=wikimyei.inference.expected_value."
-             "channel_mdn\n"
-             "graph_order_fingerprint=graph_1\n"
-             "source_range_policy=anchor_index\n"
-             "resolved_anchor_index_begin=" +
-                 std::to_string(begin) +
-                 "\n"
-                 "resolved_anchor_index_end=" +
-                 std::to_string(end) +
-                 "\n"
-                 "source_input_length=2\n"
-                 "source_future_length=1\n"
-                 "observed_source_row_begin=" +
-                 std::to_string(begin - 1) +
-                 "\n"
-                 "observed_source_row_end=" +
-                 std::to_string(end) +
-                 "\n"
-                 "target_source_row_begin=" +
-                 std::to_string(begin + 1) +
-                 "\n"
-                 "target_source_row_end=" +
-                 std::to_string(end + 1) +
-                 "\n"
-                 "source_footprint_precision=graph_anchor_row_index_v1\n"
-                 "accepted_anchor_count=" +
-                 std::to_string(end - begin) +
-                 "\n"
-                 "source_cursor_token=cursor_channel_mdn\n"
-                 "protocol_contract_fingerprint=contract_1\n"
-                 "mdn_assembly_fingerprint=channel_mdn_1\n");
+  write_text(
+      dir / "job.manifest",
+      "job_id=channel_mdn_job\n"
+      "job_kind=channel_inference_mdn\n"
+      "target_component_family_id=wikimyei.inference.expected_value.mdn\n"
+      "wave_id=wave_channel_mdn\n"
+      "wave_action=train\n"
+      "mutated_components=wikimyei.inference.expected_value."
+      "channel_mdn\n"
+      "graph_order_fingerprint=graph_1\n"
+      "source_range_policy=anchor_index\n"
+      "resolved_anchor_index_begin=" +
+          std::to_string(begin) +
+          "\n"
+          "resolved_anchor_index_end=" +
+          std::to_string(end) +
+          "\n"
+          "source_input_length=2\n"
+          "source_future_length=1\n"
+          "observed_source_row_begin=" +
+          std::to_string(begin - 1) +
+          "\n"
+          "observed_source_row_end=" +
+          std::to_string(end) +
+          "\n"
+          "target_source_row_begin=" +
+          std::to_string(begin + 1) +
+          "\n"
+          "target_source_row_end=" +
+          std::to_string(end + 1) +
+          "\n"
+          "source_footprint_precision=graph_anchor_row_index_v1\n"
+          "accepted_anchor_count=" +
+          std::to_string(end - begin) +
+          "\n"
+          "source_cursor_token=cursor_channel_mdn\n"
+          "protocol_contract_fingerprint=contract_1\n"
+          "mdn_assembly_fingerprint=channel_mdn_1\n");
   write_text(dir / "job.state", "status=completed\n"
                                 "optimizer_steps=9\n"
                                 "last_loss=0.45\n"
@@ -356,7 +252,24 @@ void write_channel_mdn_job(
              "mean_mixture_entropy=0.60\n"
              "mean_nll_per_channel=0.40,0.60,0.80\n"
              "mean_nll_per_target_feature=0.50,0.70\n"
+             "mean_nll_per_channel_target_feature=0.41,0.42,0.61,0.62,0.81,"
+             "0.82\n"
              "mean_mixture_usage=0.25,0.75\n"
+             "valid_target_count_per_channel=10,20,30\n"
+             "valid_target_count_per_target_feature=27,33\n"
+             "valid_target_count_per_channel_target_feature=4,6,9,11,14,16\n"
+             "mdn_architecture=shared_slot_trunk.channel_adapter."
+             "shared_feature_head.v2\n"
+             "loss_reduction=balanced_channel_feature_mean\n"
+             "feature_embedding_dim=4\n"
+             "channel_adapter_rank=4\n"
+             "shared_trunk=true\n"
+             "channel_adapters_enabled=true\n"
+             "shared_feature_head=true\n"
+             "feature_embedding_enabled=true\n"
+             "node_id_embedding=false\n"
+             "cross_node_attention=false\n"
+             "cross_channel_attention=false\n"
              "nonfinite_output_count=2\n"
              "last_grad_norm=1.20\n"
              "max_grad_norm=1.80\n"
@@ -367,22 +280,76 @@ void write_channel_mdn_job(
                  "checkpoint_written=true\n"
                  "checkpoint_path=" +
                  checkpoint_name + "\n");
+  write_text(dir / "runtime.result.fact", "fact_type=runtime.result.fact\n"
+                                          "schema_version=1\n"
+                                          "producer=runtime\n"
+                                          "status=completed\n"
+                                          "optimizer_steps=9\n"
+                                          "checkpoint_written=true\n"
+                                          "checkpoint_path=" +
+                                              checkpoint_name +
+                                              "\n"
+                                              "model_state_mutated=true\n"
+                                              "finite_parameter_check=true\n"
+                                              "nonfinite_output_count=0\n"
+                                              "mean_loss=0.40\n"
+                                              "valid_target_fraction=0.50\n"
+                                              "grad_norm_max_pre_clip=1200\n"
+                                              "grad_clip_norm=5\n"
+                                              "sigma_min=0.10\n"
+                                              "sigma_mean=0.80\n"
+                                              "sigma_max=1.50\n"
+                                              "sigma_min_valid=0.11\n"
+                                              "sigma_mean_valid=0.81\n"
+                                              "sigma_max_valid=1.51\n"
+                                              "mixture_entropy=0.60\n");
+  write_text(dir / "runtime.checkpoint_io.fact",
+             "fact_type=runtime.checkpoint_io.fact\n"
+             "schema_version=1\n"
+             "producer=runtime\n"
+             "checkpoint_written=true\n"
+             "checkpoint_path=" +
+                 checkpoint_name +
+                 "\n"
+                 "representation_checkpoint_path=" +
+                 representation_checkpoint.string() +
+                 "\n"
+                 "representation_checkpoint_loaded=true\n"
+                 "mdn_checkpoint_path=\n"
+                 "mdn_checkpoint_loaded=false\n"
+                 "model_state_mutated=true\n");
+  write_text(dir / "runtime.health_measurement.fact",
+             "fact_type=runtime.health_measurement.fact\n"
+             "schema_version=1\n"
+             "producer=runtime\n"
+             "finite_parameter_check=true\n"
+             "nonfinite_output_count=0\n"
+             "grad_norm_max_pre_clip=1200\n"
+             "grad_clip_norm=5\n"
+             "sigma_min=0.10\n"
+             "sigma_mean=0.80\n"
+             "sigma_max=1.50\n"
+             "sigma_min_valid=0.11\n"
+             "sigma_mean_valid=0.81\n"
+             "sigma_max_valid=1.51\n"
+             "mixture_entropy=0.60\n");
   write_text(dir / checkpoint_name, "channel mdn checkpoint");
 }
 
 void write_unproven_mutation_job(const std::filesystem::path &dir,
                                  const std::string &checkpoint_name) {
-  write_text(dir / "job.manifest",
-             "job_id=unproven_mutation\n"
-             "job_kind=representation_vicreg\n"
-             "target_component_family_id=wikimyei.representation.encoding.vicreg\n"
-             "wave_id=wave_unproven\n"
-             "wave_action=train\n"
-             "source_range_policy=anchor_index\n"
-             "resolved_anchor_index_begin=0\n"
-             "resolved_anchor_index_end=10\n"
-             "protocol_contract_fingerprint=contract_1\n"
-             "vicreg_assembly_fingerprint=vicreg_1\n");
+  write_text(
+      dir / "job.manifest",
+      "job_id=unproven_mutation\n"
+      "job_kind=representation_vicreg\n"
+      "target_component_family_id=wikimyei.representation.encoding.vicreg\n"
+      "wave_id=wave_unproven\n"
+      "wave_action=train\n"
+      "source_range_policy=anchor_index\n"
+      "resolved_anchor_index_begin=0\n"
+      "resolved_anchor_index_end=10\n"
+      "protocol_contract_fingerprint=contract_1\n"
+      "vicreg_assembly_fingerprint=vicreg_1\n");
   write_text(dir / "job.state", "status=completed\n"
                                 "optimizer_steps=3\n"
                                 "checkpoint_written=true\n"
@@ -397,30 +364,31 @@ void write_unproven_mutation_job(const std::filesystem::path &dir,
 }
 
 void write_anchor_domain_warning_job(const std::filesystem::path &dir) {
-  write_text(dir / "job.manifest",
-             "job_id=domain_warning\n"
-             "job_kind=representation_vicreg\n"
-             "target_component_family_id=wikimyei.representation.encoding.vicreg\n"
-             "wave_id=wave_domain_warning\n"
-             "wave_action=train\n"
-             "mutated_components=wikimyei.representation.encoding.vicreg\n"
-             "graph_order_fingerprint=graph_1\n"
-             "source_range_policy=anchor_index\n"
-             "resolved_anchor_index_begin=0\n"
-             "resolved_anchor_index_end=50\n"
-             "accepted_anchor_count=50\n"
-             "candidate_anchor_count=100\n"
-             "skipped_missing_edge_coverage=15\n"
-             "skipped_failed_fetch_probe=1\n"
-             "duplicate_anchor_count=2\n"
-             "common_left_key=1000\n"
-             "common_right_key=2000\n"
-             "reference_left_key=900\n"
-             "reference_right_key=2100\n"
-             "source_input_length=1\n"
-             "source_future_length=1\n"
-             "protocol_contract_fingerprint=contract_1\n"
-             "vicreg_assembly_fingerprint=vicreg_1\n");
+  write_text(
+      dir / "job.manifest",
+      "job_id=domain_warning\n"
+      "job_kind=representation_vicreg\n"
+      "target_component_family_id=wikimyei.representation.encoding.vicreg\n"
+      "wave_id=wave_domain_warning\n"
+      "wave_action=train\n"
+      "mutated_components=wikimyei.representation.encoding.vicreg\n"
+      "graph_order_fingerprint=graph_1\n"
+      "source_range_policy=anchor_index\n"
+      "resolved_anchor_index_begin=0\n"
+      "resolved_anchor_index_end=50\n"
+      "accepted_anchor_count=50\n"
+      "candidate_anchor_count=100\n"
+      "skipped_missing_edge_coverage=15\n"
+      "skipped_failed_fetch_probe=1\n"
+      "duplicate_anchor_count=2\n"
+      "common_left_key=1000\n"
+      "common_right_key=2000\n"
+      "reference_left_key=900\n"
+      "reference_right_key=2100\n"
+      "source_input_length=1\n"
+      "source_future_length=1\n"
+      "protocol_contract_fingerprint=contract_1\n"
+      "vicreg_assembly_fingerprint=vicreg_1\n");
   write_text(dir / "job.state", "status=completed\n"
                                 "optimizer_steps=1\n"
                                 "wave_streamed_anchor_count=50\n");
@@ -429,35 +397,36 @@ void write_anchor_domain_warning_job(const std::filesystem::path &dir) {
 }
 
 void write_bad_source_key_window_job(const std::filesystem::path &dir) {
-  write_text(dir / "job.manifest",
-             "job_id=bad_source_key_window\n"
-             "job_kind=representation_vicreg\n"
-             "target_component_family_id=wikimyei.representation.encoding.vicreg\n"
-             "wave_id=wave_bad_source_key_window\n"
-             "wave_action=train\n"
-             "mutated_components=wikimyei.representation.encoding.vicreg\n"
-             "graph_order_fingerprint=graph_1\n"
-             "source_range_policy=anchor_index\n"
-             "resolved_anchor_index_begin=0\n"
-             "resolved_anchor_index_end=10\n"
-             "source_input_length=2\n"
-             "source_future_length=1\n"
-             "observed_source_row_begin=-1\n"
-             "observed_source_row_end=10\n"
-             "target_source_row_begin=1\n"
-             "target_source_row_end=11\n"
-             "source_footprint_precision=graph_anchor_row_index_v1\n"
-             "first_anchor_key=1000\n"
-             "last_anchor_key=900\n"
-             "observed_source_key_begin=1100\n"
-             "observed_source_key_end=1000\n"
-             "target_source_key_begin=1001\n"
-             "target_source_key_end=1101\n"
-             "source_key_footprint_precision=graph_anchor_key_window_v1\n"
-             "accepted_anchor_count=10\n"
-             "source_cursor_token=cursor_bad_key\n"
-             "protocol_contract_fingerprint=contract_1\n"
-             "vicreg_assembly_fingerprint=vicreg_1\n");
+  write_text(
+      dir / "job.manifest",
+      "job_id=bad_source_key_window\n"
+      "job_kind=representation_vicreg\n"
+      "target_component_family_id=wikimyei.representation.encoding.vicreg\n"
+      "wave_id=wave_bad_source_key_window\n"
+      "wave_action=train\n"
+      "mutated_components=wikimyei.representation.encoding.vicreg\n"
+      "graph_order_fingerprint=graph_1\n"
+      "source_range_policy=anchor_index\n"
+      "resolved_anchor_index_begin=0\n"
+      "resolved_anchor_index_end=10\n"
+      "source_input_length=2\n"
+      "source_future_length=1\n"
+      "observed_source_row_begin=-1\n"
+      "observed_source_row_end=10\n"
+      "target_source_row_begin=1\n"
+      "target_source_row_end=11\n"
+      "source_footprint_precision=graph_anchor_row_index_v1\n"
+      "first_anchor_key=1000\n"
+      "last_anchor_key=900\n"
+      "observed_source_key_begin=1100\n"
+      "observed_source_key_end=1000\n"
+      "target_source_key_begin=1001\n"
+      "target_source_key_end=1101\n"
+      "source_key_footprint_precision=graph_anchor_key_window_v1\n"
+      "accepted_anchor_count=10\n"
+      "source_cursor_token=cursor_bad_key\n"
+      "protocol_contract_fingerprint=contract_1\n"
+      "vicreg_assembly_fingerprint=vicreg_1\n");
   write_text(dir / "job.state", "status=completed\n"
                                 "optimizer_steps=1\n"
                                 "wave_streamed_anchor_count=10\n"
@@ -472,35 +441,36 @@ void write_bad_source_key_window_job(const std::filesystem::path &dir) {
 }
 
 void write_bad_source_key_order_job(const std::filesystem::path &dir) {
-  write_text(dir / "job.manifest",
-             "job_id=bad_source_key_order\n"
-             "job_kind=representation_vicreg\n"
-             "target_component_family_id=wikimyei.representation.encoding.vicreg\n"
-             "wave_id=wave_bad_source_key_order\n"
-             "wave_action=train\n"
-             "mutated_components=wikimyei.representation.encoding.vicreg\n"
-             "graph_order_fingerprint=graph_1\n"
-             "source_range_policy=anchor_index\n"
-             "resolved_anchor_index_begin=0\n"
-             "resolved_anchor_index_end=10\n"
-             "source_input_length=2\n"
-             "source_future_length=1\n"
-             "observed_source_row_begin=-1\n"
-             "observed_source_row_end=10\n"
-             "target_source_row_begin=1\n"
-             "target_source_row_end=11\n"
-             "source_footprint_precision=graph_anchor_row_index_v1\n"
-             "first_anchor_key=1000\n"
-             "last_anchor_key=1009\n"
-             "observed_source_key_begin=999\n"
-             "observed_source_key_end=1010\n"
-             "target_source_key_begin=900\n"
-             "target_source_key_end=1011\n"
-             "source_key_footprint_precision=graph_anchor_key_window_v1\n"
-             "accepted_anchor_count=10\n"
-             "source_cursor_token=cursor_bad_key_order\n"
-             "protocol_contract_fingerprint=contract_1\n"
-             "vicreg_assembly_fingerprint=vicreg_1\n");
+  write_text(
+      dir / "job.manifest",
+      "job_id=bad_source_key_order\n"
+      "job_kind=representation_vicreg\n"
+      "target_component_family_id=wikimyei.representation.encoding.vicreg\n"
+      "wave_id=wave_bad_source_key_order\n"
+      "wave_action=train\n"
+      "mutated_components=wikimyei.representation.encoding.vicreg\n"
+      "graph_order_fingerprint=graph_1\n"
+      "source_range_policy=anchor_index\n"
+      "resolved_anchor_index_begin=0\n"
+      "resolved_anchor_index_end=10\n"
+      "source_input_length=2\n"
+      "source_future_length=1\n"
+      "observed_source_row_begin=-1\n"
+      "observed_source_row_end=10\n"
+      "target_source_row_begin=1\n"
+      "target_source_row_end=11\n"
+      "source_footprint_precision=graph_anchor_row_index_v1\n"
+      "first_anchor_key=1000\n"
+      "last_anchor_key=1009\n"
+      "observed_source_key_begin=999\n"
+      "observed_source_key_end=1010\n"
+      "target_source_key_begin=900\n"
+      "target_source_key_end=1011\n"
+      "source_key_footprint_precision=graph_anchor_key_window_v1\n"
+      "accepted_anchor_count=10\n"
+      "source_cursor_token=cursor_bad_key_order\n"
+      "protocol_contract_fingerprint=contract_1\n"
+      "vicreg_assembly_fingerprint=vicreg_1\n");
   write_text(dir / "job.state", "status=completed\n"
                                 "optimizer_steps=1\n"
                                 "wave_streamed_anchor_count=10\n"
@@ -516,35 +486,36 @@ void write_bad_source_key_order_job(const std::filesystem::path &dir) {
 }
 
 void write_bad_source_key_affine_job(const std::filesystem::path &dir) {
-  write_text(dir / "job.manifest",
-             "job_id=bad_source_key_affine\n"
-             "job_kind=representation_vicreg\n"
-             "target_component_family_id=wikimyei.representation.encoding.vicreg\n"
-             "wave_id=wave_bad_source_key_affine\n"
-             "wave_action=train\n"
-             "mutated_components=wikimyei.representation.encoding.vicreg\n"
-             "graph_order_fingerprint=graph_1\n"
-             "source_range_policy=anchor_index\n"
-             "resolved_anchor_index_begin=0\n"
-             "resolved_anchor_index_end=10\n"
-             "source_input_length=2\n"
-             "source_future_length=1\n"
-             "observed_source_row_begin=-1\n"
-             "observed_source_row_end=10\n"
-             "target_source_row_begin=1\n"
-             "target_source_row_end=11\n"
-             "source_footprint_precision=graph_anchor_row_index_v1\n"
-             "first_anchor_key=1000\n"
-             "last_anchor_key=1009\n"
-             "observed_source_key_begin=998\n"
-             "observed_source_key_end=1010\n"
-             "target_source_key_begin=1001\n"
-             "target_source_key_end=1011\n"
-             "source_key_footprint_precision=graph_anchor_key_window_v1\n"
-             "accepted_anchor_count=10\n"
-             "source_cursor_token=cursor_bad_key_affine\n"
-             "protocol_contract_fingerprint=contract_1\n"
-             "vicreg_assembly_fingerprint=vicreg_1\n");
+  write_text(
+      dir / "job.manifest",
+      "job_id=bad_source_key_affine\n"
+      "job_kind=representation_vicreg\n"
+      "target_component_family_id=wikimyei.representation.encoding.vicreg\n"
+      "wave_id=wave_bad_source_key_affine\n"
+      "wave_action=train\n"
+      "mutated_components=wikimyei.representation.encoding.vicreg\n"
+      "graph_order_fingerprint=graph_1\n"
+      "source_range_policy=anchor_index\n"
+      "resolved_anchor_index_begin=0\n"
+      "resolved_anchor_index_end=10\n"
+      "source_input_length=2\n"
+      "source_future_length=1\n"
+      "observed_source_row_begin=-1\n"
+      "observed_source_row_end=10\n"
+      "target_source_row_begin=1\n"
+      "target_source_row_end=11\n"
+      "source_footprint_precision=graph_anchor_row_index_v1\n"
+      "first_anchor_key=1000\n"
+      "last_anchor_key=1009\n"
+      "observed_source_key_begin=998\n"
+      "observed_source_key_end=1010\n"
+      "target_source_key_begin=1001\n"
+      "target_source_key_end=1011\n"
+      "source_key_footprint_precision=graph_anchor_key_window_v1\n"
+      "accepted_anchor_count=10\n"
+      "source_cursor_token=cursor_bad_key_affine\n"
+      "protocol_contract_fingerprint=contract_1\n"
+      "vicreg_assembly_fingerprint=vicreg_1\n");
   write_text(dir / "job.state", "status=completed\n"
                                 "optimizer_steps=1\n"
                                 "wave_streamed_anchor_count=10\n"
@@ -560,37 +531,38 @@ void write_bad_source_key_affine_job(const std::filesystem::path &dir) {
 }
 
 void write_irregular_source_key_job(const std::filesystem::path &dir) {
-  write_text(dir / "job.manifest",
-             "job_id=irregular_source_key\n"
-             "job_kind=representation_vicreg\n"
-             "target_component_family_id=wikimyei.representation.encoding.vicreg\n"
-             "wave_id=wave_irregular_source_key\n"
-             "wave_action=train\n"
-             "mutated_components=wikimyei.representation.encoding.vicreg\n"
-             "graph_order_fingerprint=graph_1\n"
-             "source_range_policy=anchor_index\n"
-             "resolved_anchor_index_begin=0\n"
-             "resolved_anchor_index_end=10\n"
-             "source_input_length=1\n"
-             "source_future_length=1\n"
-             "observed_source_row_begin=0\n"
-             "observed_source_row_end=10\n"
-             "target_source_row_begin=0\n"
-             "target_source_row_end=10\n"
-             "source_footprint_precision=graph_anchor_row_index_v1\n"
-             "first_anchor_key=1000\n"
-             "last_anchor_key=1010\n"
-             "observed_source_key_begin=1000\n"
-             "observed_source_key_end=1010\n"
-             "target_source_key_begin=1000\n"
-             "target_source_key_end=1010\n"
-             "source_key_footprint_precision=graph_anchor_key_window_v1\n"
-             "source_file_receipts=edge=BTCUSDT|instrument=BTCUSDT|"
-             "interval=1d|record_type=ohlcv|source=/tmp/BTCUSDT.csv\n"
-             "accepted_anchor_count=10\n"
-             "source_cursor_token=cursor_irregular_key\n"
-             "protocol_contract_fingerprint=contract_1\n"
-             "vicreg_assembly_fingerprint=vicreg_1\n");
+  write_text(
+      dir / "job.manifest",
+      "job_id=irregular_source_key\n"
+      "job_kind=representation_vicreg\n"
+      "target_component_family_id=wikimyei.representation.encoding.vicreg\n"
+      "wave_id=wave_irregular_source_key\n"
+      "wave_action=train\n"
+      "mutated_components=wikimyei.representation.encoding.vicreg\n"
+      "graph_order_fingerprint=graph_1\n"
+      "source_range_policy=anchor_index\n"
+      "resolved_anchor_index_begin=0\n"
+      "resolved_anchor_index_end=10\n"
+      "source_input_length=1\n"
+      "source_future_length=1\n"
+      "observed_source_row_begin=0\n"
+      "observed_source_row_end=10\n"
+      "target_source_row_begin=0\n"
+      "target_source_row_end=10\n"
+      "source_footprint_precision=graph_anchor_row_index_v1\n"
+      "first_anchor_key=1000\n"
+      "last_anchor_key=1010\n"
+      "observed_source_key_begin=1000\n"
+      "observed_source_key_end=1010\n"
+      "target_source_key_begin=1000\n"
+      "target_source_key_end=1010\n"
+      "source_key_footprint_precision=graph_anchor_key_window_v1\n"
+      "source_file_receipts=edge=BTCUSDT|instrument=BTCUSDT|"
+      "interval=1d|record_type=ohlcv|source=/tmp/BTCUSDT.csv\n"
+      "accepted_anchor_count=10\n"
+      "source_cursor_token=cursor_irregular_key\n"
+      "protocol_contract_fingerprint=contract_1\n"
+      "vicreg_assembly_fingerprint=vicreg_1\n");
   write_text(dir / "job.state", "status=completed\n"
                                 "optimizer_steps=1\n"
                                 "wave_streamed_anchor_count=10\n"
@@ -606,25 +578,26 @@ void write_irregular_source_key_job(const std::filesystem::path &dir) {
 }
 
 void write_malformed_source_receipt_job(const std::filesystem::path &dir) {
-  write_text(dir / "job.manifest",
-             "job_id=bad_source_receipt\n"
-             "job_kind=representation_vicreg\n"
-             "target_component_family_id=wikimyei.representation.encoding.vicreg\n"
-             "wave_id=wave_bad_source_receipt\n"
-             "wave_action=train\n"
-             "mutated_components=wikimyei.representation.encoding.vicreg\n"
-             "graph_order_fingerprint=graph_1\n"
-             "source_range_policy=anchor_index\n"
-             "resolved_anchor_index_begin=0\n"
-             "resolved_anchor_index_end=10\n"
-             "source_input_length=1\n"
-             "source_future_length=1\n"
-             "source_file_receipts=edge=BTCUSDT|instrument=BTCUSDT|"
-             "source=/tmp/BTCUSDT.csv\n"
-             "accepted_anchor_count=10\n"
-             "source_cursor_token=cursor_bad_receipt\n"
-             "protocol_contract_fingerprint=contract_1\n"
-             "vicreg_assembly_fingerprint=vicreg_1\n");
+  write_text(
+      dir / "job.manifest",
+      "job_id=bad_source_receipt\n"
+      "job_kind=representation_vicreg\n"
+      "target_component_family_id=wikimyei.representation.encoding.vicreg\n"
+      "wave_id=wave_bad_source_receipt\n"
+      "wave_action=train\n"
+      "mutated_components=wikimyei.representation.encoding.vicreg\n"
+      "graph_order_fingerprint=graph_1\n"
+      "source_range_policy=anchor_index\n"
+      "resolved_anchor_index_begin=0\n"
+      "resolved_anchor_index_end=10\n"
+      "source_input_length=1\n"
+      "source_future_length=1\n"
+      "source_file_receipts=edge=BTCUSDT|instrument=BTCUSDT|"
+      "source=/tmp/BTCUSDT.csv\n"
+      "accepted_anchor_count=10\n"
+      "source_cursor_token=cursor_bad_receipt\n"
+      "protocol_contract_fingerprint=contract_1\n"
+      "vicreg_assembly_fingerprint=vicreg_1\n");
   write_text(dir / "job.state", "status=completed\n"
                                 "optimizer_steps=1\n"
                                 "wave_streamed_anchor_count=10\n");
@@ -637,8 +610,8 @@ void write_malformed_source_receipt_job(const std::filesystem::path &dir) {
 int main() {
   const auto root = make_tmp_dir("main");
   const auto rep_dir = root / "rep";
-  const auto mdn_dir = root / "mdn";
   const auto channel_mdn_dir = root / "channel_mdn";
+  const auto channel_mdn_checkpoint_path = channel_mdn_dir / "channel_mdn.pt";
   const auto unproven_dir = root / "unproven";
   const auto domain_warning_dir = root / "domain_warning";
   const auto bad_source_key_dir = root / "bad_source_key";
@@ -647,7 +620,6 @@ int main() {
   const auto irregular_source_key_dir = root / "irregular_source_key";
 
   write_representation_job(rep_dir, 0, 100, "rep.pt");
-  write_legacy_node_mdn_job(mdn_dir, 100, 200, rep_dir / "rep.pt", "mdn.pt");
   write_channel_mdn_job(channel_mdn_dir, 200, 320, rep_dir / "rep.pt",
                         "channel_mdn.pt");
   write_unproven_mutation_job(unproven_dir, "unproven.pt");
@@ -659,21 +631,34 @@ int main() {
 
   auto rep_fact =
       exposure::make_exposure_fact_from_job_dir(rep_dir, train_context);
-  auto mdn_fact =
-      exposure::make_exposure_fact_from_job_dir(mdn_dir, train_context);
   auto channel_mdn_fact =
       exposure::make_exposure_fact_from_job_dir(channel_mdn_dir, train_context);
+  auto mdn_fact = channel_mdn_fact;
+  check(channel_mdn_fact.runtime_result_fact_available &&
+            channel_mdn_fact.runtime_checkpoint_io_fact_available &&
+            channel_mdn_fact.runtime_health_measurement_fact_available,
+        "channel MDN exposure fact records Runtime terminal fact availability");
+  check(channel_mdn_fact.checkpoint_written &&
+            channel_mdn_fact.model_state_mutated &&
+            channel_mdn_fact.representation_checkpoint_loaded &&
+            !channel_mdn_fact.mdn_checkpoint_loaded,
+        "channel MDN exposure fact carries checkpoint I/O health fields");
+  check(std::abs(channel_mdn_fact.max_grad_norm - 1200.0) < 1e-12 &&
+            std::abs(channel_mdn_fact.grad_clip_norm - 5.0) < 1e-12 &&
+            std::abs(channel_mdn_fact.sigma_min_valid - 0.11) < 1e-12 &&
+            channel_mdn_fact.nonfinite_output_count == 0,
+        "channel MDN exposure fact prefers Runtime terminal health metrics");
   auto scan =
       exposure::scan_exposure_ledger_from_runtime_root(root, train_context);
   check(scan.warnings.empty(), "runtime-root exposure scan has no warnings");
-  check(scan.ledger.facts().size() == 4,
+  check(scan.ledger.facts().size() == 3,
         "runtime-root exposure scan finds all job exposure facts");
-  check(scan.ledger.node_facts().size() == 3,
-        "runtime-root exposure scan derives MDN node exposure facts");
+  check(scan.ledger.node_facts().empty(),
+        "runtime-root exposure scan does not derive node-scoped MDN facts");
   check(scan.ledger.representation_support_facts().size() == 4,
         "runtime-root exposure scan derives aggregate and node-indexed shared "
         "representation support facts");
-  check(scan.ledger.source_receipt_facts().size() == 2,
+  check(scan.ledger.source_receipt_facts().size() == 1,
         "runtime-root exposure scan derives structured source receipt facts");
   const auto scan_representation_support_summary =
       exposure::summarize_representation_support(
@@ -690,7 +675,7 @@ int main() {
   const double expected_projection_gini =
       (2.0 * (1.0 + 2.0 * 4.0 + 3.0 * 8.0)) / (3.0 * 13.0) - (4.0 / 3.0);
   check(
-      scan_representation_support_summary.exposure_fact_count == 4 &&
+      scan_representation_support_summary.exposure_fact_count == 3 &&
           scan_representation_support_summary
                   .representation_exposure_fact_count == 2 &&
           scan_representation_support_summary
@@ -762,9 +747,9 @@ int main() {
             !runtime_index_cache.db_writes_evidence &&
             !runtime_index_cache.runtime_executor &&
             runtime_index_cache.rebuildable_from_runtime_files &&
-            runtime_index_cache.fact_count == 4 &&
-            runtime_index_cache.node_exposure_fact_count == 3 &&
-            runtime_index_cache.source_receipt_fact_count == 2 &&
+            runtime_index_cache.fact_count == 3 &&
+            runtime_index_cache.node_exposure_fact_count == 0 &&
+            runtime_index_cache.source_receipt_fact_count == 1 &&
             runtime_index_cache.representation_support_fact_count == 4 &&
             static_cast<std::int64_t>(runtime_index_cache.rows.size()) ==
                 expected_runtime_index_rows &&
@@ -774,8 +759,7 @@ int main() {
             !runtime_index_cache.relation_counts.empty(),
         "runtime index cache is a rebuildable read model over runtime facts, "
         "not evidence or executor authority");
-  const auto index_path =
-      root / ".lattice_index" / "lattice_runtime_index.v1.lls";
+  const auto index_path = root / "indexes" / "lattice_runtime_index.v1.lls";
   std::filesystem::create_directories(index_path.parent_path());
   exposure::write_runtime_index_cache(index_path, runtime_index_cache);
   const auto read_runtime_index_cache =
@@ -962,7 +946,8 @@ int main() {
             non_watched_stale_runtime_index_cache.issues.empty(),
         "watched-file runtime index validation ignores files that cannot "
         "change lattice index rows");
-  write_text(root / "watched.report", "runtime read-model metadata changed\n");
+  write_text(rep_dir / "watched.report",
+             "runtime read-model metadata changed\n");
   const auto watched_stale_runtime_index_cache =
       exposure::validate_runtime_index_cache(
           read_runtime_index_cache, root,
@@ -991,10 +976,10 @@ int main() {
         "check, not a freshness proof");
   const auto scan_receipt_summary = exposure::summarize_source_receipts(
       scan.ledger.facts(), scan.ledger.source_receipt_facts());
-  check(scan_receipt_summary.exposure_fact_count == 4 &&
-            scan_receipt_summary.exposure_facts_with_receipts == 2 &&
+  check(scan_receipt_summary.exposure_fact_count == 3 &&
+            scan_receipt_summary.exposure_facts_with_receipts == 1 &&
             scan_receipt_summary.exposure_facts_missing_receipts == 2 &&
-            scan_receipt_summary.source_receipt_fact_count == 2 &&
+            scan_receipt_summary.source_receipt_fact_count == 1 &&
             scan_receipt_summary.malformed_receipt_count == 0 &&
             scan_receipt_summary.unique_edge_count == 1 &&
             scan_receipt_summary.unique_instrument_count == 1 &&
@@ -1007,7 +992,8 @@ int main() {
             scan_receipt_summary.issues.empty(),
         "source receipt summary preserves audit-only V2 receipt facts");
 
-  check(rep_fact.target_component_family_id == "wikimyei.representation.encoding.vicreg",
+  check(rep_fact.target_component_family_id ==
+            "wikimyei.representation.encoding.vicreg",
         "representation component decoded");
   check(rep_fact.fact_type == "exposure", "exposure fact type");
   check(exposure::canonical_exposure_fact_text(rep_fact).find(
@@ -1094,6 +1080,7 @@ int main() {
   check(rep_receipt.parent_exposure_fact_digest ==
                 exposure::exposure_fact_digest(rep_fact) &&
             rep_receipt.contract_fingerprint == rep_fact.contract_fingerprint &&
+            rep_receipt.protocol_id == rep_fact.protocol_id &&
             rep_receipt.graph_order_fingerprint ==
                 rep_fact.graph_order_fingerprint &&
             rep_receipt.source_cursor_token == rep_fact.source_cursor_token &&
@@ -1146,6 +1133,8 @@ int main() {
       selection_signal_facts.size() == 1 &&
           selection_signal_facts.front().parent_exposure_fact_digest ==
               exposure::exposure_fact_digest(selection_fact) &&
+          selection_signal_facts.front().protocol_id ==
+              selection_fact.protocol_id &&
           selection_signal_facts.front().selector_id == selection_fact.job_id &&
           selection_signal_facts.front().selector_kind ==
               "checkpoint_selection" &&
@@ -1272,6 +1261,8 @@ int main() {
   check(representation_support_fact.parent_exposure_fact_digest ==
             exposure::exposure_fact_digest(rep_fact),
         "representation support fact binds to parent exposure digest");
+  check(representation_support_fact.protocol_id == rep_fact.protocol_id,
+        "representation support fact inherits parent protocol id");
   check(representation_support_fact.support_scope ==
                 "shared_representation_aggregate" &&
             !representation_support_fact.node_indexed &&
@@ -1323,6 +1314,7 @@ int main() {
                    });
   check(node_fact_it != representation_support_facts.end() &&
             node_fact_it->support_scope == "shared_representation_node" &&
+            node_fact_it->protocol_id == rep_fact.protocol_id &&
             node_fact_it->node_index == 1 &&
             node_fact_it->node_support_denominator == 6 &&
             node_fact_it->node_valid_lifted_rows == 5 &&
@@ -1341,6 +1333,10 @@ int main() {
       exposure::representation_support_fact_digest(representation_support_fact)
               .size() == 16,
       "representation support fact has a stable digest");
+  check(exposure::canonical_representation_support_fact_text(
+            representation_support_fact)
+            .find("protocol_id=cwu_01v") != std::string::npos,
+        "representation support canonical text includes protocol identity");
 
   const auto rep_sidecar = exposure::exposure_fact_path_for_job_dir(rep_dir);
   exposure::write_exposure_fact_sidecar(rep_sidecar, rep_fact);
@@ -1398,6 +1394,8 @@ int main() {
   check(parsed_checkpoint_fact.created_by_exposure_fact_id ==
             exposure::exposure_fact_digest(rep_fact),
         "checkpoint fact links to exposure fact digest");
+  check(parsed_checkpoint_fact.protocol_id == rep_fact.protocol_id,
+        "checkpoint fact round-trips protocol id");
   check(parsed_checkpoint_fact.representation_architecture ==
                 rep_fact.representation_architecture &&
             parsed_checkpoint_fact.representation_contract ==
@@ -1422,174 +1420,6 @@ int main() {
         "single-job scan derives aggregate and node-indexed representation "
         "support facts from representation reports");
 
-  const auto legacy_health_dir = root / "legacy_health_sidecar";
-  write_representation_job(legacy_health_dir, 300, 400, "legacy_health.pt");
-  auto legacy_health_fact = exposure::make_exposure_fact_from_job_dir(
-      legacy_health_dir, train_context);
-  auto legacy_sidecar_fact = legacy_health_fact;
-  legacy_sidecar_fact.representation_health_available = false;
-  legacy_sidecar_fact.mean_invariance_loss =
-      std::numeric_limits<double>::quiet_NaN();
-  legacy_sidecar_fact.mean_variance_loss =
-      std::numeric_limits<double>::quiet_NaN();
-  legacy_sidecar_fact.mean_covariance_loss =
-      std::numeric_limits<double>::quiet_NaN();
-  legacy_sidecar_fact.last_grad_norm = std::numeric_limits<double>::quiet_NaN();
-  legacy_sidecar_fact.max_grad_norm = std::numeric_limits<double>::quiet_NaN();
-  legacy_sidecar_fact.total_valid_projection_rows = 0;
-  legacy_sidecar_fact.mean_adapter_valid_channel_time_fraction =
-      std::numeric_limits<double>::quiet_NaN();
-  legacy_sidecar_fact.augmented_valid_feature_count = 0;
-  legacy_sidecar_fact.mean_augmented_valid_feature_fraction =
-      std::numeric_limits<double>::quiet_NaN();
-  legacy_sidecar_fact.mean_augmented_feature_retention_fraction =
-      std::numeric_limits<double>::quiet_NaN();
-  legacy_sidecar_fact.finite_parameter_check = false;
-  legacy_sidecar_fact.representation_embedding_dim = 0;
-  legacy_sidecar_fact.representation_effective_rank =
-      std::numeric_limits<double>::quiet_NaN();
-  legacy_sidecar_fact.representation_effective_rank_fraction =
-      std::numeric_limits<double>::quiet_NaN();
-  legacy_sidecar_fact.representation_min_dimension_variance =
-      std::numeric_limits<double>::quiet_NaN();
-  legacy_sidecar_fact.representation_max_dimension_variance =
-      std::numeric_limits<double>::quiet_NaN();
-  legacy_sidecar_fact.representation_condition_number =
-      std::numeric_limits<double>::quiet_NaN();
-  legacy_sidecar_fact.representation_isotropy_score =
-      std::numeric_limits<double>::quiet_NaN();
-  exposure::write_exposure_fact_sidecar(
-      exposure::exposure_fact_path_for_job_dir(legacy_health_dir),
-      legacy_sidecar_fact);
-  exposure::write_checkpoint_fact_sidecar(
-      exposure::checkpoint_fact_path_for_job_dir(legacy_health_dir),
-      exposure::make_checkpoint_fact_from_exposure_fact(legacy_sidecar_fact));
-  const auto legacy_health_scan =
-      exposure::scan_exposure_ledger_from_runtime_root(legacy_health_dir,
-                                                       train_context);
-  check(
-      legacy_health_scan.ledger.facts().size() == 1 &&
-          legacy_health_scan.ledger.facts()
-              .front()
-              .representation_health_available &&
-          std::abs(
-              legacy_health_scan.ledger.facts().front().mean_variance_loss -
-              legacy_health_fact.mean_variance_loss) < 1e-12 &&
-          std::abs(legacy_health_scan.ledger.facts()
-                       .front()
-                       .representation_effective_rank_fraction -
-                   legacy_health_fact.representation_effective_rank_fraction) <
-              1e-12,
-      "legacy sidecars are supplemented with representation health from "
-      "runtime reports");
-  const auto legacy_health_closure =
-      legacy_health_scan.ledger.checkpoint_closure_result(
-          legacy_health_fact.output_checkpoint);
-  check(legacy_health_closure.resolution_authority ==
-                "checkpoint_id_file_digest" &&
-            !legacy_health_closure.legacy_path_fallback &&
-            legacy_health_closure.root_checkpoint_id.size() == 16,
-        "legacy sidecar supplementation preserves original sidecar digest as "
-        "checkpoint lineage identity");
-  check(std::any_of(legacy_health_scan.warnings.begin(),
-                    legacy_health_scan.warnings.end(),
-                    [](const auto &warning) {
-                      return warning.find("legacy sidecar supplemented") !=
-                             std::string::npos;
-                    }),
-        "legacy sidecar supplementation is reported as a scan warning");
-
-  const auto legacy_geometry_dir = root / "legacy_geometry_sidecar";
-  write_representation_job(legacy_geometry_dir, 400, 500, "legacy_geometry.pt");
-  auto legacy_geometry_fact = exposure::make_exposure_fact_from_job_dir(
-      legacy_geometry_dir, train_context);
-  auto legacy_geometry_sidecar_fact = legacy_geometry_fact;
-  legacy_geometry_sidecar_fact.representation_embedding_dim = 0;
-  legacy_geometry_sidecar_fact.representation_effective_rank =
-      std::numeric_limits<double>::quiet_NaN();
-  legacy_geometry_sidecar_fact.representation_effective_rank_fraction =
-      std::numeric_limits<double>::quiet_NaN();
-  legacy_geometry_sidecar_fact.representation_min_dimension_variance =
-      std::numeric_limits<double>::quiet_NaN();
-  legacy_geometry_sidecar_fact.representation_max_dimension_variance =
-      std::numeric_limits<double>::quiet_NaN();
-  legacy_geometry_sidecar_fact.representation_condition_number =
-      std::numeric_limits<double>::quiet_NaN();
-  legacy_geometry_sidecar_fact.representation_isotropy_score =
-      std::numeric_limits<double>::quiet_NaN();
-  exposure::write_exposure_fact_sidecar(
-      exposure::exposure_fact_path_for_job_dir(legacy_geometry_dir),
-      legacy_geometry_sidecar_fact);
-  const auto legacy_geometry_scan =
-      exposure::scan_exposure_ledger_from_runtime_root(legacy_geometry_dir,
-                                                       train_context);
-  check(legacy_geometry_scan.ledger.facts().size() == 1 &&
-            legacy_geometry_scan.ledger.facts()
-                .front()
-                .representation_health_available &&
-            legacy_geometry_scan.ledger.facts()
-                    .front()
-                    .representation_embedding_dim ==
-                legacy_geometry_fact.representation_embedding_dim &&
-            std::abs(legacy_geometry_scan.ledger.facts()
-                         .front()
-                         .representation_condition_number -
-                     legacy_geometry_fact.representation_condition_number) <
-                1e-12,
-        "legacy sidecars with basic health preserve health and supplement "
-        "missing representation geometry");
-
-  const auto partial_rep_health_dir = root / "partial_rep_health_sidecar";
-  write_representation_job(partial_rep_health_dir, 500, 600,
-                           "partial_rep_health.pt");
-  const auto partial_rep_health_fact =
-      exposure::make_exposure_fact_from_job_dir(partial_rep_health_dir,
-                                                train_context);
-  const auto partial_rep_health_text = remove_lines_with_prefix(
-      exposure::canonical_exposure_fact_text(partial_rep_health_fact),
-      {"finite_parameter_check=", "total_valid_projection_rows=",
-       "mean_adapter_valid_channel_time_fraction=",
-       "augmented_valid_feature_count=",
-       "mean_augmented_valid_feature_fraction=",
-       "mean_augmented_feature_retention_fraction="});
-  write_text(exposure::exposure_fact_path_for_job_dir(partial_rep_health_dir),
-             partial_rep_health_text);
-  const auto partial_rep_health_scan =
-      exposure::scan_exposure_ledger_from_runtime_root(partial_rep_health_dir,
-                                                       train_context);
-  check(
-      partial_rep_health_scan.ledger.facts().size() == 1 &&
-          partial_rep_health_scan.ledger.facts()
-              .front()
-              .representation_health_available &&
-          partial_rep_health_scan.ledger.facts()
-                  .front()
-                  .total_valid_projection_rows ==
-              partial_rep_health_fact.total_valid_projection_rows &&
-          std::abs(partial_rep_health_scan.ledger.facts()
-                       .front()
-                       .mean_adapter_valid_channel_time_fraction -
-                   partial_rep_health_fact
-                       .mean_adapter_valid_channel_time_fraction) < 1e-12 &&
-          partial_rep_health_scan.ledger.facts()
-                  .front()
-                  .augmented_valid_feature_count ==
-              partial_rep_health_fact.augmented_valid_feature_count &&
-          std::abs(
-              partial_rep_health_scan.ledger.facts()
-                  .front()
-                  .mean_augmented_valid_feature_fraction -
-              partial_rep_health_fact.mean_augmented_valid_feature_fraction) <
-              1e-12 &&
-          std::abs(partial_rep_health_scan.ledger.facts()
-                       .front()
-                       .mean_augmented_feature_retention_fraction -
-                   partial_rep_health_fact
-                       .mean_augmented_feature_retention_fraction) < 1e-12 &&
-          partial_rep_health_scan.ledger.facts().front().finite_parameter_check,
-      "partial legacy representation sidecars supplement missing readiness "
-      "health fields from runtime reports");
-
   const auto pref_dir = root / "sidecar_preference";
   write_representation_job(pref_dir, 200, 300, "pref.pt");
   auto pref_fact =
@@ -1610,21 +1440,17 @@ int main() {
                  pref_fact.mean_loss) < 1e-12,
         "scanner prefers sidecar fact over changed runtime report");
 
-  check(mdn_fact.target_component_family_id == "wikimyei.inference.expected_value.mdn",
+  check(mdn_fact.target_component_family_id ==
+            "wikimyei.inference.expected_value.mdn",
         "MDN component decoded");
   check(mdn_fact.use.observed_input, "MDN consumes observed context");
   check(mdn_fact.use.target_supervision, "MDN consumes future supervision");
-  check(mdn_fact.target_footprint.begin == 101 &&
-            mdn_fact.target_footprint.end == 201,
+  check(mdn_fact.target_footprint.begin == 201 &&
+            mdn_fact.target_footprint.end == 321,
         "MDN target source-row footprint decoded");
-  check(mdn_fact.valid_target_count == 42, "MDN valid target count decoded");
-  check(std::abs(mdn_fact.valid_target_fraction - 0.25) < 1e-12,
+  check(mdn_fact.valid_target_count == 60, "MDN valid target count decoded");
+  check(std::abs(mdn_fact.valid_target_fraction - 0.50) < 1e-12,
         "MDN valid target fraction decoded");
-  check(mdn_fact.context_mode == "global_node_context" &&
-            mdn_fact.context_contract == "graph_order.node_representation.v1" &&
-            mdn_fact.context_value_shape == "[B_node,D_e]" &&
-            mdn_fact.input_representation_assembly_id == "node_vicreg_v1",
-        "old fused MDN context contract fields decoded");
   check(channel_mdn_fact.target_component_family_id ==
             "wikimyei.inference.expected_value.mdn",
         "channel MDN component decoded");
@@ -1636,22 +1462,49 @@ int main() {
         "channel MDN valid target count decoded");
   check(std::abs(channel_mdn_fact.valid_target_fraction - 0.50) < 1e-12,
         "channel MDN valid target fraction decoded");
-  check(channel_mdn_fact.inference_health_available &&
-            std::abs(channel_mdn_fact.mean_sigma_mean - 0.80) < 1e-12 &&
-            std::abs(channel_mdn_fact.min_sigma_min - 0.10) < 1e-12 &&
-            std::abs(channel_mdn_fact.max_sigma_max - 1.50) < 1e-12 &&
-            std::abs(channel_mdn_fact.mean_mixture_entropy - 0.60) < 1e-12 &&
-            channel_mdn_fact.mean_nll_per_channel.size() == 3 &&
-            std::abs(channel_mdn_fact.mean_nll_per_channel[2] - 0.80) < 1e-12 &&
-            channel_mdn_fact.mean_nll_per_target_feature.size() == 2 &&
-            std::abs(channel_mdn_fact.mean_nll_per_target_feature[1] - 0.70) < 1e-12 &&
-            channel_mdn_fact.mean_mixture_usage.size() == 2 &&
-            std::abs(channel_mdn_fact.mean_mixture_usage[0] - 0.25) < 1e-12 &&
-            channel_mdn_fact.nonfinite_output_count == 2 &&
-            std::abs(channel_mdn_fact.last_grad_norm - 1.20) < 1e-12 &&
-            std::abs(channel_mdn_fact.max_grad_norm - 1.80) < 1e-12 &&
-            channel_mdn_fact.finite_parameter_check,
-        "channel MDN health fields are decoded from strict-channel report");
+  check(
+      channel_mdn_fact.inference_health_available &&
+          std::abs(channel_mdn_fact.mean_sigma_mean - 0.80) < 1e-12 &&
+          std::abs(channel_mdn_fact.min_sigma_min - 0.10) < 1e-12 &&
+          std::abs(channel_mdn_fact.max_sigma_max - 1.50) < 1e-12 &&
+          std::abs(channel_mdn_fact.mean_mixture_entropy - 0.60) < 1e-12 &&
+          channel_mdn_fact.mean_nll_per_channel.size() == 3 &&
+          std::abs(channel_mdn_fact.mean_nll_per_channel[2] - 0.80) < 1e-12 &&
+          channel_mdn_fact.mean_nll_per_target_feature.size() == 2 &&
+          std::abs(channel_mdn_fact.mean_nll_per_target_feature[1] - 0.70) <
+              1e-12 &&
+          channel_mdn_fact.mean_nll_per_channel_target_feature.size() == 6 &&
+          std::abs(channel_mdn_fact.mean_nll_per_channel_target_feature[5] -
+                   0.82) < 1e-12 &&
+          channel_mdn_fact.mean_mixture_usage.size() == 2 &&
+          std::abs(channel_mdn_fact.mean_mixture_usage[0] - 0.25) < 1e-12 &&
+          channel_mdn_fact.valid_target_count_per_channel.size() == 3 &&
+          channel_mdn_fact.valid_target_count_per_channel[2] == 30 &&
+          channel_mdn_fact.valid_target_count_per_target_feature.size() == 2 &&
+          channel_mdn_fact.valid_target_count_per_target_feature[1] == 33 &&
+          channel_mdn_fact.valid_target_count_per_channel_target_feature
+                  .size() == 6 &&
+          channel_mdn_fact.valid_target_count_per_channel_target_feature[5] ==
+              16 &&
+          channel_mdn_fact.mdn_architecture ==
+              "shared_slot_trunk.channel_adapter.shared_feature_head.v2" &&
+          channel_mdn_fact.loss_reduction == "balanced_channel_feature_mean" &&
+          channel_mdn_fact.feature_embedding_dim == 4 &&
+          channel_mdn_fact.channel_adapter_rank == 4 &&
+          channel_mdn_fact.shared_trunk &&
+          channel_mdn_fact.channel_adapters_enabled &&
+          channel_mdn_fact.shared_feature_head &&
+          channel_mdn_fact.feature_embedding_enabled &&
+          !channel_mdn_fact.node_id_embedding &&
+          !channel_mdn_fact.cross_node_attention &&
+          !channel_mdn_fact.cross_channel_attention &&
+          channel_mdn_fact.nonfinite_output_count == 0 &&
+          std::abs(channel_mdn_fact.last_grad_norm - 1.20) < 1e-12 &&
+          std::abs(channel_mdn_fact.max_grad_norm - 1200.0) < 1e-12 &&
+          std::abs(channel_mdn_fact.grad_clip_norm - 5.0) < 1e-12 &&
+          channel_mdn_fact.finite_parameter_check,
+      "channel MDN health fields prefer Runtime terminal facts and keep "
+      "strict-channel report details");
   check(channel_mdn_fact.input_representation_assembly_id == "vicreg_v1" &&
             channel_mdn_fact.context_mode == "channel_context_strict" &&
             channel_mdn_fact.context_contract ==
@@ -1692,111 +1545,12 @@ int main() {
   check(channel_mdn_fact.input_checkpoints.size() == 1,
         "channel MDN input representation checkpoint decoded");
 
-  const auto legacy_channel_mdn_health_dir =
-      root / "legacy_channel_mdn_health_sidecar";
-  write_channel_mdn_job(legacy_channel_mdn_health_dir, 500, 560,
-                        root / "legacy_channel_rep.pt",
-                        "legacy_channel_mdn.pt");
-  const auto legacy_channel_mdn_fact =
-      exposure::make_exposure_fact_from_job_dir(legacy_channel_mdn_health_dir,
-                                                train_context);
-  auto legacy_channel_mdn_sidecar_fact = legacy_channel_mdn_fact;
-  legacy_channel_mdn_sidecar_fact.inference_health_available = false;
-  legacy_channel_mdn_sidecar_fact.mean_sigma_mean =
-      std::numeric_limits<double>::quiet_NaN();
-  legacy_channel_mdn_sidecar_fact.min_sigma_min =
-      std::numeric_limits<double>::quiet_NaN();
-  legacy_channel_mdn_sidecar_fact.max_sigma_max =
-      std::numeric_limits<double>::quiet_NaN();
-  legacy_channel_mdn_sidecar_fact.mean_mixture_entropy =
-      std::numeric_limits<double>::quiet_NaN();
-  legacy_channel_mdn_sidecar_fact.mean_nll_per_channel.clear();
-  legacy_channel_mdn_sidecar_fact.mean_nll_per_target_feature.clear();
-  legacy_channel_mdn_sidecar_fact.mean_mixture_usage.clear();
-  legacy_channel_mdn_sidecar_fact.nonfinite_output_count = 0;
-  legacy_channel_mdn_sidecar_fact.last_grad_norm =
-      std::numeric_limits<double>::quiet_NaN();
-  legacy_channel_mdn_sidecar_fact.max_grad_norm =
-      std::numeric_limits<double>::quiet_NaN();
-  legacy_channel_mdn_sidecar_fact.finite_parameter_check = false;
-  exposure::write_exposure_fact_sidecar(
-      exposure::exposure_fact_path_for_job_dir(legacy_channel_mdn_health_dir),
-      legacy_channel_mdn_sidecar_fact);
-  const auto legacy_channel_mdn_health_scan =
-      exposure::scan_exposure_ledger_from_runtime_root(
-          legacy_channel_mdn_health_dir, train_context);
-  check(legacy_channel_mdn_health_scan.ledger.facts().size() == 1 &&
-            legacy_channel_mdn_health_scan.ledger.facts()
-                .front()
-                .inference_health_available &&
-            std::abs(legacy_channel_mdn_health_scan.ledger.facts()
-                         .front()
-                         .mean_sigma_mean -
-                     legacy_channel_mdn_fact.mean_sigma_mean) < 1e-12 &&
-            legacy_channel_mdn_health_scan.ledger.facts()
-                    .front()
-                    .mean_mixture_usage.size() ==
-                legacy_channel_mdn_fact.mean_mixture_usage.size() &&
-            legacy_channel_mdn_health_scan.ledger.facts()
-                    .front()
-                    .nonfinite_output_count ==
-                legacy_channel_mdn_fact.nonfinite_output_count &&
-            legacy_channel_mdn_health_scan.ledger.facts()
-                .front()
-                .finite_parameter_check,
-        "legacy channel MDN sidecars are supplemented with inference health "
-        "from runtime reports");
-  check(std::any_of(legacy_channel_mdn_health_scan.warnings.begin(),
-                    legacy_channel_mdn_health_scan.warnings.end(),
-                    [](const auto &warning) {
-                      return warning.find("legacy sidecar supplemented with "
-                                          "inference health") !=
-                             std::string::npos;
-                    }),
-        "legacy channel MDN sidecar supplementation is reported as a scan "
-        "warning");
-
-  const auto partial_channel_mdn_health_dir =
-      root / "partial_channel_mdn_health_sidecar";
-  write_channel_mdn_job(partial_channel_mdn_health_dir, 560, 620,
-                        root / "partial_channel_rep.pt",
-                        "partial_channel_mdn.pt");
-  const auto partial_channel_mdn_fact =
-      exposure::make_exposure_fact_from_job_dir(partial_channel_mdn_health_dir,
-                                                train_context);
-  const auto partial_channel_mdn_text = remove_lines_with_prefix(
-      exposure::canonical_exposure_fact_text(partial_channel_mdn_fact),
-      {"finite_parameter_check=", "nonfinite_output_count=",
-       "mean_mixture_usage="});
-  write_text(
-      exposure::exposure_fact_path_for_job_dir(partial_channel_mdn_health_dir),
-      partial_channel_mdn_text);
-  const auto partial_channel_mdn_health_scan =
-      exposure::scan_exposure_ledger_from_runtime_root(
-          partial_channel_mdn_health_dir, train_context);
-  check(partial_channel_mdn_health_scan.ledger.facts().size() == 1 &&
-            partial_channel_mdn_health_scan.ledger.facts()
-                .front()
-                .inference_health_available &&
-            partial_channel_mdn_health_scan.ledger.facts()
-                    .front()
-                    .mean_mixture_usage.size() ==
-                partial_channel_mdn_fact.mean_mixture_usage.size() &&
-            partial_channel_mdn_health_scan.ledger.facts()
-                    .front()
-                    .nonfinite_output_count ==
-                partial_channel_mdn_fact.nonfinite_output_count &&
-            partial_channel_mdn_health_scan.ledger.facts()
-                .front()
-                .finite_parameter_check,
-        "partial legacy channel MDN sidecars supplement missing readiness "
-        "health fields from runtime reports");
-
   const auto channel_mdn_checkpoint_fact =
       exposure::make_checkpoint_fact_from_exposure_fact(channel_mdn_fact);
   const auto channel_mdn_checkpoint_text =
       exposure::canonical_checkpoint_fact_text(channel_mdn_checkpoint_fact);
-  check(channel_mdn_checkpoint_fact.input_representation_assembly_id == "vicreg_v1" &&
+  check(channel_mdn_checkpoint_fact.input_representation_assembly_id ==
+                "vicreg_v1" &&
             channel_mdn_checkpoint_fact.context_mode ==
                 "channel_context_strict" &&
             channel_mdn_checkpoint_fact.context_contract ==
@@ -1825,18 +1579,19 @@ int main() {
         "fields");
   const auto mdn_target_support_summary = exposure::exposure_load_for_use(
       std::vector<exposure::lattice_exposure_fact_t>{mdn_fact},
-      exposure::anchor_interval_t{.begin = 100, .end = 200},
-      exposure::exposure_use_t::target_supervision);
+      exposure::anchor_interval_t{.begin = 200, .end = 320},
+      exposure::exposure_use_t::target_supervision,
+      /*require_mutated_component=*/false);
   const auto [mdn_support_lower, mdn_support_upper] =
-      exposure::wilson_score_interval_95(42, 168);
+      exposure::wilson_score_interval_95(60, 120);
   check(mdn_target_support_summary.valid_target_success_count_for_uncertainty ==
-                42 &&
+                60 &&
             mdn_target_support_summary
-                    .valid_target_opportunity_count_for_uncertainty == 168,
+                    .valid_target_opportunity_count_for_uncertainty == 120,
         "MDN exposure summary derives valid-target support counts for "
         "uncertainty");
   check(std::abs(mdn_target_support_summary.valid_target_fraction_estimate -
-                 0.25) < 1e-12 &&
+                 0.50) < 1e-12 &&
             std::abs(mdn_target_support_summary.valid_target_wilson_lower_95 -
                      mdn_support_lower) < 1e-12 &&
             std::abs(mdn_target_support_summary.valid_target_wilson_upper_95 -
@@ -1845,31 +1600,32 @@ int main() {
   auto outside_mdn_support_fact = mdn_fact;
   outside_mdn_support_fact.job_id = "outside_mdn_support";
   outside_mdn_support_fact.anchor_range =
-      exposure::anchor_interval_t{.begin = 200, .end = 300};
+      exposure::anchor_interval_t{.begin = 320, .end = 440};
   outside_mdn_support_fact.completed_anchor_range =
       outside_mdn_support_fact.anchor_range;
   outside_mdn_support_fact.target_footprint =
-      exposure::anchor_interval_t{.begin = 201, .end = 301};
-  outside_mdn_support_fact.valid_target_count = 100;
+      exposure::anchor_interval_t{.begin = 321, .end = 441};
+  outside_mdn_support_fact.valid_target_count = 120;
   outside_mdn_support_fact.valid_target_fraction = 1.0;
   outside_mdn_support_fact.optimizer_steps = 99;
   const auto mdn_target_support_with_outside = exposure::exposure_load_for_use(
       std::vector<exposure::lattice_exposure_fact_t>{mdn_fact,
                                                      outside_mdn_support_fact},
-      exposure::anchor_interval_t{.begin = 100, .end = 200},
-      exposure::exposure_use_t::target_supervision);
+      exposure::anchor_interval_t{.begin = 200, .end = 320},
+      exposure::exposure_use_t::target_supervision,
+      /*require_mutated_component=*/false);
   check(
       mdn_target_support_with_outside.fact_count == 1 &&
-          mdn_target_support_with_outside.loaded_anchor_events == 100 &&
+          mdn_target_support_with_outside.loaded_anchor_events == 120 &&
           mdn_target_support_with_outside.optimizer_steps_total ==
               mdn_fact.optimizer_steps &&
-          mdn_target_support_with_outside.valid_target_count_total == 42 &&
+          mdn_target_support_with_outside.valid_target_count_total == 60 &&
           mdn_target_support_with_outside
-                  .valid_target_success_count_for_uncertainty == 42 &&
+                  .valid_target_success_count_for_uncertainty == 60 &&
           mdn_target_support_with_outside
-                  .valid_target_opportunity_count_for_uncertainty == 168 &&
+                  .valid_target_opportunity_count_for_uncertainty == 120 &&
           std::abs(mdn_target_support_with_outside.valid_target_cursor_epochs -
-                   0.25) < 1e-12 &&
+                   0.50) < 1e-12 &&
           std::abs(
               mdn_target_support_with_outside.valid_target_wilson_lower_95 -
               mdn_support_lower) < 1e-12 &&
@@ -1881,30 +1637,31 @@ int main() {
   auto half_overlap_mdn_support_fact = mdn_fact;
   half_overlap_mdn_support_fact.job_id = "half_overlap_mdn_support";
   half_overlap_mdn_support_fact.anchor_range =
-      exposure::anchor_interval_t{.begin = 150, .end = 250};
+      exposure::anchor_interval_t{.begin = 260, .end = 380};
   half_overlap_mdn_support_fact.completed_anchor_range =
       half_overlap_mdn_support_fact.anchor_range;
   half_overlap_mdn_support_fact.target_footprint =
-      exposure::anchor_interval_t{.begin = 151, .end = 251};
-  half_overlap_mdn_support_fact.valid_target_count = 40;
+      exposure::anchor_interval_t{.begin = 261, .end = 381};
+  half_overlap_mdn_support_fact.valid_target_count = 60;
   half_overlap_mdn_support_fact.valid_target_fraction = 0.5;
   const auto half_overlap_support_summary = exposure::exposure_load_for_use(
       std::vector<exposure::lattice_exposure_fact_t>{
           half_overlap_mdn_support_fact},
-      exposure::anchor_interval_t{.begin = 100, .end = 200},
-      exposure::exposure_use_t::target_supervision);
+      exposure::anchor_interval_t{.begin = 200, .end = 320},
+      exposure::exposure_use_t::target_supervision,
+      /*require_mutated_component=*/false);
   const auto [half_overlap_lower, half_overlap_upper] =
-      exposure::wilson_score_interval_95(20, 40);
+      exposure::wilson_score_interval_95(30, 60);
   check(
       half_overlap_support_summary.fact_count == 1 &&
-          half_overlap_support_summary.loaded_anchor_events == 50 &&
+          half_overlap_support_summary.loaded_anchor_events == 60 &&
           std::abs(half_overlap_support_summary.cursor_exposure_load - 0.5) <
               1e-12 &&
-          half_overlap_support_summary.valid_target_count_total == 20 &&
+          half_overlap_support_summary.valid_target_count_total == 30 &&
           half_overlap_support_summary
-                  .valid_target_success_count_for_uncertainty == 20 &&
+                  .valid_target_success_count_for_uncertainty == 30 &&
           half_overlap_support_summary
-                  .valid_target_opportunity_count_for_uncertainty == 40 &&
+                  .valid_target_opportunity_count_for_uncertainty == 60 &&
           std::abs(half_overlap_support_summary.valid_target_cursor_epochs -
                    0.25) < 1e-12 &&
           std::abs(half_overlap_support_summary.valid_target_fraction_estimate -
@@ -1915,167 +1672,6 @@ int main() {
                    half_overlap_upper) < 1e-12,
       "partially overlapping MDN support facts range-scope support counts, "
       "cursor epochs, and Wilson uncertainty");
-  check(mdn_fact.input_checkpoints.size() == 1,
-        "MDN input representation checkpoint decoded");
-  const auto node_facts =
-      exposure::make_node_exposure_facts_from_job_dir(mdn_dir, mdn_fact);
-  check(node_facts.size() == 3, "MDN report derives one node fact per node");
-  check(exposure::make_representation_support_facts_from_job_dir(mdn_dir,
-                                                                 mdn_fact)
-            .empty(),
-        "MDN node support is not backfilled into representation support "
-        "facts");
-  check(node_facts[0].node_id == "BTC" && node_facts[0].node_index == 0,
-        "first MDN node exposure fact keeps node identity");
-  check(node_facts[0].routed_row_count == 12 &&
-            node_facts[0].active_row_count == 10 &&
-            node_facts[0].trained_row_count == 10 &&
-            node_facts[0].evaluated_row_count == 0,
-        "first MDN node row support counts decoded");
-  check(node_facts[0].valid_target_count == 10,
-        "first MDN node valid target count decoded");
-  check(node_facts[0].valid_target_opportunity_count == 20,
-        "first MDN node valid target opportunity count decoded");
-  check(std::abs(node_facts[0].valid_target_fraction - 0.50) < 1e-12,
-        "first MDN node valid target fraction uses active rows and target "
-        "coordinates");
-  check(std::abs(node_facts[0].mean_nll - 0.50) < 1e-12,
-        "first MDN node mean NLL decoded");
-  check(node_facts[1].node_id == "ETH" && node_facts[1].valid_target_count == 0,
-        "zero-support MDN node remains visible");
-  check(node_facts[1].active_row_count == 0 &&
-            node_facts[1].trained_row_count == 0,
-        "zero-support MDN node row counts remain visible");
-  check(node_facts[1].valid_target_opportunity_count == 0,
-        "inactive zero-support MDN node does not claim target opportunities");
-  check(std::isnan(node_facts[1].valid_target_fraction),
-        "zero-support MDN node valid target fraction remains unknown");
-  check(std::isnan(node_facts[1].mean_nll),
-        "NaN MDN node metric remains an unknown metric");
-  check(node_facts[2].node_id == "SOL" && node_facts[2].valid_target_count == 5,
-        "third MDN node valid target count decoded");
-  check(!node_facts[2].parent_exposure_fact_digest.empty(),
-        "MDN node fact links to parent exposure fact digest");
-  check(node_facts[2].target_component_family_id ==
-            "wikimyei.inference.expected_value.mdn",
-        "MDN node fact keeps component identity");
-  const auto node_summary = exposure::summarize_node_support(
-      node_facts, "wikimyei.inference.expected_value.mdn");
-  check(node_summary.node_count == 3 && node_summary.unique_node_count == 3,
-        "node summary counts MDN support rows and unique nodes");
-  check(node_summary.observed_input_support_row_count == 3 &&
-            node_summary.target_supervision_support_row_count == 3 &&
-            node_summary.mutating_support_row_count == 3 &&
-            node_summary.non_mutating_support_row_count == 0,
-        "node summary exposes support-row incidence by use and mutation");
-  auto mixed_support_rows = node_summary.support_rows;
-  auto non_mutating_eval_row = mixed_support_rows.front();
-  non_mutating_eval_row.parent_exposure_fact_digest = "eval_parent";
-  non_mutating_eval_row.use.mutated_component = false;
-  non_mutating_eval_row.trained_row_count = 0;
-  non_mutating_eval_row.evaluated_row_count = 10;
-  non_mutating_eval_row.valid_target_count = 10;
-  non_mutating_eval_row.valid_target_denominator = 20;
-  non_mutating_eval_row.valid_target_fraction = 0.50;
-  mixed_support_rows.push_back(non_mutating_eval_row);
-  const auto mixed_node_summary = exposure::summarize_node_support_rows(
-      mixed_support_rows, "wikimyei.inference.expected_value.mdn",
-      "train_core");
-  const auto mutating_target_support = exposure::filter_node_support_summary(
-      mixed_node_summary, exposure::exposure_use_t::target_supervision,
-      /*require_mutated_component=*/true);
-  check(mixed_node_summary.node_count == 4 &&
-            mixed_node_summary.non_mutating_support_row_count == 1 &&
-            mutating_target_support.node_count == 3 &&
-            mutating_target_support.non_mutating_support_row_count == 0 &&
-            mutating_target_support.valid_target_count_total == 15,
-        "node summary filtering isolates mutating target-supervision support "
-        "from non-mutating evaluation rows");
-  check(node_summary.routed_row_count_total == 30 &&
-            node_summary.active_row_count_total == 15 &&
-            node_summary.trained_row_count_total == 15 &&
-            node_summary.valid_target_count_total == 15,
-        "node summary totals row and target support");
-  check(node_summary.weakest_valid_target_node_id == "ETH" &&
-            node_summary.weakest_valid_target_count == 0,
-        "node summary identifies weakest valid-target node");
-  const auto [expected_node_support_lower, expected_node_support_upper] =
-      exposure::wilson_score_interval_95(15, 30);
-  check(node_summary.valid_target_opportunity_count_total == 30 &&
-            std::abs(node_summary.valid_target_fraction_estimate - 0.5) <
-                1e-12 &&
-            std::abs(node_summary.valid_target_wilson_lower_95 -
-                     expected_node_support_lower) < 1e-12 &&
-            std::abs(node_summary.valid_target_wilson_upper_95 -
-                     expected_node_support_upper) < 1e-12,
-        "node summary reports aggregate valid-target Wilson support interval");
-  check(node_summary.weakest_valid_target_denominator == 0 &&
-            std::isnan(node_summary.weakest_valid_target_fraction) &&
-            std::isnan(node_summary.weakest_valid_target_wilson_lower_95) &&
-            std::isnan(node_summary.weakest_valid_target_wilson_upper_95),
-        "node summary does not invent weakest-node Wilson support without "
-        "target-opportunity evidence");
-  check(std::abs(node_summary.min_valid_target_fraction - 0.50) < 1e-12 &&
-            std::abs(node_summary.max_valid_target_fraction - 0.50) < 1e-12 &&
-            std::abs(node_summary.mean_valid_target_fraction - 0.50) < 1e-12,
-        "node summary reports finite valid-target fraction range");
-  check(std::abs(node_summary.valid_target_count_gini - (4.0 / 9.0)) < 1e-12,
-        "node summary reports valid-target support gini");
-  const double expected_node_entropy = -((10.0 / 15.0) * std::log(10.0 / 15.0) +
-                                         (5.0 / 15.0) * std::log(5.0 / 15.0)) /
-                                       std::log(3.0);
-  check(std::abs(node_summary.valid_target_count_normalized_entropy -
-                 expected_node_entropy) < 1e-12,
-        "node summary reports normalized valid-target support entropy");
-  std::vector<exposure::lattice_node_exposure_fact_t> wide_node_facts;
-  for (std::int64_t i = 0; i < 2; ++i) {
-    auto node_fact = node_facts.front();
-    node_fact.node_id = i == 0 ? "BTC" : "ETH";
-    node_fact.node_index = i;
-    node_fact.anchor_range =
-        exposure::anchor_interval_t{.begin = 100, .end = 300};
-    node_fact.completed_anchor_range = node_fact.anchor_range;
-    node_fact.active_row_count = i == 0 ? 100 : 20;
-    node_fact.trained_row_count = node_fact.active_row_count;
-    node_fact.valid_target_count = i == 0 ? 80 : 10;
-    node_fact.valid_target_opportunity_count = i == 0 ? 100 : 20;
-    node_fact.valid_target_fraction = i == 0 ? 0.80 : 0.50;
-    wide_node_facts.push_back(std::move(node_fact));
-  }
-  auto outside_node_fact = wide_node_facts.front();
-  outside_node_fact.node_id = "SOL";
-  outside_node_fact.node_index = 2;
-  outside_node_fact.anchor_range =
-      exposure::anchor_interval_t{.begin = 200, .end = 300};
-  outside_node_fact.completed_anchor_range = outside_node_fact.anchor_range;
-  outside_node_fact.active_row_count = 1000;
-  outside_node_fact.trained_row_count = 1000;
-  outside_node_fact.valid_target_count = 1000;
-  outside_node_fact.valid_target_opportunity_count = 1000;
-  wide_node_facts.push_back(std::move(outside_node_fact));
-  const auto ranged_node_summary = exposure::summarize_node_support_for_range(
-      wide_node_facts, exposure::anchor_interval_t{.begin = 100, .end = 200},
-      "wikimyei.inference.expected_value.mdn");
-  const auto [ranged_node_lower, ranged_node_upper] =
-      exposure::wilson_score_interval_95(45, 60);
-  check(ranged_node_summary.node_count == 2 &&
-            ranged_node_summary.unique_node_count == 2 &&
-            ranged_node_summary.active_row_count_total == 60 &&
-            ranged_node_summary.trained_row_count_total == 60 &&
-            ranged_node_summary.valid_target_count_total == 45 &&
-            ranged_node_summary.valid_target_opportunity_count_total == 60 &&
-            ranged_node_summary.weakest_valid_target_node_id == "ETH" &&
-            ranged_node_summary.weakest_valid_target_count == 5 &&
-            ranged_node_summary.weakest_valid_target_denominator == 10 &&
-            std::abs(ranged_node_summary.valid_target_fraction_estimate -
-                     0.75) < 1e-12 &&
-            std::abs(ranged_node_summary.valid_target_wilson_lower_95 -
-                     ranged_node_lower) < 1e-12 &&
-            std::abs(ranged_node_summary.valid_target_wilson_upper_95 -
-                     ranged_node_upper) < 1e-12,
-        "range-scoped node support excludes outside rows and scales partial "
-        "node facts before Wilson support");
-
   auto unproven_fact =
       exposure::make_exposure_fact_from_job_dir(unproven_dir, train_context);
   check(!unproven_fact.use.mutated_component,
@@ -2262,10 +1858,10 @@ int main() {
   exposure::lattice_exposure_ledger_t ledger;
   ledger.add(rep_fact);
   ledger.add(mdn_fact);
-  const auto closure = ledger.checkpoint_closure(mdn_dir / "mdn.pt");
+  const auto closure = ledger.checkpoint_closure(channel_mdn_checkpoint_path);
   check(closure.size() == 2,
         "MDN checkpoint closure includes MDN and representation exposure");
-  check(!ledger.checkpoint_closure_digest(mdn_dir / "mdn.pt").empty(),
+  check(!ledger.checkpoint_closure_digest(channel_mdn_checkpoint_path).empty(),
         "checkpoint closure digest is present");
 
   const auto rep_identity_fact =
@@ -2278,11 +1874,10 @@ int main() {
   identity_ledger.add_checkpoint(rep_identity_fact);
   identity_ledger.add_checkpoint(mdn_identity_fact);
   const auto identity_closure =
-      identity_ledger.checkpoint_closure_result(mdn_dir / "mdn.pt");
+      identity_ledger.checkpoint_closure_result(channel_mdn_checkpoint_path);
   check(identity_closure.complete() && identity_closure.facts.size() == 2,
         "checkpoint id/digest closure remains complete");
   check(identity_closure.resolution_authority == "checkpoint_id_file_digest" &&
-            !identity_closure.legacy_path_fallback &&
             identity_closure.root_checkpoint_id ==
                 mdn_identity_fact.checkpoint_id &&
             identity_closure.root_checkpoint_file_digest ==
@@ -2310,22 +1905,6 @@ int main() {
         "unknown root checkpoint paths should be unresolved instead of "
         "complete with zero facts");
 
-  auto legacy_mdn_checkpoint_fact = mdn_identity_fact;
-  legacy_mdn_checkpoint_fact.checkpoint_id.clear();
-  legacy_mdn_checkpoint_fact.checkpoint_file_digest.clear();
-  exposure::lattice_exposure_ledger_t legacy_identity_ledger;
-  legacy_identity_ledger.add(rep_fact);
-  legacy_identity_ledger.add(mdn_fact);
-  legacy_identity_ledger.add_checkpoint(rep_identity_fact);
-  legacy_identity_ledger.add_checkpoint(legacy_mdn_checkpoint_fact);
-  const auto legacy_identity_closure =
-      legacy_identity_ledger.checkpoint_closure_result(mdn_dir / "mdn.pt");
-  check(legacy_identity_closure.complete() &&
-            legacy_identity_closure.resolution_authority == "legacy_path" &&
-            legacy_identity_closure.legacy_path_fallback,
-        "checkpoint closure keeps missing id/digest evidence as explicit "
-        "legacy path fallback");
-
   auto wrong_digest_checkpoint_fact = mdn_identity_fact;
   wrong_digest_checkpoint_fact.checkpoint_file_digest = "0000000000000000";
   wrong_digest_checkpoint_fact
@@ -2340,7 +1919,8 @@ int main() {
   wrong_digest_ledger.add_checkpoint(rep_identity_fact);
   wrong_digest_ledger.add_checkpoint(wrong_digest_checkpoint_fact);
   const auto wrong_digest_closure =
-      wrong_digest_ledger.checkpoint_closure_result(mdn_dir / "mdn.pt");
+      wrong_digest_ledger.checkpoint_closure_result(
+          channel_mdn_checkpoint_path);
   check(!wrong_digest_closure.complete() &&
             wrong_digest_closure.resolution_authority ==
                 "checkpoint_identity_failed" &&
@@ -2464,7 +2044,7 @@ int main() {
   wrong_id_ledger.add_checkpoint(rep_identity_fact);
   wrong_id_ledger.add_checkpoint(wrong_id_checkpoint_fact);
   const auto wrong_id_closure =
-      wrong_id_ledger.checkpoint_closure_result(mdn_dir / "mdn.pt");
+      wrong_id_ledger.checkpoint_closure_result(channel_mdn_checkpoint_path);
   check(!wrong_id_closure.complete() &&
             wrong_id_closure.resolution_authority ==
                 "checkpoint_identity_failed" &&
@@ -2485,9 +2065,10 @@ int main() {
         "checkpoint identity lookup fails closed on wrong digest");
 
   const auto target_supervision_anchor_coverage = exposure::coverage_for_use(
-      closure, exposure::anchor_interval_t{.begin = 100, .end = 200},
-      exposure::exposure_use_t::target_supervision);
-  check(target_supervision_anchor_coverage.covered_anchors == 100,
+      closure, exposure::anchor_interval_t{.begin = 200, .end = 320},
+      exposure::exposure_use_t::target_supervision,
+      /*require_mutated_component=*/false);
+  check(target_supervision_anchor_coverage.covered_anchors == 120,
         "target supervision coverage uses anchor coverage, not future rows");
   check(std::abs(target_supervision_anchor_coverage.coverage_fraction - 1.0) <
             1e-12,
@@ -2512,16 +2093,18 @@ int main() {
 
   exposure::forbidden_exposure_query_t target_query{};
   target_query.forbidden_range =
-      exposure::anchor_interval_t{.begin = 150, .end = 160};
+      exposure::anchor_interval_t{.begin = 250, .end = 260};
   target_query.forbidden_uses = {exposure::exposure_use_t::target_supervision};
+  target_query.require_mutated_component = false;
   check(exposure::has_forbidden_exposure_overlap(closure, target_query),
         "closure catches MDN target-supervision overlap");
 
   exposure::forbidden_exposure_query_t future_boundary_query{};
   future_boundary_query.forbidden_range =
-      exposure::anchor_interval_t{.begin = 200, .end = 201};
+      exposure::anchor_interval_t{.begin = 320, .end = 321};
   future_boundary_query.forbidden_uses = {
       exposure::exposure_use_t::target_supervision};
+  future_boundary_query.require_mutated_component = false;
   check(
       exposure::has_forbidden_exposure_overlap(closure, future_boundary_query),
       "closure catches future Hf target footprint beyond anchor range");
@@ -2862,6 +2445,140 @@ int main() {
       "wikimyei.representation.encoding.vicreg");
   check(component_scoped_load.loaded_anchor_events == 0,
         "wrong component does not count for target-component scoped load");
+
+  const auto mtf_dir = root / "mtf_representation_job";
+  write_text(mtf_dir / "job.manifest",
+             "job_id=mtf_rep_job\n"
+             "job_kind=channel_representation_mtf_jepa_mae_vicreg\n"
+             "target_component_family_id="
+             "wikimyei.representation.encoding.mtf_jepa_mae_vicreg\n"
+             "wave_id=wave_mtf\n"
+             "wave_action=train\n"
+             "mutated_components="
+             "wikimyei.representation.encoding.mtf_jepa_mae_vicreg\n"
+             "graph_order_fingerprint=graph_1\n"
+             "source_range_policy=anchor_index\n"
+             "resolved_anchor_index_begin=0\n"
+             "resolved_anchor_index_end=10\n"
+             "accepted_anchor_count=10\n"
+             "source_cursor_token=cursor_mtf\n"
+             "protocol_contract_fingerprint=contract_1\n"
+             "mtf_jepa_mae_vicreg_assembly_fingerprint=mtf_1\n");
+  write_text(mtf_dir / "job.state", "status=completed\n"
+                                    "optimizer_steps=3\n"
+                                    "last_loss=0.35\n"
+                                    "checkpoint_written=true\n"
+                                    "checkpoint_path=mtf.pt\n");
+  write_text(mtf_dir / "mtf.pt", "mtf checkpoint");
+  const auto mtf_checkpoint_digest =
+      exposure::file_content_digest(mtf_dir / "mtf.pt");
+  write_text(
+      mtf_dir / "channel_representation.report",
+      std::string("report_schema_id="
+                  "wikimyei.representation.mtf_jepa_mae_vicreg.report.v1\n"
+                  "report_schema_version=1\n"
+                  "report_writer_id=jkimyei.training.representation."
+                  "mtf_jepa_mae_vicreg_graph_first_launcher\n"
+                  "report_writer_version=1\n"
+                  "optimizer_steps=3\n"
+                  "mean_loss=0.30\n"
+                  "representation_architecture=mtf_jepa_mae_vicreg.v1\n"
+                  "representation_contract=standalone.mtf_jepa_mae_vicreg.v1\n"
+                  "primary_value_shape=[B_flat,De]\n"
+                  "sequence_value_shape=[B_flat,Ntok,De]\n"
+                  "channel_value_shape=[B_flat,C,De]\n"
+                  "channel_axis_policy=optional_channel_output\n"
+                  "temporal_reduction=mask_aware_token_pool\n"
+                  "input_nodelift_shape=[B,C,Hx,N,F]\n"
+                  "mtf_training_shape=[B_flat,C,Hx,F]\n"
+                  "flattening_contract=anchor_node_flatten.v1\n"
+                  "anchor_batch_count=4\n"
+                  "node_count=2\n"
+                  "flattened_sample_count=8\n"
+                  "channel_count=3\n"
+                  "history_length=16\n"
+                  "input_feature_width=5\n"
+                  "recommended_graph_restore_shape=[B,N,C,De]\n"
+                  "graph_restore_available=false\n"
+                  "graph_restore_reason="
+                  "runtime_reports_flattened_anchor_node_samples_only\n"
+                  "reshape_lossless=true\n"
+                  "run_data_kind=market\n"
+                  "readiness_scope=market_pretraining\n"
+                  "synthetic_training_passed=false\n"
+                  "market_readiness_claimed=false\n"
+                  "finite_parameter_check=true\n"
+                  "gradients_finite=true\n"
+                  "sample_valid_count=8\n"
+                  "sample_valid_fraction=1.0\n"
+                  "channel_valid_count=24\n"
+                  "channel_valid_fraction=1.0\n"
+                  "valid_latent_rows=24\n"
+                  "total_valid_projection_rows=24\n"
+                  "tf_pair_count=16\n"
+                  "tf_pair_valid_count=16\n"
+                  "vicreg_global_valid_rows=8\n"
+                  "vicreg_channel_valid_rows=24\n"
+                  "context_starved_sample_count=0\n"
+                  "reduced_targets_for_context_count=0\n"
+                  "min_context_satisfied_count=8\n"
+                  "target_ema_distance=0.01\n"
+                  "latent_std=0.25\n"
+                  "latent_norm=1.5\n"
+                  "loss_jepa_mean=0.20\n"
+                  "loss_mae_time_mean=0.03\n"
+                  "loss_mae_frequency_mean=0.04\n"
+                  "loss_tf_align_mean=0.02\n"
+                  "loss_vicreg_global_mean=0.01\n"
+                  "loss_vicreg_channel_mean=0.01\n"
+                  "representation_embedding_dim=32\n"
+                  "representation_effective_rank=16\n"
+                  "representation_effective_rank_fraction=0.50\n"
+                  "representation_min_dimension_variance=0.01\n"
+                  "representation_max_dimension_variance=1.0\n"
+                  "representation_condition_number=100\n"
+                  "representation_isotropy_score=0.25\n"
+                  "checkpoint_written=true\n"
+                  "checkpoint_path=mtf.pt\n"
+                  "checkpoint_path_reported=mtf.pt\n"
+                  "checkpoint_digest_verified=true\n"
+                  "checkpoint_file_exists=true\n"
+                  "checkpoint_bytes=14\n") +
+          "checkpoint_digest_reported=" + mtf_checkpoint_digest + "\n");
+  const auto mtf_fact = exposure::make_exposure_fact_from_job_dir(mtf_dir);
+  check(mtf_fact.target_component_family_id ==
+            "wikimyei.representation.encoding.mtf_jepa_mae_vicreg",
+        "MTF representation fact preserves target component");
+  check(mtf_fact.component_assembly_fingerprint == "mtf_1",
+        "MTF representation fact uses MTF assembly fingerprint");
+  check(mtf_fact.representation_health_available,
+        "MTF representation health is available");
+  check(mtf_fact.report_schema_id ==
+                "wikimyei.representation.mtf_jepa_mae_vicreg.report.v1" &&
+            mtf_fact.report_schema_version == 1,
+        "MTF schema identity is parsed");
+  check(mtf_fact.representation_value_shape == "[B_flat,De]" &&
+            mtf_fact.mtf_training_shape == "[B_flat,C,Hx,F]" &&
+            mtf_fact.flattening_contract == "anchor_node_flatten.v1" &&
+            mtf_fact.flattened_sample_count ==
+                mtf_fact.anchor_batch_count * mtf_fact.node_count,
+        "MTF flattened shape facts are parsed");
+  check(mtf_fact.checkpoint_digest_reported == mtf_checkpoint_digest &&
+            mtf_fact.checkpoint_digest_verified &&
+            mtf_fact.checkpoint_file_exists,
+        "MTF checkpoint digest facts are parsed");
+  check(mtf_fact.run_data_kind == "market" &&
+            mtf_fact.readiness_scope == "market_pretraining" &&
+            !mtf_fact.market_readiness_claimed,
+        "MTF run scope facts are parsed without market-readiness claim");
+  check(mtf_fact.gradients_finite && mtf_fact.sample_valid_count == 8 &&
+            mtf_fact.channel_valid_count == 24 &&
+            mtf_fact.valid_latent_rows == 24,
+        "MTF support fields are parsed");
+  check(std::isfinite(mtf_fact.loss_jepa_mean) &&
+            std::isfinite(mtf_fact.target_ema_distance) &&
+            std::isfinite(mtf_fact.latent_std),
+        "MTF loss and latent health fields are parsed");
 
   std::cout << "kikijyeba lattice exposure tests passed\n";
   std::filesystem::remove_all(root);

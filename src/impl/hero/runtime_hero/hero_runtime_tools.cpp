@@ -2,6 +2,8 @@
 
 #include "hero/mcp_schema_compat.h"
 #include "hero/runtime_hero/hero_runtime.h"
+#include "kikijyeba/marshal/digest.h"
+#include "kikijyeba/runtime/job_layout.h"
 
 #include <algorithm>
 #include <array>
@@ -45,33 +47,39 @@ struct tool_descriptor_t {
   const char *input_schema_json;
 };
 
-constexpr tool_descriptor_t kTools[] = {
-    {"hero.runtime.status",
-     "Summarize Runtime Hero policy, executable, active wave, and job root.",
-     R"({"type":"object","properties":{},"additionalProperties":false})"},
-    {"hero.runtime.schema", "List Runtime Hero policy keys and constraints.",
-     R"({"type":"object","properties":{},"additionalProperties":false})"},
-    {"hero.runtime.wave",
-     "Decode active wave intent from the configured runtime .config.",
-     R"({"type":"object","properties":{"config_path":{"type":"string"}},"additionalProperties":false})"},
-    {"hero.runtime.dry_run",
-     "Run cuwacunu_exec with --dry-run and return stdout plus job artifacts.",
-     R"({"type":"object","properties":{"config_path":{"type":"string"},"job_dir":{"type":"string"},"force_rebuild_cache":{"type":"boolean"},"timeout_seconds":{"type":"integer"}},"additionalProperties":false})"},
-    {"hero.runtime.execute",
-     "Run cuwacunu_exec with policy guards; dry_run defaults to true.",
-     R"({"type":"object","properties":{"config_path":{"type":"string"},"job_dir":{"type":"string"},"dry_run":{"type":"boolean"},"force_rebuild_cache":{"type":"boolean"},"confirm_execute":{"type":"boolean"},"timeout_seconds":{"type":"integer"},"marshal_expected_wave":{"type":"object","properties":{"target_component_family_id":{"type":"string"},"mode":{"type":"string"},"wave_target":{"type":"string"},"wave_mode":{"type":"string"},"source_range":{"type":"string"},"source_order":{"type":"string"},"anchor_index_begin":{"type":"string"},"anchor_index_end":{"type":"string"},"source_key_begin":{"type":"string"},"source_key_end":{"type":"string"},"model_state_inputs":{"type":"object"}}}},"additionalProperties":false})"},
-    {"hero.runtime.dev_nuke",
-     "Developer reset for runtime-root contents with dry-run, idle checks, and "
-     "optional backup snapshot.",
-     R"({"type":"object","properties":{"runtime_root":{"type":"string"},"dry_run":{"type":"boolean"},"backup":{"type":"boolean"},"confirm_dev_nuke":{"type":"boolean"}},"additionalProperties":false})"},
-    {"hero.runtime.list_jobs", "List Runtime Hero job directories.",
-     R"({"type":"object","properties":{"root":{"type":"string"},"limit":{"type":"integer"},"include_artifacts":{"type":"boolean"}},"additionalProperties":false})"},
-    {"hero.runtime.get_job",
-     "Inspect one runtime job directory by job_id or job_dir.",
-     R"({"type":"object","properties":{"job_id":{"type":"string"},"job_dir":{"type":"string"},"include_text":{"type":"boolean"},"max_bytes":{"type":"integer"}},"additionalProperties":false})"},
-    {"hero.runtime.read_artifact",
-     "Read a bounded job artifact: manifest, state, report, or explicit path.",
-     R"({"type":"object","properties":{"job_id":{"type":"string"},"job_dir":{"type":"string"},"artifact":{"type":"string"},"path":{"type":"string"},"max_bytes":{"type":"integer"}},"additionalProperties":false})"},
+constexpr tool_descriptor_t
+    kTools[] =
+        {
+            {"hero.runtime.status",
+             "Summarize Runtime Hero policy, executable, active wave, and job "
+             "root.",
+             R"({"type":"object","properties":{},"additionalProperties":false})"},
+            {"hero.runtime.schema",
+             "List Runtime Hero policy keys and constraints.",
+             R"({"type":"object","properties":{},"additionalProperties":false})"},
+            {"hero.runtime.wave",
+             "Decode active wave intent from the configured runtime .config.",
+             R"({"type":"object","properties":{"config_path":{"type":"string"}},"additionalProperties":false})"},
+            {"hero.runtime.dry_run",
+             "Run cuwacunu_exec with --dry-run and return stdout plus job "
+             "artifacts.",
+             R"({"type":"object","properties":{"config_path":{"type":"string"},"job_dir":{"type":"string"},"force_rebuild_cache":{"type":"boolean"},"timeout_seconds":{"type":"integer"},"wave_overlay":{"type":"object","properties":{"source_range":{"type":"string"},"anchor_index_begin":{"type":"string"},"anchor_index_end":{"type":"string"},"source_key_begin":{"type":"string"},"source_key_end":{"type":"string"}}}},"additionalProperties":false})"},
+            {"hero.runtime.execute",
+             "Run cuwacunu_exec with policy guards; dry_run defaults to true.",
+             R"({"type":"object","properties":{"config_path":{"type":"string"},"job_dir":{"type":"string"},"dry_run":{"type":"boolean"},"force_rebuild_cache":{"type":"boolean"},"confirm_execute":{"type":"boolean"},"timeout_seconds":{"type":"integer"},"wave_overlay":{"type":"object","properties":{"source_range":{"type":"string"},"anchor_index_begin":{"type":"string"},"anchor_index_end":{"type":"string"},"source_key_begin":{"type":"string"},"source_key_end":{"type":"string"}}},"runtime_handoff":{"type":"object","properties":{}},"marshal_expected_wave":{"type":"object","properties":{"target_component_family_id":{"type":"string"},"mode":{"type":"string"},"source_range":{"type":"string"},"source_order":{"type":"string"},"anchor_index_begin":{"type":"string"},"anchor_index_end":{"type":"string"},"source_key_begin":{"type":"string"},"source_key_end":{"type":"string"},"model_state_inputs":{"type":"object"}}}},"additionalProperties":false})"},
+            {"hero.runtime.dev_nuke",
+             "Developer reset for runtime-root contents with dry-run, idle "
+             "checks, and "
+             "optional backup snapshot.",
+             R"({"type":"object","properties":{"runtime_root":{"type":"string"},"dry_run":{"type":"boolean"},"backup":{"type":"boolean"},"confirm_dev_nuke":{"type":"boolean"}},"additionalProperties":false})"},
+            {"hero.runtime.list_jobs", "List Runtime Hero job directories.", R"({"type":"object","properties":{"root":{"type":"string"},"limit":{"type":"integer"},"include_artifacts":{"type":"boolean"}},"additionalProperties":false})"},
+            {"hero.runtime.get_job",
+             "Inspect one runtime job directory by job_id or job_dir.",
+             R"({"type":"object","properties":{"job_id":{"type":"string"},"job_dir":{"type":"string"},"include_text":{"type":"boolean"},"max_bytes":{"type":"integer"}},"additionalProperties":false})"},
+            {"hero.runtime.read_artifact",
+             "Read a bounded job artifact: manifest, state, report, or "
+             "explicit path.",
+             R"({"type":"object","properties":{"job_id":{"type":"string"},"job_dir":{"type":"string"},"artifact":{"type":"string"},"path":{"type":"string"},"max_bytes":{"type":"integer"}},"additionalProperties":false})"},
 };
 
 [[nodiscard]] bool tool_is_read_only(std::string_view name) {
@@ -582,6 +590,16 @@ extract_json_string_object(const std::string &json,
   return true;
 }
 
+[[nodiscard]] std::string file_digest_or_empty(const fs::path &path,
+                                               const std::string &domain) {
+  std::string text;
+  std::string ignored;
+  if (!read_text_file(path, &text, &ignored)) {
+    return {};
+  }
+  return cuwacunu::kikijyeba::marshal::marshal_digest_for_text(domain, text);
+}
+
 [[nodiscard]] std::string read_text_file_limited(const fs::path &path,
                                                  std::size_t max_bytes,
                                                  bool *truncated) {
@@ -722,6 +740,20 @@ kv_map_to_json(const std::unordered_map<std::string, std::string> &map) {
   return out.str();
 }
 
+[[nodiscard]] std::string
+string_array_json(const std::vector<std::string> &values) {
+  std::ostringstream out;
+  out << "[";
+  for (std::size_t i = 0; i < values.size(); ++i) {
+    if (i != 0) {
+      out << ",";
+    }
+    out << json_quote(values[i]);
+  }
+  out << "]";
+  return out.str();
+}
+
 [[nodiscard]] std::string policy_get(const runtime_policy_t &policy,
                                      std::string_view key) {
   const auto found = policy.values.find(std::string(key));
@@ -781,9 +813,13 @@ kv_map_to_json(const std::unordered_map<std::string, std::string> &map) {
 struct wave_info_t {
   fs::path config_path{};
   fs::path wave_path{};
+  fs::path protocol_path{};
   bool readable{false};
+  bool protocol_readable{false};
   std::string error{};
+  std::string protocol_error{};
   std::unordered_map<std::string, std::string> values{};
+  std::unordered_map<std::string, std::string> protocol_values{};
 };
 
 [[nodiscard]] fs::path effective_config_path(const runtime_context_t &ctx,
@@ -815,6 +851,18 @@ struct wave_info_t {
   }
   info.readable = true;
   info.values = parse_assignment_text(strip_dsl_comments(text), true);
+  const auto maybe_protocol =
+      read_ini_value(config_path, "KIKIJYEBA", "kikijyeba_protocol_dsl_path");
+  if (maybe_protocol.has_value()) {
+    info.protocol_path = resolve_against(config_path, *maybe_protocol);
+    std::string protocol_text;
+    if (read_text_file(info.protocol_path, &protocol_text,
+                       &info.protocol_error)) {
+      info.protocol_readable = true;
+      info.protocol_values =
+          parse_assignment_text(strip_dsl_comments(protocol_text), true);
+    }
+  }
   return info;
 }
 
@@ -856,11 +904,124 @@ struct wave_info_t {
   return lower == "anchor_key" ? "source_key" : lower;
 }
 
+struct wave_overlay_t {
+  bool present{false};
+  std::string source_range{};
+  std::string anchor_index_begin{};
+  std::string anchor_index_end{};
+  std::string source_key_begin{};
+  std::string source_key_end{};
+};
+
+[[nodiscard]] bool parse_wave_overlay_from_args(const std::string &args,
+                                                wave_overlay_t *overlay,
+                                                std::string *err) {
+  if (overlay == nullptr) {
+    return true;
+  }
+  *overlay = {};
+  std::string raw;
+  if (!extract_json_raw_field(args, "wave_overlay", &raw)) {
+    return true;
+  }
+  overlay->present = true;
+  (void)extract_json_string_field(raw, "source_range", &overlay->source_range);
+  (void)extract_json_string_field(raw, "anchor_index_begin",
+                                  &overlay->anchor_index_begin);
+  (void)extract_json_string_field(raw, "anchor_index_end",
+                                  &overlay->anchor_index_end);
+  (void)extract_json_string_field(raw, "source_key_begin",
+                                  &overlay->source_key_begin);
+  (void)extract_json_string_field(raw, "source_key_end",
+                                  &overlay->source_key_end);
+  if (trim_ascii(overlay->source_range).empty()) {
+    if (!trim_ascii(overlay->anchor_index_begin).empty() ||
+        !trim_ascii(overlay->anchor_index_end).empty()) {
+      overlay->source_range = "anchor_index";
+    } else if (!trim_ascii(overlay->source_key_begin).empty() ||
+               !trim_ascii(overlay->source_key_end).empty()) {
+      overlay->source_range = "source_key";
+    } else {
+      overlay->source_range = "all";
+    }
+  }
+  overlay->source_range = canonical_source_range(overlay->source_range);
+  if (overlay->source_range != "all" &&
+      overlay->source_range != "anchor_index" &&
+      overlay->source_range != "source_key") {
+    if (err) {
+      *err = "E_RUNTIME_WAVE_OVERLAY_INVALID: source_range must be all, "
+             "anchor_index, or source_key";
+    }
+    return false;
+  }
+  if (overlay->source_range == "all" &&
+      (!trim_ascii(overlay->anchor_index_begin).empty() ||
+       !trim_ascii(overlay->anchor_index_end).empty() ||
+       !trim_ascii(overlay->source_key_begin).empty() ||
+       !trim_ascii(overlay->source_key_end).empty())) {
+    if (err) {
+      *err = "E_RUNTIME_WAVE_OVERLAY_INVALID: SOURCE_RANGE=all cannot carry "
+             "range bounds";
+    }
+    return false;
+  }
+  if (overlay->source_range == "anchor_index" &&
+      (trim_ascii(overlay->anchor_index_begin).empty() ||
+       trim_ascii(overlay->anchor_index_end).empty() ||
+       !trim_ascii(overlay->source_key_begin).empty() ||
+       !trim_ascii(overlay->source_key_end).empty())) {
+    if (err) {
+      *err = "E_RUNTIME_WAVE_OVERLAY_INVALID: anchor_index overlay requires "
+             "anchor_index_begin/end only";
+    }
+    return false;
+  }
+  if (overlay->source_range == "source_key" &&
+      (trim_ascii(overlay->source_key_begin).empty() ||
+       trim_ascii(overlay->source_key_end).empty() ||
+       !trim_ascii(overlay->anchor_index_begin).empty() ||
+       !trim_ascii(overlay->anchor_index_end).empty())) {
+    if (err) {
+      *err = "E_RUNTIME_WAVE_OVERLAY_INVALID: source_key overlay requires "
+             "source_key_begin/end only";
+    }
+    return false;
+  }
+  return true;
+}
+
+inline void apply_wave_overlay_to_info(wave_info_t *info,
+                                       const wave_overlay_t &overlay) {
+  if (info == nullptr || !overlay.present) {
+    return;
+  }
+  info->values["SOURCE_RANGE"] = overlay.source_range;
+  info->values.erase("ANCHOR_INDEX_BEGIN");
+  info->values.erase("ANCHOR_INDEX_END");
+  info->values.erase("SOURCE_KEY_BEGIN");
+  info->values.erase("SOURCE_KEY_END");
+  info->values.erase("ANCHOR_KEY_BEGIN");
+  info->values.erase("ANCHOR_KEY_END");
+  if (overlay.source_range == "anchor_index") {
+    info->values["ANCHOR_INDEX_BEGIN"] = overlay.anchor_index_begin;
+    info->values["ANCHOR_INDEX_END"] = overlay.anchor_index_end;
+  } else if (overlay.source_range == "source_key") {
+    info->values["SOURCE_KEY_BEGIN"] = overlay.source_key_begin;
+    info->values["SOURCE_KEY_END"] = overlay.source_key_end;
+  }
+}
+
 [[nodiscard]] std::string job_kind_from_target(std::string_view target) {
   const std::string lower = lowercase_ascii(target);
   if (lower == "wikimyei.representation.encoding.vicreg" ||
       lower == "vicreg_representation") {
     return "channel_representation_vicreg";
+  }
+  if (lower == "wikimyei.representation.encoding.mtf_jepa_mae_vicreg" ||
+      lower == "mtf_jepa_mae_vicreg_representation" ||
+      lower == "mtf_jvmae_representation") {
+    return "channel_representation_mtf_jepa_mae_vicreg";
   }
   if (lower == "wikimyei.inference.expected_value.mdn" ||
       lower == "inference_mdn" || lower == "inference_channel_mdn" ||
@@ -907,8 +1068,81 @@ wave_source_order_warning_token(std::string_view action,
                                : "train_wave_effective_sequential_source_order";
 }
 
-[[nodiscard]] std::string execution_chain(std::string_view target,
-                                          std::string_view action) {
+[[nodiscard]] std::string protocol_id_from_info(const wave_info_t &info) {
+  const auto it = info.protocol_values.find("PROTOCOL_ID");
+  return it == info.protocol_values.end() ? std::string{"cwu_01v"} : it->second;
+}
+
+[[nodiscard]] std::string protocol_value_from_info(const wave_info_t &info,
+                                                   const char *key,
+                                                   std::string fallback = {}) {
+  const auto it = info.protocol_values.find(key);
+  return it == info.protocol_values.end() ? std::move(fallback) : it->second;
+}
+
+[[nodiscard]] std::vector<std::string>
+compatible_protocols_from_info(const wave_info_t &info) {
+  const auto it = info.values.find("COMPATIBLE_PROTOCOLS");
+  if (it == info.values.end() || trim_ascii(it->second).empty()) {
+    return {};
+  }
+  std::string raw = it->second;
+  for (char &ch : raw) {
+    if (ch == '|' || ch == '+') {
+      ch = ',';
+    }
+  }
+  return split_csv(raw);
+}
+
+[[nodiscard]] bool
+wave_protocol_compatible(const std::vector<std::string> &compatible_protocols,
+                         std::string_view active_protocol_id) {
+  if (compatible_protocols.empty()) {
+    return true;
+  }
+  const std::string active = trim_ascii(active_protocol_id);
+  return std::find(compatible_protocols.begin(), compatible_protocols.end(),
+                   active) != compatible_protocols.end();
+}
+
+[[nodiscard]] std::string
+active_representation_from_info(const wave_info_t &info) {
+  const auto it = info.protocol_values.find("REPRESENTATION");
+  if (it == info.protocol_values.end() || trim_ascii(it->second).empty()) {
+    return "wikimyei.representation.encoding.vicreg";
+  }
+  const std::string lower = lowercase_ascii(trim_ascii(it->second));
+  if (lower == "mtf_jepa_mae_vicreg" ||
+      lower == "mtf_jepa_mae_vicreg_representation" ||
+      lower == "mtf_jvmae_representation") {
+    return "wikimyei.representation.encoding.mtf_jepa_mae_vicreg";
+  }
+  if (lower == "vicreg" || lower == "vicreg_representation") {
+    return "wikimyei.representation.encoding.vicreg";
+  }
+  return it->second;
+}
+
+[[nodiscard]] bool
+protocol_target_compatible(std::string_view target,
+                           std::string_view active_representation_family) {
+  const std::string job_kind = job_kind_from_target(target);
+  const std::string active =
+      lowercase_ascii(trim_ascii(active_representation_family));
+  if (job_kind == "channel_representation_vicreg") {
+    return active == "wikimyei.representation.encoding.vicreg";
+  }
+  if (job_kind == "channel_representation_mtf_jepa_mae_vicreg") {
+    return active == "wikimyei.representation.encoding.mtf_jepa_mae_vicreg";
+  }
+  return true;
+}
+
+[[nodiscard]] std::string
+execution_chain(std::string_view target, std::string_view action,
+                std::string_view active_representation_family =
+                    "wikimyei.representation.encoding.vicreg") {
   const std::string job_kind = job_kind_from_target(target);
   if (job_kind == "channel_representation_vicreg") {
     if (action == "train") {
@@ -920,7 +1154,32 @@ wave_source_order_warning_token(std::string_view action,
            "wikimyei.expression.nodelift.srl:run -> "
            "wikimyei.representation.encoding.vicreg:run";
   }
+  if (job_kind == "channel_representation_mtf_jepa_mae_vicreg") {
+    if (action == "train") {
+      return "ujcamei.source.registry:run -> "
+             "wikimyei.expression.nodelift.srl:run -> "
+             "wikimyei.representation.encoding.mtf_jepa_mae_vicreg:train";
+    }
+    return "ujcamei.source.registry:run -> "
+           "wikimyei.expression.nodelift.srl:run -> "
+           "wikimyei.representation.encoding.mtf_jepa_mae_vicreg:run";
+  }
   if (job_kind == "channel_inference_mdn") {
+    const bool active_mtf =
+        active_representation_family ==
+        "wikimyei.representation.encoding.mtf_jepa_mae_vicreg";
+    if (active_mtf) {
+      if (action == "train") {
+        return "ujcamei.source.registry:run -> "
+               "wikimyei.expression.nodelift.srl:run -> "
+               "wikimyei.representation.encoding.mtf_jepa_mae_vicreg:"
+               "run_frozen -> wikimyei.inference.expected_value.mdn:train";
+      }
+      return "ujcamei.source.registry:run -> "
+             "wikimyei.expression.nodelift.srl:run -> "
+             "wikimyei.representation.encoding.mtf_jepa_mae_vicreg:"
+             "run_frozen -> wikimyei.inference.expected_value.mdn:run";
+    }
     if (action == "train") {
       return "ujcamei.source.registry:run -> "
              "wikimyei.expression.nodelift.srl:run -> "
@@ -959,14 +1218,56 @@ wave_source_order_warning_token(std::string_view action,
   const std::string cursor_scope = info.values.count("SOURCE_CURSOR_SCOPE") != 0
                                        ? info.values.at("SOURCE_CURSOR_SCOPE")
                                        : std::string{"wave_batch"};
+  const std::string protocol_id = protocol_id_from_info(info);
+  const std::string protocol_status =
+      protocol_value_from_info(info, "PROTOCOL_STATUS", "active");
+  const std::string successor_protocol =
+      protocol_value_from_info(info, "SUCCESSOR_PROTOCOL");
+  const std::string protocol_warning =
+      protocol_value_from_info(info, "PROTOCOL_WARNING");
+  const bool protocol_warns =
+      !protocol_warning.empty() ||
+      lowercase_ascii(trim_ascii(protocol_status)) != "active";
+  const std::vector<std::string> compatible_protocols =
+      compatible_protocols_from_info(info);
+  const bool profile_compatible =
+      wave_protocol_compatible(compatible_protocols, protocol_id);
+  const std::string active_representation =
+      active_representation_from_info(info);
+  const bool target_compatible =
+      protocol_target_compatible(target, active_representation);
   std::ostringstream out;
   out << "{\"config_path\":" << json_quote(info.config_path.string())
       << ",\"wave_path\":" << json_quote(info.wave_path.string())
+      << ",\"protocol_path\":" << json_quote(info.protocol_path.string())
       << ",\"readable\":" << bool_json(info.readable);
   if (!info.error.empty()) {
     out << ",\"error\":" << json_quote(info.error);
   }
+  out << ",\"protocol_readable\":" << bool_json(info.protocol_readable);
+  if (!info.protocol_error.empty()) {
+    out << ",\"protocol_error\":" << json_quote(info.protocol_error);
+  }
   out << ",\"wave_id\":" << json_quote(wave_id)
+      << ",\"protocol_id\":" << json_quote(protocol_id)
+      << ",\"protocol_status\":" << json_quote(protocol_status)
+      << ",\"successor_protocol\":" << json_quote(successor_protocol)
+      << ",\"protocol_warning_level\":"
+      << json_quote(protocol_warns ? "warning" : "none")
+      << ",\"protocol_warning\":" << json_quote(protocol_warning)
+      << ",\"compatible_protocols\":" << string_array_json(compatible_protocols)
+      << ",\"wave_protocol_compatible\":" << bool_json(profile_compatible)
+      << ",\"wave_protocol_warning\":"
+      << json_quote(profile_compatible
+                        ? std::string{}
+                        : "active_protocol_not_declared_by_wave_profile")
+      << ",\"active_representation_family\":"
+      << json_quote(active_representation)
+      << ",\"protocol_target_compatible\":" << bool_json(target_compatible)
+      << ",\"protocol_target_warning\":"
+      << json_quote(target_compatible ? std::string{}
+                                      : "wave_target_not_docked_by_active_"
+                                        "protocol")
       << ",\"target_component_family_id\":" << json_quote(target)
       << ",\"mode\":" << json_quote(mode)
       << ",\"action\":" << json_quote(action)
@@ -1009,7 +1310,8 @@ wave_source_order_warning_token(std::string_view action,
   }
   out << ",\"job_kind\":" << json_quote(job_kind_from_target(target))
       << ",\"train_target\":" << bool_json(action == "train")
-      << ",\"execution_chain\":" << json_quote(execution_chain(target, action))
+      << ",\"execution_chain\":"
+      << json_quote(execution_chain(target, action, active_representation))
       << ",\"model_state_inputs\":"
       << kv_map_to_json(wave_model_state_inputs(info)) << "}";
   return out.str();
@@ -1574,10 +1876,17 @@ active_jobs_json(const std::vector<active_job_marker_t> &active_jobs) {
     if (job_id_arg.find('/') != std::string::npos ||
         job_id_arg.find('\\') != std::string::npos ||
         job_id_arg.find("..") != std::string::npos) {
-      *err = "job_id must be a runtime root leaf";
+      *err = "job_id must be a runtime job id";
       return false;
     }
-    path = normalize_path(runtime_root(policy) / job_id_arg);
+    const auto found =
+        cuwacunu::kikijyeba::runtime::job_layout::find_runtime_job_dir_by_id(
+            runtime_root(policy), job_id_arg);
+    if (!found.has_value()) {
+      *err = "E_RUNTIME_JOB_NOT_FOUND: " + job_id_arg;
+      return false;
+    }
+    path = normalize_path(*found);
   } else {
     *err = "hero.runtime job lookup requires job_id or job_dir";
     return false;
@@ -1621,9 +1930,16 @@ active_jobs_json(const std::vector<active_job_marker_t> &active_jobs) {
   fs::path effective_report =
       report_path.empty() ? fs::path{} : fs::path(report_path);
   if (effective_report.empty()) {
+    const fs::path channel_inference = job_dir / "channel_inference.report";
+    const fs::path channel_representation =
+        job_dir / "channel_representation.report";
     const fs::path inference = job_dir / "inference.report";
     const fs::path representation = job_dir / "representation.report";
-    if (fs::exists(inference)) {
+    if (fs::exists(channel_inference)) {
+      effective_report = channel_inference;
+    } else if (fs::exists(channel_representation)) {
+      effective_report = channel_representation;
+    } else if (fs::exists(inference)) {
       effective_report = inference;
     } else if (fs::exists(representation)) {
       effective_report = representation;
@@ -1716,19 +2032,316 @@ active_jobs_json(const std::vector<active_job_marker_t> &active_jobs) {
   return true;
 }
 
-[[nodiscard]] bool expected_wave_matches_runtime_wave(const std::string &args,
-                                                      const wave_info_t &wave,
-                                                      std::string *err) {
+[[nodiscard]] bool json_raw_is_empty_array(const std::string &raw) {
+  const std::string value = trim_ascii(raw);
+  return value == "[]";
+}
+
+[[nodiscard]] bool is_symbolic_handoff_value(std::string_view raw) {
+  const std::string value = trim_ascii(raw);
+  return value.rfind("latest_satisfying:", 0) == 0 ||
+         value.rfind("lattice:", 0) == 0 || value.rfind("selector:", 0) == 0;
+}
+
+[[nodiscard]] bool string_map_has_symbolic_values(
+    const std::unordered_map<std::string, std::string> &values,
+    std::string *symbolic_key) {
+  for (const auto &[key, value] : values) {
+    if (is_symbolic_handoff_value(value)) {
+      if (symbolic_key) {
+        *symbolic_key = key;
+      }
+      return true;
+    }
+  }
+  return false;
+}
+
+[[nodiscard]] bool same_normalized_string_map(
+    const std::unordered_map<std::string, std::string> &lhs,
+    const std::unordered_map<std::string, std::string> &rhs) {
+  if (lhs.size() != rhs.size()) {
+    return false;
+  }
+  for (const auto &[key, value] : lhs) {
+    const auto found = rhs.find(key);
+    if (found == rhs.end()) {
+      return false;
+    }
+    if (fs::path(value).lexically_normal().string() !=
+        fs::path(found->second).lexically_normal().string()) {
+      return false;
+    }
+  }
+  return true;
+}
+
+struct runtime_handoff_binding_t {
+  std::string handoff_id{};
+  std::string handoff_digest{};
+  std::string target_driver_run_id{};
+};
+
+[[nodiscard]] bool validate_runtime_handoff_object(
+    const std::string &handoff_raw, const fs::path &config_path,
+    const fs::path &policy_path, bool dry_run, bool confirm_execute,
+    bool force_rebuild_cache, std::string *wave_raw,
+    runtime_handoff_binding_t *binding, std::string *err) {
+  std::string schema_version;
+  if (!extract_json_string_field(handoff_raw, "handoff_schema_version",
+                                 &schema_version) ||
+      schema_version != "1") {
+    if (err) {
+      *err = "E_RUNTIME_HANDOFF_INVALID: handoff_schema_version must be 1";
+    }
+    return false;
+  }
+
+  std::string handoff_id;
+  if (!extract_json_string_field(handoff_raw, "handoff_id", &handoff_id) ||
+      trim_ascii(handoff_id).empty()) {
+    if (err) {
+      *err = "E_RUNTIME_HANDOFF_INVALID: handoff_id is required";
+    }
+    return false;
+  }
+
+  std::string handoff_digest;
+  if (!extract_json_string_field(handoff_raw, "handoff_digest",
+                                 &handoff_digest) ||
+      trim_ascii(handoff_digest).empty() ||
+      handoff_id != "runtime_handoff_" + handoff_digest) {
+    if (err) {
+      *err = "E_RUNTIME_HANDOFF_INVALID: handoff_digest is required and must "
+             "match handoff_id";
+    }
+    return false;
+  }
+
+  std::string target_driver_run_id;
+  (void)extract_json_string_field(handoff_raw, "target_driver_run_id",
+                                  &target_driver_run_id);
+
+  std::string created_by;
+  if (!extract_json_string_field(handoff_raw, "created_by", &created_by) ||
+      created_by != "marshal") {
+    if (err) {
+      *err = "E_RUNTIME_HANDOFF_INVALID: created_by must be marshal";
+    }
+    return false;
+  }
+
+  std::string created_at;
+  if (!extract_json_string_field(handoff_raw, "created_at", &created_at) ||
+      trim_ascii(created_at).empty()) {
+    if (err) {
+      *err = "E_RUNTIME_HANDOFF_INVALID: created_at is required";
+    }
+    return false;
+  }
+
+  std::string target_id;
+  if (!extract_json_string_field(handoff_raw, "target_id", &target_id) ||
+      trim_ascii(target_id).empty()) {
+    if (err) {
+      *err = "E_RUNTIME_HANDOFF_INVALID: target_id is required";
+    }
+    return false;
+  }
+
+  std::string unresolved_raw;
+  if (!extract_json_raw_field(handoff_raw, "unresolved_symbols",
+                              &unresolved_raw) ||
+      !json_raw_is_empty_array(unresolved_raw)) {
+    if (err) {
+      *err = "E_RUNTIME_HANDOFF_UNRESOLVED_SYMBOLS: unresolved_symbols must "
+             "be present and empty";
+    }
+    return false;
+  }
+
+  std::string base_config_raw;
+  if (!extract_json_raw_field(handoff_raw, "base_config", &base_config_raw)) {
+    if (err) {
+      *err = "E_RUNTIME_HANDOFF_INVALID: base_config is required";
+    }
+    return false;
+  }
+  std::string base_config_path;
+  std::string base_config_hash;
+  const std::string actual_base_config_hash = file_digest_or_empty(
+      config_path, "kikijyeba.runtime.handoff.base_config_file.v1");
+  if (!extract_json_string_field(base_config_raw, "path", &base_config_path) ||
+      !extract_json_string_field(base_config_raw, "hash", &base_config_hash) ||
+      trim_ascii(base_config_hash).empty() ||
+      base_config_hash != actual_base_config_hash ||
+      fs::path(base_config_path).lexically_normal() !=
+          config_path.lexically_normal()) {
+    if (err) {
+      *err = "E_RUNTIME_HANDOFF_INVALID: base_config path/hash is invalid";
+    }
+    return false;
+  }
+
+  std::string runtime_policy_raw;
+  if (!extract_json_raw_field(handoff_raw, "runtime_policy",
+                              &runtime_policy_raw)) {
+    if (err) {
+      *err = "E_RUNTIME_HANDOFF_INVALID: runtime_policy is required";
+    }
+    return false;
+  }
+  std::string runtime_policy_path;
+  std::string runtime_policy_hash;
+  const std::string actual_runtime_policy_hash = file_digest_or_empty(
+      policy_path, "kikijyeba.runtime.handoff.runtime_policy_file.v1");
+  if (!extract_json_string_field(runtime_policy_raw, "path",
+                                 &runtime_policy_path) ||
+      !extract_json_string_field(runtime_policy_raw, "hash",
+                                 &runtime_policy_hash) ||
+      trim_ascii(runtime_policy_path).empty() ||
+      trim_ascii(runtime_policy_hash).empty() ||
+      runtime_policy_hash != actual_runtime_policy_hash ||
+      fs::path(runtime_policy_path).lexically_normal() !=
+          policy_path.lexically_normal()) {
+    if (err) {
+      *err = "E_RUNTIME_HANDOFF_INVALID: runtime_policy path/hash is invalid";
+    }
+    return false;
+  }
+
+  std::string intent_raw;
+  if (!extract_json_raw_field(handoff_raw, "intent", &intent_raw)) {
+    if (err) {
+      *err = "E_RUNTIME_HANDOFF_INVALID: intent is required";
+    }
+    return false;
+  }
+  bool intent_dry_run = false;
+  bool intent_confirm_execute = false;
+  bool intent_force_rebuild_cache = false;
+  if (!extract_json_bool_field(intent_raw, "dry_run", &intent_dry_run) ||
+      !extract_json_bool_field(intent_raw, "confirm_execute",
+                               &intent_confirm_execute) ||
+      !extract_json_bool_field(intent_raw, "force_rebuild_cache",
+                               &intent_force_rebuild_cache) ||
+      intent_dry_run != dry_run || intent_confirm_execute != confirm_execute ||
+      intent_force_rebuild_cache != force_rebuild_cache) {
+    if (err) {
+      *err = "E_RUNTIME_HANDOFF_INVALID: intent differs from execute args";
+    }
+    return false;
+  }
+
+  std::string local_wave_raw;
+  if (!extract_json_raw_field(handoff_raw, "wave", &local_wave_raw)) {
+    if (err) {
+      *err = "E_RUNTIME_HANDOFF_INVALID: wave is required";
+    }
+    return false;
+  }
+
+  std::string checkpoint_inputs_raw;
+  if (!extract_json_raw_field(handoff_raw, "checkpoint_inputs",
+                              &checkpoint_inputs_raw)) {
+    if (err) {
+      *err = "E_RUNTIME_HANDOFF_INVALID: checkpoint_inputs is required";
+    }
+    return false;
+  }
+  std::unordered_map<std::string, std::string> checkpoint_inputs;
+  if (!extract_json_string_object(checkpoint_inputs_raw, &checkpoint_inputs)) {
+    if (err) {
+      *err = "E_RUNTIME_HANDOFF_INVALID: checkpoint_inputs must be an object "
+             "of string paths";
+    }
+    return false;
+  }
+  std::string symbolic_key;
+  if (string_map_has_symbolic_values(checkpoint_inputs, &symbolic_key)) {
+    if (err) {
+      *err = "E_RUNTIME_HANDOFF_UNRESOLVED_SYMBOLS: checkpoint input " +
+             symbolic_key + " is symbolic";
+    }
+    return false;
+  }
+
+  std::string wave_inputs_raw;
+  std::unordered_map<std::string, std::string> wave_inputs;
+  if (extract_json_raw_field(local_wave_raw, "model_state_inputs",
+                             &wave_inputs_raw)) {
+    if (!extract_json_string_object(wave_inputs_raw, &wave_inputs)) {
+      if (err) {
+        *err = "E_RUNTIME_HANDOFF_INVALID: wave.model_state_inputs malformed";
+      }
+      return false;
+    }
+    if (string_map_has_symbolic_values(wave_inputs, &symbolic_key)) {
+      if (err) {
+        *err = "E_RUNTIME_HANDOFF_UNRESOLVED_SYMBOLS: wave input " +
+               symbolic_key + " is symbolic";
+      }
+      return false;
+    }
+  }
+  if (!same_normalized_string_map(checkpoint_inputs, wave_inputs)) {
+    if (err) {
+      *err = "E_RUNTIME_HANDOFF_INVALID: checkpoint_inputs differs from "
+             "wave.model_state_inputs";
+    }
+    return false;
+  }
+
+  std::string lattice_refs_raw;
+  std::unordered_map<std::string, std::string> lattice_refs;
+  if (!extract_json_raw_field(handoff_raw, "lattice_certificate_refs",
+                              &lattice_refs_raw) ||
+      !extract_json_string_object(lattice_refs_raw, &lattice_refs)) {
+    if (err) {
+      *err = "E_RUNTIME_HANDOFF_INVALID: lattice_certificate_refs must be an "
+             "object";
+    }
+    return false;
+  }
+
+  if (wave_raw) {
+    *wave_raw = std::move(local_wave_raw);
+  }
+  if (binding) {
+    binding->handoff_id = std::move(handoff_id);
+    binding->handoff_digest = std::move(handoff_digest);
+    binding->target_driver_run_id = std::move(target_driver_run_id);
+  }
+  return true;
+}
+
+[[nodiscard]] bool expected_wave_matches_runtime_wave(
+    const std::string &args, const fs::path &config_path,
+    const fs::path &policy_path, bool dry_run, bool confirm_execute,
+    bool force_rebuild_cache, const wave_info_t &wave,
+    runtime_handoff_binding_t *binding, std::string *err) {
   std::string expected_raw;
-  if (!extract_json_raw_field(args, "marshal_expected_wave", &expected_raw)) {
+  std::string handoff_raw;
+  if (args.find("\"runtime_handoff\"") != std::string::npos) {
+    if (!extract_json_raw_field(args, "runtime_handoff", &handoff_raw)) {
+      if (err) {
+        *err = "E_RUNTIME_HANDOFF_INVALID: runtime_handoff is malformed";
+      }
+      return false;
+    }
+    if (!validate_runtime_handoff_object(
+            handoff_raw, config_path, policy_path, dry_run, confirm_execute,
+            force_rebuild_cache, &expected_raw, binding, err)) {
+      return false;
+    }
+  } else if (!extract_json_raw_field(args, "marshal_expected_wave",
+                                     &expected_raw)) {
     return true;
   }
 
   std::string expected_target;
   if (extract_json_first_string_field(
-          expected_raw,
-          {"target_component_family_id", "target_component", "wave_target"},
-          &expected_target)) {
+          expected_raw, {"target_component_family_id"}, &expected_target)) {
     const std::string actual_target = wave.values.count("TARGET") != 0
                                           ? wave.values.at("TARGET")
                                           : std::string{};
@@ -1742,8 +2355,7 @@ active_jobs_json(const std::vector<active_job_marker_t> &active_jobs) {
   }
 
   std::string expected_mode;
-  if (extract_json_first_string_field(expected_raw, {"mode", "wave_mode"},
-                                      &expected_mode)) {
+  if (extract_json_first_string_field(expected_raw, {"mode"}, &expected_mode)) {
     const std::string actual_mode = wave.values.count("MODE") != 0
                                         ? wave.values.at("MODE")
                                         : std::string{"run"};
@@ -1860,7 +2472,22 @@ active_jobs_json(const std::vector<active_job_marker_t> &active_jobs) {
       }
       return false;
     }
+    std::string symbolic_key;
+    if (string_map_has_symbolic_values(expected_inputs, &symbolic_key)) {
+      if (err) {
+        *err = "E_RUNTIME_HANDOFF_UNRESOLVED_SYMBOLS: expected wave input " +
+               symbolic_key + " is symbolic";
+      }
+      return false;
+    }
     const auto actual_inputs = wave_model_state_inputs(wave);
+    if (string_map_has_symbolic_values(actual_inputs, &symbolic_key)) {
+      if (err) {
+        *err = "E_RUNTIME_HANDOFF_UNRESOLVED_SYMBOLS: active wave input " +
+               symbolic_key + " is symbolic";
+      }
+      return false;
+    }
     for (const auto &[key, expected_value] : expected_inputs) {
       const auto found = actual_inputs.find(key);
       const std::string normalized_expected =
@@ -1884,16 +2511,9 @@ active_jobs_json(const std::vector<active_job_marker_t> &active_jobs) {
   const fs::path root = runtime_root(ctx->policy);
   const wave_info_t wave =
       load_wave_info(*ctx, effective_config_path(*ctx, ""));
-  std::size_t job_count = 0;
-  std::error_code ec;
-  if (fs::is_directory(root, ec)) {
-    for (fs::directory_iterator it(root, ec), end; !ec && it != end;
-         it.increment(ec)) {
-      if (it->is_directory(ec)) {
-        ++job_count;
-      }
-    }
-  }
+  const std::size_t job_count =
+      cuwacunu::kikijyeba::runtime::job_layout::discover_runtime_job_dirs(root)
+          .size();
   std::ostringstream json;
   json << "{\"policy_path\":" << json_quote(ctx->policy.policy_path.string())
        << ",\"global_config_path\":"
@@ -1915,7 +2535,7 @@ active_jobs_json(const std::vector<active_job_marker_t> &active_jobs) {
        << bool_json(policy_bool_or(ctx->policy, "allow_dev_nuke", false))
        << ",\"dev_nuke_backup_enabled\":"
        << bool_json(
-              policy_bool_or(ctx->policy, "dev_nuke_backup_enabled", true))
+              policy_bool_or(ctx->policy, "dev_nuke_backup_enabled", false))
        << ",\"dev_nuke_backup_root\":"
        << json_quote(policy_path(ctx->policy, "dev_nuke_backup_root").string())
        << ",\"wave\":" << wave_info_json(wave) << "}";
@@ -1987,8 +2607,23 @@ active_jobs_json(const std::vector<active_job_marker_t> &active_jobs) {
     return false;
   }
   const fs::path config_path = effective_config_path(*ctx, config_arg);
-  const wave_info_t wave = load_wave_info(*ctx, config_path);
-  if (!expected_wave_matches_runtime_wave(args, wave, err)) {
+  wave_overlay_t wave_overlay{};
+  if (!parse_wave_overlay_from_args(args, &wave_overlay, err)) {
+    return false;
+  }
+  wave_info_t wave = load_wave_info(*ctx, config_path);
+  apply_wave_overlay_to_info(&wave, wave_overlay);
+  std::string symbolic_key;
+  if (string_map_has_symbolic_values(wave_model_state_inputs(wave),
+                                     &symbolic_key)) {
+    *err = "E_RUNTIME_HANDOFF_UNRESOLVED_SYMBOLS: active wave input " +
+           symbolic_key + " is symbolic";
+    return false;
+  }
+  runtime_handoff_binding_t handoff_binding{};
+  if (!expected_wave_matches_runtime_wave(
+          args, config_path, ctx->policy_path, dry_run, confirm_execute,
+          force_rebuild_cache, wave, &handoff_binding, err)) {
     return false;
   }
   const std::string mode = wave.values.count("MODE") != 0
@@ -2057,6 +2692,31 @@ active_jobs_json(const std::vector<active_job_marker_t> &active_jobs) {
   if (force_rebuild_cache) {
     argv.push_back("--force-rebuild-cache");
   }
+  if (wave_overlay.present) {
+    argv.push_back("--source-range");
+    argv.push_back(wave_overlay.source_range);
+    if (wave_overlay.source_range == "anchor_index") {
+      argv.push_back("--anchor-index-begin");
+      argv.push_back(wave_overlay.anchor_index_begin);
+      argv.push_back("--anchor-index-end");
+      argv.push_back(wave_overlay.anchor_index_end);
+    } else if (wave_overlay.source_range == "source_key") {
+      argv.push_back("--source-key-begin");
+      argv.push_back(wave_overlay.source_key_begin);
+      argv.push_back("--source-key-end");
+      argv.push_back(wave_overlay.source_key_end);
+    }
+  }
+  if (!handoff_binding.handoff_id.empty()) {
+    argv.push_back("--runtime-handoff-id");
+    argv.push_back(handoff_binding.handoff_id);
+    argv.push_back("--runtime-handoff-digest");
+    argv.push_back(handoff_binding.handoff_digest);
+  }
+  if (!handoff_binding.target_driver_run_id.empty()) {
+    argv.push_back("--marshal-target-driver-run-id");
+    argv.push_back(handoff_binding.target_driver_run_id);
+  }
 
   process_result_t result =
       run_process(argv, timeout_seconds, static_cast<std::size_t>(max_capture));
@@ -2093,7 +2753,7 @@ active_jobs_json(const std::vector<active_job_marker_t> &active_jobs) {
     return false;
   }
   bool backup_enabled =
-      policy_bool_or(ctx->policy, "dev_nuke_backup_enabled", true);
+      policy_bool_or(ctx->policy, "dev_nuke_backup_enabled", false);
   if (!parse_optional_bool_arg(args, "backup", backup_enabled, &backup_enabled,
                                err)) {
     return false;
@@ -2255,25 +2915,8 @@ active_jobs_json(const std::vector<active_job_marker_t> &active_jobs) {
     return false;
   }
 
-  struct row_t {
-    fs::path dir;
-    fs::file_time_type time;
-  };
-  std::vector<row_t> rows;
-  std::error_code ec;
-  for (fs::directory_iterator it(root, ec), end; !ec && it != end;
-       it.increment(ec)) {
-    if (!it->is_directory(ec)) {
-      continue;
-    }
-    fs::path marker = it->path() / "job.state";
-    if (!fs::exists(marker)) {
-      marker = it->path() / "job.manifest";
-    }
-    rows.push_back(row_t{it->path(), fs::last_write_time(marker, ec)});
-  }
-  std::sort(rows.begin(), rows.end(),
-            [](const row_t &a, const row_t &b) { return a.time > b.time; });
+  const auto rows =
+      cuwacunu::kikijyeba::runtime::job_layout::discover_runtime_job_dirs(root);
   if (limit < 0) {
     limit = 0;
   }
@@ -2290,13 +2933,25 @@ active_jobs_json(const std::vector<active_job_marker_t> &active_jobs) {
     if (i != 0) {
       json << ",";
     }
-    const auto manifest = parse_kv_file(rows[i].dir / "job.manifest");
-    const auto state = parse_kv_file(rows[i].dir / "job.state");
+    const auto manifest = parse_kv_file(rows[i].manifest_path);
+    const auto state = parse_kv_file(rows[i].state_path);
     json << "{\"job_dir\":" << json_quote(rows[i].dir.string())
          << ",\"job_id\":"
          << json_quote(manifest.count("job_id") != 0
                            ? manifest.at("job_id")
                            : rows[i].dir.filename().string())
+         << ",\"job_stable_id\":"
+         << json_quote(manifest.count("job_stable_id") != 0
+                           ? manifest.at("job_stable_id")
+                           : "")
+         << ",\"job_attempt_id\":"
+         << json_quote(manifest.count("job_attempt_id") != 0
+                           ? manifest.at("job_attempt_id")
+                           : "")
+         << ",\"job_attempt_policy\":"
+         << json_quote(manifest.count("job_attempt_policy") != 0
+                           ? manifest.at("job_attempt_policy")
+                           : "")
          << ",\"status\":"
          << json_quote(state.count("status") != 0 ? state.at("status") : "")
          << ",\"job_kind\":"
@@ -2379,12 +3034,21 @@ active_jobs_json(const std::vector<active_job_marker_t> &active_jobs) {
     } else if (artifact == "state") {
       path = job_dir / "job.state";
     } else if (artifact == "inference_report" || artifact == "report") {
-      path = job_dir / "inference.report";
+      path = job_dir / "channel_inference.report";
+      if (!fs::exists(path)) {
+        path = job_dir / "channel_representation.report";
+      }
+      if (!fs::exists(path)) {
+        path = job_dir / "inference.report";
+      }
       if (!fs::exists(path)) {
         path = job_dir / "representation.report";
       }
     } else if (artifact == "representation_report") {
-      path = job_dir / "representation.report";
+      path = job_dir / "channel_representation.report";
+      if (!fs::exists(path)) {
+        path = job_dir / "representation.report";
+      }
     } else {
       *err = "unknown artifact: " + artifact;
       return false;

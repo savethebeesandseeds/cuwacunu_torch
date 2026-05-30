@@ -8,8 +8,12 @@ TEST_DEFAULT_LDLIBS :=
 IINUJI_TEST_LDLIBS := $(LDLIBS_ncurses) -L/usr/lib/x86_64-linux-gnu -l:libz.so.1
 
 $(eval $(call TEST_ONEFILE, test_iinuji_toolkit_compile, test_iinuji_toolkit_compile.cpp, $(IINUJI_TEST_LDLIBS)))
+$(eval $(call TEST_ONEFILE, test_iinuji_image_box_render, test_iinuji_image_box_render.cpp, $(IINUJI_TEST_LDLIBS)))
+$(eval $(call TEST_ONEFILE, test_iinuji_cmd_nav_rail, test_iinuji_cmd_nav_rail.cpp, $(IINUJI_TEST_LDLIBS)))
 
 $(TEST_OUT)/test_iinuji_toolkit_compile: INCLUDES_EXTRA += $(NCURSES_INCLUDE_PATHS)
+$(TEST_OUT)/test_iinuji_image_box_render: INCLUDES_EXTRA += $(NCURSES_INCLUDE_PATHS)
+$(TEST_OUT)/test_iinuji_cmd_nav_rail: INCLUDES_EXTRA += $(NCURSES_INCLUDE_PATHS)
 
 IINUJI_HEADER_SMOKE := \
 	iinuji/iinuji_ansi.h \
@@ -74,7 +78,7 @@ pure-header-smoke:
 	done
 
 .PHONY: all
-all: $(TEST_OUT)/test_iinuji_toolkit_compile header-smoke pure-header-smoke
+all: $(TEST_OUT)/test_iinuji_toolkit_compile $(TEST_OUT)/test_iinuji_image_box_render $(TEST_OUT)/test_iinuji_cmd_nav_rail header-smoke pure-header-smoke
 	@$(LOG_SUCCESS)
 
 .PHONY: run
@@ -82,4 +86,4 @@ run: run-test_iinuji_toolkit_compile
 
 .PHONY: clean
 clean:
-	@rm -f $(TEST_OUT)/test_iinuji_toolkit_compile
+	@rm -f $(TEST_OUT)/test_iinuji_toolkit_compile $(TEST_OUT)/test_iinuji_image_box_render $(TEST_OUT)/test_iinuji_cmd_nav_rail

@@ -1,20 +1,20 @@
 /*
   wikimyei.representation.vicreg.jkimyei
   ==============================================
-  Smoke training policy for channel-preserving VICReg pretraining.
+  Train-core policy for channel-preserving VICReg pretraining.
 */
 TRAINING {
   VERSION = wikimyei.representation.vicreg.jkimyei.v1;
-  TRAINING_ID = smoke_vicreg_representation;
+  TRAINING_ID = real_vicreg_train_core_v1;
   TASK = vicreg_representation;
   COMPONENT_ASSEMBLY_ID = vicreg_v1;
   OPTIMIZER = adam;
   LEARNING_RATE = 0.001;
-  MAX_STEPS = 0;
+  MAX_STEPS = 250;
   BATCH_SIZE = 64;
-  GRAD_CLIP_NORM = 0.0;
-  CHECKPOINT_EVERY = 1;
-  REPORT_EVERY = 1;
+  GRAD_CLIP_NORM = 5.0;
+  CHECKPOINT_EVERY = 50;
+  REPORT_EVERY = 10;
   VALIDATION_EVERY = 0;
   SEED = 17;
   FREEZE_REPRESENTATION = false;

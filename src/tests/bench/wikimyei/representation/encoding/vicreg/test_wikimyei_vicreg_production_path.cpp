@@ -46,6 +46,24 @@ void close(double actual, double expected, double tolerance,
   }
 }
 
+void test_channel_mdn_balanced_channel_feature_loss() {
+  using torch::indexing::Slice;
+  auto nll = torch::zeros({1, 3, 2, 1}, torch::kFloat32);
+  auto mask = torch::zeros({1, 3, 2, 1}, torch::kBool);
+  nll.index_put_({0, Slice(), 0, 0}, 100.0);
+  mask.index_put_({0, Slice(), 0, 0}, true);
+  nll.index_put_({0, 0, 1, 0}, 1.0);
+  mask.index_put_({0, 0, 1, 0}, true);
+
+  auto valid = mask.to(nll.dtype());
+  const auto raw_slot_mean = (nll * valid).sum() / valid.sum().clamp_min(1.0);
+  const auto balanced = mdn::mdn_balanced_channel_feature_nll(nll, mask);
+  close(raw_slot_mean.item<double>(), 75.25, 1e-6,
+        "raw slot mean reflects validity imbalance");
+  close(balanced.item<double>(), 50.5, 1e-6,
+        "balanced MDN loss gives each supported channel/feature cell one vote");
+}
+
 nodelift::node_lifted_batch_t<int64_t> make_lifted_batch() {
   constexpr int64_t B = 2;
   constexpr int64_t C = 2;
@@ -218,6 +236,23 @@ void test_channel_train_models_and_streams() {
         "production MDN adapter emits [B,N,C,Df]");
 
   auto mdn = mdn::ChannelContextMdn(5, 2, 2, 1, 2, 7, 1);
+  bool saw_channel_adapter = false;
+  bool saw_feature_embedding = false;
+  bool saw_legacy_channel_head = false;
+  for (const auto &param : mdn->named_parameters(/*recurse=*/true)) {
+    saw_channel_adapter =
+        saw_channel_adapter ||
+        param.key().find("channel_adapters") != std::string::npos;
+    saw_feature_embedding =
+        saw_feature_embedding ||
+        param.key().find("feature_embedding") != std::string::npos;
+    saw_legacy_channel_head =
+        saw_legacy_channel_head ||
+        param.key().find("channel_head_") != std::string::npos;
+  }
+  check(saw_channel_adapter, "MDN uses low-rank channel adapters");
+  check(saw_feature_embedding, "MDN uses feature-conditioned shared head");
+  check(!saw_legacy_channel_head, "MDN no longer uses full per-channel heads");
   mdn::channel_context_mdn_train_model_t mdn_train(mdn, 0.001);
   auto mdn_input = mdn_stream::to_channel_mdn_input(mdn_input_batch);
   auto mdn_result = mdn_train.train_one_batch(mdn_input);
@@ -227,6 +262,17 @@ void test_channel_train_models_and_streams() {
         "MDN reports NLL per channel");
   check(mdn_result.nll_per_target_feature.sizes() == torch::IntArrayRef({2}),
         "MDN reports NLL per target feature");
+  check(mdn_result.nll_per_channel_target_feature.sizes() ==
+            torch::IntArrayRef({2, 2}),
+        "MDN reports NLL per channel/target feature");
+  check(mdn_result.valid_count_per_channel.sizes() == torch::IntArrayRef({2}),
+        "MDN reports valid target counts per channel");
+  check(mdn_result.valid_count_per_target_feature.sizes() ==
+            torch::IntArrayRef({2}),
+        "MDN reports valid target counts per feature");
+  check(mdn_result.valid_count_per_channel_target_feature.sizes() ==
+            torch::IntArrayRef({2, 2}),
+        "MDN reports valid target counts per channel/feature");
   check(mdn_result.mixture_usage.sizes() == torch::IntArrayRef({2}),
         "MDN reports mixture usage");
   check(std::isfinite(mdn_result.sigma_mean), "MDN sigma mean finite");
@@ -234,8 +280,34 @@ void test_channel_train_models_and_streams() {
         "MDN masked sigma mean finite");
   check(std::isfinite(mdn_result.sigma_min_valid),
         "MDN masked sigma min finite");
+  check(mdn_result.sigma_min_valid >= 1.0e-3,
+        "MDN reported sigma includes configured smooth floor");
   check(std::isfinite(mdn_result.sigma_max_valid),
         "MDN masked sigma max finite");
+
+  auto semantic_mdn = mdn::ChannelContextMdn(
+      5, 2, 2, 1, 2, 7, 1, torch::kFloat32, torch::kCPU,
+      /*feature_embedding_dim=*/3, /*channel_adapter_rank=*/2,
+      /*target_coords=*/std::vector<int64_t>{4, 6}, /*sigma_floor=*/0.05);
+  bool saw_target_coord_buffer = false;
+  for (const auto &buffer : semantic_mdn->named_buffers(/*recurse=*/true)) {
+    if (buffer.key().find("target_coord_ids") != std::string::npos) {
+      saw_target_coord_buffer = true;
+      auto coords = buffer.value().to(torch::kCPU).to(torch::kInt64);
+      check(coords.sizes() == torch::IntArrayRef({2}),
+            "MDN stores source target-coordinate ids");
+      check(coords[0].item<int64_t>() == 4 && coords[1].item<int64_t>() == 6,
+            "MDN feature embeddings are keyed by source target-coordinate ids");
+    }
+  }
+  check(saw_target_coord_buffer,
+        "MDN exposes target-coordinate identity buffer");
+  auto semantic_out =
+      semantic_mdn->forward(torch::randn({2, 2, 2, 5}, torch::kFloat32));
+  check(semantic_out.log_pi.sizes() == torch::IntArrayRef({2, 2, 2, 2, 2}),
+        "semantic MDN output keeps [B,N,C,Df,K] shape");
+  check(semantic_out.sigma.min().item<double>() >= 0.05,
+        "semantic MDN output sigma includes requested floor");
 }
 
 void test_channel_global_fusion_is_explicit_and_mask_safe() {
@@ -586,6 +658,7 @@ int main() {
     test_vicreg_production_components();
     test_channel_train_models_and_streams();
     test_channel_global_fusion_is_explicit_and_mask_safe();
+    test_channel_mdn_balanced_channel_feature_loss();
     test_channel_mdn_plus_global_is_separate_and_mask_safe();
     test_channel_mdn_plus_global_train_model_sanitizes_masked_sentinels();
     test_vicreg_safe_augmentations();

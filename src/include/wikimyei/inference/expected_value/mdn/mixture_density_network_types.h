@@ -1,6 +1,7 @@
 /* mixture_density_network_types.h */
 #pragma once
 #include <cstdint>
+#include <vector>
 
 #include <torch/torch.h>
 
@@ -27,12 +28,20 @@ struct MdnOut {
   torch::Tensor sigma;
 };
 
-// Head options (per-channel head, so C is handled outside)
-struct MdnHeadOptions {
-  int64_t feature_dim; // H, backbone output width
-  int64_t Df;          // selected one-step target feature width
-  int64_t K;           // mixture comps
-  int64_t Hf{1};       // compatibility field; active MDN requires Hf == 1
+struct ChannelAdapterOptions {
+  int64_t feature_dim;  // H, backbone output width
+  int64_t adapter_rank; // low-rank channel adapter width
+};
+
+struct FeatureConditionedMdnHeadOptions {
+  int64_t feature_dim;           // H, adapted slot width
+  int64_t target_feature_dim;    // Df, selected one-step target width
+  int64_t mixture_count;         // K, mixture comps
+  int64_t feature_embedding_dim; // Ef, learned target-feature identity width
+  int64_t source_feature_vocab_size{
+      0}; // embedding vocabulary for source coords
+  std::vector<int64_t> target_coords{}; // source feature ids in output order
+  double sigma_floor{1e-3};             // smooth model sigma floor
 };
 
 struct BackboneOptions {

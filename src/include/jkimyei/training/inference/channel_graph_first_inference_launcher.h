@@ -27,6 +27,7 @@
 #include "wikimyei/inference/expected_value/mdn/mdn_spec.h"
 #include "wikimyei/inference/expected_value/mdn/mixture_density_network_utils.h"
 #include "wikimyei/inference/expected_value/mdn/stream/mdn_adapter.h"
+#include "wikimyei/representation/encoding/mtf_jepa_mae_vicreg/mtf_jepa_mae_vicreg.h"
 
 namespace cuwacunu::jkimyei::training::inference {
 
@@ -66,6 +67,18 @@ struct channel_graph_first_inference_training_report_t {
   int64_t mixture_count{0};
   int64_t hidden_width{0};
   int64_t residual_depth{0};
+  int64_t feature_embedding_dim{0};
+  int64_t channel_adapter_rank{0};
+  std::string mdn_architecture{
+      "shared_slot_trunk.channel_adapter.shared_feature_head.v2"};
+  std::string loss_reduction{"balanced_channel_feature_mean"};
+  bool shared_trunk{true};
+  bool channel_adapters_enabled{true};
+  bool shared_feature_head{true};
+  bool feature_embedding_enabled{true};
+  bool node_id_embedding{false};
+  bool cross_node_attention{false};
+  bool cross_channel_attention{false};
   double sigma_min{std::numeric_limits<double>::quiet_NaN()};
   double sigma_max{std::numeric_limits<double>::quiet_NaN()};
   double eps{std::numeric_limits<double>::quiet_NaN()};
@@ -126,11 +139,17 @@ struct channel_graph_first_inference_training_report_t {
   double mean_mixture_entropy{std::numeric_limits<double>::quiet_NaN()};
   std::vector<double> mean_nll_per_channel{};
   std::vector<double> mean_nll_per_target_feature{};
+  std::vector<double> mean_nll_per_channel_target_feature{};
   std::vector<double> mean_mixture_usage{};
+  std::vector<int64_t> valid_target_count_per_channel{};
+  std::vector<int64_t> valid_target_count_per_target_feature{};
+  std::vector<int64_t> valid_target_count_per_channel_target_feature{};
   int64_t nonfinite_output_count{0};
   double last_grad_norm{std::numeric_limits<double>::quiet_NaN()};
   double max_grad_norm{std::numeric_limits<double>::quiet_NaN()};
   double finite_parameter_check{1.0};
+  bool representation_parameter_device_check{false};
+  bool mdn_parameter_device_check{false};
 
   bool checkpoint_written{false};
   int64_t checkpoint_write_count{0};
@@ -148,6 +167,18 @@ struct channel_graph_first_inference_training_report_t {
 
   static void append_double_list(std::ostringstream &oss, const char *key,
                                  const std::vector<double> &values) {
+    oss << key << "=";
+    for (std::size_t i = 0; i < values.size(); ++i) {
+      if (i != 0) {
+        oss << ",";
+      }
+      oss << values[i];
+    }
+    oss << "\n";
+  }
+
+  static void append_i64_list(std::ostringstream &oss, const char *key,
+                              const std::vector<int64_t> &values) {
     oss << key << "=";
     for (std::size_t i = 0; i < values.size(); ++i) {
       if (i != 0) {
@@ -180,6 +211,23 @@ struct channel_graph_first_inference_training_report_t {
     oss << "mixture_count=" << mixture_count << "\n";
     oss << "hidden_width=" << hidden_width << "\n";
     oss << "residual_depth=" << residual_depth << "\n";
+    oss << "feature_embedding_dim=" << feature_embedding_dim << "\n";
+    oss << "channel_adapter_rank=" << channel_adapter_rank << "\n";
+    oss << "mdn_architecture=" << mdn_architecture << "\n";
+    oss << "loss_reduction=" << loss_reduction << "\n";
+    oss << "shared_trunk=" << (shared_trunk ? "true" : "false") << "\n";
+    oss << "channel_adapters_enabled="
+        << (channel_adapters_enabled ? "true" : "false") << "\n";
+    oss << "shared_feature_head=" << (shared_feature_head ? "true" : "false")
+        << "\n";
+    oss << "feature_embedding_enabled="
+        << (feature_embedding_enabled ? "true" : "false") << "\n";
+    oss << "node_id_embedding=" << (node_id_embedding ? "true" : "false")
+        << "\n";
+    oss << "cross_node_attention=" << (cross_node_attention ? "true" : "false")
+        << "\n";
+    oss << "cross_channel_attention="
+        << (cross_channel_attention ? "true" : "false") << "\n";
     oss << "sigma_min=" << sigma_min << "\n";
     oss << "sigma_max=" << sigma_max << "\n";
     oss << "eps=" << eps << "\n";
@@ -266,11 +314,23 @@ struct channel_graph_first_inference_training_report_t {
     append_double_list(oss, "mean_nll_per_channel", mean_nll_per_channel);
     append_double_list(oss, "mean_nll_per_target_feature",
                        mean_nll_per_target_feature);
+    append_double_list(oss, "mean_nll_per_channel_target_feature",
+                       mean_nll_per_channel_target_feature);
     append_double_list(oss, "mean_mixture_usage", mean_mixture_usage);
+    append_i64_list(oss, "valid_target_count_per_channel",
+                    valid_target_count_per_channel);
+    append_i64_list(oss, "valid_target_count_per_target_feature",
+                    valid_target_count_per_target_feature);
+    append_i64_list(oss, "valid_target_count_per_channel_target_feature",
+                    valid_target_count_per_channel_target_feature);
     oss << "nonfinite_output_count=" << nonfinite_output_count << "\n";
     oss << "last_grad_norm=" << last_grad_norm << "\n";
     oss << "max_grad_norm=" << max_grad_norm << "\n";
     oss << "finite_parameter_check=" << finite_parameter_check << "\n";
+    oss << "representation_parameter_device_check="
+        << (representation_parameter_device_check ? "true" : "false") << "\n";
+    oss << "mdn_parameter_device_check="
+        << (mdn_parameter_device_check ? "true" : "false") << "\n";
     oss << "checkpoint_written=" << (checkpoint_written ? "true" : "false")
         << "\n";
     oss << "checkpoint_write_count=" << checkpoint_write_count << "\n";
@@ -310,6 +370,34 @@ inline std::string seed_torch_runtime(uint64_t seed,
   return "torch_manual_seed_cpu";
 }
 
+[[nodiscard]] inline bool
+parameters_are_on_device(const std::vector<torch::Tensor> &params,
+                         const torch::Device &expected_device) {
+  if (params.empty()) {
+    return false;
+  }
+  for (const auto &param : params) {
+    if (!param.defined()) {
+      continue;
+    }
+    const auto actual_device = param.device();
+    if (expected_device.is_cuda()) {
+      if (!actual_device.is_cuda()) {
+        return false;
+      }
+      if (expected_device.has_index() &&
+          actual_device.index() != expected_device.index()) {
+        return false;
+      }
+      continue;
+    }
+    if (actual_device != expected_device) {
+      return false;
+    }
+  }
+  return true;
+}
+
 [[nodiscard]] inline torch::Tensor
 int64_tensor_from_vector(const std::vector<int64_t> &values) {
   const auto opts = torch::TensorOptions().dtype(torch::kInt64);
@@ -345,10 +433,10 @@ string_list_to_lengths_and_bytes(const std::vector<std::string> &values) {
 
 [[nodiscard]] inline std::vector<int64_t>
 tensor_to_int64_vector(const torch::Tensor &tensor) {
-  TORCH_CHECK(tensor.defined() && tensor.dim() == 1,
-              "[channel_graph_first_inference_launcher] expected rank-1 "
-              "metadata tensor");
-  auto cpu = tensor.to(torch::kCPU).to(torch::kInt64).contiguous();
+  if (!tensor.defined()) {
+    return {};
+  }
+  auto cpu = tensor.to(torch::kCPU).to(torch::kInt64).contiguous().view({-1});
   std::vector<int64_t> out;
   out.reserve(cpu.numel());
   auto accessor = cpu.accessor<int64_t, 1>();
@@ -418,6 +506,20 @@ inline void accumulate_finite_vector(const torch::Tensor &tensor,
       sum[i] += values[i];
       ++count[i];
     }
+  }
+}
+
+inline void accumulate_i64_vector(const torch::Tensor &tensor,
+                                  std::vector<int64_t> &sum) {
+  const auto values = tensor_to_int64_vector(tensor);
+  if (values.empty()) {
+    return;
+  }
+  if (sum.size() < values.size()) {
+    sum.resize(values.size(), 0);
+  }
+  for (std::size_t i = 0; i < values.size(); ++i) {
+    sum[i] += values[i];
   }
 }
 
@@ -590,6 +692,11 @@ inline std::string make_channel_mdn_runtime_lls(
       "optimizer_step_applied", step.optimizer_step_applied));
   document.entries.push_back(lls::make_component_runtime_lls_string_entry(
       "loss_preference", "lower_is_better"));
+  document.entries.push_back(lls::make_component_runtime_lls_string_entry(
+      "loss_reduction", "balanced_channel_feature_mean"));
+  document.entries.push_back(lls::make_component_runtime_lls_string_entry(
+      "mdn_architecture",
+      "shared_slot_trunk.channel_adapter.shared_feature_head.v2"));
   if (step.loss.defined() && step.loss.numel() > 0) {
     append_finite_double(
         document, "loss",
@@ -628,6 +735,145 @@ inline void move_channel_mdn_input_to_device(
       input.future.to(torch::TensorOptions().dtype(dtype).device(device));
   input.future_mask = input.future_mask.to(
       torch::TensorOptions().dtype(torch::kBool).device(device));
+}
+
+struct mtf_representation_encoder_options_view_t {
+  torch::Dtype dtype{torch::kFloat32};
+  torch::Device device{torch::kCPU};
+};
+
+class mtf_representation_encoder_adapter_t {
+public:
+  explicit mtf_representation_encoder_adapter_t(
+      cuwacunu::wikimyei::representation::encoding::mtf_jepa_mae_vicreg::
+          MtfJepaMaeVicreg &model)
+      : model_(&model) {
+    TORCH_CHECK(model_ != nullptr,
+                "[channel_graph_first_inference_launcher] MTF model adapter "
+                "requires a model");
+  }
+
+  [[nodiscard]] mtf_representation_encoder_options_view_t options() const {
+    return {.dtype = (*model_)->config().dtype,
+            .device = (*model_)->config().device};
+  }
+
+  [[nodiscard]] cuwacunu::wikimyei::representation::encoding::vicreg::
+      channel_preserving_encoder_output_t
+      encode(const torch::Tensor &data, const torch::Tensor &mask,
+             bool detach_to_cpu) {
+    namespace vicreg = cuwacunu::wikimyei::representation::encoding::vicreg;
+    torch::NoGradGuard no_grad;
+    const bool was_training = (*model_)->is_training();
+    (*model_)->eval();
+    auto encoded = (*model_)->encode(data, mask);
+    (*model_)->train(was_training);
+
+    vicreg::channel_preserving_encoder_output_t out{};
+    out.reduced = encoded.pooled_by_channel;
+    out.reduced_mask = encoded.channel_valid_mask;
+    out.sequence = encoded.pooled_by_channel.unsqueeze(/*dim=*/2);
+    out.sequence_mask = encoded.channel_valid_mask.unsqueeze(/*dim=*/2);
+    if (detach_to_cpu) {
+      out.sequence = out.sequence.detach().to(torch::kCPU);
+      out.sequence_mask = out.sequence_mask.detach().to(torch::kCPU);
+      out.reduced = out.reduced.detach().to(torch::kCPU);
+      out.reduced_mask = out.reduced_mask.detach().to(torch::kCPU);
+    }
+    return out;
+  }
+
+private:
+  cuwacunu::wikimyei::representation::encoding::mtf_jepa_mae_vicreg::
+      MtfJepaMaeVicreg *model_{nullptr};
+};
+
+template <typename KeyT> class channel_representation_stream_iface_t {
+public:
+  using batch_t =
+      cuwacunu::wikimyei::representation::encoding::vicreg::stream::
+          channel_representation_batch_t<KeyT>;
+
+  virtual ~channel_representation_stream_iface_t() = default;
+  [[nodiscard]] virtual bool has_next() const = 0;
+  virtual void reset() = 0;
+  virtual batch_t next() = 0;
+};
+
+template <typename KeyT, typename StreamT>
+class channel_representation_stream_box_t final
+    : public channel_representation_stream_iface_t<KeyT> {
+public:
+  using batch_t =
+      typename channel_representation_stream_iface_t<KeyT>::batch_t;
+
+  explicit channel_representation_stream_box_t(StreamT stream)
+      : stream_(std::move(stream)) {}
+
+  [[nodiscard]] bool has_next() const override { return stream_.has_next(); }
+
+  void reset() override { stream_.reset(); }
+
+  batch_t next() override { return stream_.next(); }
+
+private:
+  StreamT stream_;
+};
+
+inline void load_mtf_jepa_mae_vicreg_checkpoint_file(
+    const std::filesystem::path &path,
+    cuwacunu::wikimyei::representation::encoding::mtf_jepa_mae_vicreg::
+        MtfJepaMaeVicreg &model,
+    const torch::Device &device, int64_t expected_channel_count,
+    int64_t expected_history_length, int64_t expected_input_width,
+    int64_t expected_d_model, int64_t expected_latent_dim,
+    int64_t expected_projector_dim) {
+  TORCH_CHECK(!path.empty(),
+              "[channel_graph_first_inference_launcher] MTF representation "
+              "checkpoint path is empty");
+  TORCH_CHECK(std::filesystem::exists(path),
+              "[channel_graph_first_inference_launcher] MTF representation "
+              "checkpoint does not exist: ",
+              path.string());
+  torch::serialize::InputArchive root;
+  root.load_from(path.string(), device);
+
+  torch::Tensor saved_channel_count{};
+  torch::Tensor saved_history_length{};
+  torch::Tensor saved_input_width{};
+  torch::Tensor saved_d_model{};
+  torch::Tensor saved_latent_dim{};
+  torch::Tensor saved_projector_dim{};
+  root.read("meta/channel_count", saved_channel_count);
+  root.read("meta/history_length", saved_history_length);
+  root.read("meta/input_width", saved_input_width);
+  root.read("meta/d_model", saved_d_model);
+  root.read("meta/latent_dim", saved_latent_dim);
+  root.read("meta/projector_dim", saved_projector_dim);
+
+  TORCH_CHECK(metadata_i64_matches(saved_channel_count, expected_channel_count),
+              "[channel_graph_first_inference_launcher] MTF representation "
+              "checkpoint channel_count does not match current config");
+  TORCH_CHECK(
+      metadata_i64_matches(saved_history_length, expected_history_length),
+      "[channel_graph_first_inference_launcher] MTF representation checkpoint "
+      "history_length does not match current config");
+  TORCH_CHECK(metadata_i64_matches(saved_input_width, expected_input_width),
+              "[channel_graph_first_inference_launcher] MTF representation "
+              "checkpoint input_width does not match current config");
+  TORCH_CHECK(metadata_i64_matches(saved_d_model, expected_d_model),
+              "[channel_graph_first_inference_launcher] MTF representation "
+              "checkpoint d_model does not match current config");
+  TORCH_CHECK(metadata_i64_matches(saved_latent_dim, expected_latent_dim),
+              "[channel_graph_first_inference_launcher] MTF representation "
+              "checkpoint latent_dim does not match current config");
+  TORCH_CHECK(metadata_i64_matches(saved_projector_dim, expected_projector_dim),
+              "[channel_graph_first_inference_launcher] MTF representation "
+              "checkpoint projector_dim does not match current config");
+
+  torch::serialize::InputArchive model_archive;
+  root.read("model", model_archive);
+  model->load(model_archive);
 }
 
 template <typename EncoderT>
@@ -856,6 +1102,10 @@ inline void save_channel_mdn_checkpoint_file(
   root.write("meta/hidden_width", torch::tensor({report.hidden_width}, i64));
   root.write("meta/residual_depth",
              torch::tensor({report.residual_depth}, i64));
+  root.write("meta/feature_embedding_dim",
+             torch::tensor({report.feature_embedding_dim}, i64));
+  root.write("meta/channel_adapter_rank",
+             torch::tensor({report.channel_adapter_rank}, i64));
   root.write("meta/optimizer_steps",
              torch::tensor({report.optimizer_steps}, i64));
   root.write(
@@ -912,6 +1162,8 @@ struct channel_mdn_checkpoint_identity_t {
   int64_t mixture_count{0};
   int64_t hidden_width{0};
   int64_t residual_depth{0};
+  int64_t feature_embedding_dim{0};
+  int64_t channel_adapter_rank{0};
   double sigma_min{std::numeric_limits<double>::quiet_NaN()};
   double sigma_max{std::numeric_limits<double>::quiet_NaN()};
   double eps{std::numeric_limits<double>::quiet_NaN()};
@@ -939,6 +1191,8 @@ checkpoint_identity_from_report(
   out.mixture_count = report.mixture_count;
   out.hidden_width = report.hidden_width;
   out.residual_depth = report.residual_depth;
+  out.feature_embedding_dim = report.feature_embedding_dim;
+  out.channel_adapter_rank = report.channel_adapter_rank;
   out.sigma_min = report.sigma_min;
   out.sigma_max = report.sigma_max;
   out.eps = report.eps;
@@ -968,6 +1222,8 @@ inline void load_channel_mdn_checkpoint_file(
   torch::Tensor saved_mixture_count{};
   torch::Tensor saved_hidden_width{};
   torch::Tensor saved_residual_depth{};
+  torch::Tensor saved_feature_embedding_dim{};
+  torch::Tensor saved_channel_adapter_rank{};
   torch::Tensor saved_component_assembly_id{};
   torch::Tensor saved_input_representation_assembly_id{};
   torch::Tensor saved_context_contract{};
@@ -989,6 +1245,8 @@ inline void load_channel_mdn_checkpoint_file(
   root.read("meta/mixture_count", saved_mixture_count);
   root.read("meta/hidden_width", saved_hidden_width);
   root.read("meta/residual_depth", saved_residual_depth);
+  root.read("meta/feature_embedding_dim", saved_feature_embedding_dim);
+  root.read("meta/channel_adapter_rank", saved_channel_adapter_rank);
   root.read("meta/component_assembly_id_bytes", saved_component_assembly_id);
   root.read("meta/input_representation_assembly_id_bytes",
             saved_input_representation_assembly_id);
@@ -1038,6 +1296,14 @@ inline void load_channel_mdn_checkpoint_file(
                                      expected_identity->residual_depth),
                 "[channel_graph_first_inference_launcher] MDN checkpoint "
                 "residual_depth does not match current config");
+    TORCH_CHECK(metadata_i64_matches(saved_feature_embedding_dim,
+                                     expected_identity->feature_embedding_dim),
+                "[channel_graph_first_inference_launcher] MDN checkpoint "
+                "feature_embedding_dim does not match current config");
+    TORCH_CHECK(metadata_i64_matches(saved_channel_adapter_rank,
+                                     expected_identity->channel_adapter_rank),
+                "[channel_graph_first_inference_launcher] MDN checkpoint "
+                "channel_adapter_rank does not match current config");
     TORCH_CHECK(
         metadata_string_matches(saved_component_assembly_id,
                                 expected_identity->component_assembly_id),
@@ -1140,7 +1406,11 @@ public:
     out.component_assembly_id =
         builder_.bundle().channel_mdn.component_assembly_id;
     out.input_representation_assembly_id =
-        builder_.bundle().channel_mdn.input_representation_assembly_id;
+        cuwacunu::kikijyeba::protocol::
+            active_protocol_uses_mtf_jepa_mae_vicreg(builder_.bundle())
+            ? cuwacunu::kikijyeba::protocol::
+                  active_representation_component_assembly_id(builder_.bundle())
+            : builder_.bundle().channel_mdn.input_representation_assembly_id;
     out.graph_order_fingerprint = plan.graph_order_fingerprint;
     out.node_ids = plan.node_ids;
     out.edge_ids = plan.edge_ids;
@@ -1151,6 +1421,10 @@ public:
     out.mixture_count = builder_.bundle().channel_mdn.mixture_count;
     out.hidden_width = builder_.bundle().channel_mdn.hidden_width;
     out.residual_depth = builder_.bundle().channel_mdn.residual_depth;
+    out.feature_embedding_dim =
+        builder_.bundle().channel_mdn.feature_embedding_dim;
+    out.channel_adapter_rank =
+        builder_.bundle().channel_mdn.channel_adapter_rank;
     out.sigma_min = builder_.bundle().channel_mdn.sigma_min;
     out.sigma_max = builder_.bundle().channel_mdn.sigma_max;
     out.eps = builder_.bundle().channel_mdn.eps;
@@ -1198,9 +1472,12 @@ public:
     if (options_.dry_run) {
       return dry_run_report();
     }
+    const auto &bundle = builder_.bundle();
+    const bool use_mtf_representation = cuwacunu::kikijyeba::protocol::
+        active_protocol_uses_mtf_jepa_mae_vicreg(bundle);
     const bool train_target = effective_train_target();
 
-    const auto &training_spec = builder_.bundle().channel_mdn_training;
+    const auto &training_spec = bundle.channel_mdn_training;
     const auto checkpoint_every = training_spec.checkpoint_every;
     const auto report_every = training_spec.report_every;
     if ((options_.write_report || (train_target && checkpoint_every > 0)) &&
@@ -1216,46 +1493,29 @@ public:
             builder_.options().device);
     const auto runtime_report_mode = cuwacunu::kikijyeba::protocol::
         graph_first_pipeline_builder_detail::resolve_runtime_report_mode(
-            builder_.bundle().wave_settings, options_.runtime_report_mode);
+            bundle.wave_settings, options_.runtime_report_mode);
     auto source = builder_.make_graph_source();
     const auto source_cursor_report = source.cursor_report();
     auto lifted_stream = builder_.make_node_lifted_stream(std::move(source),
                                                           runtime_report_mode);
-    auto encoder = builder_.make_vicreg_encoder();
     bool representation_checkpoint_loaded = false;
-    if (!training_spec.input_representation_checkpoint_path.empty()) {
-      channel_graph_first_inference_launcher_detail::
-          load_vicreg_encoder_checkpoint_file(
-              training_spec.input_representation_checkpoint_path, encoder,
-              builder_.options().device,
-              builder_.bundle().vicreg.component_assembly_id,
-              "graph_order.channel_node_representation.v1",
-              "preserved_primary_output",
-              builder_.bundle()
-                  .source_plan.market_graph.computed_graph_order_fingerprint(),
-              builder_.bundle().source_plan.market_graph.node_ids,
-              builder_.bundle().vicreg.required_feature_coords,
-              cuwacunu::kikijyeba::protocol::
-                  graph_first_pipeline_builder_detail::cell_valid_policy_name(
-                      builder_.bundle().vicreg.cell_valid_policy),
-              builder_.bundle().vicreg.channel_count,
-              builder_.bundle().vicreg.history_length,
-              builder_.bundle().vicreg.input_width,
-              builder_.bundle().vicreg.encoding_dim,
-              builder_.bundle().vicreg.feature_hidden_dim,
-              builder_.bundle().vicreg.temporal_depth,
-              builder_.bundle().vicreg.recency_decay,
-              builder_.bundle().vicreg.min_valid_fraction,
-              builder_.bundle().vicreg.use_missingness_indicators,
-              builder_.bundle().vicreg.vicreg_invariance_weight,
-              builder_.bundle().vicreg.vicreg_variance_weight,
-              builder_.bundle().vicreg.vicreg_covariance_weight,
-              builder_.bundle().vicreg.vicreg_variance_floor,
-              builder_.bundle().vicreg.vicreg_eps,
-              builder_.bundle().vicreg.min_valid_rows,
-              builder_.bundle().vicreg.skip_non_finite_loss);
-      representation_checkpoint_loaded = true;
-    } else if (!training_spec.allow_untrained_representation) {
+    using key_t = typename DatatypeT::key_type_t;
+    std::unique_ptr<channel_graph_first_inference_launcher_detail::
+                        channel_representation_stream_iface_t<key_t>>
+        representation_stream;
+
+    using vicreg_encoder_t = decltype(builder_.make_vicreg_encoder());
+    std::unique_ptr<vicreg_encoder_t> vicreg_encoder_holder;
+    using mtf_model_t = cuwacunu::wikimyei::representation::encoding::
+        mtf_jepa_mae_vicreg::MtfJepaMaeVicreg;
+    std::unique_ptr<mtf_model_t> mtf_model_holder;
+    std::unique_ptr<channel_graph_first_inference_launcher_detail::
+                        mtf_representation_encoder_adapter_t>
+        mtf_adapter_holder;
+    bool representation_on_device = false;
+
+    if (training_spec.input_representation_checkpoint_path.empty() &&
+        !training_spec.allow_untrained_representation) {
       throw std::runtime_error(
           "[channel_graph_first_inference_launcher] Channel MDN training "
           "requires a channel representation checkpoint unless "
@@ -1267,10 +1527,109 @@ public:
           "requires INPUT_MDN_CHECKPOINT; refusing to evaluate an untrained "
           "channel-context MDN");
     }
-    channel_graph_first_inference_launcher_detail::freeze_vicreg_encoder(
-        encoder);
-    auto representation_stream = builder_.make_channel_representation_stream(
-        std::move(lifted_stream), encoder, runtime_report_mode);
+    if (use_mtf_representation) {
+      namespace mtf = cuwacunu::wikimyei::representation::encoding::
+          mtf_jepa_mae_vicreg;
+      namespace repstream =
+          cuwacunu::wikimyei::representation::encoding::vicreg::stream;
+
+      mtf_model_holder =
+          std::make_unique<mtf_model_t>(bundle.mtf_jepa_mae_vicreg.config);
+      (*mtf_model_holder)
+          ->to(bundle.mtf_jepa_mae_vicreg.config.device,
+               bundle.mtf_jepa_mae_vicreg.config.dtype);
+      if (!training_spec.input_representation_checkpoint_path.empty()) {
+        channel_graph_first_inference_launcher_detail::
+            load_mtf_jepa_mae_vicreg_checkpoint_file(
+                training_spec.input_representation_checkpoint_path,
+                *mtf_model_holder, builder_.options().device,
+                bundle.mtf_jepa_mae_vicreg.config.channel_count,
+                bundle.mtf_jepa_mae_vicreg.config.history_length,
+                bundle.mtf_jepa_mae_vicreg.config.input_width,
+                bundle.mtf_jepa_mae_vicreg.config.d_model,
+                bundle.mtf_jepa_mae_vicreg.config.latent_dim,
+                bundle.mtf_jepa_mae_vicreg.config.projector_dim);
+        representation_checkpoint_loaded = true;
+      }
+      channel_graph_first_inference_launcher_detail::freeze_vicreg_encoder(
+          *mtf_model_holder);
+      representation_on_device =
+          channel_graph_first_inference_launcher_detail::
+              parameters_are_on_device((*mtf_model_holder)->parameters(),
+                                       builder_.options().device);
+      mtf_adapter_holder = std::make_unique<
+          channel_graph_first_inference_launcher_detail::
+              mtf_representation_encoder_adapter_t>(*mtf_model_holder);
+      auto mtf_stream =
+          repstream::channel_representation_stream_t<
+              DatatypeT,
+              channel_graph_first_inference_launcher_detail::
+                  mtf_representation_encoder_adapter_t>(
+              std::move(lifted_stream), *mtf_adapter_holder,
+              /*require_finite_valid_features=*/true, /*detach_to_cpu=*/true,
+              runtime_report_mode,
+              bundle.mtf_jepa_mae_vicreg.component_assembly_id,
+              cuwacunu::wikimyei::assembly::make_assembly_token(
+                  bundle.mtf_jepa_mae_vicreg_assembly.family,
+                  bundle.mtf_jepa_mae_vicreg_assembly.component_assembly_id,
+                  bundle.mtf_jepa_mae_vicreg_assembly.version_token),
+              cuwacunu::kikijyeba::topology::dock_binding_token(
+                  bundle.dock_binding),
+              bundle.mtf_jepa_mae_vicreg_assembly.family,
+              "wikimyei.representation.mtf_jepa_mae_vicreg.runtime.v1",
+              cuwacunu::kikijyeba::protocol::
+                  component_stream_wave_from_settings(bundle.wave_settings));
+      using mtf_stream_t = decltype(mtf_stream);
+      representation_stream = std::make_unique<
+          channel_graph_first_inference_launcher_detail::
+              channel_representation_stream_box_t<key_t, mtf_stream_t>>(
+          std::move(mtf_stream));
+    } else {
+      vicreg_encoder_holder =
+          std::make_unique<vicreg_encoder_t>(builder_.make_vicreg_encoder());
+      if (!training_spec.input_representation_checkpoint_path.empty()) {
+        channel_graph_first_inference_launcher_detail::
+            load_vicreg_encoder_checkpoint_file(
+                training_spec.input_representation_checkpoint_path,
+                *vicreg_encoder_holder, builder_.options().device,
+                bundle.vicreg.component_assembly_id,
+                "graph_order.channel_node_representation.v1",
+                "preserved_primary_output",
+                bundle.source_plan.market_graph
+                    .computed_graph_order_fingerprint(),
+                bundle.source_plan.market_graph.node_ids,
+                bundle.vicreg.required_feature_coords,
+                cuwacunu::kikijyeba::protocol::
+                    graph_first_pipeline_builder_detail::
+                        cell_valid_policy_name(bundle.vicreg.cell_valid_policy),
+                bundle.vicreg.channel_count, bundle.vicreg.history_length,
+                bundle.vicreg.input_width, bundle.vicreg.encoding_dim,
+                bundle.vicreg.feature_hidden_dim, bundle.vicreg.temporal_depth,
+                bundle.vicreg.recency_decay, bundle.vicreg.min_valid_fraction,
+                bundle.vicreg.use_missingness_indicators,
+                bundle.vicreg.vicreg_invariance_weight,
+                bundle.vicreg.vicreg_variance_weight,
+                bundle.vicreg.vicreg_covariance_weight,
+                bundle.vicreg.vicreg_variance_floor, bundle.vicreg.vicreg_eps,
+                bundle.vicreg.min_valid_rows,
+                bundle.vicreg.skip_non_finite_loss);
+        representation_checkpoint_loaded = true;
+      }
+      channel_graph_first_inference_launcher_detail::freeze_vicreg_encoder(
+          *vicreg_encoder_holder);
+      representation_on_device =
+          channel_graph_first_inference_launcher_detail::
+              parameters_are_on_device((*vicreg_encoder_holder)->parameters(),
+                                       builder_.options().device);
+      auto vicreg_stream = builder_.make_channel_representation_stream(
+          std::move(lifted_stream), *vicreg_encoder_holder,
+          runtime_report_mode);
+      using vicreg_stream_t = decltype(vicreg_stream);
+      representation_stream = std::make_unique<
+          channel_graph_first_inference_launcher_detail::
+              channel_representation_stream_box_t<key_t, vicreg_stream_t>>(
+          std::move(vicreg_stream));
+    }
 
     auto report = dry_run_report();
     report.seed_scope = seed_scope;
@@ -1280,6 +1639,7 @@ public:
     report.representation_checkpoint_path =
         training_spec.input_representation_checkpoint_path;
     report.representation_checkpoint_loaded = representation_checkpoint_loaded;
+    report.representation_parameter_device_check = representation_on_device;
     report.mdn_checkpoint_path = training_spec.input_mdn_checkpoint_path;
     report.mdn_checkpoint_loaded = false;
     report.all_target_masks_forced_empty =
@@ -1313,8 +1673,13 @@ public:
     std::vector<int64_t> nll_per_channel_count;
     std::vector<double> nll_per_target_feature_sum;
     std::vector<int64_t> nll_per_target_feature_count;
+    std::vector<double> nll_per_channel_target_feature_sum;
+    std::vector<int64_t> nll_per_channel_target_feature_count;
     std::vector<double> mixture_usage_sum;
     std::vector<int64_t> mixture_usage_count;
+    std::vector<int64_t> valid_count_per_channel_sum;
+    std::vector<int64_t> valid_count_per_target_feature_sum;
+    std::vector<int64_t> valid_count_per_channel_target_feature_sum;
 
     auto refresh_running_report = [&]() {
       if (loss_count > 0) {
@@ -1357,9 +1722,18 @@ public:
       report.mean_nll_per_target_feature =
           channel_graph_first_inference_launcher_detail::mean_vector(
               nll_per_target_feature_sum, nll_per_target_feature_count);
+      report.mean_nll_per_channel_target_feature =
+          channel_graph_first_inference_launcher_detail::mean_vector(
+              nll_per_channel_target_feature_sum,
+              nll_per_channel_target_feature_count);
       report.mean_mixture_usage =
           channel_graph_first_inference_launcher_detail::mean_vector(
               mixture_usage_sum, mixture_usage_count);
+      report.valid_target_count_per_channel = valid_count_per_channel_sum;
+      report.valid_target_count_per_target_feature =
+          valid_count_per_target_feature_sum;
+      report.valid_target_count_per_channel_target_feature =
+          valid_count_per_channel_target_feature_sum;
     };
 
     auto write_checkpoint = [&]() {
@@ -1373,7 +1747,7 @@ public:
       ++report.checkpoint_write_count;
       report.last_checkpoint_optimizer_step = report.optimizer_steps;
       report.checkpoint_path = checkpoint_path.string();
-      report.checkpoint_format = "torch_archive_channel_mdn_v1";
+      report.checkpoint_format = "torch_archive_channel_mdn_v2";
       channel_graph_first_inference_launcher_detail::
           save_channel_mdn_checkpoint_file(checkpoint_path, report, *model_ptr);
     };
@@ -1399,28 +1773,20 @@ public:
 
     const int64_t max_steps = training_spec.max_steps;
     while (max_steps == 0 || report.steps_attempted < max_steps) {
-      if (!representation_stream.has_next()) {
+      if (!representation_stream->has_next()) {
         if (!train_target || max_steps == 0) {
           break;
         }
-        representation_stream.reset();
-        if (!representation_stream.has_next()) {
+        representation_stream->reset();
+        if (!representation_stream->has_next()) {
           break;
         }
       }
       ++report.steps_attempted;
       ++report.wave_pulses_attempted;
-      auto channel_batch = representation_stream.next();
+      auto channel_batch = representation_stream->next();
       report.wave_streamed_anchor_count +=
           static_cast<int64_t>(channel_batch.cursor.anchor_count());
-      if (report.wave_first_anchor_key.empty()) {
-        report.wave_first_anchor_key =
-            channel_graph_first_inference_launcher_detail::
-                optional_key_to_string(channel_batch.cursor.first_anchor_key());
-      }
-      report.wave_last_anchor_key =
-          channel_graph_first_inference_launcher_detail::optional_key_to_string(
-              channel_batch.cursor.last_anchor_key());
 
       auto batch = cuwacunu::wikimyei::inference::expected_value::mdn::stream::
           make_channel_mdn_input_batch(channel_batch,
@@ -1459,6 +1825,10 @@ public:
                   optimizer, &expected_identity);
           report.mdn_checkpoint_loaded = true;
         }
+        report.mdn_parameter_device_check =
+            channel_graph_first_inference_launcher_detail::
+                parameters_are_on_device(model_ptr->model()->parameters(),
+                                         builder_.options().device);
       }
 
       cuwacunu::wikimyei::inference::expected_value::mdn::
@@ -1485,7 +1855,7 @@ public:
                   channel_context_mdn_train_detail::nonfinite_count(out);
           auto nll_map =
               cuwacunu::wikimyei::inference::expected_value::mdn::mdn_nll_map(
-                  out, input.future, combined_mask,
+                  out, input.future,
                   cuwacunu::wikimyei::inference::expected_value::mdn::
                       channel_mdn_nll_options_from_spec(
                           builder_.bundle().channel_mdn));
@@ -1494,6 +1864,17 @@ public:
           step.nll_per_target_feature =
               cuwacunu::wikimyei::inference::expected_value::mdn::
                   mdn_masked_mean_per_target_feature(nll_map, combined_mask);
+          step.nll_per_channel_target_feature = cuwacunu::wikimyei::inference::
+              expected_value::mdn::mdn_masked_mean_per_channel_target_feature(
+                  nll_map, combined_mask);
+          step.valid_count_per_channel = cuwacunu::wikimyei::inference::
+              expected_value::mdn::mdn_valid_count_per_channel(combined_mask);
+          step.valid_count_per_target_feature =
+              cuwacunu::wikimyei::inference::expected_value::mdn::
+                  mdn_valid_count_per_target_feature(combined_mask);
+          step.valid_count_per_channel_target_feature =
+              cuwacunu::wikimyei::inference::expected_value::mdn::
+                  mdn_valid_count_per_channel_target_feature(combined_mask);
           step.loss = cuwacunu::wikimyei::inference::expected_value::mdn::
               compute_channel_context_mdn_nll(
                   out, input,
@@ -1592,7 +1973,19 @@ public:
           step.nll_per_target_feature, nll_per_target_feature_sum,
           nll_per_target_feature_count);
       channel_graph_first_inference_launcher_detail::accumulate_finite_vector(
+          step.nll_per_channel_target_feature,
+          nll_per_channel_target_feature_sum,
+          nll_per_channel_target_feature_count);
+      channel_graph_first_inference_launcher_detail::accumulate_finite_vector(
           step.mixture_usage, mixture_usage_sum, mixture_usage_count);
+      channel_graph_first_inference_launcher_detail::accumulate_i64_vector(
+          step.valid_count_per_channel, valid_count_per_channel_sum);
+      channel_graph_first_inference_launcher_detail::accumulate_i64_vector(
+          step.valid_count_per_target_feature,
+          valid_count_per_target_feature_sum);
+      channel_graph_first_inference_launcher_detail::accumulate_i64_vector(
+          step.valid_count_per_channel_target_feature,
+          valid_count_per_channel_target_feature_sum);
       report.finite_parameter_check =
           (report.finite_parameter_check != 0.0 && step.gradients_finite) ? 1.0
                                                                           : 0.0;

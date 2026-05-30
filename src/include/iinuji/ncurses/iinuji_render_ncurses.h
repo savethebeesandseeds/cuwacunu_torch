@@ -10,8 +10,17 @@ namespace iinuji {
 
 struct NcursesRend : public IRend {
   void size(int &h, int &w) override { getmaxyx(stdscr, h, w); }
-  void clear() override { ::clear(); }
-  void flush() override { ::refresh(); }
+  void clear() override {
+    // Use erase(), not clear(): clear() marks the physical terminal for a full
+    // clear on refresh, which is visibly jittery in some terminal emulators.
+    // erase() clears ncurses' virtual screen and lets doupdate() diff the
+    // completed frame.
+    ::erase();
+  }
+  void flush() override {
+    ::wnoutrefresh(stdscr);
+    ::doupdate();
+  }
 
   void putText(int y, int x, const std::string &s, int max_w = -1,
                short color_pair = 0, bool bold = false,

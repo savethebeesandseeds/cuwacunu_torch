@@ -5,6 +5,9 @@ Generated: 2026-05-23T13:37:36Z
 This note records the channel evidence dispatch that closed the remaining V2
 gap after the node V2 Core PASS.
 
+This is a historical dispatch receipt, not an active runtime fixture or current
+Runtime Hero policy.
+
 ## Final Runtime State
 
 Runtime Hero reports:
@@ -18,11 +21,12 @@ allow_train_execute = false
 allow_dev_nuke = false
 ```
 
-The runtime root was preserved. Existing node evidence was not deleted or
-dev-nuked. Runtime Hero was temporarily enabled only for the bounded channel
-execution chain and then restored to conservative policy.
+At dispatch time, the runtime root was preserved. Existing node evidence was
+not deleted or dev-nuked. Runtime Hero was temporarily enabled only for the
+bounded channel execution chain and then restored to conservative policy.
 
-The active wave file remains on the final validation-eval wave:
+At dispatch time, the active wave file remained on the final validation-eval
+wave:
 
 ```text
 wave_id = cwu_01v_channel_validation_eval_mdn_1800_2050

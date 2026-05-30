@@ -1,0 +1,125 @@
+MAN_SPEC_VERSION = 1
+
+[META]
+MAN_ID = global.config.gui
+TARGET_DSL = src/config/.config
+TARGET_BNF = src/impl/iitepi/config_space_t.cpp (INI-like parser)
+PRIMARY_DECODER = src/include/iinuji/iinuji_cmd/app.h
+PRIMARY_VALIDATORS = src/include/iinuji/iinuji_cmd/app.h
+
+[FIELD GUI.iinuji_logs_buffer_capacity]
+key = iinuji_logs_buffer_capacity
+scope = GUI section
+type = int
+required = false
+default = 6000
+range = >=1
+allowed = positive integer
+nuance = max in-memory entries retained for the migrated iinuji F8 Shell Logs view
+
+[FIELD GUI.iinuji_logs_show_date]
+key = iinuji_logs_show_date
+scope = GUI section
+type = bool
+required = false
+default = false
+range = true|false
+allowed = true,false,1,0,yes,no,on,off
+nuance = default F8 Shell Logs rendering hides the timestamp prefix
+
+[FIELD GUI.iinuji_logs_show_thread]
+key = iinuji_logs_show_thread
+scope = GUI section
+type = bool
+required = false
+default = false
+range = true|false
+allowed = true,false,1,0,yes,no,on,off
+nuance = default F8 Shell Logs rendering hides the thread id column
+
+[FIELD GUI.iinuji_logs_show_metadata]
+key = iinuji_logs_show_metadata
+scope = GUI section
+type = bool
+required = false
+default = true
+range = true|false
+allowed = true,false,1,0,yes,no,on,off
+nuance = default F8 Shell Logs rendering appends metadata payload when available
+
+[FIELD GUI.iinuji_logs_metadata_filter]
+key = iinuji_logs_metadata_filter
+scope = GUI section
+type = string
+required = false
+default = any
+range = one token
+allowed = any,any_meta,function,path,callsite and compatibility aliases
+nuance = default F8 Shell Logs metadata lens; invalid values fall back to any
+
+[FIELD GUI.iinuji_logs_show_color]
+key = iinuji_logs_show_color
+scope = GUI section
+type = bool
+required = false
+default = true
+range = true|false
+allowed = true,false,1,0,yes,no,on,off
+nuance = default F8 Shell Logs rendering uses severity emphasis colors
+
+[FIELD GUI.iinuji_logs_auto_follow]
+key = iinuji_logs_auto_follow
+scope = GUI section
+type = bool
+required = false
+default = true
+range = true|false
+allowed = true,false,1,0,yes,no,on,off
+nuance = default F8 Shell Logs behavior keeps the stream pinned to newest entries
+
+[FIELD GUI.iinuji_logs_mouse_capture]
+key = iinuji_logs_mouse_capture
+scope = GUI section
+type = bool
+required = false
+default = true
+range = true|false
+allowed = true,false,1,0,yes,no,on,off
+nuance = default iinuji mouse mode captures mouse events instead of terminal copy/select
+
+[FIELD GUI.iinuji_loading_logo_path]
+key = iinuji_loading_logo_path
+scope = GUI section
+type = string
+required = false
+default = /cuwacunu/src/resources/waajacamaya_hello.png
+range = filesystem path
+allowed = readable PNG file path; invalid or unreadable paths fall back to the bundled text wordmark
+nuance = cuwacunu_cmd bootstrap logo asset and static F1 Home fallback image; the bundled default restores the legacy waajacamaya hello loading image
+
+[FIELD GUI.iinuji_closing_logo_path]
+key = iinuji_closing_logo_path
+scope = GUI section
+type = string
+required = false
+default = /cuwacunu/src/resources/waajacamaya.png
+range = filesystem path
+allowed = readable PNG file path; invalid or unreadable paths fall back to GUI.iinuji_loading_logo_path
+nuance = cuwacunu_cmd farewell logo asset rendered briefly before the ncurses terminal closes; the bundled default restores the legacy waajacamaya closing image
+
+[FIELD GUI.iinuji_home_animation_path]
+key = iinuji_home_animation_path
+scope = GUI section
+type = string
+required = false
+default = /cuwacunu/src/resources/waajacamaya.apng
+range = filesystem path
+allowed = readable APNG, GIF, or PNG file path; invalid or unreadable paths fall back to GUI.iinuji_loading_logo_path in F1 Home
+nuance = cuwacunu_cmd F1 Home showcase asset rendered through the iinuji image and animation primitives
+
+[RULE GUI_IINUJI_LOGS_METADATA_FILTER_ALLOWED]
+id = GUI_IINUJI_LOGS_METADATA_FILTER_ALLOWED
+applies_to = GUI.iinuji_logs_metadata_filter
+severity = error
+when = value not in {any,meta+,meta,any_meta,with_any_metadata,fn+,function,with_function,path+,path,with_path,callsite+,callsite,with_callsite}
+message = GUI.iinuji_logs_metadata_filter must be one of any|any_meta|function|path|callsite or a supported alias

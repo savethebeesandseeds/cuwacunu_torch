@@ -29,6 +29,7 @@ struct marshal_runtime_wave_snapshot_t {
   std::string target_component_family_id{};
   std::string mode{};
   std::string source_range{"anchor_index"};
+  std::string source_order{};
   std::optional<std::size_t> anchor_index_begin{std::nullopt};
   std::optional<std::size_t> anchor_index_end{std::nullopt};
   std::optional<std::int64_t> source_key_begin{std::nullopt};
@@ -44,6 +45,7 @@ struct marshal_field_derivation_t {
 };
 
 struct marshal_runtime_dry_run_request_t {
+  std::string target_id{};
   std::string config_path{};
   std::string runtime_root{};
   bool dry_run{true};
@@ -52,11 +54,14 @@ struct marshal_runtime_dry_run_request_t {
   std::string wave_target{};
   std::string wave_mode{};
   std::string source_range{};
+  std::string source_order{};
   std::optional<std::size_t> anchor_index_begin{std::nullopt};
   std::optional<std::size_t> anchor_index_end{std::nullopt};
   std::optional<std::int64_t> source_key_begin{std::nullopt};
   std::optional<std::int64_t> source_key_end{std::nullopt};
   std::map<std::string, std::string> model_state_inputs{};
+  std::map<std::string, std::string> lattice_certificate_refs{};
+  std::string target_driver_run_id{};
 };
 
 struct marshal_dispatch_decision_t {
@@ -96,6 +101,7 @@ inline void add_derivation(marshal_dispatch_decision_t &decision,
 [[nodiscard]] inline std::string canonical_runtime_dry_run_request_text(
     const marshal_runtime_dry_run_request_t &request) {
   std::ostringstream out;
+  detail::append_kv(out, "target_id", request.target_id);
   detail::append_kv(out, "config_path",
                     detail::normalize_path_text(request.config_path));
   detail::append_kv(out, "runtime_root",
@@ -108,6 +114,7 @@ inline void add_derivation(marshal_dispatch_decision_t &decision,
   detail::append_kv(out, "wave_target", request.wave_target);
   detail::append_kv(out, "wave_mode", request.wave_mode);
   detail::append_kv(out, "source_range", request.source_range);
+  detail::append_kv(out, "source_order", request.source_order);
   detail::append_kv(out, "anchor_index_begin",
                     detail::optional_size_text(request.anchor_index_begin));
   detail::append_kv(out, "anchor_index_end",
@@ -118,6 +125,9 @@ inline void add_derivation(marshal_dispatch_decision_t &decision,
                     detail::optional_i64_text(request.source_key_end));
   detail::append_string_map(out, "model_state_inputs",
                             request.model_state_inputs);
+  detail::append_string_map(out, "lattice_certificate_refs",
+                            request.lattice_certificate_refs);
+  detail::append_kv(out, "target_driver_run_id", request.target_driver_run_id);
   detail::append_kv(out, "non_authority_statement",
                     k_marshal_dispatch_non_authority_statement);
   return out.str();
@@ -179,9 +189,11 @@ runtime_execution_request_from_preview(
   std::ostringstream out;
   detail::append_kv(out, "available", detail::bool_text(wave.available));
   detail::append_kv(out, "wave_id", wave.wave_id);
-  detail::append_kv(out, "target_component_family_id", wave.target_component_family_id);
+  detail::append_kv(out, "target_component_family_id",
+                    wave.target_component_family_id);
   detail::append_kv(out, "mode", wave.mode);
   detail::append_kv(out, "source_range", wave.source_range);
+  detail::append_kv(out, "source_order", wave.source_order);
   detail::append_kv(out, "anchor_index_begin",
                     detail::optional_size_text(wave.anchor_index_begin));
   detail::append_kv(out, "anchor_index_end",
@@ -226,6 +238,7 @@ build_runtime_dry_run_dispatch_preview(
       runtime_policy_snapshot_digest(policy);
   decision.expected_runtime_wave_digest =
       runtime_wave_snapshot_digest(active_wave);
+  decision.runtime_request.target_id = advice.target_id;
   decision.runtime_request.config_path = advice.config_path;
   decision.runtime_request.runtime_root = advice.runtime_root;
   decision.runtime_request.dry_run = true;
@@ -234,15 +247,19 @@ build_runtime_dry_run_dispatch_preview(
   decision.runtime_request.wave_target = advice.suggested_wave.target;
   decision.runtime_request.wave_mode = advice.suggested_wave.mode;
   decision.runtime_request.source_range = advice.suggested_wave.source_range;
+  decision.runtime_request.source_order = active_wave.source_order;
   decision.runtime_request.anchor_index_begin =
       advice.suggested_wave.anchor_index_begin;
   decision.runtime_request.anchor_index_end =
       advice.suggested_wave.anchor_index_end;
   decision.runtime_request.source_key_begin =
       advice.suggested_wave.source_key_begin;
-  decision.runtime_request.source_key_end = advice.suggested_wave.source_key_end;
+  decision.runtime_request.source_key_end =
+      advice.suggested_wave.source_key_end;
   decision.runtime_request.model_state_inputs =
       advice.suggested_wave.plan_inputs;
+  decision.runtime_request.lattice_certificate_refs =
+      request.lattice_certificate_refs;
 
   add_derivation(decision, "config_path", "advice.config_path");
   add_derivation(decision, "runtime_root", "advice.runtime_root");
@@ -293,7 +310,8 @@ build_runtime_dry_run_dispatch_preview(
     add_refusal(decision, marshal_refusal_reason_t::runtime_handoff_unavailable,
                 "Runtime Hero active wave snapshot is unavailable");
   } else {
-    if (active_wave.target_component_family_id != advice.suggested_wave.target ||
+    if (active_wave.target_component_family_id !=
+            advice.suggested_wave.target ||
         active_wave.mode != advice.suggested_wave.mode) {
       add_refusal(
           decision, marshal_refusal_reason_t::runtime_wave_mismatch,

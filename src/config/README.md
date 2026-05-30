@@ -10,20 +10,39 @@ Current migrated sections:
 - `KIKIJYEBA`: topology graph, wave settings, and lattice target DSL paths.
 - `WIKIMYEI`: expression, representation, and inference DSL paths.
 - `JKIMYEI`: training orchestration DSL paths.
-- `HERO`: Config Hero, Runtime Hero, and Lattice Hero policy paths.
+- `HERO`: Config Hero, Runtime Hero, Lattice Hero, and Marshal Hero policy
+  paths.
+- `GUI`: `cuwacunu_cmd`/`iinuji_cmd` terminal Shell Logs defaults plus image
+  and animation asset paths.
+
+The `[GUI]` section restores the migrated terminal surface contract. Shell Logs
+defaults are controlled by `iinuji_logs_buffer_capacity`,
+`iinuji_logs_show_date`, `iinuji_logs_show_thread`,
+`iinuji_logs_show_metadata`, `iinuji_logs_metadata_filter`,
+`iinuji_logs_show_color`, `iinuji_logs_auto_follow`, and
+`iinuji_logs_mouse_capture`. Visual assets are controlled by
+`iinuji_loading_logo_path` for the legacy hello bootstrap logo and static Home
+fallback, `iinuji_closing_logo_path` for the bundled farewell splash logo, and
+`iinuji_home_animation_path` for the animated F1 Home showcase. Relative GUI
+asset paths resolve against the directory that contains the active `.config`;
+invalid assets fall back to the bundled waajacamaya resources or text wordmark.
 
 `kikijyeba.settings.wave.dsl` selects the focal runtime component with `TARGET`.
 The default graph-first path is now the strict channel-preserving pair:
 `wikimyei.representation.encoding.vicreg` and
 `wikimyei.inference.expected_value.mdn`. The MDN path consumes the
 `[B,N,C,De]` representation contract and freezes VICReg when the MDN target
-trains. `CONTEXT_MODE=channel_context_strict` keeps the strict baseline;
+trains. The active MDN uses a shared slot trunk, low-rank channel adapters, and
+one shared feature-conditioned head to emit `[B,N,C,Df,K]` one-step mixtures.
+The net file carries `FEATURE_EMBEDDING_DIM` and `CHANNEL_ADAPTER_RANK` as
+architecture identity fields.
+`CONTEXT_MODE=channel_context_strict` keeps the strict baseline;
 `channel_context_plus_global` is reserved for the explicit
 post-representation global branch and requires `GLOBAL_CONTEXT_DIM>0` in the
 MDN net file. Channel-bearing config surfaces have their own BNF paths in
 `.config`; keep those BNF files in sync with the VICReg/MDN DSL, net,
-and Jkimyei keys. Legacy fused/node implementations remain only under explicit
-`legacy_node_*` source names for compatibility and are not the default model.
+and Jkimyei keys. The active runtime uses channel-preserving VICReg and strict
+channel-context MDN targets.
 `MODE=run` executes the target dependency closure without optimizer steps.
 `MODE=train` mutates only `TARGET`; upstream dependencies run frozen.
 Wave source ranges may be authored as `SOURCE_RANGE=anchor_index` for explicit
@@ -32,7 +51,7 @@ graph-anchor source keys such as kline millisecond close times. Runtime resolves
 source-key ranges into anchor-index intervals before execution and records both
 coordinates in manifests, states, reports, and component stream `.lls` payloads.
 
-MDN training is node-centered and expects a frozen representation encoder.
+MDN training is graph-slot centered and expects a frozen representation encoder.
 `wikimyei.inference.expected_value.mdn.jkimyei` should normally provide
 `INPUT_REPRESENTATION_CHECKPOINT`; `ALLOW_UNTRAINED_REPRESENTATION=true` is an
 explicit smoke-mode escape hatch for running the pipeline before a VICReg
@@ -54,6 +73,28 @@ non-finite loss policy, and augmentation probabilities must be declared there;
 they are part of the channel graph-first protocol contract and checkpoint audit
 surface.
 
+`wikimyei.representation.mtf_jepa_mae_vicreg.dsl`,
+`wikimyei.representation.mtf_jepa_mae_vicreg.net`, and
+`wikimyei.representation.mtf_jepa_mae_vicreg.jkimyei` define the separate
+experimental MTF-JEPA-MAE-VICReg representation family. These files register
+`wikimyei.representation.encoding.mtf_jepa_mae_vicreg` as its own component
+identity and training surface. They do not replace the production VICReg/MDN
+defaults and they do not make downstream forecast or MDN claims.
+
+Protocol variants live under `kikijyeba.protocol.*.dsl` and are selected by
+`[KIKIJYEBA].kikijyeba_protocol_dsl_path` in `.config`. The default protocol is
+`cwu_02v`, which docks the MTF-JEPA-MAE-VICReg representation. `cwu_01v` remains
+available as the VICReg baseline and declares `PROTOCOL_STATUS = legacy`,
+`SUCCESSOR_PROTOCOL = cwu_02v`, and a warning recommending the newer protocol
+for new training/evaluation runs. Wave files remain launch profiles for
+target/mode/cursor/source-order choices; they should not be the authority for
+which representation architecture is docked into a protocol.
+
+Wave profiles may declare `COMPATIBLE_PROTOCOLS` as a comma-separated protocol
+allow-list. When present, Runtime rejects a wave whose active protocol is not in
+that list. This is profile metadata, not the architecture selector; the active
+architecture still comes from `kikijyeba.protocol.*.dsl`.
+
 Config Hero starts from:
 
 - `[HERO].config_hero_dsl_path`
@@ -66,11 +107,49 @@ Runtime Hero starts from:
 - `src/config/hero.runtime.dsl`
 - `src/config/man/hero.runtime.man`
 
+`src/config/hero.runtime.dsl` is the locked default policy for MCP/Codex use:
+execution and train execution are disabled there, while developer reset is
+allowed only through the guarded `hero.runtime.dev_nuke` path with explicit
+confirmation. Intentional training should use `src/config/hero.runtime.train.dsl`
+or an equivalent operator-local overlay. That profile enables execute/train with
+explicit confirmation and longer runtime budget, but still leaves
+`allow_dev_nuke=false`.
+
+Reusable wave profiles live beside the active wave file:
+
+- `kikijyeba.settings.wave.train_core.vicreg.dsl`
+- `kikijyeba.settings.wave.train_core.mtf_jepa_mae_vicreg.dsl`
+- `kikijyeba.settings.wave.train_core.mdn.dsl`
+- `kikijyeba.settings.wave.validation_eval.mdn.dsl`
+
+They are templates for operator-local `.config` overlays. The default
+`kikijyeba.settings.wave.dsl` remains the single active wave named by `.config`.
+Reusable profiles use `SOURCE_RANGE=all` by default. Concrete anchor/source-key
+ranges are overlaid per launch through Runtime Hero `wave_overlay` or the
+equivalent `cuwacunu_exec --source-range ...` flags; they are not protocol
+identity.
+
 Lattice Hero starts from:
 
 - `[HERO].lattice_hero_dsl_path`
 - `src/config/hero.lattice.dsl`
 - `src/config/man/hero.lattice.man`
+
+Marshal Hero starts from:
+
+- `[HERO].marshal_hero_dsl_path`
+- `src/config/hero.marshal.dsl`
+- `src/config/man/hero.marshal.man`
+- `src/include/hero/marshal_hero/hero_marshal.def`
+- `src/include/hero/marshal_hero/hero_marshal.h`
+- `src/include/hero/marshal_hero/hero_marshal_tools.h`
+
+`src/config/hero.marshal.dsl` is intentionally minimal. It exists for Hero
+policy-path symmetry and MCP harness consistency; it does not give Marshal
+independent execution, scheduling, proof, model-selection, checkpoint-selection,
+or config-editing authority. Marshal exposes a small deterministic coordination
+surface over Lattice target state and Runtime policy/wave evidence, while
+Runtime remains the executor and Lattice remains the proof authority.
 
 The lattice target DSL is now profile/guard aware. `LATTICE_PROFILE` captures
 reusable readiness defaults, `LATTICE_GUARD` remains available for low-level
@@ -104,19 +183,29 @@ mutating. Reads return `sha256`; replacements and deletions require
 
 Runtime Hero is the agent-facing control and inspection surface for
 `/cuwacunu/.build/exec/cuwacunu_exec`. It decodes the active wave, performs
-guarded dry-runs/executions, and reads runtime artifacts under
-`.runtime/cuwacunu_exec`. Runtime manifests record config provenance and
-component spawn links: `config_bundle_id`, `config_receipt_id`,
+guarded dry-runs/executions, and reads runtime artifacts under the canonical
+execution root `/cuwacunu/.runtime/cuwacunu_exec`. The parent
+`/cuwacunu/.runtime` is disposable runtime state; new runtime subtrees should
+live under the canonical execution root unless a policy explicitly introduces a
+separate owner. Runtime manifests record config
+provenance and component spawn links: `config_bundle_id`, `config_receipt_id`,
 `component_spawn_registry_id`, `component_family_id`,
 `component_spawn_fingerprint`, scoped `component_spawn_id`, and
-`component_spawn_label`.
+`component_spawn_label`. Component spawn identity is protocol/component scoped;
+wave source cursors and concrete source ranges remain job, checkpoint, and
+Lattice evidence lineage. Default runtime launches now split `job_stable_id`
+from immutable `job_attempt_id`: rerunning the same wave against the same
+component spawn writes a fresh attempt directory instead of replacing the prior
+report/checkpoint. Explicit `--job-dir` launches are guarded by a no-overwrite
+check unless resume support is implemented.
 
 Developer runtime reset is owned by Runtime Hero as `hero.runtime.dev_nuke`, not
 by Config Hero. The tool defaults to dry-run, reports the exact runtime-root
 entries it would clear, and requires `allow_dev_nuke=true` plus
-`confirm_dev_nuke=true` for non-dry-run reset. Backup snapshots are controlled by
-`dev_nuke_backup_enabled` and `dev_nuke_backup_root`, and allowed roots are
-constrained by `allowed_dev_nuke_roots`.
+`confirm_dev_nuke=true` for non-dry-run reset. Checked-in policies allow
+clearing `/cuwacunu/.runtime` but keep backup snapshots disabled by default so a
+reset does not leave legacy backup folders under the disposable runtime tree.
+Operators can explicitly enable backups to the configured `/tmp` backup root.
 
 `kikijyeba.lattice.targets.dsl` sits one level above waves. It declares
 read-only readiness targets over contract-scoped runtime evidence and may
@@ -284,12 +373,12 @@ no VICReg per-node readiness authority, no synthetic backfill, and no runtime
 executor authority.
 `LATTICE_WARN KIND=mdn_distribution_calibration` adds the first non-blocking
 distributional MDN warning surface. V3-D evaluates aggregate `mean_nll`,
-runtime-emitted channel/horizon max-NLL summaries, and per-node max NLL from
-node exposure facts as warning-only diagnostics. PIT KS statistic, predictive
+runtime-emitted channel, target-feature, channel/target-feature, and per-node
+max-NLL summaries as warning-only diagnostics. PIT KS statistic, predictive
 interval coverage error, tail coverage error, and calibration slope error remain
 future metrics until runtime emits samples and uncertainty. Hero JSON includes
 `mdn_distribution_calibration_vocabulary` and
-`mdn_distribution_calibration_summary` for the legacy metric policy, plus
+`mdn_distribution_calibration_summary` for the warning-only metric policy, plus
 `mdn_distribution_calibration_diagnostic_vocabulary` and
 `mdn_distribution_calibration_diagnostic_summary` to self-check exact checkpoint
 binding, representation checkpoint binding, validation split, active identity,
@@ -362,8 +451,8 @@ Hero MCP schema hygiene is separate from lattice proof authority. Sourced Hero
 catalog generation validates each tool `inputSchema` as a harness-safety gate:
 the root must be `type=object`, and top-level `oneOf`, `anyOf`, `allOf`,
 `enum`, and `not` are rejected with a message naming the tool, schema path, and
-offending construct. The schema smoke covers Config, Runtime, Hashimyei, and
-Lattice catalogs and specifically protects the prior
+offending construct. The schema smoke covers Config, Runtime, Lattice, and
+Marshal catalogs and specifically protects the prior
 `hero.lattice.checkpoint_closure` failure mode.
 Target compilation applies small dimensional checks: fractions stay in `[0,1]`,
 counts are non-negative integral thresholds, and representation condition-number
@@ -378,7 +467,7 @@ Evaluations expose proof certificates, deficits, plan basis, and an
 of emitting a single score. The vector separates total warning results,
 triggered warning count, unavailable warning-measurement count, source-key audit
 counts/issues/affine mismatches, unresolved lineage count, selector-leakage
-participation state, node-support imbalance maxima, and the legacy
+participation state, node-support imbalance maxima, and the compatibility
 `warning_count` alias for triggered warnings. `hero.lattice.compare_evidence`
 evaluates two targets from one scan and reports the vectors, per-dimension
 dominance reasons, and the relation `left_dominates`, `right_dominates`,
@@ -510,8 +599,10 @@ coverage/closure/leakage/warnings/deficits join idempotently inside one
 identity scope, repeated exposure load and distinct node-support rows are
 additive, and unsafe joins fail closed instead of claiming readiness.
 `mdn_distribution_calibration_vocabulary` names warning-only aggregate,
-channel, horizon, per-node, and future MDN calibration metrics.
-`mdn_distribution_calibration_summary` keeps the legacy metric policy visible.
+channel, target-feature, channel/target-feature, per-node, and future MDN
+calibration metrics.
+`mdn_distribution_calibration_summary` keeps the warning-only metric policy
+visible.
 `mdn_distribution_calibration_diagnostic_vocabulary` and
 `mdn_distribution_calibration_diagnostic_summary` self-check the V3-D
 diagnostic binding fields: exact MDN checkpoint, representation checkpoint,
@@ -643,13 +734,6 @@ MDN node-support visibility, and Hero read/plan/closure inspection.
 required, read-only, non-executing, non-performance, non-DB-source-of-truth, have
 pass/fail conditions and Hero surfaces, and reference all five required V1
 targets.
-The fixture
-`src/tests/fixtures/kikijyeba/lattice_validation_eval_wrong_mdn` is a
-Hero-inspectable negative runtime root for the exact-checkpoint validation
-binding: train-core readiness and leakage guard pass, but validation evaluation
-fails because the run loaded the wrong MDN checkpoint, producing both a
-`dependency:mdn_checkpoint` deficit and a certificate-check mismatch issue.
-
 DEV_WARNING: the current graph-first contract fingerprint still includes some
 Jkimyei training selectors. Runtime model-state fields such as loaded checkpoint
 paths are excluded from contract identity and must be proven through job
@@ -664,6 +748,6 @@ metadata: they can identify source files for review, but target identity and
 overlap proof remain anchored by the active graph/order/source identity and
 row-index facts.
 
-The legacy Hero split into default/temp/objective/optim file surfaces is not
-part of the fresh path. Hashimyei identity receipts, TSODAO optim checkpoints,
+The old Hero split into default/temp/objective/optim file surfaces is not
+part of the fresh path. Retired identity receipts, TSODAO optim checkpoints,
 and runtime reset controls are also outside Config Hero v2.

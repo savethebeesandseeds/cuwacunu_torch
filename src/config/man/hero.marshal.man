@@ -1,0 +1,25 @@
+CONFIG = src/config/hero.marshal.dsl
+PRIMARY_VALIDATORS = src/include/hero/marshal_hero/hero_marshal.h
+
+DESCRIPTION
+  Marshal Hero v0 is a deterministic coordination and explanation surface over
+  Lattice target state and Runtime policy/wave evidence. Runtime executes and
+  writes evidence. Lattice proves target satisfaction. Marshal prepares bounded
+  handoffs and explains state.
+
+KEYS
+  protocol_layer
+    Allowed: STDIO, HTTPS/SSE.
+    Current runtime supports STDIO only. HTTPS/SSE fails fast.
+
+TOOLS
+  hero.marshal.status
+  hero.marshal.reach_lattice_target
+  hero.marshal.evaluate
+
+BOUNDARY
+  This policy file is intentionally minimal. It exists for Hero policy-path
+  symmetry and MCP harness consistency. It does not give Marshal independent
+  execution, scheduling, proof, model-selection, checkpoint-selection, or config
+  editing authority. Runtime Hero policy still controls execution. Lattice Hero
+  still controls proof.

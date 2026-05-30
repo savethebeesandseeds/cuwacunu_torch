@@ -106,10 +106,19 @@ struct graph_first_pipeline_dry_run_report_t {
   std::string requested_source_key_begin{};
   std::string requested_source_key_end{};
   std::string runtime_report_mode{};
+  std::string protocol_id{};
+  std::string protocol_kind{};
+  std::string protocol_status{};
+  std::string successor_protocol{};
+  std::string protocol_warning{};
+  std::string active_representation_family{};
+  std::string active_representation_component_assembly_id{};
+  std::string protocol_representation_contract{};
   std::string protocol_contract_fingerprint{};
   std::string protocol_contract_token{};
   std::string nodelift_assembly_fingerprint{};
   std::string vicreg_assembly_fingerprint{};
+  std::string mtf_jepa_mae_vicreg_assembly_fingerprint{};
   std::string mdn_assembly_fingerprint{};
   std::string dock_binding_fingerprint{};
   std::string dock_binding_token{};
@@ -146,9 +155,16 @@ struct graph_first_pipeline_dry_run_report_t {
         << " source_order_random_seed_source="
         << wave_source_order_random_seed_source
         << " runtime_report_mode=" << runtime_report_mode
+        << " protocol_id=" << protocol_id
+        << " protocol_status=" << protocol_status
+        << " successor_protocol=" << successor_protocol
+        << " protocol_warning=" << protocol_warning
+        << " active_representation_family=" << active_representation_family
         << " protocol_contract=" << protocol_contract_fingerprint
         << " nodelift_assembly=" << nodelift_assembly_fingerprint
         << " vicreg_assembly=" << vicreg_assembly_fingerprint
+        << " mtf_jepa_mae_vicreg_assembly="
+        << mtf_jepa_mae_vicreg_assembly_fingerprint
         << " mdn_assembly=" << mdn_assembly_fingerprint
         << " dock_binding=" << dock_binding_fingerprint
         << " dock_binding_warnings=" << dock_binding_warning_count
@@ -177,6 +193,19 @@ resolve_batch_size(const channel_graph_first_config_bundle_t &bundle,
     return options.batch_size;
   }
 
+  switch (bundle.wave_settings.target) {
+  case cuwacunu::kikijyeba::settings::wave_target_t::vicreg_representation:
+    return checked_batch_size_from_config(bundle.vicreg_training.batch_size,
+                                          "vicreg_training.batch_size");
+  case cuwacunu::kikijyeba::settings::wave_target_t::
+      mtf_jepa_mae_vicreg_representation:
+    return checked_batch_size_from_config(
+        bundle.mtf_jepa_mae_vicreg_training.batch_size,
+        "mtf_jepa_mae_vicreg_training.batch_size");
+  case cuwacunu::kikijyeba::settings::wave_target_t::inference_channel_mdn:
+    break;
+  }
+
   const auto representation_batch = checked_batch_size_from_config(
       bundle.vicreg_training.batch_size, "vicreg_training.batch_size");
   const auto mdn_batch =
@@ -202,6 +231,9 @@ source_order_random_seed(const channel_graph_first_config_bundle_t &bundle) {
   switch (bundle.wave_settings.target) {
   case cuwacunu::kikijyeba::settings::wave_target_t::vicreg_representation:
     return bundle.vicreg_training.seed;
+  case cuwacunu::kikijyeba::settings::wave_target_t::
+      mtf_jepa_mae_vicreg_representation:
+    return bundle.mtf_jepa_mae_vicreg_training.seed;
   case cuwacunu::kikijyeba::settings::wave_target_t::inference_channel_mdn:
     return bundle.channel_mdn_training.seed;
   }
@@ -215,6 +247,9 @@ source_order_random_seed(const channel_graph_first_config_bundle_t &bundle) {
   switch (bundle.wave_settings.target) {
   case cuwacunu::kikijyeba::settings::wave_target_t::vicreg_representation:
     return "vicreg_training.seed";
+  case cuwacunu::kikijyeba::settings::wave_target_t::
+      mtf_jepa_mae_vicreg_representation:
+    return "mtf_jepa_mae_vicreg_training.seed";
   case cuwacunu::kikijyeba::settings::wave_target_t::inference_channel_mdn:
     return "channel_mdn_training.seed";
   }
@@ -352,10 +387,24 @@ public:
     options_.batch_size =
         graph_first_pipeline_builder_detail::resolve_batch_size(bundle_,
                                                                 options_);
-    options_.dtype = graph_first_pipeline_builder_detail::resolve_dtype(
-        bundle_.vicreg.dtype);
-    options_.device = graph_first_pipeline_builder_detail::resolve_device(
-        bundle_.vicreg.device);
+    const bool use_mtf_runtime_device =
+        bundle_.wave_settings.target ==
+            cuwacunu::kikijyeba::settings::wave_target_t::
+                mtf_jepa_mae_vicreg_representation ||
+        (bundle_.wave_settings.target ==
+             cuwacunu::kikijyeba::settings::wave_target_t::
+                 inference_channel_mdn &&
+         cuwacunu::kikijyeba::protocol::
+             active_protocol_uses_mtf_jepa_mae_vicreg(bundle_));
+    if (use_mtf_runtime_device) {
+      options_.dtype = bundle_.mtf_jepa_mae_vicreg.config.dtype;
+      options_.device = bundle_.mtf_jepa_mae_vicreg.config.device;
+    } else {
+      options_.dtype = graph_first_pipeline_builder_detail::resolve_dtype(
+          bundle_.vicreg.dtype);
+      options_.device = graph_first_pipeline_builder_detail::resolve_device(
+          bundle_.vicreg.device);
+    }
   }
 
   [[nodiscard]] const channel_graph_first_config_bundle_t &bundle() const {
@@ -493,6 +542,17 @@ public:
     out.runtime_report_mode =
         cuwacunu::kikijyeba::settings::runtime_report_mode_name(
             effective_runtime_report_mode());
+    out.protocol_id = bundle_.protocol_variant.protocol_id;
+    out.protocol_kind = bundle_.protocol_variant.protocol_kind;
+    out.protocol_status = bundle_.protocol_variant.protocol_status;
+    out.successor_protocol = bundle_.protocol_variant.successor_protocol;
+    out.protocol_warning = bundle_.protocol_variant.protocol_warning;
+    out.active_representation_family =
+        cuwacunu::kikijyeba::protocol::active_representation_family_id(bundle_);
+    out.active_representation_component_assembly_id = cuwacunu::kikijyeba::
+        protocol::active_representation_component_assembly_id(bundle_);
+    out.protocol_representation_contract =
+        bundle_.protocol_variant.representation_contract;
     out.protocol_contract_fingerprint = cuwacunu::kikijyeba::protocol::
         channel_graph_first_protocol_contract_fingerprint(bundle_);
     out.protocol_contract_token = cuwacunu::kikijyeba::protocol::
@@ -503,6 +563,9 @@ public:
     out.vicreg_assembly_fingerprint =
         cuwacunu::wikimyei::assembly::assembly_fingerprint(
             bundle_.vicreg_assembly);
+    out.mtf_jepa_mae_vicreg_assembly_fingerprint =
+        cuwacunu::wikimyei::assembly::assembly_fingerprint(
+            bundle_.mtf_jepa_mae_vicreg_assembly);
     out.mdn_assembly_fingerprint =
         cuwacunu::wikimyei::assembly::assembly_fingerprint(
             bundle_.channel_mdn_assembly);
@@ -523,6 +586,16 @@ public:
   }
 
   [[nodiscard]] int64_t context_dim() const {
+    if (bundle_.wave_settings.target ==
+            cuwacunu::kikijyeba::settings::wave_target_t::
+                mtf_jepa_mae_vicreg_representation ||
+        (bundle_.wave_settings.target ==
+             cuwacunu::kikijyeba::settings::wave_target_t::
+                 inference_channel_mdn &&
+         cuwacunu::kikijyeba::protocol::
+             active_protocol_uses_mtf_jepa_mae_vicreg(bundle_))) {
+      return bundle_.mtf_jepa_mae_vicreg.config.latent_dim;
+    }
     return bundle_.vicreg.encoding_dim;
   }
 
@@ -555,19 +628,34 @@ public:
             .input_batch = "graph_anchor_edge_batch_t",
             .output_batch = "node_lifted_batch_t",
         });
+    const bool use_mtf_representation =
+        bundle_.wave_settings.target ==
+            cuwacunu::kikijyeba::settings::wave_target_t::
+                mtf_jepa_mae_vicreg_representation ||
+        (bundle_.wave_settings.target ==
+             cuwacunu::kikijyeba::settings::wave_target_t::
+                 inference_channel_mdn &&
+         cuwacunu::kikijyeba::protocol::
+             active_protocol_uses_mtf_jepa_mae_vicreg(bundle_));
+    const auto &representation_assembly =
+        use_mtf_representation ? bundle_.mtf_jepa_mae_vicreg_assembly
+                               : bundle_.vicreg_assembly;
+    const char *representation_output_batch =
+        use_mtf_representation ? "mtf_jepa_mae_vicreg_representation_batch_t"
+                               : "channel_representation_batch_t";
     out.steps.push_back(
         cuwacunu::kikijyeba::protocol::component_stream_plan_step_t{
             .name = "channel_representation",
-            .component_family_id = bundle_.vicreg_assembly.family,
+            .component_family_id = representation_assembly.family,
             .component_assembly_id =
-                bundle_.vicreg_assembly.component_assembly_id,
+                representation_assembly.component_assembly_id,
             .assembly_token = cuwacunu::wikimyei::assembly::make_assembly_token(
-                bundle_.vicreg_assembly.family,
-                bundle_.vicreg_assembly.component_assembly_id,
-                bundle_.vicreg_assembly.version_token),
+                representation_assembly.family,
+                representation_assembly.component_assembly_id,
+                representation_assembly.version_token),
             .dock_binding_token = binding_token,
             .input_batch = "node_lifted_batch_t",
-            .output_batch = "channel_representation_batch_t",
+            .output_batch = representation_output_batch,
         });
     out.steps.push_back(
         cuwacunu::kikijyeba::protocol::component_stream_plan_step_t{
@@ -721,6 +809,8 @@ public:
             bundle_.vicreg_assembly.component_assembly_id,
             bundle_.vicreg_assembly.version_token),
         cuwacunu::kikijyeba::topology::dock_binding_token(bundle_.dock_binding),
+        bundle_.vicreg_assembly.family,
+        "wikimyei.representation.vicreg.runtime.v1",
         cuwacunu::kikijyeba::protocol::component_stream_wave_from_settings(
             bundle_.wave_settings));
   }
@@ -755,7 +845,12 @@ public:
             /*K=*/bundle_.channel_mdn.mixture_count,
             /*H=*/bundle_.channel_mdn.hidden_width,
             /*depth=*/bundle_.channel_mdn.residual_depth, options_.dtype,
-            options_.device);
+            options_.device,
+            /*feature_embedding_dim=*/
+            bundle_.channel_mdn.feature_embedding_dim,
+            /*channel_adapter_rank=*/bundle_.channel_mdn.channel_adapter_rank,
+            /*target_coords=*/bundle_.channel_mdn.target_coords,
+            /*sigma_floor=*/bundle_.channel_mdn.sigma_min);
   }
 
   [[nodiscard]] static std::vector<torch::Tensor>

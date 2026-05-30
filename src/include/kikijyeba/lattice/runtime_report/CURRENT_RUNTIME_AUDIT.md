@@ -9,11 +9,11 @@ behavior from desired future standard behavior.
 | --- | --- | --- | --- | --- | --- |
 | `wave.source.runtime.projection.v2` | `src/main/tools/cuwacunu_campaign.cpp` via `src/include/hero/lattice_hero/source_runtime_projection.h` | Hero Lattice ingest, assembled fact bundles, humans / direct artifact readers | `source_runtime_projection.latest.lls` under the canonical source leaf `ujcamei/source/retrieval/contracts/<contract_token>/bindings/<binding>/runs/<run_id>/` | standalone, ingestable | strict runtime `.lls`, top-level `schema`, context header (`canonical_path`, `binding_id`, `wave_cursor`), optional context extension `source_runtime_cursor`, explicit `contract_hash`, fixed 12 digits |
 | `wave.projection.lls.v2` | `src/impl/hero/lattice_hero/lattice_catalog.cpp` | lattice catalog cells / MCP report joins | stored in catalog `projection_lls`, no standalone file | catalog-only | top-level `schema`, `projection_version`, `projector_build_id`, sorted numeric/text sections, fixed 12 digits |
-| `jkimyei.evaluation.data_analytics.v2` | `src/impl/jkimyei/evaluation/source/data_analytics_public.cpp` | Lattice entropic-capacity view inputs, Hero Hashimyei/Lattice ingest | `.runtime/.hashimyei/.../ujcamei/source/retrieval/contracts/<contract_token>/contexts/<source_runtime_cursor>/data_analytics.v2.latest.lls` | standalone, ingestable | strict runtime `.lls`, fixed 12 digits, current `evaluation_report_identity_t` header, explicit `contract_hash`, `source_entropic_load`, and invalid positions excluded from numeric statistics |
-| `jkimyei.evaluation.data_analytics_symbolic.v2` | `src/impl/jkimyei/evaluation/source/data_analytics_public.cpp` | Hero Hashimyei/Lattice ingest, humans / direct artifact readers | `.runtime/.hashimyei/.../ujcamei/source/retrieval/contracts/<contract_token>/contexts/<source_runtime_cursor>/data_analytics.symbolic.v2.latest.lls` | standalone, ingestable | strict runtime `.lls`, fixed 12 digits, flattened `channel_<n>_*` keys, current `evaluation_report_identity_t` header, explicit `contract_hash`, and comment-free canonical emission |
-| `jkimyei.evaluation.embedding_sequence_analytics.v2` | `src/impl/jkimyei/evaluation/source/data_analytics_public.cpp` | Hero Hashimyei/Lattice ingest, humans / direct artifact readers | `embedding_sequence_analytics.v2.latest.lls` in the component report directory | standalone, ingestable | strict runtime `.lls`, fixed 12 digits, current `evaluation_report_identity_t` header, and generic sequence envelope over latent encodings reshaped to per-dimension streams |
-| `jkimyei.evaluation.embedding_sequence_analytics_symbolic.v2` | `src/impl/jkimyei/evaluation/source/data_analytics_public.cpp` | Hero Hashimyei/Lattice ingest, humans / direct artifact readers | `embedding_sequence_analytics.symbolic.v2.latest.lls` in the component report directory | standalone, ingestable | strict runtime `.lls`, fixed 12 digits, current `evaluation_report_identity_t` header, flattened `stream_<n>_*` keys, representative-stream reduction when latent width is large |
-| `jkimyei.evaluation.network_analytics.v5` | `src/impl/jkimyei/evaluation/representation/network_analytics_public.cpp` | Lattice entropic-capacity view inputs, Hero Hashimyei/Lattice ingest | `<checkpoint>.network_analytics.lls` | standalone, ingestable | strict runtime `.lls`, fixed 12 digits, current `evaluation_report_identity_t` header, `network_global_entropic_capacity`, and top-k collection flattening uses `_count`, `_1_name`, `_1_value` |
+| `jkimyei.evaluation.data_analytics.v2` | `src/impl/jkimyei/evaluation/source/data_analytics_public.cpp` | Lattice entropic-capacity view inputs, humans / direct artifact readers | `.runtime/cuwacunu_exec/components/jkimyei.evaluation.source.data_analytics/spawns/standalone_runtime/artifacts/retrieval/.../ujcamei/source/retrieval/contracts/<contract_token>/contexts/<source_runtime_cursor>/data_analytics.v2.latest.lls` | standalone, ingestable | strict runtime `.lls`, fixed 12 digits, current `evaluation_report_identity_t` header, explicit `contract_hash`, `source_entropic_load`, and invalid positions excluded from numeric statistics |
+| `jkimyei.evaluation.data_analytics_symbolic.v2` | `src/impl/jkimyei/evaluation/source/data_analytics_public.cpp` | Lattice ingest, humans / direct artifact readers | `.runtime/cuwacunu_exec/components/jkimyei.evaluation.source.data_analytics/spawns/standalone_runtime/artifacts/retrieval/.../ujcamei/source/retrieval/contracts/<contract_token>/contexts/<source_runtime_cursor>/data_analytics.symbolic.v2.latest.lls` | standalone, ingestable | strict runtime `.lls`, fixed 12 digits, flattened `channel_<n>_*` keys, current `evaluation_report_identity_t` header, explicit `contract_hash`, and comment-free canonical emission |
+| `jkimyei.evaluation.embedding_sequence_analytics.v2` | `src/impl/jkimyei/evaluation/source/data_analytics_public.cpp` | Lattice ingest, humans / direct artifact readers | `embedding_sequence_analytics.v2.latest.lls` in the component report directory | standalone, ingestable | strict runtime `.lls`, fixed 12 digits, current `evaluation_report_identity_t` header, and generic sequence envelope over latent encodings reshaped to per-dimension streams |
+| `jkimyei.evaluation.embedding_sequence_analytics_symbolic.v2` | `src/impl/jkimyei/evaluation/source/data_analytics_public.cpp` | Lattice ingest, humans / direct artifact readers | `embedding_sequence_analytics.symbolic.v2.latest.lls` in the component report directory | standalone, ingestable | strict runtime `.lls`, fixed 12 digits, current `evaluation_report_identity_t` header, flattened `stream_<n>_*` keys, representative-stream reduction when latent width is large |
+| `jkimyei.evaluation.network_analytics.v5` | `src/impl/jkimyei/evaluation/representation/network_analytics_public.cpp` | Lattice entropic-capacity view inputs | `<checkpoint>.network_analytics.lls` | standalone, ingestable | strict runtime `.lls`, fixed 12 digits, current `evaluation_report_identity_t` header, `network_global_entropic_capacity`, and top-k collection flattening uses `_count`, `_1_name`, `_1_value` |
 
 ## Reader Surfaces In Use Today
 
@@ -50,7 +50,7 @@ Legacy comparison helper:
 Legacy line readers still in tree:
 
 - `parse_kv_payload(...)` in `src/impl/hero/lattice_hero/lattice_catalog.cpp`
-- `parse_latent_lineage_state_payload(...)` in `src/impl/hero/hashimyei_hero/hashimyei_catalog.cpp`
+- `parse_latent_lineage_state_payload(...)` in retired catalog compatibility code
 - schema-local scanners in `src/impl/jkimyei/evaluation/data_analytics.cpp`,
   `src/impl/jkimyei/evaluation/network_analytics.cpp`, and
   `src/impl/jkimyei/evaluation/entropic_capacity_comparison.cpp`
@@ -154,8 +154,8 @@ Identity envelope:
 
 ## Representative Payload Sources
 
-- source projection fixture shape: `src/tests/bench/hashimyei/test_source_runtime_projection.cpp`
-- Lattice ingest expectations: `src/tests/bench/hashimyei/test_lattice_catalog.cpp`
+- source projection fixture shape: current Lattice runtime-report fixtures
+- Lattice ingest expectations: current Lattice catalog/runtime-report tests
 - relaxed syntax / duplicate-key behavior: `src/tests/bench/camahjucunu/test_dsl_latent_lineage_state.cpp`
 - data/network/entropic compatibility checks:
   `src/tests/bench/iitepi/test_entropic_capacity_analytics.cpp`

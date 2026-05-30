@@ -37,10 +37,10 @@ migration landed.
   is now a standalone runtime fact and should not regress back to synthetic
   reconstruction from joined transports.
 
-`src/impl/hero/hashimyei_hero/hashimyei_catalog.cpp`
+`src/impl/hero/lattice_hero/lattice_catalog.cpp`
 
-- Retire legacy fallback handling in non-runtime manifest helpers only if a separate
-  manifest standardization pass warrants it.
+- Keep runtime report ingest owned by Lattice. Retired catalog surfaces must not
+  be reintroduced as compatibility layers.
 
 ## Documentation Follow-Ups
 

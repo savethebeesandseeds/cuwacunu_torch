@@ -47,6 +47,8 @@ struct channel_mdn_spec_t {
   int64_t mixture_count{0};
   int64_t hidden_width{0};
   int64_t residual_depth{0};
+  int64_t feature_embedding_dim{0};
+  int64_t channel_adapter_rank{0};
   int64_t global_context_dim{0};
   double sigma_min{1e-3};
   double sigma_max{0.0};
@@ -152,8 +154,13 @@ inline void validate_channel_mdn_spec(const channel_mdn_spec_t &spec) {
   }
   if (spec.channel_count <= 0 || spec.future_horizon <= 0 ||
       spec.mixture_count <= 0 || spec.hidden_width <= 0 ||
-      spec.residual_depth < 0 || spec.global_context_dim < 0) {
+      spec.residual_depth < 0 || spec.feature_embedding_dim <= 0 ||
+      spec.channel_adapter_rank <= 0 || spec.global_context_dim < 0) {
     throw std::runtime_error("[channel_mdn_spec] invalid dimensions");
+  }
+  if (spec.channel_adapter_rank > spec.hidden_width) {
+    throw std::runtime_error(
+        "[channel_mdn_spec] CHANNEL_ADAPTER_RANK must be <= HIDDEN_WIDTH");
   }
   if (spec.future_horizon != 1) {
     throw std::runtime_error(
@@ -192,6 +199,10 @@ inline void decode_channel_mdn_net_into_spec(const std::string &net_text,
   spec.mixture_count = kv::parse_i64(kv::required(block, "MIXTURE_COUNT"));
   spec.hidden_width = kv::parse_i64(kv::required(block, "HIDDEN_WIDTH"));
   spec.residual_depth = kv::parse_i64(kv::required(block, "RESIDUAL_DEPTH"));
+  spec.feature_embedding_dim =
+      kv::parse_i64(kv::required(block, "FEATURE_EMBEDDING_DIM"));
+  spec.channel_adapter_rank =
+      kv::parse_i64(kv::required(block, "CHANNEL_ADAPTER_RANK"));
   spec.global_context_dim =
       kv::parse_i64(kv::required(block, "GLOBAL_CONTEXT_DIM"));
 }

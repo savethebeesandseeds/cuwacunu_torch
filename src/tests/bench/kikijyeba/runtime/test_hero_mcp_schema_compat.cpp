@@ -149,6 +149,8 @@ void check_catalog(const std::string &label, const fs::path &binary,
   const auto tools = extract_tool_schemas(output);
   assert(!tools.empty());
   bool saw_lattice_checkpoint_closure = false;
+  bool saw_lattice_target_deficit = false;
+  bool saw_lattice_latest_satisfying_checkpoint = false;
   for (const auto &tool : tools) {
     const auto issues =
         schema::validate_tool_input_schema(tool.name, tool.input_schema);
@@ -159,10 +161,25 @@ void check_catalog(const std::string &label, const fs::path &binary,
     if (tool.name == "hero.lattice.checkpoint_closure") {
       saw_lattice_checkpoint_closure = true;
     }
+    if (tool.name == "hero.lattice.target_deficit") {
+      saw_lattice_target_deficit = true;
+    }
+    if (tool.name == "hero.lattice.latest_satisfying_checkpoint") {
+      saw_lattice_latest_satisfying_checkpoint = true;
+    }
   }
   if (require_lattice_checkpoint_closure && !saw_lattice_checkpoint_closure) {
     throw std::runtime_error(
         "missing regression tool hero.lattice.checkpoint_closure");
+  }
+  if (require_lattice_checkpoint_closure && !saw_lattice_target_deficit) {
+    throw std::runtime_error(
+        "missing regression tool hero.lattice.target_deficit");
+  }
+  if (require_lattice_checkpoint_closure &&
+      !saw_lattice_latest_satisfying_checkpoint) {
+    throw std::runtime_error(
+        "missing regression tool hero.lattice.latest_satisfying_checkpoint");
   }
 }
 
@@ -203,10 +220,6 @@ int main() {
   check_catalog("Runtime",
                 first_existing({hero_root / "hero_runtime.mcp",
                                 hero_root / "hero_runtime_mcp"}),
-                false);
-  check_catalog("Hashimyei",
-                first_existing({hero_root / "hero_hashimyei.mcp",
-                                hero_root / "hero_hashimyei_mcp"}),
                 false);
   check_catalog("Lattice",
                 first_existing({hero_root / "hero_lattice.mcp",

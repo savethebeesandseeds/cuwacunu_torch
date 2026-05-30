@@ -45,6 +45,9 @@ struct PlotOptions {
   bool draw_grid = true;
   int y_ticks = 5;
   int x_ticks = 6;
+  bool draw_y_tick_labels = true;
+  bool draw_y2_tick_labels = false;
+  bool draw_x_tick_labels = true;
   bool baseline0 = true; // draw y=0 line if within range
 
   // Ranges: if NaN, auto
@@ -52,6 +55,8 @@ struct PlotOptions {
   double x_max = std::numeric_limits<double>::quiet_NaN();
   double y_min = std::numeric_limits<double>::quiet_NaN();
   double y_max = std::numeric_limits<double>::quiet_NaN();
+  double y2_min = std::numeric_limits<double>::quiet_NaN();
+  double y2_max = std::numeric_limits<double>::quiet_NaN();
 
   // Optional log scales
   bool x_log = false;
@@ -62,12 +67,15 @@ struct PlotOptions {
   // Labels
   std::string x_label;
   std::string y_label;
+  std::string y2_label;
 
   // Clipping safeguard
   bool hard_clip = true;
 
   // Colors supplied by the backend
   short axes_color_pair = 0;
+  short y_axis_color_pair = 0;
+  short y2_axis_color_pair = 0;
   short grid_color_pair = 0;
   short bg_color_pair =
       0; // fallback color; when set, empty plot cells are filled
@@ -89,6 +97,7 @@ struct SeriesStyle {
   int envelope_min_count = 2;
   int envelope_min_height = 2;
   bool envelope_draw_base = true;
+  bool use_y2_axis = false;
 };
 
 struct Series {
@@ -233,7 +242,7 @@ static void plot_braille_multi(const std::vector<Series> &series, int start_x,
     return opt.y_log ? safe_log10(y, opt.y_log_eps) : y;
   };
 
-  // Global data ranges: honor fixed values, auto-fill only NaNs
+  // Data ranges: x is shared, y and y2 are independent axes.
   double x_min = is_finite(opt.x_min)
                      ? transform_x(opt.x_min)
                      : std::numeric_limits<double>::quiet_NaN();
@@ -246,13 +255,29 @@ static void plot_braille_multi(const std::vector<Series> &series, int start_x,
   double y_max = is_finite(opt.y_max)
                      ? transform_y(opt.y_max)
                      : std::numeric_limits<double>::quiet_NaN();
+  double y2_min = is_finite(opt.y2_min)
+                      ? transform_y(opt.y2_min)
+                      : std::numeric_limits<double>::quiet_NaN();
+  double y2_max = is_finite(opt.y2_max)
+                      ? transform_y(opt.y2_max)
+                      : std::numeric_limits<double>::quiet_NaN();
 
   bool auto_x_min = !is_finite(opt.x_min) || !is_finite(x_min);
   bool auto_x_max = !is_finite(opt.x_max) || !is_finite(x_max);
   bool auto_y_min = !is_finite(opt.y_min) || !is_finite(y_min);
   bool auto_y_max = !is_finite(opt.y_max) || !is_finite(y_max);
+  bool auto_y2_min = !is_finite(opt.y2_min) || !is_finite(y2_min);
+  bool auto_y2_max = !is_finite(opt.y2_max) || !is_finite(y2_max);
 
-  auto acc_range = [&](double x, double y) {
+  auto acc_y_range = [](double y, double &range_min, double &range_max,
+                        bool auto_min, bool auto_max) {
+    if (auto_min)
+      range_min = !is_finite(range_min) ? y : std::min(range_min, y);
+    if (auto_max)
+      range_max = !is_finite(range_max) ? y : std::max(range_max, y);
+  };
+
+  auto acc_range = [&](const SeriesStyle &style, double x, double y) {
     x = transform_x(x);
     y = transform_y(y);
     if (!is_finite(x) || !is_finite(y))
@@ -262,16 +287,16 @@ static void plot_braille_multi(const std::vector<Series> &series, int start_x,
       x_min = !is_finite(x_min) ? x : std::min(x_min, x);
     if (auto_x_max)
       x_max = !is_finite(x_max) ? x : std::max(x_max, x);
-    if (auto_y_min)
-      y_min = !is_finite(y_min) ? y : std::min(y_min, y);
-    if (auto_y_max)
-      y_max = !is_finite(y_max) ? y : std::max(y_max, y);
+    if (style.use_y2_axis)
+      acc_y_range(y, y2_min, y2_max, auto_y2_min, auto_y2_max);
+    else
+      acc_y_range(y, y_min, y_max, auto_y_min, auto_y_max);
   };
 
   for (const auto &s : series)
     if (s.data)
       for (const auto &p : *s.data)
-        acc_range(p.first, p.second);
+        acc_range(s.style, p.first, p.second);
 
   if (!is_finite(x_min) || !is_finite(x_max) || !(x_max > x_min)) {
     x_min = 0.0;
@@ -280,6 +305,10 @@ static void plot_braille_multi(const std::vector<Series> &series, int start_x,
   if (!is_finite(y_min) || !is_finite(y_max) || !(y_max > y_min)) {
     y_min = 0.0;
     y_max = 1.0;
+  }
+  if (!is_finite(y2_min) || !is_finite(y2_max) || !(y2_max > y2_min)) {
+    y2_min = y_min;
+    y2_max = y_max;
   }
 
   // Plot geometry uses separate data/underlay buffers so grid/baseline never
@@ -304,10 +333,11 @@ static void plot_braille_multi(const std::vector<Series> &series, int start_x,
     return true;
   };
 
-  auto map_ty_to_py = [&](double ty, int &py) -> bool {
+  auto map_ty_range_to_py = [&](double ty, double range_min, double range_max,
+                                int &py) -> bool {
     if (!is_finite(ty))
       return false;
-    double t = (ty - y_min) / (y_max - y_min);
+    double t = (ty - range_min) / (range_max - range_min);
     if (!is_finite(t))
       return false;
     if (opt.hard_clip)
@@ -317,16 +347,26 @@ static void plot_braille_multi(const std::vector<Series> &series, int start_x,
     return true;
   };
 
+  auto map_ty_to_py = [&](double ty, int &py) -> bool {
+    return map_ty_range_to_py(ty, y_min, y_max, py);
+  };
+
+  auto map_ty2_to_py = [&](double ty, int &py) -> bool {
+    return map_ty_range_to_py(ty, y2_min, y2_max, py);
+  };
+
   auto project_x = [&](double x, int &px) -> bool {
     return map_tx_to_px(transform_x(x), px);
   };
 
-  auto project_y = [&](double y, int &py) -> bool {
-    return map_ty_to_py(transform_y(y), py);
+  auto project_y = [&](const SeriesStyle &style, double y, int &py) -> bool {
+    const double ty = transform_y(y);
+    return style.use_y2_axis ? map_ty2_to_py(ty, py) : map_ty_to_py(ty, py);
   };
 
-  auto project_point = [&](double x, double y, int &px, int &py) -> bool {
-    return project_x(x, px) && project_y(y, py);
+  auto project_point = [&](const SeriesStyle &style, double x, double y,
+                           int &px, int &py) -> bool {
+    return project_x(x, px) && project_y(style, y, py);
   };
 
   // Optional baseline y=0
@@ -335,6 +375,10 @@ static void plot_braille_multi(const std::vector<Series> &series, int start_x,
   const bool draw_baseline =
       opt.baseline0 && !opt.y_log && is_finite(zero_ty) && y_min < zero_ty &&
       zero_ty < y_max && map_ty_to_py(zero_ty, baseline_py);
+  const short y_axis_pair =
+      opt.y_axis_color_pair > 0 ? opt.y_axis_color_pair : opt.axes_color_pair;
+  const short y2_axis_pair =
+      opt.y2_axis_color_pair > 0 ? opt.y2_axis_color_pair : opt.axes_color_pair;
 
   // --------------------------------------------------------------------------
   // PREPASS: draw GRID + BASELINE into the dedicated underlay buffer
@@ -382,6 +426,19 @@ static void plot_braille_multi(const std::vector<Series> &series, int start_x,
     }
   }
 
+  if (opt.draw_axes) {
+    for (int py = 0; py < plot_h * 4; ++py) {
+      cell_set_dot(underlay_cells, plot_w, plot_h, 0, py);
+      color_touch(underlay_colors, plot_w, plot_h, 0, py, y_axis_pair);
+      if (opt.draw_y2_tick_labels) {
+        const int right_px = std::max(0, plot_w * 2 - 1);
+        cell_set_dot(underlay_cells, plot_w, plot_h, right_px, py);
+        color_touch(underlay_colors, plot_w, plot_h, right_px, py,
+                    y2_axis_pair);
+      }
+    }
+  }
+
   // --------------------------------------------------------------------------
   // SERIES: draw data OVERLAY (wins over grid/baseline)
   // --------------------------------------------------------------------------
@@ -401,7 +458,8 @@ static void plot_braille_multi(const std::vector<Series> &series, int start_x,
 
     auto draw_segment_line = [&](double x1, double y1, double x2, double y2) {
       int px1 = 0, py1 = 0, px2 = 0, py2 = 0;
-      if (!project_point(x1, y1, px1, py1) || !project_point(x2, y2, px2, py2))
+      if (!project_point(s.style, x1, y1, px1, py1) ||
+          !project_point(s.style, x2, y2, px2, py2))
         return;
       rasterize_line_int(px1, py1, px2, py2,
                          [&](int qx, int qy) { put_dot(qx, qy); });
@@ -417,7 +475,7 @@ static void plot_braille_multi(const std::vector<Series> &series, int start_x,
       for (size_t i = 0; i < pts.size(); i += (size_t)every) {
         const auto &p = pts[i];
         int px = 0, py = 0;
-        if (!project_point(p.first, p.second, px, py))
+        if (!project_point(s.style, p.first, p.second, px, py))
           continue;
         put_dot(px, py);
       }
@@ -452,11 +510,11 @@ static void plot_braille_multi(const std::vector<Series> &series, int start_x,
                  : (opt.y_log ? std::pow(10.0, y_min) - opt.y_log_eps : y_min);
       }
       int bpy = 0;
-      if (!project_y(by, bpy))
+      if (!project_y(s.style, by, bpy))
         break;
       for (const auto &p : pts) {
         int px = 0, py = 0;
-        if (!project_point(p.first, p.second, px, py))
+        if (!project_point(s.style, p.first, p.second, px, py))
           continue;
         rasterize_vertical_span(px, bpy, py, cells, colors, plot_w, plot_h,
                                 s.style.color_pair);
@@ -489,7 +547,7 @@ static void plot_braille_multi(const std::vector<Series> &series, int start_x,
             SeriesStyle::EnvelopeSource::OriginalSamples) {
           for (const auto &p : pts) {
             int px = 0, py = 0;
-            if (!project_point(p.first, p.second, px, py))
+            if (!project_point(s.style, p.first, p.second, px, py))
               continue;
             if (px >= 0 && px < XW) {
               bin_min[px] = std::min(bin_min[px], py);
@@ -502,8 +560,8 @@ static void plot_braille_multi(const std::vector<Series> &series, int start_x,
             double x1 = pts[i - 1].first, y1 = pts[i - 1].second;
             double x2 = pts[i].first, y2 = pts[i].second;
             int px1 = 0, py1 = 0, px2 = 0, py2 = 0;
-            if (!project_point(x1, y1, px1, py1) ||
-                !project_point(x2, y2, px2, py2))
+            if (!project_point(s.style, x1, y1, px1, py1) ||
+                !project_point(s.style, x2, y2, px2, py2))
               continue;
             rasterize_line_int(px1, py1, px2, py2, [&](int qx, int qy) {
               if (qx >= 0 && qx < XW) {
@@ -538,51 +596,75 @@ static void plot_braille_multi(const std::vector<Series> &series, int start_x,
   // LABELS: draw texts only (outside plot area). NO glyphs inside the plot!
   // --------------------------------------------------------------------------
   if (opt.draw_axes) {
-    // y ticks labels (left margin)
-    double y_span = y_max - y_min;
-    double y_step = nice_step(y_span, std::max(2, opt.y_ticks));
-    double y0 = std::ceil(y_min / y_step) * y_step;
+    if (opt.draw_y_tick_labels) {
+      double y_span = y_max - y_min;
+      double y_step = nice_step(y_span, std::max(2, opt.y_ticks));
+      double y0 = std::ceil(y_min / y_step) * y_step;
 
-    for (double yv = y0; yv <= y_max + 1e-12; yv += y_step) {
-      int py = 0;
-      if (!map_ty_to_py(yv, py))
-        continue;
-      int row = plot_y0 + (py / 4);
-      char buf[64];
-      std::snprintf(buf, sizeof(buf), "%.6g",
-                    opt.y_log ? (std::pow(10.0, yv) - opt.y_log_eps) : yv);
-      int lab_x =
-          start_x + std::max(0, opt.margin_left - 1 - (int)std::strlen(buf));
-      draw_text_clipped(row, lab_x, buf, opt.margin_left - 1,
-                        opt.axes_color_pair);
+      for (double yv = y0; yv <= y_max + 1e-12; yv += y_step) {
+        int py = 0;
+        if (!map_ty_to_py(yv, py))
+          continue;
+        int row = plot_y0 + (py / 4);
+        char buf[64];
+        std::snprintf(buf, sizeof(buf), "%.6g",
+                      opt.y_log ? (std::pow(10.0, yv) - opt.y_log_eps) : yv);
+        int lab_x =
+            start_x + std::max(0, opt.margin_left - 1 - (int)std::strlen(buf));
+        draw_text_clipped(row, lab_x, buf, opt.margin_left - 1, y_axis_pair);
+      }
+
+      if (!opt.y_label.empty()) {
+        draw_text_clipped(start_y, start_x, opt.y_label, opt.margin_left,
+                          y_axis_pair);
+      }
     }
 
-    // x ticks labels (below plot)
-    double x_span = x_max - x_min;
-    double x_step = nice_step(x_span, std::max(2, opt.x_ticks));
-    double x0 = std::ceil(x_min / x_step) * x_step;
+    if (opt.draw_y2_tick_labels) {
+      double y2_span = y2_max - y2_min;
+      double y2_step = nice_step(y2_span, std::max(2, opt.y_ticks));
+      double y20 = std::ceil(y2_min / y2_step) * y2_step;
 
-    for (double xv = x0; xv <= x_max + 1e-12; xv += x_step) {
-      int px = 0;
-      if (!map_tx_to_px(xv, px))
-        continue;
-      int col = plot_x0 + (px / 2);
-      char buf[64];
-      std::snprintf(buf, sizeof(buf), "%.6g",
-                    opt.x_log ? (std::pow(10.0, xv) - opt.x_log_eps) : xv);
-      int lx = col - (int)std::strlen(buf) / 2;
-      draw_text_clipped(start_y + opt.margin_top + plot_h + 0, lx, buf,
-                        (int)std::strlen(buf), opt.axes_color_pair);
+      for (double yv = y20; yv <= y2_max + 1e-12; yv += y2_step) {
+        int py = 0;
+        if (!map_ty2_to_py(yv, py))
+          continue;
+        int row = plot_y0 + (py / 4);
+        char buf[64];
+        std::snprintf(buf, sizeof(buf), "%.6g",
+                      opt.y_log ? (std::pow(10.0, yv) - opt.y_log_eps) : yv);
+        draw_text_clipped(row, plot_x0 + plot_w + 1, buf, opt.margin_right - 1,
+                          y2_axis_pair);
+      }
+
+      if (!opt.y2_label.empty()) {
+        draw_text_clipped(start_y, plot_x0 + plot_w + 1, opt.y2_label,
+                          opt.margin_right - 1, y2_axis_pair);
+      }
     }
 
-    // axis labels
-    if (!opt.y_label.empty()) {
-      draw_text_clipped(start_y, start_x, opt.y_label, opt.margin_left,
-                        opt.axes_color_pair);
-    }
-    if (!opt.x_label.empty()) {
-      draw_text_clipped(start_y + opt.margin_top + plot_h + 1, plot_x0,
-                        opt.x_label, plot_w, opt.axes_color_pair);
+    if (opt.draw_x_tick_labels) {
+      double x_span = x_max - x_min;
+      double x_step = nice_step(x_span, std::max(2, opt.x_ticks));
+      double x0 = std::ceil(x_min / x_step) * x_step;
+
+      for (double xv = x0; xv <= x_max + 1e-12; xv += x_step) {
+        int px = 0;
+        if (!map_tx_to_px(xv, px))
+          continue;
+        int col = plot_x0 + (px / 2);
+        char buf[64];
+        std::snprintf(buf, sizeof(buf), "%.6g",
+                      opt.x_log ? (std::pow(10.0, xv) - opt.x_log_eps) : xv);
+        int lx = col - (int)std::strlen(buf) / 2;
+        draw_text_clipped(start_y + opt.margin_top + plot_h + 0, lx, buf,
+                          (int)std::strlen(buf), opt.axes_color_pair);
+      }
+
+      if (!opt.x_label.empty()) {
+        draw_text_clipped(start_y + opt.margin_top + plot_h + 1, plot_x0,
+                          opt.x_label, plot_w, opt.axes_color_pair);
+      }
     }
   }
 

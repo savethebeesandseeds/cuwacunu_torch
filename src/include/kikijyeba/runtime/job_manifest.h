@@ -20,6 +20,7 @@ namespace cuwacunu::kikijyeba::runtime {
 
 enum class runtime_job_kind_t {
   channel_representation_vicreg,
+  channel_representation_mtf_jepa_mae_vicreg,
   channel_inference_mdn,
 };
 
@@ -28,6 +29,8 @@ runtime_job_kind_name(runtime_job_kind_t kind) {
   switch (kind) {
   case runtime_job_kind_t::channel_representation_vicreg:
     return "channel_representation_vicreg";
+  case runtime_job_kind_t::channel_representation_mtf_jepa_mae_vicreg:
+    return "channel_representation_mtf_jepa_mae_vicreg";
   case runtime_job_kind_t::channel_inference_mdn:
     return "channel_inference_mdn";
   }
@@ -36,17 +39,29 @@ runtime_job_kind_name(runtime_job_kind_t kind) {
 
 struct job_manifest_t {
   std::string job_id{};
+  std::string job_stable_id{};
+  std::string job_attempt_id{};
+  std::size_t job_attempt_index{0};
+  std::string job_attempt_policy{"unset"};
   std::string job_kind{};
   std::string config_path{};
   std::string config_bundle_id{};
   std::string config_receipt_id{};
   std::string component_spawn_registry_id{};
   std::string component_family_id{};
-  std::string component_spawn_schema{"kikijyeba.component_spawn.v1"};
+  std::string component_spawn_schema{"kikijyeba.component_spawn.v2"};
   std::string component_spawn_fingerprint{};
   std::string component_spawn_id{};
   std::string component_spawn_label{};
   std::string topology_id{"kikijyeba.topology.graph.v1"};
+  std::string protocol_id{};
+  std::string protocol_kind{};
+  std::string protocol_status{};
+  std::string successor_protocol{};
+  std::string protocol_warning{};
+  std::string active_representation_family{};
+  std::string active_representation_component_assembly_id{};
+  std::string protocol_representation_contract{};
   std::string wave_id{};
   std::string target_component_family_id{};
   std::string wave_action{};
@@ -99,6 +114,7 @@ struct job_manifest_t {
   std::vector<std::string> edge_ids{};
   std::string nodelift_assembly_fingerprint{};
   std::string vicreg_assembly_fingerprint{};
+  std::string mtf_jepa_mae_vicreg_assembly_fingerprint{};
   std::string mdn_assembly_fingerprint{};
   std::string dock_binding_fingerprint{};
   std::string dock_binding_token{};
@@ -107,12 +123,19 @@ struct job_manifest_t {
   std::string inference_training_id{};
   std::string input_representation_checkpoint_path{};
   std::string input_mdn_checkpoint_path{};
+  std::string runtime_handoff_id{};
+  std::string runtime_handoff_digest{};
+  std::string marshal_target_driver_run_id{};
   std::string manifest_format{"kikijyeba.runtime.job_manifest.v1"};
 
   [[nodiscard]] std::string to_text() const {
     std::ostringstream out;
     out << "manifest_format=" << manifest_format << "\n";
     out << "job_id=" << job_id << "\n";
+    out << "job_stable_id=" << job_stable_id << "\n";
+    out << "job_attempt_id=" << job_attempt_id << "\n";
+    out << "job_attempt_index=" << job_attempt_index << "\n";
+    out << "job_attempt_policy=" << job_attempt_policy << "\n";
     out << "job_kind=" << job_kind << "\n";
     out << "config_path=" << config_path << "\n";
     out << "config_bundle_id=" << config_bundle_id << "\n";
@@ -126,6 +149,17 @@ struct job_manifest_t {
     out << "component_spawn_id=" << component_spawn_id << "\n";
     out << "component_spawn_label=" << component_spawn_label << "\n";
     out << "topology_id=" << topology_id << "\n";
+    out << "protocol_id=" << protocol_id << "\n";
+    out << "protocol_kind=" << protocol_kind << "\n";
+    out << "protocol_status=" << protocol_status << "\n";
+    out << "successor_protocol=" << successor_protocol << "\n";
+    out << "protocol_warning=" << protocol_warning << "\n";
+    out << "active_representation_family=" << active_representation_family
+        << "\n";
+    out << "active_representation_component_assembly_id="
+        << active_representation_component_assembly_id << "\n";
+    out << "protocol_representation_contract="
+        << protocol_representation_contract << "\n";
     out << "wave_id=" << wave_id << "\n";
     out << "target_component_family_id=" << target_component_family_id << "\n";
     out << "wave_action=" << wave_action << "\n";
@@ -198,6 +232,8 @@ struct job_manifest_t {
         << "\n";
     out << "vicreg_assembly_fingerprint=" << vicreg_assembly_fingerprint
         << "\n";
+    out << "mtf_jepa_mae_vicreg_assembly_fingerprint="
+        << mtf_jepa_mae_vicreg_assembly_fingerprint << "\n";
     out << "mdn_assembly_fingerprint=" << mdn_assembly_fingerprint << "\n";
     out << "dock_binding_fingerprint=" << dock_binding_fingerprint << "\n";
     out << "dock_binding_token=" << dock_binding_token << "\n";
@@ -207,13 +243,22 @@ struct job_manifest_t {
     out << "input_representation_checkpoint_path="
         << input_representation_checkpoint_path << "\n";
     out << "input_mdn_checkpoint_path=" << input_mdn_checkpoint_path << "\n";
+    out << "runtime_handoff_id=" << runtime_handoff_id << "\n";
+    out << "runtime_handoff_digest=" << runtime_handoff_digest << "\n";
+    out << "marshal_target_driver_run_id=" << marshal_target_driver_run_id
+        << "\n";
     return out.str();
   }
 };
 
 [[nodiscard]] inline std::string
 execution_chain_for_job(runtime_job_kind_t job_kind,
-                        const std::string &wave_action) {
+                        const std::string &wave_action,
+                        const std::string &active_representation_family =
+                            "wikimyei.representation.encoding.vicreg") {
+  const bool active_mtf =
+      active_representation_family ==
+      "wikimyei.representation.encoding.mtf_jepa_mae_vicreg";
   switch (job_kind) {
   case runtime_job_kind_t::channel_representation_vicreg:
     return wave_action == "train"
@@ -223,7 +268,26 @@ execution_chain_for_job(runtime_job_kind_t job_kind,
                : "ujcamei.source.registry:run -> "
                  "wikimyei.expression.nodelift.srl:run -> "
                  "wikimyei.representation.encoding.vicreg:run";
+  case runtime_job_kind_t::channel_representation_mtf_jepa_mae_vicreg:
+    return wave_action == "train"
+               ? "ujcamei.source.registry:run -> "
+                 "wikimyei.expression.nodelift.srl:run -> "
+                 "wikimyei.representation.encoding.mtf_jepa_mae_vicreg:train"
+               : "ujcamei.source.registry:run -> "
+                 "wikimyei.expression.nodelift.srl:run -> "
+                 "wikimyei.representation.encoding.mtf_jepa_mae_vicreg:run";
   case runtime_job_kind_t::channel_inference_mdn:
+    if (active_mtf) {
+      return wave_action == "train"
+                 ? "ujcamei.source.registry:run -> "
+                   "wikimyei.expression.nodelift.srl:run -> "
+                   "wikimyei.representation.encoding.mtf_jepa_mae_vicreg:"
+                   "run_frozen -> wikimyei.inference.expected_value.mdn:train"
+                 : "ujcamei.source.registry:run -> "
+                   "wikimyei.expression.nodelift.srl:run -> "
+                   "wikimyei.representation.encoding.mtf_jepa_mae_vicreg:"
+                   "run_frozen -> wikimyei.inference.expected_value.mdn:run";
+    }
     return wave_action == "train"
                ? "ujcamei.source.registry:run -> "
                  "wikimyei.expression.nodelift.srl:run -> "
@@ -246,6 +310,8 @@ mutated_components_for_job(runtime_job_kind_t job_kind,
   switch (job_kind) {
   case runtime_job_kind_t::channel_representation_vicreg:
     return "wikimyei.representation.encoding.vicreg";
+  case runtime_job_kind_t::channel_representation_mtf_jepa_mae_vicreg:
+    return "wikimyei.representation.encoding.mtf_jepa_mae_vicreg";
   case runtime_job_kind_t::channel_inference_mdn:
     return "wikimyei.inference.expected_value.mdn";
   }
@@ -256,11 +322,23 @@ mutated_components_for_job(runtime_job_kind_t job_kind,
 frozen_components_for_job(runtime_job_kind_t job_kind) {
   switch (job_kind) {
   case runtime_job_kind_t::channel_representation_vicreg:
+  case runtime_job_kind_t::channel_representation_mtf_jepa_mae_vicreg:
     return {};
   case runtime_job_kind_t::channel_inference_mdn:
     return "wikimyei.representation.encoding.vicreg";
   }
   return {};
+}
+
+[[nodiscard]] inline std::string
+frozen_components_for_job(runtime_job_kind_t job_kind,
+                          const std::string &active_representation_family) {
+  if (job_kind != runtime_job_kind_t::channel_inference_mdn) {
+    return frozen_components_for_job(job_kind);
+  }
+  return active_representation_family.empty()
+             ? std::string{"wikimyei.representation.encoding.vicreg"}
+             : active_representation_family;
 }
 
 namespace job_manifest_detail {
@@ -324,7 +402,10 @@ source_file_receipts_for_bundle(const BundleT &bundle) {
 representation_training_for_manifest(
     const cuwacunu::kikijyeba::protocol::channel_graph_first_config_bundle_t
         &bundle) {
-  return bundle.vicreg_training;
+  return cuwacunu::kikijyeba::protocol::
+                 active_protocol_uses_mtf_jepa_mae_vicreg(bundle)
+             ? bundle.mtf_jepa_mae_vicreg_training
+             : bundle.vicreg_training;
 }
 
 [[nodiscard]] inline const cuwacunu::jkimyei::training::training_run_spec_t &
@@ -345,16 +426,29 @@ make_job_manifest(const BuilderT &builder, const wave_plan_t &wave_plan,
   }
   job_manifest_t out{};
   out.job_id = std::move(job_id);
+  out.job_stable_id = out.job_id;
   out.job_kind = runtime_job_kind_name(job_kind);
   out.config_path = builder.bundle().config_path;
+  out.protocol_id = dry_run.protocol_id;
+  out.protocol_kind = dry_run.protocol_kind;
+  out.protocol_status = dry_run.protocol_status;
+  out.successor_protocol = dry_run.successor_protocol;
+  out.protocol_warning = dry_run.protocol_warning;
+  out.active_representation_family = dry_run.active_representation_family;
+  out.active_representation_component_assembly_id =
+      dry_run.active_representation_component_assembly_id;
+  out.protocol_representation_contract =
+      dry_run.protocol_representation_contract;
   out.wave_id = wave_plan.wave_id;
   out.target_component_family_id = wave_plan.target_component_family_id;
   out.wave_action = wave_plan.action;
   out.wave_mode = wave_plan.mode_text;
-  out.execution_chain = execution_chain_for_job(job_kind, wave_plan.action);
+  out.execution_chain = execution_chain_for_job(
+      job_kind, wave_plan.action, dry_run.active_representation_family);
   out.mutated_components =
       mutated_components_for_job(job_kind, wave_plan.action);
-  out.frozen_components = frozen_components_for_job(job_kind);
+  out.frozen_components =
+      frozen_components_for_job(job_kind, dry_run.active_representation_family);
   out.source_range_policy = wave_plan.source_range_policy;
   out.source_order_policy = wave_plan.source_order_policy;
   out.source_order_policy_explicit = wave_plan.source_order_policy_explicit;
@@ -407,6 +501,8 @@ make_job_manifest(const BuilderT &builder, const wave_plan_t &wave_plan,
   out.edge_ids = dry_run.edge_ids;
   out.nodelift_assembly_fingerprint = dry_run.nodelift_assembly_fingerprint;
   out.vicreg_assembly_fingerprint = dry_run.vicreg_assembly_fingerprint;
+  out.mtf_jepa_mae_vicreg_assembly_fingerprint =
+      dry_run.mtf_jepa_mae_vicreg_assembly_fingerprint;
   out.mdn_assembly_fingerprint = dry_run.mdn_assembly_fingerprint;
   out.dock_binding_fingerprint = dry_run.dock_binding_fingerprint;
   out.dock_binding_token = dry_run.dock_binding_token;

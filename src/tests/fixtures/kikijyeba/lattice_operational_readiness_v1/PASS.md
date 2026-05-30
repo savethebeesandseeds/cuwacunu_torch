@@ -11,7 +11,8 @@ artifacts remain runtime evidence, not source-tree evidence.
 
 Historical note: this V1 receipt predates the channel-only active target DSL and
 uses node-MDN target names. Keep it as an audit record; do not treat these names
-as active dispatch targets.
+as active dispatch targets, active fixture inputs, or current Hero runtime-root
+policy.
 
 Receipt refreshed after warning availability/direction/summary, affine
 source-key audit, evidence-order vocabulary, unit-typing hardening, mathematical
@@ -249,7 +250,7 @@ node_mdn_train_core_ready.warning_result = low_mdn_node_target_support_entropy w
 node_mdn_train_core_ready.warning_result = low_mdn_node_target_support_confidence warning evidence_basis=filtered_node_support_summary threshold_direction=below threshold_triggered=true threshold_relation=below_threshold measurement_available=true exposure_summary_available=false node_support_summary_available=true node_count=3 mutating_support_row_count=3 message="node-support valid_target_wilson_lower_95 over train_core is 0.313396 below threshold 0.9; weakest node USDT"
 node_mdn_train_core_ready.warning_result = weak_mdn_node_target_support warning evidence_basis=filtered_node_support_summary threshold_direction=below threshold_triggered=true threshold_relation=below_threshold measurement_available=true exposure_summary_available=false node_support_summary_available=true node_count=3 mutating_support_row_count=3 message="node-support weakest_valid_target_count over train_core is 0 below threshold 1; weakest node USDT"
 hero.lattice.status.warning = sidecar digest differs from derived runtime artifact fact for VICReg train-core job
-hero.lattice.status.warning = legacy VICReg sidecar supplemented with representation health from runtime report
+hero.lattice.status.warning = historical VICReg sidecar supplemented with representation health from runtime report
 ```
 
 The optimizer-effort warning, low-confidence/low-entropy/weak-node support
@@ -428,11 +429,6 @@ Hero output also exposes `operational_readiness_v1_gate_vocabulary`, making the
 V1 acceptance gates machine-readable: identity binding, train-core readiness,
 validation/test leakage guards, validation exact-checkpoint evaluation,
 warnings/node-support visibility, and Hero read/plan/closure inspection.
-The companion fixture
-`src/tests/fixtures/kikijyeba/lattice_validation_eval_wrong_mdn` preserves the
-negative exact-checkpoint case: validation evaluation loads a wrong MDN
-checkpoint and fails with a `dependency:mdn_checkpoint` mismatch while the proof
-certificate check reports the checkpoint-source mismatch.
 Hero output also exposes `checkpoint_identity_policy_vocabulary`, making
 explicit that V1 checkpoint closure authority is path/exposure-fact based,
 checkpoint ids/file digests are preview-only audit metadata, exact loaded
@@ -601,5 +597,5 @@ PASS: operational_readiness_v1_gate_summary self-check shows 10 required read-on
 PASS: mathematical_readiness_v1_summary self-check shows 16 included read-only items, zero runtime-executor/performance/DB-authority items, and zero empty Hero-surface rows
 PASS: focused certificate regression rejects missing certificate_digest
 PASS: focused certificate regression rejects concrete named-split evidence without split-policy identity
-PASS: focused evaluator regression rejects concrete named-split coverage evidence without split-policy identity while preserving legacy unknown-split evidence
+PASS: focused evaluator regression rejects concrete named-split coverage evidence without split-policy identity while preserving historical unknown-split evidence
 ```

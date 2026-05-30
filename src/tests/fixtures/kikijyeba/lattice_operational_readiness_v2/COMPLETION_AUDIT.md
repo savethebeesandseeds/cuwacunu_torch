@@ -2,12 +2,15 @@
 
 Generated: 2026-05-23T13:37:36Z
 
-This audit records the final V2 close decision from current direct Hero
-evidence. It is stricter than the original node V2 Core pass: V2 is closeable
-only when the node evidence, channel train-core evidence, leakage guards, and
-validation exact-checkpoint evaluation all pass.
+This audit records the final V2 close decision from direct Hero evidence
+captured at receipt time. It is stricter than the original node V2 Core pass:
+V2 was closeable only when the node evidence, channel train-core evidence,
+leakage guards, and validation exact-checkpoint evaluation all passed.
 
-## Current Verdict
+This file is a frozen historical receipt, not an active fixture or current
+runtime-root policy. Statements below describe the evidence state at close time.
+
+## Receipt Verdict
 
 ```text
 V2 Core node evidence: complete
@@ -25,8 +28,8 @@ V2 mathematical proof surface: complete
 Goal closeable now: yes
 ```
 
-The accepted runtime root was preserved. No dev-nuke was used, and the existing
-node V1/V2 evidence was not destroyed.
+At close time, the accepted runtime root was preserved. No dev-nuke was used for
+that receipt, and the existing node V1/V2 evidence was not destroyed.
 
 ```text
 runtime_root = /cuwacunu/.runtime/cuwacunu_exec
@@ -89,37 +92,35 @@ runtime_index_cache_result_source = live_scan
 cache_used_for_target_satisfaction = false
 ```
 
-Scan warnings are legacy-sidecar compatibility warnings for the older node
-jobs only:
+Scan warnings are reserved for facts that do not match the runtime artifacts:
 
 ```text
 - sidecar digest differs from derived runtime artifact fact
-- legacy sidecar supplemented with inference/representation health from report
 ```
 
 These warnings do not affect the channel evidence chain and do not invalidate
-the node V2 Core receipt because checkpoint closure resolves by
-`checkpoint_id_file_digest`.
+the V2 Core receipt when checkpoint closure resolves by
+`checkpoint_id_file_digest`. Missing or stale checkpoint identity is expected
+to fail closed instead of falling back to path-only lineage.
 
 ## Completed Requirements
 
 ```text
 1. Stable checkpoint identity:
    complete. Node and channel train-core checkpoint closures use
-   checkpoint_id_file_digest with legacy_path_fallback=false where current
-   checkpoint facts are available.
+   checkpoint_id_file_digest where receipt-time checkpoint facts are available.
 
 2. Structured source receipt facts:
-   complete. Current scan exposes 54 audit-only source_receipt facts.
+   complete. The receipt scan exposed 54 audit-only source_receipt facts.
 
 3. First-class selection-signal events:
-   implemented and read-only. Current runtime has selection_signal_fact_count=0,
-   which is a clean absence, not a failure.
+   implemented and read-only. The receipt runtime had
+   selection_signal_fact_count=0, which is a clean absence, not a failure.
 
 4. Aggregate representation support facts:
-   complete as visibility-only shared-representation support. Current runtime
-   has two aggregate representation_support facts, no MDN backfill, and no
-   readiness authority.
+   complete as visibility-only shared-representation support. The receipt
+   runtime had two aggregate representation_support facts, no MDN backfill, and
+   no readiness authority.
 
 4a. Node-indexed shared-representation support facts:
     complete in the component/scanner contract. Channel representation reports
@@ -225,8 +226,8 @@ channel_mdn_train_core_ready:
 
 ## Final Close Decision
 
-V2 is complete for the current ROADMAP.md scope. The following remain explicitly
-deferred beyond V2 and were not added during this goal:
+V2 was complete for the ROADMAP.md scope at receipt time. The following remained
+explicitly deferred beyond V2 and were not added during that goal:
 
 ```text
 - validation performance gates

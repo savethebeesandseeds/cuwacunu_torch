@@ -12,6 +12,7 @@ namespace cuwacunu::jkimyei::training {
 enum class training_task_t {
   mdn_expected_value_inference,
   vicreg_representation,
+  mtf_jepa_mae_vicreg_representation,
 };
 
 enum class training_optimizer_t {
@@ -51,6 +52,10 @@ namespace kv = cuwacunu::piaabo::parse::simple_kv;
   if (value == "vicreg_representation") {
     return training_task_t::vicreg_representation;
   }
+  if (value == "mtf_jepa_mae_vicreg_representation" ||
+      value == "mtf_jvmae_representation") {
+    return training_task_t::mtf_jepa_mae_vicreg_representation;
+  }
   throw std::runtime_error("[training_spec] invalid TASK: " + value);
 }
 
@@ -68,6 +73,8 @@ namespace kv = cuwacunu::piaabo::parse::simple_kv;
     return "wikimyei.inference.expected_value.mdn.jkimyei.v1";
   case training_task_t::vicreg_representation:
     return "wikimyei.representation.vicreg.jkimyei.v1";
+  case training_task_t::mtf_jepa_mae_vicreg_representation:
+    return "wikimyei.representation.mtf_jepa_mae_vicreg.jkimyei.v1";
   }
   throw std::runtime_error("[training_spec] unknown training task");
 }
@@ -108,19 +115,16 @@ inline void validate_training_run_spec(const training_run_spec_t &spec) {
   const bool is_mdn_training =
       spec.task == training_task_t::mdn_expected_value_inference;
   const bool is_representation_training =
-      spec.task == training_task_t::vicreg_representation;
+      spec.task == training_task_t::vicreg_representation ||
+      spec.task == training_task_t::mtf_jepa_mae_vicreg_representation;
   if (is_mdn_training && !spec.freeze_representation) {
     throw std::runtime_error(
         "[training_spec] v1 MDN ExpectedValue training requires frozen "
         "representation");
   }
-  if (is_mdn_training && spec.input_representation_checkpoint_path.empty() &&
-      !spec.allow_untrained_representation) {
-    throw std::runtime_error(
-        "[training_spec] MDN ExpectedValue training requires "
-        "INPUT_REPRESENTATION_CHECKPOINT unless "
-        "ALLOW_UNTRAINED_REPRESENTATION is true for a smoke run");
-  }
+  // Checkpoint paths are runtime model-state inputs. They are required by the
+  // MDN launcher when the MDN wave actually executes, but must not make an
+  // otherwise valid global config bundle unusable for a VICReg-only wave.
   if (is_representation_training &&
       (!spec.input_representation_checkpoint_path.empty() ||
        !spec.input_mdn_checkpoint_path.empty() ||

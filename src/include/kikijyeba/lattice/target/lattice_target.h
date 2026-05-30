@@ -23,13 +23,8 @@
 namespace cuwacunu::kikijyeba::lattice::target {
 
 enum class lattice_target_kind_t {
-  // Historical node-centered VICReg compatibility. Active targets should use
-  // vicreg_ready.
-  legacy_node_vicreg_ready,
-  // Historical node-centered MDN compatibility. Active targets should use
-  // channel_mdn_ready.
-  legacy_node_mdn_ready,
   vicreg_ready,
+  mtf_representation_ready,
   channel_mdn_ready,
 };
 
@@ -77,6 +72,7 @@ struct lattice_target_spec_t {
   std::string guard_id{};
   std::string target_class{"readiness"};
   lattice_target_kind_t kind{lattice_target_kind_t::channel_mdn_ready};
+  std::string protocol_id{};
   std::string component{};
   std::string checkpoint_source{"output_checkpoint"};
   std::string evaluated_checkpoint_source{};
@@ -220,7 +216,12 @@ struct lattice_target_evidence_t {
   std::filesystem::path report_path{};
   std::filesystem::path checkpoint_path{};
   bool report_exists{false};
+  std::string report_schema_id{};
+  std::int64_t report_schema_version{0};
+  std::string report_writer_id{};
+  std::string report_writer_version{};
   std::string protocol_contract_fingerprint{};
+  std::string protocol_id{};
   std::string component_fingerprint{};
   std::string graph_order_fingerprint{};
   std::string source_cursor_token{};
@@ -241,6 +242,12 @@ struct lattice_target_evidence_t {
   std::int64_t trained_node_head_count{0};
   std::int64_t evaluated_node_head_count{0};
   bool checkpoint_written{false};
+  std::filesystem::path checkpoint_path_reported{};
+  std::string checkpoint_digest_reported{};
+  std::string checkpoint_digest_actual{};
+  bool checkpoint_file_exists{false};
+  bool checkpoint_digest_verified{false};
+  std::int64_t checkpoint_bytes{0};
   std::filesystem::path representation_checkpoint_path{};
   bool representation_checkpoint_loaded{false};
   std::filesystem::path mdn_checkpoint_path{};
@@ -4623,6 +4630,27 @@ lattice_mdn_distribution_calibration_diagnostic_vocabulary() {
            true,
            true,
            false},
+          {"mean_nll_per_channel_target_feature_max",
+           "channel_target_feature_stratified_scoring_loss",
+           "mdn_distribution_facts",
+           {"lattice.exposure.fact.mean_nll_per_channel_target_feature"},
+           "valid_target_count_per_channel_target_feature",
+           "max(mean_nll_per_channel_target_feature)",
+           "none_point_estimate_only",
+           {},
+           "warning_result.diagnostic_evaluated_mdn_checkpoint",
+           "warning_result.split|warning_anchor_range",
+           "warning_result.diagnostic_active_*",
+           "LATTICE_WARN KIND=mdn_distribution_calibration "
+           "METRIC=mean_nll_per_channel_target_feature_max",
+           "available_when_report_field_present",
+           true,
+           true,
+           true,
+           true,
+           true,
+           true,
+           false},
           {"per_node_mean_nll_max",
            "node_stratified_scoring_loss",
            "filtered_node_exposure_facts",
@@ -4780,6 +4808,8 @@ lattice_mdn_distribution_calibration_diagnostic_summary() {
   const auto mean_nll = find_metric("mean_nll");
   const auto channel_nll = find_metric("mean_nll_per_channel_max");
   const auto feature_nll = find_metric("mean_nll_per_target_feature_max");
+  const auto channel_feature_nll =
+      find_metric("mean_nll_per_channel_target_feature_max");
   const auto per_node = find_metric("per_node_mean_nll_max");
   const auto pit = find_metric("pit_ks_statistic");
   const auto interval = find_metric("predictive_interval_coverage_error");
@@ -4831,14 +4861,16 @@ lattice_mdn_distribution_calibration_diagnostic_summary() {
   }
 
   out.finite_first_set_declared =
-      out.diagnostic_count == 8 && mean_nll != vocabulary.end() &&
+      out.diagnostic_count == 9 && mean_nll != vocabulary.end() &&
       channel_nll != vocabulary.end() && feature_nll != vocabulary.end() &&
-      per_node != vocabulary.end() && pit != vocabulary.end() &&
-      interval != vocabulary.end() && tail != vocabulary.end();
+      channel_feature_nll != vocabulary.end() && per_node != vocabulary.end() &&
+      pit != vocabulary.end() && interval != vocabulary.end() &&
+      tail != vocabulary.end();
   out.proper_scoring_metrics_present =
       mean_nll != vocabulary.end() &&
       mean_nll->diagnostic_family == "proper_scoring_loss" &&
-      channel_nll != vocabulary.end() && feature_nll != vocabulary.end();
+      channel_nll != vocabulary.end() && feature_nll != vocabulary.end() &&
+      channel_feature_nll != vocabulary.end();
   out.pit_histogram_summary_deferred =
       pit != vocabulary.end() &&
       pit->runtime_fields.front().find("pit_histogram") != std::string::npos &&
@@ -4863,7 +4895,7 @@ lattice_mdn_distribution_calibration_diagnostic_summary() {
   out.no_hard_calibration_gates = out.performance_gate_count == 0;
   out.available_point_estimates_are_warning_only =
       out.point_estimate_only_count == out.available_metric_count &&
-      out.available_metric_count == 4 && out.no_hard_calibration_gates;
+      out.available_metric_count == 5 && out.no_hard_calibration_gates;
   out.future_metrics_have_uncertainty_methods =
       out.future_uncertainty_count == out.future_metric_count &&
       out.future_metric_count == 4;
@@ -5055,7 +5087,24 @@ lattice_target_numeric_dimension_vocabulary() {
        "ABOVE", "metric_specific", "non_negative_real", true, 0.0, false, 0.0,
        false, "above",
        "CRPS and calibration-slope-error warnings compare high-bad "
-       "non-negative metric values"}};
+       "non-negative metric values"},
+      {"LATTICE_WARN.runtime_health.boolean_metrics", "ABOVE_OR_BELOW",
+       "boolean", "closed_unit_interval", true, 0.0, true, 1.0, false,
+       "metric_declared",
+       "runtime health boolean warnings compare 0/1 facts from Runtime "
+       "terminal facts or exposure sidecars"},
+      {"LATTICE_WARN.runtime_health.count_metrics", "ABOVE", "count",
+       "non_negative_integer", true, 0.0, false, 0.0, true, "above",
+       "runtime health count warnings compare non-negative counts"},
+      {"LATTICE_WARN.runtime_health.fraction_metrics", "ABOVE_OR_BELOW",
+       "fraction", "closed_unit_interval", true, 0.0, true, 1.0, false,
+       "metric_declared",
+       "runtime health fraction warnings compare fractions in [0,1]"},
+      {"LATTICE_WARN.runtime_health.non_negative_metrics", "ABOVE_OR_BELOW",
+       "metric_specific", "non_negative_real", true, 0.0, false, 0.0, false,
+       "metric_declared",
+       "runtime health gradient, sigma, and entropy warnings compare "
+       "non-negative measurements"}};
 }
 
 struct lattice_target_numeric_dimension_summary_t {
@@ -5292,13 +5341,13 @@ lattice_target_numeric_dimension_summary() {
       coverage->unit != repeated_load->unit &&
       coverage->numeric_kind != repeated_load->numeric_kind;
 
-  if (out.dimension_count != 30) {
+  if (out.dimension_count != 34) {
     out.summary_issues.push_back(
-        "target numeric dimension vocabulary must contain 30 V1 rows");
+        "target numeric dimension vocabulary must contain 34 V1 rows");
   }
-  if (out.unit_count != 8) {
+  if (out.unit_count != 9) {
     out.summary_issues.push_back(
-        "target numeric dimension vocabulary must expose 8 unit families");
+        "target numeric dimension vocabulary must expose 9 unit families");
   }
   if (out.numeric_kind_count != 4) {
     out.summary_issues.push_back(
@@ -5331,9 +5380,9 @@ lattice_target_numeric_dimension_summary() {
     out.summary_issues.push_back(
         "numeric dimension threshold directions must be known");
   }
-  if (out.minimum_direction_count != 10 || out.above_direction_count != 8 ||
+  if (out.minimum_direction_count != 10 || out.above_direction_count != 9 ||
       out.below_direction_count != 4 ||
-      out.metric_declared_direction_count != 7 ||
+      out.metric_declared_direction_count != 10 ||
       out.planning_budget_direction_count != 1) {
     out.summary_issues.push_back(
         "numeric dimension threshold-direction counts must match lattice "
@@ -5716,7 +5765,8 @@ lattice_proof_certificate_digest_policy_vocabulary() {
       {"closure_causal_graph", "checkpoint lineage and causal exposure proof",
        "closure checked/complete flags, checkpoint path, fact count, "
        "unresolved inputs, fact digests, causal exposures, source-key window "
-       "audit fields, output checkpoint, and input checkpoint paths",
+       "audit fields, optional runtime handoff id/digest and Marshal "
+       "target-driver run id, output checkpoint, and input checkpoint paths",
        "source_file_receipts audit strings; DB/cache row ids; runtime scan "
        "ordering before canonical sort",
        "closure completeness, unresolved-input fail-closed policy, causal "
@@ -6374,7 +6424,7 @@ lattice_plan_advice_scope_policy_vocabulary() {
        "accepted suggested wave plus Runtime Hero policy",
        "execute or dry-run the accepted runtime wave under Runtime Hero guards",
        "Lattice Hero execution authority or automatic scheduling from "
-       "plan_target",
+       "target_deficit",
        "Runtime Hero is the only executor; Lattice Hero remains read-only",
        false, false, true, false, false, false}};
 }
@@ -7478,9 +7528,10 @@ lattice_mathematical_readiness_v1_vocabulary() {
         "explain_target.mdn_distribution_calibration_diagnostic_summary",
         "warning_results"},
        "implemented_diagnostics",
-       "V3-D can warn on aggregate, channel, horizon, and per-node NLL point "
-       "estimates while PIT, interval coverage, tail coverage, and calibration "
-       "slope remain future non-gating metrics",
+       "V3-D can warn on aggregate, channel, target-feature, "
+       "channel/target-feature, and per-node NLL point estimates while PIT, "
+       "interval coverage, tail coverage, and calibration slope remain future "
+       "non-gating metrics",
        "metric family vocabulary, diagnostic binding summary, and "
        "non-blocking warning results",
        "future runtime reports must emit calibration samples and uncertainty",
@@ -7723,7 +7774,7 @@ struct lattice_target_proof_certificate_t {
     std::string active_source_cursor_token{};
     std::string evidence_source_cursor_token{};
     bool source_cursor_match{false};
-    std::string component_spawn_schema{"kikijyeba.component_spawn.v1"};
+    std::string component_spawn_schema{"kikijyeba.component_spawn.v2"};
     std::string component_family_id{};
     std::string target_spec_fingerprint{};
     std::string split_policy_fingerprint{};
@@ -7788,6 +7839,9 @@ struct lattice_target_proof_certificate_t {
       std::string wave_id{};
       std::string wave_action{};
       std::string job_status{};
+      std::string runtime_handoff_id{};
+      std::string runtime_handoff_digest{};
+      std::string marshal_target_driver_run_id{};
       std::string target_component_family_id{};
       std::string representation_architecture{};
       std::string representation_contract{};
@@ -7855,7 +7909,6 @@ struct lattice_target_proof_certificate_t {
     bool complete{false};
     std::int64_t fact_count{0};
     std::string resolution_authority{};
-    bool legacy_path_fallback{false};
     std::string root_checkpoint_id{};
     std::string root_checkpoint_file_digest{};
     std::vector<std::string> identity_mismatches{};
@@ -8578,12 +8631,10 @@ struct lattice_target_validation_report_t {
 [[nodiscard]] inline const char *
 lattice_target_kind_name(lattice_target_kind_t kind) {
   switch (kind) {
-  case lattice_target_kind_t::legacy_node_vicreg_ready:
-    return "legacy_node_vicreg_ready";
-  case lattice_target_kind_t::legacy_node_mdn_ready:
-    return "legacy_node_mdn_ready";
   case lattice_target_kind_t::vicreg_ready:
     return "vicreg_ready";
+  case lattice_target_kind_t::mtf_representation_ready:
+    return "mtf_representation_ready";
   case lattice_target_kind_t::channel_mdn_ready:
     return "channel_mdn_ready";
   }
@@ -8594,26 +8645,22 @@ lattice_target_kind_name(lattice_target_kind_t kind) {
 parse_lattice_target_kind(std::string value) {
   namespace kv = cuwacunu::piaabo::parse::simple_kv;
   value = kv::lowercase(kv::trim(std::move(value)));
-  if (value == "legacy_node_vicreg_ready") {
-    return lattice_target_kind_t::legacy_node_vicreg_ready;
-  }
   if (value == "representation_ready") {
     throw std::runtime_error(
         "[lattice_target] TARGET_KIND representation_ready was removed from "
-        "the active vocabulary; use vicreg_ready for current targets or "
-        "legacy_node_vicreg_ready for explicit historical fixtures");
+        "the active vocabulary; use vicreg_ready or mtf_representation_ready");
   }
   if (value == "node_mdn_ready") {
     throw std::runtime_error(
         "[lattice_target] TARGET_KIND node_mdn_ready was removed from the "
-        "active vocabulary; use channel_mdn_ready for current targets or "
-        "legacy_node_mdn_ready for explicit historical fixtures");
-  }
-  if (value == "legacy_node_mdn_ready") {
-    return lattice_target_kind_t::legacy_node_mdn_ready;
+        "active vocabulary; use channel_mdn_ready");
   }
   if (value == "vicreg_ready") {
     return lattice_target_kind_t::vicreg_ready;
+  }
+  if (value == "mtf_representation_ready" ||
+      value == "mtf_jepa_mae_vicreg_ready") {
+    return lattice_target_kind_t::mtf_representation_ready;
   }
   if (value == "channel_mdn_ready") {
     return lattice_target_kind_t::channel_mdn_ready;
@@ -8624,24 +8671,10 @@ parse_lattice_target_kind(std::string value) {
 [[nodiscard]] inline bool
 lattice_target_kind_is_mdn(lattice_target_kind_t kind) {
   switch (kind) {
-  case lattice_target_kind_t::legacy_node_vicreg_ready:
   case lattice_target_kind_t::vicreg_ready:
+  case lattice_target_kind_t::mtf_representation_ready:
     return false;
-  case lattice_target_kind_t::legacy_node_mdn_ready:
   case lattice_target_kind_t::channel_mdn_ready:
-    return true;
-  }
-  throw std::runtime_error("[lattice_target] unknown target kind");
-}
-
-[[nodiscard]] inline bool
-lattice_target_kind_has_node_heads(lattice_target_kind_t kind) {
-  switch (kind) {
-  case lattice_target_kind_t::legacy_node_vicreg_ready:
-  case lattice_target_kind_t::vicreg_ready:
-  case lattice_target_kind_t::channel_mdn_ready:
-    return false;
-  case lattice_target_kind_t::legacy_node_mdn_ready:
     return true;
   }
   throw std::runtime_error("[lattice_target] unknown target kind");
@@ -8650,10 +8683,8 @@ lattice_target_kind_has_node_heads(lattice_target_kind_t kind) {
 [[nodiscard]] inline std::string
 upstream_representation_component_for_target_kind(lattice_target_kind_t kind) {
   switch (kind) {
-  case lattice_target_kind_t::legacy_node_vicreg_ready:
-  case lattice_target_kind_t::legacy_node_mdn_ready:
-    return "wikimyei.representation.encoding.vicreg";
   case lattice_target_kind_t::vicreg_ready:
+  case lattice_target_kind_t::mtf_representation_ready:
   case lattice_target_kind_t::channel_mdn_ready:
     return "wikimyei.representation.encoding.vicreg";
   }
@@ -8686,12 +8717,10 @@ lattice_target_status_name(lattice_target_status_t status) {
 [[nodiscard]] inline std::string
 default_component_for_target_kind(lattice_target_kind_t kind) {
   switch (kind) {
-  case lattice_target_kind_t::legacy_node_vicreg_ready:
-    return "wikimyei.representation.encoding.vicreg";
-  case lattice_target_kind_t::legacy_node_mdn_ready:
-    return "wikimyei.inference.expected_value.mdn";
   case lattice_target_kind_t::vicreg_ready:
     return "wikimyei.representation.encoding.vicreg";
+  case lattice_target_kind_t::mtf_representation_ready:
+    return "wikimyei.representation.encoding.mtf_jepa_mae_vicreg";
   case lattice_target_kind_t::channel_mdn_ready:
     return "wikimyei.inference.expected_value.mdn";
   }
@@ -8701,12 +8730,10 @@ default_component_for_target_kind(lattice_target_kind_t kind) {
 [[nodiscard]] inline std::string
 job_kind_for_target_kind(lattice_target_kind_t kind) {
   switch (kind) {
-  case lattice_target_kind_t::legacy_node_vicreg_ready:
-    return "representation_vicreg";
-  case lattice_target_kind_t::legacy_node_mdn_ready:
-    return "inference_mdn";
   case lattice_target_kind_t::vicreg_ready:
     return "channel_representation_vicreg";
+  case lattice_target_kind_t::mtf_representation_ready:
+    return "channel_representation_mtf_jepa_mae_vicreg";
   case lattice_target_kind_t::channel_mdn_ready:
     return "channel_inference_mdn";
   }
@@ -8716,10 +8743,10 @@ job_kind_for_target_kind(lattice_target_kind_t kind) {
 [[nodiscard]] inline std::string
 component_fingerprint_key_for_target_kind(lattice_target_kind_t kind) {
   switch (kind) {
-  case lattice_target_kind_t::legacy_node_vicreg_ready:
   case lattice_target_kind_t::vicreg_ready:
     return "vicreg_assembly_fingerprint";
-  case lattice_target_kind_t::legacy_node_mdn_ready:
+  case lattice_target_kind_t::mtf_representation_ready:
+    return "mtf_jepa_mae_vicreg_assembly_fingerprint";
   case lattice_target_kind_t::channel_mdn_ready:
     return "mdn_assembly_fingerprint";
   }
@@ -9030,6 +9057,7 @@ make_lattice_forbid_clause_from_split_protection(
       kv::lowercase(kv::optional(block, "TARGET_CLASS", out.target_class));
   validate_lattice_target_class(out.target_class, out.target_id);
   out.kind = parse_lattice_target_kind(kv::required(block, "TARGET_KIND"));
+  out.protocol_id = kv::optional(block, "PROTOCOL_ID", "");
   out.component = optional_alias(block, "COMPONENT", "SUBJECT_COMPONENT",
                                  default_component_for_target_kind(out.kind),
                                  out.language_warnings, out.target_id);
@@ -9141,6 +9169,10 @@ make_lattice_forbid_clause_from_split_protection(
                                      "1", out.language_warnings, out.target_id);
   if (out.target_id.empty()) {
     throw std::runtime_error("[lattice_target] TARGET_ID is required");
+  }
+  if (out.protocol_id != kv::trim(out.protocol_id)) {
+    throw std::runtime_error(
+        "[lattice_target] PROTOCOL_ID must be trimmed for " + out.target_id);
   }
   if (out.component != default_component_for_target_kind(out.kind)) {
     throw std::runtime_error(
@@ -9680,11 +9712,11 @@ inline void apply_lattice_requires_clause(
     return;
   }
   if (kind == "representation_geometry") {
-    if (spec.kind != lattice_target_kind_t::legacy_node_vicreg_ready &&
-        spec.kind != lattice_target_kind_t::vicreg_ready) {
+    if (spec.kind != lattice_target_kind_t::vicreg_ready &&
+        spec.kind != lattice_target_kind_t::mtf_representation_ready) {
       throw std::runtime_error(
           "[lattice_target] LATTICE_REQUIRES representation_geometry only "
-          "supports legacy_node_vicreg_ready or vicreg_ready targets for " +
+          "supports representation targets for " +
           spec.target_id);
     }
     lattice_representation_geometry_requirement_spec_t requirement{};
@@ -9869,11 +9901,22 @@ validate_lattice_warning_dimensions(const lattice_warning_spec_t &warning,
             metric == "mean_augmented_valid_feature_fraction" ||
             metric == "mean_augmented_feature_retention_fraction" ||
             metric == "finite_parameter_check" ||
+            metric == "gradients_finite" || metric == "sample_valid_fraction" ||
+            metric == "channel_valid_fraction" ||
             metric == "representation_effective_rank_fraction" ||
             metric == "representation_isotropy_score") {
           require_fraction_dimension(value, field, target_id);
         } else if (metric == "total_valid_projection_rows" ||
                    metric == "augmented_valid_feature_count" ||
+                   metric == "sample_valid_count" ||
+                   metric == "channel_valid_count" ||
+                   metric == "valid_latent_rows" || metric == "tf_pair_count" ||
+                   metric == "tf_pair_valid_count" ||
+                   metric == "vicreg_global_valid_rows" ||
+                   metric == "vicreg_channel_valid_rows" ||
+                   metric == "context_starved_sample_count" ||
+                   metric == "reduced_targets_for_context_count" ||
+                   metric == "min_context_satisfied_count" ||
                    metric == "representation_embedding_dim") {
           require_non_negative_count_threshold(value, field, target_id);
         } else if (metric == "representation_condition_number") {
@@ -9889,8 +9932,18 @@ validate_lattice_warning_dimensions(const lattice_warning_spec_t &warning,
             "mean_invariance_loss",
             "mean_variance_loss",
             "mean_covariance_loss",
+            "loss_jepa_mean",
+            "loss_mae_time_mean",
+            "loss_mae_frequency_mean",
+            "loss_tf_align_mean",
+            "loss_vicreg_global_mean",
+            "loss_vicreg_channel_mean",
             "last_grad_norm",
             "max_grad_norm",
+            "context_starved_sample_count",
+            "reduced_targets_for_context_count",
+            "target_ema_distance",
+            "latent_norm",
             "representation_max_dimension_variance",
             "representation_condition_number",
         };
@@ -9901,6 +9954,18 @@ validate_lattice_warning_dimensions(const lattice_warning_spec_t &warning,
             "mean_augmented_valid_feature_fraction",
             "mean_augmented_feature_retention_fraction",
             "finite_parameter_check",
+            "gradients_finite",
+            "sample_valid_count",
+            "sample_valid_fraction",
+            "channel_valid_count",
+            "channel_valid_fraction",
+            "valid_latent_rows",
+            "tf_pair_count",
+            "tf_pair_valid_count",
+            "vicreg_global_valid_rows",
+            "vicreg_channel_valid_rows",
+            "min_context_satisfied_count",
+            "latent_std",
             "representation_embedding_dim",
             "representation_effective_rank",
             "representation_effective_rank_fraction",
@@ -9967,6 +10032,31 @@ validate_lattice_warning_dimensions(const lattice_warning_spec_t &warning,
     const auto value = uses_above ? warning.above : warning.below;
     validate_representation_health_dimension(warning.metric, value, field);
     validate_representation_health_direction(warning.metric, uses_above);
+    return;
+  }
+  if (warning.kind == "runtime_health") {
+    const bool uses_above = !std::isnan(warning.above);
+    const auto field = uses_above ? "ABOVE" : "BELOW";
+    const auto value = uses_above ? warning.above : warning.below;
+    const std::set<std::string> boolean_metrics{
+        "finite_parameter_check", "checkpoint_written",
+        "model_state_mutated",    "representation_checkpoint_loaded",
+        "mdn_checkpoint_loaded",
+    };
+    const std::set<std::string> fraction_metrics{
+        "valid_target_fraction",
+    };
+    const std::set<std::string> count_metrics{
+        "nonfinite_output_count",
+    };
+    if (boolean_metrics.count(warning.metric) ||
+        fraction_metrics.count(warning.metric)) {
+      require_fraction_dimension(value, field, target_id);
+    } else if (count_metrics.count(warning.metric)) {
+      require_non_negative_count_threshold(value, field, target_id);
+    } else {
+      require_non_negative_dimension(value, field, warning.metric, target_id);
+    }
     return;
   }
   if (warning.kind == "mdn_distribution_calibration") {
@@ -10186,6 +10276,28 @@ inline void apply_lattice_warn_clause(
         "mean_augmented_valid_feature_fraction",
         "mean_augmented_feature_retention_fraction",
         "finite_parameter_check",
+        "gradients_finite",
+        "sample_valid_count",
+        "sample_valid_fraction",
+        "channel_valid_count",
+        "channel_valid_fraction",
+        "valid_latent_rows",
+        "tf_pair_count",
+        "tf_pair_valid_count",
+        "vicreg_global_valid_rows",
+        "vicreg_channel_valid_rows",
+        "context_starved_sample_count",
+        "reduced_targets_for_context_count",
+        "min_context_satisfied_count",
+        "target_ema_distance",
+        "latent_std",
+        "latent_norm",
+        "loss_jepa_mean",
+        "loss_mae_time_mean",
+        "loss_mae_frequency_mean",
+        "loss_tf_align_mean",
+        "loss_vicreg_global_mean",
+        "loss_vicreg_channel_mean",
         "representation_embedding_dim",
         "representation_effective_rank",
         "representation_effective_rank_fraction",
@@ -10214,10 +10326,23 @@ inline void apply_lattice_warn_clause(
       warning.above = kv::parse_double(above_raw);
       if (warning.metric == "mean_adapter_valid_channel_time_fraction" ||
           warning.metric == "finite_parameter_check" ||
+          warning.metric == "gradients_finite" ||
+          warning.metric == "sample_valid_fraction" ||
+          warning.metric == "channel_valid_fraction" ||
           warning.metric == "representation_effective_rank_fraction" ||
           warning.metric == "representation_isotropy_score") {
         require_fraction_dimension(warning.above, "ABOVE", spec.target_id);
       } else if (warning.metric == "total_valid_projection_rows" ||
+                 warning.metric == "sample_valid_count" ||
+                 warning.metric == "channel_valid_count" ||
+                 warning.metric == "valid_latent_rows" ||
+                 warning.metric == "tf_pair_count" ||
+                 warning.metric == "tf_pair_valid_count" ||
+                 warning.metric == "vicreg_global_valid_rows" ||
+                 warning.metric == "vicreg_channel_valid_rows" ||
+                 warning.metric == "context_starved_sample_count" ||
+                 warning.metric == "reduced_targets_for_context_count" ||
+                 warning.metric == "min_context_satisfied_count" ||
                  warning.metric == "representation_embedding_dim") {
         require_non_negative_count_threshold(warning.above, "ABOVE",
                                              spec.target_id);
@@ -10230,10 +10355,23 @@ inline void apply_lattice_warn_clause(
       warning.below = kv::parse_double(below_raw);
       if (warning.metric == "mean_adapter_valid_channel_time_fraction" ||
           warning.metric == "finite_parameter_check" ||
+          warning.metric == "gradients_finite" ||
+          warning.metric == "sample_valid_fraction" ||
+          warning.metric == "channel_valid_fraction" ||
           warning.metric == "representation_effective_rank_fraction" ||
           warning.metric == "representation_isotropy_score") {
         require_fraction_dimension(warning.below, "BELOW", spec.target_id);
       } else if (warning.metric == "total_valid_projection_rows" ||
+                 warning.metric == "sample_valid_count" ||
+                 warning.metric == "channel_valid_count" ||
+                 warning.metric == "valid_latent_rows" ||
+                 warning.metric == "tf_pair_count" ||
+                 warning.metric == "tf_pair_valid_count" ||
+                 warning.metric == "vicreg_global_valid_rows" ||
+                 warning.metric == "vicreg_channel_valid_rows" ||
+                 warning.metric == "context_starved_sample_count" ||
+                 warning.metric == "reduced_targets_for_context_count" ||
+                 warning.metric == "min_context_satisfied_count" ||
                  warning.metric == "representation_embedding_dim") {
         require_non_negative_count_threshold(warning.below, "BELOW",
                                              spec.target_id);
@@ -10241,6 +10379,51 @@ inline void apply_lattice_warn_clause(
         require_non_negative_dimension(warning.below, "BELOW", warning.metric,
                                        spec.target_id);
       }
+    }
+  } else if (warning.kind == "runtime_health") {
+    warning.use = cuwacunu::kikijyeba::lattice::exposure::parse_exposure_use(
+        kv::optional(block, "USE", "target_supervision"));
+    warning.metric = kv::lowercase(kv::required(block, "METRIC"));
+    const std::set<std::string> allowed_metrics{
+        "finite_parameter_check",
+        "nonfinite_output_count",
+        "checkpoint_written",
+        "model_state_mutated",
+        "representation_checkpoint_loaded",
+        "mdn_checkpoint_loaded",
+        "grad_norm_max_pre_clip",
+        "grad_norm_clip_ratio",
+        "max_grad_norm",
+        "sigma_min",
+        "sigma_mean",
+        "sigma_max",
+        "sigma_min_valid",
+        "sigma_mean_valid",
+        "sigma_max_valid",
+        "mixture_entropy",
+        "valid_target_fraction",
+    };
+    if (!allowed_metrics.count(warning.metric)) {
+      throw std::runtime_error(
+          "[lattice_target] LATTICE_WARN runtime_health METRIC is "
+          "unsupported for " +
+          spec.target_id);
+    }
+    const auto above_raw = kv::optional(block, "ABOVE", "");
+    const auto below_raw = kv::optional(block, "BELOW", "");
+    const bool has_above = !kv::trim(above_raw).empty();
+    const bool has_below = !kv::trim(below_raw).empty();
+    if (has_above == has_below) {
+      throw std::runtime_error(
+          "[lattice_target] LATTICE_WARN runtime_health requires exactly one "
+          "of ABOVE or BELOW for " +
+          spec.target_id);
+    }
+    if (has_above) {
+      warning.above = kv::parse_double(above_raw);
+    }
+    if (has_below) {
+      warning.below = kv::parse_double(below_raw);
     }
   } else if (warning.kind == "mdn_distribution_calibration") {
     warning.use = cuwacunu::kikijyeba::lattice::exposure::parse_exposure_use(
@@ -10250,6 +10433,7 @@ inline void apply_lattice_warn_clause(
         "mean_nll",
         "mean_nll_per_channel_max",
         "mean_nll_per_target_feature_max",
+        "mean_nll_per_channel_target_feature_max",
         "per_node_mean_nll_max",
         "crps",
         "pit_ks_statistic",
@@ -10947,8 +11131,6 @@ canonical_lattice_target_proof_certificate_text(
   out << "closure.fact_count=" << closure.fact_count << "\n";
   out << "closure.resolution_authority=" << closure.resolution_authority
       << "\n";
-  out << "closure.legacy_path_fallback="
-      << (closure.legacy_path_fallback ? "true" : "false") << "\n";
   out << "closure.root_checkpoint_id=" << closure.root_checkpoint_id << "\n";
   out << "closure.root_checkpoint_file_digest="
       << closure.root_checkpoint_file_digest << "\n";
@@ -10976,6 +11158,9 @@ canonical_lattice_target_proof_certificate_text(
               << causal.wave_id << "\n"
               << causal.wave_action << "\n"
               << causal.job_status << "\n"
+              << causal.runtime_handoff_id << "\n"
+              << causal.runtime_handoff_digest << "\n"
+              << causal.marshal_target_driver_run_id << "\n"
               << causal.target_component_family_id << "\n"
               << causal.representation_architecture << "\n"
               << causal.representation_contract << "\n"
@@ -11039,6 +11224,12 @@ canonical_lattice_target_proof_certificate_text(
     out << prefix << ".wave_id=" << causal.wave_id << "\n";
     out << prefix << ".wave_action=" << causal.wave_action << "\n";
     out << prefix << ".job_status=" << causal.job_status << "\n";
+    out << prefix << ".runtime_handoff_id=" << causal.runtime_handoff_id
+        << "\n";
+    out << prefix << ".runtime_handoff_digest=" << causal.runtime_handoff_digest
+        << "\n";
+    out << prefix << ".marshal_target_driver_run_id="
+        << causal.marshal_target_driver_run_id << "\n";
     out << prefix
         << ".target_component_family_id=" << causal.target_component_family_id
         << "\n";
@@ -12388,7 +12579,6 @@ verify_lattice_target_proof_certificate(
     if (!proof.closure.checkpoint_path.empty() || proof.closure.complete ||
         proof.closure.fact_count != 0 ||
         !proof.closure.resolution_authority.empty() ||
-        proof.closure.legacy_path_fallback ||
         !proof.closure.root_checkpoint_id.empty() ||
         !proof.closure.root_checkpoint_file_digest.empty() ||
         !proof.closure.identity_mismatches.empty() ||
@@ -12438,17 +12628,12 @@ verify_lattice_target_proof_certificate(
                                "closure checked without resolution authority");
     } else if (proof.closure.resolution_authority !=
                    "checkpoint_id_file_digest" &&
-               proof.closure.resolution_authority != "legacy_path" &&
+               proof.closure.resolution_authority != "unresolved_lineage" &&
                proof.closure.resolution_authority !=
                    "checkpoint_identity_failed") {
       append_certificate_issue(check, "closure unknown resolution authority");
     }
     if (proof.closure.resolution_authority == "checkpoint_id_file_digest") {
-      if (proof.closure.legacy_path_fallback) {
-        append_certificate_issue(
-            check, "checkpoint_id_file_digest authority used with legacy path "
-                   "fallback");
-      }
       if (proof.closure.root_checkpoint_id.empty() ||
           proof.closure.root_checkpoint_file_digest.empty()) {
         append_certificate_issue(
@@ -12564,6 +12749,18 @@ verify_lattice_target_proof_certificate(
       }
       if (causal.job_status != "completed") {
         append_certificate_issue(check, prefix + " job_status not completed");
+      }
+      const bool has_handoff_id = !causal.runtime_handoff_id.empty();
+      const bool has_handoff_digest = !causal.runtime_handoff_digest.empty();
+      if (has_handoff_id != has_handoff_digest) {
+        append_certificate_issue(
+            check, prefix + " incomplete runtime handoff binding");
+      }
+      if (has_handoff_id && has_handoff_digest &&
+          causal.runtime_handoff_id !=
+              "runtime_handoff_" + causal.runtime_handoff_digest) {
+        append_certificate_issue(
+            check, prefix + " runtime handoff id/digest mismatch");
       }
       if (causal.target_component_family_id.empty()) {
         append_certificate_issue(
@@ -13796,6 +13993,7 @@ canonical_lattice_target_spec_text(const lattice_target_spec_t &spec) {
   out << "target_id=" << spec.target_id << "\n";
   out << "target_class=" << spec.target_class << "\n";
   out << "kind=" << lattice_target_kind_name(spec.kind) << "\n";
+  out << "protocol_id=" << spec.protocol_id << "\n";
   out << "component=" << spec.component << "\n";
   out << "checkpoint_source=" << spec.checkpoint_source << "\n";
   out << "evaluated_checkpoint_source=" << spec.evaluated_checkpoint_source
@@ -14093,6 +14291,7 @@ decode_lattice_targets_from_dsl(const std::string &dsl_text) {
 lattice_target_selector_key(const lattice_target_spec_t &spec) {
   std::ostringstream out;
   out << lattice_target_kind_name(spec.kind) << "|";
+  out << spec.protocol_id << "|";
   out << spec.component << "|";
   out << spec.target_class << "|";
   out << spec.checkpoint_source << "|";

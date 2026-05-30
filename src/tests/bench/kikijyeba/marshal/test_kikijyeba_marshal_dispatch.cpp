@@ -141,6 +141,7 @@ valid_active_wave(const marshal::marshal_dispatch_advice_t &advice) {
   wave.target_component_family_id = advice.suggested_wave.target;
   wave.mode = advice.suggested_wave.mode;
   wave.source_range = advice.suggested_wave.source_range;
+  wave.source_order = "sequential";
   wave.anchor_index_begin = advice.suggested_wave.anchor_index_begin;
   wave.anchor_index_end = advice.suggested_wave.anchor_index_end;
   wave.job_kind = "channel_inference_mdn";
@@ -376,6 +377,7 @@ std::string wave_json(const marshal::marshal_runtime_wave_snapshot_t &wave) {
       << marshal::detail::json_quote(wave.target_component_family_id)
       << ",\"mode\":" << marshal::detail::json_quote(wave.mode)
       << ",\"source_range\":" << marshal::detail::json_quote(wave.source_range)
+      << ",\"source_order\":" << marshal::detail::json_quote(wave.source_order)
       << ",\"anchor_index_begin\":"
       << optional_size_json(wave.anchor_index_begin)
       << ",\"anchor_index_end\":" << optional_size_json(wave.anchor_index_end)
@@ -828,7 +830,9 @@ void test_source_key_dispatch_advice_validation() {
 
 void test_m2_dry_run_preview_success() {
   const auto advice = valid_advice();
-  const auto request = valid_request(advice);
+  auto request = valid_request(advice);
+  request.lattice_certificate_refs["PLAN_INPUT_MDN_CHECKPOINT"] =
+      "resolver_receipt_mdn";
   const auto decision = marshal::build_runtime_dry_run_dispatch_preview(
       advice, request, context(), valid_policy(), valid_active_wave(advice));
 
@@ -846,13 +850,39 @@ void test_m2_dry_run_preview_success() {
         "runtime request model-state inputs should derive from advice");
   const auto handoff_args =
       marshal::runtime_hero_execute_args_json(decision.runtime_request, 30);
+  check(handoff_args.find("\"runtime_handoff\":") != std::string::npos,
+        "Runtime handoff should include the canonical runtime_handoff object");
+  check(handoff_args.find("\"handoff_schema_version\":\"1\"") !=
+            std::string::npos,
+        "runtime_handoff should declare schema version 1");
+  check(handoff_args.find("\"handoff_digest\":") != std::string::npos,
+        "runtime_handoff should expose its canonical digest");
+  check(handoff_args.find(
+            "\"target_id\":\"channel_mdn_validation_eval_ready\"") !=
+            std::string::npos,
+        "runtime_handoff should bind the lattice target id");
+  check(handoff_args.find("\"base_config\":") != std::string::npos,
+        "runtime_handoff should include base config identity");
+  check(handoff_args.find("\"runtime_policy\":") != std::string::npos,
+        "runtime_handoff should include runtime policy identity");
+  check(
+      handoff_args.find("\"unresolved_symbols\":[]") != std::string::npos,
+      "resolved runtime handoff should expose an empty unresolved-symbol list");
+  check(handoff_args.find("\"lattice_certificate_refs\":{"
+                          "\"PLAN_INPUT_MDN_CHECKPOINT\":"
+                          "\"resolver_receipt_mdn\"}") != std::string::npos,
+        "runtime_handoff should carry Lattice resolver certificate refs");
   check(handoff_args.find("\"target_component_family_id\":") !=
             std::string::npos,
         "Runtime handoff should use canonical target_component_family_id");
   check(handoff_args.find("\"mode\":\"run|debug\"") != std::string::npos,
         "Runtime handoff should use canonical mode");
-  check(handoff_args.find("\"wave_target\":") != std::string::npos,
-        "Runtime handoff should retain wave_target compatibility alias");
+  check(handoff_args.find("\"source_order\":\"sequential\"") !=
+            std::string::npos,
+        "Runtime handoff should bind Runtime Hero source_order");
+  check(handoff_args.find("\"wave_target\":") == std::string::npos &&
+            handoff_args.find("\"wave_mode\":") == std::string::npos,
+        "Runtime handoff should not emit removed wave aliases");
   check(!marshal::runtime_dry_run_request_digest(decision.runtime_request)
              .empty(),
         "runtime dry-run request digest should be available");
@@ -1118,7 +1148,7 @@ void test_m2_public_dry_run_dispatch_operation() {
   auto advice = valid_advice();
   advice.config_path = config_path.string();
   advice.runtime_root = runtime_root.string();
-  advice.source_lattice_tool = "hero.lattice.plan_target";
+  advice.source_lattice_tool = "hero.lattice.target_deficit";
   advice.plan_basis_digest.clear();
   advice.suggested_wave_digest.clear();
   advice.plan_input_digest.clear();
@@ -1374,7 +1404,7 @@ void test_m3_accepted_execution_handoff() {
   auto advice = valid_advice();
   advice.config_path = config_path.string();
   advice.runtime_root = runtime_root.string();
-  advice.source_lattice_tool = "hero.lattice.plan_target";
+  advice.source_lattice_tool = "hero.lattice.target_deficit";
   advice.plan_basis_digest.clear();
   advice.suggested_wave_digest.clear();
   advice.plan_input_digest.clear();
@@ -1503,7 +1533,7 @@ void test_m3_execution_handoff_rechecks_runtime_wave() {
   auto advice = valid_advice();
   advice.config_path = config_path.string();
   advice.runtime_root = runtime_root.string();
-  advice.source_lattice_tool = "hero.lattice.plan_target";
+  advice.source_lattice_tool = "hero.lattice.target_deficit";
   advice.plan_basis_digest.clear();
   advice.suggested_wave_digest.clear();
   advice.plan_input_digest.clear();
@@ -1629,7 +1659,7 @@ void test_m4_dispatch_receipt_replay_audit() {
   auto advice = valid_advice();
   advice.config_path = config_path.string();
   advice.runtime_root = runtime_root.string();
-  advice.source_lattice_tool = "hero.lattice.plan_target";
+  advice.source_lattice_tool = "hero.lattice.target_deficit";
   advice.plan_basis_digest.clear();
   advice.suggested_wave_digest.clear();
   advice.plan_input_digest.clear();
@@ -1852,7 +1882,7 @@ void test_m7_batch_preview_independence() {
   auto advice = valid_advice();
   advice.config_path = config_path.string();
   advice.runtime_root = runtime_root.string();
-  advice.source_lattice_tool = "hero.lattice.plan_target";
+  advice.source_lattice_tool = "hero.lattice.target_deficit";
   advice.plan_basis_digest.clear();
   advice.suggested_wave_digest.clear();
   advice.plan_input_digest.clear();
@@ -1974,7 +2004,7 @@ void test_m5_codex_assist_uses_deterministic_primitives() {
   auto advice = valid_advice();
   advice.config_path = config_path.string();
   advice.runtime_root = runtime_root.string();
-  advice.source_lattice_tool = "hero.lattice.plan_target";
+  advice.source_lattice_tool = "hero.lattice.target_deficit";
   advice.plan_basis_digest.clear();
   advice.suggested_wave_digest.clear();
   advice.plan_input_digest.clear();
@@ -2028,12 +2058,46 @@ void test_m9_marshal_tool_schema_compatibility() {
         "Marshal direct CLI and MCP surfaces should expose same primitives");
   const auto names = marshal::marshal_tool_names();
   check(!names.empty(), "Marshal tool catalog should not be empty");
+  check(names.size() == 3, "Marshal tool catalog should expose exactly three "
+                           "operator-facing tools");
+  check(std::find(names.begin(), names.end(), "hero.marshal.status") !=
+            names.end(),
+        "Marshal tool catalog should expose status");
   check(std::find(names.begin(), names.end(),
-                  "hero.marshal.dry_run_dispatch") != names.end(),
-        "Marshal tool catalog should expose dry_run_dispatch");
-  check(std::find(names.begin(), names.end(),
-                  "hero.marshal.prepare_target_dispatch") != names.end(),
-        "Marshal tool catalog should expose prepare_target_dispatch");
+                  "hero.marshal.reach_lattice_target") != names.end(),
+        "Marshal tool catalog should expose reach_lattice_target");
+  check(std::find(names.begin(), names.end(), "hero.marshal.evaluate") !=
+            names.end(),
+        "Marshal tool catalog should expose evaluate");
+  for (const auto &hidden_name :
+       {"hero.marshal.summarize_training_state", "hero.marshal.compare_runs",
+        "hero.marshal.lookup_target_advice",
+        "hero.marshal.prepare_target_dispatch", "hero.marshal.validate_advice",
+        "hero.marshal.dry_run_dispatch", "hero.marshal.execution_gate",
+        "hero.marshal.replay_receipt", "hero.marshal.batch_preview",
+        "hero.marshal.evaluate_run"}) {
+    check(std::find(names.begin(), names.end(), hidden_name) == names.end(),
+          std::string("Marshal tool catalog should not expose ") + hidden_name);
+  }
+  std::string result;
+  std::string error;
+  check(!marshal::execute_marshal_tool_json("hero.marshal.evaluate_run", "{}",
+                                            &result, &error),
+        "old evaluate_run tool name should not remain callable");
+  check(error.find("unknown tool") != std::string::npos,
+        "old evaluate_run name should fail as an unknown tool");
+  check(!marshal::execute_marshal_tool_json("hero.marshal.evaluate",
+                                            R"({"subject":"codex_review"})",
+                                            &result, &error),
+        "evaluate should reject unsupported subjects");
+  check(error.find("subject must be run, target, protocol, spawn, or "
+                   "component") != std::string::npos,
+        "unsupported evaluate subject should fail explicitly");
+  check(!marshal::execute_marshal_tool_json("hero.marshal.evaluate", "{}",
+                                            &result, &error),
+        "evaluate should require an explicit subject");
+  check(error.find("missing required field: subject") != std::string::npos,
+        "missing evaluate subject should fail explicitly");
 
   const auto malformed =
       cuwacunu::hero::mcp_schema_compat::validate_tool_input_schema(
@@ -2054,17 +2118,19 @@ std::string g_fake_lattice_arguments_json;
 int g_fake_lattice_resolve_count = 0;
 bool g_fake_lattice_resolve_concrete = false;
 std::string g_fake_lattice_resolve_fault;
+bool g_fake_lattice_prepare_warning = false;
+std::string g_fake_lattice_prepare_warning_kind;
 
-bool fake_lattice_plan_target_callback(const std::string &tool_name,
-                                       const std::string &arguments_json,
-                                       std::string *out_tool_result_json,
-                                       std::string *out_error_message) {
+bool fake_lattice_target_deficit_callback(const std::string &tool_name,
+                                          const std::string &arguments_json,
+                                          std::string *out_tool_result_json,
+                                          std::string *out_error_message) {
   g_fake_lattice_tool_name = tool_name;
   g_fake_lattice_arguments_json = arguments_json;
   if (out_error_message) {
     out_error_message->clear();
   }
-  if (tool_name != "hero.lattice.plan_target") {
+  if (tool_name != "hero.lattice.target_deficit") {
     if (out_error_message) {
       *out_error_message = "unexpected lattice tool";
     }
@@ -2072,7 +2138,92 @@ bool fake_lattice_plan_target_callback(const std::string &tool_name,
   }
   if (out_tool_result_json) {
     *out_tool_result_json =
-        R"({"content":[{"type":"text","text":"hero.lattice.plan_target executed"}],"structuredContent":{"config_path":"/tmp/marshal_lookup/.config","runtime_root":"/tmp/marshal_lookup/runtime","active_identity":{"protocol_contract_fingerprint":"pc","graph_order_fingerprint":"go","source_cursor_token":"cursor","vicreg_assembly_fingerprint":"vic","mdn_assembly_fingerprint":"mdn"},"target_id":"lookup_target","status":"metric_failed","split_policy_fingerprint":"sp","plan_ready":true,"plan_basis":{"available":true,"reason":"suggested wave addresses proof deficits","primary_deficit_key":"coverage:missing","primary_deficit_message":"coverage missing","primary_deficit_priority_class":"coverage","deficit_keys":["coverage:missing"],"deficit_priority_classes":["coverage"]},"suggested_wave":{"target":"wikimyei.inference.expected_value.mdn","mode":"run|debug","source_range":"anchor_index","anchor_index_begin":10,"anchor_index_end":20,"input_mdn_checkpoint":"/tmp/marshal_lookup/runtime/mdn.pt","input_representation_checkpoint":"/tmp/marshal_lookup/runtime/rep.pt","text":"TARGET=wikimyei.inference.expected_value.mdn\n"},"proof_certificate":{"target_id":"lookup_target","target_spec_fingerprint":"ts","split_policy_fingerprint":"sp"}},"isError":false})";
+        R"({"content":[{"type":"text","text":"hero.lattice.target_deficit executed"}],"structuredContent":{"config_path":"/tmp/marshal_lookup/.config","runtime_root":"/tmp/marshal_lookup/runtime","active_identity":{"protocol_contract_fingerprint":"pc","graph_order_fingerprint":"go","source_cursor_token":"cursor","vicreg_assembly_fingerprint":"vic","mdn_assembly_fingerprint":"mdn"},"target_id":"lookup_target","status":"metric_failed","split_policy_fingerprint":"sp","plan_ready":true,"plan_basis":{"available":true,"reason":"suggested wave addresses proof deficits","primary_deficit_key":"coverage:missing","primary_deficit_message":"coverage missing","primary_deficit_priority_class":"coverage","deficit_keys":["coverage:missing"],"deficit_priority_classes":["coverage"]},"suggested_wave":{"target":"wikimyei.inference.expected_value.mdn","mode":"run|debug","source_range":"anchor_index","anchor_index_begin":10,"anchor_index_end":20,"input_mdn_checkpoint":"/tmp/marshal_lookup/runtime/mdn.pt","input_representation_checkpoint":"/tmp/marshal_lookup/runtime/rep.pt","text":"TARGET=wikimyei.inference.expected_value.mdn\n"},"proof_certificate":{"target_id":"lookup_target","target_spec_fingerprint":"ts","split_policy_fingerprint":"sp"}},"isError":false})";
+  }
+  return true;
+}
+
+bool fake_lattice_satisfied_without_certificate_callback(
+    const std::string &tool_name, const std::string &arguments_json,
+    std::string *out_tool_result_json, std::string *out_error_message) {
+  g_fake_lattice_tool_name = tool_name;
+  g_fake_lattice_arguments_json = arguments_json;
+  if (out_error_message) {
+    out_error_message->clear();
+  }
+  if (tool_name != "hero.lattice.target_deficit") {
+    if (out_error_message) {
+      *out_error_message = "unexpected lattice tool";
+    }
+    return false;
+  }
+  if (out_tool_result_json) {
+    *out_tool_result_json =
+        R"({"content":[{"type":"text","text":"hero.lattice.target_deficit executed"}],"structuredContent":{"target_id":"satisfied_without_certificate","status":"satisfied","plan_ready":false,"suggested_wave":null,"proof_certificate":null,"active_identity":{"protocol_contract_fingerprint":"pc","graph_order_fingerprint":"go","source_cursor_token":"cursor","vicreg_assembly_fingerprint":"vic","mdn_assembly_fingerprint":"mdn"}},"isError":false})";
+  }
+  return true;
+}
+
+bool fake_lattice_malformed_target_deficit_callback(
+    const std::string &tool_name, const std::string &arguments_json,
+    std::string *out_tool_result_json, std::string *out_error_message) {
+  g_fake_lattice_tool_name = tool_name;
+  g_fake_lattice_arguments_json = arguments_json;
+  if (out_error_message) {
+    out_error_message->clear();
+  }
+  if (tool_name != "hero.lattice.target_deficit") {
+    if (out_error_message) {
+      *out_error_message = "unexpected lattice tool";
+    }
+    return false;
+  }
+  if (out_tool_result_json) {
+    *out_tool_result_json =
+        R"({"content":[{"type":"text","text":"hero.lattice.target_deficit executed"}],"structuredContent":[],"isError":false})";
+  }
+  return true;
+}
+
+bool fake_lattice_operational_report_callback(const std::string &tool_name,
+                                              const std::string &arguments_json,
+                                              std::string *out_tool_result_json,
+                                              std::string *out_error_message) {
+  g_fake_lattice_tool_name = tool_name;
+  g_fake_lattice_arguments_json = arguments_json;
+  if (out_error_message) {
+    out_error_message->clear();
+  }
+  if (tool_name != "hero.lattice.evaluate_targets") {
+    if (out_error_message) {
+      *out_error_message = "unexpected lattice tool";
+    }
+    return false;
+  }
+  if (out_tool_result_json) {
+    *out_tool_result_json =
+        R"({"content":[{"type":"text","text":"hero.lattice.evaluate_targets executed"}],"structuredContent":{"read_only":true,"evaluations":[{"target_id":"vicreg_train_core_ready","status":"satisfied","proof_certificate_check":{"passed":true,"issues":[]}},{"target_id":"channel_mdn_train_core_ready","status":"satisfied","proof_certificate_check":{"passed":true,"issues":[]}},{"target_id":"channel_mdn_train_core_no_validation_leakage","status":"satisfied","proof_certificate_check":{"passed":true,"issues":[]}},{"target_id":"channel_mdn_train_core_no_test_leakage","status":"satisfied","proof_certificate_check":{"passed":true,"issues":[]}},{"target_id":"channel_mdn_validation_eval_ready","status":"satisfied","proof_certificate_check":{"passed":true,"issues":[]}}]},"isError":false})";
+  }
+  return true;
+}
+
+bool fake_lattice_operational_report_blocker_callback(
+    const std::string &tool_name, const std::string &arguments_json,
+    std::string *out_tool_result_json, std::string *out_error_message) {
+  g_fake_lattice_tool_name = tool_name;
+  g_fake_lattice_arguments_json = arguments_json;
+  if (out_error_message) {
+    out_error_message->clear();
+  }
+  if (tool_name != "hero.lattice.evaluate_targets") {
+    if (out_error_message) {
+      *out_error_message = "unexpected lattice tool";
+    }
+    return false;
+  }
+  if (out_tool_result_json) {
+    *out_tool_result_json =
+        R"({"content":[{"type":"text","text":"hero.lattice.evaluate_targets executed"}],"structuredContent":{"read_only":true,"evaluations":[{"target_id":"vicreg_train_core_ready","status":"satisfied","proof_certificate_check":{"passed":true,"issues":[]}},{"target_id":"channel_mdn_train_core_ready","status":"satisfied","proof_certificate_check":{"passed":false,"issues":["closure_unresolved"]}},{"target_id":"channel_mdn_validation_eval_ready","status":"metric_failed","proof_certificate_check":{"passed":true,"issues":[]},"plan_basis":{"deficit_keys":["coverage:evaluation_metric"],"primary_deficit_key":"coverage:evaluation_metric"},"warnings":[{"warning_id":"validation_eval_missing","severity":"watch","source":"lattice"}]}]},"isError":false})";
   }
   return true;
 }
@@ -2086,14 +2237,35 @@ bool fake_lattice_prepare_callback(const std::string &tool_name,
   if (out_error_message) {
     out_error_message->clear();
   }
-  if (tool_name == "hero.lattice.plan_target") {
+  if (tool_name == "hero.lattice.target_deficit") {
     if (out_tool_result_json) {
-      *out_tool_result_json =
-          R"({"content":[{"type":"text","text":"hero.lattice.plan_target executed"}],"structuredContent":{"config_path":"/tmp/marshal_prepare/.config","runtime_root":"/tmp/marshal_prepare/runtime","active_identity":{"protocol_contract_fingerprint":"pc","graph_order_fingerprint":"go","source_cursor_token":"cursor","vicreg_assembly_fingerprint":"vic","mdn_assembly_fingerprint":"mdn"},"target_id":"channel_mdn_validation_eval_ready","status":"metric_failed","split_policy_fingerprint":"sp","plan_ready":true,"plan_basis":{"available":true,"reason":"suggested wave addresses proof deficits","primary_deficit_key":"coverage:evaluation_metric","primary_deficit_message":"validation evaluation coverage missing","primary_deficit_priority_class":"coverage","deficit_keys":["coverage:evaluation_metric"],"deficit_priority_classes":["coverage"]},"suggested_wave":{"target":"wikimyei.inference.expected_value.mdn","mode":"run|debug","source_range":"anchor_index","anchor_index_begin":1800,"anchor_index_end":2050,"input_mdn_checkpoint":"latest_satisfying:channel_mdn_train_core_no_test_leakage","input_representation_checkpoint":"latest_satisfying:vicreg_train_core_ready","text":"TARGET=wikimyei.inference.expected_value.mdn\n"},"proof_certificate":{"target_id":"channel_mdn_validation_eval_ready","target_spec_fingerprint":"ts","split_policy_fingerprint":"sp"}},"isError":false})";
+      std::ostringstream json;
+      json
+          << R"({"content":[{"type":"text","text":"hero.lattice.target_deficit executed"}],"structuredContent":{"config_path":"/tmp/marshal_prepare/.config","runtime_root":"/tmp/marshal_prepare/runtime","active_identity":{"protocol_contract_fingerprint":"pc","graph_order_fingerprint":"go","source_cursor_token":"cursor","vicreg_assembly_fingerprint":"vic","mdn_assembly_fingerprint":"mdn"},"target_id":"channel_mdn_validation_eval_ready","status":"metric_failed","split_policy_fingerprint":"sp","plan_ready":true,"plan_basis":{"available":true,"reason":"suggested wave addresses proof deficits","primary_deficit_key":"coverage:evaluation_metric","primary_deficit_message":"validation evaluation coverage missing","primary_deficit_priority_class":"coverage","deficit_keys":["coverage:evaluation_metric"],"deficit_priority_classes":["coverage"]},"suggested_wave":{"target":"wikimyei.inference.expected_value.mdn","mode":"run|debug","source_range":"anchor_index","anchor_index_begin":1800,"anchor_index_end":2050,"input_mdn_checkpoint":"latest_satisfying:channel_mdn_train_core_no_test_leakage","input_representation_checkpoint":"latest_satisfying:vicreg_train_core_ready","text":"TARGET=wikimyei.inference.expected_value.mdn\n"},"proof_certificate":{"target_id":"channel_mdn_validation_eval_ready","target_spec_fingerprint":"ts","split_policy_fingerprint":"sp"})";
+      if (g_fake_lattice_prepare_warning) {
+        if (g_fake_lattice_prepare_warning_kind == "blocking") {
+          json
+              << R"(,"warnings":[{"warning_id":"test_lattice_blocking_warning","severity":"info","component":"lattice_target","blocking":true,"scope":"target_deficit","evidence_digest":"test_evidence_digest","source":"lattice"}])";
+        } else if (g_fake_lattice_prepare_warning_kind == "unknown_severity") {
+          json
+              << R"(,"warnings":[{"warning_id":"test_lattice_unknown_severity","severity":"mystery","component":"lattice_target","blocking":false,"scope":"target_deficit","evidence_digest":"test_evidence_digest","source":"lattice"}])";
+        } else if (g_fake_lattice_prepare_warning_kind == "missing_severity") {
+          json
+              << R"(,"warnings":[{"warning_id":"test_lattice_missing_severity","component":"lattice_target","blocking":false,"scope":"target_deficit","evidence_digest":"test_evidence_digest","source":"lattice"}])";
+        } else if (g_fake_lattice_prepare_warning_kind == "mixed") {
+          json
+              << R"(,"warnings":[{"warning_id":"test_lattice_watch_warning","severity":"watch","component":"lattice_target","blocking":false,"scope":"target_deficit","evidence_digest":"test_evidence_digest","source":"lattice"},{"warning_id":"test_lattice_critical_warning","severity":"critical","component":"lattice_target","blocking":false,"scope":"target_deficit","evidence_digest":"test_evidence_digest","source":"lattice"}])";
+        } else {
+          json
+              << R"(,"warnings":[{"warning_id":"test_lattice_warning","severity":"watch","component":"lattice_target","blocking":false,"scope":"target_deficit","evidence_digest":"test_evidence_digest","source":"lattice"}])";
+        }
+      }
+      json << R"(},"isError":false})";
+      *out_tool_result_json = json.str();
     }
     return true;
   }
-  if (tool_name == "hero.lattice.resolve_latest_satisfying") {
+  if (tool_name == "hero.lattice.latest_satisfying_checkpoint") {
     ++g_fake_lattice_resolve_count;
     const bool is_representation =
         arguments_json.find("vicreg_train_core_ready") != std::string::npos;
@@ -2138,7 +2310,7 @@ bool fake_lattice_prepare_callback(const std::string &tool_name,
     std::ostringstream json;
     json << "{\"content\":[{\"type\":\"text\",\"text\":"
          << marshal::detail::json_quote(
-                "hero.lattice.resolve_latest_satisfying executed")
+                "hero.lattice.latest_satisfying_checkpoint executed")
          << "}],\"structuredContent\":{\"ok\":"
          << (resolver_ok ? "true" : "false")
          << ",\"read_only\":" << (read_only ? "true" : "false")
@@ -2205,14 +2377,15 @@ std::string prepare_context_json() {
          "\"freshness_check_timestamp_utc\":\"2026-05-24T00:00:00Z\"}";
 }
 
-std::string prepare_policy_json() {
+std::string prepare_policy_json(bool allow_execute = false,
+                                bool allow_train = false) {
   marshal::marshal_runtime_policy_snapshot_t policy{};
   policy.runtime_hero_available = true;
   policy.runtime_exec_exists = true;
   policy.runtime_exec_executable = true;
   policy.default_dry_run = true;
-  policy.allow_execute = false;
-  policy.allow_train_execute = false;
+  policy.allow_execute = allow_execute;
+  policy.allow_train_execute = allow_train;
   policy.runtime_root = "/tmp/marshal_prepare/runtime";
   return policy_json(policy);
 }
@@ -2241,6 +2414,7 @@ std::string prepare_args_json(bool include_checkpoint_inputs,
                               bool include_machine_payload) {
   return "{\"target_id\":\"channel_mdn_validation_eval_ready\","
          "\"source_lattice_timestamp\":\"2026-05-24T00:00:00Z\","
+         "\"drive_mode\":\"one_step\","
          "\"requested_mode\":\"dry_run\","
          "\"materialize_plan_inputs\":true,"
          "\"include_runtime_dry_run\":false,"
@@ -2252,7 +2426,239 @@ std::string prepare_args_json(bool include_checkpoint_inputs,
          "}";
 }
 
-void test_target_prepare_dispatch_unresolved_model_state() {
+std::filesystem::path
+write_prepare_runtime_files(bool allow_execute = false,
+                            bool allow_train = false,
+                            std::filesystem::path runtime_exec_path = {}) {
+  const auto root = std::filesystem::path("/tmp/marshal_prepare");
+  const auto runtime_root = root / "runtime";
+  const auto config_path = root / ".config";
+  const auto policy_path = root / "hero.runtime.dsl";
+  const auto wave_path = root / "wave.dsl";
+  std::filesystem::remove_all(root);
+  std::filesystem::create_directories(runtime_root);
+  if (runtime_exec_path.empty()) {
+    runtime_exec_path = "/bin/true";
+  }
+  write_text(config_path, "[HERO]\n"
+                          "runtime_hero_dsl_path = " +
+                              policy_path.string() +
+                              "\n"
+                              "[KIKIJYEBA]\n"
+                              "kikijyeba_settings_wave_dsl_path = " +
+                              wave_path.string() + "\n");
+  write_text(policy_path, "protocol_layer[STDIO|HTTPS/SSE]:enum = STDIO\n"
+                          "runtime_exec_path:path = " +
+                              runtime_exec_path.string() +
+                              "\n"
+                              "default_config_path:path = " +
+                              config_path.string() +
+                              "\n"
+                              "runtime_root:path = " +
+                              runtime_root.string() +
+                              "\n"
+                              "allowed_job_roots:path_list = " +
+                              runtime_root.string() +
+                              ",/tmp\n"
+                              "default_dry_run:bool = true\n"
+                              "allow_execute:bool = " +
+                              std::string(allow_execute ? "true" : "false") +
+                              "\n"
+                              "allow_train_execute:bool = " +
+                              std::string(allow_train ? "true" : "false") +
+                              "\n"
+                              "allow_force_rebuild_cache:bool = false\n"
+                              "require_confirm_execute:bool = true\n"
+                              "allow_dev_nuke:bool = false\n"
+                              "require_confirm_dev_nuke:bool = true\n"
+                              "dev_nuke_backup_enabled:bool = true\n"
+                              "dev_nuke_backup_root:path = " +
+                              (root / "backups").string() +
+                              "\n"
+                              "allowed_dev_nuke_roots:path_list = " +
+                              runtime_root.string() +
+                              "\n"
+                              "max_capture_bytes:int = 4096\n"
+                              "max_runtime_seconds:int = 5\n");
+  write_text(wave_path,
+             "KIKIJYEBA_WAVE {\n"
+             "  WAVE_ID = prepare_validation_eval;\n"
+             "  TARGET = wikimyei.inference.expected_value.mdn;\n"
+             "  MODE = run|debug;\n"
+             "  SOURCE_CURSOR_KIND = graph_anchor;\n"
+             "  SOURCE_CURSOR_SCOPE = wave_batch;\n"
+             "  SOURCE_RANGE = anchor_index;\n"
+             "  ANCHOR_INDEX_BEGIN = 1800;\n"
+             "  ANCHOR_INDEX_END = 2050;\n"
+             "  INPUT_MDN_CHECKPOINT = /tmp/marshal_prepare/runtime/mdn.pt;\n"
+             "  INPUT_REPRESENTATION_CHECKPOINT = "
+             "/tmp/marshal_prepare/runtime/vicreg.pt;\n"
+             "};\n");
+  return root;
+}
+
+std::filesystem::path write_terminal_fact_runtime_exec() {
+  const auto script = std::filesystem::path("/tmp/marshal_prepare") /
+                      "runtime_exec_with_terminal_fact.sh";
+  const auto job_dir = std::filesystem::path("/tmp/marshal_prepare/runtime") /
+                       "terminal_completed_job";
+  write_text(script,
+             "#!/bin/sh\n"
+             "set -eu\n"
+             "job_dir='" +
+                 job_dir.string() +
+                 "'\n"
+                 "mkdir -p \"$job_dir\"\n"
+                 "cat > \"$job_dir/job.manifest\" <<'EOF'\n"
+                 "job_id=terminal_completed_job\n"
+                 "job_kind=channel_inference_mdn\n"
+                 "wave_id=prepare_validation_eval\n"
+                 "wave_action=run\n"
+                 "target_component_family_id=wikimyei.inference.expected_value."
+                 "mdn\n"
+                 "runtime_handoff_id=terminal_handoff\n"
+                 "runtime_handoff_digest=terminal_handoff_digest\n"
+                 "EOF\n"
+                 "cat > \"$job_dir/job.state\" <<'EOF'\n"
+                 "job_id=terminal_completed_job\n"
+                 "job_kind=channel_inference_mdn\n"
+                 "status=completed\n"
+                 "wave_id=prepare_validation_eval\n"
+                 "wave_action=run\n"
+                 "optimizer_steps=0\n"
+                 "checkpoint_written=false\n"
+                 "EOF\n"
+                 "cat > \"$job_dir/runtime.result.fact\" <<'EOF'\n"
+                 "fact_type=runtime.result.fact\n"
+                 "job_id=terminal_completed_job\n"
+                 "job_kind=channel_inference_mdn\n"
+                 "status=completed\n"
+                 "optimizer_steps=0\n"
+                 "checkpoint_written=false\n"
+                 "runtime_handoff_id=terminal_handoff\n"
+                 "runtime_handoff_digest=terminal_handoff_digest\n"
+                 "fact_digest=test_terminal_fact_digest\n"
+                 "EOF\n"
+                 "echo manifest_path=$job_dir/job.manifest\n");
+  std::filesystem::permissions(script,
+                               std::filesystem::perms::owner_exec |
+                                   std::filesystem::perms::owner_read |
+                                   std::filesystem::perms::owner_write,
+                               std::filesystem::perm_options::replace);
+  return script;
+}
+
+std::filesystem::path write_state_only_runtime_exec() {
+  const auto script = std::filesystem::path("/tmp/marshal_prepare") /
+                      "runtime_exec_with_state_only.sh";
+  const auto job_dir = std::filesystem::path("/tmp/marshal_prepare/runtime") /
+                       "terminal_state_only_job";
+  write_text(script,
+             "#!/bin/sh\n"
+             "set -eu\n"
+             "job_dir='" +
+                 job_dir.string() +
+                 "'\n"
+                 "mkdir -p \"$job_dir\"\n"
+                 "cat > \"$job_dir/job.manifest\" <<'EOF'\n"
+                 "job_id=terminal_state_only_job\n"
+                 "job_kind=channel_inference_mdn\n"
+                 "wave_id=prepare_validation_eval\n"
+                 "wave_action=run\n"
+                 "target_component_family_id=wikimyei.inference.expected_value."
+                 "mdn\n"
+                 "runtime_handoff_id=state_only_handoff\n"
+                 "runtime_handoff_digest=state_only_handoff_digest\n"
+                 "EOF\n"
+                 "cat > \"$job_dir/job.state\" <<'EOF'\n"
+                 "job_id=terminal_state_only_job\n"
+                 "job_kind=channel_inference_mdn\n"
+                 "status=completed\n"
+                 "wave_id=prepare_validation_eval\n"
+                 "wave_action=run\n"
+                 "optimizer_steps=0\n"
+                 "checkpoint_written=false\n"
+                 "EOF\n"
+                 "echo manifest_path=$job_dir/job.manifest\n");
+  std::filesystem::permissions(script,
+                               std::filesystem::perms::owner_exec |
+                                   std::filesystem::perms::owner_read |
+                                   std::filesystem::perms::owner_write,
+                               std::filesystem::perm_options::replace);
+  return script;
+}
+
+std::filesystem::path
+write_checkpoint_io_runtime_exec(bool write_checkpoint_io_fact) {
+  const auto script =
+      std::filesystem::path("/tmp/marshal_prepare") /
+      (write_checkpoint_io_fact ? "runtime_exec_with_checkpoint_io_fact.sh"
+                                : "runtime_exec_missing_checkpoint_io_fact.sh");
+  const auto job_id = write_checkpoint_io_fact
+                          ? std::string("terminal_checkpoint_io_job")
+                          : std::string("terminal_missing_checkpoint_io_job");
+  const auto job_dir =
+      std::filesystem::path("/tmp/marshal_prepare/runtime") / job_id;
+  std::string text;
+  text += "#!/bin/sh\n";
+  text += "set -eu\n";
+  text += "job_dir='" + job_dir.string() + "'\n";
+  text += "mkdir -p \"$job_dir\"\n";
+  text += "cat > \"$job_dir/job.manifest\" <<'EOF'\n";
+  text += "job_id=" + job_id + "\n";
+  text += "job_kind=channel_inference_mdn\n";
+  text += "wave_id=prepare_validation_eval\n";
+  text += "wave_action=run\n";
+  text += "target_component_family_id=wikimyei.inference.expected_value.mdn\n";
+  text += "runtime_handoff_id=checkpoint_io_handoff\n";
+  text += "runtime_handoff_digest=checkpoint_io_handoff_digest\n";
+  text += "EOF\n";
+  text += "cat > \"$job_dir/job.state\" <<'EOF'\n";
+  text += "job_id=" + job_id + "\n";
+  text += "job_kind=channel_inference_mdn\n";
+  text += "status=completed\n";
+  text += "wave_id=prepare_validation_eval\n";
+  text += "wave_action=run\n";
+  text += "optimizer_steps=3\n";
+  text += "checkpoint_written=true\n";
+  text += "checkpoint_path=/tmp/marshal_prepare/runtime/mdn_out.pt\n";
+  text += "EOF\n";
+  text += "cat > \"$job_dir/runtime.result.fact\" <<'EOF'\n";
+  text += "fact_type=runtime.result.fact\n";
+  text += "job_id=" + job_id + "\n";
+  text += "job_kind=channel_inference_mdn\n";
+  text += "status=completed\n";
+  text += "optimizer_steps=3\n";
+  text += "checkpoint_written=true\n";
+  text += "checkpoint_path=/tmp/marshal_prepare/runtime/mdn_out.pt\n";
+  text += "runtime_handoff_id=checkpoint_io_handoff\n";
+  text += "runtime_handoff_digest=checkpoint_io_handoff_digest\n";
+  text += "fact_digest=test_checkpoint_io_terminal_fact_digest\n";
+  text += "EOF\n";
+  if (write_checkpoint_io_fact) {
+    text += "cat > \"$job_dir/runtime.checkpoint_io.fact\" <<'EOF'\n";
+    text += "fact_type=runtime.checkpoint_io.fact\n";
+    text += "job_id=" + job_id + "\n";
+    text += "job_kind=channel_inference_mdn\n";
+    text += "status=completed\n";
+    text += "checkpoint_written=true\n";
+    text += "checkpoint_path=/tmp/marshal_prepare/runtime/mdn_out.pt\n";
+    text += "runtime_handoff_id=checkpoint_io_handoff\n";
+    text += "runtime_handoff_digest=checkpoint_io_handoff_digest\n";
+    text += "fact_digest=test_checkpoint_io_fact_digest\n";
+    text += "EOF\n";
+  }
+  text += "echo manifest_path=$job_dir/job.manifest\n";
+  write_text(script, text);
+  std::filesystem::permissions(script,
+                               std::filesystem::perms::owner_exec |
+                                   std::filesystem::perms::owner_read |
+                                   std::filesystem::perms::owner_write,
+                               std::filesystem::perm_options::replace);
+  return script;
+}
+
+void test_target_reach_lattice_target_unresolved_model_state() {
   g_fake_lattice_resolve_count = 0;
   g_fake_lattice_resolve_concrete = false;
   g_fake_lattice_resolve_fault.clear();
@@ -2260,10 +2666,10 @@ void test_target_prepare_dispatch_unresolved_model_state() {
 
   std::string result;
   std::string error;
-  check(marshal::execute_marshal_tool_json(
-            "hero.marshal.prepare_target_dispatch",
-            prepare_args_json(false, false), &result, &error),
-        "prepare_target_dispatch should produce an operator packet");
+  check(marshal::execute_marshal_tool_json("hero.marshal.reach_lattice_target",
+                                           prepare_args_json(false, false),
+                                           &result, &error),
+        "reach_lattice_target should produce an operator packet");
   check(result.find("\"dispatch_state\":\"blocked\"") != std::string::npos,
         "unresolved model-state inputs should block dispatch preparation");
   check(result.find("\"blocker_bucket\":\"unresolved_model_state\"") !=
@@ -2279,14 +2685,14 @@ void test_target_prepare_dispatch_unresolved_model_state() {
         "symbolic checkpoint inputs should report pending checkpoint match");
   check(result.find("\"runtime_dry_run\":{\"requested\":false,"
                     "\"attempted\":false") != std::string::npos,
-        "prepare_target_dispatch must not dry-run by default");
+        "reach_lattice_target must not dry-run by default");
   check(g_fake_lattice_resolve_count == 2,
-        "prepare_target_dispatch should ask Lattice to resolve both hints");
+        "reach_lattice_target should ask Lattice to resolve both hints");
 
   marshal::set_marshal_lattice_tool_callback(nullptr);
 }
 
-void test_target_prepare_dispatch_resolved_ready_for_dry_run() {
+void test_target_reach_lattice_target_resolved_ready_for_dry_run() {
   g_fake_lattice_resolve_count = 0;
   g_fake_lattice_resolve_concrete = true;
   g_fake_lattice_resolve_fault.clear();
@@ -2294,10 +2700,10 @@ void test_target_prepare_dispatch_resolved_ready_for_dry_run() {
 
   std::string result;
   std::string error;
-  check(marshal::execute_marshal_tool_json(
-            "hero.marshal.prepare_target_dispatch",
-            prepare_args_json(true, true), &result, &error),
-        "prepare_target_dispatch should materialize resolved hints");
+  check(marshal::execute_marshal_tool_json("hero.marshal.reach_lattice_target",
+                                           prepare_args_json(true, true),
+                                           &result, &error),
+        "reach_lattice_target should materialize resolved hints");
   check(
       result.find("\"dispatch_state\":\"ready_for_dry_run\"") !=
           std::string::npos,
@@ -2321,7 +2727,46 @@ void test_target_prepare_dispatch_resolved_ready_for_dry_run() {
   marshal::set_marshal_lattice_tool_callback(nullptr);
 }
 
-void test_target_prepare_dispatch_rejects_untrusted_resolution() {
+void test_reach_lattice_target_wraps_target_dispatch() {
+  g_fake_lattice_resolve_count = 0;
+  g_fake_lattice_resolve_concrete = true;
+  g_fake_lattice_resolve_fault.clear();
+  marshal::set_marshal_lattice_tool_callback(fake_lattice_prepare_callback);
+
+  std::string result;
+  std::string error;
+  check(marshal::execute_marshal_tool_json("hero.marshal.reach_lattice_target",
+                                           prepare_args_json(true, false),
+                                           &result, &error),
+        "reach_lattice_target should produce the target-first operator packet");
+  check(result.find("\"tool\":\"hero.marshal.reach_lattice_target\"") !=
+            std::string::npos,
+        "reach_lattice_target should identify the high-level Marshal tool");
+  check(result.find("\"operator_summary\":{") != std::string::npos &&
+            result.find("\"stop_reason\":{") != std::string::npos &&
+            result.find("\"wave_panel\":{") != std::string::npos &&
+            result.find("\"runtime_panel\":{") != std::string::npos &&
+            result.find("\"lattice_panel\":{") != std::string::npos &&
+            result.find("\"audit_panel\":{") != std::string::npos,
+        "reach_lattice_target should expose the M19 compact operator panels");
+  check(
+      result.find("\"dispatch_state\":\"ready_for_dry_run\"") !=
+          std::string::npos,
+      "reach_lattice_target should reuse the target-dispatch readiness logic");
+  check(result.find("\"next_command\":{\"tool\":\"hero.marshal.reach_"
+                    "lattice_target\"") != std::string::npos,
+        "reach_lattice_target should keep follow-up commands on the high-level "
+        "surface");
+  check(result.find("\"checkpoint_inputs_match\":true") != std::string::npos,
+        "reach_lattice_target should still check Runtime checkpoint inputs");
+  check(g_fake_lattice_resolve_count == 2,
+        "reach_lattice_target should still delegate checkpoint resolution to "
+        "the existing read-only callback");
+
+  marshal::set_marshal_lattice_tool_callback(nullptr);
+}
+
+void test_target_reach_lattice_target_rejects_untrusted_resolution() {
   g_fake_lattice_resolve_count = 0;
   g_fake_lattice_resolve_concrete = true;
   g_fake_lattice_resolve_fault = "proof_check_failed";
@@ -2329,10 +2774,10 @@ void test_target_prepare_dispatch_rejects_untrusted_resolution() {
 
   std::string result;
   std::string error;
-  check(marshal::execute_marshal_tool_json(
-            "hero.marshal.prepare_target_dispatch",
-            prepare_args_json(true, false), &result, &error),
-        "prepare_target_dispatch should keep responding to untrusted resolver "
+  check(marshal::execute_marshal_tool_json("hero.marshal.reach_lattice_target",
+                                           prepare_args_json(true, false),
+                                           &result, &error),
+        "reach_lattice_target should keep responding to untrusted resolver "
         "output");
   check(result.find("\"dispatch_state\":\"blocked\"") != std::string::npos,
         "untrusted resolver proof should block dispatch preparation");
@@ -2348,10 +2793,10 @@ void test_target_prepare_dispatch_rejects_untrusted_resolution() {
 
   g_fake_lattice_resolve_fault = "authority_violation";
   g_fake_lattice_resolve_count = 0;
-  check(marshal::execute_marshal_tool_json(
-            "hero.marshal.prepare_target_dispatch",
-            prepare_args_json(true, false), &result, &error),
-        "prepare_target_dispatch should report resolver authority violations");
+  check(marshal::execute_marshal_tool_json("hero.marshal.reach_lattice_target",
+                                           prepare_args_json(true, false),
+                                           &result, &error),
+        "reach_lattice_target should report resolver authority violations");
   check(result.find("\"status\":\"resolver_authority_violation\"") !=
             std::string::npos,
         "Marshal should reject resolver output that is not read-only");
@@ -2360,10 +2805,10 @@ void test_target_prepare_dispatch_rejects_untrusted_resolution() {
 
   g_fake_lattice_resolve_fault = "source_target_mismatch";
   g_fake_lattice_resolve_count = 0;
-  check(marshal::execute_marshal_tool_json(
-            "hero.marshal.prepare_target_dispatch",
-            prepare_args_json(true, false), &result, &error),
-        "prepare_target_dispatch should reject resolver source-target drift");
+  check(marshal::execute_marshal_tool_json("hero.marshal.reach_lattice_target",
+                                           prepare_args_json(true, false),
+                                           &result, &error),
+        "reach_lattice_target should reject resolver source-target drift");
   check(result.find("\"status\":\"resolver_source_target_mismatch\"") !=
             std::string::npos,
         "Marshal should require Lattice to resolve the same requested target");
@@ -2372,10 +2817,10 @@ void test_target_prepare_dispatch_rejects_untrusted_resolution() {
 
   g_fake_lattice_resolve_fault = "target_status_not_satisfied";
   g_fake_lattice_resolve_count = 0;
-  check(marshal::execute_marshal_tool_json(
-            "hero.marshal.prepare_target_dispatch",
-            prepare_args_json(true, false), &result, &error),
-        "prepare_target_dispatch should reject non-satisfying source targets");
+  check(marshal::execute_marshal_tool_json("hero.marshal.reach_lattice_target",
+                                           prepare_args_json(true, false),
+                                           &result, &error),
+        "reach_lattice_target should reject non-satisfying source targets");
   check(result.find("\"status\":\"target_not_satisfied\"") != std::string::npos,
         "Marshal should require latest_satisfying sources to be satisfied");
   check(result.find("\"dispatch_state\":\"blocked\"") != std::string::npos,
@@ -2386,20 +2831,1049 @@ void test_target_prepare_dispatch_rejects_untrusted_resolution() {
   marshal::set_marshal_lattice_tool_callback(nullptr);
 }
 
+void test_m15_budgeted_reach_lattice_target_dry_run_driver() {
+  const auto root = write_prepare_runtime_files();
+  g_fake_lattice_resolve_count = 0;
+  g_fake_lattice_resolve_concrete = true;
+  g_fake_lattice_resolve_fault.clear();
+  g_fake_lattice_prepare_warning = false;
+  marshal::set_marshal_lattice_tool_callback(fake_lattice_prepare_callback);
+
+  const std::string args =
+      "{\"target_id\":\"channel_mdn_validation_eval_ready\","
+      "\"drive_mode\":\"budgeted\","
+      "\"requested_mode\":\"dry_run\","
+      "\"source_lattice_timestamp\":\"2026-05-24T00:00:00Z\","
+      "\"materialize_plan_inputs\":true,"
+      "\"include_runtime_dry_run\":false,"
+      "\"include_machine_payload\":true,"
+      "\"timeout_seconds\":5,"
+      "\"driver_policy\":{\"max_waves\":1,"
+      "\"max_wall_clock_seconds\":0,"
+      "\"allow_execute\":false,"
+      "\"allow_train_execute\":false,"
+      "\"require_runtime_job_completion\":true,"
+      "\"require_post_wave_lattice_satisfied_check\":true,"
+      "\"no_progress_window\":1},"
+      "\"context\":" +
+      prepare_context_json() + ",\"runtime_policy\":" + prepare_policy_json() +
+      ",\"runtime_wave\":" + prepare_wave_json(true) + "}";
+
+  std::string result;
+  std::string error;
+  check(marshal::execute_marshal_tool_json("hero.marshal.reach_lattice_target",
+                                           args, &result, &error),
+        "budgeted reach_lattice_target should execute bounded dry-run driver");
+  check(result.find("\"drive_mode\":\"budgeted\"") != std::string::npos,
+        "budgeted driver should report drive_mode");
+  check(result.find("\"driver_terminal_state\":\"blocked_max_waves\"") !=
+            std::string::npos,
+        "budgeted dry-run with one wave should stop on finite max_waves");
+  check(result.find("\"runtime_dry_run\":{\"requested\":true,"
+                    "\"attempted\":true,\"accepted\":true") !=
+            std::string::npos,
+        "budgeted dry-run should perform exactly one Runtime dry-run handoff");
+  check(result.find("\"runtime_handoff_attempt_count\":1") != std::string::npos,
+        "target-driver ledger should count Runtime handoff attempts");
+  check(result.find("\"execution_attempt_count\":0") != std::string::npos,
+        "dry-run driver must not execute Runtime state mutation");
+  check(result.find("\"driver_policy_digest\":") != std::string::npos,
+        "target-driver ledger should record driver_policy digest");
+  check(result.find("\"iteration_digest\":") != std::string::npos,
+        "target-driver ledger should record per-iteration digest");
+  check(result.find("\"non_authority_statement\":") != std::string::npos,
+        "target-driver ledger should keep Marshal non-authority boundary");
+  check(g_fake_lattice_resolve_count == 2,
+        "budgeted dry-run should resolve both checkpoint hints once");
+
+  marshal::set_marshal_lattice_tool_callback(nullptr);
+  std::filesystem::remove_all(root);
+}
+
+void test_m16_5_budgeted_reach_lattice_target_requires_explicit_policy() {
+  g_fake_lattice_resolve_count = 0;
+  g_fake_lattice_resolve_concrete = true;
+  g_fake_lattice_resolve_fault.clear();
+  g_fake_lattice_prepare_warning = false;
+  marshal::set_marshal_lattice_tool_callback(fake_lattice_prepare_callback);
+
+  const std::string missing_policy_args =
+      "{\"target_id\":\"channel_mdn_validation_eval_ready\","
+      "\"drive_mode\":\"budgeted\","
+      "\"requested_mode\":\"dry_run\","
+      "\"source_lattice_timestamp\":\"2026-05-24T00:00:00Z\"}";
+  std::string result;
+  std::string error;
+  check(!marshal::execute_marshal_tool_json("hero.marshal.reach_lattice_target",
+                                            missing_policy_args, &result,
+                                            &error),
+        "budgeted reach_lattice_target should reject missing driver_policy");
+  check(error.find("requires explicit driver_policy") != std::string::npos,
+        "missing driver_policy error should be explicit");
+
+  const std::string missing_max_waves_args =
+      "{\"target_id\":\"channel_mdn_validation_eval_ready\","
+      "\"drive_mode\":\"budgeted\","
+      "\"requested_mode\":\"dry_run\","
+      "\"source_lattice_timestamp\":\"2026-05-24T00:00:00Z\","
+      "\"driver_policy\":{\"no_progress_window\":1}}";
+  check(!marshal::execute_marshal_tool_json("hero.marshal.reach_lattice_target",
+                                            missing_max_waves_args, &result,
+                                            &error),
+        "budgeted reach_lattice_target should reject missing max_waves");
+  check(error.find("requires driver_policy.max_waves") != std::string::npos,
+        "missing max_waves error should be explicit");
+
+  marshal::set_marshal_lattice_tool_callback(nullptr);
+}
+
+void test_m15_budgeted_reach_lattice_target_no_progress_window() {
+  const auto root = write_prepare_runtime_files();
+  g_fake_lattice_resolve_count = 0;
+  g_fake_lattice_resolve_concrete = true;
+  g_fake_lattice_resolve_fault.clear();
+  g_fake_lattice_prepare_warning = false;
+  marshal::set_marshal_lattice_tool_callback(fake_lattice_prepare_callback);
+
+  const std::string args =
+      "{\"target_id\":\"channel_mdn_validation_eval_ready\","
+      "\"drive_mode\":\"budgeted\","
+      "\"requested_mode\":\"dry_run\","
+      "\"source_lattice_timestamp\":\"2026-05-24T00:00:00Z\","
+      "\"materialize_plan_inputs\":true,"
+      "\"timeout_seconds\":5,"
+      "\"driver_policy\":{\"max_waves\":3,"
+      "\"no_progress_window\":1},"
+      "\"context\":" +
+      prepare_context_json() + ",\"runtime_policy\":" + prepare_policy_json() +
+      ",\"runtime_wave\":" + prepare_wave_json(true) + "}";
+
+  std::string result;
+  std::string error;
+  check(marshal::execute_marshal_tool_json("hero.marshal.reach_lattice_target",
+                                           args, &result, &error),
+        "budgeted dry-run driver should enforce no-progress window");
+  check(result.find("\"driver_terminal_state\":\"blocked_no_progress\"") !=
+            std::string::npos,
+        "repeated target deficit should stop on no-progress");
+  check(result.find("\"runtime_handoff_attempt_count\":1") != std::string::npos,
+        "no-progress should stop before repeating Runtime dry-run handoff");
+  check(result.find("\"iteration_count\":2") != std::string::npos,
+        "no-progress ledger should record the repeated Lattice check");
+  check(g_fake_lattice_resolve_count == 4,
+        "two Lattice deficit checks should materialize two checkpoint hints "
+        "each before no-progress stop");
+
+  marshal::set_marshal_lattice_tool_callback(nullptr);
+  std::filesystem::remove_all(root);
+}
+
+void test_m16_5_execute_requires_runtime_terminal_evidence() {
+  const auto root = write_prepare_runtime_files(/*allow_execute=*/true);
+  g_fake_lattice_resolve_count = 0;
+  g_fake_lattice_resolve_concrete = true;
+  g_fake_lattice_resolve_fault.clear();
+  g_fake_lattice_prepare_warning = false;
+  marshal::set_marshal_lattice_tool_callback(fake_lattice_prepare_callback);
+
+  const std::string args =
+      "{\"target_id\":\"channel_mdn_validation_eval_ready\","
+      "\"drive_mode\":\"budgeted\","
+      "\"requested_mode\":\"execute\","
+      "\"source_lattice_timestamp\":\"2026-05-24T00:00:00Z\","
+      "\"materialize_plan_inputs\":true,"
+      "\"timeout_seconds\":5,"
+      "\"driver_policy\":{\"max_waves\":1,"
+      "\"max_wall_clock_seconds\":5,"
+      "\"allow_execute\":true,"
+      "\"require_runtime_job_completion\":true,"
+      "\"require_post_wave_lattice_satisfied_check\":false,"
+      "\"no_progress_window\":1},"
+      "\"context\":" +
+      prepare_context_json() +
+      ",\"runtime_policy\":" + prepare_policy_json(/*allow_execute=*/true) +
+      ",\"runtime_wave\":" + prepare_wave_json(true) + "}";
+
+  std::string result;
+  std::string error;
+  check(marshal::execute_marshal_tool_json("hero.marshal.reach_lattice_target",
+                                           args, &result, &error),
+        "execute target driver should return an operator packet");
+  check(result.find("\"driver_terminal_state\":"
+                    "\"blocked_runtime_completion_missing\"") !=
+            std::string::npos,
+        "execute with require_runtime_job_completion should block when Runtime "
+        "emits no durable terminal evidence");
+  check(result.find("\"runtime_job_completion_observed\":false") !=
+            std::string::npos,
+        "handoff.ok alone must not count as Runtime job completion evidence");
+
+  marshal::set_marshal_lattice_tool_callback(nullptr);
+  std::filesystem::remove_all(root);
+}
+
+void test_m16_5_execute_binds_runtime_terminal_evidence() {
+  const auto script_path = std::filesystem::path("/tmp/marshal_prepare") /
+                           "runtime_exec_with_terminal_fact.sh";
+  const auto root =
+      write_prepare_runtime_files(/*allow_execute=*/true,
+                                  /*allow_train=*/false, script_path);
+  (void)write_terminal_fact_runtime_exec();
+  g_fake_lattice_resolve_count = 0;
+  g_fake_lattice_resolve_concrete = true;
+  g_fake_lattice_resolve_fault.clear();
+  g_fake_lattice_prepare_warning = false;
+  marshal::set_marshal_lattice_tool_callback(fake_lattice_prepare_callback);
+
+  const std::string args =
+      "{\"target_id\":\"channel_mdn_validation_eval_ready\","
+      "\"drive_mode\":\"budgeted\","
+      "\"requested_mode\":\"execute\","
+      "\"source_lattice_timestamp\":\"2026-05-24T00:00:00Z\","
+      "\"materialize_plan_inputs\":true,"
+      "\"timeout_seconds\":5,"
+      "\"driver_policy\":{\"max_waves\":1,"
+      "\"max_wall_clock_seconds\":5,"
+      "\"allow_execute\":true,"
+      "\"require_runtime_job_completion\":true,"
+      "\"require_post_wave_lattice_satisfied_check\":false,"
+      "\"no_progress_window\":1},"
+      "\"context\":" +
+      prepare_context_json() +
+      ",\"runtime_policy\":" + prepare_policy_json(/*allow_execute=*/true) +
+      ",\"runtime_wave\":" + prepare_wave_json(true) + "}";
+
+  std::string result;
+  std::string error;
+  check(marshal::execute_marshal_tool_json("hero.marshal.reach_lattice_target",
+                                           args, &result, &error),
+        "execute target driver should bind terminal Runtime evidence");
+  check(result.find("\"runtime_job_completion_observed\":true") !=
+            std::string::npos,
+        "durable terminal job evidence should satisfy completion observation");
+  check(result.find("\"runtime_job_id\":\"terminal_completed_job\"") !=
+            std::string::npos,
+        "target-driver iteration should bind Runtime job id");
+  check(result.find("\"runtime_terminal_fact_digest\":\"") != std::string::npos,
+        "target-driver iteration should bind terminal fact digest");
+  check(result.find("\"runtime_job_manifest_digest\":\"") != std::string::npos,
+        "target-driver iteration should bind job manifest digest");
+  check(result.find("\"runtime_handoff_digest\":\"terminal_handoff_digest\"") !=
+            std::string::npos,
+        "target-driver iteration should bind Runtime handoff digest from "
+        "terminal evidence");
+  check(result.find("\"last_runtime_job_manifest_digest\":\"") !=
+            std::string::npos,
+        "target-driver ledger should retain the last job manifest digest for "
+        "resume");
+  check(result.find("\"last_runtime_handoff_digest\":"
+                    "\"terminal_handoff_digest\"") != std::string::npos,
+        "target-driver ledger should retain the last handoff digest for "
+        "resume");
+  check(result.find("\"last_safe_point\":\"runtime_terminal_evidence\"") !=
+            std::string::npos,
+        "target-driver ledger should report the last verified Runtime evidence "
+        "point");
+  check(
+      result.find("\"next_safe_recheck\":\"ask_lattice_to_recheck_target\"") !=
+          std::string::npos,
+      "target-driver ledger should name the next safe proof recheck");
+
+  marshal::set_marshal_lattice_tool_callback(nullptr);
+  std::filesystem::remove_all(root);
+}
+
+void test_m20_execute_requires_runtime_result_fact_not_state_only() {
+  const auto script_path = std::filesystem::path("/tmp/marshal_prepare") /
+                           "runtime_exec_with_state_only.sh";
+  const auto root =
+      write_prepare_runtime_files(/*allow_execute=*/true,
+                                  /*allow_train=*/false, script_path);
+  (void)write_state_only_runtime_exec();
+  g_fake_lattice_resolve_count = 0;
+  g_fake_lattice_resolve_concrete = true;
+  g_fake_lattice_resolve_fault.clear();
+  g_fake_lattice_prepare_warning = false;
+  marshal::set_marshal_lattice_tool_callback(fake_lattice_prepare_callback);
+
+  const std::string args =
+      "{\"target_id\":\"channel_mdn_validation_eval_ready\","
+      "\"drive_mode\":\"budgeted\","
+      "\"requested_mode\":\"execute\","
+      "\"source_lattice_timestamp\":\"2026-05-24T00:00:00Z\","
+      "\"materialize_plan_inputs\":true,"
+      "\"timeout_seconds\":5,"
+      "\"driver_policy\":{\"max_waves\":1,"
+      "\"max_wall_clock_seconds\":5,"
+      "\"allow_execute\":true,"
+      "\"require_runtime_job_completion\":true,"
+      "\"require_post_wave_lattice_satisfied_check\":false,"
+      "\"no_progress_window\":1},"
+      "\"context\":" +
+      prepare_context_json() +
+      ",\"runtime_policy\":" + prepare_policy_json(/*allow_execute=*/true) +
+      ",\"runtime_wave\":" + prepare_wave_json(true) + "}";
+
+  std::string result;
+  std::string error;
+  check(marshal::execute_marshal_tool_json("hero.marshal.reach_lattice_target",
+                                           args, &result, &error),
+        "execute target driver should return an operator packet for state-only "
+        "Runtime output");
+  check(result.find("\"driver_terminal_state\":"
+                    "\"blocked_runtime_completion_missing\"") !=
+            std::string::npos,
+        "job.state alone must not satisfy require_runtime_job_completion");
+  check(result.find("runtime_result_fact_missing") != std::string::npos,
+        "state-only Runtime output should name missing runtime.result.fact");
+  check(result.find("\"runtime_job_completion_observed\":false") !=
+            std::string::npos,
+        "completion observation must stay false without runtime.result.fact");
+
+  marshal::set_marshal_lattice_tool_callback(nullptr);
+  std::filesystem::remove_all(root);
+}
+
+void test_m20_execute_requires_checkpoint_io_fact_when_checkpoint_io_occurs() {
+  const auto script_path = std::filesystem::path("/tmp/marshal_prepare") /
+                           "runtime_exec_missing_checkpoint_io_fact.sh";
+  const auto root =
+      write_prepare_runtime_files(/*allow_execute=*/true,
+                                  /*allow_train=*/false, script_path);
+  (void)write_checkpoint_io_runtime_exec(/*write_checkpoint_io_fact=*/false);
+  g_fake_lattice_resolve_count = 0;
+  g_fake_lattice_resolve_concrete = true;
+  g_fake_lattice_resolve_fault.clear();
+  g_fake_lattice_prepare_warning = false;
+  marshal::set_marshal_lattice_tool_callback(fake_lattice_prepare_callback);
+
+  const std::string args =
+      "{\"target_id\":\"channel_mdn_validation_eval_ready\","
+      "\"drive_mode\":\"budgeted\","
+      "\"requested_mode\":\"execute\","
+      "\"source_lattice_timestamp\":\"2026-05-24T00:00:00Z\","
+      "\"materialize_plan_inputs\":true,"
+      "\"timeout_seconds\":5,"
+      "\"driver_policy\":{\"max_waves\":1,"
+      "\"max_wall_clock_seconds\":5,"
+      "\"allow_execute\":true,"
+      "\"require_runtime_job_completion\":true,"
+      "\"require_post_wave_lattice_satisfied_check\":false,"
+      "\"no_progress_window\":1},"
+      "\"context\":" +
+      prepare_context_json() +
+      ",\"runtime_policy\":" + prepare_policy_json(/*allow_execute=*/true) +
+      ",\"runtime_wave\":" + prepare_wave_json(true) + "}";
+
+  std::string result;
+  std::string error;
+  check(marshal::execute_marshal_tool_json("hero.marshal.reach_lattice_target",
+                                           args, &result, &error),
+        "execute target driver should report missing checkpoint I/O fact");
+  check(result.find("\"driver_terminal_state\":"
+                    "\"blocked_runtime_checkpoint_io_missing\"") !=
+            std::string::npos,
+        "checkpoint writes require runtime.checkpoint_io.fact");
+  check(result.find("runtime_checkpoint_io_fact_missing") != std::string::npos,
+        "missing checkpoint I/O fact should be audit-visible");
+  check(result.find("\"runtime_checkpoint_io_fact_digest\":\"\"") !=
+            std::string::npos,
+        "missing checkpoint I/O fact should leave digest empty");
+
+  marshal::set_marshal_lattice_tool_callback(nullptr);
+  std::filesystem::remove_all(root);
+}
+
+void test_m20_execute_binds_checkpoint_io_fact() {
+  const auto script_path = std::filesystem::path("/tmp/marshal_prepare") /
+                           "runtime_exec_with_checkpoint_io_fact.sh";
+  const auto root =
+      write_prepare_runtime_files(/*allow_execute=*/true,
+                                  /*allow_train=*/false, script_path);
+  (void)write_checkpoint_io_runtime_exec(/*write_checkpoint_io_fact=*/true);
+  g_fake_lattice_resolve_count = 0;
+  g_fake_lattice_resolve_concrete = true;
+  g_fake_lattice_resolve_fault.clear();
+  g_fake_lattice_prepare_warning = false;
+  marshal::set_marshal_lattice_tool_callback(fake_lattice_prepare_callback);
+
+  const std::string args =
+      "{\"target_id\":\"channel_mdn_validation_eval_ready\","
+      "\"drive_mode\":\"budgeted\","
+      "\"requested_mode\":\"execute\","
+      "\"source_lattice_timestamp\":\"2026-05-24T00:00:00Z\","
+      "\"materialize_plan_inputs\":true,"
+      "\"timeout_seconds\":5,"
+      "\"driver_policy\":{\"max_waves\":1,"
+      "\"max_wall_clock_seconds\":5,"
+      "\"allow_execute\":true,"
+      "\"require_runtime_job_completion\":true,"
+      "\"require_post_wave_lattice_satisfied_check\":false,"
+      "\"no_progress_window\":1},"
+      "\"context\":" +
+      prepare_context_json() +
+      ",\"runtime_policy\":" + prepare_policy_json(/*allow_execute=*/true) +
+      ",\"runtime_wave\":" + prepare_wave_json(true) + "}";
+
+  std::string result;
+  std::string error;
+  check(marshal::execute_marshal_tool_json("hero.marshal.reach_lattice_target",
+                                           args, &result, &error),
+        "execute target driver should accept checkpoint I/O evidence");
+  check(result.find("\"runtime_job_completion_observed\":true") !=
+            std::string::npos,
+        "runtime.result.fact plus checkpoint I/O fact should satisfy "
+        "completion observation");
+  check(result.find("\"runtime_checkpoint_io_fact_digest\":\"") !=
+            std::string::npos,
+        "target-driver iteration should bind checkpoint I/O fact digest");
+  check(result.find("\"runtime_checkpoint_io_fact_digest\":\"\"") ==
+            std::string::npos,
+        "checkpoint I/O fact digest should not be empty when fact exists");
+  check(result.find("\"last_runtime_checkpoint_io_fact_digest\":\"") !=
+            std::string::npos,
+        "target-driver ledger should retain checkpoint I/O fact digest");
+
+  marshal::set_marshal_lattice_tool_callback(nullptr);
+  std::filesystem::remove_all(root);
+}
+
+void test_m15_budgeted_reach_lattice_target_stops_on_lattice_warning() {
+  const auto root = write_prepare_runtime_files();
+  g_fake_lattice_resolve_count = 0;
+  g_fake_lattice_resolve_concrete = true;
+  g_fake_lattice_resolve_fault.clear();
+  g_fake_lattice_prepare_warning = true;
+  g_fake_lattice_prepare_warning_kind.clear();
+  marshal::set_marshal_lattice_tool_callback(fake_lattice_prepare_callback);
+
+  const std::string args =
+      "{\"target_id\":\"channel_mdn_validation_eval_ready\","
+      "\"drive_mode\":\"budgeted\","
+      "\"requested_mode\":\"dry_run\","
+      "\"source_lattice_timestamp\":\"2026-05-24T00:00:00Z\","
+      "\"materialize_plan_inputs\":true,"
+      "\"timeout_seconds\":5,"
+      "\"driver_policy\":{\"max_waves\":3,"
+      "\"stop_on_lattice_warning\":true,"
+      "\"stop_on_warning_severity\":\"watch\","
+      "\"no_progress_window\":1},"
+      "\"context\":" +
+      prepare_context_json() + ",\"runtime_policy\":" + prepare_policy_json() +
+      ",\"runtime_wave\":" + prepare_wave_json(true) + "}";
+
+  std::string result;
+  std::string error;
+  check(marshal::execute_marshal_tool_json("hero.marshal.reach_lattice_target",
+                                           args, &result, &error),
+        "budgeted driver should enforce Lattice warning stop policy");
+  check(result.find("\"driver_terminal_state\":\"blocked_lattice_warning\"") !=
+            std::string::npos,
+        "Lattice warning should stop the target driver");
+  check(result.find("lattice_warning_severity") != std::string::npos,
+        "typed warning severity stop should be audit-visible in refusal "
+        "reasons");
+  check(result.find("lattice_warning_id:test_lattice_warning") !=
+            std::string::npos,
+        "typed warning stop should bind the warning id");
+  check(result.find("\"runtime_handoff_attempt_count\":0") != std::string::npos,
+        "Lattice warning stop should happen before Runtime handoff");
+
+  g_fake_lattice_prepare_warning = false;
+  g_fake_lattice_prepare_warning_kind.clear();
+  marshal::set_marshal_lattice_tool_callback(nullptr);
+  std::filesystem::remove_all(root);
+}
+
+void test_m21_typed_warning_policy_decision() {
+  const std::string mixed =
+      R"({"warnings":[{"warning_id":"low","severity":"watch","component":"target","blocking":false,"scope":"deficit","evidence_digest":"e1","source":"lattice"},{"warning_id":"high","severity":"critical","component":"target","blocking":false,"scope":"deficit","evidence_digest":"e2","source":"lattice"}]})";
+  const auto mixed_decision =
+      marshal::tool_detail::warning_stop_decision(mixed, "lattice", "watch");
+  check(mixed_decision.stop,
+        "mixed typed warnings should trigger when highest severity is above "
+        "threshold");
+  check(mixed_decision.warning.warning_id == "high",
+        "mixed typed warnings should choose the highest applicable severity");
+  check(mixed_decision.reason_code == "lattice_warning_severity",
+        "severity-based stop should carry a typed reason code");
+
+  const std::string below_threshold =
+      R"({"warnings":[{"warning_id":"watch_only","severity":"watch","component":"target","blocking":false,"scope":"deficit","evidence_digest":"e1","source":"lattice"}]})";
+  const auto below_decision = marshal::tool_detail::warning_stop_decision(
+      below_threshold, "lattice", "critical");
+  check(!below_decision.stop,
+        "non-blocking warning below threshold must remain visible but not stop "
+        "the driver");
+
+  const std::string missing_severity =
+      R"({"warnings":[{"warning_id":"missing","component":"target","blocking":false,"scope":"deficit","evidence_digest":"e1","source":"lattice"}]})";
+  const auto missing_decision = marshal::tool_detail::warning_stop_decision(
+      missing_severity, "lattice", "watch");
+  check(missing_decision.stop && missing_decision.malformed,
+        "missing warning severity should be handled deterministically");
+  check(missing_decision.reason_code == "lattice_warning_missing_severity",
+        "missing severity should have an explicit reason code");
+
+  const std::string unknown_severity =
+      R"({"warnings":[{"warning_id":"unknown","severity":"strange","component":"target","blocking":false,"scope":"deficit","evidence_digest":"e1","source":"lattice"}]})";
+  const auto unknown_decision = marshal::tool_detail::warning_stop_decision(
+      unknown_severity, "lattice", "watch");
+  check(unknown_decision.stop && unknown_decision.malformed,
+        "unknown warning severity should fail closed under stop policy");
+  check(unknown_decision.reason_code == "lattice_warning_unknown_severity",
+        "unknown severity should have an explicit reason code");
+
+  const std::string blocking =
+      R"({"warnings":[{"warning_id":"blocking","severity":"info","component":"target","blocking":true,"scope":"deficit","evidence_digest":"e1","source":"lattice"}]})";
+  const auto blocking_decision = marshal::tool_detail::warning_stop_decision(
+      blocking, "lattice", "critical");
+  check(blocking_decision.stop,
+        "blocking warnings should stop even below the severity threshold");
+  check(blocking_decision.reason_code == "lattice_warning_blocking",
+        "blocking warning stop should carry explicit owner/reason");
+}
+
+void test_m21_warning_only_visibility_does_not_stop_below_threshold() {
+  const auto root = write_prepare_runtime_files();
+  g_fake_lattice_resolve_count = 0;
+  g_fake_lattice_resolve_concrete = true;
+  g_fake_lattice_resolve_fault.clear();
+  g_fake_lattice_prepare_warning = true;
+  g_fake_lattice_prepare_warning_kind.clear();
+  marshal::set_marshal_lattice_tool_callback(fake_lattice_prepare_callback);
+
+  const std::string args =
+      "{\"target_id\":\"channel_mdn_validation_eval_ready\","
+      "\"drive_mode\":\"budgeted\","
+      "\"requested_mode\":\"dry_run\","
+      "\"source_lattice_timestamp\":\"2026-05-24T00:00:00Z\","
+      "\"materialize_plan_inputs\":true,"
+      "\"timeout_seconds\":5,"
+      "\"driver_policy\":{\"max_waves\":1,"
+      "\"stop_on_lattice_warning\":true,"
+      "\"stop_on_warning_severity\":\"critical\","
+      "\"no_progress_window\":1},"
+      "\"context\":" +
+      prepare_context_json() + ",\"runtime_policy\":" + prepare_policy_json() +
+      ",\"runtime_wave\":" + prepare_wave_json(true) + "}";
+
+  std::string result;
+  std::string error;
+  check(marshal::execute_marshal_tool_json("hero.marshal.reach_lattice_target",
+                                           args, &result, &error),
+        "non-blocking warning below threshold should still produce a bounded "
+        "driver packet");
+  check(result.find("\"driver_terminal_state\":\"blocked_lattice_warning\"") ==
+            std::string::npos,
+        "warning-only visibility below threshold must not become a driver "
+        "failure");
+  check(result.find("\"runtime_handoff_attempt_count\":1") != std::string::npos,
+        "driver should continue to Runtime dry-run when warning is below "
+        "threshold");
+
+  g_fake_lattice_prepare_warning = false;
+  g_fake_lattice_prepare_warning_kind.clear();
+  marshal::set_marshal_lattice_tool_callback(nullptr);
+  std::filesystem::remove_all(root);
+}
+
+void test_m21_blocking_lattice_warning_stops_with_owner_reason() {
+  const auto root = write_prepare_runtime_files();
+  g_fake_lattice_resolve_count = 0;
+  g_fake_lattice_resolve_concrete = true;
+  g_fake_lattice_resolve_fault.clear();
+  g_fake_lattice_prepare_warning = true;
+  g_fake_lattice_prepare_warning_kind = "blocking";
+  marshal::set_marshal_lattice_tool_callback(fake_lattice_prepare_callback);
+
+  const std::string args =
+      "{\"target_id\":\"channel_mdn_validation_eval_ready\","
+      "\"drive_mode\":\"budgeted\","
+      "\"requested_mode\":\"dry_run\","
+      "\"source_lattice_timestamp\":\"2026-05-24T00:00:00Z\","
+      "\"materialize_plan_inputs\":true,"
+      "\"timeout_seconds\":5,"
+      "\"driver_policy\":{\"max_waves\":3,"
+      "\"stop_on_lattice_warning\":true,"
+      "\"stop_on_warning_severity\":\"critical\","
+      "\"no_progress_window\":1},"
+      "\"context\":" +
+      prepare_context_json() + ",\"runtime_policy\":" + prepare_policy_json() +
+      ",\"runtime_wave\":" + prepare_wave_json(true) + "}";
+
+  std::string result;
+  std::string error;
+  check(marshal::execute_marshal_tool_json("hero.marshal.reach_lattice_target",
+                                           args, &result, &error),
+        "blocking typed Lattice warning should produce a bounded driver "
+        "packet");
+  check(result.find("\"driver_terminal_state\":\"blocked_lattice_warning\"") !=
+            std::string::npos,
+        "blocking typed warning should stop the driver");
+  check(result.find("lattice_warning_blocking") != std::string::npos,
+        "blocking typed warning should carry explicit owner/reason");
+  check(result.find("lattice_warning_id:test_lattice_blocking_warning") !=
+            std::string::npos,
+        "blocking typed warning should bind warning id");
+  check(result.find("\"runtime_handoff_attempt_count\":0") != std::string::npos,
+        "blocking Lattice warning should stop before Runtime handoff");
+
+  g_fake_lattice_prepare_warning = false;
+  g_fake_lattice_prepare_warning_kind.clear();
+  marshal::set_marshal_lattice_tool_callback(nullptr);
+  std::filesystem::remove_all(root);
+}
+
+marshal::marshal_target_driver_ledger_t make_m22_target_driver_ledger() {
+  marshal::marshal_target_driver_policy_t policy{};
+  policy.max_waves = 2;
+  policy.allow_execute = true;
+  policy.require_runtime_job_completion = true;
+
+  marshal::marshal_target_driver_iteration_t iteration{};
+  iteration.iteration_index = 0;
+  iteration.active_identity.protocol_contract_fingerprint = "pc";
+  iteration.active_identity.graph_order_fingerprint = "go";
+  iteration.active_identity.target_spec_fingerprint = "ts";
+  iteration.active_identity.split_policy_fingerprint = "sp";
+  iteration.target_status = "metric_failed";
+  iteration.dispatch_state = "ready_for_dry_run";
+  iteration.blocker_bucket = "none";
+  iteration.next_action = "dry_run";
+  iteration.terminal_state = "continued";
+  iteration.terminal_reason = "Runtime execution completed";
+  iteration.target_deficit_digest =
+      marshal::marshal_digest_for_text("test.deficit", "deficit");
+  iteration.suggested_wave_digest =
+      marshal::marshal_digest_for_text("test.wave", "wave");
+  iteration.plan_input_digest =
+      marshal::marshal_digest_for_text("test.plan_inputs", "inputs");
+  iteration.advice_digest =
+      marshal::marshal_digest_for_text("test.advice", "advice");
+  iteration.request_digest =
+      marshal::marshal_digest_for_text("test.request", "request");
+  iteration.runtime_policy_digest = "runtime_policy_digest_v1";
+  iteration.runtime_wave_digest =
+      marshal::marshal_digest_for_text("test.runtime_wave", "wave");
+  iteration.runtime_preview_request_digest =
+      marshal::marshal_digest_for_text("test.preview", "preview");
+  iteration.runtime_execution_request_digest =
+      marshal::marshal_digest_for_text("test.execute", "execute");
+  iteration.runtime_handoff_arguments_digest =
+      marshal::marshal_digest_for_text("test.handoff_args", "args");
+  iteration.runtime_handoff_id = "handoff_id";
+  iteration.runtime_handoff_digest = "handoff_digest";
+  iteration.runtime_response_digest =
+      marshal::marshal_digest_for_text("test.runtime_response", "response");
+  iteration.dry_run_response_digest =
+      marshal::marshal_digest_for_text("test.dry_run", "dry_run");
+  iteration.runtime_job_id = "runtime_job";
+  iteration.runtime_job_state_digest = "job_state_digest";
+  iteration.runtime_job_manifest_digest = "job_manifest_digest";
+  iteration.runtime_terminal_fact_digest = "runtime_result_fact_digest";
+  iteration.runtime_checkpoint_io_fact_digest = "checkpoint_io_fact_digest";
+  iteration.runtime_terminal_status = "completed";
+  iteration.post_run_lattice_evaluation_digest =
+      marshal::marshal_digest_for_text("test.post_lattice", "satisfied");
+  iteration.progress_signature =
+      marshal::marshal_digest_for_text("test.progress", "progress");
+  iteration.dry_run_attempted = true;
+  iteration.dry_run_accepted = true;
+  iteration.execution_attempted = true;
+  iteration.execution_accepted = true;
+  iteration.runtime_job_completion_observed = true;
+  iteration.lattice_target_satisfied_after_wave = true;
+
+  marshal::marshal_target_driver_ledger_t ledger{};
+  ledger.target_id = "channel_mdn_validation_eval_ready";
+  ledger.active_identity = iteration.active_identity;
+  ledger.drive_mode = marshal::marshal_target_drive_mode_t::budgeted;
+  ledger.requested_mode = marshal::marshal_dispatch_mode_t::execute;
+  ledger.driver_policy = policy;
+  ledger.driver_policy_digest = marshal::target_driver_policy_digest(policy);
+  ledger.iteration_count = 1;
+  ledger.runtime_handoff_attempt_count = 1;
+  ledger.execution_attempt_count = 1;
+  ledger.last_target_deficit_digest = iteration.target_deficit_digest;
+  ledger.last_suggested_wave_digest = iteration.suggested_wave_digest;
+  ledger.last_progress_signature = iteration.progress_signature;
+  ledger.last_runtime_job_id = iteration.runtime_job_id;
+  ledger.last_runtime_job_state_digest = iteration.runtime_job_state_digest;
+  ledger.last_runtime_job_manifest_digest =
+      iteration.runtime_job_manifest_digest;
+  ledger.last_runtime_terminal_fact_digest =
+      iteration.runtime_terminal_fact_digest;
+  ledger.last_runtime_checkpoint_io_fact_digest =
+      iteration.runtime_checkpoint_io_fact_digest;
+  ledger.last_runtime_handoff_id = iteration.runtime_handoff_id;
+  ledger.last_runtime_handoff_digest = iteration.runtime_handoff_digest;
+  ledger.last_runtime_policy_digest = iteration.runtime_policy_digest;
+  ledger.terminal_state = "reached";
+  ledger.terminal_reason = "post-wave Lattice evaluation reported target "
+                           "satisfied";
+  ledger.iterations.push_back(iteration);
+  marshal::finalize_target_driver_run_id(&ledger);
+  return ledger;
+}
+
+marshal::tool_detail::target_driver_replay_context_t
+make_m22_replay_context(const marshal::marshal_target_driver_ledger_t &ledger) {
+  marshal::tool_detail::target_driver_replay_context_t context{};
+  context.target_id = ledger.target_id;
+  context.drive_mode = marshal::to_string(ledger.drive_mode);
+  context.requested_mode = marshal::to_string(ledger.requested_mode);
+  context.driver_policy_digest = ledger.driver_policy_digest;
+  context.active_identity = ledger.active_identity;
+  context.runtime_policy_digest = ledger.last_runtime_policy_digest;
+  return context;
+}
+
+void test_m22_target_driver_replay_audit_full_and_stale_identity() {
+  const auto ledger = make_m22_target_driver_ledger();
+  const auto ledger_json =
+      marshal::tool_detail::target_driver_ledger_json(ledger);
+  const auto context = make_m22_replay_context(ledger);
+
+  const auto audit =
+      marshal::tool_detail::replay_target_driver_ledger(ledger_json, context);
+  check(audit.accepted, "full target-driver ledger replay should pass");
+  check(!audit.compact, "full target-driver ledger should not be compact");
+  check(audit.non_authoritative,
+        "target-driver replay should remain non-authoritative");
+  check(audit.explanation.find("does not prove target satisfaction") !=
+            std::string::npos,
+        "target-driver replay should state the proof boundary");
+
+  auto stale = context;
+  stale.active_identity.protocol_contract_fingerprint = "new_pc";
+  const auto stale_protocol =
+      marshal::tool_detail::replay_target_driver_ledger(ledger_json, stale);
+  check(!stale_protocol.accepted && stale_protocol.stale,
+        "protocol contract changes should reject old driver ledgers");
+
+  stale = context;
+  stale.active_identity.graph_order_fingerprint = "new_go";
+  const auto stale_graph =
+      marshal::tool_detail::replay_target_driver_ledger(ledger_json, stale);
+  check(!stale_graph.accepted && stale_graph.stale,
+        "graph order changes should reject old driver ledgers");
+
+  stale = context;
+  stale.active_identity.target_spec_fingerprint = "new_ts";
+  const auto stale_target =
+      marshal::tool_detail::replay_target_driver_ledger(ledger_json, stale);
+  check(!stale_target.accepted && stale_target.stale,
+        "target DSL changes should reject old driver ledgers");
+
+  stale = context;
+  stale.active_identity.split_policy_fingerprint = "new_sp";
+  const auto stale_split =
+      marshal::tool_detail::replay_target_driver_ledger(ledger_json, stale);
+  check(!stale_split.accepted && stale_split.stale,
+        "split DSL changes should reject old driver ledgers");
+
+  stale = context;
+  stale.runtime_policy_digest = "new_runtime_policy";
+  const auto stale_policy =
+      marshal::tool_detail::replay_target_driver_ledger(ledger_json, stale);
+  check(!stale_policy.accepted && stale_policy.stale,
+        "Runtime policy changes should reject old driver ledgers");
+}
+
+void test_m22_target_driver_replay_audit_tamper_and_compact() {
+  const auto ledger = make_m22_target_driver_ledger();
+  const auto ledger_json =
+      marshal::tool_detail::target_driver_ledger_json(ledger);
+  const auto context = make_m22_replay_context(ledger);
+
+  auto tampered = ledger_json;
+  const std::string old_job = "\"last_runtime_job_id\":\"runtime_job\"";
+  const auto old_job_pos = tampered.find(old_job);
+  check(old_job_pos != std::string::npos,
+        "test ledger should contain last Runtime job id");
+  tampered.replace(old_job_pos, old_job.size(),
+                   "\"last_runtime_job_id\":\"tampered_job\"");
+  const auto tampered_audit =
+      marshal::tool_detail::replay_target_driver_ledger(tampered, context);
+  check(!tampered_audit.accepted,
+        "tampered full target-driver ledger should fail replay audit");
+
+  const auto ledger_digest = marshal::target_driver_ledger_digest(ledger);
+  const std::string compact =
+      "{\"schema_version\":\"kikijyeba.marshal.target_driver_ledger.v1\","
+      "\"target_driver_run_id\":\"" +
+      ledger.target_driver_run_id + "\",\"target_id\":\"" + ledger.target_id +
+      "\",\"active_identity\":{\"protocol_contract_fingerprint\":\"pc\","
+      "\"graph_order_fingerprint\":\"go\","
+      "\"target_spec_fingerprint\":\"ts\","
+      "\"split_policy_fingerprint\":\"sp\"},"
+      "\"drive_mode\":\"budgeted\","
+      "\"requested_mode\":\"execute\","
+      "\"driver_policy_digest\":\"" +
+      ledger.driver_policy_digest +
+      "\",\"iteration_count\":1,"
+      "\"runtime_handoff_attempt_count\":1,"
+      "\"execution_attempt_count\":1,"
+      "\"last_runtime_job_id\":\"runtime_job\","
+      "\"last_runtime_job_manifest_digest\":\"job_manifest_digest\","
+      "\"last_runtime_terminal_fact_digest\":\"runtime_result_fact_digest\","
+      "\"last_runtime_handoff_digest\":\"handoff_digest\","
+      "\"last_runtime_policy_digest\":\"runtime_policy_digest_v1\","
+      "\"terminal_state\":\"reached\","
+      "\"ledger_digest\":\"" +
+      ledger_digest +
+      "\",\"compacted_fields\":[\"iterations\"],"
+      "\"non_authority_statement\":\"marshal dispatch advice and receipts are "
+      "audit metadata only; target satisfaction remains a lattice proof over "
+      "runtime evidence\"}";
+  const auto compact_audit =
+      marshal::tool_detail::replay_target_driver_ledger(compact, context);
+  check(compact_audit.accepted && compact_audit.compact,
+        "compact target-driver ledger should remain replay-auditable");
+  check(compact_audit.explanation.find("removed iteration bodies") !=
+            std::string::npos,
+        "compact target-driver replay should explain what was removed");
+
+  auto compact_missing_note = compact;
+  const std::string old_note = "\"compacted_fields\":[\"iterations\"]";
+  const auto note_pos = compact_missing_note.find(old_note);
+  check(note_pos != std::string::npos,
+        "compact test ledger should contain compaction note");
+  compact_missing_note.replace(note_pos, old_note.size(),
+                               "\"compacted_fields\":[]");
+  const auto missing_note_audit =
+      marshal::tool_detail::replay_target_driver_ledger(compact_missing_note,
+                                                        context);
+  check(!missing_note_audit.accepted,
+        "compact target-driver ledger without compaction note should fail");
+}
+
+void test_m16_target_driver_resume_guards_policy_and_identity() {
+  g_fake_lattice_resolve_count = 0;
+  g_fake_lattice_resolve_concrete = true;
+  g_fake_lattice_resolve_fault.clear();
+  g_fake_lattice_prepare_warning = false;
+  marshal::set_marshal_lattice_tool_callback(fake_lattice_prepare_callback);
+
+  marshal::marshal_target_driver_policy_t policy{};
+  policy.max_waves = 2;
+  policy.no_progress_window = 1;
+  const auto policy_digest = marshal::target_driver_policy_digest(policy);
+  const std::string resume =
+      "{\"schema_version\":\"kikijyeba.marshal.target_driver_ledger.v1\","
+      "\"target_driver_run_id\":\"previous_driver\","
+      "\"target_id\":\"different_target\","
+      "\"drive_mode\":\"budgeted\","
+      "\"requested_mode\":\"dry_run\","
+      "\"driver_policy_digest\":" +
+      marshal::detail::json_quote(policy_digest) +
+      ",\"iteration_count\":1,"
+      "\"runtime_handoff_attempt_count\":1,"
+      "\"execution_attempt_count\":0,"
+      "\"last_target_deficit_digest\":\"old_deficit\","
+      "\"last_suggested_wave_digest\":\"old_wave\","
+      "\"last_progress_signature\":\"old_progress\","
+      "\"terminal_state\":\"\"}";
+  const std::string args =
+      "{\"target_id\":\"channel_mdn_validation_eval_ready\","
+      "\"drive_mode\":\"budgeted\","
+      "\"requested_mode\":\"dry_run\","
+      "\"source_lattice_timestamp\":\"2026-05-24T00:00:00Z\","
+      "\"driver_policy\":{\"max_waves\":2,\"no_progress_window\":1},"
+      "\"resume_ledger\":" +
+      resume + "}";
+
+  std::string result;
+  std::string error;
+  check(marshal::execute_marshal_tool_json("hero.marshal.reach_lattice_target",
+                                           args, &result, &error),
+        "stale resume ledger should produce a bounded Marshal packet");
+  check(result.find("\"driver_terminal_state\":\"blocked_stale_resume\"") !=
+            std::string::npos,
+        "resume with different target should fail closed");
+  check(result.find("\"resumed_from_run_id\":\"previous_driver\"") !=
+            std::string::npos,
+        "resume ledger should preserve the previous run id for audit");
+  check(g_fake_lattice_resolve_count == 0,
+        "stale resume must block before new Lattice resolution or Runtime "
+        "handoff");
+
+  marshal::set_marshal_lattice_tool_callback(nullptr);
+}
+
+void test_m16_target_driver_resume_does_not_repeat_reached_run() {
+  g_fake_lattice_resolve_count = 0;
+  g_fake_lattice_resolve_concrete = true;
+  g_fake_lattice_resolve_fault.clear();
+  g_fake_lattice_prepare_warning = false;
+  marshal::set_marshal_lattice_tool_callback(fake_lattice_prepare_callback);
+
+  marshal::marshal_target_driver_policy_t policy{};
+  policy.max_waves = 2;
+  policy.no_progress_window = 1;
+  const auto policy_digest = marshal::target_driver_policy_digest(policy);
+  const std::string resume =
+      "{\"schema_version\":\"kikijyeba.marshal.target_driver_ledger.v1\","
+      "\"target_driver_run_id\":\"previous_driver\","
+      "\"target_id\":\"channel_mdn_validation_eval_ready\","
+      "\"drive_mode\":\"budgeted\","
+      "\"requested_mode\":\"dry_run\","
+      "\"driver_policy_digest\":" +
+      marshal::detail::json_quote(policy_digest) +
+      ",\"iteration_count\":1,"
+      "\"runtime_handoff_attempt_count\":1,"
+      "\"execution_attempt_count\":0,"
+      "\"last_target_deficit_digest\":\"old_deficit\","
+      "\"last_suggested_wave_digest\":\"old_wave\","
+      "\"last_progress_signature\":\"old_progress\","
+      "\"ledger_digest\":\"previous_ledger_digest\","
+      "\"terminal_state\":\"reached\"}";
+  const std::string args =
+      "{\"target_id\":\"channel_mdn_validation_eval_ready\","
+      "\"drive_mode\":\"budgeted\","
+      "\"requested_mode\":\"dry_run\","
+      "\"source_lattice_timestamp\":\"2026-05-24T00:00:00Z\","
+      "\"driver_policy\":{\"max_waves\":2,\"no_progress_window\":1},"
+      "\"resume_ledger\":" +
+      resume + "}";
+
+  std::string result;
+  std::string error;
+  check(marshal::execute_marshal_tool_json("hero.marshal.reach_lattice_target",
+                                           args, &result, &error),
+        "reached resume ledger should return a bounded Marshal packet");
+  check(result.find("\"driver_terminal_state\":\"reached\"") !=
+            std::string::npos,
+        "reached resume should preserve reached terminal state");
+  check(result.find("already records the target as reached") !=
+            std::string::npos,
+        "reached resume should explain why no new handoff occurred");
+  check(g_fake_lattice_resolve_count == 0,
+        "reached resume must not call Lattice or repeat Runtime handoff");
+
+  marshal::set_marshal_lattice_tool_callback(nullptr);
+}
+
+void test_m16_5_target_driver_resume_requires_ledger_digest() {
+  g_fake_lattice_resolve_count = 0;
+  g_fake_lattice_resolve_concrete = true;
+  g_fake_lattice_resolve_fault.clear();
+  g_fake_lattice_prepare_warning = false;
+  marshal::set_marshal_lattice_tool_callback(fake_lattice_prepare_callback);
+
+  marshal::marshal_target_driver_policy_t policy{};
+  policy.max_waves = 2;
+  policy.no_progress_window = 1;
+  const auto policy_digest = marshal::target_driver_policy_digest(policy);
+  const std::string resume =
+      "{\"schema_version\":\"kikijyeba.marshal.target_driver_ledger.v1\","
+      "\"target_driver_run_id\":\"previous_driver\","
+      "\"target_id\":\"channel_mdn_validation_eval_ready\","
+      "\"drive_mode\":\"budgeted\","
+      "\"requested_mode\":\"dry_run\","
+      "\"driver_policy_digest\":" +
+      marshal::detail::json_quote(policy_digest) +
+      ",\"iteration_count\":1,"
+      "\"runtime_handoff_attempt_count\":1,"
+      "\"execution_attempt_count\":0,"
+      "\"last_target_deficit_digest\":\"old_deficit\","
+      "\"last_suggested_wave_digest\":\"old_wave\","
+      "\"last_progress_signature\":\"old_progress\","
+      "\"terminal_state\":\"\"}";
+  const std::string args =
+      "{\"target_id\":\"channel_mdn_validation_eval_ready\","
+      "\"drive_mode\":\"budgeted\","
+      "\"requested_mode\":\"dry_run\","
+      "\"source_lattice_timestamp\":\"2026-05-24T00:00:00Z\","
+      "\"driver_policy\":{\"max_waves\":2,\"no_progress_window\":1},"
+      "\"resume_ledger\":" +
+      resume + "}";
+
+  std::string result;
+  std::string error;
+  check(marshal::execute_marshal_tool_json("hero.marshal.reach_lattice_target",
+                                           args, &result, &error),
+        "resume ledger without ledger_digest should fail closed");
+  check(result.find("\"driver_terminal_state\":\"blocked_stale_resume\"") !=
+            std::string::npos,
+        "missing ledger_digest should be treated as stale resume evidence");
+  check(result.find("missing ledger_digest") != std::string::npos,
+        "missing ledger_digest blocker should be explicit");
+  check(g_fake_lattice_resolve_count == 0,
+        "missing ledger_digest must block before Lattice or Runtime calls");
+
+  marshal::set_marshal_lattice_tool_callback(nullptr);
+}
+
+void test_m16_5_target_driver_resume_requires_terminal_identity_after_execute() {
+  g_fake_lattice_resolve_count = 0;
+  g_fake_lattice_resolve_concrete = true;
+  g_fake_lattice_resolve_fault.clear();
+  g_fake_lattice_prepare_warning = false;
+  marshal::set_marshal_lattice_tool_callback(fake_lattice_prepare_callback);
+
+  marshal::marshal_target_driver_policy_t policy{};
+  policy.max_waves = 2;
+  policy.no_progress_window = 1;
+  const auto policy_digest = marshal::target_driver_policy_digest(policy);
+  const std::string resume =
+      "{\"schema_version\":\"kikijyeba.marshal.target_driver_ledger.v1\","
+      "\"target_driver_run_id\":\"previous_driver\","
+      "\"target_id\":\"channel_mdn_validation_eval_ready\","
+      "\"drive_mode\":\"budgeted\","
+      "\"requested_mode\":\"dry_run\","
+      "\"driver_policy_digest\":" +
+      marshal::detail::json_quote(policy_digest) +
+      ",\"iteration_count\":1,"
+      "\"runtime_handoff_attempt_count\":1,"
+      "\"execution_attempt_count\":1,"
+      "\"last_target_deficit_digest\":\"old_deficit\","
+      "\"last_suggested_wave_digest\":\"old_wave\","
+      "\"last_progress_signature\":\"old_progress\","
+      "\"ledger_digest\":\"previous_ledger_digest\","
+      "\"terminal_state\":\"\"}";
+  const std::string args =
+      "{\"target_id\":\"channel_mdn_validation_eval_ready\","
+      "\"drive_mode\":\"budgeted\","
+      "\"requested_mode\":\"dry_run\","
+      "\"source_lattice_timestamp\":\"2026-05-24T00:00:00Z\","
+      "\"driver_policy\":{\"max_waves\":2,\"no_progress_window\":1},"
+      "\"resume_ledger\":" +
+      resume + "}";
+
+  std::string result;
+  std::string error;
+  check(marshal::execute_marshal_tool_json("hero.marshal.reach_lattice_target",
+                                           args, &result, &error),
+        "resume ledger with execution history should require terminal Runtime "
+        "identity");
+  check(result.find("\"driver_terminal_state\":\"blocked_stale_resume\"") !=
+            std::string::npos,
+        "execution history without terminal evidence identity should fail "
+        "closed");
+  check(result.find("terminal evidence, job manifest, or handoff identity") !=
+            std::string::npos,
+        "resume terminal evidence blocker should be explicit");
+  check(g_fake_lattice_resolve_count == 0,
+        "stale execution resume must block before Lattice or Runtime calls");
+
+  marshal::set_marshal_lattice_tool_callback(nullptr);
+}
+
 void test_m9_marshal_tool_handlers_validate_arguments() {
   auto advice = valid_advice();
   auto request = valid_request(advice);
   const auto ctx = context();
-  auto policy = valid_policy();
-  policy.runtime_exec_exists = false;
-  const auto wave = valid_active_wave(advice);
 
   std::string result;
   std::string error;
-  marshal::set_marshal_lattice_tool_callback(fake_lattice_plan_target_callback);
+  marshal::set_marshal_lattice_tool_callback(
+      fake_lattice_target_deficit_callback);
   const std::string lookup_args =
       "{\"target_id\":\"lookup_target\","
       "\"source_lattice_timestamp\":\"2026-05-24T00:00:00Z\","
+      "\"drive_mode\":\"one_step\","
       "\"requested_mode\":\"dry_run\","
       "\"context\":{\"active_config_path\":\"/tmp/marshal_lookup/.config\","
       "\"active_runtime_root\":\"/tmp/marshal_lookup/runtime\","
@@ -2411,16 +3885,17 @@ void test_m9_marshal_tool_handlers_validate_arguments() {
       "\"supported_source_ranges\":[\"anchor_index\"],"
       "\"allowed_model_state_roots\":[\"/tmp/marshal_lookup/runtime\"],"
       "\"freshness_check_timestamp_utc\":\"2026-05-24T00:00:00Z\"}}";
-  check(marshal::execute_marshal_tool_json("hero.marshal.lookup_target_advice",
+  check(marshal::execute_marshal_tool_json("hero.marshal.reach_lattice_target",
                                            lookup_args, &result, &error),
-        "lookup_target_advice should ask Lattice and materialize advice");
-  check(g_fake_lattice_tool_name == "hero.lattice.plan_target",
-        "lookup wrapper should call Lattice plan_target");
+        "reach_lattice_target should ask Lattice and materialize advice");
+  check(g_fake_lattice_tool_name == "hero.lattice.target_deficit",
+        "reach_lattice_target should call Lattice target_deficit");
   check(g_fake_lattice_arguments_json.find("\"target_id\":\"lookup_target\"") !=
             std::string::npos,
-        "lookup wrapper should pass target_id to Lattice");
-  check(result.find("\"dispatchable\":true") != std::string::npos,
-        "lookup wrapper should validate materialized explicit advice");
+        "reach_lattice_target should pass target_id to Lattice");
+  check(result.find("\"tool\":\"hero.marshal.reach_lattice_target\"") !=
+            std::string::npos,
+        "reach_lattice_target should return the public operator packet");
   check(
       result.find("\"target_status\":\"metric_failed\"") != std::string::npos,
       "metric_failed Lattice targets should remain dispatchable when planned");
@@ -2428,82 +3903,57 @@ void test_m9_marshal_tool_handlers_validate_arguments() {
       result.find("PLAN_INPUT_MDN_CHECKPOINT") != std::string::npos &&
           result.find("PLAN_INPUT_REPRESENTATION_CHECKPOINT") !=
               std::string::npos,
-      "lookup wrapper should map Lattice checkpoint hints to PLAN_INPUT keys");
+      "reach_lattice_target should map Lattice checkpoint hints to PLAN_INPUT "
+      "keys");
 
   const std::string free_text_lookup_args =
       lookup_args.substr(0, lookup_args.size() - 1) +
       ",\"target_text\":\"dispatch whatever target seems useful\"}";
-  check(!marshal::execute_marshal_tool_json("hero.marshal.lookup_target_advice",
+  check(!marshal::execute_marshal_tool_json("hero.marshal.reach_lattice_target",
                                             free_text_lookup_args, &result,
                                             &error),
-        "lookup wrapper must reject free-form target text");
+        "reach_lattice_target must reject free-form target text");
   check(error.find("unknown field: target_text") != std::string::npos,
-        "lookup wrapper should expose unknown-field rejection for target_text");
+        "reach_lattice_target should expose unknown-field rejection for "
+        "target_text");
+
+  marshal::set_marshal_lattice_tool_callback(
+      fake_lattice_satisfied_without_certificate_callback);
+  result.clear();
+  error.clear();
+  const std::string already_satisfied_args =
+      "{\"target_id\":\"satisfied_without_certificate\","
+      "\"drive_mode\":\"one_step\","
+      "\"requested_mode\":\"dry_run\","
+      "\"include_runtime_dry_run\":true,"
+      "\"source_lattice_timestamp\":\"2026-05-24T00:00:00Z\"}";
+  check(marshal::execute_marshal_tool_json("hero.marshal.reach_lattice_target",
+                                           already_satisfied_args, &result,
+                                           &error),
+        "reach_lattice_target should stop cleanly when Lattice returns a "
+        "satisfied target with suggested_wave=null");
+  check(result.find("\"dispatch_state\":\"already_satisfied\"") !=
+            std::string::npos,
+        "already satisfied target should report already_satisfied dispatch "
+        "state");
+  check(result.find("\"driver_terminal_state\":\"reached\"") !=
+            std::string::npos,
+        "already satisfied target should terminate as reached from Lattice");
+  check(result.find("Lattice plan result missing suggested_wave") ==
+            std::string::npos,
+        "already satisfied target must not require a suggested wave");
+  check(result.find("not_applicable_no_suggested_wave") != std::string::npos,
+        "already satisfied target should not compare Runtime wave shape "
+        "against an absent suggested wave");
+  check(result.find("\"differing_fields\":[]") != std::string::npos,
+        "already satisfied target should not emit irrelevant Runtime wave "
+        "diffs");
+  check(result.find("runtime_wave_mismatch") == std::string::npos,
+        "already satisfied target should not carry irrelevant Runtime wave "
+        "mismatch refusal noise");
   marshal::set_marshal_lattice_tool_callback(nullptr);
 
-  const std::string validate_args = "{\"advice\":" + advice_json(advice) +
-                                    ",\"request\":" + request_json(request) +
-                                    ",\"context\":" + context_json(ctx) + "}";
-  check(marshal::execute_marshal_tool_json("hero.marshal.validate_advice",
-                                           validate_args, &result, &error),
-        "validate_advice handler should execute");
-  check(result.find("\"isError\":false") != std::string::npos,
-        "validate_advice handler should return non-error result");
-  check(result.find("\"dispatchable\":true") != std::string::npos,
-        "validate_advice handler should materialize advice and request");
-
-  const std::string missing_request_args =
-      "{\"advice\":" + advice_json(advice) + "}";
-  check(!marshal::execute_marshal_tool_json("hero.marshal.validate_advice",
-                                            missing_request_args, &result,
-                                            &error),
-        "validate_advice handler should reject missing required request");
-  check(error.find("missing required field: request") != std::string::npos,
-        "missing required field should be reported by actual handler");
-
-  const std::string unknown_field_args =
-      validate_args.substr(0, validate_args.size() - 1) +
-      ",\"unexpected\":true}";
-  check(!marshal::execute_marshal_tool_json("hero.marshal.validate_advice",
-                                            unknown_field_args, &result,
-                                            &error),
-        "validate_advice handler should reject unknown top-level fields");
-  check(error.find("unknown field: unexpected") != std::string::npos,
-        "unknown field should be reported by actual handler");
-
-  const std::string dry_run_args =
-      "{\"advice\":" + advice_json(advice) +
-      ",\"request\":" + request_json(request) +
-      ",\"context\":" + context_json(ctx) +
-      ",\"runtime_policy\":" + policy_json(policy) +
-      ",\"runtime_wave\":" + wave_json(wave) + "}";
-  check(marshal::execute_marshal_tool_json("hero.marshal.dry_run_dispatch",
-                                           dry_run_args, &result, &error),
-        "dry_run_dispatch handler should execute deterministic primitive");
-  check(result.find("\"isError\":false") != std::string::npos,
-        "dry_run_dispatch refusal should be a non-error tool result");
-
-  auto execute_request = request;
-  execute_request.requested_mode = marshal::marshal_dispatch_mode_t::execute;
-  execute_request.operator_confirmation_token =
-      marshal::confirmation_token(advice, execute_request);
-  policy.runtime_exec_exists = true;
-  policy.allow_execute = true;
-  const auto prior =
-      prior_dry_run_evidence(advice, execute_request, ctx, policy, wave);
-  const std::string gate_args =
-      "{\"advice\":" + advice_json(advice) +
-      ",\"request\":" + request_json(execute_request) +
-      ",\"context\":" + context_json(ctx) +
-      ",\"prior_dry_run\":" + prior_json(prior) +
-      ",\"runtime_policy\":" + policy_json(policy) +
-      ",\"runtime_wave\":" + wave_json(wave) + "}";
-  check(marshal::execute_marshal_tool_json("hero.marshal.execution_gate",
-                                           gate_args, &result, &error),
-        "execution_gate handler should execute deterministic primitive");
-  check(result.find("\"accepted\":true") != std::string::npos,
-        "execution_gate handler should accept verified prior dry-run evidence");
-
+  const auto wave = valid_active_wave(advice);
   marshal::marshal_dry_run_dispatch_response_t response{};
   response.accepted = true;
   response.advice_digest = marshal::dispatch_advice_digest(advice);
@@ -2519,16 +3969,6 @@ void test_m9_marshal_tool_handlers_validate_arguments() {
       marshal::dry_run_dispatch_response_digest(response);
   const auto receipt = marshal::make_dry_run_dispatch_receipt(
       advice, response, "2026-05-23T00:00:00Z");
-  const std::string replay_args =
-      "{\"receipt\":" + receipt_json(receipt) +
-      ",\"active_identity\":" + active_identity_json(advice.active_identity) +
-      "}";
-  check(marshal::execute_marshal_tool_json("hero.marshal.replay_receipt",
-                                           replay_args, &result, &error),
-        "replay_receipt handler should execute deterministic primitive");
-  check(result.find("\"accepted\":true") != std::string::npos,
-        "replay_receipt handler should accept intact receipt");
-
   const std::string status_args =
       "{\"receipt_root\":\"/tmp/marshal_status\",\"receipts\":[" +
       receipt_json(receipt) +
@@ -2540,17 +3980,1205 @@ void test_m9_marshal_tool_handlers_validate_arguments() {
   check(result.find("\"recent_receipt_count\":1") != std::string::npos,
         "status handler should expose receipt count");
 
-  const std::string batch_args =
-      "{\"items\":[{\"item_id\":\"one\",\"advice\":" + advice_json(advice) +
-      ",\"request\":" + request_json(request) +
-      ",\"runtime_wave\":" + wave_json(wave) +
-      "}],\"context\":" + context_json(ctx) +
-      ",\"runtime_policy\":" + policy_json(policy) + "}";
-  check(marshal::execute_marshal_tool_json("hero.marshal.batch_preview",
-                                           batch_args, &result, &error),
-        "batch_preview handler should execute deterministic primitive");
-  check(result.find("\"item_count\":1") != std::string::npos,
-        "batch_preview handler should expose item count");
+  for (const auto &removed_tool :
+       {"hero.marshal.lookup_target_advice",
+        "hero.marshal.prepare_target_dispatch", "hero.marshal.validate_advice",
+        "hero.marshal.dry_run_dispatch", "hero.marshal.execution_gate",
+        "hero.marshal.replay_receipt", "hero.marshal.batch_preview",
+        "hero.marshal.compare_runs", "hero.marshal.summarize_training_state"}) {
+    check(!marshal::execute_marshal_tool_json(removed_tool, "{}", &result,
+                                              &error),
+          std::string("removed Marshal tool should not be callable: ") +
+              removed_tool);
+    check(error.find("unknown tool: ") != std::string::npos,
+          "removed Marshal tools should fail as unknown tools");
+  }
+}
+
+void test_operational_report_summarizes_training_state() {
+  const auto root = make_tmp_dir("operational_report");
+  const auto runtime_root = root / "runtime";
+  const auto config_path = root / ".config";
+  const auto mdn_jkimyei_path = root / "mdn.jkimyei";
+  std::filesystem::create_directories(runtime_root);
+
+  write_text(config_path,
+             "[JKIMYEI]\n"
+             "wikimyei_inference_expected_value_mdn_jkimyei_path = " +
+                 mdn_jkimyei_path.string() + "\n");
+  write_text(mdn_jkimyei_path, "TRAINING {\n"
+                               "  GRAD_CLIP_NORM = 5.0;\n"
+                               "};\n");
+
+  const auto vicreg_dir =
+      runtime_root /
+      "real_train_core_vicreg_0_1600.train.channel_representation_vicreg";
+  const auto mdn_dir =
+      runtime_root /
+      "real_train_core_channel_mdn_0_1600.train.channel_inference_mdn";
+  const auto eval_dir =
+      runtime_root /
+      "real_validation_eval_channel_mdn_1800_2050.run.channel_inference_mdn";
+  std::filesystem::create_directories(vicreg_dir);
+  std::filesystem::create_directories(mdn_dir);
+  std::filesystem::create_directories(eval_dir);
+
+  const auto vicreg_report = vicreg_dir / "channel_representation.report";
+  write_text(vicreg_dir / "job.manifest",
+             "job_id=real_train_core_vicreg_0_1600.train.channel_"
+             "representation_vicreg\n"
+             "job_kind=channel_representation_vicreg\n"
+             "component_family_id=wikimyei.representation.encoding.vicreg\n"
+             "component_spawn_registry_id=test_spawn_registry\n"
+             "component_spawn_id=vic\n"
+             "component_spawn_label=wikimyei.representation.encoding."
+             "vicreg#vic\n"
+             "component_spawn_fingerprint=vicreg_spawn_fp\n"
+             "wave_id=real_train_core_vicreg_0_1600\n"
+             "target_component_family_id=wikimyei.representation.encoding."
+             "vicreg\n"
+             "wave_action=train\n"
+             "wave_mode=train|debug\n"
+             "source_range_policy=anchor_index\n"
+             "source_order_policy=random\n"
+             "resolved_anchor_index_begin=0\n"
+             "resolved_anchor_index_end=1600\n"
+             "accepted_anchor_count=1600\n");
+  write_text(
+      vicreg_dir / "job.state",
+      "job_id=real_train_core_vicreg_0_1600.train.channel_"
+      "representation_vicreg\n"
+      "job_kind=channel_representation_vicreg\n"
+      "status=completed\n"
+      "wave_id=real_train_core_vicreg_0_1600\n"
+      "target_component_family_id=wikimyei.representation.encoding."
+      "vicreg\n"
+      "wave_action=train\n"
+      "resolved_anchor_index_begin=0\n"
+      "resolved_anchor_index_end=1600\n"
+      "optimizer_steps=250\n"
+      "last_loss=11.5173\n"
+      "checkpoint_written=true\n"
+      "checkpoint_path=" +
+          (vicreg_dir / "channel_representation.report.vicreg.pt").string() +
+          "\n"
+          "report_path=" +
+          vicreg_report.string() + "\n");
+  write_text(vicreg_report, "optimizer_steps=250\n"
+                            "last_loss=11.5173\n"
+                            "mean_loss=13.8741\n"
+                            "representation_effective_rank_fraction=0.684131\n"
+                            "representation_min_dimension_variance=0.135824\n"
+                            "checkpoint_written=true\n");
+  write_text(vicreg_dir / "runtime.result.fact",
+             "fact_type=runtime.result.fact\n"
+             "optimizer_steps=250\n"
+             "final_loss=11.5173\n"
+             "mean_loss=13.8741\n"
+             "representation_effective_rank_fraction=0.684131\n"
+             "checkpoint_written=true\n");
+  write_text(
+      vicreg_dir / "runtime.checkpoint_io.fact",
+      "fact_type=runtime.checkpoint_io.fact\n"
+      "checkpoint_written=true\n"
+      "checkpoint_path=" +
+          (vicreg_dir / "channel_representation.report.vicreg.pt").string() +
+          "\n");
+  write_text(vicreg_dir / "runtime.health_measurement.fact",
+             "fact_type=runtime.health_measurement.fact\n"
+             "representation_effective_rank_fraction=0.684131\n"
+             "representation_min_dimension_variance=0.135824\n");
+
+  const auto mdn_report = mdn_dir / "channel_inference.report";
+  write_text(
+      mdn_dir / "job.manifest",
+      "job_id=real_train_core_channel_mdn_0_1600.train.channel_"
+      "inference_mdn\n"
+      "job_kind=channel_inference_mdn\n"
+      "component_family_id=wikimyei.inference.expected_value.mdn\n"
+      "component_spawn_registry_id=test_spawn_registry\n"
+      "component_spawn_id=mdn\n"
+      "component_spawn_label=wikimyei.inference.expected_value."
+      "mdn#mdn\n"
+      "component_spawn_fingerprint=mdn_spawn_fp\n"
+      "wave_id=real_train_core_channel_mdn_0_1600\n"
+      "target_component_family_id=wikimyei.inference.expected_value."
+      "mdn\n"
+      "wave_action=train\n"
+      "wave_mode=train|debug\n"
+      "source_range_policy=anchor_index\n"
+      "source_order_policy=random\n"
+      "resolved_anchor_index_begin=0\n"
+      "resolved_anchor_index_end=1600\n"
+      "accepted_anchor_count=1600\n"
+      "input_representation_checkpoint_path=" +
+          (vicreg_dir / "channel_representation.report.vicreg.pt").string() +
+          "\n");
+  write_text(
+      mdn_dir / "job.state",
+      "job_id=real_train_core_channel_mdn_0_1600.train.channel_"
+      "inference_mdn\n"
+      "job_kind=channel_inference_mdn\n"
+      "status=completed\n"
+      "wave_id=real_train_core_channel_mdn_0_1600\n"
+      "target_component_family_id=wikimyei.inference.expected_value."
+      "mdn\n"
+      "wave_action=train\n"
+      "resolved_anchor_index_begin=0\n"
+      "resolved_anchor_index_end=1600\n"
+      "optimizer_steps=250\n"
+      "last_loss=2.10814\n"
+      "checkpoint_written=true\n"
+      "checkpoint_path=" +
+          (mdn_dir / "channel_inference.report.channel_mdn.pt").string() +
+          "\n"
+          "report_path=" +
+          mdn_report.string() + "\n");
+  write_text(
+      mdn_report,
+      "config_path=" + config_path.string() +
+          "\n"
+          "optimizer_steps=250\n"
+          "last_loss=2.10814\n"
+          "mean_loss=30.9495\n"
+          "mean_valid_target_fraction=0.830741\n"
+          "mean_sigma_mean=3.40765\n"
+          "mean_mixture_entropy=0.723886\n"
+          "mean_mixture_usage=0.168799,0.398562,0.432639\n"
+          "nonfinite_output_count=0\n"
+          "max_grad_norm=35257.9\n"
+          "representation_checkpoint_path=" +
+          (vicreg_dir / "channel_representation.report.vicreg.pt").string() +
+          "\n"
+          "representation_checkpoint_loaded=true\n"
+          "checkpoint_written=true\n");
+  write_text(mdn_dir / "runtime.result.fact",
+             "fact_type=runtime.result.fact\n"
+             "optimizer_steps=250\n"
+             "final_loss=2.10814\n"
+             "mean_loss=30.9495\n"
+             "valid_target_fraction=0.910001\n"
+             "sigma_mean=3.40765\n"
+             "mixture_entropy=0.723886\n"
+             "mixture_usage=0.168799,0.398562,0.432639\n"
+             "nonfinite_output_count=0\n"
+             "grad_norm_max_pre_clip=35257.9\n"
+             "grad_clip_norm=5.0\n"
+             "checkpoint_written=true\n");
+  write_text(
+      mdn_dir / "runtime.checkpoint_io.fact",
+      "fact_type=runtime.checkpoint_io.fact\n"
+      "checkpoint_written=true\n"
+      "checkpoint_path=" +
+          (mdn_dir / "channel_inference.report.channel_mdn.pt").string() +
+          "\n"
+          "representation_checkpoint_path=" +
+          (vicreg_dir / "channel_representation.report.vicreg.pt").string() +
+          "\n"
+          "representation_checkpoint_loaded=true\n");
+  write_text(mdn_dir / "runtime.health_measurement.fact",
+             "fact_type=runtime.health_measurement.fact\n"
+             "nonfinite_output_count=0\n"
+             "grad_norm_max_pre_clip=35257.9\n"
+             "grad_clip_norm=5.0\n"
+             "sigma_mean=3.40765\n"
+             "mixture_entropy=0.723886\n");
+
+  const auto eval_report = eval_dir / "channel_inference.report";
+  write_text(
+      eval_dir / "job.manifest",
+      "job_id=real_validation_eval_channel_mdn_1800_2050.run.channel_"
+      "inference_mdn\n"
+      "job_kind=channel_inference_mdn\n"
+      "component_family_id=wikimyei.inference.expected_value.mdn\n"
+      "component_spawn_registry_id=test_spawn_registry\n"
+      "component_spawn_id=mdn\n"
+      "component_spawn_label=wikimyei.inference.expected_value."
+      "mdn#mdn\n"
+      "component_spawn_fingerprint=mdn_spawn_fp\n"
+      "wave_id=real_validation_eval_channel_mdn_1800_2050\n"
+      "target_component_family_id=wikimyei.inference.expected_value."
+      "mdn\n"
+      "wave_action=run\n"
+      "wave_mode=run|debug\n"
+      "source_range_policy=anchor_index\n"
+      "source_order_policy=sequential\n"
+      "resolved_anchor_index_begin=1800\n"
+      "resolved_anchor_index_end=2050\n"
+      "accepted_anchor_count=250\n"
+      "input_representation_checkpoint_path=" +
+          (vicreg_dir / "channel_representation.report.vicreg.pt").string() +
+          "\n"
+          "input_mdn_checkpoint_path=" +
+          (mdn_dir / "channel_inference.report.channel_mdn.pt").string() +
+          "\n"
+          "runtime_handoff_id=validation_eval_handoff\n"
+          "runtime_handoff_digest=validation_eval_handoff_digest\n");
+  write_text(eval_dir / "job.state",
+             "job_id=real_validation_eval_channel_mdn_1800_2050.run.channel_"
+             "inference_mdn\n"
+             "job_kind=channel_inference_mdn\n"
+             "status=completed\n"
+             "wave_id=real_validation_eval_channel_mdn_1800_2050\n"
+             "target_component_family_id=wikimyei.inference.expected_value."
+             "mdn\n"
+             "wave_action=run\n"
+             "resolved_anchor_index_begin=1800\n"
+             "resolved_anchor_index_end=2050\n"
+             "optimizer_steps=0\n"
+             "last_loss=2.23523\n"
+             "checkpoint_written=false\n"
+             "checkpoint_path=\n"
+             "report_path=" +
+                 eval_report.string() + "\n");
+  write_text(
+      eval_report,
+      "config_path=" + config_path.string() +
+          "\n"
+          "optimizer_steps=0\n"
+          "last_loss=2.23523\n"
+          "mean_loss=2.24177\n"
+          "mean_valid_target_fraction=0.779562\n"
+          "mean_sigma_mean=2.58429\n"
+          "mean_mixture_entropy=0.601403\n"
+          "mean_mixture_usage=0.173429,0.504673,0.321898\n"
+          "nonfinite_output_count=0\n"
+          "representation_checkpoint_path=" +
+          (vicreg_dir / "channel_representation.report.vicreg.pt").string() +
+          "\n"
+          "representation_checkpoint_loaded=true\n"
+          "mdn_checkpoint_path=" +
+          (mdn_dir / "channel_inference.report.channel_mdn.pt").string() +
+          "\n"
+          "mdn_checkpoint_loaded=true\n"
+          "checkpoint_written=false\n");
+  write_text(eval_dir / "runtime.result.fact",
+             "fact_type=runtime.result.fact\n"
+             "optimizer_steps=0\n"
+             "final_loss=2.23523\n"
+             "mean_loss=2.24177\n"
+             "valid_target_fraction=0.779562\n"
+             "sigma_mean=2.58429\n"
+             "mixture_entropy=0.601403\n"
+             "mixture_usage=0.173429,0.504673,0.321898\n"
+             "nonfinite_output_count=0\n"
+             "checkpoint_written=false\n");
+  write_text(
+      eval_dir / "runtime.checkpoint_io.fact",
+      "fact_type=runtime.checkpoint_io.fact\n"
+      "checkpoint_written=false\n"
+      "representation_checkpoint_path=" +
+          (vicreg_dir / "channel_representation.report.vicreg.pt").string() +
+          "\n"
+          "representation_checkpoint_loaded=true\n"
+          "mdn_checkpoint_path=" +
+          (mdn_dir / "channel_inference.report.channel_mdn.pt").string() +
+          "\n"
+          "mdn_checkpoint_loaded=true\n");
+  write_text(eval_dir / "runtime.health_measurement.fact",
+             "fact_type=runtime.health_measurement.fact\n"
+             "nonfinite_output_count=0\n"
+             "sigma_mean=2.58429\n"
+             "mixture_entropy=0.601403\n");
+
+  marshal::set_marshal_lattice_tool_callback(
+      fake_lattice_operational_report_callback);
+  const std::string args =
+      "{\"subject\":\"run\",\"mode\":\"training_state\",\"runtime_root\":" +
+      marshal::detail::json_quote(runtime_root.string()) +
+      ",\"config_path\":" + marshal::detail::json_quote(config_path.string()) +
+      ",\"include_machine_payload\":true" + "}";
+  std::string result;
+  std::string error;
+  check(marshal::execute_marshal_tool_json("hero.marshal.evaluate", args,
+                                           &result, &error),
+        "evaluate subject=run training_state mode should produce a report");
+  check(g_fake_lattice_tool_name == "hero.lattice.evaluate_targets",
+        "operational report should quote Lattice target statuses");
+  check(result.find("\"read_only\":true") != std::string::npos,
+        "operational report should be read-only");
+  check(result.find("\"runtime_executor\":false") != std::string::npos,
+        "operational report must not be a Runtime executor");
+  check(result.find("\"target_satisfaction_claimed\":false") !=
+            std::string::npos,
+        "operational report must not claim target satisfaction");
+  check(result.find("\"execution_status\":\"completed_chain\"") !=
+            std::string::npos,
+        "operational report should detect the completed train/eval chain");
+  check(result.find("\"proof_status\":\"clean\"") != std::string::npos,
+        "satisfied Lattice statuses should render proof_status clean");
+  check(result.find("\"validation_eval_mutated_model_state\":false") !=
+            std::string::npos,
+        "validation eval with zero optimizer steps should be non-mutating");
+  check(result.find("\"operator_summary\":{") != std::string::npos,
+        "operational report should expose the compact operator summary");
+  check(result.find("\"stop_reason\":{") != std::string::npos &&
+            result.find("\"runtime_panel\":{") != std::string::npos &&
+            result.find("\"lattice_panel\":{") != std::string::npos &&
+            result.find("\"audit_panel\":{") != std::string::npos,
+        "operational report should expose the M19 compact panels");
+  check(result.find("\"job_chain\":[") != std::string::npos,
+        "operational report should expose compact chain rows by default");
+  check(result.find("\"chain_summary\":[") != std::string::npos,
+        "operational report should expose explicit chain summary rows");
+  check(result.find("\"spawn_id\":\"mdn\"") != std::string::npos &&
+            result.find("\"spawn_fingerprint\":\"mdn_spawn_fp\"") !=
+                std::string::npos,
+        "chain summary should expose component spawn identity");
+  check(result.find("\"source_range\":{\"policy\":\"anchor_index\"") !=
+            std::string::npos,
+        "chain summary should expose source range policy");
+  check(result.find("\"source_order\":\"sequential\"") != std::string::npos,
+        "chain summary should expose Runtime source order");
+  check(result.find("\"accepted_anchor_count\":250") != std::string::npos,
+        "chain summary should expose accepted anchor count");
+  check(
+      result.find("\"handoff_identity\":{\"available\":true,"
+                  "\"handoff_id\":\"validation_eval_handoff\"") !=
+          std::string::npos,
+      "chain summary should expose handoff identity when Runtime recorded it");
+  check(result.find("\"runtime_result_fact\":true") != std::string::npos &&
+            result.find("\"runtime_checkpoint_io_fact\":true") !=
+                std::string::npos &&
+            result.find("\"runtime_health_measurement_fact\":true") !=
+                std::string::npos,
+        "chain summary should expose terminal Runtime fact availability");
+  check(result.find("\"machine_payload\":{") != std::string::npos,
+        "include_machine_payload should expose full audit details");
+  check(result.find("\"channel_mdn_validation_eval_ready\":{\"status\":"
+                    "\"satisfied\"") != std::string::npos,
+        "target statuses should include validation eval readiness");
+  check(result.find("\"role\":\"vicreg_train\"") != std::string::npos &&
+            result.find("\"role\":\"mdn_train\"") != std::string::npos &&
+            result.find("\"role\":\"mdn_validation_eval\"") !=
+                std::string::npos,
+        "operator report should include all three chain jobs");
+  check(result.find("\"optimizer_steps\":250") != std::string::npos,
+        "operator report should expose train optimizer steps");
+  check(result.find("\"optimizer_steps\":0") != std::string::npos,
+        "operator report should expose eval optimizer steps");
+  check(result.find("\"mean_valid_target_fraction\":0.910001") !=
+            std::string::npos,
+        "operator report should prefer Runtime terminal result facts over raw "
+        "reports");
+  check(result.find("\"id\":\"high_pre_clip_grad_norm\"") != std::string::npos,
+        "operator report should flag the MDN grad norm watch item");
+  check(result.find("\"clip_norm\":5.0") != std::string::npos,
+        "operator report should include the training clip norm");
+  check(result.find("inspect_runtime_terminal_result_facts") !=
+            std::string::npos,
+        "operator report should switch to terminal fact inspection once facts "
+        "exist");
+
+  marshal::set_marshal_lattice_tool_callback(nullptr);
+  std::filesystem::remove_all(root);
+}
+
+void test_operational_report_quotes_target_blockers() {
+  const auto root = make_tmp_dir("operational_report_target_blockers");
+  const auto runtime_root = root / "runtime";
+  const auto config_path = root / ".config";
+  std::filesystem::create_directories(runtime_root);
+  write_text(config_path, "[HERO]\n");
+
+  marshal::set_marshal_lattice_tool_callback(
+      fake_lattice_operational_report_blocker_callback);
+  const std::string args =
+      "{\"subject\":\"run\",\"mode\":\"training_state\",\"runtime_root\":" +
+      marshal::detail::json_quote(runtime_root.string()) +
+      ",\"config_path\":" + marshal::detail::json_quote(config_path.string()) +
+      ",\"target_ids\":[\"vicreg_train_core_ready\","
+      "\"channel_mdn_train_core_ready\","
+      "\"channel_mdn_validation_eval_ready\"]}";
+
+  std::string result;
+  std::string error;
+  check(marshal::execute_marshal_tool_json("hero.marshal.evaluate", args,
+                                           &result, &error),
+        "evaluate subject=run should quote Lattice target blockers");
+  check(g_fake_lattice_tool_name == "hero.lattice.evaluate_targets",
+        "target blocker view should come from Lattice target evaluation");
+  check(result.find("\"target_satisfaction_claimed\":false") !=
+            std::string::npos,
+        "target blocker view must not become Marshal proof authority");
+  check(result.find("\"target_blockers\":[") != std::string::npos,
+        "operational report should include the M17 target-blocker panel");
+  check(result.find("\"operator_summary\":{") != std::string::npos,
+        "default evaluate output should include an operator summary");
+  check(result.find("\"job_chain\":[") != std::string::npos,
+        "default evaluate output should include compact job-chain rows");
+  check(result.find("\"latest_jobs\"") == std::string::npos,
+        "default evaluate output should keep full job rows out of the "
+        "operator packet");
+  check(result.find("\"machine_payload\"") == std::string::npos,
+        "default evaluate output should not include the full audit payload");
+  check(result.find("\"target_id\":\"channel_mdn_validation_eval_ready\","
+                    "\"status\":\"metric_failed\"") != std::string::npos,
+        "target blocker panel should include the unsatisfied target");
+  check(result.find("\"blockers\":[\"target_not_satisfied\","
+                    "\"deficit:coverage:evaluation_metric\","
+                    "\"warning:validation_eval_missing\"]") !=
+            std::string::npos,
+        "target blocker panel should quote Lattice deficits and warnings");
+  check(result.find("\"next_safe_action\":\"reach_lattice_target\"") !=
+            std::string::npos,
+        "unsatisfied target with deficits should point back to the bounded "
+        "target driver");
+  check(result.find("\"proof_certificate_issues\":[\"closure_unresolved\"]") !=
+            std::string::npos,
+        "target blocker panel should quote proof-certificate issues");
+  check(result.find("\"next_safe_action\":\"inspect_lattice_certificate_"
+                    "failure\"") != std::string::npos,
+        "proof check failures should be routed to certificate inspection");
+
+  marshal::set_marshal_lattice_tool_callback(nullptr);
+  std::filesystem::remove_all(root);
+}
+
+void test_evaluate_deterministic_subjects() {
+  const auto root = make_tmp_dir("evaluate_deterministic_subjects");
+  const auto runtime_root = root / "runtime";
+  const auto config_path = root / ".config";
+  const auto vicreg_dir =
+      runtime_root / "eval_subject_vicreg.train.channel_representation_vicreg";
+  const auto mdn_dir =
+      runtime_root / "eval_subject_mdn.train.channel_inference_mdn";
+  std::filesystem::create_directories(vicreg_dir);
+  std::filesystem::create_directories(mdn_dir);
+  write_text(config_path, "[HERO]\n");
+  write_text(
+      vicreg_dir / "job.manifest",
+      "job_id=eval_subject_vicreg.train.channel_representation_vicreg\n");
+  write_text(vicreg_dir / "job.state",
+             "job_id=eval_subject_vicreg.train.channel_representation_vicreg\n"
+             "job_kind=channel_representation_vicreg\n"
+             "status=completed\n"
+             "component_family_id=wikimyei.representation.encoding.vicreg\n"
+             "component_spawn_registry_id=test_registry\n"
+             "component_spawn_id=vic\n"
+             "component_spawn_label=vicreg_main\n"
+             "component_spawn_fingerprint=vic_fp\n"
+             "target_component_family_id=wikimyei.representation.encoding."
+             "vicreg\n"
+             "wave_action=train\n"
+             "wave_mode=train|debug\n"
+             "source_range_policy=anchor_index\n"
+             "resolved_anchor_index_begin=0\n"
+             "resolved_anchor_index_end=1600\n"
+             "accepted_anchor_count=1600\n"
+             "checkpoint_written=true\n"
+             "checkpoint_path=/tmp/vicreg.pt\n"
+             "protocol_contract_fingerprint=pc\n"
+             "graph_order_fingerprint=go\n"
+             "source_cursor_token=cursor\n"
+             "vicreg_assembly_fingerprint=vic\n"
+             "mdn_assembly_fingerprint=mdn\n");
+  write_text(mdn_dir / "job.manifest",
+             "job_id=eval_subject_mdn.train.channel_inference_mdn\n");
+  write_text(mdn_dir / "job.state",
+             "job_id=eval_subject_mdn.train.channel_inference_mdn\n"
+             "job_kind=channel_inference_mdn\n"
+             "status=completed\n"
+             "component_family_id=wikimyei.inference.expected_value.mdn\n"
+             "component_spawn_registry_id=test_registry\n"
+             "component_spawn_id=mdn\n"
+             "component_spawn_label=mdn_main\n"
+             "component_spawn_fingerprint=mdn_fp\n"
+             "target_component_family_id=wikimyei.inference.expected_value."
+             "mdn\n"
+             "wave_action=train\n"
+             "wave_mode=train|debug\n"
+             "source_range_policy=anchor_index\n"
+             "resolved_anchor_index_begin=0\n"
+             "resolved_anchor_index_end=1600\n"
+             "accepted_anchor_count=1600\n"
+             "checkpoint_written=true\n"
+             "checkpoint_path=/tmp/mdn.pt\n"
+             "protocol_contract_fingerprint=pc\n"
+             "graph_order_fingerprint=go\n"
+             "source_cursor_token=cursor\n"
+             "vicreg_assembly_fingerprint=vic\n"
+             "mdn_assembly_fingerprint=mdn\n");
+  write_text(mdn_dir / "runtime.result.fact", "fact_type=runtime.result.fact\n"
+                                              "status=completed\n"
+                                              "optimizer_steps=10\n"
+                                              "checkpoint_written=true\n"
+                                              "final_loss=2.5\n");
+
+  marshal::set_marshal_lattice_tool_callback(
+      fake_lattice_target_deficit_callback);
+  std::string result;
+  std::string error;
+  const std::string target_args =
+      "{\"subject\":\"target\",\"target_id\":\"lookup_target\","
+      "\"runtime_root\":" +
+      marshal::detail::json_quote(runtime_root.string()) +
+      ",\"config_path\":" + marshal::detail::json_quote(config_path.string()) +
+      ",\"include_machine_payload\":true}";
+  check(marshal::execute_marshal_tool_json("hero.marshal.evaluate", target_args,
+                                           &result, &error),
+        "evaluate subject=target should query Lattice target deficit");
+  check(g_fake_lattice_tool_name == "hero.lattice.target_deficit",
+        "target subject should use Lattice target_deficit");
+  check(result.find("\"subject\":\"target\"") != std::string::npos &&
+            result.find("\"target_panel\":{") != std::string::npos,
+        "target subject should return a target panel");
+  check(result.find("\"target_status\":\"metric_failed\"") != std::string::npos,
+        "target subject should expose Lattice target status");
+  check(
+      result.find("\"target_status_source\":\"hero.lattice.target_deficit\"") !=
+          std::string::npos,
+      "target subject should mark the Lattice status source");
+  check(result.find("\"proof_authority\":\"lattice\"") != std::string::npos,
+        "target subject should name Lattice as proof authority");
+  check(result.find("\"certificate_status\":\"available\"") !=
+            std::string::npos,
+        "target subject should report certificate availability from Lattice "
+        "payload");
+  check(result.find("\"proof_certificate_present\":true") != std::string::npos,
+        "target subject should expose proof certificate presence");
+  check(result.find("\"next_safe_action\":\"reach_lattice_target\"") !=
+            std::string::npos,
+        "target subject should point blocked planned targets at the driver");
+
+  marshal::set_marshal_lattice_tool_callback(
+      fake_lattice_satisfied_without_certificate_callback);
+  const std::string satisfied_no_certificate_args =
+      "{\"subject\":\"target\",\"target_id\":\"satisfied_without_certificate\","
+      "\"runtime_root\":" +
+      marshal::detail::json_quote(runtime_root.string()) +
+      ",\"config_path\":" + marshal::detail::json_quote(config_path.string()) +
+      "}";
+  result.clear();
+  error.clear();
+  check(marshal::execute_marshal_tool_json("hero.marshal.evaluate",
+                                           satisfied_no_certificate_args,
+                                           &result, &error),
+        "satisfied target without certificate metadata should still report");
+  check(result.find("\"target_status\":\"satisfied\"") != std::string::npos,
+        "satisfied target status should be quoted from Lattice");
+  check(result.find("\"certificate_status\":\"unavailable\"") !=
+            std::string::npos,
+        "satisfied target without proof material should not claim a "
+        "certificate");
+  check(result.find("\"next_safe_action\":\"inspect_lattice_status\"") !=
+            std::string::npos,
+        "satisfied target without certificate should route to status "
+        "inspection, not certificate inspection");
+  check(result.find("\"next_safe_action\":\"inspect_lattice_certificate\"") ==
+            std::string::npos,
+        "Marshal should not imply certificate inspection without Lattice "
+        "certificate material");
+
+  marshal::set_marshal_lattice_tool_callback(
+      fake_lattice_malformed_target_deficit_callback);
+  result.clear();
+  error.clear();
+  check(!marshal::execute_marshal_tool_json("hero.marshal.evaluate",
+                                            target_args, &result, &error),
+        "malformed Lattice target_deficit payload should fail closed");
+  check(error.find("expected JSON object") != std::string::npos,
+        "malformed target_deficit failure should explain JSON object shape");
+  marshal::set_marshal_lattice_tool_callback(nullptr);
+
+  const std::string protocol_args =
+      "{\"subject\":\"protocol\",\"runtime_root\":" +
+      marshal::detail::json_quote(runtime_root.string()) +
+      ",\"config_path\":" + marshal::detail::json_quote(config_path.string()) +
+      ",\"protocol_contract_fingerprint\":\"pc\","
+      "\"graph_order_fingerprint\":\"go\","
+      "\"source_cursor_token\":\"cursor\","
+      "\"vicreg_assembly_fingerprint\":\"vic\","
+      "\"mdn_assembly_fingerprint\":\"mdn\"}";
+  result.clear();
+  error.clear();
+  check(marshal::execute_marshal_tool_json("hero.marshal.evaluate",
+                                           protocol_args, &result, &error),
+        "evaluate subject=protocol should inspect identity evidence");
+  check(result.find("\"subject\":\"protocol\"") != std::string::npos &&
+            result.find("\"issue_count\":0") != std::string::npos,
+        "protocol subject should report matched identity evidence");
+  check(result.find("\"status\":\"matched\"") != std::string::npos,
+        "protocol subject should mark expected observed fields as matched");
+  check(result.find("\"expectation_policy\":\"observed_ok_report\"") !=
+            std::string::npos,
+        "protocol subject should default to report semantics");
+  check(result.find("\"identity_verified\":false") != std::string::npos,
+        "report-mode protocol output should not claim strict identity "
+        "verification");
+  check(result.find("\"evidence_scope\":\"runtime_jobs_only\"") !=
+            std::string::npos,
+        "protocol subject should declare its Runtime-only evidence scope");
+  check(result.find("\"machine_payload\"") == std::string::npos,
+        "protocol subject should omit machine payload by default");
+
+  const std::string protocol_strict_args =
+      "{\"subject\":\"protocol\",\"identity_mode\":\"strict\","
+      "\"runtime_root\":" +
+      marshal::detail::json_quote(runtime_root.string()) +
+      ",\"config_path\":" + marshal::detail::json_quote(config_path.string()) +
+      ",\"protocol_contract_fingerprint\":\"pc\","
+      "\"graph_order_fingerprint\":\"go\","
+      "\"source_cursor_token\":\"cursor\","
+      "\"vicreg_assembly_fingerprint\":\"vic\","
+      "\"mdn_assembly_fingerprint\":\"mdn\"}";
+  result.clear();
+  error.clear();
+  check(marshal::execute_marshal_tool_json(
+            "hero.marshal.evaluate", protocol_strict_args, &result, &error),
+        "protocol strict mode should accept complete matching expected "
+        "identity");
+  check(result.find("\"expectation_policy\":\"strict_expected_identity\"") !=
+            std::string::npos,
+        "strict protocol subject should declare strict expectation policy");
+  check(result.find("\"identity_verified\":true") != std::string::npos,
+        "strict protocol subject should verify complete matching identity");
+
+  const std::string protocol_observed_only_args =
+      "{\"subject\":\"protocol\",\"runtime_root\":" +
+      marshal::detail::json_quote(runtime_root.string()) +
+      ",\"config_path\":" + marshal::detail::json_quote(config_path.string()) +
+      "}";
+  result.clear();
+  error.clear();
+  check(marshal::execute_marshal_tool_json("hero.marshal.evaluate",
+                                           protocol_observed_only_args, &result,
+                                           &error),
+        "protocol report mode should allow observed-only identity evidence");
+  check(result.find("\"issue_count\":0") != std::string::npos,
+        "observed-only report mode should not invent a mismatch");
+  check(result.find("\"status\":\"observed\"") != std::string::npos,
+        "observed-only report mode should distinguish observed from matched");
+  check(result.find("\"identity_verified\":false") != std::string::npos,
+        "observed-only protocol report must not claim strict verification");
+
+  result.clear();
+  error.clear();
+  check(!marshal::execute_marshal_tool_json(
+            "hero.marshal.evaluate",
+            "{\"subject\":\"protocol\",\"identity_mode\":\"strict\","
+            "\"runtime_root\":" +
+                marshal::detail::json_quote(runtime_root.string()) + "}",
+            &result, &error),
+        "strict protocol mode should require explicit expected identity");
+  check(error.find("identity_mode=strict requires expected identity fields") !=
+            std::string::npos,
+        "strict protocol missing expectations should fail clearly");
+
+  const std::string protocol_mismatch_args =
+      "{\"subject\":\"protocol\",\"runtime_root\":" +
+      marshal::detail::json_quote(runtime_root.string()) +
+      ",\"config_path\":" + marshal::detail::json_quote(config_path.string()) +
+      ",\"protocol_contract_fingerprint\":\"wrong\"}";
+  result.clear();
+  error.clear();
+  check(marshal::execute_marshal_tool_json(
+            "hero.marshal.evaluate", protocol_mismatch_args, &result, &error),
+        "protocol mismatch should return a report with issues");
+  check(result.find("identity_mismatch:protocol_contract_fingerprint") !=
+            std::string::npos,
+        "protocol mismatch should be surfaced as an identity issue");
+
+  const std::string spawn_args =
+      "{\"subject\":\"spawn\",\"runtime_root\":" +
+      marshal::detail::json_quote(runtime_root.string()) +
+      ",\"config_path\":" + marshal::detail::json_quote(config_path.string()) +
+      ",\"spawn_id\":\"mdn\"}";
+  result.clear();
+  error.clear();
+  check(marshal::execute_marshal_tool_json("hero.marshal.evaluate", spawn_args,
+                                           &result, &error),
+        "evaluate subject=spawn should inspect spawn evidence");
+  check(result.find("\"subject\":\"spawn\"") != std::string::npos &&
+            result.find("\"match_count\":1") != std::string::npos &&
+            result.find("\"spawn_fingerprints\":[\"mdn_fp\"]") !=
+                std::string::npos,
+        "spawn subject should match the requested spawn");
+  check(result.find("\"evidence_scope\":\"runtime_jobs_only\"") !=
+                std::string::npos &&
+            result.find("\"proof_authority\":\"none\"") != std::string::npos &&
+            result.find("\"marshal_role\":\"evidence_grouping\"") !=
+                std::string::npos,
+        "spawn subject should declare non-proof Runtime grouping semantics");
+
+  const std::string spawn_fingerprint_args =
+      "{\"subject\":\"spawn\",\"runtime_root\":" +
+      marshal::detail::json_quote(runtime_root.string()) +
+      ",\"config_path\":" + marshal::detail::json_quote(config_path.string()) +
+      ",\"component_spawn_fingerprint\":\"mdn_fp\"}";
+  result.clear();
+  error.clear();
+  check(marshal::execute_marshal_tool_json(
+            "hero.marshal.evaluate", spawn_fingerprint_args, &result, &error),
+        "spawn subject should support fingerprint-only lookup");
+  check(result.find("\"query_match_count\":1") != std::string::npos,
+        "spawn fingerprint lookup should report query match count");
+
+  const std::string missing_spawn_args =
+      "{\"subject\":\"spawn\",\"runtime_root\":" +
+      marshal::detail::json_quote(runtime_root.string()) +
+      ",\"config_path\":" + marshal::detail::json_quote(config_path.string()) +
+      ",\"spawn_id\":\"missing_spawn\"}";
+  result.clear();
+  error.clear();
+  check(marshal::execute_marshal_tool_json("hero.marshal.evaluate",
+                                           missing_spawn_args, &result, &error),
+        "spawn no-match should produce a non-authoritative observation packet");
+  check(result.find("\"query_match_count\":0") != std::string::npos &&
+            result.find("missing_spawn_evidence") != std::string::npos,
+        "spawn no-match should be explicit without becoming proof");
+
+  const std::string component_args =
+      "{\"subject\":\"component\",\"runtime_root\":" +
+      marshal::detail::json_quote(runtime_root.string()) +
+      ",\"config_path\":" + marshal::detail::json_quote(config_path.string()) +
+      ",\"component_family_id\":\"wikimyei.inference.expected_value.mdn\"}";
+  result.clear();
+  error.clear();
+  check(marshal::execute_marshal_tool_json("hero.marshal.evaluate",
+                                           component_args, &result, &error),
+        "evaluate subject=component should inspect component evidence");
+  check(result.find("\"subject\":\"component\"") != std::string::npos &&
+            result.find("\"component_family_id\":\"wikimyei.inference."
+                        "expected_value.mdn\"") != std::string::npos &&
+            result.find("\"spawn_ids\":[\"mdn\"]") != std::string::npos,
+        "component subject should group matching component jobs by spawn");
+  check(result.find("\"evidence_scope\":\"runtime_jobs_only\"") !=
+                std::string::npos &&
+            result.find("\"proof_authority\":\"none\"") != std::string::npos &&
+            result.find("\"marshal_role\":\"evidence_grouping\"") !=
+                std::string::npos,
+        "component subject should declare non-proof Runtime grouping "
+        "semantics");
+
+  check(!marshal::execute_marshal_tool_json("hero.marshal.evaluate",
+                                            R"({"subject":"target"})", &result,
+                                            &error),
+        "target subject should require target_id");
+  check(error.find("subject=target requires target_id") != std::string::npos,
+        "missing target_id should fail explicitly");
+  check(!marshal::execute_marshal_tool_json(
+            "hero.marshal.evaluate", R"({"subject":"spawn"})", &result, &error),
+        "spawn subject should require spawn identity");
+  check(error.find("subject=spawn requires") != std::string::npos,
+        "missing spawn identity should fail explicitly");
+  check(!marshal::execute_marshal_tool_json("hero.marshal.evaluate",
+                                            R"({"subject":"component"})",
+                                            &result, &error),
+        "component subject should require component identity");
+  check(error.find("subject=component requires") != std::string::npos,
+        "missing component identity should fail explicitly");
+  check(
+      !marshal::execute_marshal_tool_json(
+          "hero.marshal.evaluate",
+          R"({"subject":"target","target_id":"lookup_target","baseline_job_id":"x"})",
+          &result, &error),
+      "target subject should reject run-only fields");
+  check(error.find("subject=target unknown field: baseline_job_id") !=
+            std::string::npos,
+        "target subject run-only field rejection should be explicit");
+  check(!marshal::execute_marshal_tool_json(
+            "hero.marshal.evaluate",
+            R"({"subject":"protocol","spawn_id":"mdn"})", &result, &error),
+        "protocol subject should reject spawn-only fields");
+  check(error.find("subject=protocol unknown field: spawn_id") !=
+            std::string::npos,
+        "protocol subject spawn-only field rejection should be explicit");
+  check(
+      !marshal::execute_marshal_tool_json(
+          "hero.marshal.evaluate",
+          R"({"subject":"spawn","target_id":"lookup_target","spawn_id":"mdn"})",
+          &result, &error),
+      "spawn subject should reject target-only fields");
+  check(error.find("subject=spawn unknown field: target_id") !=
+            std::string::npos,
+        "spawn subject target-only field rejection should be explicit");
+  check(
+      !marshal::execute_marshal_tool_json(
+          "hero.marshal.evaluate",
+          R"({"subject":"component","component_family_id":"x","protocol_contract_fingerprint":"pc"})",
+          &result, &error),
+      "component subject should reject protocol-only fields");
+  check(error.find("subject=component unknown field: "
+                   "protocol_contract_fingerprint") != std::string::npos,
+        "component subject protocol-only field rejection should be explicit");
+
+  std::filesystem::remove_all(root);
+}
+
+void test_compare_runs_reports_descriptive_deltas() {
+  const auto root = make_tmp_dir("compare_runs");
+  const auto runtime_root = root / "runtime";
+  const auto config_path = root / ".config";
+  std::filesystem::create_directories(runtime_root);
+  write_text(config_path, "[HERO]\n");
+
+  const auto baseline_dir =
+      runtime_root / "baseline_validation.run.channel_inference_mdn";
+  const auto candidate_dir =
+      runtime_root / "candidate_validation.run.channel_inference_mdn";
+  const auto baseline_report = baseline_dir / "channel_inference.report";
+  const auto candidate_report = candidate_dir / "channel_inference.report";
+  const auto rep_checkpoint = runtime_root / "rep.pt";
+  const auto baseline_mdn_checkpoint = runtime_root / "baseline_mdn.pt";
+  const auto candidate_mdn_checkpoint = runtime_root / "candidate_mdn.pt";
+
+  auto write_run = [&](const std::filesystem::path &job_dir,
+                       const std::filesystem::path &report_path,
+                       const std::string &job_id, const std::string &loss,
+                       const std::string &mean_loss,
+                       const std::string &valid_fraction,
+                       const std::string &grad_norm,
+                       const std::string &finite_parameter_check,
+                       const std::string &config_bundle_id,
+                       const std::string &config_receipt_id,
+                       const std::string &mdn_checkpoint) {
+    write_text(job_dir / "job.manifest",
+               "job_id=" + job_id +
+                   "\n"
+                   "job_kind=channel_inference_mdn\n"
+                   "config_path=" +
+                   config_path.string() +
+                   "\n"
+                   "config_bundle_id=" +
+                   config_bundle_id +
+                   "\n"
+                   "config_receipt_id=" +
+                   config_receipt_id +
+                   "\n"
+                   "protocol_contract_fingerprint=contract_compare\n"
+                   "graph_order_fingerprint=graph_compare\n"
+                   "source_cursor_token=cursor_compare\n"
+                   "wave_id=validation_eval_mdn\n"
+                   "target_component_family_id=wikimyei.inference.expected_"
+                   "value.mdn\n"
+                   "wave_action=run\n"
+                   "wave_mode=run|debug\n"
+                   "source_range_policy=anchor_index\n"
+                   "source_order_policy=sequential\n"
+                   "resolved_anchor_index_begin=1800\n"
+                   "resolved_anchor_index_end=2050\n"
+                   "accepted_anchor_count=250\n");
+    write_text(job_dir / "job.state",
+               "job_id=" + job_id +
+                   "\n"
+                   "job_kind=channel_inference_mdn\n"
+                   "status=completed\n"
+                   "wave_id=validation_eval_mdn\n"
+                   "target_component_family_id=wikimyei.inference.expected_"
+                   "value.mdn\n"
+                   "wave_action=run\n"
+                   "resolved_anchor_index_begin=1800\n"
+                   "resolved_anchor_index_end=2050\n"
+                   "optimizer_steps=0\n"
+                   "last_loss=" +
+                   loss +
+                   "\n"
+                   "checkpoint_written=false\n"
+                   "checkpoint_path=\n"
+                   "report_path=" +
+                   report_path.string() + "\n");
+    write_text(report_path,
+               "optimizer_steps=0\n"
+               "last_loss=" +
+                   loss +
+                   "\n"
+                   "mean_loss=" +
+                   mean_loss +
+                   "\n"
+                   "mean_valid_target_fraction=" +
+                   valid_fraction +
+                   "\n"
+                   "total_valid_target_count=7000\n"
+                   "mean_sigma_mean=2.5\n"
+                   "mean_sigma_mean_valid=2.4\n"
+                   "min_sigma_min=0.01\n"
+                   "max_sigma_max=6.0\n"
+                   "mean_mixture_entropy=0.60\n"
+                   "mean_mixture_usage=0.2,0.5,0.3\n"
+                   "mean_nll_per_channel=2.1,2.4\n"
+                   "mean_nll_per_target_feature=1.8,2.7,2.2\n"
+                   "mean_nll_per_channel_target_feature=1.8,2.0,2.4,2.5,2."
+                   "6,2.7\n"
+                   "valid_target_count_per_channel=3500,3500\n"
+                   "valid_target_count_per_target_feature=2400,2300,2300\n"
+                   "valid_target_count_per_channel_target_feature=1200,1150,"
+                   "1150,1200,1150,1150\n"
+                   "nonfinite_output_count=0\n"
+                   "finite_parameter_check=" +
+                   finite_parameter_check +
+                   "\n"
+                   "max_grad_norm=" +
+                   grad_norm +
+                   "\n"
+                   "representation_checkpoint_path=" +
+                   rep_checkpoint.string() +
+                   "\n"
+                   "representation_checkpoint_loaded=true\n"
+                   "mdn_checkpoint_path=" +
+                   mdn_checkpoint +
+                   "\n"
+                   "mdn_checkpoint_loaded=true\n"
+                   "checkpoint_written=false\n");
+    write_text(job_dir / "runtime.result.fact",
+               "fact_type=runtime.result.fact\n"
+               "optimizer_steps=0\n"
+               "final_loss=" +
+                   loss +
+                   "\n"
+                   "mean_loss=" +
+                   mean_loss +
+                   "\n"
+                   "valid_target_fraction=" +
+                   valid_fraction +
+                   "\n"
+                   "total_valid_target_count=7000\n"
+                   "sigma_mean=2.5\n"
+                   "sigma_mean_valid=2.4\n"
+                   "mixture_entropy=0.60\n"
+                   "mixture_usage=0.2,0.5,0.3\n"
+                   "mean_nll_per_channel=2.1,2.4\n"
+                   "mean_nll_per_target_feature=1.8,2.7,2.2\n"
+                   "mean_nll_per_channel_target_feature=1.8,2.0,2.4,2.5,2."
+                   "6,2.7\n"
+                   "valid_target_count_per_channel=3500,3500\n"
+                   "valid_target_count_per_target_feature=2400,2300,2300\n"
+                   "valid_target_count_per_channel_target_feature=1200,1150,"
+                   "1150,1200,1150,1150\n"
+                   "nonfinite_output_count=0\n"
+                   "finite_parameter_check=" +
+                   finite_parameter_check +
+                   "\n"
+                   "grad_norm_max_pre_clip=" +
+                   grad_norm +
+                   "\n"
+                   "grad_clip_norm=5.0\n"
+                   "checkpoint_written=false\n");
+    write_text(job_dir / "runtime.checkpoint_io.fact",
+               "fact_type=runtime.checkpoint_io.fact\n"
+               "checkpoint_written=false\n"
+               "representation_checkpoint_path=" +
+                   rep_checkpoint.string() +
+                   "\n"
+                   "representation_checkpoint_loaded=true\n"
+                   "mdn_checkpoint_path=" +
+                   mdn_checkpoint +
+                   "\n"
+                   "mdn_checkpoint_loaded=true\n");
+    write_text(job_dir / "runtime.health_measurement.fact",
+               "fact_type=runtime.health_measurement.fact\n"
+               "nonfinite_output_count=0\n"
+               "finite_parameter_check=" +
+                   finite_parameter_check +
+                   "\n"
+                   "grad_norm_max_pre_clip=" +
+                   grad_norm +
+                   "\n"
+                   "grad_clip_norm=5.0\n"
+                   "sigma_mean=2.5\n"
+                   "mixture_entropy=0.60\n");
+  };
+
+  write_run(baseline_dir, baseline_report,
+            "baseline_validation.run.channel_inference_mdn", "2.50", "2.60",
+            "0.70", "800.0", "", "bundle_baseline", "receipt_baseline",
+            baseline_mdn_checkpoint.string());
+  write_run(candidate_dir, candidate_report,
+            "candidate_validation.run.channel_inference_mdn", "2.10", "2.20",
+            "0.80", "50.0", "1", "bundle_candidate", "receipt_candidate",
+            candidate_mdn_checkpoint.string());
+
+  const std::string args =
+      "{\"subject\":\"run\",\"mode\":\"compare\",\"runtime_root\":" +
+      marshal::detail::json_quote(runtime_root.string()) +
+      ",\"config_path\":" + marshal::detail::json_quote(config_path.string()) +
+      ",\"baseline_job_id\":\"baseline_validation.run.channel_inference_mdn\""
+      ",\"candidate_job_id\":\"candidate_validation.run.channel_inference_mdn\""
+      ",\"include_machine_payload\":true}";
+  std::string result;
+  std::string error;
+  check(marshal::execute_marshal_tool_json("hero.marshal.evaluate", args,
+                                           &result, &error),
+        "evaluate subject=run compare mode should produce a read-only "
+        "comparison");
+  check(result.find("\"read_only\":true") != std::string::npos,
+        "compare_runs should be read-only");
+  check(result.find("\"target_satisfaction_claimed\":false") !=
+            std::string::npos,
+        "compare_runs must not claim target satisfaction");
+  check(result.find("\"model_selector\":false") != std::string::npos &&
+            result.find("\"checkpoint_selected\":false") != std::string::npos,
+        "compare_runs must not select models or checkpoints");
+  check(result.find("\"comparable\":true") != std::string::npos,
+        "matching validation jobs should be comparable");
+  check(result.find("\"operator_summary\":{") != std::string::npos,
+        "compare output should include compact operator summary");
+  check(result.find("\"stop_reason\":{") != std::string::npos &&
+            result.find("\"runtime_panel\":{") != std::string::npos &&
+            result.find("\"lattice_panel\":{") != std::string::npos &&
+            result.find("\"audit_panel\":{") != std::string::npos,
+        "compare output should expose the M19 compact panels");
+  check(result.find("\"run_pair\":{") != std::string::npos,
+        "compare output should include compact run pair by default");
+  check(result.find("\"config_identity_deltas\":{") != std::string::npos,
+        "compare_runs should expose config identity deltas");
+  check(result.find("\"config_bundle_id\":{\"baseline\":\"bundle_baseline\","
+                    "\"candidate\":\"bundle_candidate\",\"changed\":true}") !=
+            std::string::npos,
+        "compare_runs should report changed config bundle identity");
+  check(result.find("\"config_receipt_id\":{\"baseline\":\"receipt_baseline\","
+                    "\"candidate\":\"receipt_candidate\",\"changed\":true}") !=
+            std::string::npos,
+        "compare_runs should report changed config receipt identity");
+  check(result.find("\"wave_range_deltas\":{") != std::string::npos,
+        "compare_runs should expose wave/range deltas");
+  check(result.find("\"source_range_policy\":{\"baseline\":\"anchor_index\","
+                    "\"candidate\":\"anchor_index\",\"changed\":false}") !=
+            std::string::npos,
+        "compare_runs should report unchanged source-range policy");
+  check(result.find("\"anchor_index_begin\":{\"baseline\":1800,\"candidate\":"
+                    "1800,\"delta\":0}") != std::string::npos,
+        "compare_runs should report comparable anchor begin");
+  check(result.find("\"mean_loss\":{\"baseline\":2.60,\"candidate\":2.20") !=
+            std::string::npos,
+        "compare_runs should expose mean loss deltas");
+  check(result.find("\"per_channel\":[2.1,2.4]") != std::string::npos,
+        "compare_runs should expose per-channel NLL visibility");
+  check(result.find("\"per_target_feature\":[1.8,2.7,2.2]") !=
+            std::string::npos,
+        "compare_runs should expose per-target-feature NLL visibility");
+  check(result.find("\"finite_parameter_check\":true") != std::string::npos,
+        "compare_runs should expose finite parameter health");
+  check(result.find("\"finite_parameter_check\":null") != std::string::npos,
+        "compare_runs should not turn missing finite parameter evidence into "
+        "false");
+  check(result.find("\"mdn_checkpoint_changed\":true") != std::string::npos,
+        "compare_runs should report checkpoint lineage deltas");
+  check(result.find("\"cleared\":[\"high_pre_clip_grad_norm\"]") !=
+            std::string::npos,
+        "compare_runs should report warning deltas");
+  check(result.find("Compare does not choose. Compare explains.") !=
+            std::string::npos,
+        "compare_runs should preserve the descriptive invariant");
+
+  const std::string evaluate_args =
+      "{\"subject\":\"run\",\"mode\":\"compare\",\"runtime_root\":" +
+      marshal::detail::json_quote(runtime_root.string()) +
+      ",\"config_path\":" + marshal::detail::json_quote(config_path.string()) +
+      ",\"baseline_job_id\":\"baseline_validation.run.channel_inference_mdn\""
+      ",\"candidate_job_id\":\"candidate_validation.run.channel_inference_mdn\""
+      ",\"include_machine_payload\":false}";
+  result.clear();
+  error.clear();
+  check(marshal::execute_marshal_tool_json("hero.marshal.evaluate",
+                                           evaluate_args, &result, &error),
+        "evaluate subject=run mode=compare should wrap descriptive run "
+        "comparison");
+  check(result.find("\"tool\":\"hero.marshal.evaluate\"") != std::string::npos,
+        "evaluate should identify the high-level Marshal report tool");
+  check(result.find("\"subject\":\"run\"") != std::string::npos,
+        "evaluate should identify the run subject");
+  check(result.find("\"mode\":\"compare\"") != std::string::npos,
+        "evaluate compare mode should be explicit");
+  check(
+      result.find("\"result\":{\"ok\":true,\"report_kind\":\"run_compare\"") !=
+          std::string::npos,
+      "evaluate subject=run compare mode should preserve the comparison "
+      "payload");
+  check(result.find("\"operator_summary\":{") != std::string::npos,
+        "default compare output should include compact operator summary");
+  check(result.find("\"run_pair\":{") != std::string::npos,
+        "default compare output should include compact run pair");
+  check(result.find("\"baseline_run\"") == std::string::npos,
+        "default compare output should keep full baseline job row out of the "
+        "operator packet");
+  check(result.find("\"performance_visibility\"") == std::string::npos,
+        "default compare output should keep full performance panels behind the "
+        "machine payload");
+  check(result.find("\"machine_payload\"") == std::string::npos,
+        "default compare output should not include full audit payload");
+  check(result.find("Compare does not choose. Compare explains.") !=
+            std::string::npos,
+        "evaluate subject=run compare mode should preserve the descriptive "
+        "invariant");
+
+  std::filesystem::remove_all(root);
+}
+
+void test_operational_report_missing_eval_steps_is_not_mutation_evidence() {
+  const auto root = make_tmp_dir("operational_report_missing_steps");
+  const auto runtime_root = root / "runtime";
+  const auto config_path = root / ".config";
+  const auto eval_dir =
+      runtime_root /
+      "legacy_validation_eval_channel_mdn_1800_2050.run.channel_inference_mdn";
+  std::filesystem::create_directories(eval_dir);
+  write_text(config_path, "[HERO]\n");
+  write_text(eval_dir / "job.manifest",
+             "job_id=legacy_validation_eval_channel_mdn_1800_2050.run."
+             "channel_inference_mdn\n");
+  write_text(eval_dir / "job.state",
+             "job_id=legacy_validation_eval_channel_mdn_1800_2050.run."
+             "channel_inference_mdn\n"
+             "job_kind=channel_inference_mdn\n"
+             "status=completed\n"
+             "target_component_family_id=wikimyei.inference.expected_value."
+             "mdn\n"
+             "wave_action=run\n"
+             "resolved_anchor_index_begin=1800\n"
+             "resolved_anchor_index_end=2050\n"
+             "checkpoint_written=false\n"
+             "checkpoint_path=\n");
+  write_text(eval_dir / "runtime.result.fact", "fact_type=runtime.result.fact\n"
+                                               "checkpoint_written=false\n"
+                                               "final_loss=2.0\n");
+  write_text(eval_dir / "runtime.checkpoint_io.fact",
+             "fact_type=runtime.checkpoint_io.fact\n"
+             "checkpoint_written=false\n");
+
+  marshal::marshal_operational_report_options_t options{};
+  options.runtime_root = runtime_root;
+  options.config_path = config_path;
+  options.job_ids = {
+      "legacy_validation_eval_channel_mdn_1800_2050.run.channel_inference_mdn"};
+  const auto report = marshal::build_marshal_operational_report_json(options);
+  check(report.find("\"validation_eval_mutated_model_state\":false") !=
+            std::string::npos,
+        "missing eval optimizer-step evidence must not be treated as mutation");
+
+  const std::string evaluate_args =
+      "{\"subject\":\"run\",\"mode\":\"single_job\",\"runtime_root\":" +
+      marshal::detail::json_quote(runtime_root.string()) +
+      ",\"config_path\":" + marshal::detail::json_quote(config_path.string()) +
+      ",\"job_id\":\"legacy_validation_eval_channel_mdn_1800_2050.run."
+      "channel_inference_mdn\"}";
+  std::string result;
+  std::string error;
+  check(marshal::execute_marshal_tool_json("hero.marshal.evaluate",
+                                           evaluate_args, &result, &error),
+        "evaluate subject=run mode=single_job should wrap the operational "
+        "report");
+  check(result.find("\"tool\":\"hero.marshal.evaluate\"") != std::string::npos,
+        "evaluate single-job mode should identify the high-level tool");
+  check(result.find("\"subject\":\"run\"") != std::string::npos,
+        "evaluate should identify the run subject");
+  check(result.find("\"mode\":\"single_job\"") != std::string::npos,
+        "evaluate single-job mode should be explicit");
+  check(result.find("\"validation_eval_mutated_model_state\":false") !=
+            std::string::npos,
+        "evaluate single-job mode should preserve mutation semantics");
+
+  write_text(eval_dir / "runtime.result.fact", "fact_type=runtime.result.fact\n"
+                                               "checkpoint_written=false\n"
+                                               "model_state_mutated=true\n"
+                                               "final_loss=2.0\n");
+  const auto mutated_report =
+      marshal::build_marshal_operational_report_json(options);
+  check(mutated_report.find("\"validation_eval_mutated_model_state\":true") !=
+            std::string::npos,
+        "explicit Runtime model_state_mutated evidence must be surfaced");
+
+  std::filesystem::remove_all(root);
 }
 
 } // namespace
@@ -2583,9 +5211,33 @@ int main() {
   test_m7_batch_preview_independence();
   test_m5_codex_assist_uses_deterministic_primitives();
   test_m9_marshal_tool_schema_compatibility();
-  test_target_prepare_dispatch_unresolved_model_state();
-  test_target_prepare_dispatch_resolved_ready_for_dry_run();
-  test_target_prepare_dispatch_rejects_untrusted_resolution();
+  test_target_reach_lattice_target_unresolved_model_state();
+  test_target_reach_lattice_target_resolved_ready_for_dry_run();
+  test_reach_lattice_target_wraps_target_dispatch();
+  test_target_reach_lattice_target_rejects_untrusted_resolution();
+  test_m15_budgeted_reach_lattice_target_dry_run_driver();
+  test_m16_5_budgeted_reach_lattice_target_requires_explicit_policy();
+  test_m15_budgeted_reach_lattice_target_no_progress_window();
+  test_m16_5_execute_requires_runtime_terminal_evidence();
+  test_m16_5_execute_binds_runtime_terminal_evidence();
+  test_m20_execute_requires_runtime_result_fact_not_state_only();
+  test_m20_execute_requires_checkpoint_io_fact_when_checkpoint_io_occurs();
+  test_m20_execute_binds_checkpoint_io_fact();
+  test_m15_budgeted_reach_lattice_target_stops_on_lattice_warning();
+  test_m21_typed_warning_policy_decision();
+  test_m21_warning_only_visibility_does_not_stop_below_threshold();
+  test_m21_blocking_lattice_warning_stops_with_owner_reason();
+  test_m22_target_driver_replay_audit_full_and_stale_identity();
+  test_m22_target_driver_replay_audit_tamper_and_compact();
+  test_m16_target_driver_resume_guards_policy_and_identity();
+  test_m16_target_driver_resume_does_not_repeat_reached_run();
+  test_m16_5_target_driver_resume_requires_ledger_digest();
+  test_m16_5_target_driver_resume_requires_terminal_identity_after_execute();
   test_m9_marshal_tool_handlers_validate_arguments();
+  test_operational_report_summarizes_training_state();
+  test_operational_report_quotes_target_blockers();
+  test_evaluate_deterministic_subjects();
+  test_compare_runs_reports_descriptive_deltas();
+  test_operational_report_missing_eval_steps_is_not_mutation_evidence();
   return 0;
 }

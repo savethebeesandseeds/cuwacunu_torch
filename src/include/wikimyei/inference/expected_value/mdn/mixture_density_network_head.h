@@ -1,5 +1,7 @@
 /* mixture_density_network_head.h */
 #pragma once
+
+#include <algorithm>
 #include <string>
 #include <vector>
 
@@ -14,101 +16,173 @@ namespace inference {
 namespace expected_value {
 namespace mdn {
 
-// =============================
-// Per-channel, per-target-feature MDN head.
-// Produces per-channel outputs by composing C heads.
-// =============================
+struct ChannelAdapterImpl : torch::nn::Module {
+  int64_t H{0};
+  int64_t rank{0};
+  torch::nn::LayerNorm norm{nullptr};
+  torch::nn::Linear down{nullptr};
+  torch::nn::Linear up{nullptr};
 
-struct MdnHeadImpl : torch::nn::Module {
-  int64_t Df{0}, K{0}, Hf{1};
-  torch::nn::Linear lin_pi{nullptr}, lin_mu{nullptr}, lin_s{nullptr};
-
-  explicit MdnHeadImpl(const MdnHeadOptions &opt)
-      : Df(opt.Df), K(opt.K), Hf(opt.Hf) {
-    TORCH_CHECK(Hf == 1,
-                "[MdnHead] active channel MDN is one-step; Hf must be 1");
-    lin_pi =
-        register_module("lin_pi", torch::nn::Linear(opt.feature_dim, Df * K));
-    lin_mu =
-        register_module("lin_mu", torch::nn::Linear(opt.feature_dim, Df * K));
-    lin_s =
-        register_module("lin_s", torch::nn::Linear(opt.feature_dim, Df * K));
-    // --- sensible init: sigma ~ 0.1, mu ~ 0, pi ~ uniform via zero logits
+  explicit ChannelAdapterImpl(const ChannelAdapterOptions &opt)
+      : H(opt.feature_dim), rank(opt.adapter_rank) {
+    TORCH_CHECK(H > 0 && rank > 0,
+                "[ChannelAdapter] invalid feature/adaptor dimensions");
+    norm = register_module(
+        "norm", torch::nn::LayerNorm(
+                    torch::nn::LayerNormOptions(std::vector<int64_t>{H})));
+    down = register_module("down", torch::nn::Linear(H, rank));
+    up = register_module("up", torch::nn::Linear(rank, H));
     {
       torch::NoGradGuard ng;
-      if (lin_mu->bias.defined())
-        lin_mu->bias.zero_();
-      if (lin_pi->bias.defined())
-        lin_pi->bias.zero_();
-      if (lin_s->bias.defined()) {
-        const double init_sigma = 0.1; // tunable
-        const double b = softplus_inv(init_sigma);
-        lin_s->bias.fill_(b);
+      up->weight.zero_();
+      if (up->bias.defined()) {
+        up->bias.zero_();
       }
     }
   }
 
-  // Input: h [B,H]; Output: log_pi/mu/sigma [B,1,1,Df,K].
-  // The singleton axes are node and channel placeholders used by ChannelHeads.
+  // h: [...,H] -> [...,H].  The adapter is residual and initialized as an
+  // identity-preserving no-op; channel specialization grows only when trained.
+  torch::Tensor forward(const torch::Tensor &h) {
+    TORCH_CHECK(h.defined() && h.size(-1) == H,
+                "[ChannelAdapter] h must end with H");
+    auto delta = up->forward(torch::silu(down->forward(norm->forward(h))));
+    return h + delta;
+  }
+};
+TORCH_MODULE(ChannelAdapter);
+
+struct ChannelAdapterStackImpl : torch::nn::Module {
+  int64_t C{0};
+  int64_t H{0};
+  int64_t rank{0};
+  std::vector<ChannelAdapter> adapters{};
+
+  ChannelAdapterStackImpl(int64_t C_, int64_t H_, int64_t rank_)
+      : C(C_), H(H_), rank(rank_) {
+    TORCH_CHECK(C > 0 && H > 0 && rank > 0,
+                "[ChannelAdapterStack] invalid dimensions");
+    adapters.reserve(static_cast<std::size_t>(C));
+    for (int64_t c = 0; c < C; ++c) {
+      auto adapter = ChannelAdapter(
+          ChannelAdapterOptions{.feature_dim = H, .adapter_rank = rank});
+      adapters.push_back(
+          register_module("channel_adapter_" + std::to_string(c), adapter));
+    }
+  }
+
+  // h: [B,N,C,H] -> [B,N,C,H]
+  torch::Tensor forward(const torch::Tensor &h) {
+    TORCH_CHECK(h.defined() && h.dim() == 4,
+                "[ChannelAdapterStack] h must be [B,N,C,H]");
+    TORCH_CHECK(h.size(2) == C && h.size(3) == H,
+                "[ChannelAdapterStack] h shape mismatch");
+    using torch::indexing::Slice;
+    std::vector<torch::Tensor> adapted;
+    adapted.reserve(static_cast<std::size_t>(C));
+    for (int64_t c = 0; c < C; ++c) {
+      auto hc = h.index({Slice(), Slice(), c, Slice()});
+      adapted.push_back(
+          adapters[static_cast<std::size_t>(c)]->forward(hc).unsqueeze(2));
+    }
+    return torch::cat(adapted, /*dim=*/2);
+  }
+};
+TORCH_MODULE(ChannelAdapterStack);
+
+struct FeatureConditionedMdnHeadImpl : torch::nn::Module {
+  int64_t H{0};
+  int64_t Df{0};
+  int64_t K{0};
+  int64_t Ef{0};
+  int64_t source_feature_vocab_size{0};
+  double sigma_floor{1e-3};
+  torch::nn::Embedding feature_embedding{nullptr};
+  torch::Tensor target_coord_ids{};
+  torch::nn::LayerNorm input_norm{nullptr};
+  torch::nn::Linear hidden{nullptr};
+  torch::nn::Linear projection{nullptr};
+
+  explicit FeatureConditionedMdnHeadImpl(
+      const FeatureConditionedMdnHeadOptions &opt)
+      : H(opt.feature_dim), Df(opt.target_feature_dim), K(opt.mixture_count),
+        Ef(opt.feature_embedding_dim), sigma_floor(opt.sigma_floor) {
+    TORCH_CHECK(H > 0 && Df > 0 && K > 0 && Ef > 0,
+                "[FeatureConditionedMdnHead] invalid dimensions");
+    TORCH_CHECK(sigma_floor >= 0.0,
+                "[FeatureConditionedMdnHead] sigma_floor must be "
+                "nonnegative");
+    std::vector<int64_t> coords = opt.target_coords;
+    if (coords.empty()) {
+      coords.reserve(static_cast<std::size_t>(Df));
+      for (int64_t i = 0; i < Df; ++i) {
+        coords.push_back(i);
+      }
+    }
+    TORCH_CHECK(static_cast<int64_t>(coords.size()) == Df,
+                "[FeatureConditionedMdnHead] target_coords size must match "
+                "target_feature_dim");
+    int64_t max_coord = -1;
+    for (const auto coord : coords) {
+      TORCH_CHECK(coord >= 0,
+                  "[FeatureConditionedMdnHead] target coord must be "
+                  "nonnegative");
+      max_coord = std::max(max_coord, coord);
+    }
+    source_feature_vocab_size = opt.source_feature_vocab_size > 0
+                                    ? opt.source_feature_vocab_size
+                                    : (max_coord + 1);
+    TORCH_CHECK(source_feature_vocab_size > max_coord,
+                "[FeatureConditionedMdnHead] source feature vocabulary is too "
+                "small for target_coords");
+    feature_embedding = register_module(
+        "feature_embedding", torch::nn::Embedding(torch::nn::EmbeddingOptions(
+                                 source_feature_vocab_size, Ef)));
+    target_coord_ids = register_buffer(
+        "target_coord_ids",
+        torch::tensor(coords, torch::TensorOptions().dtype(torch::kInt64)));
+    input_norm = register_module(
+        "input_norm", torch::nn::LayerNorm(torch::nn::LayerNormOptions(
+                          std::vector<int64_t>{H + Ef})));
+    hidden = register_module("hidden", torch::nn::Linear(H + Ef, H));
+    projection = register_module("projection", torch::nn::Linear(H, 3 * K));
+    {
+      torch::NoGradGuard ng;
+      if (projection->bias.defined()) {
+        projection->bias.zero_();
+        const double init_sigma = std::max(0.1 - sigma_floor, 1e-6);
+        const double sigma_bias = softplus_inv(init_sigma);
+        projection->bias.slice(/*dim=*/0, 2 * K, 3 * K).fill_(sigma_bias);
+      }
+    }
+  }
+
+  // h: [B,N,C,H] -> log_pi/mu/sigma [B,N,C,Df,K].
   MdnOut forward(const torch::Tensor &h) {
+    TORCH_CHECK(h.defined() && h.dim() == 4,
+                "[FeatureConditionedMdnHead] h must be [B,N,C,H]");
+    TORCH_CHECK(h.size(3) == H, "[FeatureConditionedMdnHead] h shape mismatch");
     const auto B = h.size(0);
-
-    auto raw_pi = lin_pi->forward(h); // [B,Df*K]
-    auto raw_mu = lin_mu->forward(h); // [B,Df*K]
-    auto raw_s = lin_s->forward(h);   // [B,Df*K]
-
-    auto log_pi = torch::log_softmax(raw_pi.view({B, Df, K}), /*dim=*/-1)
-                      .unsqueeze(1)
-                      .unsqueeze(1); // [B,1,1,Df,K]
-
-    auto mu = raw_mu.view({B, Df, K}).unsqueeze(1).unsqueeze(1); // [B,1,1,Df,K]
-
-    auto sigma = safe_softplus(raw_s)
-                     .view({B, Df, K})
-                     .unsqueeze(1)
-                     .unsqueeze(1); // [B,1,1,Df,K]
-
-    return {log_pi, mu, sigma};
+    const auto N = h.size(1);
+    const auto C = h.size(2);
+    auto ids = target_coord_ids.to(
+        torch::TensorOptions().dtype(torch::kInt64).device(h.device()));
+    auto ef = feature_embedding->forward(ids).to(h.dtype()); // [Df,Ef]
+    auto h_expanded = h.unsqueeze(3).expand({B, N, C, Df, H});
+    auto ef_expanded = ef.view({1, 1, 1, Df, Ef}).expand({B, N, C, Df, Ef});
+    auto x = torch::cat({h_expanded, ef_expanded}, /*dim=*/-1)
+                 .contiguous()
+                 .view({B * N * C * Df, H + Ef});
+    auto z = torch::silu(hidden->forward(input_norm->forward(x)));
+    auto raw = projection->forward(z).view({B, N, C, Df, 3, K});
+    auto raw_pi = raw.select(/*dim=*/4, /*index=*/0);
+    auto raw_mu = raw.select(/*dim=*/4, /*index=*/1);
+    auto raw_sigma = raw.select(/*dim=*/4, /*index=*/2);
+    return {torch::log_softmax(raw_pi, /*dim=*/-1), raw_mu,
+            positive_sigma_from_raw(raw_sigma, sigma_floor)};
   }
 };
-TORCH_MODULE(MdnHead);
-
-// Container of per-channel heads: concatenates along C
-struct ChannelHeadsImpl : torch::nn::Module {
-  std::vector<MdnHead> heads;
-  int64_t C{1}, Hf{1}, Df{0}, K{0}, H{0};
-
-  ChannelHeadsImpl(int64_t C_, int64_t Hf_, int64_t Df_, int64_t K_, int64_t H_)
-      : C(C_), Hf(Hf_), Df(Df_), K(K_), H(H_) {
-    TORCH_CHECK(Hf == 1,
-                "[ChannelHeads] active channel MDN is one-step; Hf must be 1");
-    heads.reserve(C);
-    for (int64_t c = 0; c < C; ++c) {
-      MdnHeadOptions ho{H, Df, K, Hf};
-      auto hd = MdnHead(ho);
-      heads.push_back(register_module("head_" + std::to_string(c), hd));
-    }
-  }
-
-  // h: [B,H] -> log_pi/mu/sigma [B,1,C,Df,K]
-  MdnOut forward(const torch::Tensor &h) {
-    std::vector<torch::Tensor> pis, mus, sigmas;
-    pis.reserve(C);
-    mus.reserve(C);
-    sigmas.reserve(C);
-    for (int64_t c = 0; c < C; ++c) {
-      auto o = heads[c]->forward(h); // [B,1,1,Df,K]
-      pis.push_back(o.log_pi);
-      mus.push_back(o.mu);
-      sigmas.push_back(o.sigma);
-    }
-    auto log_pi = torch::cat(pis, /*dim=*/2);   // [B,1,C,Df,K]
-    auto mu = torch::cat(mus, /*dim=*/2);       // [B,1,C,Df,K]
-    auto sigma = torch::cat(sigmas, /*dim=*/2); // [B,1,C,Df,K]
-    return {log_pi, mu, sigma};
-  }
-};
-TORCH_MODULE(ChannelHeads);
+TORCH_MODULE(FeatureConditionedMdnHead);
 
 } // namespace mdn
 } // namespace expected_value

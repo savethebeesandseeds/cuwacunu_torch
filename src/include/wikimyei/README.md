@@ -6,6 +6,7 @@ surfaces that are actively used by the node-centered pipeline:
 - `assembly.h`
 - `expression/nodelift/`
 - `representation/encoding/vicreg/`
+- `representation/encoding/mtf_jepa_mae_vicreg/`
 - `representation/time_mae/`
 - `inference/expected_value/mdn/`
 
@@ -32,6 +33,7 @@ Fresh Wikimyei C++ namespaces mirror the room path:
 
 - `cuwacunu::wikimyei::assembly`
 - `cuwacunu::wikimyei::representation::encoding::vicreg`
+- `cuwacunu::wikimyei::representation::encoding::mtf_jepa_mae_vicreg`
 - `cuwacunu::wikimyei::inference::expected_value`
 - `cuwacunu::wikimyei::inference::expected_value::mdn`
 
@@ -44,9 +46,12 @@ receipts that mention the old node representation job remain audit data only.
 The legacy node MDN path has been removed; the active MDN surface is the
 channel-context MDN.
 
-`representation/time_mae/` is reserved for a future standalone TimeMAE family.
-The eventual VICReg+TimeMAE model should be introduced as a separate family once
-both standalone paths are stable.
+`representation/encoding/mtf_jepa_mae_vicreg/` is a separate experimental
+representation family for multi-scale time/frequency JEPA-MAE pretraining with
+VICReg-style stabilization. It does not replace the active VICReg production
+path, and it keeps its stability head/loss local rather than including the
+production VICReg implementation.
+`representation/time_mae/` remains reserved for a standalone TimeMAE family.
 
 The matching implementation subtree lives under `src/impl/wikimyei` and keeps
 Makefiles rather than README files.

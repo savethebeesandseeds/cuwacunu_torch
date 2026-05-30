@@ -185,7 +185,7 @@ Strict runtime `.lls` is now used for:
 - persisted runtime artifact emission in the quarantined legacy `evaluation`,
   source projection, lattice projection, Vicreg transfer-matrix, and Vicreg
   status paths
-- persisted runtime artifact ingest in Lattice and Hashimyei
+- persisted runtime artifact ingest in Lattice
 - schema extraction helpers for runtime analytics payloads
 
 Persisted standalone runtime-artifact ingestion adds one narrower rule on top of

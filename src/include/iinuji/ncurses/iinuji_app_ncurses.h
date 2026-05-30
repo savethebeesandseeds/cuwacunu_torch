@@ -183,6 +183,10 @@ private:
         ::echo();
       if (opt.enable_keypad)
         ::keypad(stdscr, TRUE);
+#ifdef NCURSES_VERSION
+      ::set_escdelay(25);
+#endif
+      ::leaveok(stdscr, TRUE);
       if (opt.hide_cursor)
         ::curs_set(0);
 

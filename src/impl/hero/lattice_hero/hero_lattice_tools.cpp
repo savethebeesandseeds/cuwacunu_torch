@@ -4,6 +4,9 @@
 #include "hero/mcp_schema_compat.h"
 #include "kikijyeba/lattice/exposure/exposure_ledger.h"
 #include "kikijyeba/lattice/target/lattice_target_evaluator.h"
+#include "kikijyeba/runtime/job_layout.h"
+#include "wikimyei/assembly.h"
+#include "wikimyei/representation/encoding/mtf_jepa_mae_vicreg/assembly.h"
 
 #include <algorithm>
 #include <array>
@@ -55,95 +58,90 @@ struct runtime_scan_session_cache_t {
 
 runtime_scan_session_cache_t g_runtime_scan_session_cache{};
 
-constexpr tool_descriptor_t
-    kTools[] =
-        {
-            {"hero.lattice.status",
-             "Summarize Lattice Hero policy, target DSL, runtime root, "
-             "exposure "
-             "facts, "
-             "and inferred active proof_context.",
-             R"({"type":"object","properties":{"config_path":{"type":"string"},"runtime_root":{"type":"string"}},"additionalProperties":false})"},
-            {"hero.lattice.schema",
-             "List Lattice Hero policy keys and constraints.",
-             R"({"type":"object","properties":{},"additionalProperties":false})"},
-            {"hero.lattice.list_targets",
-             "List configured lattice targets from the active global "
-             "config.",
-             R"({"type":"object","properties":{"config_path":{"type":"string"}},"additionalProperties":false})"},
-            {"hero.lattice.explain_target",
-             "Explain a compiled lattice target proof obligation without "
-             "evaluating "
-             "runtime evidence, including static mathematical, proof, "
-             "identity, "
-             "checkpoint-selection, plan-advice, readiness, numeric, and "
-             "warning "
-             "vocabularies.",
-             R"({"type":"object","properties":{"target_id":{"type":"string"},"config_path":{"type":"string"}},"required":["target_id"],"additionalProperties":false})"},
-            {"hero.lattice.evaluate_target",
-             "Evaluate one lattice target over runtime evidence without "
-             "executing "
-             "it; "
-             "coverage targets include exposure-load summaries and "
-             "non-blocking "
-             "warning results.",
-             R"({"type":"object","properties":{"target_id":{"type":"string"},"config_path":{"type":"string"},"runtime_root":{"type":"string"},"protocol_contract_fingerprint":{"type":"string"},"graph_order_fingerprint":{"type":"string"},"source_cursor_token":{"type":"string"},"vicreg_assembly_fingerprint":{"type":"string"},"mdn_assembly_fingerprint":{"type":"string"}},"required":["target_id"],"additionalProperties":false})"},
-            {"hero.lattice.evaluate_targets",
-             "Evaluate multiple lattice targets with one runtime evidence "
-             "scan and one loaded target evaluator; Lattice Hero remains "
-             "read-only and does not execute waves.",
-             R"({"type":"object","properties":{"target_ids":{"type":"array","items":{"type":"string"}},"config_path":{"type":"string"},"runtime_root":{"type":"string"},"protocol_contract_fingerprint":{"type":"string"},"graph_order_fingerprint":{"type":"string"},"source_cursor_token":{"type":"string"},"vicreg_assembly_fingerprint":{"type":"string"},"mdn_assembly_fingerprint":{"type":"string"},"limit":{"type":"integer"}},"additionalProperties":false})"},
-            {"hero.lattice.compare_evidence",
-             "Compare two clean satisfying lattice target evidence vectors "
-             "with "
-             "Pareto dominance; reports explicit dimensions and never emits a "
-             "scalar score or deployment decision.",
-             R"({"type":"object","properties":{"left_target_id":{"type":"string"},"right_target_id":{"type":"string"},"config_path":{"type":"string"},"runtime_root":{"type":"string"},"protocol_contract_fingerprint":{"type":"string"},"graph_order_fingerprint":{"type":"string"},"source_cursor_token":{"type":"string"},"vicreg_assembly_fingerprint":{"type":"string"},"mdn_assembly_fingerprint":{"type":"string"}},"required":["left_target_id","right_target_id"],"additionalProperties":false})"},
-            {"hero.lattice.plan_target",
-             "Evaluate one lattice target and return only status plus any "
-             "suggested "
-             "next wave; coverage targets include exposure-load summaries "
-             "and "
-             "non-blocking warning results.",
-             R"({"type":"object","properties":{"target_id":{"type":"string"},"config_path":{"type":"string"},"runtime_root":{"type":"string"},"protocol_contract_fingerprint":{"type":"string"},"graph_order_fingerprint":{"type":"string"},"source_cursor_token":{"type":"string"},"vicreg_assembly_fingerprint":{"type":"string"},"mdn_assembly_fingerprint":{"type":"string"}},"required":["target_id"],"additionalProperties":false})"},
-            {"hero.lattice.resolve_latest_satisfying",
-             "Resolve one latest_satisfying:<target_id> model-state hint to "
-             "a concrete checkpoint path using Lattice target satisfaction "
-             "and checkpoint-closure proof semantics; read-only, no ranking "
-             "or fallback selection.",
-             R"({"type":"object","properties":{"symbolic_hint":{"type":"string"},"target_id":{"type":"string"},"config_path":{"type":"string"},"runtime_root":{"type":"string"},"protocol_contract_fingerprint":{"type":"string"},"graph_order_fingerprint":{"type":"string"},"source_cursor_token":{"type":"string"},"vicreg_assembly_fingerprint":{"type":"string"},"mdn_assembly_fingerprint":{"type":"string"}},"additionalProperties":false})"},
-            {"hero.lattice.scan_exposure",
-             "Scan runtime jobs into an in-memory lattice exposure ledger "
-             "preview, "
-             "including anchor-domain health and derived MDN node-exposure "
-             "facts.",
-             R"({"type":"object","properties":{"runtime_root":{"type":"string"},"limit":{"type":"integer"}},"additionalProperties":false})"},
-            {"hero.lattice.index_status",
-             "Inspect a rebuildable lattice runtime index cache; stale or "
-             "missing "
-             "cache rows fall back to a live scan preview and never "
-             "upgrade target "
-             "satisfaction.",
-             R"({"type":"object","properties":{"runtime_root":{"type":"string"},"index_path":{"type":"string"},"limit":{"type":"integer"},"validation_strength":{"type":"string"}},"additionalProperties":false})"},
-            {"hero.lattice.index_query",
-             "Query the read-only lattice audit index by "
-             "relation/key/digest and "
-             "prove "
-             "stored-cache answers against a live scan before cache rows "
-             "are used.",
-             R"({"type":"object","properties":{"runtime_root":{"type":"string"},"index_path":{"type":"string"},"relation":{"type":"string"},"key":{"type":"string"},"key_contains":{"type":"string"},"digest":{"type":"string"},"digest_prefix":{"type":"string"},"limit":{"type":"integer"},"compare_live_scan":{"type":"boolean"},"allow_unproven_cache":{"type":"boolean"},"validation_strength":{"type":"string"}},"additionalProperties":false})"},
-            {"hero.lattice.derived_query",
-             "Answer one read-only derived lattice rule query with concrete "
-             "target, closure, leakage, cache, or lineage witnesses; query "
-             "results never execute waves or upgrade target satisfaction from "
-             "cache rows.",
-             R"({"type":"object","properties":{"relation":{"type":"string"},"target_id":{"type":"string"},"checkpoint_path":{"type":"string"},"checkpoint_id":{"type":"string"},"checkpoint_file_digest":{"type":"string"},"ancestor_checkpoint_path":{"type":"string"},"ancestor_checkpoint_id":{"type":"string"},"config_path":{"type":"string"},"runtime_root":{"type":"string"},"index_path":{"type":"string"},"validation_strength":{"type":"string"},"protocol_contract_fingerprint":{"type":"string"},"graph_order_fingerprint":{"type":"string"},"source_cursor_token":{"type":"string"},"vicreg_assembly_fingerprint":{"type":"string"},"mdn_assembly_fingerprint":{"type":"string"},"limit":{"type":"integer"}},"required":["relation"],"additionalProperties":false})"},
-            {"hero.lattice.checkpoint_closure",
-             "Inspect checkpoint exposure closure, checkpoint identity "
-             "authority, "
-             "and "
-             "unresolved input lineage.",
-             R"({"type":"object","properties":{"checkpoint_path":{"type":"string"},"checkpoint_id":{"type":"string"},"checkpoint_file_digest":{"type":"string"},"runtime_root":{"type":"string"},"limit":{"type":"integer"}},"additionalProperties":false})"},
+constexpr tool_descriptor_t kTools[] = {
+    {"hero.lattice.status",
+     "Summarize Lattice Hero policy, target DSL, runtime root, "
+     "exposure "
+     "facts, "
+     "and inferred active proof_context.",
+     R"({"type":"object","properties":{"config_path":{"type":"string"},"runtime_root":{"type":"string"}},"additionalProperties":false})"},
+    {"hero.lattice.schema", "List Lattice Hero policy keys and constraints.",
+     R"({"type":"object","properties":{},"additionalProperties":false})"},
+    {"hero.lattice.list_targets",
+     "List configured lattice targets from the active global "
+     "config.",
+     R"({"type":"object","properties":{"config_path":{"type":"string"}},"additionalProperties":false})"},
+    {"hero.lattice.explain_target",
+     "Explain a compiled lattice target proof obligation without "
+     "evaluating "
+     "runtime evidence, including static mathematical, proof, "
+     "identity, "
+     "checkpoint-selection, plan-advice, readiness, numeric, and "
+     "warning "
+     "vocabularies.",
+     R"({"type":"object","properties":{"target_id":{"type":"string"},"config_path":{"type":"string"}},"required":["target_id"],"additionalProperties":false})"},
+    {"hero.lattice.evaluate_target",
+     "Evaluate one lattice target over runtime evidence without "
+     "executing "
+     "it; "
+     "coverage targets include exposure-load summaries and "
+     "non-blocking "
+     "warning results.",
+     R"({"type":"object","properties":{"target_id":{"type":"string"},"config_path":{"type":"string"},"runtime_root":{"type":"string"},"protocol_id":{"type":"string"},"protocol_contract_fingerprint":{"type":"string"},"graph_order_fingerprint":{"type":"string"},"source_cursor_token":{"type":"string"},"vicreg_assembly_fingerprint":{"type":"string"},"mtf_jepa_mae_vicreg_assembly_fingerprint":{"type":"string"},"mdn_assembly_fingerprint":{"type":"string"}},"required":["target_id"],"additionalProperties":false})"},
+    {"hero.lattice.evaluate_targets",
+     "Evaluate multiple lattice targets with one runtime evidence "
+     "scan and one loaded target evaluator; Lattice Hero remains "
+     "read-only and does not execute waves.",
+     R"({"type":"object","properties":{"target_ids":{"type":"array","items":{"type":"string"}},"config_path":{"type":"string"},"runtime_root":{"type":"string"},"protocol_id":{"type":"string"},"protocol_contract_fingerprint":{"type":"string"},"graph_order_fingerprint":{"type":"string"},"source_cursor_token":{"type":"string"},"vicreg_assembly_fingerprint":{"type":"string"},"mtf_jepa_mae_vicreg_assembly_fingerprint":{"type":"string"},"mdn_assembly_fingerprint":{"type":"string"},"limit":{"type":"integer"}},"additionalProperties":false})"},
+    {"hero.lattice.compare_evidence",
+     "Compare two clean satisfying lattice target evidence vectors "
+     "with "
+     "Pareto dominance; reports explicit dimensions and never emits a "
+     "scalar score or deployment decision.",
+     R"({"type":"object","properties":{"left_target_id":{"type":"string"},"right_target_id":{"type":"string"},"config_path":{"type":"string"},"runtime_root":{"type":"string"},"protocol_id":{"type":"string"},"protocol_contract_fingerprint":{"type":"string"},"graph_order_fingerprint":{"type":"string"},"source_cursor_token":{"type":"string"},"vicreg_assembly_fingerprint":{"type":"string"},"mtf_jepa_mae_vicreg_assembly_fingerprint":{"type":"string"},"mdn_assembly_fingerprint":{"type":"string"}},"required":["left_target_id","right_target_id"],"additionalProperties":false})"},
+    {"hero.lattice.target_deficit",
+     "Evaluate one lattice target and return status, proof deficits, "
+     "and any target-authored suggested wave; read-only, no "
+     "execution, scheduling, config edits, or operational planning.",
+     R"({"type":"object","properties":{"target_id":{"type":"string"},"config_path":{"type":"string"},"runtime_root":{"type":"string"},"protocol_id":{"type":"string"},"protocol_contract_fingerprint":{"type":"string"},"graph_order_fingerprint":{"type":"string"},"source_cursor_token":{"type":"string"},"vicreg_assembly_fingerprint":{"type":"string"},"mtf_jepa_mae_vicreg_assembly_fingerprint":{"type":"string"},"mdn_assembly_fingerprint":{"type":"string"}},"required":["target_id"],"additionalProperties":false})"},
+    {"hero.lattice.latest_satisfying_checkpoint",
+     "Report one latest_satisfying:<target_id> checkpoint candidate "
+     "using Lattice target satisfaction and checkpoint-closure proof "
+     "semantics; read-only, no model ranking, fallback selection, or "
+     "dispatch resolution.",
+     R"({"type":"object","properties":{"symbolic_hint":{"type":"string"},"target_id":{"type":"string"},"config_path":{"type":"string"},"runtime_root":{"type":"string"},"protocol_id":{"type":"string"},"protocol_contract_fingerprint":{"type":"string"},"graph_order_fingerprint":{"type":"string"},"source_cursor_token":{"type":"string"},"vicreg_assembly_fingerprint":{"type":"string"},"mtf_jepa_mae_vicreg_assembly_fingerprint":{"type":"string"},"mdn_assembly_fingerprint":{"type":"string"}},"additionalProperties":false})"},
+    {"hero.lattice.scan_exposure",
+     "Scan runtime jobs into an in-memory lattice exposure ledger "
+     "preview, "
+     "including anchor-domain health and derived MDN node-exposure "
+     "facts.",
+     R"({"type":"object","properties":{"runtime_root":{"type":"string"},"limit":{"type":"integer"}},"additionalProperties":false})"},
+    {"hero.lattice.index_status",
+     "Inspect a rebuildable lattice runtime index cache; stale or "
+     "missing "
+     "cache rows fall back to a live scan preview and never "
+     "upgrade target "
+     "satisfaction.",
+     R"({"type":"object","properties":{"runtime_root":{"type":"string"},"index_path":{"type":"string"},"limit":{"type":"integer"},"validation_strength":{"type":"string"}},"additionalProperties":false})"},
+    {"hero.lattice.index_query",
+     "Query the read-only lattice audit index by "
+     "relation/key/digest and "
+     "prove "
+     "stored-cache answers against a live scan before cache rows "
+     "are used.",
+     R"({"type":"object","properties":{"runtime_root":{"type":"string"},"index_path":{"type":"string"},"relation":{"type":"string"},"key":{"type":"string"},"key_contains":{"type":"string"},"digest":{"type":"string"},"digest_prefix":{"type":"string"},"limit":{"type":"integer"},"compare_live_scan":{"type":"boolean"},"allow_unproven_cache":{"type":"boolean"},"validation_strength":{"type":"string"}},"additionalProperties":false})"},
+    {"hero.lattice.derived_query",
+     "Answer one read-only derived lattice rule query with concrete "
+     "target, closure, leakage, cache, or lineage witnesses; query "
+     "results never execute waves or upgrade target satisfaction from "
+     "cache rows.",
+     R"({"type":"object","properties":{"relation":{"type":"string"},"target_id":{"type":"string"},"checkpoint_path":{"type":"string"},"checkpoint_id":{"type":"string"},"checkpoint_file_digest":{"type":"string"},"ancestor_checkpoint_path":{"type":"string"},"ancestor_checkpoint_id":{"type":"string"},"config_path":{"type":"string"},"runtime_root":{"type":"string"},"index_path":{"type":"string"},"validation_strength":{"type":"string"},"protocol_id":{"type":"string"},"protocol_contract_fingerprint":{"type":"string"},"graph_order_fingerprint":{"type":"string"},"source_cursor_token":{"type":"string"},"vicreg_assembly_fingerprint":{"type":"string"},"mtf_jepa_mae_vicreg_assembly_fingerprint":{"type":"string"},"mdn_assembly_fingerprint":{"type":"string"},"limit":{"type":"integer"}},"required":["relation"],"additionalProperties":false})"},
+    {"hero.lattice.checkpoint_closure",
+     "Inspect checkpoint exposure closure, checkpoint identity "
+     "authority, "
+     "and "
+     "unresolved input lineage.",
+     R"({"type":"object","properties":{"checkpoint_path":{"type":"string"},"checkpoint_id":{"type":"string"},"checkpoint_file_digest":{"type":"string"},"runtime_root":{"type":"string"},"limit":{"type":"integer"}},"additionalProperties":false})"},
 };
 
 [[nodiscard]] bool tool_is_read_only(std::string_view name) {
@@ -153,8 +151,8 @@ constexpr tool_descriptor_t
          name == "hero.lattice.evaluate_target" ||
          name == "hero.lattice.evaluate_targets" ||
          name == "hero.lattice.compare_evidence" ||
-         name == "hero.lattice.plan_target" ||
-         name == "hero.lattice.resolve_latest_satisfying" ||
+         name == "hero.lattice.target_deficit" ||
+         name == "hero.lattice.latest_satisfying_checkpoint" ||
          name == "hero.lattice.scan_exposure" ||
          name == "hero.lattice.index_status" ||
          name == "hero.lattice.index_query" ||
@@ -667,6 +665,13 @@ map_get(const std::unordered_map<std::string, std::string> &map,
   return it == map.end() ? std::string{} : it->second;
 }
 
+[[nodiscard]] std::string
+map_get_or(const std::unordered_map<std::string, std::string> &map,
+           std::string_view key, std::string fallback) {
+  const auto value = map_get(map, key);
+  return trim_ascii(value).empty() ? fallback : value;
+}
+
 [[nodiscard]] std::string policy_get(const lattice_policy_t &policy,
                                      std::string_view key) {
   const auto found = policy.values.find(std::string(key));
@@ -1147,6 +1152,7 @@ target_spec_json(const target::lattice_target_spec_t &spec) {
       << ",\"guard_id\":" << json_quote(spec.guard_id)
       << ",\"target_class\":" << json_quote(spec.target_class)
       << ",\"kind\":" << json_quote(target::lattice_target_kind_name(spec.kind))
+      << ",\"protocol_id\":" << json_quote(spec.protocol_id)
       << ",\"component\":" << json_quote(spec.component)
       << ",\"checkpoint_source\":" << json_quote(spec.checkpoint_source)
       << ",\"evaluated_checkpoint_source\":"
@@ -1386,6 +1392,7 @@ evidence_json(const target::lattice_target_evidence_t &evidence) {
       << ",\"checkpoint_path\":"
       << json_quote(evidence.checkpoint_path.string())
       << ",\"checkpoint_written\":" << bool_json(evidence.checkpoint_written)
+      << ",\"protocol_id\":" << json_quote(evidence.protocol_id)
       << ",\"protocol_contract_fingerprint\":"
       << json_quote(evidence.protocol_contract_fingerprint)
       << ",\"graph_order_fingerprint\":"
@@ -2284,6 +2291,11 @@ causal_exposure_json(const target::lattice_target_proof_certificate_t::
       << ",\"wave_id\":" << json_quote(exposure.wave_id)
       << ",\"wave_action\":" << json_quote(exposure.wave_action)
       << ",\"job_status\":" << json_quote(exposure.job_status)
+      << ",\"runtime_handoff_id\":" << json_quote(exposure.runtime_handoff_id)
+      << ",\"runtime_handoff_digest\":"
+      << json_quote(exposure.runtime_handoff_digest)
+      << ",\"marshal_target_driver_run_id\":"
+      << json_quote(exposure.marshal_target_driver_run_id)
       << ",\"target_component_family_id\":"
       << json_quote(exposure.target_component_family_id)
       << ",\"uses\":" << string_array_json(exposure.uses)
@@ -2376,7 +2388,6 @@ causal_exposure_json(const target::lattice_target_proof_certificate_t::
       << ",\"complete\":" << bool_json(proof.complete)
       << ",\"fact_count\":" << proof.fact_count
       << ",\"resolution_authority\":" << json_quote(proof.resolution_authority)
-      << ",\"legacy_path_fallback\":" << bool_json(proof.legacy_path_fallback)
       << ",\"root_checkpoint_id\":" << json_quote(proof.root_checkpoint_id)
       << ",\"root_checkpoint_file_digest\":"
       << json_quote(proof.root_checkpoint_file_digest)
@@ -5656,6 +5667,7 @@ fact_json(const exposure::lattice_exposure_fact_t &f) {
   out << "{\"schema\":" << json_quote(f.schema)
       << ",\"fact_type\":" << json_quote(f.fact_type)
       << ",\"contract_fingerprint\":" << json_quote(f.contract_fingerprint)
+      << ",\"protocol_id\":" << json_quote(f.protocol_id)
       << ",\"graph_order_fingerprint\":"
       << json_quote(f.graph_order_fingerprint)
       << ",\"component_assembly_fingerprint\":"
@@ -5732,16 +5744,67 @@ fact_json(const exposure::lattice_exposure_fact_t &f) {
       << "},\"output_checkpoint\":"
       << json_quote(f.output_checkpoint.lexically_normal().string())
       << ",\"input_checkpoints\":" << path_array_json(f.input_checkpoints)
+      << ",\"checkpoint_digest_reported\":"
+      << json_quote(f.checkpoint_digest_reported)
+      << ",\"checkpoint_digest_verified\":"
+      << bool_json(f.checkpoint_digest_verified)
+      << ",\"checkpoint_file_exists\":" << bool_json(f.checkpoint_file_exists)
+      << ",\"checkpoint_bytes\":" << f.checkpoint_bytes
       << ",\"finite_loss\":" << bool_json(f.finite_loss)
+      << ",\"run_data_kind\":" << json_quote(f.run_data_kind)
+      << ",\"readiness_scope\":" << json_quote(f.readiness_scope)
+      << ",\"market_readiness_claimed\":"
+      << bool_json(f.market_readiness_claimed)
       << ",\"mean_loss\":" << double_json(f.mean_loss)
       << ",\"mean_nll\":" << double_json(f.mean_nll)
+      << ",\"report_schema\":{\"id\":" << json_quote(f.report_schema_id)
+      << ",\"version\":" << f.report_schema_version
+      << ",\"writer_id\":" << json_quote(f.report_writer_id)
+      << ",\"writer_version\":" << json_quote(f.report_writer_version)
+      << "},\"flattening\":{\"input_nodelift_shape\":"
+      << json_quote(f.input_nodelift_shape)
+      << ",\"mtf_training_shape\":" << json_quote(f.mtf_training_shape)
+      << ",\"flattening_contract\":" << json_quote(f.flattening_contract)
+      << ",\"anchor_batch_count\":" << f.anchor_batch_count
+      << ",\"node_count\":" << f.node_count
+      << ",\"flattened_sample_count\":" << f.flattened_sample_count
+      << ",\"recommended_graph_restore_shape\":"
+      << json_quote(f.recommended_graph_restore_shape)
+      << ",\"graph_restore_available\":" << bool_json(f.graph_restore_available)
+      << ",\"reshape_lossless\":" << bool_json(f.reshape_lossless) << "}"
       << ",\"representation_health\":{\"available\":"
       << bool_json(f.representation_health_available)
       << ",\"mean_invariance_loss\":" << double_json(f.mean_invariance_loss)
       << ",\"mean_variance_loss\":" << double_json(f.mean_variance_loss)
       << ",\"mean_covariance_loss\":" << double_json(f.mean_covariance_loss)
+      << ",\"loss_jepa_mean\":" << double_json(f.loss_jepa_mean)
+      << ",\"loss_mae_time_mean\":" << double_json(f.loss_mae_time_mean)
+      << ",\"loss_mae_frequency_mean\":"
+      << double_json(f.loss_mae_frequency_mean)
+      << ",\"loss_tf_align_mean\":" << double_json(f.loss_tf_align_mean)
+      << ",\"loss_vicreg_global_mean\":"
+      << double_json(f.loss_vicreg_global_mean)
+      << ",\"loss_vicreg_channel_mean\":"
+      << double_json(f.loss_vicreg_channel_mean)
       << ",\"last_grad_norm\":" << double_json(f.last_grad_norm)
       << ",\"max_grad_norm\":" << double_json(f.max_grad_norm)
+      << ",\"gradients_finite\":" << bool_json(f.gradients_finite)
+      << ",\"sample_valid_count\":" << f.sample_valid_count
+      << ",\"sample_valid_fraction\":" << double_json(f.sample_valid_fraction)
+      << ",\"channel_valid_count\":" << f.channel_valid_count
+      << ",\"channel_valid_fraction\":" << double_json(f.channel_valid_fraction)
+      << ",\"valid_latent_rows\":" << f.valid_latent_rows
+      << ",\"tf_pair_count\":" << f.tf_pair_count
+      << ",\"tf_pair_valid_count\":" << f.tf_pair_valid_count
+      << ",\"vicreg_global_valid_rows\":" << f.vicreg_global_valid_rows
+      << ",\"vicreg_channel_valid_rows\":" << f.vicreg_channel_valid_rows
+      << ",\"context_starved_sample_count\":" << f.context_starved_sample_count
+      << ",\"reduced_targets_for_context_count\":"
+      << f.reduced_targets_for_context_count
+      << ",\"min_context_satisfied_count\":" << f.min_context_satisfied_count
+      << ",\"target_ema_distance\":" << double_json(f.target_ema_distance)
+      << ",\"latent_std\":" << double_json(f.latent_std)
+      << ",\"latent_norm\":" << double_json(f.latent_norm)
       << ",\"total_valid_projection_rows\":" << f.total_valid_projection_rows
       << ",\"mean_adapter_valid_channel_time_fraction\":"
       << double_json(f.mean_adapter_valid_channel_time_fraction)
@@ -5789,6 +5852,7 @@ facts_json(const std::vector<exposure::lattice_exposure_fact_t> &facts,
       << ",\"receipt_index\":" << receipt.receipt_index
       << ",\"contract_fingerprint\":"
       << json_quote(receipt.contract_fingerprint)
+      << ",\"protocol_id\":" << json_quote(receipt.protocol_id)
       << ",\"graph_order_fingerprint\":"
       << json_quote(receipt.graph_order_fingerprint)
       << ",\"source_cursor_token\":" << json_quote(receipt.source_cursor_token)
@@ -5933,6 +5997,7 @@ source_receipt_summary_json(const exposure::source_receipt_summary_t &summary) {
       << ",\"parent_exposure_fact_digest\":"
       << json_quote(fact.parent_exposure_fact_digest)
       << ",\"contract_fingerprint\":" << json_quote(fact.contract_fingerprint)
+      << ",\"protocol_id\":" << json_quote(fact.protocol_id)
       << ",\"graph_order_fingerprint\":"
       << json_quote(fact.graph_order_fingerprint)
       << ",\"source_cursor_token\":" << json_quote(fact.source_cursor_token)
@@ -6031,6 +6096,7 @@ source_receipt_summary_json(const exposure::source_receipt_summary_t &summary) {
       << ",\"parent_exposure_fact_digest\":"
       << json_quote(fact.parent_exposure_fact_digest)
       << ",\"contract_fingerprint\":" << json_quote(fact.contract_fingerprint)
+      << ",\"protocol_id\":" << json_quote(fact.protocol_id)
       << ",\"graph_order_fingerprint\":"
       << json_quote(fact.graph_order_fingerprint)
       << ",\"source_cursor_token\":" << json_quote(fact.source_cursor_token)
@@ -6389,6 +6455,7 @@ node_fact_json(const exposure::lattice_node_exposure_fact_t &f) {
       << ",\"parent_exposure_fact_digest\":"
       << json_quote(f.parent_exposure_fact_digest)
       << ",\"contract_fingerprint\":" << json_quote(f.contract_fingerprint)
+      << ",\"protocol_id\":" << json_quote(f.protocol_id)
       << ",\"graph_order_fingerprint\":"
       << json_quote(f.graph_order_fingerprint)
       << ",\"source_cursor_token\":" << json_quote(f.source_cursor_token)
@@ -6476,6 +6543,7 @@ checkpoint_fact_json(const exposure::lattice_checkpoint_fact_t &f) {
       << ",\"checkpoint_file_digest\":" << json_quote(f.checkpoint_file_digest)
       << ",\"component\":" << json_quote(f.component)
       << ",\"contract_fingerprint\":" << json_quote(f.contract_fingerprint)
+      << ",\"protocol_id\":" << json_quote(f.protocol_id)
       << ",\"graph_order_fingerprint\":"
       << json_quote(f.graph_order_fingerprint)
       << ",\"source_cursor_token\":" << json_quote(f.source_cursor_token)
@@ -6529,16 +6597,10 @@ derive_active_identity_from_runtime_root(const fs::path &runtime_root) {
     }
     rows.push_back(row_t{.dir = dir, .time = time});
   };
-  if (fs::exists(runtime_root / "job.manifest")) {
-    push_job_dir(runtime_root);
-  } else {
-    for (fs::directory_iterator it(runtime_root, ec), end; !ec && it != end;
-         it.increment(ec)) {
-      if (!it->is_directory(ec) || !fs::exists(it->path() / "job.manifest")) {
-        continue;
-      }
-      push_job_dir(it->path());
-    }
+  for (const auto &job_dir :
+       cuwacunu::kikijyeba::runtime::job_layout::discover_runtime_job_dirs(
+           runtime_root)) {
+    push_job_dir(job_dir.dir);
   }
   std::sort(rows.begin(), rows.end(),
             [](const row_t &a, const row_t &b) { return a.time > b.time; });
@@ -6546,6 +6608,9 @@ derive_active_identity_from_runtime_root(const fs::path &runtime_root) {
   target::lattice_target_active_identity_t id{};
   for (const auto &row : rows) {
     const auto manifest = parse_kv_file(row.dir / "job.manifest");
+    if (id.protocol_id.empty()) {
+      id.protocol_id = map_get(manifest, "protocol_id");
+    }
     if (id.protocol_contract_fingerprint.empty()) {
       id.protocol_contract_fingerprint =
           map_get(manifest, "protocol_contract_fingerprint");
@@ -6560,6 +6625,10 @@ derive_active_identity_from_runtime_root(const fs::path &runtime_root) {
       id.vicreg_assembly_fingerprint =
           map_get(manifest, "vicreg_assembly_fingerprint");
     }
+    if (id.mtf_jepa_mae_vicreg_assembly_fingerprint.empty()) {
+      id.mtf_jepa_mae_vicreg_assembly_fingerprint =
+          map_get(manifest, "mtf_jepa_mae_vicreg_assembly_fingerprint");
+    }
     if (id.mdn_assembly_fingerprint.empty()) {
       id.mdn_assembly_fingerprint =
           map_get(manifest, "mdn_assembly_fingerprint");
@@ -6568,12 +6637,46 @@ derive_active_identity_from_runtime_root(const fs::path &runtime_root) {
   return id;
 }
 
+void overlay_active_identity_from_config(
+    const fs::path &config_path, target::lattice_target_active_identity_t *id) {
+  if (!id) {
+    return;
+  }
+  const auto config = parse_kv_file(config_path);
+  if (id->protocol_id.empty()) {
+    const fs::path protocol_dsl_path =
+        map_get_or(config, "kikijyeba_protocol_dsl_path",
+                   "/cuwacunu/src/config/kikijyeba.protocol.cwu_01v.dsl");
+    const auto protocol_dsl = parse_kv_file(protocol_dsl_path);
+    id->protocol_id = map_get_or(protocol_dsl, "PROTOCOL_ID", "cwu_01v");
+  }
+  if (!id->mtf_jepa_mae_vicreg_assembly_fingerprint.empty()) {
+    return;
+  }
+  const fs::path mtf_dsl_path = map_get_or(
+      config, "wikimyei_representation_mtf_jepa_mae_vicreg_dsl_path",
+      "/cuwacunu/src/config/wikimyei.representation.mtf_jepa_mae_vicreg.dsl");
+  const auto mtf_dsl = parse_kv_file(mtf_dsl_path);
+  const auto component_assembly_id =
+      map_get_or(mtf_dsl, "COMPONENT_ASSEMBLY_ID", "mtf_jepa_mae_vicreg_v1");
+  const auto version_token = map_get_or(
+      mtf_dsl, "VERSION", "wikimyei.representation.mtf_jepa_mae_vicreg.v1");
+  const auto assembly = cuwacunu::wikimyei::representation::encoding::
+      mtf_jepa_mae_vicreg::make_mtf_jepa_mae_vicreg_assembly(
+          component_assembly_id, version_token);
+  id->mtf_jepa_mae_vicreg_assembly_fingerprint =
+      cuwacunu::wikimyei::assembly::assembly_fingerprint(assembly);
+}
+
 void overlay_active_identity_from_args(
     const std::string &args, target::lattice_target_active_identity_t *id) {
   if (!id) {
     return;
   }
   std::string value;
+  if (extract_json_string_field(args, "protocol_id", &value)) {
+    id->protocol_id = value;
+  }
   if (extract_json_string_field(args, "protocol_contract_fingerprint",
                                 &value)) {
     id->protocol_contract_fingerprint = value;
@@ -6587,6 +6690,10 @@ void overlay_active_identity_from_args(
   if (extract_json_string_field(args, "vicreg_assembly_fingerprint", &value)) {
     id->vicreg_assembly_fingerprint = value;
   }
+  if (extract_json_string_field(
+          args, "mtf_jepa_mae_vicreg_assembly_fingerprint", &value)) {
+    id->mtf_jepa_mae_vicreg_assembly_fingerprint = value;
+  }
   if (extract_json_string_field(args, "mdn_assembly_fingerprint", &value)) {
     id->mdn_assembly_fingerprint = value;
   }
@@ -6595,13 +6702,16 @@ void overlay_active_identity_from_args(
 [[nodiscard]] std::string
 active_identity_json(const target::lattice_target_active_identity_t &id) {
   std::ostringstream out;
-  out << "{\"protocol_contract_fingerprint\":"
+  out << "{\"protocol_id\":" << json_quote(id.protocol_id)
+      << ",\"protocol_contract_fingerprint\":"
       << json_quote(id.protocol_contract_fingerprint)
       << ",\"graph_order_fingerprint\":"
       << json_quote(id.graph_order_fingerprint)
       << ",\"source_cursor_token\":" << json_quote(id.source_cursor_token)
       << ",\"vicreg_assembly_fingerprint\":"
       << json_quote(id.vicreg_assembly_fingerprint)
+      << ",\"mtf_jepa_mae_vicreg_assembly_fingerprint\":"
+      << json_quote(id.mtf_jepa_mae_vicreg_assembly_fingerprint)
       << ",\"mdn_assembly_fingerprint\":"
       << json_quote(id.mdn_assembly_fingerprint) << "}";
   return out.str();
@@ -6637,8 +6747,13 @@ session_scan_for_runtime_root(const fs::path &runtime_root) {
     g_runtime_scan_session_cache.available = true;
     g_runtime_scan_session_cache.runtime_root = runtime_root;
     g_runtime_scan_session_cache.watched_file_metadata_digest = watched_digest;
+    exposure::exposure_scan_options_t options{};
+    // Interactive Hero queries read sidecars as the runtime evidence surface.
+    // Sidecar-vs-derived parity belongs to audit mode, not default status.
+    options.compare_sidecar_to_derived_fact = false;
     g_runtime_scan_session_cache.scan =
-        exposure::scan_exposure_ledger_from_runtime_root(runtime_root);
+        exposure::scan_exposure_ledger_from_runtime_root(runtime_root, {},
+                                                         options);
   }
   return g_runtime_scan_session_cache.scan;
 }
@@ -6651,7 +6766,7 @@ session_runtime_index_cache_for_runtime_root(const fs::path &runtime_root) {
 
 [[nodiscard]] fs::path
 default_runtime_index_path(const fs::path &runtime_root) {
-  return runtime_root / ".lattice_index" / "lattice_runtime_index.v1.lls";
+  return runtime_root / "indexes" / "lattice_runtime_index.v1.lls";
 }
 
 [[nodiscard]] bool resolve_runtime_index_path_arg(const std::string &args,
@@ -6706,6 +6821,7 @@ build_target_evaluator(const std::string &args, lattice_context_t *ctx,
     return false;
   }
   auto identity = derive_active_identity_from_runtime_root(runtime_root);
+  overlay_active_identity_from_config(config_path, &identity);
   overlay_active_identity_from_args(args, &identity);
   exposure::exposure_ledger_scan_result_t scan{};
   if (policy_bool_or(ctx->policy, "auto_build_exposure_ledger", true)) {
@@ -7160,14 +7276,15 @@ build_target_evaluator(const std::string &args, lattice_context_t *ctx,
        << ",\"warning_scope_previews\":"
        << warning_scope_previews_json(spec, split_policy)
        << ",\"component_spawn_policy\":{"
-       << "\"schema\":" << json_quote("kikijyeba.component_spawn.v1")
+       << "\"schema\":" << json_quote("kikijyeba.component_spawn.v2")
        << ",\"required_tuple\":[" << json_quote("component_family_id") << ","
        << json_quote("protocol_contract_fingerprint") << ","
        << json_quote("graph_order_fingerprint") << ","
-       << json_quote("source_cursor_token") << ","
        << json_quote("component_assembly_fingerprint") << "]"
        << ",\"config_bridge\":"
        << json_quote("config_bundle_id/config_receipt_id")
+       << ",\"source_cursor_scope\":"
+       << json_quote("job_evidence_checkpoint_lineage_only")
        << ",\"spawn_id_readability_hint_only\":true"
        << ",\"full_fingerprint_required_for_proof\":true}"
        << ",\"text\":" << json_quote(text.str()) << ",\"over\":{"
@@ -7544,9 +7661,9 @@ build_target_evaluator(const std::string &args, lattice_context_t *ctx,
   return true;
 }
 
-[[nodiscard]] bool handle_plan_target(const std::string &args,
-                                      lattice_context_t *ctx, std::string *out,
-                                      std::string *err) {
+[[nodiscard]] bool handle_target_deficit(const std::string &args,
+                                         lattice_context_t *ctx,
+                                         std::string *out, std::string *err) {
   return evaluate_target_common(args, ctx, true, out, err);
 }
 
@@ -7560,10 +7677,10 @@ build_target_evaluator(const std::string &args, lattice_context_t *ctx,
 [[nodiscard]] bool target_satisfied_relation_value(
     const target::lattice_target_evaluation_t &eval);
 
-[[nodiscard]] bool handle_resolve_latest_satisfying(const std::string &args,
-                                                    lattice_context_t *ctx,
-                                                    std::string *out,
-                                                    std::string *err) {
+[[nodiscard]] bool handle_latest_satisfying_checkpoint(const std::string &args,
+                                                       lattice_context_t *ctx,
+                                                       std::string *out,
+                                                       std::string *err) {
   std::string symbolic_hint;
   if (!parse_optional_string_arg(args, "symbolic_hint", {}, &symbolic_hint,
                                  err)) {
@@ -7654,6 +7771,8 @@ build_target_evaluator(const std::string &args, lattice_context_t *ctx,
       << "source_cursor_token=" << identity.source_cursor_token << "\n"
       << "vicreg_assembly_fingerprint=" << identity.vicreg_assembly_fingerprint
       << "\n"
+      << "mtf_jepa_mae_vicreg_assembly_fingerprint="
+      << identity.mtf_jepa_mae_vicreg_assembly_fingerprint << "\n"
       << "mdn_assembly_fingerprint=" << identity.mdn_assembly_fingerprint
       << "\n"
       << "target_status=" << target::lattice_target_status_name(eval.status)
@@ -9194,8 +9313,6 @@ find_checkpoint_fact_for_path(
        << ",\"fact_count\":" << closure.facts.size()
        << ",\"resolution_authority\":"
        << json_quote(closure.resolution_authority)
-       << ",\"legacy_path_fallback\":"
-       << bool_json(closure.legacy_path_fallback)
        << ",\"root_checkpoint_id\":" << json_quote(closure.root_checkpoint_id)
        << ",\"root_checkpoint_file_digest\":"
        << json_quote(closure.root_checkpoint_file_digest)
@@ -9237,11 +9354,11 @@ using handler_fn = bool (*)(const std::string &, lattice_context_t *,
   if (name == "hero.lattice.compare_evidence") {
     return handle_compare_evidence;
   }
-  if (name == "hero.lattice.plan_target") {
-    return handle_plan_target;
+  if (name == "hero.lattice.target_deficit") {
+    return handle_target_deficit;
   }
-  if (name == "hero.lattice.resolve_latest_satisfying") {
-    return handle_resolve_latest_satisfying;
+  if (name == "hero.lattice.latest_satisfying_checkpoint") {
+    return handle_latest_satisfying_checkpoint;
   }
   if (name == "hero.lattice.scan_exposure") {
     return handle_scan_exposure;

@@ -31,6 +31,7 @@ enum class wave_source_order_policy_t {
 
 enum class wave_target_t {
   vicreg_representation,
+  mtf_jepa_mae_vicreg_representation,
   inference_channel_mdn,
 };
 
@@ -41,6 +42,7 @@ enum class wave_action_t {
 
 struct wave_settings_t {
   std::string wave_id{};
+  std::vector<std::string> compatible_protocol_ids{};
   wave_target_t target{wave_target_t::inference_channel_mdn};
   std::string mode_text{"run"};
   wave_action_t action{wave_action_t::run};
@@ -80,11 +82,50 @@ split_mode_atoms(std::string mode_text) {
 
 } // namespace wave_detail
 
+[[nodiscard]] inline std::vector<std::string>
+parse_protocol_id_list(std::string value) {
+  for (char &ch : value) {
+    if (ch == '|' || ch == '+' || ch == ',') {
+      ch = ' ';
+    }
+  }
+  std::istringstream in(value);
+  std::vector<std::string> out;
+  std::string item;
+  while (in >> item) {
+    item = wave_detail::kv::trim(item);
+    if (item.empty()) {
+      continue;
+    }
+    if (std::find(out.begin(), out.end(), item) == out.end()) {
+      out.push_back(std::move(item));
+    }
+  }
+  return out;
+}
+
+[[nodiscard]] inline bool
+wave_supports_protocol(const wave_settings_t &settings,
+                       const std::string &protocol_id) {
+  if (settings.compatible_protocol_ids.empty()) {
+    return true;
+  }
+  return std::find(settings.compatible_protocol_ids.begin(),
+                   settings.compatible_protocol_ids.end(),
+                   wave_detail::kv::trim(protocol_id)) !=
+         settings.compatible_protocol_ids.end();
+}
+
 [[nodiscard]] inline wave_target_t parse_wave_target(std::string value) {
   value = wave_detail::kv::lowercase(wave_detail::kv::trim(value));
   if (value == "wikimyei.representation.encoding.vicreg" ||
       value == "vicreg_representation") {
     return wave_target_t::vicreg_representation;
+  }
+  if (value == "wikimyei.representation.encoding.mtf_jepa_mae_vicreg" ||
+      value == "mtf_jepa_mae_vicreg_representation" ||
+      value == "mtf_jvmae_representation") {
+    return wave_target_t::mtf_jepa_mae_vicreg_representation;
   }
   if (value == "wikimyei.inference.expected_value.mdn" ||
       value == "inference_mdn" || value == "inference_channel_mdn" ||
@@ -98,6 +139,8 @@ split_mode_atoms(std::string mode_text) {
   switch (target) {
   case wave_target_t::vicreg_representation:
     return "wikimyei.representation.encoding.vicreg";
+  case wave_target_t::mtf_jepa_mae_vicreg_representation:
+    return "wikimyei.representation.encoding.mtf_jepa_mae_vicreg";
   case wave_target_t::inference_channel_mdn:
     return "wikimyei.inference.expected_value.mdn";
   }
@@ -242,6 +285,14 @@ parse_optional_i64(const cuwacunu::piaabo::parse::simple_kv::block_t &block,
 inline void validate_wave_settings(const wave_settings_t &settings) {
   if (wave_detail::kv::trim(settings.wave_id).empty()) {
     throw std::runtime_error("[wave_settings] WAVE_ID is required");
+  }
+  for (const auto &protocol_id : settings.compatible_protocol_ids) {
+    if (wave_detail::kv::trim(protocol_id).empty() ||
+        protocol_id != wave_detail::kv::trim(protocol_id)) {
+      throw std::runtime_error(
+          "[wave_settings] COMPATIBLE_PROTOCOLS entries must be trimmed and "
+          "non-empty");
+    }
   }
   if (settings.source_cursor_kind != "graph_anchor") {
     throw std::runtime_error(
@@ -455,6 +506,8 @@ decode_wave_settings_from_dsl(const std::string &dsl_text) {
   const auto &block = kv::single_block(dsl_text, "WAVE_SETTINGS");
   wave_settings_t out{};
   out.wave_id = kv::required(block, "WAVE_ID");
+  out.compatible_protocol_ids =
+      parse_protocol_id_list(kv::optional(block, "COMPATIBLE_PROTOCOLS", ""));
   out.target = parse_wave_target(kv::required(block, "TARGET"));
   out.mode_text = kv::optional(block, "MODE", "run");
   bool saw_run = false;

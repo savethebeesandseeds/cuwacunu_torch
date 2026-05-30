@@ -60,10 +60,15 @@ inline void render_plot(const iinuji_object_t &obj) {
   opt.baseline0 = pb->opts.baseline0;
   opt.y_ticks = pb->opts.y_ticks;
   opt.x_ticks = pb->opts.x_ticks;
+  opt.draw_y_tick_labels = pb->opts.draw_y_tick_labels;
+  opt.draw_y2_tick_labels = pb->opts.draw_y2_tick_labels;
+  opt.draw_x_tick_labels = pb->opts.draw_x_tick_labels;
   opt.x_min = pb->opts.x_min;
   opt.x_max = pb->opts.x_max;
   opt.y_min = pb->opts.y_min;
   opt.y_max = pb->opts.y_max;
+  opt.y2_min = pb->opts.y2_min;
+  opt.y2_max = pb->opts.y2_max;
   opt.hard_clip = pb->opts.hard_clip;
   opt.x_log = pb->opts.x_log;
   opt.y_log = pb->opts.y_log;
@@ -71,6 +76,7 @@ inline void render_plot(const iinuji_object_t &obj) {
   opt.y_log_eps = pb->opts.y_log_eps;
   opt.x_label = pb->opts.x_label;
   opt.y_label = pb->opts.y_label;
+  opt.y2_label = pb->opts.y2_label;
   opt.margin_left = pb->opts.margin_left;
   opt.margin_right = pb->opts.margin_right;
   opt.margin_top = pb->opts.margin_top;
@@ -115,6 +121,14 @@ inline void render_plot(const iinuji_object_t &obj) {
       ss.envelope_min_count = scp->envelope_min_count;
       ss.envelope_min_height = scp->envelope_min_height;
       ss.envelope_draw_base = scp->envelope_draw_base;
+      ss.use_y2_axis = scp->use_y2_axis;
+    }
+
+    if (ss.use_y2_axis) {
+      if (opt.y2_axis_color_pair <= 0)
+        opt.y2_axis_color_pair = ss.color_pair;
+    } else if (opt.y_axis_color_pair <= 0) {
+      opt.y_axis_color_pair = ss.color_pair;
     }
 
     v.push_back(Series{&pb->series[i], ss});

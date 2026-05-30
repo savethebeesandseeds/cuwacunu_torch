@@ -1,11 +1,14 @@
 /.data/raw/*
 /.data/scripts/*
-/.data/hashimyei/*
 /.data/tests/*
 /.external/*
-/.deprecated/
+/.deprecated/*
+!/.deprecated/src_legacy/
+!/.deprecated/src_legacy/**
 /.backups/
 /.runtime/
+/.vscode/
+**/.runtime/
 .idyicyanere/
 /.build/*
 /src/build/*
@@ -21,8 +24,6 @@
 !/src/config/instructions/optim/README.md
 /src/config/secure_key_setup
 /src/config/hero_config_mcp
-/src/config/hero_hashimyei_ingest
-/src/config/hero_hashimyei_mcp
 /src/config/hero_lattice_mcp
 parse_temp.txt
 out.txt

@@ -1,6 +1,6 @@
 <instruction> ::= "MDN_NET" [<whitespace>] "{" <line_end> {<assignment>} [<whitespace>] "}" [<whitespace>] ";" [<line_end>] ;
 <assignment>  ::= [<whitespace>] <key> [<whitespace>] "=" [<whitespace>] <value> [<whitespace>] ";" <line_end> ;
-<key>         ::= "CHANNEL_COUNT" | "FUTURE_HORIZON" | "MIXTURE_COUNT" | "HIDDEN_WIDTH" | "RESIDUAL_DEPTH" | "GLOBAL_CONTEXT_DIM" ;
+<key>         ::= "CHANNEL_COUNT" | "FUTURE_HORIZON" | "MIXTURE_COUNT" | "HIDDEN_WIDTH" | "RESIDUAL_DEPTH" | "FEATURE_EMBEDDING_DIM" | "CHANNEL_ADAPTER_RANK" | "GLOBAL_CONTEXT_DIM" ;
 <value>       ::= <value_char> {<value_char>} ;
 <value_char>  ::= <letter> | <digit> | "_" | "." | "-" | "+" ;
 <line_end>    ::= [<whitespace>] <break_block> ;

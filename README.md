@@ -31,7 +31,13 @@ The current build is wired for the upgraded LibTorch bundle:
 ### 3. Start a Debian container
 ```bash
 docker pull debian:12
-docker run --name cuwacunu-dev --gpus all -it --shm-size=1g -v "$PWD":/cuwacunu -w /cuwacunu debian:12 /bin/bash
+docker run --name cuwacunu-dev --gpus all -it --shm-size=1g \
+  -e TERM=xterm-256color \
+  -e LANG=C.UTF-8 \
+  -e LC_ALL=C.UTF-8 \
+  -e COLORTERM=truecolor \
+  -e FORCE_COLOR=1 \
+  -v "$PWD":/cuwacunu -w /cuwacunu debian:12 /bin/bash
 ```
 
 ### 4. Run setup inside the container
@@ -64,6 +70,7 @@ MAKE_TARGETS="piaabo camahjucunu" ./setup.sh --verbose
 source ~/.bashrc
 command -v tsodao
 command -v hero_config.mcp
+command -v cuwacunu_cmd
 command -v iinuji_cmd
 nvcc --version
 nvidia-smi
@@ -127,9 +134,9 @@ Use minimal MCP args:
 --global-config /cuwacunu/src/config/.config
 ```
 
-Hashimyei/Lattice catalogs are unencrypted in MCP mode, so no passphrase is
-required. For deterministic smoke tests, use temp catalogs under
-`/tmp/hero_mcp_smoke/...`.
+Hero MCP catalogs are unencrypted in MCP mode, so no passphrase is required.
+For deterministic smoke tests, use temp catalogs under `/tmp/hero_mcp_smoke/...`
+when a tool needs disposable state.
 
 Detailed HERO MCP guidance lives in `src/main/hero/README.md`.
 

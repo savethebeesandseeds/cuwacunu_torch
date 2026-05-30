@@ -24,6 +24,7 @@
 #include <utility>
 #include <vector>
 
+#include "kikijyeba/runtime/job_layout.h"
 #include "piaabo/parse/simple_kv_block.h"
 #include "wikimyei/assembly.h"
 
@@ -70,6 +71,7 @@ struct lattice_exposure_fact_t {
   std::string fact_type{"exposure"};
 
   std::string contract_fingerprint{};
+  std::string protocol_id{};
   std::string graph_order_fingerprint{};
   std::string component_assembly_fingerprint{};
   std::string target_component_family_id{};
@@ -80,12 +82,30 @@ struct lattice_exposure_fact_t {
   std::string component_spawn_fingerprint{};
   std::string component_spawn_id{};
   std::string component_spawn_label{};
+  std::string runtime_handoff_id{};
+  std::string runtime_handoff_digest{};
+  std::string marshal_target_driver_run_id{};
+  std::string report_schema_id{};
+  std::int64_t report_schema_version{0};
+  std::string report_writer_id{};
+  std::string report_writer_version{};
   std::string representation_architecture{};
   std::string representation_contract{};
   std::string representation_value_shape{};
   std::string representation_sequence_value_shape{};
   std::string channel_axis_policy{};
   std::string temporal_reduction{};
+  std::string input_nodelift_shape{};
+  std::string mtf_training_shape{};
+  std::string flattening_contract{};
+  std::string recommended_graph_restore_shape{};
+  bool graph_restore_available{false};
+  std::string graph_restore_reason{};
+  bool reshape_lossless{false};
+  std::int64_t anchor_batch_count{0};
+  std::int64_t node_count{0};
+  std::int64_t flattened_sample_count{0};
+  std::int64_t input_feature_width{0};
   std::string input_representation_assembly_id{};
   std::string context_mode{};
   std::string context_contract{};
@@ -93,6 +113,9 @@ struct lattice_exposure_fact_t {
   std::string output_contract{};
   std::string output_value_shape{};
   std::string job_id{};
+  std::string job_stable_id{};
+  std::string job_attempt_id{};
+  std::string job_attempt_policy{};
   std::string wave_id{};
   std::string job_status{};
   std::string wave_action{};
@@ -144,27 +167,87 @@ struct lattice_exposure_fact_t {
   std::vector<std::filesystem::path> input_checkpoints{};
   std::filesystem::path output_checkpoint{};
   std::string output_checkpoint_exposure_digest{};
+  std::filesystem::path checkpoint_path_reported{};
+  std::string checkpoint_digest_reported{};
+  bool checkpoint_digest_verified{false};
+  bool checkpoint_file_exists{false};
+  std::int64_t checkpoint_bytes{0};
+  std::int64_t checkpoint_mtime_ticks{0};
+  std::string checkpoint_artifact_status{};
+
+  bool runtime_result_fact_available{false};
+  bool runtime_checkpoint_io_fact_available{false};
+  bool runtime_health_measurement_fact_available{false};
+  bool checkpoint_written{false};
+  bool model_state_mutated{false};
+  bool representation_checkpoint_loaded{false};
+  bool mdn_checkpoint_loaded{false};
 
   bool finite_loss{false};
+  std::string run_data_kind{};
+  std::string readiness_scope{};
+  bool synthetic_training_passed{false};
+  bool market_readiness_claimed{false};
   double mean_loss{std::numeric_limits<double>::quiet_NaN()};
   double mean_nll{std::numeric_limits<double>::quiet_NaN()};
   bool inference_health_available{false};
   double mean_sigma_mean{std::numeric_limits<double>::quiet_NaN()};
   double min_sigma_min{std::numeric_limits<double>::quiet_NaN()};
   double max_sigma_max{std::numeric_limits<double>::quiet_NaN()};
+  double sigma_min_valid{std::numeric_limits<double>::quiet_NaN()};
+  double sigma_mean_valid{std::numeric_limits<double>::quiet_NaN()};
+  double sigma_max_valid{std::numeric_limits<double>::quiet_NaN()};
   double mean_mixture_entropy{std::numeric_limits<double>::quiet_NaN()};
   std::vector<double> mean_nll_per_channel{};
   std::vector<double> mean_nll_per_target_feature{};
+  std::vector<double> mean_nll_per_channel_target_feature{};
   // Historical field kept only to replay older MDN reports.
   std::vector<double> mean_nll_per_horizon{};
   std::vector<double> mean_mixture_usage{};
+  std::vector<std::int64_t> valid_target_count_per_channel{};
+  std::vector<std::int64_t> valid_target_count_per_target_feature{};
+  std::vector<std::int64_t> valid_target_count_per_channel_target_feature{};
+  std::string mdn_architecture{};
+  std::string loss_reduction{};
+  std::int64_t feature_embedding_dim{0};
+  std::int64_t channel_adapter_rank{0};
+  bool shared_trunk{false};
+  bool channel_adapters_enabled{false};
+  bool shared_feature_head{false};
+  bool feature_embedding_enabled{false};
+  bool node_id_embedding{false};
+  bool cross_node_attention{false};
+  bool cross_channel_attention{false};
   std::int64_t nonfinite_output_count{0};
   bool representation_health_available{false};
   double mean_invariance_loss{std::numeric_limits<double>::quiet_NaN()};
   double mean_variance_loss{std::numeric_limits<double>::quiet_NaN()};
   double mean_covariance_loss{std::numeric_limits<double>::quiet_NaN()};
+  double loss_jepa_mean{std::numeric_limits<double>::quiet_NaN()};
+  double loss_mae_time_mean{std::numeric_limits<double>::quiet_NaN()};
+  double loss_mae_frequency_mean{std::numeric_limits<double>::quiet_NaN()};
+  double loss_tf_align_mean{std::numeric_limits<double>::quiet_NaN()};
+  double loss_vicreg_global_mean{std::numeric_limits<double>::quiet_NaN()};
+  double loss_vicreg_channel_mean{std::numeric_limits<double>::quiet_NaN()};
   double last_grad_norm{std::numeric_limits<double>::quiet_NaN()};
   double max_grad_norm{std::numeric_limits<double>::quiet_NaN()};
+  double grad_clip_norm{std::numeric_limits<double>::quiet_NaN()};
+  bool gradients_finite{false};
+  std::int64_t sample_valid_count{0};
+  double sample_valid_fraction{std::numeric_limits<double>::quiet_NaN()};
+  std::int64_t channel_valid_count{0};
+  double channel_valid_fraction{std::numeric_limits<double>::quiet_NaN()};
+  std::int64_t valid_latent_rows{0};
+  std::int64_t tf_pair_count{0};
+  std::int64_t tf_pair_valid_count{0};
+  std::int64_t vicreg_global_valid_rows{0};
+  std::int64_t vicreg_channel_valid_rows{0};
+  std::int64_t context_starved_sample_count{0};
+  std::int64_t reduced_targets_for_context_count{0};
+  std::int64_t min_context_satisfied_count{0};
+  double target_ema_distance{std::numeric_limits<double>::quiet_NaN()};
+  double latent_std{std::numeric_limits<double>::quiet_NaN()};
+  double latent_norm{std::numeric_limits<double>::quiet_NaN()};
   std::int64_t total_valid_projection_rows{0};
   double mean_adapter_valid_channel_time_fraction{
       std::numeric_limits<double>::quiet_NaN()};
@@ -1170,6 +1253,7 @@ struct lattice_node_exposure_fact_t {
   std::string parent_exposure_fact_digest{};
 
   std::string contract_fingerprint{};
+  std::string protocol_id{};
   std::string graph_order_fingerprint{};
   std::string source_cursor_token{};
   std::string split_policy_fingerprint{};
@@ -1270,6 +1354,7 @@ struct lattice_representation_support_fact_t {
   std::string parent_exposure_fact_digest{};
 
   std::string contract_fingerprint{};
+  std::string protocol_id{};
   std::string graph_order_fingerprint{};
   std::string source_cursor_token{};
   std::string split_policy_fingerprint{};
@@ -1403,8 +1488,7 @@ struct representation_support_summary_t {
 struct checkpoint_closure_result_t {
   std::vector<lattice_exposure_fact_t> facts{};
   std::vector<std::filesystem::path> unresolved_input_checkpoints{};
-  std::string resolution_authority{"legacy_path"};
-  bool legacy_path_fallback{false};
+  std::string resolution_authority{"unresolved_lineage"};
   bool root_producer_found{false};
   std::string root_checkpoint_id{};
   std::string root_checkpoint_file_digest{};
@@ -1424,6 +1508,7 @@ struct lattice_checkpoint_fact_t {
   std::string checkpoint_file_digest{};
   std::string component{};
   std::string contract_fingerprint{};
+  std::string protocol_id{};
   std::string graph_order_fingerprint{};
   std::string representation_architecture{};
   std::string representation_contract{};
@@ -1482,6 +1567,7 @@ struct lattice_source_receipt_fact_t {
   std::int64_t receipt_index{0};
 
   std::string contract_fingerprint{};
+  std::string protocol_id{};
   std::string graph_order_fingerprint{};
   std::string source_cursor_token{};
   std::string split_policy_fingerprint{};
@@ -1578,6 +1664,7 @@ struct lattice_selection_signal_fact_t {
   std::string parent_exposure_fact_digest{};
 
   std::string contract_fingerprint{};
+  std::string protocol_id{};
   std::string graph_order_fingerprint{};
   std::string source_cursor_token{};
   std::string split_policy_fingerprint{};
@@ -2030,12 +2117,27 @@ inline void append_double_list(std::ostringstream &out, const char *key,
   out << "\n";
 }
 
+inline void append_i64_list(std::ostringstream &out, const char *key,
+                            const std::vector<std::int64_t> &values) {
+  out << key << "=";
+  for (std::size_t i = 0; i < values.size(); ++i) {
+    if (i != 0) {
+      out << ",";
+    }
+    out << values.at(i);
+  }
+  out << "\n";
+}
+
 [[nodiscard]] inline std::string component_fingerprint_from_manifest(
     const std::unordered_map<std::string, std::string> &manifest) {
   const auto target = map_get(manifest, "target_component_family_id");
   if (target == "wikimyei.representation.encoding.vicreg" ||
       target == "wikimyei.representation.encoding.vicreg") {
     return map_get(manifest, "vicreg_assembly_fingerprint");
+  }
+  if (target == "wikimyei.representation.encoding.mtf_jepa_mae_vicreg") {
+    return map_get(manifest, "mtf_jepa_mae_vicreg_assembly_fingerprint");
   }
   if (target == "wikimyei.inference.expected_value.mdn" ||
       target == "wikimyei.inference.expected_value.mdn") {
@@ -2320,6 +2422,7 @@ make_source_receipt_facts_from_exposure_fact(
     fact.parent_exposure_fact_digest = parent_digest;
     fact.receipt_index = static_cast<std::int64_t>(index);
     fact.contract_fingerprint = parent.contract_fingerprint;
+    fact.protocol_id = parent.protocol_id;
     fact.graph_order_fingerprint = parent.graph_order_fingerprint;
     fact.source_cursor_token = parent.source_cursor_token;
     fact.split_policy_fingerprint = parent.split_policy_fingerprint;
@@ -2358,6 +2461,7 @@ canonical_source_receipt_fact_text(const lattice_source_receipt_fact_t &fact) {
       << "\n";
   out << "receipt_index=" << fact.receipt_index << "\n";
   out << "contract_fingerprint=" << fact.contract_fingerprint << "\n";
+  out << "protocol_id=" << fact.protocol_id << "\n";
   out << "graph_order_fingerprint=" << fact.graph_order_fingerprint << "\n";
   out << "source_cursor_token=" << fact.source_cursor_token << "\n";
   out << "split_policy_fingerprint=" << fact.split_policy_fingerprint << "\n";
@@ -2743,6 +2847,7 @@ make_selection_signal_fact_from_exposure_fact(
   lattice_selection_signal_fact_t out{};
   out.parent_exposure_fact_digest = exposure_fact_digest(parent);
   out.contract_fingerprint = parent.contract_fingerprint;
+  out.protocol_id = parent.protocol_id;
   out.graph_order_fingerprint = parent.graph_order_fingerprint;
   out.source_cursor_token = parent.source_cursor_token;
   out.split_policy_fingerprint = parent.split_policy_fingerprint;
@@ -2795,6 +2900,7 @@ make_selection_signal_facts_from_exposure_fact(
   out << "parent_exposure_fact_digest=" << fact.parent_exposure_fact_digest
       << "\n";
   out << "contract_fingerprint=" << fact.contract_fingerprint << "\n";
+  out << "protocol_id=" << fact.protocol_id << "\n";
   out << "graph_order_fingerprint=" << fact.graph_order_fingerprint << "\n";
   out << "source_cursor_token=" << fact.source_cursor_token << "\n";
   out << "split_policy_fingerprint=" << fact.split_policy_fingerprint << "\n";
@@ -2877,6 +2983,9 @@ selection_signal_fact_issues(const lattice_selection_signal_fact_t &fact) {
   }
   if (fact.contract_fingerprint.empty()) {
     issues.emplace_back("missing_contract_fingerprint");
+  }
+  if (fact.protocol_id.empty()) {
+    issues.emplace_back("missing_protocol_id");
   }
   if (fact.graph_order_fingerprint.empty()) {
     issues.emplace_back("missing_graph_order_fingerprint");
@@ -2985,6 +3094,7 @@ make_representation_support_facts_from_job_dir(
   lattice_representation_support_fact_t fact{};
   fact.parent_exposure_fact_digest = exposure_fact_digest(parent);
   fact.contract_fingerprint = parent.contract_fingerprint;
+  fact.protocol_id = parent.protocol_id;
   fact.graph_order_fingerprint = parent.graph_order_fingerprint;
   fact.source_cursor_token = parent.source_cursor_token;
   fact.split_policy_fingerprint = parent.split_policy_fingerprint;
@@ -3163,6 +3273,7 @@ make_representation_support_facts_from_job_dir(
   out << "parent_exposure_fact_digest=" << fact.parent_exposure_fact_digest
       << "\n";
   out << "contract_fingerprint=" << fact.contract_fingerprint << "\n";
+  out << "protocol_id=" << fact.protocol_id << "\n";
   out << "graph_order_fingerprint=" << fact.graph_order_fingerprint << "\n";
   out << "source_cursor_token=" << fact.source_cursor_token << "\n";
   out << "split_policy_fingerprint=" << fact.split_policy_fingerprint << "\n";
@@ -3297,6 +3408,9 @@ representation_support_fact_issues(
   }
   if (fact.contract_fingerprint.empty()) {
     issues.emplace_back("missing_contract_fingerprint");
+  }
+  if (fact.protocol_id.empty()) {
+    issues.emplace_back("missing_protocol_id");
   }
   if (fact.graph_order_fingerprint.empty()) {
     issues.emplace_back("missing_graph_order_fingerprint");
@@ -3509,12 +3623,19 @@ make_exposure_fact_from_job_dir(const std::filesystem::path &job_dir,
   // job kind; active representation jobs are channel_representation_vicreg.
   const auto report_leaf =
       job_kind == "representation_vicreg" ? "representation.report"
-      : job_kind == "channel_representation_vicreg"
+      : (job_kind == "channel_representation_vicreg" ||
+         job_kind == "channel_representation_mtf_jepa_mae_vicreg")
           ? "channel_representation.report"
       : job_kind == "channel_inference_mdn" ? "channel_inference.report"
                                             : "inference.report";
   const auto report_path = job_dir / report_leaf;
   const auto report = detail::parse_assignment_file(report_path);
+  const auto runtime_result =
+      detail::parse_assignment_file(job_dir / "runtime.result.fact");
+  const auto runtime_checkpoint_io =
+      detail::parse_assignment_file(job_dir / "runtime.checkpoint_io.fact");
+  const auto runtime_health = detail::parse_assignment_file(
+      job_dir / "runtime.health_measurement.fact");
   const auto target_component_family_id =
       detail::map_get(manifest, "target_component_family_id");
   const auto wave_action = detail::map_get(
@@ -3523,6 +3644,7 @@ make_exposure_fact_from_job_dir(const std::filesystem::path &job_dir,
   lattice_exposure_fact_t out{};
   out.contract_fingerprint =
       detail::map_get(manifest, "protocol_contract_fingerprint");
+  out.protocol_id = detail::map_get(manifest, "protocol_id");
   out.graph_order_fingerprint =
       detail::map_get(manifest, "graph_order_fingerprint");
   out.component_assembly_fingerprint =
@@ -3538,6 +3660,19 @@ make_exposure_fact_from_job_dir(const std::filesystem::path &job_dir,
   out.component_spawn_id = detail::map_get(manifest, "component_spawn_id");
   out.component_spawn_label =
       detail::map_get(manifest, "component_spawn_label");
+  out.runtime_handoff_id = detail::map_get(manifest, "runtime_handoff_id");
+  out.runtime_handoff_digest =
+      detail::map_get(manifest, "runtime_handoff_digest");
+  out.marshal_target_driver_run_id =
+      detail::map_get(manifest, "marshal_target_driver_run_id");
+  out.report_schema_id =
+      detail::first_string(report, state, {"report_schema_id"});
+  out.report_schema_version =
+      detail::first_i64(report, state, {"report_schema_version"}, 0);
+  out.report_writer_id =
+      detail::first_string(report, state, {"report_writer_id"});
+  out.report_writer_version =
+      detail::first_string(report, state, {"report_writer_version"});
   out.representation_architecture =
       detail::first_string(report, state, {"representation_architecture"});
   out.representation_contract =
@@ -3550,6 +3685,27 @@ make_exposure_fact_from_job_dir(const std::filesystem::path &job_dir,
       detail::first_string(report, state, {"channel_axis_policy"});
   out.temporal_reduction =
       detail::first_string(report, state, {"temporal_reduction"});
+  out.input_nodelift_shape =
+      detail::first_string(report, state, {"input_nodelift_shape"});
+  out.mtf_training_shape =
+      detail::first_string(report, state, {"mtf_training_shape"});
+  out.flattening_contract =
+      detail::first_string(report, state, {"flattening_contract"});
+  out.recommended_graph_restore_shape =
+      detail::first_string(report, state, {"recommended_graph_restore_shape"});
+  out.graph_restore_available = detail::parse_bool_fallback(
+      detail::first_string(report, state, {"graph_restore_available"}));
+  out.graph_restore_reason =
+      detail::first_string(report, state, {"graph_restore_reason"});
+  out.reshape_lossless = detail::parse_bool_fallback(
+      detail::first_string(report, state, {"reshape_lossless"}));
+  out.anchor_batch_count =
+      detail::first_i64(report, state, {"anchor_batch_count"}, 0);
+  out.node_count = detail::first_i64(report, state, {"node_count"}, 0);
+  out.flattened_sample_count =
+      detail::first_i64(report, state, {"flattened_sample_count"}, 0);
+  out.input_feature_width =
+      detail::first_i64(report, state, {"input_feature_width"}, 0);
   out.input_representation_assembly_id =
       detail::first_string(report, state, {"input_representation_assembly_id"});
   out.context_mode = detail::first_string(report, state, {"context_mode"});
@@ -3562,6 +3718,9 @@ make_exposure_fact_from_job_dir(const std::filesystem::path &job_dir,
   out.output_value_shape =
       detail::first_string(report, state, {"output_value_shape"});
   out.job_id = detail::map_get(manifest, "job_id");
+  out.job_stable_id = detail::map_get(manifest, "job_stable_id");
+  out.job_attempt_id = detail::map_get(manifest, "job_attempt_id");
+  out.job_attempt_policy = detail::map_get(manifest, "job_attempt_policy");
   out.wave_id =
       detail::map_get(manifest, "wave_id", detail::map_get(state, "wave_id"));
   out.job_status = detail::map_get(state, "status");
@@ -3717,19 +3876,31 @@ make_exposure_fact_from_job_dir(const std::filesystem::path &job_dir,
       report, state, {"total_valid_target_count", "last_valid_target_count"},
       0);
   out.valid_target_fraction = detail::first_double(
-      report, state,
+      runtime_result, report, state,
       {"mean_valid_node_target_fraction", "last_valid_node_target_fraction",
-       "mean_valid_target_fraction", "last_valid_target_fraction"});
-  out.mean_loss =
-      detail::first_double(report, state, {"mean_loss", "last_loss"});
+       "mean_valid_target_fraction", "last_valid_target_fraction",
+       "valid_target_fraction"});
+  out.runtime_result_fact_available = !runtime_result.empty();
+  out.runtime_checkpoint_io_fact_available = !runtime_checkpoint_io.empty();
+  out.runtime_health_measurement_fact_available = !runtime_health.empty();
+  out.mean_loss = detail::first_double(
+      runtime_result, report, state, {"mean_loss", "last_loss", "final_loss"});
   out.mean_nll =
       (job_kind == "inference_mdn" || job_kind == "channel_inference_mdn")
           ? out.mean_loss
           : std::numeric_limits<double>::quiet_NaN();
   out.finite_loss = std::isfinite(out.mean_loss);
+  out.run_data_kind = detail::first_string(report, state, {"run_data_kind"});
+  out.readiness_scope =
+      detail::first_string(report, state, {"readiness_scope"});
+  out.synthetic_training_passed = detail::parse_bool_fallback(
+      detail::first_string(report, state, {"synthetic_training_passed"}));
+  out.market_readiness_claimed = detail::parse_bool_fallback(
+      detail::first_string(report, state, {"market_readiness_claimed"}));
   if ((job_kind == "inference_mdn" || job_kind == "channel_inference_mdn") &&
-      !report.empty()) {
+      (!report.empty() || !runtime_result.empty() || !runtime_health.empty())) {
     const auto has_inference_health_field =
+        !runtime_result.empty() || !runtime_health.empty() ||
         report.find("mean_sigma_mean") != report.end() ||
         report.find("last_sigma_mean") != report.end() ||
         report.find("min_sigma_min") != report.end() ||
@@ -3737,24 +3908,44 @@ make_exposure_fact_from_job_dir(const std::filesystem::path &job_dir,
         report.find("mean_mixture_entropy") != report.end() ||
         report.find("mean_nll_per_channel") != report.end() ||
         report.find("mean_nll_per_target_feature") != report.end() ||
+        report.find("mean_nll_per_channel_target_feature") != report.end() ||
         report.find("mean_nll_per_horizon") != report.end() ||
         report.find("mean_mixture_usage") != report.end() ||
+        report.find("valid_target_count_per_channel") != report.end() ||
+        report.find("valid_target_count_per_target_feature") != report.end() ||
+        report.find("valid_target_count_per_channel_target_feature") !=
+            report.end() ||
+        report.find("mdn_architecture") != report.end() ||
+        report.find("loss_reduction") != report.end() ||
         report.find("nonfinite_output_count") != report.end() ||
         report.find("last_grad_norm") != report.end() ||
         report.find("max_grad_norm") != report.end();
     out.inference_health_available = has_inference_health_field;
     out.mean_sigma_mean = detail::first_double(
-        report, state, {"mean_sigma_mean", "last_sigma_mean"});
-    out.min_sigma_min = detail::first_double(
-        report, state, {"min_sigma_min", "last_sigma_min"});
-    out.max_sigma_max = detail::first_double(
-        report, state, {"max_sigma_max", "last_sigma_max"});
+        runtime_health, runtime_result, report,
+        {"sigma_mean", "mean_sigma_mean", "last_sigma_mean"});
+    out.min_sigma_min =
+        detail::first_double(runtime_health, runtime_result, report,
+                             {"sigma_min", "min_sigma_min", "last_sigma_min"});
+    out.max_sigma_max =
+        detail::first_double(runtime_health, runtime_result, report,
+                             {"sigma_max", "max_sigma_max", "last_sigma_max"});
+    out.sigma_min_valid = detail::first_double(runtime_health, runtime_result,
+                                               report, {"sigma_min_valid"});
+    out.sigma_mean_valid = detail::first_double(runtime_health, runtime_result,
+                                                report, {"sigma_mean_valid"});
+    out.sigma_max_valid = detail::first_double(runtime_health, runtime_result,
+                                               report, {"sigma_max_valid"});
     out.mean_mixture_entropy = detail::first_double(
-        report, state, {"mean_mixture_entropy", "last_mixture_entropy"});
+        runtime_health, runtime_result, report,
+        {"mixture_entropy", "mean_mixture_entropy", "last_mixture_entropy"});
     out.mean_nll_per_channel = detail::parse_double_list_fallback(
         detail::map_get(report, "mean_nll_per_channel"));
     out.mean_nll_per_target_feature = detail::parse_double_list_fallback(
         detail::map_get(report, "mean_nll_per_target_feature"));
+    out.mean_nll_per_channel_target_feature =
+        detail::parse_double_list_fallback(
+            detail::map_get(report, "mean_nll_per_channel_target_feature"));
     out.mean_nll_per_horizon = detail::parse_double_list_fallback(
         detail::map_get(report, "mean_nll_per_horizon"));
     if (out.mean_nll_per_target_feature.empty() &&
@@ -3763,19 +3954,55 @@ make_exposure_fact_from_job_dir(const std::filesystem::path &job_dir,
     }
     out.mean_mixture_usage = detail::parse_double_list_fallback(
         detail::map_get(report, "mean_mixture_usage"));
-    out.nonfinite_output_count =
-        detail::first_i64(report, state, {"nonfinite_output_count"}, 0);
+    out.valid_target_count_per_channel = detail::parse_i64_list_fallback(
+        detail::map_get(report, "valid_target_count_per_channel"));
+    out.valid_target_count_per_target_feature = detail::parse_i64_list_fallback(
+        detail::map_get(report, "valid_target_count_per_target_feature"));
+    out.valid_target_count_per_channel_target_feature =
+        detail::parse_i64_list_fallback(detail::map_get(
+            report, "valid_target_count_per_channel_target_feature"));
+    out.mdn_architecture = detail::map_get(report, "mdn_architecture");
+    out.loss_reduction = detail::map_get(report, "loss_reduction");
+    out.feature_embedding_dim =
+        detail::first_i64(report, state, {"feature_embedding_dim"}, 0);
+    out.channel_adapter_rank =
+        detail::first_i64(report, state, {"channel_adapter_rank"}, 0);
+    out.shared_trunk =
+        detail::parse_bool_fallback(detail::map_get(report, "shared_trunk"));
+    out.channel_adapters_enabled = detail::parse_bool_fallback(
+        detail::map_get(report, "channel_adapters_enabled"));
+    out.shared_feature_head = detail::parse_bool_fallback(
+        detail::map_get(report, "shared_feature_head"));
+    out.feature_embedding_enabled = detail::parse_bool_fallback(
+        detail::map_get(report, "feature_embedding_enabled"));
+    out.node_id_embedding = detail::parse_bool_fallback(
+        detail::map_get(report, "node_id_embedding"));
+    out.cross_node_attention = detail::parse_bool_fallback(
+        detail::map_get(report, "cross_node_attention"));
+    out.cross_channel_attention = detail::parse_bool_fallback(
+        detail::map_get(report, "cross_channel_attention"));
+    out.nonfinite_output_count = detail::first_i64(
+        runtime_health, runtime_result, report, {"nonfinite_output_count"}, 0);
     out.last_grad_norm =
-        detail::first_double(report, state, {"last_grad_norm"});
-    out.max_grad_norm = detail::first_double(report, state, {"max_grad_norm"});
+        detail::first_double(runtime_health, runtime_result, report,
+                             {"grad_norm_last", "last_grad_norm"});
+    out.max_grad_norm =
+        detail::first_double(runtime_health, runtime_result, report,
+                             {"grad_norm_max_pre_clip", "max_grad_norm"});
+    out.grad_clip_norm = detail::first_double(runtime_health, runtime_result,
+                                              report, {"grad_clip_norm"});
     out.finite_parameter_check = detail::parse_bool_fallback(
-        detail::map_get(report, "finite_parameter_check",
-                        detail::map_get(state, "finite_parameter_check")),
-        false);
+        detail::first_string(runtime_health, runtime_result, report,
+                             {"finite_parameter_check"}),
+        detail::parse_bool_fallback(
+            detail::map_get(report, "finite_parameter_check",
+                            detail::map_get(state, "finite_parameter_check")),
+            false));
   }
   if ((job_kind == "representation_vicreg" ||
-       job_kind == "channel_representation_vicreg") &&
-      !report.empty()) {
+       job_kind == "channel_representation_vicreg" ||
+       job_kind == "channel_representation_mtf_jepa_mae_vicreg") &&
+      (!report.empty() || !runtime_result.empty() || !runtime_health.empty())) {
     out.representation_health_available = true;
     out.mean_invariance_loss = detail::first_double(
         report, state, {"mean_invariance_loss", "last_invariance_loss"});
@@ -3783,12 +4010,74 @@ make_exposure_fact_from_job_dir(const std::filesystem::path &job_dir,
         report, state, {"mean_variance_loss", "last_variance_loss"});
     out.mean_covariance_loss = detail::first_double(
         report, state, {"mean_covariance_loss", "last_covariance_loss"});
+    out.loss_jepa_mean = detail::first_double(
+        report, state,
+        {"loss_jepa_mean", "mean_loss_jepa", "last_loss_jepa", "loss_jepa"});
+    out.loss_mae_time_mean =
+        detail::first_double(report, state,
+                             {"loss_mae_time_mean", "mean_loss_mae_time",
+                              "last_loss_mae_time", "loss_mae_time"});
+    out.loss_mae_frequency_mean = detail::first_double(
+        report, state,
+        {"loss_mae_frequency_mean", "mean_loss_mae_frequency",
+         "last_loss_mae_frequency", "loss_mae_frequency"});
+    out.loss_tf_align_mean =
+        detail::first_double(report, state,
+                             {"loss_tf_align_mean", "mean_loss_tf_align",
+                              "last_loss_tf_align", "loss_tf_align"});
+    out.loss_vicreg_global_mean = detail::first_double(
+        report, state,
+        {"loss_vicreg_global_mean", "mean_loss_vicreg_global",
+         "last_loss_vicreg_global", "loss_vicreg_global"});
+    out.loss_vicreg_channel_mean = detail::first_double(
+        report, state,
+        {"loss_vicreg_channel_mean", "mean_loss_vicreg_channel",
+         "last_loss_vicreg_channel", "loss_vicreg_channel"});
     out.last_grad_norm =
-        detail::first_double(report, state, {"last_grad_norm"});
-    out.max_grad_norm = detail::first_double(report, state, {"max_grad_norm"});
+        detail::first_double(runtime_health, runtime_result, report,
+                             {"grad_norm_last", "last_grad_norm"});
+    out.max_grad_norm =
+        detail::first_double(runtime_health, runtime_result, report,
+                             {"grad_norm_max_pre_clip", "max_grad_norm"});
+    out.grad_clip_norm = detail::first_double(runtime_health, runtime_result,
+                                              report, {"grad_clip_norm"});
+    out.gradients_finite = detail::parse_bool_fallback(
+        detail::first_string(runtime_health, runtime_result, report,
+                             {"gradients_finite"}),
+        std::isfinite(out.last_grad_norm) && std::isfinite(out.max_grad_norm));
+    out.sample_valid_count = detail::first_i64(
+        report, state, {"sample_valid_count", "valid_sample_count"}, 0);
+    out.sample_valid_fraction = detail::first_double(
+        report, state, {"sample_valid_fraction", "mean_sample_valid_fraction"});
+    out.channel_valid_count = detail::first_i64(
+        report, state, {"channel_valid_count", "valid_channel_count"}, 0);
+    out.channel_valid_fraction = detail::first_double(
+        report, state,
+        {"channel_valid_fraction", "mean_channel_valid_fraction"});
+    out.valid_latent_rows = detail::first_i64(
+        report, state, {"valid_latent_rows", "total_valid_latent_rows"}, 0);
+    out.tf_pair_count = detail::first_i64(report, state, {"tf_pair_count"}, 0);
+    out.tf_pair_valid_count =
+        detail::first_i64(report, state, {"tf_pair_valid_count"}, 0);
+    out.vicreg_global_valid_rows =
+        detail::first_i64(report, state, {"vicreg_global_valid_rows"}, 0);
+    out.vicreg_channel_valid_rows =
+        detail::first_i64(report, state, {"vicreg_channel_valid_rows"}, 0);
+    out.context_starved_sample_count =
+        detail::first_i64(report, state, {"context_starved_sample_count"}, 0);
+    out.reduced_targets_for_context_count = detail::first_i64(
+        report, state, {"reduced_targets_for_context_count"}, 0);
+    out.min_context_satisfied_count =
+        detail::first_i64(report, state, {"min_context_satisfied_count"}, 0);
+    out.target_ema_distance =
+        detail::first_double(report, state, {"target_ema_distance"});
+    out.latent_std = detail::first_double(report, state, {"latent_std"});
+    out.latent_norm = detail::first_double(report, state, {"latent_norm"});
     out.total_valid_projection_rows = detail::first_i64(
         report, state,
-        {"total_valid_projection_rows", "last_valid_projection_rows"}, 0);
+        {"total_valid_projection_rows", "last_valid_projection_rows",
+         "valid_latent_rows", "total_valid_latent_rows"},
+        0);
     out.mean_adapter_valid_channel_time_fraction = detail::first_double(
         report, state,
         {"mean_adapter_valid_channel_time_fraction",
@@ -3805,9 +4094,12 @@ make_exposure_fact_from_job_dir(const std::filesystem::path &job_dir,
                              {"mean_augmented_feature_retention_fraction",
                               "last_augmented_feature_retention_fraction"});
     out.finite_parameter_check = detail::parse_bool_fallback(
-        detail::map_get(report, "finite_parameter_check",
-                        detail::map_get(state, "finite_parameter_check")),
-        false);
+        detail::first_string(runtime_health, runtime_result, report,
+                             {"finite_parameter_check"}),
+        detail::parse_bool_fallback(
+            detail::map_get(report, "finite_parameter_check",
+                            detail::map_get(state, "finite_parameter_check")),
+            false));
     out.representation_embedding_dim =
         detail::first_i64(report, state,
                           {"representation_embedding_dim", "embedding_dim",
@@ -3818,11 +4110,11 @@ make_exposure_fact_from_job_dir(const std::filesystem::path &job_dir,
                              {"representation_effective_rank", "effective_rank",
                               "embedding_effective_rank"});
     out.representation_effective_rank_fraction = detail::first_double(
-        report, state,
+        runtime_health, report, state,
         {"representation_effective_rank_fraction", "effective_rank_fraction",
          "embedding_effective_rank_fraction"});
     out.representation_min_dimension_variance = detail::first_double(
-        report, state,
+        runtime_health, report, state,
         {"representation_min_dimension_variance", "min_dimension_variance",
          "embedding_min_dimension_variance"});
     out.representation_max_dimension_variance = detail::first_double(
@@ -3830,28 +4122,69 @@ make_exposure_fact_from_job_dir(const std::filesystem::path &job_dir,
         {"representation_max_dimension_variance", "max_dimension_variance",
          "embedding_max_dimension_variance"});
     out.representation_condition_number = detail::first_double(
-        report, state,
+        runtime_health, report, state,
         {"representation_condition_number", "embedding_condition_number",
          "covariance_condition_number"});
     out.representation_isotropy_score =
-        detail::first_double(report, state,
+        detail::first_double(runtime_health, report, state,
                              {"representation_isotropy_score",
                               "embedding_isotropy_score", "isotropy_score"});
   }
 
   const auto output_checkpoint = detail::map_get(
-      state, "checkpoint_path", detail::map_get(report, "checkpoint_path"));
+      runtime_checkpoint_io, "checkpoint_path",
+      detail::map_get(state, "checkpoint_path",
+                      detail::map_get(report, "checkpoint_path")));
   out.output_checkpoint = detail::resolve_job_path(job_dir, output_checkpoint);
-  const auto representation_checkpoint =
-      detail::map_get(report, "representation_checkpoint_path");
+  const auto checkpoint_path_reported =
+      detail::first_string(runtime_checkpoint_io, report, state,
+                           {"checkpoint_path_reported", "checkpoint_path"});
+  out.checkpoint_path_reported =
+      detail::resolve_job_path(job_dir, checkpoint_path_reported);
+  out.checkpoint_digest_reported = detail::first_string(
+      runtime_checkpoint_io, report,
+      {"checkpoint_digest_reported", "checkpoint_file_digest",
+       "checkpoint_artifact_hash"});
+  out.checkpoint_digest_verified =
+      detail::parse_bool_fallback(detail::first_string(
+          runtime_checkpoint_io, report, {"checkpoint_digest_verified"}));
+  out.checkpoint_file_exists = detail::parse_bool_fallback(
+      detail::first_string(runtime_checkpoint_io, report,
+                           {"checkpoint_file_exists"}),
+      !out.output_checkpoint.empty() &&
+          std::filesystem::exists(out.output_checkpoint));
+  out.checkpoint_bytes =
+      detail::first_i64(runtime_checkpoint_io, report, {"checkpoint_bytes"}, 0);
+  out.checkpoint_mtime_ticks = detail::first_i64(runtime_checkpoint_io, report,
+                                                 {"checkpoint_mtime_ticks"}, 0);
+  out.checkpoint_artifact_status = detail::first_string(
+      runtime_checkpoint_io, report, {"checkpoint_artifact_status"});
+  out.checkpoint_written = detail::parse_bool_fallback(
+      detail::map_get(runtime_checkpoint_io, "checkpoint_written",
+                      detail::map_get(runtime_result, "checkpoint_written")),
+      !out.output_checkpoint.empty());
+  out.model_state_mutated = detail::parse_bool_fallback(
+      detail::map_get(runtime_checkpoint_io, "model_state_mutated",
+                      detail::map_get(runtime_result, "model_state_mutated")),
+      out.use.mutated_component);
+  const auto representation_checkpoint = detail::first_string(
+      runtime_checkpoint_io, report, {"representation_checkpoint_path"});
+  out.representation_checkpoint_loaded = detail::parse_bool_fallback(
+      detail::map_get(
+          runtime_checkpoint_io, "representation_checkpoint_loaded",
+          detail::map_get(report, "representation_checkpoint_loaded")),
+      !representation_checkpoint.empty());
   if (!representation_checkpoint.empty()) {
     out.input_checkpoints.push_back(
         detail::resolve_job_path(job_dir, representation_checkpoint));
   }
-  const auto mdn_checkpoint = detail::map_get(report, "mdn_checkpoint_path");
-  if (!mdn_checkpoint.empty() &&
-      detail::parse_bool_fallback(
-          detail::map_get(report, "mdn_checkpoint_loaded"), false)) {
+  const auto mdn_checkpoint = detail::first_string(
+      runtime_checkpoint_io, report, {"mdn_checkpoint_path"});
+  out.mdn_checkpoint_loaded = detail::parse_bool_fallback(
+      detail::map_get(runtime_checkpoint_io, "mdn_checkpoint_loaded",
+                      detail::map_get(report, "mdn_checkpoint_loaded")),
+      false);
+  if (!mdn_checkpoint.empty() && out.mdn_checkpoint_loaded) {
     out.input_checkpoints.push_back(
         detail::resolve_job_path(job_dir, mdn_checkpoint));
   }
@@ -3864,6 +4197,7 @@ canonical_exposure_fact_text(const lattice_exposure_fact_t &fact) {
   out << "schema=" << fact.schema << "\n";
   out << "fact_type=" << fact.fact_type << "\n";
   out << "contract_fingerprint=" << fact.contract_fingerprint << "\n";
+  out << "protocol_id=" << fact.protocol_id << "\n";
   out << "graph_order_fingerprint=" << fact.graph_order_fingerprint << "\n";
   out << "component_assembly_fingerprint="
       << fact.component_assembly_fingerprint << "\n";
@@ -3878,6 +4212,14 @@ canonical_exposure_fact_text(const lattice_exposure_fact_t &fact) {
       << "\n";
   out << "component_spawn_id=" << fact.component_spawn_id << "\n";
   out << "component_spawn_label=" << fact.component_spawn_label << "\n";
+  out << "runtime_handoff_id=" << fact.runtime_handoff_id << "\n";
+  out << "runtime_handoff_digest=" << fact.runtime_handoff_digest << "\n";
+  out << "marshal_target_driver_run_id=" << fact.marshal_target_driver_run_id
+      << "\n";
+  out << "report_schema_id=" << fact.report_schema_id << "\n";
+  out << "report_schema_version=" << fact.report_schema_version << "\n";
+  out << "report_writer_id=" << fact.report_writer_id << "\n";
+  out << "report_writer_version=" << fact.report_writer_version << "\n";
   out << "representation_architecture=" << fact.representation_architecture
       << "\n";
   out << "representation_contract=" << fact.representation_contract << "\n";
@@ -3887,6 +4229,20 @@ canonical_exposure_fact_text(const lattice_exposure_fact_t &fact) {
       << fact.representation_sequence_value_shape << "\n";
   out << "channel_axis_policy=" << fact.channel_axis_policy << "\n";
   out << "temporal_reduction=" << fact.temporal_reduction << "\n";
+  out << "input_nodelift_shape=" << fact.input_nodelift_shape << "\n";
+  out << "mtf_training_shape=" << fact.mtf_training_shape << "\n";
+  out << "flattening_contract=" << fact.flattening_contract << "\n";
+  out << "recommended_graph_restore_shape="
+      << fact.recommended_graph_restore_shape << "\n";
+  out << "graph_restore_available="
+      << (fact.graph_restore_available ? "true" : "false") << "\n";
+  out << "graph_restore_reason=" << fact.graph_restore_reason << "\n";
+  out << "reshape_lossless=" << (fact.reshape_lossless ? "true" : "false")
+      << "\n";
+  out << "anchor_batch_count=" << fact.anchor_batch_count << "\n";
+  out << "node_count=" << fact.node_count << "\n";
+  out << "flattened_sample_count=" << fact.flattened_sample_count << "\n";
+  out << "input_feature_width=" << fact.input_feature_width << "\n";
   out << "input_representation_assembly_id="
       << fact.input_representation_assembly_id << "\n";
   out << "context_mode=" << fact.context_mode << "\n";
@@ -3895,6 +4251,9 @@ canonical_exposure_fact_text(const lattice_exposure_fact_t &fact) {
   out << "output_contract=" << fact.output_contract << "\n";
   out << "output_value_shape=" << fact.output_value_shape << "\n";
   out << "job_id=" << fact.job_id << "\n";
+  out << "job_stable_id=" << fact.job_stable_id << "\n";
+  out << "job_attempt_id=" << fact.job_attempt_id << "\n";
+  out << "job_attempt_policy=" << fact.job_attempt_policy << "\n";
   out << "wave_id=" << fact.wave_id << "\n";
   out << "job_status=" << fact.job_status << "\n";
   out << "wave_action=" << fact.wave_action << "\n";
@@ -3959,6 +4318,18 @@ canonical_exposure_fact_text(const lattice_exposure_fact_t &fact) {
   out << "valid_target_fraction=" << fact.valid_target_fraction << "\n";
   out << "output_checkpoint="
       << fact.output_checkpoint.lexically_normal().string() << "\n";
+  out << "checkpoint_path_reported="
+      << fact.checkpoint_path_reported.lexically_normal().string() << "\n";
+  out << "checkpoint_digest_reported=" << fact.checkpoint_digest_reported
+      << "\n";
+  out << "checkpoint_digest_verified="
+      << (fact.checkpoint_digest_verified ? "true" : "false") << "\n";
+  out << "checkpoint_file_exists="
+      << (fact.checkpoint_file_exists ? "true" : "false") << "\n";
+  out << "checkpoint_bytes=" << fact.checkpoint_bytes << "\n";
+  out << "checkpoint_mtime_ticks=" << fact.checkpoint_mtime_ticks << "\n";
+  out << "checkpoint_artifact_status=" << fact.checkpoint_artifact_status
+      << "\n";
   std::vector<std::string> input_keys;
   input_keys.reserve(fact.input_checkpoints.size());
   for (const auto &checkpoint : fact.input_checkpoints) {
@@ -3973,6 +4344,12 @@ canonical_exposure_fact_text(const lattice_exposure_fact_t &fact) {
     out << input_keys.at(i);
   }
   out << "\nfinite_loss=" << (fact.finite_loss ? "true" : "false") << "\n";
+  out << "run_data_kind=" << fact.run_data_kind << "\n";
+  out << "readiness_scope=" << fact.readiness_scope << "\n";
+  out << "synthetic_training_passed="
+      << (fact.synthetic_training_passed ? "true" : "false") << "\n";
+  out << "market_readiness_claimed="
+      << (fact.market_readiness_claimed ? "true" : "false") << "\n";
   out << "mean_loss=" << fact.mean_loss << "\n";
   out << "mean_nll=" << fact.mean_nll << "\n";
   out << "inference_health_available="
@@ -3985,18 +4362,71 @@ canonical_exposure_fact_text(const lattice_exposure_fact_t &fact) {
                                       fact.mean_nll_per_channel);
   exposure_detail::append_double_list(out, "mean_nll_per_target_feature",
                                       fact.mean_nll_per_target_feature);
+  exposure_detail::append_double_list(out,
+                                      "mean_nll_per_channel_target_feature",
+                                      fact.mean_nll_per_channel_target_feature);
   exposure_detail::append_double_list(out, "mean_nll_per_horizon",
                                       fact.mean_nll_per_horizon);
   exposure_detail::append_double_list(out, "mean_mixture_usage",
                                       fact.mean_mixture_usage);
+  exposure_detail::append_i64_list(out, "valid_target_count_per_channel",
+                                   fact.valid_target_count_per_channel);
+  exposure_detail::append_i64_list(out, "valid_target_count_per_target_feature",
+                                   fact.valid_target_count_per_target_feature);
+  exposure_detail::append_i64_list(
+      out, "valid_target_count_per_channel_target_feature",
+      fact.valid_target_count_per_channel_target_feature);
+  out << "mdn_architecture=" << fact.mdn_architecture << "\n";
+  out << "loss_reduction=" << fact.loss_reduction << "\n";
+  out << "feature_embedding_dim=" << fact.feature_embedding_dim << "\n";
+  out << "channel_adapter_rank=" << fact.channel_adapter_rank << "\n";
+  out << "shared_trunk=" << (fact.shared_trunk ? "true" : "false") << "\n";
+  out << "channel_adapters_enabled="
+      << (fact.channel_adapters_enabled ? "true" : "false") << "\n";
+  out << "shared_feature_head=" << (fact.shared_feature_head ? "true" : "false")
+      << "\n";
+  out << "feature_embedding_enabled="
+      << (fact.feature_embedding_enabled ? "true" : "false") << "\n";
+  out << "node_id_embedding=" << (fact.node_id_embedding ? "true" : "false")
+      << "\n";
+  out << "cross_node_attention="
+      << (fact.cross_node_attention ? "true" : "false") << "\n";
+  out << "cross_channel_attention="
+      << (fact.cross_channel_attention ? "true" : "false") << "\n";
   out << "nonfinite_output_count=" << fact.nonfinite_output_count << "\n";
   out << "representation_health_available="
       << (fact.representation_health_available ? "true" : "false") << "\n";
   out << "mean_invariance_loss=" << fact.mean_invariance_loss << "\n";
   out << "mean_variance_loss=" << fact.mean_variance_loss << "\n";
   out << "mean_covariance_loss=" << fact.mean_covariance_loss << "\n";
+  out << "loss_jepa_mean=" << fact.loss_jepa_mean << "\n";
+  out << "loss_mae_time_mean=" << fact.loss_mae_time_mean << "\n";
+  out << "loss_mae_frequency_mean=" << fact.loss_mae_frequency_mean << "\n";
+  out << "loss_tf_align_mean=" << fact.loss_tf_align_mean << "\n";
+  out << "loss_vicreg_global_mean=" << fact.loss_vicreg_global_mean << "\n";
+  out << "loss_vicreg_channel_mean=" << fact.loss_vicreg_channel_mean << "\n";
   out << "last_grad_norm=" << fact.last_grad_norm << "\n";
   out << "max_grad_norm=" << fact.max_grad_norm << "\n";
+  out << "gradients_finite=" << (fact.gradients_finite ? "true" : "false")
+      << "\n";
+  out << "sample_valid_count=" << fact.sample_valid_count << "\n";
+  out << "sample_valid_fraction=" << fact.sample_valid_fraction << "\n";
+  out << "channel_valid_count=" << fact.channel_valid_count << "\n";
+  out << "channel_valid_fraction=" << fact.channel_valid_fraction << "\n";
+  out << "valid_latent_rows=" << fact.valid_latent_rows << "\n";
+  out << "tf_pair_count=" << fact.tf_pair_count << "\n";
+  out << "tf_pair_valid_count=" << fact.tf_pair_valid_count << "\n";
+  out << "vicreg_global_valid_rows=" << fact.vicreg_global_valid_rows << "\n";
+  out << "vicreg_channel_valid_rows=" << fact.vicreg_channel_valid_rows << "\n";
+  out << "context_starved_sample_count=" << fact.context_starved_sample_count
+      << "\n";
+  out << "reduced_targets_for_context_count="
+      << fact.reduced_targets_for_context_count << "\n";
+  out << "min_context_satisfied_count=" << fact.min_context_satisfied_count
+      << "\n";
+  out << "target_ema_distance=" << fact.target_ema_distance << "\n";
+  out << "latent_std=" << fact.latent_std << "\n";
+  out << "latent_norm=" << fact.latent_norm << "\n";
   out << "total_valid_projection_rows=" << fact.total_valid_projection_rows
       << "\n";
   out << "mean_adapter_valid_channel_time_fraction="
@@ -4051,6 +4481,7 @@ make_exposure_fact_from_sidecar_text(const std::string &text,
   out.schema = detail::map_get(map, "schema", out.schema);
   out.fact_type = detail::map_get(map, "fact_type", out.fact_type);
   out.contract_fingerprint = detail::map_get(map, "contract_fingerprint");
+  out.protocol_id = detail::map_get(map, "protocol_id");
   out.graph_order_fingerprint = detail::map_get(map, "graph_order_fingerprint");
   out.component_assembly_fingerprint =
       detail::map_get(map, "component_assembly_fingerprint");
@@ -4065,6 +4496,15 @@ make_exposure_fact_from_sidecar_text(const std::string &text,
       detail::map_get(map, "component_spawn_fingerprint");
   out.component_spawn_id = detail::map_get(map, "component_spawn_id");
   out.component_spawn_label = detail::map_get(map, "component_spawn_label");
+  out.runtime_handoff_id = detail::map_get(map, "runtime_handoff_id");
+  out.runtime_handoff_digest = detail::map_get(map, "runtime_handoff_digest");
+  out.marshal_target_driver_run_id =
+      detail::map_get(map, "marshal_target_driver_run_id");
+  out.report_schema_id = detail::map_get(map, "report_schema_id");
+  out.report_schema_version = detail::parse_i64_fallback(
+      detail::map_get(map, "report_schema_version"), 0);
+  out.report_writer_id = detail::map_get(map, "report_writer_id");
+  out.report_writer_version = detail::map_get(map, "report_writer_version");
   out.representation_architecture =
       detail::map_get(map, "representation_architecture");
   out.representation_contract = detail::map_get(map, "representation_contract");
@@ -4074,6 +4514,24 @@ make_exposure_fact_from_sidecar_text(const std::string &text,
       detail::map_get(map, "representation_sequence_value_shape");
   out.channel_axis_policy = detail::map_get(map, "channel_axis_policy");
   out.temporal_reduction = detail::map_get(map, "temporal_reduction");
+  out.input_nodelift_shape = detail::map_get(map, "input_nodelift_shape");
+  out.mtf_training_shape = detail::map_get(map, "mtf_training_shape");
+  out.flattening_contract = detail::map_get(map, "flattening_contract");
+  out.recommended_graph_restore_shape =
+      detail::map_get(map, "recommended_graph_restore_shape");
+  out.graph_restore_available = detail::parse_bool_fallback(
+      detail::map_get(map, "graph_restore_available"));
+  out.graph_restore_reason = detail::map_get(map, "graph_restore_reason");
+  out.reshape_lossless =
+      detail::parse_bool_fallback(detail::map_get(map, "reshape_lossless"));
+  out.anchor_batch_count =
+      detail::parse_i64_fallback(detail::map_get(map, "anchor_batch_count"), 0);
+  out.node_count =
+      detail::parse_i64_fallback(detail::map_get(map, "node_count"), 0);
+  out.flattened_sample_count = detail::parse_i64_fallback(
+      detail::map_get(map, "flattened_sample_count"), 0);
+  out.input_feature_width = detail::parse_i64_fallback(
+      detail::map_get(map, "input_feature_width"), 0);
   out.input_representation_assembly_id =
       detail::map_get(map, "input_representation_assembly_id");
   out.context_mode = detail::map_get(map, "context_mode");
@@ -4082,6 +4540,9 @@ make_exposure_fact_from_sidecar_text(const std::string &text,
   out.output_contract = detail::map_get(map, "output_contract");
   out.output_value_shape = detail::map_get(map, "output_value_shape");
   out.job_id = detail::map_get(map, "job_id");
+  out.job_stable_id = detail::map_get(map, "job_stable_id");
+  out.job_attempt_id = detail::map_get(map, "job_attempt_id");
+  out.job_attempt_policy = detail::map_get(map, "job_attempt_policy");
   out.wave_id = detail::map_get(map, "wave_id");
   out.job_status = detail::map_get(map, "job_status");
   out.wave_action = detail::map_get(map, "wave_action");
@@ -4180,10 +4641,45 @@ make_exposure_fact_from_sidecar_text(const std::string &text,
       std::numeric_limits<double>::quiet_NaN());
   out.output_checkpoint = detail::resolve_job_path(
       job_dir, detail::map_get(map, "output_checkpoint"));
+  out.checkpoint_path_reported = detail::resolve_job_path(
+      job_dir, detail::map_get(map, "checkpoint_path_reported"));
+  out.checkpoint_digest_reported =
+      detail::map_get(map, "checkpoint_digest_reported");
+  out.checkpoint_digest_verified = detail::parse_bool_fallback(
+      detail::map_get(map, "checkpoint_digest_verified"));
+  out.checkpoint_file_exists = detail::parse_bool_fallback(
+      detail::map_get(map, "checkpoint_file_exists"));
+  out.checkpoint_bytes =
+      detail::parse_i64_fallback(detail::map_get(map, "checkpoint_bytes"), 0);
+  out.checkpoint_mtime_ticks = detail::parse_i64_fallback(
+      detail::map_get(map, "checkpoint_mtime_ticks"), 0);
+  out.checkpoint_artifact_status =
+      detail::map_get(map, "checkpoint_artifact_status");
   out.input_checkpoints = detail::parse_checkpoint_path_list(
       detail::map_get(map, "input_checkpoints"), job_dir);
+  out.runtime_result_fact_available = detail::parse_bool_fallback(
+      detail::map_get(map, "runtime_result_fact_available"));
+  out.runtime_checkpoint_io_fact_available = detail::parse_bool_fallback(
+      detail::map_get(map, "runtime_checkpoint_io_fact_available"));
+  out.runtime_health_measurement_fact_available = detail::parse_bool_fallback(
+      detail::map_get(map, "runtime_health_measurement_fact_available"));
+  out.checkpoint_written =
+      detail::parse_bool_fallback(detail::map_get(map, "checkpoint_written"),
+                                  !out.output_checkpoint.empty());
+  out.model_state_mutated = detail::parse_bool_fallback(
+      detail::map_get(map, "model_state_mutated"), out.use.mutated_component);
+  out.representation_checkpoint_loaded = detail::parse_bool_fallback(
+      detail::map_get(map, "representation_checkpoint_loaded"));
+  out.mdn_checkpoint_loaded = detail::parse_bool_fallback(
+      detail::map_get(map, "mdn_checkpoint_loaded"));
   out.finite_loss =
       detail::parse_bool_fallback(detail::map_get(map, "finite_loss"));
+  out.run_data_kind = detail::map_get(map, "run_data_kind");
+  out.readiness_scope = detail::map_get(map, "readiness_scope");
+  out.synthetic_training_passed = detail::parse_bool_fallback(
+      detail::map_get(map, "synthetic_training_passed"));
+  out.market_readiness_claimed = detail::parse_bool_fallback(
+      detail::map_get(map, "market_readiness_claimed"));
   out.mean_loss =
       detail::parse_double_fallback(detail::map_get(map, "mean_loss"),
                                     std::numeric_limits<double>::quiet_NaN());
@@ -4201,6 +4697,15 @@ make_exposure_fact_from_sidecar_text(const std::string &text,
   out.max_sigma_max =
       detail::parse_double_fallback(detail::map_get(map, "max_sigma_max"),
                                     std::numeric_limits<double>::quiet_NaN());
+  out.sigma_min_valid =
+      detail::parse_double_fallback(detail::map_get(map, "sigma_min_valid"),
+                                    std::numeric_limits<double>::quiet_NaN());
+  out.sigma_mean_valid =
+      detail::parse_double_fallback(detail::map_get(map, "sigma_mean_valid"),
+                                    std::numeric_limits<double>::quiet_NaN());
+  out.sigma_max_valid =
+      detail::parse_double_fallback(detail::map_get(map, "sigma_max_valid"),
+                                    std::numeric_limits<double>::quiet_NaN());
   out.mean_mixture_entropy = detail::parse_double_fallback(
       detail::map_get(map, "mean_mixture_entropy"),
       std::numeric_limits<double>::quiet_NaN());
@@ -4208,6 +4713,8 @@ make_exposure_fact_from_sidecar_text(const std::string &text,
       detail::map_get(map, "mean_nll_per_channel"));
   out.mean_nll_per_target_feature = detail::parse_double_list_fallback(
       detail::map_get(map, "mean_nll_per_target_feature"));
+  out.mean_nll_per_channel_target_feature = detail::parse_double_list_fallback(
+      detail::map_get(map, "mean_nll_per_channel_target_feature"));
   out.mean_nll_per_horizon = detail::parse_double_list_fallback(
       detail::map_get(map, "mean_nll_per_horizon"));
   if (out.mean_nll_per_target_feature.empty() &&
@@ -4216,6 +4723,33 @@ make_exposure_fact_from_sidecar_text(const std::string &text,
   }
   out.mean_mixture_usage = detail::parse_double_list_fallback(
       detail::map_get(map, "mean_mixture_usage"));
+  out.valid_target_count_per_channel = detail::parse_i64_list_fallback(
+      detail::map_get(map, "valid_target_count_per_channel"));
+  out.valid_target_count_per_target_feature = detail::parse_i64_list_fallback(
+      detail::map_get(map, "valid_target_count_per_target_feature"));
+  out.valid_target_count_per_channel_target_feature =
+      detail::parse_i64_list_fallback(detail::map_get(
+          map, "valid_target_count_per_channel_target_feature"));
+  out.mdn_architecture = detail::map_get(map, "mdn_architecture");
+  out.loss_reduction = detail::map_get(map, "loss_reduction");
+  out.feature_embedding_dim = detail::parse_i64_fallback(
+      detail::map_get(map, "feature_embedding_dim"), 0);
+  out.channel_adapter_rank = detail::parse_i64_fallback(
+      detail::map_get(map, "channel_adapter_rank"), 0);
+  out.shared_trunk =
+      detail::parse_bool_fallback(detail::map_get(map, "shared_trunk"));
+  out.channel_adapters_enabled = detail::parse_bool_fallback(
+      detail::map_get(map, "channel_adapters_enabled"));
+  out.shared_feature_head =
+      detail::parse_bool_fallback(detail::map_get(map, "shared_feature_head"));
+  out.feature_embedding_enabled = detail::parse_bool_fallback(
+      detail::map_get(map, "feature_embedding_enabled"));
+  out.node_id_embedding =
+      detail::parse_bool_fallback(detail::map_get(map, "node_id_embedding"));
+  out.cross_node_attention =
+      detail::parse_bool_fallback(detail::map_get(map, "cross_node_attention"));
+  out.cross_channel_attention = detail::parse_bool_fallback(
+      detail::map_get(map, "cross_channel_attention"));
   out.nonfinite_output_count = detail::parse_i64_fallback(
       detail::map_get(map, "nonfinite_output_count"), 0);
   out.representation_health_available = detail::parse_bool_fallback(
@@ -4229,11 +4763,69 @@ make_exposure_fact_from_sidecar_text(const std::string &text,
   out.mean_covariance_loss = detail::parse_double_fallback(
       detail::map_get(map, "mean_covariance_loss"),
       std::numeric_limits<double>::quiet_NaN());
+  out.loss_jepa_mean =
+      detail::parse_double_fallback(detail::map_get(map, "loss_jepa_mean"),
+                                    std::numeric_limits<double>::quiet_NaN());
+  out.loss_mae_time_mean =
+      detail::parse_double_fallback(detail::map_get(map, "loss_mae_time_mean"),
+                                    std::numeric_limits<double>::quiet_NaN());
+  out.loss_mae_frequency_mean = detail::parse_double_fallback(
+      detail::map_get(map, "loss_mae_frequency_mean"),
+      std::numeric_limits<double>::quiet_NaN());
+  out.loss_tf_align_mean =
+      detail::parse_double_fallback(detail::map_get(map, "loss_tf_align_mean"),
+                                    std::numeric_limits<double>::quiet_NaN());
+  out.loss_vicreg_global_mean = detail::parse_double_fallback(
+      detail::map_get(map, "loss_vicreg_global_mean"),
+      std::numeric_limits<double>::quiet_NaN());
+  out.loss_vicreg_channel_mean = detail::parse_double_fallback(
+      detail::map_get(map, "loss_vicreg_channel_mean"),
+      std::numeric_limits<double>::quiet_NaN());
   out.last_grad_norm =
       detail::parse_double_fallback(detail::map_get(map, "last_grad_norm"),
                                     std::numeric_limits<double>::quiet_NaN());
   out.max_grad_norm =
       detail::parse_double_fallback(detail::map_get(map, "max_grad_norm"),
+                                    std::numeric_limits<double>::quiet_NaN());
+  out.grad_clip_norm =
+      detail::parse_double_fallback(detail::map_get(map, "grad_clip_norm"),
+                                    std::numeric_limits<double>::quiet_NaN());
+  out.gradients_finite =
+      detail::parse_bool_fallback(detail::map_get(map, "gradients_finite"));
+  out.sample_valid_count =
+      detail::parse_i64_fallback(detail::map_get(map, "sample_valid_count"), 0);
+  out.sample_valid_fraction = detail::parse_double_fallback(
+      detail::map_get(map, "sample_valid_fraction"),
+      std::numeric_limits<double>::quiet_NaN());
+  out.channel_valid_count = detail::parse_i64_fallback(
+      detail::map_get(map, "channel_valid_count"), 0);
+  out.channel_valid_fraction = detail::parse_double_fallback(
+      detail::map_get(map, "channel_valid_fraction"),
+      std::numeric_limits<double>::quiet_NaN());
+  out.valid_latent_rows =
+      detail::parse_i64_fallback(detail::map_get(map, "valid_latent_rows"), 0);
+  out.tf_pair_count =
+      detail::parse_i64_fallback(detail::map_get(map, "tf_pair_count"), 0);
+  out.tf_pair_valid_count = detail::parse_i64_fallback(
+      detail::map_get(map, "tf_pair_valid_count"), 0);
+  out.vicreg_global_valid_rows = detail::parse_i64_fallback(
+      detail::map_get(map, "vicreg_global_valid_rows"), 0);
+  out.vicreg_channel_valid_rows = detail::parse_i64_fallback(
+      detail::map_get(map, "vicreg_channel_valid_rows"), 0);
+  out.context_starved_sample_count = detail::parse_i64_fallback(
+      detail::map_get(map, "context_starved_sample_count"), 0);
+  out.reduced_targets_for_context_count = detail::parse_i64_fallback(
+      detail::map_get(map, "reduced_targets_for_context_count"), 0);
+  out.min_context_satisfied_count = detail::parse_i64_fallback(
+      detail::map_get(map, "min_context_satisfied_count"), 0);
+  out.target_ema_distance =
+      detail::parse_double_fallback(detail::map_get(map, "target_ema_distance"),
+                                    std::numeric_limits<double>::quiet_NaN());
+  out.latent_std =
+      detail::parse_double_fallback(detail::map_get(map, "latent_std"),
+                                    std::numeric_limits<double>::quiet_NaN());
+  out.latent_norm =
+      detail::parse_double_fallback(detail::map_get(map, "latent_norm"),
                                     std::numeric_limits<double>::quiet_NaN());
   out.total_valid_projection_rows = detail::parse_i64_fallback(
       detail::map_get(map, "total_valid_projection_rows"), 0);
@@ -4342,6 +4934,7 @@ make_node_exposure_facts_from_job_dir(const std::filesystem::path &job_dir,
     lattice_node_exposure_fact_t fact{};
     fact.parent_exposure_fact_digest = parent_digest;
     fact.contract_fingerprint = parent.contract_fingerprint;
+    fact.protocol_id = parent.protocol_id;
     fact.graph_order_fingerprint = parent.graph_order_fingerprint;
     fact.source_cursor_token = parent.source_cursor_token;
     fact.split_policy_fingerprint = parent.split_policy_fingerprint;
@@ -4450,6 +5043,7 @@ make_checkpoint_fact_from_exposure_fact(const lattice_exposure_fact_t &fact) {
   out.checkpoint_file_digest = file_content_digest(out.checkpoint_path);
   out.component = fact.target_component_family_id;
   out.contract_fingerprint = fact.contract_fingerprint;
+  out.protocol_id = fact.protocol_id;
   out.graph_order_fingerprint = fact.graph_order_fingerprint;
   out.representation_architecture = fact.representation_architecture;
   out.representation_contract = fact.representation_contract;
@@ -4488,6 +5082,7 @@ canonical_checkpoint_fact_text(const lattice_checkpoint_fact_t &fact) {
   out << "checkpoint_file_digest=" << fact.checkpoint_file_digest << "\n";
   out << "component=" << fact.component << "\n";
   out << "contract_fingerprint=" << fact.contract_fingerprint << "\n";
+  out << "protocol_id=" << fact.protocol_id << "\n";
   out << "graph_order_fingerprint=" << fact.graph_order_fingerprint << "\n";
   out << "representation_architecture=" << fact.representation_architecture
       << "\n";
@@ -4545,6 +5140,7 @@ make_checkpoint_fact_from_sidecar_text(const std::string &text,
   out.checkpoint_file_digest = detail::map_get(map, "checkpoint_file_digest");
   out.component = detail::map_get(map, "component");
   out.contract_fingerprint = detail::map_get(map, "contract_fingerprint");
+  out.protocol_id = detail::map_get(map, "protocol_id");
   out.graph_order_fingerprint = detail::map_get(map, "graph_order_fingerprint");
   out.representation_architecture =
       detail::map_get(map, "representation_architecture");
@@ -4739,7 +5335,6 @@ public:
       const std::string &checkpoint_file_digest) const {
     checkpoint_closure_result_t out{};
     out.resolution_authority = "checkpoint_id_file_digest";
-    out.legacy_path_fallback = false;
     out.root_checkpoint_id = checkpoint_id;
     out.root_checkpoint_file_digest = checkpoint_file_digest;
     if (checkpoint_id.empty() || checkpoint_file_digest.empty()) {
@@ -4944,7 +5539,8 @@ private:
       }
     }
     if (path_facts.empty()) {
-      out.legacy_path_fallback = true;
+      out.identity_mismatches.push_back("checkpoint fact sidecar missing for " +
+                                        checkpoint_key);
       return;
     }
 
@@ -4963,7 +5559,10 @@ private:
       }
     }
     if (primary_facts.empty()) {
-      out.legacy_path_fallback = true;
+      out.identity_mismatches.push_back(
+          "checkpoint fact sidecar missing checkpoint_id/file_digest/direct "
+          "exposure digest for " +
+          checkpoint_key);
       return;
     }
 
@@ -4977,7 +5576,10 @@ private:
       }
     }
     if (matching_primary_facts.empty()) {
-      out.legacy_path_fallback = true;
+      out.identity_mismatches.push_back(
+          "checkpoint fact sidecar direct exposure digest does not match "
+          "producer exposure for " +
+          checkpoint_key);
       return;
     }
 
@@ -5034,12 +5636,14 @@ private:
       out.resolution_authority = "unresolved_lineage";
       return;
     }
-    if (!out.legacy_path_fallback && !out.root_checkpoint_id.empty() &&
+    if (!out.root_checkpoint_id.empty() &&
         !out.root_checkpoint_file_digest.empty()) {
       out.resolution_authority = "checkpoint_id_file_digest";
       return;
     }
-    out.resolution_authority = "legacy_path";
+    out.identity_mismatches.push_back(
+        "checkpoint closure reached root without checkpoint identity");
+    out.resolution_authority = "checkpoint_identity_failed";
   }
 
   std::vector<lattice_exposure_fact_t> facts_{};
@@ -5150,244 +5754,8 @@ append_selection_signal_scan_warning(const lattice_exposure_fact_t &fact,
   }
 }
 
-inline bool supplement_representation_health_from_derived(
-    lattice_exposure_fact_t &sidecar_fact,
-    const lattice_exposure_fact_t &derived_fact,
-    const std::unordered_map<std::string, std::string> &sidecar_map = {}) {
-  if (!derived_fact.representation_health_available ||
-      sidecar_fact.target_component_family_id !=
-          derived_fact.target_component_family_id ||
-      sidecar_fact.job_id != derived_fact.job_id) {
-    return false;
-  }
-  const auto key_missing = [&](const char *key) {
-    const auto it = sidecar_map.find(key);
-    return it == sidecar_map.end() || it->second.empty();
-  };
-  bool changed = false;
-  if (!sidecar_fact.representation_health_available) {
-    sidecar_fact.representation_health_available = true;
-    sidecar_fact.mean_invariance_loss = derived_fact.mean_invariance_loss;
-    sidecar_fact.mean_variance_loss = derived_fact.mean_variance_loss;
-    sidecar_fact.mean_covariance_loss = derived_fact.mean_covariance_loss;
-    sidecar_fact.last_grad_norm = derived_fact.last_grad_norm;
-    sidecar_fact.max_grad_norm = derived_fact.max_grad_norm;
-    sidecar_fact.total_valid_projection_rows =
-        derived_fact.total_valid_projection_rows;
-    sidecar_fact.mean_adapter_valid_channel_time_fraction =
-        derived_fact.mean_adapter_valid_channel_time_fraction;
-    sidecar_fact.augmented_valid_feature_count =
-        derived_fact.augmented_valid_feature_count;
-    sidecar_fact.mean_augmented_valid_feature_fraction =
-        derived_fact.mean_augmented_valid_feature_fraction;
-    sidecar_fact.mean_augmented_feature_retention_fraction =
-        derived_fact.mean_augmented_feature_retention_fraction;
-    sidecar_fact.finite_parameter_check = derived_fact.finite_parameter_check;
-    changed = true;
-  }
-  if (!std::isfinite(sidecar_fact.mean_invariance_loss) &&
-      std::isfinite(derived_fact.mean_invariance_loss)) {
-    sidecar_fact.mean_invariance_loss = derived_fact.mean_invariance_loss;
-    changed = true;
-  }
-  if (!std::isfinite(sidecar_fact.mean_variance_loss) &&
-      std::isfinite(derived_fact.mean_variance_loss)) {
-    sidecar_fact.mean_variance_loss = derived_fact.mean_variance_loss;
-    changed = true;
-  }
-  if (!std::isfinite(sidecar_fact.mean_covariance_loss) &&
-      std::isfinite(derived_fact.mean_covariance_loss)) {
-    sidecar_fact.mean_covariance_loss = derived_fact.mean_covariance_loss;
-    changed = true;
-  }
-  if (!std::isfinite(sidecar_fact.last_grad_norm) &&
-      std::isfinite(derived_fact.last_grad_norm)) {
-    sidecar_fact.last_grad_norm = derived_fact.last_grad_norm;
-    changed = true;
-  }
-  if (!std::isfinite(sidecar_fact.max_grad_norm) &&
-      std::isfinite(derived_fact.max_grad_norm)) {
-    sidecar_fact.max_grad_norm = derived_fact.max_grad_norm;
-    changed = true;
-  }
-  if (key_missing("total_valid_projection_rows") &&
-      derived_fact.total_valid_projection_rows > 0) {
-    sidecar_fact.total_valid_projection_rows =
-        derived_fact.total_valid_projection_rows;
-    changed = true;
-  }
-  if (!std::isfinite(sidecar_fact.mean_adapter_valid_channel_time_fraction) &&
-      std::isfinite(derived_fact.mean_adapter_valid_channel_time_fraction)) {
-    sidecar_fact.mean_adapter_valid_channel_time_fraction =
-        derived_fact.mean_adapter_valid_channel_time_fraction;
-    changed = true;
-  }
-  if (key_missing("augmented_valid_feature_count") &&
-      derived_fact.augmented_valid_feature_count > 0) {
-    sidecar_fact.augmented_valid_feature_count =
-        derived_fact.augmented_valid_feature_count;
-    changed = true;
-  }
-  if (!std::isfinite(sidecar_fact.mean_augmented_valid_feature_fraction) &&
-      std::isfinite(derived_fact.mean_augmented_valid_feature_fraction)) {
-    sidecar_fact.mean_augmented_valid_feature_fraction =
-        derived_fact.mean_augmented_valid_feature_fraction;
-    changed = true;
-  }
-  if (!std::isfinite(sidecar_fact.mean_augmented_feature_retention_fraction) &&
-      std::isfinite(derived_fact.mean_augmented_feature_retention_fraction)) {
-    sidecar_fact.mean_augmented_feature_retention_fraction =
-        derived_fact.mean_augmented_feature_retention_fraction;
-    changed = true;
-  }
-  if (key_missing("finite_parameter_check") &&
-      derived_fact.finite_parameter_check) {
-    sidecar_fact.finite_parameter_check = true;
-    changed = true;
-  }
-  if (sidecar_fact.representation_embedding_dim <= 0 &&
-      derived_fact.representation_embedding_dim > 0) {
-    sidecar_fact.representation_embedding_dim =
-        derived_fact.representation_embedding_dim;
-    changed = true;
-  }
-  if (!std::isfinite(sidecar_fact.representation_effective_rank) &&
-      std::isfinite(derived_fact.representation_effective_rank)) {
-    sidecar_fact.representation_effective_rank =
-        derived_fact.representation_effective_rank;
-    changed = true;
-  }
-  if (!std::isfinite(sidecar_fact.representation_effective_rank_fraction) &&
-      std::isfinite(derived_fact.representation_effective_rank_fraction)) {
-    sidecar_fact.representation_effective_rank_fraction =
-        derived_fact.representation_effective_rank_fraction;
-    changed = true;
-  }
-  if (!std::isfinite(sidecar_fact.representation_min_dimension_variance) &&
-      std::isfinite(derived_fact.representation_min_dimension_variance)) {
-    sidecar_fact.representation_min_dimension_variance =
-        derived_fact.representation_min_dimension_variance;
-    changed = true;
-  }
-  if (!std::isfinite(sidecar_fact.representation_max_dimension_variance) &&
-      std::isfinite(derived_fact.representation_max_dimension_variance)) {
-    sidecar_fact.representation_max_dimension_variance =
-        derived_fact.representation_max_dimension_variance;
-    changed = true;
-  }
-  if (!std::isfinite(sidecar_fact.representation_condition_number) &&
-      std::isfinite(derived_fact.representation_condition_number)) {
-    sidecar_fact.representation_condition_number =
-        derived_fact.representation_condition_number;
-    changed = true;
-  }
-  if (!std::isfinite(sidecar_fact.representation_isotropy_score) &&
-      std::isfinite(derived_fact.representation_isotropy_score)) {
-    sidecar_fact.representation_isotropy_score =
-        derived_fact.representation_isotropy_score;
-    changed = true;
-  }
-  return changed;
-}
-
-inline bool supplement_inference_health_from_derived(
-    lattice_exposure_fact_t &sidecar_fact,
-    const lattice_exposure_fact_t &derived_fact,
-    const std::unordered_map<std::string, std::string> &sidecar_map = {}) {
-  if (!derived_fact.inference_health_available ||
-      sidecar_fact.target_component_family_id !=
-          derived_fact.target_component_family_id ||
-      sidecar_fact.job_id != derived_fact.job_id) {
-    return false;
-  }
-  const auto key_missing = [&](const char *key) {
-    const auto it = sidecar_map.find(key);
-    return it == sidecar_map.end() || it->second.empty();
-  };
-  bool changed = false;
-  if (!sidecar_fact.inference_health_available) {
-    sidecar_fact.inference_health_available = true;
-    sidecar_fact.mean_sigma_mean = derived_fact.mean_sigma_mean;
-    sidecar_fact.min_sigma_min = derived_fact.min_sigma_min;
-    sidecar_fact.max_sigma_max = derived_fact.max_sigma_max;
-    sidecar_fact.mean_mixture_entropy = derived_fact.mean_mixture_entropy;
-    sidecar_fact.mean_nll_per_channel = derived_fact.mean_nll_per_channel;
-    sidecar_fact.mean_nll_per_target_feature =
-        derived_fact.mean_nll_per_target_feature;
-    sidecar_fact.mean_nll_per_horizon = derived_fact.mean_nll_per_horizon;
-    sidecar_fact.mean_mixture_usage = derived_fact.mean_mixture_usage;
-    sidecar_fact.nonfinite_output_count = derived_fact.nonfinite_output_count;
-    sidecar_fact.last_grad_norm = derived_fact.last_grad_norm;
-    sidecar_fact.max_grad_norm = derived_fact.max_grad_norm;
-    sidecar_fact.finite_parameter_check = derived_fact.finite_parameter_check;
-    changed = true;
-  }
-  if (!std::isfinite(sidecar_fact.mean_sigma_mean) &&
-      std::isfinite(derived_fact.mean_sigma_mean)) {
-    sidecar_fact.mean_sigma_mean = derived_fact.mean_sigma_mean;
-    changed = true;
-  }
-  if (!std::isfinite(sidecar_fact.min_sigma_min) &&
-      std::isfinite(derived_fact.min_sigma_min)) {
-    sidecar_fact.min_sigma_min = derived_fact.min_sigma_min;
-    changed = true;
-  }
-  if (!std::isfinite(sidecar_fact.max_sigma_max) &&
-      std::isfinite(derived_fact.max_sigma_max)) {
-    sidecar_fact.max_sigma_max = derived_fact.max_sigma_max;
-    changed = true;
-  }
-  if (!std::isfinite(sidecar_fact.mean_mixture_entropy) &&
-      std::isfinite(derived_fact.mean_mixture_entropy)) {
-    sidecar_fact.mean_mixture_entropy = derived_fact.mean_mixture_entropy;
-    changed = true;
-  }
-  if (sidecar_fact.mean_nll_per_channel.empty() &&
-      !derived_fact.mean_nll_per_channel.empty()) {
-    sidecar_fact.mean_nll_per_channel = derived_fact.mean_nll_per_channel;
-    changed = true;
-  }
-  if (sidecar_fact.mean_nll_per_target_feature.empty() &&
-      !derived_fact.mean_nll_per_target_feature.empty()) {
-    sidecar_fact.mean_nll_per_target_feature =
-        derived_fact.mean_nll_per_target_feature;
-    changed = true;
-  }
-  if (sidecar_fact.mean_nll_per_horizon.empty() &&
-      !derived_fact.mean_nll_per_horizon.empty()) {
-    sidecar_fact.mean_nll_per_horizon = derived_fact.mean_nll_per_horizon;
-    changed = true;
-  }
-  if (sidecar_fact.mean_mixture_usage.empty() &&
-      !derived_fact.mean_mixture_usage.empty()) {
-    sidecar_fact.mean_mixture_usage = derived_fact.mean_mixture_usage;
-    changed = true;
-  }
-  if (key_missing("nonfinite_output_count")) {
-    sidecar_fact.nonfinite_output_count = derived_fact.nonfinite_output_count;
-    changed = true;
-  }
-  if (!std::isfinite(sidecar_fact.last_grad_norm) &&
-      std::isfinite(derived_fact.last_grad_norm)) {
-    sidecar_fact.last_grad_norm = derived_fact.last_grad_norm;
-    changed = true;
-  }
-  if (!std::isfinite(sidecar_fact.max_grad_norm) &&
-      std::isfinite(derived_fact.max_grad_norm)) {
-    sidecar_fact.max_grad_norm = derived_fact.max_grad_norm;
-    changed = true;
-  }
-  if (key_missing("finite_parameter_check") &&
-      derived_fact.finite_parameter_check) {
-    sidecar_fact.finite_parameter_check = true;
-    changed = true;
-  }
-  return changed;
-}
-
 struct exposure_scan_options_t {
   bool compare_sidecar_to_derived_fact{true};
-  bool supplement_legacy_sidecars{true};
   bool derive_node_exposure_facts{true};
   bool derive_representation_support_facts{true};
   bool derive_source_receipt_facts{true};
@@ -5401,17 +5769,29 @@ struct lattice_job_artifacts_t {
   std::string manifest_text{};
   std::string state_text{};
   std::string report_text{};
+  std::string runtime_result_text{};
+  std::string runtime_checkpoint_io_text{};
+  std::string runtime_health_measurement_text{};
   std::string exposure_sidecar_text{};
   std::string checkpoint_sidecar_text{};
   std::unordered_map<std::string, std::string> manifest{};
   std::unordered_map<std::string, std::string> state{};
   std::unordered_map<std::string, std::string> report{};
+  std::unordered_map<std::string, std::string> runtime_result{};
+  std::unordered_map<std::string, std::string> runtime_checkpoint_io{};
+  std::unordered_map<std::string, std::string> runtime_health_measurement{};
   std::unordered_map<std::string, std::string> exposure_sidecar{};
   std::unordered_map<std::string, std::string> checkpoint_sidecar{};
   std::string job_kind{};
   std::string report_leaf{};
   bool exposure_sidecar_exists{false};
   bool has_exposure_sidecar{false};
+  bool runtime_result_exists{false};
+  bool has_runtime_result{false};
+  bool runtime_checkpoint_io_exists{false};
+  bool has_runtime_checkpoint_io{false};
+  bool runtime_health_measurement_exists{false};
+  bool has_runtime_health_measurement{false};
   bool checkpoint_sidecar_exists{false};
   bool has_checkpoint_sidecar{false};
 };
@@ -5430,14 +5810,45 @@ read_lattice_job_artifacts(const std::filesystem::path &job_dir,
   // Historical read-only support only; see make_exposure_fact_from_job_dir.
   out.report_leaf =
       out.job_kind == "representation_vicreg" ? "representation.report"
-      : out.job_kind == "channel_representation_vicreg"
+      : (out.job_kind == "channel_representation_vicreg" ||
+         out.job_kind == "channel_representation_mtf_jepa_mae_vicreg")
           ? "channel_representation.report"
       : out.job_kind == "channel_inference_mdn" ? "channel_inference.report"
                                                 : "inference.report";
   out.report_text = detail::read_text_file_or_empty(job_dir / out.report_leaf);
   out.report = detail::parse_assignment_text(out.report_text);
-  const auto exposure_sidecar_path = exposure_fact_path_for_job_dir(job_dir);
   std::error_code ec;
+  const auto runtime_result_path = job_dir / "runtime.result.fact";
+  out.runtime_result_exists = std::filesystem::exists(runtime_result_path, ec);
+  out.runtime_result_text =
+      detail::read_text_file_or_empty(runtime_result_path);
+  out.has_runtime_result = !out.runtime_result_text.empty();
+  if (out.has_runtime_result) {
+    out.runtime_result = detail::parse_assignment_text(out.runtime_result_text);
+  }
+  const auto runtime_checkpoint_io_path =
+      job_dir / "runtime.checkpoint_io.fact";
+  out.runtime_checkpoint_io_exists =
+      std::filesystem::exists(runtime_checkpoint_io_path, ec);
+  out.runtime_checkpoint_io_text =
+      detail::read_text_file_or_empty(runtime_checkpoint_io_path);
+  out.has_runtime_checkpoint_io = !out.runtime_checkpoint_io_text.empty();
+  if (out.has_runtime_checkpoint_io) {
+    out.runtime_checkpoint_io =
+        detail::parse_assignment_text(out.runtime_checkpoint_io_text);
+  }
+  const auto runtime_health_path = job_dir / "runtime.health_measurement.fact";
+  out.runtime_health_measurement_exists =
+      std::filesystem::exists(runtime_health_path, ec);
+  out.runtime_health_measurement_text =
+      detail::read_text_file_or_empty(runtime_health_path);
+  out.has_runtime_health_measurement =
+      !out.runtime_health_measurement_text.empty();
+  if (out.has_runtime_health_measurement) {
+    out.runtime_health_measurement =
+        detail::parse_assignment_text(out.runtime_health_measurement_text);
+  }
+  const auto exposure_sidecar_path = exposure_fact_path_for_job_dir(job_dir);
   out.exposure_sidecar_exists =
       std::filesystem::exists(exposure_sidecar_path, ec);
   out.exposure_sidecar_text =
@@ -5461,6 +5872,62 @@ read_lattice_job_artifacts(const std::filesystem::path &job_dir,
     }
   }
   return out;
+}
+
+inline void
+apply_runtime_health_overlay(lattice_exposure_fact_t &fact,
+                             const lattice_exposure_fact_t &derived) {
+  fact.runtime_result_fact_available = derived.runtime_result_fact_available;
+  fact.runtime_checkpoint_io_fact_available =
+      derived.runtime_checkpoint_io_fact_available;
+  fact.runtime_health_measurement_fact_available =
+      derived.runtime_health_measurement_fact_available;
+  fact.checkpoint_written = derived.checkpoint_written;
+  fact.model_state_mutated = derived.model_state_mutated;
+  fact.representation_checkpoint_loaded =
+      derived.representation_checkpoint_loaded;
+  fact.mdn_checkpoint_loaded = derived.mdn_checkpoint_loaded;
+  fact.grad_clip_norm = derived.grad_clip_norm;
+  if (std::isfinite(derived.sigma_min_valid)) {
+    fact.sigma_min_valid = derived.sigma_min_valid;
+  }
+  if (std::isfinite(derived.sigma_mean_valid)) {
+    fact.sigma_mean_valid = derived.sigma_mean_valid;
+  }
+  if (std::isfinite(derived.sigma_max_valid)) {
+    fact.sigma_max_valid = derived.sigma_max_valid;
+  }
+  if (derived.runtime_result_fact_available ||
+      derived.runtime_health_measurement_fact_available) {
+    if (std::isfinite(derived.valid_target_fraction)) {
+      fact.valid_target_fraction = derived.valid_target_fraction;
+    }
+    if (std::isfinite(derived.mean_sigma_mean)) {
+      fact.mean_sigma_mean = derived.mean_sigma_mean;
+    }
+    if (std::isfinite(derived.min_sigma_min)) {
+      fact.min_sigma_min = derived.min_sigma_min;
+    }
+    if (std::isfinite(derived.max_sigma_max)) {
+      fact.max_sigma_max = derived.max_sigma_max;
+    }
+    if (std::isfinite(derived.mean_mixture_entropy)) {
+      fact.mean_mixture_entropy = derived.mean_mixture_entropy;
+    }
+    if (std::isfinite(derived.last_grad_norm)) {
+      fact.last_grad_norm = derived.last_grad_norm;
+    }
+    if (std::isfinite(derived.max_grad_norm)) {
+      fact.max_grad_norm = derived.max_grad_norm;
+    }
+    fact.nonfinite_output_count = derived.nonfinite_output_count;
+    fact.finite_parameter_check = derived.finite_parameter_check;
+    fact.inference_health_available =
+        fact.inference_health_available || derived.inference_health_available;
+    fact.representation_health_available =
+        fact.representation_health_available ||
+        derived.representation_health_available;
+  }
 }
 
 [[nodiscard]] inline exposure_ledger_scan_result_t
@@ -5488,7 +5955,6 @@ scan_exposure_ledger_from_runtime_root(
               "[lattice_exposure] exposure sidecar is empty or unreadable: " +
               exposure_fact_path_for_job_dir(job_dir).string());
         }
-        const auto &sidecar_map = artifacts.exposure_sidecar;
         auto sidecar_fact = make_exposure_fact_from_sidecar_text(
             artifacts.exposure_sidecar_text, job_dir);
         if (sidecar_fact.split_policy_fingerprint.empty() &&
@@ -5496,37 +5962,31 @@ scan_exposure_ledger_from_runtime_root(
           sidecar_fact.split_policy_fingerprint =
               context.split_policy_fingerprint;
         }
-        if (options.compare_sidecar_to_derived_fact ||
-            options.supplement_legacy_sidecars) {
+        std::optional<lattice_exposure_fact_t> derived_fact;
+        try {
+          derived_fact = make_exposure_fact_from_job_dir(job_dir, context);
+          apply_runtime_health_overlay(sidecar_fact, *derived_fact);
+        } catch (const std::exception &ex) {
+          if (options.collect_warnings) {
+            out.warnings.push_back(
+                "[lattice_exposure] sidecar used but runtime-health overlay "
+                "failed for job_dir=" +
+                job_dir.string() + " reason=" + ex.what());
+          }
+        }
+        if (options.compare_sidecar_to_derived_fact) {
           try {
-            const auto derived_fact =
-                make_exposure_fact_from_job_dir(job_dir, context);
+            if (!derived_fact.has_value()) {
+              derived_fact = make_exposure_fact_from_job_dir(job_dir, context);
+            }
             const auto sidecar_digest = exposure_fact_digest(sidecar_fact);
-            const auto derived_digest = exposure_fact_digest(derived_fact);
+            const auto derived_digest = exposure_fact_digest(*derived_fact);
             if (options.compare_sidecar_to_derived_fact &&
                 sidecar_digest != derived_digest && options.collect_warnings) {
               out.warnings.push_back(
                   "[lattice_exposure] sidecar digest differs from derived "
                   "runtime artifact fact for job_dir=" +
                   job_dir.string());
-            }
-            if (options.supplement_legacy_sidecars &&
-                supplement_representation_health_from_derived(
-                    sidecar_fact, derived_fact, sidecar_map) &&
-                options.collect_warnings) {
-              out.warnings.push_back(
-                  "[lattice_exposure] legacy sidecar supplemented with "
-                  "representation health from runtime report for job_dir=" +
-                  job_dir.string());
-            }
-            if (options.supplement_legacy_sidecars &&
-                supplement_inference_health_from_derived(
-                    sidecar_fact, derived_fact, sidecar_map) &&
-                options.collect_warnings) {
-              out.warnings.push_back("[lattice_exposure] legacy sidecar "
-                                     "supplemented with inference "
-                                     "health from runtime report for job_dir=" +
-                                     job_dir.string());
             }
           } catch (const std::exception &ex) {
             if (options.collect_warnings) {
@@ -5619,23 +6079,11 @@ scan_exposure_ledger_from_runtime_root(
       }
     }
   };
-  if (fs::exists(runtime_root / "job.manifest")) {
-    process_job_dir(runtime_root);
-    return out;
-  }
-  for (fs::directory_iterator it(runtime_root, ec), end; !ec && it != end;
-       it.increment(ec)) {
-    if (!it->is_directory(ec)) {
-      continue;
-    }
-    if (!fs::exists(it->path() / "job.manifest")) {
-      continue;
-    }
-    process_job_dir(it->path());
-  }
-  if (ec && options.collect_warnings) {
-    out.warnings.push_back("[lattice_exposure] runtime root scan stopped: " +
-                           ec.message());
+  const auto job_dirs =
+      cuwacunu::kikijyeba::runtime::job_layout::discover_runtime_job_dirs(
+          runtime_root);
+  for (const auto &job_dir : job_dirs) {
+    process_job_dir(job_dir.dir);
   }
   return out;
 }
@@ -5759,7 +6207,7 @@ runtime_index_rows_digest(std::vector<lattice_runtime_index_row_t> rows);
 [[nodiscard]] inline bool
 runtime_index_cache_path_is_metadata(const std::filesystem::path &path) {
   for (const auto &part : path) {
-    if (part == ".lattice_index") {
+    if (part == "indexes" || part == "cache") {
       return true;
     }
   }
@@ -5876,18 +6324,11 @@ watched_runtime_metadata_digest(const std::filesystem::path &runtime_root) {
   };
   if (fs::is_regular_file(runtime_root, ec)) {
     append_file(runtime_root);
-  } else if (fs::exists(runtime_root / "job.manifest", ec)) {
-    append_job_dir(runtime_root);
   } else {
-    for (fs::directory_iterator it(runtime_root, ec), end; !ec && it != end;
-         it.increment(ec)) {
-      if (!it->is_directory(ec)) {
-        append_file(it->path());
-        continue;
-      }
-      if (fs::exists(it->path() / "job.manifest", ec)) {
-        append_job_dir(it->path());
-      }
+    for (const auto &job_dir :
+         cuwacunu::kikijyeba::runtime::job_layout::discover_runtime_job_dirs(
+             runtime_root)) {
+      append_job_dir(job_dir.dir);
     }
   }
   std::sort(records.begin(), records.end());
@@ -5966,6 +6407,9 @@ make_runtime_index_cache_from_scan(const std::filesystem::path &runtime_root,
               fact.component_spawn_registry_id + "|" +
                   fact.component_family_id + "|" + fact.component_spawn_id,
               fact.component_spawn_fingerprint);
+    }
+    if (!fact.runtime_handoff_digest.empty()) {
+      add_row("runtime_handoff", fact.job_id, fact.runtime_handoff_digest);
     }
   }
   for (const auto &fact : scan.ledger.node_facts()) {

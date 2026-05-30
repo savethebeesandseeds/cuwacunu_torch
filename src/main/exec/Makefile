@@ -26,8 +26,7 @@ CUWACUNU_EXEC_OBJS := \
   $(OUTPUT_PATH)/libtorch/memory_mapped_dataset.o \
   $(OUTPUT_PATH)/libtorch/memory_mapped_dataloader.o \
   $(OUTPUT_PATH)/libtorch/synthetic_reference_lift.o \
-  $(OUTPUT_PATH)/libtorch/stream/srl_graph_adapter.o \
-  $(OUTPUT_PATH)/libtorch/mixture_density_network.o
+  $(OUTPUT_PATH)/libtorch/stream/srl_graph_adapter.o
 
 .PHONY: cuwacunu-exec-objects
 cuwacunu-exec-objects:

@@ -12,6 +12,11 @@ global_config = /cuwacunu/src/config/.config
 Runtime Hero was the only executor. Lattice Hero remained read-only: it scanned
 runtime/component artifacts and evaluated targets, but did not execute waves.
 
+This is a historical audit receipt, not an active runtime fixture. The recorded
+runtime root and target outputs document the V2 close decision at receipt time;
+current source behavior is defined by active DSL/config and freshly scanned
+runtime artifacts.
+
 ## Active Identity
 
 Direct Lattice Hero reports:
@@ -58,7 +63,6 @@ optimizer_steps = 25
 contract = 8aaff747e54c7c4f
 closure_complete = true
 resolution_authority = checkpoint_id_file_digest
-legacy_path_fallback = false
 root_checkpoint_id = d8db43d817356ac5
 root_checkpoint_file_digest = afcf62a4d2a8b75a
 unresolved_input_checkpoints = []
@@ -79,7 +83,6 @@ representation_checkpoint_loaded = true
 representation_checkpoint_path = /cuwacunu/.runtime/cuwacunu_exec/cwu_01v_channel_train_core_vicreg_0000_1600.train.channel_representation_vicreg/channel_representation.report.vicreg.pt
 closure_complete = true
 resolution_authority = checkpoint_id_file_digest
-legacy_path_fallback = false
 root_checkpoint_id = a9d9082a1c03bcba
 root_checkpoint_file_digest = cc44e4cf307ef47a
 unresolved_input_checkpoints = []
@@ -147,8 +150,8 @@ node_mdn_validation_eval_ready = satisfied
 ```
 
 Direct Lattice Hero reports certificate checks passed for those node targets.
-The only scan warnings are legacy-sidecar compatibility warnings for the node
-jobs; channel jobs are current V2 runtime artifacts.
+Node-job scan warnings are historical sidecar compatibility warnings; channel
+jobs were current V2 runtime artifacts at receipt time.
 
 ## Contract Boundary
 
@@ -193,8 +196,8 @@ receipt originally froze the channel runtime evidence:
 ```text
 - NodeLift / representation support now supports node-indexed facts when
   component reports emit honest per-node support payloads. The accepted runtime
-  artifacts predate those per-node payloads, so the active receipt still has two
-  aggregate representation_support facts.
+  artifacts predate those per-node payloads, so this historical receipt still
+  has two aggregate representation_support facts.
 - DB/index now exists as a rebuildable runtime index cache over runtime
   artifacts and lattice fact digests. Lattice target evaluation still uses live
   runtime evidence, so stale or missing cache rows never upgrade satisfaction.

@@ -206,6 +206,7 @@ struct marshal_dispatch_request_t {
   std::string advice_digest{};
   std::string operator_confirmation_token{};
   std::map<std::string, std::string> requested_overrides{};
+  std::map<std::string, std::string> lattice_certificate_refs{};
 };
 
 struct marshal_dispatch_validation_context_t {
@@ -214,7 +215,7 @@ struct marshal_dispatch_validation_context_t {
   marshal_active_identity_t active_identity{};
   std::set<std::string> supported_wave_targets{};
   std::set<std::string> supported_source_ranges{"anchor_index", "source_key"};
-  std::set<std::string> allowed_lattice_tools{"hero.lattice.plan_target",
+  std::set<std::string> allowed_lattice_tools{"hero.lattice.target_deficit",
                                               "hero.lattice.evaluate_target",
                                               "hero.lattice.evaluate_targets"};
   std::vector<std::string> allowed_model_state_roots{};
@@ -382,7 +383,7 @@ path_within_any_allowed_root(const std::string &path,
 
 [[nodiscard]] inline bool
 source_lattice_tool_is_proven_advice(const std::string &tool) {
-  return tool == "hero.lattice.plan_target" ||
+  return tool == "hero.lattice.target_deficit" ||
          tool == "hero.lattice.evaluate_target" ||
          tool == "hero.lattice.evaluate_targets";
 }
@@ -565,6 +566,8 @@ canonical_dispatch_request_text(const marshal_dispatch_request_t &request) {
                     request.operator_confirmation_token);
   detail::append_string_map(out, "requested_overrides",
                             request.requested_overrides);
+  detail::append_string_map(out, "lattice_certificate_refs",
+                            request.lattice_certificate_refs);
   return out.str();
 }
 
@@ -586,6 +589,8 @@ dispatch_request_digest(const marshal_dispatch_request_t &request) {
   detail::append_kv(out, "advice_digest", request.advice_digest);
   detail::append_string_map(out, "requested_overrides",
                             request.requested_overrides);
+  detail::append_string_map(out, "lattice_certificate_refs",
+                            request.lattice_certificate_refs);
   return out.str();
 }
 

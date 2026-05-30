@@ -1,0 +1,6 @@
+<instruction> ::= "PROTOCOL" [<whitespace>] "{" <line_end> {<assignment>} [<whitespace>] "}" [<whitespace>] ";" [<line_end>] ;
+<assignment>  ::= [<whitespace>] <key> [<whitespace>] "=" [<whitespace>] <value> [<whitespace>] ";" [<line_end>] ;
+<key>         ::= "PROTOCOL_ID" | "PROTOCOL_KIND" | "GRAPH_TOPOLOGY" | "NODELIFT" | "REPRESENTATION" | "INFERENCE" | "REPRESENTATION_CONTRACT" | "PROTOCOL_STATUS" | "SUCCESSOR_PROTOCOL" | "PROTOCOL_WARNING" ;
+<value>       ::= { ? any character except ';' ? } ;
+<whitespace>  ::= " " | "\t" | "\r" | "\n" ;
+<line_end>    ::= "\n" | "\r\n" ;

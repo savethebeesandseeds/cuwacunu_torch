@@ -32,6 +32,7 @@ struct plot_series_cfg_t {
   int envelope_min_count{2};
   int envelope_min_height{2};
   bool envelope_draw_base{true};
+  bool use_y2_axis{false};
 };
 
 struct plot_box_options_t {
@@ -40,10 +41,15 @@ struct plot_box_options_t {
   bool baseline0{true};
   int y_ticks{5};
   int x_ticks{6};
+  bool draw_y_tick_labels{true};
+  bool draw_y2_tick_labels{false};
+  bool draw_x_tick_labels{true};
   double x_min{std::numeric_limits<double>::quiet_NaN()};
   double x_max{std::numeric_limits<double>::quiet_NaN()};
   double y_min{std::numeric_limits<double>::quiet_NaN()};
   double y_max{std::numeric_limits<double>::quiet_NaN()};
+  double y2_min{std::numeric_limits<double>::quiet_NaN()};
+  double y2_max{std::numeric_limits<double>::quiet_NaN()};
   bool hard_clip{true};
   bool x_log{false};
   bool y_log{false};
@@ -51,6 +57,7 @@ struct plot_box_options_t {
   double y_log_eps{1e-12};
   std::string x_label{};
   std::string y_label{};
+  std::string y2_label{};
   int margin_left{8};
   int margin_right{2};
   int margin_top{1};
