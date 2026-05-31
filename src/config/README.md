@@ -8,7 +8,8 @@ Current migrated sections:
 
 - `UJCAMEI`: source registry and source retrieval channel DSL paths.
 - `KIKIJYEBA`: topology graph, wave settings, and lattice target DSL paths.
-- `WIKIMYEI`: expression, representation, and inference DSL paths.
+- `WIKIMYEI`: expression, representation, inference, observer, and engine DSL
+  paths.
 - `JKIMYEI`: training orchestration DSL paths.
 - `HERO`: Config Hero, Runtime Hero, Lattice Hero, and Marshal Hero policy
   paths.
@@ -43,6 +44,22 @@ MDN net file. Channel-bearing config surfaces have their own BNF paths in
 `.config`; keep those BNF files in sync with the VICReg/MDN DSL, net,
 and Jkimyei keys. The active runtime uses channel-preserving VICReg and strict
 channel-context MDN targets.
+
+`wikimyei.observer.belief.dsl` and
+`wikimyei.engine.portfolio.spot_distributional_utility.dsl` extend the
+graph-first contract after inference. The belief observer is deterministic: it
+consumes MDN future NodeLift-potential distributions, resolves feature meaning
+through the dock/kline registry, and declares that portfolio returns must be
+base-relative NodeLift projections rather than raw node potentials. The
+portfolio engine consumes only post-projection `AllocationBelief`; it performs a
+long-only spot allocation over risky graph nodes. Its reserve weight is assigned
+to an explicit graph node supplied by `BasePolicy`, not to an external cash
+bucket. Both DSLs currently require projection validation and explicitly disable
+live capital; this keeps `phi_asset - phi_reference` as a research bridge until
+it is checked against realized tradable base-denominated returns. Both
+components are registered as deterministic Wikimyei assemblies in the
+graph-first bundle and therefore appear in the dock-binding/Lattice audit
+surface with stable assembly fingerprints.
 `MODE=run` executes the target dependency closure without optimizer steps.
 `MODE=train` mutates only `TARGET`; upstream dependencies run frozen.
 Wave source ranges may be authored as `SOURCE_RANGE=anchor_index` for explicit

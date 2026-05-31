@@ -1,0 +1,38 @@
+# Wikimyei Config Keys
+
+`src/config/.config` section: `[WIKIMYEI]`
+
+The Wikimyei section binds authored DSL files and grammars into the
+graph-first protocol bundle. These paths are part of deterministic protocol
+construction; when a component's semantic contract changes, update both its DSL
+and BNF path entries.
+
+## Observer Belief
+
+- `wikimyei_observer_belief_dsl_bnf_path`
+  - Grammar for `wikimyei.observer.belief.dsl`.
+- `wikimyei_observer_belief_dsl_path`
+  - Deterministic observer contract that converts Channel MDN NodeLift
+    potential distributions into NodeLift-aware allocation belief semantics.
+  - V1 requires feature semantics from the Ujcamei kline registry/dock
+    coordinate space, base-relative NodeLift projection, arithmetic-return
+    scenarios, and a reserve asset supplied as a graph node by `BasePolicy`.
+  - The DSL must keep `PROJECTION_VALIDATION_REQUIRED = true` and
+    `LIVE_CAPITAL_ALLOWED = false` until projected NodeLift returns have an
+    empirical validation artifact.
+
+## Spot Distributional Utility Engine
+
+- `wikimyei_engine_portfolio_spot_distributional_utility_dsl_bnf_path`
+  - Grammar for `wikimyei.engine.portfolio.spot_distributional_utility.dsl`.
+- `wikimyei_engine_portfolio_spot_distributional_utility_dsl_path`
+  - Deterministic portfolio engine contract for the first allocation method.
+  - V1 consumes only post-projection `AllocationBelief`, is long-only and
+    spot-only, uses projected-gradient search over risky graph-node weights,
+    and assigns the residual reserve weight to the reserve graph node.
+  - The engine DSL mirrors the observer safety flags:
+    `PROJECTION_VALIDATION_REQUIRED = true` and `LIVE_CAPITAL_ALLOWED = false`.
+
+These observer and engine assemblies are included in the graph-first
+`wikimyei_registry` and dock-binding report. Lattice can audit their identity
+and dock compatibility, but execution authority remains outside Lattice.

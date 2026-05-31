@@ -20,10 +20,14 @@
 #include "piaabo/parse/simple_kv_block.h"
 #include "ujcamei/source/contract/runtime/decode.h"
 #include "ujcamei/source/registry/types/kline_feature_registry.h"
+#include "wikimyei/engine/portfolio/spot_distributional_utility/assembly.h"
+#include "wikimyei/engine/portfolio/spot_distributional_utility/spec.h"
 #include "wikimyei/expression/nodelift/srl/assembly.h"
 #include "wikimyei/expression/nodelift/srl/nodelift_spec.h"
 #include "wikimyei/inference/expected_value/mdn/assembly.h"
 #include "wikimyei/inference/expected_value/mdn/mdn_spec.h"
+#include "wikimyei/observer/belief/assembly.h"
+#include "wikimyei/observer/belief/spec.h"
 #include "wikimyei/representation/encoding/mtf_jepa_mae_vicreg/assembly.h"
 #include "wikimyei/representation/encoding/mtf_jepa_mae_vicreg/mtf_jepa_mae_vicreg_spec.h"
 #include "wikimyei/representation/encoding/vicreg/assembly.h"
@@ -73,6 +77,11 @@ struct channel_graph_first_protocol_contract_t {
   std::string wikimyei_inference_expected_value_mdn_dsl_path{};
   std::string wikimyei_inference_expected_value_mdn_net_bnf_path{};
   std::string wikimyei_inference_expected_value_mdn_net_path{};
+  std::string wikimyei_observer_belief_dsl_bnf_path{};
+  std::string wikimyei_observer_belief_dsl_path{};
+  std::string
+      wikimyei_engine_portfolio_spot_distributional_utility_dsl_bnf_path{};
+  std::string wikimyei_engine_portfolio_spot_distributional_utility_dsl_path{};
   std::string wikimyei_representation_vicreg_jkimyei_bnf_path{};
   std::string wikimyei_representation_vicreg_jkimyei_path{};
   std::string wikimyei_representation_mtf_jepa_mae_vicreg_jkimyei_bnf_path{};
@@ -92,11 +101,18 @@ struct channel_graph_first_protocol_contract_t {
       mtf_jepa_mae_vicreg_spec_t mtf_jepa_mae_vicreg{};
   cuwacunu::wikimyei::inference::expected_value::mdn::channel_mdn_spec_t
       channel_mdn{};
+  cuwacunu::wikimyei::observer::belief::belief_observer_spec_t
+      belief_observer{};
+  cuwacunu::wikimyei::engine::portfolio::spot_distributional_utility::
+      spot_distributional_utility_spec_t spot_distributional_utility{};
   cuwacunu::wikimyei::assembly::wikimyei_assembly_t nodelift_assembly{};
   cuwacunu::wikimyei::assembly::wikimyei_assembly_t vicreg_assembly{};
   cuwacunu::wikimyei::assembly::wikimyei_assembly_t
       mtf_jepa_mae_vicreg_assembly{};
   cuwacunu::wikimyei::assembly::wikimyei_assembly_t channel_mdn_assembly{};
+  cuwacunu::wikimyei::assembly::wikimyei_assembly_t belief_observer_assembly{};
+  cuwacunu::wikimyei::assembly::wikimyei_assembly_t
+      spot_distributional_utility_assembly{};
   cuwacunu::kikijyeba::topology::wikimyei_registry_t wikimyei_registry{};
   cuwacunu::kikijyeba::topology::dock_binding_t dock_binding{};
   cuwacunu::kikijyeba::topology::dock_binding_validation_report_t
@@ -208,6 +224,16 @@ make_channel_graph_first_dock_binding(
       topo::make_static_i64_variable(
           "K", "wikimyei.inference.expected_value.mdn.mixture_count",
           bundle.channel_mdn.mixture_count),
+      topo::make_static_i64_variable("G", "kikijyeba.topology.graph.node_count",
+                                     node_count),
+      topo::make_static_i64_variable(
+          "Kc", "wikimyei.observer.belief.channel_consensus_component_count",
+          channel_count * bundle.channel_mdn.mixture_count),
+      topo::make_static_i64_variable("S",
+                                     "wikimyei.observer.belief.scenario_count",
+                                     bundle.belief_observer.scenario_count),
+      topo::make_runtime_variable(
+          "A", "wikimyei.observer.belief.allocatable_asset_count"),
   };
   out.constraints.push_back(
       active_protocol_uses_mtf_jepa_mae_vicreg(bundle)
@@ -221,7 +247,14 @@ make_channel_graph_first_dock_binding(
             "ChannelMDN.channel_node_representation");
   out.constraints.push_back("NodeLift.future_node_lifted_state -> "
                             "ChannelMDN.future_node_lifted_state");
+  out.constraints.push_back(
+      "ChannelMDN.future_node_distribution -> ObserverBelief."
+      "allocation_belief");
+  out.constraints.push_back("ObserverBelief.allocation_belief -> "
+                            "SpotDistributionalUtility.allocation_target");
   out.constraints.push_back("B is runtime-bound per wave pulse");
+  out.constraints.push_back(
+      "A is runtime-bound by the allocatable graph-node universe");
   topo::validate_dock_binding(out);
   return out;
 }
@@ -230,8 +263,12 @@ make_channel_graph_first_dock_binding(
     cuwacunu::wikimyei::assembly::wikimyei_assembly_t>
 channel_graph_first_wikimyei_assemblies(
     const channel_graph_first_config_bundle_t &bundle) {
-  return {bundle.nodelift_assembly, bundle.vicreg_assembly,
-          bundle.mtf_jepa_mae_vicreg_assembly, bundle.channel_mdn_assembly};
+  return {bundle.nodelift_assembly,
+          bundle.vicreg_assembly,
+          bundle.mtf_jepa_mae_vicreg_assembly,
+          bundle.channel_mdn_assembly,
+          bundle.belief_observer_assembly,
+          bundle.spot_distributional_utility_assembly};
 }
 
 namespace config_bundle_detail {
@@ -445,6 +482,13 @@ canonical_channel_graph_first_protocol_contract_text(
       << "\n";
   out << "channel_mdn_assembly="
       << assembly::assembly_fingerprint(contract.channel_mdn_assembly) << "\n";
+  out << "belief_observer_assembly="
+      << assembly::assembly_fingerprint(contract.belief_observer_assembly)
+      << "\n";
+  out << "spot_distributional_utility_assembly="
+      << assembly::assembly_fingerprint(
+             contract.spot_distributional_utility_assembly)
+      << "\n";
   out << "dock_binding="
       << cuwacunu::kikijyeba::topology::dock_binding_fingerprint(
              contract.dock_binding)
@@ -595,6 +639,72 @@ canonical_channel_graph_first_protocol_contract_text(
   out << "channel_mdn_sigma_min=" << contract.channel_mdn.sigma_min << "\n";
   out << "channel_mdn_sigma_max=" << contract.channel_mdn.sigma_max << "\n";
   out << "channel_mdn_eps=" << contract.channel_mdn.eps << "\n";
+  out << "belief_observer_version=" << contract.belief_observer.version_token
+      << "\n";
+  out << "belief_observer_component_assembly_id="
+      << contract.belief_observer.component_assembly_id << "\n";
+  out << "belief_observer_input_mdn_assembly_id="
+      << contract.belief_observer.input_mdn_assembly_id << "\n";
+  out << "belief_observer_feature_semantics="
+      << contract.belief_observer.feature_semantics << "\n";
+  out << "belief_observer_feature_semantics_source="
+      << contract.belief_observer.feature_semantics_source << "\n";
+  out << "belief_observer_graph_node_axis_policy="
+      << contract.belief_observer.graph_node_axis_policy << "\n";
+  out << "belief_observer_batch_policy="
+      << contract.belief_observer.batch_policy << "\n";
+  out << "belief_observer_channel_consensus="
+      << contract.belief_observer.channel_consensus << "\n";
+  out << "belief_observer_potential_semantics="
+      << contract.belief_observer.potential_semantics << "\n";
+  out << "belief_observer_return_projection="
+      << contract.belief_observer.return_projection << "\n";
+  out << "belief_observer_scenario_unit="
+      << contract.belief_observer.scenario_unit << "\n";
+  out << "belief_observer_reserve_asset_policy="
+      << contract.belief_observer.reserve_asset_policy << "\n";
+  out << "belief_observer_covariance_coupler="
+      << contract.belief_observer.covariance_coupler << "\n";
+  out << "belief_observer_scenario_count="
+      << contract.belief_observer.scenario_count << "\n";
+  out << "belief_observer_projection_validation_required="
+      << contract.belief_observer.projection_validation_required << "\n";
+  out << "belief_observer_live_capital_allowed="
+      << contract.belief_observer.live_capital_allowed << "\n";
+  out << "belief_observer_eps=" << contract.belief_observer.eps << "\n";
+  out << "spot_distributional_utility_version="
+      << contract.spot_distributional_utility.version_token << "\n";
+  out << "spot_distributional_utility_component_assembly_id="
+      << contract.spot_distributional_utility.component_assembly_id << "\n";
+  out << "spot_distributional_utility_input_belief_assembly_id="
+      << contract.spot_distributional_utility.input_belief_assembly_id << "\n";
+  out << "spot_distributional_utility_optimizer="
+      << contract.spot_distributional_utility.optimizer << "\n";
+  out << "spot_distributional_utility_objective="
+      << contract.spot_distributional_utility.objective << "\n";
+  out << "spot_distributional_utility_scenario_unit="
+      << contract.spot_distributional_utility.scenario_unit << "\n";
+  out << "spot_distributional_utility_reserve_node_policy="
+      << contract.spot_distributional_utility.reserve_node_policy << "\n";
+  out << "spot_distributional_utility_iterations="
+      << contract.spot_distributional_utility.iterations << "\n";
+  out << "spot_distributional_utility_learning_rate="
+      << contract.spot_distributional_utility.learning_rate << "\n";
+  out << "spot_distributional_utility_cvar_alpha="
+      << contract.spot_distributional_utility.cvar_alpha << "\n";
+  out << "spot_distributional_utility_scenario_growth_floor="
+      << contract.spot_distributional_utility.scenario_growth_floor << "\n";
+  out << "spot_distributional_utility_long_only="
+      << contract.spot_distributional_utility.long_only << "\n";
+  out << "spot_distributional_utility_spot_only="
+      << contract.spot_distributional_utility.spot_only << "\n";
+  out << "spot_distributional_utility_require_reserve_node="
+      << contract.spot_distributional_utility.require_reserve_node << "\n";
+  out << "spot_distributional_utility_projection_validation_required="
+      << contract.spot_distributional_utility.projection_validation_required
+      << "\n";
+  out << "spot_distributional_utility_live_capital_allowed="
+      << contract.spot_distributional_utility.live_capital_allowed << "\n";
   config_bundle_detail::append_training_contract_fields(
       out, "vicreg_training", contract.vicreg_training);
   config_bundle_detail::append_training_contract_fields(
@@ -669,6 +779,21 @@ inline void validate_channel_graph_first_dock_binding(
   topo::require_static_i64_binding_value(bundle.dock_binding, "K",
                                          bundle.channel_mdn.mixture_count,
                                          "channel MDN mixture count");
+  topo::require_static_i64_binding_value(
+      bundle.dock_binding, "G",
+      static_cast<std::int64_t>(
+          bundle.source_plan.market_graph.node_ids.size()),
+      "graph node count for NodeLift potential belief");
+  topo::require_static_i64_binding_value(
+      bundle.dock_binding, "Kc",
+      active_channel_count(bundle.source_dock) *
+          bundle.channel_mdn.mixture_count,
+      "channel-consensus mixture component count");
+  topo::require_static_i64_binding_value(bundle.dock_binding, "S",
+                                         bundle.belief_observer.scenario_count,
+                                         "observer scenario count");
+  topo::require_runtime_binding(bundle.dock_binding, "A",
+                                "allocatable risky graph-node count");
   (void)make_channel_graph_first_dock_binding_report(bundle);
 }
 
@@ -679,6 +804,9 @@ inline void validate_channel_graph_first_protocol_contract(
       cuwacunu::wikimyei::representation::encoding::mtf_jepa_mae_vicreg;
   namespace vicreg = cuwacunu::wikimyei::representation::encoding::vicreg;
   namespace nodelift = cuwacunu::wikimyei::expression::nodelift::srl;
+  namespace observer_belief = cuwacunu::wikimyei::observer::belief;
+  namespace spot_engine =
+      cuwacunu::wikimyei::engine::portfolio::spot_distributional_utility;
   namespace training = cuwacunu::jkimyei::training;
 
   validate_protocol_variant(bundle.protocol_variant);
@@ -686,6 +814,9 @@ inline void validate_channel_graph_first_protocol_contract(
   vicreg::validate_vicreg_spec(bundle.vicreg);
   mtf::validate_mtf_jepa_mae_vicreg_spec(bundle.mtf_jepa_mae_vicreg);
   mdn::validate_channel_mdn_spec(bundle.channel_mdn);
+  observer_belief::validate_belief_observer_spec(bundle.belief_observer);
+  spot_engine::validate_spot_distributional_utility_spec(
+      bundle.spot_distributional_utility);
   if (bundle.nodelift_assembly.component_assembly_id !=
           bundle.nodelift.component_assembly_id ||
       bundle.nodelift_assembly.version_token != bundle.nodelift.version_token) {
@@ -716,6 +847,34 @@ inline void validate_channel_graph_first_protocol_contract(
         "[channel_graph_first_config] Channel MDN assembly does not match "
         "Channel MDN spec");
   }
+  if (bundle.belief_observer_assembly.component_assembly_id !=
+          bundle.belief_observer.component_assembly_id ||
+      bundle.belief_observer_assembly.version_token !=
+          bundle.belief_observer.version_token) {
+    throw std::runtime_error(
+        "[channel_graph_first_config] belief observer assembly does not match "
+        "belief observer spec");
+  }
+  if (bundle.spot_distributional_utility_assembly.component_assembly_id !=
+          bundle.spot_distributional_utility.component_assembly_id ||
+      bundle.spot_distributional_utility_assembly.version_token !=
+          bundle.spot_distributional_utility.version_token) {
+    throw std::runtime_error(
+        "[channel_graph_first_config] spot distributional utility assembly "
+        "does not match engine spec");
+  }
+  if (bundle.belief_observer.input_mdn_assembly_id !=
+      bundle.channel_mdn.component_assembly_id) {
+    throw std::runtime_error(
+        "[channel_graph_first_config] belief observer input MDN id does not "
+        "match Channel MDN component id");
+  }
+  if (bundle.spot_distributional_utility.input_belief_assembly_id !=
+      bundle.belief_observer.component_assembly_id) {
+    throw std::runtime_error(
+        "[channel_graph_first_config] spot distributional utility input "
+        "belief id does not match belief observer component id");
+  }
   if (!active_protocol_uses_mtf_jepa_mae_vicreg(bundle)) {
     cuwacunu::kikijyeba::topology::validate_node_value_assembly_chain(
         bundle.nodelift_assembly, bundle.vicreg_assembly,
@@ -728,9 +887,46 @@ inline void validate_channel_graph_first_protocol_contract(
     cuwacunu::wikimyei::assembly::validate_wikimyei_assembly(
         bundle.channel_mdn_assembly);
   }
-  if (bundle.wikimyei_registry.assemblies.size() != 4) {
+  const auto require_dock =
+      [](const auto &assembly, const std::string &dock_name,
+         cuwacunu::wikimyei::assembly::dock_direction_t direction)
+      -> const cuwacunu::wikimyei::assembly::dock_t & {
+    for (const auto &dock : assembly.docks) {
+      if (dock.name == dock_name && dock.direction == direction) {
+        return dock;
+      }
+    }
+    throw std::runtime_error("[channel_graph_first_config] assembly " +
+                             assembly.component_assembly_id +
+                             " is missing dock: " + dock_name);
+  };
+  const auto &mdn_output = require_dock(
+      bundle.channel_mdn_assembly, "future_channel_node_distribution",
+      cuwacunu::wikimyei::assembly::dock_direction_t::produces);
+  const auto &belief_input = require_dock(
+      bundle.belief_observer_assembly, "future_channel_node_distribution",
+      cuwacunu::wikimyei::assembly::dock_direction_t::consumes);
+  if (!cuwacunu::wikimyei::assembly::dock_domain_compatible(mdn_output,
+                                                            belief_input)) {
     throw std::runtime_error(
-        "[channel_graph_first_config] expected four Wikimyei assemblies");
+        "[channel_graph_first_config] Channel MDN output dock is not "
+        "compatible with belief observer input dock");
+  }
+  const auto &belief_output =
+      require_dock(bundle.belief_observer_assembly, "allocation_belief",
+                   cuwacunu::wikimyei::assembly::dock_direction_t::produces);
+  const auto &engine_input = require_dock(
+      bundle.spot_distributional_utility_assembly, "allocation_belief",
+      cuwacunu::wikimyei::assembly::dock_direction_t::consumes);
+  if (!cuwacunu::wikimyei::assembly::dock_domain_compatible(belief_output,
+                                                            engine_input)) {
+    throw std::runtime_error(
+        "[channel_graph_first_config] belief observer output dock is not "
+        "compatible with spot distributional utility input dock");
+  }
+  if (bundle.wikimyei_registry.assemblies.size() != 6) {
+    throw std::runtime_error(
+        "[channel_graph_first_config] expected six Wikimyei assemblies");
   }
   training::validate_training_run_spec(bundle.vicreg_training);
   training::validate_training_run_spec(bundle.mtf_jepa_mae_vicreg_training);
@@ -1019,6 +1215,21 @@ load_channel_graph_first_protocol_contract_from_config(
   out.wikimyei_inference_expected_value_mdn_net_path =
       graph_first_config_detail::required_config_value(
           cfg, "wikimyei_inference_expected_value_mdn_net_path", config_path);
+  out.wikimyei_observer_belief_dsl_bnf_path =
+      graph_first_config_detail::required_config_value(
+          cfg, "wikimyei_observer_belief_dsl_bnf_path", config_path);
+  out.wikimyei_observer_belief_dsl_path =
+      graph_first_config_detail::required_config_value(
+          cfg, "wikimyei_observer_belief_dsl_path", config_path);
+  out.wikimyei_engine_portfolio_spot_distributional_utility_dsl_bnf_path =
+      graph_first_config_detail::required_config_value(
+          cfg,
+          "wikimyei_engine_portfolio_spot_distributional_utility_dsl_bnf_path",
+          config_path);
+  out.wikimyei_engine_portfolio_spot_distributional_utility_dsl_path =
+      graph_first_config_detail::required_config_value(
+          cfg, "wikimyei_engine_portfolio_spot_distributional_utility_dsl_path",
+          config_path);
   out.wikimyei_representation_vicreg_jkimyei_bnf_path =
       graph_first_config_detail::required_config_value(
           cfg, "wikimyei_representation_vicreg_jkimyei_bnf_path", config_path);
@@ -1073,6 +1284,10 @@ load_channel_graph_first_protocol_contract_from_config(
   (void)graph_first_config_detail::read_text_file_or_throw(
       out.wikimyei_inference_expected_value_mdn_net_bnf_path);
   (void)graph_first_config_detail::read_text_file_or_throw(
+      out.wikimyei_observer_belief_dsl_bnf_path);
+  (void)graph_first_config_detail::read_text_file_or_throw(
+      out.wikimyei_engine_portfolio_spot_distributional_utility_dsl_bnf_path);
+  (void)graph_first_config_detail::read_text_file_or_throw(
       out.wikimyei_representation_vicreg_jkimyei_bnf_path);
   (void)graph_first_config_detail::read_text_file_or_throw(
       out.wikimyei_representation_mtf_jepa_mae_vicreg_jkimyei_bnf_path);
@@ -1112,6 +1327,14 @@ load_channel_graph_first_protocol_contract_from_config(
               out.wikimyei_inference_expected_value_mdn_dsl_path),
           graph_first_config_detail::read_text_file_or_throw(
               out.wikimyei_inference_expected_value_mdn_net_path));
+  out.belief_observer = cuwacunu::wikimyei::observer::belief::
+      decode_belief_observer_spec_from_dsl(
+          graph_first_config_detail::read_text_file_or_throw(
+              out.wikimyei_observer_belief_dsl_path));
+  out.spot_distributional_utility = cuwacunu::wikimyei::engine::portfolio::
+      spot_distributional_utility::decode_spot_distributional_utility_spec_from_dsl(
+          graph_first_config_detail::read_text_file_or_throw(
+              out.wikimyei_engine_portfolio_spot_distributional_utility_dsl_path));
   out.nodelift_assembly =
       cuwacunu::wikimyei::expression::nodelift::srl::make_nodelift_srl_assembly(
           out.nodelift);
@@ -1125,10 +1348,21 @@ load_channel_graph_first_protocol_contract_from_config(
   out.channel_mdn_assembly = cuwacunu::wikimyei::inference::expected_value::
       mdn::make_channel_context_mdn_assembly(
           out.channel_mdn.component_assembly_id, out.channel_mdn.version_token);
+  out.belief_observer_assembly = cuwacunu::wikimyei::observer::belief::
+      make_nodelift_allocation_belief_assembly(
+          out.belief_observer.component_assembly_id,
+          out.belief_observer.version_token);
+  out.spot_distributional_utility_assembly =
+      cuwacunu::wikimyei::engine::portfolio::spot_distributional_utility::
+          make_spot_distributional_utility_assembly(
+              out.spot_distributional_utility.component_assembly_id,
+              out.spot_distributional_utility.version_token);
   out.wikimyei_registry.add(out.nodelift_assembly);
   out.wikimyei_registry.add(out.vicreg_assembly);
   out.wikimyei_registry.add(out.mtf_jepa_mae_vicreg_assembly);
   out.wikimyei_registry.add(out.channel_mdn_assembly);
+  out.wikimyei_registry.add(out.belief_observer_assembly);
+  out.wikimyei_registry.add(out.spot_distributional_utility_assembly);
   out.vicreg_training =
       cuwacunu::jkimyei::training::decode_training_run_spec_from_dsl(
           graph_first_config_detail::read_text_file_or_throw(

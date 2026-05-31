@@ -99,6 +99,42 @@ Initial scope:
   does not execute runs, train models, choose best checkpoints, or claim market
   readiness from a single point estimate.
 
+### Deterministic Observer And Allocation Engine Evidence Into Lattice
+
+Status: queued.
+
+Extend Lattice so deterministic post-inference Wikimyei components can be
+audited as first-class evidence surfaces, without making Lattice responsible
+for portfolio execution or capital allocation.
+
+Initial scope:
+
+- Add read-only Lattice visibility for deterministic Wikimyei assemblies after
+  MDN inference, starting with `wikimyei.observer.belief` and
+  `wikimyei.engine.portfolio.spot_distributional_utility`.
+- Bind observer/engine evidence to the same protocol id, graph order,
+  source cursor identity, MDN assembly fingerprint, MDN forecast artifact,
+  feature-semantics fingerprint, and dock-binding fingerprint used by the
+  graph-first contract.
+- Require Lattice evidence to distinguish raw NodeLift potential belief from
+  post-projection `AllocationBelief`; raw NodeLift potentials must not be
+  treated as tradable return evidence.
+- Carry explicit base/reserve semantics: the reserve asset must be a graph
+  node supplied by `BasePolicy`, not an external cash bucket or unbound scalar.
+- Track observer outputs such as channel consensus, potential-surface
+  diagnostics, NodeLift return projection, covariance coupling, scenario bank
+  identity, NodeLift residual quality, projection-validation scores,
+  confidence, data quality, liquidity, and forecast-artifact lineage.
+- Track allocation-engine outputs such as target risky node weights, reserve
+  node id, reserve weight, turnover, scenario-growth floor status, objective
+  terms, CVaR loss, transaction-cost estimate, constraint/cap diagnostics, and
+  fallback/de-risk reasons.
+- Start with `LATTICE_WARN` diagnostics and artifact-readiness targets only.
+  Do not make Lattice judge market readiness, select allocations, route
+  execution, or override the portfolio engine.
+- Update the Lattice roadmap, DSL/man docs, target vocabulary, contract tests,
+  and Runtime evidence writers when this becomes active implementation work.
+
 ## Not Active Here
 
 Do not redispatch these from this root roadmap:

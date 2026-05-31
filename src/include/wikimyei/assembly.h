@@ -33,6 +33,11 @@ enum class dock_domain_t {
   future_node_lifted_state,
   node_representation,
   future_node_distribution,
+  nodelift_potential_belief,
+  allocation_belief,
+  allocation_target,
+  belief_diagnostics,
+  portfolio_diagnostics,
   price_residual_sidecar,
   activity_sidecar,
 };
@@ -89,6 +94,16 @@ dock_direction_name(dock_direction_t direction) {
     return "node_representation";
   case dock_domain_t::future_node_distribution:
     return "future_node_distribution";
+  case dock_domain_t::nodelift_potential_belief:
+    return "nodelift_potential_belief";
+  case dock_domain_t::allocation_belief:
+    return "allocation_belief";
+  case dock_domain_t::allocation_target:
+    return "allocation_target";
+  case dock_domain_t::belief_diagnostics:
+    return "belief_diagnostics";
+  case dock_domain_t::portfolio_diagnostics:
+    return "portfolio_diagnostics";
   case dock_domain_t::price_residual_sidecar:
     return "price_residual_sidecar";
   case dock_domain_t::activity_sidecar:
@@ -180,11 +195,14 @@ assembly_trainability_name(assembly_trainability_t trainability) {
 }
 
 [[nodiscard]] inline std::string
-make_assembly_token(const std::string &family, const std::string &component_assembly_id,
+make_assembly_token(const std::string &family,
+                    const std::string &component_assembly_id,
                     const std::string &version_token) {
-  if (family.empty() || component_assembly_id.empty() || version_token.empty()) {
-    throw std::runtime_error("[wikimyei_assembly] family, component_assembly_id, and "
-                             "version_token are required");
+  if (family.empty() || component_assembly_id.empty() ||
+      version_token.empty()) {
+    throw std::runtime_error(
+        "[wikimyei_assembly] family, component_assembly_id, and "
+        "version_token are required");
   }
   return family + "/" + component_assembly_id + "/" + version_token;
 }
@@ -282,7 +300,8 @@ inline void require_dock(const wikimyei_assembly_t &assembly,
                          const char *label) {
   if (!find_dock(assembly, direction, domain).has_value()) {
     throw std::runtime_error(std::string("[wikimyei_assembly] missing ") +
-                             label + " dock for " + assembly.component_assembly_id);
+                             label + " dock for " +
+                             assembly.component_assembly_id);
   }
 }
 
@@ -298,7 +317,8 @@ inline void require_compatible_docks(const wikimyei_assembly_t &producer,
   if (!produced.has_value() || !consumed.has_value() ||
       !dock_domain_compatible(*produced, *consumed)) {
     throw std::runtime_error(std::string("[wikimyei_assembly] incompatible ") +
-                             label + " docks: " + producer.component_assembly_id +
+                             label +
+                             " docks: " + producer.component_assembly_id +
                              " -> " + consumer.component_assembly_id);
   }
 }
