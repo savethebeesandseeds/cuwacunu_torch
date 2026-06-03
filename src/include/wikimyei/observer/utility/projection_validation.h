@@ -26,10 +26,16 @@ struct projection_validation_t {
 
   torch::Tensor predicted_log_return{}; // [A]
   torch::Tensor realized_log_return{};  // [A]
+  torch::Tensor active_mask{};          // [A], bool
   torch::Tensor error{};                // [A], predicted - realized
   torch::Tensor abs_error{};            // [A]
-  torch::Tensor score{};                // [A], higher is better
-  torch::Tensor interval_hit{};         // optional [A], bool
+  torch::Tensor squared_error{};        // [A]
+  torch::Tensor zero_baseline_error{};  // [A], 0 - realized
+  torch::Tensor zero_baseline_abs_error{};
+  torch::Tensor zero_baseline_squared_error{};
+  torch::Tensor score{};          // [A], higher is better
+  torch::Tensor interval_hit{};   // optional [A], bool
+  torch::Tensor interval_width{}; // optional [A]
 
   double signed_bias{0.0};
   double mae{0.0};
@@ -37,6 +43,13 @@ struct projection_validation_t {
   double directional_accuracy{0.0};
   double correlation{0.0};
   double interval_coverage{0.0};
+  double mean_interval_width{0.0};
+  double zero_baseline_signed_bias{0.0};
+  double zero_baseline_mae{0.0};
+  double zero_baseline_rmse{0.0};
+  double zero_baseline_directional_accuracy{0.0};
+  double model_skill_vs_zero_mae{0.0};
+  double model_skill_vs_zero_rmse{0.0};
 
   belief::BeliefDiagnostics diagnostics{};
 };
@@ -125,8 +138,13 @@ namespace projection_validation_detail {
   out.available = true;
   out.predicted_log_return = scenarios.mean(/*dim=*/0);
   out.realized_log_return = realized;
+  out.active_mask = active;
   out.error = out.predicted_log_return - realized;
   out.abs_error = out.error.abs();
+  out.squared_error = out.error.pow(2);
+  out.zero_baseline_error = -realized;
+  out.zero_baseline_abs_error = realized.abs();
+  out.zero_baseline_squared_error = realized.pow(2);
   out.score = 1.0 / (1.0 + out.abs_error);
 
   if (active.sum().item<std::int64_t>() <= 0) {
@@ -141,11 +159,31 @@ namespace projection_validation_detail {
       projection_validation_detail::masked_mean_scalar(out.abs_error, active);
   out.rmse = std::sqrt(projection_validation_detail::masked_mean_scalar(
       out.error.pow(2), active));
+  out.zero_baseline_signed_bias =
+      projection_validation_detail::masked_mean_scalar(out.zero_baseline_error,
+                                                       active);
+  out.zero_baseline_mae = projection_validation_detail::masked_mean_scalar(
+      out.zero_baseline_abs_error, active);
+  out.zero_baseline_rmse =
+      std::sqrt(projection_validation_detail::masked_mean_scalar(
+          out.zero_baseline_squared_error, active));
+  if (out.zero_baseline_mae > options.eps) {
+    out.model_skill_vs_zero_mae = 1.0 - (out.mae / out.zero_baseline_mae);
+  }
+  if (out.zero_baseline_rmse > options.eps) {
+    out.model_skill_vs_zero_rmse = 1.0 - (out.rmse / out.zero_baseline_rmse);
+  }
 
   auto predicted_sign = out.predicted_log_return.sign();
   auto realized_sign = realized.sign();
   out.directional_accuracy = projection_validation_detail::masked_mean_scalar(
       predicted_sign.eq(realized_sign).to(torch::kFloat64), active);
+  out.zero_baseline_directional_accuracy =
+      projection_validation_detail::masked_mean_scalar(
+          torch::zeros_like(realized_sign)
+              .eq(realized_sign)
+              .to(torch::kFloat64),
+          active);
   out.correlation = projection_validation_detail::masked_correlation(
       out.predicted_log_return, realized, active, options.eps);
 
@@ -162,8 +200,11 @@ namespace projection_validation_detail {
   auto lower = sorted.select(/*dim=*/0, low_index);
   auto upper = sorted.select(/*dim=*/0, high_index);
   out.interval_hit = realized.ge(lower).logical_and(realized.le(upper));
+  out.interval_width = upper - lower;
   out.interval_coverage = projection_validation_detail::masked_mean_scalar(
       out.interval_hit.to(torch::kFloat64), active);
+  out.mean_interval_width = projection_validation_detail::masked_mean_scalar(
+      out.interval_width, active);
 
   if (out.mae > options.warning_mae + options.eps) {
     out.diagnostics.warnings.push_back(

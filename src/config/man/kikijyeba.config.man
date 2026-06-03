@@ -1,0 +1,51 @@
+# Kikijyeba Config Keys
+
+`src/config/.config` section: `[KIKIJYEBA]`
+
+The Kikijyeba section binds protocol, topology, wave, Lattice, and environment
+DSL files. Runtime remains the executable entrypoint; environment DSLs describe
+operating-world contracts that Runtime may execute as targets/delegates.
+
+## Protocol And Topology
+
+- `kikijyeba_protocol_dsl_bnf_path`
+  - Grammar for `kikijyeba.protocol.*.dsl`.
+- `kikijyeba_protocol_dsl_path`
+  - Active graph-first protocol variant.
+- `kikijyeba_topology_graph_dsl_bnf_path`
+  - Grammar for `kikijyeba.topology.graph.dsl`.
+- `kikijyeba_topology_graph_dsl_path`
+  - Active market graph/topology contract.
+
+## Wave Settings
+
+- `kikijyeba_settings_wave_dsl_bnf_path`
+  - Grammar for `kikijyeba.settings.wave.dsl`.
+- `kikijyeba_settings_wave_dsl_path`
+  - Active Runtime wave target/mode/source-range profile.
+
+## Lattice
+
+- `kikijyeba_lattice_splits_dsl_bnf_path`
+  - Grammar for named Lattice split/range declarations.
+- `kikijyeba_lattice_splits_dsl_path`
+  - Validation/test holdout and protected split definitions.
+- `kikijyeba_lattice_targets_dsl_bnf_path`
+  - Grammar for Lattice readiness target declarations.
+- `kikijyeba_lattice_targets_dsl_path`
+  - Active Lattice target catalog.
+
+## Replay Environment
+
+- `kikijyeba_environment_replay_dsl_bnf_path`
+  - Grammar for `kikijyeba.environment.replay.dsl`.
+- `kikijyeba_environment_replay_dsl_path`
+  - Contract for `kikijyeba.environment.replay.v1`.
+  - V1 is historical replay only. It uses an RL-compatible `reset/step` API,
+    episode-parallel and step-sequential execution, Ujcamei/component-stream
+    cursor ranges, time-t observations, post-action realization reveal,
+    target-node-weight actions with a base reserve graph node, decomposed
+    post-execution reward, direct-edge realized-return truth,
+    projection-validation evidence, and audit replay reports.
+  - The replay environment is audit-only: it does not authorize allocation,
+    execution, market readiness, or live capital.

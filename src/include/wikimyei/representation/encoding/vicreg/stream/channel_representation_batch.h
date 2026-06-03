@@ -38,6 +38,7 @@ template <typename KeyT> struct channel_representation_batch_t {
 
   torch::Tensor future_edge_features{}; // [B_anchor,L,C,Hf,9]
   torch::Tensor future_edge_mask{};     // [B_anchor,L,C,Hf]
+  torch::Tensor future_keys{};          // [B_anchor,L,C,Hf]
 
   torch::Tensor future_node_features{}; // [B_anchor,C,Hf,N,9]
   torch::Tensor future_node_mask{};     // [B_anchor,C,Hf,N,9], bool

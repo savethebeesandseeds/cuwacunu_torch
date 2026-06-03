@@ -9,7 +9,7 @@
 #include <stdexcept>
 #include <string>
 
-#include "kikijyeba/settings/wave.h"
+#include "kikijyeba/runtime/wave_settings.h"
 
 namespace cuwacunu::kikijyeba::runtime {
 

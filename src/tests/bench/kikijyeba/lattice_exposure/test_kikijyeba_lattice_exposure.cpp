@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <iterator>
 #include <limits>
 #include <stdexcept>
 #include <string>
@@ -38,6 +39,33 @@ void write_text(const std::filesystem::path &path, const std::string &text) {
   std::ofstream out(path, std::ios::trunc);
   check(out.is_open(), "failed to open output file: " + path.string());
   out << text;
+}
+
+void append_text(const std::filesystem::path &path, const std::string &text) {
+  std::ofstream out(path, std::ios::app);
+  check(out.is_open(), "failed to open output file: " + path.string());
+  out << text;
+}
+
+std::string read_text(const std::filesystem::path &path) {
+  std::ifstream in(path);
+  check(in.is_open(), "failed to open input file: " + path.string());
+  return std::string((std::istreambuf_iterator<char>(in)),
+                     std::istreambuf_iterator<char>());
+}
+
+bool has_filename(const std::vector<std::filesystem::path> &paths,
+                  const std::string &filename) {
+  return std::any_of(paths.begin(), paths.end(), [&](const auto &path) {
+    return path.filename().string() == filename;
+  });
+}
+
+bool contains_text(const std::vector<std::string> &items,
+                   const std::string &needle) {
+  return std::any_of(items.begin(), items.end(), [&](const auto &item) {
+    return item.find(needle) != std::string::npos;
+  });
 }
 
 void write_representation_job(const std::filesystem::path &dir,
@@ -189,6 +217,7 @@ void write_channel_mdn_job(
       dir / "job.manifest",
       "job_id=channel_mdn_job\n"
       "job_kind=channel_inference_mdn\n"
+      "protocol_id=cwu_01v\n"
       "target_component_family_id=wikimyei.inference.expected_value.mdn\n"
       "wave_id=wave_channel_mdn\n"
       "wave_action=train\n"
@@ -623,6 +652,260 @@ int main() {
   write_channel_mdn_job(channel_mdn_dir, 200, 320, rep_dir / "rep.pt",
                         "channel_mdn.pt");
   write_unproven_mutation_job(unproven_dir, "unproven.pt");
+  write_text(rep_dir / "lattice.source_analytics.fact",
+             "schema=kikijyeba.lattice.source_analytics.v1\n"
+             "entropy=1.25\n"
+             "entropy_rate=0.50\n"
+             "information_density=0.75\n"
+             "compression_ratio=2.50\n"
+             "power_spectrum_entropy=0.33\n"
+             "source_volatility=0.14\n"
+             "feature_variance=0.04\n"
+             "sample_validity_fraction=0.98\n"
+             "missingness_fraction=0.02\n"
+             "duplicate_sample_count=3\n"
+             "source_health_level=warn\n"
+             "visibility_only=true\n");
+  write_text(rep_dir / "lattice.target_transform.fact",
+             "schema=kikijyeba.lattice.target_transform.v1\n"
+             "target_feature_ids=ev_close,ev_return\n"
+             "horizon=3\n"
+             "target_mode=log_return\n"
+             "normalization_contract=zscore.train_core.v1\n"
+             "inverse_transform_contract=exp_return.v1\n"
+             "units=log_return\n"
+             "target_mask_policy_digest=mask_policy_1\n"
+             "support_surface_identity=BTC_ETH_SOL:h3\n"
+             "support_surface_digest=support_surface_1\n"
+             "artifact_contract_prerequisite=true\n"
+             "visibility_only=true\n");
+  write_text(rep_dir / "lattice.forecast_baseline.fact",
+             "schema=kikijyeba.lattice.forecast_baseline.v1\n"
+             "target_feature_ids=ev_close,ev_return\n"
+             "horizon=3\n"
+             "baseline_kind=previous_value\n"
+             "baseline_parameters=lag=1\n"
+             "target_transform_fact_digest=target_transform_digest_1\n"
+             "support_count=42\n"
+             "valid_count=40\n"
+             "missing_count=2\n"
+             "metric_status=computed\n"
+             "baseline_mean_nll=1.50\n"
+             "baseline_ev_mae=0.20\n"
+             "baseline_ev_rmse=0.30\n"
+             "baseline_signed_error=-0.01\n"
+             "baseline_directional_accuracy=0.55\n"
+             "evidence_prerequisite=true\n"
+             "visibility_only=true\n");
+  write_text(channel_mdn_dir / "lattice.forecast_eval.fact",
+             "schema=kikijyeba.lattice.forecast_eval.v1\n"
+             "target_feature_ids=ev_close,ev_return\n"
+             "horizon=3\n"
+             "support_count=42\n"
+             "valid_count=40\n"
+             "missing_count=2\n"
+             "weakest_support_rows=7\n"
+             "mean_nll=1.10\n"
+             "mean_nll_per_channel=1.00,1.20\n"
+             "mean_nll_per_target_feature=0.90,1.30\n"
+             "mean_nll_per_channel_target_feature=0.80,1.00,1.20,1.40\n"
+             "mean_nll_per_horizon=1.10\n"
+             "valid_target_count_per_channel=20,20\n"
+             "valid_target_count_per_target_feature=19,21\n"
+             "valid_target_count_per_channel_target_feature=9,11,10,10\n"
+             "valid_target_count_per_horizon=40\n"
+             "ev_mae=0.16\n"
+             "ev_rmse=0.24\n"
+             "signed_error=-0.02\n"
+             "directional_accuracy=0.62\n"
+             "calibration_coverage=0.91\n"
+             "pit_summary=uniform-ish\n"
+             "sigma_scale_sanity=ok\n"
+             "support_by_node=BTC:20,ETH:13,SOL:7\n"
+             "support_by_channel=close:40\n"
+             "support_by_target_feature=ev_close:40,ev_return:40\n"
+             "support_by_horizon=h3:40\n"
+             "forecast_artifact_digest=forecast_artifact_1\n"
+             "evaluated_representation_checkpoint_digest=rep_checkpoint_1\n"
+             "evaluated_mdn_checkpoint_digest=mdn_checkpoint_1\n"
+             "target_transform_fact_digest=target_transform_digest_1\n"
+             "baseline_fact_digests=forecast_baseline_digest_1\n"
+             "selection_signal_fact_digests=selection_signal_digest_1\n"
+             "artifact_evidence=true\n"
+             "visibility_only=true\n"
+             "model_state_mutation=false\n");
+  write_text(channel_mdn_dir / "lattice.observer_belief.fact",
+             "schema=kikijyeba.lattice.observer_belief.v1\n"
+             "belief_kind=raw_nodelift_potential\n"
+             "channel_consensus=BTC:0.62,ETH:0.58\n"
+             "potential_surface_diagnostics=stable_surface\n"
+             "nodelift_return_projection=potential_only\n"
+             "covariance_coupling=diagonal_scenario_bank\n"
+             "scenario_bank_digest=scenario_bank_1\n"
+             "nodelift_residual_quality=ok\n"
+             "projection_validation_scores=rmse:0.24,calibration:0.91\n"
+             "confidence=0.64\n"
+             "data_quality=0.88\n"
+             "liquidity=0.72\n"
+             "forecast_artifact_digest=forecast_artifact_1\n"
+             "forecast_artifact_lineage=forecast_eval_digest_1\n"
+             "feature_semantics_fingerprint=feature_semantics_1\n"
+             "dock_binding_fingerprint=dock_binding_1\n"
+             "artifact_evidence=true\n"
+             "visibility_only=true\n"
+             "raw_potential_tradable_return=false\n"
+             "allocation_authority=false\n");
+  write_text(channel_mdn_dir / "lattice.allocation_engine.fact",
+             "schema=kikijyeba.lattice.allocation_engine.v1\n"
+             "target_risky_node_weights=BTC:0.40,ETH:0.25,SOL:0.10\n"
+             "reserve_node_id=USD_CASH\n"
+             "reserve_node_source=base_policy\n"
+             "base_policy_reserve_node_id=USD_CASH\n"
+             "reserve_node_graph_bound=true\n"
+             "reserve_weight=0.25\n"
+             "turnover=0.12\n"
+             "objective_terms=growth:0.70,cvar:0.20,cost:0.10\n"
+             "cvar_loss=0.08\n"
+             "transaction_cost_estimate=0.003\n"
+             "constraint_diagnostics=all_constraints_satisfied\n"
+             "cap_diagnostics=per_node_caps_ok\n"
+             "scenario_growth_floor_status=met\n"
+             "fallback_reasons=none\n"
+             "derisk_reasons=none\n"
+             "observer_belief_fact_digest=observer_belief_digest_1\n"
+             "forecast_artifact_digest=forecast_artifact_1\n"
+             "base_policy_digest=base_policy_1\n"
+             "deterministic_artifact=true\n"
+             "visibility_only=true\n"
+             "allocation_authority=false\n"
+             "execution_authority=false\n");
+  const auto replay_artifact_dir =
+      channel_mdn_dir / "artifacts" / "kikijyeba.environment.replay.v1";
+  write_text(replay_artifact_dir / "runtime_replay_batches.index",
+             "schema=kikijyeba.environment.replay.runtime_batch_index.v1\n"
+             "entry_count=1\n"
+             "entry_0_batch_id=batch_0\n");
+  write_text(replay_artifact_dir / "runtime_replay_experiments.index",
+             "schema=kikijyeba.environment.replay.runtime_experiment_index.v1\n"
+             "entry_count=1\n"
+             "entry_0_experiment_id=replay_experiment_1\n"
+             "entry_0_runtime_run_id=runtime_run_1\n"
+             "entry_0_environment_run_id=replay_env_1\n"
+             "entry_0_report_path=runtime_replay_experiment.report\n"
+             "entry_0_replay_bundle_count=2\n"
+             "entry_0_policy_count=2\n"
+             "entry_0_attempted_count=2\n"
+             "entry_0_completed_count=2\n");
+  write_text(
+      replay_artifact_dir / "runtime_replay_experiment.report",
+      std::string("schema=") +
+          exposure::replay_environment_experiment_report_schema_id() + "\n" +
+          "experiment_id=replay_experiment_1\n"
+          "runtime_run_id=runtime_run_1\n"
+          "environment_run_id=replay_env_1\n"
+          "replay_environment_version=kikijyeba.environment.replay.v1\n"
+          "replay_environment_component_assembly_id=replay_environment_v1\n"
+          "replay_environment_world_mode=historical_replay\n"
+          "replay_environment_api_contract=rl_compatible_reset_step\n"
+          "replay_environment_spawn_model=episode_parallel_step_sequential\n"
+          "replay_environment_range_source=ujcamei_component_stream_cursor\n"
+          "replay_environment_source_range_policy=anchor_index_or_source_key\n"
+          "replay_environment_source_order_policy=sequential\n"
+          "replay_environment_range_resolution=runtime_resolved_cursor_"
+          "identity\n"
+          "replay_environment_observation_time_law=time_t_only\n"
+          "replay_environment_realization_reveal=after_action_execution\n"
+          "replay_environment_realization_key_policy=shared_key_per_frame\n"
+          "replay_environment_action_kind=target_node_weights_with_base_"
+          "reserve\n"
+          "replay_environment_action_time_policy=decision_timestamp_after_"
+          "knowledge_before_realization\n"
+          "replay_environment_reserve_node_policy=graph_node_from_base_policy\n"
+          "replay_environment_graph_node_universe_policy="
+          "episode_spec_graph_node_ids\n"
+          "replay_environment_reward_policy=post_execution_ledger_log_growth_"
+          "drawdown_cost_turnover_invalid\n"
+          "replay_environment_projection_validation=projected_log_return_vs_"
+          "realized_asset_base_return\n"
+          "replay_environment_policy_surface=policy_adapter\n"
+          "replay_environment_action_policy_identity="
+          "policy_adapter_must_match_action\n"
+          "replay_environment_initial_policy_kind=deterministic_allocator_or_"
+          "baseline\n"
+          "replay_environment_experiment_task_identity=bundle_policy_task_"
+          "indices\n"
+          "replay_environment_experiment_run_identity=single_runtime_"
+          "environment_"
+          "run\n"
+          "replay_environment_step_artifact_identity=episode_run_policy_"
+          "cursor\n"
+          "replay_environment_experiment_report_count_policy="
+          "counts_match_evidence\n"
+          "replay_environment_artifact_schema=cajtucu_ready_replay_artifacts\n"
+          "replay_environment_lattice_fact_family=replay_environment\n"
+          "replay_environment_lattice_target=replay_environment_artifact_"
+          "ready\n"
+          "replay_environment_require_resolved_cursor=true\n"
+          "replay_environment_require_no_future_leakage=true\n"
+          "replay_environment_require_projection_validation=true\n"
+          "replay_environment_default_max_parallel_jobs=1\n"
+          "experiment_requested_max_parallel_jobs=2\n"
+          "experiment_resolved_parallelism=2\n"
+          "time_law_expected_step_count=4\n"
+          "time_law_observation_step_count=4\n"
+          "time_law_action_step_count=4\n"
+          "time_law_execution_step_count=4\n"
+          "time_law_realization_after_action_count=4\n"
+          "time_law_future_observation_violation_count=0\n"
+          "mixed_future_realization_key_count=0\n"
+          "projection_validation_step_count=4\n"
+          "episode_count=2\n"
+          "episode_0_requested_anchor_index_begin=10\n"
+          "episode_0_requested_anchor_index_end=12\n"
+          "episode_0_requested_source_key_begin=1000\n"
+          "episode_0_requested_source_key_end=1002\n"
+          "episode_0_accepted_cursor_kind=graph_anchor\n"
+          "episode_0_accepted_cursor_scope=episode\n"
+          "episode_0_accepted_batch_cursor_token=cursor_0\n"
+          "episode_0_accepted_anchor_index_begin=10\n"
+          "episode_0_accepted_anchor_index_end=12\n"
+          "episode_0_accepted_anchor_keys=1000,1001\n"
+          "episode_1_requested_anchor_index_begin=20\n"
+          "episode_1_requested_anchor_index_end=22\n"
+          "episode_1_requested_source_key_begin=2000\n"
+          "episode_1_requested_source_key_end=2002\n"
+          "episode_1_accepted_cursor_kind=graph_anchor\n"
+          "episode_1_accepted_cursor_scope=episode\n"
+          "episode_1_accepted_batch_cursor_token=cursor_1\n"
+          "episode_1_accepted_anchor_index_begin=20\n"
+          "episode_1_accepted_anchor_index_end=22\n"
+          "episode_1_accepted_anchor_keys=2000,2001\n"
+          "mean_total_reward=1.5\n"
+          "mean_total_log_growth=0.03\n"
+          "mean_final_equity_base=103.0\n"
+          "mean_projection_mae=0.012\n"
+          "mean_projection_signed_bias=-0.002\n"
+          "mean_projection_directional_accuracy=0.75\n"
+          "mean_projection_interval_coverage=0.80\n"
+          "artifact_evidence=true\n"
+          "visibility_only=true\n"
+          "replay_executor=false\n"
+          "allocation_authority=false\n"
+          "execution_authority=false\n"
+          "readiness_authority=false\n"
+          "quality_authority=false\n"
+          "performance_authority=false\n"
+          "market_readiness_authority=false\n"
+          "deployment_authority=false\n"
+          "checkpoint_selector=false\n"
+          "coverage_authority=false\n"
+          "leakage_authority=false\n"
+          "contract_identity_authority=false\n");
+  const auto replay_report_digest =
+      exposure::replay_environment_report_digest_for_text(
+          read_text(replay_artifact_dir / "runtime_replay_experiment.report"));
+  append_text(replay_artifact_dir / "runtime_replay_experiments.index",
+              "entry_0_report_digest=" + replay_report_digest + "\n");
 
   exposure::exposure_build_context_t train_context{};
   train_context.split_name = "train_core";
@@ -660,6 +943,241 @@ int main() {
         "representation support facts");
   check(scan.ledger.source_receipt_facts().size() == 1,
         "runtime-root exposure scan derives structured source receipt facts");
+  check(scan.ledger.source_analytics_facts().size() == 1,
+        "runtime-root exposure scan derives visibility-only source analytics "
+        "facts from source analytics sidecars");
+  check(scan.ledger.target_transform_facts().size() == 1,
+        "runtime-root exposure scan derives target transform contract facts "
+        "from target transform sidecars");
+  check(scan.ledger.forecast_baseline_facts().size() == 1,
+        "runtime-root exposure scan derives forecast baseline evidence facts "
+        "from forecast baseline sidecars");
+  check(scan.ledger.forecast_eval_facts().size() == 1,
+        "runtime-root exposure scan derives forecast evaluation artifact facts "
+        "from forecast evaluation sidecars");
+  const auto source_analytics_paths =
+      exposure::source_analytics_fact_paths_for_job_dir(rep_dir);
+  const auto source_analytics_numeric_paths =
+      exposure::source_data_analytics_numeric_paths_for_job_dir(rep_dir);
+  const auto source_analytics_symbolic_paths =
+      exposure::source_data_analytics_symbolic_paths_for_job_dir(rep_dir);
+  check(source_analytics_paths.size() == 4 &&
+            has_filename(source_analytics_paths,
+                         "lattice.source_analytics.fact") &&
+            has_filename(source_analytics_paths, "source_analytics.fact") &&
+            has_filename(source_analytics_paths,
+                         "runtime.source_analytics.fact") &&
+            has_filename(source_analytics_paths, "source.analytics.fact"),
+        "source analytics producer contract accepts only the declared durable "
+        "sidecar names");
+  check(
+      source_analytics_numeric_paths.size() == 6 &&
+          has_filename(source_analytics_numeric_paths,
+                       "data_analytics.v2.latest.lls") &&
+          has_filename(source_analytics_numeric_paths,
+                       "sequence_analytics.v2.latest.lls") &&
+          has_filename(source_analytics_numeric_paths,
+                       "embedding_sequence_analytics.v2.latest.lls") &&
+          has_filename(source_analytics_numeric_paths,
+                       "source_data_analytics.v2.latest.lls") &&
+          has_filename(source_analytics_numeric_paths, "data_analytics.lls") &&
+          has_filename(source_analytics_numeric_paths,
+                       "source_data_analytics.lls"),
+      "source analytics scanner-derived contract accepts the declared "
+      "numeric source analytics payload names");
+  check(source_analytics_symbolic_paths.size() == 6 &&
+            has_filename(source_analytics_symbolic_paths,
+                         "data_analytics.symbolic.v2.latest.lls") &&
+            has_filename(source_analytics_symbolic_paths,
+                         "sequence_analytics.symbolic.v2.latest.lls") &&
+            has_filename(source_analytics_symbolic_paths,
+                         "embedding_sequence_analytics.symbolic.v2.latest."
+                         "lls") &&
+            has_filename(source_analytics_symbolic_paths,
+                         "source_data_analytics.symbolic.v2.latest.lls") &&
+            has_filename(source_analytics_symbolic_paths,
+                         "data_analytics.symbolic.lls") &&
+            has_filename(source_analytics_symbolic_paths,
+                         "source_data_analytics.symbolic.lls"),
+        "source analytics scanner-derived contract accepts the declared "
+        "symbolic source analytics payload names");
+  const auto target_transform_paths =
+      exposure::target_transform_fact_paths_for_job_dir(rep_dir);
+  const auto forecast_baseline_paths =
+      exposure::forecast_baseline_fact_paths_for_job_dir(rep_dir);
+  const auto forecast_eval_paths =
+      exposure::forecast_eval_fact_paths_for_job_dir(channel_mdn_dir);
+  const auto observer_belief_paths =
+      exposure::observer_belief_fact_paths_for_job_dir(channel_mdn_dir);
+  const auto allocation_engine_paths =
+      exposure::allocation_engine_fact_paths_for_job_dir(channel_mdn_dir);
+  check(target_transform_paths.size() == 4 &&
+            has_filename(target_transform_paths,
+                         "lattice.target_transform.fact") &&
+            has_filename(target_transform_paths, "target_transform.fact") &&
+            has_filename(target_transform_paths,
+                         "runtime.target_transform.fact") &&
+            has_filename(target_transform_paths, "target.transform.fact"),
+        "target transform producer contract accepts only the declared durable "
+        "sidecar names");
+  check(forecast_baseline_paths.size() == 8 &&
+            has_filename(forecast_baseline_paths,
+                         "lattice.forecast_baseline.fact") &&
+            has_filename(forecast_baseline_paths, "forecast_baseline.fact") &&
+            has_filename(forecast_baseline_paths,
+                         "runtime.forecast_baseline.fact") &&
+            has_filename(forecast_baseline_paths, "forecast.baseline.fact") &&
+            has_filename(forecast_baseline_paths,
+                         "lattice.forecast_baseline.previous_value.fact") &&
+            has_filename(forecast_baseline_paths,
+                         "lattice.forecast_baseline.zero_return.fact") &&
+            has_filename(forecast_baseline_paths,
+                         "lattice.forecast_baseline.moving_average.fact") &&
+            has_filename(forecast_baseline_paths,
+                         "lattice.forecast_baseline.last_valid_channel.fact"),
+        "forecast baseline producer contract accepts the generic sidecars and "
+        "the explicit deterministic baseline sidecars");
+  check(forecast_eval_paths.size() == 4 &&
+            has_filename(forecast_eval_paths, "lattice.forecast_eval.fact") &&
+            has_filename(forecast_eval_paths, "forecast_eval.fact") &&
+            has_filename(forecast_eval_paths, "runtime.forecast_eval.fact") &&
+            has_filename(forecast_eval_paths, "forecast.eval.fact"),
+        "forecast eval producer contract accepts only the declared durable "
+        "sidecar names");
+  check(
+      observer_belief_paths.size() == 4 &&
+          has_filename(observer_belief_paths, "lattice.observer_belief.fact") &&
+          has_filename(observer_belief_paths, "observer_belief.fact") &&
+          has_filename(observer_belief_paths, "runtime.observer_belief.fact") &&
+          has_filename(observer_belief_paths, "observer.belief.fact"),
+      "observer belief producer contract accepts only the declared durable "
+      "sidecar names");
+  check(allocation_engine_paths.size() == 4 &&
+            has_filename(allocation_engine_paths,
+                         "lattice.allocation_engine.fact") &&
+            has_filename(allocation_engine_paths, "allocation_engine.fact") &&
+            has_filename(allocation_engine_paths,
+                         "runtime.allocation_engine.fact") &&
+            has_filename(allocation_engine_paths, "allocation.engine.fact"),
+        "allocation engine producer contract accepts only the declared durable "
+        "sidecar names");
+
+  const auto alias_fact_dir = root / "forecast_fact_aliases";
+  write_text(alias_fact_dir / "target_transform.fact",
+             "schema=kikijyeba.lattice.target_transform.v1\n"
+             "feature_ids=ev_close\n"
+             "forecast_horizon=2\n"
+             "mode=return\n"
+             "normalization=zscore.alias.v1\n"
+             "inverse_transform=identity_return.v1\n"
+             "target_units=return\n"
+             "mask_policy_digest=mask_policy_alias\n"
+             "support_surface_id=alias:h2\n"
+             "target_surface_digest=target_surface_alias\n");
+  write_text(alias_fact_dir / "lattice.forecast_baseline.zero_return.fact",
+             "schema=kikijyeba.lattice.forecast_baseline.v1\n"
+             "feature_ids=ev_close\n"
+             "forecast_horizon=2\n"
+             "target_transform_digest=target_transform_alias_digest\n"
+             "evaluation_support_count=15\n"
+             "valid_target_count=15\n"
+             "baseline_metric_values=deferred_metrics\n");
+  write_text(alias_fact_dir / "runtime.forecast_eval.fact",
+             "schema=kikijyeba.lattice.forecast_eval.v1\n"
+             "feature_ids=ev_close\n"
+             "forecast_horizon=2\n"
+             "evaluation_support_count=15\n"
+             "valid_target_count=15\n"
+             "mean_nll=1.00\n"
+             "valid_target_count_per_horizon=15\n"
+             "support_by_horizon=h2:15\n"
+             "pit_histogram_summary=flat\n"
+             "sigma_sanity=ok\n"
+             "forecast_digest=forecast_alias_digest\n"
+             "representation_checkpoint_digest=rep_alias_digest\n"
+             "mdn_checkpoint_digest=mdn_alias_digest\n"
+             "target_transform_digest=target_transform_alias_digest\n"
+             "forecast_baseline_fact_digests=baseline_alias_digest\n");
+  const auto alias_target_transforms =
+      exposure::make_target_transform_facts_from_job_dir(alias_fact_dir,
+                                                         rep_fact);
+  const auto alias_forecast_baselines =
+      exposure::make_forecast_baseline_facts_from_job_dir(alias_fact_dir,
+                                                          rep_fact);
+  const auto alias_forecast_evals =
+      exposure::make_forecast_eval_facts_from_job_dir(alias_fact_dir,
+                                                      channel_mdn_fact);
+  check(alias_target_transforms.size() == 1 &&
+            alias_target_transforms.front().target_feature_ids.size() == 1 &&
+            alias_target_transforms.front().target_feature_ids.front() ==
+                "ev_close" &&
+            alias_target_transforms.front().horizon == 2 &&
+            alias_target_transforms.front().target_mode == "return" &&
+            alias_target_transforms.front().normalization_contract ==
+                "zscore.alias.v1" &&
+            alias_target_transforms.front().inverse_transform_contract ==
+                "identity_return.v1" &&
+            alias_target_transforms.front().units == "return" &&
+            alias_target_transforms.front().target_mask_policy_digest ==
+                "mask_policy_alias" &&
+            alias_target_transforms.front().support_surface_identity ==
+                "alias:h2" &&
+            alias_target_transforms.front().support_surface_digest ==
+                "target_surface_alias" &&
+            exposure::target_transform_fact_issues(
+                alias_target_transforms.front())
+                .empty(),
+        "target transform scanner accepts the declared writer aliases while "
+        "requiring an interpretable transform contract");
+  check(alias_forecast_baselines.size() == 1 &&
+            alias_forecast_baselines.front().baseline_kind == "zero_return" &&
+            alias_forecast_baselines.front().target_feature_ids.size() == 1 &&
+            alias_forecast_baselines.front().horizon == 2 &&
+            alias_forecast_baselines.front().support_count == 15 &&
+            alias_forecast_baselines.front().valid_count == 15 &&
+            alias_forecast_baselines.front().metric_status == "deferred_v1" &&
+            exposure::forecast_baseline_fact_issues(
+                alias_forecast_baselines.front())
+                .empty(),
+        "forecast baseline scanner accepts explicit baseline sidecars and "
+        "normalizes deferred metric status without inventing metrics");
+  check(
+      alias_forecast_evals.size() == 1 &&
+          alias_forecast_evals.front().target_feature_ids.size() == 1 &&
+          alias_forecast_evals.front().horizon == 2 &&
+          alias_forecast_evals.front().support_count == 15 &&
+          alias_forecast_evals.front().valid_count == 15 &&
+          alias_forecast_evals.front().valid_target_count_per_horizon.size() ==
+              1 &&
+          alias_forecast_evals.front().forecast_artifact_digest ==
+              "forecast_alias_digest" &&
+          alias_forecast_evals.front()
+                  .evaluated_representation_checkpoint_digest ==
+              "rep_alias_digest" &&
+          alias_forecast_evals.front().evaluated_mdn_checkpoint_digest ==
+              "mdn_alias_digest" &&
+          alias_forecast_evals.front().baseline_fact_digests.size() == 1 &&
+          exposure::forecast_eval_fact_issues(alias_forecast_evals.front())
+              .empty(),
+      "forecast eval scanner accepts runtime writer aliases while requiring "
+      "checkpoint, transform, baseline, and horizon support bindings");
+  check(scan.ledger.observer_belief_facts().size() == 1,
+        "runtime-root exposure scan derives observer belief audit facts from "
+        "observer belief sidecars");
+  check(scan.ledger.allocation_engine_facts().size() == 1,
+        "runtime-root exposure scan derives allocation engine audit facts from "
+        "allocation engine sidecars");
+  check(scan.ledger.replay_environment_facts().empty(),
+        "runtime-root exposure scan leaves parked replay environment evidence "
+        "parked by default");
+  auto parked_environment_scan_options = exposure::exposure_scan_options_t{};
+  parked_environment_scan_options.derive_replay_environment_facts = true;
+  const auto parked_environment_scan =
+      exposure::scan_exposure_ledger_from_runtime_root(
+          root, train_context, parked_environment_scan_options);
+  check(parked_environment_scan.ledger.replay_environment_facts().size() == 1,
+        "explicit replay scan derives parked replay environment evidence from "
+        "job-local replay indexes and reports");
   const auto scan_representation_support_summary =
       exposure::summarize_representation_support(
           scan.ledger.facts(), scan.ledger.representation_support_facts());
@@ -731,6 +1249,414 @@ int main() {
           scan_representation_support_summary.issues.empty(),
       "representation support summary stays shared, visibility-only, and "
       "independent from MDN node support while exposing node rows");
+  const auto fact_family_registry = exposure::lattice_fact_family_registry();
+  const auto fact_catalog_summary =
+      exposure::summarize_lattice_fact_catalog(scan.ledger);
+  const auto fact_integrity_summary =
+      exposure::summarize_lattice_fact_integrity(scan.ledger);
+  const auto is_core_proof_evidence_family =
+      [](exposure::lattice_fact_family_t family) {
+        return family == exposure::lattice_fact_family_t::exposure ||
+               family == exposure::lattice_fact_family_t::checkpoint;
+      };
+  for (const auto &descriptor : fact_family_registry) {
+    const std::string fact_schema = descriptor.fact_schema;
+    const std::string summary_schema = descriptor.summary_schema;
+    check(!std::string(descriptor.family_name).empty() &&
+              !fact_schema.empty() && !summary_schema.empty() &&
+              !std::string(descriptor.relation).empty() &&
+              !std::string(descriptor.authority_model).empty() &&
+              fact_schema.rfind("kikijyeba.lattice.", 0) == 0 &&
+              summary_schema.rfind("kikijyeba.lattice.", 0) == 0 &&
+              fact_schema.size() >= 3 &&
+              fact_schema.substr(fact_schema.size() - 3) == ".v1" &&
+              summary_schema.size() >= 3 &&
+              summary_schema.substr(summary_schema.size() - 3) == ".v1",
+          "every fact-family descriptor must declare stable v1 lattice "
+          "schemas, names, relation, and authority model");
+    check(!descriptor.target_kind && !descriptor.dispatchable &&
+              !descriptor.runtime_executor && !descriptor.quality_authority &&
+              !descriptor.performance_authority &&
+              !descriptor.checkpoint_selector &&
+              !descriptor.allocation_authority &&
+              !descriptor.execution_authority &&
+              !descriptor.market_readiness_authority &&
+              !descriptor.deployment_authority && !descriptor.policy_gate &&
+              !descriptor.target_dependency_authority &&
+              !descriptor.runtime_wave_authority &&
+              !descriptor.marshal_reachability &&
+              !descriptor.checkpoint_source_authority &&
+              !descriptor.plan_checkpoint_input_authority,
+          "fact-family descriptors must not become target kinds, dispatch "
+          "surfaces, policy gates, selectors, allocators, executors, or market "
+          "decision authority");
+    if (!is_core_proof_evidence_family(descriptor.family)) {
+      check(!descriptor.readiness_authority && !descriptor.coverage_authority &&
+                !descriptor.leakage_authority &&
+                !descriptor.contract_identity_authority,
+            "roadmap catalog families must not inherit core readiness, "
+            "coverage, leakage, or contract-identity authority");
+    }
+  }
+  check(
+      fact_catalog_summary.quality_authority_family_count == 0 &&
+          fact_catalog_summary.performance_authority_family_count == 0 &&
+          fact_catalog_summary.checkpoint_selector_family_count == 0 &&
+          fact_catalog_summary.allocation_authority_family_count == 0 &&
+          fact_catalog_summary.execution_authority_family_count == 0 &&
+          fact_catalog_summary.market_readiness_authority_family_count == 0 &&
+          fact_catalog_summary.deployment_authority_family_count == 0 &&
+          fact_catalog_summary.policy_gate_family_count == 0 &&
+          fact_catalog_summary.target_dependency_authority_family_count == 0 &&
+          fact_catalog_summary.runtime_wave_authority_family_count == 0 &&
+          fact_catalog_summary.marshal_reachability_family_count == 0 &&
+          fact_catalog_summary.checkpoint_source_authority_family_count == 0 &&
+          fact_catalog_summary.plan_checkpoint_input_authority_family_count ==
+              0 &&
+          fact_catalog_summary.decision_authority_family_count == 0 &&
+          fact_catalog_summary.decision_authority_clean,
+      "fact catalog summary must report no decision-authority drift across "
+      "quality, performance, selection, allocation, execution, policy, wave, "
+      "marshal, checkpoint-source, or deployment surfaces");
+  check(!scan.ledger.target_transform_facts().empty() &&
+            !scan.ledger.forecast_baseline_facts().empty() &&
+            !scan.ledger.forecast_eval_facts().empty() &&
+            !scan.ledger.observer_belief_facts().empty() &&
+            !scan.ledger.allocation_engine_facts().empty(),
+        "mixed exposure fixture should include every proofable artifact fact "
+        "family");
+  const auto check_common_proofable_envelope =
+      [&](const auto &fact, exposure::lattice_fact_family_t family,
+          const std::string &digest, const std::string &label) {
+        const auto envelope =
+            exposure::make_lattice_fact_identity_envelope(fact, family, digest);
+        check(envelope.schema ==
+                      exposure::k_lattice_fact_identity_envelope_schema_v1 &&
+                  envelope.fact_identity_contract_schema ==
+                      exposure::k_lattice_fact_identity_contract_schema_v1 &&
+                  envelope.fact_identity_contract_id ==
+                      exposure::k_lattice_fact_identity_contract_id_v1 &&
+                  envelope.schema_id == fact.schema &&
+                  envelope.fact_family ==
+                      exposure::lattice_fact_family_name(family) &&
+                  envelope.fact_type == fact.fact_type &&
+                  envelope.fact_id == digest &&
+                  envelope.fact_digest == digest &&
+                  envelope.protocol_id == fact.protocol_id &&
+                  envelope.protocol_contract_fingerprint ==
+                      fact.contract_fingerprint &&
+                  envelope.graph_order_fingerprint ==
+                      fact.graph_order_fingerprint &&
+                  envelope.source_cursor_token == fact.source_cursor_token &&
+                  envelope.split_name == fact.split_name &&
+                  envelope.split_role ==
+                      exposure::exposure_split_role_name(fact.split_role) &&
+                  envelope.split_policy_fingerprint ==
+                      fact.split_policy_fingerprint &&
+                  envelope.anchor_range.has_value() &&
+                  envelope.anchor_range->begin == fact.anchor_range.begin &&
+                  envelope.anchor_range->end == fact.anchor_range.end &&
+                  envelope.completed_anchor_range.has_value() &&
+                  envelope.completed_anchor_range->begin ==
+                      fact.completed_anchor_range.begin &&
+                  envelope.completed_anchor_range->end ==
+                      fact.completed_anchor_range.end &&
+                  envelope.component_family_id ==
+                      fact.target_component_family_id &&
+                  envelope.component_assembly_fingerprint ==
+                      fact.component_assembly_fingerprint &&
+                  envelope.job_id == fact.job_id &&
+                  envelope.wave_id == fact.wave_id &&
+                  envelope.parent_exposure_fact_digests.size() == 1 &&
+                  envelope.parent_exposure_fact_digests.front() ==
+                      fact.parent_exposure_fact_digest &&
+                  envelope.row_index_interval_authority &&
+                  envelope.source_key_window_audit_only && envelope.read_only &&
+                  !envelope.target_proof && !envelope.dispatchable &&
+                  !envelope.runtime_executor &&
+                  envelope.fact_families_are_not_target_kinds &&
+                  !envelope.facts_used_for_target_satisfaction &&
+                  !envelope.checkpoint_selected && !envelope.model_selector,
+              label +
+                  " identity envelope should preserve common catalog identity "
+                  "without target, dispatch, selector, or model authority");
+      };
+  check_common_proofable_envelope(
+      scan.ledger.target_transform_facts().front(),
+      exposure::lattice_fact_family_t::target_transform,
+      exposure::target_transform_fact_digest(
+          scan.ledger.target_transform_facts().front()),
+      "target-transform");
+  check_common_proofable_envelope(
+      scan.ledger.forecast_baseline_facts().front(),
+      exposure::lattice_fact_family_t::forecast_baseline,
+      exposure::forecast_baseline_fact_digest(
+          scan.ledger.forecast_baseline_facts().front()),
+      "forecast-baseline");
+  check_common_proofable_envelope(
+      scan.ledger.forecast_eval_facts().front(),
+      exposure::lattice_fact_family_t::forecast_eval,
+      exposure::forecast_eval_fact_digest(
+          scan.ledger.forecast_eval_facts().front()),
+      "forecast-eval");
+  check_common_proofable_envelope(
+      scan.ledger.observer_belief_facts().front(),
+      exposure::lattice_fact_family_t::observer_belief,
+      exposure::observer_belief_fact_digest(
+          scan.ledger.observer_belief_facts().front()),
+      "observer-belief");
+  check_common_proofable_envelope(
+      scan.ledger.allocation_engine_facts().front(),
+      exposure::lattice_fact_family_t::allocation_engine,
+      exposure::allocation_engine_fact_digest(
+          scan.ledger.allocation_engine_facts().front()),
+      "allocation-engine");
+  check(!scan.ledger.forecast_eval_facts().empty(),
+        "mixed exposure fixture should include forecast-eval catalog facts");
+  const auto &first_forecast_eval = scan.ledger.forecast_eval_facts().front();
+  const auto first_forecast_eval_digest =
+      exposure::forecast_eval_fact_digest(first_forecast_eval);
+  const auto forecast_eval_identity_envelope =
+      exposure::make_lattice_fact_identity_envelope(
+          first_forecast_eval, exposure::lattice_fact_family_t::forecast_eval,
+          first_forecast_eval_digest);
+  check(
+      forecast_eval_identity_envelope.schema ==
+              exposure::k_lattice_fact_identity_envelope_schema_v1 &&
+          forecast_eval_identity_envelope.fact_identity_contract_schema ==
+              exposure::k_lattice_fact_identity_contract_schema_v1 &&
+          forecast_eval_identity_envelope.fact_identity_contract_id ==
+              exposure::k_lattice_fact_identity_contract_id_v1 &&
+          forecast_eval_identity_envelope.fact_family == "forecast_eval" &&
+          forecast_eval_identity_envelope.fact_type == "forecast_eval" &&
+          forecast_eval_identity_envelope.fact_digest ==
+              first_forecast_eval_digest &&
+          forecast_eval_identity_envelope.protocol_id ==
+              first_forecast_eval.protocol_id &&
+          forecast_eval_identity_envelope.protocol_contract_fingerprint ==
+              first_forecast_eval.contract_fingerprint &&
+          forecast_eval_identity_envelope.source_cursor_token ==
+              first_forecast_eval.source_cursor_token &&
+          forecast_eval_identity_envelope.split_name ==
+              first_forecast_eval.split_name &&
+          forecast_eval_identity_envelope.anchor_range.has_value() &&
+          forecast_eval_identity_envelope.completed_anchor_range.has_value() &&
+          forecast_eval_identity_envelope.parent_exposure_fact_digests.size() ==
+              1 &&
+          forecast_eval_identity_envelope.parent_exposure_fact_digests[0] ==
+              first_forecast_eval.parent_exposure_fact_digest &&
+          forecast_eval_identity_envelope.parent_forecast_artifact_digests
+                  .size() == 1 &&
+          forecast_eval_identity_envelope.parent_forecast_artifact_digests[0] ==
+              first_forecast_eval.forecast_artifact_digest &&
+          forecast_eval_identity_envelope.parent_fact_digests.size() >= 3 &&
+          forecast_eval_identity_envelope.support_count.has_value() &&
+          *forecast_eval_identity_envelope.support_count ==
+              first_forecast_eval.support_count &&
+          forecast_eval_identity_envelope.valid_count.has_value() &&
+          *forecast_eval_identity_envelope.valid_count ==
+              first_forecast_eval.valid_count &&
+          forecast_eval_identity_envelope.row_index_interval_authority &&
+          forecast_eval_identity_envelope.source_key_window_audit_only &&
+          forecast_eval_identity_envelope.read_only &&
+          !forecast_eval_identity_envelope.target_proof &&
+          !forecast_eval_identity_envelope.dispatchable &&
+          !forecast_eval_identity_envelope.runtime_executor &&
+          forecast_eval_identity_envelope.fact_families_are_not_target_kinds &&
+          !forecast_eval_identity_envelope.facts_used_for_target_satisfaction &&
+          !forecast_eval_identity_envelope.checkpoint_selected &&
+          !forecast_eval_identity_envelope.model_selector,
+      "forecast-eval fact identity envelope should be a catalog-owned "
+      "read-only projection with lineage and no decision authority");
+  const auto source_analytics_family = std::find_if(
+      fact_catalog_summary.families.begin(),
+      fact_catalog_summary.families.end(),
+      [](const auto &summary) { return summary.family == "source_analytics"; });
+  const auto target_transform_family = std::find_if(
+      fact_catalog_summary.families.begin(),
+      fact_catalog_summary.families.end(),
+      [](const auto &summary) { return summary.family == "target_transform"; });
+  const auto forecast_baseline_family = std::find_if(
+      fact_catalog_summary.families.begin(),
+      fact_catalog_summary.families.end(), [](const auto &summary) {
+        return summary.family == "forecast_baseline";
+      });
+  const auto forecast_eval_family = std::find_if(
+      fact_catalog_summary.families.begin(),
+      fact_catalog_summary.families.end(),
+      [](const auto &summary) { return summary.family == "forecast_eval"; });
+  const auto observer_belief_family = std::find_if(
+      fact_catalog_summary.families.begin(),
+      fact_catalog_summary.families.end(),
+      [](const auto &summary) { return summary.family == "observer_belief"; });
+  const auto allocation_engine_family = std::find_if(
+      fact_catalog_summary.families.begin(),
+      fact_catalog_summary.families.end(), [](const auto &summary) {
+        return summary.family == "allocation_engine";
+      });
+  const auto replay_environment_family = std::find_if(
+      fact_catalog_summary.families.begin(),
+      fact_catalog_summary.families.end(), [](const auto &summary) {
+        return summary.family == "replay_environment";
+      });
+  check(
+      fact_family_registry.size() == 13 &&
+          exposure::parse_lattice_fact_family("source_analytics").has_value() &&
+          exposure::parse_lattice_fact_family(
+              "kikijyeba.lattice.source_analytics.v1")
+              .has_value() &&
+          exposure::parse_lattice_fact_family("target_transform").has_value() &&
+          exposure::parse_lattice_fact_family(
+              "kikijyeba.lattice.target_transform.v1")
+              .has_value() &&
+          exposure::parse_lattice_fact_family("forecast_baseline")
+              .has_value() &&
+          exposure::parse_lattice_fact_family(
+              "kikijyeba.lattice.forecast_baseline.v1")
+              .has_value() &&
+          exposure::parse_lattice_fact_family("forecast_eval").has_value() &&
+          exposure::parse_lattice_fact_family(
+              "kikijyeba.lattice.forecast_eval.v1")
+              .has_value() &&
+          exposure::parse_lattice_fact_family("observer_belief").has_value() &&
+          exposure::parse_lattice_fact_family(
+              "kikijyeba.lattice.observer_belief.v1")
+              .has_value() &&
+          exposure::parse_lattice_fact_family("allocation_engine")
+              .has_value() &&
+          exposure::parse_lattice_fact_family(
+              "kikijyeba.lattice.allocation_engine.v1")
+              .has_value() &&
+          exposure::parse_lattice_fact_family("replay_environment")
+              .has_value() &&
+          exposure::parse_lattice_fact_family(
+              "kikijyeba.lattice.replay_environment.v1")
+              .has_value() &&
+          fact_catalog_summary.family_count == 13 &&
+          fact_catalog_summary.target_kind_family_count == 0 &&
+          fact_catalog_summary.dispatchable_family_count == 0 &&
+          fact_catalog_summary.runtime_executor_family_count == 0 &&
+          fact_catalog_summary.catalog_is_read_only &&
+          fact_catalog_summary.fact_families_are_not_target_kinds &&
+          fact_catalog_summary.non_dispatchable_families_not_reachable &&
+          fact_catalog_summary.issues.empty() &&
+          source_analytics_family != fact_catalog_summary.families.end() &&
+          source_analytics_family->fact_count == 1 &&
+          source_analytics_family->parent_exposure_bound_count == 1 &&
+          !source_analytics_family->target_kind &&
+          !source_analytics_family->dispatchable &&
+          !source_analytics_family->runtime_executor &&
+          !source_analytics_family->readiness_authority &&
+          !source_analytics_family->quality_authority &&
+          !source_analytics_family->performance_authority &&
+          !source_analytics_family->coverage_authority &&
+          !source_analytics_family->leakage_authority &&
+          !source_analytics_family->contract_identity_authority &&
+          target_transform_family != fact_catalog_summary.families.end() &&
+          target_transform_family->fact_count == 1 &&
+          target_transform_family->parent_exposure_bound_count == 1 &&
+          !target_transform_family->target_kind &&
+          !target_transform_family->dispatchable &&
+          !target_transform_family->runtime_executor &&
+          !target_transform_family->readiness_authority &&
+          !target_transform_family->coverage_authority &&
+          !target_transform_family->leakage_authority &&
+          !target_transform_family->contract_identity_authority &&
+          forecast_baseline_family != fact_catalog_summary.families.end() &&
+          forecast_baseline_family->fact_count == 1 &&
+          forecast_baseline_family->parent_exposure_bound_count == 1 &&
+          !forecast_baseline_family->target_kind &&
+          !forecast_baseline_family->dispatchable &&
+          !forecast_baseline_family->runtime_executor &&
+          !forecast_baseline_family->readiness_authority &&
+          !forecast_baseline_family->coverage_authority &&
+          !forecast_baseline_family->leakage_authority &&
+          !forecast_baseline_family->contract_identity_authority &&
+          forecast_eval_family != fact_catalog_summary.families.end() &&
+          forecast_eval_family->fact_count == 1 &&
+          forecast_eval_family->parent_exposure_bound_count == 1 &&
+          !forecast_eval_family->target_kind &&
+          !forecast_eval_family->dispatchable &&
+          !forecast_eval_family->runtime_executor &&
+          !forecast_eval_family->readiness_authority &&
+          !forecast_eval_family->coverage_authority &&
+          !forecast_eval_family->leakage_authority &&
+          !forecast_eval_family->contract_identity_authority &&
+          observer_belief_family != fact_catalog_summary.families.end() &&
+          observer_belief_family->fact_count == 1 &&
+          observer_belief_family->parent_exposure_bound_count == 1 &&
+          !observer_belief_family->target_kind &&
+          !observer_belief_family->dispatchable &&
+          !observer_belief_family->runtime_executor &&
+          !observer_belief_family->readiness_authority &&
+          !observer_belief_family->coverage_authority &&
+          !observer_belief_family->leakage_authority &&
+          !observer_belief_family->contract_identity_authority &&
+          allocation_engine_family != fact_catalog_summary.families.end() &&
+          allocation_engine_family->fact_count == 1 &&
+          allocation_engine_family->parent_exposure_bound_count == 1 &&
+          !allocation_engine_family->target_kind &&
+          !allocation_engine_family->dispatchable &&
+          !allocation_engine_family->runtime_executor &&
+          !allocation_engine_family->readiness_authority &&
+          !allocation_engine_family->coverage_authority &&
+          !allocation_engine_family->leakage_authority &&
+          !allocation_engine_family->contract_identity_authority &&
+          replay_environment_family != fact_catalog_summary.families.end() &&
+          replay_environment_family->fact_count == 0 &&
+          replay_environment_family->parent_exposure_bound_count == 0 &&
+          !replay_environment_family->target_kind &&
+          !replay_environment_family->dispatchable &&
+          !replay_environment_family->runtime_executor &&
+          !replay_environment_family->readiness_authority &&
+          !replay_environment_family->coverage_authority &&
+          !replay_environment_family->leakage_authority &&
+          !replay_environment_family->contract_identity_authority,
+      "fact catalog lists source analytics, target transforms, and forecast "
+      "baselines/evals plus observer/allocation evidence as non-target, "
+      "non-dispatchable fact families while replay remains parked by default");
+  check(fact_integrity_summary.schema ==
+                "kikijyeba.lattice.fact_integrity_summary.v1" &&
+            fact_integrity_summary.inspected_family_count == 13 &&
+            fact_integrity_summary.reported_family_count == 4 &&
+            fact_integrity_summary.relation_declared_count == 7 &&
+            fact_integrity_summary.relation_bound_count == 1 &&
+            fact_integrity_summary.unresolved_relation_count == 6 &&
+            fact_integrity_summary.identity_mismatch_count == 0 &&
+            fact_integrity_summary.digest_mismatch_count == 0 &&
+            fact_integrity_summary.warning_count == 7 &&
+            !fact_integrity_summary.relation_integrity_clean &&
+            fact_integrity_summary.read_only &&
+            !fact_integrity_summary.target_proof &&
+            !fact_integrity_summary.dispatchable &&
+            !fact_integrity_summary.runtime_executor &&
+            fact_integrity_summary.families_with_unresolved_relation.size() ==
+                4 &&
+            std::find(fact_integrity_summary.integrity_flags.begin(),
+                      fact_integrity_summary.integrity_flags.end(),
+                      "unresolved_relation") !=
+                fact_integrity_summary.integrity_flags.end() &&
+            std::find(fact_integrity_summary.issue_codes.begin(),
+                      fact_integrity_summary.issue_codes.end(),
+                      "channel_mdn_job:baseline_fact_digest_not_found") !=
+                fact_integrity_summary.issue_codes.end(),
+        "fact integrity rollup distinguishes declared relation digests from "
+        "resolved identity-compatible bindings across fact families");
+  const auto forecast_eval_only_integrity =
+      exposure::summarize_lattice_fact_integrity(
+          scan.ledger, {exposure::lattice_fact_family_t::forecast_eval});
+  check(forecast_eval_only_integrity.inspected_family_count == 1 &&
+            forecast_eval_only_integrity.reported_family_count == 1 &&
+            forecast_eval_only_integrity.relation_declared_count == 3 &&
+            forecast_eval_only_integrity.relation_bound_count == 0 &&
+            forecast_eval_only_integrity.unresolved_relation_count == 3 &&
+            forecast_eval_only_integrity.warning_count == 3 &&
+            forecast_eval_only_integrity.families_with_unresolved_relation
+                    .size() == 1 &&
+            forecast_eval_only_integrity.families_with_unresolved_relation[0] ==
+                "forecast_eval",
+        "selected-family fact integrity rollup scopes unresolved lineage to "
+        "the requested family");
   const auto runtime_index_cache =
       exposure::build_runtime_index_cache(root, train_context);
   const auto expected_runtime_index_rows =
@@ -738,6 +1664,13 @@ int main() {
       runtime_index_cache.node_exposure_fact_count +
       runtime_index_cache.checkpoint_fact_count +
       runtime_index_cache.source_receipt_fact_count +
+      runtime_index_cache.source_analytics_fact_count +
+      runtime_index_cache.target_transform_fact_count +
+      runtime_index_cache.forecast_baseline_fact_count +
+      runtime_index_cache.forecast_eval_fact_count +
+      runtime_index_cache.observer_belief_fact_count +
+      runtime_index_cache.allocation_engine_fact_count +
+      runtime_index_cache.replay_environment_fact_count +
       runtime_index_cache.selection_signal_fact_count +
       runtime_index_cache.representation_support_fact_count;
   check(runtime_index_cache.schema ==
@@ -750,6 +1683,13 @@ int main() {
             runtime_index_cache.fact_count == 3 &&
             runtime_index_cache.node_exposure_fact_count == 0 &&
             runtime_index_cache.source_receipt_fact_count == 1 &&
+            runtime_index_cache.source_analytics_fact_count == 1 &&
+            runtime_index_cache.target_transform_fact_count == 1 &&
+            runtime_index_cache.forecast_baseline_fact_count == 1 &&
+            runtime_index_cache.forecast_eval_fact_count == 1 &&
+            runtime_index_cache.observer_belief_fact_count == 1 &&
+            runtime_index_cache.allocation_engine_fact_count == 1 &&
+            runtime_index_cache.replay_environment_fact_count == 0 &&
             runtime_index_cache.representation_support_fact_count == 4 &&
             static_cast<std::int64_t>(runtime_index_cache.rows.size()) ==
                 expected_runtime_index_rows &&
@@ -991,6 +1931,2054 @@ int main() {
             scan_receipt_summary.row_index_authority_preserved &&
             scan_receipt_summary.issues.empty(),
         "source receipt summary preserves audit-only V2 receipt facts");
+  const auto scan_source_analytics_summary =
+      exposure::summarize_source_analytics(
+          scan.ledger.facts(), scan.ledger.source_analytics_facts());
+  const auto &rep_source_analytics =
+      scan.ledger.source_analytics_facts().front();
+  check(
+      rep_source_analytics.parent_exposure_fact_digest ==
+              exposure::exposure_fact_digest(rep_fact) &&
+          rep_source_analytics.protocol_id == rep_fact.protocol_id &&
+          rep_source_analytics.graph_order_fingerprint ==
+              rep_fact.graph_order_fingerprint &&
+          rep_source_analytics.source_cursor_token ==
+              rep_fact.source_cursor_token &&
+          rep_source_analytics.source_receipt_fact_count == 1 &&
+          std::abs(rep_source_analytics.entropy - 1.25) < 1e-12 &&
+          std::abs(rep_source_analytics.entropy_rate - 0.50) < 1e-12 &&
+          std::abs(rep_source_analytics.information_density - 0.75) < 1e-12 &&
+          std::abs(rep_source_analytics.compression_ratio - 2.50) < 1e-12 &&
+          std::abs(rep_source_analytics.power_spectrum_entropy - 0.33) <
+              1e-12 &&
+          std::abs(rep_source_analytics.source_volatility - 0.14) < 1e-12 &&
+          std::abs(rep_source_analytics.feature_variance - 0.04) < 1e-12 &&
+          std::abs(rep_source_analytics.sample_validity_fraction - 0.98) <
+              1e-12 &&
+          std::abs(rep_source_analytics.missingness_fraction - 0.02) < 1e-12 &&
+          rep_source_analytics.duplicate_sample_count == 3 &&
+          rep_source_analytics.source_health_level == "warn" &&
+          rep_source_analytics.visibility_only &&
+          !rep_source_analytics.readiness_authority &&
+          !rep_source_analytics.coverage_authority &&
+          !rep_source_analytics.leakage_authority &&
+          !rep_source_analytics.contract_identity_authority &&
+          exposure::source_analytics_fact_digest(rep_source_analytics).size() ==
+              16,
+      "source analytics facts bind source health payloads to exposure identity "
+      "without readiness, coverage, leakage, or contract authority");
+  check(
+      scan_source_analytics_summary.schema ==
+              "kikijyeba.lattice.source_analytics_summary.v1" &&
+          scan_source_analytics_summary.exposure_fact_count == 3 &&
+          scan_source_analytics_summary.source_analytics_fact_count == 1 &&
+          scan_source_analytics_summary.parent_exposure_fact_count == 1 &&
+          scan_source_analytics_summary.source_cursor_bound_count == 1 &&
+          scan_source_analytics_summary.graph_order_bound_count == 1 &&
+          scan_source_analytics_summary.source_receipt_bound_count == 1 &&
+          scan_source_analytics_summary.duplicate_sample_count_total == 3 &&
+          scan_source_analytics_summary.train_source_analytics_fact_count ==
+              1 &&
+          scan_source_analytics_summary
+                  .validation_source_analytics_fact_count == 0 &&
+          scan_source_analytics_summary.source_regime_pair_count == 0 &&
+          scan_source_analytics_summary.source_regime_shift_warning_count ==
+              0 &&
+          scan_source_analytics_summary.entropy.count == 1 &&
+          std::abs(scan_source_analytics_summary.entropy.mean - 1.25) < 1e-12 &&
+          scan_source_analytics_summary.sample_validity_fraction.count == 1 &&
+          std::abs(scan_source_analytics_summary.sample_validity_fraction.mean -
+                   0.98) < 1e-12 &&
+          scan_source_analytics_summary.missingness_fraction.count == 1 &&
+          std::abs(scan_source_analytics_summary.missingness_fraction.mean -
+                   0.02) < 1e-12 &&
+          scan_source_analytics_summary.source_volatility.count == 1 &&
+          std::abs(scan_source_analytics_summary.source_volatility.mean -
+                   0.14) < 1e-12 &&
+          scan_source_analytics_summary.feature_variance.count == 1 &&
+          std::abs(scan_source_analytics_summary.feature_variance.mean - 0.04) <
+              1e-12 &&
+          scan_source_analytics_summary.visibility_only &&
+          !scan_source_analytics_summary.readiness_authority &&
+          !scan_source_analytics_summary.coverage_authority &&
+          !scan_source_analytics_summary.leakage_authority &&
+          !scan_source_analytics_summary.contract_identity_authority &&
+          scan_source_analytics_summary.row_index_authority_preserved &&
+          scan_source_analytics_summary.warning_count == 0 &&
+          scan_source_analytics_summary.issues.empty(),
+      "source analytics summary is a read-only visibility surface and keeps "
+      "row-index intervals as coverage/leakage authority");
+  const auto source_alias_dir = root / "source_analytics_aliases";
+  write_text(source_alias_dir / "source_analytics.fact",
+             "schema=kikijyeba.lattice.source_analytics.v1\n"
+             "source_entropy=4.50\n"
+             "source_entropy_rate=1.10\n"
+             "source_information_density=0.70\n"
+             "source_compression_ratio=2.20\n"
+             "source_power_spectrum_entropy=0.40\n"
+             "volatility_mean=0.20\n"
+             "variance_mean=0.03\n"
+             "sample_valid_fraction=0.88\n"
+             "missing_fraction=0.12\n"
+             "source_duplicate_sample_count=2\n"
+             "source_receipts=edge=BTC/USD@fixture\n"
+             "receipt_fact_count=5\n"
+             "health_level=warn\n"
+             "source_visibility_only=true\n");
+  const auto alias_source_analytics =
+      exposure::make_source_analytics_facts_from_job_dir(source_alias_dir,
+                                                         rep_fact);
+  check(
+      alias_source_analytics.size() == 1 &&
+          alias_source_analytics.front().parent_exposure_fact_digest ==
+              exposure::exposure_fact_digest(rep_fact) &&
+          alias_source_analytics.front().protocol_id == rep_fact.protocol_id &&
+          alias_source_analytics.front().source_cursor_token ==
+              rep_fact.source_cursor_token &&
+          alias_source_analytics.front().source_receipt_fact_count == 5 &&
+          std::abs(alias_source_analytics.front().entropy - 4.50) < 1e-12 &&
+          std::abs(alias_source_analytics.front().entropy_rate - 1.10) <
+              1e-12 &&
+          std::abs(alias_source_analytics.front().information_density - 0.70) <
+              1e-12 &&
+          std::abs(alias_source_analytics.front().compression_ratio - 2.20) <
+              1e-12 &&
+          std::abs(alias_source_analytics.front().power_spectrum_entropy -
+                   0.40) < 1e-12 &&
+          std::abs(alias_source_analytics.front().source_volatility - 0.20) <
+              1e-12 &&
+          std::abs(alias_source_analytics.front().feature_variance - 0.03) <
+              1e-12 &&
+          std::abs(alias_source_analytics.front().sample_validity_fraction -
+                   0.88) < 1e-12 &&
+          std::abs(alias_source_analytics.front().missingness_fraction - 0.12) <
+              1e-12 &&
+          alias_source_analytics.front().duplicate_sample_count == 2 &&
+          alias_source_analytics.front().source_health_level == "warn" &&
+          alias_source_analytics.front().visibility_only &&
+          !alias_source_analytics.front().readiness_authority &&
+          !alias_source_analytics.front().coverage_authority &&
+          !alias_source_analytics.front().leakage_authority &&
+          !alias_source_analytics.front().contract_identity_authority &&
+          exposure::source_analytics_fact_issues(alias_source_analytics.front())
+              .empty(),
+      "source analytics scanner accepts declared writer aliases while "
+      "keeping the fact warning-only and parent-bound");
+  auto validation_source_analytics = rep_source_analytics;
+  validation_source_analytics.parent_exposure_fact_digest =
+      "validation_source_parent_digest";
+  validation_source_analytics.job_id = "validation_source_analytics_job";
+  validation_source_analytics.split_name = "validation_holdout";
+  validation_source_analytics.split_role =
+      exposure::exposure_split_role_t::validation;
+  validation_source_analytics.anchor_range = {.begin = 200, .end = 240};
+  validation_source_analytics.completed_anchor_range =
+      validation_source_analytics.anchor_range;
+  validation_source_analytics.entropy = 2.05;
+  validation_source_analytics.entropy_rate = 0.78;
+  validation_source_analytics.information_density = 0.55;
+  validation_source_analytics.compression_ratio = 3.20;
+  validation_source_analytics.power_spectrum_entropy = 0.56;
+  validation_source_analytics.source_volatility = 0.35;
+  validation_source_analytics.feature_variance = 0.12;
+  validation_source_analytics.sample_validity_fraction = 0.82;
+  validation_source_analytics.missingness_fraction = 0.20;
+  validation_source_analytics.duplicate_sample_count = 7;
+  const auto source_regime_summary = exposure::summarize_source_analytics(
+      {rep_fact}, {rep_source_analytics, validation_source_analytics});
+  check(
+      source_regime_summary.train_source_analytics_fact_count == 1 &&
+          source_regime_summary.validation_source_analytics_fact_count == 1 &&
+          source_regime_summary.source_regime_pair_count == 1 &&
+          source_regime_summary.missingness_fraction_train_validation_delta
+                  .count == 1 &&
+          std::abs(source_regime_summary
+                       .missingness_fraction_train_validation_delta.mean -
+                   0.18) < 1e-12 &&
+          source_regime_summary.sample_validity_fraction_train_validation_delta
+                  .count == 1 &&
+          std::abs(source_regime_summary
+                       .sample_validity_fraction_train_validation_delta.mean -
+                   (-0.16)) < 1e-12 &&
+          source_regime_summary.entropy_train_validation_delta.count == 1 &&
+          std::abs(source_regime_summary.entropy_train_validation_delta.mean -
+                   0.80) < 1e-12 &&
+          source_regime_summary.compression_ratio_train_validation_delta
+                  .count == 1 &&
+          std::abs(source_regime_summary
+                       .compression_ratio_train_validation_delta.mean -
+                   0.70) < 1e-12 &&
+          source_regime_summary.power_spectrum_entropy_train_validation_delta
+                  .count == 1 &&
+          std::abs(source_regime_summary
+                       .power_spectrum_entropy_train_validation_delta.mean -
+                   0.23) < 1e-12 &&
+          source_regime_summary.source_volatility_train_validation_delta
+                  .count == 1 &&
+          std::abs(source_regime_summary
+                       .source_volatility_train_validation_delta.mean -
+                   0.21) < 1e-12 &&
+          source_regime_summary.feature_variance_train_validation_delta.count ==
+              1 &&
+          std::abs(source_regime_summary.feature_variance_train_validation_delta
+                       .mean -
+                   0.08) < 1e-12 &&
+          source_regime_summary.duplicate_sample_count_train_validation_delta
+                  .count == 1 &&
+          std::abs(source_regime_summary
+                       .duplicate_sample_count_train_validation_delta.mean -
+                   4.0) < 1e-12 &&
+          source_regime_summary.anchor_support_count_train_validation_delta
+                  .count == 1 &&
+          std::abs(source_regime_summary
+                       .anchor_support_count_train_validation_delta.mean -
+                   static_cast<double>(
+                       validation_source_analytics.anchor_range.length() -
+                       rep_source_analytics.anchor_range.length())) < 1e-12 &&
+          source_regime_summary
+                  .completed_anchor_support_count_train_validation_delta
+                  .count == 1 &&
+          std::abs(
+              source_regime_summary
+                  .completed_anchor_support_count_train_validation_delta.mean -
+              static_cast<double>(
+                  validation_source_analytics.completed_anchor_range.length() -
+                  rep_source_analytics.completed_anchor_range.length())) <
+              1e-12 &&
+          source_regime_summary.source_regime_shift_warning_count >= 7 &&
+          std::any_of(source_regime_summary.issues.begin(),
+                      source_regime_summary.issues.end(),
+                      [](const auto &issue) {
+                        return issue.find("source_regime_missingness_fraction_"
+                                          "increase_visibility_only") !=
+                               std::string::npos;
+                      }) &&
+          std::any_of(source_regime_summary.issues.begin(),
+                      source_regime_summary.issues.end(),
+                      [](const auto &issue) {
+                        return issue.find(
+                                   "source_regime_sample_validity_fraction_"
+                                   "drop_visibility_only") != std::string::npos;
+                      }) &&
+          std::any_of(source_regime_summary.issues.begin(),
+                      source_regime_summary.issues.end(),
+                      [](const auto &issue) {
+                        return issue.find(
+                                   "source_regime_completed_anchor_support_"
+                                   "drop_visibility_only") != std::string::npos;
+                      }) &&
+          std::any_of(source_regime_summary.issues.begin(),
+                      source_regime_summary.issues.end(),
+                      [](const auto &issue) {
+                        return issue.find("source_regime_volatility_shift_"
+                                          "visibility_only") !=
+                               std::string::npos;
+                      }) &&
+          std::any_of(source_regime_summary.issues.begin(),
+                      source_regime_summary.issues.end(),
+                      [](const auto &issue) {
+                        return issue.find(
+                                   "source_regime_feature_variance_shift_"
+                                   "visibility_only") != std::string::npos;
+                      }),
+      "source analytics summarizes train-validation source regime drift as "
+      "warning-only visibility");
+  auto bad_source_analytics = rep_source_analytics;
+  bad_source_analytics.coverage_authority = true;
+  const auto bad_source_analytics_summary =
+      exposure::summarize_source_analytics({rep_fact}, {bad_source_analytics});
+  check(bad_source_analytics_summary.coverage_authority &&
+            bad_source_analytics_summary.warning_count > 0 &&
+            !bad_source_analytics_summary.issues.empty(),
+        "source analytics authority drift is reported as warnings, not as a "
+        "target-kind expansion");
+  auto malformed_source_analytics = rep_source_analytics;
+  malformed_source_analytics.source_cursor_token.clear();
+  malformed_source_analytics.entropy = std::numeric_limits<double>::quiet_NaN();
+  malformed_source_analytics.entropy_rate =
+      std::numeric_limits<double>::quiet_NaN();
+  malformed_source_analytics.information_density =
+      std::numeric_limits<double>::quiet_NaN();
+  malformed_source_analytics.compression_ratio =
+      std::numeric_limits<double>::quiet_NaN();
+  malformed_source_analytics.power_spectrum_entropy =
+      std::numeric_limits<double>::quiet_NaN();
+  malformed_source_analytics.source_volatility =
+      std::numeric_limits<double>::quiet_NaN();
+  malformed_source_analytics.feature_variance =
+      std::numeric_limits<double>::quiet_NaN();
+  malformed_source_analytics.sample_validity_fraction =
+      std::numeric_limits<double>::quiet_NaN();
+  malformed_source_analytics.missingness_fraction =
+      std::numeric_limits<double>::quiet_NaN();
+  malformed_source_analytics.duplicate_sample_count = 0;
+  malformed_source_analytics.source_health_level.clear();
+  const auto malformed_source_analytics_issues =
+      exposure::source_analytics_fact_issues(malformed_source_analytics);
+  std::vector<std::string> malformed_source_analytics_warnings;
+  exposure::append_source_analytics_scan_warning(
+      malformed_source_analytics, root / "malformed_source_analytics",
+      malformed_source_analytics_warnings);
+  check(contains_text(malformed_source_analytics_issues,
+                      "missing_source_cursor_token") &&
+            contains_text(malformed_source_analytics_issues,
+                          "missing_source_analytics_payload") &&
+            malformed_source_analytics_warnings.size() == 1 &&
+            contains_text(malformed_source_analytics_warnings,
+                          "missing_source_analytics_payload"),
+        "malformed source analytics facts remain visible but warn for missing "
+        "cursor identity and source-health payload");
+  const auto source_payload_dir = make_tmp_dir("source_analytics_payload");
+  write_text(source_payload_dir / "data_analytics.v2.latest.lls",
+             "schema:str = jkimyei.evaluation.data_analytics.v2\n"
+             "sample_count[0,+inf):uint = 50\n"
+             "valid_sample_count[0,+inf):uint = 45\n"
+             "skipped_sample_count[0,+inf):uint = 5\n"
+             "source_entropic_load[0,+inf):double = 3.125000000000\n"
+             "source_volatility[0,+inf):double = 0.125000000000\n");
+  write_text(source_payload_dir / "data_analytics.symbolic.v2.latest.lls",
+             "schema:str = jkimyei.evaluation.data_analytics_symbolic.v2\n"
+             "information_density_mean[0,1]:double = 0.625000000000\n"
+             "compression_ratio_mean[0,+inf):double = 1.750000000000\n"
+             "power_spectrum_entropy_mean[0,1]:double = 0.440000000000\n"
+             "feature_variance_mean[0,+inf):double = 0.062500000000\n");
+  const auto runtime_source_analytics =
+      exposure::make_runtime_source_analytics_fact_from_exposure_fact(
+          rep_fact, source_payload_dir);
+  const auto payload_source_analytics =
+      exposure::make_source_analytics_facts_from_job_dir(source_payload_dir,
+                                                         rep_fact);
+  check(
+      payload_source_analytics.size() == 1 &&
+          std::abs(runtime_source_analytics.entropy - 3.125) < 1e-12 &&
+          std::abs(runtime_source_analytics.information_density - 0.625) <
+              1e-12 &&
+          std::abs(runtime_source_analytics.entropy_rate -
+                   (0.625 * std::log2(3.0))) < 1e-12 &&
+          std::abs(runtime_source_analytics.compression_ratio - 1.75) < 1e-12 &&
+          std::abs(runtime_source_analytics.power_spectrum_entropy - 0.44) <
+              1e-12 &&
+          std::abs(runtime_source_analytics.source_volatility - 0.125) <
+              1e-12 &&
+          std::abs(runtime_source_analytics.feature_variance - 0.0625) <
+              1e-12 &&
+          std::abs(runtime_source_analytics.sample_validity_fraction - 0.90) <
+              1e-12 &&
+          std::abs(runtime_source_analytics.missingness_fraction - 0.10) <
+              1e-12 &&
+          runtime_source_analytics.source_health_level == "warn" &&
+          runtime_source_analytics.visibility_only &&
+          !runtime_source_analytics.readiness_authority &&
+          !runtime_source_analytics.coverage_authority &&
+          !runtime_source_analytics.leakage_authority &&
+          !runtime_source_analytics.contract_identity_authority &&
+          std::abs(payload_source_analytics.front().entropy - 3.125) < 1e-12 &&
+          std::abs(payload_source_analytics.front().information_density -
+                   0.625) < 1e-12 &&
+          std::abs(payload_source_analytics.front().source_volatility - 0.125) <
+              1e-12 &&
+          std::abs(payload_source_analytics.front().feature_variance - 0.0625) <
+              1e-12,
+      "source analytics facts can reuse source data analytics .lls payloads "
+      "while remaining warning-only visibility evidence");
+  const auto scan_target_transform_summary =
+      exposure::summarize_target_transforms(
+          scan.ledger.facts(), scan.ledger.target_transform_facts());
+  const auto &rep_target_transform =
+      scan.ledger.target_transform_facts().front();
+  check(
+      rep_target_transform.parent_exposure_fact_digest ==
+              exposure::exposure_fact_digest(rep_fact) &&
+          rep_target_transform.protocol_id == rep_fact.protocol_id &&
+          rep_target_transform.graph_order_fingerprint ==
+              rep_fact.graph_order_fingerprint &&
+          rep_target_transform.source_cursor_token ==
+              rep_fact.source_cursor_token &&
+          rep_target_transform.target_feature_ids.size() == 2 &&
+          rep_target_transform.target_feature_ids[0] == "ev_close" &&
+          rep_target_transform.target_feature_ids[1] == "ev_return" &&
+          rep_target_transform.horizon == 3 &&
+          rep_target_transform.target_mode == "log_return" &&
+          rep_target_transform.normalization_contract ==
+              "zscore.train_core.v1" &&
+          rep_target_transform.inverse_transform_contract == "exp_return.v1" &&
+          rep_target_transform.units == "log_return" &&
+          rep_target_transform.target_mask_policy_digest == "mask_policy_1" &&
+          rep_target_transform.support_surface_identity == "BTC_ETH_SOL:h3" &&
+          rep_target_transform.support_surface_digest == "support_surface_1" &&
+          rep_target_transform.artifact_contract_prerequisite &&
+          rep_target_transform.visibility_only &&
+          !rep_target_transform.readiness_authority &&
+          !rep_target_transform.quality_authority &&
+          !rep_target_transform.performance_authority &&
+          !rep_target_transform.coverage_authority &&
+          !rep_target_transform.leakage_authority &&
+          !rep_target_transform.contract_identity_authority &&
+          exposure::target_transform_fact_digest(rep_target_transform).size() ==
+              16,
+      "target transform facts bind interpretable target contracts to exposure "
+      "identity without becoming quality or readiness authority");
+  check(
+      scan_target_transform_summary.schema ==
+              "kikijyeba.lattice.target_transform_summary.v1" &&
+          scan_target_transform_summary.exposure_fact_count == 3 &&
+          scan_target_transform_summary.target_transform_fact_count == 1 &&
+          scan_target_transform_summary.parent_exposure_fact_count == 1 &&
+          scan_target_transform_summary.target_feature_id_count == 2 &&
+          scan_target_transform_summary.unique_target_feature_id_count == 2 &&
+          scan_target_transform_summary.horizon_bound_count == 1 &&
+          scan_target_transform_summary.missing_units_count == 0 &&
+          scan_target_transform_summary.missing_mask_policy_count == 0 &&
+          scan_target_transform_summary.missing_normalization_contract_count ==
+              0 &&
+          scan_target_transform_summary
+                  .missing_inverse_transform_contract_count == 0 &&
+          scan_target_transform_summary.artifact_contract_prerequisite_count ==
+              1 &&
+          scan_target_transform_summary.artifact_contract_prerequisite &&
+          scan_target_transform_summary.visibility_only &&
+          !scan_target_transform_summary.readiness_authority &&
+          !scan_target_transform_summary.quality_authority &&
+          !scan_target_transform_summary.performance_authority &&
+          !scan_target_transform_summary.coverage_authority &&
+          !scan_target_transform_summary.leakage_authority &&
+          !scan_target_transform_summary.contract_identity_authority &&
+          scan_target_transform_summary.warning_count == 0 &&
+          scan_target_transform_summary.issues.empty(),
+      "target transform summary is an artifact-contract surface, not a "
+      "forecast quality gate");
+  auto bad_target_transform = rep_target_transform;
+  bad_target_transform.quality_authority = true;
+  const auto bad_target_transform_summary =
+      exposure::summarize_target_transforms({rep_fact}, {bad_target_transform});
+  check(bad_target_transform_summary.quality_authority &&
+            bad_target_transform_summary.warning_count > 0 &&
+            !bad_target_transform_summary.issues.empty(),
+        "target transform authority drift is reported as warnings, not as a "
+        "target-kind expansion");
+  auto malformed_target_transform = rep_target_transform;
+  malformed_target_transform.target_feature_ids.clear();
+  malformed_target_transform.horizon = 0;
+  malformed_target_transform.normalization_contract.clear();
+  malformed_target_transform.inverse_transform_contract.clear();
+  malformed_target_transform.units.clear();
+  malformed_target_transform.target_mask_policy_digest.clear();
+  const auto malformed_target_transform_issues =
+      exposure::target_transform_fact_issues(malformed_target_transform);
+  std::vector<std::string> malformed_target_transform_warnings;
+  exposure::append_target_transform_scan_warning(
+      malformed_target_transform, root / "malformed_target_transform",
+      malformed_target_transform_warnings);
+  check(
+      contains_text(malformed_target_transform_issues,
+                    "missing_target_feature_ids") &&
+          contains_text(malformed_target_transform_issues, "missing_horizon") &&
+          contains_text(malformed_target_transform_issues,
+                        "missing_normalization_contract") &&
+          contains_text(malformed_target_transform_issues,
+                        "missing_inverse_transform_contract") &&
+          contains_text(malformed_target_transform_issues, "missing_units") &&
+          contains_text(malformed_target_transform_issues,
+                        "missing_target_mask_policy_digest") &&
+          malformed_target_transform_warnings.size() == 1 &&
+          contains_text(malformed_target_transform_warnings,
+                        "missing_target_mask_policy_digest"),
+      "malformed target transform contracts remain visible but warn for "
+      "missing interpretation fields");
+  const auto scan_forecast_baseline_summary =
+      exposure::summarize_forecast_baselines(
+          scan.ledger.facts(), scan.ledger.forecast_baseline_facts(),
+          scan.ledger.target_transform_facts());
+  const auto &rep_forecast_baseline =
+      scan.ledger.forecast_baseline_facts().front();
+  check(
+      rep_forecast_baseline.parent_exposure_fact_digest ==
+              exposure::exposure_fact_digest(rep_fact) &&
+          rep_forecast_baseline.protocol_id == rep_fact.protocol_id &&
+          rep_forecast_baseline.graph_order_fingerprint ==
+              rep_fact.graph_order_fingerprint &&
+          rep_forecast_baseline.source_cursor_token ==
+              rep_fact.source_cursor_token &&
+          rep_forecast_baseline.target_feature_ids.size() == 2 &&
+          rep_forecast_baseline.target_feature_ids[0] == "ev_close" &&
+          rep_forecast_baseline.target_feature_ids[1] == "ev_return" &&
+          rep_forecast_baseline.horizon == 3 &&
+          rep_forecast_baseline.baseline_kind == "previous_value" &&
+          rep_forecast_baseline.baseline_parameters == "lag=1" &&
+          rep_forecast_baseline.target_transform_fact_digest ==
+              "target_transform_digest_1" &&
+          rep_forecast_baseline.support_count == 42 &&
+          rep_forecast_baseline.valid_count == 40 &&
+          rep_forecast_baseline.missing_count == 2 &&
+          rep_forecast_baseline.metric_status == "computed" &&
+          exposure::forecast_baseline_finite_metric_count(
+              rep_forecast_baseline) == 5 &&
+          std::abs(rep_forecast_baseline.baseline_mean_nll - 1.50) < 1e-12 &&
+          std::abs(rep_forecast_baseline.baseline_ev_mae - 0.20) < 1e-12 &&
+          std::abs(rep_forecast_baseline.baseline_ev_rmse - 0.30) < 1e-12 &&
+          std::abs(rep_forecast_baseline.baseline_signed_error + 0.01) <
+              1e-12 &&
+          std::abs(rep_forecast_baseline.baseline_directional_accuracy - 0.55) <
+              1e-12 &&
+          rep_forecast_baseline.evidence_prerequisite &&
+          rep_forecast_baseline.visibility_only &&
+          !rep_forecast_baseline.readiness_authority &&
+          !rep_forecast_baseline.quality_authority &&
+          !rep_forecast_baseline.performance_authority &&
+          !rep_forecast_baseline.checkpoint_selector &&
+          !rep_forecast_baseline.coverage_authority &&
+          !rep_forecast_baseline.leakage_authority &&
+          !rep_forecast_baseline.contract_identity_authority &&
+          exposure::forecast_baseline_fact_digest(rep_forecast_baseline)
+                  .size() == 16,
+      "forecast baseline facts bind deterministic baseline metrics to exposure "
+      "identity without becoming quality, readiness, or checkpoint-selection "
+      "authority");
+  check(
+      scan_forecast_baseline_summary.schema ==
+              "kikijyeba.lattice.forecast_baseline_summary.v1" &&
+          scan_forecast_baseline_summary.exposure_fact_count == 3 &&
+          scan_forecast_baseline_summary.forecast_baseline_fact_count == 1 &&
+          scan_forecast_baseline_summary.parent_exposure_fact_count == 1 &&
+          scan_forecast_baseline_summary.target_feature_id_count == 2 &&
+          scan_forecast_baseline_summary.unique_target_feature_id_count == 2 &&
+          scan_forecast_baseline_summary.horizon_bound_count == 1 &&
+          scan_forecast_baseline_summary.target_transform_declared_count == 1 &&
+          scan_forecast_baseline_summary.target_transform_bound_count == 0 &&
+          scan_forecast_baseline_summary.unresolved_target_transform_count ==
+              1 &&
+          scan_forecast_baseline_summary
+                  .target_transform_identity_mismatch_count == 0 &&
+          scan_forecast_baseline_summary.support_count_total == 42 &&
+          scan_forecast_baseline_summary.valid_count_total == 40 &&
+          scan_forecast_baseline_summary.missing_count_total == 2 &&
+          scan_forecast_baseline_summary.unique_baseline_kind_count == 1 &&
+          scan_forecast_baseline_summary.previous_value_baseline_count == 1 &&
+          scan_forecast_baseline_summary.zero_return_baseline_count == 0 &&
+          scan_forecast_baseline_summary.moving_average_baseline_count == 0 &&
+          scan_forecast_baseline_summary.last_valid_channel_baseline_count ==
+              0 &&
+          scan_forecast_baseline_summary.unknown_baseline_kind_count == 0 &&
+          scan_forecast_baseline_summary.missing_baseline_kind_count == 0 &&
+          scan_forecast_baseline_summary.computed_metric_fact_count == 1 &&
+          scan_forecast_baseline_summary.partial_metric_fact_count == 0 &&
+          scan_forecast_baseline_summary.deferred_metric_fact_count == 0 &&
+          scan_forecast_baseline_summary.missing_metric_status_count == 0 &&
+          scan_forecast_baseline_summary.metric_status_mismatch_count == 0 &&
+          scan_forecast_baseline_summary.computed_metric_value_count == 5 &&
+          scan_forecast_baseline_summary.missing_target_transform_count == 0 &&
+          scan_forecast_baseline_summary.evidence_prerequisite_count == 1 &&
+          scan_forecast_baseline_summary.baseline_ev_mae.count == 1 &&
+          std::abs(scan_forecast_baseline_summary.baseline_ev_mae.mean - 0.20) <
+              1e-12 &&
+          scan_forecast_baseline_summary.baseline_directional_accuracy.count ==
+              1 &&
+          std::abs(scan_forecast_baseline_summary.baseline_directional_accuracy
+                       .mean -
+                   0.55) < 1e-12 &&
+          scan_forecast_baseline_summary.evidence_prerequisite &&
+          scan_forecast_baseline_summary.visibility_only &&
+          !scan_forecast_baseline_summary.readiness_authority &&
+          !scan_forecast_baseline_summary.quality_authority &&
+          !scan_forecast_baseline_summary.performance_authority &&
+          !scan_forecast_baseline_summary.checkpoint_selector &&
+          !scan_forecast_baseline_summary.coverage_authority &&
+          !scan_forecast_baseline_summary.leakage_authority &&
+          !scan_forecast_baseline_summary.contract_identity_authority &&
+          scan_forecast_baseline_summary.warning_count > 0 &&
+          !scan_forecast_baseline_summary.issues.empty(),
+      "forecast baseline summary is an evidence prerequisite for later "
+      "forecast-evaluation facts and reports unresolved transform lineage, not "
+      "a forecast quality gate");
+  auto resolved_forecast_baseline = rep_forecast_baseline;
+  resolved_forecast_baseline.target_transform_fact_digest =
+      exposure::target_transform_fact_digest(rep_target_transform);
+  const auto resolved_forecast_baseline_summary =
+      exposure::summarize_forecast_baselines(
+          {rep_fact}, {resolved_forecast_baseline}, {rep_target_transform});
+  check(resolved_forecast_baseline_summary.target_transform_declared_count ==
+                1 &&
+            resolved_forecast_baseline_summary.target_transform_bound_count ==
+                1 &&
+            resolved_forecast_baseline_summary
+                    .unresolved_target_transform_count == 0 &&
+            resolved_forecast_baseline_summary
+                    .target_transform_identity_mismatch_count == 0 &&
+            resolved_forecast_baseline_summary.warning_count == 0 &&
+            resolved_forecast_baseline_summary.issues.empty(),
+        "forecast baseline summaries only mark target transforms bound after "
+        "the digest resolves under the same identity");
+  auto bad_forecast_baseline = rep_forecast_baseline;
+  bad_forecast_baseline.checkpoint_selector = true;
+  const auto bad_forecast_baseline_summary =
+      exposure::summarize_forecast_baselines({rep_fact},
+                                             {bad_forecast_baseline});
+  check(bad_forecast_baseline_summary.checkpoint_selector &&
+            bad_forecast_baseline_summary.warning_count > 0 &&
+            !bad_forecast_baseline_summary.issues.empty(),
+        "forecast baseline authority drift is reported as warnings, not as a "
+        "best-model selector");
+  auto malformed_forecast_baseline = rep_forecast_baseline;
+  malformed_forecast_baseline.baseline_kind.clear();
+  malformed_forecast_baseline.target_transform_fact_digest.clear();
+  malformed_forecast_baseline.support_count = 0;
+  malformed_forecast_baseline.valid_count = 0;
+  malformed_forecast_baseline.metric_status = "computed";
+  malformed_forecast_baseline.baseline_directional_accuracy =
+      std::numeric_limits<double>::quiet_NaN();
+  const auto malformed_forecast_baseline_issues =
+      exposure::forecast_baseline_fact_issues(malformed_forecast_baseline);
+  std::vector<std::string> malformed_forecast_baseline_warnings;
+  exposure::append_forecast_baseline_scan_warning(
+      malformed_forecast_baseline, root / "malformed_forecast_baseline",
+      malformed_forecast_baseline_warnings);
+  check(contains_text(malformed_forecast_baseline_issues,
+                      "missing_baseline_kind") &&
+            contains_text(malformed_forecast_baseline_issues,
+                          "missing_target_transform_fact_digest") &&
+            contains_text(malformed_forecast_baseline_issues,
+                          "missing_support_count") &&
+            contains_text(malformed_forecast_baseline_issues,
+                          "computed_metric_status_without_complete_metrics") &&
+            malformed_forecast_baseline_warnings.size() == 1 &&
+            contains_text(malformed_forecast_baseline_warnings,
+                          "missing_target_transform_fact_digest"),
+        "malformed forecast baseline facts remain visible but warn for "
+        "missing transform, support, kind, and metric-status consistency");
+  const auto scan_forecast_eval_summary = exposure::summarize_forecast_evals(
+      scan.ledger.facts(), scan.ledger.forecast_eval_facts(),
+      scan.ledger.target_transform_facts(),
+      scan.ledger.forecast_baseline_facts(),
+      scan.ledger.selection_signal_facts());
+  const auto &mdn_forecast_eval = scan.ledger.forecast_eval_facts().front();
+  check(
+      mdn_forecast_eval.parent_exposure_fact_digest ==
+              exposure::exposure_fact_digest(channel_mdn_fact) &&
+          mdn_forecast_eval.protocol_id == channel_mdn_fact.protocol_id &&
+          mdn_forecast_eval.graph_order_fingerprint ==
+              channel_mdn_fact.graph_order_fingerprint &&
+          mdn_forecast_eval.source_cursor_token ==
+              channel_mdn_fact.source_cursor_token &&
+          mdn_forecast_eval.target_feature_ids.size() == 2 &&
+          mdn_forecast_eval.target_feature_ids[0] == "ev_close" &&
+          mdn_forecast_eval.target_feature_ids[1] == "ev_return" &&
+          mdn_forecast_eval.horizon == 3 &&
+          mdn_forecast_eval.support_count == 42 &&
+          mdn_forecast_eval.valid_count == 40 &&
+          mdn_forecast_eval.missing_count == 2 &&
+          mdn_forecast_eval.weakest_support_rows == 7 &&
+          std::abs(mdn_forecast_eval.mean_nll - 1.10) < 1e-12 &&
+          mdn_forecast_eval.mean_nll_per_channel.size() == 2 &&
+          std::abs(mdn_forecast_eval.mean_nll_per_channel[1] - 1.20) < 1e-12 &&
+          mdn_forecast_eval.mean_nll_per_target_feature.size() == 2 &&
+          std::abs(mdn_forecast_eval.mean_nll_per_target_feature[0] - 0.90) <
+              1e-12 &&
+          mdn_forecast_eval.mean_nll_per_channel_target_feature.size() == 4 &&
+          std::abs(mdn_forecast_eval.mean_nll_per_channel_target_feature[3] -
+                   1.40) < 1e-12 &&
+          mdn_forecast_eval.mean_nll_per_horizon.size() == 1 &&
+          std::abs(mdn_forecast_eval.mean_nll_per_horizon[0] - 1.10) < 1e-12 &&
+          mdn_forecast_eval.valid_target_count_per_channel.size() == 2 &&
+          mdn_forecast_eval.valid_target_count_per_channel[0] == 20 &&
+          mdn_forecast_eval.valid_target_count_per_target_feature.size() == 2 &&
+          mdn_forecast_eval.valid_target_count_per_target_feature[1] == 21 &&
+          mdn_forecast_eval.valid_target_count_per_channel_target_feature
+                  .size() == 4 &&
+          mdn_forecast_eval.valid_target_count_per_channel_target_feature[2] ==
+              10 &&
+          mdn_forecast_eval.valid_target_count_per_horizon.size() == 1 &&
+          mdn_forecast_eval.valid_target_count_per_horizon[0] == 40 &&
+          std::abs(mdn_forecast_eval.ev_mae - 0.16) < 1e-12 &&
+          std::abs(mdn_forecast_eval.ev_rmse - 0.24) < 1e-12 &&
+          std::abs(mdn_forecast_eval.signed_error + 0.02) < 1e-12 &&
+          std::abs(mdn_forecast_eval.directional_accuracy - 0.62) < 1e-12 &&
+          std::abs(mdn_forecast_eval.calibration_coverage - 0.91) < 1e-12 &&
+          mdn_forecast_eval.pit_summary == "uniform-ish" &&
+          mdn_forecast_eval.sigma_scale_sanity == "ok" &&
+          mdn_forecast_eval.support_by_node == "BTC:20,ETH:13,SOL:7" &&
+          mdn_forecast_eval.forecast_artifact_digest == "forecast_artifact_1" &&
+          mdn_forecast_eval.evaluated_representation_checkpoint_digest ==
+              "rep_checkpoint_1" &&
+          mdn_forecast_eval.evaluated_mdn_checkpoint_digest ==
+              "mdn_checkpoint_1" &&
+          mdn_forecast_eval.target_transform_fact_digest ==
+              "target_transform_digest_1" &&
+          mdn_forecast_eval.baseline_fact_digests.size() == 1 &&
+          mdn_forecast_eval.baseline_fact_digests[0] ==
+              "forecast_baseline_digest_1" &&
+          mdn_forecast_eval.selection_signal_fact_digests.size() == 1 &&
+          mdn_forecast_eval.selection_signal_fact_digests[0] ==
+              "selection_signal_digest_1" &&
+          mdn_forecast_eval.artifact_evidence &&
+          mdn_forecast_eval.visibility_only &&
+          !mdn_forecast_eval.model_state_mutation &&
+          !mdn_forecast_eval.readiness_authority &&
+          !mdn_forecast_eval.quality_authority &&
+          !mdn_forecast_eval.performance_authority &&
+          !mdn_forecast_eval.checkpoint_selector &&
+          !mdn_forecast_eval.coverage_authority &&
+          !mdn_forecast_eval.leakage_authority &&
+          !mdn_forecast_eval.contract_identity_authority &&
+          exposure::forecast_eval_fact_digest(mdn_forecast_eval).size() == 16,
+      "forecast eval facts bind evaluation metrics, checkpoint lineage, target "
+      "transform, and baseline digests to exposure identity without becoming a "
+      "quality gate");
+  check(
+      scan_forecast_eval_summary.schema ==
+              "kikijyeba.lattice.forecast_eval_summary.v1" &&
+          scan_forecast_eval_summary.exposure_fact_count == 3 &&
+          scan_forecast_eval_summary.forecast_eval_fact_count == 1 &&
+          scan_forecast_eval_summary.parent_exposure_fact_count == 1 &&
+          scan_forecast_eval_summary.target_feature_id_count == 2 &&
+          scan_forecast_eval_summary.unique_target_feature_id_count == 2 &&
+          scan_forecast_eval_summary.horizon_bound_count == 1 &&
+          scan_forecast_eval_summary.forecast_artifact_bound_count == 1 &&
+          scan_forecast_eval_summary.representation_checkpoint_bound_count ==
+              1 &&
+          scan_forecast_eval_summary.mdn_checkpoint_bound_count == 1 &&
+          scan_forecast_eval_summary.target_transform_declared_count == 1 &&
+          scan_forecast_eval_summary.target_transform_bound_count == 0 &&
+          scan_forecast_eval_summary.unresolved_target_transform_count == 1 &&
+          scan_forecast_eval_summary.target_transform_identity_mismatch_count ==
+              0 &&
+          scan_forecast_eval_summary.baseline_declared_count == 1 &&
+          scan_forecast_eval_summary.baseline_bound_count == 0 &&
+          scan_forecast_eval_summary.unresolved_baseline_count == 1 &&
+          scan_forecast_eval_summary.baseline_identity_mismatch_count == 0 &&
+          scan_forecast_eval_summary.selection_signal_declared_count == 1 &&
+          scan_forecast_eval_summary.selection_signal_audit_count == 0 &&
+          scan_forecast_eval_summary.unresolved_selection_signal_count == 1 &&
+          scan_forecast_eval_summary.selection_signal_identity_mismatch_count ==
+              0 &&
+          scan_forecast_eval_summary.support_count_total == 42 &&
+          scan_forecast_eval_summary.valid_count_total == 40 &&
+          scan_forecast_eval_summary.missing_count_total == 2 &&
+          scan_forecast_eval_summary.nll_surface_bound_count == 1 &&
+          scan_forecast_eval_summary.channel_support_surface_bound_count == 1 &&
+          scan_forecast_eval_summary
+                  .target_feature_support_surface_bound_count == 1 &&
+          scan_forecast_eval_summary
+                  .channel_target_feature_support_surface_bound_count == 1 &&
+          scan_forecast_eval_summary.horizon_support_surface_bound_count == 1 &&
+          scan_forecast_eval_summary.horizon_nll_surface_bound_count == 1 &&
+          scan_forecast_eval_summary.calibration_coverage_bound_count == 1 &&
+          scan_forecast_eval_summary.missing_calibration_coverage_count == 0 &&
+          scan_forecast_eval_summary.pit_summary_bound_count == 1 &&
+          scan_forecast_eval_summary.missing_pit_summary_count == 0 &&
+          scan_forecast_eval_summary.sigma_scale_sanity_bound_count == 1 &&
+          scan_forecast_eval_summary.missing_sigma_scale_sanity_count == 0 &&
+          scan_forecast_eval_summary.calibration_visibility_warning_count ==
+              0 &&
+          scan_forecast_eval_summary.missing_forecast_artifact_count == 0 &&
+          scan_forecast_eval_summary.missing_representation_checkpoint_count ==
+              0 &&
+          scan_forecast_eval_summary.missing_mdn_checkpoint_count == 0 &&
+          scan_forecast_eval_summary.missing_target_transform_count == 0 &&
+          scan_forecast_eval_summary.missing_baseline_count == 0 &&
+          scan_forecast_eval_summary.model_state_mutation_count == 0 &&
+          scan_forecast_eval_summary.artifact_evidence_count == 1 &&
+          scan_forecast_eval_summary.mean_nll.count == 1 &&
+          std::abs(scan_forecast_eval_summary.mean_nll.mean - 1.10) < 1e-12 &&
+          scan_forecast_eval_summary.ev_mae.count == 1 &&
+          std::abs(scan_forecast_eval_summary.ev_mae.mean - 0.16) < 1e-12 &&
+          scan_forecast_eval_summary.directional_accuracy.count == 1 &&
+          std::abs(scan_forecast_eval_summary.directional_accuracy.mean -
+                   0.62) < 1e-12 &&
+          scan_forecast_eval_summary.calibration_coverage.count == 1 &&
+          std::abs(scan_forecast_eval_summary.calibration_coverage.mean -
+                   0.91) < 1e-12 &&
+          scan_forecast_eval_summary.skill_vs_baseline_ev_rmse.count == 0 &&
+          scan_forecast_eval_summary.artifact_evidence &&
+          scan_forecast_eval_summary.visibility_only &&
+          !scan_forecast_eval_summary.model_state_mutation &&
+          !scan_forecast_eval_summary.readiness_authority &&
+          !scan_forecast_eval_summary.quality_authority &&
+          !scan_forecast_eval_summary.performance_authority &&
+          !scan_forecast_eval_summary.checkpoint_selector &&
+          !scan_forecast_eval_summary.coverage_authority &&
+          !scan_forecast_eval_summary.leakage_authority &&
+          !scan_forecast_eval_summary.contract_identity_authority &&
+          scan_forecast_eval_summary.warning_count > 0 &&
+          !scan_forecast_eval_summary.issues.empty(),
+      "forecast eval summary exposes model metrics and lineage as artifact "
+      "evidence, including unresolved relation digests, without accepting "
+      "forecast quality");
+  auto channel_target_transform = rep_target_transform;
+  exposure::populate_artifact_fact_identity(channel_target_transform,
+                                            channel_mdn_fact);
+  auto channel_forecast_baseline = rep_forecast_baseline;
+  exposure::populate_artifact_fact_identity(channel_forecast_baseline,
+                                            channel_mdn_fact);
+  channel_forecast_baseline.target_transform_fact_digest =
+      exposure::target_transform_fact_digest(channel_target_transform);
+  exposure::lattice_selection_signal_fact_t channel_selection_signal{};
+  channel_selection_signal.parent_exposure_fact_digest =
+      exposure::exposure_fact_digest(channel_mdn_fact);
+  channel_selection_signal.contract_fingerprint =
+      channel_mdn_fact.contract_fingerprint;
+  channel_selection_signal.protocol_id = channel_mdn_fact.protocol_id;
+  channel_selection_signal.graph_order_fingerprint =
+      channel_mdn_fact.graph_order_fingerprint;
+  channel_selection_signal.source_cursor_token =
+      channel_mdn_fact.source_cursor_token;
+  channel_selection_signal.split_policy_fingerprint =
+      channel_mdn_fact.split_policy_fingerprint;
+  channel_selection_signal.component_assembly_fingerprint =
+      channel_mdn_fact.component_assembly_fingerprint;
+  channel_selection_signal.target_component_family_id =
+      channel_mdn_fact.target_component_family_id;
+  channel_selection_signal.job_id = channel_mdn_fact.job_id;
+  channel_selection_signal.wave_id = channel_mdn_fact.wave_id;
+  channel_selection_signal.split_name = channel_mdn_fact.split_name;
+  channel_selection_signal.split_role = channel_mdn_fact.split_role;
+  channel_selection_signal.anchor_range = channel_mdn_fact.anchor_range;
+  channel_selection_signal.completed_anchor_range =
+      channel_mdn_fact.completed_anchor_range;
+  channel_selection_signal.selector_id = "mdn_selection_signal";
+  channel_selection_signal.selector_split = channel_mdn_fact.split_name;
+  channel_selection_signal.selector_metric =
+      "runtime_reported_checkpoint_metric";
+  channel_selection_signal.tie_policy = "runtime_reported_tie_policy";
+  channel_selection_signal.selected_checkpoint_source = "runtime_report";
+  channel_selection_signal.selected_checkpoint = "/tmp/mdn.checkpoint";
+  channel_selection_signal.candidate_checkpoints = {"/tmp/mdn.checkpoint"};
+  channel_selection_signal.candidate_checkpoint_count = 1;
+  channel_selection_signal.candidate_checkpoint_digest =
+      exposure::selection_signal_candidate_checkpoint_digest(
+          channel_selection_signal.candidate_checkpoints);
+  channel_selection_signal.selection_footprint = channel_mdn_fact.anchor_range;
+  auto resolved_forecast_eval = mdn_forecast_eval;
+  resolved_forecast_eval.target_transform_fact_digest =
+      exposure::target_transform_fact_digest(channel_target_transform);
+  resolved_forecast_eval.baseline_fact_digests = {
+      exposure::forecast_baseline_fact_digest(channel_forecast_baseline)};
+  resolved_forecast_eval.selection_signal_fact_digests = {
+      exposure::selection_signal_fact_digest(channel_selection_signal)};
+  const auto resolved_forecast_eval_summary =
+      exposure::summarize_forecast_evals(
+          {channel_mdn_fact}, {resolved_forecast_eval},
+          {channel_target_transform}, {channel_forecast_baseline},
+          {channel_selection_signal});
+  check(
+      resolved_forecast_eval_summary.target_transform_bound_count == 1 &&
+          resolved_forecast_eval_summary.baseline_bound_count == 1 &&
+          resolved_forecast_eval_summary.selection_signal_audit_count == 1 &&
+          resolved_forecast_eval_summary.unresolved_target_transform_count ==
+              0 &&
+          resolved_forecast_eval_summary.unresolved_baseline_count == 0 &&
+          resolved_forecast_eval_summary.unresolved_selection_signal_count ==
+              0 &&
+          resolved_forecast_eval_summary.skill_vs_baseline_mean_nll.count ==
+              1 &&
+          std::abs(
+              resolved_forecast_eval_summary.skill_vs_baseline_mean_nll.mean -
+              ((1.50 - 1.10) / 1.50)) < 1e-12 &&
+          resolved_forecast_eval_summary.skill_vs_baseline_ev_rmse.count == 1 &&
+          std::abs(
+              resolved_forecast_eval_summary.skill_vs_baseline_ev_rmse.mean -
+              0.20) < 1e-12 &&
+          resolved_forecast_eval_summary.directional_accuracy_delta_vs_baseline
+                  .count == 1 &&
+          std::abs(resolved_forecast_eval_summary
+                       .directional_accuracy_delta_vs_baseline.mean -
+                   0.07) < 1e-12 &&
+          resolved_forecast_eval_summary.calibration_visibility_warning_count ==
+              0 &&
+          resolved_forecast_eval_summary.warning_count == 0 &&
+          resolved_forecast_eval_summary.issues.empty(),
+      "forecast eval summaries only mark transform, baseline, and selection "
+      "signal lineage bound when each digest resolves under the same "
+      "identity");
+  auto weak_calibration_forecast_eval = resolved_forecast_eval;
+  weak_calibration_forecast_eval.job_id = "weak_calibration_forecast_eval";
+  weak_calibration_forecast_eval.calibration_coverage = 0.62;
+  weak_calibration_forecast_eval.pit_summary.clear();
+  weak_calibration_forecast_eval.sigma_scale_sanity =
+      "sigma_summary_unavailable";
+  const auto weak_calibration_summary = exposure::summarize_forecast_evals(
+      {channel_mdn_fact}, {weak_calibration_forecast_eval},
+      {channel_target_transform}, {channel_forecast_baseline},
+      {channel_selection_signal});
+  check(
+      weak_calibration_summary.calibration_coverage_bound_count == 1 &&
+          weak_calibration_summary.missing_calibration_coverage_count == 0 &&
+          weak_calibration_summary.pit_summary_bound_count == 0 &&
+          weak_calibration_summary.missing_pit_summary_count == 1 &&
+          weak_calibration_summary.sigma_scale_sanity_bound_count == 0 &&
+          weak_calibration_summary.missing_sigma_scale_sanity_count == 1 &&
+          weak_calibration_summary.calibration_visibility_warning_count == 3 &&
+          weak_calibration_summary.warning_count == 3 &&
+          std::any_of(weak_calibration_summary.issues.begin(),
+                      weak_calibration_summary.issues.end(),
+                      [](const auto &issue) {
+                        return issue.find(
+                                   "forecast_eval_calibration_coverage_low_"
+                                   "overconfidence_visibility_only") !=
+                               std::string::npos;
+                      }) &&
+          std::any_of(weak_calibration_summary.issues.begin(),
+                      weak_calibration_summary.issues.end(),
+                      [](const auto &issue) {
+                        return issue.find("forecast_eval_missing_pit_summary_"
+                                          "visibility_only") !=
+                               std::string::npos;
+                      }) &&
+          std::any_of(weak_calibration_summary.issues.begin(),
+                      weak_calibration_summary.issues.end(),
+                      [](const auto &issue) {
+                        return issue.find(
+                                   "forecast_eval_missing_sigma_scale_sanity_"
+                                   "visibility_only") != std::string::npos;
+                      }) &&
+          weak_calibration_summary.artifact_evidence &&
+          weak_calibration_summary.visibility_only &&
+          !weak_calibration_summary.quality_authority &&
+          !weak_calibration_summary.performance_authority,
+      "forecast eval calibration, PIT, and sigma diagnostics are warning-only "
+      "visibility rather than forecast-quality acceptance");
+  const auto channel_selection_event_digest =
+      exposure::selection_signal_event_digest(channel_selection_signal);
+  auto channel_selection_with_parent_eval = channel_selection_signal;
+  channel_selection_with_parent_eval.parent_evaluation_fact_digests = {
+      exposure::forecast_eval_fact_digest(resolved_forecast_eval)};
+  check(exposure::selection_signal_fact_digest(
+            channel_selection_with_parent_eval) ==
+                channel_selection_event_digest &&
+            exposure::selection_signal_provenance_digest(
+                channel_selection_with_parent_eval) !=
+                channel_selection_event_digest,
+        "selection_signal event digests stay stable when parent evaluation "
+        "digests enrich the provenance surface");
+  exposure::lattice_exposure_ledger_t selection_eval_link_ledger{};
+  selection_eval_link_ledger.add_selection_signal(channel_selection_signal);
+  selection_eval_link_ledger.add_forecast_eval(resolved_forecast_eval);
+  const auto &linked_selection_signal =
+      selection_eval_link_ledger.selection_signal_facts().front();
+  const auto linked_selection_summary = exposure::summarize_selection_signals(
+      {channel_mdn_fact}, selection_eval_link_ledger.selection_signal_facts(),
+      selection_eval_link_ledger.forecast_eval_facts());
+  check(linked_selection_signal.parent_evaluation_fact_digests.size() == 1 &&
+            linked_selection_signal.parent_evaluation_fact_digests.front() ==
+                exposure::forecast_eval_fact_digest(resolved_forecast_eval) &&
+            exposure::selection_signal_fact_digest(linked_selection_signal) ==
+                channel_selection_event_digest &&
+            linked_selection_summary.parent_evaluation_fact_bound_count == 1 &&
+            linked_selection_summary.parent_evaluation_fact_declared_count ==
+                1 &&
+            linked_selection_summary.unresolved_parent_evaluation_fact_count ==
+                0 &&
+            linked_selection_summary
+                    .parent_evaluation_fact_identity_mismatch_count == 0 &&
+            linked_selection_summary
+                    .parent_evaluation_back_reference_mismatch_count == 0 &&
+            linked_selection_summary.issues.empty(),
+        "selection_signal facts bind parent evaluation digests after forecast "
+        "eval insertion without changing event identity");
+  exposure::lattice_exposure_ledger_t reverse_selection_eval_link_ledger{};
+  reverse_selection_eval_link_ledger.add_forecast_eval(resolved_forecast_eval);
+  reverse_selection_eval_link_ledger.add_selection_signal(
+      channel_selection_signal);
+  check(reverse_selection_eval_link_ledger.selection_signal_facts()
+                    .front()
+                    .parent_evaluation_fact_digests.size() == 1 &&
+            reverse_selection_eval_link_ledger.selection_signal_facts()
+                    .front()
+                    .parent_evaluation_fact_digests.front() ==
+                exposure::forecast_eval_fact_digest(resolved_forecast_eval),
+        "selection_signal parent evaluation binding is independent of scan "
+        "insertion order");
+  auto selection_with_unresolved_parent = channel_selection_signal;
+  selection_with_unresolved_parent.parent_evaluation_fact_digests = {
+      "missing_forecast_eval_digest"};
+  const auto unresolved_parent_summary = exposure::summarize_selection_signals(
+      {channel_mdn_fact}, {selection_with_unresolved_parent},
+      {resolved_forecast_eval});
+  check(
+      unresolved_parent_summary.parent_evaluation_fact_declared_count == 1 &&
+          unresolved_parent_summary.parent_evaluation_fact_bound_count == 0 &&
+          unresolved_parent_summary.unresolved_parent_evaluation_fact_count ==
+              1 &&
+          std::any_of(unresolved_parent_summary.issues.begin(),
+                      unresolved_parent_summary.issues.end(),
+                      [](const auto &issue) {
+                        return issue.find(
+                                   "parent_evaluation_fact_digest_not_found") !=
+                               std::string::npos;
+                      }),
+      "selection_signal summaries report unresolved parent evaluation "
+      "digests as provenance integrity issues");
+  auto parent_eval_missing_backref = resolved_forecast_eval;
+  parent_eval_missing_backref.selection_signal_fact_digests = {
+      "other_selection_signal_digest"};
+  auto selection_with_missing_backref_parent = channel_selection_signal;
+  selection_with_missing_backref_parent.parent_evaluation_fact_digests = {
+      exposure::forecast_eval_fact_digest(parent_eval_missing_backref)};
+  const auto missing_backref_summary = exposure::summarize_selection_signals(
+      {channel_mdn_fact}, {selection_with_missing_backref_parent},
+      {parent_eval_missing_backref});
+  check(
+      missing_backref_summary.parent_evaluation_fact_declared_count == 1 &&
+          missing_backref_summary.parent_evaluation_fact_bound_count == 0 &&
+          missing_backref_summary
+                  .parent_evaluation_back_reference_mismatch_count == 1 &&
+          std::any_of(missing_backref_summary.issues.begin(),
+                      missing_backref_summary.issues.end(),
+                      [](const auto &issue) {
+                        return issue.find(
+                                   "parent_evaluation_missing_selection_signal_"
+                                   "back_reference") != std::string::npos;
+                      }),
+      "selection_signal summaries require parent forecast evaluations to "
+      "reference the same stable selection event digest");
+  auto bad_forecast_eval = mdn_forecast_eval;
+  bad_forecast_eval.quality_authority = true;
+  const auto bad_forecast_eval_summary = exposure::summarize_forecast_evals(
+      {channel_mdn_fact}, {bad_forecast_eval});
+  check(bad_forecast_eval_summary.quality_authority &&
+            bad_forecast_eval_summary.warning_count > 0 &&
+            !bad_forecast_eval_summary.issues.empty(),
+        "forecast eval authority drift is reported as warnings, not as "
+        "forecast_quality_ready");
+  auto malformed_forecast_eval = mdn_forecast_eval;
+  malformed_forecast_eval.support_count = 0;
+  malformed_forecast_eval.valid_count = 0;
+  malformed_forecast_eval.forecast_artifact_digest.clear();
+  malformed_forecast_eval.evaluated_representation_checkpoint_digest.clear();
+  malformed_forecast_eval.evaluated_mdn_checkpoint_digest.clear();
+  malformed_forecast_eval.target_transform_fact_digest.clear();
+  malformed_forecast_eval.baseline_fact_digests.clear();
+  malformed_forecast_eval.support_by_horizon.clear();
+  malformed_forecast_eval.valid_target_count_per_horizon.clear();
+  malformed_forecast_eval.model_state_mutation = true;
+  const auto malformed_forecast_eval_issues =
+      exposure::forecast_eval_fact_issues(malformed_forecast_eval);
+  std::vector<std::string> malformed_forecast_eval_warnings;
+  exposure::append_forecast_eval_scan_warning(malformed_forecast_eval,
+                                              root / "malformed_forecast_eval",
+                                              malformed_forecast_eval_warnings);
+  check(
+      contains_text(malformed_forecast_eval_issues, "missing_support_count") &&
+          contains_text(malformed_forecast_eval_issues,
+                        "missing_forecast_artifact_digest") &&
+          contains_text(malformed_forecast_eval_issues,
+                        "missing_evaluated_representation_checkpoint_"
+                        "digest") &&
+          contains_text(malformed_forecast_eval_issues,
+                        "missing_evaluated_mdn_checkpoint_digest") &&
+          contains_text(malformed_forecast_eval_issues,
+                        "missing_target_transform_fact_digest") &&
+          contains_text(malformed_forecast_eval_issues,
+                        "missing_baseline_fact_digests") &&
+          contains_text(malformed_forecast_eval_issues,
+                        "missing_horizon_support_surface") &&
+          contains_text(malformed_forecast_eval_issues,
+                        "forecast_eval_must_remain_artifact_evidence_only") &&
+          malformed_forecast_eval_warnings.size() == 1 &&
+          contains_text(malformed_forecast_eval_warnings,
+                        "missing_forecast_artifact_digest"),
+      "malformed forecast eval facts remain visible but warn for missing "
+      "lineage, support, baseline, transform, and mutation constraints");
+  const auto scan_observer_belief_summary =
+      exposure::summarize_observer_beliefs(scan.ledger.facts(),
+                                           scan.ledger.observer_belief_facts(),
+                                           scan.ledger.forecast_eval_facts());
+  const auto &mdn_observer_belief = scan.ledger.observer_belief_facts().front();
+  check(
+      mdn_observer_belief.parent_exposure_fact_digest ==
+              exposure::exposure_fact_digest(channel_mdn_fact) &&
+          mdn_observer_belief.protocol_id == channel_mdn_fact.protocol_id &&
+          mdn_observer_belief.graph_order_fingerprint ==
+              channel_mdn_fact.graph_order_fingerprint &&
+          mdn_observer_belief.source_cursor_token ==
+              channel_mdn_fact.source_cursor_token &&
+          mdn_observer_belief.belief_kind == "raw_nodelift_potential" &&
+          mdn_observer_belief.channel_consensus == "BTC:0.62,ETH:0.58" &&
+          mdn_observer_belief.potential_surface_diagnostics ==
+              "stable_surface" &&
+          mdn_observer_belief.nodelift_return_projection == "potential_only" &&
+          mdn_observer_belief.covariance_coupling == "diagonal_scenario_bank" &&
+          mdn_observer_belief.scenario_bank_digest == "scenario_bank_1" &&
+          mdn_observer_belief.nodelift_residual_quality == "ok" &&
+          mdn_observer_belief.projection_validation_scores ==
+              "rmse:0.24,calibration:0.91" &&
+          std::abs(mdn_observer_belief.confidence - 0.64) < 1e-12 &&
+          std::abs(mdn_observer_belief.data_quality - 0.88) < 1e-12 &&
+          std::abs(mdn_observer_belief.liquidity - 0.72) < 1e-12 &&
+          mdn_observer_belief.forecast_artifact_digest ==
+              "forecast_artifact_1" &&
+          mdn_observer_belief.forecast_artifact_lineage ==
+              "forecast_eval_digest_1" &&
+          mdn_observer_belief.feature_semantics_fingerprint ==
+              "feature_semantics_1" &&
+          mdn_observer_belief.dock_binding_fingerprint == "dock_binding_1" &&
+          mdn_observer_belief.artifact_evidence &&
+          mdn_observer_belief.visibility_only &&
+          !mdn_observer_belief.raw_potential_tradable_return &&
+          !mdn_observer_belief.allocation_authority &&
+          !mdn_observer_belief.readiness_authority &&
+          !mdn_observer_belief.quality_authority &&
+          !mdn_observer_belief.performance_authority &&
+          !mdn_observer_belief.checkpoint_selector &&
+          !mdn_observer_belief.coverage_authority &&
+          !mdn_observer_belief.leakage_authority &&
+          !mdn_observer_belief.contract_identity_authority &&
+          !mdn_observer_belief.market_readiness_authority &&
+          exposure::observer_belief_fact_digest(mdn_observer_belief).size() ==
+              16,
+      "observer belief facts bind deterministic post-inference diagnostics to "
+      "forecast lineage without making raw NodeLift potential tradable or "
+      "allocatable");
+  const auto observer_alias_dir = root / "observer_belief_aliases";
+  write_text(observer_alias_dir / "runtime.observer_belief.fact",
+             "schema=kikijyeba.lattice.observer_belief.v1\n"
+             "observer_belief_kind=allocation_belief\n"
+             "observer_channel_consensus=BTC:0.70,ETH:0.65\n"
+             "nodelift_potential_diagnostics=projected_surface\n"
+             "return_projection=allocation_projection\n"
+             "scenario_covariance_coupling=full_scenario_bank\n"
+             "scenario_digest=scenario_alias_digest\n"
+             "residual_quality=stable\n"
+             "projection_validation_summary=rmse:0.19,calibration:0.90\n"
+             "observer_confidence=0.81\n"
+             "observer_data_quality=0.82\n"
+             "observer_liquidity=0.83\n"
+             "forecast_digest=forecast_alias_digest\n"
+             "forecast_lineage=forecast_eval_alias_digest\n"
+             "feature_semantics_digest=feature_semantics_alias\n"
+             "dock_binding_digest=dock_binding_alias\n"
+             "artifact_evidence=true\n"
+             "visibility_only=true\n"
+             "raw_nodelift_potential_tradable_return=false\n");
+  const auto alias_observer_beliefs =
+      exposure::make_observer_belief_facts_from_job_dir(observer_alias_dir,
+                                                        channel_mdn_fact);
+  check(
+      alias_observer_beliefs.size() == 1 &&
+          alias_observer_beliefs.front().parent_exposure_fact_digest ==
+              exposure::exposure_fact_digest(channel_mdn_fact) &&
+          alias_observer_beliefs.front().protocol_id ==
+              channel_mdn_fact.protocol_id &&
+          alias_observer_beliefs.front().source_cursor_token ==
+              channel_mdn_fact.source_cursor_token &&
+          alias_observer_beliefs.front().belief_kind == "allocation_belief" &&
+          alias_observer_beliefs.front().channel_consensus ==
+              "BTC:0.70,ETH:0.65" &&
+          alias_observer_beliefs.front().potential_surface_diagnostics ==
+              "projected_surface" &&
+          alias_observer_beliefs.front().nodelift_return_projection ==
+              "allocation_projection" &&
+          alias_observer_beliefs.front().covariance_coupling ==
+              "full_scenario_bank" &&
+          alias_observer_beliefs.front().scenario_bank_digest ==
+              "scenario_alias_digest" &&
+          alias_observer_beliefs.front().nodelift_residual_quality ==
+              "stable" &&
+          alias_observer_beliefs.front().projection_validation_scores ==
+              "rmse:0.19,calibration:0.90" &&
+          std::abs(alias_observer_beliefs.front().confidence - 0.81) < 1e-12 &&
+          std::abs(alias_observer_beliefs.front().data_quality - 0.82) <
+              1e-12 &&
+          std::abs(alias_observer_beliefs.front().liquidity - 0.83) < 1e-12 &&
+          alias_observer_beliefs.front().forecast_artifact_digest ==
+              "forecast_alias_digest" &&
+          alias_observer_beliefs.front().forecast_artifact_lineage ==
+              "forecast_eval_alias_digest" &&
+          alias_observer_beliefs.front().feature_semantics_fingerprint ==
+              "feature_semantics_alias" &&
+          alias_observer_beliefs.front().dock_binding_fingerprint ==
+              "dock_binding_alias" &&
+          alias_observer_beliefs.front().artifact_evidence &&
+          alias_observer_beliefs.front().visibility_only &&
+          !alias_observer_beliefs.front().raw_potential_tradable_return &&
+          !alias_observer_beliefs.front().allocation_authority &&
+          !alias_observer_beliefs.front().readiness_authority &&
+          !alias_observer_beliefs.front().quality_authority &&
+          !alias_observer_beliefs.front().performance_authority &&
+          !alias_observer_beliefs.front().market_readiness_authority &&
+          exposure::observer_belief_fact_issues(alias_observer_beliefs.front())
+              .empty(),
+      "observer belief scanner accepts declared writer aliases while "
+      "distinguishing allocation belief artifacts from allocation authority");
+  check(
+      scan_observer_belief_summary.schema ==
+              "kikijyeba.lattice.observer_belief_summary.v1" &&
+          scan_observer_belief_summary.exposure_fact_count == 3 &&
+          scan_observer_belief_summary.observer_belief_fact_count == 1 &&
+          scan_observer_belief_summary.parent_exposure_fact_count == 1 &&
+          scan_observer_belief_summary.raw_nodelift_potential_count == 1 &&
+          scan_observer_belief_summary.allocation_belief_count == 0 &&
+          scan_observer_belief_summary.forecast_artifact_bound_count == 1 &&
+          scan_observer_belief_summary
+                  .forecast_artifact_lineage_declared_count == 1 &&
+          scan_observer_belief_summary.forecast_artifact_lineage_bound_count ==
+              0 &&
+          scan_observer_belief_summary
+                  .unresolved_forecast_artifact_lineage_count == 1 &&
+          scan_observer_belief_summary
+                  .forecast_artifact_lineage_identity_mismatch_count == 0 &&
+          scan_observer_belief_summary
+                  .forecast_artifact_digest_mismatch_count == 0 &&
+          scan_observer_belief_summary.channel_consensus_bound_count == 1 &&
+          scan_observer_belief_summary
+                  .potential_surface_diagnostics_bound_count == 1 &&
+          scan_observer_belief_summary.nodelift_return_projection_bound_count ==
+              1 &&
+          scan_observer_belief_summary.covariance_coupling_bound_count == 1 &&
+          scan_observer_belief_summary.scenario_bank_bound_count == 1 &&
+          scan_observer_belief_summary.nodelift_residual_quality_bound_count ==
+              1 &&
+          scan_observer_belief_summary
+                  .projection_validation_scores_bound_count == 1 &&
+          scan_observer_belief_summary.feature_semantics_bound_count == 1 &&
+          scan_observer_belief_summary.dock_binding_bound_count == 1 &&
+          scan_observer_belief_summary.missing_belief_kind_count == 0 &&
+          scan_observer_belief_summary.missing_forecast_artifact_count == 0 &&
+          scan_observer_belief_summary.missing_channel_consensus_count == 0 &&
+          scan_observer_belief_summary
+                  .missing_potential_surface_diagnostics_count == 0 &&
+          scan_observer_belief_summary
+                  .missing_nodelift_return_projection_count == 0 &&
+          scan_observer_belief_summary.missing_covariance_coupling_count == 0 &&
+          scan_observer_belief_summary.missing_scenario_bank_count == 0 &&
+          scan_observer_belief_summary
+                  .missing_nodelift_residual_quality_count == 0 &&
+          scan_observer_belief_summary
+                  .missing_projection_validation_scores_count == 0 &&
+          scan_observer_belief_summary.missing_feature_semantics_count == 0 &&
+          scan_observer_belief_summary.missing_dock_binding_count == 0 &&
+          scan_observer_belief_summary.low_confidence_count == 1 &&
+          scan_observer_belief_summary.low_data_quality_count == 0 &&
+          scan_observer_belief_summary.low_liquidity_count == 0 &&
+          scan_observer_belief_summary.diagnostic_completeness_warning_count ==
+              0 &&
+          scan_observer_belief_summary.observer_quality_warning_count == 1 &&
+          scan_observer_belief_summary.artifact_evidence_count == 1 &&
+          scan_observer_belief_summary.confidence.count == 1 &&
+          std::abs(scan_observer_belief_summary.confidence.mean - 0.64) <
+              1e-12 &&
+          scan_observer_belief_summary.data_quality.count == 1 &&
+          std::abs(scan_observer_belief_summary.data_quality.mean - 0.88) <
+              1e-12 &&
+          scan_observer_belief_summary.liquidity.count == 1 &&
+          std::abs(scan_observer_belief_summary.liquidity.mean - 0.72) <
+              1e-12 &&
+          scan_observer_belief_summary.artifact_evidence &&
+          scan_observer_belief_summary.visibility_only &&
+          !scan_observer_belief_summary.raw_potential_tradable_return &&
+          !scan_observer_belief_summary.allocation_authority &&
+          !scan_observer_belief_summary.readiness_authority &&
+          !scan_observer_belief_summary.quality_authority &&
+          !scan_observer_belief_summary.performance_authority &&
+          !scan_observer_belief_summary.checkpoint_selector &&
+          !scan_observer_belief_summary.coverage_authority &&
+          !scan_observer_belief_summary.leakage_authority &&
+          !scan_observer_belief_summary.contract_identity_authority &&
+          !scan_observer_belief_summary.market_readiness_authority &&
+          scan_observer_belief_summary.warning_count > 0 &&
+          !scan_observer_belief_summary.issues.empty(),
+      "observer belief summary remains visibility-only evidence and separates "
+      "raw NodeLift potential from allocation belief authority while reporting "
+      "unresolved forecast lineage");
+  auto resolved_observer_belief = mdn_observer_belief;
+  resolved_observer_belief.forecast_artifact_lineage =
+      exposure::forecast_eval_fact_digest(resolved_forecast_eval);
+  const auto resolved_observer_belief_summary =
+      exposure::summarize_observer_beliefs({channel_mdn_fact},
+                                           {resolved_observer_belief},
+                                           {resolved_forecast_eval});
+  check(resolved_observer_belief_summary
+                    .forecast_artifact_lineage_declared_count == 1 &&
+            resolved_observer_belief_summary
+                    .forecast_artifact_lineage_bound_count == 1 &&
+            resolved_observer_belief_summary
+                    .unresolved_forecast_artifact_lineage_count == 0 &&
+            resolved_observer_belief_summary
+                    .forecast_artifact_digest_mismatch_count == 0 &&
+            resolved_observer_belief_summary.low_confidence_count == 1 &&
+            resolved_observer_belief_summary.observer_quality_warning_count ==
+                1 &&
+            resolved_observer_belief_summary.warning_count == 1 &&
+            std::find(resolved_observer_belief_summary.issues.begin(),
+                      resolved_observer_belief_summary.issues.end(),
+                      "channel_mdn_job:"
+                      "observer_belief_low_confidence_visibility_only") !=
+                resolved_observer_belief_summary.issues.end(),
+        "observer belief summaries bind forecast lineage after the forecast "
+        "eval digest resolves while low confidence remains warning-only "
+        "visibility");
+  auto bad_observer_belief = mdn_observer_belief;
+  bad_observer_belief.raw_potential_tradable_return = true;
+  const auto bad_observer_belief_summary = exposure::summarize_observer_beliefs(
+      {channel_mdn_fact}, {bad_observer_belief});
+  check(bad_observer_belief_summary.raw_potential_tradable_return &&
+            bad_observer_belief_summary.warning_count > 0 &&
+            !bad_observer_belief_summary.issues.empty(),
+        "observer belief authority drift is reported as warnings, not as "
+        "tradable-return or allocation authority");
+  auto malformed_observer_belief = mdn_observer_belief;
+  malformed_observer_belief.source_cursor_token.clear();
+  malformed_observer_belief.belief_kind.clear();
+  malformed_observer_belief.forecast_artifact_digest.clear();
+  malformed_observer_belief.scenario_bank_digest.clear();
+  malformed_observer_belief.feature_semantics_fingerprint.clear();
+  malformed_observer_belief.dock_binding_fingerprint.clear();
+  const auto malformed_observer_belief_issues =
+      exposure::observer_belief_fact_issues(malformed_observer_belief);
+  std::vector<std::string> malformed_observer_belief_warnings;
+  exposure::append_observer_belief_scan_warning(
+      malformed_observer_belief, root / "malformed_observer_belief",
+      malformed_observer_belief_warnings);
+  check(contains_text(malformed_observer_belief_issues,
+                      "missing_source_cursor_token") &&
+            contains_text(malformed_observer_belief_issues,
+                          "missing_belief_kind") &&
+            contains_text(malformed_observer_belief_issues,
+                          "missing_forecast_artifact_digest") &&
+            contains_text(malformed_observer_belief_issues,
+                          "missing_scenario_bank_digest") &&
+            contains_text(malformed_observer_belief_issues,
+                          "missing_feature_semantics_fingerprint") &&
+            contains_text(malformed_observer_belief_issues,
+                          "missing_dock_binding_fingerprint") &&
+            malformed_observer_belief_warnings.size() == 1 &&
+            contains_text(malformed_observer_belief_warnings,
+                          "missing_belief_kind"),
+        "malformed observer belief facts remain visible but warn for missing "
+        "identity, kind, forecast, scenario, feature, and dock bindings");
+  const auto scan_allocation_engine_summary =
+      exposure::summarize_allocation_engines(
+          scan.ledger.facts(), scan.ledger.allocation_engine_facts(),
+          scan.ledger.observer_belief_facts(),
+          scan.ledger.forecast_eval_facts());
+  const auto &mdn_allocation_engine =
+      scan.ledger.allocation_engine_facts().front();
+  check(mdn_allocation_engine.parent_exposure_fact_digest ==
+                exposure::exposure_fact_digest(channel_mdn_fact) &&
+            mdn_allocation_engine.protocol_id == channel_mdn_fact.protocol_id &&
+            mdn_allocation_engine.graph_order_fingerprint ==
+                channel_mdn_fact.graph_order_fingerprint &&
+            mdn_allocation_engine.source_cursor_token ==
+                channel_mdn_fact.source_cursor_token &&
+            mdn_allocation_engine.target_risky_node_weights ==
+                "BTC:0.40,ETH:0.25,SOL:0.10" &&
+            mdn_allocation_engine.reserve_node_id == "USD_CASH" &&
+            mdn_allocation_engine.reserve_node_source == "base_policy" &&
+            mdn_allocation_engine.base_policy_reserve_node_id == "USD_CASH" &&
+            mdn_allocation_engine.reserve_node_graph_bound &&
+            std::abs(mdn_allocation_engine.reserve_weight - 0.25) < 1e-12 &&
+            std::abs(mdn_allocation_engine.turnover - 0.12) < 1e-12 &&
+            mdn_allocation_engine.objective_terms ==
+                "growth:0.70,cvar:0.20,cost:0.10" &&
+            std::abs(mdn_allocation_engine.cvar_loss - 0.08) < 1e-12 &&
+            std::abs(mdn_allocation_engine.transaction_cost_estimate - 0.003) <
+                1e-12 &&
+            mdn_allocation_engine.constraint_diagnostics ==
+                "all_constraints_satisfied" &&
+            mdn_allocation_engine.cap_diagnostics == "per_node_caps_ok" &&
+            mdn_allocation_engine.scenario_growth_floor_status == "met" &&
+            mdn_allocation_engine.fallback_reasons == "none" &&
+            mdn_allocation_engine.derisk_reasons == "none" &&
+            mdn_allocation_engine.observer_belief_fact_digest ==
+                "observer_belief_digest_1" &&
+            mdn_allocation_engine.forecast_artifact_digest ==
+                "forecast_artifact_1" &&
+            mdn_allocation_engine.base_policy_digest == "base_policy_1" &&
+            mdn_allocation_engine.deterministic_artifact &&
+            mdn_allocation_engine.visibility_only &&
+            !mdn_allocation_engine.allocation_authority &&
+            !mdn_allocation_engine.execution_authority &&
+            !mdn_allocation_engine.readiness_authority &&
+            !mdn_allocation_engine.quality_authority &&
+            !mdn_allocation_engine.performance_authority &&
+            !mdn_allocation_engine.market_readiness_authority &&
+            !mdn_allocation_engine.deployment_authority &&
+            !mdn_allocation_engine.checkpoint_selector &&
+            !mdn_allocation_engine.coverage_authority &&
+            !mdn_allocation_engine.leakage_authority &&
+            !mdn_allocation_engine.contract_identity_authority &&
+            exposure::allocation_engine_fact_digest(mdn_allocation_engine)
+                    .size() == 16,
+        "allocation engine facts bind deterministic allocation output "
+        "diagnostics to observer belief and forecast lineage without becoming "
+        "Lattice allocation or execution authority");
+  const auto allocation_alias_dir = root / "allocation_engine_aliases";
+  write_text(allocation_alias_dir / "allocation.engine.fact",
+             "schema=kikijyeba.lattice.allocation_engine.v1\n"
+             "risky_node_weights=BTC:0.30,ETH:0.20\n"
+             "reserve_asset_node_id=USD_CASH\n"
+             "reserve_asset_source=base_policy\n"
+             "base_policy_reserve_asset_node_id=USD_CASH\n"
+             "reserve_asset_graph_bound=true\n"
+             "reserve_weight=0.50\n"
+             "allocation_turnover=0.05\n"
+             "allocation_objective_terms=growth:0.60,cvar:0.30,cost:0.10\n"
+             "allocation_cvar_loss=0.04\n"
+             "estimated_transaction_cost=0.001\n"
+             "allocation_constraints=alias_constraints_ok\n"
+             "allocation_cap_diagnostics=alias_caps_ok\n"
+             "growth_floor_status=met\n"
+             "fallback_reason_contract=none\n"
+             "derisk_reason_contract=none\n"
+             "observer_belief_digest=observer_alias_digest\n"
+             "forecast_digest=forecast_alias_digest\n"
+             "base_policy_fingerprint=base_policy_alias\n"
+             "deterministic_artifact=true\n"
+             "visibility_only=true\n");
+  const auto alias_allocation_engines =
+      exposure::make_allocation_engine_facts_from_job_dir(allocation_alias_dir,
+                                                          channel_mdn_fact);
+  check(
+      alias_allocation_engines.size() == 1 &&
+          alias_allocation_engines.front().parent_exposure_fact_digest ==
+              exposure::exposure_fact_digest(channel_mdn_fact) &&
+          alias_allocation_engines.front().protocol_id ==
+              channel_mdn_fact.protocol_id &&
+          alias_allocation_engines.front().source_cursor_token ==
+              channel_mdn_fact.source_cursor_token &&
+          alias_allocation_engines.front().target_risky_node_weights ==
+              "BTC:0.30,ETH:0.20" &&
+          alias_allocation_engines.front().reserve_node_id == "USD_CASH" &&
+          alias_allocation_engines.front().reserve_node_source ==
+              "base_policy" &&
+          alias_allocation_engines.front().base_policy_reserve_node_id ==
+              "USD_CASH" &&
+          alias_allocation_engines.front().reserve_node_graph_bound &&
+          std::abs(alias_allocation_engines.front().reserve_weight - 0.50) <
+              1e-12 &&
+          std::abs(alias_allocation_engines.front().turnover - 0.05) < 1e-12 &&
+          alias_allocation_engines.front().objective_terms ==
+              "growth:0.60,cvar:0.30,cost:0.10" &&
+          std::abs(alias_allocation_engines.front().cvar_loss - 0.04) < 1e-12 &&
+          std::abs(alias_allocation_engines.front().transaction_cost_estimate -
+                   0.001) < 1e-12 &&
+          alias_allocation_engines.front().constraint_diagnostics ==
+              "alias_constraints_ok" &&
+          alias_allocation_engines.front().cap_diagnostics == "alias_caps_ok" &&
+          alias_allocation_engines.front().scenario_growth_floor_status ==
+              "met" &&
+          alias_allocation_engines.front().fallback_reasons == "none" &&
+          alias_allocation_engines.front().derisk_reasons == "none" &&
+          alias_allocation_engines.front().observer_belief_fact_digest ==
+              "observer_alias_digest" &&
+          alias_allocation_engines.front().forecast_artifact_digest ==
+              "forecast_alias_digest" &&
+          alias_allocation_engines.front().base_policy_digest ==
+              "base_policy_alias" &&
+          alias_allocation_engines.front().deterministic_artifact &&
+          alias_allocation_engines.front().visibility_only &&
+          !alias_allocation_engines.front().allocation_authority &&
+          !alias_allocation_engines.front().execution_authority &&
+          !alias_allocation_engines.front().readiness_authority &&
+          !alias_allocation_engines.front().market_readiness_authority &&
+          !alias_allocation_engines.front().deployment_authority &&
+          exposure::allocation_engine_fact_issues(
+              alias_allocation_engines.front())
+              .empty(),
+      "allocation engine scanner accepts declared writer aliases while keeping "
+      "allocation output audit-only and non-executing");
+  check(
+      scan_allocation_engine_summary.schema ==
+              "kikijyeba.lattice.allocation_engine_summary.v1" &&
+          scan_allocation_engine_summary.exposure_fact_count == 3 &&
+          scan_allocation_engine_summary.allocation_engine_fact_count == 1 &&
+          scan_allocation_engine_summary.parent_exposure_fact_count == 1 &&
+          scan_allocation_engine_summary.reserve_node_bound_count == 1 &&
+          scan_allocation_engine_summary
+                  .reserve_node_source_base_policy_count == 1 &&
+          scan_allocation_engine_summary.base_policy_reserve_node_bound_count ==
+              1 &&
+          scan_allocation_engine_summary.reserve_node_base_policy_match_count ==
+              1 &&
+          scan_allocation_engine_summary.reserve_node_graph_bound_count == 1 &&
+          scan_allocation_engine_summary.observer_belief_declared_count == 1 &&
+          scan_allocation_engine_summary.observer_belief_bound_count == 0 &&
+          scan_allocation_engine_summary.unresolved_observer_belief_count ==
+              1 &&
+          scan_allocation_engine_summary
+                  .observer_belief_identity_mismatch_count == 0 &&
+          scan_allocation_engine_summary.forecast_artifact_declared_count ==
+              1 &&
+          scan_allocation_engine_summary.forecast_artifact_bound_count == 1 &&
+          scan_allocation_engine_summary.unresolved_forecast_artifact_count ==
+              0 &&
+          scan_allocation_engine_summary
+                  .forecast_artifact_identity_mismatch_count == 0 &&
+          scan_allocation_engine_summary
+                  .observer_forecast_artifact_mismatch_count == 0 &&
+          scan_allocation_engine_summary.base_policy_bound_count == 1 &&
+          scan_allocation_engine_summary.objective_terms_bound_count == 1 &&
+          scan_allocation_engine_summary.cvar_bound_count == 1 &&
+          scan_allocation_engine_summary.transaction_cost_bound_count == 1 &&
+          scan_allocation_engine_summary.constraint_diagnostics_bound_count ==
+              1 &&
+          scan_allocation_engine_summary.cap_diagnostics_bound_count == 1 &&
+          scan_allocation_engine_summary
+                  .scenario_growth_floor_status_bound_count == 1 &&
+          scan_allocation_engine_summary.scenario_growth_floor_met_count == 1 &&
+          scan_allocation_engine_summary
+                  .scenario_growth_floor_attention_count == 0 &&
+          scan_allocation_engine_summary.fallback_reason_contract_count == 1 &&
+          scan_allocation_engine_summary.fallback_reason_none_count == 1 &&
+          scan_allocation_engine_summary.fallback_reason_active_count == 0 &&
+          scan_allocation_engine_summary.derisk_reason_contract_count == 1 &&
+          scan_allocation_engine_summary.derisk_reason_none_count == 1 &&
+          scan_allocation_engine_summary.derisk_reason_active_count == 0 &&
+          scan_allocation_engine_summary.deterministic_artifact_count == 1 &&
+          scan_allocation_engine_summary.missing_reserve_node_count == 0 &&
+          scan_allocation_engine_summary.missing_reserve_node_source_count ==
+              0 &&
+          scan_allocation_engine_summary
+                  .missing_base_policy_reserve_node_count == 0 &&
+          scan_allocation_engine_summary.reserve_node_source_mismatch_count ==
+              0 &&
+          scan_allocation_engine_summary
+                  .reserve_node_base_policy_mismatch_count == 0 &&
+          scan_allocation_engine_summary.reserve_node_not_graph_bound_count ==
+              0 &&
+          scan_allocation_engine_summary.missing_observer_belief_count == 0 &&
+          scan_allocation_engine_summary.missing_forecast_artifact_count == 0 &&
+          scan_allocation_engine_summary.missing_base_policy_count == 0 &&
+          scan_allocation_engine_summary.missing_cap_diagnostics_count == 0 &&
+          scan_allocation_engine_summary
+                  .missing_scenario_growth_floor_status_count == 0 &&
+          scan_allocation_engine_summary.allocation_diagnostic_warning_count ==
+              0 &&
+          scan_allocation_engine_summary.reserve_weight.count == 1 &&
+          std::abs(scan_allocation_engine_summary.reserve_weight.mean - 0.25) <
+              1e-12 &&
+          scan_allocation_engine_summary.turnover.count == 1 &&
+          std::abs(scan_allocation_engine_summary.turnover.mean - 0.12) <
+              1e-12 &&
+          scan_allocation_engine_summary.cvar_loss.count == 1 &&
+          std::abs(scan_allocation_engine_summary.cvar_loss.mean - 0.08) <
+              1e-12 &&
+          scan_allocation_engine_summary.transaction_cost_estimate.count == 1 &&
+          std::abs(
+              scan_allocation_engine_summary.transaction_cost_estimate.mean -
+              0.003) < 1e-12 &&
+          scan_allocation_engine_summary.deterministic_artifact &&
+          scan_allocation_engine_summary.visibility_only &&
+          !scan_allocation_engine_summary.allocation_authority &&
+          !scan_allocation_engine_summary.execution_authority &&
+          !scan_allocation_engine_summary.readiness_authority &&
+          !scan_allocation_engine_summary.quality_authority &&
+          !scan_allocation_engine_summary.performance_authority &&
+          !scan_allocation_engine_summary.market_readiness_authority &&
+          !scan_allocation_engine_summary.deployment_authority &&
+          !scan_allocation_engine_summary.checkpoint_selector &&
+          !scan_allocation_engine_summary.coverage_authority &&
+          !scan_allocation_engine_summary.leakage_authority &&
+          !scan_allocation_engine_summary.contract_identity_authority &&
+          scan_allocation_engine_summary.warning_count > 0 &&
+          !scan_allocation_engine_summary.issues.empty(),
+      "allocation engine summary exposes objective/cost/CVaR/fallback "
+      "diagnostics as audit evidence and reports unresolved observer lineage, "
+      "not allocation acceptance");
+  auto resolved_allocation_engine = mdn_allocation_engine;
+  resolved_allocation_engine.observer_belief_fact_digest =
+      exposure::observer_belief_fact_digest(resolved_observer_belief);
+  const auto resolved_allocation_engine_summary =
+      exposure::summarize_allocation_engines(
+          {channel_mdn_fact}, {resolved_allocation_engine},
+          {resolved_observer_belief}, {resolved_forecast_eval});
+  check(
+      resolved_allocation_engine_summary.observer_belief_bound_count == 1 &&
+          resolved_allocation_engine_summary.forecast_artifact_bound_count ==
+              1 &&
+          resolved_allocation_engine_summary.unresolved_observer_belief_count ==
+              0 &&
+          resolved_allocation_engine_summary
+                  .unresolved_forecast_artifact_count == 0 &&
+          resolved_allocation_engine_summary
+                  .observer_forecast_artifact_mismatch_count == 0 &&
+          resolved_allocation_engine_summary.warning_count == 0 &&
+          resolved_allocation_engine_summary.issues.empty(),
+      "allocation summaries bind observer and forecast artifact lineage only "
+      "after those references resolve under the same identity");
+  auto attention_allocation_engine = resolved_allocation_engine;
+  attention_allocation_engine.scenario_growth_floor_status = "violated";
+  attention_allocation_engine.fallback_reasons = "risk_parity_fallback";
+  attention_allocation_engine.derisk_reasons =
+      "mean_confidence_below_threshold";
+  const auto attention_allocation_summary =
+      exposure::summarize_allocation_engines(
+          {channel_mdn_fact}, {attention_allocation_engine},
+          {resolved_observer_belief}, {resolved_forecast_eval});
+  check(
+      attention_allocation_summary.scenario_growth_floor_status_bound_count ==
+              1 &&
+          attention_allocation_summary.scenario_growth_floor_met_count == 0 &&
+          attention_allocation_summary.scenario_growth_floor_attention_count ==
+              1 &&
+          attention_allocation_summary.fallback_reason_contract_count == 1 &&
+          attention_allocation_summary.fallback_reason_none_count == 0 &&
+          attention_allocation_summary.fallback_reason_active_count == 1 &&
+          attention_allocation_summary.derisk_reason_contract_count == 1 &&
+          attention_allocation_summary.derisk_reason_none_count == 0 &&
+          attention_allocation_summary.derisk_reason_active_count == 1 &&
+          attention_allocation_summary.allocation_diagnostic_warning_count ==
+              3 &&
+          attention_allocation_summary.warning_count == 3 &&
+          std::find(attention_allocation_summary.issues.begin(),
+                    attention_allocation_summary.issues.end(),
+                    "channel_mdn_job:"
+                    "allocation_engine_scenario_growth_floor_attention_"
+                    "visibility_only") !=
+              attention_allocation_summary.issues.end() &&
+          std::find(attention_allocation_summary.issues.begin(),
+                    attention_allocation_summary.issues.end(),
+                    "channel_mdn_job:"
+                    "allocation_engine_active_fallback_reason_"
+                    "visibility_only") !=
+              attention_allocation_summary.issues.end() &&
+          std::find(attention_allocation_summary.issues.begin(),
+                    attention_allocation_summary.issues.end(),
+                    "channel_mdn_job:"
+                    "allocation_engine_active_derisk_reason_visibility_only") !=
+              attention_allocation_summary.issues.end(),
+      "allocation summaries surface fallback, de-risk, and growth-floor "
+      "attention as warning-only diagnostics");
+  auto bad_allocation_engine = mdn_allocation_engine;
+  bad_allocation_engine.execution_authority = true;
+  const auto bad_allocation_engine_summary =
+      exposure::summarize_allocation_engines({channel_mdn_fact},
+                                             {bad_allocation_engine});
+  check(bad_allocation_engine_summary.execution_authority &&
+            bad_allocation_engine_summary.warning_count > 0 &&
+            !bad_allocation_engine_summary.issues.empty(),
+        "allocation engine authority drift is reported as warnings, not as "
+        "execution routing or market readiness");
+  auto bad_reserve_allocation_engine = mdn_allocation_engine;
+  bad_reserve_allocation_engine.reserve_node_source = "allocator_output";
+  bad_reserve_allocation_engine.base_policy_reserve_node_id = "EUR_CASH";
+  bad_reserve_allocation_engine.reserve_node_graph_bound = false;
+  const auto bad_reserve_allocation_summary =
+      exposure::summarize_allocation_engines({channel_mdn_fact},
+                                             {bad_reserve_allocation_engine});
+  check(bad_reserve_allocation_summary.reserve_node_source_mismatch_count ==
+                1 &&
+            bad_reserve_allocation_summary
+                    .reserve_node_base_policy_mismatch_count == 1 &&
+            bad_reserve_allocation_summary.reserve_node_not_graph_bound_count ==
+                1 &&
+            std::find(bad_reserve_allocation_summary.issues.begin(),
+                      bad_reserve_allocation_summary.issues.end(),
+                      "channel_mdn_job:reserve_node_source_not_base_policy") !=
+                bad_reserve_allocation_summary.issues.end() &&
+            std::find(bad_reserve_allocation_summary.issues.begin(),
+                      bad_reserve_allocation_summary.issues.end(),
+                      "channel_mdn_job:reserve_node_base_policy_mismatch") !=
+                bad_reserve_allocation_summary.issues.end() &&
+            std::find(bad_reserve_allocation_summary.issues.begin(),
+                      bad_reserve_allocation_summary.issues.end(),
+                      "channel_mdn_job:reserve_node_not_graph_bound") !=
+                bad_reserve_allocation_summary.issues.end(),
+        "allocation summaries warn when the reserve node is not graph-bound "
+        "BasePolicy evidence");
+  auto malformed_allocation_engine = mdn_allocation_engine;
+  malformed_allocation_engine.source_cursor_token.clear();
+  malformed_allocation_engine.reserve_node_id.clear();
+  malformed_allocation_engine.reserve_node_source.clear();
+  malformed_allocation_engine.base_policy_reserve_node_id.clear();
+  malformed_allocation_engine.reserve_node_graph_bound = false;
+  malformed_allocation_engine.observer_belief_fact_digest.clear();
+  malformed_allocation_engine.forecast_artifact_digest.clear();
+  malformed_allocation_engine.base_policy_digest.clear();
+  malformed_allocation_engine.objective_terms.clear();
+  malformed_allocation_engine.cvar_loss =
+      std::numeric_limits<double>::quiet_NaN();
+  malformed_allocation_engine.transaction_cost_estimate =
+      std::numeric_limits<double>::quiet_NaN();
+  malformed_allocation_engine.constraint_diagnostics.clear();
+  malformed_allocation_engine.fallback_reasons.clear();
+  malformed_allocation_engine.derisk_reasons.clear();
+  malformed_allocation_engine.deterministic_artifact = false;
+  malformed_allocation_engine.execution_authority = true;
+  const auto malformed_allocation_engine_issues =
+      exposure::allocation_engine_fact_issues(malformed_allocation_engine);
+  std::vector<std::string> malformed_allocation_engine_warnings;
+  exposure::append_allocation_engine_scan_warning(
+      malformed_allocation_engine, root / "malformed_allocation_engine",
+      malformed_allocation_engine_warnings);
+  check(contains_text(malformed_allocation_engine_issues,
+                      "missing_source_cursor_token") &&
+            contains_text(malformed_allocation_engine_issues,
+                          "missing_reserve_graph_node") &&
+            contains_text(malformed_allocation_engine_issues,
+                          "missing_reserve_node_source") &&
+            contains_text(malformed_allocation_engine_issues,
+                          "missing_base_policy_reserve_node_id") &&
+            contains_text(malformed_allocation_engine_issues,
+                          "reserve_node_not_graph_bound") &&
+            contains_text(malformed_allocation_engine_issues,
+                          "missing_observer_belief_fact_digest") &&
+            contains_text(malformed_allocation_engine_issues,
+                          "missing_forecast_artifact_digest") &&
+            contains_text(malformed_allocation_engine_issues,
+                          "missing_base_policy_digest") &&
+            contains_text(malformed_allocation_engine_issues,
+                          "missing_objective_terms") &&
+            contains_text(malformed_allocation_engine_issues,
+                          "missing_cvar_loss") &&
+            contains_text(malformed_allocation_engine_issues,
+                          "missing_transaction_cost_estimate") &&
+            contains_text(malformed_allocation_engine_issues,
+                          "missing_constraint_diagnostics") &&
+            contains_text(malformed_allocation_engine_issues,
+                          "missing_fallback_reason_contract") &&
+            contains_text(malformed_allocation_engine_issues,
+                          "missing_derisk_reason_contract") &&
+            contains_text(malformed_allocation_engine_issues,
+                          "allocation_engine_must_remain_audit_evidence_"
+                          "only") &&
+            malformed_allocation_engine_warnings.size() == 1 &&
+            contains_text(malformed_allocation_engine_warnings,
+                          "missing_reserve_graph_node"),
+        "malformed allocation engine facts remain visible but warn for missing "
+        "reserve, lineage, base-policy, objective, cost, and reason contracts");
+  const auto scan_replay_environment_summary =
+      exposure::summarize_replay_environments(
+          parked_environment_scan.ledger.facts(),
+          parked_environment_scan.ledger.replay_environment_facts());
+  const auto &mdn_replay_environment =
+      parked_environment_scan.ledger.replay_environment_facts().front();
+  check(
+      mdn_replay_environment.parent_exposure_fact_digest ==
+              exposure::exposure_fact_digest(channel_mdn_fact) &&
+          mdn_replay_environment.protocol_id == channel_mdn_fact.protocol_id &&
+          mdn_replay_environment.graph_order_fingerprint ==
+              channel_mdn_fact.graph_order_fingerprint &&
+          mdn_replay_environment.source_cursor_token ==
+              channel_mdn_fact.source_cursor_token &&
+          mdn_replay_environment.experiment_id == "replay_experiment_1" &&
+          mdn_replay_environment.runtime_run_id == "runtime_run_1" &&
+          mdn_replay_environment.environment_run_id == "replay_env_1" &&
+          mdn_replay_environment.runtime_replay_batch_index_schema ==
+              "kikijyeba.environment.replay.runtime_batch_index.v1" &&
+          mdn_replay_environment.runtime_replay_experiment_index_schema ==
+              "kikijyeba.environment.replay.runtime_experiment_index.v1" &&
+          mdn_replay_environment.replay_experiment_report_schema ==
+              exposure::replay_environment_experiment_report_schema_id() &&
+          mdn_replay_environment.experiment_index_report_digest ==
+              replay_report_digest &&
+          mdn_replay_environment.experiment_report_digest ==
+              replay_report_digest &&
+          mdn_replay_environment.replay_environment_version ==
+              "kikijyeba.environment.replay.v1" &&
+          mdn_replay_environment.replay_environment_component_assembly_id ==
+              "replay_environment_v1" &&
+          mdn_replay_environment.replay_environment_world_mode ==
+              "historical_replay" &&
+          mdn_replay_environment.replay_environment_api_contract ==
+              "rl_compatible_reset_step" &&
+          mdn_replay_environment.replay_environment_range_source ==
+              "ujcamei_component_stream_cursor" &&
+          mdn_replay_environment.replay_environment_source_range_policy ==
+              "anchor_index_or_source_key" &&
+          mdn_replay_environment.replay_environment_source_order_policy ==
+              "sequential" &&
+          mdn_replay_environment.replay_environment_observation_time_law ==
+              "time_t_only" &&
+          mdn_replay_environment.replay_environment_realization_reveal ==
+              "after_action_execution" &&
+          mdn_replay_environment.replay_environment_realization_key_policy ==
+              "shared_key_per_frame" &&
+          mdn_replay_environment.replay_environment_action_kind ==
+              "target_node_weights_with_base_reserve" &&
+          mdn_replay_environment.replay_environment_action_time_policy ==
+              "decision_timestamp_after_knowledge_before_realization" &&
+          mdn_replay_environment.replay_environment_reserve_node_policy ==
+              "graph_node_from_base_policy" &&
+          mdn_replay_environment
+                  .replay_environment_graph_node_universe_policy ==
+              "episode_spec_graph_node_ids" &&
+          mdn_replay_environment.replay_environment_policy_surface ==
+              "policy_adapter" &&
+          mdn_replay_environment.replay_environment_action_policy_identity ==
+              "policy_adapter_must_match_action" &&
+          mdn_replay_environment.replay_environment_initial_policy_kind ==
+              "deterministic_allocator_or_baseline" &&
+          mdn_replay_environment.replay_environment_experiment_task_identity ==
+              "bundle_policy_task_indices" &&
+          mdn_replay_environment.replay_environment_experiment_run_identity ==
+              "single_runtime_environment_run" &&
+          mdn_replay_environment.replay_environment_step_artifact_identity ==
+              "episode_run_policy_cursor" &&
+          mdn_replay_environment
+                  .replay_environment_experiment_report_count_policy ==
+              "counts_match_evidence" &&
+          mdn_replay_environment.replay_environment_artifact_schema ==
+              "cajtucu_ready_replay_artifacts" &&
+          mdn_replay_environment.replay_environment_lattice_target ==
+              "replay_environment_artifact_ready" &&
+          mdn_replay_environment.replay_environment_require_resolved_cursor &&
+          mdn_replay_environment.replay_environment_require_no_future_leakage &&
+          mdn_replay_environment
+              .replay_environment_require_projection_validation &&
+          mdn_replay_environment.replay_environment_default_max_parallel_jobs ==
+              1 &&
+          mdn_replay_environment.experiment_requested_max_parallel_jobs == 2 &&
+          mdn_replay_environment.experiment_resolved_parallelism == 2 &&
+          mdn_replay_environment.batch_entry_count == 1 &&
+          mdn_replay_environment.experiment_entry_count == 1 &&
+          mdn_replay_environment.replay_bundle_count == 2 &&
+          mdn_replay_environment.policy_count == 2 &&
+          mdn_replay_environment.attempted_count == 2 &&
+          mdn_replay_environment.completed_count == 2 &&
+          mdn_replay_environment.episode_count == 2 &&
+          mdn_replay_environment.episode_requested_range_bound_count == 2 &&
+          mdn_replay_environment.episode_cursor_bound_count == 2 &&
+          mdn_replay_environment.episode_anchor_interval_bound_count == 2 &&
+          mdn_replay_environment.episode_anchor_keys_bound_count == 2 &&
+          mdn_replay_environment.time_law_expected_step_count == 4 &&
+          mdn_replay_environment.time_law_observation_step_count == 4 &&
+          mdn_replay_environment.time_law_action_step_count == 4 &&
+          mdn_replay_environment.time_law_execution_step_count == 4 &&
+          mdn_replay_environment.time_law_realization_after_action_count == 4 &&
+          mdn_replay_environment.time_law_future_observation_violation_count ==
+              0 &&
+          mdn_replay_environment.mixed_future_realization_key_count == 0 &&
+          mdn_replay_environment.projection_validation_step_count == 4 &&
+          std::abs(mdn_replay_environment.mean_total_reward - 1.5) < 1e-12 &&
+          std::abs(mdn_replay_environment.mean_total_log_growth - 0.03) <
+              1e-12 &&
+          std::abs(mdn_replay_environment.mean_final_equity_base - 103.0) <
+              1e-12 &&
+          std::abs(mdn_replay_environment.mean_projection_mae - 0.012) <
+              1e-12 &&
+          std::abs(mdn_replay_environment.mean_projection_signed_bias + 0.002) <
+              1e-12 &&
+          std::abs(mdn_replay_environment.mean_projection_directional_accuracy -
+                   0.75) < 1e-12 &&
+          std::abs(mdn_replay_environment.mean_projection_interval_coverage -
+                   0.80) < 1e-12 &&
+          mdn_replay_environment.artifact_evidence &&
+          mdn_replay_environment.visibility_only &&
+          !mdn_replay_environment.replay_executor &&
+          !mdn_replay_environment.allocation_authority &&
+          !mdn_replay_environment.execution_authority &&
+          !mdn_replay_environment.readiness_authority &&
+          !mdn_replay_environment.quality_authority &&
+          !mdn_replay_environment.performance_authority &&
+          !mdn_replay_environment.market_readiness_authority &&
+          !mdn_replay_environment.deployment_authority &&
+          !mdn_replay_environment.checkpoint_selector &&
+          !mdn_replay_environment.coverage_authority &&
+          !mdn_replay_environment.leakage_authority &&
+          !mdn_replay_environment.contract_identity_authority &&
+          exposure::replay_environment_fact_digest(mdn_replay_environment)
+                  .size() == 16,
+      "replay environment facts bind replay indexes and experiment reports "
+      "to parent runtime evidence without becoming execution authority");
+  check(
+      scan_replay_environment_summary.schema ==
+              "kikijyeba.lattice.replay_environment_summary.v1" &&
+          scan_replay_environment_summary.exposure_fact_count == 3 &&
+          scan_replay_environment_summary.replay_environment_fact_count == 1 &&
+          scan_replay_environment_summary.parent_exposure_fact_count == 1 &&
+          scan_replay_environment_summary.batch_index_bound_count == 1 &&
+          scan_replay_environment_summary.experiment_index_bound_count == 1 &&
+          scan_replay_environment_summary.experiment_report_bound_count == 1 &&
+          scan_replay_environment_summary.batch_index_schema_bound_count == 1 &&
+          scan_replay_environment_summary.experiment_index_schema_bound_count ==
+              1 &&
+          scan_replay_environment_summary
+                  .experiment_report_schema_bound_count == 1 &&
+          scan_replay_environment_summary
+                  .experiment_index_report_digest_bound_count == 1 &&
+          scan_replay_environment_summary
+                  .experiment_report_digest_bound_count == 1 &&
+          scan_replay_environment_summary
+                  .experiment_report_digest_match_count == 1 &&
+          scan_replay_environment_summary
+                  .experiment_report_digest_mismatch_count == 0 &&
+          scan_replay_environment_summary.experiment_id_bound_count == 1 &&
+          scan_replay_environment_summary.runtime_run_id_bound_count == 1 &&
+          scan_replay_environment_summary.environment_run_id_bound_count == 1 &&
+          scan_replay_environment_summary.replay_contract_version_bound_count ==
+              1 &&
+          scan_replay_environment_summary
+                  .replay_contract_component_bound_count == 1 &&
+          scan_replay_environment_summary
+                  .replay_contract_world_mode_bound_count == 1 &&
+          scan_replay_environment_summary.replay_contract_api_bound_count ==
+              1 &&
+          scan_replay_environment_summary
+                  .replay_contract_spawn_model_bound_count == 1 &&
+          scan_replay_environment_summary
+                  .replay_contract_range_source_bound_count == 1 &&
+          scan_replay_environment_summary
+                  .replay_contract_source_range_policy_bound_count == 1 &&
+          scan_replay_environment_summary
+                  .replay_contract_source_order_policy_bound_count == 1 &&
+          scan_replay_environment_summary
+                  .replay_contract_range_resolution_bound_count == 1 &&
+          scan_replay_environment_summary
+                  .replay_contract_policy_surface_bound_count == 1 &&
+          scan_replay_environment_summary
+                  .replay_contract_time_law_bound_count == 1 &&
+          scan_replay_environment_summary
+                  .replay_contract_realization_reveal_bound_count == 1 &&
+          scan_replay_environment_summary
+                  .replay_contract_realization_key_bound_count == 1 &&
+          scan_replay_environment_summary
+                  .replay_contract_action_kind_bound_count == 1 &&
+          scan_replay_environment_summary
+                  .replay_contract_action_time_policy_bound_count == 1 &&
+          scan_replay_environment_summary
+                  .replay_contract_reserve_node_policy_bound_count == 1 &&
+          scan_replay_environment_summary
+                  .replay_contract_graph_node_universe_policy_bound_count ==
+              1 &&
+          scan_replay_environment_summary
+                  .replay_contract_reward_policy_bound_count == 1 &&
+          scan_replay_environment_summary
+                  .replay_contract_projection_validation_bound_count == 1 &&
+          scan_replay_environment_summary
+                  .replay_contract_action_policy_identity_bound_count == 1 &&
+          scan_replay_environment_summary
+                  .replay_contract_initial_policy_kind_bound_count == 1 &&
+          scan_replay_environment_summary
+                  .replay_contract_task_identity_bound_count == 1 &&
+          scan_replay_environment_summary
+                  .replay_contract_experiment_run_identity_bound_count == 1 &&
+          scan_replay_environment_summary
+                  .replay_contract_step_artifact_identity_bound_count == 1 &&
+          scan_replay_environment_summary
+                  .replay_contract_report_count_policy_bound_count == 1 &&
+          scan_replay_environment_summary
+                  .replay_contract_parallelism_bound_count == 1 &&
+          scan_replay_environment_summary
+                  .replay_contract_artifact_schema_bound_count == 1 &&
+          scan_replay_environment_summary
+                  .replay_contract_lattice_binding_bound_count == 1 &&
+          scan_replay_environment_summary.replay_contract_guard_bound_count ==
+              1 &&
+          scan_replay_environment_summary.completed_all_attempted_count == 1 &&
+          scan_replay_environment_summary
+                  .projection_validation_metric_bound_count == 1 &&
+          scan_replay_environment_summary.time_law_step_evidence_bound_count ==
+              1 &&
+          scan_replay_environment_summary
+                  .projection_validation_step_evidence_bound_count == 1 &&
+          scan_replay_environment_summary
+                  .episode_requested_range_bound_count_total == 2 &&
+          scan_replay_environment_summary.episode_cursor_bound_count_total ==
+              2 &&
+          scan_replay_environment_summary
+                  .episode_anchor_interval_bound_count_total == 2 &&
+          scan_replay_environment_summary
+                  .episode_anchor_keys_bound_count_total == 2 &&
+          scan_replay_environment_summary.time_law_expected_step_count_total ==
+              4 &&
+          scan_replay_environment_summary
+                  .time_law_observation_step_count_total == 4 &&
+          scan_replay_environment_summary.time_law_action_step_count_total ==
+              4 &&
+          scan_replay_environment_summary.time_law_execution_step_count_total ==
+              4 &&
+          scan_replay_environment_summary
+                  .time_law_realization_after_action_count_total == 4 &&
+          scan_replay_environment_summary
+                  .time_law_future_observation_violation_count_total == 0 &&
+          scan_replay_environment_summary
+                  .mixed_future_realization_key_count_total == 0 &&
+          scan_replay_environment_summary
+                  .projection_validation_step_count_total == 4 &&
+          scan_replay_environment_summary.missing_batch_index_count == 0 &&
+          scan_replay_environment_summary.missing_experiment_index_count == 0 &&
+          scan_replay_environment_summary.missing_experiment_report_count ==
+              0 &&
+          scan_replay_environment_summary.incomplete_replay_attempt_count ==
+              0 &&
+          scan_replay_environment_summary
+                  .missing_projection_validation_metric_count == 0 &&
+          scan_replay_environment_summary
+                  .missing_time_law_step_evidence_count == 0 &&
+          scan_replay_environment_summary
+                  .missing_projection_validation_step_evidence_count == 0 &&
+          scan_replay_environment_summary.time_law_violation_count == 0 &&
+          scan_replay_environment_summary
+                  .missing_episode_requested_range_count == 0 &&
+          scan_replay_environment_summary
+                  .missing_episode_cursor_evidence_count == 0 &&
+          scan_replay_environment_summary
+                  .missing_episode_anchor_interval_count == 0 &&
+          scan_replay_environment_summary.missing_episode_anchor_keys_count ==
+              0 &&
+          scan_replay_environment_summary.artifact_evidence_count == 1 &&
+          scan_replay_environment_summary.batch_entry_count_total == 1 &&
+          scan_replay_environment_summary.experiment_entry_count_total == 1 &&
+          scan_replay_environment_summary.replay_bundle_count_total == 2 &&
+          scan_replay_environment_summary.policy_count_total == 2 &&
+          scan_replay_environment_summary.attempted_count_total == 2 &&
+          scan_replay_environment_summary.completed_count_total == 2 &&
+          scan_replay_environment_summary.mean_total_reward.count == 1 &&
+          std::abs(scan_replay_environment_summary.mean_total_reward.mean -
+                   1.5) < 1e-12 &&
+          scan_replay_environment_summary.mean_total_log_growth.count == 1 &&
+          std::abs(scan_replay_environment_summary.mean_total_log_growth.mean -
+                   0.03) < 1e-12 &&
+          scan_replay_environment_summary.mean_final_equity_base.count == 1 &&
+          std::abs(scan_replay_environment_summary.mean_final_equity_base.mean -
+                   103.0) < 1e-12 &&
+          scan_replay_environment_summary.mean_projection_mae.count == 1 &&
+          std::abs(scan_replay_environment_summary.mean_projection_mae.mean -
+                   0.012) < 1e-12 &&
+          scan_replay_environment_summary.mean_projection_signed_bias.count ==
+              1 &&
+          std::abs(
+              scan_replay_environment_summary.mean_projection_signed_bias.mean +
+              0.002) < 1e-12 &&
+          scan_replay_environment_summary.mean_projection_directional_accuracy
+                  .count == 1 &&
+          std::abs(scan_replay_environment_summary
+                       .mean_projection_directional_accuracy.mean -
+                   0.75) < 1e-12 &&
+          scan_replay_environment_summary.mean_projection_interval_coverage
+                  .count == 1 &&
+          std::abs(scan_replay_environment_summary
+                       .mean_projection_interval_coverage.mean -
+                   0.80) < 1e-12 &&
+          scan_replay_environment_summary.artifact_evidence &&
+          scan_replay_environment_summary.visibility_only &&
+          !scan_replay_environment_summary.replay_executor &&
+          !scan_replay_environment_summary.allocation_authority &&
+          !scan_replay_environment_summary.execution_authority &&
+          !scan_replay_environment_summary.readiness_authority &&
+          !scan_replay_environment_summary.quality_authority &&
+          !scan_replay_environment_summary.performance_authority &&
+          !scan_replay_environment_summary.market_readiness_authority &&
+          !scan_replay_environment_summary.deployment_authority &&
+          !scan_replay_environment_summary.checkpoint_selector &&
+          !scan_replay_environment_summary.coverage_authority &&
+          !scan_replay_environment_summary.leakage_authority &&
+          !scan_replay_environment_summary.contract_identity_authority &&
+          scan_replay_environment_summary.warning_count == 0 &&
+          scan_replay_environment_summary.issues.empty(),
+      "replay environment summary exposes replay-loop metrics as read-only "
+      "artifact evidence, not portfolio acceptance");
+  auto bad_replay_environment = mdn_replay_environment;
+  bad_replay_environment.replay_executor = true;
+  const auto bad_replay_environment_summary =
+      exposure::summarize_replay_environments({channel_mdn_fact},
+                                              {bad_replay_environment});
+  check(bad_replay_environment_summary.replay_executor &&
+            bad_replay_environment_summary.warning_count > 0 &&
+            !bad_replay_environment_summary.issues.empty(),
+        "replay environment authority drift is reported as warnings, not as "
+        "Runtime execution or market readiness");
+  auto bad_time_law_replay_environment = mdn_replay_environment;
+  bad_time_law_replay_environment.time_law_future_observation_violation_count =
+      1;
+  const auto bad_time_law_replay_environment_summary =
+      exposure::summarize_replay_environments(
+          {channel_mdn_fact}, {bad_time_law_replay_environment});
+  check(bad_time_law_replay_environment_summary.time_law_violation_count == 1 &&
+            bad_time_law_replay_environment_summary.warning_count > 0 &&
+            !bad_time_law_replay_environment_summary.issues.empty(),
+        "replay environment time-law violations are exposed as lattice "
+        "warnings for parked environment audit visibility");
 
   check(rep_fact.target_component_family_id ==
             "wikimyei.representation.encoding.vicreg",
@@ -1138,10 +4126,22 @@ int main() {
           selection_signal_facts.front().selector_id == selection_fact.job_id &&
           selection_signal_facts.front().selector_kind ==
               "checkpoint_selection" &&
+          selection_signal_facts.front().selector_split ==
+              selection_fact.split_name &&
+          selection_signal_facts.front().selector_metric ==
+              "runtime_output_checkpoint_identity" &&
+          selection_signal_facts.front().tie_policy ==
+              "not_applicable_single_output_checkpoint" &&
           selection_signal_facts.front().selected_checkpoint ==
               selection_fact.output_checkpoint &&
           selection_signal_facts.front().selected_checkpoint_source ==
               "output_checkpoint" &&
+          selection_signal_facts.front().candidate_checkpoint_count == 1 &&
+          selection_signal_facts.front().candidate_checkpoints.size() == 1 &&
+          selection_signal_facts.front().candidate_checkpoints.front() ==
+              selection_fact.output_checkpoint.lexically_normal() &&
+          selection_signal_facts.front().candidate_checkpoint_digest.size() ==
+              16 &&
           selection_signal_facts.front().selection_footprint.begin ==
               selection_fact.anchor_range.begin &&
           selection_signal_facts.front().selection_footprint.end ==
@@ -1154,21 +4154,33 @@ int main() {
   const auto selection_signal_summary = exposure::summarize_selection_signals(
       selection_signal_ledger.facts(),
       selection_signal_ledger.selection_signal_facts());
-  check(selection_signal_ledger.selection_signal_facts().size() == 1 &&
-            selection_signal_summary.selection_signal_fact_count == 1 &&
-            selection_signal_summary.unique_selector_count == 1 &&
-            selection_signal_summary.selected_checkpoint_count == 1 &&
-            selection_signal_summary.missing_selected_checkpoint_count == 0 &&
-            selection_signal_summary.mutating_selector_count == 1 &&
-            selection_signal_summary.first_class_event_stream &&
-            selection_signal_summary.read_only_lattice_fact &&
-            !selection_signal_summary.runtime_executor &&
-            !selection_signal_summary.coverage_authority &&
-            !selection_signal_summary.contract_identity_authority &&
-            selection_signal_summary.leakage_relevant_when_forbidden &&
-            selection_signal_summary.issues.empty(),
-        "selection_signal summary exposes read-only first-class selector "
-        "events without coverage or contract authority");
+  check(
+      selection_signal_ledger.selection_signal_facts().size() == 1 &&
+          selection_signal_summary.selection_signal_fact_count == 1 &&
+          selection_signal_summary.unique_selector_count == 1 &&
+          selection_signal_summary.selected_checkpoint_count == 1 &&
+          selection_signal_summary.missing_selected_checkpoint_count == 0 &&
+          selection_signal_summary.selector_split_bound_count == 1 &&
+          selection_signal_summary.selector_metric_bound_count == 1 &&
+          selection_signal_summary.tie_policy_bound_count == 1 &&
+          selection_signal_summary.candidate_checkpoint_bound_count == 1 &&
+          selection_signal_summary.candidate_checkpoint_digest_bound_count ==
+              1 &&
+          selection_signal_summary.missing_candidate_checkpoint_count == 0 &&
+          selection_signal_summary.missing_candidate_checkpoint_digest_count ==
+              0 &&
+          selection_signal_summary.candidate_checkpoint_digest_mismatch_count ==
+              0 &&
+          selection_signal_summary.mutating_selector_count == 1 &&
+          selection_signal_summary.first_class_event_stream &&
+          selection_signal_summary.read_only_lattice_fact &&
+          !selection_signal_summary.runtime_executor &&
+          !selection_signal_summary.coverage_authority &&
+          !selection_signal_summary.contract_identity_authority &&
+          selection_signal_summary.leakage_relevant_when_forbidden &&
+          selection_signal_summary.issues.empty(),
+      "selection_signal summary exposes read-only first-class selector "
+      "events without coverage or contract authority");
   auto incomplete_selection_fact = selection_fact;
   incomplete_selection_fact.output_checkpoint.clear();
   incomplete_selection_fact.input_checkpoints.clear();
@@ -1179,6 +4191,8 @@ int main() {
           incomplete_selection_ledger.facts(),
           incomplete_selection_ledger.selection_signal_facts());
   check(incomplete_selection_summary.missing_selected_checkpoint_count == 1 &&
+            incomplete_selection_summary.missing_candidate_checkpoint_count ==
+                1 &&
             std::any_of(incomplete_selection_summary.issues.begin(),
                         incomplete_selection_summary.issues.end(),
                         [](const auto &issue) {
@@ -1187,6 +4201,32 @@ int main() {
                         }),
         "selection_signal events without a selected checkpoint stay visible as "
         "incomplete provenance");
+  auto checkpoint_audit_fact = selection_fact;
+  checkpoint_audit_fact.use.selection_signal = false;
+  checkpoint_audit_fact.use.evaluation_metric = true;
+  checkpoint_audit_fact.output_checkpoint.clear();
+  checkpoint_audit_fact.input_checkpoints = {rep_dir / "z.pt",
+                                             rep_dir / "a.pt"};
+  const auto checkpoint_audit_signals =
+      exposure::make_selection_signal_facts_from_exposure_fact(
+          checkpoint_audit_fact);
+  check(
+      checkpoint_audit_signals.size() == 1 &&
+          checkpoint_audit_signals.front().selector_rule ==
+              "derived_evaluation_checkpoint_audit" &&
+          checkpoint_audit_signals.front().selector_metric ==
+              "runtime_loaded_checkpoint_identity" &&
+          checkpoint_audit_signals.front().tie_policy ==
+              "deterministic_input_checkpoint_path_order_no_ranking" &&
+          checkpoint_audit_signals.front().candidate_checkpoint_count == 2 &&
+          checkpoint_audit_signals.front().candidate_checkpoint_digest.size() ==
+              16 &&
+          checkpoint_audit_signals.front().selected_checkpoint ==
+              (rep_dir / "a.pt").lexically_normal() &&
+          checkpoint_audit_signals.front().selected_checkpoint_source ==
+              "loaded_checkpoint",
+      "evaluation checkpoint audits expose loaded-candidate identity without "
+      "claiming best-checkpoint selection");
   check(rep_fact.candidate_anchor_count == 100 &&
             rep_fact.accepted_anchor_count == 100,
         "older accepted-only manifests infer candidate anchor count");
@@ -1335,7 +4375,7 @@ int main() {
       "representation support fact has a stable digest");
   check(exposure::canonical_representation_support_fact_text(
             representation_support_fact)
-            .find("protocol_id=cwu_01v") != std::string::npos,
+                .find("protocol_id=cwu_01v") != std::string::npos,
         "representation support canonical text includes protocol identity");
 
   const auto rep_sidecar = exposure::exposure_fact_path_for_job_dir(rep_dir);

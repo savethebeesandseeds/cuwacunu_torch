@@ -22,7 +22,14 @@
 
 namespace cuwacunu::kikijyeba::lattice::target {
 
+inline constexpr const char *k_lattice_fact_identity_contract_schema_v1 =
+    cuwacunu::kikijyeba::lattice::exposure::
+        k_lattice_fact_identity_contract_schema_v1;
+inline constexpr const char *k_lattice_fact_identity_contract_id_v1 = cuwacunu::
+    kikijyeba::lattice::exposure::k_lattice_fact_identity_contract_id_v1;
+
 enum class lattice_target_kind_t {
+  not_applicable,
   vicreg_ready,
   mtf_representation_ready,
   channel_mdn_ready,
@@ -71,7 +78,10 @@ struct lattice_target_spec_t {
   std::string use_profile{};
   std::string guard_id{};
   std::string target_class{"readiness"};
-  lattice_target_kind_t kind{lattice_target_kind_t::channel_mdn_ready};
+  lattice_target_kind_t kind{lattice_target_kind_t::not_applicable};
+  bool target_kind_applicable{true};
+  std::string proof_kind{};
+  std::string subject_fact_family{};
   std::string protocol_id{};
   std::string component{};
   std::string checkpoint_source{"output_checkpoint"};
@@ -157,6 +167,36 @@ struct lattice_warning_clause_t {
   std::string clause_id{};
   std::string target_id{};
   std::string kind{};
+  std::vector<lattice_clause_field_t> fields{};
+};
+
+struct lattice_policy_gate_spec_t {
+  std::string policy_id{};
+  std::string policy_kind{};
+  std::string target_id{};
+  std::string metric{};
+  std::string metric_definition{};
+  std::string baseline{};
+  std::string baseline_definition{};
+  double threshold{std::numeric_limits<double>::quiet_NaN()};
+  std::string uncertainty_policy{};
+  std::string uncertainty_model{};
+  double support_minimum{std::numeric_limits<double>::quiet_NaN()};
+  std::string selector_split{};
+  std::string anti_leakage_policy{};
+  std::string tie_policy{};
+  std::string negative_tests{};
+  std::string calibration_requirements{};
+  std::string holdout_declaration{};
+  std::string threshold_selection_audit{};
+  bool enabled{false};
+  std::string policy_fingerprint{};
+  std::string status{"disabled_reserved"};
+  std::string disabled_reason{
+      "policy gates are reserved until metric and baseline definitions, "
+      "thresholds, uncertainty policy/model, support minimums, selector split, "
+      "leakage policy, negative tests, calibration requirements, holdout "
+      "declaration, and threshold-selection audit are explicit"};
   std::vector<lattice_clause_field_t> fields{};
 };
 
@@ -5042,6 +5082,69 @@ lattice_target_numeric_dimension_vocabulary() {
       {"LATTICE_WARN.anchor_domain_health", "SKIPPED_FAILED_FETCH_PROBE_ABOVE",
        "count", "non_negative_integer", true, 0.0, false, 0.0, true, "above",
        "failed-fetch probe thresholds are non-negative counts"},
+      {"LATTICE_WARN.forecast_baseline.fraction_metrics", "ABOVE_OR_BELOW",
+       "fraction", "closed_unit_interval", true, 0.0, true, 1.0, false,
+       "metric_declared",
+       "forecast baseline directional accuracy thresholds are fractions in "
+       "[0,1]"},
+      {"LATTICE_WARN.forecast_baseline.count_metrics", "ABOVE_OR_BELOW",
+       "count", "non_negative_integer", true, 0.0, false, 0.0, true,
+       "metric_declared",
+       "forecast baseline support thresholds are non-negative integral counts"},
+      {"LATTICE_WARN.forecast_baseline.non_negative_metrics", "ABOVE_OR_BELOW",
+       "metric_specific", "non_negative_real", true, 0.0, false, 0.0, false,
+       "metric_declared",
+       "forecast baseline loss and unsigned error thresholds are non-negative "
+       "metric-specific values"},
+      {"LATTICE_WARN.forecast_baseline.baseline_signed_error", "ABOVE_OR_BELOW",
+       "expected_value_error", "finite_real", false, 0.0, false, 0.0, false,
+       "metric_declared",
+       "forecast baseline signed-error thresholds can be positive or negative "
+       "finite values"},
+      {"LATTICE_WARN.forecast_eval.fraction_metrics", "ABOVE_OR_BELOW",
+       "fraction", "closed_unit_interval", true, 0.0, true, 1.0, false,
+       "metric_declared",
+       "forecast evaluation directional accuracy and calibration coverage "
+       "thresholds are fractions in [0,1]"},
+      {"LATTICE_WARN.forecast_eval.count_metrics", "ABOVE_OR_BELOW", "count",
+       "non_negative_integer", true, 0.0, false, 0.0, true, "metric_declared",
+       "forecast evaluation support thresholds are non-negative integral "
+       "counts"},
+      {"LATTICE_WARN.forecast_eval.non_negative_metrics", "ABOVE_OR_BELOW",
+       "metric_specific", "non_negative_real", true, 0.0, false, 0.0, false,
+       "metric_declared",
+       "forecast evaluation loss and unsigned error thresholds are "
+       "non-negative metric-specific values"},
+      {"LATTICE_WARN.forecast_eval.signed_error", "ABOVE_OR_BELOW",
+       "expected_value_error", "finite_real", false, 0.0, false, 0.0, false,
+       "metric_declared",
+       "forecast evaluation signed-error thresholds can be positive or "
+       "negative "
+       "finite values"},
+      {"LATTICE_WARN.observer_belief.fraction_metrics", "ABOVE_OR_BELOW",
+       "fraction", "closed_unit_interval", true, 0.0, true, 1.0, false,
+       "metric_declared",
+       "observer confidence, data quality, and liquidity thresholds are "
+       "fractions in [0,1]"},
+      {"LATTICE_WARN.observer_belief.boolean_flags", "ABOVE_OR_BELOW",
+       "boolean", "closed_unit_interval", true, 0.0, true, 1.0, false,
+       "metric_declared",
+       "observer lineage, diagnostic completeness, and authority flags are "
+       "warning-only 0/1 diagnostics"},
+      {"LATTICE_WARN.allocation_engine.fraction_metrics", "ABOVE_OR_BELOW",
+       "fraction", "closed_unit_interval", true, 0.0, true, 1.0, false,
+       "metric_declared",
+       "allocation reserve weight, turnover, and cost thresholds are fractions "
+       "in [0,1]"},
+      {"LATTICE_WARN.allocation_engine.non_negative_metrics", "ABOVE_OR_BELOW",
+       "metric_specific", "non_negative_real", true, 0.0, false, 0.0, false,
+       "metric_declared",
+       "allocation CVaR/loss diagnostics are warning-only non-negative values"},
+      {"LATTICE_WARN.allocation_engine.boolean_flags", "ABOVE_OR_BELOW",
+       "boolean", "closed_unit_interval", true, 0.0, true, 1.0, false,
+       "metric_declared",
+       "allocation lineage, cap/growth-floor/fallback/de-risk, contract, and "
+       "authority flags are warning-only 0/1 diagnostics"},
       {"LATTICE_WARN.node_support_balance.valid_target_count_gini", "ABOVE",
        "fraction", "closed_unit_interval", true, 0.0, true, 1.0, false, "above",
        "node support Gini imbalance is a fraction in [0,1]"},
@@ -5341,9 +5444,9 @@ lattice_target_numeric_dimension_summary() {
       coverage->unit != repeated_load->unit &&
       coverage->numeric_kind != repeated_load->numeric_kind;
 
-  if (out.dimension_count != 34) {
+  if (out.dimension_count != 37) {
     out.summary_issues.push_back(
-        "target numeric dimension vocabulary must contain 34 V1 rows");
+        "target numeric dimension vocabulary must contain 37 V1 rows");
   }
   if (out.unit_count != 9) {
     out.summary_issues.push_back(
@@ -5382,7 +5485,7 @@ lattice_target_numeric_dimension_summary() {
   }
   if (out.minimum_direction_count != 10 || out.above_direction_count != 9 ||
       out.below_direction_count != 4 ||
-      out.metric_declared_direction_count != 10 ||
+      out.metric_declared_direction_count != 13 ||
       out.planning_budget_direction_count != 1) {
     out.summary_issues.push_back(
         "numeric dimension threshold-direction counts must match lattice "
@@ -5750,6 +5853,24 @@ lattice_proof_certificate_digest_policy_vocabulary() {
        "runtime model-state paths are accepted only as proven loaded-state "
        "evidence inside dependency proofs, never as contract identity",
        true, true, false, false, false},
+      {"artifact_proofs", "fact-family artifact readiness proof",
+       "artifacts[] proof_kind, fact_family, fact_schema, fact_type, "
+       "fact_digest, fact-identity-contract binding, proof-template binding "
+       "flag and claim, parent exposure digest, job/wave/protocol/contract/"
+       "component/graph/source/split identity, anchor/completed row-index "
+       "ranges, artifact/deterministic/visibility/authority-clean/lineage "
+       "booleans, explicit false decision-authority flags, pass bit, and "
+       "issues",
+       "fact summaries outside the certificate; forecast quality metrics; "
+       "allocation recommendations; runtime dispatch receipts",
+       "duplicate artifact proofs are rejected; fact family, digest, identity, "
+       "fact-identity-contract binding, proof-template binding and claim, "
+       "deterministic artifact, visibility-only, authority-clean, explicit "
+       "no-authority, lineage-bound, and pass fields are checked",
+       "artifact proofs are narrow lineage/completeness claims over catalog "
+       "facts, not training readiness, quality acceptance, allocation, market "
+       "readiness, or runtime execution authority",
+       true, true, false, false, false},
       {"coverage_proofs", "idempotent coverage and additive load proof",
        "coverage[] use, algebra, target range, contributing intervals, "
        "contributing fact digests, contributing fact witnesses, merged "
@@ -5920,6 +6041,7 @@ lattice_proof_certificate_digest_policy_summary() {
       "target_and_split_identity",
       "proof_context",
       "dependency_proofs",
+      "artifact_proofs",
       "coverage_proofs",
       "closure_causal_graph",
       "checkpoint_identity_previews",
@@ -5946,8 +6068,13 @@ lattice_proof_certificate_digest_policy_summary() {
 
   out.digest_has_core_status_authority_surfaces = true;
   const std::vector<std::string> core_status_surfaces{
-      "target_and_split_identity", "proof_context",        "dependency_proofs",
-      "coverage_proofs",           "closure_causal_graph", "leakage_proof"};
+      "target_and_split_identity",
+      "proof_context",
+      "dependency_proofs",
+      "artifact_proofs",
+      "coverage_proofs",
+      "closure_causal_graph",
+      "leakage_proof"};
   for (const auto &surface : core_status_surfaces) {
     const auto policy = find_policy(surface);
     if (policy == vocabulary.end() ||
@@ -5966,22 +6093,22 @@ lattice_proof_certificate_digest_policy_summary() {
       all_digest_contributors_have_self_checks;
   out.all_policies_have_boundary_text = out.empty_policy_field_count == 0;
 
-  if (out.policy_count != 11) {
+  if (out.policy_count != 12) {
     out.summary_issues.push_back(
-        "proof certificate digest policy vocabulary must contain 11 surfaces");
+        "proof certificate digest policy vocabulary must contain 12 surfaces");
   }
-  if (out.digest_contributing_count != 8) {
+  if (out.digest_contributing_count != 9) {
     out.summary_issues.push_back(
-        "proof certificate digest must bind exactly 8 proof surfaces in V1");
+        "proof certificate digest must bind exactly 9 proof surfaces in V1");
   }
   if (out.digest_excluded_count != 3) {
     out.summary_issues.push_back(
         "proof certificate digest policy must exclude exactly 3 report or "
         "policy surfaces in V1");
   }
-  if (out.status_authority_count != 7) {
+  if (out.status_authority_count != 8) {
     out.summary_issues.push_back(
-        "proof certificate digest policy must expose 7 status-authority "
+        "proof certificate digest policy must expose 8 status-authority "
         "surfaces in V1");
   }
   if (out.digest_non_status_authority_count != 2) {
@@ -7802,6 +7929,68 @@ struct lattice_target_proof_certificate_t {
     bool representation_checkpoint_match{false};
   };
 
+  struct artifact_proof_t {
+    std::string proof_kind{};
+    bool proof_template_bound{false};
+    std::string proof_template_claim{};
+    std::string fact_family{};
+    std::string fact_schema{};
+    std::string fact_type{};
+    std::string fact_digest{};
+    std::string fact_identity_contract_schema{};
+    std::string fact_identity_contract_id{};
+    bool fact_identity_contract_bound{false};
+    bool fact_identity_envelope_complete{false};
+    bool row_index_interval_authority{false};
+    bool source_key_window_audit_only{true};
+    bool fact_identity_target_kind_authority{false};
+    bool fact_identity_runtime_wave_authority{false};
+    bool fact_identity_marshal_reachability{false};
+    bool fact_identity_policy_gate_authority{false};
+    std::string parent_exposure_fact_digest{};
+    std::string job_id{};
+    std::string wave_id{};
+    std::string protocol_id{};
+    std::string contract_fingerprint{};
+    std::string component{};
+    std::string component_assembly_fingerprint{};
+    std::string graph_order_fingerprint{};
+    std::string source_cursor_token{};
+    std::string split_policy_fingerprint{};
+    std::string split_name{};
+    cuwacunu::kikijyeba::lattice::exposure::anchor_interval_t anchor_range{};
+    cuwacunu::kikijyeba::lattice::exposure::anchor_interval_t
+        completed_anchor_range{};
+    bool identity_match{false};
+    bool artifact_evidence{false};
+    bool deterministic_artifact{false};
+    bool visibility_only{false};
+    bool authority_clean{false};
+    bool readiness_authority{false};
+    bool quality_authority{false};
+    bool performance_authority{false};
+    bool checkpoint_selector{false};
+    bool coverage_authority{false};
+    bool leakage_authority{false};
+    bool contract_identity_authority{false};
+    bool allocation_authority{false};
+    bool execution_authority{false};
+    bool market_readiness_authority{false};
+    bool deployment_authority{false};
+    bool policy_gate{false};
+    bool target_dependency_authority{false};
+    bool runtime_wave_authority{false};
+    bool marshal_reachability{false};
+    bool checkpoint_source_authority{false};
+    bool plan_checkpoint_input_authority{false};
+    bool model_state_mutation{false};
+    bool raw_potential_tradable_return{false};
+    bool replay_executor{false};
+    bool lineage_bound{false};
+    bool passed{false};
+    std::vector<std::string> issues{};
+  };
+
   struct coverage_proof_t {
     std::string use{};
     std::string algebra{
@@ -7937,6 +8126,7 @@ struct lattice_target_proof_certificate_t {
 
   proof_context_t proof_context{};
   std::vector<dependency_proof_t> dependencies{};
+  std::vector<artifact_proof_t> artifacts{};
   std::vector<coverage_proof_t> coverage{};
   closure_proof_t closure{};
   leakage_proof_t leakage{};
@@ -7951,7 +8141,11 @@ struct lattice_target_proof_certificate_check_t {
 
 struct lattice_target_evaluation_t {
   std::string target_id{};
-  lattice_target_kind_t kind{lattice_target_kind_t::channel_mdn_ready};
+  lattice_target_kind_t kind{lattice_target_kind_t::not_applicable};
+  bool target_kind_applicable{true};
+  std::string target_class{};
+  std::string proof_kind{};
+  std::string subject_fact_family{};
   std::string component{};
   std::string split_policy_fingerprint{};
   lattice_target_status_t status{lattice_target_status_t::missing_report};
@@ -7966,9 +8160,14 @@ struct lattice_target_evaluation_t {
   std::vector<std::string> warnings{};
   struct warning_result_t {
     std::string warning_id{};
+    std::string target_id{};
     std::string kind{};
+    std::string warning_family{};
     std::string status{"clear"};
     std::string severity{"info"};
+    std::string source{"lattice"};
+    std::string component{"lattice_target"};
+    bool blocking{false};
     bool threshold_triggered{false};
     std::string threshold_relation{"unavailable"};
     double measured_value{std::numeric_limits<double>::quiet_NaN()};
@@ -7983,6 +8182,14 @@ struct lattice_target_evaluation_t {
     std::string effect{};
     std::string metric{};
     std::string evidence_basis{"none"};
+    std::string evidence_digest{};
+    std::string fact_family{};
+    std::string fact_digest{};
+    std::vector<std::string> target_ids_observed_against{};
+    std::string machine_reason_code{};
+    std::string human_explanation{};
+    std::string suggested_inspection_panel{};
+    std::string readiness_effect{"non_blocking_warning_only"};
     std::string message{};
     bool measurement_available{false};
     std::string diagnostic_metric_family{};
@@ -8014,6 +8221,9 @@ struct lattice_target_evaluation_t {
     std::int64_t unavailable_warning_count{0};
     std::int64_t clear_measured_warning_count{0};
     std::int64_t warning_count{0};
+    std::int64_t blocking_warning_count{0};
+    std::int64_t non_blocking_warning_count{0};
+    bool all_warnings_non_blocking{true};
     std::int64_t above_threshold_count{0};
     std::int64_t not_above_threshold_count{0};
     std::int64_t below_threshold_count{0};
@@ -8038,6 +8248,9 @@ struct lattice_target_evaluation_t {
   };
   std::vector<representation_geometry_gate_result_t>
       representation_geometry_gate_results{};
+  bool fact_integrity_summary_available{false};
+  cuwacunu::kikijyeba::lattice::exposure::lattice_fact_integrity_summary_t
+      fact_integrity_summary{};
   lattice_target_proof_certificate_t proof_certificate{};
   lattice_target_proof_certificate_check_t proof_certificate_check{};
   struct proof_deficit_t {
@@ -8055,6 +8268,7 @@ struct lattice_target_evaluation_t {
     std::vector<cuwacunu::kikijyeba::lattice::exposure::anchor_interval_t>
         missing_intervals{};
     bool plan_relevant{true};
+    std::vector<std::string> related_fact_integrity_issue_codes{};
   };
   std::vector<proof_deficit_t> deficits{};
   struct evidence_order_vector_t {
@@ -8093,6 +8307,20 @@ struct lattice_target_evaluation_t {
   };
   evidence_order_vector_t evidence_order_vector{};
   struct plan_basis_t {
+    struct fact_preview_hint_t {
+      std::string tool{"hero.lattice.fact_preview"};
+      std::string marshal_tool{"hero.marshal.inspect_evidence_panel"};
+      std::string fact_family{};
+      std::string fact_digest{};
+      bool include_preview{true};
+      bool include_lineage{true};
+      bool read_only{true};
+      bool target_proof{false};
+      bool dispatchable{false};
+      bool facts_used_for_target_satisfaction{false};
+      bool checkpoint_selected{false};
+      bool model_selector{false};
+    };
     bool available{false};
     std::string reason{};
     std::string primary_deficit_key{};
@@ -8106,6 +8334,7 @@ struct lattice_target_evaluation_t {
     std::vector<cuwacunu::kikijyeba::lattice::exposure::anchor_interval_t>
         missing_intervals{};
     std::string suggested_action{};
+    std::vector<fact_preview_hint_t> fact_preview_hints{};
   };
   plan_basis_t plan_basis{};
 };
@@ -8631,6 +8860,8 @@ struct lattice_target_validation_report_t {
 [[nodiscard]] inline const char *
 lattice_target_kind_name(lattice_target_kind_t kind) {
   switch (kind) {
+  case lattice_target_kind_t::not_applicable:
+    return "not_applicable";
   case lattice_target_kind_t::vicreg_ready:
     return "vicreg_ready";
   case lattice_target_kind_t::mtf_representation_ready:
@@ -8645,6 +8876,12 @@ lattice_target_kind_name(lattice_target_kind_t kind) {
 parse_lattice_target_kind(std::string value) {
   namespace kv = cuwacunu::piaabo::parse::simple_kv;
   value = kv::lowercase(kv::trim(std::move(value)));
+  if (value == "not_applicable" || value == "none") {
+    throw std::runtime_error(
+        std::string("[lattice_target] TARGET_KIND ") + value +
+        " is internal to artifact_readiness; omit TARGET_KIND for artifact "
+        "targets");
+  }
   if (value == "representation_ready") {
     throw std::runtime_error(
         "[lattice_target] TARGET_KIND representation_ready was removed from "
@@ -8671,6 +8908,8 @@ parse_lattice_target_kind(std::string value) {
 [[nodiscard]] inline bool
 lattice_target_kind_is_mdn(lattice_target_kind_t kind) {
   switch (kind) {
+  case lattice_target_kind_t::not_applicable:
+    throw std::runtime_error("[lattice_target] target kind is not applicable");
   case lattice_target_kind_t::vicreg_ready:
   case lattice_target_kind_t::mtf_representation_ready:
     return false;
@@ -8683,6 +8922,8 @@ lattice_target_kind_is_mdn(lattice_target_kind_t kind) {
 [[nodiscard]] inline std::string
 upstream_representation_component_for_target_kind(lattice_target_kind_t kind) {
   switch (kind) {
+  case lattice_target_kind_t::not_applicable:
+    throw std::runtime_error("[lattice_target] target kind is not applicable");
   case lattice_target_kind_t::vicreg_ready:
   case lattice_target_kind_t::mtf_representation_ready:
   case lattice_target_kind_t::channel_mdn_ready:
@@ -8717,6 +8958,8 @@ lattice_target_status_name(lattice_target_status_t status) {
 [[nodiscard]] inline std::string
 default_component_for_target_kind(lattice_target_kind_t kind) {
   switch (kind) {
+  case lattice_target_kind_t::not_applicable:
+    throw std::runtime_error("[lattice_target] target kind is not applicable");
   case lattice_target_kind_t::vicreg_ready:
     return "wikimyei.representation.encoding.vicreg";
   case lattice_target_kind_t::mtf_representation_ready:
@@ -8730,6 +8973,8 @@ default_component_for_target_kind(lattice_target_kind_t kind) {
 [[nodiscard]] inline std::string
 job_kind_for_target_kind(lattice_target_kind_t kind) {
   switch (kind) {
+  case lattice_target_kind_t::not_applicable:
+    throw std::runtime_error("[lattice_target] target kind is not applicable");
   case lattice_target_kind_t::vicreg_ready:
     return "channel_representation_vicreg";
   case lattice_target_kind_t::mtf_representation_ready:
@@ -8743,6 +8988,8 @@ job_kind_for_target_kind(lattice_target_kind_t kind) {
 [[nodiscard]] inline std::string
 component_fingerprint_key_for_target_kind(lattice_target_kind_t kind) {
   switch (kind) {
+  case lattice_target_kind_t::not_applicable:
+    throw std::runtime_error("[lattice_target] target kind is not applicable");
   case lattice_target_kind_t::vicreg_ready:
     return "vicreg_assembly_fingerprint";
   case lattice_target_kind_t::mtf_representation_ready:
@@ -8863,16 +9110,256 @@ inline void require_non_negative_count_threshold(double value,
 
 inline void validate_lattice_target_class(const std::string &target_class,
                                           const std::string &target_id) {
-  if (target_class == "validation_performance" ||
+  if (target_class.empty() || target_class == "readiness" ||
+      target_class == "evaluation_readiness" ||
+      target_class == "leakage_guard" || target_class == "artifact_readiness") {
+    return;
+  }
+  if (target_class == "policy_gate" ||
+      target_class == "validation_performance" ||
       target_class == "performance_acceptance") {
     throw std::runtime_error(
         "[lattice_target] TARGET_CLASS=" + target_class +
-        " is reserved for future explicit validation performance gates; "
-        "current targets must use evaluation_readiness plus LATTICE_WARN "
-        "visibility until performance evidence has uncertainty and "
-        "selection-signal leakage policy for " +
+        " is reserved for future explicit policy gates; current targets must "
+        "use readiness, evaluation_readiness, leakage_guard, "
+        "artifact_readiness, and LATTICE_WARN visibility until thresholds, "
+        "uncertainty, baselines, selector split, and leakage policy are "
+        "declared for " +
         target_id);
   }
+  if (target_class == "market_readiness" ||
+      target_class == "deployment_readiness") {
+    throw std::runtime_error(
+        "[lattice_target] TARGET_CLASS=" + target_class +
+        " is not a Lattice "
+        "proof-core target class; market/deployment readiness must remain "
+        "outside Lattice or behind a separately declared disabled policy gate "
+        "for " +
+        target_id);
+  }
+  throw std::runtime_error("[lattice_target] unsupported TARGET_CLASS=" +
+                           target_class + " for " + target_id);
+}
+
+[[nodiscard]] inline bool
+is_artifact_readiness_target_class(const std::string &target_class) {
+  namespace kv = cuwacunu::piaabo::parse::simple_kv;
+  return kv::lowercase(kv::trim(target_class)) == "artifact_readiness";
+}
+
+[[nodiscard]] inline bool
+lattice_target_kind_applicable(const lattice_target_spec_t &spec) {
+  return spec.target_kind_applicable &&
+         !is_artifact_readiness_target_class(spec.target_class) &&
+         spec.kind != lattice_target_kind_t::not_applicable;
+}
+
+[[nodiscard]] inline bool
+lattice_target_kind_applicable(const lattice_target_evaluation_t &evaluation) {
+  return evaluation.target_kind_applicable &&
+         !is_artifact_readiness_target_class(evaluation.target_class) &&
+         evaluation.kind != lattice_target_kind_t::not_applicable;
+}
+
+[[nodiscard]] inline std::string
+lattice_target_effective_kind_name(const lattice_target_spec_t &spec) {
+  return lattice_target_kind_applicable(spec)
+             ? lattice_target_kind_name(spec.kind)
+             : "not_applicable";
+}
+
+[[nodiscard]] inline std::string lattice_target_effective_kind_name(
+    const lattice_target_evaluation_t &evaluation) {
+  return lattice_target_kind_applicable(evaluation)
+             ? lattice_target_kind_name(evaluation.kind)
+             : "not_applicable";
+}
+
+[[nodiscard]] inline std::string
+lattice_target_effective_kind_selector(const lattice_target_spec_t &spec) {
+  return lattice_target_kind_applicable(spec)
+             ? lattice_target_kind_name(spec.kind)
+             : "none";
+}
+
+[[nodiscard]] inline std::string lattice_target_effective_kind_selector(
+    const lattice_target_evaluation_t &evaluation) {
+  return lattice_target_kind_applicable(evaluation)
+             ? lattice_target_kind_name(evaluation.kind)
+             : "none";
+}
+
+struct lattice_artifact_readiness_proof_template_t {
+  std::string subject_fact_family{};
+  std::string proof_kind{};
+  std::string proof_claim{};
+};
+
+[[nodiscard]] inline const std::vector<
+    lattice_artifact_readiness_proof_template_t> &
+lattice_artifact_readiness_proof_templates() {
+  static const std::vector<lattice_artifact_readiness_proof_template_t>
+      templates{
+          {"target_transform", "target_transform_contract_bound",
+           "target transform contract existence, identity, units, mask policy, "
+           "and support-surface binding"},
+          {"forecast_baseline", "forecast_baseline_artifact_bound",
+           "forecast baseline artifact existence, identity, target-transform "
+           "binding, and support-surface binding"},
+          {"forecast_eval", "forecast_eval_artifact_bound",
+           "forecast evaluation artifact existence, checkpoint lineage, "
+           "target-transform binding, baseline binding, selection-signal "
+           "audit binding, and support counts"},
+          {"observer_belief", "observer_belief_artifact_bound",
+           "observer belief artifact existence, forecast lineage, raw-vs-"
+           "allocation belief typing, scenario/covariance diagnostics, and "
+           "deterministic-output binding"},
+          {"allocation_engine", "allocation_artifact_bound",
+           "allocation artifact existence, observer-belief binding, forecast "
+           "lineage, reserve-node binding, objective/constraint diagnostics, "
+           "and fallback/de-risk reasons"}};
+  return templates;
+}
+
+[[nodiscard]] inline const lattice_artifact_readiness_proof_template_t *
+artifact_readiness_proof_template_for_subject_fact_family(
+    const std::string &fact_family) {
+  namespace kv = cuwacunu::piaabo::parse::simple_kv;
+  const auto normalized = kv::lowercase(kv::trim(fact_family));
+  for (const auto &proof_template :
+       lattice_artifact_readiness_proof_templates()) {
+    if (proof_template.subject_fact_family == normalized) {
+      return &proof_template;
+    }
+  }
+  return nullptr;
+}
+
+inline void validate_artifact_readiness_proof_template(
+    const std::string &subject_fact_family, const std::string &proof_kind,
+    const std::string &target_id) {
+  namespace kv = cuwacunu::piaabo::parse::simple_kv;
+  const auto family = kv::lowercase(kv::trim(subject_fact_family));
+  const auto proof = kv::lowercase(kv::trim(proof_kind));
+  const auto *proof_template =
+      artifact_readiness_proof_template_for_subject_fact_family(family);
+  if (proof_template == nullptr) {
+    throw std::runtime_error(
+        "[lattice_target] TARGET_CLASS=artifact_readiness SUBJECT_FACT_FAMILY "
+        "" +
+        family + " has no artifact proof template for " + target_id +
+        "; add a first-class proof template before promoting fact-family "
+        "evidence to target proof");
+  }
+  if (proof != proof_template->proof_kind) {
+    throw std::runtime_error(
+        "[lattice_target] TARGET_CLASS=artifact_readiness PROOF_KIND " + proof +
+        " does not match SUBJECT_FACT_FAMILY " + family + " for " + target_id +
+        "; expected " + proof_template->proof_kind);
+  }
+}
+
+[[nodiscard]] inline bool
+is_latest_satisfying_checkpoint_selectable_target_class(
+    const std::string &target_class) {
+  namespace kv = cuwacunu::piaabo::parse::simple_kv;
+  const auto normalized = kv::lowercase(kv::trim(target_class));
+  return normalized.empty() || normalized == "readiness" ||
+         normalized == "leakage_guard";
+}
+
+[[nodiscard]] inline std::string
+latest_satisfying_reference_target_id(const std::string &source) {
+  namespace kv = cuwacunu::piaabo::parse::simple_kv;
+  const std::string prefix = "latest_satisfying:";
+  const auto trimmed = kv::trim(source);
+  if (kv::lowercase(trimmed).rfind(prefix, 0) != 0) {
+    return {};
+  }
+  return kv::trim(trimmed.substr(prefix.size()));
+}
+
+inline void validate_artifact_readiness_no_training_knobs(
+    const lattice_target_spec_t &spec) {
+  if (!is_artifact_readiness_target_class(spec.target_class)) {
+    return;
+  }
+  if (spec.require_checkpoint_exists) {
+    throw std::runtime_error(
+        "[lattice_target] artifact_readiness targets cannot require "
+        "checkpoint existence for " +
+        spec.target_id);
+  }
+  if (spec.require_finite_loss) {
+    throw std::runtime_error(
+        "[lattice_target] artifact_readiness targets cannot require finite "
+        "loss for " +
+        spec.target_id);
+  }
+  if (spec.min_optimizer_steps > 0) {
+    throw std::runtime_error(
+        "[lattice_target] artifact_readiness targets cannot require "
+        "optimizer steps for " +
+        spec.target_id);
+  }
+  if (spec.min_valid_target_fraction > 0.0) {
+    throw std::runtime_error(
+        "[lattice_target] artifact_readiness targets cannot require "
+        "valid-target readiness thresholds for " +
+        spec.target_id);
+  }
+  if (spec.require_active_node_head_count > 0 ||
+      spec.require_trained_node_head_count > 0 ||
+      spec.require_evaluated_node_head_count > 0) {
+    throw std::runtime_error(
+        "[lattice_target] artifact_readiness targets cannot require MDN node "
+        "head counts for " +
+        spec.target_id);
+  }
+  if (spec.min_observed_input_coverage > 0.0 ||
+      spec.min_target_supervision_coverage > 0.0 ||
+      spec.min_evaluation_metric_coverage > 0.0) {
+    throw std::runtime_error(
+        "[lattice_target] artifact_readiness targets cannot require exposure "
+        "coverage thresholds for " +
+        spec.target_id);
+  }
+  if (!spec.upstream_target_id.empty()) {
+    throw std::runtime_error(
+        "[lattice_target] artifact_readiness targets cannot declare "
+        "UPSTREAM_TARGET_ID or LATTICE_DEPENDS for " +
+        spec.target_id);
+  }
+}
+
+[[nodiscard]] inline std::string
+default_proof_kind_for_subject_fact_family(const std::string &fact_family) {
+  const auto *proof_template =
+      artifact_readiness_proof_template_for_subject_fact_family(fact_family);
+  if (proof_template != nullptr) {
+    return proof_template->proof_kind;
+  }
+  return {};
+}
+
+[[nodiscard]] inline std::string
+normalize_lattice_subject_fact_family(const std::string &value,
+                                      const std::string &target_id) {
+  namespace kv = cuwacunu::piaabo::parse::simple_kv;
+  const auto trimmed = kv::trim(value);
+  if (trimmed.empty()) {
+    return {};
+  }
+  const auto parsed =
+      cuwacunu::kikijyeba::lattice::exposure::parse_lattice_fact_family(
+          trimmed);
+  if (!parsed.has_value()) {
+    throw std::runtime_error("[lattice_target] unsupported "
+                             "SUBJECT_FACT_FAMILY " +
+                             trimmed + " for " + target_id);
+  }
+  return cuwacunu::kikijyeba::lattice::exposure::lattice_fact_family_name(
+      *parsed);
 }
 
 [[nodiscard]] inline std::vector<lattice_clause_field_t>
@@ -9046,6 +9533,247 @@ make_lattice_forbid_clause_from_split_protection(
   return out;
 }
 
+[[nodiscard]] inline std::string
+canonical_lattice_policy_gate_text(const lattice_policy_gate_spec_t &gate) {
+  std::ostringstream out;
+  out << "policy_id=" << gate.policy_id << "\n";
+  out << "policy_kind=" << gate.policy_kind << "\n";
+  out << "target_id=" << gate.target_id << "\n";
+  out << "metric=" << gate.metric << "\n";
+  out << "metric_definition=" << gate.metric_definition << "\n";
+  out << "baseline=" << gate.baseline << "\n";
+  out << "baseline_definition=" << gate.baseline_definition << "\n";
+  out << "threshold=" << gate.threshold << "\n";
+  out << "uncertainty_policy=" << gate.uncertainty_policy << "\n";
+  out << "uncertainty_model=" << gate.uncertainty_model << "\n";
+  out << "support_minimum=" << gate.support_minimum << "\n";
+  out << "selector_split=" << gate.selector_split << "\n";
+  out << "anti_leakage_policy=" << gate.anti_leakage_policy << "\n";
+  out << "tie_policy=" << gate.tie_policy << "\n";
+  out << "negative_tests=" << gate.negative_tests << "\n";
+  out << "calibration_requirements=" << gate.calibration_requirements << "\n";
+  out << "holdout_declaration=" << gate.holdout_declaration << "\n";
+  out << "threshold_selection_audit=" << gate.threshold_selection_audit << "\n";
+  out << "enabled=" << (gate.enabled ? "true" : "false") << "\n";
+  out << "status=" << gate.status << "\n";
+  return out.str();
+}
+
+[[nodiscard]] inline std::string
+lattice_policy_gate_fingerprint(const lattice_policy_gate_spec_t &gate) {
+  return cuwacunu::kikijyeba::lattice::exposure::exposure_digest_for_text(
+      std::string("kikijyeba.lattice.policy_gate.reserved.v1\n") +
+      canonical_lattice_policy_gate_text(gate));
+}
+
+[[nodiscard]] inline bool
+is_reserved_lattice_policy_gate_kind(const std::string &policy_kind) {
+  return policy_kind == "forecast_quality_acceptance" ||
+         policy_kind == "allocation_acceptance";
+}
+
+[[nodiscard]] inline std::string
+expected_subject_fact_family_for_policy_gate_kind(
+    const std::string &policy_kind) {
+  if (policy_kind == "forecast_quality_acceptance") {
+    return "forecast_eval";
+  }
+  if (policy_kind == "allocation_acceptance") {
+    return "allocation_engine";
+  }
+  return {};
+}
+
+[[nodiscard]] inline std::vector<std::string>
+lattice_policy_gate_required_input_fields() {
+  return {"POLICY_ID",
+          "POLICY_KIND",
+          "TARGET_ID",
+          "METRIC",
+          "METRIC_DEFINITION",
+          "BASELINE",
+          "BASELINE_DEFINITION",
+          "THRESHOLD",
+          "UNCERTAINTY_POLICY",
+          "UNCERTAINTY_MODEL",
+          "SUPPORT_MINIMUM",
+          "SELECTOR_SPLIT",
+          "ANTI_LEAKAGE_POLICY",
+          "TIE_POLICY",
+          "NEGATIVE_TESTS",
+          "CALIBRATION_REQUIREMENTS",
+          "HOLDOUT_DECLARATION",
+          "THRESHOLD_SELECTION_AUDIT",
+          "ENABLED"};
+}
+
+[[nodiscard]] inline std::vector<std::string>
+lattice_policy_gate_missing_required_inputs(
+    const lattice_policy_gate_spec_t &gate) {
+  std::vector<std::string> missing;
+  const auto require_text = [&](const std::string &field,
+                                const std::string &value) {
+    if (value.empty()) {
+      missing.push_back(field);
+    }
+  };
+  require_text("POLICY_ID", gate.policy_id);
+  require_text("POLICY_KIND", gate.policy_kind);
+  require_text("TARGET_ID", gate.target_id);
+  require_text("METRIC", gate.metric);
+  require_text("METRIC_DEFINITION", gate.metric_definition);
+  require_text("BASELINE", gate.baseline);
+  require_text("BASELINE_DEFINITION", gate.baseline_definition);
+  if (!std::isfinite(gate.threshold)) {
+    missing.push_back("THRESHOLD");
+  }
+  require_text("UNCERTAINTY_POLICY", gate.uncertainty_policy);
+  require_text("UNCERTAINTY_MODEL", gate.uncertainty_model);
+  if (!std::isfinite(gate.support_minimum) || gate.support_minimum < 0.0) {
+    missing.push_back("SUPPORT_MINIMUM");
+  }
+  require_text("SELECTOR_SPLIT", gate.selector_split);
+  require_text("ANTI_LEAKAGE_POLICY", gate.anti_leakage_policy);
+  require_text("TIE_POLICY", gate.tie_policy);
+  require_text("NEGATIVE_TESTS", gate.negative_tests);
+  require_text("CALIBRATION_REQUIREMENTS", gate.calibration_requirements);
+  require_text("HOLDOUT_DECLARATION", gate.holdout_declaration);
+  require_text("THRESHOLD_SELECTION_AUDIT", gate.threshold_selection_audit);
+  return missing;
+}
+
+[[nodiscard]] inline bool lattice_policy_gate_input_contract_complete(
+    const lattice_policy_gate_spec_t &gate) {
+  return lattice_policy_gate_missing_required_inputs(gate).empty();
+}
+
+[[nodiscard]] inline lattice_policy_gate_spec_t
+decode_lattice_policy_gate_spec_block(
+    const cuwacunu::piaabo::parse::simple_kv::block_t &block) {
+  namespace kv = cuwacunu::piaabo::parse::simple_kv;
+  if (block.name != "LATTICE_POLICY_GATE") {
+    throw std::runtime_error(
+        "[lattice_target] expected LATTICE_POLICY_GATE block");
+  }
+
+  lattice_policy_gate_spec_t out{};
+  out.fields = lattice_clause_fields_from_block(block);
+  out.policy_id = kv::required(block, "POLICY_ID");
+  out.policy_kind = kv::lowercase(kv::required(block, "POLICY_KIND"));
+  out.target_id = kv::required(block, "TARGET_ID");
+  out.metric = kv::lowercase(kv::required(block, "METRIC"));
+  out.metric_definition = kv::required(block, "METRIC_DEFINITION");
+  out.baseline = kv::required(block, "BASELINE");
+  out.baseline_definition = kv::required(block, "BASELINE_DEFINITION");
+  out.threshold = kv::parse_double(kv::required(block, "THRESHOLD"));
+  out.uncertainty_policy =
+      kv::lowercase(kv::required(block, "UNCERTAINTY_POLICY"));
+  out.uncertainty_model =
+      kv::lowercase(kv::required(block, "UNCERTAINTY_MODEL"));
+  out.support_minimum =
+      kv::parse_double(kv::required(block, "SUPPORT_MINIMUM"));
+  out.selector_split = kv::required(block, "SELECTOR_SPLIT");
+  out.anti_leakage_policy =
+      kv::lowercase(kv::required(block, "ANTI_LEAKAGE_POLICY"));
+  out.tie_policy = kv::lowercase(kv::required(block, "TIE_POLICY"));
+  out.negative_tests = kv::required(block, "NEGATIVE_TESTS");
+  out.calibration_requirements =
+      kv::required(block, "CALIBRATION_REQUIREMENTS");
+  out.holdout_declaration = kv::required(block, "HOLDOUT_DECLARATION");
+  out.threshold_selection_audit =
+      kv::required(block, "THRESHOLD_SELECTION_AUDIT");
+  out.enabled = kv::parse_bool(kv::required(block, "ENABLED"));
+  out.policy_fingerprint = kv::optional(block, "POLICY_FINGERPRINT", "");
+
+  if (out.policy_id.empty()) {
+    throw std::runtime_error(
+        "[lattice_target] LATTICE_POLICY_GATE requires non-empty POLICY_ID");
+  }
+  if (out.target_id.empty()) {
+    throw std::runtime_error(
+        "[lattice_target] LATTICE_POLICY_GATE requires non-empty TARGET_ID");
+  }
+  if (!is_reserved_lattice_policy_gate_kind(out.policy_kind)) {
+    throw std::runtime_error(
+        "[lattice_target] LATTICE_POLICY_GATE POLICY_KIND is unsupported for " +
+        out.policy_id +
+        "; supported disabled reservation kinds are "
+        "forecast_quality_acceptance and allocation_acceptance; "
+        "performance_acceptance, market_readiness, and deployment_readiness "
+        "remain fail-closed future decision surfaces");
+  }
+  if (!std::isfinite(out.threshold)) {
+    throw std::runtime_error(
+        "[lattice_target] LATTICE_POLICY_GATE THRESHOLD must be finite for " +
+        out.policy_id);
+  }
+  if (!std::isfinite(out.support_minimum) || out.support_minimum < 0.0) {
+    throw std::runtime_error(
+        "[lattice_target] LATTICE_POLICY_GATE SUPPORT_MINIMUM must be "
+        "finite and non-negative for " +
+        out.policy_id);
+  }
+  const auto missing_inputs = lattice_policy_gate_missing_required_inputs(out);
+  if (!missing_inputs.empty()) {
+    std::ostringstream message;
+    message << "[lattice_target] LATTICE_POLICY_GATE " << out.policy_id
+            << " is missing required policy input";
+    if (missing_inputs.size() != 1) {
+      message << "s";
+    }
+    message << ": ";
+    for (std::size_t i = 0; i < missing_inputs.size(); ++i) {
+      if (i != 0) {
+        message << ",";
+      }
+      message << missing_inputs[i];
+    }
+    throw std::runtime_error(message.str());
+  }
+
+  if (out.enabled) {
+    throw std::runtime_error(
+        "[lattice_target] LATTICE_POLICY_GATE is reserved and disabled; "
+        "future policy gates must remain ENABLED=false until policy "
+        "authority, metric/baseline definitions, uncertainty model, selector "
+        "split, anti-leakage tests, calibration requirements, holdout "
+        "declaration, and threshold-selection audit are explicit for " +
+        out.policy_id);
+  }
+
+  const auto expected_policy_fingerprint = lattice_policy_gate_fingerprint(out);
+  if (out.policy_fingerprint.empty()) {
+    out.policy_fingerprint = expected_policy_fingerprint;
+  } else if (out.policy_fingerprint != expected_policy_fingerprint) {
+    throw std::runtime_error(
+        "[lattice_target] LATTICE_POLICY_GATE POLICY_FINGERPRINT mismatch "
+        "for " +
+        out.policy_id +
+        "; supplied fingerprint does not match the reserved "
+        "policy declaration");
+  }
+  return out;
+}
+
+[[nodiscard]] inline std::vector<lattice_policy_gate_spec_t>
+decode_lattice_policy_gates_from_dsl(const std::string &dsl_text) {
+  namespace kv = cuwacunu::piaabo::parse::simple_kv;
+  std::vector<lattice_policy_gate_spec_t> out;
+  std::set<std::string> policy_ids;
+  for (const auto &block : kv::parse_blocks(dsl_text)) {
+    if (block.name != "LATTICE_POLICY_GATE") {
+      continue;
+    }
+    auto gate = decode_lattice_policy_gate_spec_block(block);
+    if (!policy_ids.insert(gate.policy_id).second) {
+      throw std::runtime_error("[lattice_target] duplicate POLICY_ID: " +
+                               gate.policy_id);
+    }
+    out.push_back(std::move(gate));
+  }
+  return out;
+}
+
 [[nodiscard]] inline lattice_target_spec_t decode_lattice_target_spec_block(
     const cuwacunu::piaabo::parse::simple_kv::block_t &block) {
   namespace kv = cuwacunu::piaabo::parse::simple_kv;
@@ -9056,11 +9784,63 @@ make_lattice_forbid_clause_from_split_protection(
   out.target_class =
       kv::lowercase(kv::optional(block, "TARGET_CLASS", out.target_class));
   validate_lattice_target_class(out.target_class, out.target_id);
-  out.kind = parse_lattice_target_kind(kv::required(block, "TARGET_KIND"));
+  const bool artifact_readiness =
+      is_artifact_readiness_target_class(out.target_class);
+  if (artifact_readiness) {
+    out.target_kind_applicable = false;
+    out.checkpoint_source = "none";
+    out.plan_mode = "none";
+    out.require_component_match = false;
+    out.require_checkpoint_exists = false;
+    out.require_finite_loss = false;
+    out.max_waves = 0;
+  }
+  const auto target_kind_raw = kv::optional(block, "TARGET_KIND", "");
+  if (kv::trim(target_kind_raw).empty()) {
+    if (!artifact_readiness) {
+      throw std::runtime_error("[lattice_target] TARGET_KIND is required for " +
+                               out.target_id);
+    }
+  } else {
+    if (artifact_readiness) {
+      throw std::runtime_error(
+          "[lattice_target] TARGET_CLASS=artifact_readiness cannot declare "
+          "TARGET_KIND for " +
+          out.target_id);
+    }
+    out.target_kind_applicable = true;
+    out.kind = parse_lattice_target_kind(target_kind_raw);
+  }
+  out.proof_kind = kv::lowercase(kv::optional(block, "PROOF_KIND", ""));
+  out.subject_fact_family = normalize_lattice_subject_fact_family(
+      optional_alias(block, "FACT_FAMILY", "SUBJECT_FACT_FAMILY", "",
+                     out.language_warnings, out.target_id),
+      out.target_id);
+  if (artifact_readiness && out.subject_fact_family.empty()) {
+    throw std::runtime_error(
+        "[lattice_target] TARGET_CLASS=artifact_readiness requires "
+        "SUBJECT_FACT_FAMILY for " +
+        out.target_id);
+  }
+  if (artifact_readiness && out.proof_kind.empty()) {
+    out.proof_kind =
+        default_proof_kind_for_subject_fact_family(out.subject_fact_family);
+    if (out.proof_kind.empty()) {
+      throw std::runtime_error(
+          "[lattice_target] TARGET_CLASS=artifact_readiness has no default "
+          "PROOF_KIND for SUBJECT_FACT_FAMILY " +
+          out.subject_fact_family + " on " + out.target_id);
+    }
+  }
+  if (artifact_readiness) {
+    validate_artifact_readiness_proof_template(out.subject_fact_family,
+                                               out.proof_kind, out.target_id);
+  }
   out.protocol_id = kv::optional(block, "PROTOCOL_ID", "");
-  out.component = optional_alias(block, "COMPONENT", "SUBJECT_COMPONENT",
-                                 default_component_for_target_kind(out.kind),
-                                 out.language_warnings, out.target_id);
+  out.component = optional_alias(
+      block, "COMPONENT", "SUBJECT_COMPONENT",
+      artifact_readiness ? "" : default_component_for_target_kind(out.kind),
+      out.language_warnings, out.target_id);
   out.checkpoint_source =
       kv::optional(block, "CHECKPOINT_SOURCE", out.checkpoint_source);
   out.evaluated_checkpoint_source =
@@ -9089,12 +9869,13 @@ make_lattice_forbid_clause_from_split_protection(
   out.upstream_target_id = kv::optional(block, "UPSTREAM_TARGET_ID", "");
   out.require_contract_match =
       kv::parse_bool(kv::optional(block, "REQUIRE_CONTRACT_MATCH", "true"));
-  out.require_component_match =
-      kv::parse_bool(kv::optional(block, "REQUIRE_COMPONENT_MATCH", "true"));
+  out.require_component_match = kv::parse_bool(kv::optional(
+      block, "REQUIRE_COMPONENT_MATCH", artifact_readiness ? "false" : "true"));
   out.require_checkpoint_exists =
-      kv::parse_bool(kv::optional(block, "REQUIRE_CHECKPOINT_EXISTS", "true"));
-  out.require_finite_loss =
-      kv::parse_bool(kv::optional(block, "REQUIRE_FINITE_LOSS", "true"));
+      kv::parse_bool(kv::optional(block, "REQUIRE_CHECKPOINT_EXISTS",
+                                  artifact_readiness ? "false" : "true"));
+  out.require_finite_loss = kv::parse_bool(kv::optional(
+      block, "REQUIRE_FINITE_LOSS", artifact_readiness ? "false" : "true"));
   out.min_optimizer_steps =
       kv::parse_i64(kv::optional(block, "MIN_OPTIMIZER_STEPS", "0"));
   out.min_valid_target_fraction =
@@ -9166,7 +9947,8 @@ make_lattice_forbid_clause_from_split_protection(
   out.plan_input_representation_checkpoint =
       kv::optional(block, "PLAN_INPUT_REPRESENTATION_CHECKPOINT", "");
   out.max_waves = optional_i64_alias(block, "MAX_WAVES", "PLAN_MAX_ATTEMPTS",
-                                     "1", out.language_warnings, out.target_id);
+                                     artifact_readiness ? "0" : "1",
+                                     out.language_warnings, out.target_id);
   if (out.target_id.empty()) {
     throw std::runtime_error("[lattice_target] TARGET_ID is required");
   }
@@ -9174,7 +9956,8 @@ make_lattice_forbid_clause_from_split_protection(
     throw std::runtime_error(
         "[lattice_target] PROTOCOL_ID must be trimmed for " + out.target_id);
   }
-  if (out.component != default_component_for_target_kind(out.kind)) {
+  if (!artifact_readiness &&
+      out.component != default_component_for_target_kind(out.kind)) {
     throw std::runtime_error(
         "[lattice_target] COMPONENT does not match TARGET_KIND for " +
         out.target_id);
@@ -9184,14 +9967,20 @@ make_lattice_forbid_clause_from_split_protection(
   const auto checkpoint_source =
       kv::lowercase(kv::trim(std::string(out.checkpoint_source)));
   const std::string latest_prefix = "latest_satisfying:";
-  if (checkpoint_source != "output_checkpoint" &&
+  if (artifact_readiness && checkpoint_source != "none") {
+    throw std::runtime_error(
+        "[lattice_target] artifact_readiness targets must use "
+        "CHECKPOINT_SOURCE=none for " +
+        out.target_id);
+  }
+  if (!artifact_readiness && checkpoint_source != "output_checkpoint" &&
       checkpoint_source.rfind(latest_prefix, 0) != 0) {
     throw std::runtime_error(
         "[lattice_target] CHECKPOINT_SOURCE must be output_checkpoint or "
         "latest_satisfying:<target_id> for " +
         out.target_id);
   }
-  if (checkpoint_source.rfind(latest_prefix, 0) == 0 &&
+  if (!artifact_readiness && checkpoint_source.rfind(latest_prefix, 0) == 0 &&
       kv::trim(out.checkpoint_source.substr(latest_prefix.size())).empty()) {
     throw std::runtime_error(
         "[lattice_target] CHECKPOINT_SOURCE latest_satisfying requires a "
@@ -9217,12 +10006,35 @@ make_lattice_forbid_clause_from_split_protection(
                                out.target_id);
     }
   };
-  validate_latest_satisfying(out.evaluated_checkpoint_source,
-                             "EVALUATED_CHECKPOINT_SOURCE");
-  validate_latest_satisfying(out.plan_input_mdn_checkpoint,
-                             "PLAN_INPUT_MDN_CHECKPOINT");
-  validate_latest_satisfying(out.plan_input_representation_checkpoint,
-                             "PLAN_INPUT_REPRESENTATION_CHECKPOINT");
+  if (artifact_readiness) {
+    if (kv::lowercase(kv::trim(out.plan_mode)) != "none") {
+      throw std::runtime_error(
+          "[lattice_target] artifact_readiness targets must use "
+          "WAVE_MODE=none for " +
+          out.target_id);
+    }
+    if (out.max_waves != 0) {
+      throw std::runtime_error(
+          "[lattice_target] artifact_readiness targets must use "
+          "PLAN_MAX_ATTEMPTS=0 for " +
+          out.target_id);
+    }
+    if (!kv::trim(out.evaluated_checkpoint_source).empty() ||
+        !kv::trim(out.plan_input_mdn_checkpoint).empty() ||
+        !kv::trim(out.plan_input_representation_checkpoint).empty()) {
+      throw std::runtime_error(
+          "[lattice_target] artifact_readiness targets cannot declare "
+          "checkpoint source or plan checkpoint inputs for " +
+          out.target_id);
+    }
+  } else {
+    validate_latest_satisfying(out.evaluated_checkpoint_source,
+                               "EVALUATED_CHECKPOINT_SOURCE");
+    validate_latest_satisfying(out.plan_input_mdn_checkpoint,
+                               "PLAN_INPUT_MDN_CHECKPOINT");
+    validate_latest_satisfying(out.plan_input_representation_checkpoint,
+                               "PLAN_INPUT_REPRESENTATION_CHECKPOINT");
+  }
   if (source_range != "all" && source_range != "anchor_index") {
     throw std::runtime_error("[lattice_target] SOURCE_RANGE must be all or "
                              "anchor_index for " +
@@ -9281,6 +10093,7 @@ make_lattice_forbid_clause_from_split_protection(
   require_non_negative_count(out.require_evaluated_node_head_count,
                              "REQUIRE_EVALUATED_NODE_HEAD_COUNT",
                              out.target_id);
+  validate_artifact_readiness_no_training_knobs(out);
   const bool requires_exposure_coverage =
       out.min_observed_input_coverage > 0.0 ||
       out.min_target_supervision_coverage > 0.0 ||
@@ -9995,6 +10808,153 @@ validate_lattice_warning_dimensions(const lattice_warning_spec_t &warning,
                                    target_id);
     return;
   }
+  if (warning.kind == "source_analytics") {
+    const bool uses_above = !std::isnan(warning.above);
+    const auto field = uses_above ? "ABOVE" : "BELOW";
+    const auto value = uses_above ? warning.above : warning.below;
+    const std::set<std::string> fraction_metrics{
+        "sample_validity_fraction",
+        "missingness_fraction",
+    };
+    const std::set<std::string> count_metrics{
+        "duplicate_sample_count",
+        "source_receipt_fact_count",
+    };
+    if (fraction_metrics.count(warning.metric)) {
+      require_fraction_dimension(value, field, target_id);
+    } else if (count_metrics.count(warning.metric)) {
+      require_non_negative_count_threshold(value, field, target_id);
+    } else {
+      require_non_negative_dimension(value, field, warning.metric, target_id);
+    }
+    return;
+  }
+  if (warning.kind == "forecast_baseline") {
+    const bool uses_above = !std::isnan(warning.above);
+    const auto field = uses_above ? "ABOVE" : "BELOW";
+    const auto value = uses_above ? warning.above : warning.below;
+    const std::set<std::string> fraction_metrics{
+        "baseline_directional_accuracy",
+    };
+    const std::set<std::string> count_metrics{
+        "support_count",
+        "valid_count",
+        "missing_count",
+        "baseline_kind_count",
+        "computed_metric_fact_count",
+        "partial_metric_fact_count",
+        "deferred_metric_fact_count",
+        "computed_metric_value_count",
+        "metric_status_mismatch_count",
+    };
+    if (fraction_metrics.count(warning.metric)) {
+      require_fraction_dimension(value, field, target_id);
+    } else if (count_metrics.count(warning.metric)) {
+      require_non_negative_count_threshold(value, field, target_id);
+    } else if (warning.metric == "baseline_signed_error") {
+      require_finite_dimension(value, field, warning.metric, target_id);
+    } else {
+      require_non_negative_dimension(value, field, warning.metric, target_id);
+    }
+    return;
+  }
+  if (warning.kind == "forecast_eval") {
+    const bool uses_above = !std::isnan(warning.above);
+    const auto field = uses_above ? "ABOVE" : "BELOW";
+    const auto value = uses_above ? warning.above : warning.below;
+    const std::set<std::string> fraction_metrics{
+        "directional_accuracy",
+        "calibration_coverage",
+    };
+    const std::set<std::string> count_metrics{
+        "support_count",
+        "valid_count",
+        "missing_count",
+        "weakest_support_rows",
+        "weakest_horizon_support_rows",
+    };
+    if (fraction_metrics.count(warning.metric)) {
+      require_fraction_dimension(value, field, target_id);
+    } else if (count_metrics.count(warning.metric)) {
+      require_non_negative_count_threshold(value, field, target_id);
+    } else if (warning.metric == "signed_error" ||
+               warning.metric == "skill_vs_baseline" ||
+               warning.metric == "skill_vs_naive" ||
+               warning.metric == "skill_vs_baseline_mean_nll" ||
+               warning.metric == "skill_vs_baseline_ev_mae" ||
+               warning.metric == "skill_vs_baseline_ev_rmse" ||
+               warning.metric == "directional_accuracy_delta_vs_baseline") {
+      require_finite_dimension(value, field, warning.metric, target_id);
+    } else {
+      require_non_negative_dimension(value, field, warning.metric, target_id);
+    }
+    return;
+  }
+  if (warning.kind == "observer_belief") {
+    const bool uses_above = !std::isnan(warning.above);
+    const auto field = uses_above ? "ABOVE" : "BELOW";
+    const auto value = uses_above ? warning.above : warning.below;
+    const std::set<std::string> fraction_metrics{
+        "confidence",
+        "data_quality",
+        "liquidity",
+        "raw_potential_tradable_return",
+        "allocation_authority",
+        "forecast_lineage_bound",
+        "channel_consensus_bound",
+        "potential_surface_diagnostics_bound",
+        "nodelift_return_projection_bound",
+        "covariance_coupling_bound",
+        "scenario_bank_bound",
+        "nodelift_residual_quality_bound",
+        "projection_validation_scores_bound",
+        "feature_semantics_bound",
+        "dock_binding_bound",
+    };
+    if (fraction_metrics.count(warning.metric)) {
+      require_fraction_dimension(value, field, target_id);
+    } else {
+      require_non_negative_dimension(value, field, warning.metric, target_id);
+    }
+    return;
+  }
+  if (warning.kind == "allocation_engine") {
+    const bool uses_above = !std::isnan(warning.above);
+    const auto field = uses_above ? "ABOVE" : "BELOW";
+    const auto value = uses_above ? warning.above : warning.below;
+    const std::set<std::string> fraction_metrics{
+        "reserve_weight",
+        "turnover",
+        "transaction_cost_estimate",
+        "deterministic_artifact",
+        "visibility_only",
+        "allocation_authority",
+        "execution_authority",
+        "market_readiness_authority",
+        "deployment_authority",
+        "reserve_node_bound",
+        "reserve_node_from_base_policy",
+        "reserve_node_base_policy_match",
+        "reserve_node_graph_bound",
+        "observer_belief_bound",
+        "forecast_artifact_bound",
+        "base_policy_bound",
+        "cap_diagnostics_bound",
+        "scenario_growth_floor_status_bound",
+        "scenario_growth_floor_met",
+        "scenario_growth_floor_attention",
+        "fallback_declared",
+        "fallback_active",
+        "derisk_declared",
+        "derisk_active",
+    };
+    if (fraction_metrics.count(warning.metric)) {
+      require_fraction_dimension(value, field, target_id);
+    } else {
+      require_non_negative_dimension(value, field, warning.metric, target_id);
+    }
+    return;
+  }
   if (warning.kind == "anchor_domain_health") {
     if (std::isfinite(warning.accepted_fraction_below)) {
       require_fraction_dimension(warning.accepted_fraction_below,
@@ -10205,6 +11165,230 @@ inline void apply_lattice_warn_clause(
           "ACCEPTED_FRACTION_BELOW or SKIPPED_FAILED_FETCH_PROBE_ABOVE, "
           "exactly one for " +
           spec.target_id);
+    }
+  } else if (warning.kind == "source_analytics") {
+    warning.require_mutated_component = false;
+    warning.metric = kv::lowercase(kv::required(block, "METRIC"));
+    const std::set<std::string> allowed_metrics{
+        "entropy",
+        "entropy_rate",
+        "information_density",
+        "compression_ratio",
+        "power_spectrum_entropy",
+        "sample_validity_fraction",
+        "missingness_fraction",
+        "duplicate_sample_count",
+        "source_receipt_fact_count",
+    };
+    if (!allowed_metrics.count(warning.metric)) {
+      throw std::runtime_error(
+          "[lattice_target] LATTICE_WARN source_analytics METRIC is "
+          "unsupported for " +
+          spec.target_id);
+    }
+    const auto above_raw = kv::optional(block, "ABOVE", "");
+    const auto below_raw = kv::optional(block, "BELOW", "");
+    const bool has_above = !kv::trim(above_raw).empty();
+    const bool has_below = !kv::trim(below_raw).empty();
+    if (has_above == has_below) {
+      throw std::runtime_error(
+          "[lattice_target] LATTICE_WARN source_analytics requires exactly "
+          "one of ABOVE or BELOW for " +
+          spec.target_id);
+    }
+    if (has_above) {
+      warning.above = kv::parse_double(above_raw);
+    }
+    if (has_below) {
+      warning.below = kv::parse_double(below_raw);
+    }
+  } else if (warning.kind == "forecast_baseline") {
+    warning.require_mutated_component = false;
+    using cuwacunu::kikijyeba::lattice::exposure::exposure_use_t;
+    warning.use = exposure_use_t::evaluation_metric;
+    warning.metric = kv::lowercase(kv::required(block, "METRIC"));
+    const std::set<std::string> allowed_metrics{
+        "baseline_mean_nll",
+        "baseline_ev_mae",
+        "baseline_ev_rmse",
+        "baseline_signed_error",
+        "baseline_directional_accuracy",
+        "support_count",
+        "valid_count",
+        "missing_count",
+        "baseline_kind_count",
+        "computed_metric_fact_count",
+        "partial_metric_fact_count",
+        "deferred_metric_fact_count",
+        "computed_metric_value_count",
+        "metric_status_mismatch_count",
+    };
+    if (!allowed_metrics.count(warning.metric)) {
+      throw std::runtime_error(
+          "[lattice_target] LATTICE_WARN forecast_baseline METRIC is "
+          "unsupported for " +
+          spec.target_id);
+    }
+    const auto above_raw = kv::optional(block, "ABOVE", "");
+    const auto below_raw = kv::optional(block, "BELOW", "");
+    const bool has_above = !kv::trim(above_raw).empty();
+    const bool has_below = !kv::trim(below_raw).empty();
+    if (has_above == has_below) {
+      throw std::runtime_error(
+          "[lattice_target] LATTICE_WARN forecast_baseline requires exactly "
+          "one of ABOVE or BELOW for " +
+          spec.target_id);
+    }
+    if (has_above) {
+      warning.above = kv::parse_double(above_raw);
+    }
+    if (has_below) {
+      warning.below = kv::parse_double(below_raw);
+    }
+  } else if (warning.kind == "forecast_eval") {
+    warning.require_mutated_component = false;
+    using cuwacunu::kikijyeba::lattice::exposure::exposure_use_t;
+    warning.use = exposure_use_t::evaluation_metric;
+    warning.metric = kv::lowercase(kv::required(block, "METRIC"));
+    const std::set<std::string> allowed_metrics{
+        "mean_nll",
+        "ev_mae",
+        "ev_rmse",
+        "signed_error",
+        "directional_accuracy",
+        "calibration_coverage",
+        "support_count",
+        "valid_count",
+        "missing_count",
+        "weakest_support_rows",
+        "weakest_horizon_support_rows",
+        "mean_nll_per_horizon_max",
+        "skill_vs_baseline",
+        "skill_vs_naive",
+        "skill_vs_baseline_mean_nll",
+        "skill_vs_baseline_ev_mae",
+        "skill_vs_baseline_ev_rmse",
+        "directional_accuracy_delta_vs_baseline",
+    };
+    if (!allowed_metrics.count(warning.metric)) {
+      throw std::runtime_error(
+          "[lattice_target] LATTICE_WARN forecast_eval METRIC is unsupported "
+          "for " +
+          spec.target_id);
+    }
+    const auto above_raw = kv::optional(block, "ABOVE", "");
+    const auto below_raw = kv::optional(block, "BELOW", "");
+    const bool has_above = !kv::trim(above_raw).empty();
+    const bool has_below = !kv::trim(below_raw).empty();
+    if (has_above == has_below) {
+      throw std::runtime_error(
+          "[lattice_target] LATTICE_WARN forecast_eval requires exactly one "
+          "of ABOVE or BELOW for " +
+          spec.target_id);
+    }
+    if (has_above) {
+      warning.above = kv::parse_double(above_raw);
+    }
+    if (has_below) {
+      warning.below = kv::parse_double(below_raw);
+    }
+  } else if (warning.kind == "observer_belief") {
+    warning.require_mutated_component = false;
+    using cuwacunu::kikijyeba::lattice::exposure::exposure_use_t;
+    warning.use = exposure_use_t::evaluation_metric;
+    warning.metric = kv::lowercase(kv::required(block, "METRIC"));
+    const std::set<std::string> allowed_metrics{
+        "confidence",
+        "data_quality",
+        "liquidity",
+        "raw_potential_tradable_return",
+        "allocation_authority",
+        "forecast_lineage_bound",
+        "channel_consensus_bound",
+        "potential_surface_diagnostics_bound",
+        "nodelift_return_projection_bound",
+        "covariance_coupling_bound",
+        "scenario_bank_bound",
+        "nodelift_residual_quality_bound",
+        "projection_validation_scores_bound",
+        "feature_semantics_bound",
+        "dock_binding_bound",
+    };
+    if (!allowed_metrics.count(warning.metric)) {
+      throw std::runtime_error(
+          "[lattice_target] LATTICE_WARN observer_belief METRIC is "
+          "unsupported for " +
+          spec.target_id);
+    }
+    const auto above_raw = kv::optional(block, "ABOVE", "");
+    const auto below_raw = kv::optional(block, "BELOW", "");
+    const bool has_above = !kv::trim(above_raw).empty();
+    const bool has_below = !kv::trim(below_raw).empty();
+    if (has_above == has_below) {
+      throw std::runtime_error(
+          "[lattice_target] LATTICE_WARN observer_belief requires exactly "
+          "one of ABOVE or BELOW for " +
+          spec.target_id);
+    }
+    if (has_above) {
+      warning.above = kv::parse_double(above_raw);
+    }
+    if (has_below) {
+      warning.below = kv::parse_double(below_raw);
+    }
+  } else if (warning.kind == "allocation_engine") {
+    warning.require_mutated_component = false;
+    using cuwacunu::kikijyeba::lattice::exposure::exposure_use_t;
+    warning.use = exposure_use_t::evaluation_metric;
+    warning.metric = kv::lowercase(kv::required(block, "METRIC"));
+    const std::set<std::string> allowed_metrics{
+        "reserve_weight",
+        "turnover",
+        "cvar_loss",
+        "transaction_cost_estimate",
+        "deterministic_artifact",
+        "visibility_only",
+        "allocation_authority",
+        "execution_authority",
+        "market_readiness_authority",
+        "deployment_authority",
+        "reserve_node_bound",
+        "reserve_node_from_base_policy",
+        "reserve_node_base_policy_match",
+        "reserve_node_graph_bound",
+        "observer_belief_bound",
+        "forecast_artifact_bound",
+        "base_policy_bound",
+        "cap_diagnostics_bound",
+        "scenario_growth_floor_status_bound",
+        "scenario_growth_floor_met",
+        "scenario_growth_floor_attention",
+        "fallback_declared",
+        "fallback_active",
+        "derisk_declared",
+        "derisk_active",
+    };
+    if (!allowed_metrics.count(warning.metric)) {
+      throw std::runtime_error(
+          "[lattice_target] LATTICE_WARN allocation_engine METRIC is "
+          "unsupported for " +
+          spec.target_id);
+    }
+    const auto above_raw = kv::optional(block, "ABOVE", "");
+    const auto below_raw = kv::optional(block, "BELOW", "");
+    const bool has_above = !kv::trim(above_raw).empty();
+    const bool has_below = !kv::trim(below_raw).empty();
+    if (has_above == has_below) {
+      throw std::runtime_error(
+          "[lattice_target] LATTICE_WARN allocation_engine requires exactly "
+          "one of ABOVE or BELOW for " +
+          spec.target_id);
+    }
+    if (has_above) {
+      warning.above = kv::parse_double(above_raw);
+    }
+    if (has_below) {
+      warning.below = kv::parse_double(below_raw);
     }
   } else if (warning.kind == "node_support_balance") {
     warning.use = cuwacunu::kikijyeba::lattice::exposure::parse_exposure_use(
@@ -10476,18 +11660,72 @@ validate_lattice_target_spec_lowered(const lattice_target_spec_t &spec) {
   namespace kv = cuwacunu::piaabo::parse::simple_kv;
   validate_lattice_target_class(kv::lowercase(kv::trim(spec.target_class)),
                                 spec.target_id);
+  const bool artifact_readiness =
+      is_artifact_readiness_target_class(spec.target_class);
+  if (artifact_readiness) {
+    if (spec.target_kind_applicable) {
+      throw std::runtime_error(
+          "[lattice_target] artifact_readiness targets must set "
+          "target_kind_applicable=false for " +
+          spec.target_id);
+    }
+    if (spec.kind != lattice_target_kind_t::not_applicable) {
+      throw std::runtime_error(
+          "[lattice_target] artifact_readiness targets must use "
+          "kind=not_applicable for " +
+          spec.target_id);
+    }
+    if (spec.subject_fact_family.empty()) {
+      throw std::runtime_error(
+          "[lattice_target] TARGET_CLASS=artifact_readiness requires "
+          "SUBJECT_FACT_FAMILY for " +
+          spec.target_id);
+    }
+    if (spec.proof_kind.empty()) {
+      throw std::runtime_error(
+          "[lattice_target] TARGET_CLASS=artifact_readiness requires "
+          "PROOF_KIND for " +
+          spec.target_id);
+    }
+    validate_artifact_readiness_proof_template(spec.subject_fact_family,
+                                               spec.proof_kind, spec.target_id);
+    if (kv::lowercase(kv::trim(spec.plan_mode)) != "none") {
+      throw std::runtime_error(
+          "[lattice_target] artifact_readiness targets must use "
+          "WAVE_MODE=none for " +
+          spec.target_id);
+    }
+    if (spec.max_waves != 0) {
+      throw std::runtime_error(
+          "[lattice_target] artifact_readiness targets must use "
+          "PLAN_MAX_ATTEMPTS=0 for " +
+          spec.target_id);
+    }
+  } else if (!spec.target_kind_applicable ||
+             spec.kind == lattice_target_kind_t::not_applicable) {
+    throw std::runtime_error("[lattice_target] non-artifact targets must set "
+                             "target_kind_applicable=true and a concrete "
+                             "TARGET_KIND for " +
+                             spec.target_id);
+  }
   const auto source_range = kv::lowercase(kv::trim(spec.source_range));
   const auto checkpoint_source =
       kv::lowercase(kv::trim(std::string(spec.checkpoint_source)));
   const std::string latest_prefix = "latest_satisfying:";
-  if (checkpoint_source != "output_checkpoint" &&
+  if (artifact_readiness && checkpoint_source != "none") {
+    throw std::runtime_error(
+        "[lattice_target] artifact_readiness targets must use "
+        "CHECKPOINT_SOURCE=none for " +
+        spec.target_id);
+  }
+  if (!artifact_readiness && checkpoint_source != "output_checkpoint" &&
       checkpoint_source.rfind(latest_prefix, 0) != 0) {
     throw std::runtime_error(
         "[lattice_target] CHECKPOINT_SOURCE must be output_checkpoint or "
         "latest_satisfying:<target_id> for " +
         spec.target_id);
   }
-  if (checkpoint_source.rfind(latest_prefix, 0) == 0 &&
+  if (!artifact_readiness && checkpoint_source.rfind(latest_prefix, 0) == 0 &&
       kv::trim(spec.checkpoint_source.substr(latest_prefix.size())).empty()) {
     throw std::runtime_error(
         "[lattice_target] CHECKPOINT_SOURCE latest_satisfying requires a "
@@ -10513,12 +11751,23 @@ validate_lattice_target_spec_lowered(const lattice_target_spec_t &spec) {
                                spec.target_id);
     }
   };
-  validate_latest_satisfying(spec.evaluated_checkpoint_source,
-                             "EVALUATED_CHECKPOINT_SOURCE");
-  validate_latest_satisfying(spec.plan_input_mdn_checkpoint,
-                             "PLAN_INPUT_MDN_CHECKPOINT");
-  validate_latest_satisfying(spec.plan_input_representation_checkpoint,
-                             "PLAN_INPUT_REPRESENTATION_CHECKPOINT");
+  if (artifact_readiness) {
+    if (!kv::trim(spec.evaluated_checkpoint_source).empty() ||
+        !kv::trim(spec.plan_input_mdn_checkpoint).empty() ||
+        !kv::trim(spec.plan_input_representation_checkpoint).empty()) {
+      throw std::runtime_error(
+          "[lattice_target] artifact_readiness targets cannot declare "
+          "checkpoint source or plan checkpoint inputs for " +
+          spec.target_id);
+    }
+  } else {
+    validate_latest_satisfying(spec.evaluated_checkpoint_source,
+                               "EVALUATED_CHECKPOINT_SOURCE");
+    validate_latest_satisfying(spec.plan_input_mdn_checkpoint,
+                               "PLAN_INPUT_MDN_CHECKPOINT");
+    validate_latest_satisfying(spec.plan_input_representation_checkpoint,
+                               "PLAN_INPUT_REPRESENTATION_CHECKPOINT");
+  }
   if (source_range != "all" && source_range != "anchor_index") {
     throw std::runtime_error("[lattice_target] SOURCE_RANGE must be all or "
                              "anchor_index for " +
@@ -10570,6 +11819,7 @@ validate_lattice_target_spec_lowered(const lattice_target_spec_t &spec) {
   require_non_negative_count(spec.require_evaluated_node_head_count,
                              "REQUIRE_EVALUATED_NODE_HEAD_COUNT",
                              spec.target_id);
+  validate_artifact_readiness_no_training_knobs(spec);
   const bool requires_exposure_coverage =
       spec.min_observed_input_coverage > 0.0 ||
       spec.min_target_supervision_coverage > 0.0 ||
@@ -11062,6 +12312,201 @@ canonical_lattice_target_proof_certificate_text(
     out << prefix << ".representation_checkpoint_match="
         << (dependency.representation_checkpoint_match ? "true" : "false")
         << "\n";
+  }
+
+  auto artifacts = proof.artifacts;
+  std::sort(
+      artifacts.begin(), artifacts.end(), [](const auto &a, const auto &b) {
+        auto key = [](const auto &artifact) {
+          std::ostringstream out;
+          out << artifact.proof_kind << "\n"
+              << (artifact.proof_template_bound ? "1" : "0") << "\n"
+              << artifact.proof_template_claim << "\n"
+              << artifact.fact_family << "\n"
+              << artifact.fact_schema << "\n"
+              << artifact.fact_type << "\n"
+              << artifact.fact_digest << "\n"
+              << artifact.fact_identity_contract_schema << "\n"
+              << artifact.fact_identity_contract_id << "\n"
+              << (artifact.fact_identity_contract_bound ? "1" : "0") << "\n"
+              << (artifact.fact_identity_envelope_complete ? "1" : "0") << "\n"
+              << (artifact.row_index_interval_authority ? "1" : "0") << "\n"
+              << (artifact.source_key_window_audit_only ? "1" : "0") << "\n"
+              << (artifact.fact_identity_target_kind_authority ? "1" : "0")
+              << "\n"
+              << (artifact.fact_identity_runtime_wave_authority ? "1" : "0")
+              << "\n"
+              << (artifact.fact_identity_marshal_reachability ? "1" : "0")
+              << "\n"
+              << (artifact.fact_identity_policy_gate_authority ? "1" : "0")
+              << "\n"
+              << artifact.parent_exposure_fact_digest << "\n"
+              << artifact.job_id << "\n"
+              << artifact.wave_id << "\n"
+              << artifact.protocol_id << "\n"
+              << artifact.contract_fingerprint << "\n"
+              << artifact.component << "\n"
+              << artifact.component_assembly_fingerprint << "\n"
+              << artifact.graph_order_fingerprint << "\n"
+              << artifact.source_cursor_token << "\n"
+              << artifact.split_policy_fingerprint << "\n"
+              << artifact.split_name << "\n";
+          append_interval_text(out, "anchor_range", artifact.anchor_range);
+          append_interval_text(out, "completed_anchor_range",
+                               artifact.completed_anchor_range);
+          out << (artifact.identity_match ? "1" : "0") << "\n"
+              << (artifact.artifact_evidence ? "1" : "0") << "\n"
+              << (artifact.deterministic_artifact ? "1" : "0") << "\n"
+              << (artifact.visibility_only ? "1" : "0") << "\n"
+              << (artifact.authority_clean ? "1" : "0") << "\n"
+              << (artifact.readiness_authority ? "1" : "0") << "\n"
+              << (artifact.quality_authority ? "1" : "0") << "\n"
+              << (artifact.performance_authority ? "1" : "0") << "\n"
+              << (artifact.checkpoint_selector ? "1" : "0") << "\n"
+              << (artifact.coverage_authority ? "1" : "0") << "\n"
+              << (artifact.leakage_authority ? "1" : "0") << "\n"
+              << (artifact.contract_identity_authority ? "1" : "0") << "\n"
+              << (artifact.allocation_authority ? "1" : "0") << "\n"
+              << (artifact.execution_authority ? "1" : "0") << "\n"
+              << (artifact.market_readiness_authority ? "1" : "0") << "\n"
+              << (artifact.deployment_authority ? "1" : "0") << "\n"
+              << (artifact.policy_gate ? "1" : "0") << "\n"
+              << (artifact.target_dependency_authority ? "1" : "0") << "\n"
+              << (artifact.runtime_wave_authority ? "1" : "0") << "\n"
+              << (artifact.marshal_reachability ? "1" : "0") << "\n"
+              << (artifact.checkpoint_source_authority ? "1" : "0") << "\n"
+              << (artifact.plan_checkpoint_input_authority ? "1" : "0") << "\n"
+              << (artifact.model_state_mutation ? "1" : "0") << "\n"
+              << (artifact.raw_potential_tradable_return ? "1" : "0") << "\n"
+              << (artifact.replay_executor ? "1" : "0") << "\n"
+              << (artifact.lineage_bound ? "1" : "0") << "\n"
+              << (artifact.passed ? "1" : "0") << "\n";
+          append_string_vector_text(out, "issues", artifact.issues);
+          return out.str();
+        };
+        return key(a) < key(b);
+      });
+  out << "artifacts.count=" << artifacts.size() << "\n";
+  for (std::size_t i = 0; i < artifacts.size(); ++i) {
+    const auto &artifact = artifacts[i];
+    const auto prefix = "artifact." + std::to_string(i);
+    out << prefix << ".proof_kind=" << artifact.proof_kind << "\n";
+    out << prefix << ".proof_template_bound="
+        << (artifact.proof_template_bound ? "true" : "false") << "\n";
+    out << prefix << ".proof_template_claim=" << artifact.proof_template_claim
+        << "\n";
+    out << prefix << ".fact_family=" << artifact.fact_family << "\n";
+    out << prefix << ".fact_schema=" << artifact.fact_schema << "\n";
+    out << prefix << ".fact_type=" << artifact.fact_type << "\n";
+    out << prefix << ".fact_digest=" << artifact.fact_digest << "\n";
+    out << prefix << ".fact_identity_contract_schema="
+        << artifact.fact_identity_contract_schema << "\n";
+    out << prefix
+        << ".fact_identity_contract_id=" << artifact.fact_identity_contract_id
+        << "\n";
+    out << prefix << ".fact_identity_contract_bound="
+        << (artifact.fact_identity_contract_bound ? "true" : "false") << "\n";
+    out << prefix << ".fact_identity_envelope_complete="
+        << (artifact.fact_identity_envelope_complete ? "true" : "false")
+        << "\n";
+    out << prefix << ".row_index_interval_authority="
+        << (artifact.row_index_interval_authority ? "true" : "false") << "\n";
+    out << prefix << ".source_key_window_audit_only="
+        << (artifact.source_key_window_audit_only ? "true" : "false") << "\n";
+    out << prefix << ".fact_identity_target_kind_authority="
+        << (artifact.fact_identity_target_kind_authority ? "true" : "false")
+        << "\n";
+    out << prefix << ".fact_identity_runtime_wave_authority="
+        << (artifact.fact_identity_runtime_wave_authority ? "true" : "false")
+        << "\n";
+    out << prefix << ".fact_identity_marshal_reachability="
+        << (artifact.fact_identity_marshal_reachability ? "true" : "false")
+        << "\n";
+    out << prefix << ".fact_identity_policy_gate_authority="
+        << (artifact.fact_identity_policy_gate_authority ? "true" : "false")
+        << "\n";
+    out << prefix << ".parent_exposure_fact_digest="
+        << artifact.parent_exposure_fact_digest << "\n";
+    out << prefix << ".job_id=" << artifact.job_id << "\n";
+    out << prefix << ".wave_id=" << artifact.wave_id << "\n";
+    out << prefix << ".protocol_id=" << artifact.protocol_id << "\n";
+    out << prefix << ".contract_fingerprint=" << artifact.contract_fingerprint
+        << "\n";
+    out << prefix << ".component=" << artifact.component << "\n";
+    out << prefix << ".component_assembly_fingerprint="
+        << artifact.component_assembly_fingerprint << "\n";
+    out << prefix
+        << ".graph_order_fingerprint=" << artifact.graph_order_fingerprint
+        << "\n";
+    out << prefix << ".source_cursor_token=" << artifact.source_cursor_token
+        << "\n";
+    out << prefix
+        << ".split_policy_fingerprint=" << artifact.split_policy_fingerprint
+        << "\n";
+    out << prefix << ".split_name=" << artifact.split_name << "\n";
+    append_interval_text(out, prefix + ".anchor_range", artifact.anchor_range);
+    append_interval_text(out, prefix + ".completed_anchor_range",
+                         artifact.completed_anchor_range);
+    out << prefix
+        << ".identity_match=" << (artifact.identity_match ? "true" : "false")
+        << "\n";
+    out << prefix << ".artifact_evidence="
+        << (artifact.artifact_evidence ? "true" : "false") << "\n";
+    out << prefix << ".deterministic_artifact="
+        << (artifact.deterministic_artifact ? "true" : "false") << "\n";
+    out << prefix
+        << ".visibility_only=" << (artifact.visibility_only ? "true" : "false")
+        << "\n";
+    out << prefix
+        << ".authority_clean=" << (artifact.authority_clean ? "true" : "false")
+        << "\n";
+    out << prefix << ".readiness_authority="
+        << (artifact.readiness_authority ? "true" : "false") << "\n";
+    out << prefix << ".quality_authority="
+        << (artifact.quality_authority ? "true" : "false") << "\n";
+    out << prefix << ".performance_authority="
+        << (artifact.performance_authority ? "true" : "false") << "\n";
+    out << prefix << ".checkpoint_selector="
+        << (artifact.checkpoint_selector ? "true" : "false") << "\n";
+    out << prefix << ".coverage_authority="
+        << (artifact.coverage_authority ? "true" : "false") << "\n";
+    out << prefix << ".leakage_authority="
+        << (artifact.leakage_authority ? "true" : "false") << "\n";
+    out << prefix << ".contract_identity_authority="
+        << (artifact.contract_identity_authority ? "true" : "false") << "\n";
+    out << prefix << ".allocation_authority="
+        << (artifact.allocation_authority ? "true" : "false") << "\n";
+    out << prefix << ".execution_authority="
+        << (artifact.execution_authority ? "true" : "false") << "\n";
+    out << prefix << ".market_readiness_authority="
+        << (artifact.market_readiness_authority ? "true" : "false") << "\n";
+    out << prefix << ".deployment_authority="
+        << (artifact.deployment_authority ? "true" : "false") << "\n";
+    out << prefix
+        << ".policy_gate=" << (artifact.policy_gate ? "true" : "false") << "\n";
+    out << prefix << ".target_dependency_authority="
+        << (artifact.target_dependency_authority ? "true" : "false") << "\n";
+    out << prefix << ".runtime_wave_authority="
+        << (artifact.runtime_wave_authority ? "true" : "false") << "\n";
+    out << prefix << ".marshal_reachability="
+        << (artifact.marshal_reachability ? "true" : "false") << "\n";
+    out << prefix << ".checkpoint_source_authority="
+        << (artifact.checkpoint_source_authority ? "true" : "false") << "\n";
+    out << prefix << ".plan_checkpoint_input_authority="
+        << (artifact.plan_checkpoint_input_authority ? "true" : "false")
+        << "\n";
+    out << prefix << ".model_state_mutation="
+        << (artifact.model_state_mutation ? "true" : "false") << "\n";
+    out << prefix << ".raw_potential_tradable_return="
+        << (artifact.raw_potential_tradable_return ? "true" : "false") << "\n";
+    out << prefix
+        << ".replay_executor=" << (artifact.replay_executor ? "true" : "false")
+        << "\n";
+    out << prefix
+        << ".lineage_bound=" << (artifact.lineage_bound ? "true" : "false")
+        << "\n";
+    out << prefix << ".passed=" << (artifact.passed ? "true" : "false") << "\n";
+    append_string_vector_text(out, prefix + ".issues", artifact.issues);
   }
 
   auto coverage_proofs = proof.coverage;
@@ -11972,6 +13417,319 @@ verify_lattice_target_proof_certificate(
               return certificate_paths_equal(candidate, checkpoint_path);
             });
       };
+
+  std::set<std::string> artifact_signatures;
+  for (std::size_t i = 0; i < proof.artifacts.size(); ++i) {
+    const auto &artifact = proof.artifacts[i];
+    const auto prefix = "artifact[" + std::to_string(i) + "]";
+    const auto signature = artifact.fact_family + "|" + artifact.fact_digest;
+    if (!artifact_signatures.insert(signature).second) {
+      append_certificate_issue(check, prefix + " duplicate artifact proof");
+    }
+    if (artifact.proof_kind.empty()) {
+      append_certificate_issue(check, prefix + " missing proof_kind");
+    }
+    if (artifact.fact_family.empty()) {
+      append_certificate_issue(check, prefix + " missing fact_family");
+    }
+    std::optional<exposure::lattice_fact_family_t> parsed_fact_family{
+        std::nullopt};
+    std::optional<exposure::lattice_fact_family_descriptor_t>
+        fact_family_descriptor{std::nullopt};
+    if (!artifact.fact_family.empty()) {
+      parsed_fact_family =
+          exposure::parse_lattice_fact_family(artifact.fact_family);
+      if (parsed_fact_family.has_value()) {
+        fact_family_descriptor =
+            exposure::lattice_fact_family_descriptor(*parsed_fact_family);
+      }
+    }
+    if (!artifact.fact_family.empty() && !parsed_fact_family.has_value()) {
+      append_certificate_issue(check, prefix + " unknown fact_family");
+    } else if (const auto *proof_template =
+                   artifact_readiness_proof_template_for_subject_fact_family(
+                       artifact.fact_family)) {
+      const bool proof_kind_matches_template =
+          artifact.proof_kind == proof_template->proof_kind;
+      if (!proof_kind_matches_template) {
+        append_certificate_issue(
+            check,
+            prefix + " proof_kind does not match artifact proof template");
+      }
+      if (artifact.proof_template_bound != proof_kind_matches_template) {
+        append_certificate_issue(check,
+                                 prefix + " proof_template_bound mismatch");
+      }
+      if (artifact.proof_template_claim != proof_template->proof_claim) {
+        append_certificate_issue(check,
+                                 prefix + " proof_template_claim mismatch");
+      }
+    } else {
+      append_certificate_issue(check,
+                               prefix + " missing artifact proof template");
+      if (artifact.proof_template_bound) {
+        append_certificate_issue(check,
+                                 prefix + " proof_template_bound mismatch");
+      }
+    }
+    if (artifact.fact_schema.empty()) {
+      append_certificate_issue(check, prefix + " missing fact_schema");
+    }
+    if (artifact.fact_type.empty()) {
+      append_certificate_issue(check, prefix + " missing fact_type");
+    }
+    if (artifact.fact_identity_contract_schema !=
+        k_lattice_fact_identity_contract_schema_v1) {
+      append_certificate_issue(
+          check, prefix + " fact identity contract schema mismatch");
+    }
+    if (artifact.fact_identity_contract_id !=
+        k_lattice_fact_identity_contract_id_v1) {
+      append_certificate_issue(check,
+                               prefix + " fact identity contract id mismatch");
+    }
+    const bool expected_fact_identity_contract_bound =
+        fact_family_descriptor.has_value() &&
+        fact_family_descriptor->fact_schema == artifact.fact_schema &&
+        artifact.fact_identity_contract_schema ==
+            k_lattice_fact_identity_contract_schema_v1 &&
+        artifact.fact_identity_contract_id ==
+            k_lattice_fact_identity_contract_id_v1;
+    if (artifact.fact_identity_contract_bound !=
+        expected_fact_identity_contract_bound) {
+      append_certificate_issue(
+          check, prefix + " fact_identity_contract_bound mismatch");
+    }
+    if (!artifact.fact_identity_contract_bound) {
+      append_certificate_issue(check,
+                               prefix + " fact identity contract not bound");
+    }
+    if (artifact.fact_digest.empty()) {
+      append_certificate_issue(check, prefix + " missing fact_digest");
+    }
+    if (artifact.parent_exposure_fact_digest.empty()) {
+      append_certificate_issue(check,
+                               prefix + " missing parent exposure digest");
+    }
+    if (artifact.job_id.empty()) {
+      append_certificate_issue(check, prefix + " missing job_id");
+    }
+    if (artifact.wave_id.empty()) {
+      append_certificate_issue(check, prefix + " missing wave_id");
+    }
+    if (artifact.protocol_id.empty()) {
+      append_certificate_issue(check, prefix + " missing protocol_id");
+    }
+    if (artifact.contract_fingerprint.empty()) {
+      append_certificate_issue(check, prefix + " missing contract fingerprint");
+    }
+    if (artifact.graph_order_fingerprint.empty()) {
+      append_certificate_issue(check,
+                               prefix + " missing graph order fingerprint");
+    }
+    if (artifact.source_cursor_token.empty()) {
+      append_certificate_issue(check, prefix + " missing source cursor token");
+    }
+    if (artifact.split_policy_fingerprint.empty()) {
+      append_certificate_issue(check,
+                               prefix + " missing split policy fingerprint");
+    }
+    if (artifact.split_name.empty()) {
+      append_certificate_issue(check, prefix + " missing split_name");
+    }
+    if (artifact.anchor_range.empty()) {
+      append_certificate_issue(check, prefix + " missing anchor_range");
+    }
+    if (artifact.completed_anchor_range.empty()) {
+      append_certificate_issue(check,
+                               prefix + " missing completed_anchor_range");
+    }
+    const bool expected_fact_identity_envelope_complete =
+        !artifact.fact_schema.empty() && !artifact.fact_type.empty() &&
+        !artifact.fact_digest.empty() &&
+        !artifact.parent_exposure_fact_digest.empty() &&
+        !artifact.job_id.empty() && !artifact.wave_id.empty() &&
+        !artifact.protocol_id.empty() &&
+        !artifact.contract_fingerprint.empty() && !artifact.component.empty() &&
+        !artifact.component_assembly_fingerprint.empty() &&
+        !artifact.graph_order_fingerprint.empty() &&
+        !artifact.source_cursor_token.empty() &&
+        !artifact.split_policy_fingerprint.empty() &&
+        !artifact.split_name.empty() && !artifact.anchor_range.empty() &&
+        !artifact.completed_anchor_range.empty();
+    if (artifact.fact_identity_envelope_complete !=
+        expected_fact_identity_envelope_complete) {
+      append_certificate_issue(
+          check, prefix + " fact_identity_envelope_complete mismatch");
+    }
+    if (!artifact.fact_identity_envelope_complete) {
+      append_certificate_issue(check,
+                               prefix + " fact identity envelope incomplete");
+    }
+    if (!artifact.row_index_interval_authority) {
+      append_certificate_issue(check,
+                               prefix + " row-index interval authority absent");
+    }
+    if (!artifact.source_key_window_audit_only) {
+      append_certificate_issue(check,
+                               prefix + " source-key window not audit-only");
+    }
+    if (artifact.fact_identity_target_kind_authority) {
+      append_certificate_issue(
+          check, prefix + " fact identity target-kind authority present");
+    }
+    if (artifact.fact_identity_runtime_wave_authority) {
+      append_certificate_issue(
+          check, prefix + " fact identity Runtime-wave authority present");
+    }
+    if (artifact.fact_identity_marshal_reachability) {
+      append_certificate_issue(
+          check, prefix + " fact identity Marshal reachability present");
+    }
+    if (artifact.fact_identity_policy_gate_authority) {
+      append_certificate_issue(
+          check, prefix + " fact identity policy-gate authority present");
+    }
+    bool expected_identity_match = true;
+    if (proof_context.require_contract_match) {
+      expected_identity_match = expected_identity_match &&
+                                artifact.contract_fingerprint ==
+                                    proof_context.active_contract_fingerprint;
+    }
+    if (proof_context.require_graph_anchor_identity) {
+      expected_identity_match =
+          expected_identity_match &&
+          artifact.graph_order_fingerprint ==
+              proof_context.active_graph_order_fingerprint &&
+          artifact.source_cursor_token ==
+              proof_context.active_source_cursor_token;
+    }
+    if (!proof_context.component_family_id.empty() &&
+        !artifact.component.empty()) {
+      expected_identity_match =
+          expected_identity_match &&
+          artifact.component == proof_context.component_family_id;
+    }
+    if (artifact.identity_match != expected_identity_match) {
+      append_certificate_issue(check, prefix + " identity_match mismatch");
+    }
+    if (!artifact.artifact_evidence) {
+      append_certificate_issue(check, prefix + " missing artifact evidence");
+    }
+    if (!artifact.proof_template_bound) {
+      append_certificate_issue(check, prefix + " proof template not bound");
+    }
+    if (!artifact.fact_identity_contract_bound) {
+      append_certificate_issue(check, prefix + " fact identity not bound");
+    }
+    if (!artifact.deterministic_artifact) {
+      append_certificate_issue(check,
+                               prefix + " missing deterministic artifact");
+    }
+    if (!artifact.visibility_only) {
+      append_certificate_issue(check, prefix + " missing visibility-only flag");
+    }
+    const bool authority_drift =
+        artifact.readiness_authority || artifact.quality_authority ||
+        artifact.performance_authority || artifact.checkpoint_selector ||
+        artifact.coverage_authority || artifact.leakage_authority ||
+        artifact.contract_identity_authority || artifact.allocation_authority ||
+        artifact.execution_authority || artifact.market_readiness_authority ||
+        artifact.deployment_authority || artifact.policy_gate ||
+        artifact.target_dependency_authority ||
+        artifact.runtime_wave_authority || artifact.marshal_reachability ||
+        artifact.checkpoint_source_authority ||
+        artifact.plan_checkpoint_input_authority ||
+        artifact.model_state_mutation ||
+        artifact.raw_potential_tradable_return || artifact.replay_executor ||
+        artifact.fact_identity_target_kind_authority ||
+        artifact.fact_identity_runtime_wave_authority ||
+        artifact.fact_identity_marshal_reachability ||
+        artifact.fact_identity_policy_gate_authority;
+    if (artifact.authority_clean != !authority_drift) {
+      append_certificate_issue(check, prefix + " authority_clean mismatch");
+    }
+    if (artifact.readiness_authority) {
+      append_certificate_issue(check, prefix + " readiness authority present");
+    }
+    if (artifact.quality_authority) {
+      append_certificate_issue(check, prefix + " quality authority present");
+    }
+    if (artifact.performance_authority) {
+      append_certificate_issue(check,
+                               prefix + " performance authority present");
+    }
+    if (artifact.checkpoint_selector) {
+      append_certificate_issue(check, prefix + " checkpoint selector present");
+    }
+    if (artifact.coverage_authority) {
+      append_certificate_issue(check, prefix + " coverage authority present");
+    }
+    if (artifact.leakage_authority) {
+      append_certificate_issue(check, prefix + " leakage authority present");
+    }
+    if (artifact.contract_identity_authority) {
+      append_certificate_issue(check,
+                               prefix + " contract identity authority present");
+    }
+    if (artifact.allocation_authority) {
+      append_certificate_issue(check, prefix + " allocation authority present");
+    }
+    if (artifact.execution_authority) {
+      append_certificate_issue(check, prefix + " execution authority present");
+    }
+    if (artifact.market_readiness_authority) {
+      append_certificate_issue(check,
+                               prefix + " market readiness authority present");
+    }
+    if (artifact.deployment_authority) {
+      append_certificate_issue(check, prefix + " deployment authority present");
+    }
+    if (artifact.policy_gate) {
+      append_certificate_issue(check, prefix + " policy gate present");
+    }
+    if (artifact.target_dependency_authority) {
+      append_certificate_issue(check,
+                               prefix + " target dependency authority present");
+    }
+    if (artifact.runtime_wave_authority) {
+      append_certificate_issue(check,
+                               prefix + " runtime wave authority present");
+    }
+    if (artifact.marshal_reachability) {
+      append_certificate_issue(check, prefix + " Marshal reachability present");
+    }
+    if (artifact.checkpoint_source_authority) {
+      append_certificate_issue(check,
+                               prefix + " checkpoint source authority present");
+    }
+    if (artifact.plan_checkpoint_input_authority) {
+      append_certificate_issue(
+          check, prefix + " plan checkpoint input authority present");
+    }
+    if (artifact.model_state_mutation) {
+      append_certificate_issue(check, prefix + " model state mutation present");
+    }
+    if (artifact.raw_potential_tradable_return) {
+      append_certificate_issue(
+          check, prefix + " raw potential tradable return present");
+    }
+    if (artifact.replay_executor) {
+      append_certificate_issue(check, prefix + " replay executor present");
+    }
+    if (!artifact.authority_clean) {
+      append_certificate_issue(check, prefix + " authority drift present");
+    }
+    if (!artifact.lineage_bound) {
+      append_certificate_issue(check, prefix + " lineage not bound");
+    }
+    if (!artifact.issues.empty()) {
+      append_certificate_issue(check, prefix + " carries unresolved issues");
+    }
+    if (!artifact.passed) {
+      append_certificate_issue(check, prefix + " did not pass");
+    }
+  }
 
   std::set<std::string> coverage_obligation_signatures;
   for (std::size_t i = 0; i < proof.coverage.size(); ++i) {
@@ -13992,7 +15750,13 @@ canonical_lattice_target_spec_text(const lattice_target_spec_t &spec) {
   std::ostringstream out;
   out << "target_id=" << spec.target_id << "\n";
   out << "target_class=" << spec.target_class << "\n";
-  out << "kind=" << lattice_target_kind_name(spec.kind) << "\n";
+  out << "target_kind_applicable="
+      << (lattice_target_kind_applicable(spec) ? "true" : "false") << "\n";
+  out << "kind=" << lattice_target_effective_kind_name(spec) << "\n";
+  out << "target_kind_effective="
+      << lattice_target_effective_kind_selector(spec) << "\n";
+  out << "proof_kind=" << spec.proof_kind << "\n";
+  out << "subject_fact_family=" << spec.subject_fact_family << "\n";
   out << "protocol_id=" << spec.protocol_id << "\n";
   out << "component=" << spec.component << "\n";
   out << "checkpoint_source=" << spec.checkpoint_source << "\n";
@@ -14131,6 +15895,8 @@ decode_lattice_compiled_targets_from_dsl(const std::string &dsl_text) {
   std::unordered_map<std::string, std::vector<kv::block_t>> forbids_clauses;
   std::unordered_map<std::string, std::vector<kv::block_t>> plan_clauses;
   std::unordered_map<std::string, std::vector<kv::block_t>> warning_clauses;
+  std::set<std::string> policy_gate_ids;
+  std::vector<lattice_policy_gate_spec_t> policy_gates;
   std::vector<lattice_target_compiled_t> out;
   const auto blocks = kv::parse_blocks(dsl_text);
   const auto append_target_clause =
@@ -14139,6 +15905,15 @@ decode_lattice_compiled_targets_from_dsl(const std::string &dsl_text) {
         clauses[kv::required(block, "TARGET_ID")].push_back(block);
       };
   for (const auto &block : blocks) {
+    if (block.name == "LATTICE_POLICY_GATE") {
+      const auto gate = decode_lattice_policy_gate_spec_block(block);
+      if (!policy_gate_ids.insert(gate.policy_id).second) {
+        throw std::runtime_error("[lattice_target] duplicate POLICY_ID: " +
+                                 gate.policy_id);
+      }
+      policy_gates.push_back(gate);
+      continue;
+    }
     if (block.name == "LATTICE_PROFILE") {
       const auto profile_id = kv::required(block, "PROFILE_ID");
       if (!profiles.emplace(profile_id, block).second) {
@@ -14257,6 +16032,75 @@ decode_lattice_compiled_targets_from_dsl(const std::string &dsl_text) {
   for (const auto &target : out) {
     target_ids.insert(target.lowered_v0.target_id);
   }
+  std::unordered_map<std::string, const lattice_target_spec_t *> target_by_id;
+  target_by_id.reserve(out.size());
+  for (const auto &target : out) {
+    target_by_id.emplace(target.lowered_v0.target_id, &target.lowered_v0);
+  }
+  for (const auto &gate : policy_gates) {
+    const auto target_it = target_by_id.find(gate.target_id);
+    if (target_it == target_by_id.end()) {
+      throw std::runtime_error(
+          "[lattice_target] LATTICE_POLICY_GATE " + gate.policy_id +
+          " references unknown TARGET_ID: " + gate.target_id);
+    }
+    const auto &target_spec = *target_it->second;
+    if (!is_artifact_readiness_target_class(target_spec.target_class)) {
+      throw std::runtime_error(
+          "[lattice_target] LATTICE_POLICY_GATE " + gate.policy_id +
+          " must reference TARGET_CLASS=artifact_readiness target " +
+          gate.target_id +
+          "; reserved policy gates consume artifact proof certificates, not "
+          "runtime readiness targets");
+    }
+    const auto expected_subject =
+        expected_subject_fact_family_for_policy_gate_kind(gate.policy_kind);
+    if (!expected_subject.empty() &&
+        target_spec.subject_fact_family != expected_subject) {
+      throw std::runtime_error(
+          "[lattice_target] LATTICE_POLICY_GATE " + gate.policy_id +
+          " POLICY_KIND=" + gate.policy_kind +
+          " must reference SUBJECT_FACT_FAMILY=" + expected_subject +
+          " target " + gate.target_id);
+    }
+  }
+  const auto check_latest_satisfying_reference =
+      [&target_by_id](const lattice_target_spec_t &owner,
+                      const std::string &field_name,
+                      const std::string &source) {
+        const auto source_target_id =
+            latest_satisfying_reference_target_id(source);
+        if (source_target_id.empty()) {
+          return;
+        }
+        const auto source_it = target_by_id.find(source_target_id);
+        if (source_it == target_by_id.end()) {
+          return;
+        }
+        const auto &source_spec = *source_it->second;
+        if (is_latest_satisfying_checkpoint_selectable_target_class(
+                source_spec.target_class)) {
+          return;
+        }
+        throw std::runtime_error(
+            "[lattice_target] " + owner.target_id + " " + field_name +
+            " latest_satisfying cannot reference TARGET_CLASS=" +
+            source_spec.target_class + " target " + source_spec.target_id +
+            "; latest_satisfying selects checkpoint-producing "
+            "readiness/leakage_guard targets");
+      };
+  for (const auto &target : out) {
+    const auto &spec = target.lowered_v0;
+    check_latest_satisfying_reference(spec, "CHECKPOINT_SOURCE",
+                                      spec.checkpoint_source);
+    check_latest_satisfying_reference(spec, "EVALUATED_CHECKPOINT_SOURCE",
+                                      spec.evaluated_checkpoint_source);
+    check_latest_satisfying_reference(spec, "PLAN_INPUT_MDN_CHECKPOINT",
+                                      spec.plan_input_mdn_checkpoint);
+    check_latest_satisfying_reference(
+        spec, "PLAN_INPUT_REPRESENTATION_CHECKPOINT",
+        spec.plan_input_representation_checkpoint);
+  }
   const auto check_clause_targets = [&target_ids](
                                         const auto &clauses,
                                         const std::string &block_name) {
@@ -14290,7 +16134,9 @@ decode_lattice_targets_from_dsl(const std::string &dsl_text) {
 [[nodiscard]] inline std::string
 lattice_target_selector_key(const lattice_target_spec_t &spec) {
   std::ostringstream out;
-  out << lattice_target_kind_name(spec.kind) << "|";
+  out << lattice_target_effective_kind_selector(spec) << "|";
+  out << spec.proof_kind << "|";
+  out << spec.subject_fact_family << "|";
   out << spec.protocol_id << "|";
   out << spec.component << "|";
   out << spec.target_class << "|";

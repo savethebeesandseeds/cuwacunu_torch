@@ -75,6 +75,16 @@ void print_help(const char *argv0) {
          "'{\"runtime_root\":\"/tmp/cuwacunu_train_core_lattice_v0\"}'\n"
       << "  " << argv0
       << " --global-config /cuwacunu/src/config/.config --tool "
+         "hero.lattice.scan_facts --args-json "
+         "'{\"runtime_root\":\"/tmp/cuwacunu_train_core_lattice_v0\","
+         "\"family\":\"allocation_engine\"}'\n"
+      << "  " << argv0
+      << " --global-config /cuwacunu/src/config/.config --tool "
+         "hero.lattice.fact_lineage --args-json "
+         "'{\"runtime_root\":\"/tmp/cuwacunu_train_core_lattice_v0\","
+         "\"family\":\"forecast_eval\"}'\n"
+      << "  " << argv0
+      << " --global-config /cuwacunu/src/config/.config --tool "
          "hero.lattice.index_status --args-json "
          "'{\"runtime_root\":\"/tmp/cuwacunu_train_core_lattice_v0\"}'\n"
       << "  " << argv0
@@ -121,6 +131,16 @@ void print_help(const char *argv0) {
          "and warning-scope previews without evidence scan\n"
       << "  hero.lattice.scan_exposure      runtime artifacts -> "
          "exposure/checkpoint fact and anchor-domain-health preview\n"
+      << "  hero.lattice.list_fact_families generic fact-family registry; "
+         "fact families are not target kinds\n"
+      << "  hero.lattice.scan_facts         generic fact catalog scan, "
+         "optionally filtered by family; no target proof or dispatch\n"
+      << "  hero.lattice.fact_summary       generic fact-family summaries "
+         "over runtime evidence\n"
+      << "  hero.lattice.fact_lineage       read-only fact-family lineage "
+         "rows plus integrity rollups; no target proof or dispatch\n"
+      << "  hero.lattice.fact_preview       read-only concrete fact-row "
+         "preview by family/digest/index; no target proof or selection\n"
       << "  hero.lattice.index_status       rebuildable cache status; "
          "valid cache rows or live-scan fallback\n"
       << "  hero.lattice.index_query        read-only audit index query with "

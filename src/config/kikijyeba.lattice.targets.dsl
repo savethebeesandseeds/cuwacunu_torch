@@ -36,6 +36,30 @@
       satisfied, the MDN target plans the upstream channel
       representation wave.
 
+  ARTIFACT-READINESS TARGETS:
+    TARGET_CLASS = artifact_readiness uses SUBJECT_FACT_FAMILY and optional
+    PROOF_KIND instead of TARGET_KIND. These targets prove durable catalog fact
+    existence, identity, lineage, split binding, and contract completeness. They
+    do not prove forecast quality, choose checkpoints, allocate, deploy, or ask
+    Marshal to reach a Runtime wave. Their CHECKPOINT_SOURCE is none and their
+    PLAN_MAX_ATTEMPTS is zero by construction. They also cannot use
+    UPSTREAM_TARGET_ID, LATTICE_DEPENDS, EVALUATED_CHECKPOINT_SOURCE, or
+    PLAN_INPUT_* checkpoint hints; artifact lineage must come from fact parent
+    digests and proof templates, not target-dependency scheduling. A fact family
+    can become an artifact-readiness target only when it has an explicit proof
+    template; source_analytics remains warning/summary evidence.
+
+    LATTICE_POLICY_GATE is first-class reserved syntax only when ENABLED=false.
+    Disabled reservations are parsed for review but ignored by target proof
+    status and fingerprints. A supplied POLICY_FINGERPRINT must match the
+    canonical reserved policy declaration digest; Hero JSON reports that
+    verification explicitly. Policy, performance, market-readiness, and
+    deployment-readiness decisions stay outside the Lattice proof core until
+    their metric/baseline definitions, thresholds, uncertainty policy/model,
+    support minimums, selector split, leakage policy, negative tests,
+    calibration requirements, holdout declaration, and threshold-selection audit
+    are explicit. ENABLED=true fails closed.
+
   PLAN_MODE:
     train | debug
       The suggested wave mode when the target is unsatisfied. The planner emits
@@ -96,8 +120,11 @@
       checkpoint selected by another satisfied target. This is intentionally
       runtime model-state evidence, not protocol contract identity.
       latest_satisfying is a deterministic readiness selector over the
-      referenced satisfied target's newest checkpoint candidate. It is not a
-      best-model, Pareto, performance, or deployment selector.
+      referenced satisfied target's newest checkpoint candidate. The referenced
+      target must be a checkpoint-producing readiness/leakage_guard target, not
+      artifact_readiness, evaluation_readiness, policy_gate, performance, or
+      market/deployment readiness. It is not a best-model, Pareto, performance,
+      or deployment selector.
 
     PLAN_INPUT_MDN_CHECKPOINT and PLAN_INPUT_REPRESENTATION_CHECKPOINT
       Add model-state inputs to the suggested wave. These are plan annotations
@@ -193,11 +220,21 @@
     LATTICE_WARN
       Non-blocking warning clauses over evidence summaries. Supported v0 warning
       kinds are exposure_load, effort_density, anchor_domain_health,
-      node_support_balance, node_support_floor, representation_health, and
-      runtime_health.
+      source_analytics, forecast_baseline, forecast_eval, node_support_balance,
+      node_support_floor, observer_belief, allocation_engine,
+      representation_health,
+      runtime_health, and mdn_distribution_calibration.
       Warnings never change target status, plan readiness, suggested waves, or
       PLAN_MAX_ATTEMPTS accounting. They only report suspicious repeated
       exposure, high optimizer effort density, source-domain health issues,
+      source analytics such as entropy/compression/validity/missingness,
+      forecast-baseline visibility such as support, baseline-kind coverage, and
+      baseline error metrics,
+      forecast-evaluation visibility such as calibration/support/error metrics,
+      horizon support, and identity-bound skill-versus-baseline diagnostics,
+      observer belief visibility such as confidence/data quality/liquidity and
+      lineage/authority flags, allocation-engine visibility such as turnover,
+      reserve binding, cost/risk diagnostics, and authority flags,
       weak/imbalanced MDN node support, low normalized support entropy, low
       aggregate Wilson lower-bound support, or VICReg representation-health
       metrics including optional geometry summaries such as effective-rank
@@ -671,6 +708,42 @@ LATTICE_TARGET {
 };
 
 LATTICE_TARGET {
+  TARGET_ID = cwu_02v_mdn_train_core_no_validation_leakage;
+  TARGET_CLASS = leakage_guard;
+  TARGET_KIND = channel_mdn_ready;
+  SUBJECT_COMPONENT = wikimyei.inference.expected_value.mdn;
+  PROTOCOL_ID = cwu_02v;
+  CHECKPOINT_SOURCE = latest_satisfying:cwu_02v_mdn_train_core_ready;
+  SOURCE_RANGE = all;
+  REQUIRE_CONTRACT_MATCH = true;
+  REQUIRE_COMPONENT_MATCH = true;
+  REQUIRE_CHECKPOINT_EXISTS = true;
+  REQUIRE_FINITE_LOSS = false;
+  MIN_OPTIMIZER_STEPS = 0;
+  PROTECT_SPLIT = validation_holdout;
+  WAVE_MODE = run|debug;
+  PLAN_MAX_ATTEMPTS = 0;
+};
+
+LATTICE_TARGET {
+  TARGET_ID = cwu_02v_mdn_train_core_no_test_leakage;
+  TARGET_CLASS = leakage_guard;
+  TARGET_KIND = channel_mdn_ready;
+  SUBJECT_COMPONENT = wikimyei.inference.expected_value.mdn;
+  PROTOCOL_ID = cwu_02v;
+  CHECKPOINT_SOURCE = latest_satisfying:cwu_02v_mdn_train_core_no_validation_leakage;
+  SOURCE_RANGE = all;
+  REQUIRE_CONTRACT_MATCH = true;
+  REQUIRE_COMPONENT_MATCH = true;
+  REQUIRE_CHECKPOINT_EXISTS = true;
+  REQUIRE_FINITE_LOSS = false;
+  MIN_OPTIMIZER_STEPS = 0;
+  PROTECT_SPLIT = test_holdout;
+  WAVE_MODE = run|debug;
+  PLAN_MAX_ATTEMPTS = 0;
+};
+
+LATTICE_TARGET {
   TARGET_ID = channel_mdn_train_core_no_validation_leakage;
   TARGET_CLASS = leakage_guard;
   TARGET_KIND = channel_mdn_ready;
@@ -722,6 +795,257 @@ LATTICE_TARGET {
   PROTECT_SPLIT = validation_holdout;
   WAVE_MODE = run|debug;
   PLAN_MAX_ATTEMPTS = 1;
+};
+
+/*
+  Roadmap evidence catalog proofs.
+
+  These cwu_02v validation-scope targets prove artifact/fact integrity only.
+  Most quality diagnostics over the same facts should surface first as warnings
+  or summaries, not as new TARGET_KIND values or policy decisions.
+*/
+LATTICE_TARGET {
+  TARGET_ID = target_transform_contract_ready;
+  TARGET_CLASS = artifact_readiness;
+  PROOF_KIND = target_transform_contract_bound;
+  SUBJECT_FACT_FAMILY = target_transform;
+  SUBJECT_COMPONENT = wikimyei.inference.expected_value.mdn;
+  PROTOCOL_ID = cwu_02v;
+  SOURCE_RANGE = anchor_index;
+  OVER_SPLIT = validation_holdout;
+  REQUIRE_CONTRACT_MATCH = true;
+};
+
+LATTICE_TARGET {
+  TARGET_ID = forecast_baseline_artifact_ready;
+  TARGET_CLASS = artifact_readiness;
+  PROOF_KIND = forecast_baseline_artifact_bound;
+  SUBJECT_FACT_FAMILY = forecast_baseline;
+  SUBJECT_COMPONENT = wikimyei.inference.expected_value.mdn;
+  PROTOCOL_ID = cwu_02v;
+  SOURCE_RANGE = anchor_index;
+  OVER_SPLIT = validation_holdout;
+  REQUIRE_CONTRACT_MATCH = true;
+};
+
+LATTICE_WARN {
+  TARGET_ID = forecast_baseline_artifact_ready;
+  WARNING_ID = forecast_baseline_valid_support_low_visibility_only;
+  KIND = forecast_baseline;
+  SPLIT = validation_holdout;
+  SCOPE = target_component_family_id;
+  METRIC = valid_count;
+  BELOW = 50;
+};
+
+LATTICE_WARN {
+  TARGET_ID = forecast_baseline_artifact_ready;
+  WARNING_ID = forecast_baseline_kind_coverage_low_visibility_only;
+  KIND = forecast_baseline;
+  SPLIT = validation_holdout;
+  SCOPE = target_component_family_id;
+  METRIC = baseline_kind_count;
+  BELOW = 4;
+};
+
+LATTICE_WARN {
+  TARGET_ID = forecast_baseline_artifact_ready;
+  WARNING_ID = forecast_baseline_metric_coverage_low_visibility_only;
+  KIND = forecast_baseline;
+  SPLIT = validation_holdout;
+  SCOPE = target_component_family_id;
+  METRIC = computed_metric_fact_count;
+  BELOW = 1;
+};
+
+LATTICE_TARGET {
+  TARGET_ID = forecast_eval_artifact_ready;
+  TARGET_CLASS = artifact_readiness;
+  PROOF_KIND = forecast_eval_artifact_bound;
+  SUBJECT_FACT_FAMILY = forecast_eval;
+  SUBJECT_COMPONENT = wikimyei.inference.expected_value.mdn;
+  PROTOCOL_ID = cwu_02v;
+  SOURCE_RANGE = anchor_index;
+  OVER_SPLIT = validation_holdout;
+  REQUIRE_CONTRACT_MATCH = true;
+};
+
+LATTICE_WARN {
+  TARGET_ID = forecast_eval_artifact_ready;
+  WARNING_ID = forecast_eval_calibration_coverage_low_visibility_only;
+  KIND = forecast_eval;
+  SPLIT = validation_holdout;
+  SCOPE = target_component_family_id;
+  METRIC = calibration_coverage;
+  BELOW = 0.95;
+};
+
+LATTICE_WARN {
+  TARGET_ID = forecast_eval_artifact_ready;
+  WARNING_ID = forecast_eval_skill_vs_baseline_negative_visibility_only;
+  KIND = forecast_eval;
+  SPLIT = validation_holdout;
+  SCOPE = target_component_family_id;
+  METRIC = skill_vs_baseline;
+  BELOW = 0.0;
+};
+
+LATTICE_WARN {
+  TARGET_ID = forecast_eval_artifact_ready;
+  WARNING_ID = forecast_eval_horizon_support_low_visibility_only;
+  KIND = forecast_eval;
+  SPLIT = validation_holdout;
+  SCOPE = target_component_family_id;
+  METRIC = weakest_horizon_support_rows;
+  BELOW = 10;
+};
+
+LATTICE_POLICY_GATE {
+  POLICY_ID = forecast_quality_acceptance_reserved;
+  POLICY_KIND = forecast_quality_acceptance;
+  TARGET_ID = forecast_eval_artifact_ready;
+  METRIC = skill_vs_baseline;
+  METRIC_DEFINITION = skill_vs_baseline_same_transform_horizon_support;
+  BASELINE = forecast_baseline_artifact_ready;
+  BASELINE_DEFINITION = same_protocol_split_transform_horizon_baseline_fact;
+  THRESHOLD = 0.0;
+  UNCERTAINTY_POLICY = disabled;
+  UNCERTAINTY_MODEL = disabled_until_support_and_calibration_policy_exists;
+  SUPPORT_MINIMUM = 0;
+  SELECTOR_SPLIT = validation_holdout;
+  ANTI_LEAKAGE_POLICY = required;
+  TIE_POLICY = reject_ties;
+  NEGATIVE_TESTS = required_selection_leakage_and_negative_skill_tests;
+  CALIBRATION_REQUIREMENTS = pit_interval_and_sigma_scale_visibility_required;
+  HOLDOUT_DECLARATION = validation_holdout_out_of_sample;
+  THRESHOLD_SELECTION_AUDIT = disabled_no_threshold_tuning_audit;
+  ENABLED = false;
+};
+
+LATTICE_TARGET {
+  TARGET_ID = observer_belief_artifact_ready;
+  TARGET_CLASS = artifact_readiness;
+  PROOF_KIND = observer_belief_artifact_bound;
+  SUBJECT_FACT_FAMILY = observer_belief;
+  SUBJECT_COMPONENT = wikimyei.inference.expected_value.mdn;
+  PROTOCOL_ID = cwu_02v;
+  SOURCE_RANGE = anchor_index;
+  OVER_SPLIT = validation_holdout;
+  REQUIRE_CONTRACT_MATCH = true;
+};
+
+LATTICE_WARN {
+  TARGET_ID = observer_belief_artifact_ready;
+  WARNING_ID = observer_belief_confidence_low_visibility_only;
+  KIND = observer_belief;
+  SPLIT = validation_holdout;
+  SCOPE = target_component_family_id;
+  METRIC = confidence;
+  BELOW = 0.70;
+};
+
+LATTICE_WARN {
+  TARGET_ID = observer_belief_artifact_ready;
+  WARNING_ID = observer_belief_data_quality_low_visibility_only;
+  KIND = observer_belief;
+  SPLIT = validation_holdout;
+  SCOPE = target_component_family_id;
+  METRIC = data_quality;
+  BELOW = 0.70;
+};
+
+LATTICE_WARN {
+  TARGET_ID = observer_belief_artifact_ready;
+  WARNING_ID = observer_belief_liquidity_low_visibility_only;
+  KIND = observer_belief;
+  SPLIT = validation_holdout;
+  SCOPE = target_component_family_id;
+  METRIC = liquidity;
+  BELOW = 0.70;
+};
+
+LATTICE_TARGET {
+  TARGET_ID = allocation_artifact_ready;
+  TARGET_CLASS = artifact_readiness;
+  PROOF_KIND = allocation_artifact_bound;
+  SUBJECT_FACT_FAMILY = allocation_engine;
+  SUBJECT_COMPONENT = wikimyei.inference.expected_value.mdn;
+  PROTOCOL_ID = cwu_02v;
+  SOURCE_RANGE = anchor_index;
+  OVER_SPLIT = validation_holdout;
+  REQUIRE_CONTRACT_MATCH = true;
+};
+
+LATTICE_WARN {
+  TARGET_ID = allocation_artifact_ready;
+  WARNING_ID = allocation_turnover_high_visibility_only;
+  KIND = allocation_engine;
+  SPLIT = validation_holdout;
+  SCOPE = target_component_family_id;
+  METRIC = turnover;
+  ABOVE = 0.10;
+};
+
+LATTICE_WARN {
+  TARGET_ID = allocation_artifact_ready;
+  WARNING_ID = allocation_cap_diagnostics_missing_visibility_only;
+  KIND = allocation_engine;
+  SPLIT = validation_holdout;
+  SCOPE = target_component_family_id;
+  METRIC = cap_diagnostics_bound;
+  BELOW = 1.0;
+};
+
+LATTICE_WARN {
+  TARGET_ID = allocation_artifact_ready;
+  WARNING_ID = allocation_scenario_growth_floor_attention_visibility_only;
+  KIND = allocation_engine;
+  SPLIT = validation_holdout;
+  SCOPE = target_component_family_id;
+  METRIC = scenario_growth_floor_attention;
+  ABOVE = 0.0;
+};
+
+LATTICE_WARN {
+  TARGET_ID = allocation_artifact_ready;
+  WARNING_ID = allocation_fallback_active_visibility_only;
+  KIND = allocation_engine;
+  SPLIT = validation_holdout;
+  SCOPE = target_component_family_id;
+  METRIC = fallback_active;
+  ABOVE = 0.0;
+};
+
+LATTICE_WARN {
+  TARGET_ID = allocation_artifact_ready;
+  WARNING_ID = allocation_derisk_active_visibility_only;
+  KIND = allocation_engine;
+  SPLIT = validation_holdout;
+  SCOPE = target_component_family_id;
+  METRIC = derisk_active;
+  ABOVE = 0.0;
+};
+
+LATTICE_POLICY_GATE {
+  POLICY_ID = allocation_acceptance_reserved;
+  POLICY_KIND = allocation_acceptance;
+  TARGET_ID = allocation_artifact_ready;
+  METRIC = risk_adjusted_growth_after_cost;
+  METRIC_DEFINITION = replay_or_policy_declared_risk_adjusted_growth_after_cost;
+  BASELINE = base_policy;
+  BASELINE_DEFINITION = base_policy_reserve_graph_node_reference;
+  THRESHOLD = 0.0;
+  UNCERTAINTY_POLICY = disabled;
+  UNCERTAINTY_MODEL = disabled_until_replay_uncertainty_policy_exists;
+  SUPPORT_MINIMUM = 0;
+  SELECTOR_SPLIT = validation_holdout;
+  ANTI_LEAKAGE_POLICY = required;
+  TIE_POLICY = reject_ties;
+  NEGATIVE_TESTS = required_cost_cvar_fallback_and_derisk_negative_tests;
+  CALIBRATION_REQUIREMENTS = observer_confidence_data_quality_liquidity_required;
+  HOLDOUT_DECLARATION = validation_holdout_out_of_sample;
+  THRESHOLD_SELECTION_AUDIT = disabled_no_threshold_tuning_audit;
+  ENABLED = false;
 };
 
 LATTICE_TARGET {
@@ -886,6 +1210,16 @@ LATTICE_WARN {
   EFFECT = mutated_component;
   METRIC = vicreg_channel_valid_rows;
   BELOW = 1.0;
+};
+
+LATTICE_WARN {
+  TARGET_ID = mtf_jepa_mae_vicreg_train_core_ready;
+  WARNING_ID = mtf_source_missingness_high_visibility_only;
+  KIND = source_analytics;
+  SPLIT = train_core;
+  SCOPE = target_component_family_id;
+  METRIC = missingness_fraction;
+  ABOVE = 0.10;
 };
 
 LATTICE_REQUIRES {

@@ -6,17 +6,17 @@
 
 #include <torch/torch.h>
 
-#include "wikimyei/engine/portfolio/spot_distributional_utility/assembly.h"
-#include "wikimyei/engine/portfolio/spot_distributional_utility/decision_step.h"
-#include "wikimyei/engine/portfolio/spot_distributional_utility/solver.h"
-#include "wikimyei/engine/portfolio/spot_distributional_utility/utility/base_reserve_fallback.h"
-#include "wikimyei/engine/portfolio/spot_distributional_utility/utility/belief_reporter.h"
-#include "wikimyei/engine/portfolio/spot_distributional_utility/utility/cvar_baseline.h"
-#include "wikimyei/engine/portfolio/spot_distributional_utility/utility/mean_variance_baseline.h"
-#include "wikimyei/engine/portfolio/spot_distributional_utility/utility/portfolio_ledger.h"
-#include "wikimyei/engine/portfolio/spot_distributional_utility/utility/risk_gate.h"
-#include "wikimyei/engine/portfolio/spot_distributional_utility/utility/risk_parity_fallback.h"
-#include "wikimyei/engine/portfolio/spot_distributional_utility/utility/spot_rebalance_router.h"
+#include "wikimyei/policy/portfolio/spot_distributional_utility/assembly.h"
+#include "wikimyei/policy/portfolio/spot_distributional_utility/decision_step.h"
+#include "wikimyei/policy/portfolio/spot_distributional_utility/solver.h"
+#include "wikimyei/policy/portfolio/spot_distributional_utility/utility/base_reserve_fallback.h"
+#include "wikimyei/policy/portfolio/spot_distributional_utility/utility/belief_reporter.h"
+#include "wikimyei/policy/portfolio/spot_distributional_utility/utility/cvar_baseline.h"
+#include "wikimyei/policy/portfolio/spot_distributional_utility/utility/mean_variance_baseline.h"
+#include "wikimyei/policy/portfolio/spot_distributional_utility/utility/portfolio_ledger.h"
+#include "wikimyei/policy/portfolio/spot_distributional_utility/utility/risk_gate.h"
+#include "wikimyei/policy/portfolio/spot_distributional_utility/utility/risk_parity_fallback.h"
+#include "wikimyei/policy/portfolio/spot_distributional_utility/utility/spot_rebalance_router.h"
 #include "wikimyei/inference/expected_value/mdn/assembly.h"
 #include "wikimyei/inference/expected_value/mdn/mixture_density_network_types.h"
 #include "wikimyei/observer/belief/assembly.h"
@@ -31,16 +31,16 @@ namespace mdn = cuwacunu::wikimyei::inference::expected_value::mdn;
 namespace assembly = cuwacunu::wikimyei::assembly;
 namespace observer = cuwacunu::wikimyei::observer;
 namespace belief = cuwacunu::wikimyei::observer::belief;
-namespace portfolio = cuwacunu::wikimyei::engine::portfolio;
+namespace portfolio = cuwacunu::wikimyei::policy::portfolio;
 namespace sdu =
-    cuwacunu::wikimyei::engine::portfolio::spot_distributional_utility;
+    cuwacunu::wikimyei::policy::portfolio::spot_distributional_utility;
 namespace execution = sdu::execution;
 namespace accounting = sdu::accounting;
 namespace monitoring = sdu::monitoring;
 namespace risk = sdu::risk;
 namespace baseline = sdu::baseline;
 namespace fallback = sdu::fallback;
-namespace decision_step = cuwacunu::wikimyei::engine::portfolio::
+namespace decision_step = cuwacunu::wikimyei::policy::portfolio::
     spot_distributional_utility::decision_step;
 
 void check(bool condition, const char *message) {
@@ -118,7 +118,7 @@ void test_feature_semantics_detection() {
       portfolio_assembly, assembly::dock_domain_t::allocation_belief,
       "observer_belief_to_portfolio_engine");
   check(portfolio_assembly.family ==
-            "wikimyei.engine.portfolio.spot_distributional_utility",
+            "wikimyei.policy.portfolio.spot_distributional_utility",
         "portfolio method assembly family is method-scoped");
 
   auto detected =
@@ -1201,7 +1201,7 @@ void test_portfolio_ledger_and_belief_reporter() {
                                                 .target = &target,
                                                 .rebalance_plan = &plan,
                                                 .ledger = &ledger});
-  check(report.text.find("report_schema_id=wikimyei.engine.portfolio."
+  check(report.text.find("report_schema_id=wikimyei.policy.portfolio."
                          "spot_distributional_utility.monitoring."
                          "belief_reporter.v1") != std::string::npos,
         "belief report schema id");

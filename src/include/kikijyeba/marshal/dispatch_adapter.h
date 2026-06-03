@@ -217,6 +217,24 @@ runtime_wave_snapshot_digest(const marshal_runtime_wave_snapshot_t &wave) {
 [[nodiscard]] inline bool
 wave_matches_advice_range(const marshal_runtime_wave_snapshot_t &wave,
                           const marshal_suggested_wave_t &suggested_wave) {
+  const bool launch_overlay_profile =
+      wave.source_range == "all" && !wave.anchor_index_begin.has_value() &&
+      !wave.anchor_index_end.has_value() &&
+      !wave.source_key_begin.has_value() && !wave.source_key_end.has_value();
+  const bool advised_concrete_overlay =
+      (suggested_wave.source_range == "anchor_index" &&
+       suggested_wave.anchor_index_begin.has_value() &&
+       suggested_wave.anchor_index_end.has_value() &&
+       !suggested_wave.source_key_begin.has_value() &&
+       !suggested_wave.source_key_end.has_value()) ||
+      (suggested_wave.source_range == "source_key" &&
+       suggested_wave.source_key_begin.has_value() &&
+       suggested_wave.source_key_end.has_value() &&
+       !suggested_wave.anchor_index_begin.has_value() &&
+       !suggested_wave.anchor_index_end.has_value());
+  if (launch_overlay_profile && advised_concrete_overlay) {
+    return true;
+  }
   return wave.source_range == suggested_wave.source_range &&
          wave.anchor_index_begin == suggested_wave.anchor_index_begin &&
          wave.anchor_index_end == suggested_wave.anchor_index_end &&
@@ -260,6 +278,7 @@ build_runtime_dry_run_dispatch_preview(
       advice.suggested_wave.plan_inputs;
   decision.runtime_request.lattice_certificate_refs =
       request.lattice_certificate_refs;
+  decision.runtime_request.target_driver_run_id = request.target_driver_run_id;
 
   add_derivation(decision, "config_path", "advice.config_path");
   add_derivation(decision, "runtime_root", "advice.runtime_root");

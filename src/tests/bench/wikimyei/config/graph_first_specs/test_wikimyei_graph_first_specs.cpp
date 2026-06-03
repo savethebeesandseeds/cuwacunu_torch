@@ -9,15 +9,16 @@
 #include <vector>
 
 #include "jkimyei/api/training_spec.h"
+#include "kikijyeba/environment/replay/spec.h"
 #include "kikijyeba/protocol/config_bundle.h"
 #include "piaabo/parse/simple_kv_block.h"
 #include "ujcamei/source/registry/types/kline_feature_registry.h"
-#include "wikimyei/engine/portfolio/spot_distributional_utility/assembly.h"
-#include "wikimyei/engine/portfolio/spot_distributional_utility/spec.h"
 #include "wikimyei/inference/expected_value/mdn/assembly.h"
 #include "wikimyei/inference/expected_value/mdn/mdn_spec.h"
 #include "wikimyei/observer/belief/assembly.h"
 #include "wikimyei/observer/belief/spec.h"
+#include "wikimyei/policy/portfolio/spot_distributional_utility/assembly.h"
+#include "wikimyei/policy/portfolio/spot_distributional_utility/spec.h"
 #include "wikimyei/representation/encoding/mtf_jepa_mae_vicreg/mtf_jepa_mae_vicreg_spec.h"
 #include "wikimyei/representation/encoding/vicreg/assembly.h"
 #include "wikimyei/representation/encoding/vicreg/vicreg_spec.h"
@@ -245,8 +246,9 @@ void test_channel_protocol_contract_identity_binds_strict_channel_config() {
 
 void test_channel_specs_decode_and_validate() {
   namespace belief = cuwacunu::wikimyei::observer::belief;
-  namespace engine =
-      cuwacunu::wikimyei::engine::portfolio::spot_distributional_utility;
+  namespace policy =
+      cuwacunu::wikimyei::policy::portfolio::spot_distributional_utility;
+  namespace environment = cuwacunu::kikijyeba::environment;
   namespace mdn = cuwacunu::wikimyei::inference::expected_value::mdn;
   namespace mtf =
       cuwacunu::wikimyei::representation::encoding::mtf_jepa_mae_vicreg;
@@ -276,7 +278,9 @@ void test_channel_specs_decode_and_validate() {
   const auto belief_observer_bnf =
       read_text(paths.at("wikimyei_observer_belief_dsl_bnf_path"));
   const auto spot_distributional_utility_bnf = read_text(paths.at(
-      "wikimyei_engine_portfolio_spot_distributional_utility_dsl_bnf_path"));
+      "wikimyei_policy_portfolio_spot_distributional_utility_dsl_bnf_path"));
+  const auto replay_environment_bnf =
+      read_text(paths.at("kikijyeba_environment_replay_dsl_bnf_path"));
   const auto channel_mdn_jkimyei_bnf = read_text(
       paths.at("wikimyei_inference_expected_value_mdn_jkimyei_bnf_path"));
   if (protocol_bnf.find("PROTOCOL") == std::string::npos ||
@@ -312,6 +316,13 @@ void test_channel_specs_decode_and_validate() {
           std::string::npos ||
       spot_distributional_utility_bnf.find("LIVE_CAPITAL_ALLOWED") ==
           std::string::npos ||
+      replay_environment_bnf.find("REPLAY_ENVIRONMENT") == std::string::npos ||
+      replay_environment_bnf.find("OBSERVATION_TIME_LAW") ==
+          std::string::npos ||
+      replay_environment_bnf.find("REQUIRE_NO_FUTURE_LEAKAGE") ==
+          std::string::npos ||
+      replay_environment_bnf.find("LIVE_CAPITAL_ALLOWED") ==
+          std::string::npos ||
       channel_mdn_jkimyei_bnf.find("INPUT_MDN_CHECKPOINT") ==
           std::string::npos) {
     throw std::runtime_error("channel config BNF surface mismatch");
@@ -333,7 +344,9 @@ void test_channel_specs_decode_and_validate() {
   const auto belief_observer_dsl_text =
       read_text(paths.at("wikimyei_observer_belief_dsl_path"));
   const auto spot_distributional_utility_dsl_text = read_text(paths.at(
-      "wikimyei_engine_portfolio_spot_distributional_utility_dsl_path"));
+      "wikimyei_policy_portfolio_spot_distributional_utility_dsl_path"));
+  const auto replay_environment_dsl_text =
+      read_text(paths.at("kikijyeba_environment_replay_dsl_path"));
   const auto representation_spec = vicreg::decode_vicreg_spec_from_split_dsl(
       representation_dsl_text, representation_net_text);
   const auto protocol_variant =
@@ -344,9 +357,12 @@ void test_channel_specs_decode_and_validate() {
       mdn::decode_channel_mdn_spec_from_split_dsl(mdn_dsl_text, mdn_net_text);
   const auto belief_spec =
       belief::decode_belief_observer_spec_from_dsl(belief_observer_dsl_text);
-  const auto engine_spec =
-      engine::decode_spot_distributional_utility_spec_from_dsl(
+  const auto policy_spec =
+      policy::decode_spot_distributional_utility_spec_from_dsl(
           spot_distributional_utility_dsl_text);
+  const auto replay_environment_spec =
+      environment::decode_replay_environment_spec_from_dsl(
+          replay_environment_dsl_text);
   const auto representation_training =
       training::decode_training_run_spec_from_dsl(
           read_text(paths.at("wikimyei_representation_vicreg_jkimyei_path")));
@@ -382,14 +398,27 @@ void test_channel_specs_decode_and_validate() {
       belief_spec.live_capital_allowed) {
     throw std::runtime_error("belief observer spec mismatch");
   }
-  if (engine_spec.component_assembly_id != "spot_distributional_utility_v1" ||
-      engine_spec.input_belief_assembly_id !=
+  if (policy_spec.component_assembly_id != "spot_distributional_utility_v1" ||
+      policy_spec.input_belief_assembly_id !=
           belief_spec.component_assembly_id ||
-      engine_spec.optimizer != "projected_gradient" ||
-      engine_spec.reserve_node_policy != "graph_node_from_base_policy" ||
-      !engine_spec.projection_validation_required ||
-      engine_spec.live_capital_allowed) {
+      policy_spec.optimizer != "projected_gradient" ||
+      policy_spec.reserve_node_policy != "graph_node_from_base_policy" ||
+      !policy_spec.projection_validation_required ||
+      policy_spec.live_capital_allowed) {
     throw std::runtime_error("spot distributional utility spec mismatch");
+  }
+  if (replay_environment_spec.component_assembly_id !=
+          "replay_environment_v1" ||
+      replay_environment_spec.range_source !=
+          "ujcamei_component_stream_cursor" ||
+      replay_environment_spec.observation_time_law != "time_t_only" ||
+      replay_environment_spec.action_kind !=
+          "target_node_weights_with_base_reserve" ||
+      replay_environment_spec.action_schema_id !=
+          "kikijyeba.environment.action.target_weights.v1" ||
+      !replay_environment_spec.require_no_future_leakage ||
+      replay_environment_spec.live_capital_allowed) {
+    throw std::runtime_error("replay environment spec mismatch");
   }
   expect_throw(
       [&] {
@@ -468,8 +497,9 @@ void test_channel_specs_decode_and_validate() {
           .empty() ||
       channel_bundle.wikimyei_observer_belief_dsl_bnf_path.empty() ||
       channel_bundle
-          .wikimyei_engine_portfolio_spot_distributional_utility_dsl_bnf_path
+          .wikimyei_policy_portfolio_spot_distributional_utility_dsl_bnf_path
           .empty() ||
+      channel_bundle.kikijyeba_environment_replay_dsl_bnf_path.empty() ||
       channel_bundle.wikimyei_representation_vicreg_jkimyei_bnf_path.empty() ||
       channel_bundle
           .wikimyei_representation_mtf_jepa_mae_vicreg_jkimyei_bnf_path
@@ -497,9 +527,12 @@ void test_channel_specs_decode_and_validate() {
       channel_bundle.belief_observer.input_mdn_assembly_id !=
           mdn_spec.component_assembly_id ||
       channel_bundle.spot_distributional_utility.component_assembly_id !=
-          engine_spec.component_assembly_id ||
+          policy_spec.component_assembly_id ||
       channel_bundle.spot_distributional_utility.input_belief_assembly_id !=
-          belief_spec.component_assembly_id) {
+          belief_spec.component_assembly_id ||
+      channel_bundle.replay_environment.component_assembly_id !=
+          replay_environment_spec.component_assembly_id ||
+      !channel_bundle.replay_environment.require_projection_validation) {
     throw std::runtime_error("channel graph-first bundle component mismatch");
   }
   if (channel_bundle.vicreg_assembly.family !=
@@ -511,7 +544,7 @@ void test_channel_specs_decode_and_validate() {
       channel_bundle.belief_observer_assembly.family !=
           "wikimyei.observer.belief" ||
       channel_bundle.spot_distributional_utility_assembly.family !=
-          "wikimyei.engine.portfolio.spot_distributional_utility") {
+          "wikimyei.policy.portfolio.spot_distributional_utility") {
     throw std::runtime_error("channel graph-first assembly family mismatch");
   }
   cuwacunu::kikijyeba::topology::validate_node_value_assembly_chain(
@@ -629,9 +662,9 @@ void test_channel_specs_decode_and_validate() {
       mdn::make_channel_context_mdn_assembly(mdn_spec.component_assembly_id);
   const auto belief_assembly = belief::make_nodelift_allocation_belief_assembly(
       belief_spec.component_assembly_id, belief_spec.version_token);
-  const auto engine_assembly =
-      engine::make_spot_distributional_utility_assembly(
-          engine_spec.component_assembly_id, engine_spec.version_token);
+  const auto policy_assembly =
+      policy::make_spot_distributional_utility_assembly(
+          policy_spec.component_assembly_id, policy_spec.version_token);
   if (!cuwacunu::wikimyei::assembly::dock_domain_compatible(
           representation_assembly.docks.at(1), mdn_assembly.docks.at(0))) {
     throw std::runtime_error("channel assemblies are not compatible");
@@ -639,8 +672,8 @@ void test_channel_specs_decode_and_validate() {
   if (!cuwacunu::wikimyei::assembly::dock_domain_compatible(
           mdn_assembly.docks.at(2), belief_assembly.docks.at(0)) ||
       !cuwacunu::wikimyei::assembly::dock_domain_compatible(
-          belief_assembly.docks.at(2), engine_assembly.docks.at(0))) {
-    throw std::runtime_error("observer/engine assemblies are not compatible");
+          belief_assembly.docks.at(2), policy_assembly.docks.at(0))) {
+    throw std::runtime_error("observer/policy assemblies are not compatible");
   }
   const auto old_fused_producer = cuwacunu::wikimyei::assembly::make_dock(
       "old_fused_node_representation",
@@ -718,8 +751,8 @@ void test_channel_specs_decode_and_validate() {
 
 void test_invalid_specs_fail_fast() {
   namespace belief = cuwacunu::wikimyei::observer::belief;
-  namespace engine =
-      cuwacunu::wikimyei::engine::portfolio::spot_distributional_utility;
+  namespace policy =
+      cuwacunu::wikimyei::policy::portfolio::spot_distributional_utility;
   namespace nodelift = cuwacunu::wikimyei::expression::nodelift::srl;
   namespace vicreg = cuwacunu::wikimyei::representation::encoding::vicreg;
   namespace mdn = cuwacunu::wikimyei::inference::expected_value::mdn;
@@ -824,17 +857,17 @@ void test_invalid_specs_fail_fast() {
   expect_throw([&] { belief::validate_belief_observer_spec(bad_belief); },
                "belief observer cannot allow live capital");
 
-  auto bad_engine = engine::spot_distributional_utility_spec_t{};
-  bad_engine.reserve_node_policy = "external_cash_bucket";
+  auto bad_policy = policy::spot_distributional_utility_spec_t{};
+  bad_policy.reserve_node_policy = "external_cash_bucket";
   expect_throw(
-      [&] { engine::validate_spot_distributional_utility_spec(bad_engine); },
-      "engine reserve must be graph node");
+      [&] { policy::validate_spot_distributional_utility_spec(bad_policy); },
+      "policy reserve must be graph node");
 
-  bad_engine = engine::spot_distributional_utility_spec_t{};
-  bad_engine.projection_validation_required = false;
+  bad_policy = policy::spot_distributional_utility_spec_t{};
+  bad_policy.projection_validation_required = false;
   expect_throw(
-      [&] { engine::validate_spot_distributional_utility_spec(bad_engine); },
-      "engine projection validation required");
+      [&] { policy::validate_spot_distributional_utility_spec(bad_policy); },
+      "policy projection validation required");
 }
 
 void test_cross_reference_failures() {
@@ -884,7 +917,7 @@ void test_cross_reference_failures() {
       [&] {
         protocol::validate_channel_graph_first_config_bundle(channel_bundle);
       },
-      "spot engine belief mismatch");
+      "spot policy belief mismatch");
 
   channel_bundle = protocol::load_channel_graph_first_config_bundle_from_config(
       "/cuwacunu/src/config/.config");

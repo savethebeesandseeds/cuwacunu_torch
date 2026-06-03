@@ -291,6 +291,7 @@ make_channel_representation_stream_batch(
   out.activity_coverage = lifted.activity_coverage;
   out.future_edge_features = lifted.future_edge_features;
   out.future_edge_mask = lifted.future_edge_mask;
+  out.future_keys = lifted.future_keys;
   out.future_node_features = lifted.future_node_features;
   out.future_node_mask = lifted.future_node_mask;
   out.future_node_mask_any = lifted.future_node_mask_any;
@@ -312,9 +313,10 @@ make_channel_representation_stream_batch(
     out.runtime_lls = channel_representation_stream_detail::
         make_channel_representation_runtime_lls(
             lifted, input, out.node_encoding, out.node_encoding_mask,
-            out.reducer_weights, detach_to_cpu, elapsed_ms, component_assembly_id,
-            assembly_token, dock_binding_token, component_family_id,
-            runtime_document_schema_id, stream_wave, runtime_report_mode);
+            out.reducer_weights, detach_to_cpu, elapsed_ms,
+            component_assembly_id, assembly_token, dock_binding_token,
+            component_family_id, runtime_document_schema_id, stream_wave,
+            runtime_report_mode);
   }
   out.stream_report =
       cuwacunu::kikijyeba::protocol::make_component_stream_report(

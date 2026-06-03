@@ -1,0 +1,19 @@
+/*
+  Durable operator train-core policy for cwu_02v representation recovery.
+*/
+TRAINING {
+  VERSION = wikimyei.representation.mtf_jepa_mae_vicreg.jkimyei.v1;
+  TRAINING_ID = real_mtf_jepa_mae_vicreg_train_core_v1_operator_3000_clean_parent;
+  TASK = mtf_jepa_mae_vicreg_representation;
+  COMPONENT_ASSEMBLY_ID = mtf_jepa_mae_vicreg_v1;
+  OPTIMIZER = adam;
+  LEARNING_RATE = 0.001;
+  MAX_STEPS = 3000;
+  BATCH_SIZE = 32;
+  GRAD_CLIP_NORM = 5.0;
+  CHECKPOINT_EVERY = 50;
+  REPORT_EVERY = 10;
+  VALIDATION_EVERY = 0;
+  SEED = 17;
+  FREEZE_REPRESENTATION = false;
+};

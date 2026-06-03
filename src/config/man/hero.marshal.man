@@ -15,6 +15,7 @@ KEYS
 TOOLS
   hero.marshal.status
   hero.marshal.reach_lattice_target
+  hero.marshal.inspect_evidence_panel
   hero.marshal.evaluate
 
 BOUNDARY
@@ -23,3 +24,51 @@ BOUNDARY
   execution, scheduling, proof, model-selection, checkpoint-selection, or config
   editing authority. Runtime Hero policy still controls execution. Lattice Hero
   still controls proof.
+  Artifact-readiness targets and fact-family evidence, including
+  replay_environment, are inspected through hero.marshal.inspect_evidence_panel.
+  They are read-only, non-dispatchable, and are not accepted by
+  hero.marshal.reach_lattice_target as Runtime work. Artifact-readiness reach
+  packets stop before Runtime dispatch validation or dry-run preview
+  construction. Failed artifact proofs are summarized in the evidence panel
+  with failed-proof count, proof-template bound/unbound count, proof kind,
+  proof-template claim, identity-mismatch count, lineage-unbound count,
+  authority-drift count, integrity flags, authority flags, explicit boundary
+  denial flags for target dependencies, Runtime waves, Marshal reachability,
+  checkpoint sources, and plan checkpoint inputs, issue codes, artifact deficit
+  keys, related fact-integrity issue codes, and the primary deficit key; Marshal
+  still does not become proof authority. Fact panels also
+  summarize relation integrity from
+  Lattice payload summaries: declared, bound, unresolved, identity-mismatch,
+  and digest-mismatch counts plus affected families and issue codes. They also
+  include a compact fact_lineage audit panel by default, relaying selected
+  runtime-index relation/key/digest rows with
+  cache_rows_used_for_target_satisfaction=false; include_lineage=false only
+  suppresses that audit view. When include_preview, digest, fact_digest,
+  digest_prefix, fact_index, or index is supplied, the panel also relays
+  hero.lattice.fact_preview as preview_panel. Preview rows are audit-only:
+  facts_used_for_target_satisfaction=false, checkpoint_selected=false, and
+  model_selector=false. The relayed facts include identity_envelope so clients
+  can inspect normalized fact identity, parent lineage, support counters, and
+  authority flags without family-specific parsing. Target panels also relay
+  Lattice artifact
+  fact_preview_hint entries as artifact_fact_preview_* fields so operators can
+  inspect the failed proof's concrete fact row without giving Marshal proof,
+  selection, or dispatch authority. Run-level target blockers preserve the same
+  artifact proof summary instead of collapsing it into a generic certificate
+  failure. Fact panels also relay the
+  fact catalog's artifact-readiness boundary metadata: proofable families,
+  proof kinds, proof-template claims, promotion-blocked families, blocked
+  reasons, and warning-summary-only families. Marshal displays those catalog
+  facts read-only and does not promote fact families into targets.
+  Disabled Lattice policy-gate reservations are relayed as read-only target
+  context in evidence, reach, and run-level target blocker panels. Marshal
+  preserves Lattice's policy-fingerprint verification and mismatch counters as
+  audit context, and still reports policy-gate dispatch, target-status, and
+  proof authority as false.
+  Public Marshal status, evaluate, evidence-panel, and operational-report JSON
+  surfaces also declare the non-proof/non-decision contract explicitly:
+  target_proof=false, dispatchable=false where applicable,
+  runtime_executor=false, fact_families_are_not_target_kinds=true,
+  allocation_decision=false, market_readiness_decision=false, and
+  deployment_decision=false. These fields are boundary markers, not new
+  readiness gates.

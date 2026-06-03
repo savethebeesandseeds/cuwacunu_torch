@@ -5,6 +5,7 @@
 #include <cctype>
 #include <chrono>
 #include <cmath>
+#include <cstdint>
 #include <cstdlib>
 #include <ctime>
 #include <filesystem>
@@ -29,10 +30,59 @@ inline constexpr const char *k_marshal_operational_report_schema_v1 =
 struct marshal_lattice_target_status_t {
   std::string target_id{};
   std::string status{"unavailable"};
+  std::string target_class{};
+  std::string kind{};
+  bool target_kind_applicable{true};
+  std::string target_kind_effective{};
+  std::string proof_kind{};
+  std::string subject_fact_family{};
   bool proof_certificate_check_passed{false};
   std::vector<std::string> proof_certificate_issues{};
   std::vector<std::string> deficit_keys{};
   std::vector<std::string> warning_ids{};
+  std::size_t artifact_proof_count{0};
+  std::size_t artifact_passed_proof_count{0};
+  std::size_t artifact_failed_proof_count{0};
+  std::size_t artifact_proof_template_bound_count{0};
+  std::size_t artifact_proof_template_unbound_count{0};
+  std::size_t artifact_identity_mismatch_proof_count{0};
+  std::size_t artifact_lineage_unbound_proof_count{0};
+  std::size_t artifact_authority_drift_proof_count{0};
+  std::vector<std::string> artifact_proof_kinds{};
+  std::vector<std::string> artifact_proof_template_claims{};
+  std::vector<std::string> artifact_fact_families{};
+  std::size_t artifact_fact_preview_hint_count{0};
+  std::vector<std::string> artifact_fact_preview_families{};
+  std::vector<std::string> artifact_fact_preview_digests{};
+  std::vector<std::string> artifact_fact_preview_tools{};
+  std::vector<std::string> artifact_fact_preview_marshal_tools{};
+  std::vector<std::string> artifact_issue_codes{};
+  std::vector<std::string> artifact_authority_flags{};
+  std::vector<std::string> artifact_authority_denial_flags{};
+  std::vector<std::string> artifact_integrity_flags{};
+  std::vector<std::string> artifact_deficit_keys{};
+  std::vector<std::string> artifact_related_fact_integrity_issue_codes{};
+  std::size_t artifact_target_dependency_authority_count{0};
+  std::size_t artifact_runtime_wave_authority_count{0};
+  std::size_t artifact_marshal_reachability_count{0};
+  std::size_t artifact_checkpoint_source_authority_count{0};
+  std::size_t artifact_plan_checkpoint_input_authority_count{0};
+  std::string primary_artifact_deficit_key{};
+  std::string policy_gate_reservation_summary_json{"null"};
+  std::string policy_gate_reservations_json{"[]"};
+  std::int64_t policy_gate_reservation_count{0};
+  std::int64_t enabled_policy_gate_count{0};
+  std::int64_t disabled_policy_gate_count{0};
+  std::int64_t policy_gate_policy_fingerprint_verified_count{0};
+  std::int64_t policy_gate_policy_fingerprint_mismatch_count{0};
+  bool policy_gate_all_policy_fingerprints_verified{true};
+  std::int64_t policy_gate_target_status_authority_count{0};
+  std::int64_t policy_gate_target_spec_fingerprint_authority_count{0};
+  std::int64_t policy_gate_proof_certificate_authority_count{0};
+  std::int64_t policy_gate_runtime_execution_authority_count{0};
+  std::int64_t policy_gate_allocation_authority_count{0};
+  std::int64_t policy_gate_market_readiness_authority_count{0};
+  std::int64_t policy_gate_deployment_authority_count{0};
 };
 
 struct marshal_operational_report_options_t {
@@ -187,6 +237,62 @@ json_string_array(const std::vector<std::string> &values) {
   return out.str();
 }
 
+[[nodiscard]] inline bool
+has_artifact_failure_detail(const marshal_lattice_target_status_t &status) {
+  return status.artifact_failed_proof_count > 0 ||
+         status.artifact_identity_mismatch_proof_count > 0 ||
+         status.artifact_lineage_unbound_proof_count > 0 ||
+         status.artifact_authority_drift_proof_count > 0 ||
+         status.artifact_proof_template_unbound_count > 0 ||
+         !status.artifact_deficit_keys.empty() ||
+         !status.artifact_issue_codes.empty() ||
+         status.artifact_fact_preview_hint_count > 0 ||
+         !status.artifact_authority_flags.empty() ||
+         !status.artifact_integrity_flags.empty() ||
+         !status.artifact_related_fact_integrity_issue_codes.empty() ||
+         !status.primary_artifact_deficit_key.empty();
+}
+
+inline void
+append_policy_gate_context_json(std::ostringstream &out,
+                                const marshal_lattice_target_status_t &status) {
+  out << ",\"policy_gate_reservation_count\":"
+      << status.policy_gate_reservation_count
+      << ",\"enabled_policy_gate_count\":" << status.enabled_policy_gate_count
+      << ",\"disabled_policy_gate_count\":" << status.disabled_policy_gate_count
+      << ",\"policy_gate_policy_fingerprint_verified_count\":"
+      << status.policy_gate_policy_fingerprint_verified_count
+      << ",\"policy_gate_policy_fingerprint_mismatch_count\":"
+      << status.policy_gate_policy_fingerprint_mismatch_count
+      << ",\"policy_gate_all_policy_fingerprints_verified\":"
+      << (status.policy_gate_all_policy_fingerprints_verified ? "true"
+                                                              : "false")
+      << ",\"policy_gate_target_status_authority_count\":"
+      << status.policy_gate_target_status_authority_count
+      << ",\"policy_gate_target_spec_fingerprint_authority_count\":"
+      << status.policy_gate_target_spec_fingerprint_authority_count
+      << ",\"policy_gate_proof_certificate_authority_count\":"
+      << status.policy_gate_proof_certificate_authority_count
+      << ",\"policy_gate_runtime_execution_authority_count\":"
+      << status.policy_gate_runtime_execution_authority_count
+      << ",\"policy_gate_allocation_authority_count\":"
+      << status.policy_gate_allocation_authority_count
+      << ",\"policy_gate_market_readiness_authority_count\":"
+      << status.policy_gate_market_readiness_authority_count
+      << ",\"policy_gate_deployment_authority_count\":"
+      << status.policy_gate_deployment_authority_count
+      << ",\"policy_gate_dispatch_authority\":false"
+      << ",\"policy_gate_target_status_authority\":false"
+      << ",\"policy_gate_proof_authority\":false"
+      << ",\"policy_gate_allocation_authority\":false"
+      << ",\"policy_gate_market_readiness_authority\":false"
+      << ",\"policy_gate_deployment_authority\":false"
+      << ",\"policy_gate_reservation_summary\":"
+      << status.policy_gate_reservation_summary_json
+      << ",\"policy_gate_reservations\":"
+      << status.policy_gate_reservations_json;
+}
+
 [[nodiscard]] inline std::string current_utc_timestamp() {
   const auto now = std::chrono::system_clock::now();
   const auto now_time = std::chrono::system_clock::to_time_t(now);
@@ -255,9 +361,75 @@ struct job_summary_t {
   std::map<std::string, std::string> result_fact{};
   std::map<std::string, std::string> checkpoint_io_fact{};
   std::map<std::string, std::string> health_fact{};
+  std::map<std::string, std::string> replay_batch_index{};
+  std::map<std::string, std::string> replay_experiment_index{};
+  std::map<std::string, std::string> replay_experiment_report{};
+  std::filesystem::path replay_batch_index_path{};
+  std::filesystem::path replay_experiment_index_path{};
+  std::filesystem::path replay_experiment_report_path{};
   std::string role{"other"};
   std::string grad_clip_norm{};
 };
+
+[[nodiscard]] inline std::filesystem::path
+runtime_replay_artifact_dir(const std::filesystem::path &job_dir) {
+  return job_dir / "artifacts" / "kikijyeba.environment.replay.v1";
+}
+
+[[nodiscard]] inline std::filesystem::path
+runtime_replay_batch_index_path(const std::filesystem::path &job_dir) {
+  return runtime_replay_artifact_dir(job_dir) / "runtime_replay_batches.index";
+}
+
+[[nodiscard]] inline std::filesystem::path
+runtime_replay_experiment_index_path(const std::filesystem::path &job_dir) {
+  return runtime_replay_artifact_dir(job_dir) /
+         "runtime_replay_experiments.index";
+}
+
+[[nodiscard]] inline std::filesystem::path
+resolve_replay_artifact_path(std::string raw,
+                             const std::filesystem::path &index_dir) {
+  raw = trim_ascii(raw);
+  if (raw.empty()) {
+    return {};
+  }
+  std::filesystem::path path(raw);
+  return path.is_absolute() ? path : index_dir / path;
+}
+
+[[nodiscard]] inline std::size_t parse_size_or_zero(const std::string &raw) {
+  const auto text = trim_ascii(raw);
+  if (text.empty()) {
+    return 0;
+  }
+  char *end = nullptr;
+  const unsigned long long parsed = std::strtoull(text.c_str(), &end, 10);
+  if (end == text.c_str() || *end != '\0') {
+    return 0;
+  }
+  return static_cast<std::size_t>(parsed);
+}
+
+[[nodiscard]] inline std::filesystem::path latest_replay_report_path(
+    const std::map<std::string, std::string> &experiment_index,
+    const std::filesystem::path &experiment_index_path) {
+  const auto entry_count =
+      parse_size_or_zero(get(experiment_index, "entry_count"));
+  if (entry_count == 0) {
+    return {};
+  }
+  for (std::size_t remaining = entry_count; remaining > 0; --remaining) {
+    const auto i = remaining - 1U;
+    const auto key = std::string("entry_") + std::to_string(i) + "_report_path";
+    const auto path = resolve_replay_artifact_path(
+        get(experiment_index, key), experiment_index_path.parent_path());
+    if (!path.empty()) {
+      return path;
+    }
+  }
+  return {};
+}
 
 [[nodiscard]] inline std::string
 role_for(const std::map<std::string, std::string> &state) {
@@ -307,6 +479,17 @@ read_job(const std::filesystem::path &job_dir,
   out.result_fact = read_kv_file(job_dir / "runtime.result.fact");
   out.checkpoint_io_fact = read_kv_file(job_dir / "runtime.checkpoint_io.fact");
   out.health_fact = read_kv_file(job_dir / "runtime.health_measurement.fact");
+  out.replay_batch_index_path = runtime_replay_batch_index_path(job_dir);
+  out.replay_experiment_index_path =
+      runtime_replay_experiment_index_path(job_dir);
+  out.replay_batch_index = read_kv_file(out.replay_batch_index_path);
+  out.replay_experiment_index = read_kv_file(out.replay_experiment_index_path);
+  out.replay_experiment_report_path = latest_replay_report_path(
+      out.replay_experiment_index, out.replay_experiment_index_path);
+  if (!out.replay_experiment_report_path.empty()) {
+    out.replay_experiment_report =
+        read_kv_file(out.replay_experiment_report_path);
+  }
 
   if (out.role == "mdn_train" || out.role == "mdn_validation_eval") {
     const auto job_config = get(out.report, "config_path");
@@ -576,6 +759,108 @@ job_chain_json(const std::vector<job_summary_t> &jobs) {
   return out.str();
 }
 
+[[nodiscard]] inline bool replay_evidence_available(const job_summary_t &job) {
+  return !job.replay_batch_index.empty() ||
+         !job.replay_experiment_index.empty() ||
+         !job.replay_experiment_report.empty();
+}
+
+[[nodiscard]] inline bool
+replay_experiment_report_available(const job_summary_t &job) {
+  return !job.replay_experiment_report.empty();
+}
+
+[[nodiscard]] inline std::string
+latest_replay_experiment_key(const job_summary_t &job, const std::string &key) {
+  const auto entry_count =
+      parse_size_or_zero(get(job.replay_experiment_index, "entry_count"));
+  if (entry_count > 0) {
+    const auto prefix =
+        std::string("entry_") + std::to_string(entry_count - 1U) + "_";
+    const auto value = get(job.replay_experiment_index, prefix + key);
+    if (!value.empty()) {
+      return value;
+    }
+  }
+  if (key == "experiment_id") {
+    return get(job.replay_experiment_report, "experiment_id");
+  }
+  if (key == "completed_count") {
+    return get(job.replay_experiment_report, "completed_count");
+  }
+  if (key == "attempted_count") {
+    return get(job.replay_experiment_report, "attempted_count");
+  }
+  if (key == "policy_count") {
+    return get(job.replay_experiment_report, "policy_summary_count");
+  }
+  if (key == "replay_bundle_count") {
+    return get(job.replay_experiment_report, "replay_bundle_count");
+  }
+  return {};
+}
+
+[[nodiscard]] inline std::string
+replay_evidence_json(const job_summary_t &job) {
+  std::ostringstream out;
+  out << "{\"available\":"
+      << (replay_evidence_available(job) ? "true" : "false")
+      << ",\"batch_index_available\":"
+      << (!job.replay_batch_index.empty() ? "true" : "false")
+      << ",\"experiment_index_available\":"
+      << (!job.replay_experiment_index.empty() ? "true" : "false")
+      << ",\"experiment_report_available\":"
+      << (replay_experiment_report_available(job) ? "true" : "false")
+      << ",\"batch_index_path\":"
+      << detail::json_quote(job.replay_batch_index.empty()
+                                ? std::string{}
+                                : job.replay_batch_index_path.string())
+      << ",\"experiment_index_path\":"
+      << detail::json_quote(job.replay_experiment_index.empty()
+                                ? std::string{}
+                                : job.replay_experiment_index_path.string())
+      << ",\"experiment_report_path\":"
+      << detail::json_quote(job.replay_experiment_report.empty()
+                                ? std::string{}
+                                : job.replay_experiment_report_path.string())
+      << ",\"batch_entry_count\":"
+      << json_number_or_null(get(job.replay_batch_index, "entry_count"))
+      << ",\"experiment_entry_count\":"
+      << json_number_or_null(get(job.replay_experiment_index, "entry_count"))
+      << ",\"latest_experiment_id\":"
+      << detail::json_quote(latest_replay_experiment_key(job, "experiment_id"))
+      << ",\"latest_environment_run_id\":"
+      << detail::json_quote(
+             latest_replay_experiment_key(job, "environment_run_id"))
+      << ",\"policy_count\":"
+      << json_number_or_null(latest_replay_experiment_key(job, "policy_count"))
+      << ",\"replay_bundle_count\":"
+      << json_number_or_null(
+             latest_replay_experiment_key(job, "replay_bundle_count"))
+      << ",\"attempted_count\":"
+      << json_number_or_null(
+             latest_replay_experiment_key(job, "attempted_count"))
+      << ",\"completed_count\":"
+      << json_number_or_null(
+             latest_replay_experiment_key(job, "completed_count"))
+      << ",\"report_mean_total_reward\":"
+      << json_number_or_null(
+             get(job.replay_experiment_report, "mean_total_reward"))
+      << ",\"report_mean_total_log_growth\":"
+      << json_number_or_null(
+             get(job.replay_experiment_report, "mean_total_log_growth"))
+      << ",\"report_mean_final_equity_base\":"
+      << json_number_or_null(
+             get(job.replay_experiment_report, "mean_final_equity_base"))
+      << ",\"report_policy_summary_count\":"
+      << json_number_or_null(
+             get(job.replay_experiment_report, "policy_summary_count"))
+      << ",\"report_episode_count\":"
+      << json_number_or_null(get(job.replay_experiment_report, "episode_count"))
+      << "}";
+  return out.str();
+}
+
 [[nodiscard]] inline std::string
 chain_summary_job_json(const job_summary_t &job) {
   const auto checkpoint_written =
@@ -672,7 +957,8 @@ chain_summary_job_json(const job_summary_t &job) {
       << ",\"runtime_checkpoint_io_fact\":"
       << (!job.checkpoint_io_fact.empty() ? "true" : "false")
       << ",\"runtime_health_measurement_fact\":"
-      << (!job.health_fact.empty() ? "true" : "false") << "}}";
+      << (!job.health_fact.empty() ? "true" : "false") << "}"
+      << ",\"replay_evidence\":" << replay_evidence_json(job) << "}";
   return out.str();
 }
 
@@ -940,6 +1226,35 @@ metrics_json(const std::vector<job_summary_t> &jobs) {
   return out.str();
 }
 
+inline void append_artifact_boundary_context_json(
+    std::ostringstream &out, const marshal_lattice_target_status_t &status) {
+  out << ",\"artifact_authority_denial_flags\":"
+      << json_string_array(status.artifact_authority_denial_flags)
+      << ",\"artifact_target_dependency_authority_count\":"
+      << status.artifact_target_dependency_authority_count
+      << ",\"artifact_runtime_wave_authority_count\":"
+      << status.artifact_runtime_wave_authority_count
+      << ",\"artifact_marshal_reachability_count\":"
+      << status.artifact_marshal_reachability_count
+      << ",\"artifact_checkpoint_source_authority_count\":"
+      << status.artifact_checkpoint_source_authority_count
+      << ",\"artifact_plan_checkpoint_input_authority_count\":"
+      << status.artifact_plan_checkpoint_input_authority_count
+      << ",\"artifact_target_dependency_authority\":"
+      << (status.artifact_target_dependency_authority_count > 0 ? "true"
+                                                                : "false")
+      << ",\"artifact_runtime_wave_authority\":"
+      << (status.artifact_runtime_wave_authority_count > 0 ? "true" : "false")
+      << ",\"artifact_marshal_reachability\":"
+      << (status.artifact_marshal_reachability_count > 0 ? "true" : "false")
+      << ",\"artifact_checkpoint_source_authority\":"
+      << (status.artifact_checkpoint_source_authority_count > 0 ? "true"
+                                                                : "false")
+      << ",\"artifact_plan_checkpoint_input_authority\":"
+      << (status.artifact_plan_checkpoint_input_authority_count > 0 ? "true"
+                                                                    : "false");
+}
+
 [[nodiscard]] inline std::string target_statuses_json(
     const std::vector<marshal_lattice_target_status_t> &statuses) {
   std::ostringstream out;
@@ -950,13 +1265,70 @@ metrics_json(const std::vector<job_summary_t> &jobs) {
     }
     out << detail::json_quote(statuses[i].target_id)
         << ":{\"status\":" << detail::json_quote(statuses[i].status)
+        << ",\"target_class\":" << detail::json_quote(statuses[i].target_class)
+        << ",\"kind\":" << detail::json_quote(statuses[i].kind)
+        << ",\"target_kind_applicable\":"
+        << (statuses[i].target_kind_applicable ? "true" : "false")
+        << ",\"target_kind_effective\":"
+        << detail::json_quote(statuses[i].target_kind_effective)
+        << ",\"proof_kind\":" << detail::json_quote(statuses[i].proof_kind)
+        << ",\"subject_fact_family\":"
+        << detail::json_quote(statuses[i].subject_fact_family)
         << ",\"proof_certificate_check_passed\":"
         << (statuses[i].proof_certificate_check_passed ? "true" : "false")
         << ",\"proof_certificate_issues\":"
         << json_string_array(statuses[i].proof_certificate_issues)
         << ",\"deficit_keys\":" << json_string_array(statuses[i].deficit_keys)
-        << ",\"warning_ids\":" << json_string_array(statuses[i].warning_ids)
-        << "}";
+        << ",\"artifact_proof_count\":" << statuses[i].artifact_proof_count
+        << ",\"artifact_passed_proof_count\":"
+        << statuses[i].artifact_passed_proof_count
+        << ",\"artifact_failed_proof_count\":"
+        << statuses[i].artifact_failed_proof_count
+        << ",\"artifact_proof_template_bound_count\":"
+        << statuses[i].artifact_proof_template_bound_count
+        << ",\"artifact_proof_template_unbound_count\":"
+        << statuses[i].artifact_proof_template_unbound_count
+        << ",\"artifact_identity_mismatch_proof_count\":"
+        << statuses[i].artifact_identity_mismatch_proof_count
+        << ",\"artifact_lineage_unbound_proof_count\":"
+        << statuses[i].artifact_lineage_unbound_proof_count
+        << ",\"artifact_authority_drift_proof_count\":"
+        << statuses[i].artifact_authority_drift_proof_count
+        << ",\"artifact_proof_kinds\":"
+        << json_string_array(statuses[i].artifact_proof_kinds)
+        << ",\"artifact_proof_template_claims\":"
+        << json_string_array(statuses[i].artifact_proof_template_claims)
+        << ",\"artifact_fact_families\":"
+        << json_string_array(statuses[i].artifact_fact_families)
+        << ",\"artifact_fact_preview_hint_count\":"
+        << statuses[i].artifact_fact_preview_hint_count
+        << ",\"artifact_fact_preview_families\":"
+        << json_string_array(statuses[i].artifact_fact_preview_families)
+        << ",\"artifact_fact_preview_digests\":"
+        << json_string_array(statuses[i].artifact_fact_preview_digests)
+        << ",\"artifact_fact_preview_tools\":"
+        << json_string_array(statuses[i].artifact_fact_preview_tools)
+        << ",\"artifact_fact_preview_marshal_tools\":"
+        << json_string_array(statuses[i].artifact_fact_preview_marshal_tools)
+        << ",\"artifact_issue_codes\":"
+        << json_string_array(statuses[i].artifact_issue_codes)
+        << ",\"artifact_authority_flags\":"
+        << json_string_array(statuses[i].artifact_authority_flags);
+    append_artifact_boundary_context_json(out, statuses[i]);
+    out << ",\"artifact_integrity_flags\":"
+        << json_string_array(statuses[i].artifact_integrity_flags)
+        << ",\"artifact_deficit_keys\":"
+        << json_string_array(statuses[i].artifact_deficit_keys)
+        << ",\"artifact_related_fact_integrity_issue_codes\":"
+        << json_string_array(
+               statuses[i].artifact_related_fact_integrity_issue_codes)
+        << ",\"primary_artifact_deficit_key\":"
+        << detail::json_quote(statuses[i].primary_artifact_deficit_key)
+        << ",\"primary_deficit_key\":"
+        << detail::json_quote(statuses[i].primary_artifact_deficit_key)
+        << ",\"warning_ids\":" << json_string_array(statuses[i].warning_ids);
+    append_policy_gate_context_json(out, statuses[i]);
+    out << "}";
   }
   out << "}";
   return out.str();
@@ -970,8 +1342,32 @@ target_blocker_reasons(const marshal_lattice_target_status_t &status) {
                           ? "target_status_unavailable"
                           : "target_not_satisfied");
   }
-  if (!status.proof_certificate_check_passed) {
+  const bool artifact_detail_available =
+      status.target_class == "artifact_readiness" &&
+      has_artifact_failure_detail(status);
+  if (!status.proof_certificate_check_passed && !artifact_detail_available) {
     reasons.push_back("proof_certificate_check_failed");
+  }
+  if (status.target_class == "artifact_readiness") {
+    reasons.push_back("artifact_readiness_evidence_panel");
+  }
+  if (status.artifact_identity_mismatch_proof_count > 0) {
+    reasons.push_back("artifact_identity_mismatch");
+  }
+  if (status.artifact_lineage_unbound_proof_count > 0) {
+    reasons.push_back("artifact_lineage_unbound");
+  }
+  if (status.artifact_authority_drift_proof_count > 0) {
+    reasons.push_back("artifact_authority_drift");
+  }
+  if (status.artifact_proof_template_unbound_count > 0) {
+    reasons.push_back("artifact_proof_template_unbound");
+  }
+  for (const auto &issue : status.artifact_issue_codes) {
+    reasons.push_back("artifact_issue:" + issue);
+  }
+  for (const auto &issue : status.artifact_related_fact_integrity_issue_codes) {
+    reasons.push_back("fact_integrity_issue:" + issue);
   }
   for (const auto &deficit : status.deficit_keys) {
     reasons.push_back("deficit:" + deficit);
@@ -984,6 +1380,9 @@ target_blocker_reasons(const marshal_lattice_target_status_t &status) {
 
 [[nodiscard]] inline std::string
 target_next_safe_action(const marshal_lattice_target_status_t &status) {
+  if (status.target_class == "artifact_readiness") {
+    return "inspect";
+  }
   if (status.status == "satisfied" && status.proof_certificate_check_passed &&
       status.warning_ids.empty()) {
     return "inspect_lattice_certificate";
@@ -995,12 +1394,12 @@ target_next_safe_action(const marshal_lattice_target_status_t &status) {
     return "inspect_lattice_certificate_failure";
   }
   if (!status.deficit_keys.empty()) {
-    return "reach_lattice_target";
+    return "prepare";
   }
   if (!status.warning_ids.empty()) {
     return "inspect_lattice_warnings";
   }
-  return "reach_lattice_target";
+  return "prepare";
 }
 
 [[nodiscard]] inline std::string target_blockers_json(
@@ -1014,6 +1413,15 @@ target_next_safe_action(const marshal_lattice_target_status_t &status) {
     const auto reasons = target_blocker_reasons(statuses[i]);
     out << "{\"target_id\":" << detail::json_quote(statuses[i].target_id)
         << ",\"status\":" << detail::json_quote(statuses[i].status)
+        << ",\"target_class\":" << detail::json_quote(statuses[i].target_class)
+        << ",\"kind\":" << detail::json_quote(statuses[i].kind)
+        << ",\"target_kind_applicable\":"
+        << (statuses[i].target_kind_applicable ? "true" : "false")
+        << ",\"target_kind_effective\":"
+        << detail::json_quote(statuses[i].target_kind_effective)
+        << ",\"proof_kind\":" << detail::json_quote(statuses[i].proof_kind)
+        << ",\"subject_fact_family\":"
+        << detail::json_quote(statuses[i].subject_fact_family)
         << ",\"source\":\"lattice_evaluate_targets\""
         << ",\"proof_certificate_check_passed\":"
         << (statuses[i].proof_certificate_check_passed ? "true" : "false")
@@ -1021,10 +1429,59 @@ target_next_safe_action(const marshal_lattice_target_status_t &status) {
         << ",\"proof_certificate_issues\":"
         << json_string_array(statuses[i].proof_certificate_issues)
         << ",\"deficit_keys\":" << json_string_array(statuses[i].deficit_keys)
+        << ",\"artifact_proof_count\":" << statuses[i].artifact_proof_count
+        << ",\"artifact_passed_proof_count\":"
+        << statuses[i].artifact_passed_proof_count
+        << ",\"artifact_failed_proof_count\":"
+        << statuses[i].artifact_failed_proof_count
+        << ",\"artifact_proof_template_bound_count\":"
+        << statuses[i].artifact_proof_template_bound_count
+        << ",\"artifact_proof_template_unbound_count\":"
+        << statuses[i].artifact_proof_template_unbound_count
+        << ",\"artifact_identity_mismatch_proof_count\":"
+        << statuses[i].artifact_identity_mismatch_proof_count
+        << ",\"artifact_lineage_unbound_proof_count\":"
+        << statuses[i].artifact_lineage_unbound_proof_count
+        << ",\"artifact_authority_drift_proof_count\":"
+        << statuses[i].artifact_authority_drift_proof_count
+        << ",\"artifact_proof_kinds\":"
+        << json_string_array(statuses[i].artifact_proof_kinds)
+        << ",\"artifact_proof_template_claims\":"
+        << json_string_array(statuses[i].artifact_proof_template_claims)
+        << ",\"artifact_fact_families\":"
+        << json_string_array(statuses[i].artifact_fact_families)
+        << ",\"artifact_fact_preview_hint_count\":"
+        << statuses[i].artifact_fact_preview_hint_count
+        << ",\"artifact_fact_preview_families\":"
+        << json_string_array(statuses[i].artifact_fact_preview_families)
+        << ",\"artifact_fact_preview_digests\":"
+        << json_string_array(statuses[i].artifact_fact_preview_digests)
+        << ",\"artifact_fact_preview_tools\":"
+        << json_string_array(statuses[i].artifact_fact_preview_tools)
+        << ",\"artifact_fact_preview_marshal_tools\":"
+        << json_string_array(statuses[i].artifact_fact_preview_marshal_tools)
+        << ",\"artifact_issue_codes\":"
+        << json_string_array(statuses[i].artifact_issue_codes)
+        << ",\"artifact_authority_flags\":"
+        << json_string_array(statuses[i].artifact_authority_flags);
+    append_artifact_boundary_context_json(out, statuses[i]);
+    out << ",\"artifact_integrity_flags\":"
+        << json_string_array(statuses[i].artifact_integrity_flags)
+        << ",\"artifact_deficit_keys\":"
+        << json_string_array(statuses[i].artifact_deficit_keys)
+        << ",\"artifact_related_fact_integrity_issue_codes\":"
+        << json_string_array(
+               statuses[i].artifact_related_fact_integrity_issue_codes)
+        << ",\"primary_artifact_deficit_key\":"
+        << detail::json_quote(statuses[i].primary_artifact_deficit_key)
+        << ",\"primary_deficit_key\":"
+        << detail::json_quote(statuses[i].primary_artifact_deficit_key)
         << ",\"warning_ids\":" << json_string_array(statuses[i].warning_ids)
         << ",\"next_safe_action\":"
         << detail::json_quote(target_next_safe_action(statuses[i]))
-        << ",\"target_satisfaction_claimed_by_marshal\":false}";
+        << ",\"target_satisfaction_claimed_by_marshal\":false";
+    append_policy_gate_context_json(out, statuses[i]);
+    out << "}";
   }
   out << "]";
   return out.str();
@@ -1083,6 +1540,14 @@ health_observations_json(const std::vector<job_summary_t> &jobs) {
     const std::vector<job_summary_t> &jobs,
     const std::vector<marshal_lattice_target_status_t> &statuses) {
   std::vector<std::string> actions;
+  if (std::any_of(statuses.begin(), statuses.end(), [](const auto &status) {
+        return status.target_class == "artifact_readiness" &&
+               (status.status != "satisfied" ||
+                !status.proof_certificate_check_passed ||
+                !status.warning_ids.empty());
+      })) {
+    actions.push_back("inspect");
+  }
   if (!all_targets_satisfied(statuses)) {
     actions.push_back("ask_lattice_to_recheck_targets");
   }
@@ -1101,6 +1566,9 @@ health_observations_json(const std::vector<job_summary_t> &jobs) {
   } else {
     actions.push_back("inspect_missing_train_eval_chain_jobs");
   }
+  if (std::any_of(jobs.begin(), jobs.end(), replay_evidence_available)) {
+    actions.push_back("inspect_runtime_replay_evidence");
+  }
   return actions;
 }
 
@@ -1114,8 +1582,13 @@ health_observations_json(const std::vector<job_summary_t> &jobs) {
                                job_completed(*vicreg) && job_completed(*mdn) &&
                                job_completed(*eval);
   bool model_state_mutated = false;
+  bool replay_available = false;
+  bool replay_report_available = false;
   for (const auto &job : jobs) {
     model_state_mutated = model_state_mutated || job_mutated_model_state(job);
+    replay_available = replay_available || replay_evidence_available(job);
+    replay_report_available =
+        replay_report_available || replay_experiment_report_available(job);
   }
   const bool eval_mutated =
       eval != nullptr &&
@@ -1138,7 +1611,11 @@ health_observations_json(const std::vector<job_summary_t> &jobs) {
                                             : "partial_or_unknown")
       << ",\"model_state_mutated\":" << (model_state_mutated ? "true" : "false")
       << ",\"validation_eval_mutated_model_state\":"
-      << (eval_mutated ? "true" : "false") << "}";
+      << (eval_mutated ? "true" : "false")
+      << ",\"runtime_replay_evidence_available\":"
+      << (replay_available ? "true" : "false")
+      << ",\"runtime_replay_experiment_report_available\":"
+      << (replay_report_available ? "true" : "false") << "}";
   return out.str();
 }
 
@@ -1153,6 +1630,12 @@ health_observations_json(const std::vector<job_summary_t> &jobs) {
                                job_completed(*eval);
   const bool proof_clean = all_targets_satisfied(statuses);
   const auto actions = next_safe_actions(jobs, statuses);
+  std::int64_t replay_evidence_jobs = 0;
+  for (const auto &job : jobs) {
+    if (replay_evidence_available(job)) {
+      ++replay_evidence_jobs;
+    }
+  }
   std::ostringstream out;
   out << "{\"headline\":"
       << detail::json_quote(chain_completed
@@ -1164,6 +1647,7 @@ health_observations_json(const std::vector<job_summary_t> &jobs) {
       << detail::json_quote(chain_completed ? "completed_chain"
                                             : "partial_or_unknown")
       << ",\"job_count\":" << jobs.size()
+      << ",\"runtime_replay_evidence_job_count\":" << replay_evidence_jobs
       << ",\"target_count\":" << statuses.size() << ",\"next_safe_action\":"
       << detail::json_quote(actions.empty() ? std::string{} : actions.front())
       << "}";
@@ -1207,6 +1691,8 @@ runtime_panel_json(const std::vector<job_summary_t> &jobs) {
   std::int64_t mutated = 0;
   std::int64_t terminal_facts = 0;
   std::int64_t checkpoints_written = 0;
+  std::int64_t replay_evidence_jobs = 0;
+  std::int64_t replay_experiment_reports = 0;
   for (const auto &job : jobs) {
     if (job_completed(job)) {
       ++completed;
@@ -1223,6 +1709,12 @@ runtime_panel_json(const std::vector<job_summary_t> &jobs) {
                              get(job.state, "checkpoint_written")}))) {
       ++checkpoints_written;
     }
+    if (replay_evidence_available(job)) {
+      ++replay_evidence_jobs;
+    }
+    if (replay_experiment_report_available(job)) {
+      ++replay_experiment_reports;
+    }
   }
   std::ostringstream out;
   out << "{\"job_count\":" << jobs.size()
@@ -1230,7 +1722,9 @@ runtime_panel_json(const std::vector<job_summary_t> &jobs) {
       << ",\"model_state_mutating_job_count\":" << mutated
       << ",\"terminal_fact_job_count\":" << terminal_facts
       << ",\"checkpoint_written_count\":" << checkpoints_written
-      << ",\"jobs\":" << job_chain_json(jobs)
+      << ",\"runtime_replay_evidence_job_count\":" << replay_evidence_jobs
+      << ",\"runtime_replay_experiment_report_count\":"
+      << replay_experiment_reports << ",\"jobs\":" << job_chain_json(jobs)
       << ",\"checkpoint_io\":{\"produced\":" << checkpoint_rows_json(jobs, true)
       << ",\"loaded\":" << checkpoint_rows_json(jobs, false) << "}}";
   return out.str();
@@ -1240,6 +1734,7 @@ runtime_panel_json(const std::vector<job_summary_t> &jobs) {
     const std::vector<marshal_lattice_target_status_t> &statuses) {
   std::int64_t satisfied = 0;
   std::int64_t proof_failed = 0;
+  std::int64_t artifact_failed = 0;
   std::int64_t warning_count = 0;
   for (const auto &status : statuses) {
     if (status.status == "satisfied" && status.proof_certificate_check_passed) {
@@ -1248,13 +1743,27 @@ runtime_panel_json(const std::vector<job_summary_t> &jobs) {
     if (!status.proof_certificate_check_passed) {
       ++proof_failed;
     }
+    if (status.target_class == "artifact_readiness" &&
+        has_artifact_failure_detail(status)) {
+      ++artifact_failed;
+    }
     warning_count += static_cast<std::int64_t>(status.warning_ids.size());
   }
   std::ostringstream out;
   out << "{\"source\":\"hero.lattice.evaluate_targets\""
+      << ",\"read_only\":true"
+      << ",\"target_proof\":false"
+      << ",\"dispatchable\":false"
+      << ",\"runtime_executor\":false"
+      << ",\"writes_evidence\":false"
+      << ",\"target_satisfaction_claimed_by_marshal\":false"
+      << ",\"proof_authority\":\"lattice\""
+      << ",\"marshal_proof_authority\":false"
+      << ",\"fact_families_are_not_target_kinds\":true"
       << ",\"target_count\":" << statuses.size()
       << ",\"satisfied_count\":" << satisfied
       << ",\"proof_certificate_failure_count\":" << proof_failed
+      << ",\"artifact_failure_count\":" << artifact_failed
       << ",\"warning_count\":" << warning_count << ",\"proof_status\":"
       << detail::json_quote(all_targets_satisfied(statuses) ? "clean"
                                                             : "needs_review")
@@ -1277,9 +1786,22 @@ audit_panel_json(const marshal_operational_report_options_t &options,
       << ",\"machine_payload_included\":"
       << (options.include_machine_payload ? "true" : "false")
       << ",\"read_only\":true"
+      << ",\"target_proof\":false"
+      << ",\"dispatchable\":false"
       << ",\"runtime_executor\":false"
       << ",\"writes_evidence\":false"
       << ",\"target_satisfaction_claimed\":false"
+      << ",\"target_satisfaction_claimed_by_marshal\":false"
+      << ",\"fact_families_are_not_target_kinds\":true"
+      << ",\"checkpoint_selected\":false"
+      << ",\"model_selector\":false"
+      << ",\"best_model_selector\":false"
+      << ",\"performance_selector\":false"
+      << ",\"policy_gate\":false"
+      << ",\"allocation_decision\":false"
+      << ",\"market_readiness_decision\":false"
+      << ",\"deployment_decision\":false"
+      << ",\"marshal_proof_authority\":false"
       << ",\"non_authority_statement\":"
       << detail::json_quote(k_marshal_dispatch_non_authority_statement) << "}";
   return out.str();
@@ -1326,9 +1848,22 @@ default_marshal_operational_report_target_ids() {
       << ",\"report_id\":" << detail::json_quote(report_id)
       << ",\"generated_at\":" << detail::json_quote(generated_at)
       << ",\"read_only\":true"
+      << ",\"target_proof\":false"
+      << ",\"dispatchable\":false"
       << ",\"runtime_executor\":false"
       << ",\"writes_evidence\":false"
       << ",\"target_satisfaction_claimed\":false"
+      << ",\"target_satisfaction_claimed_by_marshal\":false"
+      << ",\"fact_families_are_not_target_kinds\":true"
+      << ",\"checkpoint_selected\":false"
+      << ",\"model_selector\":false"
+      << ",\"best_model_selector\":false"
+      << ",\"performance_selector\":false"
+      << ",\"policy_gate\":false"
+      << ",\"allocation_decision\":false"
+      << ",\"market_readiness_decision\":false"
+      << ",\"deployment_decision\":false"
+      << ",\"marshal_proof_authority\":false"
       << ",\"evidence_scope\":"
       << operational_report_detail::evidence_scope_json(options, jobs);
   out << ",\"operator_summary\":"

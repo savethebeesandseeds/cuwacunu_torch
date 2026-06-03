@@ -21,18 +21,18 @@ and BNF path entries.
     `LIVE_CAPITAL_ALLOWED = false` until projected NodeLift returns have an
     empirical validation artifact.
 
-## Spot Distributional Utility Engine
+## Spot Distributional Utility Policy
 
-- `wikimyei_engine_portfolio_spot_distributional_utility_dsl_bnf_path`
-  - Grammar for `wikimyei.engine.portfolio.spot_distributional_utility.dsl`.
-- `wikimyei_engine_portfolio_spot_distributional_utility_dsl_path`
-  - Deterministic portfolio engine contract for the first allocation method.
+- `wikimyei_policy_portfolio_spot_distributional_utility_dsl_bnf_path`
+  - Grammar for `wikimyei.policy.portfolio.spot_distributional_utility.dsl`.
+- `wikimyei_policy_portfolio_spot_distributional_utility_dsl_path`
+  - Deterministic portfolio policy contract for the first allocation method.
   - V1 consumes only post-projection `AllocationBelief`, is long-only and
     spot-only, uses projected-gradient search over risky graph-node weights,
     and assigns the residual reserve weight to the reserve graph node.
-  - The engine DSL mirrors the observer safety flags:
+  - The policy DSL mirrors the observer safety flags:
     `PROJECTION_VALIDATION_REQUIRED = true` and `LIVE_CAPITAL_ALLOWED = false`.
 
-These observer and engine assemblies are included in the graph-first
+These observer and policy assemblies are included in the graph-first
 `wikimyei_registry` and dock-binding report. Lattice can audit their identity
 and dock compatibility, but execution authority remains outside Lattice.

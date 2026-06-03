@@ -1,18 +1,24 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
+#include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <limits>
 #include <optional>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "jkimyei/training/inference/channel_graph_first_inference_launcher.h"
 #include "jkimyei/training/representation/channel_graph_first_representation_launcher.h"
 #include "jkimyei/training/representation/mtf_jepa_mae_vicreg_graph_first_launcher.h"
+#include "kikijyeba/environment/runtime/replay_source.h"
 #include "kikijyeba/lattice/exposure/exposure_ledger.h"
 #include "kikijyeba/protocol/config_bundle.h"
 #include "kikijyeba/protocol/config_provenance.h"
@@ -34,8 +40,12 @@ struct job_runner_options_t {
   bool compute_alignment_diagnostics{true};
   bool display_mdn_model{false};
   bool write_report{true};
+  bool write_replay_artifacts{true};
+  bool replay_require_direct_asset_base_edges{true};
   std::size_t batch_size{0};
   std::string job_id{};
+  std::string replay_base_reserve_node_id{};
+  std::vector<std::string> replay_risky_node_ids{};
   std::string runtime_handoff_id{};
   std::string runtime_handoff_digest{};
   std::string marshal_target_driver_run_id{};
@@ -272,6 +282,240 @@ inline void prepare_explicit_job_dir(const std::filesystem::path &job_dir,
   throw std::runtime_error("[kikijyeba_job_runner] unknown wave action");
 }
 
+[[nodiscard]] inline double
+finite_tensor_mean_or_nan(const torch::Tensor &tensor) {
+  if (!tensor.defined() || tensor.numel() == 0) {
+    return std::numeric_limits<double>::quiet_NaN();
+  }
+  auto values = tensor.to(torch::kFloat64).contiguous().view({-1});
+  if (!torch::isfinite(values).all().item<bool>()) {
+    return std::numeric_limits<double>::quiet_NaN();
+  }
+  return values.mean().item<double>();
+}
+
+[[nodiscard]] inline std::string
+tensor_shape_text(const torch::Tensor &tensor) {
+  if (!tensor.defined()) {
+    return "undefined";
+  }
+  std::ostringstream out;
+  out << "[";
+  for (std::size_t i = 0; i < tensor.sizes().size(); ++i) {
+    if (i != 0) {
+      out << ",";
+    }
+    out << tensor.sizes()[i];
+  }
+  out << "]";
+  return out.str();
+}
+
+[[nodiscard]] inline std::filesystem::path
+resolve_replay_index_path(const std::filesystem::path &path,
+                          const std::filesystem::path &index_dir) {
+  if (path.empty()) {
+    return {};
+  }
+  return path.is_absolute() ? path : index_dir / path;
+}
+
+inline void write_runtime_replay_observer_belief_fact_sidecar(
+    const std::filesystem::path &job_dir,
+    const cuwacunu::kikijyeba::lattice::exposure::lattice_exposure_fact_t
+        &parent) {
+  namespace exposure = cuwacunu::kikijyeba::lattice::exposure;
+  namespace replay = cuwacunu::kikijyeba::environment::replay;
+
+  const auto batch_entries = replay::read_runtime_replay_batch_index(job_dir);
+  if (batch_entries.empty()) {
+    return;
+  }
+
+  std::int64_t belief_count = 0;
+  std::int64_t scenario_count_total = 0;
+  std::int64_t covariance_count = 0;
+  std::int64_t active_asset_count_total = 0;
+  double confidence_sum = 0.0;
+  std::int64_t confidence_count = 0;
+  double liquidity_sum = 0.0;
+  std::int64_t liquidity_count = 0;
+  double channel_disagreement_sum = 0.0;
+  std::int64_t channel_disagreement_count = 0;
+  double expected_log_return_sum = 0.0;
+  std::int64_t expected_log_return_count = 0;
+  double expected_arithmetic_return_sum = 0.0;
+  std::int64_t expected_arithmetic_return_count = 0;
+  std::string feature_semantics_fingerprint{};
+  bool feature_semantics_drift = false;
+  std::ostringstream forecast_digest_basis;
+  std::ostringstream scenario_digest_basis;
+  std::ostringstream lineage;
+
+  for (const auto &batch_entry : batch_entries) {
+    const auto paths = replay::read_runtime_replay_artifact_path_index_at(
+        batch_entry.artifact_path_index_path);
+    if (paths.observation_artifact_index_path.empty()) {
+      continue;
+    }
+    const auto observation_index_dir =
+        paths.observation_artifact_index_path.parent_path();
+    const auto index_entries = replay::read_replay_observation_artifact_index(
+        paths.observation_artifact_index_path);
+    const auto artifacts = replay::load_replay_observation_artifacts_from_index(
+        paths.observation_artifact_index_path);
+    const auto count = std::min(index_entries.size(), artifacts.size());
+    for (std::size_t i = 0; i < count; ++i) {
+      const auto &index_entry = index_entries[i];
+      const auto &artifacts_for_anchor = artifacts[i];
+      const auto forecast_path = resolve_replay_index_path(
+          index_entry.forecast_artifact_path, observation_index_dir);
+      const auto forecast_digest =
+          exposure::file_content_digest_checked(forecast_path);
+      if (forecast_digest.ok) {
+        forecast_digest_basis << forecast_path.generic_string() << "="
+                              << forecast_digest.digest << ";";
+        scenario_digest_basis << forecast_digest.digest << ";";
+      }
+      lineage << "anchor=" << index_entry.anchor_key
+              << ",observation_anchor_index="
+              << (index_entry.observation_anchor_index.has_value()
+                      ? std::to_string(*index_entry.observation_anchor_index)
+                      : std::string("unknown"))
+              << ",mdn_artifact_id=" << index_entry.mdn_artifact.artifact_id
+              << ",mdn_artifact_digest="
+              << index_entry.mdn_artifact.artifact_digest << ";";
+
+      if (!artifacts_for_anchor.allocation_belief.has_value()) {
+        continue;
+      }
+      const auto &belief = *artifacts_for_anchor.allocation_belief;
+      ++belief_count;
+      if (feature_semantics_fingerprint.empty()) {
+        feature_semantics_fingerprint =
+            belief.source_feature_semantics_fingerprint;
+      } else if (!belief.source_feature_semantics_fingerprint.empty() &&
+                 belief.source_feature_semantics_fingerprint !=
+                     feature_semantics_fingerprint) {
+        feature_semantics_drift = true;
+      }
+      if (belief.scenarios.defined() && belief.scenarios.dim() == 2) {
+        scenario_count_total += belief.scenarios.size(0);
+        scenario_digest_basis
+            << "scenario_shape=" << tensor_shape_text(belief.scenarios) << ";";
+      }
+      if (belief.covariance.defined() && belief.covariance.numel() > 0) {
+        ++covariance_count;
+        scenario_digest_basis
+            << "covariance_shape=" << tensor_shape_text(belief.covariance)
+            << ";";
+      }
+      if (belief.valid_mask.defined()) {
+        active_asset_count_total +=
+            belief.valid_mask.to(torch::kBool).sum().item<std::int64_t>();
+      }
+      const auto confidence = finite_tensor_mean_or_nan(belief.confidence);
+      if (std::isfinite(confidence)) {
+        confidence_sum += confidence;
+        ++confidence_count;
+      }
+      const auto liquidity = finite_tensor_mean_or_nan(belief.liquidity_score);
+      if (std::isfinite(liquidity)) {
+        liquidity_sum += liquidity;
+        ++liquidity_count;
+      }
+      const auto channel_disagreement =
+          finite_tensor_mean_or_nan(belief.channel_disagreement);
+      if (std::isfinite(channel_disagreement)) {
+        channel_disagreement_sum += channel_disagreement;
+        ++channel_disagreement_count;
+      }
+      const auto expected_log =
+          finite_tensor_mean_or_nan(belief.expected_log_return);
+      if (std::isfinite(expected_log)) {
+        expected_log_return_sum += expected_log;
+        ++expected_log_return_count;
+      }
+      const auto expected_arithmetic =
+          finite_tensor_mean_or_nan(belief.expected_arithmetic_return);
+      if (std::isfinite(expected_arithmetic)) {
+        expected_arithmetic_return_sum += expected_arithmetic;
+        ++expected_arithmetic_return_count;
+      }
+    }
+  }
+
+  if (belief_count == 0) {
+    return;
+  }
+
+  const auto manifest = job_layout::parse_kv_file(job_dir / "job.manifest");
+  exposure::lattice_observer_belief_fact_t fact{};
+  exposure::populate_artifact_fact_identity(fact, parent);
+  fact.belief_kind = "allocation_belief";
+  fact.channel_consensus =
+      "belief_count=" + std::to_string(belief_count) +
+      ";mean_channel_disagreement=" +
+      std::to_string(channel_disagreement_count == 0
+                         ? 0.0
+                         : channel_disagreement_sum /
+                               static_cast<double>(channel_disagreement_count));
+  fact.potential_surface_diagnostics =
+      "active_asset_count=" + std::to_string(active_asset_count_total) +
+      ";feature_semantics_drift=" +
+      std::string(feature_semantics_drift ? "true" : "false");
+  fact.nodelift_return_projection =
+      "return_origin=base_relative_nodelift_projection;"
+      "mean_expected_log_return=" +
+      std::to_string(expected_log_return_count == 0
+                         ? 0.0
+                         : expected_log_return_sum /
+                               static_cast<double>(expected_log_return_count)) +
+      ";mean_expected_arithmetic_return=" +
+      std::to_string(
+          expected_arithmetic_return_count == 0
+              ? 0.0
+              : expected_arithmetic_return_sum /
+                    static_cast<double>(expected_arithmetic_return_count));
+  fact.covariance_coupling =
+      "covariance_count=" + std::to_string(covariance_count) +
+      ";scenario_count=" + std::to_string(scenario_count_total);
+  fact.scenario_bank_digest =
+      exposure::exposure_digest_for_text(scenario_digest_basis.str());
+  fact.nodelift_residual_quality = "deferred_runtime_replay_v1";
+  fact.projection_validation_scores =
+      "projection_validation_required=true;live_capital_allowed=false";
+  fact.confidence =
+      confidence_count == 0
+          ? std::numeric_limits<double>::quiet_NaN()
+          : confidence_sum / static_cast<double>(confidence_count);
+  fact.data_quality = 1.0;
+  fact.liquidity = liquidity_count == 0
+                       ? std::numeric_limits<double>::quiet_NaN()
+                       : liquidity_sum / static_cast<double>(liquidity_count);
+  const auto forecast_eval_facts =
+      exposure::make_forecast_eval_facts_from_job_dir(job_dir, parent);
+  if (!forecast_eval_facts.empty()) {
+    fact.forecast_artifact_digest =
+        forecast_eval_facts.front().forecast_artifact_digest;
+    fact.forecast_artifact_lineage =
+        exposure::forecast_eval_fact_digest(forecast_eval_facts.front());
+  } else {
+    fact.forecast_artifact_digest =
+        exposure::exposure_digest_for_text(forecast_digest_basis.str());
+    fact.forecast_artifact_lineage =
+        exposure::exposure_digest_for_text(lineage.str());
+  }
+  fact.feature_semantics_fingerprint = feature_semantics_fingerprint;
+  fact.dock_binding_fingerprint =
+      job_layout::map_get(manifest, "dock_binding_fingerprint");
+  if (fact.dock_binding_fingerprint.empty()) {
+    fact.dock_binding_fingerprint = parent.component_assembly_fingerprint;
+  }
+  exposure::write_observer_belief_fact_sidecar(
+      job_dir / "lattice.observer_belief.fact", fact);
+}
+
 inline void apply_source_range_override(
     cuwacunu::kikijyeba::settings::wave_settings_t *settings,
     const job_runner_options_t &options) {
@@ -301,6 +545,17 @@ inline void write_lattice_fact_sidecars(const std::filesystem::path &job_dir,
     exposure::write_exposure_fact_sidecar(exposure_path, fact);
     state->lattice_exposure_fact_written = true;
     state->lattice_exposure_fact_path = exposure_path.string();
+    const auto source_analytics_path =
+        job_dir / "lattice.source_analytics.fact";
+    if (!std::filesystem::exists(source_analytics_path)) {
+      const auto source_analytics =
+          exposure::make_runtime_source_analytics_fact_from_exposure_fact(
+              fact, job_dir);
+      exposure::write_source_analytics_fact_sidecar(source_analytics_path,
+                                                    source_analytics);
+    }
+    state->lattice_source_analytics_fact_written = true;
+    state->lattice_source_analytics_fact_path = source_analytics_path.string();
     if (!fact.output_checkpoint.empty() &&
         std::filesystem::exists(fact.output_checkpoint)) {
       auto checkpoint_fact =
@@ -312,6 +567,8 @@ inline void write_lattice_fact_sidecars(const std::filesystem::path &job_dir,
       state->lattice_checkpoint_fact_written = true;
       state->lattice_checkpoint_fact_path = checkpoint_path.string();
     }
+    exposure::write_channel_mdn_forecast_artifact_fact_sidecars(job_dir, fact);
+    write_runtime_replay_observer_belief_fact_sidecar(job_dir, fact);
   } catch (const std::exception &ex) {
     state->lattice_fact_error = ex.what();
   }
@@ -538,7 +795,7 @@ private:
       }
       result.state = run_channel_delegate(
           std::move(builder), manifest, wave_plan, result.delegated_report_path,
-          resolved_job_kind, train_target);
+          job_dir, resolved_job_kind, train_target);
       write_job_state_file(result.state_path, result.state);
       terminal_facts::write_terminal_fact_sidecars(job_dir, manifest,
                                                    &result.state);
@@ -559,6 +816,7 @@ private:
                        const job_manifest_t &manifest,
                        const wave_plan_t &wave_plan,
                        const std::filesystem::path &delegated_report_path,
+                       const std::filesystem::path &job_dir,
                        runtime_job_kind_t job_kind, bool train_target) const {
     switch (job_kind) {
     case runtime_job_kind_t::channel_representation_vicreg: {
@@ -603,12 +861,99 @@ private:
       launcher_options.write_report = options_.write_report;
       launcher_options.report_path = delegated_report_path;
       launcher_options.runtime_report_mode = options_.runtime_report_mode;
+      namespace replay = cuwacunu::kikijyeba::environment::replay;
+      using launcher_t = cuwacunu::jkimyei::training::inference::
+          channel_graph_first_inference_launcher_t<DatatypeT>;
+      typename launcher_t::inference_batch_observer_t
+          replay_artifact_observer{};
+      bool replay_artifacts_written = false;
+      std::string replay_artifact_error{};
+      replay::runtime_replay_artifact_paths_t last_replay_artifact_paths{};
+      if (options_.write_replay_artifacts && !options_.dry_run &&
+          !train_target) {
+        try {
+          replay::runtime_allocation_belief_observer_options_t
+              observer_options{};
+          observer_options.base_reserve_node_id =
+              options_.replay_base_reserve_node_id;
+          observer_options.risky_node_ids = options_.replay_risky_node_ids;
+          observer_options.require_direct_asset_base_edges =
+              options_.replay_require_direct_asset_base_edges;
+          auto belief_options =
+              replay::make_runtime_allocation_belief_builder_options(
+                  builder.market_graph(), builder.bundle().belief_observer,
+                  std::move(observer_options));
+          const auto model_version = manifest.mdn_assembly_fingerprint.empty()
+                                         ? manifest.inference_training_id
+                                         : manifest.mdn_assembly_fingerprint;
+          const auto normalization_hash = manifest.dock_binding_fingerprint;
+          replay_artifact_observer = [job_dir, delegated_report_path, manifest,
+                                      belief_options, model_version,
+                                      normalization_hash,
+                                      &replay_artifacts_written,
+                                      &replay_artifact_error,
+                                      &last_replay_artifact_paths](
+                                         const auto &out, const auto &batch,
+                                         const auto &representation_batch,
+                                         int64_t wave_pulse_index) {
+            if (!replay_artifact_error.empty()) {
+              return;
+            }
+            try {
+              if (wave_pulse_index <= 0) {
+                throw std::runtime_error(
+                    "[kikijyeba_job_runner] replay artifact observer "
+                    "received invalid wave pulse index");
+              }
+              const auto pulse_index =
+                  static_cast<std::size_t>(wave_pulse_index);
+              auto mdn_artifact =
+                  cuwacunu::kikijyeba::environment::artifact_ref_t{
+                      .artifact_id = manifest.job_id + ".mdn.wave_pulse." +
+                                     std::to_string(wave_pulse_index),
+                      .artifact_path = delegated_report_path.string(),
+                      .artifact_digest = manifest.mdn_assembly_fingerprint,
+                      .schema_id =
+                          "wikimyei.inference.expected_value.mdn.MdnOut.v1",
+                  };
+              last_replay_artifact_paths = replay::
+                  write_runtime_graph_anchor_replay_artifacts_from_mdn_batch_for_pulse(
+                      job_dir, pulse_index, out, batch, representation_batch,
+                      belief_options, std::move(mdn_artifact), model_version,
+                      "", normalization_hash);
+              replay_artifacts_written = true;
+            } catch (const std::exception &ex) {
+              replay_artifact_error = ex.what();
+            }
+          };
+        } catch (const std::exception &ex) {
+          replay_artifact_error = ex.what();
+        }
+      }
       cuwacunu::jkimyei::training::inference::
           channel_graph_first_inference_launcher_t<DatatypeT>
-              launcher(std::move(builder), launcher_options);
+              launcher(std::move(builder), launcher_options,
+                       std::move(replay_artifact_observer));
       const auto report = launcher.run();
-      return make_completed_job_state(manifest, wave_plan, report,
-                                      options_.dry_run);
+      auto state = make_completed_job_state(manifest, wave_plan, report,
+                                            options_.dry_run);
+      if (replay_artifacts_written) {
+        state.replay_artifacts_written = true;
+        state.replay_batch_index_path =
+            replay::runtime_replay_batch_index_path(job_dir).string();
+        state.replay_artifact_path_index_path =
+            (last_replay_artifact_paths.observation_artifact_index_path
+                 .parent_path() /
+             "runtime_replay_artifacts.index")
+                .string();
+        state.replay_graph_anchor_edge_batch_artifact_path =
+            last_replay_artifact_paths.graph_anchor_edge_batch_artifact_path
+                .string();
+        state.replay_observation_artifact_index_path =
+            last_replay_artifact_paths.observation_artifact_index_path.string();
+      }
+      state.replay_artifact_error = replay_artifact_error;
+      return state;
     }
     }
     throw std::runtime_error("[kikijyeba_job_runner] unknown runtime job kind");

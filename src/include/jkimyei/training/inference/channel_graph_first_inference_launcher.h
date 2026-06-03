@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -20,7 +21,7 @@
 #include "kikijyeba/lattice/runtime_report/component_runtime_lls.h"
 #include "kikijyeba/protocol/component_stream.h"
 #include "kikijyeba/protocol/pipeline_builder.h"
-#include "kikijyeba/settings/wave.h"
+#include "kikijyeba/runtime/wave_settings.h"
 #include "kikijyeba/topology/dock_binding.h"
 #include "wikimyei/assembly.h"
 #include "wikimyei/inference/expected_value/mdn/channel_context_mdn_train_model.h"
@@ -790,9 +791,8 @@ private:
 
 template <typename KeyT> class channel_representation_stream_iface_t {
 public:
-  using batch_t =
-      cuwacunu::wikimyei::representation::encoding::vicreg::stream::
-          channel_representation_batch_t<KeyT>;
+  using batch_t = cuwacunu::wikimyei::representation::encoding::vicreg::stream::
+      channel_representation_batch_t<KeyT>;
 
   virtual ~channel_representation_stream_iface_t() = default;
   [[nodiscard]] virtual bool has_next() const = 0;
@@ -804,8 +804,7 @@ template <typename KeyT, typename StreamT>
 class channel_representation_stream_box_t final
     : public channel_representation_stream_iface_t<KeyT> {
 public:
-  using batch_t =
-      typename channel_representation_stream_iface_t<KeyT>::batch_t;
+  using batch_t = typename channel_representation_stream_iface_t<KeyT>::batch_t;
 
   explicit channel_representation_stream_box_t(StreamT stream)
       : stream_(std::move(stream)) {}
@@ -1389,11 +1388,22 @@ public:
   using builder_t =
       cuwacunu::kikijyeba::protocol::channel_graph_first_pipeline_builder_t<
           DatatypeT>;
+  using key_t = typename builder_t::key_t;
+  using mdn_out_t = cuwacunu::wikimyei::inference::expected_value::mdn::MdnOut;
+  using channel_mdn_input_batch_t = cuwacunu::wikimyei::inference::
+      expected_value::mdn::stream::channel_mdn_input_batch_t<key_t>;
+  using channel_representation_batch_t = cuwacunu::wikimyei::representation::
+      encoding::vicreg::stream::channel_representation_batch_t<key_t>;
+  using inference_batch_observer_t =
+      std::function<void(const mdn_out_t &, const channel_mdn_input_batch_t &,
+                         const channel_representation_batch_t &, int64_t)>;
 
   channel_graph_first_inference_launcher_t(
       builder_t builder,
-      channel_graph_first_inference_launcher_options_t options = {})
-      : builder_(std::move(builder)), options_(std::move(options)) {
+      channel_graph_first_inference_launcher_options_t options = {},
+      inference_batch_observer_t inference_batch_observer = {})
+      : builder_(std::move(builder)), options_(std::move(options)),
+        inference_batch_observer_(std::move(inference_batch_observer)) {
     validate_batch_size_contract();
   }
 
@@ -1406,8 +1416,8 @@ public:
     out.component_assembly_id =
         builder_.bundle().channel_mdn.component_assembly_id;
     out.input_representation_assembly_id =
-        cuwacunu::kikijyeba::protocol::
-            active_protocol_uses_mtf_jepa_mae_vicreg(builder_.bundle())
+        cuwacunu::kikijyeba::protocol::active_protocol_uses_mtf_jepa_mae_vicreg(
+            builder_.bundle())
             ? cuwacunu::kikijyeba::protocol::
                   active_representation_component_assembly_id(builder_.bundle())
             : builder_.bundle().channel_mdn.input_representation_assembly_id;
@@ -1473,8 +1483,9 @@ public:
       return dry_run_report();
     }
     const auto &bundle = builder_.bundle();
-    const bool use_mtf_representation = cuwacunu::kikijyeba::protocol::
-        active_protocol_uses_mtf_jepa_mae_vicreg(bundle);
+    const bool use_mtf_representation =
+        cuwacunu::kikijyeba::protocol::active_protocol_uses_mtf_jepa_mae_vicreg(
+            bundle);
     const bool train_target = effective_train_target();
 
     const auto &training_spec = bundle.channel_mdn_training;
@@ -1528,8 +1539,8 @@ public:
           "channel-context MDN");
     }
     if (use_mtf_representation) {
-      namespace mtf = cuwacunu::wikimyei::representation::encoding::
-          mtf_jepa_mae_vicreg;
+      namespace mtf =
+          cuwacunu::wikimyei::representation::encoding::mtf_jepa_mae_vicreg;
       namespace repstream =
           cuwacunu::wikimyei::representation::encoding::vicreg::stream;
 
@@ -1553,32 +1564,29 @@ public:
       }
       channel_graph_first_inference_launcher_detail::freeze_vicreg_encoder(
           *mtf_model_holder);
-      representation_on_device =
-          channel_graph_first_inference_launcher_detail::
-              parameters_are_on_device((*mtf_model_holder)->parameters(),
-                                       builder_.options().device);
-      mtf_adapter_holder = std::make_unique<
-          channel_graph_first_inference_launcher_detail::
-              mtf_representation_encoder_adapter_t>(*mtf_model_holder);
-      auto mtf_stream =
-          repstream::channel_representation_stream_t<
-              DatatypeT,
-              channel_graph_first_inference_launcher_detail::
-                  mtf_representation_encoder_adapter_t>(
-              std::move(lifted_stream), *mtf_adapter_holder,
-              /*require_finite_valid_features=*/true, /*detach_to_cpu=*/true,
-              runtime_report_mode,
-              bundle.mtf_jepa_mae_vicreg.component_assembly_id,
-              cuwacunu::wikimyei::assembly::make_assembly_token(
-                  bundle.mtf_jepa_mae_vicreg_assembly.family,
-                  bundle.mtf_jepa_mae_vicreg_assembly.component_assembly_id,
-                  bundle.mtf_jepa_mae_vicreg_assembly.version_token),
-              cuwacunu::kikijyeba::topology::dock_binding_token(
-                  bundle.dock_binding),
+      representation_on_device = channel_graph_first_inference_launcher_detail::
+          parameters_are_on_device((*mtf_model_holder)->parameters(),
+                                   builder_.options().device);
+      mtf_adapter_holder =
+          std::make_unique<channel_graph_first_inference_launcher_detail::
+                               mtf_representation_encoder_adapter_t>(
+              *mtf_model_holder);
+      auto mtf_stream = repstream::channel_representation_stream_t<
+          DatatypeT, channel_graph_first_inference_launcher_detail::
+                         mtf_representation_encoder_adapter_t>(
+          std::move(lifted_stream), *mtf_adapter_holder,
+          /*require_finite_valid_features=*/true, /*detach_to_cpu=*/true,
+          runtime_report_mode, bundle.mtf_jepa_mae_vicreg.component_assembly_id,
+          cuwacunu::wikimyei::assembly::make_assembly_token(
               bundle.mtf_jepa_mae_vicreg_assembly.family,
-              "wikimyei.representation.mtf_jepa_mae_vicreg.runtime.v1",
-              cuwacunu::kikijyeba::protocol::
-                  component_stream_wave_from_settings(bundle.wave_settings));
+              bundle.mtf_jepa_mae_vicreg_assembly.component_assembly_id,
+              bundle.mtf_jepa_mae_vicreg_assembly.version_token),
+          cuwacunu::kikijyeba::topology::dock_binding_token(
+              bundle.dock_binding),
+          bundle.mtf_jepa_mae_vicreg_assembly.family,
+          "wikimyei.representation.mtf_jepa_mae_vicreg.runtime.v1",
+          cuwacunu::kikijyeba::protocol::component_stream_wave_from_settings(
+              bundle.wave_settings));
       using mtf_stream_t = decltype(mtf_stream);
       representation_stream = std::make_unique<
           channel_graph_first_inference_launcher_detail::
@@ -1600,8 +1608,8 @@ public:
                 bundle.source_plan.market_graph.node_ids,
                 bundle.vicreg.required_feature_coords,
                 cuwacunu::kikijyeba::protocol::
-                    graph_first_pipeline_builder_detail::
-                        cell_valid_policy_name(bundle.vicreg.cell_valid_policy),
+                    graph_first_pipeline_builder_detail::cell_valid_policy_name(
+                        bundle.vicreg.cell_valid_policy),
                 bundle.vicreg.channel_count, bundle.vicreg.history_length,
                 bundle.vicreg.input_width, bundle.vicreg.encoding_dim,
                 bundle.vicreg.feature_hidden_dim, bundle.vicreg.temporal_depth,
@@ -1617,10 +1625,9 @@ public:
       }
       channel_graph_first_inference_launcher_detail::freeze_vicreg_encoder(
           *vicreg_encoder_holder);
-      representation_on_device =
-          channel_graph_first_inference_launcher_detail::
-              parameters_are_on_device((*vicreg_encoder_holder)->parameters(),
-                                       builder_.options().device);
+      representation_on_device = channel_graph_first_inference_launcher_detail::
+          parameters_are_on_device((*vicreg_encoder_holder)->parameters(),
+                                   builder_.options().device);
       auto vicreg_stream = builder_.make_channel_representation_stream(
           std::move(lifted_stream), *vicreg_encoder_holder,
           runtime_report_mode);
@@ -1903,6 +1910,10 @@ public:
           step.gradients_finite =
               step.nonfinite_output_count == 0 &&
               torch::isfinite(step.loss).all().template item<bool>();
+          if (inference_batch_observer_) {
+            inference_batch_observer_(out, batch, channel_batch,
+                                      report.wave_pulses_attempted);
+          }
         }
       }
 
@@ -2050,6 +2061,7 @@ private:
 
   builder_t builder_;
   channel_graph_first_inference_launcher_options_t options_{};
+  inference_batch_observer_t inference_batch_observer_{};
 };
 
 } // namespace cuwacunu::jkimyei::training::inference

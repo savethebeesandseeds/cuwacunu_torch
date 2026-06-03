@@ -34,6 +34,8 @@ src/include/kikijyeba/marshal/runtime_hero_handoff.h
 src/include/kikijyeba/marshal/dispatch_operation.h
 src/include/kikijyeba/marshal/execution_gate.h
 src/include/kikijyeba/marshal/dispatch_receipt.h
+src/include/kikijyeba/marshal/evaluation_marshal.h
+src/include/kikijyeba/marshal/rollout_marshal.h
 src/include/kikijyeba/marshal/status.h
 src/include/kikijyeba/marshal/operational_report.h
 src/include/kikijyeba/marshal/batch_preview.h
@@ -64,6 +66,206 @@ marshal_dispatch_validation_result_t
 canonical_*_text(...)
 *_digest(...)
 validate_dispatch_advice(...)
+```
+
+## M2 Evaluation Marshal Contract
+
+M2 defines the first reusable environment-evaluation marshal contract. It does
+not execute replay, choose a policy, or prove performance. It prepares a bounded
+Runtime replay evaluation request and records a non-authoritative receipt after
+Runtime has produced replay reports.
+
+Implemented surface:
+
+```text
+marshal_evaluation_anchor_range_t
+marshal_evaluation_request_t
+marshal_evaluation_plan_t
+marshal_evaluation_runtime_handoff_t
+marshal_evaluation_policy_summary_t
+marshal_evaluation_receipt_t
+
+canonical_evaluation_request_text(...)
+evaluation_request_digest(...)
+validate_evaluation_request(...)
+prepare_evaluation_plan(...)
+canonical_evaluation_plan_text(...)
+evaluation_plan_digest(...)
+prepare_evaluation_runtime_handoff(...)
+canonical_evaluation_runtime_handoff_text(...)
+evaluation_runtime_handoff_digest(...)
+canonical_evaluation_receipt_text(...)
+evaluation_receipt_digest(...)
+finalize_evaluation_receipt(...)
+```
+
+The receipt preserves policy-neutral replay health counters, metric-scope labels,
+policy-wise summaries, projection-validation diagnostics, and Cajtucu paper
+execution summaries. Projection diagnostics include interval width,
+zero-return baseline error, and model skill versus that baseline. Cajtucu
+summaries include backend identity, execution-step counts, rejected/partial fill
+counts, order/fill counts, and paper fee/spread/slippage/transaction-cost
+totals. It is evidence for later review; it does not claim target satisfaction.
+
+The request is accepted only when it is finite and explicitly out-of-sample:
+
+```text
+trained_range and validation_range are valid half-open anchor-index ranges
+trained_range and validation_range do not overlap
+trained_range_evidence_digest is present and strong
+validation_split_policy_digest is present and strong
+Runtime executable, evaluation config, MDN checkpoint, and representation
+  checkpoint paths exist when path checks are enabled
+base_reserve_node_id is present
+risky_node_ids is non-empty
+base_reserve_node_id is not duplicated inside risky_node_ids
+risky_node_ids contains no duplicates
+```
+
+The plan emits command templates for:
+
+```text
+1. Runtime MDN run on the validation anchor range.
+2. Runtime replay-from-job evaluation using the completed job directory.
+```
+
+The evaluation runtime handoff prepares a bounded dry-run argument package for:
+
+```text
+hero.runtime.execute
+```
+
+It binds the validation anchor range, expected Runtime wave identity, replay
+command template, request digest, and plan digest. It is dry-run only:
+
+```text
+dry_run=true
+confirm_execute=false
+target_satisfaction_claimed=false
+runtime_executor=false
+lattice_proof_authority=false
+```
+
+Marshal does not call Runtime from this contract; the handoff is a deterministic
+package that can be inspected, digested, and later handed to the existing Runtime
+Hero execution surface by an authorized operator/tooling path.
+
+The receipt records replay metrics such as bundle count, attempted/completed
+count, projection MAE/RMSE/correlation/directional accuracy, interval coverage,
+time-law counters, transaction-cost summary, Cajtucu paper execution summary,
+and final equity summary. It also labels the top-level aggregate scope so
+experiment means are not confused with one policy's score:
+
+```text
+top_level_metric_scope=mean_over_completed_episode_reports_across_policies
+policy_metric_scope=mean_over_completed_episode_reports_for_policy
+```
+
+Policy-wise summaries may be embedded in the receipt for compact review:
+
+```text
+policy_id
+policy_kind
+attempted/completed/failed counts
+final equity
+max drawdown
+turnover
+transaction cost
+Cajtucu backend / fill / cost counters
+projection metrics
+```
+
+The receipt always carries:
+
+```text
+target_satisfaction_claimed=false
+runtime_executor=false
+lattice_proof_authority=false
+```
+
+Lattice must still re-read Runtime evidence to prove any target. Marshal
+evaluation receipts are coordination and audit metadata only.
+
+## M3 Rollout Marshal Contract
+
+M3 defines the environment rollout preparation contract. A rollout is a bounded
+historical environment run:
+
+```text
+completed Runtime job artifacts
+  + policy set
+  + Kikijyeba replay environment
+  + Cajtucu paper execution profile
+    -> trajectory evidence after Runtime executes the command
+```
+
+Implemented surface:
+
+```text
+marshal_rollout_execution_profile_t
+marshal_rollout_request_t
+marshal_rollout_plan_t
+
+canonical_rollout_request_text(...)
+rollout_request_digest(...)
+validate_rollout_request(...)
+prepare_rollout_plan(...)
+canonical_rollout_plan_text(...)
+rollout_plan_digest(...)
+rollout_plan_json(...)
+```
+
+`hero.marshal.prepare intent=rollout` returns a plan only. It does not execute,
+train, inspect reports, choose a policy, produce a receipt, or claim Lattice
+target satisfaction.
+
+The accepted V1 rollout mode is:
+
+```text
+environment_mode=historical_replay
+environment_assembly_id=kikijyeba.environment.replay.v1
+execution_backend_id=cajtucu.execution.paper.v1
+```
+
+The request must bind:
+
+```text
+rollout_id
+completed Runtime job directory with replay_artifacts_written=true
+replay_batch_index_path
+base_reserve_node_id
+risky_node_ids
+finite max_steps / max_parallel_jobs
+policy_set
+Cajtucu paper execution profile
+```
+
+Synthetic direct execution edges are rejected by default. Research replay may
+opt in only by setting `allow_synthetic_direct_edges=true` and providing
+`synthetic_edge_research_reason`.
+
+`prepare` emits a replay command template for:
+
+```text
+cuwacunu_exec --replay-from-job-dir ...
+```
+
+The receipt lifecycle is intentionally separate:
+
+```text
+prepare rollout request -> marshal_rollout_plan_t
+Runtime executes replay command -> replay report / trajectory evidence
+inspect reads report later -> receipt/summary, future work
+```
+
+The rollout plan always carries:
+
+```text
+target_satisfaction_claimed=false
+runtime_executor=false
+lattice_proof_authority=false
+policy_training_authority=false
+live_execution_authority=false
 ```
 
 ## Dispatchability
@@ -154,11 +356,11 @@ The current high-level Marshal surface is intentionally small:
 
 ```text
 hero.marshal.status
-hero.marshal.reach_lattice_target
-hero.marshal.evaluate
+hero.marshal.prepare
+hero.marshal.inspect
 ```
 
-`reach_lattice_target` is the deterministic Marshal for moving one lattice
+`prepare` is the deterministic Marshal for moving one lattice
 target toward readiness. It has two explicit drive modes:
 
 ```text
@@ -175,11 +377,79 @@ allows execution, Runtime policy allows execution, and the existing execution
 gate accepts the dry-run evidence. The target is reported reached only after
 Lattice reports satisfaction.
 
+Artifact-readiness targets are evidence proofs, not Runtime wave requests.
+When `hero.lattice.target_deficit` reports `target_class=artifact_readiness`,
+`prepare` returns a non-dispatchable packet with
+`next_action=inspect`; it does not resolve checkpoints, inspect
+Runtime wave shape, or dry-run Runtime. Use `hero.marshal.inspect`
+to view the target proof and any related fact-family summary.
+
+`inspect` is read-only. It calls Lattice
+`evaluate_target` for a target proof, `fact_summary` or `scan_facts` for
+fact-family evidence, `fact_lineage` for audit-only relation/key/digest lineage
+rows, and `fact_preview` when the caller explicitly asks for a concrete fact
+row by digest, digest prefix, or fact index. Marshal does not become proof
+authority, does not claim target satisfaction, and does not select checkpoints
+from this panel.
+The public inspect, status, and operational-report JSON surfaces
+declare this boundary explicitly with fields such as `target_proof=false`,
+`dispatchable=false`, `runtime_executor=false`,
+`fact_families_are_not_target_kinds=true`, `allocation_decision=false`,
+`market_readiness_decision=false`, and `deployment_decision=false`.
+For failed artifact proofs, the panel preserves the Lattice summary:
+failed-proof count, proof-template bound/unbound count, proof kind,
+proof-template claim, identity-mismatch count, lineage-unbound count,
+authority-drift count, integrity flags, authority flags, explicit boundary
+denial flags for target dependencies, Runtime waves, Marshal reachability,
+checkpoint sources, and plan checkpoint inputs, issue codes, artifact deficit
+keys, related fact-integrity issue codes, and primary deficit key.
+Fact panels also relay Lattice's native `fact_integrity_summary`, which reports
+declared relation digests, resolved relation digests, unresolved relations,
+identity-mismatch counts, digest-mismatch counts, warning counts, affected
+families, and issue codes. This keeps unresolved transform, baseline,
+selection-signal, observer, and forecast artifact lineage visible before an
+artifact proof failure is interpreted as a generic target problem.
+Fact panels include a compact `lineage_panel` by default. It relays
+`hero.lattice.fact_lineage` row counts, selected relations, lineage rows, and
+explicit non-authority flags such as
+`cache_rows_used_for_target_satisfaction=false`; operators may pass
+`include_lineage=false` only to suppress that audit view.
+Fact panels include `preview_panel` only when requested with `include_preview`,
+`digest`, `fact_digest`, `digest_prefix`, `fact_index`, or `index`. The preview
+relays `hero.lattice.fact_preview` rows and keeps
+`preview_rows_are_audit_only=true`,
+`facts_used_for_target_satisfaction=false`, `checkpoint_selected=false`, and
+`model_selector=false`. The relayed rows include Lattice's normalized
+`identity_envelope`, so Marshal clients can inspect a fact's family, digest,
+active identity, parent digests, support counters, and audit-only authority
+flags without parsing each family payload.
+Target panels also summarize Lattice artifact `fact_preview_hint` entries as
+`artifact_fact_preview_*` fields. Marshal relays the family, digest, Lattice
+tool, and Marshal tool as navigation metadata only; it still does not prove,
+select, or dispatch from those hints.
+They also relay the fact catalog's artifact-readiness boundary metadata:
+proofable family count, proof kind, proof-template claim, promotion-blocked
+family count, promotion-blocked reason, and warning-summary-only families.
+Marshal displays these as read-only catalog facts; it does not promote a fact
+family into a target or override Lattice's proof-template registry.
+When Lattice reports disabled policy-gate reservations, Marshal relays the
+reservation summary and matching reservations in target and prepare panels, but
+keeps policy-gate dispatch, target-status, and proof authority false. Marshal
+also preserves Lattice's policy-fingerprint verification counters and
+policy-input contract counters as read-only audit context, including mismatch
+counts, missing-input counts, and the all-inputs-complete bit; it does not
+recompute or promote them into decision-policy authority.
+Fact-family-only evidence panels, including `replay_environment`, do not call
+target proof evaluation and cannot be routed through `prepare`.
+
 Warning stops use typed Runtime/Lattice warning envelopes rather than loose JSON
 sniffing. A warning used for driver policy must carry `warning_id`, `severity`,
 `source`, `component`, `scope`, `blocking`, and `evidence_digest`. Unknown or
 missing severity fails closed when the matching stop policy is enabled; a
-blocking warning stops even below the configured severity threshold.
+blocking warning stops even below the configured severity threshold. Lattice
+target evaluations project their `warning_results` into this typed `warnings`
+surface with `blocking=false`; human-readable warning text stays in
+`warning_messages`.
 
 The operator packet presents a compact `operator_summary`, `stop_reason`,
 `wave_panel`, `runtime_panel`, `lattice_panel`, and `audit_panel`, followed by
@@ -187,7 +457,8 @@ the compatibility fields for target, blocker, advised wave, concrete
 model-state inputs, Runtime wave match, dry-run result, target-driver terminal
 state, target-driver ledger, and next safe action.
 
-`evaluate` is the high-level deterministic evaluator. It supports:
+`inspect` is also the high-level deterministic read-only evaluator. It
+supports:
 
 ```text
 subject = run
@@ -199,6 +470,12 @@ subject = component
 
 `subject=run` wraps the operational report and comparison paths through
 `latest_chain`, `training_state`, `single_job`, and `compare` modes.
+When `subject=run` asks Lattice for bulk target status, artifact-readiness
+blockers preserve the failed artifact proof summary, including explicit
+boundary denials for non-dispatchable/non-checkpoint authority fields, and route
+to `inspect` rather than presenting the failure as a dispatchable
+training deficit. Disabled policy-gate reservations remain attached as
+read-only blocker context and do not change next-safe-action selection.
 `subject=target` asks Lattice for the target deficit and explains the plan or
 blocker. It labels target status as sourced from `hero.lattice.target_deficit`
 and only suggests certificate inspection when Lattice returned certificate
@@ -233,7 +510,7 @@ separate research artifact.
 
 ## Marshal Operational Report v1
 
-`hero.marshal.evaluate` with `subject=run` is the read-only operator report
+`hero.marshal.inspect` with `subject=run` is the read-only operator report
 surface. Its `latest_chain`, `training_state`, and `single_job` modes answer:
 
 ```text
@@ -241,9 +518,10 @@ Where are we, what just happened, and what is safe to do next?
 ```
 
 It reads Runtime job directories, `job.state`, Runtime terminal facts, component
-reports, checkpoint load/write fields, and Lattice target statuses. Runtime
-terminal facts are preferred when present; component reports remain the
-fallback for older jobs. The current packet includes:
+reports, checkpoint load/write fields, Kikijyeba replay evidence indexes, and
+Lattice target statuses. Runtime terminal facts are preferred when present;
+component reports remain the fallback for older jobs. The current packet
+includes:
 
 ```text
 evidence_scope
@@ -262,8 +540,12 @@ next_safe_actions
 ```
 
 `chain_summary` groups each Runtime job by component family, component spawn
-identity, wave action/mode, source range, checkpoint I/O, handoff identity, and
-terminal-fact availability.
+identity, wave action/mode, source range, checkpoint I/O, handoff identity,
+terminal-fact availability, and read-only replay evidence. Replay evidence is
+reported from `artifacts/kikijyeba.environment.replay.v1/` when present:
+`runtime_replay_batches.index`, `runtime_replay_experiments.index`, and the
+latest replay experiment report. Marshal only summarizes these files; Runtime
+Hero remains the replay executor/reader.
 
 When `include_machine_payload=true`, the report also includes full job rows,
 checkpoint rows, the target-status map, and detailed metrics under
@@ -273,6 +555,10 @@ The report does not execute, dry-run, edit config, select checkpoints, or claim
 target satisfaction. Lattice remains the only proof authority; Marshal only
 quotes Lattice statuses, proof-check issues, deficits, and warnings, then turns
 Runtime artifacts into an operator-readable summary.
+For artifact-readiness targets, target blockers also quote related
+fact-integrity issue codes from Lattice proof deficits so the compact run view
+can connect an artifact issue to the exact catalog issue row without
+re-evaluating proof.
 
 ## M2 Preview And Handoff Core
 
@@ -302,12 +588,17 @@ The public M2 operation accepts explicit fresh Lattice Hero advice, refuses
 unproven advice, calls the handoff helper, and includes the live Runtime Hero
 dry-run result in the Marshal response.
 
-`hero.marshal.reach_lattice_target` is the operator-facing wrapper for
+`hero.marshal.prepare` is the operator-facing wrapper for
 “pursue lattice target X.” The target wrapper calls the current Lattice target
 advice query, asks Marshal's read-only Lattice callback to materialize symbolic
 `latest_satisfying:<target_id>` model-state hints, validates the materialized
 advice, inspects Runtime policy and active wave shape, and returns one compact
 operator packet.
+
+If that query identifies an artifact-readiness target, Marshal stops before the
+handoff path and routes the operator to `hero.marshal.inspect`.
+This keeps non-trainable Lattice evidence surfaces out of Runtime dispatch
+semantics.
 
 In `one_step` mode, `include_runtime_dry_run=true` is still an explicit opt-in.
 In `budgeted` mode, Runtime dry-run is part of the driver loop and is bounded by
@@ -329,6 +620,30 @@ is bound into the ledger. A compact `resume_ledger` may be supplied to continue
 a bounded run without forgetting spent handoff/execution budget; stale target,
 mode, policy identity, missing terminal evidence identity, missing manifest
 identity, or missing handoff identity blocks resume.
+
+Target-driver identity is split deliberately:
+
+```text
+target_driver_run_key
+  Deterministic grouping key for the target, known active identity, drive mode,
+  requested mode, and driver policy digest. It groups comparable driver ledgers
+  but is not a terminal evidence identity.
+
+target_driver_run_id
+  Per-invocation ledger identity. It is derived from the run key plus
+  ledger_created_at_utc and ledger_nonce, exists before the first Runtime
+  handoff, is echoed into Runtime handoff/job evidence, and must remain stable
+  across resume.
+
+runtime_handoff_id / runtime_handoff_digest
+  Per-handoff execution identity. Runtime terminal evidence must match these
+  exactly; they are the hard reconciliation identity.
+```
+
+`ledger_created_at_utc` and `ledger_nonce` may be supplied by tests; otherwise
+Marshal generates them for a fresh prepare call. Runtime handoff id/digest remain
+the strict terminal-evidence identity even when several ledgers share the same
+target-driver run key.
 
 Target-driver replay audit is also available internally for retention drills.
 Full ledger replay recomputes iteration and ledger digests. Compact ledger
@@ -381,6 +696,14 @@ The execution gate refuses missing confirmation, confirmation mismatch, missing
 or mismatched prior dry-run evidence, unproven/stale Lattice advice, Runtime
 Hero `allow_execute=false`, and train execution when
 `allow_train_execute=false`.
+
+Current `budgeted` execution uses policy-confirmed automation. When
+`driver_policy.allow_execute=true` and Runtime policy also allows execution,
+Marshal creates the execution confirmation token internally from the accepted
+dry-run evidence and exact request identity before it calls the execution gate.
+This is not a second human confirmation step. A future interactive operator
+surface may split this into a dry-run challenge followed by a caller-supplied
+confirmation token.
 
 The public execution handoff takes an accepted `marshal_execution_gate_result_t`.
 It cannot be called from a plain dry-run decision. Immediately before calling
@@ -440,11 +763,12 @@ tombstone receipts remain audit metadata only.
 Marshal status is a compact read-only summary over recent receipts and Runtime
 policy. It reports last accepted dry-run, last execution handoff, latest refusal
 reason, and Lattice advice surface availability. It does not evaluate lattice
-targets.
+targets, prove targets, promote fact families, or make allocation, market, or
+deployment decisions.
 
 ## Marshal Run Comparison
 
-`hero.marshal.evaluate` with `subject=run` and `mode=compare` compares two
+`hero.marshal.inspect` with `subject=run` and `mode=compare` compares two
 Runtime jobs descriptively. It reads the same Runtime job state, terminal facts,
 checkpoint I/O facts, health facts, and raw report fallback fields used by the
 operational report, then returns:
@@ -472,10 +796,11 @@ bounds, and accepted anchor count visible before metric differences. When
 candidate job rows, full performance visibility panels, checkpoint lineage
 details, and per-run metric maps.
 
-The comparison surface is read-only. It does not execute, edit config, select a
-checkpoint, choose a winner, or claim target satisfaction. Lattice cleanliness
-is reported as a boundary: comparison can say that Lattice replay is required,
-but it cannot prove cleanliness by itself.
+The comparison and run-report surfaces are read-only. They do not execute, edit
+config, select a checkpoint, choose a winner, claim target satisfaction, promote
+fact families into target kinds, or make allocation, market, or deployment
+decisions. Lattice cleanliness is reported as a boundary: comparison can say
+that Lattice replay is required, but it cannot prove cleanliness by itself.
 
 Invariant:
 

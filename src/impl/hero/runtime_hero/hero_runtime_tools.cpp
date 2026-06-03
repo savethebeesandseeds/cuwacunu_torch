@@ -4,6 +4,7 @@
 #include "hero/runtime_hero/hero_runtime.h"
 #include "kikijyeba/marshal/digest.h"
 #include "kikijyeba/runtime/job_layout.h"
+#include "wikimyei/assembly.h"
 
 #include <algorithm>
 #include <array>
@@ -13,6 +14,7 @@
 #include <chrono>
 #include <csignal>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <fcntl.h>
 #include <filesystem>
@@ -47,39 +49,41 @@ struct tool_descriptor_t {
   const char *input_schema_json;
 };
 
-constexpr tool_descriptor_t
-    kTools[] =
-        {
-            {"hero.runtime.status",
-             "Summarize Runtime Hero policy, executable, active wave, and job "
-             "root.",
-             R"({"type":"object","properties":{},"additionalProperties":false})"},
-            {"hero.runtime.schema",
-             "List Runtime Hero policy keys and constraints.",
-             R"({"type":"object","properties":{},"additionalProperties":false})"},
-            {"hero.runtime.wave",
-             "Decode active wave intent from the configured runtime .config.",
-             R"({"type":"object","properties":{"config_path":{"type":"string"}},"additionalProperties":false})"},
-            {"hero.runtime.dry_run",
-             "Run cuwacunu_exec with --dry-run and return stdout plus job "
-             "artifacts.",
-             R"({"type":"object","properties":{"config_path":{"type":"string"},"job_dir":{"type":"string"},"force_rebuild_cache":{"type":"boolean"},"timeout_seconds":{"type":"integer"},"wave_overlay":{"type":"object","properties":{"source_range":{"type":"string"},"anchor_index_begin":{"type":"string"},"anchor_index_end":{"type":"string"},"source_key_begin":{"type":"string"},"source_key_end":{"type":"string"}}}},"additionalProperties":false})"},
-            {"hero.runtime.execute",
-             "Run cuwacunu_exec with policy guards; dry_run defaults to true.",
-             R"({"type":"object","properties":{"config_path":{"type":"string"},"job_dir":{"type":"string"},"dry_run":{"type":"boolean"},"force_rebuild_cache":{"type":"boolean"},"confirm_execute":{"type":"boolean"},"timeout_seconds":{"type":"integer"},"wave_overlay":{"type":"object","properties":{"source_range":{"type":"string"},"anchor_index_begin":{"type":"string"},"anchor_index_end":{"type":"string"},"source_key_begin":{"type":"string"},"source_key_end":{"type":"string"}}},"runtime_handoff":{"type":"object","properties":{}},"marshal_expected_wave":{"type":"object","properties":{"target_component_family_id":{"type":"string"},"mode":{"type":"string"},"source_range":{"type":"string"},"source_order":{"type":"string"},"anchor_index_begin":{"type":"string"},"anchor_index_end":{"type":"string"},"source_key_begin":{"type":"string"},"source_key_end":{"type":"string"},"model_state_inputs":{"type":"object"}}}},"additionalProperties":false})"},
-            {"hero.runtime.dev_nuke",
-             "Developer reset for runtime-root contents with dry-run, idle "
-             "checks, and "
-             "optional backup snapshot.",
-             R"({"type":"object","properties":{"runtime_root":{"type":"string"},"dry_run":{"type":"boolean"},"backup":{"type":"boolean"},"confirm_dev_nuke":{"type":"boolean"}},"additionalProperties":false})"},
-            {"hero.runtime.list_jobs", "List Runtime Hero job directories.", R"({"type":"object","properties":{"root":{"type":"string"},"limit":{"type":"integer"},"include_artifacts":{"type":"boolean"}},"additionalProperties":false})"},
-            {"hero.runtime.get_job",
-             "Inspect one runtime job directory by job_id or job_dir.",
-             R"({"type":"object","properties":{"job_id":{"type":"string"},"job_dir":{"type":"string"},"include_text":{"type":"boolean"},"max_bytes":{"type":"integer"}},"additionalProperties":false})"},
-            {"hero.runtime.read_artifact",
-             "Read a bounded job artifact: manifest, state, report, or "
-             "explicit path.",
-             R"({"type":"object","properties":{"job_id":{"type":"string"},"job_dir":{"type":"string"},"artifact":{"type":"string"},"path":{"type":"string"},"max_bytes":{"type":"integer"}},"additionalProperties":false})"},
+constexpr tool_descriptor_t kTools[] = {
+    {"hero.runtime.status",
+     "Summarize Runtime Hero policy, executable, active wave, and job "
+     "root.",
+     R"({"type":"object","properties":{},"additionalProperties":false})"},
+    {"hero.runtime.schema", "List Runtime Hero policy keys and constraints.",
+     R"({"type":"object","properties":{},"additionalProperties":false})"},
+    {"hero.runtime.wave",
+     "Decode active wave intent from the configured runtime .config.",
+     R"({"type":"object","properties":{"config_path":{"type":"string"}},"additionalProperties":false})"},
+    {"hero.runtime.dry_run",
+     "Run cuwacunu_exec with --dry-run and return stdout plus job "
+     "artifacts.",
+     R"({"type":"object","properties":{"config_path":{"type":"string"},"job_dir":{"type":"string"},"force_rebuild_cache":{"type":"boolean"},"timeout_seconds":{"type":"integer"},"wave_overlay":{"type":"object","properties":{"source_range":{"type":"string"},"anchor_index_begin":{"type":"string"},"anchor_index_end":{"type":"string"},"source_key_begin":{"type":"string"},"source_key_end":{"type":"string"}}}},"additionalProperties":false})"},
+    {"hero.runtime.execute",
+     "Run cuwacunu_exec with policy guards; dry_run defaults to true.",
+     R"({"type":"object","properties":{"config_path":{"type":"string"},"job_dir":{"type":"string"},"dry_run":{"type":"boolean"},"force_rebuild_cache":{"type":"boolean"},"confirm_execute":{"type":"boolean"},"timeout_seconds":{"type":"integer"},"wave_overlay":{"type":"object","properties":{"source_range":{"type":"string"},"anchor_index_begin":{"type":"string"},"anchor_index_end":{"type":"string"},"source_key_begin":{"type":"string"},"source_key_end":{"type":"string"}}},"runtime_handoff":{"type":"object","properties":{}},"marshal_expected_wave":{"type":"object","properties":{"target_component_family_id":{"type":"string"},"mode":{"type":"string"},"source_range":{"type":"string"},"source_order":{"type":"string"},"anchor_index_begin":{"type":"string"},"anchor_index_end":{"type":"string"},"source_key_begin":{"type":"string"},"source_key_end":{"type":"string"},"model_state_inputs":{"type":"object"}}}},"additionalProperties":false})"},
+    {"hero.runtime.replay_from_job",
+     "Run kikijyeba.environment replay from an existing Runtime job "
+     "directory.",
+     R"({"type":"object","properties":{"job_id":{"type":"string"},"job_dir":{"type":"string"},"config_path":{"type":"string"},"dry_run":{"type":"boolean"},"base_reserve_node_id":{"type":"string"},"risky_node_ids":{"type":"string"},"experiment_id":{"type":"string"},"report_path":{"type":"string"},"initial_equity_base":{"type":"number"},"min_base_reserve_weight":{"type":"number"},"max_risky_weight":{"type":"number"},"max_turnover_l1":{"type":"number"},"max_steps":{"type":"integer"},"max_parallel_jobs":{"type":"integer"},"include_equal_weight":{"type":"boolean"},"include_current_weight":{"type":"boolean"},"include_base_reserve_policy":{"type":"boolean"},"include_spot_distributional_utility_policy":{"type":"boolean"},"timeout_seconds":{"type":"integer"}},"additionalProperties":false})"},
+    {"hero.runtime.dev_nuke",
+     "Developer reset for runtime-root contents with dry-run, idle "
+     "checks, and "
+     "optional backup snapshot.",
+     R"({"type":"object","properties":{"runtime_root":{"type":"string"},"dry_run":{"type":"boolean"},"backup":{"type":"boolean"},"confirm_dev_nuke":{"type":"boolean"}},"additionalProperties":false})"},
+    {"hero.runtime.list_jobs", "List Runtime Hero job directories.",
+     R"({"type":"object","properties":{"root":{"type":"string"},"limit":{"type":"integer"},"include_artifacts":{"type":"boolean"}},"additionalProperties":false})"},
+    {"hero.runtime.get_job",
+     "Inspect one runtime job directory by job_id or job_dir.",
+     R"({"type":"object","properties":{"job_id":{"type":"string"},"job_dir":{"type":"string"},"include_text":{"type":"boolean"},"max_bytes":{"type":"integer"}},"additionalProperties":false})"},
+    {"hero.runtime.read_artifact",
+     "Read a bounded job artifact: manifest, state, report, replay "
+     "indexes/report, or explicit path.",
+     R"({"type":"object","properties":{"job_id":{"type":"string"},"job_dir":{"type":"string"},"artifact":{"type":"string"},"path":{"type":"string"},"max_bytes":{"type":"integer"}},"additionalProperties":false})"},
 };
 
 [[nodiscard]] bool tool_is_read_only(std::string_view name) {
@@ -140,6 +144,24 @@ constexpr tool_descriptor_t
   const auto result =
       std::from_chars(value.data(), value.data() + value.size(), parsed);
   if (result.ec != std::errc{} || result.ptr != value.data() + value.size()) {
+    return false;
+  }
+  if (out) {
+    *out = parsed;
+  }
+  return true;
+}
+
+[[nodiscard]] bool parse_double(std::string_view raw, double *out) {
+  const std::string value = trim_ascii(raw);
+  if (value.empty()) {
+    return false;
+  }
+  char *end = nullptr;
+  errno = 0;
+  const double parsed = std::strtod(value.c_str(), &end);
+  if (errno != 0 || end == value.c_str() ||
+      trim_ascii(std::string_view(end)).size() != 0) {
     return false;
   }
   if (out) {
@@ -600,6 +622,28 @@ extract_json_string_object(const std::string &json,
   return cuwacunu::kikijyeba::marshal::marshal_digest_for_text(domain, text);
 }
 
+[[nodiscard]] std::string
+replay_report_digest_for_text(const std::string &text) {
+  std::uint64_t hash =
+      cuwacunu::wikimyei::assembly::assembly_detail::kFnvOffsetBasis;
+  cuwacunu::wikimyei::assembly::assembly_detail::mix_hash_string(
+      hash, "kikijyeba.lattice.exposure.v1");
+  cuwacunu::wikimyei::assembly::assembly_detail::mix_hash_string(
+      hash,
+      std::string("kikijyeba.environment.replay.report_digest.v1\n") + text);
+  return cuwacunu::wikimyei::assembly::assembly_detail::hash_hex(hash);
+}
+
+[[nodiscard]] std::string
+replay_report_digest_for_path_or_empty(const fs::path &path) {
+  std::string text;
+  std::string ignored;
+  if (!read_text_file(path, &text, &ignored)) {
+    return {};
+  }
+  return replay_report_digest_for_text(text);
+}
+
 [[nodiscard]] std::string read_text_file_limited(const fs::path &path,
                                                  std::size_t max_bytes,
                                                  bool *truncated) {
@@ -851,6 +895,35 @@ struct wave_info_t {
   }
   info.readable = true;
   info.values = parse_assignment_text(strip_dsl_comments(text), true);
+  const auto target_it = info.values.find("TARGET");
+  const bool mdn_wave =
+      target_it != info.values.end() &&
+      (target_it->second == "wikimyei.inference.expected_value.mdn" ||
+       target_it->second == "inference_mdn" ||
+       target_it->second == "inference_channel_mdn" ||
+       target_it->second == "mdn_expected_value_inference");
+  if (mdn_wave) {
+    const auto maybe_mdn_jkimyei =
+        read_ini_value(config_path, "JKIMYEI",
+                       "wikimyei_inference_expected_value_mdn_jkimyei_path");
+    if (maybe_mdn_jkimyei.has_value()) {
+      std::string training_text;
+      std::string training_error;
+      const auto training_path =
+          resolve_against(config_path, *maybe_mdn_jkimyei);
+      if (read_text_file(training_path, &training_text, &training_error)) {
+        const auto training_values =
+            parse_assignment_text(strip_dsl_comments(training_text), true);
+        for (const char *key :
+             {"INPUT_REPRESENTATION_CHECKPOINT", "INPUT_MDN_CHECKPOINT"}) {
+          const auto input_it = training_values.find(key);
+          if (input_it != training_values.end() && !input_it->second.empty()) {
+            info.values[key] = input_it->second;
+          }
+        }
+      }
+    }
+  }
   const auto maybe_protocol =
       read_ini_value(config_path, "KIKIJYEBA", "kikijyeba_protocol_dsl_path");
   if (maybe_protocol.has_value()) {
@@ -1923,6 +1996,123 @@ active_jobs_json(const std::vector<active_job_marker_t> &active_jobs) {
   return out.str();
 }
 
+[[nodiscard]] fs::path runtime_replay_artifact_dir(const fs::path &job_dir) {
+  return job_dir / "artifacts" / "kikijyeba.environment.replay.v1";
+}
+
+[[nodiscard]] fs::path
+runtime_replay_batch_index_path(const fs::path &job_dir) {
+  return runtime_replay_artifact_dir(job_dir) / "runtime_replay_batches.index";
+}
+
+[[nodiscard]] fs::path
+runtime_replay_experiment_index_path(const fs::path &job_dir) {
+  return runtime_replay_artifact_dir(job_dir) /
+         "runtime_replay_experiments.index";
+}
+
+[[nodiscard]] fs::path
+resolve_runtime_replay_artifact_path(const fs::path &raw_path,
+                                     const fs::path &index_dir) {
+  if (raw_path.empty()) {
+    return {};
+  }
+  return raw_path.is_absolute() ? normalize_path(raw_path)
+                                : normalize_path(index_dir / raw_path);
+}
+
+[[nodiscard]] bool path_contains_parent_reference(const fs::path &path) {
+  for (const auto &part : path) {
+    if (part == "..") {
+      return true;
+    }
+  }
+  return false;
+}
+
+struct replay_experiment_report_binding_t {
+  fs::path index_path{};
+  fs::path report_path{};
+  std::string declared_report_digest{};
+  bool index_present{false};
+  bool report_path_from_index{false};
+  bool report_path_rejected{false};
+};
+
+[[nodiscard]] fs::path
+latest_replay_experiment_report_default_path(const fs::path &job_dir) {
+  return runtime_replay_artifact_dir(job_dir) /
+         "runtime_replay_experiment.report";
+}
+
+[[nodiscard]] replay_experiment_report_binding_t
+latest_replay_experiment_report_binding(const fs::path &job_dir) {
+  replay_experiment_report_binding_t binding{};
+  binding.index_path = runtime_replay_experiment_index_path(job_dir);
+  const auto index = parse_kv_file(binding.index_path);
+  binding.index_present = !index.empty();
+  int entry_count = 0;
+  if (parse_int(index.count("entry_count") == 0 ? std::string{}
+                                                : index.at("entry_count"),
+                &entry_count) &&
+      entry_count > 0) {
+    const auto prefix =
+        std::string("entry_") + std::to_string(entry_count - 1) + "_";
+    const auto digest_found = index.find(prefix + "report_digest");
+    if (digest_found != index.end()) {
+      binding.declared_report_digest = trim_ascii(digest_found->second);
+    }
+    const auto found = index.find(prefix + "report_path");
+    if (found != index.end() && !trim_ascii(found->second).empty()) {
+      const fs::path raw_report_path(trim_ascii(found->second));
+      if (!path_contains_parent_reference(raw_report_path)) {
+        binding.report_path = resolve_runtime_replay_artifact_path(
+            raw_report_path, binding.index_path.parent_path());
+        binding.report_path_from_index = true;
+        return binding;
+      }
+      binding.report_path_rejected = true;
+      return binding;
+    }
+  }
+  binding.report_path = latest_replay_experiment_report_default_path(job_dir);
+  return binding;
+}
+
+[[nodiscard]] fs::path
+latest_replay_experiment_report_path(const fs::path &job_dir) {
+  return latest_replay_experiment_report_binding(job_dir).report_path;
+}
+
+[[nodiscard]] std::string replay_report_integrity_json(
+    const replay_experiment_report_binding_t &binding) {
+  const bool report_exists =
+      !binding.report_path.empty() && fs::exists(binding.report_path);
+  const bool is_file =
+      report_exists && fs::is_regular_file(binding.report_path);
+  const std::string computed_digest =
+      is_file ? replay_report_digest_for_path_or_empty(binding.report_path)
+              : std::string{};
+  const bool digest_bound = !binding.declared_report_digest.empty();
+  const bool digest_match = digest_bound && !computed_digest.empty() &&
+                            binding.declared_report_digest == computed_digest;
+  std::ostringstream out;
+  out << "{\"index_path\":" << json_quote(binding.index_path.string())
+      << ",\"report_path\":" << json_quote(binding.report_path.string())
+      << ",\"index_present\":" << bool_json(binding.index_present)
+      << ",\"report_path_from_index\":"
+      << bool_json(binding.report_path_from_index)
+      << ",\"report_path_rejected\":" << bool_json(binding.report_path_rejected)
+      << ",\"report_exists\":" << bool_json(report_exists)
+      << ",\"is_regular_file\":" << bool_json(is_file)
+      << ",\"report_digest_bound\":" << bool_json(digest_bound)
+      << ",\"declared_report_digest\":"
+      << json_quote(binding.declared_report_digest)
+      << ",\"computed_report_digest\":" << json_quote(computed_digest)
+      << ",\"report_digest_match\":" << bool_json(digest_match) << "}";
+  return out.str();
+}
+
 [[nodiscard]] std::string job_artifacts_json(const fs::path &job_dir,
                                              const std::string &report_path,
                                              bool include_text,
@@ -1945,6 +2135,8 @@ active_jobs_json(const std::vector<active_job_marker_t> &active_jobs) {
       effective_report = representation;
     }
   }
+  const auto replay_report_binding =
+      latest_replay_experiment_report_binding(job_dir);
   std::ostringstream out;
   out << "{\"job_dir\":" << json_quote(job_dir.string()) << ",\"manifest\":"
       << artifact_summary_json(job_dir / "job.manifest", include_text,
@@ -1957,7 +2149,109 @@ active_jobs_json(const std::vector<active_job_marker_t> &active_jobs) {
   } else {
     out << artifact_summary_json(effective_report, include_text, max_bytes);
   }
-  out << "}";
+  out << ",\"replay_batch_index\":"
+      << artifact_summary_json(runtime_replay_batch_index_path(job_dir),
+                               include_text, max_bytes)
+      << ",\"replay_experiment_index\":"
+      << artifact_summary_json(runtime_replay_experiment_index_path(job_dir),
+                               include_text, max_bytes)
+      << ",\"replay_experiment_report\":"
+      << artifact_summary_json(replay_report_binding.report_path, include_text,
+                               max_bytes)
+      << ",\"replay_experiment_report_integrity\":"
+      << replay_report_integrity_json(replay_report_binding) << "}";
+  return out.str();
+}
+
+[[nodiscard]] std::string
+runtime_terminal_evidence_json(const fs::path &job_dir) {
+  const fs::path manifest_path = job_dir / "job.manifest";
+  const fs::path state_path = job_dir / "job.state";
+  const fs::path result_fact_path = job_dir / "runtime.result.fact";
+  const fs::path checkpoint_io_path = job_dir / "runtime.checkpoint_io.fact";
+  const auto manifest = parse_kv_file(manifest_path);
+  const auto state = parse_kv_file(state_path);
+  const auto result_fact = parse_kv_file(result_fact_path);
+  const auto checkpoint_io = parse_kv_file(checkpoint_io_path);
+  const auto get = [](const auto &fields,
+                      const std::string &key) -> std::string {
+    const auto it = fields.find(key);
+    return it == fields.end() ? std::string{} : it->second;
+  };
+  const auto first = [](std::initializer_list<std::string> values) {
+    for (const auto &value : values) {
+      if (!trim_ascii(value).empty()) {
+        return value;
+      }
+    }
+    return std::string{};
+  };
+  const auto truthy = [](const std::string &value) {
+    bool parsed = false;
+    return parse_bool(value, &parsed) && parsed;
+  };
+  const std::string job_id =
+      first({get(result_fact, "job_id"), get(state, "job_id"),
+             get(manifest, "job_id")});
+  const std::string status =
+      first({get(result_fact, "status"), get(state, "status")});
+  const std::string handoff_id = first({get(result_fact, "runtime_handoff_id"),
+                                        get(manifest, "runtime_handoff_id")});
+  const std::string handoff_digest =
+      first({get(result_fact, "runtime_handoff_digest"),
+             get(manifest, "runtime_handoff_digest")});
+  const std::string target_driver_run_id =
+      first({get(result_fact, "marshal_target_driver_run_id"),
+             get(manifest, "marshal_target_driver_run_id")});
+  const bool checkpoint_io_required =
+      truthy(first({get(checkpoint_io, "checkpoint_written"),
+                    get(result_fact, "checkpoint_written"),
+                    get(state, "checkpoint_written")})) ||
+      truthy(first({get(checkpoint_io, "representation_checkpoint_loaded"),
+                    get(result_fact, "representation_checkpoint_loaded")})) ||
+      truthy(first({get(checkpoint_io, "mdn_checkpoint_loaded"),
+                    get(result_fact, "mdn_checkpoint_loaded")})) ||
+      !first({get(checkpoint_io, "checkpoint_path"),
+              get(result_fact, "checkpoint_path"),
+              get(state, "checkpoint_path"),
+              get(manifest, "input_representation_checkpoint_path"),
+              get(manifest, "input_mdn_checkpoint_path")})
+           .empty();
+  const bool terminal_status = status == "completed" || status == "failed" ||
+                               status == "skipped" || status == "dry_run";
+  const bool observed = !job_id.empty() && terminal_status &&
+                        fs::is_regular_file(manifest_path) &&
+                        fs::is_regular_file(result_fact_path);
+
+  std::ostringstream out;
+  out << "{\"observed\":" << bool_json(observed)
+      << ",\"job_id\":" << json_quote(job_id)
+      << ",\"job_dir\":" << json_quote(job_dir.string())
+      << ",\"terminal_status\":" << json_quote(status)
+      << ",\"job_manifest_path\":" << json_quote(manifest_path.string())
+      << ",\"job_manifest_digest\":"
+      << json_quote(file_digest_or_empty(
+             manifest_path, "kikijyeba.marshal.runtime_job_manifest.v1"))
+      << ",\"job_state_path\":" << json_quote(state_path.string())
+      << ",\"job_state_digest\":"
+      << json_quote(file_digest_or_empty(
+             state_path, "kikijyeba.marshal.runtime_job_state.v1"))
+      << ",\"runtime_result_fact_path\":"
+      << json_quote(result_fact_path.string())
+      << ",\"runtime_result_fact_digest\":"
+      << json_quote(file_digest_or_empty(
+             result_fact_path, "kikijyeba.marshal.runtime_terminal_fact.v1"))
+      << ",\"checkpoint_io_required\":" << bool_json(checkpoint_io_required)
+      << ",\"runtime_checkpoint_io_fact_path\":"
+      << json_quote(checkpoint_io_path.string())
+      << ",\"runtime_checkpoint_io_fact_digest\":"
+      << json_quote(file_digest_or_empty(
+             checkpoint_io_path,
+             "kikijyeba.marshal.runtime_checkpoint_io_fact.v1"))
+      << ",\"runtime_handoff_id\":" << json_quote(handoff_id)
+      << ",\"runtime_handoff_digest\":" << json_quote(handoff_digest)
+      << ",\"target_driver_run_id\":" << json_quote(target_driver_run_id)
+      << "}";
   return out.str();
 }
 
@@ -1995,10 +2289,16 @@ active_jobs_json(const std::vector<active_job_marker_t> &active_jobs) {
     const auto found_report = stdout_kv.find("report_path");
     if (found_report != stdout_kv.end()) {
       report_path = found_report->second;
+    } else if (const auto found_replay_report =
+                   stdout_kv.find("replay_report_path");
+               found_replay_report != stdout_kv.end()) {
+      report_path = found_replay_report->second;
     }
     out << ",\"artifacts\":"
         << job_artifacts_json(artifact_job_dir, report_path, include_text,
-                              max_bytes);
+                              max_bytes)
+        << ",\"terminal_evidence\":"
+        << runtime_terminal_evidence_json(artifact_job_dir);
   }
   out << "}";
   return out.str();
@@ -2026,6 +2326,20 @@ active_jobs_json(const std::vector<active_job_marker_t> &active_jobs) {
   if (extract_json_raw_field(args, key, nullptr) &&
       !extract_json_int_field(args, key, &value)) {
     *err = std::string(key) + " must be integer";
+    return false;
+  }
+  *out = value;
+  return true;
+}
+
+[[nodiscard]] bool parse_optional_double_arg(const std::string &args,
+                                             std::string_view key,
+                                             double default_value, double *out,
+                                             std::string *err) {
+  double value = default_value;
+  std::string raw;
+  if (extract_json_raw_field(args, key, &raw) && !parse_double(raw, &value)) {
+    *err = std::string(key) + " must be number";
     return false;
   }
   *out = value;
@@ -2738,6 +3052,232 @@ struct runtime_handoff_binding_t {
   return execute_runtime(args, ctx, false, out, err);
 }
 
+[[nodiscard]] bool append_optional_double_cli_arg(
+    const std::string &args, std::string_view key, std::string_view flag,
+    std::vector<std::string> *argv, std::string *err) {
+  std::string raw;
+  if (!extract_json_raw_field(args, key, &raw)) {
+    return true;
+  }
+  double ignored = 0.0;
+  if (!parse_double(raw, &ignored)) {
+    *err = std::string(key) + " must be number";
+    return false;
+  }
+  argv->push_back(std::string(flag));
+  argv->push_back(trim_ascii(raw));
+  return true;
+}
+
+[[nodiscard]] bool append_optional_int_cli_arg(const std::string &args,
+                                               std::string_view key,
+                                               std::string_view flag,
+                                               std::vector<std::string> *argv,
+                                               std::string *err) {
+  int value = 0;
+  if (!extract_json_raw_field(args, key, nullptr)) {
+    return true;
+  }
+  if (!extract_json_int_field(args, key, &value)) {
+    *err = std::string(key) + " must be integer";
+    return false;
+  }
+  argv->push_back(std::string(flag));
+  argv->push_back(std::to_string(value));
+  return true;
+}
+
+[[nodiscard]] std::string
+replay_dry_run_json(const std::vector<std::string> &argv,
+                    const fs::path &job_dir, const fs::path &batch_index_path,
+                    const fs::path &report_path) {
+  std::ostringstream json;
+  json << "{\"ok\":true,\"dry_run\":true,\"job_dir\":"
+       << json_quote(job_dir.string()) << ",\"replay_batch_index_path\":"
+       << json_quote(batch_index_path.string()) << ",\"report_path\":";
+  if (report_path.empty()) {
+    json << "null";
+  } else {
+    json << json_quote(report_path.string());
+  }
+  json << ",\"argv\":[";
+  for (std::size_t i = 0; i < argv.size(); ++i) {
+    if (i != 0) {
+      json << ",";
+    }
+    json << json_quote(argv[i]);
+  }
+  json << "]}";
+  return json.str();
+}
+
+[[nodiscard]] bool handle_replay_from_job(const std::string &args,
+                                          runtime_context_t *ctx,
+                                          std::string *out, std::string *err) {
+  fs::path job_dir;
+  if (!resolve_job_dir_from_args(args, ctx->policy, &job_dir, err)) {
+    return false;
+  }
+  const fs::path manifest_path = job_dir / "job.manifest";
+  const fs::path state_path = job_dir / "job.state";
+  if (!fs::exists(manifest_path) || !fs::exists(state_path)) {
+    *err = "E_RUNTIME_REPLAY_JOB_INVALID: job.manifest and job.state are "
+           "required";
+    return false;
+  }
+  const auto state = parse_kv_file(state_path);
+  const auto status_found = state.find("status");
+  const std::string status =
+      status_found == state.end() ? std::string{} : status_found->second;
+  if (lowercase_ascii(status) != "completed") {
+    *err = "E_RUNTIME_REPLAY_JOB_NOT_COMPLETED: replay requires a completed "
+           "Runtime job";
+    return false;
+  }
+  const fs::path batch_index_path = runtime_replay_batch_index_path(job_dir);
+  if (!fs::exists(batch_index_path)) {
+    *err = "E_RUNTIME_REPLAY_ARTIFACTS_MISSING: missing " +
+           batch_index_path.string();
+    return false;
+  }
+
+  std::string config_arg;
+  std::string base_reserve_node_id;
+  std::string risky_node_ids;
+  std::string experiment_id;
+  std::string report_path_arg;
+  (void)extract_json_string_field(args, "config_path", &config_arg);
+  (void)extract_json_string_field(args, "base_reserve_node_id",
+                                  &base_reserve_node_id);
+  (void)extract_json_string_field(args, "risky_node_ids", &risky_node_ids);
+  (void)extract_json_string_field(args, "experiment_id", &experiment_id);
+  (void)extract_json_string_field(args, "report_path", &report_path_arg);
+
+  fs::path report_path;
+  if (!trim_ascii(report_path_arg).empty()) {
+    report_path = normalize_path(fs::path(report_path_arg));
+    if (!explicit_job_dir_allowed(ctx->policy, report_path) &&
+        !path_within(runtime_root(ctx->policy), report_path)) {
+      *err = "E_RUNTIME_REPLAY_REPORT_DENIED: report_path is outside Runtime "
+             "Hero roots: " +
+             report_path.string();
+      return false;
+    }
+  }
+
+  bool dry_run = policy_bool_or(ctx->policy, "default_dry_run", true);
+  if (!parse_optional_bool_arg(args, "dry_run", dry_run, &dry_run, err)) {
+    return false;
+  }
+
+  bool include_equal_weight = false;
+  if (!parse_optional_bool_arg(args, "include_equal_weight", false,
+                               &include_equal_weight, err)) {
+    return false;
+  }
+  bool include_current_weight = false;
+  if (!parse_optional_bool_arg(args, "include_current_weight", false,
+                               &include_current_weight, err)) {
+    return false;
+  }
+  bool include_base_reserve_policy = true;
+  if (!parse_optional_bool_arg(args, "include_base_reserve_policy", true,
+                               &include_base_reserve_policy, err)) {
+    return false;
+  }
+  bool include_sdu_policy = true;
+  if (!parse_optional_bool_arg(args,
+                               "include_spot_distributional_utility_policy",
+                               true, &include_sdu_policy, err)) {
+    return false;
+  }
+
+  int timeout_seconds = policy_int_or(ctx->policy, "max_runtime_seconds", 600);
+  if (!parse_optional_int_arg(args, "timeout_seconds", timeout_seconds,
+                              &timeout_seconds, err)) {
+    return false;
+  }
+  if (timeout_seconds < 1) {
+    *err = "timeout_seconds must be >= 1";
+    return false;
+  }
+  int max_capture = policy_int_or(ctx->policy, "max_capture_bytes", 65536);
+  if (max_capture < 1024) {
+    max_capture = 1024;
+  }
+
+  const fs::path exec_path = policy_path(ctx->policy, "runtime_exec_path");
+  if (!executable_file(exec_path)) {
+    *err = "E_RUNTIME_EXEC_MISSING: runtime_exec_path is not executable: " +
+           exec_path.string();
+    return false;
+  }
+
+  std::vector<std::string> argv{exec_path.string()};
+  if (!trim_ascii(config_arg).empty()) {
+    argv.push_back("--config");
+    argv.push_back(effective_config_path(*ctx, config_arg).string());
+  }
+  argv.push_back("--replay-from-job-dir");
+  argv.push_back(job_dir.string());
+  if (!trim_ascii(base_reserve_node_id).empty()) {
+    argv.push_back("--replay-base-reserve-node");
+    argv.push_back(trim_ascii(base_reserve_node_id));
+  }
+  if (!trim_ascii(risky_node_ids).empty()) {
+    argv.push_back("--replay-risky-nodes");
+    argv.push_back(trim_ascii(risky_node_ids));
+  }
+  if (!trim_ascii(experiment_id).empty()) {
+    argv.push_back("--replay-experiment-id");
+    argv.push_back(trim_ascii(experiment_id));
+  }
+  if (!report_path.empty()) {
+    argv.push_back("--replay-report-path");
+    argv.push_back(report_path.string());
+  }
+  if (!append_optional_double_cli_arg(args, "initial_equity_base",
+                                      "--replay-initial-equity-base", &argv,
+                                      err) ||
+      !append_optional_double_cli_arg(args, "min_base_reserve_weight",
+                                      "--replay-min-base-reserve-weight", &argv,
+                                      err) ||
+      !append_optional_double_cli_arg(
+          args, "max_risky_weight", "--replay-max-risky-weight", &argv, err) ||
+      !append_optional_double_cli_arg(args, "max_turnover_l1",
+                                      "--replay-max-turnover-l1", &argv, err) ||
+      !append_optional_int_cli_arg(args, "max_steps", "--replay-max-steps",
+                                   &argv, err) ||
+      !append_optional_int_cli_arg(args, "max_parallel_jobs",
+                                   "--replay-max-parallel-jobs", &argv, err)) {
+    return false;
+  }
+  if (include_equal_weight) {
+    argv.push_back("--replay-include-equal-weight");
+  }
+  if (include_current_weight) {
+    argv.push_back("--replay-include-current-weight");
+  }
+  if (!include_base_reserve_policy) {
+    argv.push_back("--replay-no-base-reserve-policy");
+  }
+  if (!include_sdu_policy) {
+    argv.push_back("--replay-no-sdu-policy");
+  }
+
+  if (dry_run) {
+    *out = replay_dry_run_json(argv, job_dir, batch_index_path, report_path);
+    return true;
+  }
+
+  process_result_t result =
+      run_process(argv, timeout_seconds, static_cast<std::size_t>(max_capture));
+  const auto stdout_kv = parse_process_stdout_kv(result.stdout_text);
+  *out = process_result_json(argv, result, job_dir, stdout_kv, false,
+                             static_cast<std::size_t>(max_capture));
+  return true;
+}
+
 [[nodiscard]] bool handle_dev_nuke(const std::string &args,
                                    runtime_context_t *ctx, std::string *out,
                                    std::string *err) {
@@ -3013,6 +3553,7 @@ struct runtime_handoff_binding_t {
   std::string explicit_path_arg;
   (void)extract_json_string_field(args, "path", &explicit_path_arg);
   fs::path path;
+  std::optional<replay_experiment_report_binding_t> replay_report_binding;
   if (!trim_ascii(explicit_path_arg).empty()) {
     path = normalize_path(explicit_path_arg);
     if (!explicit_job_dir_allowed(ctx->policy, path) &&
@@ -3049,6 +3590,16 @@ struct runtime_handoff_binding_t {
       if (!fs::exists(path)) {
         path = job_dir / "representation.report";
       }
+    } else if (artifact == "replay_batch_index" ||
+               artifact == "runtime_replay_batches") {
+      path = runtime_replay_batch_index_path(job_dir);
+    } else if (artifact == "replay_experiment_index" ||
+               artifact == "runtime_replay_experiments") {
+      path = runtime_replay_experiment_index_path(job_dir);
+    } else if (artifact == "replay_experiment_report" ||
+               artifact == "replay_report") {
+      replay_report_binding = latest_replay_experiment_report_binding(job_dir);
+      path = replay_report_binding->report_path;
     } else {
       *err = "unknown artifact: " + artifact;
       return false;
@@ -3066,7 +3617,12 @@ struct runtime_handoff_binding_t {
        << ",\"exists\":" << bool_json(fs::exists(path))
        << ",\"truncated\":" << bool_json(truncated)
        << ",\"text\":" << json_quote(text)
-       << ",\"fields\":" << kv_map_to_json(parse_kv_file(path)) << "}";
+       << ",\"fields\":" << kv_map_to_json(parse_kv_file(path));
+  if (replay_report_binding.has_value()) {
+    json << ",\"replay_report_integrity\":"
+         << replay_report_integrity_json(*replay_report_binding);
+  }
+  json << "}";
   *out = json.str();
   return true;
 }
@@ -3089,6 +3645,9 @@ using handler_fn = bool (*)(const std::string &, runtime_context_t *,
   }
   if (name == "hero.runtime.execute") {
     return handle_execute;
+  }
+  if (name == "hero.runtime.replay_from_job") {
+    return handle_replay_from_job;
   }
   if (name == "hero.runtime.dev_nuke") {
     return handle_dev_nuke;

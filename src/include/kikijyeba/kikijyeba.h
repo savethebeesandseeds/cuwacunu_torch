@@ -21,7 +21,7 @@
 #include "kikijyeba/runtime/job_runner.h"
 #include "kikijyeba/runtime/job_state.h"
 #include "kikijyeba/runtime/wave_plan.h"
-#include "kikijyeba/settings/wave.h"
+#include "kikijyeba/runtime/wave_settings.h"
 #include "kikijyeba/topology/dock_binding.h"
 #include "kikijyeba/topology/graph/graph.h"
 #include "kikijyeba/topology/node_value_chain.h"

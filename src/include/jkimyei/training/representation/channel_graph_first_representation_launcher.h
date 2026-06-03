@@ -20,7 +20,7 @@
 #include "kikijyeba/lattice/runtime_report/component_runtime_lls.h"
 #include "kikijyeba/protocol/component_stream.h"
 #include "kikijyeba/protocol/pipeline_builder.h"
-#include "kikijyeba/settings/wave.h"
+#include "kikijyeba/runtime/wave_settings.h"
 #include "kikijyeba/topology/dock_binding.h"
 #include "wikimyei/assembly.h"
 #include "wikimyei/representation/encoding/vicreg/channel_node_stream_adapter.h"

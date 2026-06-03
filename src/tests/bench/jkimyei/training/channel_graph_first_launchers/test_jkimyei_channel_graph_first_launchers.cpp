@@ -17,6 +17,10 @@ namespace representation_launcher = cuwacunu::jkimyei::training::representation;
 namespace runtime_report = cuwacunu::kikijyeba::lattice::runtime_report;
 namespace types = cuwacunu::ujcamei::source::registry::types;
 namespace mdn = cuwacunu::wikimyei::inference::expected_value::mdn;
+namespace mdn_stream =
+    cuwacunu::wikimyei::inference::expected_value::mdn::stream;
+namespace vicreg_stream =
+    cuwacunu::wikimyei::representation::encoding::vicreg::stream;
 
 namespace {
 
@@ -378,6 +382,16 @@ fixture_paths_t make_config_fixture(const std::string &label,
           "wikimyei.expression.nodelift.srl.dsl.bnf\n"
           "wikimyei_expression_nodelift_srl_dsl_path = "
           "/cuwacunu/src/config/wikimyei.expression.nodelift.srl.dsl\n"
+          "wikimyei_observer_belief_dsl_bnf_path = "
+          "/cuwacunu/src/config/grammar/wikimyei.observer.belief.dsl.bnf\n"
+          "wikimyei_observer_belief_dsl_path = "
+          "/cuwacunu/src/config/wikimyei.observer.belief.dsl\n"
+          "wikimyei_policy_portfolio_spot_distributional_utility_dsl_bnf_path "
+          "= /cuwacunu/src/config/grammar/"
+          "wikimyei.policy.portfolio.spot_distributional_utility.dsl.bnf\n"
+          "wikimyei_policy_portfolio_spot_distributional_utility_dsl_path = "
+          "/cuwacunu/src/config/"
+          "wikimyei.policy.portfolio.spot_distributional_utility.dsl\n"
           "wikimyei_representation_vicreg_dsl_bnf_path = "
           "/cuwacunu/src/config/grammar/"
           "wikimyei.representation.vicreg.dsl.bnf\n"
@@ -1376,8 +1390,28 @@ void test_channel_mdn_run_mode_loads_checkpoints_without_training() {
       eval_options{};
   eval_options.write_report = true;
   eval_options.report_path = eval_fixture.report;
+  using key_t = Kline::key_type_t;
+  int64_t observed_inference_batches = 0;
+  bool observed_future_keys = false;
   inference_launcher::channel_graph_first_inference_launcher_t<Kline>
-      eval_launcher(std::move(eval_pipe), eval_options);
+      eval_launcher(
+          std::move(eval_pipe), eval_options,
+          [&](const mdn::MdnOut &out,
+              const mdn_stream::channel_mdn_input_batch_t<key_t> &batch,
+              const vicreg_stream::channel_representation_batch_t<key_t>
+                  &representation_batch,
+              int64_t wave_pulse_index) {
+            ++observed_inference_batches;
+            check(out.log_pi.defined() && out.log_pi.dim() == 5,
+                  "MDN run batch observer receives distribution output");
+            check(batch.anchor_keys.defined() && batch.anchor_keys.numel() > 0,
+                  "MDN run batch observer receives channel batch identity");
+            check(representation_batch.future_keys.defined(),
+                  "MDN run batch observer receives representation future keys");
+            check(wave_pulse_index > 0,
+                  "MDN run batch observer receives wave pulse index");
+            observed_future_keys = true;
+          });
   const auto eval_report = eval_launcher.run();
   check(eval_report.target_action == "run", "MDN run action");
   check(eval_report.representation_checkpoint_loaded,
@@ -1390,6 +1424,10 @@ void test_channel_mdn_run_mode_loads_checkpoints_without_training() {
   check(eval_report.total_valid_target_count > 0, "MDN run valid targets");
   check(std::isfinite(eval_report.mean_loss), "MDN run mean loss finite");
   check(eval_report.nonfinite_output_count == 0, "MDN run finite outputs");
+  check(observed_inference_batches > 0,
+        "MDN run invoked inference batch observer");
+  check(observed_future_keys,
+        "MDN run observer can see future realization keys for replay");
   const auto report_text = read_text(eval_fixture.report);
   check(report_text.find("target_action=run") != std::string::npos,
         "MDN run report action");

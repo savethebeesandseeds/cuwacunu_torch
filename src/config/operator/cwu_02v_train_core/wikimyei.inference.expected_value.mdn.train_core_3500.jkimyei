@@ -1,0 +1,25 @@
+/*
+  Durable operator train-core policy for cwu_02v MDN recovery.
+
+  Fill INPUT_REPRESENTATION_CHECKPOINT with the concrete proof-clean
+  representation checkpoint before executing this profile through Marshal.
+*/
+TRAINING {
+  VERSION = wikimyei.inference.expected_value.mdn.jkimyei.v1;
+  TRAINING_ID = real_channel_mdn_train_core_v1_operator_3500;
+  TASK = mdn_expected_value_inference;
+  COMPONENT_ASSEMBLY_ID = mdn_v1;
+  OPTIMIZER = adam;
+  LEARNING_RATE = 0.001;
+  MAX_STEPS = 3500;
+  BATCH_SIZE = 64;
+  GRAD_CLIP_NORM = 5.0;
+  CHECKPOINT_EVERY = 50;
+  REPORT_EVERY = 10;
+  VALIDATION_EVERY = 0;
+  SEED = 31;
+  FREEZE_REPRESENTATION = true;
+  INPUT_REPRESENTATION_CHECKPOINT = /cuwacunu/.runtime/cuwacunu_exec/components/wikimyei.representation.encoding.mtf_jepa_mae_vicreg/spawns/yde_a7dbda07135734cd/jobs/train/train_core_mtf_jepa_mae_vicreg.train.channel_representation_mtf_jepa_mae_vicreg.attempt_000003/channel_representation.report.mtf_jepa_mae_vicreg.pt;
+  INPUT_MDN_CHECKPOINT = ;
+  ALLOW_UNTRAINED_REPRESENTATION = false;
+};

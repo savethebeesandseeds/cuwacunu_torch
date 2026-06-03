@@ -376,9 +376,25 @@ json_has_string_field_value(const std::string &json, const std::string &key,
   const bool target_matches = json_has_string_field_value(
       wave_json, "target_component_family_id", request.wave_target);
   if (!target_matches ||
-      !json_has_string_field_value(wave_json, "mode", request.wave_mode) ||
-      !json_has_string_field_value(wave_json, "source_range",
-                                   request.source_range)) {
+      !json_has_string_field_value(wave_json, "mode", request.wave_mode)) {
+    return false;
+  }
+  const bool exact_source_range = json_has_string_field_value(
+      wave_json, "source_range", request.source_range);
+  const bool overlay_anchor_range =
+      request.source_range == "anchor_index" &&
+      request.anchor_index_begin.has_value() &&
+      request.anchor_index_end.has_value() &&
+      *request.anchor_index_begin < *request.anchor_index_end;
+  const bool overlay_source_key_range =
+      request.source_range == "source_key" &&
+      request.source_key_begin.has_value() &&
+      request.source_key_end.has_value() &&
+      *request.source_key_begin < *request.source_key_end;
+  const bool reusable_all_profile =
+      json_has_string_field_value(wave_json, "source_range", "all") &&
+      (overlay_anchor_range || overlay_source_key_range);
+  if (!exact_source_range && !reusable_all_profile) {
     return false;
   }
   if (!request.source_order.empty() &&
@@ -386,23 +402,23 @@ json_has_string_field_value(const std::string &json, const std::string &key,
                                    request.source_order)) {
     return false;
   }
-  if (request.anchor_index_begin.has_value() &&
+  if (!reusable_all_profile && request.anchor_index_begin.has_value() &&
       !json_has_string_field_value(
           wave_json, "anchor_index_begin",
           std::to_string(*request.anchor_index_begin))) {
     return false;
   }
-  if (request.anchor_index_end.has_value() &&
+  if (!reusable_all_profile && request.anchor_index_end.has_value() &&
       !json_has_string_field_value(wave_json, "anchor_index_end",
                                    std::to_string(*request.anchor_index_end))) {
     return false;
   }
-  if (request.source_key_begin.has_value() &&
+  if (!reusable_all_profile && request.source_key_begin.has_value() &&
       !json_has_string_field_value(wave_json, "source_key_begin",
                                    std::to_string(*request.source_key_begin))) {
     return false;
   }
-  if (request.source_key_end.has_value() &&
+  if (!reusable_all_profile && request.source_key_end.has_value() &&
       !json_has_string_field_value(wave_json, "source_key_end",
                                    std::to_string(*request.source_key_end))) {
     return false;
@@ -581,6 +597,31 @@ runtime_hero_execute_args_json(const marshal_runtime_dry_run_request_t &request,
   if (timeout_seconds > 0) {
     out << ",\"timeout_seconds\":" << timeout_seconds;
   }
+  out << ",\"wave_overlay\":{";
+  bool first_overlay = true;
+  detail::append_json_string_field(out, "source_range", request.source_range,
+                                   &first_overlay);
+  if (request.anchor_index_begin.has_value()) {
+    detail::append_json_string_field(
+        out, "anchor_index_begin", std::to_string(*request.anchor_index_begin),
+        &first_overlay);
+  }
+  if (request.anchor_index_end.has_value()) {
+    detail::append_json_string_field(out, "anchor_index_end",
+                                     std::to_string(*request.anchor_index_end),
+                                     &first_overlay);
+  }
+  if (request.source_key_begin.has_value()) {
+    detail::append_json_string_field(out, "source_key_begin",
+                                     std::to_string(*request.source_key_begin),
+                                     &first_overlay);
+  }
+  if (request.source_key_end.has_value()) {
+    detail::append_json_string_field(out, "source_key_end",
+                                     std::to_string(*request.source_key_end),
+                                     &first_overlay);
+  }
+  out << "}";
   out << ",\"runtime_handoff\":"
       << runtime_handoff_object_json(request, dry_run, confirm_execute,
                                      policy_path);

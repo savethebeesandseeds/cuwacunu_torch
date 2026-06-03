@@ -11,23 +11,24 @@
 #include <vector>
 
 #include "jkimyei/api/training_spec.h"
+#include "kikijyeba/environment/replay/spec.h"
 #include "kikijyeba/protocol/protocol_variant.h"
 #include "kikijyeba/protocol/source_dock.h"
-#include "kikijyeba/settings/wave.h"
+#include "kikijyeba/runtime/wave_settings.h"
 #include "kikijyeba/topology/dock_binding.h"
 #include "kikijyeba/topology/node_value_chain.h"
 #include "kikijyeba/topology/wikimyei_registry.h"
 #include "piaabo/parse/simple_kv_block.h"
 #include "ujcamei/source/contract/runtime/decode.h"
 #include "ujcamei/source/registry/types/kline_feature_registry.h"
-#include "wikimyei/engine/portfolio/spot_distributional_utility/assembly.h"
-#include "wikimyei/engine/portfolio/spot_distributional_utility/spec.h"
 #include "wikimyei/expression/nodelift/srl/assembly.h"
 #include "wikimyei/expression/nodelift/srl/nodelift_spec.h"
 #include "wikimyei/inference/expected_value/mdn/assembly.h"
 #include "wikimyei/inference/expected_value/mdn/mdn_spec.h"
 #include "wikimyei/observer/belief/assembly.h"
 #include "wikimyei/observer/belief/spec.h"
+#include "wikimyei/policy/portfolio/spot_distributional_utility/assembly.h"
+#include "wikimyei/policy/portfolio/spot_distributional_utility/spec.h"
 #include "wikimyei/representation/encoding/mtf_jepa_mae_vicreg/assembly.h"
 #include "wikimyei/representation/encoding/mtf_jepa_mae_vicreg/mtf_jepa_mae_vicreg_spec.h"
 #include "wikimyei/representation/encoding/vicreg/assembly.h"
@@ -80,8 +81,8 @@ struct channel_graph_first_protocol_contract_t {
   std::string wikimyei_observer_belief_dsl_bnf_path{};
   std::string wikimyei_observer_belief_dsl_path{};
   std::string
-      wikimyei_engine_portfolio_spot_distributional_utility_dsl_bnf_path{};
-  std::string wikimyei_engine_portfolio_spot_distributional_utility_dsl_path{};
+      wikimyei_policy_portfolio_spot_distributional_utility_dsl_bnf_path{};
+  std::string wikimyei_policy_portfolio_spot_distributional_utility_dsl_path{};
   std::string wikimyei_representation_vicreg_jkimyei_bnf_path{};
   std::string wikimyei_representation_vicreg_jkimyei_path{};
   std::string wikimyei_representation_mtf_jepa_mae_vicreg_jkimyei_bnf_path{};
@@ -92,9 +93,13 @@ struct channel_graph_first_protocol_contract_t {
   std::string kikijyeba_settings_wave_dsl_path{};
   std::string kikijyeba_protocol_dsl_bnf_path{};
   std::string kikijyeba_protocol_dsl_path{};
+  std::string kikijyeba_environment_replay_dsl_bnf_path{};
+  std::string kikijyeba_environment_replay_dsl_path{};
 
   cuwacunu::kikijyeba::protocol::protocol_variant_t protocol_variant{};
   cuwacunu::kikijyeba::settings::wave_settings_t wave_settings{};
+  cuwacunu::kikijyeba::environment::replay_environment_spec_t
+      replay_environment{};
   cuwacunu::wikimyei::expression::nodelift::srl::nodelift_srl_spec_t nodelift{};
   cuwacunu::wikimyei::representation::encoding::vicreg::vicreg_spec_t vicreg{};
   cuwacunu::wikimyei::representation::encoding::mtf_jepa_mae_vicreg::
@@ -103,7 +108,7 @@ struct channel_graph_first_protocol_contract_t {
       channel_mdn{};
   cuwacunu::wikimyei::observer::belief::belief_observer_spec_t
       belief_observer{};
-  cuwacunu::wikimyei::engine::portfolio::spot_distributional_utility::
+  cuwacunu::wikimyei::policy::portfolio::spot_distributional_utility::
       spot_distributional_utility_spec_t spot_distributional_utility{};
   cuwacunu::wikimyei::assembly::wikimyei_assembly_t nodelift_assembly{};
   cuwacunu::wikimyei::assembly::wikimyei_assembly_t vicreg_assembly{};
@@ -705,6 +710,74 @@ canonical_channel_graph_first_protocol_contract_text(
       << "\n";
   out << "spot_distributional_utility_live_capital_allowed="
       << contract.spot_distributional_utility.live_capital_allowed << "\n";
+  out << "replay_environment_version="
+      << contract.replay_environment.version_token << "\n";
+  out << "replay_environment_component_assembly_id="
+      << contract.replay_environment.component_assembly_id << "\n";
+  out << "replay_environment_world_mode="
+      << contract.replay_environment.world_mode << "\n";
+  out << "replay_environment_api_contract="
+      << contract.replay_environment.api_contract << "\n";
+  out << "replay_environment_spawn_model="
+      << contract.replay_environment.spawn_model << "\n";
+  out << "replay_environment_range_source="
+      << contract.replay_environment.range_source << "\n";
+  out << "replay_environment_source_range_policy="
+      << contract.replay_environment.source_range_policy << "\n";
+  out << "replay_environment_source_order_policy="
+      << contract.replay_environment.source_order_policy << "\n";
+  out << "replay_environment_range_resolution="
+      << contract.replay_environment.range_resolution << "\n";
+  out << "replay_environment_observation_time_law="
+      << contract.replay_environment.observation_time_law << "\n";
+  out << "replay_environment_realization_reveal="
+      << contract.replay_environment.realization_reveal << "\n";
+  out << "replay_environment_realization_key_policy="
+      << contract.replay_environment.realization_key_policy << "\n";
+  out << "replay_environment_action_kind="
+      << contract.replay_environment.action_kind << "\n";
+  out << "replay_environment_action_time_policy="
+      << contract.replay_environment.action_time_policy << "\n";
+  out << "replay_environment_reserve_node_policy="
+      << contract.replay_environment.reserve_node_policy << "\n";
+  out << "replay_environment_graph_node_universe_policy="
+      << contract.replay_environment.graph_node_universe_policy << "\n";
+  out << "replay_environment_reward_policy="
+      << contract.replay_environment.reward_policy << "\n";
+  out << "replay_environment_projection_validation="
+      << contract.replay_environment.projection_validation << "\n";
+  out << "replay_environment_policy_surface="
+      << contract.replay_environment.policy_surface << "\n";
+  out << "replay_environment_action_policy_identity="
+      << contract.replay_environment.action_policy_identity << "\n";
+  out << "replay_environment_initial_policy_kind="
+      << contract.replay_environment.initial_policy_kind << "\n";
+  out << "replay_environment_experiment_task_identity="
+      << contract.replay_environment.experiment_task_identity << "\n";
+  out << "replay_environment_experiment_run_identity="
+      << contract.replay_environment.experiment_run_identity << "\n";
+  out << "replay_environment_step_artifact_identity="
+      << contract.replay_environment.step_artifact_identity << "\n";
+  out << "replay_environment_experiment_report_count_policy="
+      << contract.replay_environment.experiment_report_count_policy << "\n";
+  out << "replay_environment_artifact_schema="
+      << contract.replay_environment.artifact_schema << "\n";
+  out << "replay_environment_require_resolved_cursor="
+      << contract.replay_environment.require_resolved_cursor << "\n";
+  out << "replay_environment_require_no_future_leakage="
+      << contract.replay_environment.require_no_future_leakage << "\n";
+  out << "replay_environment_require_projection_validation="
+      << contract.replay_environment.require_projection_validation << "\n";
+  out << "replay_environment_replay_executor="
+      << contract.replay_environment.replay_executor << "\n";
+  out << "replay_environment_allocation_authority="
+      << contract.replay_environment.allocation_authority << "\n";
+  out << "replay_environment_execution_authority="
+      << contract.replay_environment.execution_authority << "\n";
+  out << "replay_environment_live_capital_allowed="
+      << contract.replay_environment.live_capital_allowed << "\n";
+  out << "replay_environment_default_max_parallel_jobs="
+      << contract.replay_environment.default_max_parallel_jobs << "\n";
   config_bundle_detail::append_training_contract_fields(
       out, "vicreg_training", contract.vicreg_training);
   config_bundle_detail::append_training_contract_fields(
@@ -805,8 +878,9 @@ inline void validate_channel_graph_first_protocol_contract(
   namespace vicreg = cuwacunu::wikimyei::representation::encoding::vicreg;
   namespace nodelift = cuwacunu::wikimyei::expression::nodelift::srl;
   namespace observer_belief = cuwacunu::wikimyei::observer::belief;
-  namespace spot_engine =
-      cuwacunu::wikimyei::engine::portfolio::spot_distributional_utility;
+  namespace spot_policy =
+      cuwacunu::wikimyei::policy::portfolio::spot_distributional_utility;
+  namespace replay_env = cuwacunu::kikijyeba::environment;
   namespace training = cuwacunu::jkimyei::training;
 
   validate_protocol_variant(bundle.protocol_variant);
@@ -815,8 +889,9 @@ inline void validate_channel_graph_first_protocol_contract(
   mtf::validate_mtf_jepa_mae_vicreg_spec(bundle.mtf_jepa_mae_vicreg);
   mdn::validate_channel_mdn_spec(bundle.channel_mdn);
   observer_belief::validate_belief_observer_spec(bundle.belief_observer);
-  spot_engine::validate_spot_distributional_utility_spec(
+  spot_policy::validate_spot_distributional_utility_spec(
       bundle.spot_distributional_utility);
+  replay_env::validate_replay_environment_spec(bundle.replay_environment);
   if (bundle.nodelift_assembly.component_assembly_id !=
           bundle.nodelift.component_assembly_id ||
       bundle.nodelift_assembly.version_token != bundle.nodelift.version_token) {
@@ -861,7 +936,7 @@ inline void validate_channel_graph_first_protocol_contract(
           bundle.spot_distributional_utility.version_token) {
     throw std::runtime_error(
         "[channel_graph_first_config] spot distributional utility assembly "
-        "does not match engine spec");
+        "does not match policy spec");
   }
   if (bundle.belief_observer.input_mdn_assembly_id !=
       bundle.channel_mdn.component_assembly_id) {
@@ -1221,14 +1296,14 @@ load_channel_graph_first_protocol_contract_from_config(
   out.wikimyei_observer_belief_dsl_path =
       graph_first_config_detail::required_config_value(
           cfg, "wikimyei_observer_belief_dsl_path", config_path);
-  out.wikimyei_engine_portfolio_spot_distributional_utility_dsl_bnf_path =
+  out.wikimyei_policy_portfolio_spot_distributional_utility_dsl_bnf_path =
       graph_first_config_detail::required_config_value(
           cfg,
-          "wikimyei_engine_portfolio_spot_distributional_utility_dsl_bnf_path",
+          "wikimyei_policy_portfolio_spot_distributional_utility_dsl_bnf_path",
           config_path);
-  out.wikimyei_engine_portfolio_spot_distributional_utility_dsl_path =
+  out.wikimyei_policy_portfolio_spot_distributional_utility_dsl_path =
       graph_first_config_detail::required_config_value(
-          cfg, "wikimyei_engine_portfolio_spot_distributional_utility_dsl_path",
+          cfg, "wikimyei_policy_portfolio_spot_distributional_utility_dsl_path",
           config_path);
   out.wikimyei_representation_vicreg_jkimyei_bnf_path =
       graph_first_config_detail::required_config_value(
@@ -1268,6 +1343,14 @@ load_channel_graph_first_protocol_contract_from_config(
       graph_first_config_detail::optional_config_value(
           cfg, "kikijyeba_protocol_dsl_path",
           "/cuwacunu/src/config/kikijyeba.protocol.cwu_01v.dsl");
+  out.kikijyeba_environment_replay_dsl_bnf_path =
+      graph_first_config_detail::optional_config_value(
+          cfg, "kikijyeba_environment_replay_dsl_bnf_path",
+          "/cuwacunu/src/config/grammar/kikijyeba.environment.replay.dsl.bnf");
+  out.kikijyeba_environment_replay_dsl_path =
+      graph_first_config_detail::optional_config_value(
+          cfg, "kikijyeba_environment_replay_dsl_path",
+          "/cuwacunu/src/config/kikijyeba.environment.replay.dsl");
 
   (void)graph_first_config_detail::read_text_file_or_throw(
       out.wikimyei_expression_nodelift_srl_dsl_bnf_path);
@@ -1286,7 +1369,7 @@ load_channel_graph_first_protocol_contract_from_config(
   (void)graph_first_config_detail::read_text_file_or_throw(
       out.wikimyei_observer_belief_dsl_bnf_path);
   (void)graph_first_config_detail::read_text_file_or_throw(
-      out.wikimyei_engine_portfolio_spot_distributional_utility_dsl_bnf_path);
+      out.wikimyei_policy_portfolio_spot_distributional_utility_dsl_bnf_path);
   (void)graph_first_config_detail::read_text_file_or_throw(
       out.wikimyei_representation_vicreg_jkimyei_bnf_path);
   (void)graph_first_config_detail::read_text_file_or_throw(
@@ -1297,6 +1380,8 @@ load_channel_graph_first_protocol_contract_from_config(
       out.kikijyeba_settings_wave_dsl_bnf_path);
   (void)graph_first_config_detail::read_text_file_or_throw(
       out.kikijyeba_protocol_dsl_bnf_path);
+  (void)graph_first_config_detail::read_text_file_or_throw(
+      out.kikijyeba_environment_replay_dsl_bnf_path);
 
   out.protocol_variant = decode_protocol_variant_from_dsl(
       graph_first_config_detail::read_text_file_or_throw(
@@ -1305,6 +1390,10 @@ load_channel_graph_first_protocol_contract_from_config(
       cuwacunu::kikijyeba::settings::decode_wave_settings_from_dsl(
           graph_first_config_detail::read_text_file_or_throw(
               out.kikijyeba_settings_wave_dsl_path));
+  out.replay_environment =
+      cuwacunu::kikijyeba::environment::decode_replay_environment_spec_from_dsl(
+          graph_first_config_detail::read_text_file_or_throw(
+              out.kikijyeba_environment_replay_dsl_path));
   out.nodelift = cuwacunu::wikimyei::expression::nodelift::srl::
       decode_nodelift_srl_spec_from_dsl(
           graph_first_config_detail::read_text_file_or_throw(
@@ -1331,10 +1420,10 @@ load_channel_graph_first_protocol_contract_from_config(
       decode_belief_observer_spec_from_dsl(
           graph_first_config_detail::read_text_file_or_throw(
               out.wikimyei_observer_belief_dsl_path));
-  out.spot_distributional_utility = cuwacunu::wikimyei::engine::portfolio::
+  out.spot_distributional_utility = cuwacunu::wikimyei::policy::portfolio::
       spot_distributional_utility::decode_spot_distributional_utility_spec_from_dsl(
           graph_first_config_detail::read_text_file_or_throw(
-              out.wikimyei_engine_portfolio_spot_distributional_utility_dsl_path));
+              out.wikimyei_policy_portfolio_spot_distributional_utility_dsl_path));
   out.nodelift_assembly =
       cuwacunu::wikimyei::expression::nodelift::srl::make_nodelift_srl_assembly(
           out.nodelift);
@@ -1353,7 +1442,7 @@ load_channel_graph_first_protocol_contract_from_config(
           out.belief_observer.component_assembly_id,
           out.belief_observer.version_token);
   out.spot_distributional_utility_assembly =
-      cuwacunu::wikimyei::engine::portfolio::spot_distributional_utility::
+      cuwacunu::wikimyei::policy::portfolio::spot_distributional_utility::
           make_spot_distributional_utility_assembly(
               out.spot_distributional_utility.component_assembly_id,
               out.spot_distributional_utility.version_token);

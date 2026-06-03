@@ -60,6 +60,7 @@ struct allocation_belief_builder_options_t {
   nodelift_return_projection_options_t projection_options{};
   scenario_bank_options_t scenario_bank_options{};
   volatility_options_t volatility_options{};
+  flow_liquidity_options_t flow_liquidity_options{};
 
   double channel_disagreement_confidence_scale{1.0};
 };
@@ -222,7 +223,7 @@ build_single_anchor_allocation_belief(
   auto ranges = compute_range_risk(consensus, options.node_graph_indices,
                                    *projection_reference_graph_index,
                                    options.range_options);
-  auto flow = compute_flow_liquidity(consensus);
+  auto flow = compute_flow_liquidity(consensus, options.flow_liquidity_options);
 
   auto tensor_options =
       torch::TensorOptions()
@@ -249,10 +250,14 @@ build_single_anchor_allocation_belief(
   auto vol = blend_mdn_and_realized_variance(
       marginal_variance, realized_variance, options.volatility_options);
 
-  auto range_adverse = detail::select_anchor_assets(
-                           ranges.adverse_excursion_prob, options.anchor_slot,
-                           graph_index, "adverse_excursion_prob")
-                           .to(tensor_options);
+  TORCH_CHECK(ranges.adverse_excursion_prob.defined() &&
+                  ranges.adverse_excursion_prob.dim() == 2 &&
+                  ranges.adverse_excursion_prob.size(1) == A,
+              "[allocation_belief_builder] adverse_excursion_prob must be "
+              "[B,A]");
+  auto range_adverse =
+      ranges.adverse_excursion_prob.select(/*dim=*/0, options.anchor_slot)
+          .to(tensor_options);
   auto flow_liquidity_score =
       detail::select_anchor_assets(flow.liquidity_score, options.anchor_slot,
                                    graph_index, "liquidity_score")

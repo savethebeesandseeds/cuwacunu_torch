@@ -23,8 +23,8 @@ struct range_risk_options_t {
 };
 
 struct range_risk_t {
-  torch::Tensor adverse_excursion_prob{}; // [B,N]
-  torch::Tensor upside_excursion_prob{};  // [B,N]
+  torch::Tensor adverse_excursion_prob{}; // [B,A]
+  torch::Tensor upside_excursion_prob{};  // [B,A]
 };
 
 [[nodiscard]] inline torch::Tensor

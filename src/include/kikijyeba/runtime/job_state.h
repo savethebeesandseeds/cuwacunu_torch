@@ -78,6 +78,8 @@ struct job_state_t {
   std::string report_path{};
   bool lattice_exposure_fact_written{false};
   std::string lattice_exposure_fact_path{};
+  bool lattice_source_analytics_fact_written{false};
+  std::string lattice_source_analytics_fact_path{};
   bool lattice_checkpoint_fact_written{false};
   std::string lattice_checkpoint_fact_path{};
   std::string lattice_fact_error{};
@@ -88,6 +90,12 @@ struct job_state_t {
   bool runtime_health_measurement_fact_written{false};
   std::string runtime_health_measurement_fact_path{};
   std::string runtime_terminal_fact_error{};
+  bool replay_artifacts_written{false};
+  std::string replay_artifact_path_index_path{};
+  std::string replay_batch_index_path{};
+  std::string replay_graph_anchor_edge_batch_artifact_path{};
+  std::string replay_observation_artifact_index_path{};
+  std::string replay_artifact_error{};
 
   [[nodiscard]] std::string to_text() const {
     std::ostringstream out;
@@ -161,6 +169,10 @@ struct job_state_t {
     out << "lattice_exposure_fact_written="
         << (lattice_exposure_fact_written ? "true" : "false") << "\n";
     out << "lattice_exposure_fact_path=" << lattice_exposure_fact_path << "\n";
+    out << "lattice_source_analytics_fact_written="
+        << (lattice_source_analytics_fact_written ? "true" : "false") << "\n";
+    out << "lattice_source_analytics_fact_path="
+        << lattice_source_analytics_fact_path << "\n";
     out << "lattice_checkpoint_fact_written="
         << (lattice_checkpoint_fact_written ? "true" : "false") << "\n";
     out << "lattice_checkpoint_fact_path=" << lattice_checkpoint_fact_path
@@ -179,6 +191,16 @@ struct job_state_t {
         << runtime_health_measurement_fact_path << "\n";
     out << "runtime_terminal_fact_error=" << runtime_terminal_fact_error
         << "\n";
+    out << "replay_artifacts_written="
+        << (replay_artifacts_written ? "true" : "false") << "\n";
+    out << "replay_artifact_path_index_path=" << replay_artifact_path_index_path
+        << "\n";
+    out << "replay_batch_index_path=" << replay_batch_index_path << "\n";
+    out << "replay_graph_anchor_edge_batch_artifact_path="
+        << replay_graph_anchor_edge_batch_artifact_path << "\n";
+    out << "replay_observation_artifact_index_path="
+        << replay_observation_artifact_index_path << "\n";
+    out << "replay_artifact_error=" << replay_artifact_error << "\n";
     return out.str();
   }
 };

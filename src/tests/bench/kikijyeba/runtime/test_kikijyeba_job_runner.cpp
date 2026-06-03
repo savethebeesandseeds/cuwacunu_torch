@@ -1,18 +1,32 @@
+#include "kikijyeba/lattice/target/lattice_target_evaluator.h"
 #include "kikijyeba/runtime/job_runner.h"
 
+#include <cmath>
 #include <exception>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <iterator>
+#include <memory>
+#include <set>
 #include <stdexcept>
 #include <string>
 #include <vector>
 
+#include "kikijyeba/environment/policy/allocation.h"
+#include "kikijyeba/environment/policy/baseline.h"
+#include "kikijyeba/environment/run/experiment_runner.h"
+#include "kikijyeba/environment/runtime/experiment_driver.h"
+#include "kikijyeba/environment/runtime/replay_source.h"
+
 #include <unistd.h>
 
+namespace env = cuwacunu::kikijyeba::environment;
+namespace exposure = cuwacunu::kikijyeba::lattice::exposure;
+namespace replay = cuwacunu::kikijyeba::environment::replay;
 namespace runtime = cuwacunu::kikijyeba::runtime;
 namespace runtime_report = cuwacunu::kikijyeba::lattice::runtime_report;
+namespace target = cuwacunu::kikijyeba::lattice::target;
 namespace provenance = cuwacunu::kikijyeba::protocol::config_provenance;
 namespace types = cuwacunu::ujcamei::source::registry::types;
 
@@ -24,6 +38,31 @@ void check(bool condition, const std::string &message) {
   if (!condition) {
     throw std::runtime_error(message);
   }
+}
+
+std::string describe_lattice_target_evaluation(
+    const target::lattice_target_evaluation_t &evaluation) {
+  std::string out = std::string("status=") +
+                    target::lattice_target_status_name(evaluation.status);
+  if (!evaluation.reasons.empty()) {
+    out += "; reasons=";
+    for (std::size_t i = 0; i < evaluation.reasons.size(); ++i) {
+      if (i > 0) {
+        out += ",";
+      }
+      out += evaluation.reasons[i];
+    }
+  }
+  if (!evaluation.deficits.empty()) {
+    out += "; deficits=";
+    for (std::size_t i = 0; i < evaluation.deficits.size(); ++i) {
+      if (i > 0) {
+        out += ",";
+      }
+      out += evaluation.deficits[i].key + ":" + evaluation.deficits[i].message;
+    }
+  }
+  return out;
 }
 
 std::filesystem::path make_tmp_dir(const std::string &label) {
@@ -86,6 +125,67 @@ struct fixture_paths_t {
   std::filesystem::path mtf_jkimyei{};
   std::filesystem::path channel_mdn_jkimyei{};
 };
+
+cuwacunu::kikijyeba::topology::graph::market_graph_t
+make_runtime_fixture_market_graph() {
+  cuwacunu::kikijyeba::topology::graph::market_graph_t graph{};
+  graph.node_ids = {"BTC", "USDT", "ETH"};
+  graph.edge_ids = {"BTCUSDT", "USDTBTC", "ETHUSDT", "USDTETH"};
+  graph.base_index = {0, 1, 2, 1};
+  graph.quote_index = {1, 0, 1, 2};
+  graph.validate();
+  return graph;
+}
+
+env::episode_spec_t make_runtime_replay_base_spec() {
+  env::episode_spec_t spec{};
+  spec.graph_node_ids = {"BTC", "USDT", "ETH"};
+  spec.risky_node_ids = {"BTC", "ETH"};
+  spec.base_policy = {.accounting_numeraire_id = "USDT",
+                      .settlement_asset_id = "USDT",
+                      .reserve_asset_id = "USDT",
+                      .projection_reference_node_id = "USDT"};
+  spec.initial_equity_base = 1000.0;
+  spec.constraints.min_base_reserve_weight = 0.20;
+  spec.constraints.max_weight = torch::full({2}, 0.60, torch::kFloat64);
+  spec.constraints.max_turnover_l1 = 0.80;
+  spec.constraints.lambda_cvar = 0.10;
+  spec.constraints.lambda_concentration = 0.01;
+  return spec;
+}
+
+env::replay_policy_factory_t make_runtime_replay_sdu_policy_factory() {
+  return {
+      .policy_id = env::kSpotDistributionalUtilityPolicyId,
+      .policy_kind = env::policy_kind_t::deterministic_allocator,
+      .make_policy =
+          [](const replay::replay_episode_bundle_t &) {
+            env::spot_distributional_utility_policy_config_t config{};
+            config.constraints = make_runtime_replay_base_spec().constraints;
+            config.solver_options.iterations = 24;
+            config.solver_options.learning_rate = 0.05;
+            return std::make_unique<env::spot_distributional_utility_policy_t>(
+                config);
+          },
+  };
+}
+
+env::replay_policy_factory_t make_runtime_replay_reserve_policy_factory() {
+  return {
+      .policy_id = "base_reserve_only.v1",
+      .policy_kind = env::policy_kind_t::baseline,
+      .make_policy =
+          [](const replay::replay_episode_bundle_t &bundle) {
+            env::baseline_policy_config_t config{};
+            config.policy_id = "base_reserve_only.v1";
+            config.node_ids = bundle.spec.risky_node_ids;
+            config.base_reserve_node_id =
+                bundle.spec.base_policy.reserve_asset_id;
+            return std::make_unique<env::base_reserve_policy_t>(
+                std::move(config));
+          },
+  };
+}
 
 fixture_paths_t make_config_fixture(
     const std::string &label, const std::string &wave_range,
@@ -509,6 +609,17 @@ fixture_paths_t make_config_fixture(
           "wikimyei.inference.expected_value.mdn.net.bnf\n"
           "wikimyei_inference_expected_value_mdn_net_path = " +
           channel_mdn_net.string() +
+          "\n"
+          "wikimyei_observer_belief_dsl_bnf_path = "
+          "/cuwacunu/src/config/grammar/wikimyei.observer.belief.dsl.bnf\n"
+          "wikimyei_observer_belief_dsl_path = "
+          "/cuwacunu/src/config/wikimyei.observer.belief.dsl\n"
+          "wikimyei_policy_portfolio_spot_distributional_utility_dsl_bnf_path "
+          "= /cuwacunu/src/config/grammar/"
+          "wikimyei.policy.portfolio.spot_distributional_utility.dsl.bnf\n"
+          "wikimyei_policy_portfolio_spot_distributional_utility_dsl_path = "
+          "/cuwacunu/src/config/"
+          "wikimyei.policy.portfolio.spot_distributional_utility.dsl\n"
           "\n\n"
           "[JKIMYEI]\n"
           "wikimyei_representation_vicreg_jkimyei_bnf_path = "
@@ -1723,9 +1834,9 @@ void test_strict_channel_baseline_runs_through_runtime() {
 
   const auto eval_fixture =
       make_config_fixture("strict_channel_baseline_eval",
-                          "  SOURCE_RANGE = anchor_index;\n"
-                          "  ANCHOR_INDEX_BEGIN = 1;\n"
-                          "  ANCHOR_INDEX_END = 3;\n",
+                          "  SOURCE_RANGE = source_key;\n"
+                          "  SOURCE_KEY_BEGIN = 1002;\n"
+                          "  SOURCE_KEY_END = 1004;\n",
                           "wikimyei.inference.expected_value.mdn", "run");
   configure_channel_mdn_strict_eval(eval_fixture,
                                     representation_result.state.checkpoint_path,
@@ -1735,6 +1846,8 @@ void test_strict_channel_baseline_runs_through_runtime() {
   eval_options.batch_size = 2;
   eval_options.job_dir = eval_job_dir;
   eval_options.force_rebuild_cache = true;
+  eval_options.replay_base_reserve_node_id = "USDT";
+  eval_options.replay_risky_node_ids = {"BTC", "ETH"};
   const auto eval_result = runtime::run_graph_first_job<Kline>(
       eval_fixture.config.string(), eval_options);
 
@@ -1755,7 +1868,20 @@ void test_strict_channel_baseline_runs_through_runtime() {
         "strict baseline eval manifest records MDN checkpoint");
   check(eval_result.wave_plan.resolved_anchor_index_begin == 1 &&
             eval_result.wave_plan.resolved_anchor_index_end == 3,
-        "strict baseline eval uses configured anchor range");
+        "strict baseline eval resolves configured source-key range");
+  check(eval_result.wave_plan.source_range_policy == "source_key" &&
+            !eval_result.wave_plan.requested_anchor_index_begin.has_value() &&
+            !eval_result.wave_plan.requested_anchor_index_end.has_value() &&
+            eval_result.wave_plan.requested_source_key_begin.has_value() &&
+            *eval_result.wave_plan.requested_source_key_begin == 1002 &&
+            eval_result.wave_plan.requested_source_key_end.has_value() &&
+            *eval_result.wave_plan.requested_source_key_end == 1004,
+        "strict baseline eval preserves source-key request separately from "
+        "resolved anchors");
+  check(eval_result.manifest.source_range_policy == "source_key" &&
+            eval_result.manifest.requested_source_key_begin == "1002" &&
+            eval_result.manifest.requested_source_key_end == "1004",
+        "strict baseline eval manifest records source-key request");
   check(eval_result.state.status == "completed",
         "strict baseline eval completed");
   check(eval_result.state.steps_completed > 0,
@@ -1774,6 +1900,146 @@ void test_strict_channel_baseline_runs_through_runtime() {
         "strict baseline eval runtime checkpoint I/O fact written");
   check(eval_result.state.runtime_health_measurement_fact_written,
         "strict baseline eval runtime health fact written");
+  check(eval_result.state.replay_artifacts_written,
+        "strict baseline eval writes replay artifacts");
+  check(std::filesystem::exists(eval_result.state.replay_batch_index_path),
+        "strict baseline eval replay batch index exists");
+  auto runtime_replay_source =
+      replay::make_runtime_graph_anchor_replay_bundle_source_from_job_dir<
+          std::int64_t>("strict_channel_eval_runtime_replay_source",
+                        eval_job_dir, make_runtime_fixture_market_graph(),
+                        make_runtime_replay_base_spec());
+  auto runtime_replay_bundle = runtime_replay_source.next_bundle();
+  check(runtime_replay_bundle.has_value(),
+        "strict baseline eval replay source emits bundle from job dir");
+  check(
+      !runtime_replay_bundle->spec.requested_range.anchor_index_begin
+              .has_value() &&
+          !runtime_replay_bundle->spec.requested_range.anchor_index_end
+               .has_value() &&
+          runtime_replay_bundle->spec.requested_range.source_key_begin ==
+              1002 &&
+          runtime_replay_bundle->spec.requested_range.source_key_end == 1004 &&
+          runtime_replay_bundle->spec.accepted_range.anchor_index_begin == 1 &&
+          runtime_replay_bundle->spec.accepted_range.anchor_index_end == 3 &&
+          runtime_replay_bundle->spec.accepted_range.cursor
+                  .source_range_policy == "source_key",
+      "strict baseline eval replay bundle separates source-key request from "
+      "accepted anchor cursor");
+  check(runtime_replay_bundle->frames.size() == 2,
+        "strict baseline eval replay bundle covers streamed MDN pulse");
+  check(runtime_replay_bundle->frames[0]
+            .observation.allocation_belief.has_value(),
+        "strict baseline eval replay bundle attaches AllocationBelief");
+  check(
+      runtime_replay_bundle->frames[0].projected_log_return_scenarios.defined(),
+      "strict baseline eval replay bundle attaches projected scenarios");
+  runtime_replay_source.reset();
+  env::replay_experiment_options_t runtime_replay_options{};
+  runtime_replay_options.max_parallel_jobs = 1;
+  runtime_replay_options.episode_options.max_steps = 8;
+  auto runtime_replay_report = env::run_replay_experiment(
+      "strict_channel_eval_runtime_replay_experiment", runtime_replay_source,
+      std::vector{make_runtime_replay_reserve_policy_factory(),
+                  make_runtime_replay_sdu_policy_factory()},
+      runtime_replay_options);
+  check(runtime_replay_report.completed_count == 2,
+        "strict baseline eval Runtime replay artifacts run reserve and SDU "
+        "policies");
+  env::runtime_job_replay_driver_options_t replay_driver_options{};
+  replay_driver_options.job_dir = eval_job_dir;
+  replay_driver_options.config_path = eval_fixture.config.string();
+  replay_driver_options.experiment_id =
+      "strict_channel_eval_runtime_replay_driver";
+  replay_driver_options.base_reserve_node_id = "USDT";
+  replay_driver_options.risky_node_ids = {"BTC", "ETH"};
+  replay_driver_options.initial_equity_base = 1000.0;
+  replay_driver_options.min_base_reserve_weight = 0.20;
+  replay_driver_options.max_risky_weight = 0.60;
+  replay_driver_options.max_turnover_l1 = 0.80;
+  replay_driver_options.include_equal_weight_policy = false;
+  replay_driver_options.experiment_options.max_parallel_jobs = 1;
+  replay_driver_options.experiment_options.episode_options.max_steps = 8;
+  auto replay_driver_result =
+      env::run_runtime_job_replay_experiment(replay_driver_options);
+  check(replay_driver_result.replay_bundle_count == 1,
+        "strict baseline replay driver sees one Runtime pulse bundle");
+  check(replay_driver_result.report.completed_count == 2,
+        "strict baseline replay driver runs reserve and SDU policies");
+  check(std::filesystem::exists(replay_driver_result.report_path),
+        "strict baseline replay driver writes experiment report");
+  check(std::filesystem::exists(replay_driver_result.experiment_index_path),
+        "strict baseline replay driver writes experiment index");
+  const auto replay_driver_report_text =
+      read_text(replay_driver_result.report_path);
+  check(replay_driver_report_text.find(
+            "schema=kikijyeba.environment.replay.experiment_artifact.v1") !=
+            std::string::npos,
+        "strict baseline replay driver report carries experiment schema");
+  check(replay_driver_report_text.find("policy_summary_count=2") !=
+            std::string::npos,
+        "strict baseline replay driver report carries policy summaries");
+  check(replay_driver_report_text.find("time_law_expected_step_count=4") !=
+                std::string::npos &&
+            replay_driver_report_text.find(
+                "time_law_observation_step_count=4") != std::string::npos &&
+            replay_driver_report_text.find("time_law_action_step_count=4") !=
+                std::string::npos &&
+            replay_driver_report_text.find("time_law_execution_step_count=4") !=
+                std::string::npos &&
+            replay_driver_report_text.find(
+                "time_law_realization_after_action_count=4") !=
+                std::string::npos &&
+            replay_driver_report_text.find(
+                "time_law_future_observation_violation_count=0") !=
+                std::string::npos &&
+            replay_driver_report_text.find(
+                "mixed_future_realization_key_count=0") != std::string::npos &&
+            replay_driver_report_text.find(
+                "projection_validation_step_count=4") != std::string::npos,
+        "strict baseline replay driver report carries aggregate time-law and "
+        "projection step evidence for parked replay environment audit");
+  check(
+      replay_driver_report_text.find("episode_0_accepted_cursor_kind="
+                                     "graph_anchor") != std::string::npos &&
+          replay_driver_report_text.find(
+              "episode_0_requested_anchor_index_begin=-1") !=
+              std::string::npos &&
+          replay_driver_report_text.find(
+              "episode_0_requested_source_key_begin=1002") !=
+              std::string::npos &&
+          replay_driver_report_text.find(
+              "episode_0_accepted_batch_cursor_token=") != std::string::npos &&
+          replay_driver_report_text.find(
+              "episode_0_accepted_source_range_policy=source_key") !=
+              std::string::npos &&
+          replay_driver_report_text.find(
+              "episode_0_accepted_anchor_index_begin=1") != std::string::npos &&
+          replay_driver_report_text.find("episode_0_accepted_anchor_keys=") !=
+              std::string::npos,
+      "strict baseline replay driver report carries source-key request and "
+      "accepted cursor evidence");
+  check(replay_driver_report_text.find(
+            "episode_1_allocation_target_risky_node_weights=") !=
+            std::string::npos,
+        "strict baseline replay driver report carries allocation target "
+        "weights");
+  check(replay_driver_report_text.find("episode_1_allocation_cvar_loss=") !=
+            std::string::npos,
+        "strict baseline replay driver report carries allocation CVaR");
+  const auto replay_driver_index =
+      env::read_runtime_replay_experiment_index(eval_job_dir);
+  check(replay_driver_index.size() == 1,
+        "strict baseline replay driver index records one experiment");
+  check(replay_driver_index[0].experiment_id ==
+            "strict_channel_eval_runtime_replay_driver",
+        "strict baseline replay driver index records experiment id");
+  check(replay_driver_index[0].policy_count == 2,
+        "strict baseline replay driver index records policy count");
+  check(replay_driver_index[0].completed_count == 2,
+        "strict baseline replay driver index records completed count");
+  check(replay_driver_index[0].report_path == replay_driver_result.report_path,
+        "strict baseline replay driver index records report path");
   const auto eval_result_fact = read_text(eval_job_dir / "runtime.result.fact");
   check(eval_result_fact.find("optimizer_steps=0") != std::string::npos,
         "strict baseline eval result fact records zero optimizer steps");
@@ -1828,6 +2094,216 @@ void test_strict_channel_baseline_runs_through_runtime() {
   check(eval_exposure_fact.find(inference_result.state.checkpoint_path) !=
             std::string::npos,
         "strict baseline eval exposure fact carries MDN checkpoint input");
+  check(eval_result.state.lattice_source_analytics_fact_written,
+        "strict baseline eval writes source-analytics fact state");
+  check(std::filesystem::exists(
+            eval_result.state.lattice_source_analytics_fact_path),
+        "strict baseline eval writes source-analytics fact sidecar");
+  check(std::filesystem::exists(eval_job_dir / "lattice.target_transform.fact"),
+        "strict baseline eval writes target-transform fact sidecar");
+  check(
+      std::filesystem::exists(eval_job_dir / "lattice.forecast_baseline.fact"),
+      "strict baseline eval writes forecast-baseline fact sidecar");
+  check(
+      std::filesystem::exists(eval_job_dir /
+                              "lattice.forecast_baseline.zero_return.fact") &&
+          std::filesystem::exists(
+              eval_job_dir / "lattice.forecast_baseline.moving_average.fact") &&
+          std::filesystem::exists(
+              eval_job_dir /
+              "lattice.forecast_baseline.last_valid_channel.fact"),
+      "strict baseline eval writes deterministic baseline family sidecars");
+  check(std::filesystem::exists(eval_job_dir / "lattice.forecast_eval.fact"),
+        "strict baseline eval writes forecast-eval fact sidecar");
+  check(std::filesystem::exists(eval_job_dir / "lattice.observer_belief.fact"),
+        "strict baseline eval writes observer-belief fact sidecar");
+  check(
+      !std::filesystem::exists(eval_job_dir / "lattice.allocation_engine.fact"),
+      "strict baseline replay driver leaves allocation-policy Lattice sidecar "
+      "to the Lattice workstream");
+
+  const auto eval_scan =
+      exposure::scan_exposure_ledger_from_runtime_root(eval_job_dir);
+  check(eval_scan.ledger.source_analytics_facts().size() == 1,
+        "strict baseline eval scan sees Runtime-emitted source-analytics fact");
+  check(eval_scan.ledger.target_transform_facts().size() == 1,
+        "strict baseline eval scan sees target-transform fact");
+  check(eval_scan.ledger.forecast_baseline_facts().size() == 4,
+        "strict baseline eval scan sees deterministic forecast-baseline "
+        "family facts");
+  check(eval_scan.ledger.forecast_eval_facts().size() == 1,
+        "strict baseline eval scan sees forecast-eval fact");
+  check(eval_scan.ledger.observer_belief_facts().size() == 1,
+        "strict baseline eval scan sees observer-belief fact");
+  check(eval_scan.ledger.allocation_engine_facts().empty(),
+        "strict baseline eval scan does not derive allocation-policy fact from "
+        "replay output");
+  const auto &source_analytics_fact =
+      eval_scan.ledger.source_analytics_facts().front();
+  check(exposure::source_analytics_fact_issues(source_analytics_fact).empty(),
+        "strict baseline emitted source-analytics fact remains visibility-only "
+        "with source identity");
+  check(std::abs(source_analytics_fact.sample_validity_fraction -
+                 eval_result.wave_plan.accepted_anchor_fraction) < 1e-12 &&
+            std::abs(source_analytics_fact.missingness_fraction -
+                     (1.0 - eval_result.wave_plan.accepted_anchor_fraction)) <
+                1e-12 &&
+            source_analytics_fact.visibility_only &&
+            !source_analytics_fact.readiness_authority &&
+            !source_analytics_fact.coverage_authority &&
+            !source_analytics_fact.leakage_authority &&
+            !source_analytics_fact.contract_identity_authority,
+        "strict baseline source-analytics fact binds source health metrics "
+        "without readiness, coverage, leakage, or contract authority");
+  check(exposure::target_transform_fact_issues(
+            eval_scan.ledger.target_transform_facts().front())
+            .empty(),
+        "strict baseline emitted target-transform fact has complete contract");
+  std::set<std::string> emitted_baseline_kinds;
+  for (const auto &baseline_fact : eval_scan.ledger.forecast_baseline_facts()) {
+    check(exposure::forecast_baseline_fact_issues(baseline_fact).empty(),
+          "strict baseline emitted forecast-baseline fact has closed "
+          "transform lineage");
+    check(baseline_fact.metric_status == "deferred_v1" &&
+              exposure::forecast_baseline_finite_metric_count(baseline_fact) ==
+                  0,
+          "strict baseline emits baseline identities as metric-deferred "
+          "evidence until per-kind scoring is declared");
+    emitted_baseline_kinds.insert(exposure::normalized_forecast_baseline_kind(
+        baseline_fact.baseline_kind));
+  }
+  check(emitted_baseline_kinds.count("previous_value") == 1 &&
+            emitted_baseline_kinds.count("zero_return") == 1 &&
+            emitted_baseline_kinds.count("moving_average") == 1 &&
+            emitted_baseline_kinds.count("last_valid_channel") == 1,
+        "strict baseline emitted roadmap baseline kinds as catalog evidence");
+  const auto &emitted_forecast_eval_fact =
+      eval_scan.ledger.forecast_eval_facts().front();
+  check(exposure::forecast_eval_fact_issues(emitted_forecast_eval_fact).empty(),
+        "strict baseline emitted forecast-eval fact has closed checkpoint, "
+        "transform, baseline, and selection audit lineage");
+  check(
+      !emitted_forecast_eval_fact.mean_nll_per_channel.empty() &&
+          !emitted_forecast_eval_fact.mean_nll_per_target_feature.empty() &&
+          !emitted_forecast_eval_fact.mean_nll_per_channel_target_feature
+               .empty() &&
+          !emitted_forecast_eval_fact.valid_target_count_per_channel.empty() &&
+          !emitted_forecast_eval_fact.valid_target_count_per_target_feature
+               .empty() &&
+          !emitted_forecast_eval_fact
+               .valid_target_count_per_channel_target_feature.empty() &&
+          !emitted_forecast_eval_fact.mean_nll_per_horizon.empty() &&
+          !emitted_forecast_eval_fact.valid_target_count_per_horizon.empty() &&
+          emitted_forecast_eval_fact.baseline_fact_digests.size() == 4 &&
+          emitted_forecast_eval_fact.visibility_only &&
+          !emitted_forecast_eval_fact.quality_authority &&
+          !emitted_forecast_eval_fact.performance_authority,
+      "strict baseline emitted forecast-eval fact carries stratified NLL and "
+      "support surfaces as visibility evidence only");
+  check(exposure::observer_belief_fact_issues(
+            eval_scan.ledger.observer_belief_facts().front())
+            .empty(),
+        "strict baseline emitted observer-belief fact has forecast and "
+        "scenario lineage");
+
+  const auto artifact_specs =
+      target::decode_lattice_targets_from_dsl(std::string(R"DSL(
+LATTICE_TARGET {
+  TARGET_ID = emitted_target_transform_contract_ready;
+  TARGET_CLASS = artifact_readiness;
+  SUBJECT_FACT_FAMILY = target_transform;
+  SUBJECT_COMPONENT = wikimyei.inference.expected_value.mdn;
+  PROTOCOL_ID = )DSL") + eval_result.manifest.protocol_id +
+                                              R"DSL(;
+  SOURCE_RANGE = anchor_index;
+  ANCHOR_INDEX_BEGIN = 1;
+  ANCHOR_INDEX_END = 3;
+  REQUIRE_CONTRACT_MATCH = true;
+};
+
+LATTICE_TARGET {
+  TARGET_ID = emitted_forecast_baseline_artifact_ready;
+  TARGET_CLASS = artifact_readiness;
+  SUBJECT_FACT_FAMILY = forecast_baseline;
+  SUBJECT_COMPONENT = wikimyei.inference.expected_value.mdn;
+  PROTOCOL_ID = )DSL" + eval_result.manifest.protocol_id +
+                                              R"DSL(;
+  SOURCE_RANGE = anchor_index;
+  ANCHOR_INDEX_BEGIN = 1;
+  ANCHOR_INDEX_END = 3;
+  REQUIRE_CONTRACT_MATCH = true;
+};
+
+LATTICE_TARGET {
+  TARGET_ID = emitted_forecast_eval_artifact_ready;
+  TARGET_CLASS = artifact_readiness;
+  SUBJECT_FACT_FAMILY = forecast_eval;
+  SUBJECT_COMPONENT = wikimyei.inference.expected_value.mdn;
+  PROTOCOL_ID = )DSL" + eval_result.manifest.protocol_id +
+                                              R"DSL(;
+  SOURCE_RANGE = anchor_index;
+  ANCHOR_INDEX_BEGIN = 1;
+  ANCHOR_INDEX_END = 3;
+  REQUIRE_CONTRACT_MATCH = true;
+};
+
+LATTICE_TARGET {
+  TARGET_ID = emitted_observer_belief_artifact_ready;
+  TARGET_CLASS = artifact_readiness;
+  SUBJECT_FACT_FAMILY = observer_belief;
+  SUBJECT_COMPONENT = wikimyei.inference.expected_value.mdn;
+  PROTOCOL_ID = )DSL" + eval_result.manifest.protocol_id +
+                                              R"DSL(;
+  SOURCE_RANGE = anchor_index;
+  ANCHOR_INDEX_BEGIN = 1;
+  ANCHOR_INDEX_END = 3;
+  REQUIRE_CONTRACT_MATCH = true;
+};
+
+)DSL");
+  target::lattice_target_evaluator_options_t artifact_options{};
+  artifact_options.exposure_ledger = &eval_scan.ledger;
+  artifact_options.auto_build_exposure_ledger = false;
+  artifact_options.active_identity.protocol_id =
+      eval_result.manifest.protocol_id;
+  artifact_options.active_identity.protocol_contract_fingerprint =
+      eval_result.manifest.protocol_contract_fingerprint;
+  artifact_options.active_identity.graph_order_fingerprint =
+      eval_result.manifest.graph_order_fingerprint;
+  artifact_options.active_identity.source_cursor_token =
+      eval_result.manifest.source_cursor_token;
+  artifact_options.active_identity.mdn_assembly_fingerprint =
+      eval_result.manifest.mdn_assembly_fingerprint;
+  target::lattice_target_evaluator_t artifact_evaluator(artifact_specs,
+                                                        artifact_options);
+  const auto emitted_transform_eval =
+      artifact_evaluator.evaluate("emitted_target_transform_contract_ready");
+  const auto emitted_baseline_eval =
+      artifact_evaluator.evaluate("emitted_forecast_baseline_artifact_ready");
+  const auto emitted_forecast_eval =
+      artifact_evaluator.evaluate("emitted_forecast_eval_artifact_ready");
+  const auto emitted_observer_eval =
+      artifact_evaluator.evaluate("emitted_observer_belief_artifact_ready");
+  check(emitted_transform_eval.status ==
+            target::lattice_target_status_t::satisfied,
+        "strict baseline emitted target-transform fact satisfies artifact "
+        "readiness: " +
+            describe_lattice_target_evaluation(emitted_transform_eval));
+  check(emitted_baseline_eval.status ==
+            target::lattice_target_status_t::satisfied,
+        "strict baseline emitted forecast-baseline fact satisfies artifact "
+        "readiness: " +
+            describe_lattice_target_evaluation(emitted_baseline_eval));
+  check(emitted_forecast_eval.status ==
+            target::lattice_target_status_t::satisfied,
+        "strict baseline emitted forecast-eval fact satisfies artifact "
+        "readiness: " +
+            describe_lattice_target_evaluation(emitted_forecast_eval));
+  check(emitted_observer_eval.status ==
+            target::lattice_target_status_t::satisfied,
+        "strict baseline emitted observer-belief fact satisfies artifact "
+        "readiness: " +
+            describe_lattice_target_evaluation(emitted_observer_eval));
 }
 
 void test_invalid_wave_range_fails_before_launch() {

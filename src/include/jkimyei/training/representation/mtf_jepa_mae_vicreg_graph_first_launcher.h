@@ -22,7 +22,7 @@
 
 #include "kikijyeba/lattice/runtime_report/component_runtime_lls.h"
 #include "kikijyeba/protocol/pipeline_builder.h"
-#include "kikijyeba/settings/wave.h"
+#include "kikijyeba/runtime/wave_settings.h"
 #include "wikimyei/assembly.h"
 #include "wikimyei/representation/encoding/mtf_jepa_mae_vicreg/channel_node_stream_adapter.h"
 #include "wikimyei/representation/encoding/mtf_jepa_mae_vicreg/mtf_jepa_mae_vicreg.h"

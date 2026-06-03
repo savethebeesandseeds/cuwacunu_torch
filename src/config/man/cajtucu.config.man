@@ -1,0 +1,29 @@
+# Cajtucu Config Contracts
+
+`src/config/cajtucu.execution.paper.dsl`
+
+- Contract for `cajtucu.execution.paper.v1`.
+- V1 is deterministic paper execution only.
+- It consumes an execution intent, market execution state, and execution ledger.
+- It emits paper orders/fills/rejects, a mutated ledger, and an execution trace.
+- It uses direct risky-asset/base-reserve graph edges only.
+- It records market source identity in the trace.
+- It warns when replay used synthetic direct asset/reserve edges.
+- It rejects synthetic direct-edge market sources by default; research replay
+  must explicitly opt in when synthetic markets are needed.
+- It warns when intent equity and mark-to-market ledger equity disagree beyond
+  tolerance, and sizes paper orders from marked ledger equity.
+- It fails closed with an invalid trace when equity mismatch exceeds the large
+  mismatch threshold.
+- It executes sell orders before buy orders.
+- It rejects invalid sell-price cost models before ledger mutation.
+- It exposes no broker credentials, network I/O, live broker API, or live
+  capital authority.
+
+`src/config/grammar/cajtucu.execution.paper.dsl.bnf`
+
+- Grammar for `cajtucu.execution.paper.dsl`.
+
+The current Cajtucu paper DSL is a contract artifact. It is intentionally not
+yet selected through `src/config/.config`; Kikijyeba replay constructs the paper
+backend directly through the C++ contract.

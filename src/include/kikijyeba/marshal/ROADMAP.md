@@ -4,8 +4,8 @@ Marshal is now intentionally small:
 
 ```text
 hero.marshal.status
-hero.marshal.reach_lattice_target
-hero.marshal.evaluate
+hero.marshal.prepare
+hero.marshal.inspect
 ```
 
 This roadmap is rebased around testing the joint system rather than carrying
@@ -50,21 +50,21 @@ Lattice re-read Runtime evidence and reported the target satisfied.
 What Marshal surface and receipts are visible?
 ```
 
-`hero.marshal.reach_lattice_target` answers:
+`hero.marshal.prepare` answers:
 
 ```text
 Given one target_id and finite driver policy, what is the next safe movement
 toward that target, and can Marshal drive it through Runtime under policy?
 ```
 
-`hero.marshal.evaluate` answers:
+`hero.marshal.inspect` answers:
 
 ```text
 What happened, what does Runtime evidence show, what does Lattice say when
 quoted, and what should the operator inspect next?
 ```
 
-Evaluate subjects:
+Inspect subjects:
 
 ```text
 subject=run
@@ -74,7 +74,7 @@ subject=spawn
 subject=component
 ```
 
-All evaluate subjects are read-only. `subject=target` labels target status as
+All inspect subjects are read-only. `subject=target` labels target status as
 Lattice-sourced. `subject=protocol` has `identity_mode=report|strict`; strict
 mode requires explicit expected identity fields. `subject=spawn` and
 `subject=component` are Runtime evidence grouping only.
@@ -89,12 +89,167 @@ Prove that the whole operator loop works:
 3. Runtime dry-runs or executes under policy.
 4. Runtime writes job evidence, terminal facts, checkpoint I/O, and exposure.
 5. Lattice re-reads Runtime evidence and proves or blocks the target.
-6. Marshal evaluates the result in a clear operator packet.
+6. Marshal inspects the result in a clear operator packet.
 ```
 
 The test campaign is complete when this loop succeeds for the real channel
 VICReg -> channel MDN -> validation-eval chain, and failure drills prove the
 same loop fails closed.
+
+## Active Environment-Era Marshal Slice
+
+Status: active as contract-only `rollout_marshal.v1`.
+
+The current environment-era Marshal slice standardizes bounded historical
+rollout preparation without becoming an executor, proof authority, policy
+selector, trainer, or performance judge. Keep three responsibilities distinct:
+
+```text
+environment evidence inspection
+  Read-only panel over Runtime replay artifacts and Lattice
+  replay_environment facts. No dispatch, proof authority, policy selection,
+  allocation, or market/deployment decision.
+
+environment policy target coordination
+  Bounded Runtime handoff for a dispatchable policy-training target, if and
+  only if Lattice exposes such a target with a concrete Runtime job contract.
+
+policy acceptance visibility
+  Read-only display of disabled policy-gate reservations, never a Marshal
+  decision or target-satisfaction claim.
+```
+
+Render disabled policy gates as disabled policy reservations in operator-facing
+packets. They are context for missing future decision inputs, not active gates
+and not Marshal authority.
+
+Current implemented rollout slice:
+
+```text
+rollout_marshal.v1
+  Input:
+    completed Runtime job directory
+    replay artifact state and runtime_replay_batches.index
+    Runtime executable path
+    base reserve graph node
+    risky node universe
+    policy set
+    finite rollout bounds
+    Cajtucu paper execution profile
+
+  Gate:
+    reject missing/non-directory Runtime job dir
+    reject missing Runtime job state when replay evidence is required
+    reject replay_artifacts_written=false
+    reject missing replay_batch_index_path
+    reject missing reserve/risky nodes
+    reject reserve duplication inside risky nodes
+    reject duplicate risky nodes
+    reject unsupported policy tokens
+    reject unsupported environment/backend ids
+    reject live execution authority
+    reject synthetic direct edges unless explicitly justified for research
+
+  Output:
+    non-authoritative replay command template
+    resolved policy ids
+    Cajtucu paper execution profile
+    expected report path
+    all authority flags false
+```
+
+This gives the environment work a reusable Marshal vocabulary for:
+
+```text
+policy + environment + execution profile + Runtime artifacts
+  -> trajectory evidence
+```
+
+The older `evaluation_marshal.v1` remains useful for compatibility and receipt
+shape references, but new environment handoff language should use `rollout`.
+Receipts and metrics belong after Runtime has produced reports, normally through
+future `hero.marshal.inspect` support.
+
+Expected evolution:
+
+```text
+1. Inspect environment evidence
+   Marshal reads Lattice panels for replay facts and the reserved future
+   replay_environment artifact-readiness proof. No Runtime dispatch.
+
+2. Prepare deterministic rollout readiness
+   Marshal prepares bounded historical replay rollout plans from completed
+   Runtime jobs. Runtime runs the replay. Lattice re-reads Runtime evidence to
+   prove any target.
+
+3. Reach policy-training artifact readiness
+   Marshal may dispatch bounded Runtime environment jobs only when Lattice has
+   a concrete dispatchable target and Runtime has a matching job contract.
+
+4. Inspect policy acceptance reservations
+   Marshal shows disabled policy-gate state and missing acceptance prerequisites.
+   It does not choose policies or claim acceptance.
+```
+
+Potential future tool names are deliberately undecided. Preserve two mental
+buckets:
+
+```text
+inspect_environment_panel
+  read-only, no dispatch
+
+reach_policy_training_artifact_target
+  dispatchable only for concrete finite Runtime policy-training job contracts
+```
+
+`hero.marshal.prepare intent=rollout` is plan-only. It does not produce
+metrics or receipts. Whether dispatchable policy training uses the existing
+`prepare` path or a separate environment-specific handoff remains an open
+design question.
+
+No policy-training handoff tool should be implemented until the contract
+specifies:
+
+```text
+target id
+environment/replay contract version
+episode bundle ids or source ranges
+max environment jobs
+max parallel workers
+max episodes
+max attempts
+resume ledger identity
+Runtime job kind
+policy artifact/checkpoint output contract
+parent evidence digests
+reward definition digest
+selector split and anti-leakage policy
+post-run Lattice target to recheck
+terminal stop condition
+```
+
+Marshal may prepare and explain those bounded handoffs. It must not become an
+unbounded environment scheduler, policy optimizer, reward judge, checkpoint
+selector, allocation engine, or deployment authority. Target satisfaction still
+comes only from Lattice re-reading Runtime evidence after Runtime has written
+durable environment/training records.
+
+For the current deterministic Wikimyei policy, Marshal should not dispatch
+policy training. The useful surface is inspection of environment facts and
+artifact-readiness proof. Dispatch becomes relevant only for trainable policies
+with a finite Runtime job contract.
+
+Open questions for the next design session:
+
+```text
+Is policy training reached through the existing prepare path or a
+separate environment-specific handoff tool?
+What fields make an environment handoff finite enough for Marshal to drive?
+How does the resume ledger prevent repeated episode/job expansion?
+Which post-run Lattice target proves the policy-training job wrote usable
+artifacts without judging reward quality?
+What does Marshal show when policy-gate reservations exist but remain disabled?
+```
 
 ## Testing Milestones
 
@@ -107,11 +262,12 @@ Checks:
 ```text
 - Marshal tool catalog exposes exactly:
   hero.marshal.status
-  hero.marshal.reach_lattice_target
-  hero.marshal.evaluate
+  hero.marshal.prepare
+  hero.marshal.inspect
+  hero.marshal.inspect
 
 - old hidden or compatibility tools are not callable:
-  hero.marshal.evaluate_run
+  hero.marshal.inspect_run
   hero.marshal.prepare_target_dispatch
   hero.marshal.dry_run_dispatch
   hero.marshal.execution_gate
@@ -119,7 +275,7 @@ Checks:
   hero.marshal.batch_preview
 
 - all Marshal tool schemas are MCP-compatible
-- subject enum is present for hero.marshal.evaluate
+- subject enum is present for hero.marshal.inspect
 - unknown fields fail closed
 - unsupported subjects fail closed
 ```
@@ -135,7 +291,7 @@ make -C src/main/hero build-marshal-hero -j12
 Acceptance:
 
 ```text
-three public tools
+four public tools
 no hidden public tools
 schema check passes
 direct CLI and MCP expose the same primitives
@@ -143,7 +299,7 @@ direct CLI and MCP expose the same primitives
 
 ### T1: Deterministic Evaluate Subjects
 
-Purpose: prove `hero.marshal.evaluate` reports without becoming proof authority.
+Purpose: prove `hero.marshal.inspect` reports without becoming proof authority.
 
 Checks:
 
@@ -274,7 +430,7 @@ Expected sequence:
 5. prove no validation/test leakage
 6. run channel MDN validation eval with exact MDN and representation checkpoints
 7. prove channel_mdn_validation_eval_ready
-8. evaluate the chain with hero.marshal.evaluate subject=run
+8. evaluate the chain with hero.marshal.inspect subject=run
 ```
 
 Acceptance:
@@ -286,7 +442,7 @@ validation eval loaded exact MDN checkpoint
 validation eval loaded exact representation checkpoint
 checkpoint closure is complete
 all required Lattice targets are satisfied
-Marshal evaluate explains the chain in one readable packet
+Marshal inspect explains the chain in one readable packet
 ```
 
 ### T5: Failure Drills
@@ -422,14 +578,14 @@ hero.marshal.status:
   what surface exists?
   what receipts/policy are visible?
 
-hero.marshal.reach_lattice_target:
+hero.marshal.prepare:
   is the target already reached?
   what wave would move it?
   did Runtime run or dry-run?
   why did the loop stop?
   what is the next safe action?
 
-hero.marshal.evaluate:
+hero.marshal.inspect:
   what happened?
   what Runtime jobs/facts exist?
   what Lattice status was quoted?
@@ -452,7 +608,7 @@ Use this order for a full Marshal/Lattice/Runtime confidence pass:
 
 ```text
 1. T0 static surface and schema
-2. T1 deterministic evaluate subjects
+2. T1 deterministic inspect subjects
 3. T7 performance budget
 4. T2 target driver dry-run
 5. T5 failure drills
@@ -470,8 +626,9 @@ blocked condition.
 Marshal testing is considered complete for the current cycle when:
 
 ```text
-- public tool surface is exactly status/reach_lattice_target/evaluate
-- every evaluate subject has passing positive and negative tests
+- public tool surface is exactly
+  status/prepare/inspect
+- every inspect subject has passing positive and negative tests
 - target driver dry-run is deterministic and non-mutating
 - target driver execute is bounded by explicit finite policy
 - Runtime handoffs are concrete and identity-bound
@@ -504,6 +661,6 @@ Potential future tool after the deterministic surface proves itself:
 hero.marshal.review
 ```
 
-If added later, it must consume deterministic `hero.marshal.evaluate` output and
+If added later, it must consume deterministic `hero.marshal.inspect` output and
 remain advisory. It must not change target status, issue counts, proof gates,
 checkpoint choice, or Runtime execution policy.

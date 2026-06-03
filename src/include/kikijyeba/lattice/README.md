@@ -65,7 +65,9 @@ affine row-to-key map. It also counts missing endpoint pairs, irregular anchor
 steps, and row/source-key mismatches as explicit gap warnings. That treats the
 source-key map as an audit-only order-preserving coordinate system; row-index
 leakage math remains authoritative.
-`hero.lattice.scan_exposure` also exposes a structured
+`hero.lattice.scan_exposure` is a read-only, non-dispatchable evidence scan; it
+is not a target proof or Runtime executor, and its fact families are not
+`TARGET_KIND` values. It also exposes a structured
 `source_key_window_audit` object with the parsed endpoints,
 completeness/numeric/monotonicity/order-preservation/affine-consistency booleans,
 the inferred reference key step when available, gap/mismatch counters, and issue
@@ -97,8 +99,8 @@ declared compact plus structured receipt fields.
 
 ## Fact Emission Contract And Inventory
 
-This README is the source of truth for the former V2 fact inventory and
-fact-emission contract. The old standalone inventory/contract files were review
+This README is the source of truth for the current fact inventory and
+fact-emission contract. Earlier standalone inventory/contract files were review
 artifacts; their durable content is consolidated here.
 
 Use `fact` only for a durable normalized evidence row with schema, identity,
@@ -169,10 +171,114 @@ kikijyeba.lattice.source_receipt.v1
   These rows inherit protocol identity from their parent exposure fact, do not
   replace row-index coverage/leakage math, and do not alter contract identity.
 
+kikijyeba.lattice.source_analytics.v1
+  Scanner-derived source health and complexity rows from
+  lattice.source_analytics.fact sidecars or job-local source data analytics
+  `.lls` reports when no dedicated source-analytics sidecar exists. These rows
+  bind entropy, compression, validity, missingness, duplicate-sample, and
+  source-health payloads to a parent exposure digest and active graph/source
+  identity. Summaries also expose train-validation source-regime metric,
+  volatility, feature-variance, and anchor-support deltas for comparable source
+  identities as warning-only visibility. They do not satisfy coverage, prove
+  leakage cleanliness, alter contract identity, gate readiness, or add a
+  TARGET_KIND.
+
+kikijyeba.lattice.target_transform.v1
+  Scanner-derived target transform contracts from lattice.target_transform.fact
+  sidecars. These rows bind target feature ids, horizon, target mode,
+  normalization/inverse-transform contracts, units, mask policy, and support
+  surface identity to a parent exposure digest. They are artifact-contract
+  prerequisites for future forecast-evaluation facts, not forecast-quality,
+  performance, readiness, allocation, or deployment decisions.
+
+kikijyeba.lattice.forecast_baseline.v1
+  Scanner-derived deterministic forecast baseline evidence from
+  lattice.forecast_baseline*.fact sidecars. Runtime emits previous-value,
+  zero-return, moving-average, and last-valid-channel baseline rows for
+  non-mutating channel-MDN evaluation runs. These rows bind baseline kind,
+  parameters, target transform digest, horizon, support counts, metric status,
+  and any available baseline error metrics to the same protocol/split/source
+  identity as their parent exposure fact. Runtime marks unscored deterministic
+  references as `metric_status=deferred_v1` instead of implying computed
+  scores. They are evidence prerequisites and warning support, not
+  forecast-quality acceptance, checkpoint selection, or deployment authority.
+
+kikijyeba.lattice.forecast_eval.v1
+  Scanner-derived forecast evaluation evidence from lattice.forecast_eval.fact
+  sidecars. These rows bind forecast metrics, stratified NLL surfaces, support
+  surfaces including horizon-level support, target-transform and baseline
+  digests, evaluated
+  representation/MDN checkpoint digests, and forecast artifact lineage to a
+  parent exposure digest. Forecast summaries derive skill-versus-baseline
+  diagnostics only after the baseline digest resolves under the same identity,
+  and expose calibration-coverage, PIT-summary, and sigma-scale availability as
+  warning-only visibility. They are non-mutating artifact evidence and warning
+  support, not quality acceptance, best-checkpoint selection, performance
+  readiness, allocation, or deployment authority.
+
+kikijyeba.lattice.observer_belief.v1
+  Scanner-derived observer belief evidence from lattice.observer_belief.fact
+  sidecars. These rows bind deterministic post-inference diagnostics,
+  confidence/data-quality/liquidity summaries, scenario/covariance identity,
+  feature semantics, dock binding, and forecast artifact lineage to a parent
+  exposure digest. The payload must distinguish raw_nodelift_potential from
+  allocation_belief. Raw NodeLift potential is not tradable return evidence,
+  and observer belief facts are warning/visibility evidence only: they are not
+  allocation, quality, performance, market-readiness, checkpoint-selection,
+  coverage, leakage, contract-identity, or readiness authority.
+
+kikijyeba.lattice.allocation_engine.v1
+  Scanner-derived allocation-engine audit evidence from
+  lattice.allocation_engine.fact sidecars. These rows bind risky-node weights,
+  reserve graph node/source/BasePolicy match and weight, turnover, objective
+  terms, CVaR, transaction costs, constraints/caps, scenario floor status,
+  fallback/de-risk reasons, observer belief digest, forecast artifact digest,
+  and BasePolicy digest to a parent exposure digest. They prove output shape
+  and lineage for later narrow artifact-readiness claims only. Lattice does not
+  allocate, select an allocation, route execution, judge market readiness, or
+  override the portfolio engine.
+
+kikijyeba.lattice.replay_environment.v1
+  Scanner-derived replay environment audit evidence from job-local
+  runtime_replay_batches.index, runtime_replay_experiments.index, and replay
+  experiment reports. These rows bind replay bundle counts, policy counts,
+  attempted/completed episode counts, reward/log-growth/equity summaries, and
+  replay report identity to a parent exposure digest. The report digest
+  declared by the Runtime experiment index is recomputed from the report body
+  before readiness can pass. Artifact readiness over this family also requires
+  the explicit replay contract surface: Runtime historical-replay world mode,
+  V1 runtime batch-index/experiment-index schemas plus the Cajtucu-ready replay
+  experiment artifact schema, cursor range resolution, no-future-leakage and
+  projection-validation guards, graph-node BasePolicy reserve semantics,
+  completed attempted episodes, episode cursor/range evidence, sequential
+  source-order evidence, explicit requested/resolved parallelism evidence,
+  observation/action/execution
+  time-law step counters matching the expected completed-step count, action
+  decision timestamps after knowledge and before realization availability, zero
+  future-observation/realization-key violations, and finite
+  projection-validation summaries with matching step evidence.
+  They are audit-only experiment evidence: they do not execute replay,
+  allocate, route Runtime, prove quality/performance/market readiness, select
+  checkpoints, or become coverage, leakage, readiness, deployment, or
+  contract-identity authority.
+
 kikijyeba.lattice.selection_signal.v1
   Scanner-derived causal leakage visibility from exposure rows with
   use_selection_signal=true. These rows inherit protocol identity from their
-  parent exposure fact. It is not a scheduler, selector, or model chooser.
+  parent exposure fact and record selector split, selector metric, tie policy,
+  selected checkpoint, candidate-checkpoint count/digest, and optional parent
+  evaluation fact digests. The candidate digest is an identity audit for the
+  declared checkpoint surface, not a quality ranking. The event digest is the
+  stable cross-fact binding key; parent evaluation digests are included in a
+  separate provenance digest so forecast-eval and selection-signal evidence do
+  not form a circular digest dependency. It is not a scheduler, selector, model
+  chooser, or artifact-readiness target; the catalog reports its promotion
+  blocked reason as `leakage_visibility_only`.
+  The summary resolves parent evaluation digests against forecast-eval facts
+  and requires the parent evaluation to reference the same stable selection
+  event digest. Missing parent evaluations, identity mismatches, and missing
+  back-references are provenance integrity issues only; they do not promote
+  selection signals into proof or policy authority.
 
 kikijyeba.lattice.node_exposure.v1
   Scanner-derived MDN-head support visibility from MDN per-node report fields.
@@ -185,7 +291,237 @@ kikijyeba.lattice.representation_support.v1
   rows inherit protocol identity from their parent exposure fact, are
   warning/visibility evidence only, and are never backfilled from downstream
   MDN node rows.
+  They are not artifact-readiness targets; the catalog reports their promotion
+  blocked reason as `support_visibility_only`.
 ```
+
+The generic fact catalog is the expansion path for roadmap evidence. Hero
+exposes `hero.lattice.list_fact_families`, `hero.lattice.scan_facts`,
+`hero.lattice.fact_summary`, `hero.lattice.fact_lineage`, and
+`hero.lattice.fact_preview` so agents can inspect fact families without
+promoting them to `TARGET_KIND`. Catalog families are read-only,
+non-dispatchable, not target-proof authority, not Runtime executors, do not
+write evidence, and are not Marshal reachability surfaces.
+These tools report those boundaries at the top level, including
+`model_selector=false`, `performance_selector=false`, `policy_gate=false`,
+`allocation_decision=false`, `market_readiness_decision=false`, and
+`deployment_decision=false`, so clients do not infer authority from fact-family
+names. A future target may prove a narrow artifact claim over catalog facts, but
+fact-family existence alone is never a readiness, quality, allocation, or
+deployment decision.
+Fact-family registry and summary rows expose `artifact_readiness_proof_kind`
+and `artifact_readiness_proof_claim` for proofable catalog families, and null
+values for warning/summary-only families. Non-proofable rows also expose
+`artifact_readiness_target_promotion_blocked = true` with a concrete blocked
+reason such as `warning_summary_only`, `leakage_visibility_only`, or
+`support_visibility_only`; clients should inspect those facts, not synthesize
+artifact targets from them.
+The catalog summary also carries explicit zero-count decision-authority fields:
+`quality_authority_family_count`, `performance_authority_family_count`,
+`checkpoint_selector_family_count`, `allocation_authority_family_count`,
+`execution_authority_family_count`, `policy_gate_family_count`,
+`target_dependency_authority_family_count`,
+`runtime_wave_authority_family_count`, `marshal_reachability_family_count`,
+`checkpoint_source_authority_family_count`, and
+`plan_checkpoint_input_authority_family_count`. `decision_authority_clean=true`
+is the catalog-level guard that these fact families remain evidence rows, not
+selectors, gates, Runtime wave sources, checkpoint sources, or Marshal reach
+surfaces.
+
+### Producer Contracts For Active Expansion Families
+
+The active expansion families use durable input files plus scanner-derived
+summaries. The durable inputs are job-local sidecars or source analytics `.lls`
+payloads; summaries are read models and must not become a second evidence
+contract.
+
+Common binding:
+
+- Every produced fact inherits parent exposure identity: parent exposure digest,
+  protocol id, contract fingerprint, graph order, source cursor, split policy,
+  component/job/wave identity, and row-index intervals.
+- Empty producer payloads are ignored. Malformed non-empty payloads remain
+  visible and emit warnings according to their authority model.
+- All families below are read-only catalog rows. Only the explicit
+  artifact-readiness templates may prove narrow artifact claims over them.
+
+`source_analytics`
+
+- Producers: `lattice.source_analytics.fact`, `source_analytics.fact`,
+  `runtime.source_analytics.fact`, `source.analytics.fact`, or scanner-derived
+  `data_analytics*.lls` / `source_data_analytics*.lls` numeric and symbolic
+  payloads.
+- Required payload: at least one source-health metric or health level, plus the
+  inherited parent/source cursor identity.
+- Visibility fields: entropy, entropy rate, information density, compression
+  ratio, power-spectrum entropy, volatility, feature variance, validity,
+  missingness, duplicate samples, source receipts, and train-validation regime
+  deltas.
+- Authority: warning and summary only; no coverage, leakage, readiness,
+  contract identity, quality, or performance authority.
+
+`target_transform`
+
+- Producers: `lattice.target_transform.fact`, `target_transform.fact`,
+  `runtime.target_transform.fact`, or `target.transform.fact`.
+- Required payload: target feature ids, horizon, target mode, normalization
+  contract, inverse-transform contract, units, and target mask policy digest.
+- Visibility fields: support surface identity and support surface digest.
+- Authority: artifact-contract prerequisite only; not a quality, readiness,
+  coverage, leakage, allocation, or deployment claim.
+
+`forecast_baseline`
+
+- Producers: `lattice.forecast_baseline.fact`, `forecast_baseline.fact`,
+  `runtime.forecast_baseline.fact`, `forecast.baseline.fact`, or deterministic
+  sidecars named for `previous_value`, `zero_return`, `moving_average`, and
+  `last_valid_channel`.
+- Required payload: target feature ids, horizon, baseline kind, target-transform
+  fact digest, support or valid count, and metric status.
+- Visibility fields: baseline parameters and baseline NLL/EV error, signed
+  error, and directional-accuracy metrics when computed.
+- Authority: evidence prerequisite and comparison support only; not model
+  quality acceptance or checkpoint selection.
+
+`forecast_eval`
+
+- Producers: `lattice.forecast_eval.fact`, `forecast_eval.fact`,
+  `runtime.forecast_eval.fact`, or `forecast.eval.fact`.
+- Required payload: target feature ids, horizon, support or valid count,
+  forecast artifact digest, evaluated representation checkpoint digest,
+  evaluated MDN checkpoint digest, target-transform fact digest, baseline fact
+  digests, and horizon support surface.
+- Visibility fields: aggregate and stratified NLL, EV error, signed error,
+  directional accuracy, calibration coverage, PIT summary, sigma-scale sanity,
+  support surfaces, and selection-signal digests.
+- Authority: non-mutating artifact evidence only; not forecast-quality
+  acceptance, best-checkpoint selection, allocation, performance, or deployment
+  authority.
+
+`observer_belief`
+
+- Producers: `lattice.observer_belief.fact`, `observer_belief.fact`,
+  `runtime.observer_belief.fact`, or `observer.belief.fact`.
+- Required payload: belief kind, forecast artifact digest, scenario-bank
+  digest, feature-semantics fingerprint, and dock-binding fingerprint.
+- Visibility fields: channel consensus, potential-surface diagnostics, NodeLift
+  return projection, covariance coupling, residual quality, projection
+  validation, confidence, data quality, liquidity, and forecast lineage.
+- Authority: observer visibility only. `raw_nodelift_potential` is never
+  tradable return evidence, and `allocation_belief` is not allocation authority.
+
+`allocation_engine`
+
+- Producers: `lattice.allocation_engine.fact`, `allocation_engine.fact`,
+  `runtime.allocation_engine.fact`, or `allocation.engine.fact`.
+- Required payload: reserve graph node, reserve node source, BasePolicy reserve
+  node, graph-bound reserve flag, observer-belief fact digest, forecast artifact
+  digest, BasePolicy digest, objective terms, CVaR loss, transaction-cost
+  estimate, constraint diagnostics, fallback reason contract, and de-risk reason
+  contract.
+- Visibility fields: risky-node weights, reserve weight, turnover, cap
+  diagnostics, scenario growth-floor status, fallback reasons, and de-risk
+  reasons.
+- Authority: deterministic audit evidence only. Lattice does not allocate,
+  select allocations, route execution, decide market readiness, deploy, or
+  override the portfolio engine.
+
+Registry and catalog-summary rows also include `fact_identity_contract`, the
+shared runtime evidence identity envelope for fact families. It names the common
+schema/fact-type/digest fields, parent exposure digest when applicable,
+protocol/contract/graph/source-cursor/split/component/job-wave identity,
+row-index anchor/completed intervals, family-specific lineage digest fields, and
+support fields. The contract keeps row-index intervals authoritative,
+source-key windows audit-only, and target-kind, Runtime-wave, Marshal
+reachability, and policy-gate authority false.
+`scan_facts`, `fact_summary`, `fact_lineage`, and `fact_preview` also return
+`fact_integrity_summary`, a native Lattice rollup that separates declared
+relation digests from resolved, identity-compatible bindings. It reports bound,
+unresolved, identity-mismatch, and digest-mismatch relation counts, affected
+families, integrity flags, and issue codes for transform, baseline,
+selection-signal, forecast, observer, and allocation lineage. `fact_lineage`
+adds selected relation/key/digest rows from the rebuildable runtime index as
+audit-only witnesses; those cache rows are not target-proof authority and are
+never used for Marshal dispatch or target satisfaction. `fact_preview` returns
+concrete fact rows for one family by digest, digest prefix, or fact index, plus
+matching lineage rows; preview rows are audit-only and explicitly report
+`facts_used_for_target_satisfaction=false`. Each preview row also carries a
+normalized `identity_envelope` next to the concrete family payload. Lattice
+projects that envelope through the typed catalog API
+`lattice_fact_identity_envelope_t` /
+`make_lattice_fact_identity_envelope`; Hero only serializes the projection. The
+envelope applies the shared `fact_identity_contract` to the row: family, digest,
+protocol/contract/graph/source-cursor/split/component/job-wave identity,
+row-index ranges, parent exposure/fact/checkpoint/artifact digests, support
+counters when present, and the same no-proof/no-dispatch/no-selection authority
+flags.
+Artifact-readiness proof JSON also emits `fact_preview_hint` for concrete
+artifact facts, and blocked artifact plan-basis JSON aggregates those hints in
+`fact_preview_hints`. These hints name `hero.lattice.fact_preview` and
+`hero.marshal.inspect_evidence_panel` arguments for inspection only; they do
+not alter proof certificates, target status, checkpoint selection, or dispatch.
+
+Narrow catalog proofs use `TARGET_CLASS = artifact_readiness`, `PROOF_KIND`,
+and `SUBJECT_FACT_FAMILY` instead of adding roadmap evidence to `TARGET_KIND`.
+The active proof templates are `target_transform_contract_bound`,
+`forecast_baseline_artifact_bound`, `forecast_eval_artifact_bound`,
+`observer_belief_artifact_bound`, and `allocation_artifact_bound` over their
+matching fact families. These targets require matching protocol/contract and
+graph/source identity, a parent exposure digest, required lineage fields, and
+clean authority flags. `replay_environment` is parked future environment
+evidence in this catalog: audit-only when explicitly inspected and not an
+active artifact-readiness proof template.
+Certificate artifact rows bind the source fact back to the catalog contract with
+`fact_schema`, `fact_type`, `fact_identity_contract_id`,
+`fact_identity_contract_bound = true`, `fact_identity_envelope_complete = true`,
+`row_index_interval_authority = true`, and
+`source_key_window_audit_only = true`. They also bind `proof_kind` back to the
+artifact registry with `proof_template_bound = true` and a
+`proof_template_claim`; verification rejects rows whose fact family, fact
+schema, identity-contract binding, proof kind, bound flag, or claim no longer
+match the registered catalog/proof templates. This keeps artifact readiness as
+an explicit template-bound claim rather than arbitrary fact existence.
+Fact families without an explicit artifact proof template, including
+`source_analytics`, remain warning/summary evidence and cannot be promoted to
+artifact-readiness targets by spelling a new `PROOF_KIND`.
+Forecast baseline and evaluation proofs also require their referenced
+target-transform/baseline/selection-signal digests to exist under the same
+target identity, not merely somewhere in the scanned ledger. Observer-belief
+and allocation proofs likewise close over identity-matched forecast and observer
+digests so artifact lineage cannot be borrowed from another split, cursor, or
+protocol. Forecast evaluation artifact proofs require checkpoint-lineage
+digests, support counts, baseline/transform bindings, selection-signal audit,
+and no model-state mutation. Replay environment artifact proofs require bound
+replay batch, experiment, and report lineage, exact replay artifact schemas,
+exact historical-replay contract identity, resolved-cursor/no-future-leakage/
+projection-validation guards, graph-node
+BasePolicy reserve semantics, complete attempted episodes, per-episode
+cursor/range evidence, sequential source-order evidence, explicit
+requested/resolved parallelism evidence, observation/action/execution time-law
+step evidence matching the expected completed-step count, action decision
+timestamps after knowledge and before realization availability, zero
+future-observation/realization-key
+violations, and projection-validation metric and step summaries matching the
+same count. They force
+`CHECKPOINT_SOURCE = none`, default `PLAN_MAX_ATTEMPTS = 0`, emit no suggested
+wave, and write their proof into `proof_certificate.artifacts[]`. They are
+artifact-integrity proofs only: they do not judge forecast quality, choose
+checkpoints, allocate capital, route execution, declare deployment/market
+readiness, or make replay environment evidence reachable work. Artifact proof
+rows expose those boundaries as explicit false authority flags, including
+quality/performance authority, checkpoint selection, allocation/execution
+authority, market/deployment authority, policy gates, target dependencies,
+Runtime wave authority, Marshal reachability, checkpoint-source authority, plan
+checkpoint inputs, model-state mutation, raw-potential tradable-return claims,
+and replay execution. When an identity-matched artifact fact exists but
+fails those rules, the failed evaluation keeps the first matching
+`proof_certificate.artifacts[]` row with `passed = false`, its explicit drift
+flags, and its issue list instead of hiding the failure in prose-only reasons.
+The deficit vector is derived from that failed row with keys such as
+`artifact:forecast_eval_authority` and
+`artifact:forecast_eval_issue_forecast_eval_must_remain_artifact_evidence_only`,
+so the primary operator action remains evidence-panel inspection rather than a
+generic certificate failure.
 
 The inventory classifies current report and fact fields as follows:
 
@@ -216,6 +552,27 @@ source receipts:
   compact source_file_receipts normalized into structured audit-only receipt
   facts, with malformed non-empty receipts warning and missing receipts treated
   as audit absence
+
+source analytics:
+  optional source-health sidecars normalized into structured visibility-only
+  facts and summaries, with row-index intervals kept as the only
+  coverage/leakage authority
+
+target transform:
+  optional target contract sidecars normalized into artifact-contract facts and
+  summaries; they make forecast errors interpretable but do not make any
+  quality, performance, readiness, allocation, or deployment claim
+
+forecast baseline:
+  optional deterministic baseline sidecars normalized into evidence-prerequisite
+  facts and summaries; they make later model forecast evidence comparable but do
+  not select checkpoints or accept/reject model quality
+
+forecast evaluation:
+  optional forecast-evaluation sidecars normalized into artifact-evidence facts
+  and summaries; they expose NLL, EV error, directional accuracy, calibration,
+  support, evaluated checkpoint lineage, target-transform binding, and baseline
+  binding without declaring forecast quality ready
 
 node and representation support:
   MDN per-node support rows for MDN heads; representation/NodeLift aggregate and
@@ -347,6 +704,65 @@ applied. These warnings are non-blocking and do not change readiness status.
 Each warning result carries a structured `measurement_available` bit;
 unavailable warning counts and evidence order dimensions do not require agents
 to parse message text.
+`LATTICE_WARN KIND=forecast_eval` is the catalog-fact warning surface for
+scanner-derived forecast evaluation facts. It can flag `mean_nll`, `ev_mae`,
+`ev_rmse`, `signed_error`, `directional_accuracy`, `calibration_coverage`,
+`pit_summary`, `sigma_scale_sanity`, `support_count`, `valid_count`,
+`missing_count`, `weakest_support_rows`, `weakest_horizon_support_rows`,
+`mean_nll_per_horizon_max`,
+`skill_vs_baseline`, `skill_vs_naive`, `skill_vs_baseline_mean_nll`,
+`skill_vs_baseline_ev_mae`, `skill_vs_baseline_ev_rmse`, and
+`directional_accuracy_delta_vs_baseline`.
+These warnings can attach to artifact-readiness targets but remain visibility
+only: they do not accept forecast quality, rank checkpoints, select allocations,
+or alter dispatch.
+Warning envelopes classify these metrics by family: calibration metrics emit
+`forecast_calibration`, support-surface metrics emit `forecast_support`,
+baseline skill metrics emit `forecast_baseline_comparison`, and other forecast
+diagnostics emit `forecast_quality_visibility`.
+`LATTICE_WARN KIND=forecast_baseline` is the catalog-fact warning surface for
+scanner-derived deterministic baseline facts. It can flag `baseline_mean_nll`,
+`baseline_ev_mae`, `baseline_ev_rmse`, `baseline_signed_error`,
+`baseline_directional_accuracy`, `support_count`, `valid_count`,
+`missing_count`, `baseline_kind_count`, `computed_metric_fact_count`,
+`partial_metric_fact_count`, `deferred_metric_fact_count`,
+`computed_metric_value_count`, and `metric_status_mismatch_count`. These
+warnings show whether baseline support, baseline-kind coverage, metric
+coverage, and reference error are legible; they do not make the model good,
+select checkpoints, or promote a baseline into a policy gate.
+Baseline support metrics emit `forecast_support`; baseline reference and
+coverage diagnostics emit `forecast_baseline_comparison`.
+`LATTICE_WARN KIND=observer_belief` is the catalog-fact warning surface for
+scanner-derived observer facts. It can flag `confidence`, `data_quality`,
+`liquidity`, `raw_potential_tradable_return`, `allocation_authority`,
+`forecast_lineage_bound`, `channel_consensus_bound`,
+`potential_surface_diagnostics_bound`, `nodelift_return_projection_bound`,
+`covariance_coupling_bound`, `scenario_bank_bound`,
+`nodelift_residual_quality_bound`, `projection_validation_scores_bound`,
+`feature_semantics_bound`, and `dock_binding_bound`. These warnings are
+visibility diagnostics only: raw NodeLift potential remains distinct from
+allocation belief, and Lattice still does not treat observer output as tradable
+return, allocation quality, market readiness, or deployment authority.
+Observer contract and lineage metrics emit `lineage_integrity`; confidence,
+data-quality, liquidity, and authority-boundary diagnostics emit
+`observer_belief_consistency`.
+`LATTICE_WARN KIND=allocation_engine` is the catalog-fact warning surface for
+scanner-derived allocation-engine audit facts. It can flag `reserve_weight`,
+`turnover`, `cvar_loss`, `transaction_cost_estimate`,
+`deterministic_artifact`, `visibility_only`, `allocation_authority`,
+`execution_authority`, `market_readiness_authority`,
+`deployment_authority`, `reserve_node_bound`, `observer_belief_bound`,
+`forecast_artifact_bound`, `base_policy_bound`,
+`reserve_node_from_base_policy`, `reserve_node_base_policy_match`,
+`reserve_node_graph_bound`, `cap_diagnostics_bound`,
+`scenario_growth_floor_status_bound`, `scenario_growth_floor_met`,
+`scenario_growth_floor_attention`, `fallback_declared`, `fallback_active`,
+`derisk_declared`, and `derisk_active`. These warnings are audit visibility
+only: Lattice still does not select allocations, route execution, judge market
+readiness, or override the portfolio engine.
+Allocation binding/completeness metrics emit `lineage_integrity`; allocation
+cost, risk, turnover, and authority-boundary diagnostics emit
+`allocation_engine_diagnostics`.
 `LATTICE_WARN KIND=mdn_distribution_calibration` is the non-blocking
 distributional MDN warning surface. V3-D can evaluate aggregate `mean_nll`,
 channel and horizon max-NLL summaries when runtime reports emit them, and
@@ -536,8 +952,12 @@ epochs.
 
 `LATTICE_WARN` adds non-blocking warning semantics over these summaries. Warning
 clauses can report high `exposure_load`, high `effort_density`, suspicious
-`anchor_domain_health`, weak/imbalanced/statistically thin MDN node support, or
-suspicious `representation_health` metrics without changing target status, `plan_ready`,
+`anchor_domain_health`, source-health shifts from `source_analytics`,
+forecast-baseline visibility from `forecast_baseline`, forecast-evaluation
+visibility from `forecast_eval`, observer diagnostics from `observer_belief`,
+allocation-engine audit visibility from `allocation_engine`,
+weak/imbalanced/statistically thin MDN node support, or suspicious
+`representation_health` metrics without changing target status, `plan_ready`,
 suggested waves, `PLAN_MAX_ATTEMPTS` accounting, or `target_spec_fingerprint`.
 Every warning kind may use `SPLIT` or explicit `ANCHOR_INDEX_BEGIN` /
 `ANCHOR_INDEX_END`; measurements are scoped to that warning interval and fall
@@ -550,13 +970,21 @@ returns the resolved interval as `warning_results[].warning_anchor_range`, while
 `warning_anchor_scope_policy_vocabulary` documents the visibility-only fallback
 and node-support warning matrix scope for both surfaces.
 Warning results are returned beside the normal evaluation as `warning_results`;
-the short `warnings` list is exactly the ordered projection of
-`warning_results[].message` where `warning_results[].threshold_triggered` is
-true. If a warning input measurement is absent, the result stays non-blocking
-and reports the measurement as unavailable instead of formatting a non-finite
-value as a numeric comparison; threshold-backed warnings still name the
-configured threshold. Each warning result names its `evidence_basis`, such as
-`exposure_load_summary`, `filtered_node_support_summary`,
+the short `warnings` list now projects typed non-blocking warning envelopes for
+Marshal and other agents, while `warning_messages` preserves the ordered
+projection of `warning_results[].message` where
+`warning_results[].threshold_triggered` is true. If a warning input measurement
+is absent, the result stays non-blocking and reports the measurement as
+unavailable instead of formatting a non-finite value as a numeric comparison;
+threshold-backed warnings still name the configured threshold. Each warning
+result carries `warning_family`, `source=lattice`,
+`component=lattice_target`, `blocking=false`,
+`readiness_effect=non_blocking_warning_only`, `evidence_digest`,
+`machine_reason_code`, `human_explanation`, `suggested_inspection_panel`,
+`target_ids_observed_against`, and its `evidence_basis`, such as
+`exposure_load_summary`, `source_analytics_facts`,
+`forecast_baseline_facts`, `forecast_eval_facts`, `observer_belief_facts`,
+`allocation_engine_facts`, `filtered_node_support_summary`,
 `representation_health_facts`, or `anchor_domain_facts`, so agents can tell
 which summary or fact family produced the measurement. The companion
 `exposure_summary_available` and `node_support_summary_available` booleans mark
@@ -581,8 +1009,9 @@ names and their trigger/measurement-availability semantics, plus
 `warning_anchor_scope_policy_vocabulary` for warning-interval visibility. It
 also includes a `warning_summary` object that aggregates warning-result count,
 triggered-warning count, unavailable-warning count, clear measured warning
-count, the compatibility `warning_count` alias, and relation counts for each
-threshold relation value.
+count, blocking and non-blocking warning counts, `all_warnings_non_blocking`,
+the compatibility `warning_count` alias, and relation counts for each threshold
+relation value.
 The target compiler also applies small dimensional checks to authored numeric
 thresholds. Coverage fractions, valid-target fractions, accepted-anchor
 fractions, Gini/normalized-entropy thresholds, adapter valid-channel fractions,
@@ -614,7 +1043,10 @@ checkpoint. If the source target is not satisfied, the guard target blocks and
 forwards the source target's suggested wave; it still does not execute anything.
 `latest_satisfying` is a deterministic readiness selector over the referenced
 target's newest satisfied checkpoint candidate under the active identity. It is
-not a best-model selector, Pareto optimizer, performance ranking, deployment
+only valid for checkpoint-producing `readiness` and `leakage_guard` source
+targets. It must not point at `artifact_readiness`, `evaluation_readiness`,
+policy, performance, market, or deployment-readiness surfaces. It is not a
+best-model selector, Pareto optimizer, performance ranking, deployment
 recommendation, or scalar score. Hero JSON emits
 `checkpoint_selection_policy_vocabulary` to make that selection scope explicit.
 Hero JSON also emits `checkpoint_selection_policy_summary`, which self-checks
@@ -658,6 +1090,61 @@ coverage proves that the checkpoint was evaluated over enough trusted anchors;
 it does not assert that NLL, calibration, economic utility, or deployability is
 acceptable.
 
+Artifact-readiness targets are the separate non-trainable proof path. They may
+omit `TARGET_KIND` entirely and instead declare, for example:
+
+```text
+LATTICE_TARGET {
+  TARGET_ID = observer_belief_artifact_ready;
+  TARGET_CLASS = artifact_readiness;
+  SUBJECT_FACT_FAMILY = observer_belief;
+  SUBJECT_COMPONENT = wikimyei.inference.expected_value.mdn;
+  PROTOCOL_ID = cwu_02v;
+  SOURCE_RANGE = anchor_index;
+  OVER_SPLIT = validation_holdout;
+}
+```
+
+This proves the selected fact exists and is bound to the declared identity and
+lineage. For forecast facts, the referenced transform and baseline digests must
+be present in the catalog. It does not make Marshal "reach" the fact family and
+it does not reuse training-job checks such as optimizer steps, finite loss, or
+checkpoint output. It also cannot use `UPSTREAM_TARGET_ID`, `LATTICE_DEPENDS`,
+`EVALUATED_CHECKPOINT_SOURCE`, or `PLAN_INPUT_*` checkpoint hints; artifact
+lineage is proved from fact parent digests and the registered proof template,
+not from target-dependency scheduling. `list_targets`, `explain_target`,
+`evaluate_target`, and `target_deficit` expose this as `target_surface_kind =
+evidence_catalog_artifact`, `dispatchable_target = false`,
+`runtime_wave_dispatchable = false`, and
+`recommended_operator_action = inspect_evidence_panel`. They also emit
+`kind = not_applicable`, `target_kind_applicable = false`, and
+`target_kind_effective = none`, so the internal default enum cannot masquerade
+as a declared `TARGET_KIND`.
+
+Decision policies remain separate. `TARGET_CLASS = policy_gate`,
+`TARGET_CLASS = performance_acceptance`, `TARGET_CLASS =
+validation_performance`, `TARGET_CLASS = market_readiness`, and
+`TARGET_CLASS = deployment_readiness` all fail closed.
+`LATTICE_POLICY_GATE` is reserved syntax only: the parser accepts
+`ENABLED=false` declarations as reviewable future-policy reservations for the
+explicit `forecast_quality_acceptance` and `allocation_acceptance` kinds,
+computes their policy fingerprints, verifies any supplied `POLICY_FINGERPRINT`
+against the canonical reservation digest, and keeps them out of target status
+and `target_spec_fingerprint`. Each reservation must bind to the matching
+`artifact_readiness` proof target (`forecast_eval` for forecast quality,
+`allocation_engine` for allocation acceptance). `ENABLED=true` still fails
+closed before it can change target status. Future gates must carry an explicit
+policy input contract: policy identity, metric definition, baseline definition,
+threshold, uncertainty policy and model, support minimum, selector split, tie
+policy, anti-leakage policy, negative tests, calibration requirements, holdout
+declaration, and threshold-selection audit trail.
+Hero JSON exposes these reservations through `policy_gate_reservations` and
+`policy_gate_reservation_summary` on target-list, explain, and evaluation
+surfaces. Those rows report canonical policy-fingerprint verification, required
+policy inputs, missing input lists, policy-input contract completeness, and zero
+decision-policy, target-status, target-fingerprint, proof-certificate,
+runtime-execution, allocation, market-readiness, and deployment authority.
+
 Forbidden exposure ranges are a different question: they inspect the full
 checkpoint closure, including upstream components, and reject a checkpoint when
 its closure overlaps a protected source-row footprint under uses such as
@@ -672,9 +1159,16 @@ Hero JSON emits `selection_signal_policy_vocabulary` to make this boundary
 explicit: V1 treats `selection_signal` as a forbidden causal use over the
 causal exposure anchor footprint. V2 additionally derives read-only
 `kikijyeba.lattice.selection_signal.v1` event facts for those uses, binding the
-selector id, selected checkpoint path, parent exposure digest, and selector
-footprint without adding coverage or contract-identity authority. Arbitrary
-cross-event selector graph proofs remain future provenance work.
+selector id, selector split, selector metric, tie policy, selected checkpoint
+path, candidate-checkpoint surface, parent exposure digest, and selector
+footprint without adding coverage, contract-identity, ranking, or checkpoint
+selection authority. When a forecast-evaluation fact references a selection
+event, the ledger enriches the selection event with the forecast-eval digest as
+parent evaluation provenance; that enrichment changes the provenance digest, not
+the event digest used for relation resolution. Selection summaries verify that
+the parent forecast-eval digest resolves under the same identity and points back
+to the selection event. Arbitrary cross-event selector graph proofs remain
+future provenance work.
 `selection_signal_policy_summary` self-checks the four-row boundary: known
 selection-signal is forbidden and causal-anchor based, first-class selector
 events are read-only V2 evidence, known selector paths fail closed when
@@ -695,6 +1189,18 @@ Every `evaluate_target` result now carries a
 `kikijyeba.lattice.target_certificate.v1` proof certificate. The certificate is
 not a second evaluator; it is the structured record of the same checks that
 produced the target status. It currently records:
+
+Artifact-readiness evaluations also carry a `fact_integrity_summary` scoped to
+the target's `SUBJECT_FACT_FAMILY`. Failed artifact proofs may add
+`fact_integrity:*` deficit rows when the subject catalog has unresolved,
+identity-mismatched, or digest-mismatched relation evidence. These rows explain
+the catalog condition behind proof issues; they are not Runtime dispatch,
+quality acceptance, allocation advice, or a separate policy gate.
+Artifact proof deficits also expose `related_fact_integrity_issue_codes` when a
+proof issue corresponds to catalog issue rows, so
+`baseline_fact_digest_not_found` can point directly at
+`artifact_job:baseline_fact_digest_not_found` or the equivalent component/job
+issue code.
 
 ```text
 proof obligation:
@@ -1060,8 +1566,10 @@ an alias for `triggered_warning_count`; comparison uses the structured
 `triggered_warning_count` dimension.
 `hero.lattice.compare_evidence` evaluates two targets with one scan and returns
 the two vectors, per-dimension comparison rows, clean-checkpoint participation
-reasons, and the dominance relation. It is read-only, emits no scalar score, and
-does not make a deployment or checkpoint-selection decision.
+reasons, and the dominance relation. It is read-only, not target proof,
+non-dispatchable, not a Runtime executor, and emits explicit false authority
+flags for model selection, checkpoint selection, quality acceptance, policy
+gates, allocation, market readiness, scalar scores, and deployment decisions.
 This Pareto basis is explanatory unless a future selector explicitly opts into
 it. V1 `latest_satisfying` does not use Pareto dominance to pick checkpoints.
 `checkpoint_selection_policy_summary` exposes that as a countable invariant.
@@ -1203,9 +1711,15 @@ Agent runbook:
 1. `hero.lattice.status`
    Always start here. Report target/split paths, split-policy fingerprint,
    fact counts, warnings, and inferred active identity before making claims
-   about target state.
+   about target state. This is a read-only, non-dispatchable status packet, not
+   target proof or Runtime execution, writes no evidence, and its fact counts
+   are catalog evidence rather than `TARGET_KIND` declarations. It also declares
+   no model-selection, performance-selection, policy-gate, allocation,
+   market-readiness, or deployment authority.
 2. `hero.lattice.list_targets`
-   Use this to discover the target ids compiled from the active target DSL.
+   Use this to discover the target ids compiled from the active target DSL. It
+   is read-only, not target proof, non-dispatchable, not a Runtime executor, and
+   not a fact-family target-kind expansion path.
 3. `hero.lattice.explain_target`
    Use this before editing or evaluating a target. It is the source of truth for
    what the compiled proof obligation means without scanning runtime evidence,
@@ -1217,7 +1731,8 @@ Agent runbook:
    mathematical policy vocabularies, deficit priority and evidence-order
    vocabularies, non-blocking warning trigger policy, interval-scope policy
    vocabulary, and per-warning resolved scope previews. An unbounded warning
-   preview means no anchor-range filter is applied for that warning kind.
+   preview means no anchor-range filter is applied for that warning kind. It is
+   read-only explanation, not a live target proof or dispatch authority.
 4. `hero.lattice.scan_exposure`
    Use this before evaluating unfamiliar runtime roots. Report warnings
    verbatim. The preview ledger is derived from `job.manifest`, `job.state`,
@@ -1235,20 +1750,28 @@ Agent runbook:
    checkpoint input edges, and no new training checkpoint. For exposure-backed
    targets, the result also includes
    `exposure_summaries` with unique coverage, repeated
-   cursor-epoch load, and optimizer-step density.
+   cursor-epoch load, and optimizer-step density. Its envelope marks
+   `target_proof=true` and `target_proof_engine=lattice_target_evaluator`, while
+   still declaring `dispatchable=false`, `runtime_executor=false`, and
+   `writes_evidence=false`.
 6. `hero.lattice.target_deficit`
    Use this when the question is "what proof deficit remains, and what
    target-authored wave would address it?" Treat the returned wave as advice
    only. It does not execute anything. The result carries the same proof
    certificate/check and deficits as evaluation, plus `plan_basis`, so the
    suggested wave is auditable against the proof deficits it is intended to
-   resolve.
+   resolve. Its envelope marks `target_proof=true`, `plan_advice_only=true`,
+   `dispatchable=false`, and `runtime_executor=false`.
 7. `hero.lattice.latest_satisfying_checkpoint`
    Use this when a target-deficit result carries a symbolic
    `latest_satisfying:<target_id>` model-state hint. Lattice resolves the hint
    only when the source target is cleanly satisfied and its checkpoint closure
-   is complete. The tool is read-only, does not rank alternatives, and does not
-   execute or select a fallback checkpoint.
+   is complete. It reports `source_target_class` and
+   `checkpoint_selectable_source_target`; artifact/evaluation sources fail
+   closed with `resolution_status=non_checkpoint_target_class`. The tool is
+   read-only, declares `target_proof=false`, `dispatchable=false`, and
+   `fact_families_are_not_target_kinds=true`, does not rank alternatives, and
+   does not execute or select a fallback checkpoint.
 8. `hero.lattice.compare_evidence`
    Use this to compare two clean satisfying checkpoint targets by Pareto
    evidence vector. The tool reports each vector, per-dimension dominance
@@ -1260,15 +1783,20 @@ Agent runbook:
    or `checkpoint_id` plus `checkpoint_file_digest`. Missing upstream producer
    evidence or id/digest mismatch must fail closed and should be reported as a
    blocker, not ignored. The JSON reports closure authority and root checkpoint
-   identity.
+   identity. It is read-only and declares `target_proof=false`,
+   `dispatchable=false`, `checkpoint_selector=false`,
+   `automatic_checkpoint_selection=false`, and
+   `fact_families_are_not_target_kinds=true`.
 10. `hero.lattice.derived_query`
    Use this when the question is "show the proof witnesses for one named
    derived rule." The V3-E pilot supports `target_satisfied`,
    `checkpoint_ancestor`, `forbidden_overlap`, `stale_cache`, and
    `unresolved_lineage`. Each result includes the versioned rule row, result
-   source, concrete witnesses, and fail-closed fields. It is read-only:
-   cache/index rows are never used for target satisfaction, and Runtime Hero
-   remains the executor.
+   source, concrete witnesses, and fail-closed fields. It is read-only and
+   declares `target_proof=false`, `dispatchable=false`,
+   `checkpoint_selector=false`, `automatic_checkpoint_selection=false`, and
+   `fact_families_are_not_target_kinds=true`: cache/index rows are never used
+   for target satisfaction, and Runtime Hero remains the executor.
 
 For an empty runtime root, graph-anchor targets cannot infer active identity.
 Pass `protocol_contract_fingerprint`, `graph_order_fingerprint`,
@@ -1366,7 +1894,9 @@ contract/runtime root:
    checkpoint_closure are enough for an agent to understand evidence, failure
    reasons, warnings, closure completeness, and the checkpoint identity
    authority used by closure, plus the next suggested wave without executing
-   anything.
+   anything. Config/catalog surfaces declare `target_proof=false`; evaluation and
+   deficit surfaces declare `target_proof=true` but remain read-only,
+   non-dispatching, non-executing proof evaluations.
 ```
 
 DB/index work, performance gates, stable checkpoint ids, structured source
@@ -1411,12 +1941,16 @@ node, checkpoint, source-receipt, selection-signal, and representation-support
 rows. Cache validity is tied to a runtime-file metadata digest, and
 `hero.lattice.index_status` reports whether it is using valid cache rows or a
 live scan fallback. Target evaluation still uses live runtime evidence; a stale
-or missing cache never upgrades readiness.
+or missing cache never upgrades readiness. Its top-level JSON declares
+`read_only=true`, `target_proof=false`, `dispatchable=false`,
+`runtime_executor=false`, `db_source_of_truth=false`,
+`checkpoint_selector=false`, and `fact_families_are_not_target_kinds=true`.
 V3-A adds `hero.lattice.index_query`, a read-only audit query surface over the
 same rows. It filters by relation, exact key, key substring, exact digest, or
 digest prefix, and reports cache/live-scan parity. By default, a stored cache
 is used for the query only when metadata validation passes and its row answers
-match a fresh live scan. V3-B adds `hero.lattice.evaluate_targets` for one-scan
+match a fresh live scan. It declares the same non-proof, non-dispatchable,
+non-selector boundary as `index_status`. V3-B adds `hero.lattice.evaluate_targets` for one-scan
 multi-target evaluation, long-lived watched-file-guarded scan reuse, internal
 cache `row_set_digest`/`relation_counts` integrity checks, and streaming
 checkpoint file digesting. `validation_strength=watched_file_manifest` checks

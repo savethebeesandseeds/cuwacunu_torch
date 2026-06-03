@@ -14,7 +14,7 @@
 #include <vector>
 
 #include "kikijyeba/lattice/runtime_report/component_runtime_lls.h"
-#include "kikijyeba/settings/wave.h"
+#include "kikijyeba/runtime/wave_settings.h"
 #include "ujcamei/source/retrieval/dataloader/source_cursor.h"
 
 namespace cuwacunu::kikijyeba::protocol {

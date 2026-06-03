@@ -11,6 +11,7 @@
 #include <filesystem>
 #include <fstream>
 #include <functional>
+#include <initializer_list>
 #include <iterator>
 #include <limits>
 #include <numeric>
@@ -19,6 +20,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -29,6 +31,13 @@
 #include "wikimyei/assembly.h"
 
 namespace cuwacunu::kikijyeba::lattice::exposure {
+
+inline constexpr const char *k_lattice_fact_identity_envelope_schema_v1 =
+    "kikijyeba.lattice.fact_identity_envelope.v1";
+inline constexpr const char *k_lattice_fact_identity_contract_schema_v1 =
+    "kikijyeba.lattice.fact_identity_contract.v1";
+inline constexpr const char *k_lattice_fact_identity_contract_id_v1 =
+    "runtime_evidence_identity_envelope";
 
 enum class exposure_split_role_t {
   unknown,
@@ -47,6 +56,61 @@ enum class exposure_use_t {
   selection_signal,
 };
 
+enum class lattice_fact_family_t {
+  exposure,
+  node_exposure,
+  checkpoint,
+  source_receipt,
+  source_analytics,
+  target_transform,
+  forecast_baseline,
+  forecast_eval,
+  observer_belief,
+  allocation_engine,
+  replay_environment,
+  selection_signal,
+  representation_support,
+};
+
+struct lattice_fact_family_descriptor_t {
+  lattice_fact_family_t family{lattice_fact_family_t::exposure};
+  const char *family_name{""};
+  const char *fact_schema{""};
+  const char *relation{""};
+  const char *summary_schema{""};
+  const char *authority_model{""};
+  bool parent_exposure_bound{false};
+  bool target_kind{false};
+  bool dispatchable{false};
+  bool runtime_executor{false};
+  bool readiness_authority{false};
+  bool coverage_authority{false};
+  bool leakage_authority{false};
+  bool contract_identity_authority{false};
+  bool quality_authority{false};
+  bool performance_authority{false};
+  bool checkpoint_selector{false};
+  bool allocation_authority{false};
+  bool execution_authority{false};
+  bool market_readiness_authority{false};
+  bool deployment_authority{false};
+  bool policy_gate{false};
+  bool target_dependency_authority{false};
+  bool runtime_wave_authority{false};
+  bool marshal_reachability{false};
+  bool checkpoint_source_authority{false};
+  bool plan_checkpoint_input_authority{false};
+};
+
+[[nodiscard]] inline const char *
+lattice_fact_family_name(lattice_fact_family_t family);
+
+[[nodiscard]] inline std::optional<lattice_fact_family_t>
+parse_lattice_fact_family(std::string value);
+
+[[nodiscard]] inline std::vector<lattice_fact_family_descriptor_t>
+lattice_fact_family_registry();
+
 struct anchor_interval_t {
   std::int64_t begin{0};
   std::int64_t end{0};
@@ -64,6 +128,58 @@ struct exposure_use_set_t {
   bool evaluation_metric{false};
   bool selection_signal{false};
   bool mutated_component{false};
+};
+
+struct lattice_fact_identity_envelope_t {
+  std::string schema{k_lattice_fact_identity_envelope_schema_v1};
+  std::string schema_id{};
+  std::string schema_version{"v1"};
+  std::string fact_identity_contract_schema{
+      k_lattice_fact_identity_contract_schema_v1};
+  std::string fact_identity_contract_id{k_lattice_fact_identity_contract_id_v1};
+  std::string fact_family{};
+  std::string fact_type{};
+  std::string fact_id{};
+  std::string fact_digest{};
+
+  std::string protocol_id{};
+  std::string protocol_contract_fingerprint{};
+  std::string graph_order_fingerprint{};
+  std::string cursor_domain{"ujcamei.graph_anchor"};
+  std::string source_cursor_token{};
+
+  std::string split_name{};
+  std::string split_role{};
+  std::string split_policy_fingerprint{};
+  std::optional<anchor_interval_t> anchor_range{std::nullopt};
+  std::optional<anchor_interval_t> completed_anchor_range{std::nullopt};
+
+  std::string component_family_id{};
+  std::string component_assembly_fingerprint{};
+  std::string job_id{};
+  std::string wave_id{};
+
+  std::optional<std::int64_t> support_count{std::nullopt};
+  std::optional<std::int64_t> valid_count{std::nullopt};
+  std::optional<std::int64_t> missing_count{std::nullopt};
+  std::string units{};
+  std::string mask_policy_digest{};
+
+  std::vector<std::string> parent_exposure_fact_digests{};
+  std::vector<std::string> parent_checkpoint_digests{};
+  std::vector<std::string> parent_forecast_artifact_digests{};
+  std::vector<std::string> parent_fact_digests{};
+
+  bool row_index_interval_authority{true};
+  bool source_key_window_audit_only{true};
+  bool read_only{true};
+  bool target_proof{false};
+  bool dispatchable{false};
+  bool runtime_executor{false};
+  bool fact_families_are_not_target_kinds{true};
+  bool facts_used_for_target_satisfaction{false};
+  bool checkpoint_selected{false};
+  bool model_selector{false};
 };
 
 struct lattice_exposure_fact_t {
@@ -1658,6 +1774,863 @@ struct source_key_map_audit_summary_t {
   std::vector<std::string> summary_issues{};
 };
 
+struct source_analytics_metric_summary_t {
+  std::int64_t count{0};
+  double min{std::numeric_limits<double>::quiet_NaN()};
+  double max{std::numeric_limits<double>::quiet_NaN()};
+  double mean{std::numeric_limits<double>::quiet_NaN()};
+};
+
+struct lattice_source_analytics_fact_t {
+  std::string schema{"kikijyeba.lattice.source_analytics.v1"};
+  std::string fact_type{"source_analytics"};
+  std::string parent_exposure_fact_digest{};
+
+  std::string contract_fingerprint{};
+  std::string protocol_id{};
+  std::string graph_order_fingerprint{};
+  std::string source_cursor_token{};
+  std::string split_policy_fingerprint{};
+  std::string component_assembly_fingerprint{};
+  std::string target_component_family_id{};
+  std::string job_id{};
+  std::string wave_id{};
+  std::string job_status{};
+  std::string wave_action{};
+  std::string split_name{"unknown"};
+  exposure_split_role_t split_role{exposure_split_role_t::unknown};
+  anchor_interval_t anchor_range{};
+  anchor_interval_t completed_anchor_range{};
+
+  std::string source_key_footprint_precision{};
+  std::string first_anchor_key{};
+  std::string last_anchor_key{};
+  std::string observed_source_key_begin{};
+  std::string observed_source_key_end{};
+  std::string target_source_key_begin{};
+  std::string target_source_key_end{};
+  std::string source_file_receipts{};
+  std::int64_t source_receipt_fact_count{0};
+
+  double entropy{std::numeric_limits<double>::quiet_NaN()};
+  double entropy_rate{std::numeric_limits<double>::quiet_NaN()};
+  double information_density{std::numeric_limits<double>::quiet_NaN()};
+  double compression_ratio{std::numeric_limits<double>::quiet_NaN()};
+  double power_spectrum_entropy{std::numeric_limits<double>::quiet_NaN()};
+  double source_volatility{std::numeric_limits<double>::quiet_NaN()};
+  double feature_variance{std::numeric_limits<double>::quiet_NaN()};
+  double sample_validity_fraction{std::numeric_limits<double>::quiet_NaN()};
+  double missingness_fraction{std::numeric_limits<double>::quiet_NaN()};
+  std::int64_t duplicate_sample_count{0};
+  std::string source_health_level{};
+
+  bool visibility_only{true};
+  bool readiness_authority{false};
+  bool coverage_authority{false};
+  bool leakage_authority{false};
+  bool contract_identity_authority{false};
+};
+
+struct source_analytics_summary_t {
+  std::string schema{"kikijyeba.lattice.source_analytics_summary.v1"};
+  std::int64_t exposure_fact_count{0};
+  std::int64_t source_analytics_fact_count{0};
+  std::int64_t parent_exposure_fact_count{0};
+  std::int64_t source_cursor_bound_count{0};
+  std::int64_t graph_order_bound_count{0};
+  std::int64_t source_receipt_bound_count{0};
+  std::int64_t duplicate_sample_count_total{0};
+  std::int64_t train_source_analytics_fact_count{0};
+  std::int64_t validation_source_analytics_fact_count{0};
+  std::int64_t source_regime_pair_count{0};
+  std::int64_t source_regime_shift_warning_count{0};
+  std::int64_t warning_count{0};
+  source_analytics_metric_summary_t entropy{};
+  source_analytics_metric_summary_t entropy_rate{};
+  source_analytics_metric_summary_t information_density{};
+  source_analytics_metric_summary_t compression_ratio{};
+  source_analytics_metric_summary_t power_spectrum_entropy{};
+  source_analytics_metric_summary_t source_volatility{};
+  source_analytics_metric_summary_t feature_variance{};
+  source_analytics_metric_summary_t sample_validity_fraction{};
+  source_analytics_metric_summary_t missingness_fraction{};
+  source_analytics_metric_summary_t entropy_train_validation_delta{};
+  source_analytics_metric_summary_t entropy_rate_train_validation_delta{};
+  source_analytics_metric_summary_t
+      information_density_train_validation_delta{};
+  source_analytics_metric_summary_t compression_ratio_train_validation_delta{};
+  source_analytics_metric_summary_t
+      power_spectrum_entropy_train_validation_delta{};
+  source_analytics_metric_summary_t source_volatility_train_validation_delta{};
+  source_analytics_metric_summary_t feature_variance_train_validation_delta{};
+  source_analytics_metric_summary_t
+      sample_validity_fraction_train_validation_delta{};
+  source_analytics_metric_summary_t
+      missingness_fraction_train_validation_delta{};
+  source_analytics_metric_summary_t
+      duplicate_sample_count_train_validation_delta{};
+  source_analytics_metric_summary_t
+      anchor_support_count_train_validation_delta{};
+  source_analytics_metric_summary_t
+      completed_anchor_support_count_train_validation_delta{};
+  bool visibility_only{true};
+  bool readiness_authority{false};
+  bool coverage_authority{false};
+  bool leakage_authority{false};
+  bool contract_identity_authority{false};
+  bool row_index_authority_preserved{true};
+  std::vector<std::string> issues{};
+};
+
+struct lattice_target_transform_fact_t {
+  std::string schema{"kikijyeba.lattice.target_transform.v1"};
+  std::string fact_type{"target_transform"};
+  std::string parent_exposure_fact_digest{};
+
+  std::string contract_fingerprint{};
+  std::string protocol_id{};
+  std::string graph_order_fingerprint{};
+  std::string source_cursor_token{};
+  std::string split_policy_fingerprint{};
+  std::string component_assembly_fingerprint{};
+  std::string target_component_family_id{};
+  std::string job_id{};
+  std::string wave_id{};
+  std::string job_status{};
+  std::string wave_action{};
+  std::string split_name{"unknown"};
+  exposure_split_role_t split_role{exposure_split_role_t::unknown};
+  anchor_interval_t anchor_range{};
+  anchor_interval_t completed_anchor_range{};
+
+  std::vector<std::string> target_feature_ids{};
+  std::int64_t horizon{0};
+  std::string target_mode{};
+  std::string normalization_contract{};
+  std::string inverse_transform_contract{};
+  std::string units{};
+  std::string target_mask_policy_digest{};
+  std::string support_surface_identity{};
+  std::string support_surface_digest{};
+
+  bool artifact_contract_prerequisite{true};
+  bool visibility_only{true};
+  bool readiness_authority{false};
+  bool quality_authority{false};
+  bool performance_authority{false};
+  bool coverage_authority{false};
+  bool leakage_authority{false};
+  bool contract_identity_authority{false};
+};
+
+struct target_transform_summary_t {
+  std::string schema{"kikijyeba.lattice.target_transform_summary.v1"};
+  std::int64_t exposure_fact_count{0};
+  std::int64_t target_transform_fact_count{0};
+  std::int64_t parent_exposure_fact_count{0};
+  std::int64_t target_feature_id_count{0};
+  std::int64_t unique_target_feature_id_count{0};
+  std::int64_t horizon_bound_count{0};
+  std::int64_t missing_units_count{0};
+  std::int64_t missing_mask_policy_count{0};
+  std::int64_t missing_normalization_contract_count{0};
+  std::int64_t missing_inverse_transform_contract_count{0};
+  std::int64_t artifact_contract_prerequisite_count{0};
+  std::int64_t warning_count{0};
+  bool artifact_contract_prerequisite{true};
+  bool visibility_only{true};
+  bool readiness_authority{false};
+  bool quality_authority{false};
+  bool performance_authority{false};
+  bool coverage_authority{false};
+  bool leakage_authority{false};
+  bool contract_identity_authority{false};
+  std::vector<std::string> issues{};
+};
+
+struct lattice_forecast_baseline_fact_t {
+  std::string schema{"kikijyeba.lattice.forecast_baseline.v1"};
+  std::string fact_type{"forecast_baseline"};
+  std::string parent_exposure_fact_digest{};
+
+  std::string contract_fingerprint{};
+  std::string protocol_id{};
+  std::string graph_order_fingerprint{};
+  std::string source_cursor_token{};
+  std::string split_policy_fingerprint{};
+  std::string component_assembly_fingerprint{};
+  std::string target_component_family_id{};
+  std::string job_id{};
+  std::string wave_id{};
+  std::string job_status{};
+  std::string wave_action{};
+  std::string split_name{"unknown"};
+  exposure_split_role_t split_role{exposure_split_role_t::unknown};
+  anchor_interval_t anchor_range{};
+  anchor_interval_t completed_anchor_range{};
+
+  std::vector<std::string> target_feature_ids{};
+  std::int64_t horizon{0};
+  std::string baseline_kind{};
+  std::string baseline_parameters{};
+  std::string target_transform_fact_digest{};
+  std::int64_t support_count{0};
+  std::int64_t valid_count{0};
+  std::int64_t missing_count{0};
+  std::string metric_status{"deferred_v1"};
+  double baseline_mean_nll{std::numeric_limits<double>::quiet_NaN()};
+  double baseline_ev_mae{std::numeric_limits<double>::quiet_NaN()};
+  double baseline_ev_rmse{std::numeric_limits<double>::quiet_NaN()};
+  double baseline_signed_error{std::numeric_limits<double>::quiet_NaN()};
+  double baseline_directional_accuracy{
+      std::numeric_limits<double>::quiet_NaN()};
+
+  bool evidence_prerequisite{true};
+  bool visibility_only{true};
+  bool readiness_authority{false};
+  bool quality_authority{false};
+  bool performance_authority{false};
+  bool checkpoint_selector{false};
+  bool coverage_authority{false};
+  bool leakage_authority{false};
+  bool contract_identity_authority{false};
+};
+
+struct forecast_baseline_summary_t {
+  std::string schema{"kikijyeba.lattice.forecast_baseline_summary.v1"};
+  std::int64_t exposure_fact_count{0};
+  std::int64_t forecast_baseline_fact_count{0};
+  std::int64_t parent_exposure_fact_count{0};
+  std::int64_t target_feature_id_count{0};
+  std::int64_t unique_target_feature_id_count{0};
+  std::int64_t horizon_bound_count{0};
+  std::int64_t target_transform_declared_count{0};
+  std::int64_t target_transform_bound_count{0};
+  std::int64_t unresolved_target_transform_count{0};
+  std::int64_t target_transform_identity_mismatch_count{0};
+  std::int64_t support_count_total{0};
+  std::int64_t valid_count_total{0};
+  std::int64_t missing_count_total{0};
+  std::int64_t unique_baseline_kind_count{0};
+  std::int64_t previous_value_baseline_count{0};
+  std::int64_t zero_return_baseline_count{0};
+  std::int64_t moving_average_baseline_count{0};
+  std::int64_t last_valid_channel_baseline_count{0};
+  std::int64_t unknown_baseline_kind_count{0};
+  std::int64_t missing_baseline_kind_count{0};
+  std::int64_t computed_metric_fact_count{0};
+  std::int64_t partial_metric_fact_count{0};
+  std::int64_t deferred_metric_fact_count{0};
+  std::int64_t missing_metric_status_count{0};
+  std::int64_t metric_status_mismatch_count{0};
+  std::int64_t computed_metric_value_count{0};
+  std::int64_t missing_target_transform_count{0};
+  std::int64_t evidence_prerequisite_count{0};
+  std::int64_t warning_count{0};
+  source_analytics_metric_summary_t baseline_mean_nll{};
+  source_analytics_metric_summary_t baseline_ev_mae{};
+  source_analytics_metric_summary_t baseline_ev_rmse{};
+  source_analytics_metric_summary_t baseline_signed_error{};
+  source_analytics_metric_summary_t baseline_directional_accuracy{};
+  bool evidence_prerequisite{true};
+  bool visibility_only{true};
+  bool readiness_authority{false};
+  bool quality_authority{false};
+  bool performance_authority{false};
+  bool checkpoint_selector{false};
+  bool coverage_authority{false};
+  bool leakage_authority{false};
+  bool contract_identity_authority{false};
+  std::vector<std::string> issues{};
+};
+
+struct lattice_forecast_eval_fact_t {
+  std::string schema{"kikijyeba.lattice.forecast_eval.v1"};
+  std::string fact_type{"forecast_eval"};
+  std::string parent_exposure_fact_digest{};
+
+  std::string contract_fingerprint{};
+  std::string protocol_id{};
+  std::string graph_order_fingerprint{};
+  std::string source_cursor_token{};
+  std::string split_policy_fingerprint{};
+  std::string component_assembly_fingerprint{};
+  std::string target_component_family_id{};
+  std::string job_id{};
+  std::string wave_id{};
+  std::string job_status{};
+  std::string wave_action{};
+  std::string split_name{"unknown"};
+  exposure_split_role_t split_role{exposure_split_role_t::unknown};
+  anchor_interval_t anchor_range{};
+  anchor_interval_t completed_anchor_range{};
+
+  std::vector<std::string> target_feature_ids{};
+  std::int64_t horizon{0};
+  std::int64_t support_count{0};
+  std::int64_t valid_count{0};
+  std::int64_t missing_count{0};
+  std::int64_t weakest_support_rows{0};
+  double mean_nll{std::numeric_limits<double>::quiet_NaN()};
+  std::vector<double> mean_nll_per_channel{};
+  std::vector<double> mean_nll_per_target_feature{};
+  std::vector<double> mean_nll_per_channel_target_feature{};
+  std::vector<double> mean_nll_per_horizon{};
+  std::vector<std::int64_t> valid_target_count_per_channel{};
+  std::vector<std::int64_t> valid_target_count_per_target_feature{};
+  std::vector<std::int64_t> valid_target_count_per_channel_target_feature{};
+  std::vector<std::int64_t> valid_target_count_per_horizon{};
+  double ev_mae{std::numeric_limits<double>::quiet_NaN()};
+  double ev_rmse{std::numeric_limits<double>::quiet_NaN()};
+  double signed_error{std::numeric_limits<double>::quiet_NaN()};
+  double directional_accuracy{std::numeric_limits<double>::quiet_NaN()};
+  double calibration_coverage{std::numeric_limits<double>::quiet_NaN()};
+  std::string pit_summary{};
+  std::string sigma_scale_sanity{};
+  std::string support_by_node{};
+  std::string support_by_channel{};
+  std::string support_by_target_feature{};
+  std::string support_by_horizon{};
+
+  std::string forecast_artifact_digest{};
+  std::string evaluated_representation_checkpoint_digest{};
+  std::string evaluated_mdn_checkpoint_digest{};
+  std::string target_transform_fact_digest{};
+  std::vector<std::string> baseline_fact_digests{};
+  std::vector<std::string> selection_signal_fact_digests{};
+
+  bool artifact_evidence{true};
+  bool visibility_only{true};
+  bool model_state_mutation{false};
+  bool readiness_authority{false};
+  bool quality_authority{false};
+  bool performance_authority{false};
+  bool checkpoint_selector{false};
+  bool coverage_authority{false};
+  bool leakage_authority{false};
+  bool contract_identity_authority{false};
+};
+
+struct forecast_eval_summary_t {
+  std::string schema{"kikijyeba.lattice.forecast_eval_summary.v1"};
+  std::int64_t exposure_fact_count{0};
+  std::int64_t forecast_eval_fact_count{0};
+  std::int64_t parent_exposure_fact_count{0};
+  std::int64_t target_feature_id_count{0};
+  std::int64_t unique_target_feature_id_count{0};
+  std::int64_t horizon_bound_count{0};
+  std::int64_t forecast_artifact_bound_count{0};
+  std::int64_t representation_checkpoint_bound_count{0};
+  std::int64_t mdn_checkpoint_bound_count{0};
+  std::int64_t target_transform_declared_count{0};
+  std::int64_t target_transform_bound_count{0};
+  std::int64_t unresolved_target_transform_count{0};
+  std::int64_t target_transform_identity_mismatch_count{0};
+  std::int64_t baseline_declared_count{0};
+  std::int64_t baseline_bound_count{0};
+  std::int64_t unresolved_baseline_count{0};
+  std::int64_t baseline_identity_mismatch_count{0};
+  std::int64_t selection_signal_declared_count{0};
+  std::int64_t selection_signal_audit_count{0};
+  std::int64_t unresolved_selection_signal_count{0};
+  std::int64_t selection_signal_identity_mismatch_count{0};
+  std::int64_t support_count_total{0};
+  std::int64_t valid_count_total{0};
+  std::int64_t missing_count_total{0};
+  std::int64_t nll_surface_bound_count{0};
+  std::int64_t channel_support_surface_bound_count{0};
+  std::int64_t target_feature_support_surface_bound_count{0};
+  std::int64_t channel_target_feature_support_surface_bound_count{0};
+  std::int64_t horizon_support_surface_bound_count{0};
+  std::int64_t horizon_nll_surface_bound_count{0};
+  std::int64_t calibration_coverage_bound_count{0};
+  std::int64_t missing_calibration_coverage_count{0};
+  std::int64_t pit_summary_bound_count{0};
+  std::int64_t missing_pit_summary_count{0};
+  std::int64_t sigma_scale_sanity_bound_count{0};
+  std::int64_t missing_sigma_scale_sanity_count{0};
+  std::int64_t calibration_visibility_warning_count{0};
+  std::int64_t missing_forecast_artifact_count{0};
+  std::int64_t missing_representation_checkpoint_count{0};
+  std::int64_t missing_mdn_checkpoint_count{0};
+  std::int64_t missing_target_transform_count{0};
+  std::int64_t missing_baseline_count{0};
+  std::int64_t model_state_mutation_count{0};
+  std::int64_t artifact_evidence_count{0};
+  std::int64_t warning_count{0};
+  source_analytics_metric_summary_t mean_nll{};
+  source_analytics_metric_summary_t ev_mae{};
+  source_analytics_metric_summary_t ev_rmse{};
+  source_analytics_metric_summary_t signed_error{};
+  source_analytics_metric_summary_t directional_accuracy{};
+  source_analytics_metric_summary_t calibration_coverage{};
+  source_analytics_metric_summary_t skill_vs_baseline_mean_nll{};
+  source_analytics_metric_summary_t skill_vs_baseline_ev_mae{};
+  source_analytics_metric_summary_t skill_vs_baseline_ev_rmse{};
+  source_analytics_metric_summary_t directional_accuracy_delta_vs_baseline{};
+  bool artifact_evidence{true};
+  bool visibility_only{true};
+  bool model_state_mutation{false};
+  bool readiness_authority{false};
+  bool quality_authority{false};
+  bool performance_authority{false};
+  bool checkpoint_selector{false};
+  bool coverage_authority{false};
+  bool leakage_authority{false};
+  bool contract_identity_authority{false};
+  std::vector<std::string> issues{};
+};
+
+struct lattice_observer_belief_fact_t {
+  std::string schema{"kikijyeba.lattice.observer_belief.v1"};
+  std::string fact_type{"observer_belief"};
+  std::string parent_exposure_fact_digest{};
+
+  std::string contract_fingerprint{};
+  std::string protocol_id{};
+  std::string graph_order_fingerprint{};
+  std::string source_cursor_token{};
+  std::string split_policy_fingerprint{};
+  std::string component_assembly_fingerprint{};
+  std::string target_component_family_id{};
+  std::string job_id{};
+  std::string wave_id{};
+  std::string job_status{};
+  std::string wave_action{};
+  std::string split_name{"unknown"};
+  exposure_split_role_t split_role{exposure_split_role_t::unknown};
+  anchor_interval_t anchor_range{};
+  anchor_interval_t completed_anchor_range{};
+
+  std::string belief_kind{};
+  std::string channel_consensus{};
+  std::string potential_surface_diagnostics{};
+  std::string nodelift_return_projection{};
+  std::string covariance_coupling{};
+  std::string scenario_bank_digest{};
+  std::string nodelift_residual_quality{};
+  std::string projection_validation_scores{};
+  double confidence{std::numeric_limits<double>::quiet_NaN()};
+  double data_quality{std::numeric_limits<double>::quiet_NaN()};
+  double liquidity{std::numeric_limits<double>::quiet_NaN()};
+  std::string forecast_artifact_digest{};
+  std::string forecast_artifact_lineage{};
+  std::string feature_semantics_fingerprint{};
+  std::string dock_binding_fingerprint{};
+
+  bool artifact_evidence{true};
+  bool visibility_only{true};
+  bool raw_potential_tradable_return{false};
+  bool allocation_authority{false};
+  bool readiness_authority{false};
+  bool quality_authority{false};
+  bool performance_authority{false};
+  bool checkpoint_selector{false};
+  bool coverage_authority{false};
+  bool leakage_authority{false};
+  bool contract_identity_authority{false};
+  bool market_readiness_authority{false};
+};
+
+struct observer_belief_summary_t {
+  std::string schema{"kikijyeba.lattice.observer_belief_summary.v1"};
+  std::int64_t exposure_fact_count{0};
+  std::int64_t observer_belief_fact_count{0};
+  std::int64_t parent_exposure_fact_count{0};
+  std::int64_t raw_nodelift_potential_count{0};
+  std::int64_t allocation_belief_count{0};
+  std::int64_t forecast_artifact_bound_count{0};
+  std::int64_t forecast_artifact_lineage_declared_count{0};
+  std::int64_t forecast_artifact_lineage_bound_count{0};
+  std::int64_t unresolved_forecast_artifact_lineage_count{0};
+  std::int64_t forecast_artifact_lineage_identity_mismatch_count{0};
+  std::int64_t forecast_artifact_digest_mismatch_count{0};
+  std::int64_t channel_consensus_bound_count{0};
+  std::int64_t potential_surface_diagnostics_bound_count{0};
+  std::int64_t nodelift_return_projection_bound_count{0};
+  std::int64_t covariance_coupling_bound_count{0};
+  std::int64_t scenario_bank_bound_count{0};
+  std::int64_t nodelift_residual_quality_bound_count{0};
+  std::int64_t projection_validation_scores_bound_count{0};
+  std::int64_t feature_semantics_bound_count{0};
+  std::int64_t dock_binding_bound_count{0};
+  std::int64_t missing_belief_kind_count{0};
+  std::int64_t missing_forecast_artifact_count{0};
+  std::int64_t missing_channel_consensus_count{0};
+  std::int64_t missing_potential_surface_diagnostics_count{0};
+  std::int64_t missing_nodelift_return_projection_count{0};
+  std::int64_t missing_covariance_coupling_count{0};
+  std::int64_t missing_scenario_bank_count{0};
+  std::int64_t missing_nodelift_residual_quality_count{0};
+  std::int64_t missing_projection_validation_scores_count{0};
+  std::int64_t missing_feature_semantics_count{0};
+  std::int64_t missing_dock_binding_count{0};
+  std::int64_t low_confidence_count{0};
+  std::int64_t low_data_quality_count{0};
+  std::int64_t low_liquidity_count{0};
+  std::int64_t diagnostic_completeness_warning_count{0};
+  std::int64_t observer_quality_warning_count{0};
+  std::int64_t artifact_evidence_count{0};
+  std::int64_t warning_count{0};
+  source_analytics_metric_summary_t confidence{};
+  source_analytics_metric_summary_t data_quality{};
+  source_analytics_metric_summary_t liquidity{};
+  bool artifact_evidence{true};
+  bool visibility_only{true};
+  bool raw_potential_tradable_return{false};
+  bool allocation_authority{false};
+  bool readiness_authority{false};
+  bool quality_authority{false};
+  bool performance_authority{false};
+  bool checkpoint_selector{false};
+  bool coverage_authority{false};
+  bool leakage_authority{false};
+  bool contract_identity_authority{false};
+  bool market_readiness_authority{false};
+  std::vector<std::string> issues{};
+};
+
+struct lattice_allocation_engine_fact_t {
+  std::string schema{"kikijyeba.lattice.allocation_engine.v1"};
+  std::string fact_type{"allocation_engine"};
+  std::string parent_exposure_fact_digest{};
+
+  std::string contract_fingerprint{};
+  std::string protocol_id{};
+  std::string graph_order_fingerprint{};
+  std::string source_cursor_token{};
+  std::string split_policy_fingerprint{};
+  std::string component_assembly_fingerprint{};
+  std::string target_component_family_id{};
+  std::string job_id{};
+  std::string wave_id{};
+  std::string job_status{};
+  std::string wave_action{};
+  std::string split_name{"unknown"};
+  exposure_split_role_t split_role{exposure_split_role_t::unknown};
+  anchor_interval_t anchor_range{};
+  anchor_interval_t completed_anchor_range{};
+
+  std::string target_risky_node_weights{};
+  std::string reserve_node_id{};
+  std::string reserve_node_source{};
+  std::string base_policy_reserve_node_id{};
+  bool reserve_node_graph_bound{false};
+  double reserve_weight{std::numeric_limits<double>::quiet_NaN()};
+  double turnover{std::numeric_limits<double>::quiet_NaN()};
+  std::string objective_terms{};
+  double cvar_loss{std::numeric_limits<double>::quiet_NaN()};
+  double transaction_cost_estimate{std::numeric_limits<double>::quiet_NaN()};
+  std::string constraint_diagnostics{};
+  std::string cap_diagnostics{};
+  std::string scenario_growth_floor_status{};
+  std::string fallback_reasons{};
+  std::string derisk_reasons{};
+  std::string observer_belief_fact_digest{};
+  std::string forecast_artifact_digest{};
+  std::string base_policy_digest{};
+
+  bool deterministic_artifact{true};
+  bool visibility_only{true};
+  bool allocation_authority{false};
+  bool execution_authority{false};
+  bool readiness_authority{false};
+  bool quality_authority{false};
+  bool performance_authority{false};
+  bool market_readiness_authority{false};
+  bool deployment_authority{false};
+  bool checkpoint_selector{false};
+  bool coverage_authority{false};
+  bool leakage_authority{false};
+  bool contract_identity_authority{false};
+};
+
+struct allocation_engine_summary_t {
+  std::string schema{"kikijyeba.lattice.allocation_engine_summary.v1"};
+  std::int64_t exposure_fact_count{0};
+  std::int64_t allocation_engine_fact_count{0};
+  std::int64_t parent_exposure_fact_count{0};
+  std::int64_t reserve_node_bound_count{0};
+  std::int64_t reserve_node_source_base_policy_count{0};
+  std::int64_t base_policy_reserve_node_bound_count{0};
+  std::int64_t reserve_node_base_policy_match_count{0};
+  std::int64_t reserve_node_graph_bound_count{0};
+  std::int64_t observer_belief_declared_count{0};
+  std::int64_t observer_belief_bound_count{0};
+  std::int64_t unresolved_observer_belief_count{0};
+  std::int64_t observer_belief_identity_mismatch_count{0};
+  std::int64_t forecast_artifact_declared_count{0};
+  std::int64_t forecast_artifact_bound_count{0};
+  std::int64_t unresolved_forecast_artifact_count{0};
+  std::int64_t forecast_artifact_identity_mismatch_count{0};
+  std::int64_t observer_forecast_artifact_mismatch_count{0};
+  std::int64_t base_policy_bound_count{0};
+  std::int64_t objective_terms_bound_count{0};
+  std::int64_t cvar_bound_count{0};
+  std::int64_t transaction_cost_bound_count{0};
+  std::int64_t constraint_diagnostics_bound_count{0};
+  std::int64_t cap_diagnostics_bound_count{0};
+  std::int64_t scenario_growth_floor_status_bound_count{0};
+  std::int64_t scenario_growth_floor_met_count{0};
+  std::int64_t scenario_growth_floor_attention_count{0};
+  std::int64_t fallback_reason_contract_count{0};
+  std::int64_t fallback_reason_none_count{0};
+  std::int64_t fallback_reason_active_count{0};
+  std::int64_t derisk_reason_contract_count{0};
+  std::int64_t derisk_reason_none_count{0};
+  std::int64_t derisk_reason_active_count{0};
+  std::int64_t deterministic_artifact_count{0};
+  std::int64_t missing_reserve_node_count{0};
+  std::int64_t missing_reserve_node_source_count{0};
+  std::int64_t missing_base_policy_reserve_node_count{0};
+  std::int64_t reserve_node_source_mismatch_count{0};
+  std::int64_t reserve_node_base_policy_mismatch_count{0};
+  std::int64_t reserve_node_not_graph_bound_count{0};
+  std::int64_t missing_observer_belief_count{0};
+  std::int64_t missing_forecast_artifact_count{0};
+  std::int64_t missing_base_policy_count{0};
+  std::int64_t missing_cap_diagnostics_count{0};
+  std::int64_t missing_scenario_growth_floor_status_count{0};
+  std::int64_t allocation_diagnostic_warning_count{0};
+  std::int64_t warning_count{0};
+  source_analytics_metric_summary_t reserve_weight{};
+  source_analytics_metric_summary_t turnover{};
+  source_analytics_metric_summary_t cvar_loss{};
+  source_analytics_metric_summary_t transaction_cost_estimate{};
+  bool deterministic_artifact{true};
+  bool visibility_only{true};
+  bool allocation_authority{false};
+  bool execution_authority{false};
+  bool readiness_authority{false};
+  bool quality_authority{false};
+  bool performance_authority{false};
+  bool market_readiness_authority{false};
+  bool deployment_authority{false};
+  bool checkpoint_selector{false};
+  bool coverage_authority{false};
+  bool leakage_authority{false};
+  bool contract_identity_authority{false};
+  std::vector<std::string> issues{};
+};
+
+struct lattice_replay_environment_fact_t {
+  std::string schema{"kikijyeba.lattice.replay_environment.v1"};
+  std::string fact_type{"replay_environment"};
+  std::string parent_exposure_fact_digest{};
+
+  std::string contract_fingerprint{};
+  std::string protocol_id{};
+  std::string graph_order_fingerprint{};
+  std::string source_cursor_token{};
+  std::string split_policy_fingerprint{};
+  std::string component_assembly_fingerprint{};
+  std::string target_component_family_id{};
+  std::string job_id{};
+  std::string wave_id{};
+  std::string job_status{};
+  std::string wave_action{};
+  std::string split_name{"unknown"};
+  exposure_split_role_t split_role{exposure_split_role_t::unknown};
+  anchor_interval_t anchor_range{};
+  anchor_interval_t completed_anchor_range{};
+
+  std::filesystem::path batch_index_path{};
+  std::filesystem::path experiment_index_path{};
+  std::filesystem::path experiment_report_path{};
+  std::string runtime_replay_batch_index_schema{};
+  std::string runtime_replay_experiment_index_schema{};
+  std::string replay_experiment_report_schema{};
+  std::string experiment_index_report_digest{};
+  std::string experiment_report_digest{};
+  std::string experiment_id{};
+  std::string runtime_run_id{};
+  std::string environment_run_id{};
+  std::string replay_environment_version{};
+  std::string replay_environment_component_assembly_id{};
+  std::string replay_environment_world_mode{};
+  std::string replay_environment_api_contract{};
+  std::string replay_environment_spawn_model{};
+  std::string replay_environment_range_source{};
+  std::string replay_environment_source_range_policy{};
+  std::string replay_environment_source_order_policy{};
+  std::string replay_environment_range_resolution{};
+  std::string replay_environment_observation_time_law{};
+  std::string replay_environment_realization_reveal{};
+  std::string replay_environment_realization_key_policy{};
+  std::string replay_environment_action_kind{};
+  std::string replay_environment_action_time_policy{};
+  std::string replay_environment_reserve_node_policy{};
+  std::string replay_environment_graph_node_universe_policy{};
+  std::string replay_environment_reward_policy{};
+  std::string replay_environment_projection_validation{};
+  std::string replay_environment_policy_surface{};
+  std::string replay_environment_action_policy_identity{};
+  std::string replay_environment_initial_policy_kind{};
+  std::string replay_environment_experiment_task_identity{};
+  std::string replay_environment_experiment_run_identity{};
+  std::string replay_environment_step_artifact_identity{};
+  std::string replay_environment_experiment_report_count_policy{};
+  std::string replay_environment_artifact_schema{};
+  std::string replay_environment_lattice_fact_family{};
+  std::string replay_environment_lattice_target{};
+  bool replay_environment_require_resolved_cursor{false};
+  bool replay_environment_require_no_future_leakage{false};
+  bool replay_environment_require_projection_validation{false};
+  std::int64_t replay_environment_default_max_parallel_jobs{0};
+  std::int64_t experiment_requested_max_parallel_jobs{0};
+  std::int64_t experiment_resolved_parallelism{0};
+  std::int64_t batch_entry_count{0};
+  std::int64_t experiment_entry_count{0};
+  std::int64_t replay_bundle_count{0};
+  std::int64_t policy_count{0};
+  std::int64_t attempted_count{0};
+  std::int64_t completed_count{0};
+  std::int64_t episode_count{0};
+  std::int64_t episode_requested_range_bound_count{0};
+  std::int64_t episode_cursor_bound_count{0};
+  std::int64_t episode_anchor_interval_bound_count{0};
+  std::int64_t episode_anchor_keys_bound_count{0};
+  std::int64_t time_law_expected_step_count{0};
+  std::int64_t time_law_observation_step_count{0};
+  std::int64_t time_law_action_step_count{0};
+  std::int64_t time_law_execution_step_count{0};
+  std::int64_t time_law_realization_after_action_count{0};
+  std::int64_t time_law_future_observation_violation_count{0};
+  std::int64_t mixed_future_realization_key_count{0};
+  std::int64_t projection_validation_step_count{0};
+  double mean_total_reward{std::numeric_limits<double>::quiet_NaN()};
+  double mean_total_log_growth{std::numeric_limits<double>::quiet_NaN()};
+  double mean_final_equity_base{std::numeric_limits<double>::quiet_NaN()};
+  double mean_projection_mae{std::numeric_limits<double>::quiet_NaN()};
+  double mean_projection_signed_bias{std::numeric_limits<double>::quiet_NaN()};
+  double mean_projection_directional_accuracy{
+      std::numeric_limits<double>::quiet_NaN()};
+  double mean_projection_interval_coverage{
+      std::numeric_limits<double>::quiet_NaN()};
+
+  bool artifact_evidence{true};
+  bool visibility_only{true};
+  bool replay_executor{false};
+  bool allocation_authority{false};
+  bool execution_authority{false};
+  bool readiness_authority{false};
+  bool quality_authority{false};
+  bool performance_authority{false};
+  bool market_readiness_authority{false};
+  bool deployment_authority{false};
+  bool checkpoint_selector{false};
+  bool coverage_authority{false};
+  bool leakage_authority{false};
+  bool contract_identity_authority{false};
+};
+
+struct replay_environment_summary_t {
+  std::string schema{"kikijyeba.lattice.replay_environment_summary.v1"};
+  std::int64_t exposure_fact_count{0};
+  std::int64_t replay_environment_fact_count{0};
+  std::int64_t parent_exposure_fact_count{0};
+  std::int64_t batch_index_bound_count{0};
+  std::int64_t experiment_index_bound_count{0};
+  std::int64_t experiment_report_bound_count{0};
+  std::int64_t batch_index_schema_bound_count{0};
+  std::int64_t experiment_index_schema_bound_count{0};
+  std::int64_t experiment_report_schema_bound_count{0};
+  std::int64_t experiment_index_report_digest_bound_count{0};
+  std::int64_t experiment_report_digest_bound_count{0};
+  std::int64_t experiment_report_digest_match_count{0};
+  std::int64_t experiment_report_digest_mismatch_count{0};
+  std::int64_t experiment_id_bound_count{0};
+  std::int64_t runtime_run_id_bound_count{0};
+  std::int64_t environment_run_id_bound_count{0};
+  std::int64_t replay_contract_version_bound_count{0};
+  std::int64_t replay_contract_component_bound_count{0};
+  std::int64_t replay_contract_world_mode_bound_count{0};
+  std::int64_t replay_contract_api_bound_count{0};
+  std::int64_t replay_contract_spawn_model_bound_count{0};
+  std::int64_t replay_contract_range_source_bound_count{0};
+  std::int64_t replay_contract_source_range_policy_bound_count{0};
+  std::int64_t replay_contract_source_order_policy_bound_count{0};
+  std::int64_t replay_contract_range_resolution_bound_count{0};
+  std::int64_t replay_contract_policy_surface_bound_count{0};
+  std::int64_t replay_contract_time_law_bound_count{0};
+  std::int64_t replay_contract_realization_reveal_bound_count{0};
+  std::int64_t replay_contract_realization_key_bound_count{0};
+  std::int64_t replay_contract_action_kind_bound_count{0};
+  std::int64_t replay_contract_action_time_policy_bound_count{0};
+  std::int64_t replay_contract_reserve_node_policy_bound_count{0};
+  std::int64_t replay_contract_graph_node_universe_policy_bound_count{0};
+  std::int64_t replay_contract_reward_policy_bound_count{0};
+  std::int64_t replay_contract_projection_validation_bound_count{0};
+  std::int64_t replay_contract_action_policy_identity_bound_count{0};
+  std::int64_t replay_contract_initial_policy_kind_bound_count{0};
+  std::int64_t replay_contract_task_identity_bound_count{0};
+  std::int64_t replay_contract_experiment_run_identity_bound_count{0};
+  std::int64_t replay_contract_step_artifact_identity_bound_count{0};
+  std::int64_t replay_contract_report_count_policy_bound_count{0};
+  std::int64_t replay_contract_parallelism_bound_count{0};
+  std::int64_t replay_contract_artifact_schema_bound_count{0};
+  std::int64_t replay_contract_lattice_binding_bound_count{0};
+  std::int64_t replay_contract_guard_bound_count{0};
+  std::int64_t completed_all_attempted_count{0};
+  std::int64_t projection_validation_metric_bound_count{0};
+  std::int64_t time_law_step_evidence_bound_count{0};
+  std::int64_t projection_validation_step_evidence_bound_count{0};
+  std::int64_t episode_requested_range_bound_count_total{0};
+  std::int64_t episode_cursor_bound_count_total{0};
+  std::int64_t episode_anchor_interval_bound_count_total{0};
+  std::int64_t episode_anchor_keys_bound_count_total{0};
+  std::int64_t time_law_expected_step_count_total{0};
+  std::int64_t time_law_observation_step_count_total{0};
+  std::int64_t time_law_action_step_count_total{0};
+  std::int64_t time_law_execution_step_count_total{0};
+  std::int64_t time_law_realization_after_action_count_total{0};
+  std::int64_t time_law_future_observation_violation_count_total{0};
+  std::int64_t mixed_future_realization_key_count_total{0};
+  std::int64_t projection_validation_step_count_total{0};
+  std::int64_t missing_batch_index_count{0};
+  std::int64_t missing_experiment_index_count{0};
+  std::int64_t missing_experiment_report_count{0};
+  std::int64_t incomplete_replay_attempt_count{0};
+  std::int64_t missing_projection_validation_metric_count{0};
+  std::int64_t missing_time_law_step_evidence_count{0};
+  std::int64_t missing_projection_validation_step_evidence_count{0};
+  std::int64_t time_law_violation_count{0};
+  std::int64_t missing_episode_requested_range_count{0};
+  std::int64_t missing_episode_cursor_evidence_count{0};
+  std::int64_t missing_episode_anchor_interval_count{0};
+  std::int64_t missing_episode_anchor_keys_count{0};
+  std::int64_t artifact_evidence_count{0};
+  std::int64_t warning_count{0};
+  std::int64_t batch_entry_count_total{0};
+  std::int64_t experiment_entry_count_total{0};
+  std::int64_t replay_bundle_count_total{0};
+  std::int64_t policy_count_total{0};
+  std::int64_t attempted_count_total{0};
+  std::int64_t completed_count_total{0};
+  source_analytics_metric_summary_t mean_total_reward{};
+  source_analytics_metric_summary_t mean_total_log_growth{};
+  source_analytics_metric_summary_t mean_final_equity_base{};
+  source_analytics_metric_summary_t mean_projection_mae{};
+  source_analytics_metric_summary_t mean_projection_signed_bias{};
+  source_analytics_metric_summary_t mean_projection_directional_accuracy{};
+  source_analytics_metric_summary_t mean_projection_interval_coverage{};
+  bool artifact_evidence{true};
+  bool visibility_only{true};
+  bool replay_executor{false};
+  bool allocation_authority{false};
+  bool execution_authority{false};
+  bool readiness_authority{false};
+  bool quality_authority{false};
+  bool performance_authority{false};
+  bool market_readiness_authority{false};
+  bool deployment_authority{false};
+  bool checkpoint_selector{false};
+  bool coverage_authority{false};
+  bool leakage_authority{false};
+  bool contract_identity_authority{false};
+  std::vector<std::string> issues{};
+};
+
 struct lattice_selection_signal_fact_t {
   std::string schema{"kikijyeba.lattice.selection_signal.v1"};
   std::string fact_type{"selection_signal_event"};
@@ -1678,10 +2651,17 @@ struct lattice_selection_signal_fact_t {
   std::string selector_id{};
   std::string selector_kind{"checkpoint_selection"};
   std::string selector_rule{"runtime_reported_selection_signal"};
+  std::string selector_split{};
+  std::string selector_metric{};
+  std::string tie_policy{};
   std::string selected_checkpoint_source{};
   std::filesystem::path selected_checkpoint{};
   std::filesystem::path output_checkpoint{};
   std::vector<std::filesystem::path> input_checkpoints{};
+  std::vector<std::filesystem::path> candidate_checkpoints{};
+  std::int64_t candidate_checkpoint_count{0};
+  std::string candidate_checkpoint_digest{};
+  std::vector<std::string> parent_evaluation_fact_digests{};
   bool mutated_component{false};
 
   anchor_interval_t anchor_range{};
@@ -1704,6 +2684,19 @@ struct selection_signal_summary_t {
   std::int64_t unique_selector_count{0};
   std::int64_t selected_checkpoint_count{0};
   std::int64_t missing_selected_checkpoint_count{0};
+  std::int64_t selector_split_bound_count{0};
+  std::int64_t selector_metric_bound_count{0};
+  std::int64_t tie_policy_bound_count{0};
+  std::int64_t candidate_checkpoint_bound_count{0};
+  std::int64_t candidate_checkpoint_digest_bound_count{0};
+  std::int64_t missing_candidate_checkpoint_count{0};
+  std::int64_t missing_candidate_checkpoint_digest_count{0};
+  std::int64_t candidate_checkpoint_digest_mismatch_count{0};
+  std::int64_t parent_evaluation_fact_bound_count{0};
+  std::int64_t parent_evaluation_fact_declared_count{0};
+  std::int64_t unresolved_parent_evaluation_fact_count{0};
+  std::int64_t parent_evaluation_fact_identity_mismatch_count{0};
+  std::int64_t parent_evaluation_back_reference_mismatch_count{0};
   std::int64_t mutating_selector_count{0};
   std::int64_t non_mutating_selector_count{0};
   bool first_class_event_stream{true};
@@ -1714,6 +2707,279 @@ struct selection_signal_summary_t {
   bool leakage_relevant_when_forbidden{true};
   std::vector<std::string> issues{};
 };
+
+[[nodiscard]] inline std::string
+selection_signal_fact_digest(const lattice_selection_signal_fact_t &fact);
+[[nodiscard]] inline std::string
+selection_signal_event_digest(const lattice_selection_signal_fact_t &fact);
+[[nodiscard]] inline std::string
+selection_signal_provenance_digest(const lattice_selection_signal_fact_t &fact);
+
+inline void append_fact_identity_digest(std::vector<std::string> &digests,
+                                        const std::string &digest) {
+  if (!digest.empty()) {
+    digests.push_back(digest);
+  }
+}
+
+template <typename Fact>
+[[nodiscard]] inline lattice_fact_identity_envelope_t
+make_lattice_fact_identity_envelope(const Fact &fact,
+                                    const std::string &fact_family,
+                                    const std::string &fact_digest) {
+  lattice_fact_identity_envelope_t out{};
+  out.fact_family = fact_family;
+  out.fact_id = fact_digest;
+  out.fact_digest = fact_digest;
+
+  if constexpr (requires { fact.schema; }) {
+    out.schema_id = fact.schema;
+  }
+  if constexpr (requires { fact.fact_type; }) {
+    out.fact_type = fact.fact_type;
+  }
+  if constexpr (requires { fact.protocol_id; }) {
+    out.protocol_id = fact.protocol_id;
+  }
+  if constexpr (requires { fact.contract_fingerprint; }) {
+    out.protocol_contract_fingerprint = fact.contract_fingerprint;
+  }
+  if constexpr (requires { fact.graph_order_fingerprint; }) {
+    out.graph_order_fingerprint = fact.graph_order_fingerprint;
+  }
+  if constexpr (requires { fact.source_cursor_token; }) {
+    out.source_cursor_token = fact.source_cursor_token;
+  }
+  if constexpr (requires { fact.split_name; }) {
+    out.split_name = fact.split_name;
+  }
+  if constexpr (requires { fact.split_role; }) {
+    out.split_role = exposure_split_role_name(fact.split_role);
+  }
+  if constexpr (requires { fact.split_policy_fingerprint; }) {
+    out.split_policy_fingerprint = fact.split_policy_fingerprint;
+  }
+  if constexpr (requires { fact.anchor_range; }) {
+    out.anchor_range = fact.anchor_range;
+  }
+  if constexpr (requires { fact.completed_anchor_range; }) {
+    out.completed_anchor_range = fact.completed_anchor_range;
+  }
+  if constexpr (requires { fact.target_component_family_id; }) {
+    out.component_family_id = fact.target_component_family_id;
+  } else if constexpr (requires { fact.component; }) {
+    out.component_family_id = fact.component;
+  }
+  if constexpr (requires { fact.component_assembly_fingerprint; }) {
+    out.component_assembly_fingerprint = fact.component_assembly_fingerprint;
+  }
+  if constexpr (requires { fact.job_id; }) {
+    out.job_id = fact.job_id;
+  } else if constexpr (requires { fact.created_by_job_id; }) {
+    out.job_id = fact.created_by_job_id;
+  }
+  if constexpr (requires { fact.wave_id; }) {
+    out.wave_id = fact.wave_id;
+  } else if constexpr (requires { fact.created_by_wave_id; }) {
+    out.wave_id = fact.created_by_wave_id;
+  }
+  if constexpr (requires { fact.support_count; }) {
+    out.support_count = fact.support_count;
+  } else if constexpr (requires { fact.attempted_count; }) {
+    out.support_count = fact.attempted_count;
+  }
+  if constexpr (requires { fact.valid_count; }) {
+    out.valid_count = fact.valid_count;
+  } else if constexpr (requires { fact.completed_count; }) {
+    out.valid_count = fact.completed_count;
+  }
+  if constexpr (requires { fact.missing_count; }) {
+    out.missing_count = fact.missing_count;
+  }
+  if constexpr (requires { fact.units; }) {
+    out.units = fact.units;
+  }
+  if constexpr (requires { fact.target_mask_policy_digest; }) {
+    out.mask_policy_digest = fact.target_mask_policy_digest;
+  }
+
+  if constexpr (requires { fact.parent_exposure_fact_digest; }) {
+    append_fact_identity_digest(out.parent_exposure_fact_digests,
+                                fact.parent_exposure_fact_digest);
+  } else if constexpr (requires { fact.direct_exposure_digest; }) {
+    append_fact_identity_digest(out.parent_exposure_fact_digests,
+                                fact.direct_exposure_digest);
+  }
+
+  if constexpr (requires { fact.evaluated_representation_checkpoint_digest; }) {
+    append_fact_identity_digest(
+        out.parent_checkpoint_digests,
+        fact.evaluated_representation_checkpoint_digest);
+  }
+  if constexpr (requires { fact.evaluated_mdn_checkpoint_digest; }) {
+    append_fact_identity_digest(out.parent_checkpoint_digests,
+                                fact.evaluated_mdn_checkpoint_digest);
+  }
+
+  if constexpr (requires { fact.forecast_artifact_digest; }) {
+    append_fact_identity_digest(out.parent_forecast_artifact_digests,
+                                fact.forecast_artifact_digest);
+  }
+
+  if constexpr (requires { fact.target_transform_fact_digest; }) {
+    append_fact_identity_digest(out.parent_fact_digests,
+                                fact.target_transform_fact_digest);
+  }
+  if constexpr (requires { fact.baseline_fact_digests; }) {
+    out.parent_fact_digests.insert(out.parent_fact_digests.end(),
+                                   fact.baseline_fact_digests.begin(),
+                                   fact.baseline_fact_digests.end());
+  }
+  if constexpr (requires { fact.selection_signal_fact_digests; }) {
+    out.parent_fact_digests.insert(out.parent_fact_digests.end(),
+                                   fact.selection_signal_fact_digests.begin(),
+                                   fact.selection_signal_fact_digests.end());
+  }
+  if constexpr (requires { fact.observer_belief_fact_digest; }) {
+    append_fact_identity_digest(out.parent_fact_digests,
+                                fact.observer_belief_fact_digest);
+  }
+  if constexpr (requires { fact.forecast_artifact_lineage; }) {
+    append_fact_identity_digest(out.parent_fact_digests,
+                                fact.forecast_artifact_lineage);
+  }
+  if constexpr (requires { fact.parent_evaluation_fact_digests; }) {
+    out.parent_fact_digests.insert(out.parent_fact_digests.end(),
+                                   fact.parent_evaluation_fact_digests.begin(),
+                                   fact.parent_evaluation_fact_digests.end());
+  }
+
+  return out;
+}
+
+template <typename Fact>
+[[nodiscard]] inline lattice_fact_identity_envelope_t
+make_lattice_fact_identity_envelope(const Fact &fact,
+                                    lattice_fact_family_t family,
+                                    const std::string &fact_digest) {
+  return make_lattice_fact_identity_envelope(
+      fact, lattice_fact_family_name(family), fact_digest);
+}
+
+[[nodiscard]] inline const std::vector<lattice_target_transform_fact_t> &
+empty_target_transform_facts() {
+  static const std::vector<lattice_target_transform_fact_t> empty{};
+  return empty;
+}
+
+[[nodiscard]] inline const std::vector<lattice_forecast_baseline_fact_t> &
+empty_forecast_baseline_facts() {
+  static const std::vector<lattice_forecast_baseline_fact_t> empty{};
+  return empty;
+}
+
+[[nodiscard]] inline const std::vector<lattice_forecast_eval_fact_t> &
+empty_forecast_eval_facts() {
+  static const std::vector<lattice_forecast_eval_fact_t> empty{};
+  return empty;
+}
+
+[[nodiscard]] inline const std::vector<lattice_observer_belief_fact_t> &
+empty_observer_belief_facts() {
+  static const std::vector<lattice_observer_belief_fact_t> empty{};
+  return empty;
+}
+
+[[nodiscard]] inline const std::vector<lattice_selection_signal_fact_t> &
+empty_selection_signal_facts() {
+  static const std::vector<lattice_selection_signal_fact_t> empty{};
+  return empty;
+}
+
+template <typename LeftFact, typename RightFact>
+[[nodiscard]] inline bool fact_identity_compatible(const LeftFact &left,
+                                                   const RightFact &right) {
+  return left.parent_exposure_fact_digest ==
+             right.parent_exposure_fact_digest &&
+         left.contract_fingerprint == right.contract_fingerprint &&
+         left.protocol_id == right.protocol_id &&
+         left.graph_order_fingerprint == right.graph_order_fingerprint &&
+         left.source_cursor_token == right.source_cursor_token &&
+         left.split_policy_fingerprint == right.split_policy_fingerprint &&
+         left.target_component_family_id == right.target_component_family_id &&
+         left.split_name == right.split_name;
+}
+
+enum class related_fact_digest_resolution_t {
+  missing,
+  identity_mismatch,
+  resolved,
+};
+
+template <typename ConsumerFact, typename RelatedFact, typename DigestFn>
+[[nodiscard]] inline related_fact_digest_resolution_t
+resolve_related_fact_digest_for_identity(
+    const ConsumerFact &consumer, const std::string &digest,
+    const std::vector<RelatedFact> &related_facts, DigestFn digest_fn,
+    const RelatedFact **matched_fact = nullptr) {
+  if (matched_fact != nullptr) {
+    *matched_fact = nullptr;
+  }
+  if (digest.empty()) {
+    return related_fact_digest_resolution_t::missing;
+  }
+  bool digest_found = false;
+  for (const auto &related : related_facts) {
+    if (digest_fn(related) != digest) {
+      continue;
+    }
+    digest_found = true;
+    if (fact_identity_compatible(consumer, related)) {
+      if (matched_fact != nullptr) {
+        *matched_fact = &related;
+      }
+      return related_fact_digest_resolution_t::resolved;
+    }
+  }
+  return digest_found ? related_fact_digest_resolution_t::identity_mismatch
+                      : related_fact_digest_resolution_t::missing;
+}
+
+template <typename ConsumerFact>
+[[nodiscard]] inline related_fact_digest_resolution_t
+resolve_forecast_artifact_digest_for_identity(
+    const ConsumerFact &consumer, const std::string &forecast_artifact_digest,
+    const std::vector<lattice_forecast_eval_fact_t> &forecast_eval_facts,
+    const lattice_forecast_eval_fact_t **matched_fact = nullptr) {
+  if (matched_fact != nullptr) {
+    *matched_fact = nullptr;
+  }
+  if (forecast_artifact_digest.empty()) {
+    return related_fact_digest_resolution_t::missing;
+  }
+  bool digest_found = false;
+  for (const auto &related : forecast_eval_facts) {
+    if (related.forecast_artifact_digest != forecast_artifact_digest) {
+      continue;
+    }
+    digest_found = true;
+    if (fact_identity_compatible(consumer, related)) {
+      if (matched_fact != nullptr) {
+        *matched_fact = &related;
+      }
+      return related_fact_digest_resolution_t::resolved;
+    }
+  }
+  return digest_found ? related_fact_digest_resolution_t::identity_mismatch
+                      : related_fact_digest_resolution_t::missing;
+}
+
+inline void append_summary_issue(std::vector<std::string> &issues,
+                                 std::int64_t &warning_count,
+                                 const std::string &job_id, const char *issue) {
+  ++warning_count;
+  issues.push_back(job_id + ":" + issue);
+}
 
 namespace exposure_detail {
 
@@ -2663,6 +3929,4494 @@ summarize_source_key_map_audits(
   return out;
 }
 
+[[nodiscard]] inline std::vector<std::filesystem::path>
+source_analytics_fact_paths_for_job_dir(const std::filesystem::path &job_dir) {
+  return {job_dir / "lattice.source_analytics.fact",
+          job_dir / "source_analytics.fact",
+          job_dir / "runtime.source_analytics.fact",
+          job_dir / "source.analytics.fact"};
+}
+
+[[nodiscard]] inline bool
+source_analytics_fact_has_payload(const lattice_source_analytics_fact_t &fact) {
+  return std::isfinite(fact.entropy) || std::isfinite(fact.entropy_rate) ||
+         std::isfinite(fact.information_density) ||
+         std::isfinite(fact.compression_ratio) ||
+         std::isfinite(fact.power_spectrum_entropy) ||
+         std::isfinite(fact.source_volatility) ||
+         std::isfinite(fact.feature_variance) ||
+         std::isfinite(fact.sample_validity_fraction) ||
+         std::isfinite(fact.missingness_fraction) ||
+         fact.duplicate_sample_count > 0 || !fact.source_health_level.empty();
+}
+
+[[nodiscard]] inline double source_analytics_bounded_fraction(double value) {
+  if (!std::isfinite(value)) {
+    return std::numeric_limits<double>::quiet_NaN();
+  }
+  return std::max(0.0, std::min(1.0, value));
+}
+
+[[nodiscard]] inline std::string
+source_analytics_health_level_from_parent(const lattice_exposure_fact_t &parent,
+                                          double sample_validity_fraction,
+                                          std::int64_t duplicate_sample_count) {
+  if (!std::isfinite(sample_validity_fraction) ||
+      sample_validity_fraction < 0.80) {
+    return "severe";
+  }
+  if (sample_validity_fraction < 0.99 || duplicate_sample_count > 0 ||
+      parent.skipped_missing_edge_coverage > 0 ||
+      parent.skipped_failed_fetch_probe > 0 ||
+      parent.skipped_outside_common_range > 0 ||
+      parent.anchor_domain_warning_level != "none") {
+    return "warn";
+  }
+  return "ok";
+}
+
+[[nodiscard]] inline lattice_source_analytics_fact_t
+make_source_analytics_fact_shell_from_parent(
+    const lattice_exposure_fact_t &parent) {
+  lattice_source_analytics_fact_t fact{};
+  fact.parent_exposure_fact_digest = exposure_fact_digest(parent);
+  fact.contract_fingerprint = parent.contract_fingerprint;
+  fact.protocol_id = parent.protocol_id;
+  fact.graph_order_fingerprint = parent.graph_order_fingerprint;
+  fact.source_cursor_token = parent.source_cursor_token;
+  fact.split_policy_fingerprint = parent.split_policy_fingerprint;
+  fact.component_assembly_fingerprint = parent.component_assembly_fingerprint;
+  fact.target_component_family_id = parent.target_component_family_id;
+  fact.job_id = parent.job_id;
+  fact.wave_id = parent.wave_id;
+  fact.job_status = parent.job_status;
+  fact.wave_action = parent.wave_action;
+  fact.split_name = parent.split_name;
+  fact.split_role = parent.split_role;
+  fact.anchor_range = parent.anchor_range;
+  fact.completed_anchor_range = parent.completed_anchor_range;
+  fact.source_key_footprint_precision = parent.source_key_footprint_precision;
+  fact.first_anchor_key = parent.first_anchor_key;
+  fact.last_anchor_key = parent.last_anchor_key;
+  fact.observed_source_key_begin = parent.observed_source_key_begin;
+  fact.observed_source_key_end = parent.observed_source_key_end;
+  fact.target_source_key_begin = parent.target_source_key_begin;
+  fact.target_source_key_end = parent.target_source_key_end;
+  fact.source_file_receipts = parent.source_file_receipts;
+  fact.source_receipt_fact_count = static_cast<std::int64_t>(
+      make_source_receipt_facts_from_exposure_fact(parent).facts.size());
+  return fact;
+}
+
+[[nodiscard]] inline std::vector<std::filesystem::path>
+source_data_analytics_numeric_paths_for_job_dir(
+    const std::filesystem::path &job_dir) {
+  return {job_dir / "data_analytics.v2.latest.lls",
+          job_dir / "sequence_analytics.v2.latest.lls",
+          job_dir / "embedding_sequence_analytics.v2.latest.lls",
+          job_dir / "source_data_analytics.v2.latest.lls",
+          job_dir / "data_analytics.lls",
+          job_dir / "source_data_analytics.lls"};
+}
+
+[[nodiscard]] inline std::vector<std::filesystem::path>
+source_data_analytics_symbolic_paths_for_job_dir(
+    const std::filesystem::path &job_dir) {
+  return {job_dir / "data_analytics.symbolic.v2.latest.lls",
+          job_dir / "sequence_analytics.symbolic.v2.latest.lls",
+          job_dir / "embedding_sequence_analytics.symbolic.v2.latest.lls",
+          job_dir / "source_data_analytics.symbolic.v2.latest.lls",
+          job_dir / "data_analytics.symbolic.lls",
+          job_dir / "source_data_analytics.symbolic.lls"};
+}
+
+[[nodiscard]] inline std::string source_analytics_first_value(
+    const std::unordered_map<std::string, std::string> &primary,
+    const std::unordered_map<std::string, std::string> &secondary,
+    const std::vector<std::string> &keys) {
+  namespace detail = exposure_detail;
+  for (const auto &key : keys) {
+    const auto primary_value = detail::map_get(primary, key);
+    if (!primary_value.empty()) {
+      return primary_value;
+    }
+    const auto secondary_value = detail::map_get(secondary, key);
+    if (!secondary_value.empty()) {
+      return secondary_value;
+    }
+  }
+  return {};
+}
+
+inline void overlay_source_analytics_assignment_payload(
+    lattice_source_analytics_fact_t &fact,
+    const std::unordered_map<std::string, std::string> &primary,
+    const std::unordered_map<std::string, std::string> &secondary = {}) {
+  namespace detail = exposure_detail;
+  const auto first_value = [&](const std::vector<std::string> &keys) {
+    return source_analytics_first_value(primary, secondary, keys);
+  };
+  const auto first_double =
+      [&](const std::vector<std::string> &keys) -> double {
+    return detail::first_double(primary, secondary, keys,
+                                std::numeric_limits<double>::quiet_NaN());
+  };
+  const auto first_i64 = [&](const std::vector<std::string> &keys,
+                             std::int64_t fallback) -> std::int64_t {
+    return detail::first_i64(primary, secondary, keys, fallback);
+  };
+  const auto assign_finite = [&](double &target,
+                                 const std::vector<std::string> &keys) {
+    const double value = first_double(keys);
+    if (std::isfinite(value)) {
+      target = value;
+    }
+  };
+
+  const auto receipts =
+      first_value({"source_file_receipts", "source_receipts"});
+  if (!receipts.empty()) {
+    fact.source_file_receipts = receipts;
+  }
+  fact.source_receipt_fact_count =
+      first_i64({"source_receipt_fact_count", "receipt_fact_count"},
+                fact.source_receipt_fact_count);
+
+  assign_finite(fact.entropy,
+                {"entropy", "source_entropy", "source_entropic_load",
+                 "sequence_entropic_load"});
+  assign_finite(fact.entropy_rate,
+                {"entropy_rate", "source_entropy_rate", "entropy_rate_bits",
+                 "entropy_rate_bits_mean"});
+  assign_finite(fact.information_density,
+                {"information_density", "source_information_density",
+                 "information_density_mean"});
+  assign_finite(fact.compression_ratio,
+                {"compression_ratio", "source_compression_ratio",
+                 "compression_ratio_mean"});
+  assign_finite(fact.power_spectrum_entropy,
+                {"power_spectrum_entropy", "source_power_spectrum_entropy",
+                 "power_spectrum_entropy_mean"});
+  assign_finite(fact.source_volatility,
+                {"source_volatility", "volatility", "volatility_mean",
+                 "realized_volatility", "source_realized_volatility"});
+  assign_finite(fact.feature_variance,
+                {"feature_variance", "source_feature_variance",
+                 "feature_variance_mean", "variance", "variance_mean"});
+  assign_finite(fact.sample_validity_fraction,
+                {"sample_validity_fraction", "sample_valid_fraction",
+                 "source_sample_validity_fraction"});
+  assign_finite(fact.missingness_fraction,
+                {"missingness_fraction", "missing_fraction",
+                 "source_missingness_fraction"});
+
+  const std::int64_t sample_count = first_i64({"sample_count"}, -1);
+  const std::int64_t valid_sample_count = first_i64({"valid_sample_count"}, -1);
+  const std::int64_t skipped_sample_count =
+      first_i64({"skipped_sample_count"}, -1);
+  if (!std::isfinite(fact.sample_validity_fraction) && sample_count > 0 &&
+      valid_sample_count >= 0) {
+    fact.sample_validity_fraction = source_analytics_bounded_fraction(
+        static_cast<double>(valid_sample_count) /
+        static_cast<double>(sample_count));
+  }
+  if (!std::isfinite(fact.missingness_fraction) && sample_count > 0) {
+    if (skipped_sample_count >= 0) {
+      fact.missingness_fraction = source_analytics_bounded_fraction(
+          static_cast<double>(skipped_sample_count) /
+          static_cast<double>(sample_count));
+    } else if (valid_sample_count >= 0) {
+      fact.missingness_fraction = source_analytics_bounded_fraction(
+          1.0 - static_cast<double>(valid_sample_count) /
+                    static_cast<double>(sample_count));
+    }
+  }
+  if (!std::isfinite(fact.entropy_rate) &&
+      std::isfinite(fact.information_density)) {
+    fact.entropy_rate = fact.information_density * std::log2(3.0);
+  }
+
+  fact.duplicate_sample_count =
+      first_i64({"duplicate_sample_count", "source_duplicate_sample_count"},
+                fact.duplicate_sample_count);
+  const auto health =
+      first_value({"source_health_level", "health_level", "source_health"});
+  if (!health.empty()) {
+    fact.source_health_level = health;
+  }
+
+  fact.visibility_only = detail::parse_bool_fallback(
+      first_value({"visibility_only", "source_visibility_only"}),
+      fact.visibility_only);
+  fact.readiness_authority = detail::parse_bool_fallback(
+      first_value({"readiness_authority", "source_readiness_authority"}),
+      fact.readiness_authority);
+  fact.coverage_authority = detail::parse_bool_fallback(
+      first_value({"coverage_authority", "source_coverage_authority"}),
+      fact.coverage_authority);
+  fact.leakage_authority = detail::parse_bool_fallback(
+      first_value({"leakage_authority", "source_leakage_authority"}),
+      fact.leakage_authority);
+  fact.contract_identity_authority = detail::parse_bool_fallback(
+      first_value({"contract_identity_authority",
+                   "source_contract_identity_authority"}),
+      fact.contract_identity_authority);
+}
+
+[[nodiscard]] inline std::vector<lattice_source_analytics_fact_t>
+make_source_analytics_facts_from_job_dir(
+    const std::filesystem::path &job_dir,
+    const lattice_exposure_fact_t &parent) {
+  namespace detail = exposure_detail;
+  const auto analytics = detail::parse_first_assignment_file(
+      source_analytics_fact_paths_for_job_dir(job_dir));
+
+  if (!analytics.empty()) {
+    auto fact = make_source_analytics_fact_shell_from_parent(parent);
+    overlay_source_analytics_assignment_payload(fact, analytics);
+    if (!source_analytics_fact_has_payload(fact)) {
+      return {};
+    }
+    if (fact.source_health_level.empty()) {
+      fact.source_health_level = source_analytics_health_level_from_parent(
+          parent, fact.sample_validity_fraction, fact.duplicate_sample_count);
+    }
+    return {std::move(fact)};
+  }
+
+  const auto numeric = detail::parse_first_assignment_file(
+      source_data_analytics_numeric_paths_for_job_dir(job_dir));
+  const auto symbolic = detail::parse_first_assignment_file(
+      source_data_analytics_symbolic_paths_for_job_dir(job_dir));
+  if (numeric.empty() && symbolic.empty()) {
+    return {};
+  }
+
+  auto fact = make_source_analytics_fact_shell_from_parent(parent);
+  overlay_source_analytics_assignment_payload(fact, numeric, symbolic);
+  if (!source_analytics_fact_has_payload(fact)) {
+    return {};
+  }
+  if (fact.source_health_level.empty()) {
+    fact.source_health_level = source_analytics_health_level_from_parent(
+        parent, fact.sample_validity_fraction, fact.duplicate_sample_count);
+  }
+  return {std::move(fact)};
+}
+
+[[nodiscard]] inline lattice_source_analytics_fact_t
+make_runtime_source_analytics_fact_from_exposure_fact(
+    const lattice_exposure_fact_t &parent,
+    const std::filesystem::path &job_dir = {}) {
+  namespace detail = exposure_detail;
+  auto fact = make_source_analytics_fact_shell_from_parent(parent);
+
+  if (!job_dir.empty()) {
+    const auto numeric = detail::parse_first_assignment_file(
+        source_data_analytics_numeric_paths_for_job_dir(job_dir));
+    const auto symbolic = detail::parse_first_assignment_file(
+        source_data_analytics_symbolic_paths_for_job_dir(job_dir));
+    overlay_source_analytics_assignment_payload(fact, numeric, symbolic);
+  }
+
+  double accepted_fraction = parent.accepted_anchor_fraction;
+  if (!std::isfinite(accepted_fraction) && parent.candidate_anchor_count > 0) {
+    accepted_fraction = static_cast<double>(parent.accepted_anchor_count) /
+                        static_cast<double>(parent.candidate_anchor_count);
+  }
+  if (!std::isfinite(fact.sample_validity_fraction)) {
+    fact.sample_validity_fraction =
+        source_analytics_bounded_fraction(accepted_fraction);
+  }
+  if (!std::isfinite(fact.missingness_fraction) &&
+      std::isfinite(fact.sample_validity_fraction)) {
+    fact.missingness_fraction =
+        source_analytics_bounded_fraction(1.0 - fact.sample_validity_fraction);
+  }
+  if (!std::isfinite(fact.information_density) &&
+      std::isfinite(fact.sample_validity_fraction)) {
+    fact.information_density = fact.sample_validity_fraction;
+  }
+  if (fact.duplicate_sample_count == 0 && parent.duplicate_anchor_count > 0) {
+    fact.duplicate_sample_count = parent.duplicate_anchor_count;
+  }
+
+  if (fact.source_health_level.empty()) {
+    fact.source_health_level = source_analytics_health_level_from_parent(
+        parent, fact.sample_validity_fraction, fact.duplicate_sample_count);
+  }
+
+  fact.visibility_only = true;
+  fact.readiness_authority = false;
+  fact.coverage_authority = false;
+  fact.leakage_authority = false;
+  fact.contract_identity_authority = false;
+  return fact;
+}
+
+[[nodiscard]] inline std::string canonical_source_analytics_fact_text(
+    const lattice_source_analytics_fact_t &fact) {
+  std::ostringstream out;
+  out << "schema=" << fact.schema << "\n";
+  out << "fact_type=" << fact.fact_type << "\n";
+  out << "parent_exposure_fact_digest=" << fact.parent_exposure_fact_digest
+      << "\n";
+  out << "contract_fingerprint=" << fact.contract_fingerprint << "\n";
+  out << "protocol_id=" << fact.protocol_id << "\n";
+  out << "graph_order_fingerprint=" << fact.graph_order_fingerprint << "\n";
+  out << "source_cursor_token=" << fact.source_cursor_token << "\n";
+  out << "split_policy_fingerprint=" << fact.split_policy_fingerprint << "\n";
+  out << "component_assembly_fingerprint="
+      << fact.component_assembly_fingerprint << "\n";
+  out << "target_component_family_id=" << fact.target_component_family_id
+      << "\n";
+  out << "job_id=" << fact.job_id << "\n";
+  out << "wave_id=" << fact.wave_id << "\n";
+  out << "job_status=" << fact.job_status << "\n";
+  out << "wave_action=" << fact.wave_action << "\n";
+  out << "split_name=" << fact.split_name << "\n";
+  out << "split_role=" << exposure_split_role_name(fact.split_role) << "\n";
+  out << "anchor_begin=" << fact.anchor_range.begin << "\n";
+  out << "anchor_end=" << fact.anchor_range.end << "\n";
+  out << "completed_anchor_begin=" << fact.completed_anchor_range.begin << "\n";
+  out << "completed_anchor_end=" << fact.completed_anchor_range.end << "\n";
+  out << "source_key_footprint_precision="
+      << fact.source_key_footprint_precision << "\n";
+  out << "first_anchor_key=" << fact.first_anchor_key << "\n";
+  out << "last_anchor_key=" << fact.last_anchor_key << "\n";
+  out << "observed_source_key_begin=" << fact.observed_source_key_begin << "\n";
+  out << "observed_source_key_end=" << fact.observed_source_key_end << "\n";
+  out << "target_source_key_begin=" << fact.target_source_key_begin << "\n";
+  out << "target_source_key_end=" << fact.target_source_key_end << "\n";
+  out << "source_file_receipts=" << fact.source_file_receipts << "\n";
+  out << "source_receipt_fact_count=" << fact.source_receipt_fact_count << "\n";
+  out << "entropy=" << fact.entropy << "\n";
+  out << "entropy_rate=" << fact.entropy_rate << "\n";
+  out << "information_density=" << fact.information_density << "\n";
+  out << "compression_ratio=" << fact.compression_ratio << "\n";
+  out << "power_spectrum_entropy=" << fact.power_spectrum_entropy << "\n";
+  out << "source_volatility=" << fact.source_volatility << "\n";
+  out << "feature_variance=" << fact.feature_variance << "\n";
+  out << "sample_validity_fraction=" << fact.sample_validity_fraction << "\n";
+  out << "missingness_fraction=" << fact.missingness_fraction << "\n";
+  out << "duplicate_sample_count=" << fact.duplicate_sample_count << "\n";
+  out << "source_health_level=" << fact.source_health_level << "\n";
+  out << "visibility_only=" << (fact.visibility_only ? "true" : "false")
+      << "\n";
+  out << "readiness_authority=" << (fact.readiness_authority ? "true" : "false")
+      << "\n";
+  out << "coverage_authority=" << (fact.coverage_authority ? "true" : "false")
+      << "\n";
+  out << "leakage_authority=" << (fact.leakage_authority ? "true" : "false")
+      << "\n";
+  out << "contract_identity_authority="
+      << (fact.contract_identity_authority ? "true" : "false") << "\n";
+  return out.str();
+}
+
+[[nodiscard]] inline std::string
+source_analytics_fact_digest(const lattice_source_analytics_fact_t &fact) {
+  return exposure_digest_for_text(canonical_source_analytics_fact_text(fact));
+}
+
+[[nodiscard]] inline std::vector<std::string>
+source_analytics_fact_issues(const lattice_source_analytics_fact_t &fact) {
+  std::vector<std::string> issues;
+  if (fact.parent_exposure_fact_digest.empty()) {
+    issues.emplace_back("missing_parent_exposure_fact_digest");
+  }
+  if (fact.contract_fingerprint.empty()) {
+    issues.emplace_back("missing_contract_fingerprint");
+  }
+  if (fact.protocol_id.empty()) {
+    issues.emplace_back("missing_protocol_id");
+  }
+  if (fact.graph_order_fingerprint.empty()) {
+    issues.emplace_back("missing_graph_order_fingerprint");
+  }
+  if (fact.source_cursor_token.empty()) {
+    issues.emplace_back("missing_source_cursor_token");
+  }
+  if (!source_analytics_fact_has_payload(fact)) {
+    issues.emplace_back("missing_source_analytics_payload");
+  }
+  if (!fact.visibility_only || fact.readiness_authority ||
+      fact.coverage_authority || fact.leakage_authority ||
+      fact.contract_identity_authority) {
+    issues.emplace_back("source_analytics_must_remain_visibility_only");
+  }
+  return issues;
+}
+
+inline void append_source_analytics_scan_warning(
+    const lattice_source_analytics_fact_t &fact,
+    const std::filesystem::path &job_dir, std::vector<std::string> &warnings) {
+  const auto issues = source_analytics_fact_issues(fact);
+  if (issues.empty()) {
+    return;
+  }
+  std::ostringstream oss;
+  oss << "[lattice_exposure] source_analytics warning job_dir="
+      << job_dir.string() << " job_id=" << fact.job_id << " issues=";
+  for (std::size_t i = 0; i < issues.size(); ++i) {
+    if (i != 0) {
+      oss << ",";
+    }
+    oss << issues[i];
+  }
+  warnings.push_back(oss.str());
+}
+
+inline void update_source_analytics_metric_summary(
+    source_analytics_metric_summary_t &summary, double value) {
+  if (!std::isfinite(value)) {
+    return;
+  }
+  if (summary.count == 0) {
+    summary.min = value;
+    summary.max = value;
+    summary.mean = value;
+    summary.count = 1;
+    return;
+  }
+  summary.min = std::min(summary.min, value);
+  summary.max = std::max(summary.max, value);
+  summary.mean = (summary.mean * static_cast<double>(summary.count) + value) /
+                 static_cast<double>(summary.count + 1);
+  ++summary.count;
+}
+
+[[nodiscard]] inline std::string
+source_analytics_regime_pair_key(const lattice_source_analytics_fact_t &fact) {
+  std::ostringstream out;
+  out << "contract=" << fact.contract_fingerprint << "\n";
+  out << "protocol=" << fact.protocol_id << "\n";
+  out << "graph_order=" << fact.graph_order_fingerprint << "\n";
+  out << "source_cursor=" << fact.source_cursor_token << "\n";
+  out << "split_policy=" << fact.split_policy_fingerprint << "\n";
+  out << "target_component=" << fact.target_component_family_id << "\n";
+  return out.str();
+}
+
+inline void append_source_regime_shift_warning(source_analytics_summary_t &out,
+                                               const std::string &job_id,
+                                               const std::string &issue) {
+  ++out.warning_count;
+  ++out.source_regime_shift_warning_count;
+  out.issues.push_back(
+      (job_id.empty() ? std::string{"source_analytics"} : job_id) + ":" +
+      issue);
+}
+
+inline void update_source_analytics_drift_metric(
+    source_analytics_summary_t &out,
+    const lattice_source_analytics_fact_t &train,
+    const lattice_source_analytics_fact_t &validation) {
+  const auto update_delta = [](source_analytics_metric_summary_t &summary,
+                               double train_value, double validation_value) {
+    if (std::isfinite(train_value) && std::isfinite(validation_value)) {
+      update_source_analytics_metric_summary(summary,
+                                             validation_value - train_value);
+    }
+  };
+  update_delta(out.entropy_train_validation_delta, train.entropy,
+               validation.entropy);
+  update_delta(out.entropy_rate_train_validation_delta, train.entropy_rate,
+               validation.entropy_rate);
+  update_delta(out.information_density_train_validation_delta,
+               train.information_density, validation.information_density);
+  update_delta(out.compression_ratio_train_validation_delta,
+               train.compression_ratio, validation.compression_ratio);
+  update_delta(out.power_spectrum_entropy_train_validation_delta,
+               train.power_spectrum_entropy, validation.power_spectrum_entropy);
+  update_delta(out.source_volatility_train_validation_delta,
+               train.source_volatility, validation.source_volatility);
+  update_delta(out.feature_variance_train_validation_delta,
+               train.feature_variance, validation.feature_variance);
+  update_delta(out.sample_validity_fraction_train_validation_delta,
+               train.sample_validity_fraction,
+               validation.sample_validity_fraction);
+  update_delta(out.missingness_fraction_train_validation_delta,
+               train.missingness_fraction, validation.missingness_fraction);
+  update_source_analytics_metric_summary(
+      out.duplicate_sample_count_train_validation_delta,
+      static_cast<double>(validation.duplicate_sample_count -
+                          train.duplicate_sample_count));
+  if (!train.anchor_range.empty() && !validation.anchor_range.empty()) {
+    update_source_analytics_metric_summary(
+        out.anchor_support_count_train_validation_delta,
+        static_cast<double>(validation.anchor_range.length() -
+                            train.anchor_range.length()));
+  }
+  if (!train.completed_anchor_range.empty() &&
+      !validation.completed_anchor_range.empty()) {
+    update_source_analytics_metric_summary(
+        out.completed_anchor_support_count_train_validation_delta,
+        static_cast<double>(validation.completed_anchor_range.length() -
+                            train.completed_anchor_range.length()));
+  }
+
+  if (std::isfinite(train.missingness_fraction) &&
+      std::isfinite(validation.missingness_fraction) &&
+      validation.missingness_fraction - train.missingness_fraction > 0.10) {
+    append_source_regime_shift_warning(
+        out, validation.job_id,
+        "source_regime_missingness_fraction_increase_visibility_only");
+  }
+  if (std::isfinite(train.sample_validity_fraction) &&
+      std::isfinite(validation.sample_validity_fraction) &&
+      validation.sample_validity_fraction - train.sample_validity_fraction <
+          -0.10) {
+    append_source_regime_shift_warning(
+        out, validation.job_id,
+        "source_regime_sample_validity_fraction_drop_visibility_only");
+  }
+  if (std::isfinite(train.entropy) && std::isfinite(validation.entropy) &&
+      std::fabs(validation.entropy - train.entropy) > 0.50) {
+    append_source_regime_shift_warning(
+        out, validation.job_id, "source_regime_entropy_shift_visibility_only");
+  }
+  if (std::isfinite(train.compression_ratio) &&
+      std::isfinite(validation.compression_ratio) &&
+      std::fabs(validation.compression_ratio - train.compression_ratio) >
+          0.50) {
+    append_source_regime_shift_warning(
+        out, validation.job_id,
+        "source_regime_compression_ratio_shift_visibility_only");
+  }
+  if (std::isfinite(train.power_spectrum_entropy) &&
+      std::isfinite(validation.power_spectrum_entropy) &&
+      std::fabs(validation.power_spectrum_entropy -
+                train.power_spectrum_entropy) > 0.15) {
+    append_source_regime_shift_warning(
+        out, validation.job_id,
+        "source_regime_power_spectrum_entropy_shift_visibility_only");
+  }
+  if (std::isfinite(train.source_volatility) &&
+      std::isfinite(validation.source_volatility) &&
+      train.source_volatility > 0.0 && validation.source_volatility > 0.0) {
+    const double volatility_ratio =
+        validation.source_volatility / train.source_volatility;
+    if (volatility_ratio > 2.0 || volatility_ratio < 0.5) {
+      append_source_regime_shift_warning(
+          out, validation.job_id,
+          "source_regime_volatility_shift_visibility_only");
+    }
+  }
+  if (std::isfinite(train.feature_variance) &&
+      std::isfinite(validation.feature_variance) &&
+      train.feature_variance > 0.0 && validation.feature_variance > 0.0) {
+    const double variance_ratio =
+        validation.feature_variance / train.feature_variance;
+    if (variance_ratio > 2.0 || variance_ratio < 0.5) {
+      append_source_regime_shift_warning(
+          out, validation.job_id,
+          "source_regime_feature_variance_shift_visibility_only");
+    }
+  }
+  const auto train_completed_support = train.completed_anchor_range.length();
+  const auto validation_completed_support =
+      validation.completed_anchor_range.length();
+  if (train_completed_support > 0 &&
+      validation_completed_support * 2 < train_completed_support) {
+    append_source_regime_shift_warning(
+        out, validation.job_id,
+        "source_regime_completed_anchor_support_drop_visibility_only");
+  }
+}
+
+[[nodiscard]] inline std::optional<double>
+forecast_skill_lower_is_better(double model_value, double baseline_value) {
+  if (!std::isfinite(model_value) || !std::isfinite(baseline_value) ||
+      std::fabs(baseline_value) <= 1e-12) {
+    return std::nullopt;
+  }
+  return (baseline_value - model_value) / std::fabs(baseline_value);
+}
+
+[[nodiscard]] inline std::optional<double>
+forecast_delta_higher_is_better(double model_value, double baseline_value) {
+  if (!std::isfinite(model_value) || !std::isfinite(baseline_value)) {
+    return std::nullopt;
+  }
+  return model_value - baseline_value;
+}
+
+[[nodiscard]] inline source_analytics_summary_t summarize_source_analytics(
+    const std::vector<lattice_exposure_fact_t> &exposure_facts,
+    const std::vector<lattice_source_analytics_fact_t> &analytics_facts) {
+  source_analytics_summary_t out{};
+  out.exposure_fact_count = static_cast<std::int64_t>(exposure_facts.size());
+  out.source_analytics_fact_count =
+      static_cast<std::int64_t>(analytics_facts.size());
+  std::set<std::string> parent_digests;
+  std::unordered_map<std::string,
+                     std::vector<const lattice_source_analytics_fact_t *>>
+      train_facts_by_regime_key;
+  for (const auto &fact : analytics_facts) {
+    if (!fact.parent_exposure_fact_digest.empty()) {
+      parent_digests.insert(fact.parent_exposure_fact_digest);
+    }
+    if (!fact.source_cursor_token.empty()) {
+      ++out.source_cursor_bound_count;
+    }
+    if (!fact.graph_order_fingerprint.empty()) {
+      ++out.graph_order_bound_count;
+    }
+    if (fact.source_receipt_fact_count > 0 ||
+        !fact.source_file_receipts.empty()) {
+      ++out.source_receipt_bound_count;
+    }
+    out.duplicate_sample_count_total += fact.duplicate_sample_count;
+    update_source_analytics_metric_summary(out.entropy, fact.entropy);
+    update_source_analytics_metric_summary(out.entropy_rate, fact.entropy_rate);
+    update_source_analytics_metric_summary(out.information_density,
+                                           fact.information_density);
+    update_source_analytics_metric_summary(out.compression_ratio,
+                                           fact.compression_ratio);
+    update_source_analytics_metric_summary(out.power_spectrum_entropy,
+                                           fact.power_spectrum_entropy);
+    update_source_analytics_metric_summary(out.source_volatility,
+                                           fact.source_volatility);
+    update_source_analytics_metric_summary(out.feature_variance,
+                                           fact.feature_variance);
+    update_source_analytics_metric_summary(out.sample_validity_fraction,
+                                           fact.sample_validity_fraction);
+    update_source_analytics_metric_summary(out.missingness_fraction,
+                                           fact.missingness_fraction);
+    if (fact.split_role == exposure_split_role_t::train) {
+      ++out.train_source_analytics_fact_count;
+      train_facts_by_regime_key[source_analytics_regime_pair_key(fact)]
+          .push_back(&fact);
+    } else if (fact.split_role == exposure_split_role_t::validation) {
+      ++out.validation_source_analytics_fact_count;
+    }
+    out.visibility_only = out.visibility_only && fact.visibility_only;
+    out.readiness_authority =
+        out.readiness_authority || fact.readiness_authority;
+    out.coverage_authority = out.coverage_authority || fact.coverage_authority;
+    out.leakage_authority = out.leakage_authority || fact.leakage_authority;
+    out.contract_identity_authority =
+        out.contract_identity_authority || fact.contract_identity_authority;
+    const auto issues = source_analytics_fact_issues(fact);
+    out.warning_count += static_cast<std::int64_t>(issues.size());
+    for (const auto &issue : issues) {
+      out.issues.push_back(fact.job_id + ":" + issue);
+    }
+  }
+  out.parent_exposure_fact_count =
+      static_cast<std::int64_t>(parent_digests.size());
+
+  for (const auto &validation_fact : analytics_facts) {
+    if (validation_fact.split_role != exposure_split_role_t::validation) {
+      continue;
+    }
+    const auto train_it = train_facts_by_regime_key.find(
+        source_analytics_regime_pair_key(validation_fact));
+    if (train_it == train_facts_by_regime_key.end()) {
+      continue;
+    }
+    for (const auto *train_fact : train_it->second) {
+      if (train_fact == nullptr) {
+        continue;
+      }
+      ++out.source_regime_pair_count;
+      update_source_analytics_drift_metric(out, *train_fact, validation_fact);
+    }
+  }
+
+  if (!out.visibility_only || out.readiness_authority ||
+      out.coverage_authority || out.leakage_authority ||
+      out.contract_identity_authority || !out.row_index_authority_preserved) {
+    out.issues.push_back(
+        "source analytics must remain visibility-only and cannot become "
+        "readiness, coverage, leakage, or contract-identity authority");
+    ++out.warning_count;
+  }
+  return out;
+}
+
+[[nodiscard]] inline std::vector<std::filesystem::path>
+target_transform_fact_paths_for_job_dir(const std::filesystem::path &job_dir) {
+  return {job_dir / "lattice.target_transform.fact",
+          job_dir / "target_transform.fact",
+          job_dir / "runtime.target_transform.fact",
+          job_dir / "target.transform.fact"};
+}
+
+[[nodiscard]] inline bool
+target_transform_fact_has_payload(const lattice_target_transform_fact_t &fact) {
+  return !fact.target_feature_ids.empty() || fact.horizon > 0 ||
+         !fact.target_mode.empty() || !fact.normalization_contract.empty() ||
+         !fact.inverse_transform_contract.empty() || !fact.units.empty() ||
+         !fact.target_mask_policy_digest.empty() ||
+         !fact.support_surface_identity.empty() ||
+         !fact.support_surface_digest.empty();
+}
+
+[[nodiscard]] inline std::vector<lattice_target_transform_fact_t>
+make_target_transform_facts_from_job_dir(
+    const std::filesystem::path &job_dir,
+    const lattice_exposure_fact_t &parent) {
+  namespace detail = exposure_detail;
+  const auto transform = detail::parse_first_assignment_file(
+      target_transform_fact_paths_for_job_dir(job_dir));
+  if (transform.empty()) {
+    return {};
+  }
+
+  const auto first_value =
+      [&](const std::vector<std::string> &keys) -> std::string {
+    for (const auto &key : keys) {
+      const auto value = detail::map_get(transform, key);
+      if (!value.empty()) {
+        return value;
+      }
+    }
+    return {};
+  };
+  const auto first_i64 = [&](const std::vector<std::string> &keys,
+                             std::int64_t fallback) -> std::int64_t {
+    const auto value = first_value(keys);
+    if (value.empty()) {
+      return fallback;
+    }
+    return detail::parse_i64_fallback(value, fallback);
+  };
+
+  lattice_target_transform_fact_t fact{};
+  fact.parent_exposure_fact_digest = exposure_fact_digest(parent);
+  fact.contract_fingerprint = parent.contract_fingerprint;
+  fact.protocol_id = parent.protocol_id;
+  fact.graph_order_fingerprint = parent.graph_order_fingerprint;
+  fact.source_cursor_token = parent.source_cursor_token;
+  fact.split_policy_fingerprint = parent.split_policy_fingerprint;
+  fact.component_assembly_fingerprint = parent.component_assembly_fingerprint;
+  fact.target_component_family_id = parent.target_component_family_id;
+  fact.job_id = parent.job_id;
+  fact.wave_id = parent.wave_id;
+  fact.job_status = parent.job_status;
+  fact.wave_action = parent.wave_action;
+  fact.split_name = parent.split_name;
+  fact.split_role = parent.split_role;
+  fact.anchor_range = parent.anchor_range;
+  fact.completed_anchor_range = parent.completed_anchor_range;
+
+  fact.target_feature_ids = detail::parse_string_list(
+      first_value({"target_feature_ids", "feature_ids", "target_features"}));
+  fact.horizon =
+      first_i64({"horizon", "target_horizon", "forecast_horizon"}, 0);
+  fact.target_mode =
+      first_value({"target_mode", "target_transform_mode", "mode"});
+  fact.normalization_contract =
+      first_value({"normalization_contract", "target_normalization_contract",
+                   "normalization"});
+  fact.inverse_transform_contract =
+      first_value({"inverse_transform_contract",
+                   "target_inverse_transform_contract", "inverse_transform"});
+  fact.units = first_value({"units", "target_units"});
+  fact.target_mask_policy_digest =
+      first_value({"target_mask_policy_digest", "mask_policy_digest"});
+  fact.support_surface_identity =
+      first_value({"support_surface_identity", "support_surface_id"});
+  fact.support_surface_digest =
+      first_value({"support_surface_digest", "target_surface_digest"});
+
+  fact.artifact_contract_prerequisite = detail::parse_bool_fallback(
+      first_value({"artifact_contract_prerequisite"}), true);
+  fact.visibility_only =
+      detail::parse_bool_fallback(first_value({"visibility_only"}), true);
+  fact.readiness_authority =
+      detail::parse_bool_fallback(first_value({"readiness_authority"}), false);
+  fact.quality_authority =
+      detail::parse_bool_fallback(first_value({"quality_authority"}), false);
+  fact.performance_authority = detail::parse_bool_fallback(
+      first_value({"performance_authority"}), false);
+  fact.coverage_authority =
+      detail::parse_bool_fallback(first_value({"coverage_authority"}), false);
+  fact.leakage_authority =
+      detail::parse_bool_fallback(first_value({"leakage_authority"}), false);
+  fact.contract_identity_authority = detail::parse_bool_fallback(
+      first_value({"contract_identity_authority"}), false);
+
+  if (!target_transform_fact_has_payload(fact)) {
+    return {};
+  }
+  return {std::move(fact)};
+}
+
+inline void append_string_list(std::ostringstream &out, const char *key,
+                               const std::vector<std::string> &values) {
+  out << key << "=";
+  for (std::size_t i = 0; i < values.size(); ++i) {
+    if (i != 0) {
+      out << ",";
+    }
+    out << values[i];
+  }
+  out << "\n";
+}
+
+[[nodiscard]] inline std::string canonical_target_transform_fact_text(
+    const lattice_target_transform_fact_t &fact) {
+  std::ostringstream out;
+  out << "schema=" << fact.schema << "\n";
+  out << "fact_type=" << fact.fact_type << "\n";
+  out << "parent_exposure_fact_digest=" << fact.parent_exposure_fact_digest
+      << "\n";
+  out << "contract_fingerprint=" << fact.contract_fingerprint << "\n";
+  out << "protocol_id=" << fact.protocol_id << "\n";
+  out << "graph_order_fingerprint=" << fact.graph_order_fingerprint << "\n";
+  out << "source_cursor_token=" << fact.source_cursor_token << "\n";
+  out << "split_policy_fingerprint=" << fact.split_policy_fingerprint << "\n";
+  out << "component_assembly_fingerprint="
+      << fact.component_assembly_fingerprint << "\n";
+  out << "target_component_family_id=" << fact.target_component_family_id
+      << "\n";
+  out << "job_id=" << fact.job_id << "\n";
+  out << "wave_id=" << fact.wave_id << "\n";
+  out << "job_status=" << fact.job_status << "\n";
+  out << "wave_action=" << fact.wave_action << "\n";
+  out << "split_name=" << fact.split_name << "\n";
+  out << "split_role=" << exposure_split_role_name(fact.split_role) << "\n";
+  out << "anchor_begin=" << fact.anchor_range.begin << "\n";
+  out << "anchor_end=" << fact.anchor_range.end << "\n";
+  out << "completed_anchor_begin=" << fact.completed_anchor_range.begin << "\n";
+  out << "completed_anchor_end=" << fact.completed_anchor_range.end << "\n";
+  append_string_list(out, "target_feature_ids", fact.target_feature_ids);
+  out << "horizon=" << fact.horizon << "\n";
+  out << "target_mode=" << fact.target_mode << "\n";
+  out << "normalization_contract=" << fact.normalization_contract << "\n";
+  out << "inverse_transform_contract=" << fact.inverse_transform_contract
+      << "\n";
+  out << "units=" << fact.units << "\n";
+  out << "target_mask_policy_digest=" << fact.target_mask_policy_digest << "\n";
+  out << "support_surface_identity=" << fact.support_surface_identity << "\n";
+  out << "support_surface_digest=" << fact.support_surface_digest << "\n";
+  out << "artifact_contract_prerequisite="
+      << (fact.artifact_contract_prerequisite ? "true" : "false") << "\n";
+  out << "visibility_only=" << (fact.visibility_only ? "true" : "false")
+      << "\n";
+  out << "readiness_authority=" << (fact.readiness_authority ? "true" : "false")
+      << "\n";
+  out << "quality_authority=" << (fact.quality_authority ? "true" : "false")
+      << "\n";
+  out << "performance_authority="
+      << (fact.performance_authority ? "true" : "false") << "\n";
+  out << "coverage_authority=" << (fact.coverage_authority ? "true" : "false")
+      << "\n";
+  out << "leakage_authority=" << (fact.leakage_authority ? "true" : "false")
+      << "\n";
+  out << "contract_identity_authority="
+      << (fact.contract_identity_authority ? "true" : "false") << "\n";
+  return out.str();
+}
+
+[[nodiscard]] inline std::string
+target_transform_fact_digest(const lattice_target_transform_fact_t &fact) {
+  return exposure_digest_for_text(canonical_target_transform_fact_text(fact));
+}
+
+[[nodiscard]] inline std::vector<std::string>
+target_transform_fact_issues(const lattice_target_transform_fact_t &fact) {
+  std::vector<std::string> issues;
+  if (fact.parent_exposure_fact_digest.empty()) {
+    issues.emplace_back("missing_parent_exposure_fact_digest");
+  }
+  if (fact.contract_fingerprint.empty()) {
+    issues.emplace_back("missing_contract_fingerprint");
+  }
+  if (fact.protocol_id.empty()) {
+    issues.emplace_back("missing_protocol_id");
+  }
+  if (fact.graph_order_fingerprint.empty()) {
+    issues.emplace_back("missing_graph_order_fingerprint");
+  }
+  if (fact.source_cursor_token.empty()) {
+    issues.emplace_back("missing_source_cursor_token");
+  }
+  if (fact.target_feature_ids.empty()) {
+    issues.emplace_back("missing_target_feature_ids");
+  }
+  if (fact.horizon <= 0) {
+    issues.emplace_back("missing_horizon");
+  }
+  if (fact.target_mode.empty()) {
+    issues.emplace_back("missing_target_mode");
+  }
+  if (fact.normalization_contract.empty()) {
+    issues.emplace_back("missing_normalization_contract");
+  }
+  if (fact.inverse_transform_contract.empty()) {
+    issues.emplace_back("missing_inverse_transform_contract");
+  }
+  if (fact.units.empty()) {
+    issues.emplace_back("missing_units");
+  }
+  if (fact.target_mask_policy_digest.empty()) {
+    issues.emplace_back("missing_target_mask_policy_digest");
+  }
+  if (!fact.artifact_contract_prerequisite || !fact.visibility_only ||
+      fact.readiness_authority || fact.quality_authority ||
+      fact.performance_authority || fact.coverage_authority ||
+      fact.leakage_authority || fact.contract_identity_authority) {
+    issues.emplace_back("target_transform_must_remain_artifact_contract_only");
+  }
+  return issues;
+}
+
+inline void append_target_transform_scan_warning(
+    const lattice_target_transform_fact_t &fact,
+    const std::filesystem::path &job_dir, std::vector<std::string> &warnings) {
+  const auto issues = target_transform_fact_issues(fact);
+  if (issues.empty()) {
+    return;
+  }
+  std::ostringstream oss;
+  oss << "[lattice_exposure] target_transform warning job_dir="
+      << job_dir.string() << " job_id=" << fact.job_id << " issues=";
+  for (std::size_t i = 0; i < issues.size(); ++i) {
+    if (i != 0) {
+      oss << ",";
+    }
+    oss << issues[i];
+  }
+  warnings.push_back(oss.str());
+}
+
+[[nodiscard]] inline target_transform_summary_t summarize_target_transforms(
+    const std::vector<lattice_exposure_fact_t> &exposure_facts,
+    const std::vector<lattice_target_transform_fact_t> &transform_facts) {
+  target_transform_summary_t out{};
+  out.exposure_fact_count = static_cast<std::int64_t>(exposure_facts.size());
+  out.target_transform_fact_count =
+      static_cast<std::int64_t>(transform_facts.size());
+
+  std::set<std::string> parent_digests;
+  std::set<std::string> feature_ids;
+  for (const auto &fact : transform_facts) {
+    if (!fact.parent_exposure_fact_digest.empty()) {
+      parent_digests.insert(fact.parent_exposure_fact_digest);
+    }
+    out.target_feature_id_count +=
+        static_cast<std::int64_t>(fact.target_feature_ids.size());
+    for (const auto &feature_id : fact.target_feature_ids) {
+      if (!feature_id.empty()) {
+        feature_ids.insert(feature_id);
+      }
+    }
+    if (fact.horizon > 0) {
+      ++out.horizon_bound_count;
+    }
+    if (fact.units.empty()) {
+      ++out.missing_units_count;
+    }
+    if (fact.target_mask_policy_digest.empty()) {
+      ++out.missing_mask_policy_count;
+    }
+    if (fact.normalization_contract.empty()) {
+      ++out.missing_normalization_contract_count;
+    }
+    if (fact.inverse_transform_contract.empty()) {
+      ++out.missing_inverse_transform_contract_count;
+    }
+    if (fact.artifact_contract_prerequisite) {
+      ++out.artifact_contract_prerequisite_count;
+    }
+    out.artifact_contract_prerequisite = out.artifact_contract_prerequisite &&
+                                         fact.artifact_contract_prerequisite;
+    out.visibility_only = out.visibility_only && fact.visibility_only;
+    out.readiness_authority =
+        out.readiness_authority || fact.readiness_authority;
+    out.quality_authority = out.quality_authority || fact.quality_authority;
+    out.performance_authority =
+        out.performance_authority || fact.performance_authority;
+    out.coverage_authority = out.coverage_authority || fact.coverage_authority;
+    out.leakage_authority = out.leakage_authority || fact.leakage_authority;
+    out.contract_identity_authority =
+        out.contract_identity_authority || fact.contract_identity_authority;
+    const auto issues = target_transform_fact_issues(fact);
+    out.warning_count += static_cast<std::int64_t>(issues.size());
+    for (const auto &issue : issues) {
+      out.issues.push_back(fact.job_id + ":" + issue);
+    }
+  }
+  out.parent_exposure_fact_count =
+      static_cast<std::int64_t>(parent_digests.size());
+  out.unique_target_feature_id_count =
+      static_cast<std::int64_t>(feature_ids.size());
+
+  if (!out.artifact_contract_prerequisite || !out.visibility_only ||
+      out.readiness_authority || out.quality_authority ||
+      out.performance_authority || out.coverage_authority ||
+      out.leakage_authority || out.contract_identity_authority) {
+    out.issues.push_back(
+        "target transform facts must remain artifact-contract prerequisites, "
+        "not quality, performance, readiness, coverage, leakage, or contract "
+        "identity authority");
+    ++out.warning_count;
+  }
+  return out;
+}
+
+[[nodiscard]] inline std::vector<std::filesystem::path>
+forecast_baseline_fact_paths_for_job_dir(const std::filesystem::path &job_dir) {
+  std::vector<std::filesystem::path> paths{
+      job_dir / "lattice.forecast_baseline.fact",
+      job_dir / "forecast_baseline.fact",
+      job_dir / "runtime.forecast_baseline.fact",
+      job_dir / "forecast.baseline.fact"};
+  for (const auto *kind : {"previous_value", "zero_return", "moving_average",
+                           "last_valid_channel"}) {
+    paths.push_back(
+        job_dir / ("lattice.forecast_baseline." + std::string(kind) + ".fact"));
+  }
+  return paths;
+}
+
+[[nodiscard]] inline std::string
+forecast_baseline_kind_hint_from_path(const std::filesystem::path &path) {
+  const auto filename = path.filename().string();
+  const std::string prefix = "lattice.forecast_baseline.";
+  const std::string suffix = ".fact";
+  if (!filename.starts_with(prefix) || !filename.ends_with(suffix) ||
+      filename == "lattice.forecast_baseline.fact") {
+    return {};
+  }
+  return filename.substr(prefix.size(),
+                         filename.size() - prefix.size() - suffix.size());
+}
+
+[[nodiscard]] inline std::string
+normalized_forecast_baseline_metric_status(std::string status) {
+  auto out = cuwacunu::piaabo::parse::simple_kv::lowercase(
+      cuwacunu::piaabo::parse::simple_kv::trim(std::move(status)));
+  if (out == "deferred" || out == "deferred_metrics") {
+    return "deferred_v1";
+  }
+  return out;
+}
+
+[[nodiscard]] inline std::int64_t forecast_baseline_finite_metric_count(
+    const lattice_forecast_baseline_fact_t &fact) {
+  std::int64_t count = 0;
+  if (std::isfinite(fact.baseline_mean_nll)) {
+    ++count;
+  }
+  if (std::isfinite(fact.baseline_ev_mae)) {
+    ++count;
+  }
+  if (std::isfinite(fact.baseline_ev_rmse)) {
+    ++count;
+  }
+  if (std::isfinite(fact.baseline_signed_error)) {
+    ++count;
+  }
+  if (std::isfinite(fact.baseline_directional_accuracy)) {
+    ++count;
+  }
+  return count;
+}
+
+[[nodiscard]] inline std::string derived_forecast_baseline_metric_status(
+    const lattice_forecast_baseline_fact_t &fact) {
+  const auto finite_count = forecast_baseline_finite_metric_count(fact);
+  if (finite_count == 0) {
+    return "deferred_v1";
+  }
+  return finite_count == 5 ? "computed" : "partial";
+}
+
+[[nodiscard]] inline bool forecast_baseline_fact_has_payload(
+    const lattice_forecast_baseline_fact_t &fact) {
+  return !fact.target_feature_ids.empty() || fact.horizon > 0 ||
+         !fact.baseline_kind.empty() || !fact.baseline_parameters.empty() ||
+         !fact.target_transform_fact_digest.empty() || fact.support_count > 0 ||
+         fact.valid_count > 0 || fact.missing_count > 0 ||
+         std::isfinite(fact.baseline_mean_nll) ||
+         std::isfinite(fact.baseline_ev_mae) ||
+         std::isfinite(fact.baseline_ev_rmse) ||
+         std::isfinite(fact.baseline_signed_error) ||
+         std::isfinite(fact.baseline_directional_accuracy);
+}
+
+[[nodiscard]] inline std::vector<lattice_forecast_baseline_fact_t>
+make_forecast_baseline_facts_from_job_dir(
+    const std::filesystem::path &job_dir,
+    const lattice_exposure_fact_t &parent) {
+  namespace detail = exposure_detail;
+  std::vector<lattice_forecast_baseline_fact_t> facts;
+  for (const auto &path : forecast_baseline_fact_paths_for_job_dir(job_dir)) {
+    const auto baseline = detail::parse_assignment_file(path);
+    if (baseline.empty()) {
+      continue;
+    }
+
+    const auto first_value =
+        [&](const std::vector<std::string> &keys) -> std::string {
+      for (const auto &key : keys) {
+        const auto value = detail::map_get(baseline, key);
+        if (!value.empty()) {
+          return value;
+        }
+      }
+      return {};
+    };
+    const auto first_double =
+        [&](const std::vector<std::string> &keys) -> double {
+      return detail::parse_double_fallback(
+          first_value(keys), std::numeric_limits<double>::quiet_NaN());
+    };
+    const auto first_i64 = [&](const std::vector<std::string> &keys,
+                               std::int64_t fallback) -> std::int64_t {
+      const auto value = first_value(keys);
+      if (value.empty()) {
+        return fallback;
+      }
+      return detail::parse_i64_fallback(value, fallback);
+    };
+
+    lattice_forecast_baseline_fact_t fact{};
+    fact.parent_exposure_fact_digest = exposure_fact_digest(parent);
+    fact.contract_fingerprint = parent.contract_fingerprint;
+    fact.protocol_id = parent.protocol_id;
+    fact.graph_order_fingerprint = parent.graph_order_fingerprint;
+    fact.source_cursor_token = parent.source_cursor_token;
+    fact.split_policy_fingerprint = parent.split_policy_fingerprint;
+    fact.component_assembly_fingerprint = parent.component_assembly_fingerprint;
+    fact.target_component_family_id = parent.target_component_family_id;
+    fact.job_id = parent.job_id;
+    fact.wave_id = parent.wave_id;
+    fact.job_status = parent.job_status;
+    fact.wave_action = parent.wave_action;
+    fact.split_name = parent.split_name;
+    fact.split_role = parent.split_role;
+    fact.anchor_range = parent.anchor_range;
+    fact.completed_anchor_range = parent.completed_anchor_range;
+
+    fact.target_feature_ids = detail::parse_string_list(
+        first_value({"target_feature_ids", "feature_ids", "target_features"}));
+    fact.horizon =
+        first_i64({"horizon", "target_horizon", "forecast_horizon"}, 0);
+    fact.baseline_kind =
+        first_value({"baseline_kind", "kind", "forecast_baseline_kind"});
+    if (fact.baseline_kind.empty()) {
+      fact.baseline_kind = forecast_baseline_kind_hint_from_path(path);
+    }
+    fact.baseline_parameters =
+        first_value({"baseline_parameters", "baseline_params", "parameters"});
+    fact.target_transform_fact_digest = first_value(
+        {"target_transform_fact_digest", "target_transform_digest"});
+    fact.support_count =
+        first_i64({"support_count", "baseline_support_count",
+                   "valid_target_support", "evaluation_support_count"},
+                  0);
+    fact.valid_count = first_i64(
+        {"valid_count", "baseline_valid_count", "valid_target_count"}, 0);
+    fact.missing_count = first_i64(
+        {"missing_count", "baseline_missing_count", "missing_target_count"}, 0);
+    fact.baseline_mean_nll =
+        first_double({"baseline_mean_nll", "mean_nll", "nll"});
+    fact.baseline_ev_mae =
+        first_double({"baseline_ev_mae", "ev_mae", "mean_absolute_error"});
+    fact.baseline_ev_rmse =
+        first_double({"baseline_ev_rmse", "ev_rmse", "rmse"});
+    fact.baseline_signed_error =
+        first_double({"baseline_signed_error", "signed_error"});
+    fact.baseline_directional_accuracy =
+        first_double({"baseline_directional_accuracy", "directional_accuracy"});
+    fact.metric_status = normalized_forecast_baseline_metric_status(
+        first_value({"metric_status", "baseline_metric_status", "metric_values",
+                     "baseline_metric_values"}));
+    if (fact.metric_status.empty()) {
+      fact.metric_status = derived_forecast_baseline_metric_status(fact);
+    }
+
+    fact.evidence_prerequisite = detail::parse_bool_fallback(
+        first_value({"evidence_prerequisite"}), true);
+    fact.visibility_only =
+        detail::parse_bool_fallback(first_value({"visibility_only"}), true);
+    fact.readiness_authority = detail::parse_bool_fallback(
+        first_value({"readiness_authority"}), false);
+    fact.quality_authority =
+        detail::parse_bool_fallback(first_value({"quality_authority"}), false);
+    fact.performance_authority = detail::parse_bool_fallback(
+        first_value({"performance_authority"}), false);
+    fact.checkpoint_selector = detail::parse_bool_fallback(
+        first_value({"checkpoint_selector"}), false);
+    fact.coverage_authority =
+        detail::parse_bool_fallback(first_value({"coverage_authority"}), false);
+    fact.leakage_authority =
+        detail::parse_bool_fallback(first_value({"leakage_authority"}), false);
+    fact.contract_identity_authority = detail::parse_bool_fallback(
+        first_value({"contract_identity_authority"}), false);
+
+    if (!forecast_baseline_fact_has_payload(fact)) {
+      continue;
+    }
+    facts.push_back(std::move(fact));
+  }
+  return facts;
+}
+
+[[nodiscard]] inline std::string canonical_forecast_baseline_fact_text(
+    const lattice_forecast_baseline_fact_t &fact) {
+  std::ostringstream out;
+  out << "schema=" << fact.schema << "\n";
+  out << "fact_type=" << fact.fact_type << "\n";
+  out << "parent_exposure_fact_digest=" << fact.parent_exposure_fact_digest
+      << "\n";
+  out << "contract_fingerprint=" << fact.contract_fingerprint << "\n";
+  out << "protocol_id=" << fact.protocol_id << "\n";
+  out << "graph_order_fingerprint=" << fact.graph_order_fingerprint << "\n";
+  out << "source_cursor_token=" << fact.source_cursor_token << "\n";
+  out << "split_policy_fingerprint=" << fact.split_policy_fingerprint << "\n";
+  out << "component_assembly_fingerprint="
+      << fact.component_assembly_fingerprint << "\n";
+  out << "target_component_family_id=" << fact.target_component_family_id
+      << "\n";
+  out << "job_id=" << fact.job_id << "\n";
+  out << "wave_id=" << fact.wave_id << "\n";
+  out << "job_status=" << fact.job_status << "\n";
+  out << "wave_action=" << fact.wave_action << "\n";
+  out << "split_name=" << fact.split_name << "\n";
+  out << "split_role=" << exposure_split_role_name(fact.split_role) << "\n";
+  out << "anchor_begin=" << fact.anchor_range.begin << "\n";
+  out << "anchor_end=" << fact.anchor_range.end << "\n";
+  out << "completed_anchor_begin=" << fact.completed_anchor_range.begin << "\n";
+  out << "completed_anchor_end=" << fact.completed_anchor_range.end << "\n";
+  append_string_list(out, "target_feature_ids", fact.target_feature_ids);
+  out << "horizon=" << fact.horizon << "\n";
+  out << "baseline_kind=" << fact.baseline_kind << "\n";
+  out << "baseline_parameters=" << fact.baseline_parameters << "\n";
+  out << "target_transform_fact_digest=" << fact.target_transform_fact_digest
+      << "\n";
+  out << "support_count=" << fact.support_count << "\n";
+  out << "valid_count=" << fact.valid_count << "\n";
+  out << "missing_count=" << fact.missing_count << "\n";
+  out << "metric_status=" << fact.metric_status << "\n";
+  out << "baseline_mean_nll=" << fact.baseline_mean_nll << "\n";
+  out << "baseline_ev_mae=" << fact.baseline_ev_mae << "\n";
+  out << "baseline_ev_rmse=" << fact.baseline_ev_rmse << "\n";
+  out << "baseline_signed_error=" << fact.baseline_signed_error << "\n";
+  out << "baseline_directional_accuracy=" << fact.baseline_directional_accuracy
+      << "\n";
+  out << "evidence_prerequisite="
+      << (fact.evidence_prerequisite ? "true" : "false") << "\n";
+  out << "visibility_only=" << (fact.visibility_only ? "true" : "false")
+      << "\n";
+  out << "readiness_authority=" << (fact.readiness_authority ? "true" : "false")
+      << "\n";
+  out << "quality_authority=" << (fact.quality_authority ? "true" : "false")
+      << "\n";
+  out << "performance_authority="
+      << (fact.performance_authority ? "true" : "false") << "\n";
+  out << "checkpoint_selector=" << (fact.checkpoint_selector ? "true" : "false")
+      << "\n";
+  out << "coverage_authority=" << (fact.coverage_authority ? "true" : "false")
+      << "\n";
+  out << "leakage_authority=" << (fact.leakage_authority ? "true" : "false")
+      << "\n";
+  out << "contract_identity_authority="
+      << (fact.contract_identity_authority ? "true" : "false") << "\n";
+  return out.str();
+}
+
+[[nodiscard]] inline std::string
+forecast_baseline_fact_digest(const lattice_forecast_baseline_fact_t &fact) {
+  return exposure_digest_for_text(canonical_forecast_baseline_fact_text(fact));
+}
+
+[[nodiscard]] inline std::string
+normalized_forecast_baseline_kind(std::string baseline_kind) {
+  return cuwacunu::piaabo::parse::simple_kv::lowercase(
+      cuwacunu::piaabo::parse::simple_kv::trim(std::move(baseline_kind)));
+}
+
+[[nodiscard]] inline std::vector<std::string>
+forecast_baseline_fact_issues(const lattice_forecast_baseline_fact_t &fact) {
+  std::vector<std::string> issues;
+  if (fact.parent_exposure_fact_digest.empty()) {
+    issues.emplace_back("missing_parent_exposure_fact_digest");
+  }
+  if (fact.contract_fingerprint.empty()) {
+    issues.emplace_back("missing_contract_fingerprint");
+  }
+  if (fact.protocol_id.empty()) {
+    issues.emplace_back("missing_protocol_id");
+  }
+  if (fact.graph_order_fingerprint.empty()) {
+    issues.emplace_back("missing_graph_order_fingerprint");
+  }
+  if (fact.source_cursor_token.empty()) {
+    issues.emplace_back("missing_source_cursor_token");
+  }
+  if (fact.target_feature_ids.empty()) {
+    issues.emplace_back("missing_target_feature_ids");
+  }
+  if (fact.horizon <= 0) {
+    issues.emplace_back("missing_horizon");
+  }
+  if (fact.baseline_kind.empty()) {
+    issues.emplace_back("missing_baseline_kind");
+  }
+  if (fact.target_transform_fact_digest.empty()) {
+    issues.emplace_back("missing_target_transform_fact_digest");
+  }
+  if (fact.support_count <= 0 && fact.valid_count <= 0) {
+    issues.emplace_back("missing_support_count");
+  }
+  const auto finite_metric_count = forecast_baseline_finite_metric_count(fact);
+  const auto metric_status =
+      normalized_forecast_baseline_metric_status(fact.metric_status);
+  if (metric_status.empty()) {
+    issues.emplace_back("missing_metric_status");
+  } else if (metric_status != "computed" && metric_status != "partial" &&
+             metric_status != "deferred_v1") {
+    issues.emplace_back("unsupported_metric_status");
+  } else if (metric_status == "computed" && finite_metric_count != 5) {
+    issues.emplace_back("computed_metric_status_without_complete_metrics");
+  } else if (metric_status == "partial" && finite_metric_count <= 0) {
+    issues.emplace_back("partial_metric_status_without_metrics");
+  } else if (metric_status == "deferred_v1" && finite_metric_count > 0) {
+    issues.emplace_back("deferred_metric_status_with_metric_values");
+  }
+  if (!fact.evidence_prerequisite || !fact.visibility_only ||
+      fact.readiness_authority || fact.quality_authority ||
+      fact.performance_authority || fact.checkpoint_selector ||
+      fact.coverage_authority || fact.leakage_authority ||
+      fact.contract_identity_authority) {
+    issues.emplace_back(
+        "forecast_baseline_must_remain_evidence_prerequisite_only");
+  }
+  return issues;
+}
+
+inline void append_forecast_baseline_scan_warning(
+    const lattice_forecast_baseline_fact_t &fact,
+    const std::filesystem::path &job_dir, std::vector<std::string> &warnings) {
+  const auto issues = forecast_baseline_fact_issues(fact);
+  if (issues.empty()) {
+    return;
+  }
+  std::ostringstream oss;
+  oss << "[lattice_exposure] forecast_baseline warning job_dir="
+      << job_dir.string() << " job_id=" << fact.job_id << " issues=";
+  for (std::size_t i = 0; i < issues.size(); ++i) {
+    if (i != 0) {
+      oss << ",";
+    }
+    oss << issues[i];
+  }
+  warnings.push_back(oss.str());
+}
+
+[[nodiscard]] inline forecast_baseline_summary_t summarize_forecast_baselines(
+    const std::vector<lattice_exposure_fact_t> &exposure_facts,
+    const std::vector<lattice_forecast_baseline_fact_t> &baseline_facts,
+    const std::vector<lattice_target_transform_fact_t> &target_transform_facts =
+        empty_target_transform_facts()) {
+  forecast_baseline_summary_t out{};
+  out.exposure_fact_count = static_cast<std::int64_t>(exposure_facts.size());
+  out.forecast_baseline_fact_count =
+      static_cast<std::int64_t>(baseline_facts.size());
+
+  std::set<std::string> parent_digests;
+  std::set<std::string> feature_ids;
+  std::set<std::string> baseline_kinds;
+  for (const auto &fact : baseline_facts) {
+    if (!fact.parent_exposure_fact_digest.empty()) {
+      parent_digests.insert(fact.parent_exposure_fact_digest);
+    }
+    out.target_feature_id_count +=
+        static_cast<std::int64_t>(fact.target_feature_ids.size());
+    for (const auto &feature_id : fact.target_feature_ids) {
+      if (!feature_id.empty()) {
+        feature_ids.insert(feature_id);
+      }
+    }
+    if (fact.horizon > 0) {
+      ++out.horizon_bound_count;
+    }
+    const auto baseline_kind =
+        normalized_forecast_baseline_kind(fact.baseline_kind);
+    if (baseline_kind.empty()) {
+      ++out.missing_baseline_kind_count;
+    } else {
+      baseline_kinds.insert(baseline_kind);
+      if (baseline_kind == "previous_value") {
+        ++out.previous_value_baseline_count;
+      } else if (baseline_kind == "zero_return") {
+        ++out.zero_return_baseline_count;
+      } else if (baseline_kind == "moving_average") {
+        ++out.moving_average_baseline_count;
+      } else if (baseline_kind == "last_valid_channel") {
+        ++out.last_valid_channel_baseline_count;
+      } else {
+        ++out.unknown_baseline_kind_count;
+      }
+    }
+    if (fact.target_transform_fact_digest.empty()) {
+      ++out.missing_target_transform_count;
+    } else {
+      ++out.target_transform_declared_count;
+      const auto resolution = resolve_related_fact_digest_for_identity(
+          fact, fact.target_transform_fact_digest, target_transform_facts,
+          target_transform_fact_digest);
+      if (resolution == related_fact_digest_resolution_t::resolved) {
+        ++out.target_transform_bound_count;
+      } else if (resolution ==
+                 related_fact_digest_resolution_t::identity_mismatch) {
+        ++out.target_transform_identity_mismatch_count;
+        append_summary_issue(out.issues, out.warning_count, fact.job_id,
+                             "target_transform_fact_digest_identity_mismatch");
+      } else {
+        ++out.unresolved_target_transform_count;
+        append_summary_issue(out.issues, out.warning_count, fact.job_id,
+                             "target_transform_fact_digest_not_found");
+      }
+    }
+    if (fact.evidence_prerequisite) {
+      ++out.evidence_prerequisite_count;
+    }
+    const auto finite_metric_count =
+        forecast_baseline_finite_metric_count(fact);
+    out.computed_metric_value_count += finite_metric_count;
+    const auto metric_status =
+        normalized_forecast_baseline_metric_status(fact.metric_status);
+    if (metric_status.empty()) {
+      ++out.missing_metric_status_count;
+    } else if (metric_status == "computed") {
+      ++out.computed_metric_fact_count;
+      if (finite_metric_count != 5) {
+        ++out.metric_status_mismatch_count;
+      }
+    } else if (metric_status == "partial") {
+      ++out.partial_metric_fact_count;
+      if (finite_metric_count <= 0) {
+        ++out.metric_status_mismatch_count;
+      }
+    } else if (metric_status == "deferred_v1") {
+      ++out.deferred_metric_fact_count;
+      if (finite_metric_count > 0) {
+        ++out.metric_status_mismatch_count;
+      }
+    } else {
+      ++out.metric_status_mismatch_count;
+    }
+    out.support_count_total += fact.support_count;
+    out.valid_count_total += fact.valid_count;
+    out.missing_count_total += fact.missing_count;
+    update_source_analytics_metric_summary(out.baseline_mean_nll,
+                                           fact.baseline_mean_nll);
+    update_source_analytics_metric_summary(out.baseline_ev_mae,
+                                           fact.baseline_ev_mae);
+    update_source_analytics_metric_summary(out.baseline_ev_rmse,
+                                           fact.baseline_ev_rmse);
+    update_source_analytics_metric_summary(out.baseline_signed_error,
+                                           fact.baseline_signed_error);
+    update_source_analytics_metric_summary(out.baseline_directional_accuracy,
+                                           fact.baseline_directional_accuracy);
+    out.evidence_prerequisite =
+        out.evidence_prerequisite && fact.evidence_prerequisite;
+    out.visibility_only = out.visibility_only && fact.visibility_only;
+    out.readiness_authority =
+        out.readiness_authority || fact.readiness_authority;
+    out.quality_authority = out.quality_authority || fact.quality_authority;
+    out.performance_authority =
+        out.performance_authority || fact.performance_authority;
+    out.checkpoint_selector =
+        out.checkpoint_selector || fact.checkpoint_selector;
+    out.coverage_authority = out.coverage_authority || fact.coverage_authority;
+    out.leakage_authority = out.leakage_authority || fact.leakage_authority;
+    out.contract_identity_authority =
+        out.contract_identity_authority || fact.contract_identity_authority;
+    const auto issues = forecast_baseline_fact_issues(fact);
+    out.warning_count += static_cast<std::int64_t>(issues.size());
+    for (const auto &issue : issues) {
+      out.issues.push_back(fact.job_id + ":" + issue);
+    }
+  }
+  out.parent_exposure_fact_count =
+      static_cast<std::int64_t>(parent_digests.size());
+  out.unique_target_feature_id_count =
+      static_cast<std::int64_t>(feature_ids.size());
+  out.unique_baseline_kind_count =
+      static_cast<std::int64_t>(baseline_kinds.size());
+
+  if (!out.evidence_prerequisite || !out.visibility_only ||
+      out.readiness_authority || out.quality_authority ||
+      out.performance_authority || out.checkpoint_selector ||
+      out.coverage_authority || out.leakage_authority ||
+      out.contract_identity_authority) {
+    out.issues.push_back(
+        "forecast baseline facts must remain evidence prerequisites, not "
+        "quality, performance, readiness, checkpoint-selection, coverage, "
+        "leakage, or contract identity authority");
+    ++out.warning_count;
+  }
+  return out;
+}
+
+[[nodiscard]] inline std::vector<std::filesystem::path>
+forecast_eval_fact_paths_for_job_dir(const std::filesystem::path &job_dir) {
+  return {
+      job_dir / "lattice.forecast_eval.fact", job_dir / "forecast_eval.fact",
+      job_dir / "runtime.forecast_eval.fact", job_dir / "forecast.eval.fact"};
+}
+
+[[nodiscard]] inline bool
+forecast_eval_fact_has_payload(const lattice_forecast_eval_fact_t &fact) {
+  return !fact.target_feature_ids.empty() || fact.horizon > 0 ||
+         fact.support_count > 0 || fact.valid_count > 0 ||
+         fact.missing_count > 0 || fact.weakest_support_rows > 0 ||
+         std::isfinite(fact.mean_nll) || std::isfinite(fact.ev_mae) ||
+         !fact.mean_nll_per_channel.empty() ||
+         !fact.mean_nll_per_target_feature.empty() ||
+         !fact.mean_nll_per_channel_target_feature.empty() ||
+         !fact.mean_nll_per_horizon.empty() ||
+         !fact.valid_target_count_per_channel.empty() ||
+         !fact.valid_target_count_per_target_feature.empty() ||
+         !fact.valid_target_count_per_channel_target_feature.empty() ||
+         !fact.valid_target_count_per_horizon.empty() ||
+         std::isfinite(fact.ev_rmse) || std::isfinite(fact.signed_error) ||
+         std::isfinite(fact.directional_accuracy) ||
+         std::isfinite(fact.calibration_coverage) ||
+         !fact.pit_summary.empty() || !fact.sigma_scale_sanity.empty() ||
+         !fact.support_by_node.empty() || !fact.support_by_channel.empty() ||
+         !fact.support_by_target_feature.empty() ||
+         !fact.support_by_horizon.empty() ||
+         !fact.forecast_artifact_digest.empty() ||
+         !fact.evaluated_representation_checkpoint_digest.empty() ||
+         !fact.evaluated_mdn_checkpoint_digest.empty() ||
+         !fact.target_transform_fact_digest.empty() ||
+         !fact.baseline_fact_digests.empty() ||
+         !fact.selection_signal_fact_digests.empty();
+}
+
+[[nodiscard]] inline std::vector<lattice_forecast_eval_fact_t>
+make_forecast_eval_facts_from_job_dir(const std::filesystem::path &job_dir,
+                                      const lattice_exposure_fact_t &parent) {
+  namespace detail = exposure_detail;
+  const auto eval = detail::parse_first_assignment_file(
+      forecast_eval_fact_paths_for_job_dir(job_dir));
+  if (eval.empty()) {
+    return {};
+  }
+
+  const auto first_value =
+      [&](const std::vector<std::string> &keys) -> std::string {
+    for (const auto &key : keys) {
+      const auto value = detail::map_get(eval, key);
+      if (!value.empty()) {
+        return value;
+      }
+    }
+    return {};
+  };
+  const auto first_double =
+      [&](const std::vector<std::string> &keys) -> double {
+    return detail::parse_double_fallback(
+        first_value(keys), std::numeric_limits<double>::quiet_NaN());
+  };
+  const auto first_i64 = [&](const std::vector<std::string> &keys,
+                             std::int64_t fallback) -> std::int64_t {
+    const auto value = first_value(keys);
+    if (value.empty()) {
+      return fallback;
+    }
+    return detail::parse_i64_fallback(value, fallback);
+  };
+
+  lattice_forecast_eval_fact_t fact{};
+  fact.parent_exposure_fact_digest = exposure_fact_digest(parent);
+  fact.contract_fingerprint = parent.contract_fingerprint;
+  fact.protocol_id = parent.protocol_id;
+  fact.graph_order_fingerprint = parent.graph_order_fingerprint;
+  fact.source_cursor_token = parent.source_cursor_token;
+  fact.split_policy_fingerprint = parent.split_policy_fingerprint;
+  fact.component_assembly_fingerprint = parent.component_assembly_fingerprint;
+  fact.target_component_family_id = parent.target_component_family_id;
+  fact.job_id = parent.job_id;
+  fact.wave_id = parent.wave_id;
+  fact.job_status = parent.job_status;
+  fact.wave_action = parent.wave_action;
+  fact.split_name = parent.split_name;
+  fact.split_role = parent.split_role;
+  fact.anchor_range = parent.anchor_range;
+  fact.completed_anchor_range = parent.completed_anchor_range;
+
+  fact.target_feature_ids = detail::parse_string_list(
+      first_value({"target_feature_ids", "feature_ids", "target_features"}));
+  fact.horizon =
+      first_i64({"horizon", "target_horizon", "forecast_horizon"}, 0);
+  fact.support_count =
+      first_i64({"support_count", "valid_target_support",
+                 "evaluation_support_count", "forecast_support_count"},
+                0);
+  fact.valid_count = first_i64(
+      {"valid_count", "valid_target_count", "forecast_valid_count"}, 0);
+  fact.missing_count = first_i64(
+      {"missing_count", "missing_target_count", "forecast_missing_count"}, 0);
+  fact.weakest_support_rows =
+      first_i64({"weakest_support_rows", "weakest_support_count"}, 0);
+  fact.mean_nll = first_double({"mean_nll", "forecast_mean_nll", "nll"});
+  fact.mean_nll_per_channel = detail::parse_double_list_fallback(
+      first_value({"mean_nll_per_channel", "nll_per_channel"}));
+  fact.mean_nll_per_target_feature = detail::parse_double_list_fallback(
+      first_value({"mean_nll_per_target_feature", "nll_per_target_feature"}));
+  fact.mean_nll_per_channel_target_feature = detail::parse_double_list_fallback(
+      first_value({"mean_nll_per_channel_target_feature",
+                   "nll_per_channel_target_feature"}));
+  fact.mean_nll_per_horizon = detail::parse_double_list_fallback(
+      first_value({"mean_nll_per_horizon", "nll_per_horizon"}));
+  fact.valid_target_count_per_channel = detail::parse_i64_list_fallback(
+      first_value({"valid_target_count_per_channel"}));
+  fact.valid_target_count_per_target_feature = detail::parse_i64_list_fallback(
+      first_value({"valid_target_count_per_target_feature"}));
+  fact.valid_target_count_per_channel_target_feature =
+      detail::parse_i64_list_fallback(
+          first_value({"valid_target_count_per_channel_target_feature"}));
+  fact.valid_target_count_per_horizon =
+      detail::parse_i64_list_fallback(first_value(
+          {"valid_target_count_per_horizon", "valid_target_count_by_horizon"}));
+  fact.ev_mae = first_double({"ev_mae", "forecast_ev_mae", "mae"});
+  fact.ev_rmse = first_double({"ev_rmse", "forecast_ev_rmse", "rmse"});
+  fact.signed_error = first_double({"signed_error", "forecast_signed_error"});
+  fact.directional_accuracy =
+      first_double({"directional_accuracy", "forecast_directional_accuracy"});
+  fact.calibration_coverage =
+      first_double({"calibration_coverage", "forecast_calibration_coverage"});
+  fact.pit_summary = first_value({"pit_summary", "pit_histogram_summary"});
+  fact.sigma_scale_sanity = first_value({"sigma_scale_sanity", "sigma_sanity"});
+  fact.support_by_node =
+      first_value({"support_by_node", "support_surface_by_node"});
+  fact.support_by_channel =
+      first_value({"support_by_channel", "support_surface_by_channel"});
+  fact.support_by_target_feature =
+      first_value({"support_by_target_feature", "support_by_feature"});
+  fact.support_by_horizon =
+      first_value({"support_by_horizon", "support_surface_by_horizon"});
+
+  fact.forecast_artifact_digest =
+      first_value({"forecast_artifact_digest", "forecast_digest"});
+  fact.evaluated_representation_checkpoint_digest =
+      first_value({"evaluated_representation_checkpoint_digest",
+                   "representation_checkpoint_digest"});
+  fact.evaluated_mdn_checkpoint_digest =
+      first_value({"evaluated_mdn_checkpoint_digest", "mdn_checkpoint_digest"});
+  fact.target_transform_fact_digest =
+      first_value({"target_transform_fact_digest", "target_transform_digest"});
+  fact.baseline_fact_digests = detail::parse_string_list(
+      first_value({"baseline_fact_digests", "forecast_baseline_fact_digests",
+                   "baseline_digests"}));
+  fact.selection_signal_fact_digests = detail::parse_string_list(first_value(
+      {"selection_signal_fact_digests", "selection_signal_digests"}));
+
+  fact.artifact_evidence =
+      detail::parse_bool_fallback(first_value({"artifact_evidence"}), true);
+  fact.visibility_only =
+      detail::parse_bool_fallback(first_value({"visibility_only"}), true);
+  fact.model_state_mutation = detail::parse_bool_fallback(
+      first_value({"model_state_mutation", "mutated_model_state"}), false);
+  fact.readiness_authority =
+      detail::parse_bool_fallback(first_value({"readiness_authority"}), false);
+  fact.quality_authority =
+      detail::parse_bool_fallback(first_value({"quality_authority"}), false);
+  fact.performance_authority = detail::parse_bool_fallback(
+      first_value({"performance_authority"}), false);
+  fact.checkpoint_selector =
+      detail::parse_bool_fallback(first_value({"checkpoint_selector"}), false);
+  fact.coverage_authority =
+      detail::parse_bool_fallback(first_value({"coverage_authority"}), false);
+  fact.leakage_authority =
+      detail::parse_bool_fallback(first_value({"leakage_authority"}), false);
+  fact.contract_identity_authority = detail::parse_bool_fallback(
+      first_value({"contract_identity_authority"}), false);
+
+  if (!forecast_eval_fact_has_payload(fact)) {
+    return {};
+  }
+  return {std::move(fact)};
+}
+
+[[nodiscard]] inline std::string
+canonical_forecast_eval_fact_text(const lattice_forecast_eval_fact_t &fact) {
+  std::ostringstream out;
+  out << "schema=" << fact.schema << "\n";
+  out << "fact_type=" << fact.fact_type << "\n";
+  out << "parent_exposure_fact_digest=" << fact.parent_exposure_fact_digest
+      << "\n";
+  out << "contract_fingerprint=" << fact.contract_fingerprint << "\n";
+  out << "protocol_id=" << fact.protocol_id << "\n";
+  out << "graph_order_fingerprint=" << fact.graph_order_fingerprint << "\n";
+  out << "source_cursor_token=" << fact.source_cursor_token << "\n";
+  out << "split_policy_fingerprint=" << fact.split_policy_fingerprint << "\n";
+  out << "component_assembly_fingerprint="
+      << fact.component_assembly_fingerprint << "\n";
+  out << "target_component_family_id=" << fact.target_component_family_id
+      << "\n";
+  out << "job_id=" << fact.job_id << "\n";
+  out << "wave_id=" << fact.wave_id << "\n";
+  out << "job_status=" << fact.job_status << "\n";
+  out << "wave_action=" << fact.wave_action << "\n";
+  out << "split_name=" << fact.split_name << "\n";
+  out << "split_role=" << exposure_split_role_name(fact.split_role) << "\n";
+  out << "anchor_begin=" << fact.anchor_range.begin << "\n";
+  out << "anchor_end=" << fact.anchor_range.end << "\n";
+  out << "completed_anchor_begin=" << fact.completed_anchor_range.begin << "\n";
+  out << "completed_anchor_end=" << fact.completed_anchor_range.end << "\n";
+  append_string_list(out, "target_feature_ids", fact.target_feature_ids);
+  out << "horizon=" << fact.horizon << "\n";
+  out << "support_count=" << fact.support_count << "\n";
+  out << "valid_count=" << fact.valid_count << "\n";
+  out << "missing_count=" << fact.missing_count << "\n";
+  out << "weakest_support_rows=" << fact.weakest_support_rows << "\n";
+  out << "mean_nll=" << fact.mean_nll << "\n";
+  exposure_detail::append_double_list(out, "mean_nll_per_channel",
+                                      fact.mean_nll_per_channel);
+  exposure_detail::append_double_list(out, "mean_nll_per_target_feature",
+                                      fact.mean_nll_per_target_feature);
+  exposure_detail::append_double_list(out,
+                                      "mean_nll_per_channel_target_feature",
+                                      fact.mean_nll_per_channel_target_feature);
+  exposure_detail::append_double_list(out, "mean_nll_per_horizon",
+                                      fact.mean_nll_per_horizon);
+  exposure_detail::append_i64_list(out, "valid_target_count_per_channel",
+                                   fact.valid_target_count_per_channel);
+  exposure_detail::append_i64_list(out, "valid_target_count_per_target_feature",
+                                   fact.valid_target_count_per_target_feature);
+  exposure_detail::append_i64_list(
+      out, "valid_target_count_per_channel_target_feature",
+      fact.valid_target_count_per_channel_target_feature);
+  exposure_detail::append_i64_list(out, "valid_target_count_per_horizon",
+                                   fact.valid_target_count_per_horizon);
+  out << "ev_mae=" << fact.ev_mae << "\n";
+  out << "ev_rmse=" << fact.ev_rmse << "\n";
+  out << "signed_error=" << fact.signed_error << "\n";
+  out << "directional_accuracy=" << fact.directional_accuracy << "\n";
+  out << "calibration_coverage=" << fact.calibration_coverage << "\n";
+  out << "pit_summary=" << fact.pit_summary << "\n";
+  out << "sigma_scale_sanity=" << fact.sigma_scale_sanity << "\n";
+  out << "support_by_node=" << fact.support_by_node << "\n";
+  out << "support_by_channel=" << fact.support_by_channel << "\n";
+  out << "support_by_target_feature=" << fact.support_by_target_feature << "\n";
+  out << "support_by_horizon=" << fact.support_by_horizon << "\n";
+  out << "forecast_artifact_digest=" << fact.forecast_artifact_digest << "\n";
+  out << "evaluated_representation_checkpoint_digest="
+      << fact.evaluated_representation_checkpoint_digest << "\n";
+  out << "evaluated_mdn_checkpoint_digest="
+      << fact.evaluated_mdn_checkpoint_digest << "\n";
+  out << "target_transform_fact_digest=" << fact.target_transform_fact_digest
+      << "\n";
+  append_string_list(out, "baseline_fact_digests", fact.baseline_fact_digests);
+  append_string_list(out, "selection_signal_fact_digests",
+                     fact.selection_signal_fact_digests);
+  out << "artifact_evidence=" << (fact.artifact_evidence ? "true" : "false")
+      << "\n";
+  out << "visibility_only=" << (fact.visibility_only ? "true" : "false")
+      << "\n";
+  out << "model_state_mutation="
+      << (fact.model_state_mutation ? "true" : "false") << "\n";
+  out << "readiness_authority=" << (fact.readiness_authority ? "true" : "false")
+      << "\n";
+  out << "quality_authority=" << (fact.quality_authority ? "true" : "false")
+      << "\n";
+  out << "performance_authority="
+      << (fact.performance_authority ? "true" : "false") << "\n";
+  out << "checkpoint_selector=" << (fact.checkpoint_selector ? "true" : "false")
+      << "\n";
+  out << "coverage_authority=" << (fact.coverage_authority ? "true" : "false")
+      << "\n";
+  out << "leakage_authority=" << (fact.leakage_authority ? "true" : "false")
+      << "\n";
+  out << "contract_identity_authority="
+      << (fact.contract_identity_authority ? "true" : "false") << "\n";
+  return out.str();
+}
+
+[[nodiscard]] inline std::string
+forecast_eval_fact_digest(const lattice_forecast_eval_fact_t &fact) {
+  return exposure_digest_for_text(canonical_forecast_eval_fact_text(fact));
+}
+
+[[nodiscard]] inline std::vector<std::string>
+forecast_eval_fact_issues(const lattice_forecast_eval_fact_t &fact) {
+  std::vector<std::string> issues;
+  if (fact.parent_exposure_fact_digest.empty()) {
+    issues.emplace_back("missing_parent_exposure_fact_digest");
+  }
+  if (fact.contract_fingerprint.empty()) {
+    issues.emplace_back("missing_contract_fingerprint");
+  }
+  if (fact.protocol_id.empty()) {
+    issues.emplace_back("missing_protocol_id");
+  }
+  if (fact.graph_order_fingerprint.empty()) {
+    issues.emplace_back("missing_graph_order_fingerprint");
+  }
+  if (fact.source_cursor_token.empty()) {
+    issues.emplace_back("missing_source_cursor_token");
+  }
+  if (fact.target_feature_ids.empty()) {
+    issues.emplace_back("missing_target_feature_ids");
+  }
+  if (fact.horizon <= 0) {
+    issues.emplace_back("missing_horizon");
+  }
+  if (fact.support_count <= 0 && fact.valid_count <= 0) {
+    issues.emplace_back("missing_support_count");
+  }
+  if (fact.forecast_artifact_digest.empty()) {
+    issues.emplace_back("missing_forecast_artifact_digest");
+  }
+  if (fact.evaluated_representation_checkpoint_digest.empty()) {
+    issues.emplace_back("missing_evaluated_representation_checkpoint_digest");
+  }
+  if (fact.evaluated_mdn_checkpoint_digest.empty()) {
+    issues.emplace_back("missing_evaluated_mdn_checkpoint_digest");
+  }
+  if (fact.target_transform_fact_digest.empty()) {
+    issues.emplace_back("missing_target_transform_fact_digest");
+  }
+  if (fact.baseline_fact_digests.empty()) {
+    issues.emplace_back("missing_baseline_fact_digests");
+  }
+  if (fact.support_by_horizon.empty() ||
+      fact.valid_target_count_per_horizon.empty()) {
+    issues.emplace_back("missing_horizon_support_surface");
+  }
+  if (!fact.artifact_evidence || !fact.visibility_only ||
+      fact.model_state_mutation || fact.readiness_authority ||
+      fact.quality_authority || fact.performance_authority ||
+      fact.checkpoint_selector || fact.coverage_authority ||
+      fact.leakage_authority || fact.contract_identity_authority) {
+    issues.emplace_back("forecast_eval_must_remain_artifact_evidence_only");
+  }
+  return issues;
+}
+
+inline void
+append_forecast_eval_scan_warning(const lattice_forecast_eval_fact_t &fact,
+                                  const std::filesystem::path &job_dir,
+                                  std::vector<std::string> &warnings) {
+  const auto issues = forecast_eval_fact_issues(fact);
+  if (issues.empty()) {
+    return;
+  }
+  std::ostringstream oss;
+  oss << "[lattice_exposure] forecast_eval warning job_dir=" << job_dir.string()
+      << " job_id=" << fact.job_id << " issues=";
+  for (std::size_t i = 0; i < issues.size(); ++i) {
+    if (i != 0) {
+      oss << ",";
+    }
+    oss << issues[i];
+  }
+  warnings.push_back(oss.str());
+}
+
+[[nodiscard]] inline bool
+lattice_visibility_text_available(const std::string &value) {
+  const auto normalized = cuwacunu::piaabo::parse::simple_kv::lowercase(
+      cuwacunu::piaabo::parse::simple_kv::trim(value));
+  return !normalized.empty() && normalized != "none" &&
+         normalized.find("unavailable") == std::string::npos &&
+         normalized.find("missing") == std::string::npos;
+}
+
+[[nodiscard]] inline bool
+forecast_eval_visibility_text_available(const std::string &value) {
+  return lattice_visibility_text_available(value);
+}
+
+inline void
+append_forecast_eval_calibration_visibility_issue(forecast_eval_summary_t &out,
+                                                  const std::string &job_id,
+                                                  const char *issue) {
+  ++out.calibration_visibility_warning_count;
+  append_summary_issue(out.issues, out.warning_count, job_id, issue);
+}
+
+[[nodiscard]] inline forecast_eval_summary_t summarize_forecast_evals(
+    const std::vector<lattice_exposure_fact_t> &exposure_facts,
+    const std::vector<lattice_forecast_eval_fact_t> &eval_facts,
+    const std::vector<lattice_target_transform_fact_t> &target_transform_facts =
+        empty_target_transform_facts(),
+    const std::vector<lattice_forecast_baseline_fact_t> &baseline_facts =
+        empty_forecast_baseline_facts(),
+    const std::vector<lattice_selection_signal_fact_t> &selection_signal_facts =
+        empty_selection_signal_facts()) {
+  forecast_eval_summary_t out{};
+  out.exposure_fact_count = static_cast<std::int64_t>(exposure_facts.size());
+  out.forecast_eval_fact_count = static_cast<std::int64_t>(eval_facts.size());
+
+  std::set<std::string> parent_digests;
+  std::set<std::string> feature_ids;
+  std::set<std::string> baseline_digests;
+  std::set<std::string> selection_signal_digests;
+  for (const auto &fact : eval_facts) {
+    if (!fact.parent_exposure_fact_digest.empty()) {
+      parent_digests.insert(fact.parent_exposure_fact_digest);
+    }
+    out.target_feature_id_count +=
+        static_cast<std::int64_t>(fact.target_feature_ids.size());
+    for (const auto &feature_id : fact.target_feature_ids) {
+      if (!feature_id.empty()) {
+        feature_ids.insert(feature_id);
+      }
+    }
+    if (fact.horizon > 0) {
+      ++out.horizon_bound_count;
+    }
+    if (!fact.forecast_artifact_digest.empty()) {
+      ++out.forecast_artifact_bound_count;
+    } else {
+      ++out.missing_forecast_artifact_count;
+    }
+    if (!fact.evaluated_representation_checkpoint_digest.empty()) {
+      ++out.representation_checkpoint_bound_count;
+    } else {
+      ++out.missing_representation_checkpoint_count;
+    }
+    if (!fact.evaluated_mdn_checkpoint_digest.empty()) {
+      ++out.mdn_checkpoint_bound_count;
+    } else {
+      ++out.missing_mdn_checkpoint_count;
+    }
+    if (fact.target_transform_fact_digest.empty()) {
+      ++out.missing_target_transform_count;
+    } else {
+      ++out.target_transform_declared_count;
+      const auto resolution = resolve_related_fact_digest_for_identity(
+          fact, fact.target_transform_fact_digest, target_transform_facts,
+          target_transform_fact_digest);
+      if (resolution == related_fact_digest_resolution_t::resolved) {
+        ++out.target_transform_bound_count;
+      } else if (resolution ==
+                 related_fact_digest_resolution_t::identity_mismatch) {
+        ++out.target_transform_identity_mismatch_count;
+        append_summary_issue(out.issues, out.warning_count, fact.job_id,
+                             "target_transform_fact_digest_identity_mismatch");
+      } else {
+        ++out.unresolved_target_transform_count;
+        append_summary_issue(out.issues, out.warning_count, fact.job_id,
+                             "target_transform_fact_digest_not_found");
+      }
+    }
+    if (fact.baseline_fact_digests.empty()) {
+      ++out.missing_baseline_count;
+    }
+    for (const auto &digest : fact.baseline_fact_digests) {
+      if (!digest.empty()) {
+        ++out.baseline_declared_count;
+        const lattice_forecast_baseline_fact_t *baseline_fact = nullptr;
+        const auto resolution = resolve_related_fact_digest_for_identity(
+            fact, digest, baseline_facts, forecast_baseline_fact_digest,
+            &baseline_fact);
+        if (resolution == related_fact_digest_resolution_t::resolved) {
+          baseline_digests.insert(digest);
+          if (baseline_fact != nullptr) {
+            const auto update_skill =
+                [](source_analytics_metric_summary_t &summary,
+                   const std::optional<double> value) {
+                  if (value.has_value()) {
+                    update_source_analytics_metric_summary(summary, *value);
+                  }
+                };
+            update_skill(out.skill_vs_baseline_mean_nll,
+                         forecast_skill_lower_is_better(
+                             fact.mean_nll, baseline_fact->baseline_mean_nll));
+            update_skill(out.skill_vs_baseline_ev_mae,
+                         forecast_skill_lower_is_better(
+                             fact.ev_mae, baseline_fact->baseline_ev_mae));
+            update_skill(out.skill_vs_baseline_ev_rmse,
+                         forecast_skill_lower_is_better(
+                             fact.ev_rmse, baseline_fact->baseline_ev_rmse));
+            update_skill(out.directional_accuracy_delta_vs_baseline,
+                         forecast_delta_higher_is_better(
+                             fact.directional_accuracy,
+                             baseline_fact->baseline_directional_accuracy));
+          }
+        } else if (resolution ==
+                   related_fact_digest_resolution_t::identity_mismatch) {
+          ++out.baseline_identity_mismatch_count;
+          append_summary_issue(out.issues, out.warning_count, fact.job_id,
+                               "baseline_fact_digest_identity_mismatch");
+        } else {
+          ++out.unresolved_baseline_count;
+          append_summary_issue(out.issues, out.warning_count, fact.job_id,
+                               "baseline_fact_digest_not_found");
+        }
+      }
+    }
+    for (const auto &digest : fact.selection_signal_fact_digests) {
+      if (!digest.empty()) {
+        ++out.selection_signal_declared_count;
+        const auto resolution = resolve_related_fact_digest_for_identity(
+            fact, digest, selection_signal_facts, selection_signal_fact_digest);
+        if (resolution == related_fact_digest_resolution_t::resolved) {
+          selection_signal_digests.insert(digest);
+        } else if (resolution ==
+                   related_fact_digest_resolution_t::identity_mismatch) {
+          ++out.selection_signal_identity_mismatch_count;
+          append_summary_issue(
+              out.issues, out.warning_count, fact.job_id,
+              "selection_signal_fact_digest_identity_mismatch");
+        } else {
+          ++out.unresolved_selection_signal_count;
+          append_summary_issue(out.issues, out.warning_count, fact.job_id,
+                               "selection_signal_fact_digest_not_found");
+        }
+      }
+    }
+    out.support_count_total += fact.support_count;
+    out.valid_count_total += fact.valid_count;
+    out.missing_count_total += fact.missing_count;
+    if (!fact.mean_nll_per_channel.empty() ||
+        !fact.mean_nll_per_target_feature.empty() ||
+        !fact.mean_nll_per_channel_target_feature.empty() ||
+        !fact.mean_nll_per_horizon.empty()) {
+      ++out.nll_surface_bound_count;
+    }
+    if (!fact.mean_nll_per_horizon.empty()) {
+      ++out.horizon_nll_surface_bound_count;
+    }
+    if (!fact.valid_target_count_per_channel.empty()) {
+      ++out.channel_support_surface_bound_count;
+    }
+    if (!fact.valid_target_count_per_target_feature.empty()) {
+      ++out.target_feature_support_surface_bound_count;
+    }
+    if (!fact.valid_target_count_per_channel_target_feature.empty()) {
+      ++out.channel_target_feature_support_surface_bound_count;
+    }
+    if (!fact.valid_target_count_per_horizon.empty()) {
+      ++out.horizon_support_surface_bound_count;
+    }
+    if (std::isfinite(fact.calibration_coverage)) {
+      ++out.calibration_coverage_bound_count;
+      if (fact.calibration_coverage < 0.0 || fact.calibration_coverage > 1.0) {
+        append_forecast_eval_calibration_visibility_issue(
+            out, fact.job_id,
+            "forecast_eval_calibration_coverage_out_of_range_visibility_only");
+      } else if (fact.calibration_coverage < 0.80) {
+        append_forecast_eval_calibration_visibility_issue(
+            out, fact.job_id,
+            "forecast_eval_calibration_coverage_low_overconfidence_"
+            "visibility_only");
+      } else if (fact.calibration_coverage > 0.99) {
+        append_forecast_eval_calibration_visibility_issue(
+            out, fact.job_id,
+            "forecast_eval_calibration_coverage_high_underconfidence_"
+            "visibility_only");
+      }
+    } else {
+      ++out.missing_calibration_coverage_count;
+      append_forecast_eval_calibration_visibility_issue(
+          out, fact.job_id,
+          "forecast_eval_missing_calibration_coverage_visibility_only");
+    }
+    if (forecast_eval_visibility_text_available(fact.pit_summary)) {
+      ++out.pit_summary_bound_count;
+    } else {
+      ++out.missing_pit_summary_count;
+      append_forecast_eval_calibration_visibility_issue(
+          out, fact.job_id,
+          "forecast_eval_missing_pit_summary_visibility_only");
+    }
+    if (forecast_eval_visibility_text_available(fact.sigma_scale_sanity)) {
+      ++out.sigma_scale_sanity_bound_count;
+    } else {
+      ++out.missing_sigma_scale_sanity_count;
+      append_forecast_eval_calibration_visibility_issue(
+          out, fact.job_id,
+          "forecast_eval_missing_sigma_scale_sanity_visibility_only");
+    }
+    if (fact.model_state_mutation) {
+      ++out.model_state_mutation_count;
+    }
+    if (fact.artifact_evidence) {
+      ++out.artifact_evidence_count;
+    }
+    update_source_analytics_metric_summary(out.mean_nll, fact.mean_nll);
+    update_source_analytics_metric_summary(out.ev_mae, fact.ev_mae);
+    update_source_analytics_metric_summary(out.ev_rmse, fact.ev_rmse);
+    update_source_analytics_metric_summary(out.signed_error, fact.signed_error);
+    update_source_analytics_metric_summary(out.directional_accuracy,
+                                           fact.directional_accuracy);
+    update_source_analytics_metric_summary(out.calibration_coverage,
+                                           fact.calibration_coverage);
+    out.artifact_evidence = out.artifact_evidence && fact.artifact_evidence;
+    out.visibility_only = out.visibility_only && fact.visibility_only;
+    out.model_state_mutation =
+        out.model_state_mutation || fact.model_state_mutation;
+    out.readiness_authority =
+        out.readiness_authority || fact.readiness_authority;
+    out.quality_authority = out.quality_authority || fact.quality_authority;
+    out.performance_authority =
+        out.performance_authority || fact.performance_authority;
+    out.checkpoint_selector =
+        out.checkpoint_selector || fact.checkpoint_selector;
+    out.coverage_authority = out.coverage_authority || fact.coverage_authority;
+    out.leakage_authority = out.leakage_authority || fact.leakage_authority;
+    out.contract_identity_authority =
+        out.contract_identity_authority || fact.contract_identity_authority;
+    const auto issues = forecast_eval_fact_issues(fact);
+    out.warning_count += static_cast<std::int64_t>(issues.size());
+    for (const auto &issue : issues) {
+      out.issues.push_back(fact.job_id + ":" + issue);
+    }
+  }
+  out.parent_exposure_fact_count =
+      static_cast<std::int64_t>(parent_digests.size());
+  out.unique_target_feature_id_count =
+      static_cast<std::int64_t>(feature_ids.size());
+  out.baseline_bound_count = static_cast<std::int64_t>(baseline_digests.size());
+  out.selection_signal_audit_count =
+      static_cast<std::int64_t>(selection_signal_digests.size());
+
+  if (!out.artifact_evidence || !out.visibility_only ||
+      out.model_state_mutation || out.readiness_authority ||
+      out.quality_authority || out.performance_authority ||
+      out.checkpoint_selector || out.coverage_authority ||
+      out.leakage_authority || out.contract_identity_authority) {
+    out.issues.push_back(
+        "forecast eval facts must remain non-mutating artifact evidence, not "
+        "quality, performance, readiness, checkpoint-selection, coverage, "
+        "leakage, or contract identity authority");
+    ++out.warning_count;
+  }
+  return out;
+}
+
+[[nodiscard]] inline std::vector<std::filesystem::path>
+observer_belief_fact_paths_for_job_dir(const std::filesystem::path &job_dir) {
+  return {job_dir / "lattice.observer_belief.fact",
+          job_dir / "observer_belief.fact",
+          job_dir / "runtime.observer_belief.fact",
+          job_dir / "observer.belief.fact"};
+}
+
+[[nodiscard]] inline bool
+observer_belief_fact_has_payload(const lattice_observer_belief_fact_t &fact) {
+  return !fact.belief_kind.empty() || !fact.channel_consensus.empty() ||
+         !fact.potential_surface_diagnostics.empty() ||
+         !fact.nodelift_return_projection.empty() ||
+         !fact.covariance_coupling.empty() ||
+         !fact.scenario_bank_digest.empty() ||
+         !fact.nodelift_residual_quality.empty() ||
+         !fact.projection_validation_scores.empty() ||
+         std::isfinite(fact.confidence) || std::isfinite(fact.data_quality) ||
+         std::isfinite(fact.liquidity) ||
+         !fact.forecast_artifact_digest.empty() ||
+         !fact.forecast_artifact_lineage.empty() ||
+         !fact.feature_semantics_fingerprint.empty() ||
+         !fact.dock_binding_fingerprint.empty() || !fact.artifact_evidence ||
+         !fact.visibility_only || fact.raw_potential_tradable_return ||
+         fact.allocation_authority || fact.readiness_authority ||
+         fact.quality_authority || fact.performance_authority ||
+         fact.checkpoint_selector || fact.coverage_authority ||
+         fact.leakage_authority || fact.contract_identity_authority ||
+         fact.market_readiness_authority;
+}
+
+[[nodiscard]] inline std::vector<lattice_observer_belief_fact_t>
+make_observer_belief_facts_from_job_dir(const std::filesystem::path &job_dir,
+                                        const lattice_exposure_fact_t &parent) {
+  namespace detail = exposure_detail;
+  const auto observer = detail::parse_first_assignment_file(
+      observer_belief_fact_paths_for_job_dir(job_dir));
+  if (observer.empty()) {
+    return {};
+  }
+
+  const auto first_value =
+      [&](const std::vector<std::string> &keys) -> std::string {
+    for (const auto &key : keys) {
+      const auto value = detail::map_get(observer, key);
+      if (!value.empty()) {
+        return value;
+      }
+    }
+    return {};
+  };
+  const auto first_double =
+      [&](const std::vector<std::string> &keys) -> double {
+    return detail::parse_double_fallback(
+        first_value(keys), std::numeric_limits<double>::quiet_NaN());
+  };
+
+  lattice_observer_belief_fact_t fact{};
+  fact.parent_exposure_fact_digest = exposure_fact_digest(parent);
+  fact.contract_fingerprint = parent.contract_fingerprint;
+  fact.protocol_id = parent.protocol_id;
+  fact.graph_order_fingerprint = parent.graph_order_fingerprint;
+  fact.source_cursor_token = parent.source_cursor_token;
+  fact.split_policy_fingerprint = parent.split_policy_fingerprint;
+  fact.component_assembly_fingerprint = parent.component_assembly_fingerprint;
+  fact.target_component_family_id = parent.target_component_family_id;
+  fact.job_id = parent.job_id;
+  fact.wave_id = parent.wave_id;
+  fact.job_status = parent.job_status;
+  fact.wave_action = parent.wave_action;
+  fact.split_name = parent.split_name;
+  fact.split_role = parent.split_role;
+  fact.anchor_range = parent.anchor_range;
+  fact.completed_anchor_range = parent.completed_anchor_range;
+
+  fact.belief_kind =
+      first_value({"belief_kind", "observer_belief_kind", "kind"});
+  fact.channel_consensus =
+      first_value({"channel_consensus", "observer_channel_consensus"});
+  fact.potential_surface_diagnostics = first_value(
+      {"potential_surface_diagnostics", "nodelift_potential_diagnostics"});
+  fact.nodelift_return_projection =
+      first_value({"nodelift_return_projection", "return_projection"});
+  fact.covariance_coupling =
+      first_value({"covariance_coupling", "scenario_covariance_coupling"});
+  fact.scenario_bank_digest =
+      first_value({"scenario_bank_digest", "scenario_digest"});
+  fact.nodelift_residual_quality =
+      first_value({"nodelift_residual_quality", "residual_quality"});
+  fact.projection_validation_scores = first_value(
+      {"projection_validation_scores", "projection_validation_summary"});
+  fact.confidence = first_double({"confidence", "observer_confidence"});
+  fact.data_quality = first_double({"data_quality", "observer_data_quality"});
+  fact.liquidity = first_double({"liquidity", "observer_liquidity"});
+  fact.forecast_artifact_digest =
+      first_value({"forecast_artifact_digest", "forecast_digest"});
+  fact.forecast_artifact_lineage =
+      first_value({"forecast_artifact_lineage", "forecast_lineage"});
+  fact.feature_semantics_fingerprint = first_value(
+      {"feature_semantics_fingerprint", "feature_semantics_digest"});
+  fact.dock_binding_fingerprint =
+      first_value({"dock_binding_fingerprint", "dock_binding_digest"});
+
+  fact.artifact_evidence =
+      detail::parse_bool_fallback(first_value({"artifact_evidence"}), true);
+  fact.visibility_only =
+      detail::parse_bool_fallback(first_value({"visibility_only"}), true);
+  fact.raw_potential_tradable_return = detail::parse_bool_fallback(
+      first_value({"raw_potential_tradable_return",
+                   "raw_nodelift_potential_tradable_return"}),
+      false);
+  fact.allocation_authority =
+      detail::parse_bool_fallback(first_value({"allocation_authority"}), false);
+  fact.readiness_authority =
+      detail::parse_bool_fallback(first_value({"readiness_authority"}), false);
+  fact.quality_authority =
+      detail::parse_bool_fallback(first_value({"quality_authority"}), false);
+  fact.performance_authority = detail::parse_bool_fallback(
+      first_value({"performance_authority"}), false);
+  fact.checkpoint_selector =
+      detail::parse_bool_fallback(first_value({"checkpoint_selector"}), false);
+  fact.coverage_authority =
+      detail::parse_bool_fallback(first_value({"coverage_authority"}), false);
+  fact.leakage_authority =
+      detail::parse_bool_fallback(first_value({"leakage_authority"}), false);
+  fact.contract_identity_authority = detail::parse_bool_fallback(
+      first_value({"contract_identity_authority"}), false);
+  fact.market_readiness_authority = detail::parse_bool_fallback(
+      first_value({"market_readiness_authority"}), false);
+
+  if (!observer_belief_fact_has_payload(fact)) {
+    return {};
+  }
+  return {std::move(fact)};
+}
+
+[[nodiscard]] inline std::string canonical_observer_belief_fact_text(
+    const lattice_observer_belief_fact_t &fact) {
+  std::ostringstream out;
+  out << "schema=" << fact.schema << "\n";
+  out << "fact_type=" << fact.fact_type << "\n";
+  out << "parent_exposure_fact_digest=" << fact.parent_exposure_fact_digest
+      << "\n";
+  out << "contract_fingerprint=" << fact.contract_fingerprint << "\n";
+  out << "protocol_id=" << fact.protocol_id << "\n";
+  out << "graph_order_fingerprint=" << fact.graph_order_fingerprint << "\n";
+  out << "source_cursor_token=" << fact.source_cursor_token << "\n";
+  out << "split_policy_fingerprint=" << fact.split_policy_fingerprint << "\n";
+  out << "component_assembly_fingerprint="
+      << fact.component_assembly_fingerprint << "\n";
+  out << "target_component_family_id=" << fact.target_component_family_id
+      << "\n";
+  out << "job_id=" << fact.job_id << "\n";
+  out << "wave_id=" << fact.wave_id << "\n";
+  out << "job_status=" << fact.job_status << "\n";
+  out << "wave_action=" << fact.wave_action << "\n";
+  out << "split_name=" << fact.split_name << "\n";
+  out << "split_role=" << exposure_split_role_name(fact.split_role) << "\n";
+  out << "anchor_begin=" << fact.anchor_range.begin << "\n";
+  out << "anchor_end=" << fact.anchor_range.end << "\n";
+  out << "completed_anchor_begin=" << fact.completed_anchor_range.begin << "\n";
+  out << "completed_anchor_end=" << fact.completed_anchor_range.end << "\n";
+  out << "belief_kind=" << fact.belief_kind << "\n";
+  out << "channel_consensus=" << fact.channel_consensus << "\n";
+  out << "potential_surface_diagnostics=" << fact.potential_surface_diagnostics
+      << "\n";
+  out << "nodelift_return_projection=" << fact.nodelift_return_projection
+      << "\n";
+  out << "covariance_coupling=" << fact.covariance_coupling << "\n";
+  out << "scenario_bank_digest=" << fact.scenario_bank_digest << "\n";
+  out << "nodelift_residual_quality=" << fact.nodelift_residual_quality << "\n";
+  out << "projection_validation_scores=" << fact.projection_validation_scores
+      << "\n";
+  out << "confidence=" << fact.confidence << "\n";
+  out << "data_quality=" << fact.data_quality << "\n";
+  out << "liquidity=" << fact.liquidity << "\n";
+  out << "forecast_artifact_digest=" << fact.forecast_artifact_digest << "\n";
+  out << "forecast_artifact_lineage=" << fact.forecast_artifact_lineage << "\n";
+  out << "feature_semantics_fingerprint=" << fact.feature_semantics_fingerprint
+      << "\n";
+  out << "dock_binding_fingerprint=" << fact.dock_binding_fingerprint << "\n";
+  out << "artifact_evidence=" << (fact.artifact_evidence ? "true" : "false")
+      << "\n";
+  out << "visibility_only=" << (fact.visibility_only ? "true" : "false")
+      << "\n";
+  out << "raw_potential_tradable_return="
+      << (fact.raw_potential_tradable_return ? "true" : "false") << "\n";
+  out << "allocation_authority="
+      << (fact.allocation_authority ? "true" : "false") << "\n";
+  out << "readiness_authority=" << (fact.readiness_authority ? "true" : "false")
+      << "\n";
+  out << "quality_authority=" << (fact.quality_authority ? "true" : "false")
+      << "\n";
+  out << "performance_authority="
+      << (fact.performance_authority ? "true" : "false") << "\n";
+  out << "checkpoint_selector=" << (fact.checkpoint_selector ? "true" : "false")
+      << "\n";
+  out << "coverage_authority=" << (fact.coverage_authority ? "true" : "false")
+      << "\n";
+  out << "leakage_authority=" << (fact.leakage_authority ? "true" : "false")
+      << "\n";
+  out << "contract_identity_authority="
+      << (fact.contract_identity_authority ? "true" : "false") << "\n";
+  out << "market_readiness_authority="
+      << (fact.market_readiness_authority ? "true" : "false") << "\n";
+  return out.str();
+}
+
+[[nodiscard]] inline std::string
+observer_belief_fact_digest(const lattice_observer_belief_fact_t &fact) {
+  return exposure_digest_for_text(canonical_observer_belief_fact_text(fact));
+}
+
+[[nodiscard]] inline std::vector<std::string>
+observer_belief_fact_issues(const lattice_observer_belief_fact_t &fact) {
+  std::vector<std::string> issues;
+  if (fact.parent_exposure_fact_digest.empty()) {
+    issues.emplace_back("missing_parent_exposure_fact_digest");
+  }
+  if (fact.contract_fingerprint.empty()) {
+    issues.emplace_back("missing_contract_fingerprint");
+  }
+  if (fact.protocol_id.empty()) {
+    issues.emplace_back("missing_protocol_id");
+  }
+  if (fact.graph_order_fingerprint.empty()) {
+    issues.emplace_back("missing_graph_order_fingerprint");
+  }
+  if (fact.source_cursor_token.empty()) {
+    issues.emplace_back("missing_source_cursor_token");
+  }
+  if (fact.belief_kind.empty()) {
+    issues.emplace_back("missing_belief_kind");
+  } else if (fact.belief_kind != "raw_nodelift_potential" &&
+             fact.belief_kind != "allocation_belief") {
+    issues.emplace_back("unknown_belief_kind");
+  }
+  if (fact.forecast_artifact_digest.empty()) {
+    issues.emplace_back("missing_forecast_artifact_digest");
+  }
+  if (fact.scenario_bank_digest.empty()) {
+    issues.emplace_back("missing_scenario_bank_digest");
+  }
+  if (fact.feature_semantics_fingerprint.empty()) {
+    issues.emplace_back("missing_feature_semantics_fingerprint");
+  }
+  if (fact.dock_binding_fingerprint.empty()) {
+    issues.emplace_back("missing_dock_binding_fingerprint");
+  }
+  if (fact.belief_kind == "raw_nodelift_potential" &&
+      fact.raw_potential_tradable_return) {
+    issues.emplace_back("raw_nodelift_potential_cannot_be_tradable_return");
+  }
+  if (!fact.artifact_evidence || !fact.visibility_only ||
+      fact.raw_potential_tradable_return || fact.allocation_authority ||
+      fact.readiness_authority || fact.quality_authority ||
+      fact.performance_authority || fact.checkpoint_selector ||
+      fact.coverage_authority || fact.leakage_authority ||
+      fact.contract_identity_authority || fact.market_readiness_authority) {
+    issues.emplace_back("observer_belief_must_remain_visibility_only");
+  }
+  return issues;
+}
+
+inline void
+append_observer_belief_scan_warning(const lattice_observer_belief_fact_t &fact,
+                                    const std::filesystem::path &job_dir,
+                                    std::vector<std::string> &warnings) {
+  const auto issues = observer_belief_fact_issues(fact);
+  if (issues.empty()) {
+    return;
+  }
+  std::ostringstream oss;
+  oss << "[lattice_exposure] observer_belief warning job_dir="
+      << job_dir.string() << " job_id=" << fact.job_id << " issues=";
+  for (std::size_t i = 0; i < issues.size(); ++i) {
+    if (i != 0) {
+      oss << ",";
+    }
+    oss << issues[i];
+  }
+  warnings.push_back(oss.str());
+}
+
+inline constexpr double k_observer_belief_quality_warning_floor = 0.70;
+
+inline void
+append_observer_belief_diagnostic_issue(observer_belief_summary_t &out,
+                                        const std::string &job_id,
+                                        const char *issue) {
+  ++out.diagnostic_completeness_warning_count;
+  append_summary_issue(out.issues, out.warning_count, job_id, issue);
+}
+
+inline void append_observer_belief_quality_issue(observer_belief_summary_t &out,
+                                                 const std::string &job_id,
+                                                 const char *issue) {
+  ++out.observer_quality_warning_count;
+  append_summary_issue(out.issues, out.warning_count, job_id, issue);
+}
+
+[[nodiscard]] inline observer_belief_summary_t summarize_observer_beliefs(
+    const std::vector<lattice_exposure_fact_t> &exposure_facts,
+    const std::vector<lattice_observer_belief_fact_t> &belief_facts,
+    const std::vector<lattice_forecast_eval_fact_t> &forecast_eval_facts =
+        empty_forecast_eval_facts()) {
+  observer_belief_summary_t out{};
+  out.exposure_fact_count = static_cast<std::int64_t>(exposure_facts.size());
+  out.observer_belief_fact_count =
+      static_cast<std::int64_t>(belief_facts.size());
+
+  std::set<std::string> parent_digests;
+  for (const auto &fact : belief_facts) {
+    if (!fact.parent_exposure_fact_digest.empty()) {
+      parent_digests.insert(fact.parent_exposure_fact_digest);
+    }
+    if (fact.belief_kind == "raw_nodelift_potential") {
+      ++out.raw_nodelift_potential_count;
+    } else if (fact.belief_kind == "allocation_belief") {
+      ++out.allocation_belief_count;
+    } else if (fact.belief_kind.empty()) {
+      ++out.missing_belief_kind_count;
+    }
+    if (!fact.forecast_artifact_digest.empty()) {
+      ++out.forecast_artifact_bound_count;
+    } else {
+      ++out.missing_forecast_artifact_count;
+    }
+    if (!fact.forecast_artifact_lineage.empty()) {
+      ++out.forecast_artifact_lineage_declared_count;
+      const lattice_forecast_eval_fact_t *forecast_eval_fact = nullptr;
+      const auto resolution = resolve_related_fact_digest_for_identity(
+          fact, fact.forecast_artifact_lineage, forecast_eval_facts,
+          forecast_eval_fact_digest, &forecast_eval_fact);
+      if (resolution == related_fact_digest_resolution_t::resolved) {
+        if (forecast_eval_fact != nullptr &&
+            forecast_eval_fact->forecast_artifact_digest ==
+                fact.forecast_artifact_digest &&
+            !fact.forecast_artifact_digest.empty()) {
+          ++out.forecast_artifact_lineage_bound_count;
+        } else {
+          ++out.forecast_artifact_digest_mismatch_count;
+          append_summary_issue(out.issues, out.warning_count, fact.job_id,
+                               "forecast_artifact_digest_mismatch");
+        }
+      } else if (resolution ==
+                 related_fact_digest_resolution_t::identity_mismatch) {
+        ++out.forecast_artifact_lineage_identity_mismatch_count;
+        append_summary_issue(out.issues, out.warning_count, fact.job_id,
+                             "forecast_artifact_lineage_identity_mismatch");
+      } else {
+        ++out.unresolved_forecast_artifact_lineage_count;
+        append_summary_issue(out.issues, out.warning_count, fact.job_id,
+                             "forecast_artifact_lineage_not_found");
+      }
+    }
+    if (lattice_visibility_text_available(fact.channel_consensus)) {
+      ++out.channel_consensus_bound_count;
+    } else {
+      ++out.missing_channel_consensus_count;
+      append_observer_belief_diagnostic_issue(
+          out, fact.job_id,
+          "observer_belief_missing_channel_consensus_visibility_only");
+    }
+    if (lattice_visibility_text_available(fact.potential_surface_diagnostics)) {
+      ++out.potential_surface_diagnostics_bound_count;
+    } else {
+      ++out.missing_potential_surface_diagnostics_count;
+      append_observer_belief_diagnostic_issue(
+          out, fact.job_id,
+          "observer_belief_missing_potential_surface_diagnostics_visibility_"
+          "only");
+    }
+    if (lattice_visibility_text_available(fact.nodelift_return_projection)) {
+      ++out.nodelift_return_projection_bound_count;
+    } else {
+      ++out.missing_nodelift_return_projection_count;
+      append_observer_belief_diagnostic_issue(
+          out, fact.job_id,
+          "observer_belief_missing_nodelift_return_projection_visibility_only");
+    }
+    if (lattice_visibility_text_available(fact.covariance_coupling)) {
+      ++out.covariance_coupling_bound_count;
+    } else {
+      ++out.missing_covariance_coupling_count;
+      append_observer_belief_diagnostic_issue(
+          out, fact.job_id,
+          "observer_belief_missing_covariance_coupling_visibility_only");
+    }
+    if (!fact.scenario_bank_digest.empty()) {
+      ++out.scenario_bank_bound_count;
+    } else {
+      ++out.missing_scenario_bank_count;
+      append_observer_belief_diagnostic_issue(
+          out, fact.job_id,
+          "observer_belief_missing_scenario_bank_visibility_only");
+    }
+    if (lattice_visibility_text_available(fact.nodelift_residual_quality)) {
+      ++out.nodelift_residual_quality_bound_count;
+    } else {
+      ++out.missing_nodelift_residual_quality_count;
+      append_observer_belief_diagnostic_issue(
+          out, fact.job_id,
+          "observer_belief_missing_nodelift_residual_quality_visibility_only");
+    }
+    if (lattice_visibility_text_available(fact.projection_validation_scores)) {
+      ++out.projection_validation_scores_bound_count;
+    } else {
+      ++out.missing_projection_validation_scores_count;
+      append_observer_belief_diagnostic_issue(
+          out, fact.job_id,
+          "observer_belief_missing_projection_validation_scores_visibility_"
+          "only");
+    }
+    if (!fact.feature_semantics_fingerprint.empty()) {
+      ++out.feature_semantics_bound_count;
+    } else {
+      ++out.missing_feature_semantics_count;
+    }
+    if (!fact.dock_binding_fingerprint.empty()) {
+      ++out.dock_binding_bound_count;
+    } else {
+      ++out.missing_dock_binding_count;
+    }
+    if (fact.artifact_evidence) {
+      ++out.artifact_evidence_count;
+    }
+    update_source_analytics_metric_summary(out.confidence, fact.confidence);
+    update_source_analytics_metric_summary(out.data_quality, fact.data_quality);
+    update_source_analytics_metric_summary(out.liquidity, fact.liquidity);
+    if (std::isfinite(fact.confidence) &&
+        fact.confidence < k_observer_belief_quality_warning_floor) {
+      ++out.low_confidence_count;
+      append_observer_belief_quality_issue(
+          out, fact.job_id, "observer_belief_low_confidence_visibility_only");
+    }
+    if (std::isfinite(fact.data_quality) &&
+        fact.data_quality < k_observer_belief_quality_warning_floor) {
+      ++out.low_data_quality_count;
+      append_observer_belief_quality_issue(
+          out, fact.job_id, "observer_belief_low_data_quality_visibility_only");
+    }
+    if (std::isfinite(fact.liquidity) &&
+        fact.liquidity < k_observer_belief_quality_warning_floor) {
+      ++out.low_liquidity_count;
+      append_observer_belief_quality_issue(
+          out, fact.job_id, "observer_belief_low_liquidity_visibility_only");
+    }
+    out.artifact_evidence = out.artifact_evidence && fact.artifact_evidence;
+    out.visibility_only = out.visibility_only && fact.visibility_only;
+    out.raw_potential_tradable_return =
+        out.raw_potential_tradable_return || fact.raw_potential_tradable_return;
+    out.allocation_authority =
+        out.allocation_authority || fact.allocation_authority;
+    out.readiness_authority =
+        out.readiness_authority || fact.readiness_authority;
+    out.quality_authority = out.quality_authority || fact.quality_authority;
+    out.performance_authority =
+        out.performance_authority || fact.performance_authority;
+    out.checkpoint_selector =
+        out.checkpoint_selector || fact.checkpoint_selector;
+    out.coverage_authority = out.coverage_authority || fact.coverage_authority;
+    out.leakage_authority = out.leakage_authority || fact.leakage_authority;
+    out.contract_identity_authority =
+        out.contract_identity_authority || fact.contract_identity_authority;
+    out.market_readiness_authority =
+        out.market_readiness_authority || fact.market_readiness_authority;
+    const auto issues = observer_belief_fact_issues(fact);
+    out.warning_count += static_cast<std::int64_t>(issues.size());
+    for (const auto &issue : issues) {
+      out.issues.push_back(fact.job_id + ":" + issue);
+    }
+  }
+  out.parent_exposure_fact_count =
+      static_cast<std::int64_t>(parent_digests.size());
+
+  if (!out.artifact_evidence || !out.visibility_only ||
+      out.raw_potential_tradable_return || out.allocation_authority ||
+      out.readiness_authority || out.quality_authority ||
+      out.performance_authority || out.checkpoint_selector ||
+      out.coverage_authority || out.leakage_authority ||
+      out.contract_identity_authority || out.market_readiness_authority) {
+    out.issues.push_back(
+        "observer belief facts must remain deterministic visibility evidence; "
+        "raw NodeLift potential cannot become tradable return, allocation, "
+        "quality, performance, market-readiness, readiness, checkpoint-"
+        "selection, coverage, leakage, or contract-identity authority");
+    ++out.warning_count;
+  }
+  return out;
+}
+
+[[nodiscard]] inline std::vector<std::filesystem::path>
+allocation_engine_fact_paths_for_job_dir(const std::filesystem::path &job_dir) {
+  return {job_dir / "lattice.allocation_engine.fact",
+          job_dir / "allocation_engine.fact",
+          job_dir / "runtime.allocation_engine.fact",
+          job_dir / "allocation.engine.fact"};
+}
+
+[[nodiscard]] inline bool allocation_engine_fact_has_payload(
+    const lattice_allocation_engine_fact_t &fact) {
+  return !fact.target_risky_node_weights.empty() ||
+         !fact.reserve_node_id.empty() || std::isfinite(fact.reserve_weight) ||
+         !fact.reserve_node_source.empty() ||
+         !fact.base_policy_reserve_node_id.empty() ||
+         fact.reserve_node_graph_bound || std::isfinite(fact.turnover) ||
+         !fact.objective_terms.empty() || std::isfinite(fact.cvar_loss) ||
+         std::isfinite(fact.transaction_cost_estimate) ||
+         !fact.constraint_diagnostics.empty() ||
+         !fact.cap_diagnostics.empty() ||
+         !fact.scenario_growth_floor_status.empty() ||
+         !fact.fallback_reasons.empty() || !fact.derisk_reasons.empty() ||
+         !fact.observer_belief_fact_digest.empty() ||
+         !fact.forecast_artifact_digest.empty() ||
+         !fact.base_policy_digest.empty() || !fact.deterministic_artifact ||
+         !fact.visibility_only || fact.allocation_authority ||
+         fact.execution_authority || fact.readiness_authority ||
+         fact.quality_authority || fact.performance_authority ||
+         fact.market_readiness_authority || fact.deployment_authority ||
+         fact.checkpoint_selector || fact.coverage_authority ||
+         fact.leakage_authority || fact.contract_identity_authority;
+}
+
+[[nodiscard]] inline std::vector<lattice_allocation_engine_fact_t>
+make_allocation_engine_facts_from_job_dir(
+    const std::filesystem::path &job_dir,
+    const lattice_exposure_fact_t &parent) {
+  namespace detail = exposure_detail;
+  const auto allocation = detail::parse_first_assignment_file(
+      allocation_engine_fact_paths_for_job_dir(job_dir));
+  if (allocation.empty()) {
+    return {};
+  }
+
+  const auto first_value =
+      [&](const std::vector<std::string> &keys) -> std::string {
+    for (const auto &key : keys) {
+      const auto value = detail::map_get(allocation, key);
+      if (!value.empty()) {
+        return value;
+      }
+    }
+    return {};
+  };
+  const auto first_double =
+      [&](const std::vector<std::string> &keys) -> double {
+    return detail::parse_double_fallback(
+        first_value(keys), std::numeric_limits<double>::quiet_NaN());
+  };
+
+  lattice_allocation_engine_fact_t fact{};
+  fact.parent_exposure_fact_digest = exposure_fact_digest(parent);
+  fact.contract_fingerprint = parent.contract_fingerprint;
+  fact.protocol_id = parent.protocol_id;
+  fact.graph_order_fingerprint = parent.graph_order_fingerprint;
+  fact.source_cursor_token = parent.source_cursor_token;
+  fact.split_policy_fingerprint = parent.split_policy_fingerprint;
+  fact.component_assembly_fingerprint = parent.component_assembly_fingerprint;
+  fact.target_component_family_id = parent.target_component_family_id;
+  fact.job_id = parent.job_id;
+  fact.wave_id = parent.wave_id;
+  fact.job_status = parent.job_status;
+  fact.wave_action = parent.wave_action;
+  fact.split_name = parent.split_name;
+  fact.split_role = parent.split_role;
+  fact.anchor_range = parent.anchor_range;
+  fact.completed_anchor_range = parent.completed_anchor_range;
+
+  fact.target_risky_node_weights =
+      first_value({"target_risky_node_weights", "risky_node_weights"});
+  fact.reserve_node_id =
+      first_value({"reserve_node_id", "reserve_asset_node_id"});
+  fact.reserve_node_source =
+      first_value({"reserve_node_source", "reserve_asset_source"});
+  fact.base_policy_reserve_node_id = first_value(
+      {"base_policy_reserve_node_id", "base_policy_reserve_asset_node_id"});
+  fact.reserve_node_graph_bound = detail::parse_bool_fallback(
+      first_value({"reserve_node_graph_bound", "reserve_asset_graph_bound",
+                   "reserve_graph_node_bound"}),
+      false);
+  fact.reserve_weight = first_double({"reserve_weight"});
+  fact.turnover = first_double({"turnover", "allocation_turnover"});
+  fact.objective_terms =
+      first_value({"objective_terms", "allocation_objective_terms"});
+  fact.cvar_loss = first_double({"cvar_loss", "allocation_cvar_loss"});
+  fact.transaction_cost_estimate =
+      first_double({"transaction_cost_estimate", "estimated_transaction_cost"});
+  fact.constraint_diagnostics =
+      first_value({"constraint_diagnostics", "allocation_constraints"});
+  fact.cap_diagnostics =
+      first_value({"cap_diagnostics", "allocation_cap_diagnostics"});
+  fact.scenario_growth_floor_status =
+      first_value({"scenario_growth_floor_status", "growth_floor_status"});
+  fact.fallback_reasons =
+      first_value({"fallback_reasons", "fallback_reason_contract"});
+  fact.derisk_reasons =
+      first_value({"derisk_reasons", "derisk_reason_contract"});
+  fact.observer_belief_fact_digest =
+      first_value({"observer_belief_fact_digest", "observer_belief_digest"});
+  fact.forecast_artifact_digest =
+      first_value({"forecast_artifact_digest", "forecast_digest"});
+  fact.base_policy_digest =
+      first_value({"base_policy_digest", "base_policy_fingerprint"});
+
+  fact.deterministic_artifact = detail::parse_bool_fallback(
+      first_value({"deterministic_artifact"}), true);
+  fact.visibility_only =
+      detail::parse_bool_fallback(first_value({"visibility_only"}), true);
+  fact.allocation_authority =
+      detail::parse_bool_fallback(first_value({"allocation_authority"}), false);
+  fact.execution_authority =
+      detail::parse_bool_fallback(first_value({"execution_authority"}), false);
+  fact.readiness_authority =
+      detail::parse_bool_fallback(first_value({"readiness_authority"}), false);
+  fact.quality_authority =
+      detail::parse_bool_fallback(first_value({"quality_authority"}), false);
+  fact.performance_authority = detail::parse_bool_fallback(
+      first_value({"performance_authority"}), false);
+  fact.market_readiness_authority = detail::parse_bool_fallback(
+      first_value({"market_readiness_authority"}), false);
+  fact.deployment_authority =
+      detail::parse_bool_fallback(first_value({"deployment_authority"}), false);
+  fact.checkpoint_selector =
+      detail::parse_bool_fallback(first_value({"checkpoint_selector"}), false);
+  fact.coverage_authority =
+      detail::parse_bool_fallback(first_value({"coverage_authority"}), false);
+  fact.leakage_authority =
+      detail::parse_bool_fallback(first_value({"leakage_authority"}), false);
+  fact.contract_identity_authority = detail::parse_bool_fallback(
+      first_value({"contract_identity_authority"}), false);
+
+  if (!allocation_engine_fact_has_payload(fact)) {
+    return {};
+  }
+  return {std::move(fact)};
+}
+
+[[nodiscard]] inline std::string canonical_allocation_engine_fact_text(
+    const lattice_allocation_engine_fact_t &fact) {
+  std::ostringstream out;
+  out << "schema=" << fact.schema << "\n";
+  out << "fact_type=" << fact.fact_type << "\n";
+  out << "parent_exposure_fact_digest=" << fact.parent_exposure_fact_digest
+      << "\n";
+  out << "contract_fingerprint=" << fact.contract_fingerprint << "\n";
+  out << "protocol_id=" << fact.protocol_id << "\n";
+  out << "graph_order_fingerprint=" << fact.graph_order_fingerprint << "\n";
+  out << "source_cursor_token=" << fact.source_cursor_token << "\n";
+  out << "split_policy_fingerprint=" << fact.split_policy_fingerprint << "\n";
+  out << "component_assembly_fingerprint="
+      << fact.component_assembly_fingerprint << "\n";
+  out << "target_component_family_id=" << fact.target_component_family_id
+      << "\n";
+  out << "job_id=" << fact.job_id << "\n";
+  out << "wave_id=" << fact.wave_id << "\n";
+  out << "job_status=" << fact.job_status << "\n";
+  out << "wave_action=" << fact.wave_action << "\n";
+  out << "split_name=" << fact.split_name << "\n";
+  out << "split_role=" << exposure_split_role_name(fact.split_role) << "\n";
+  out << "anchor_begin=" << fact.anchor_range.begin << "\n";
+  out << "anchor_end=" << fact.anchor_range.end << "\n";
+  out << "completed_anchor_begin=" << fact.completed_anchor_range.begin << "\n";
+  out << "completed_anchor_end=" << fact.completed_anchor_range.end << "\n";
+  out << "target_risky_node_weights=" << fact.target_risky_node_weights << "\n";
+  out << "reserve_node_id=" << fact.reserve_node_id << "\n";
+  out << "reserve_node_source=" << fact.reserve_node_source << "\n";
+  out << "base_policy_reserve_node_id=" << fact.base_policy_reserve_node_id
+      << "\n";
+  out << "reserve_node_graph_bound="
+      << (fact.reserve_node_graph_bound ? "true" : "false") << "\n";
+  out << "reserve_weight=" << fact.reserve_weight << "\n";
+  out << "turnover=" << fact.turnover << "\n";
+  out << "objective_terms=" << fact.objective_terms << "\n";
+  out << "cvar_loss=" << fact.cvar_loss << "\n";
+  out << "transaction_cost_estimate=" << fact.transaction_cost_estimate << "\n";
+  out << "constraint_diagnostics=" << fact.constraint_diagnostics << "\n";
+  out << "cap_diagnostics=" << fact.cap_diagnostics << "\n";
+  out << "scenario_growth_floor_status=" << fact.scenario_growth_floor_status
+      << "\n";
+  out << "fallback_reasons=" << fact.fallback_reasons << "\n";
+  out << "derisk_reasons=" << fact.derisk_reasons << "\n";
+  out << "observer_belief_fact_digest=" << fact.observer_belief_fact_digest
+      << "\n";
+  out << "forecast_artifact_digest=" << fact.forecast_artifact_digest << "\n";
+  out << "base_policy_digest=" << fact.base_policy_digest << "\n";
+  out << "deterministic_artifact="
+      << (fact.deterministic_artifact ? "true" : "false") << "\n";
+  out << "visibility_only=" << (fact.visibility_only ? "true" : "false")
+      << "\n";
+  out << "allocation_authority="
+      << (fact.allocation_authority ? "true" : "false") << "\n";
+  out << "execution_authority=" << (fact.execution_authority ? "true" : "false")
+      << "\n";
+  out << "readiness_authority=" << (fact.readiness_authority ? "true" : "false")
+      << "\n";
+  out << "quality_authority=" << (fact.quality_authority ? "true" : "false")
+      << "\n";
+  out << "performance_authority="
+      << (fact.performance_authority ? "true" : "false") << "\n";
+  out << "market_readiness_authority="
+      << (fact.market_readiness_authority ? "true" : "false") << "\n";
+  out << "deployment_authority="
+      << (fact.deployment_authority ? "true" : "false") << "\n";
+  out << "checkpoint_selector=" << (fact.checkpoint_selector ? "true" : "false")
+      << "\n";
+  out << "coverage_authority=" << (fact.coverage_authority ? "true" : "false")
+      << "\n";
+  out << "leakage_authority=" << (fact.leakage_authority ? "true" : "false")
+      << "\n";
+  out << "contract_identity_authority="
+      << (fact.contract_identity_authority ? "true" : "false") << "\n";
+  return out.str();
+}
+
+[[nodiscard]] inline std::string
+allocation_engine_fact_digest(const lattice_allocation_engine_fact_t &fact) {
+  return exposure_digest_for_text(canonical_allocation_engine_fact_text(fact));
+}
+
+[[nodiscard]] inline std::vector<std::string>
+allocation_engine_fact_issues(const lattice_allocation_engine_fact_t &fact) {
+  std::vector<std::string> issues;
+  if (fact.parent_exposure_fact_digest.empty()) {
+    issues.emplace_back("missing_parent_exposure_fact_digest");
+  }
+  if (fact.contract_fingerprint.empty()) {
+    issues.emplace_back("missing_contract_fingerprint");
+  }
+  if (fact.protocol_id.empty()) {
+    issues.emplace_back("missing_protocol_id");
+  }
+  if (fact.graph_order_fingerprint.empty()) {
+    issues.emplace_back("missing_graph_order_fingerprint");
+  }
+  if (fact.source_cursor_token.empty()) {
+    issues.emplace_back("missing_source_cursor_token");
+  }
+  if (fact.reserve_node_id.empty()) {
+    issues.emplace_back("missing_reserve_graph_node");
+  }
+  if (fact.reserve_node_source.empty()) {
+    issues.emplace_back("missing_reserve_node_source");
+  } else if (fact.reserve_node_source != "base_policy") {
+    issues.emplace_back("reserve_node_source_not_base_policy");
+  }
+  if (fact.base_policy_reserve_node_id.empty()) {
+    issues.emplace_back("missing_base_policy_reserve_node_id");
+  }
+  if (!fact.reserve_node_id.empty() &&
+      !fact.base_policy_reserve_node_id.empty() &&
+      fact.reserve_node_id != fact.base_policy_reserve_node_id) {
+    issues.emplace_back("reserve_node_base_policy_mismatch");
+  }
+  if (!fact.reserve_node_graph_bound) {
+    issues.emplace_back("reserve_node_not_graph_bound");
+  }
+  if (fact.observer_belief_fact_digest.empty()) {
+    issues.emplace_back("missing_observer_belief_fact_digest");
+  }
+  if (fact.forecast_artifact_digest.empty()) {
+    issues.emplace_back("missing_forecast_artifact_digest");
+  }
+  if (fact.base_policy_digest.empty()) {
+    issues.emplace_back("missing_base_policy_digest");
+  }
+  if (fact.objective_terms.empty()) {
+    issues.emplace_back("missing_objective_terms");
+  }
+  if (!std::isfinite(fact.cvar_loss)) {
+    issues.emplace_back("missing_cvar_loss");
+  }
+  if (!std::isfinite(fact.transaction_cost_estimate)) {
+    issues.emplace_back("missing_transaction_cost_estimate");
+  }
+  if (fact.constraint_diagnostics.empty()) {
+    issues.emplace_back("missing_constraint_diagnostics");
+  }
+  if (fact.fallback_reasons.empty()) {
+    issues.emplace_back("missing_fallback_reason_contract");
+  }
+  if (fact.derisk_reasons.empty()) {
+    issues.emplace_back("missing_derisk_reason_contract");
+  }
+  if (!fact.deterministic_artifact || !fact.visibility_only ||
+      fact.allocation_authority || fact.execution_authority ||
+      fact.readiness_authority || fact.quality_authority ||
+      fact.performance_authority || fact.market_readiness_authority ||
+      fact.deployment_authority || fact.checkpoint_selector ||
+      fact.coverage_authority || fact.leakage_authority ||
+      fact.contract_identity_authority) {
+    issues.emplace_back("allocation_engine_must_remain_audit_evidence_only");
+  }
+  return issues;
+}
+
+inline void append_allocation_engine_scan_warning(
+    const lattice_allocation_engine_fact_t &fact,
+    const std::filesystem::path &job_dir, std::vector<std::string> &warnings) {
+  const auto issues = allocation_engine_fact_issues(fact);
+  if (issues.empty()) {
+    return;
+  }
+  std::ostringstream oss;
+  oss << "[lattice_exposure] allocation_engine warning job_dir="
+      << job_dir.string() << " job_id=" << fact.job_id << " issues=";
+  for (std::size_t i = 0; i < issues.size(); ++i) {
+    if (i != 0) {
+      oss << ",";
+    }
+    oss << issues[i];
+  }
+  warnings.push_back(oss.str());
+}
+
+[[nodiscard]] inline std::string
+lattice_normalized_visibility_text(const std::string &value) {
+  return cuwacunu::piaabo::parse::simple_kv::lowercase(
+      cuwacunu::piaabo::parse::simple_kv::trim(value));
+}
+
+[[nodiscard]] inline bool
+lattice_reason_text_is_none(const std::string &value) {
+  const auto normalized = lattice_normalized_visibility_text(value);
+  return normalized.empty() || normalized == "none" || normalized == "no" ||
+         normalized == "false" || normalized == "[]" || normalized == "{}" ||
+         normalized == "not_applicable" || normalized == "n/a" ||
+         normalized == "na";
+}
+
+[[nodiscard]] inline bool
+lattice_reason_text_is_active(const std::string &value) {
+  return !lattice_reason_text_is_none(value);
+}
+
+[[nodiscard]] inline bool
+allocation_scenario_growth_floor_status_met(const std::string &value) {
+  const auto normalized = lattice_normalized_visibility_text(value);
+  return normalized == "met" || normalized == "ok" || normalized == "pass" ||
+         normalized == "passed" || normalized == "satisfied" ||
+         normalized == "above_floor";
+}
+
+[[nodiscard]] inline bool
+allocation_scenario_growth_floor_status_attention(const std::string &value) {
+  const auto normalized = lattice_normalized_visibility_text(value);
+  return lattice_visibility_text_available(normalized) &&
+         !allocation_scenario_growth_floor_status_met(normalized) &&
+         normalized != "not_applicable" && normalized != "n/a" &&
+         normalized != "na";
+}
+
+inline void
+append_allocation_engine_diagnostic_issue(allocation_engine_summary_t &out,
+                                          const std::string &job_id,
+                                          const char *issue) {
+  ++out.allocation_diagnostic_warning_count;
+  append_summary_issue(out.issues, out.warning_count, job_id, issue);
+}
+
+[[nodiscard]] inline std::filesystem::path
+replay_environment_artifact_dir_for_job_dir(
+    const std::filesystem::path &job_dir) {
+  return job_dir / "artifacts" / "kikijyeba.environment.replay.v1";
+}
+
+[[nodiscard]] inline std::filesystem::path
+replay_environment_batch_index_path_for_job_dir(
+    const std::filesystem::path &job_dir) {
+  return replay_environment_artifact_dir_for_job_dir(job_dir) /
+         "runtime_replay_batches.index";
+}
+
+[[nodiscard]] inline std::filesystem::path
+replay_environment_experiment_index_path_for_job_dir(
+    const std::filesystem::path &job_dir) {
+  return replay_environment_artifact_dir_for_job_dir(job_dir) /
+         "runtime_replay_experiments.index";
+}
+
+[[nodiscard]] inline constexpr const char *
+replay_environment_experiment_report_schema_id() {
+  return "kikijyeba.environment.replay.cajtucu_ready_experiment_artifact.v1";
+}
+
+[[nodiscard]] inline std::filesystem::path
+resolve_replay_environment_artifact_path(
+    const std::string &raw_path, const std::filesystem::path &index_dir) {
+  namespace kv = cuwacunu::piaabo::parse::simple_kv;
+  const auto trimmed = kv::trim(raw_path);
+  if (trimmed.empty()) {
+    return {};
+  }
+  std::filesystem::path path(trimmed);
+  return path.is_absolute() ? path : index_dir / path;
+}
+
+[[nodiscard]] inline std::filesystem::path
+latest_replay_environment_report_path(
+    const std::unordered_map<std::string, std::string> &experiment_index,
+    const std::filesystem::path &experiment_index_path) {
+  namespace detail = exposure_detail;
+  const auto entry_count = detail::parse_i64_fallback(
+      detail::map_get(experiment_index, "entry_count"), 0);
+  if (entry_count <= 0) {
+    return {};
+  }
+  for (std::int64_t remaining = entry_count; remaining > 0; --remaining) {
+    const auto i = remaining - 1;
+    const auto key = std::string("entry_") + std::to_string(i) + "_report_path";
+    const auto path = resolve_replay_environment_artifact_path(
+        detail::map_get(experiment_index, key),
+        experiment_index_path.parent_path());
+    if (!path.empty()) {
+      return path;
+    }
+  }
+  return {};
+}
+
+[[nodiscard]] inline std::string
+replay_environment_report_digest_for_text(const std::string &text) {
+  if (text.empty()) {
+    return {};
+  }
+  return exposure_digest_for_text(
+      std::string("kikijyeba.environment.replay.report_digest.v1\n") + text);
+}
+
+[[nodiscard]] inline bool replay_environment_fact_has_payload(
+    const lattice_replay_environment_fact_t &fact) {
+  return !fact.batch_index_path.empty() ||
+         !fact.experiment_index_path.empty() ||
+         !fact.experiment_report_path.empty() || !fact.experiment_id.empty() ||
+         !fact.experiment_index_report_digest.empty() ||
+         !fact.experiment_report_digest.empty() ||
+         !fact.runtime_run_id.empty() || !fact.environment_run_id.empty() ||
+         fact.batch_entry_count > 0 || fact.experiment_entry_count > 0 ||
+         fact.replay_bundle_count > 0 || fact.policy_count > 0 ||
+         fact.attempted_count > 0 || fact.completed_count > 0 ||
+         fact.episode_count > 0 || fact.time_law_expected_step_count > 0 ||
+         fact.time_law_observation_step_count > 0 ||
+         fact.time_law_action_step_count > 0 ||
+         fact.time_law_execution_step_count > 0 ||
+         fact.time_law_realization_after_action_count > 0 ||
+         fact.time_law_future_observation_violation_count > 0 ||
+         fact.mixed_future_realization_key_count > 0 ||
+         fact.projection_validation_step_count > 0 ||
+         std::isfinite(fact.mean_total_reward) ||
+         std::isfinite(fact.mean_total_log_growth) ||
+         std::isfinite(fact.mean_final_equity_base) ||
+         !fact.artifact_evidence || !fact.visibility_only ||
+         fact.replay_executor || fact.allocation_authority ||
+         fact.execution_authority || fact.readiness_authority ||
+         fact.quality_authority || fact.performance_authority ||
+         fact.market_readiness_authority || fact.deployment_authority ||
+         fact.checkpoint_selector || fact.coverage_authority ||
+         fact.leakage_authority || fact.contract_identity_authority;
+}
+
+[[nodiscard]] inline std::vector<lattice_replay_environment_fact_t>
+make_replay_environment_facts_from_job_dir(
+    const std::filesystem::path &job_dir,
+    const lattice_exposure_fact_t &parent) {
+  namespace detail = exposure_detail;
+  const auto batch_index_path =
+      replay_environment_batch_index_path_for_job_dir(job_dir);
+  const auto experiment_index_path =
+      replay_environment_experiment_index_path_for_job_dir(job_dir);
+  const auto batch_index = detail::parse_assignment_file(batch_index_path);
+  const auto experiment_index =
+      detail::parse_assignment_file(experiment_index_path);
+  const auto experiment_report_path = latest_replay_environment_report_path(
+      experiment_index, experiment_index_path);
+  const auto experiment_report_text =
+      experiment_report_path.empty()
+          ? std::string{}
+          : detail::read_text_file_or_empty(experiment_report_path);
+  const auto experiment_report =
+      experiment_report_path.empty()
+          ? std::unordered_map<std::string, std::string>{}
+          : detail::parse_assignment_file(experiment_report_path);
+
+  lattice_replay_environment_fact_t fact{};
+  fact.parent_exposure_fact_digest = exposure_fact_digest(parent);
+  fact.contract_fingerprint = parent.contract_fingerprint;
+  fact.protocol_id = parent.protocol_id;
+  fact.graph_order_fingerprint = parent.graph_order_fingerprint;
+  fact.source_cursor_token = parent.source_cursor_token;
+  fact.split_policy_fingerprint = parent.split_policy_fingerprint;
+  fact.component_assembly_fingerprint = parent.component_assembly_fingerprint;
+  fact.target_component_family_id = parent.target_component_family_id;
+  fact.job_id = parent.job_id;
+  fact.wave_id = parent.wave_id;
+  fact.job_status = parent.job_status;
+  fact.wave_action = parent.wave_action;
+  fact.split_name = parent.split_name;
+  fact.split_role = parent.split_role;
+  fact.anchor_range = parent.anchor_range;
+  fact.completed_anchor_range = parent.completed_anchor_range;
+
+  if (!batch_index.empty()) {
+    fact.batch_index_path = batch_index_path;
+  }
+  if (!experiment_index.empty()) {
+    fact.experiment_index_path = experiment_index_path;
+  }
+  if (!experiment_report.empty()) {
+    fact.experiment_report_path = experiment_report_path;
+  }
+  fact.runtime_replay_batch_index_schema =
+      detail::map_get(batch_index, "schema");
+  fact.runtime_replay_experiment_index_schema =
+      detail::map_get(experiment_index, "schema");
+  fact.replay_experiment_report_schema =
+      detail::map_get(experiment_report, "schema");
+
+  const auto latest_index_value = [&](const std::string &key) -> std::string {
+    const auto entry_count = detail::parse_i64_fallback(
+        detail::map_get(experiment_index, "entry_count"), 0);
+    if (entry_count <= 0) {
+      return {};
+    }
+    const auto prefix =
+        std::string("entry_") + std::to_string(entry_count - 1) + "_";
+    return detail::map_get(experiment_index, prefix + key);
+  };
+  const auto first_value = [&](const std::string &index_key,
+                               const std::string &report_key) -> std::string {
+    const auto from_index = latest_index_value(index_key);
+    if (!from_index.empty()) {
+      return from_index;
+    }
+    return detail::map_get(experiment_report, report_key);
+  };
+  const auto first_i64 = [&](const std::string &index_key,
+                             const std::string &report_key) {
+    return detail::parse_i64_fallback(first_value(index_key, report_key), 0);
+  };
+  const auto first_report_i64 = [&](const std::string &primary_key,
+                                    const std::string &fallback_key =
+                                        std::string{}) {
+    const auto primary_value = detail::map_get(experiment_report, primary_key);
+    if (!primary_value.empty()) {
+      return std::max<std::int64_t>(
+          0, detail::parse_i64_fallback(primary_value, 0));
+    }
+    if (!fallback_key.empty()) {
+      return std::max<std::int64_t>(
+          0, detail::parse_i64_fallback(
+                 detail::map_get(experiment_report, fallback_key), 0));
+    }
+    return std::int64_t{0};
+  };
+
+  fact.experiment_index_report_digest = latest_index_value("report_digest");
+  fact.experiment_report_digest =
+      replay_environment_report_digest_for_text(experiment_report_text);
+  fact.experiment_id = first_value("experiment_id", "experiment_id");
+  fact.runtime_run_id = first_value("runtime_run_id", "runtime_run_id");
+  fact.environment_run_id =
+      first_value("environment_run_id", "environment_run_id");
+  fact.replay_environment_version =
+      detail::map_get(experiment_report, "replay_environment_version");
+  fact.replay_environment_component_assembly_id = detail::map_get(
+      experiment_report, "replay_environment_component_assembly_id");
+  fact.replay_environment_world_mode =
+      detail::map_get(experiment_report, "replay_environment_world_mode");
+  fact.replay_environment_api_contract =
+      detail::map_get(experiment_report, "replay_environment_api_contract");
+  fact.replay_environment_spawn_model =
+      detail::map_get(experiment_report, "replay_environment_spawn_model");
+  fact.replay_environment_range_source =
+      detail::map_get(experiment_report, "replay_environment_range_source");
+  fact.replay_environment_source_range_policy = detail::map_get(
+      experiment_report, "replay_environment_source_range_policy");
+  fact.replay_environment_source_order_policy = detail::map_get(
+      experiment_report, "replay_environment_source_order_policy");
+  fact.replay_environment_range_resolution =
+      detail::map_get(experiment_report, "replay_environment_range_resolution");
+  fact.replay_environment_observation_time_law = detail::map_get(
+      experiment_report, "replay_environment_observation_time_law");
+  fact.replay_environment_realization_reveal = detail::map_get(
+      experiment_report, "replay_environment_realization_reveal");
+  fact.replay_environment_realization_key_policy = detail::map_get(
+      experiment_report, "replay_environment_realization_key_policy");
+  fact.replay_environment_action_kind =
+      detail::map_get(experiment_report, "replay_environment_action_kind");
+  fact.replay_environment_action_time_policy = detail::map_get(
+      experiment_report, "replay_environment_action_time_policy");
+  fact.replay_environment_reserve_node_policy = detail::map_get(
+      experiment_report, "replay_environment_reserve_node_policy");
+  fact.replay_environment_graph_node_universe_policy = detail::map_get(
+      experiment_report, "replay_environment_graph_node_universe_policy");
+  fact.replay_environment_reward_policy =
+      detail::map_get(experiment_report, "replay_environment_reward_policy");
+  fact.replay_environment_projection_validation = detail::map_get(
+      experiment_report, "replay_environment_projection_validation");
+  fact.replay_environment_policy_surface =
+      detail::map_get(experiment_report, "replay_environment_policy_surface");
+  fact.replay_environment_action_policy_identity = detail::map_get(
+      experiment_report, "replay_environment_action_policy_identity");
+  fact.replay_environment_initial_policy_kind = detail::map_get(
+      experiment_report, "replay_environment_initial_policy_kind");
+  fact.replay_environment_experiment_task_identity = detail::map_get(
+      experiment_report, "replay_environment_experiment_task_identity");
+  fact.replay_environment_experiment_run_identity = detail::map_get(
+      experiment_report, "replay_environment_experiment_run_identity");
+  fact.replay_environment_step_artifact_identity = detail::map_get(
+      experiment_report, "replay_environment_step_artifact_identity");
+  fact.replay_environment_experiment_report_count_policy = detail::map_get(
+      experiment_report, "replay_environment_experiment_report_count_policy");
+  fact.replay_environment_artifact_schema =
+      detail::map_get(experiment_report, "replay_environment_artifact_schema");
+  fact.replay_environment_lattice_fact_family = detail::map_get(
+      experiment_report, "replay_environment_lattice_fact_family");
+  fact.replay_environment_lattice_target =
+      detail::map_get(experiment_report, "replay_environment_lattice_target");
+  fact.replay_environment_require_resolved_cursor = detail::parse_bool_fallback(
+      detail::map_get(experiment_report,
+                      "replay_environment_require_resolved_cursor"),
+      false);
+  fact.replay_environment_require_no_future_leakage =
+      detail::parse_bool_fallback(
+          detail::map_get(experiment_report,
+                          "replay_environment_require_no_future_leakage"),
+          false);
+  fact.replay_environment_require_projection_validation =
+      detail::parse_bool_fallback(
+          detail::map_get(experiment_report,
+                          "replay_environment_require_projection_validation"),
+          false);
+  fact.replay_environment_default_max_parallel_jobs =
+      detail::parse_i64_fallback(
+          detail::map_get(experiment_report,
+                          "replay_environment_default_max_parallel_jobs"),
+          0);
+  fact.experiment_requested_max_parallel_jobs = detail::parse_i64_fallback(
+      detail::map_get(experiment_report,
+                      "experiment_requested_max_parallel_jobs"),
+      0);
+  fact.experiment_resolved_parallelism = detail::parse_i64_fallback(
+      detail::map_get(experiment_report, "experiment_resolved_parallelism"), 0);
+  fact.batch_entry_count = detail::parse_i64_fallback(
+      detail::map_get(batch_index, "entry_count"), 0);
+  fact.experiment_entry_count = detail::parse_i64_fallback(
+      detail::map_get(experiment_index, "entry_count"), 0);
+  fact.replay_bundle_count =
+      first_i64("replay_bundle_count", "replay_bundle_count");
+  fact.policy_count = first_i64("policy_count", "policy_summary_count");
+  fact.attempted_count = first_i64("attempted_count", "attempted_count");
+  fact.completed_count = first_i64("completed_count", "completed_count");
+  fact.episode_count = detail::parse_i64_fallback(
+      detail::map_get(experiment_report, "episode_count"), 0);
+  fact.time_law_expected_step_count =
+      first_report_i64("time_law_expected_step_count", "expected_step_count");
+  fact.time_law_observation_step_count = first_report_i64(
+      "time_law_observation_step_count", "observation_step_count");
+  fact.time_law_action_step_count =
+      first_report_i64("time_law_action_step_count", "action_step_count");
+  fact.time_law_execution_step_count =
+      first_report_i64("time_law_execution_step_count", "execution_step_count");
+  fact.time_law_realization_after_action_count =
+      first_report_i64("time_law_realization_after_action_count",
+                       "realization_after_action_count");
+  fact.time_law_future_observation_violation_count =
+      first_report_i64("time_law_future_observation_violation_count",
+                       "future_observation_violation_count");
+  fact.mixed_future_realization_key_count =
+      first_report_i64("mixed_future_realization_key_count");
+  fact.projection_validation_step_count =
+      first_report_i64("projection_validation_step_count");
+  for (std::int64_t episode_index = 0; episode_index < fact.episode_count;
+       ++episode_index) {
+    const auto prefix =
+        std::string("episode_") + std::to_string(episode_index) + "_";
+    const auto requested_anchor_begin = detail::parse_i64_fallback(
+        detail::map_get(experiment_report,
+                        prefix + "requested_anchor_index_begin"),
+        -1);
+    const auto requested_anchor_end = detail::parse_i64_fallback(
+        detail::map_get(experiment_report,
+                        prefix + "requested_anchor_index_end"),
+        -1);
+    const auto requested_source_key_begin = detail::parse_i64_fallback(
+        detail::map_get(experiment_report,
+                        prefix + "requested_source_key_begin"),
+        -1);
+    const auto requested_source_key_end = detail::parse_i64_fallback(
+        detail::map_get(experiment_report, prefix + "requested_source_key_end"),
+        -1);
+    if ((requested_anchor_begin >= 0 &&
+         requested_anchor_end > requested_anchor_begin) ||
+        (requested_source_key_begin >= 0 &&
+         requested_source_key_end > requested_source_key_begin)) {
+      ++fact.episode_requested_range_bound_count;
+    }
+    const bool has_cursor_evidence =
+        !detail::map_get(experiment_report, prefix + "accepted_cursor_kind")
+             .empty() &&
+        !detail::map_get(experiment_report, prefix + "accepted_cursor_scope")
+             .empty() &&
+        !detail::map_get(experiment_report,
+                         prefix + "accepted_batch_cursor_token")
+             .empty();
+    if (has_cursor_evidence) {
+      ++fact.episode_cursor_bound_count;
+    }
+    const auto accepted_begin = detail::parse_i64_fallback(
+        detail::map_get(experiment_report,
+                        prefix + "accepted_anchor_index_begin"),
+        -1);
+    const auto accepted_end = detail::parse_i64_fallback(
+        detail::map_get(experiment_report,
+                        prefix + "accepted_anchor_index_end"),
+        -1);
+    if (accepted_begin >= 0 && accepted_end > accepted_begin) {
+      ++fact.episode_anchor_interval_bound_count;
+    }
+    if (!detail::map_get(experiment_report, prefix + "accepted_anchor_keys")
+             .empty()) {
+      ++fact.episode_anchor_keys_bound_count;
+    }
+  }
+  fact.mean_total_reward = detail::parse_double_fallback(
+      detail::map_get(experiment_report, "mean_total_reward"),
+      std::numeric_limits<double>::quiet_NaN());
+  fact.mean_total_log_growth = detail::parse_double_fallback(
+      detail::map_get(experiment_report, "mean_total_log_growth"),
+      std::numeric_limits<double>::quiet_NaN());
+  fact.mean_final_equity_base = detail::parse_double_fallback(
+      detail::map_get(experiment_report, "mean_final_equity_base"),
+      std::numeric_limits<double>::quiet_NaN());
+  fact.mean_projection_mae = detail::parse_double_fallback(
+      detail::map_get(experiment_report, "mean_projection_mae"),
+      std::numeric_limits<double>::quiet_NaN());
+  fact.mean_projection_signed_bias = detail::parse_double_fallback(
+      detail::map_get(experiment_report, "mean_projection_signed_bias"),
+      std::numeric_limits<double>::quiet_NaN());
+  fact.mean_projection_directional_accuracy = detail::parse_double_fallback(
+      detail::map_get(experiment_report,
+                      "mean_projection_directional_accuracy"),
+      std::numeric_limits<double>::quiet_NaN());
+  fact.mean_projection_interval_coverage = detail::parse_double_fallback(
+      detail::map_get(experiment_report, "mean_projection_interval_coverage"),
+      std::numeric_limits<double>::quiet_NaN());
+
+  fact.artifact_evidence = detail::parse_bool_fallback(
+      detail::map_get(experiment_report, "artifact_evidence"), true);
+  fact.visibility_only = detail::parse_bool_fallback(
+      detail::map_get(experiment_report, "visibility_only"), true);
+  fact.replay_executor = detail::parse_bool_fallback(
+      detail::map_get(experiment_report, "replay_executor"), false);
+  fact.allocation_authority = detail::parse_bool_fallback(
+      detail::map_get(experiment_report, "allocation_authority"), false);
+  fact.execution_authority = detail::parse_bool_fallback(
+      detail::map_get(experiment_report, "execution_authority"), false);
+  fact.readiness_authority = detail::parse_bool_fallback(
+      detail::map_get(experiment_report, "readiness_authority"), false);
+  fact.quality_authority = detail::parse_bool_fallback(
+      detail::map_get(experiment_report, "quality_authority"), false);
+  fact.performance_authority = detail::parse_bool_fallback(
+      detail::map_get(experiment_report, "performance_authority"), false);
+  fact.market_readiness_authority = detail::parse_bool_fallback(
+      detail::map_get(experiment_report, "market_readiness_authority"), false);
+  fact.deployment_authority = detail::parse_bool_fallback(
+      detail::map_get(experiment_report, "deployment_authority"), false);
+  fact.checkpoint_selector = detail::parse_bool_fallback(
+      detail::map_get(experiment_report, "checkpoint_selector"), false);
+  fact.coverage_authority = detail::parse_bool_fallback(
+      detail::map_get(experiment_report, "coverage_authority"), false);
+  fact.leakage_authority = detail::parse_bool_fallback(
+      detail::map_get(experiment_report, "leakage_authority"), false);
+  fact.contract_identity_authority = detail::parse_bool_fallback(
+      detail::map_get(experiment_report, "contract_identity_authority"), false);
+
+  if (!replay_environment_fact_has_payload(fact)) {
+    return {};
+  }
+  return {std::move(fact)};
+}
+
+[[nodiscard]] inline std::string canonical_replay_environment_fact_text(
+    const lattice_replay_environment_fact_t &fact) {
+  std::ostringstream out;
+  out << "schema=" << fact.schema << "\n";
+  out << "fact_type=" << fact.fact_type << "\n";
+  out << "parent_exposure_fact_digest=" << fact.parent_exposure_fact_digest
+      << "\n";
+  out << "contract_fingerprint=" << fact.contract_fingerprint << "\n";
+  out << "protocol_id=" << fact.protocol_id << "\n";
+  out << "graph_order_fingerprint=" << fact.graph_order_fingerprint << "\n";
+  out << "source_cursor_token=" << fact.source_cursor_token << "\n";
+  out << "split_policy_fingerprint=" << fact.split_policy_fingerprint << "\n";
+  out << "component_assembly_fingerprint="
+      << fact.component_assembly_fingerprint << "\n";
+  out << "target_component_family_id=" << fact.target_component_family_id
+      << "\n";
+  out << "job_id=" << fact.job_id << "\n";
+  out << "wave_id=" << fact.wave_id << "\n";
+  out << "job_status=" << fact.job_status << "\n";
+  out << "wave_action=" << fact.wave_action << "\n";
+  out << "split_name=" << fact.split_name << "\n";
+  out << "split_role=" << exposure_split_role_name(fact.split_role) << "\n";
+  out << "anchor_begin=" << fact.anchor_range.begin << "\n";
+  out << "anchor_end=" << fact.anchor_range.end << "\n";
+  out << "completed_anchor_begin=" << fact.completed_anchor_range.begin << "\n";
+  out << "completed_anchor_end=" << fact.completed_anchor_range.end << "\n";
+  out << "batch_index_path=" << fact.batch_index_path.generic_string() << "\n";
+  out << "experiment_index_path=" << fact.experiment_index_path.generic_string()
+      << "\n";
+  out << "experiment_report_path="
+      << fact.experiment_report_path.generic_string() << "\n";
+  out << "runtime_replay_batch_index_schema="
+      << fact.runtime_replay_batch_index_schema << "\n";
+  out << "runtime_replay_experiment_index_schema="
+      << fact.runtime_replay_experiment_index_schema << "\n";
+  out << "replay_experiment_report_schema="
+      << fact.replay_experiment_report_schema << "\n";
+  out << "experiment_index_report_digest="
+      << fact.experiment_index_report_digest << "\n";
+  out << "experiment_report_digest=" << fact.experiment_report_digest << "\n";
+  out << "experiment_id=" << fact.experiment_id << "\n";
+  out << "runtime_run_id=" << fact.runtime_run_id << "\n";
+  out << "environment_run_id=" << fact.environment_run_id << "\n";
+  out << "replay_environment_version=" << fact.replay_environment_version
+      << "\n";
+  out << "replay_environment_component_assembly_id="
+      << fact.replay_environment_component_assembly_id << "\n";
+  out << "replay_environment_world_mode=" << fact.replay_environment_world_mode
+      << "\n";
+  out << "replay_environment_api_contract="
+      << fact.replay_environment_api_contract << "\n";
+  out << "replay_environment_spawn_model="
+      << fact.replay_environment_spawn_model << "\n";
+  out << "replay_environment_range_source="
+      << fact.replay_environment_range_source << "\n";
+  out << "replay_environment_source_range_policy="
+      << fact.replay_environment_source_range_policy << "\n";
+  out << "replay_environment_source_order_policy="
+      << fact.replay_environment_source_order_policy << "\n";
+  out << "replay_environment_range_resolution="
+      << fact.replay_environment_range_resolution << "\n";
+  out << "replay_environment_observation_time_law="
+      << fact.replay_environment_observation_time_law << "\n";
+  out << "replay_environment_realization_reveal="
+      << fact.replay_environment_realization_reveal << "\n";
+  out << "replay_environment_realization_key_policy="
+      << fact.replay_environment_realization_key_policy << "\n";
+  out << "replay_environment_action_kind="
+      << fact.replay_environment_action_kind << "\n";
+  out << "replay_environment_action_time_policy="
+      << fact.replay_environment_action_time_policy << "\n";
+  out << "replay_environment_reserve_node_policy="
+      << fact.replay_environment_reserve_node_policy << "\n";
+  out << "replay_environment_graph_node_universe_policy="
+      << fact.replay_environment_graph_node_universe_policy << "\n";
+  out << "replay_environment_reward_policy="
+      << fact.replay_environment_reward_policy << "\n";
+  out << "replay_environment_projection_validation="
+      << fact.replay_environment_projection_validation << "\n";
+  out << "replay_environment_policy_surface="
+      << fact.replay_environment_policy_surface << "\n";
+  out << "replay_environment_action_policy_identity="
+      << fact.replay_environment_action_policy_identity << "\n";
+  out << "replay_environment_initial_policy_kind="
+      << fact.replay_environment_initial_policy_kind << "\n";
+  out << "replay_environment_experiment_task_identity="
+      << fact.replay_environment_experiment_task_identity << "\n";
+  out << "replay_environment_experiment_run_identity="
+      << fact.replay_environment_experiment_run_identity << "\n";
+  out << "replay_environment_step_artifact_identity="
+      << fact.replay_environment_step_artifact_identity << "\n";
+  out << "replay_environment_experiment_report_count_policy="
+      << fact.replay_environment_experiment_report_count_policy << "\n";
+  out << "replay_environment_artifact_schema="
+      << fact.replay_environment_artifact_schema << "\n";
+  out << "replay_environment_lattice_fact_family="
+      << fact.replay_environment_lattice_fact_family << "\n";
+  out << "replay_environment_lattice_target="
+      << fact.replay_environment_lattice_target << "\n";
+  out << "replay_environment_require_resolved_cursor="
+      << (fact.replay_environment_require_resolved_cursor ? "true" : "false")
+      << "\n";
+  out << "replay_environment_require_no_future_leakage="
+      << (fact.replay_environment_require_no_future_leakage ? "true" : "false")
+      << "\n";
+  out << "replay_environment_require_projection_validation="
+      << (fact.replay_environment_require_projection_validation ? "true"
+                                                                : "false")
+      << "\n";
+  out << "replay_environment_default_max_parallel_jobs="
+      << fact.replay_environment_default_max_parallel_jobs << "\n";
+  out << "experiment_requested_max_parallel_jobs="
+      << fact.experiment_requested_max_parallel_jobs << "\n";
+  out << "experiment_resolved_parallelism="
+      << fact.experiment_resolved_parallelism << "\n";
+  out << "batch_entry_count=" << fact.batch_entry_count << "\n";
+  out << "experiment_entry_count=" << fact.experiment_entry_count << "\n";
+  out << "replay_bundle_count=" << fact.replay_bundle_count << "\n";
+  out << "policy_count=" << fact.policy_count << "\n";
+  out << "attempted_count=" << fact.attempted_count << "\n";
+  out << "completed_count=" << fact.completed_count << "\n";
+  out << "episode_count=" << fact.episode_count << "\n";
+  out << "episode_requested_range_bound_count="
+      << fact.episode_requested_range_bound_count << "\n";
+  out << "episode_cursor_bound_count=" << fact.episode_cursor_bound_count
+      << "\n";
+  out << "episode_anchor_interval_bound_count="
+      << fact.episode_anchor_interval_bound_count << "\n";
+  out << "episode_anchor_keys_bound_count="
+      << fact.episode_anchor_keys_bound_count << "\n";
+  out << "time_law_expected_step_count=" << fact.time_law_expected_step_count
+      << "\n";
+  out << "time_law_observation_step_count="
+      << fact.time_law_observation_step_count << "\n";
+  out << "time_law_action_step_count=" << fact.time_law_action_step_count
+      << "\n";
+  out << "time_law_execution_step_count=" << fact.time_law_execution_step_count
+      << "\n";
+  out << "time_law_realization_after_action_count="
+      << fact.time_law_realization_after_action_count << "\n";
+  out << "time_law_future_observation_violation_count="
+      << fact.time_law_future_observation_violation_count << "\n";
+  out << "mixed_future_realization_key_count="
+      << fact.mixed_future_realization_key_count << "\n";
+  out << "projection_validation_step_count="
+      << fact.projection_validation_step_count << "\n";
+  out << "mean_total_reward=" << fact.mean_total_reward << "\n";
+  out << "mean_total_log_growth=" << fact.mean_total_log_growth << "\n";
+  out << "mean_final_equity_base=" << fact.mean_final_equity_base << "\n";
+  out << "mean_projection_mae=" << fact.mean_projection_mae << "\n";
+  out << "mean_projection_signed_bias=" << fact.mean_projection_signed_bias
+      << "\n";
+  out << "mean_projection_directional_accuracy="
+      << fact.mean_projection_directional_accuracy << "\n";
+  out << "mean_projection_interval_coverage="
+      << fact.mean_projection_interval_coverage << "\n";
+  out << "artifact_evidence=" << (fact.artifact_evidence ? "true" : "false")
+      << "\n";
+  out << "visibility_only=" << (fact.visibility_only ? "true" : "false")
+      << "\n";
+  out << "replay_executor=" << (fact.replay_executor ? "true" : "false")
+      << "\n";
+  out << "allocation_authority="
+      << (fact.allocation_authority ? "true" : "false") << "\n";
+  out << "execution_authority=" << (fact.execution_authority ? "true" : "false")
+      << "\n";
+  out << "readiness_authority=" << (fact.readiness_authority ? "true" : "false")
+      << "\n";
+  out << "quality_authority=" << (fact.quality_authority ? "true" : "false")
+      << "\n";
+  out << "performance_authority="
+      << (fact.performance_authority ? "true" : "false") << "\n";
+  out << "market_readiness_authority="
+      << (fact.market_readiness_authority ? "true" : "false") << "\n";
+  out << "deployment_authority="
+      << (fact.deployment_authority ? "true" : "false") << "\n";
+  out << "checkpoint_selector=" << (fact.checkpoint_selector ? "true" : "false")
+      << "\n";
+  out << "coverage_authority=" << (fact.coverage_authority ? "true" : "false")
+      << "\n";
+  out << "leakage_authority=" << (fact.leakage_authority ? "true" : "false")
+      << "\n";
+  out << "contract_identity_authority="
+      << (fact.contract_identity_authority ? "true" : "false") << "\n";
+  return out.str();
+}
+
+[[nodiscard]] inline std::string
+replay_environment_fact_digest(const lattice_replay_environment_fact_t &fact) {
+  return exposure_digest_for_text(canonical_replay_environment_fact_text(fact));
+}
+
+[[nodiscard]] inline std::vector<std::string>
+replay_environment_fact_issues(const lattice_replay_environment_fact_t &fact) {
+  std::vector<std::string> issues;
+  if (fact.parent_exposure_fact_digest.empty()) {
+    issues.emplace_back("missing_parent_exposure_fact_digest");
+  }
+  if (fact.contract_fingerprint.empty()) {
+    issues.emplace_back("missing_contract_fingerprint");
+  }
+  if (fact.protocol_id.empty()) {
+    issues.emplace_back("missing_protocol_id");
+  }
+  if (fact.graph_order_fingerprint.empty()) {
+    issues.emplace_back("missing_graph_order_fingerprint");
+  }
+  if (fact.source_cursor_token.empty()) {
+    issues.emplace_back("missing_source_cursor_token");
+  }
+  if (fact.batch_index_path.empty() || fact.batch_entry_count <= 0) {
+    issues.emplace_back("missing_runtime_replay_batch_index");
+  }
+  if (fact.runtime_replay_batch_index_schema !=
+      "kikijyeba.environment.replay.runtime_batch_index.v1") {
+    issues.emplace_back(
+        "missing_or_unexpected_runtime_replay_batch_index_schema");
+  }
+  if (fact.experiment_index_path.empty() || fact.experiment_entry_count <= 0) {
+    issues.emplace_back("missing_runtime_replay_experiment_index");
+  }
+  if (fact.runtime_replay_experiment_index_schema !=
+      "kikijyeba.environment.replay.runtime_experiment_index.v1") {
+    issues.emplace_back(
+        "missing_or_unexpected_runtime_replay_experiment_index_schema");
+  }
+  if (fact.experiment_report_path.empty()) {
+    issues.emplace_back("missing_runtime_replay_experiment_report");
+  }
+  if (fact.replay_experiment_report_schema !=
+      replay_environment_experiment_report_schema_id()) {
+    issues.emplace_back(
+        "missing_or_unexpected_replay_experiment_report_schema");
+  }
+  if (fact.experiment_index_report_digest.empty()) {
+    issues.emplace_back("missing_experiment_index_report_digest");
+  }
+  if (fact.experiment_report_digest.empty()) {
+    issues.emplace_back("missing_experiment_report_digest");
+  }
+  if (!fact.experiment_index_report_digest.empty() &&
+      !fact.experiment_report_digest.empty() &&
+      fact.experiment_index_report_digest != fact.experiment_report_digest) {
+    issues.emplace_back("replay_environment_report_digest_mismatch");
+  }
+  if (fact.experiment_id.empty()) {
+    issues.emplace_back("missing_experiment_id");
+  }
+  if (fact.runtime_run_id.empty()) {
+    issues.emplace_back("missing_runtime_run_id");
+  }
+  if (fact.environment_run_id.empty()) {
+    issues.emplace_back("missing_environment_run_id");
+  }
+  if (fact.replay_environment_version != "kikijyeba.environment.replay.v1") {
+    issues.emplace_back("missing_or_unexpected_replay_environment_version");
+  }
+  if (fact.replay_environment_component_assembly_id.empty()) {
+    issues.emplace_back("missing_replay_environment_component_assembly_id");
+  }
+  if (fact.replay_environment_world_mode != "historical_replay") {
+    issues.emplace_back("missing_or_unexpected_replay_environment_world_mode");
+  }
+  if (fact.replay_environment_api_contract != "rl_compatible_reset_step") {
+    issues.emplace_back(
+        "missing_or_unexpected_replay_environment_api_contract");
+  }
+  if (fact.replay_environment_spawn_model !=
+      "episode_parallel_step_sequential") {
+    issues.emplace_back("missing_or_unexpected_replay_environment_spawn_model");
+  }
+  if (fact.replay_environment_range_source !=
+      "ujcamei_component_stream_cursor") {
+    issues.emplace_back(
+        "missing_or_unexpected_replay_environment_range_source");
+  }
+  if (fact.replay_environment_source_range_policy !=
+      "anchor_index_or_source_key") {
+    issues.emplace_back(
+        "missing_or_unexpected_replay_environment_source_range_policy");
+  }
+  if (fact.replay_environment_source_order_policy != "sequential") {
+    issues.emplace_back(
+        "missing_or_unexpected_replay_environment_source_order_policy");
+  }
+  if (fact.replay_environment_range_resolution !=
+      "runtime_resolved_cursor_identity") {
+    issues.emplace_back(
+        "missing_or_unexpected_replay_environment_range_resolution");
+  }
+  if (fact.replay_environment_policy_surface != "policy_adapter") {
+    issues.emplace_back(
+        "missing_or_unexpected_replay_environment_policy_surface");
+  }
+  if (fact.replay_environment_observation_time_law != "time_t_only") {
+    issues.emplace_back("missing_or_unexpected_replay_environment_time_law");
+  }
+  if (fact.replay_environment_realization_reveal != "after_action_execution") {
+    issues.emplace_back(
+        "missing_or_unexpected_replay_environment_realization_reveal");
+  }
+  if (fact.replay_environment_realization_key_policy !=
+      "shared_key_per_frame") {
+    issues.emplace_back(
+        "missing_or_unexpected_replay_environment_realization_key_policy");
+  }
+  if (fact.replay_environment_experiment_task_identity !=
+      "bundle_policy_task_indices") {
+    issues.emplace_back(
+        "missing_or_unexpected_replay_environment_task_identity");
+  }
+  if (fact.replay_environment_action_kind !=
+      "target_node_weights_with_base_reserve") {
+    issues.emplace_back("missing_or_unexpected_replay_environment_action_kind");
+  }
+  if (fact.replay_environment_action_time_policy !=
+      "decision_timestamp_after_knowledge_before_realization") {
+    issues.emplace_back(
+        "missing_or_unexpected_replay_environment_action_time_policy");
+  }
+  if (fact.replay_environment_reserve_node_policy !=
+      "graph_node_from_base_policy") {
+    issues.emplace_back(
+        "missing_or_unexpected_replay_environment_reserve_node_policy");
+  }
+  if (fact.replay_environment_graph_node_universe_policy !=
+      "episode_spec_graph_node_ids") {
+    issues.emplace_back(
+        "missing_or_unexpected_replay_environment_graph_node_universe_policy");
+  }
+  if (fact.replay_environment_reward_policy !=
+      "post_execution_ledger_log_growth_drawdown_cost_turnover_invalid") {
+    issues.emplace_back(
+        "missing_or_unexpected_replay_environment_reward_policy");
+  }
+  if (fact.replay_environment_projection_validation !=
+      "projected_log_return_vs_realized_asset_base_return") {
+    issues.emplace_back(
+        "missing_or_unexpected_replay_environment_projection_validation");
+  }
+  if (fact.replay_environment_initial_policy_kind !=
+      "deterministic_allocator_or_baseline") {
+    issues.emplace_back(
+        "missing_or_unexpected_replay_environment_initial_policy_kind");
+  }
+  if (fact.replay_environment_action_policy_identity !=
+      "policy_adapter_must_match_action") {
+    issues.emplace_back(
+        "missing_or_unexpected_replay_environment_action_policy_identity");
+  }
+  if (fact.replay_environment_experiment_run_identity !=
+      "single_runtime_environment_run") {
+    issues.emplace_back(
+        "missing_or_unexpected_replay_environment_experiment_run_identity");
+  }
+  if (fact.replay_environment_step_artifact_identity !=
+      "episode_run_policy_cursor") {
+    issues.emplace_back(
+        "missing_or_unexpected_replay_environment_step_artifact_identity");
+  }
+  if (fact.replay_environment_experiment_report_count_policy !=
+      "counts_match_evidence") {
+    issues.emplace_back(
+        "missing_or_unexpected_replay_environment_report_count_policy");
+  }
+  if (fact.replay_environment_default_max_parallel_jobs <= 0 ||
+      fact.experiment_requested_max_parallel_jobs < 0 ||
+      fact.experiment_resolved_parallelism <= 0) {
+    issues.emplace_back("missing_or_invalid_replay_environment_parallelism");
+  }
+  if (fact.replay_environment_artifact_schema !=
+      "cajtucu_ready_replay_artifacts") {
+    issues.emplace_back(
+        "missing_or_unexpected_replay_environment_artifact_schema");
+  }
+  if (fact.replay_environment_lattice_fact_family != "replay_environment") {
+    issues.emplace_back(
+        "missing_or_unexpected_replay_environment_lattice_fact_family");
+  }
+  if (fact.replay_environment_lattice_target !=
+      "replay_environment_artifact_ready") {
+    issues.emplace_back(
+        "missing_or_unexpected_replay_environment_lattice_target");
+  }
+  if (!fact.replay_environment_require_resolved_cursor ||
+      !fact.replay_environment_require_no_future_leakage ||
+      !fact.replay_environment_require_projection_validation) {
+    issues.emplace_back("replay_environment_contract_guards_not_bound");
+  }
+  const bool requires_time_law_evidence =
+      fact.replay_environment_require_no_future_leakage ||
+      fact.replay_environment_observation_time_law == "time_t_only" ||
+      fact.replay_environment_realization_reveal == "after_action_execution";
+  const bool time_law_step_evidence_bound =
+      fact.time_law_expected_step_count > 0 &&
+      fact.time_law_observation_step_count > 0 &&
+      fact.time_law_action_step_count > 0 &&
+      fact.time_law_execution_step_count > 0 &&
+      fact.time_law_realization_after_action_count > 0;
+  if (requires_time_law_evidence && !time_law_step_evidence_bound) {
+    issues.emplace_back("missing_replay_time_law_step_evidence");
+  }
+  if (requires_time_law_evidence && fact.time_law_expected_step_count > 0) {
+    if (fact.time_law_observation_step_count !=
+            fact.time_law_expected_step_count ||
+        fact.time_law_action_step_count != fact.time_law_expected_step_count ||
+        fact.time_law_execution_step_count !=
+            fact.time_law_expected_step_count ||
+        fact.time_law_realization_after_action_count !=
+            fact.time_law_expected_step_count) {
+      issues.emplace_back("replay_time_law_expected_step_count_mismatch");
+    }
+  }
+  if (fact.time_law_future_observation_violation_count > 0) {
+    issues.emplace_back("replay_time_law_future_observation_violation");
+  }
+  if (fact.mixed_future_realization_key_count > 0) {
+    issues.emplace_back("replay_time_law_mixed_future_realization_keys");
+  }
+  if (fact.time_law_action_step_count > 0 &&
+      fact.time_law_execution_step_count < fact.time_law_action_step_count) {
+    issues.emplace_back("replay_time_law_execution_step_gap");
+  }
+  if (fact.time_law_action_step_count > 0 &&
+      fact.time_law_realization_after_action_count <
+          fact.time_law_action_step_count) {
+    issues.emplace_back("replay_time_law_realization_before_action_gap");
+  }
+  if (fact.attempted_count <= 0) {
+    issues.emplace_back("missing_attempted_replay_episode");
+  }
+  if (fact.completed_count <= 0) {
+    issues.emplace_back("missing_completed_replay_episode");
+  }
+  if (fact.attempted_count > 0 && fact.completed_count < fact.attempted_count) {
+    issues.emplace_back("replay_environment_incomplete_attempts");
+  }
+  if (fact.replay_environment_require_projection_validation &&
+      (!std::isfinite(fact.mean_projection_mae) ||
+       !std::isfinite(fact.mean_projection_signed_bias) ||
+       !std::isfinite(fact.mean_projection_directional_accuracy) ||
+       !std::isfinite(fact.mean_projection_interval_coverage))) {
+    issues.emplace_back("missing_replay_projection_validation_metrics");
+  }
+  if (fact.replay_environment_require_projection_validation &&
+      fact.projection_validation_step_count <= 0) {
+    issues.emplace_back("missing_replay_projection_validation_step_evidence");
+  }
+  if (fact.replay_environment_require_projection_validation &&
+      fact.time_law_expected_step_count > 0 &&
+      fact.projection_validation_step_count !=
+          fact.time_law_expected_step_count) {
+    issues.emplace_back(
+        "replay_projection_validation_expected_step_count_mismatch");
+  }
+  if ((std::isfinite(fact.mean_projection_directional_accuracy) &&
+       (fact.mean_projection_directional_accuracy < 0.0 ||
+        fact.mean_projection_directional_accuracy > 1.0)) ||
+      (std::isfinite(fact.mean_projection_interval_coverage) &&
+       (fact.mean_projection_interval_coverage < 0.0 ||
+        fact.mean_projection_interval_coverage > 1.0))) {
+    issues.emplace_back("invalid_replay_projection_validation_metrics");
+  }
+  if (fact.episode_count > 0 &&
+      fact.episode_requested_range_bound_count < fact.episode_count) {
+    issues.emplace_back("missing_replay_episode_requested_range_evidence");
+  }
+  if (fact.episode_count > 0 &&
+      fact.episode_cursor_bound_count < fact.episode_count) {
+    issues.emplace_back("missing_replay_episode_cursor_evidence");
+  }
+  if (fact.episode_count > 0 &&
+      fact.episode_anchor_interval_bound_count < fact.episode_count) {
+    issues.emplace_back("missing_replay_episode_anchor_interval_evidence");
+  }
+  if (fact.episode_count > 0 &&
+      fact.episode_anchor_keys_bound_count < fact.episode_count) {
+    issues.emplace_back("missing_replay_episode_anchor_key_evidence");
+  }
+  if (!fact.artifact_evidence || !fact.visibility_only ||
+      fact.replay_executor || fact.allocation_authority ||
+      fact.execution_authority || fact.readiness_authority ||
+      fact.quality_authority || fact.performance_authority ||
+      fact.market_readiness_authority || fact.deployment_authority ||
+      fact.checkpoint_selector || fact.coverage_authority ||
+      fact.leakage_authority || fact.contract_identity_authority) {
+    issues.emplace_back("replay_environment_must_remain_audit_evidence_only");
+  }
+  return issues;
+}
+
+inline void append_replay_environment_scan_warning(
+    const lattice_replay_environment_fact_t &fact,
+    const std::filesystem::path &job_dir, std::vector<std::string> &warnings) {
+  const auto issues = replay_environment_fact_issues(fact);
+  if (issues.empty()) {
+    return;
+  }
+  std::ostringstream oss;
+  oss << "[lattice_exposure] replay_environment warning job_dir="
+      << job_dir.string() << " job_id=" << fact.job_id << " issues=";
+  for (std::size_t i = 0; i < issues.size(); ++i) {
+    if (i != 0) {
+      oss << ",";
+    }
+    oss << issues[i];
+  }
+  warnings.push_back(oss.str());
+}
+
+[[nodiscard]] inline replay_environment_summary_t summarize_replay_environments(
+    const std::vector<lattice_exposure_fact_t> &exposure_facts,
+    const std::vector<lattice_replay_environment_fact_t> &replay_facts) {
+  replay_environment_summary_t out{};
+  out.exposure_fact_count = static_cast<std::int64_t>(exposure_facts.size());
+  out.replay_environment_fact_count =
+      static_cast<std::int64_t>(replay_facts.size());
+
+  std::set<std::string> parent_digests;
+  for (const auto &fact : replay_facts) {
+    if (!fact.parent_exposure_fact_digest.empty()) {
+      parent_digests.insert(fact.parent_exposure_fact_digest);
+    }
+    if (!fact.batch_index_path.empty()) {
+      ++out.batch_index_bound_count;
+    } else {
+      ++out.missing_batch_index_count;
+    }
+    if (fact.runtime_replay_batch_index_schema ==
+        "kikijyeba.environment.replay.runtime_batch_index.v1") {
+      ++out.batch_index_schema_bound_count;
+    }
+    if (!fact.experiment_index_path.empty()) {
+      ++out.experiment_index_bound_count;
+    } else {
+      ++out.missing_experiment_index_count;
+    }
+    if (fact.runtime_replay_experiment_index_schema ==
+        "kikijyeba.environment.replay.runtime_experiment_index.v1") {
+      ++out.experiment_index_schema_bound_count;
+    }
+    if (!fact.experiment_report_path.empty()) {
+      ++out.experiment_report_bound_count;
+    } else {
+      ++out.missing_experiment_report_count;
+    }
+    if (fact.replay_experiment_report_schema ==
+        replay_environment_experiment_report_schema_id()) {
+      ++out.experiment_report_schema_bound_count;
+    }
+    if (!fact.experiment_index_report_digest.empty()) {
+      ++out.experiment_index_report_digest_bound_count;
+    }
+    if (!fact.experiment_report_digest.empty()) {
+      ++out.experiment_report_digest_bound_count;
+    }
+    if (!fact.experiment_index_report_digest.empty() &&
+        !fact.experiment_report_digest.empty()) {
+      if (fact.experiment_index_report_digest ==
+          fact.experiment_report_digest) {
+        ++out.experiment_report_digest_match_count;
+      } else {
+        ++out.experiment_report_digest_mismatch_count;
+      }
+    }
+    if (!fact.experiment_id.empty()) {
+      ++out.experiment_id_bound_count;
+    }
+    if (!fact.runtime_run_id.empty()) {
+      ++out.runtime_run_id_bound_count;
+    }
+    if (!fact.environment_run_id.empty()) {
+      ++out.environment_run_id_bound_count;
+    }
+    if (fact.replay_environment_version == "kikijyeba.environment.replay.v1") {
+      ++out.replay_contract_version_bound_count;
+    }
+    if (!fact.replay_environment_component_assembly_id.empty()) {
+      ++out.replay_contract_component_bound_count;
+    }
+    if (fact.replay_environment_world_mode == "historical_replay") {
+      ++out.replay_contract_world_mode_bound_count;
+    }
+    if (fact.replay_environment_api_contract == "rl_compatible_reset_step") {
+      ++out.replay_contract_api_bound_count;
+    }
+    if (fact.replay_environment_spawn_model ==
+        "episode_parallel_step_sequential") {
+      ++out.replay_contract_spawn_model_bound_count;
+    }
+    if (fact.replay_environment_range_source ==
+        "ujcamei_component_stream_cursor") {
+      ++out.replay_contract_range_source_bound_count;
+    }
+    if (fact.replay_environment_source_range_policy ==
+        "anchor_index_or_source_key") {
+      ++out.replay_contract_source_range_policy_bound_count;
+    }
+    if (fact.replay_environment_source_order_policy == "sequential") {
+      ++out.replay_contract_source_order_policy_bound_count;
+    }
+    if (fact.replay_environment_range_resolution ==
+        "runtime_resolved_cursor_identity") {
+      ++out.replay_contract_range_resolution_bound_count;
+    }
+    if (fact.replay_environment_policy_surface == "policy_adapter") {
+      ++out.replay_contract_policy_surface_bound_count;
+    }
+    if (fact.replay_environment_observation_time_law == "time_t_only") {
+      ++out.replay_contract_time_law_bound_count;
+    }
+    if (fact.replay_environment_realization_reveal ==
+        "after_action_execution") {
+      ++out.replay_contract_realization_reveal_bound_count;
+    }
+    if (fact.replay_environment_realization_key_policy ==
+        "shared_key_per_frame") {
+      ++out.replay_contract_realization_key_bound_count;
+    }
+    if (fact.replay_environment_action_kind ==
+        "target_node_weights_with_base_reserve") {
+      ++out.replay_contract_action_kind_bound_count;
+    }
+    if (fact.replay_environment_action_time_policy ==
+        "decision_timestamp_after_knowledge_before_realization") {
+      ++out.replay_contract_action_time_policy_bound_count;
+    }
+    if (fact.replay_environment_reserve_node_policy ==
+        "graph_node_from_base_policy") {
+      ++out.replay_contract_reserve_node_policy_bound_count;
+    }
+    if (fact.replay_environment_graph_node_universe_policy ==
+        "episode_spec_graph_node_ids") {
+      ++out.replay_contract_graph_node_universe_policy_bound_count;
+    }
+    if (fact.replay_environment_reward_policy ==
+        "post_execution_ledger_log_growth_drawdown_cost_turnover_invalid") {
+      ++out.replay_contract_reward_policy_bound_count;
+    }
+    if (fact.replay_environment_projection_validation ==
+        "projected_log_return_vs_realized_asset_base_return") {
+      ++out.replay_contract_projection_validation_bound_count;
+    }
+    if (fact.replay_environment_initial_policy_kind ==
+        "deterministic_allocator_or_baseline") {
+      ++out.replay_contract_initial_policy_kind_bound_count;
+    }
+    if (fact.replay_environment_action_policy_identity ==
+        "policy_adapter_must_match_action") {
+      ++out.replay_contract_action_policy_identity_bound_count;
+    }
+    if (fact.replay_environment_experiment_task_identity ==
+        "bundle_policy_task_indices") {
+      ++out.replay_contract_task_identity_bound_count;
+    }
+    if (fact.replay_environment_experiment_run_identity ==
+        "single_runtime_environment_run") {
+      ++out.replay_contract_experiment_run_identity_bound_count;
+    }
+    if (fact.replay_environment_step_artifact_identity ==
+        "episode_run_policy_cursor") {
+      ++out.replay_contract_step_artifact_identity_bound_count;
+    }
+    if (fact.replay_environment_experiment_report_count_policy ==
+        "counts_match_evidence") {
+      ++out.replay_contract_report_count_policy_bound_count;
+    }
+    if (fact.replay_environment_default_max_parallel_jobs > 0 &&
+        fact.experiment_requested_max_parallel_jobs >= 0 &&
+        fact.experiment_resolved_parallelism > 0) {
+      ++out.replay_contract_parallelism_bound_count;
+    }
+    if (fact.replay_environment_artifact_schema ==
+        "cajtucu_ready_replay_artifacts") {
+      ++out.replay_contract_artifact_schema_bound_count;
+    }
+    if (fact.replay_environment_lattice_fact_family == "replay_environment" &&
+        fact.replay_environment_lattice_target ==
+            "replay_environment_artifact_ready") {
+      ++out.replay_contract_lattice_binding_bound_count;
+    }
+    if (fact.replay_environment_require_resolved_cursor &&
+        fact.replay_environment_require_no_future_leakage &&
+        fact.replay_environment_require_projection_validation) {
+      ++out.replay_contract_guard_bound_count;
+    }
+    if (fact.attempted_count > 0 &&
+        fact.completed_count == fact.attempted_count) {
+      ++out.completed_all_attempted_count;
+    } else {
+      ++out.incomplete_replay_attempt_count;
+    }
+    if (std::isfinite(fact.mean_projection_mae) &&
+        std::isfinite(fact.mean_projection_signed_bias) &&
+        std::isfinite(fact.mean_projection_directional_accuracy) &&
+        std::isfinite(fact.mean_projection_interval_coverage)) {
+      ++out.projection_validation_metric_bound_count;
+    } else {
+      ++out.missing_projection_validation_metric_count;
+    }
+    const bool time_law_step_evidence_bound =
+        fact.time_law_expected_step_count > 0 &&
+        fact.time_law_observation_step_count ==
+            fact.time_law_expected_step_count &&
+        fact.time_law_action_step_count == fact.time_law_expected_step_count &&
+        fact.time_law_execution_step_count ==
+            fact.time_law_expected_step_count &&
+        fact.time_law_realization_after_action_count ==
+            fact.time_law_expected_step_count;
+    if (time_law_step_evidence_bound) {
+      ++out.time_law_step_evidence_bound_count;
+    } else {
+      ++out.missing_time_law_step_evidence_count;
+    }
+    if (fact.projection_validation_step_count > 0 &&
+        (!fact.replay_environment_require_projection_validation ||
+         (fact.time_law_expected_step_count > 0 &&
+          fact.projection_validation_step_count ==
+              fact.time_law_expected_step_count))) {
+      ++out.projection_validation_step_evidence_bound_count;
+    } else if (fact.replay_environment_require_projection_validation) {
+      ++out.missing_projection_validation_step_evidence_count;
+    }
+    out.episode_requested_range_bound_count_total +=
+        fact.episode_requested_range_bound_count;
+    out.episode_cursor_bound_count_total += fact.episode_cursor_bound_count;
+    out.episode_anchor_interval_bound_count_total +=
+        fact.episode_anchor_interval_bound_count;
+    out.episode_anchor_keys_bound_count_total +=
+        fact.episode_anchor_keys_bound_count;
+    out.time_law_expected_step_count_total += fact.time_law_expected_step_count;
+    out.time_law_observation_step_count_total +=
+        fact.time_law_observation_step_count;
+    out.time_law_action_step_count_total += fact.time_law_action_step_count;
+    out.time_law_execution_step_count_total +=
+        fact.time_law_execution_step_count;
+    out.time_law_realization_after_action_count_total +=
+        fact.time_law_realization_after_action_count;
+    out.time_law_future_observation_violation_count_total +=
+        fact.time_law_future_observation_violation_count;
+    out.mixed_future_realization_key_count_total +=
+        fact.mixed_future_realization_key_count;
+    out.projection_validation_step_count_total +=
+        fact.projection_validation_step_count;
+    out.time_law_violation_count +=
+        fact.time_law_future_observation_violation_count +
+        fact.mixed_future_realization_key_count;
+    out.missing_episode_cursor_evidence_count += std::max<std::int64_t>(
+        0, fact.episode_count - fact.episode_cursor_bound_count);
+    out.missing_episode_requested_range_count += std::max<std::int64_t>(
+        0, fact.episode_count - fact.episode_requested_range_bound_count);
+    out.missing_episode_anchor_interval_count += std::max<std::int64_t>(
+        0, fact.episode_count - fact.episode_anchor_interval_bound_count);
+    out.missing_episode_anchor_keys_count += std::max<std::int64_t>(
+        0, fact.episode_count - fact.episode_anchor_keys_bound_count);
+    if (fact.artifact_evidence) {
+      ++out.artifact_evidence_count;
+    }
+    out.batch_entry_count_total += fact.batch_entry_count;
+    out.experiment_entry_count_total += fact.experiment_entry_count;
+    out.replay_bundle_count_total += fact.replay_bundle_count;
+    out.policy_count_total += fact.policy_count;
+    out.attempted_count_total += fact.attempted_count;
+    out.completed_count_total += fact.completed_count;
+    update_source_analytics_metric_summary(out.mean_total_reward,
+                                           fact.mean_total_reward);
+    update_source_analytics_metric_summary(out.mean_total_log_growth,
+                                           fact.mean_total_log_growth);
+    update_source_analytics_metric_summary(out.mean_final_equity_base,
+                                           fact.mean_final_equity_base);
+    update_source_analytics_metric_summary(out.mean_projection_mae,
+                                           fact.mean_projection_mae);
+    update_source_analytics_metric_summary(out.mean_projection_signed_bias,
+                                           fact.mean_projection_signed_bias);
+    update_source_analytics_metric_summary(
+        out.mean_projection_directional_accuracy,
+        fact.mean_projection_directional_accuracy);
+    update_source_analytics_metric_summary(
+        out.mean_projection_interval_coverage,
+        fact.mean_projection_interval_coverage);
+    out.artifact_evidence = out.artifact_evidence && fact.artifact_evidence;
+    out.visibility_only = out.visibility_only && fact.visibility_only;
+    out.replay_executor = out.replay_executor || fact.replay_executor;
+    out.allocation_authority =
+        out.allocation_authority || fact.allocation_authority;
+    out.execution_authority =
+        out.execution_authority || fact.execution_authority;
+    out.readiness_authority =
+        out.readiness_authority || fact.readiness_authority;
+    out.quality_authority = out.quality_authority || fact.quality_authority;
+    out.performance_authority =
+        out.performance_authority || fact.performance_authority;
+    out.market_readiness_authority =
+        out.market_readiness_authority || fact.market_readiness_authority;
+    out.deployment_authority =
+        out.deployment_authority || fact.deployment_authority;
+    out.checkpoint_selector =
+        out.checkpoint_selector || fact.checkpoint_selector;
+    out.coverage_authority = out.coverage_authority || fact.coverage_authority;
+    out.leakage_authority = out.leakage_authority || fact.leakage_authority;
+    out.contract_identity_authority =
+        out.contract_identity_authority || fact.contract_identity_authority;
+    const auto issues = replay_environment_fact_issues(fact);
+    out.warning_count += static_cast<std::int64_t>(issues.size());
+    for (const auto &issue : issues) {
+      out.issues.push_back(fact.job_id + ":" + issue);
+    }
+  }
+  out.parent_exposure_fact_count =
+      static_cast<std::int64_t>(parent_digests.size());
+  if (!out.artifact_evidence || !out.visibility_only || out.replay_executor ||
+      out.allocation_authority || out.execution_authority ||
+      out.readiness_authority || out.quality_authority ||
+      out.performance_authority || out.market_readiness_authority ||
+      out.deployment_authority || out.checkpoint_selector ||
+      out.coverage_authority || out.leakage_authority ||
+      out.contract_identity_authority) {
+    out.issues.push_back(
+        "replay environment facts must remain read-only artifact evidence; "
+        "they cannot execute replay, allocate, trade, select checkpoints, "
+        "prove quality/performance/market readiness, or become coverage, "
+        "leakage, readiness, deployment, or contract-identity authority");
+    ++out.warning_count;
+  }
+  return out;
+}
+
+[[nodiscard]] inline allocation_engine_summary_t summarize_allocation_engines(
+    const std::vector<lattice_exposure_fact_t> &exposure_facts,
+    const std::vector<lattice_allocation_engine_fact_t> &allocation_facts,
+    const std::vector<lattice_observer_belief_fact_t> &observer_belief_facts =
+        empty_observer_belief_facts(),
+    const std::vector<lattice_forecast_eval_fact_t> &forecast_eval_facts =
+        empty_forecast_eval_facts()) {
+  allocation_engine_summary_t out{};
+  out.exposure_fact_count = static_cast<std::int64_t>(exposure_facts.size());
+  out.allocation_engine_fact_count =
+      static_cast<std::int64_t>(allocation_facts.size());
+
+  std::set<std::string> parent_digests;
+  for (const auto &fact : allocation_facts) {
+    if (!fact.parent_exposure_fact_digest.empty()) {
+      parent_digests.insert(fact.parent_exposure_fact_digest);
+    }
+    if (!fact.reserve_node_id.empty()) {
+      ++out.reserve_node_bound_count;
+    } else {
+      ++out.missing_reserve_node_count;
+    }
+    if (fact.reserve_node_source.empty()) {
+      ++out.missing_reserve_node_source_count;
+    } else if (fact.reserve_node_source == "base_policy") {
+      ++out.reserve_node_source_base_policy_count;
+    } else {
+      ++out.reserve_node_source_mismatch_count;
+    }
+    if (fact.base_policy_reserve_node_id.empty()) {
+      ++out.missing_base_policy_reserve_node_count;
+    } else {
+      ++out.base_policy_reserve_node_bound_count;
+    }
+    if (!fact.reserve_node_id.empty() &&
+        !fact.base_policy_reserve_node_id.empty()) {
+      if (fact.reserve_node_id == fact.base_policy_reserve_node_id) {
+        ++out.reserve_node_base_policy_match_count;
+      } else {
+        ++out.reserve_node_base_policy_mismatch_count;
+      }
+    }
+    if (fact.reserve_node_graph_bound) {
+      ++out.reserve_node_graph_bound_count;
+    } else {
+      ++out.reserve_node_not_graph_bound_count;
+    }
+    const lattice_observer_belief_fact_t *observer_belief_fact = nullptr;
+    if (fact.observer_belief_fact_digest.empty()) {
+      ++out.missing_observer_belief_count;
+    } else {
+      ++out.observer_belief_declared_count;
+      const auto resolution = resolve_related_fact_digest_for_identity(
+          fact, fact.observer_belief_fact_digest, observer_belief_facts,
+          observer_belief_fact_digest, &observer_belief_fact);
+      if (resolution == related_fact_digest_resolution_t::resolved) {
+        ++out.observer_belief_bound_count;
+      } else if (resolution ==
+                 related_fact_digest_resolution_t::identity_mismatch) {
+        ++out.observer_belief_identity_mismatch_count;
+        append_summary_issue(out.issues, out.warning_count, fact.job_id,
+                             "observer_belief_fact_digest_identity_mismatch");
+      } else {
+        ++out.unresolved_observer_belief_count;
+        append_summary_issue(out.issues, out.warning_count, fact.job_id,
+                             "observer_belief_fact_digest_not_found");
+      }
+    }
+    if (fact.forecast_artifact_digest.empty()) {
+      ++out.missing_forecast_artifact_count;
+    } else {
+      ++out.forecast_artifact_declared_count;
+      const auto resolution = resolve_forecast_artifact_digest_for_identity(
+          fact, fact.forecast_artifact_digest, forecast_eval_facts);
+      if (resolution == related_fact_digest_resolution_t::resolved) {
+        ++out.forecast_artifact_bound_count;
+      } else if (resolution ==
+                 related_fact_digest_resolution_t::identity_mismatch) {
+        ++out.forecast_artifact_identity_mismatch_count;
+        append_summary_issue(out.issues, out.warning_count, fact.job_id,
+                             "forecast_artifact_digest_identity_mismatch");
+      } else {
+        ++out.unresolved_forecast_artifact_count;
+        append_summary_issue(out.issues, out.warning_count, fact.job_id,
+                             "forecast_artifact_digest_not_found");
+      }
+      if (observer_belief_fact != nullptr &&
+          observer_belief_fact->forecast_artifact_digest !=
+              fact.forecast_artifact_digest) {
+        ++out.observer_forecast_artifact_mismatch_count;
+        append_summary_issue(out.issues, out.warning_count, fact.job_id,
+                             "observer_forecast_artifact_digest_mismatch");
+      }
+    }
+    if (!fact.base_policy_digest.empty()) {
+      ++out.base_policy_bound_count;
+    } else {
+      ++out.missing_base_policy_count;
+    }
+    if (!fact.objective_terms.empty()) {
+      ++out.objective_terms_bound_count;
+    }
+    if (std::isfinite(fact.cvar_loss)) {
+      ++out.cvar_bound_count;
+    }
+    if (std::isfinite(fact.transaction_cost_estimate)) {
+      ++out.transaction_cost_bound_count;
+    }
+    if (!fact.constraint_diagnostics.empty()) {
+      ++out.constraint_diagnostics_bound_count;
+    }
+    if (lattice_visibility_text_available(fact.cap_diagnostics)) {
+      ++out.cap_diagnostics_bound_count;
+    } else {
+      ++out.missing_cap_diagnostics_count;
+      append_allocation_engine_diagnostic_issue(
+          out, fact.job_id,
+          "allocation_engine_missing_cap_diagnostics_visibility_only");
+    }
+    if (lattice_visibility_text_available(fact.scenario_growth_floor_status)) {
+      ++out.scenario_growth_floor_status_bound_count;
+      if (allocation_scenario_growth_floor_status_met(
+              fact.scenario_growth_floor_status)) {
+        ++out.scenario_growth_floor_met_count;
+      } else if (allocation_scenario_growth_floor_status_attention(
+                     fact.scenario_growth_floor_status)) {
+        ++out.scenario_growth_floor_attention_count;
+        append_allocation_engine_diagnostic_issue(
+            out, fact.job_id,
+            "allocation_engine_scenario_growth_floor_attention_visibility_"
+            "only");
+      }
+    } else {
+      ++out.missing_scenario_growth_floor_status_count;
+      append_allocation_engine_diagnostic_issue(
+          out, fact.job_id,
+          "allocation_engine_missing_scenario_growth_floor_status_visibility_"
+          "only");
+    }
+    if (!fact.fallback_reasons.empty()) {
+      ++out.fallback_reason_contract_count;
+      if (lattice_reason_text_is_active(fact.fallback_reasons)) {
+        ++out.fallback_reason_active_count;
+        append_allocation_engine_diagnostic_issue(
+            out, fact.job_id,
+            "allocation_engine_active_fallback_reason_visibility_only");
+      } else {
+        ++out.fallback_reason_none_count;
+      }
+    }
+    if (!fact.derisk_reasons.empty()) {
+      ++out.derisk_reason_contract_count;
+      if (lattice_reason_text_is_active(fact.derisk_reasons)) {
+        ++out.derisk_reason_active_count;
+        append_allocation_engine_diagnostic_issue(
+            out, fact.job_id,
+            "allocation_engine_active_derisk_reason_visibility_only");
+      } else {
+        ++out.derisk_reason_none_count;
+      }
+    }
+    if (fact.deterministic_artifact) {
+      ++out.deterministic_artifact_count;
+    }
+    update_source_analytics_metric_summary(out.reserve_weight,
+                                           fact.reserve_weight);
+    update_source_analytics_metric_summary(out.turnover, fact.turnover);
+    update_source_analytics_metric_summary(out.cvar_loss, fact.cvar_loss);
+    update_source_analytics_metric_summary(out.transaction_cost_estimate,
+                                           fact.transaction_cost_estimate);
+    out.deterministic_artifact =
+        out.deterministic_artifact && fact.deterministic_artifact;
+    out.visibility_only = out.visibility_only && fact.visibility_only;
+    out.allocation_authority =
+        out.allocation_authority || fact.allocation_authority;
+    out.execution_authority =
+        out.execution_authority || fact.execution_authority;
+    out.readiness_authority =
+        out.readiness_authority || fact.readiness_authority;
+    out.quality_authority = out.quality_authority || fact.quality_authority;
+    out.performance_authority =
+        out.performance_authority || fact.performance_authority;
+    out.market_readiness_authority =
+        out.market_readiness_authority || fact.market_readiness_authority;
+    out.deployment_authority =
+        out.deployment_authority || fact.deployment_authority;
+    out.checkpoint_selector =
+        out.checkpoint_selector || fact.checkpoint_selector;
+    out.coverage_authority = out.coverage_authority || fact.coverage_authority;
+    out.leakage_authority = out.leakage_authority || fact.leakage_authority;
+    out.contract_identity_authority =
+        out.contract_identity_authority || fact.contract_identity_authority;
+    const auto issues = allocation_engine_fact_issues(fact);
+    out.warning_count += static_cast<std::int64_t>(issues.size());
+    for (const auto &issue : issues) {
+      out.issues.push_back(fact.job_id + ":" + issue);
+    }
+  }
+  out.parent_exposure_fact_count =
+      static_cast<std::int64_t>(parent_digests.size());
+
+  if (!out.deterministic_artifact || !out.visibility_only ||
+      out.allocation_authority || out.execution_authority ||
+      out.readiness_authority || out.quality_authority ||
+      out.performance_authority || out.market_readiness_authority ||
+      out.deployment_authority || out.checkpoint_selector ||
+      out.coverage_authority || out.leakage_authority ||
+      out.contract_identity_authority) {
+    out.issues.push_back(
+        "allocation engine facts must remain deterministic audit evidence; "
+        "Lattice cannot allocate, route execution, select checkpoints, or "
+        "claim quality, performance, market readiness, deployment, readiness, "
+        "coverage, leakage, or contract identity");
+    ++out.warning_count;
+  }
+  return out;
+}
+
 [[nodiscard]] inline std::filesystem::path
 exposure_fact_path_for_job_dir(const std::filesystem::path &job_dir) {
   return job_dir / "lattice.exposure.fact";
@@ -2762,6 +8516,114 @@ parse_exposure_use_list(std::string value) {
   return out;
 }
 
+[[nodiscard]] inline const char *
+lattice_fact_family_name(lattice_fact_family_t family) {
+  switch (family) {
+  case lattice_fact_family_t::exposure:
+    return "exposure";
+  case lattice_fact_family_t::node_exposure:
+    return "node_exposure";
+  case lattice_fact_family_t::checkpoint:
+    return "checkpoint";
+  case lattice_fact_family_t::source_receipt:
+    return "source_receipt";
+  case lattice_fact_family_t::source_analytics:
+    return "source_analytics";
+  case lattice_fact_family_t::target_transform:
+    return "target_transform";
+  case lattice_fact_family_t::forecast_baseline:
+    return "forecast_baseline";
+  case lattice_fact_family_t::forecast_eval:
+    return "forecast_eval";
+  case lattice_fact_family_t::observer_belief:
+    return "observer_belief";
+  case lattice_fact_family_t::allocation_engine:
+    return "allocation_engine";
+  case lattice_fact_family_t::replay_environment:
+    return "replay_environment";
+  case lattice_fact_family_t::selection_signal:
+    return "selection_signal";
+  case lattice_fact_family_t::representation_support:
+    return "representation_support";
+  }
+  throw std::runtime_error("[lattice_exposure] unknown fact family");
+}
+
+[[nodiscard]] inline std::optional<lattice_fact_family_t>
+parse_lattice_fact_family(std::string value) {
+  namespace kv = cuwacunu::piaabo::parse::simple_kv;
+  value = kv::lowercase(kv::trim(std::move(value)));
+  if (value.empty() || value == "all") {
+    return std::nullopt;
+  }
+  for (const auto &descriptor : lattice_fact_family_registry()) {
+    if (value == descriptor.family_name || value == descriptor.relation ||
+        value == descriptor.fact_schema) {
+      return descriptor.family;
+    }
+  }
+  throw std::runtime_error("[lattice_exposure] unknown fact family: " + value);
+}
+
+[[nodiscard]] inline std::vector<lattice_fact_family_descriptor_t>
+lattice_fact_family_registry() {
+  return {
+      {lattice_fact_family_t::exposure, "exposure",
+       "kikijyeba.lattice.exposure.v1", "exposure",
+       "kikijyeba.lattice.exposure_summary.v1", "proof_evidence", false, false,
+       false, false, true, true, true, true},
+      {lattice_fact_family_t::node_exposure, "node_exposure",
+       "kikijyeba.lattice.node_exposure.v1", "node_exposure",
+       "kikijyeba.lattice.node_support_summary.v1", "visibility_only", true,
+       false, false, false, false, false, false, false},
+      {lattice_fact_family_t::checkpoint, "checkpoint",
+       "kikijyeba.lattice.checkpoint.v1", "checkpoint",
+       "kikijyeba.lattice.checkpoint_summary.v1", "checkpoint_identity", false,
+       false, false, false, true, false, false, true},
+      {lattice_fact_family_t::source_receipt, "source_receipt",
+       "kikijyeba.lattice.source_receipt.v1", "source_receipt",
+       "kikijyeba.lattice.source_receipt_summary.v1", "audit_only", true, false,
+       false, false, false, false, false, false},
+      {lattice_fact_family_t::source_analytics, "source_analytics",
+       "kikijyeba.lattice.source_analytics.v1", "source_analytics",
+       "kikijyeba.lattice.source_analytics_summary.v1", "visibility_only", true,
+       false, false, false, false, false, false, false},
+      {lattice_fact_family_t::target_transform, "target_transform",
+       "kikijyeba.lattice.target_transform.v1", "target_transform",
+       "kikijyeba.lattice.target_transform_summary.v1", "artifact_contract",
+       true, false, false, false, false, false, false, false},
+      {lattice_fact_family_t::forecast_baseline, "forecast_baseline",
+       "kikijyeba.lattice.forecast_baseline.v1", "forecast_baseline",
+       "kikijyeba.lattice.forecast_baseline_summary.v1",
+       "evidence_prerequisite", true, false, false, false, false, false, false,
+       false},
+      {lattice_fact_family_t::forecast_eval, "forecast_eval",
+       "kikijyeba.lattice.forecast_eval.v1", "forecast_eval",
+       "kikijyeba.lattice.forecast_eval_summary.v1", "artifact_evidence", true,
+       false, false, false, false, false, false, false},
+      {lattice_fact_family_t::observer_belief, "observer_belief",
+       "kikijyeba.lattice.observer_belief.v1", "observer_belief",
+       "kikijyeba.lattice.observer_belief_summary.v1", "visibility_only", true,
+       false, false, false, false, false, false, false},
+      {lattice_fact_family_t::allocation_engine, "allocation_engine",
+       "kikijyeba.lattice.allocation_engine.v1", "allocation_engine",
+       "kikijyeba.lattice.allocation_engine_summary.v1", "audit_only", true,
+       false, false, false, false, false, false, false},
+      {lattice_fact_family_t::replay_environment, "replay_environment",
+       "kikijyeba.lattice.replay_environment.v1", "replay_environment",
+       "kikijyeba.lattice.replay_environment_summary.v1", "audit_only", true,
+       false, false, false, false, false, false, false},
+      {lattice_fact_family_t::selection_signal, "selection_signal",
+       "kikijyeba.lattice.selection_signal.v1", "selection_signal",
+       "kikijyeba.lattice.selection_signal_summary.v1", "leakage_visibility",
+       true, false, false, false, false, false, false, false},
+      {lattice_fact_family_t::representation_support, "representation_support",
+       "kikijyeba.lattice.representation_support.v1", "representation_support",
+       "kikijyeba.lattice.representation_support_summary.v1", "visibility_only",
+       true, false, false, false, false, false, false, false},
+  };
+}
+
 [[nodiscard]] inline bool intervals_overlap(anchor_interval_t a,
                                             anchor_interval_t b) {
   return !a.empty() && !b.empty() && a.begin < b.end && b.begin < a.end;
@@ -2841,6 +8703,62 @@ source_footprint_for_use(const lattice_exposure_fact_t &fact,
   throw std::runtime_error("[lattice_exposure] unknown exposure use");
 }
 
+[[nodiscard]] inline std::string
+normalized_checkpoint_path_text(const std::filesystem::path &path) {
+  if (path.empty()) {
+    return {};
+  }
+  return path.lexically_normal().string();
+}
+
+[[nodiscard]] inline std::vector<std::filesystem::path>
+selection_signal_candidate_checkpoints(const lattice_exposure_fact_t &parent) {
+  std::set<std::string> normalized;
+  const auto add_checkpoint = [&normalized](const std::filesystem::path &path) {
+    const auto text = normalized_checkpoint_path_text(path);
+    if (!text.empty()) {
+      normalized.insert(text);
+    }
+  };
+  add_checkpoint(parent.output_checkpoint);
+  for (const auto &checkpoint : parent.input_checkpoints) {
+    add_checkpoint(checkpoint);
+  }
+
+  std::vector<std::filesystem::path> out;
+  out.reserve(normalized.size());
+  for (const auto &path : normalized) {
+    out.emplace_back(path);
+  }
+  return out;
+}
+
+[[nodiscard]] inline std::string selection_signal_candidate_checkpoint_digest(
+    const std::vector<std::filesystem::path> &candidate_checkpoints) {
+  std::vector<std::string> normalized;
+  normalized.reserve(candidate_checkpoints.size());
+  for (const auto &checkpoint : candidate_checkpoints) {
+    const auto text = normalized_checkpoint_path_text(checkpoint);
+    if (!text.empty()) {
+      normalized.push_back(text);
+    }
+  }
+  std::sort(normalized.begin(), normalized.end());
+  normalized.erase(std::unique(normalized.begin(), normalized.end()),
+                   normalized.end());
+  if (normalized.empty()) {
+    return {};
+  }
+
+  std::ostringstream out;
+  out << "schema=kikijyeba.lattice.selection_signal.candidates.v1\n";
+  out << "candidate_checkpoint_count=" << normalized.size() << "\n";
+  for (const auto &checkpoint : normalized) {
+    out << "candidate_checkpoint=" << checkpoint << "\n";
+  }
+  return exposure_digest_for_text(out.str());
+}
+
 [[nodiscard]] inline lattice_selection_signal_fact_t
 make_selection_signal_fact_from_exposure_fact(
     const lattice_exposure_fact_t &parent) {
@@ -2858,8 +8776,17 @@ make_selection_signal_fact_from_exposure_fact(
   out.split_name = parent.split_name;
   out.split_role = parent.split_role;
   out.selector_id = parent.job_id.empty() ? parent.wave_id : parent.job_id;
+  out.selector_rule = parent.use.selection_signal
+                          ? "runtime_reported_selection_signal"
+                          : "derived_evaluation_checkpoint_audit";
+  out.selector_split = parent.split_name;
   out.output_checkpoint = parent.output_checkpoint;
   out.input_checkpoints = parent.input_checkpoints;
+  out.candidate_checkpoints = selection_signal_candidate_checkpoints(parent);
+  out.candidate_checkpoint_count =
+      static_cast<std::int64_t>(out.candidate_checkpoints.size());
+  out.candidate_checkpoint_digest =
+      selection_signal_candidate_checkpoint_digest(out.candidate_checkpoints);
   out.mutated_component = parent.use.mutated_component;
   out.anchor_range = parent.anchor_range;
   out.completed_anchor_range = parent.completed_anchor_range;
@@ -2873,12 +8800,27 @@ make_selection_signal_fact_from_exposure_fact(
   out.target_source_key_begin = parent.target_source_key_begin;
   out.target_source_key_end = parent.target_source_key_end;
   if (!parent.output_checkpoint.empty()) {
+    out.selector_metric = "runtime_output_checkpoint_identity";
+    out.tie_policy = out.candidate_checkpoint_count > 1
+                         ? "runtime_output_checkpoint_over_candidate_set_no_"
+                           "ranking"
+                         : "not_applicable_single_output_checkpoint";
     out.selected_checkpoint = parent.output_checkpoint.lexically_normal();
     out.selected_checkpoint_source = "output_checkpoint";
   } else if (!parent.input_checkpoints.empty()) {
-    out.selected_checkpoint =
-        parent.input_checkpoints.front().lexically_normal();
+    out.selector_metric = "runtime_loaded_checkpoint_identity";
+    out.tie_policy = "deterministic_input_checkpoint_path_order_no_ranking";
+    std::vector<std::filesystem::path> input_checkpoints;
+    input_checkpoints.reserve(parent.input_checkpoints.size());
+    for (const auto &checkpoint : parent.input_checkpoints) {
+      input_checkpoints.push_back(checkpoint.lexically_normal());
+    }
+    std::sort(input_checkpoints.begin(), input_checkpoints.end());
+    out.selected_checkpoint = input_checkpoints.front();
     out.selected_checkpoint_source = "loaded_checkpoint";
+  } else {
+    out.selector_metric = "runtime_selection_signal_missing_checkpoint";
+    out.tie_policy = "not_applicable_no_candidate_checkpoint";
   }
   return out;
 }
@@ -2886,7 +8828,9 @@ make_selection_signal_fact_from_exposure_fact(
 [[nodiscard]] inline std::vector<lattice_selection_signal_fact_t>
 make_selection_signal_facts_from_exposure_fact(
     const lattice_exposure_fact_t &parent) {
-  if (!parent.use.selection_signal) {
+  const bool checkpoint_selection_audit =
+      parent.use.evaluation_metric && !parent.input_checkpoints.empty();
+  if (!parent.use.selection_signal && !checkpoint_selection_audit) {
     return {};
   }
   return {make_selection_signal_fact_from_exposure_fact(parent)};
@@ -2915,6 +8859,9 @@ make_selection_signal_facts_from_exposure_fact(
   out << "selector_id=" << fact.selector_id << "\n";
   out << "selector_kind=" << fact.selector_kind << "\n";
   out << "selector_rule=" << fact.selector_rule << "\n";
+  out << "selector_split=" << fact.selector_split << "\n";
+  out << "selector_metric=" << fact.selector_metric << "\n";
+  out << "tie_policy=" << fact.tie_policy << "\n";
   out << "selected_checkpoint_source=" << fact.selected_checkpoint_source
       << "\n";
   out << "selected_checkpoint="
@@ -2933,6 +8880,32 @@ make_selection_signal_facts_from_exposure_fact(
       out << ",";
     }
     out << input_checkpoint_paths[i];
+  }
+  out << "\n";
+  std::vector<std::string> candidate_checkpoint_paths;
+  candidate_checkpoint_paths.reserve(fact.candidate_checkpoints.size());
+  for (const auto &checkpoint : fact.candidate_checkpoints) {
+    const auto path = normalized_checkpoint_path_text(checkpoint);
+    if (!path.empty()) {
+      candidate_checkpoint_paths.push_back(path);
+    }
+  }
+  std::sort(candidate_checkpoint_paths.begin(),
+            candidate_checkpoint_paths.end());
+  candidate_checkpoint_paths.erase(
+      std::unique(candidate_checkpoint_paths.begin(),
+                  candidate_checkpoint_paths.end()),
+      candidate_checkpoint_paths.end());
+  out << "candidate_checkpoint_count=" << fact.candidate_checkpoint_count
+      << "\n";
+  out << "candidate_checkpoint_digest=" << fact.candidate_checkpoint_digest
+      << "\n";
+  out << "candidate_checkpoints=";
+  for (std::size_t i = 0; i < candidate_checkpoint_paths.size(); ++i) {
+    if (i != 0) {
+      out << ",";
+    }
+    out << candidate_checkpoint_paths[i];
   }
   out << "\n";
   out << "mutated_component=" << (fact.mutated_component ? "true" : "false")
@@ -2955,9 +8928,45 @@ make_selection_signal_facts_from_exposure_fact(
   return out.str();
 }
 
+[[nodiscard]] inline std::string canonical_selection_signal_provenance_text(
+    const lattice_selection_signal_fact_t &fact) {
+  std::ostringstream out;
+  out << canonical_selection_signal_fact_text(fact);
+  out << "selection_signal_event_digest=" << selection_signal_event_digest(fact)
+      << "\n";
+  std::vector<std::string> parent_evaluation_fact_digests =
+      fact.parent_evaluation_fact_digests;
+  std::sort(parent_evaluation_fact_digests.begin(),
+            parent_evaluation_fact_digests.end());
+  parent_evaluation_fact_digests.erase(
+      std::unique(parent_evaluation_fact_digests.begin(),
+                  parent_evaluation_fact_digests.end()),
+      parent_evaluation_fact_digests.end());
+  out << "parent_evaluation_fact_digests=";
+  for (std::size_t i = 0; i < parent_evaluation_fact_digests.size(); ++i) {
+    if (i != 0) {
+      out << ",";
+    }
+    out << parent_evaluation_fact_digests[i];
+  }
+  out << "\n";
+  return out.str();
+}
+
 [[nodiscard]] inline std::string
 selection_signal_fact_digest(const lattice_selection_signal_fact_t &fact) {
+  return selection_signal_event_digest(fact);
+}
+
+[[nodiscard]] inline std::string
+selection_signal_event_digest(const lattice_selection_signal_fact_t &fact) {
   return exposure_digest_for_text(canonical_selection_signal_fact_text(fact));
+}
+
+[[nodiscard]] inline std::string selection_signal_provenance_digest(
+    const lattice_selection_signal_fact_t &fact) {
+  return exposure_digest_for_text(
+      canonical_selection_signal_provenance_text(fact));
 }
 
 [[nodiscard]] inline std::vector<std::string>
@@ -2975,8 +8984,49 @@ selection_signal_fact_issues(const lattice_selection_signal_fact_t &fact) {
   if (fact.selector_rule.empty()) {
     issues.emplace_back("missing_selector_rule");
   }
+  if (fact.selector_split.empty() || fact.selector_split == "unknown") {
+    issues.emplace_back("missing_selector_split");
+  }
+  if (fact.selector_metric.empty()) {
+    issues.emplace_back("missing_selector_metric");
+  }
+  if (fact.tie_policy.empty()) {
+    issues.emplace_back("missing_tie_policy");
+  }
   if (fact.selected_checkpoint.empty()) {
     issues.emplace_back("missing_selected_checkpoint");
+  }
+  std::set<std::string> normalized_candidates;
+  for (const auto &checkpoint : fact.candidate_checkpoints) {
+    const auto text = normalized_checkpoint_path_text(checkpoint);
+    if (!text.empty()) {
+      normalized_candidates.insert(text);
+    }
+  }
+  const auto normalized_candidate_digest =
+      selection_signal_candidate_checkpoint_digest(fact.candidate_checkpoints);
+  const auto normalized_candidate_count =
+      static_cast<std::int64_t>(normalized_candidates.size());
+  if (fact.candidate_checkpoint_count <= 0 || normalized_candidate_count == 0) {
+    issues.emplace_back("missing_candidate_checkpoints");
+  }
+  if (fact.candidate_checkpoint_count != normalized_candidate_count) {
+    issues.emplace_back("candidate_checkpoint_count_mismatch");
+  }
+  if (fact.candidate_checkpoint_digest.empty()) {
+    issues.emplace_back("missing_candidate_checkpoint_digest");
+  } else if (fact.candidate_checkpoint_digest != normalized_candidate_digest) {
+    issues.emplace_back("candidate_checkpoint_digest_mismatch");
+  }
+  if (!fact.selected_checkpoint.empty() &&
+      !fact.candidate_checkpoints.empty()) {
+    const auto selected_checkpoint =
+        normalized_checkpoint_path_text(fact.selected_checkpoint);
+    if (!selected_checkpoint.empty() &&
+        normalized_candidates.find(selected_checkpoint) ==
+            normalized_candidates.end()) {
+      issues.emplace_back("selected_checkpoint_not_in_candidate_checkpoints");
+    }
   }
   if (fact.selection_footprint.empty()) {
     issues.emplace_back("empty_selection_footprint");
@@ -2998,7 +9048,9 @@ selection_signal_fact_issues(const lattice_selection_signal_fact_t &fact) {
 
 [[nodiscard]] inline selection_signal_summary_t summarize_selection_signals(
     const std::vector<lattice_exposure_fact_t> &exposure_facts,
-    const std::vector<lattice_selection_signal_fact_t> &selection_facts) {
+    const std::vector<lattice_selection_signal_fact_t> &selection_facts,
+    const std::vector<lattice_forecast_eval_fact_t> &forecast_eval_facts =
+        empty_forecast_eval_facts()) {
   selection_signal_summary_t out{};
   out.exposure_fact_count = static_cast<std::int64_t>(exposure_facts.size());
   out.selection_signal_fact_count =
@@ -3014,6 +9066,69 @@ selection_signal_fact_issues(const lattice_selection_signal_fact_t &fact) {
           fact.selected_checkpoint.lexically_normal().string());
     } else {
       ++out.missing_selected_checkpoint_count;
+    }
+    if (!fact.selector_split.empty() && fact.selector_split != "unknown") {
+      ++out.selector_split_bound_count;
+    }
+    if (!fact.selector_metric.empty()) {
+      ++out.selector_metric_bound_count;
+    }
+    if (!fact.tie_policy.empty()) {
+      ++out.tie_policy_bound_count;
+    }
+    const auto expected_candidate_digest =
+        selection_signal_candidate_checkpoint_digest(
+            fact.candidate_checkpoints);
+    if (fact.candidate_checkpoint_count > 0 &&
+        !expected_candidate_digest.empty()) {
+      ++out.candidate_checkpoint_bound_count;
+    } else {
+      ++out.missing_candidate_checkpoint_count;
+    }
+    if (!fact.candidate_checkpoint_digest.empty()) {
+      ++out.candidate_checkpoint_digest_bound_count;
+      if (fact.candidate_checkpoint_digest != expected_candidate_digest) {
+        ++out.candidate_checkpoint_digest_mismatch_count;
+      }
+    } else {
+      ++out.missing_candidate_checkpoint_digest_count;
+    }
+    const auto selection_event_digest = selection_signal_event_digest(fact);
+    for (const auto &digest : fact.parent_evaluation_fact_digests) {
+      if (digest.empty()) {
+        continue;
+      }
+      ++out.parent_evaluation_fact_declared_count;
+      const lattice_forecast_eval_fact_t *parent_evaluation_fact = nullptr;
+      const auto resolution = resolve_related_fact_digest_for_identity(
+          fact, digest, forecast_eval_facts, forecast_eval_fact_digest,
+          &parent_evaluation_fact);
+      if (resolution == related_fact_digest_resolution_t::resolved) {
+        const bool back_reference_bound =
+            parent_evaluation_fact != nullptr &&
+            std::find(
+                parent_evaluation_fact->selection_signal_fact_digests.begin(),
+                parent_evaluation_fact->selection_signal_fact_digests.end(),
+                selection_event_digest) !=
+                parent_evaluation_fact->selection_signal_fact_digests.end();
+        if (back_reference_bound) {
+          ++out.parent_evaluation_fact_bound_count;
+        } else {
+          ++out.parent_evaluation_back_reference_mismatch_count;
+          out.issues.push_back(fact.job_id +
+                               ":parent_evaluation_missing_selection_signal_"
+                               "back_reference");
+        }
+      } else if (resolution ==
+                 related_fact_digest_resolution_t::identity_mismatch) {
+        ++out.parent_evaluation_fact_identity_mismatch_count;
+        out.issues.push_back(
+            fact.job_id + ":parent_evaluation_fact_digest_identity_mismatch");
+      } else {
+        ++out.unresolved_parent_evaluation_fact_count;
+        out.issues.push_back(fact.job_id +
+                             ":parent_evaluation_fact_digest_not_found");
+      }
     }
     if (fact.mutated_component) {
       ++out.mutating_selector_count;
@@ -3035,6 +9150,34 @@ selection_signal_fact_issues(const lattice_selection_signal_fact_t &fact) {
         "leakage-relevant when forbidden");
   }
   return out;
+}
+
+inline void append_unique_sorted_digest(std::vector<std::string> &digests,
+                                        const std::string &digest) {
+  if (digest.empty() ||
+      std::find(digests.begin(), digests.end(), digest) != digests.end()) {
+    return;
+  }
+  digests.push_back(digest);
+  std::sort(digests.begin(), digests.end());
+}
+
+inline void bind_selection_signal_parent_evaluation(
+    lattice_selection_signal_fact_t &selection_fact,
+    const lattice_forecast_eval_fact_t &forecast_eval_fact) {
+  if (!fact_identity_compatible(selection_fact, forecast_eval_fact)) {
+    return;
+  }
+  const auto selection_event_digest =
+      selection_signal_event_digest(selection_fact);
+  if (std::find(forecast_eval_fact.selection_signal_fact_digests.begin(),
+                forecast_eval_fact.selection_signal_fact_digests.end(),
+                selection_event_digest) ==
+      forecast_eval_fact.selection_signal_fact_digests.end()) {
+    return;
+  }
+  append_unique_sorted_digest(selection_fact.parent_evaluation_fact_digests,
+                              forecast_eval_fact_digest(forecast_eval_fact));
 }
 
 [[nodiscard]] inline bool is_representation_component_name(
@@ -5236,6 +11379,490 @@ inline void write_checkpoint_fact_sidecar(const std::filesystem::path &path,
   write_text_file_atomically(path, text.str());
 }
 
+inline void write_source_analytics_fact_sidecar(
+    const std::filesystem::path &path,
+    const lattice_source_analytics_fact_t &fact) {
+  const auto canonical = canonical_source_analytics_fact_text(fact);
+  std::ostringstream text;
+  text << canonical << "fact_digest=" << exposure_digest_for_text(canonical)
+       << "\n";
+  write_text_file_atomically(path, text.str());
+}
+
+inline void write_target_transform_fact_sidecar(
+    const std::filesystem::path &path,
+    const lattice_target_transform_fact_t &fact) {
+  const auto canonical = canonical_target_transform_fact_text(fact);
+  std::ostringstream text;
+  text << canonical << "fact_digest=" << exposure_digest_for_text(canonical)
+       << "\n";
+  write_text_file_atomically(path, text.str());
+}
+
+inline void write_forecast_baseline_fact_sidecar(
+    const std::filesystem::path &path,
+    const lattice_forecast_baseline_fact_t &fact) {
+  const auto canonical = canonical_forecast_baseline_fact_text(fact);
+  std::ostringstream text;
+  text << canonical << "fact_digest=" << exposure_digest_for_text(canonical)
+       << "\n";
+  write_text_file_atomically(path, text.str());
+}
+
+inline void
+write_forecast_eval_fact_sidecar(const std::filesystem::path &path,
+                                 const lattice_forecast_eval_fact_t &fact) {
+  const auto canonical = canonical_forecast_eval_fact_text(fact);
+  std::ostringstream text;
+  text << canonical << "fact_digest=" << exposure_digest_for_text(canonical)
+       << "\n";
+  write_text_file_atomically(path, text.str());
+}
+
+inline void
+write_observer_belief_fact_sidecar(const std::filesystem::path &path,
+                                   const lattice_observer_belief_fact_t &fact) {
+  const auto canonical = canonical_observer_belief_fact_text(fact);
+  std::ostringstream text;
+  text << canonical << "fact_digest=" << exposure_digest_for_text(canonical)
+       << "\n";
+  write_text_file_atomically(path, text.str());
+}
+
+inline void write_allocation_engine_fact_sidecar(
+    const std::filesystem::path &path,
+    const lattice_allocation_engine_fact_t &fact) {
+  const auto canonical = canonical_allocation_engine_fact_text(fact);
+  std::ostringstream text;
+  text << canonical << "fact_digest=" << exposure_digest_for_text(canonical)
+       << "\n";
+  write_text_file_atomically(path, text.str());
+}
+
+template <typename FactT>
+inline void
+populate_artifact_fact_identity(FactT &fact,
+                                const lattice_exposure_fact_t &parent) {
+  fact.parent_exposure_fact_digest = exposure_fact_digest(parent);
+  fact.contract_fingerprint = parent.contract_fingerprint;
+  fact.protocol_id = parent.protocol_id;
+  fact.graph_order_fingerprint = parent.graph_order_fingerprint;
+  fact.source_cursor_token = parent.source_cursor_token;
+  fact.split_policy_fingerprint = parent.split_policy_fingerprint;
+  fact.component_assembly_fingerprint = parent.component_assembly_fingerprint;
+  fact.target_component_family_id = parent.target_component_family_id;
+  fact.job_id = parent.job_id;
+  fact.wave_id = parent.wave_id;
+  fact.job_status = parent.job_status;
+  fact.wave_action = parent.wave_action;
+  fact.split_name = parent.split_name;
+  fact.split_role = parent.split_role;
+  fact.anchor_range = parent.anchor_range;
+  fact.completed_anchor_range = parent.completed_anchor_range;
+}
+
+[[nodiscard]] inline std::string
+first_report_value(const std::unordered_map<std::string, std::string> &report,
+                   const std::vector<std::string> &keys) {
+  for (const auto &key : keys) {
+    const auto value = exposure_detail::map_get(report, key);
+    if (!value.empty()) {
+      return value;
+    }
+  }
+  return {};
+}
+
+[[nodiscard]] inline std::int64_t
+first_report_i64(const std::unordered_map<std::string, std::string> &report,
+                 const std::vector<std::string> &keys,
+                 std::int64_t fallback = 0) {
+  const auto value = first_report_value(report, keys);
+  return value.empty() ? fallback
+                       : exposure_detail::parse_i64_fallback(value, fallback);
+}
+
+[[nodiscard]] inline double first_report_double(
+    const std::unordered_map<std::string, std::string> &report,
+    const std::vector<std::string> &keys,
+    double fallback = std::numeric_limits<double>::quiet_NaN()) {
+  const auto value = first_report_value(report, keys);
+  return value.empty()
+             ? fallback
+             : exposure_detail::parse_double_fallback(value, fallback);
+}
+
+[[nodiscard]] inline std::string
+join_string_list(const std::vector<std::string> &values) {
+  std::ostringstream out;
+  for (std::size_t i = 0; i < values.size(); ++i) {
+    if (i != 0) {
+      out << ",";
+    }
+    out << values[i];
+  }
+  return out.str();
+}
+
+[[nodiscard]] inline std::vector<std::string>
+target_feature_ids_from_channel_mdn_report(
+    const std::unordered_map<std::string, std::string> &report) {
+  std::vector<std::string> out;
+  for (auto coord : exposure_detail::parse_string_list(
+           exposure_detail::map_get(report, "target_coords"))) {
+    coord = cuwacunu::piaabo::parse::simple_kv::trim(std::move(coord));
+    if (!coord.empty()) {
+      out.push_back("source_feature_" + coord);
+    }
+  }
+  if (!out.empty()) {
+    return out;
+  }
+  const auto counts =
+      exposure_detail::parse_i64_list_fallback(exposure_detail::map_get(
+          report, "valid_target_count_per_target_feature"));
+  for (std::size_t i = 0; i < counts.size(); ++i) {
+    out.push_back("target_feature_" + std::to_string(i));
+  }
+  return out;
+}
+
+[[nodiscard]] inline std::int64_t forecast_support_count_from_report(
+    const std::unordered_map<std::string, std::string> &report,
+    const lattice_exposure_fact_t &parent) {
+  const auto valid = first_report_i64(
+      report, {"total_valid_target_count", "last_valid_target_count"},
+      parent.valid_target_count);
+  const auto fraction = first_report_double(
+      report, {"mean_valid_target_fraction", "last_valid_target_fraction"},
+      parent.valid_target_fraction);
+  if (valid > 0 && std::isfinite(fraction) && fraction > 0.0 &&
+      fraction <= 1.0) {
+    return std::max<std::int64_t>(
+        valid, static_cast<std::int64_t>(
+                   std::llround(static_cast<double>(valid) / fraction)));
+  }
+  return valid;
+}
+
+[[nodiscard]] inline std::int64_t forecast_missing_count_from_report(
+    const std::unordered_map<std::string, std::string> &report,
+    const lattice_exposure_fact_t &parent) {
+  const auto valid = first_report_i64(
+      report, {"total_valid_target_count", "last_valid_target_count"},
+      parent.valid_target_count);
+  const auto support = forecast_support_count_from_report(report, parent);
+  return std::max<std::int64_t>(0, support - valid);
+}
+
+[[nodiscard]] inline std::string format_indexed_counts(
+    const std::string &prefix, const std::vector<std::string> &ids,
+    const std::vector<std::int64_t> &counts, std::int64_t fallback_total = 0) {
+  std::ostringstream out;
+  const auto count = std::max(ids.size(), counts.size());
+  for (std::size_t i = 0; i < count; ++i) {
+    if (i != 0) {
+      out << ",";
+    }
+    if (i < ids.size() && !ids[i].empty()) {
+      out << ids[i];
+    } else {
+      out << prefix << "_" << i;
+    }
+    out << ":" << (i < counts.size() ? counts[i] : 0);
+  }
+  if (count == 0 && fallback_total > 0) {
+    out << "aggregate:" << fallback_total;
+  }
+  return out.str();
+}
+
+[[nodiscard]] inline std::int64_t
+min_positive_count(const std::vector<std::int64_t> &values,
+                   std::int64_t fallback) {
+  std::int64_t out = std::numeric_limits<std::int64_t>::max();
+  for (const auto value : values) {
+    if (value > 0) {
+      out = std::min(out, value);
+    }
+  }
+  return out == std::numeric_limits<std::int64_t>::max() ? fallback : out;
+}
+
+[[nodiscard]] inline std::string digest_for_report_checkpoint(
+    const std::filesystem::path &job_dir,
+    const std::unordered_map<std::string, std::string> &report,
+    const std::vector<std::string> &keys,
+    const std::filesystem::path &fallback_path = {}) {
+  const auto raw = first_report_value(report, keys);
+  const auto path = raw.empty()
+                        ? fallback_path
+                        : exposure_detail::resolve_job_path(job_dir, raw);
+  if (path.empty()) {
+    return {};
+  }
+  const auto digest = file_content_digest_checked(path);
+  return digest.ok ? digest.digest : std::string{};
+}
+
+[[nodiscard]] inline lattice_target_transform_fact_t
+make_target_transform_fact_from_channel_mdn_report(
+    const std::unordered_map<std::string, std::string> &report,
+    const lattice_exposure_fact_t &parent) {
+  lattice_target_transform_fact_t fact{};
+  populate_artifact_fact_identity(fact, parent);
+  fact.target_feature_ids = target_feature_ids_from_channel_mdn_report(report);
+  fact.horizon = first_report_i64(
+      report, {"future_horizon", "target_horizon", "forecast_horizon"},
+      parent.source_future_length > 0 ? parent.source_future_length : 1);
+  fact.target_mode = first_report_value(
+      report, {"target_transform_mode", "target_mode", "target_domain"});
+  if (fact.target_mode.empty()) {
+    fact.target_mode = "raw_channel_node_future";
+  }
+  fact.normalization_contract = first_report_value(
+      report, {"target_normalization_contract", "normalization_contract"});
+  if (fact.normalization_contract.empty()) {
+    fact.normalization_contract =
+        "identity.raw_channel_node_future.normalization.v1";
+  }
+  fact.inverse_transform_contract =
+      first_report_value(report, {"target_inverse_transform_contract",
+                                  "inverse_transform_contract"});
+  if (fact.inverse_transform_contract.empty()) {
+    fact.inverse_transform_contract =
+        "identity.raw_channel_node_future.inverse.v1";
+  }
+  fact.units = first_report_value(report, {"target_units", "units"});
+  if (fact.units.empty()) {
+    fact.units = "source_feature_value";
+  }
+  const auto mask_policy =
+      first_report_value(report, {"target_mask_policy", "mask_policy"});
+  fact.target_mask_policy_digest =
+      exposure_digest_for_text("target_mask_policy|" + mask_policy + "|" +
+                               join_string_list(fact.target_feature_ids) + "|" +
+                               std::to_string(fact.horizon));
+  fact.support_surface_identity =
+      parent.protocol_id + "|" + parent.source_cursor_token + "|" +
+      std::to_string(parent.anchor_range.begin) + ":" +
+      std::to_string(parent.anchor_range.end) + "|" +
+      join_string_list(fact.target_feature_ids);
+  fact.support_surface_digest = exposure_digest_for_text(
+      "support_surface|" + fact.support_surface_identity + "|" +
+      std::to_string(forecast_support_count_from_report(report, parent)));
+  return fact;
+}
+
+[[nodiscard]] inline lattice_forecast_baseline_fact_t
+make_forecast_baseline_fact_from_channel_mdn_report(
+    const std::unordered_map<std::string, std::string> &report,
+    const lattice_exposure_fact_t &parent,
+    const lattice_target_transform_fact_t &transform_fact,
+    const std::string &baseline_kind = "previous_value") {
+  const auto normalized_kind = normalized_forecast_baseline_kind(baseline_kind);
+  const auto kind_report_double =
+      [&](const std::string &metric,
+          const std::vector<std::string> &legacy_keys = {}) -> double {
+    std::vector<std::string> keys{
+        normalized_kind + "_baseline_" + metric,
+        "baseline_" + normalized_kind + "_" + metric,
+    };
+    if (normalized_kind == "previous_value") {
+      keys.insert(keys.end(), legacy_keys.begin(), legacy_keys.end());
+    }
+    return first_report_double(report, keys);
+  };
+  lattice_forecast_baseline_fact_t fact{};
+  populate_artifact_fact_identity(fact, parent);
+  fact.target_feature_ids = transform_fact.target_feature_ids;
+  fact.horizon = transform_fact.horizon;
+  fact.baseline_kind =
+      normalized_kind.empty() ? "previous_value" : normalized_kind;
+  if (fact.baseline_kind == "previous_value") {
+    fact.baseline_parameters = "reference=last_observed_channel_value";
+  } else if (fact.baseline_kind == "zero_return") {
+    fact.baseline_parameters = "reference=zero_return";
+  } else if (fact.baseline_kind == "moving_average") {
+    fact.baseline_parameters = "reference=moving_average;window=3";
+  } else if (fact.baseline_kind == "last_valid_channel") {
+    fact.baseline_parameters = "reference=last_valid_channel_value";
+  } else {
+    fact.baseline_parameters = "reference=" + fact.baseline_kind;
+  }
+  fact.target_transform_fact_digest =
+      target_transform_fact_digest(transform_fact);
+  fact.support_count = forecast_support_count_from_report(report, parent);
+  fact.valid_count = first_report_i64(
+      report, {"total_valid_target_count", "last_valid_target_count"},
+      parent.valid_target_count);
+  fact.missing_count = forecast_missing_count_from_report(report, parent);
+  fact.baseline_mean_nll = kind_report_double(
+      "mean_nll", {"baseline_mean_nll", "naive_baseline_mean_nll"});
+  fact.baseline_ev_mae = kind_report_double(
+      "ev_mae", {"baseline_ev_mae", "naive_baseline_ev_mae"});
+  fact.baseline_ev_rmse = kind_report_double(
+      "ev_rmse", {"baseline_ev_rmse", "naive_baseline_ev_rmse"});
+  fact.baseline_signed_error = kind_report_double(
+      "signed_error", {"baseline_signed_error", "naive_baseline_signed_error"});
+  fact.baseline_directional_accuracy = kind_report_double(
+      "directional_accuracy",
+      {"baseline_directional_accuracy", "naive_baseline_directional_accuracy"});
+  fact.metric_status = derived_forecast_baseline_metric_status(fact);
+  fact.baseline_parameters += ";metric_values=" + fact.metric_status;
+  return fact;
+}
+
+[[nodiscard]] inline std::vector<lattice_forecast_baseline_fact_t>
+make_forecast_baseline_facts_from_channel_mdn_report(
+    const std::unordered_map<std::string, std::string> &report,
+    const lattice_exposure_fact_t &parent,
+    const lattice_target_transform_fact_t &transform_fact) {
+  std::vector<lattice_forecast_baseline_fact_t> facts;
+  for (const auto *kind : {"previous_value", "zero_return", "moving_average",
+                           "last_valid_channel"}) {
+    facts.push_back(make_forecast_baseline_fact_from_channel_mdn_report(
+        report, parent, transform_fact, kind));
+  }
+  return facts;
+}
+
+[[nodiscard]] inline lattice_forecast_eval_fact_t
+make_forecast_eval_fact_from_channel_mdn_report(
+    const std::filesystem::path &job_dir,
+    const std::unordered_map<std::string, std::string> &report,
+    const lattice_exposure_fact_t &parent,
+    const lattice_target_transform_fact_t &transform_fact,
+    const std::vector<lattice_forecast_baseline_fact_t> &baseline_facts) {
+  lattice_forecast_eval_fact_t fact{};
+  populate_artifact_fact_identity(fact, parent);
+  fact.target_feature_ids = transform_fact.target_feature_ids;
+  fact.horizon = transform_fact.horizon;
+  fact.support_count = forecast_support_count_from_report(report, parent);
+  fact.valid_count = first_report_i64(
+      report, {"total_valid_target_count", "last_valid_target_count"},
+      parent.valid_target_count);
+  fact.missing_count = forecast_missing_count_from_report(report, parent);
+  const auto channel_counts = exposure_detail::parse_i64_list_fallback(
+      exposure_detail::map_get(report, "valid_target_count_per_channel"));
+  const auto feature_counts =
+      exposure_detail::parse_i64_list_fallback(exposure_detail::map_get(
+          report, "valid_target_count_per_target_feature"));
+  const auto horizon_counts = exposure_detail::parse_i64_list_fallback(
+      first_report_value(report, {"valid_target_count_per_horizon",
+                                  "valid_target_count_by_horizon"}));
+  fact.weakest_support_rows =
+      std::min({min_positive_count(channel_counts, fact.valid_count),
+                min_positive_count(feature_counts, fact.valid_count),
+                min_positive_count(horizon_counts, fact.valid_count)});
+  fact.mean_nll =
+      first_report_double(report, {"mean_loss", "last_loss", "mean_nll"});
+  fact.ev_mae = first_report_double(report, {"ev_mae", "forecast_ev_mae"});
+  fact.ev_rmse = first_report_double(report, {"ev_rmse", "forecast_ev_rmse"});
+  fact.signed_error =
+      first_report_double(report, {"signed_error", "forecast_signed_error"});
+  fact.directional_accuracy = first_report_double(
+      report, {"directional_accuracy", "forecast_directional_accuracy"});
+  fact.calibration_coverage = first_report_double(
+      report, {"calibration_coverage", "forecast_calibration_coverage"});
+  fact.mean_nll_per_channel = exposure_detail::parse_double_list_fallback(
+      exposure_detail::map_get(report, "mean_nll_per_channel"));
+  fact.mean_nll_per_target_feature =
+      exposure_detail::parse_double_list_fallback(
+          exposure_detail::map_get(report, "mean_nll_per_target_feature"));
+  fact.mean_nll_per_channel_target_feature =
+      exposure_detail::parse_double_list_fallback(exposure_detail::map_get(
+          report, "mean_nll_per_channel_target_feature"));
+  fact.mean_nll_per_horizon = exposure_detail::parse_double_list_fallback(
+      exposure_detail::map_get(report, "mean_nll_per_horizon"));
+  if (fact.mean_nll_per_horizon.empty() && std::isfinite(fact.mean_nll)) {
+    fact.mean_nll_per_horizon = {fact.mean_nll};
+  }
+  fact.valid_target_count_per_channel = channel_counts;
+  fact.valid_target_count_per_target_feature = feature_counts;
+  fact.valid_target_count_per_channel_target_feature =
+      exposure_detail::parse_i64_list_fallback(exposure_detail::map_get(
+          report, "valid_target_count_per_channel_target_feature"));
+  fact.valid_target_count_per_horizon = horizon_counts;
+  if (fact.valid_target_count_per_horizon.empty() && fact.valid_count > 0) {
+    fact.valid_target_count_per_horizon = {fact.valid_count};
+  }
+  fact.support_by_channel =
+      format_indexed_counts("channel", {}, channel_counts, fact.valid_count);
+  fact.support_by_target_feature =
+      format_indexed_counts("target_feature", fact.target_feature_ids,
+                            feature_counts, fact.valid_count);
+  fact.support_by_horizon = "h" + std::to_string(fact.horizon) + ":" +
+                            std::to_string(fact.valid_count);
+  fact.support_by_node = "aggregate:" + std::to_string(fact.valid_count);
+  fact.sigma_scale_sanity =
+      std::isfinite(first_report_double(report, {"mean_sigma_mean_valid"}))
+          ? "finite_masked_sigma_summary"
+          : "sigma_summary_unavailable";
+  const auto report_path = job_dir / "channel_inference.report";
+  const auto report_digest = file_content_digest_checked(report_path);
+  fact.forecast_artifact_digest =
+      report_digest.ok
+          ? report_digest.digest
+          : exposure_digest_for_text(
+                exposure_detail::read_text_file_or_empty(report_path));
+  const auto rep_fallback = parent.input_checkpoints.empty()
+                                ? std::filesystem::path{}
+                                : parent.input_checkpoints.front();
+  const auto mdn_fallback = parent.input_checkpoints.size() < 2U
+                                ? std::filesystem::path{}
+                                : parent.input_checkpoints[1];
+  fact.evaluated_representation_checkpoint_digest =
+      digest_for_report_checkpoint(
+          job_dir, report, {"representation_checkpoint_path"}, rep_fallback);
+  fact.evaluated_mdn_checkpoint_digest = digest_for_report_checkpoint(
+      job_dir, report, {"mdn_checkpoint_path"}, mdn_fallback);
+  fact.target_transform_fact_digest =
+      target_transform_fact_digest(transform_fact);
+  for (const auto &baseline_fact : baseline_facts) {
+    fact.baseline_fact_digests.push_back(
+        forecast_baseline_fact_digest(baseline_fact));
+  }
+  fact.selection_signal_fact_digests = {selection_signal_fact_digest(
+      make_selection_signal_fact_from_exposure_fact(parent))};
+  fact.model_state_mutation = parent.model_state_mutated;
+  return fact;
+}
+
+inline void write_channel_mdn_forecast_artifact_fact_sidecars(
+    const std::filesystem::path &job_dir,
+    const lattice_exposure_fact_t &parent) {
+  if (parent.target_component_family_id !=
+          "wikimyei.inference.expected_value.mdn" ||
+      parent.job_status != "completed" || parent.wave_action != "run" ||
+      parent.model_state_mutated) {
+    return;
+  }
+  const auto report = exposure_detail::parse_assignment_file(
+      job_dir / "channel_inference.report");
+  if (report.empty()) {
+    return;
+  }
+  auto transform =
+      make_target_transform_fact_from_channel_mdn_report(report, parent);
+  auto baseline_facts = make_forecast_baseline_facts_from_channel_mdn_report(
+      report, parent, transform);
+  auto forecast = make_forecast_eval_fact_from_channel_mdn_report(
+      job_dir, report, parent, transform, baseline_facts);
+  write_target_transform_fact_sidecar(job_dir / "lattice.target_transform.fact",
+                                      transform);
+  for (const auto &baseline : baseline_facts) {
+    const auto kind = normalized_forecast_baseline_kind(baseline.baseline_kind);
+    const auto path =
+        kind == "previous_value"
+            ? job_dir / "lattice.forecast_baseline.fact"
+            : job_dir / ("lattice.forecast_baseline." + kind + ".fact");
+    write_forecast_baseline_fact_sidecar(path, baseline);
+  }
+  write_forecast_eval_fact_sidecar(job_dir / "lattice.forecast_eval.fact",
+                                   forecast);
+}
+
 class lattice_exposure_ledger_t {
 public:
   void add(lattice_exposure_fact_t fact) {
@@ -5274,7 +11901,41 @@ public:
     source_receipt_facts_.push_back(std::move(fact));
   }
 
+  void add_source_analytics(lattice_source_analytics_fact_t fact) {
+    source_analytics_facts_.push_back(std::move(fact));
+  }
+
+  void add_target_transform(lattice_target_transform_fact_t fact) {
+    target_transform_facts_.push_back(std::move(fact));
+  }
+
+  void add_forecast_baseline(lattice_forecast_baseline_fact_t fact) {
+    forecast_baseline_facts_.push_back(std::move(fact));
+  }
+
+  void add_forecast_eval(lattice_forecast_eval_fact_t fact) {
+    for (auto &selection_fact : selection_signal_facts_) {
+      bind_selection_signal_parent_evaluation(selection_fact, fact);
+    }
+    forecast_eval_facts_.push_back(std::move(fact));
+  }
+
+  void add_observer_belief(lattice_observer_belief_fact_t fact) {
+    observer_belief_facts_.push_back(std::move(fact));
+  }
+
+  void add_allocation_engine(lattice_allocation_engine_fact_t fact) {
+    allocation_engine_facts_.push_back(std::move(fact));
+  }
+
+  void add_replay_environment(lattice_replay_environment_fact_t fact) {
+    replay_environment_facts_.push_back(std::move(fact));
+  }
+
   void add_selection_signal(lattice_selection_signal_fact_t fact) {
+    for (const auto &forecast_eval_fact : forecast_eval_facts_) {
+      bind_selection_signal_parent_evaluation(fact, forecast_eval_fact);
+    }
     selection_signal_facts_.push_back(std::move(fact));
   }
 
@@ -5299,6 +11960,41 @@ public:
   [[nodiscard]] const std::vector<lattice_source_receipt_fact_t> &
   source_receipt_facts() const {
     return source_receipt_facts_;
+  }
+
+  [[nodiscard]] const std::vector<lattice_source_analytics_fact_t> &
+  source_analytics_facts() const {
+    return source_analytics_facts_;
+  }
+
+  [[nodiscard]] const std::vector<lattice_target_transform_fact_t> &
+  target_transform_facts() const {
+    return target_transform_facts_;
+  }
+
+  [[nodiscard]] const std::vector<lattice_forecast_baseline_fact_t> &
+  forecast_baseline_facts() const {
+    return forecast_baseline_facts_;
+  }
+
+  [[nodiscard]] const std::vector<lattice_forecast_eval_fact_t> &
+  forecast_eval_facts() const {
+    return forecast_eval_facts_;
+  }
+
+  [[nodiscard]] const std::vector<lattice_observer_belief_fact_t> &
+  observer_belief_facts() const {
+    return observer_belief_facts_;
+  }
+
+  [[nodiscard]] const std::vector<lattice_allocation_engine_fact_t> &
+  allocation_engine_facts() const {
+    return allocation_engine_facts_;
+  }
+
+  [[nodiscard]] const std::vector<lattice_replay_environment_fact_t> &
+  replay_environment_facts() const {
+    return replay_environment_facts_;
   }
 
   [[nodiscard]] const std::vector<lattice_selection_signal_fact_t> &
@@ -5650,11 +12346,621 @@ private:
   std::vector<lattice_node_exposure_fact_t> node_facts_{};
   std::vector<lattice_checkpoint_fact_t> checkpoint_facts_{};
   std::vector<lattice_source_receipt_fact_t> source_receipt_facts_{};
+  std::vector<lattice_source_analytics_fact_t> source_analytics_facts_{};
+  std::vector<lattice_target_transform_fact_t> target_transform_facts_{};
+  std::vector<lattice_forecast_baseline_fact_t> forecast_baseline_facts_{};
+  std::vector<lattice_forecast_eval_fact_t> forecast_eval_facts_{};
+  std::vector<lattice_observer_belief_fact_t> observer_belief_facts_{};
+  std::vector<lattice_allocation_engine_fact_t> allocation_engine_facts_{};
+  std::vector<lattice_replay_environment_fact_t> replay_environment_facts_{};
   std::vector<lattice_selection_signal_fact_t> selection_signal_facts_{};
   std::vector<lattice_representation_support_fact_t>
       representation_support_facts_{};
   mutable exposure_lookup_index_t lookup_index_{};
 };
+
+struct lattice_fact_catalog_family_summary_t {
+  std::string schema{"kikijyeba.lattice.fact_catalog_family_summary.v1"};
+  std::string family{};
+  std::string fact_schema{};
+  std::string relation{};
+  std::string summary_schema{};
+  std::string authority_model{};
+  std::int64_t fact_count{0};
+  std::int64_t parent_exposure_bound_count{0};
+  std::int64_t issue_count{0};
+  bool parent_exposure_bound{false};
+  bool target_kind{false};
+  bool dispatchable{false};
+  bool runtime_executor{false};
+  bool readiness_authority{false};
+  bool coverage_authority{false};
+  bool leakage_authority{false};
+  bool contract_identity_authority{false};
+  bool quality_authority{false};
+  bool performance_authority{false};
+  bool checkpoint_selector{false};
+  bool allocation_authority{false};
+  bool execution_authority{false};
+  bool market_readiness_authority{false};
+  bool deployment_authority{false};
+  bool policy_gate{false};
+  bool target_dependency_authority{false};
+  bool runtime_wave_authority{false};
+  bool marshal_reachability{false};
+  bool checkpoint_source_authority{false};
+  bool plan_checkpoint_input_authority{false};
+  std::vector<std::string> issues{};
+};
+
+struct lattice_fact_catalog_summary_t {
+  std::string schema{"kikijyeba.lattice.fact_catalog_summary.v1"};
+  std::int64_t family_count{0};
+  std::int64_t total_fact_count{0};
+  std::int64_t target_kind_family_count{0};
+  std::int64_t dispatchable_family_count{0};
+  std::int64_t runtime_executor_family_count{0};
+  std::int64_t readiness_authority_family_count{0};
+  std::int64_t coverage_authority_family_count{0};
+  std::int64_t leakage_authority_family_count{0};
+  std::int64_t contract_identity_authority_family_count{0};
+  std::int64_t quality_authority_family_count{0};
+  std::int64_t performance_authority_family_count{0};
+  std::int64_t checkpoint_selector_family_count{0};
+  std::int64_t allocation_authority_family_count{0};
+  std::int64_t execution_authority_family_count{0};
+  std::int64_t market_readiness_authority_family_count{0};
+  std::int64_t deployment_authority_family_count{0};
+  std::int64_t policy_gate_family_count{0};
+  std::int64_t target_dependency_authority_family_count{0};
+  std::int64_t runtime_wave_authority_family_count{0};
+  std::int64_t marshal_reachability_family_count{0};
+  std::int64_t checkpoint_source_authority_family_count{0};
+  std::int64_t plan_checkpoint_input_authority_family_count{0};
+  std::int64_t decision_authority_family_count{0};
+  bool catalog_is_read_only{true};
+  bool fact_families_are_not_target_kinds{true};
+  bool non_dispatchable_families_not_reachable{true};
+  bool decision_authority_clean{true};
+  std::vector<lattice_fact_catalog_family_summary_t> families{};
+  std::vector<std::string> issues{};
+};
+
+struct lattice_fact_integrity_family_summary_t {
+  std::string schema{"kikijyeba.lattice.fact_integrity_family_summary.v1"};
+  std::string family{};
+  std::string summary_schema{};
+  std::int64_t relation_declared_count{0};
+  std::int64_t relation_bound_count{0};
+  std::int64_t unresolved_relation_count{0};
+  std::int64_t identity_mismatch_count{0};
+  std::int64_t digest_mismatch_count{0};
+  std::int64_t warning_count{0};
+  bool relation_integrity_clean{true};
+  std::vector<std::string> issues{};
+};
+
+struct lattice_fact_integrity_summary_t {
+  std::string schema{"kikijyeba.lattice.fact_integrity_summary.v1"};
+  std::int64_t inspected_family_count{0};
+  std::int64_t reported_family_count{0};
+  std::int64_t relation_declared_count{0};
+  std::int64_t relation_bound_count{0};
+  std::int64_t unresolved_relation_count{0};
+  std::int64_t identity_mismatch_count{0};
+  std::int64_t digest_mismatch_count{0};
+  std::int64_t warning_count{0};
+  bool relation_integrity_clean{true};
+  bool read_only{true};
+  bool target_proof{false};
+  bool dispatchable{false};
+  bool runtime_executor{false};
+  std::vector<std::string> families_with_unresolved_relation{};
+  std::vector<std::string> families_with_identity_mismatch{};
+  std::vector<std::string> families_with_digest_mismatch{};
+  std::vector<std::string> integrity_flags{};
+  std::vector<std::string> issue_codes{};
+  std::vector<lattice_fact_integrity_family_summary_t> families{};
+};
+
+[[nodiscard]] inline std::optional<lattice_fact_family_descriptor_t>
+lattice_fact_family_descriptor(lattice_fact_family_t family) {
+  for (const auto &descriptor : lattice_fact_family_registry()) {
+    if (descriptor.family == family) {
+      return descriptor;
+    }
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] inline std::int64_t
+lattice_fact_family_count(const lattice_exposure_ledger_t &ledger,
+                          lattice_fact_family_t family) {
+  switch (family) {
+  case lattice_fact_family_t::exposure:
+    return static_cast<std::int64_t>(ledger.facts().size());
+  case lattice_fact_family_t::node_exposure:
+    return static_cast<std::int64_t>(ledger.node_facts().size());
+  case lattice_fact_family_t::checkpoint:
+    return static_cast<std::int64_t>(ledger.checkpoint_facts().size());
+  case lattice_fact_family_t::source_receipt:
+    return static_cast<std::int64_t>(ledger.source_receipt_facts().size());
+  case lattice_fact_family_t::source_analytics:
+    return static_cast<std::int64_t>(ledger.source_analytics_facts().size());
+  case lattice_fact_family_t::target_transform:
+    return static_cast<std::int64_t>(ledger.target_transform_facts().size());
+  case lattice_fact_family_t::forecast_baseline:
+    return static_cast<std::int64_t>(ledger.forecast_baseline_facts().size());
+  case lattice_fact_family_t::forecast_eval:
+    return static_cast<std::int64_t>(ledger.forecast_eval_facts().size());
+  case lattice_fact_family_t::observer_belief:
+    return static_cast<std::int64_t>(ledger.observer_belief_facts().size());
+  case lattice_fact_family_t::allocation_engine:
+    return static_cast<std::int64_t>(ledger.allocation_engine_facts().size());
+  case lattice_fact_family_t::replay_environment:
+    return static_cast<std::int64_t>(ledger.replay_environment_facts().size());
+  case lattice_fact_family_t::selection_signal:
+    return static_cast<std::int64_t>(ledger.selection_signal_facts().size());
+  case lattice_fact_family_t::representation_support:
+    return static_cast<std::int64_t>(
+        ledger.representation_support_facts().size());
+  }
+  throw std::runtime_error("[lattice_exposure] unknown fact family");
+}
+
+inline void
+append_lattice_fact_integrity_unique(std::vector<std::string> &values,
+                                     const std::string &value) {
+  if (value.empty()) {
+    return;
+  }
+  if (std::find(values.begin(), values.end(), value) == values.end()) {
+    values.push_back(value);
+  }
+}
+
+inline void add_lattice_fact_relation_integrity(
+    lattice_fact_integrity_family_summary_t &out, std::int64_t declared,
+    std::int64_t bound, std::int64_t unresolved,
+    std::int64_t identity_mismatch) {
+  out.relation_declared_count += declared;
+  out.relation_bound_count += bound;
+  out.unresolved_relation_count += unresolved;
+  out.identity_mismatch_count += identity_mismatch;
+}
+
+[[nodiscard]] inline lattice_fact_catalog_family_summary_t
+summarize_lattice_fact_family(const lattice_exposure_ledger_t &ledger,
+                              lattice_fact_family_t family) {
+  auto descriptor = lattice_fact_family_descriptor(family);
+  if (!descriptor.has_value()) {
+    throw std::runtime_error("[lattice_exposure] missing fact family "
+                             "descriptor");
+  }
+
+  lattice_fact_catalog_family_summary_t out{};
+  out.family = descriptor->family_name;
+  out.fact_schema = descriptor->fact_schema;
+  out.relation = descriptor->relation;
+  out.summary_schema = descriptor->summary_schema;
+  out.authority_model = descriptor->authority_model;
+  out.parent_exposure_bound = descriptor->parent_exposure_bound;
+  out.target_kind = descriptor->target_kind;
+  out.dispatchable = descriptor->dispatchable;
+  out.runtime_executor = descriptor->runtime_executor;
+  out.readiness_authority = descriptor->readiness_authority;
+  out.coverage_authority = descriptor->coverage_authority;
+  out.leakage_authority = descriptor->leakage_authority;
+  out.contract_identity_authority = descriptor->contract_identity_authority;
+  out.quality_authority = descriptor->quality_authority;
+  out.performance_authority = descriptor->performance_authority;
+  out.checkpoint_selector = descriptor->checkpoint_selector;
+  out.allocation_authority = descriptor->allocation_authority;
+  out.execution_authority = descriptor->execution_authority;
+  out.market_readiness_authority = descriptor->market_readiness_authority;
+  out.deployment_authority = descriptor->deployment_authority;
+  out.policy_gate = descriptor->policy_gate;
+  out.target_dependency_authority = descriptor->target_dependency_authority;
+  out.runtime_wave_authority = descriptor->runtime_wave_authority;
+  out.marshal_reachability = descriptor->marshal_reachability;
+  out.checkpoint_source_authority = descriptor->checkpoint_source_authority;
+  out.plan_checkpoint_input_authority =
+      descriptor->plan_checkpoint_input_authority;
+  out.fact_count = lattice_fact_family_count(ledger, family);
+
+  std::set<std::string> parent_digests;
+  switch (family) {
+  case lattice_fact_family_t::exposure:
+    break;
+  case lattice_fact_family_t::node_exposure:
+    for (const auto &fact : ledger.node_facts()) {
+      if (!fact.parent_exposure_fact_digest.empty()) {
+        parent_digests.insert(fact.parent_exposure_fact_digest);
+      }
+    }
+    break;
+  case lattice_fact_family_t::checkpoint:
+    break;
+  case lattice_fact_family_t::source_receipt:
+    for (const auto &fact : ledger.source_receipt_facts()) {
+      if (!fact.parent_exposure_fact_digest.empty()) {
+        parent_digests.insert(fact.parent_exposure_fact_digest);
+      }
+    }
+    out.issues =
+        summarize_source_receipts(ledger.facts(), ledger.source_receipt_facts())
+            .issues;
+    break;
+  case lattice_fact_family_t::source_analytics: {
+    for (const auto &fact : ledger.source_analytics_facts()) {
+      if (!fact.parent_exposure_fact_digest.empty()) {
+        parent_digests.insert(fact.parent_exposure_fact_digest);
+      }
+    }
+    const auto summary = summarize_source_analytics(
+        ledger.facts(), ledger.source_analytics_facts());
+    out.issues = summary.issues;
+    break;
+  }
+  case lattice_fact_family_t::target_transform: {
+    for (const auto &fact : ledger.target_transform_facts()) {
+      if (!fact.parent_exposure_fact_digest.empty()) {
+        parent_digests.insert(fact.parent_exposure_fact_digest);
+      }
+    }
+    const auto summary = summarize_target_transforms(
+        ledger.facts(), ledger.target_transform_facts());
+    out.issues = summary.issues;
+    break;
+  }
+  case lattice_fact_family_t::forecast_baseline: {
+    for (const auto &fact : ledger.forecast_baseline_facts()) {
+      if (!fact.parent_exposure_fact_digest.empty()) {
+        parent_digests.insert(fact.parent_exposure_fact_digest);
+      }
+    }
+    const auto summary = summarize_forecast_baselines(
+        ledger.facts(), ledger.forecast_baseline_facts(),
+        ledger.target_transform_facts());
+    out.issues = summary.issues;
+    break;
+  }
+  case lattice_fact_family_t::forecast_eval: {
+    for (const auto &fact : ledger.forecast_eval_facts()) {
+      if (!fact.parent_exposure_fact_digest.empty()) {
+        parent_digests.insert(fact.parent_exposure_fact_digest);
+      }
+    }
+    const auto summary = summarize_forecast_evals(
+        ledger.facts(), ledger.forecast_eval_facts(),
+        ledger.target_transform_facts(), ledger.forecast_baseline_facts(),
+        ledger.selection_signal_facts());
+    out.issues = summary.issues;
+    break;
+  }
+  case lattice_fact_family_t::observer_belief: {
+    for (const auto &fact : ledger.observer_belief_facts()) {
+      if (!fact.parent_exposure_fact_digest.empty()) {
+        parent_digests.insert(fact.parent_exposure_fact_digest);
+      }
+    }
+    const auto summary = summarize_observer_beliefs(
+        ledger.facts(), ledger.observer_belief_facts(),
+        ledger.forecast_eval_facts());
+    out.issues = summary.issues;
+    break;
+  }
+  case lattice_fact_family_t::allocation_engine: {
+    for (const auto &fact : ledger.allocation_engine_facts()) {
+      if (!fact.parent_exposure_fact_digest.empty()) {
+        parent_digests.insert(fact.parent_exposure_fact_digest);
+      }
+    }
+    const auto summary = summarize_allocation_engines(
+        ledger.facts(), ledger.allocation_engine_facts(),
+        ledger.observer_belief_facts(), ledger.forecast_eval_facts());
+    out.issues = summary.issues;
+    break;
+  }
+  case lattice_fact_family_t::replay_environment:
+    for (const auto &fact : ledger.replay_environment_facts()) {
+      if (!fact.parent_exposure_fact_digest.empty()) {
+        parent_digests.insert(fact.parent_exposure_fact_digest);
+      }
+    }
+    out.issues = summarize_replay_environments(
+                     ledger.facts(), ledger.replay_environment_facts())
+                     .issues;
+    break;
+  case lattice_fact_family_t::selection_signal: {
+    for (const auto &fact : ledger.selection_signal_facts()) {
+      if (!fact.parent_exposure_fact_digest.empty()) {
+        parent_digests.insert(fact.parent_exposure_fact_digest);
+      }
+    }
+    const auto summary = summarize_selection_signals(
+        ledger.facts(), ledger.selection_signal_facts(),
+        ledger.forecast_eval_facts());
+    out.issues = summary.issues;
+    break;
+  }
+  case lattice_fact_family_t::representation_support: {
+    for (const auto &fact : ledger.representation_support_facts()) {
+      if (!fact.parent_exposure_fact_digest.empty()) {
+        parent_digests.insert(fact.parent_exposure_fact_digest);
+      }
+    }
+    const auto summary = summarize_representation_support(
+        ledger.facts(), ledger.representation_support_facts());
+    out.issues = summary.issues;
+    break;
+  }
+  }
+  out.parent_exposure_bound_count =
+      static_cast<std::int64_t>(parent_digests.size());
+  out.issue_count = static_cast<std::int64_t>(out.issues.size());
+  return out;
+}
+
+[[nodiscard]] inline lattice_fact_integrity_family_summary_t
+summarize_lattice_fact_family_integrity(const lattice_exposure_ledger_t &ledger,
+                                        lattice_fact_family_t family) {
+  const auto catalog_summary = summarize_lattice_fact_family(ledger, family);
+  lattice_fact_integrity_family_summary_t out{};
+  out.family = catalog_summary.family;
+  out.summary_schema = catalog_summary.summary_schema;
+  out.warning_count = catalog_summary.issue_count;
+  out.issues = catalog_summary.issues;
+
+  switch (family) {
+  case lattice_fact_family_t::exposure:
+  case lattice_fact_family_t::node_exposure:
+  case lattice_fact_family_t::checkpoint:
+  case lattice_fact_family_t::source_receipt:
+  case lattice_fact_family_t::source_analytics:
+  case lattice_fact_family_t::target_transform:
+  case lattice_fact_family_t::replay_environment:
+  case lattice_fact_family_t::selection_signal:
+  case lattice_fact_family_t::representation_support:
+    break;
+  case lattice_fact_family_t::forecast_baseline: {
+    const auto summary = summarize_forecast_baselines(
+        ledger.facts(), ledger.forecast_baseline_facts(),
+        ledger.target_transform_facts());
+    add_lattice_fact_relation_integrity(
+        out, summary.target_transform_declared_count,
+        summary.target_transform_bound_count,
+        summary.unresolved_target_transform_count,
+        summary.target_transform_identity_mismatch_count);
+    out.warning_count = summary.warning_count;
+    out.issues = summary.issues;
+    break;
+  }
+  case lattice_fact_family_t::forecast_eval: {
+    const auto summary = summarize_forecast_evals(
+        ledger.facts(), ledger.forecast_eval_facts(),
+        ledger.target_transform_facts(), ledger.forecast_baseline_facts(),
+        ledger.selection_signal_facts());
+    add_lattice_fact_relation_integrity(
+        out, summary.target_transform_declared_count,
+        summary.target_transform_bound_count,
+        summary.unresolved_target_transform_count,
+        summary.target_transform_identity_mismatch_count);
+    add_lattice_fact_relation_integrity(
+        out, summary.baseline_declared_count, summary.baseline_bound_count,
+        summary.unresolved_baseline_count,
+        summary.baseline_identity_mismatch_count);
+    add_lattice_fact_relation_integrity(
+        out, summary.selection_signal_declared_count,
+        summary.selection_signal_audit_count,
+        summary.unresolved_selection_signal_count,
+        summary.selection_signal_identity_mismatch_count);
+    out.warning_count = summary.warning_count;
+    out.issues = summary.issues;
+    break;
+  }
+  case lattice_fact_family_t::observer_belief: {
+    const auto summary = summarize_observer_beliefs(
+        ledger.facts(), ledger.observer_belief_facts(),
+        ledger.forecast_eval_facts());
+    add_lattice_fact_relation_integrity(
+        out, summary.forecast_artifact_lineage_declared_count,
+        summary.forecast_artifact_lineage_bound_count,
+        summary.unresolved_forecast_artifact_lineage_count,
+        summary.forecast_artifact_lineage_identity_mismatch_count);
+    out.digest_mismatch_count = summary.forecast_artifact_digest_mismatch_count;
+    out.warning_count = summary.warning_count;
+    out.issues = summary.issues;
+    break;
+  }
+  case lattice_fact_family_t::allocation_engine: {
+    const auto summary = summarize_allocation_engines(
+        ledger.facts(), ledger.allocation_engine_facts(),
+        ledger.observer_belief_facts(), ledger.forecast_eval_facts());
+    add_lattice_fact_relation_integrity(
+        out, summary.observer_belief_declared_count,
+        summary.observer_belief_bound_count,
+        summary.unresolved_observer_belief_count,
+        summary.observer_belief_identity_mismatch_count);
+    add_lattice_fact_relation_integrity(
+        out, summary.forecast_artifact_declared_count,
+        summary.forecast_artifact_bound_count,
+        summary.unresolved_forecast_artifact_count,
+        summary.forecast_artifact_identity_mismatch_count);
+    out.digest_mismatch_count =
+        summary.observer_forecast_artifact_mismatch_count;
+    out.warning_count = summary.warning_count;
+    out.issues = summary.issues;
+    break;
+  }
+  }
+
+  out.relation_integrity_clean = out.unresolved_relation_count == 0 &&
+                                 out.identity_mismatch_count == 0 &&
+                                 out.digest_mismatch_count == 0;
+  return out;
+}
+
+[[nodiscard]] inline lattice_fact_integrity_summary_t
+summarize_lattice_fact_integrity(
+    const lattice_exposure_ledger_t &ledger,
+    const std::vector<lattice_fact_family_t> &families) {
+  lattice_fact_integrity_summary_t out{};
+  out.inspected_family_count = static_cast<std::int64_t>(families.size());
+  for (const auto family : families) {
+    auto family_summary =
+        summarize_lattice_fact_family_integrity(ledger, family);
+    out.relation_declared_count += family_summary.relation_declared_count;
+    out.relation_bound_count += family_summary.relation_bound_count;
+    out.unresolved_relation_count += family_summary.unresolved_relation_count;
+    out.identity_mismatch_count += family_summary.identity_mismatch_count;
+    out.digest_mismatch_count += family_summary.digest_mismatch_count;
+    out.warning_count += family_summary.warning_count;
+    if (family_summary.unresolved_relation_count > 0) {
+      append_lattice_fact_integrity_unique(
+          out.families_with_unresolved_relation, family_summary.family);
+    }
+    if (family_summary.identity_mismatch_count > 0) {
+      append_lattice_fact_integrity_unique(out.families_with_identity_mismatch,
+                                           family_summary.family);
+    }
+    if (family_summary.digest_mismatch_count > 0) {
+      append_lattice_fact_integrity_unique(out.families_with_digest_mismatch,
+                                           family_summary.family);
+    }
+    for (const auto &issue : family_summary.issues) {
+      append_lattice_fact_integrity_unique(out.issue_codes, issue);
+    }
+    if (family_summary.relation_declared_count > 0 ||
+        family_summary.warning_count > 0 || !family_summary.issues.empty()) {
+      out.families.push_back(std::move(family_summary));
+    }
+  }
+  out.reported_family_count = static_cast<std::int64_t>(out.families.size());
+  if (out.unresolved_relation_count > 0) {
+    append_lattice_fact_integrity_unique(out.integrity_flags,
+                                         "unresolved_relation");
+  }
+  if (out.identity_mismatch_count > 0) {
+    append_lattice_fact_integrity_unique(out.integrity_flags,
+                                         "identity_mismatch");
+  }
+  if (out.digest_mismatch_count > 0) {
+    append_lattice_fact_integrity_unique(out.integrity_flags,
+                                         "digest_mismatch");
+  }
+  out.relation_integrity_clean = out.unresolved_relation_count == 0 &&
+                                 out.identity_mismatch_count == 0 &&
+                                 out.digest_mismatch_count == 0;
+  return out;
+}
+
+[[nodiscard]] inline lattice_fact_integrity_summary_t
+summarize_lattice_fact_integrity(const lattice_exposure_ledger_t &ledger) {
+  std::vector<lattice_fact_family_t> families;
+  for (const auto &descriptor : lattice_fact_family_registry()) {
+    families.push_back(descriptor.family);
+  }
+  return summarize_lattice_fact_integrity(ledger, families);
+}
+
+[[nodiscard]] inline lattice_fact_catalog_summary_t
+summarize_lattice_fact_catalog(const lattice_exposure_ledger_t &ledger) {
+  lattice_fact_catalog_summary_t out{};
+  for (const auto &descriptor : lattice_fact_family_registry()) {
+    auto summary = summarize_lattice_fact_family(ledger, descriptor.family);
+    out.total_fact_count += summary.fact_count;
+    if (summary.target_kind) {
+      ++out.target_kind_family_count;
+    }
+    if (summary.dispatchable) {
+      ++out.dispatchable_family_count;
+    }
+    if (summary.runtime_executor) {
+      ++out.runtime_executor_family_count;
+    }
+    if (summary.readiness_authority) {
+      ++out.readiness_authority_family_count;
+    }
+    if (summary.coverage_authority) {
+      ++out.coverage_authority_family_count;
+    }
+    if (summary.leakage_authority) {
+      ++out.leakage_authority_family_count;
+    }
+    if (summary.contract_identity_authority) {
+      ++out.contract_identity_authority_family_count;
+    }
+    if (summary.quality_authority) {
+      ++out.quality_authority_family_count;
+    }
+    if (summary.performance_authority) {
+      ++out.performance_authority_family_count;
+    }
+    if (summary.checkpoint_selector) {
+      ++out.checkpoint_selector_family_count;
+    }
+    if (summary.allocation_authority) {
+      ++out.allocation_authority_family_count;
+    }
+    if (summary.execution_authority) {
+      ++out.execution_authority_family_count;
+    }
+    if (summary.market_readiness_authority) {
+      ++out.market_readiness_authority_family_count;
+    }
+    if (summary.deployment_authority) {
+      ++out.deployment_authority_family_count;
+    }
+    if (summary.policy_gate) {
+      ++out.policy_gate_family_count;
+    }
+    if (summary.target_dependency_authority) {
+      ++out.target_dependency_authority_family_count;
+    }
+    if (summary.runtime_wave_authority) {
+      ++out.runtime_wave_authority_family_count;
+    }
+    if (summary.marshal_reachability) {
+      ++out.marshal_reachability_family_count;
+    }
+    if (summary.checkpoint_source_authority) {
+      ++out.checkpoint_source_authority_family_count;
+    }
+    if (summary.plan_checkpoint_input_authority) {
+      ++out.plan_checkpoint_input_authority_family_count;
+    }
+    out.families.push_back(std::move(summary));
+  }
+  out.family_count = static_cast<std::int64_t>(out.families.size());
+  out.fact_families_are_not_target_kinds = out.target_kind_family_count == 0;
+  out.non_dispatchable_families_not_reachable =
+      out.dispatchable_family_count == 0 &&
+      out.runtime_executor_family_count == 0;
+  out.decision_authority_family_count =
+      out.quality_authority_family_count +
+      out.performance_authority_family_count +
+      out.checkpoint_selector_family_count +
+      out.allocation_authority_family_count +
+      out.execution_authority_family_count +
+      out.market_readiness_authority_family_count +
+      out.deployment_authority_family_count + out.policy_gate_family_count +
+      out.target_dependency_authority_family_count +
+      out.runtime_wave_authority_family_count +
+      out.marshal_reachability_family_count +
+      out.checkpoint_source_authority_family_count +
+      out.plan_checkpoint_input_authority_family_count;
+  out.decision_authority_clean = out.decision_authority_family_count == 0;
+  if (!out.catalog_is_read_only || !out.fact_families_are_not_target_kinds ||
+      !out.non_dispatchable_families_not_reachable ||
+      !out.decision_authority_clean) {
+    out.issues.push_back(
+        "fact catalog must remain read-only, non-dispatchable, and separate "
+        "from TARGET_KIND, selector, policy-gate, execution, and Marshal "
+        "reachability authority");
+  }
+  return out;
+}
 
 struct exposure_ledger_scan_result_t {
   lattice_exposure_ledger_t ledger{};
@@ -5759,6 +13065,13 @@ struct exposure_scan_options_t {
   bool derive_node_exposure_facts{true};
   bool derive_representation_support_facts{true};
   bool derive_source_receipt_facts{true};
+  bool derive_source_analytics_facts{true};
+  bool derive_target_transform_facts{true};
+  bool derive_forecast_baseline_facts{true};
+  bool derive_forecast_eval_facts{true};
+  bool derive_observer_belief_facts{true};
+  bool derive_allocation_engine_facts{true};
+  bool derive_replay_environment_facts{false};
   bool derive_selection_signal_facts{true};
   bool read_checkpoint_sidecars{true};
   bool collect_warnings{true};
@@ -6006,6 +13319,61 @@ scan_exposure_ledger_from_runtime_root(
             append_source_receipt_scan_warning(sidecar_fact, job_dir,
                                                out.warnings);
           }
+          if (options.derive_source_analytics_facts) {
+            for (const auto &analytics_fact :
+                 make_source_analytics_facts_from_job_dir(job_dir,
+                                                          sidecar_fact)) {
+              append_source_analytics_scan_warning(analytics_fact, job_dir,
+                                                   out.warnings);
+            }
+          }
+          if (options.derive_target_transform_facts) {
+            for (const auto &transform_fact :
+                 make_target_transform_facts_from_job_dir(job_dir,
+                                                          sidecar_fact)) {
+              append_target_transform_scan_warning(transform_fact, job_dir,
+                                                   out.warnings);
+            }
+          }
+          if (options.derive_forecast_baseline_facts) {
+            for (const auto &baseline_fact :
+                 make_forecast_baseline_facts_from_job_dir(job_dir,
+                                                           sidecar_fact)) {
+              append_forecast_baseline_scan_warning(baseline_fact, job_dir,
+                                                    out.warnings);
+            }
+          }
+          if (options.derive_forecast_eval_facts) {
+            for (const auto &eval_fact :
+                 make_forecast_eval_facts_from_job_dir(job_dir, sidecar_fact)) {
+              append_forecast_eval_scan_warning(eval_fact, job_dir,
+                                                out.warnings);
+            }
+          }
+          if (options.derive_observer_belief_facts) {
+            for (const auto &observer_fact :
+                 make_observer_belief_facts_from_job_dir(job_dir,
+                                                         sidecar_fact)) {
+              append_observer_belief_scan_warning(observer_fact, job_dir,
+                                                  out.warnings);
+            }
+          }
+          if (options.derive_allocation_engine_facts) {
+            for (const auto &allocation_fact :
+                 make_allocation_engine_facts_from_job_dir(job_dir,
+                                                           sidecar_fact)) {
+              append_allocation_engine_scan_warning(allocation_fact, job_dir,
+                                                    out.warnings);
+            }
+          }
+          if (options.derive_replay_environment_facts) {
+            for (const auto &replay_fact :
+                 make_replay_environment_facts_from_job_dir(job_dir,
+                                                            sidecar_fact)) {
+              append_replay_environment_scan_warning(replay_fact, job_dir,
+                                                     out.warnings);
+            }
+          }
           if (options.derive_selection_signal_facts) {
             append_selection_signal_scan_warning(sidecar_fact, job_dir,
                                                  out.warnings);
@@ -6024,6 +13392,48 @@ scan_exposure_ledger_from_runtime_root(
             out.ledger.add_representation_support(std::move(support_fact));
           }
         }
+        if (options.derive_source_analytics_facts) {
+          for (auto analytics_fact : make_source_analytics_facts_from_job_dir(
+                   job_dir, sidecar_fact)) {
+            out.ledger.add_source_analytics(std::move(analytics_fact));
+          }
+        }
+        if (options.derive_target_transform_facts) {
+          for (auto transform_fact : make_target_transform_facts_from_job_dir(
+                   job_dir, sidecar_fact)) {
+            out.ledger.add_target_transform(std::move(transform_fact));
+          }
+        }
+        if (options.derive_forecast_baseline_facts) {
+          for (auto baseline_fact : make_forecast_baseline_facts_from_job_dir(
+                   job_dir, sidecar_fact)) {
+            out.ledger.add_forecast_baseline(std::move(baseline_fact));
+          }
+        }
+        if (options.derive_forecast_eval_facts) {
+          for (auto eval_fact :
+               make_forecast_eval_facts_from_job_dir(job_dir, sidecar_fact)) {
+            out.ledger.add_forecast_eval(std::move(eval_fact));
+          }
+        }
+        if (options.derive_observer_belief_facts) {
+          for (auto observer_fact :
+               make_observer_belief_facts_from_job_dir(job_dir, sidecar_fact)) {
+            out.ledger.add_observer_belief(std::move(observer_fact));
+          }
+        }
+        if (options.derive_allocation_engine_facts) {
+          for (auto allocation_fact : make_allocation_engine_facts_from_job_dir(
+                   job_dir, sidecar_fact)) {
+            out.ledger.add_allocation_engine(std::move(allocation_fact));
+          }
+        }
+        if (options.derive_replay_environment_facts) {
+          for (auto replay_fact : make_replay_environment_facts_from_job_dir(
+                   job_dir, sidecar_fact)) {
+            out.ledger.add_replay_environment(std::move(replay_fact));
+          }
+        }
         out.ledger.add(std::move(sidecar_fact),
                        options.derive_source_receipt_facts,
                        options.derive_selection_signal_facts);
@@ -6034,6 +13444,55 @@ scan_exposure_ledger_from_runtime_root(
           append_source_key_window_scan_warning(fact, job_dir, out.warnings);
           if (options.derive_source_receipt_facts) {
             append_source_receipt_scan_warning(fact, job_dir, out.warnings);
+          }
+          if (options.derive_source_analytics_facts) {
+            for (const auto &analytics_fact :
+                 make_source_analytics_facts_from_job_dir(job_dir, fact)) {
+              append_source_analytics_scan_warning(analytics_fact, job_dir,
+                                                   out.warnings);
+            }
+          }
+          if (options.derive_target_transform_facts) {
+            for (const auto &transform_fact :
+                 make_target_transform_facts_from_job_dir(job_dir, fact)) {
+              append_target_transform_scan_warning(transform_fact, job_dir,
+                                                   out.warnings);
+            }
+          }
+          if (options.derive_forecast_baseline_facts) {
+            for (const auto &baseline_fact :
+                 make_forecast_baseline_facts_from_job_dir(job_dir, fact)) {
+              append_forecast_baseline_scan_warning(baseline_fact, job_dir,
+                                                    out.warnings);
+            }
+          }
+          if (options.derive_forecast_eval_facts) {
+            for (const auto &eval_fact :
+                 make_forecast_eval_facts_from_job_dir(job_dir, fact)) {
+              append_forecast_eval_scan_warning(eval_fact, job_dir,
+                                                out.warnings);
+            }
+          }
+          if (options.derive_observer_belief_facts) {
+            for (const auto &observer_fact :
+                 make_observer_belief_facts_from_job_dir(job_dir, fact)) {
+              append_observer_belief_scan_warning(observer_fact, job_dir,
+                                                  out.warnings);
+            }
+          }
+          if (options.derive_allocation_engine_facts) {
+            for (const auto &allocation_fact :
+                 make_allocation_engine_facts_from_job_dir(job_dir, fact)) {
+              append_allocation_engine_scan_warning(allocation_fact, job_dir,
+                                                    out.warnings);
+            }
+          }
+          if (options.derive_replay_environment_facts) {
+            for (const auto &replay_fact :
+                 make_replay_environment_facts_from_job_dir(job_dir, fact)) {
+              append_replay_environment_scan_warning(replay_fact, job_dir,
+                                                     out.warnings);
+            }
           }
           if (options.derive_selection_signal_facts) {
             append_selection_signal_scan_warning(fact, job_dir, out.warnings);
@@ -6049,6 +13508,48 @@ scan_exposure_ledger_from_runtime_root(
           for (auto support_fact :
                make_representation_support_facts_from_job_dir(job_dir, fact)) {
             out.ledger.add_representation_support(std::move(support_fact));
+          }
+        }
+        if (options.derive_source_analytics_facts) {
+          for (auto analytics_fact :
+               make_source_analytics_facts_from_job_dir(job_dir, fact)) {
+            out.ledger.add_source_analytics(std::move(analytics_fact));
+          }
+        }
+        if (options.derive_target_transform_facts) {
+          for (auto transform_fact :
+               make_target_transform_facts_from_job_dir(job_dir, fact)) {
+            out.ledger.add_target_transform(std::move(transform_fact));
+          }
+        }
+        if (options.derive_forecast_baseline_facts) {
+          for (auto baseline_fact :
+               make_forecast_baseline_facts_from_job_dir(job_dir, fact)) {
+            out.ledger.add_forecast_baseline(std::move(baseline_fact));
+          }
+        }
+        if (options.derive_forecast_eval_facts) {
+          for (auto eval_fact :
+               make_forecast_eval_facts_from_job_dir(job_dir, fact)) {
+            out.ledger.add_forecast_eval(std::move(eval_fact));
+          }
+        }
+        if (options.derive_observer_belief_facts) {
+          for (auto observer_fact :
+               make_observer_belief_facts_from_job_dir(job_dir, fact)) {
+            out.ledger.add_observer_belief(std::move(observer_fact));
+          }
+        }
+        if (options.derive_allocation_engine_facts) {
+          for (auto allocation_fact :
+               make_allocation_engine_facts_from_job_dir(job_dir, fact)) {
+            out.ledger.add_allocation_engine(std::move(allocation_fact));
+          }
+        }
+        if (options.derive_replay_environment_facts) {
+          for (auto replay_fact :
+               make_replay_environment_facts_from_job_dir(job_dir, fact)) {
+            out.ledger.add_replay_environment(std::move(replay_fact));
           }
         }
         out.ledger.add(std::move(fact), options.derive_source_receipt_facts,
@@ -6164,6 +13665,13 @@ struct lattice_runtime_index_cache_t {
   std::int64_t node_exposure_fact_count{0};
   std::int64_t checkpoint_fact_count{0};
   std::int64_t source_receipt_fact_count{0};
+  std::int64_t source_analytics_fact_count{0};
+  std::int64_t target_transform_fact_count{0};
+  std::int64_t forecast_baseline_fact_count{0};
+  std::int64_t forecast_eval_fact_count{0};
+  std::int64_t observer_belief_fact_count{0};
+  std::int64_t allocation_engine_fact_count{0};
+  std::int64_t replay_environment_fact_count{0};
   std::int64_t selection_signal_fact_count{0};
   std::int64_t representation_support_fact_count{0};
   std::vector<lattice_runtime_index_relation_count_t> relation_counts{};
@@ -6223,7 +13731,37 @@ runtime_index_watched_file_is_relevant(const std::filesystem::path &path) {
   const auto filename = path.filename().string();
   if (filename == "job.manifest" || filename == "job.state" ||
       filename == "lattice.exposure.fact" ||
-      filename == "lattice.checkpoint.fact") {
+      filename == "lattice.checkpoint.fact" ||
+      filename == "lattice.source_analytics.fact" ||
+      filename == "source_analytics.fact" ||
+      filename == "runtime.source_analytics.fact" ||
+      filename == "source.analytics.fact" ||
+      filename == "lattice.target_transform.fact" ||
+      filename == "target_transform.fact" ||
+      filename == "runtime.target_transform.fact" ||
+      filename == "target.transform.fact" ||
+      filename == "lattice.forecast_baseline.fact" ||
+      filename == "lattice.forecast_baseline.previous_value.fact" ||
+      filename == "lattice.forecast_baseline.zero_return.fact" ||
+      filename == "lattice.forecast_baseline.moving_average.fact" ||
+      filename == "lattice.forecast_baseline.last_valid_channel.fact" ||
+      filename == "forecast_baseline.fact" ||
+      filename == "runtime.forecast_baseline.fact" ||
+      filename == "forecast.baseline.fact" ||
+      filename == "lattice.forecast_eval.fact" ||
+      filename == "forecast_eval.fact" ||
+      filename == "runtime.forecast_eval.fact" ||
+      filename == "forecast.eval.fact" ||
+      filename == "lattice.observer_belief.fact" ||
+      filename == "observer_belief.fact" ||
+      filename == "runtime.observer_belief.fact" ||
+      filename == "observer.belief.fact" ||
+      filename == "lattice.allocation_engine.fact" ||
+      filename == "allocation_engine.fact" ||
+      filename == "runtime.allocation_engine.fact" ||
+      filename == "allocation.engine.fact" ||
+      filename == "runtime_replay_batches.index" ||
+      filename == "runtime_replay_experiments.index") {
     return true;
   }
   if (filename.find(".report") != std::string::npos) {
@@ -6321,6 +13859,15 @@ watched_runtime_metadata_digest(const std::filesystem::path &runtime_root) {
          it.increment(job_ec)) {
       append_file(it->path());
     }
+    const auto replay_artifact_dir =
+        replay_environment_artifact_dir_for_job_dir(job_dir);
+    if (fs::is_directory(replay_artifact_dir, job_ec)) {
+      for (fs::recursive_directory_iterator it(replay_artifact_dir, job_ec),
+           end;
+           !job_ec && it != end; it.increment(job_ec)) {
+        append_file(it->path());
+      }
+    }
   };
   if (fs::is_regular_file(runtime_root, ec)) {
     append_file(runtime_root);
@@ -6381,6 +13928,20 @@ make_runtime_index_cache_from_scan(const std::filesystem::path &runtime_root,
       static_cast<std::int64_t>(scan.ledger.checkpoint_facts().size());
   cache.source_receipt_fact_count =
       static_cast<std::int64_t>(scan.ledger.source_receipt_facts().size());
+  cache.source_analytics_fact_count =
+      static_cast<std::int64_t>(scan.ledger.source_analytics_facts().size());
+  cache.target_transform_fact_count =
+      static_cast<std::int64_t>(scan.ledger.target_transform_facts().size());
+  cache.forecast_baseline_fact_count =
+      static_cast<std::int64_t>(scan.ledger.forecast_baseline_facts().size());
+  cache.forecast_eval_fact_count =
+      static_cast<std::int64_t>(scan.ledger.forecast_eval_facts().size());
+  cache.observer_belief_fact_count =
+      static_cast<std::int64_t>(scan.ledger.observer_belief_facts().size());
+  cache.allocation_engine_fact_count =
+      static_cast<std::int64_t>(scan.ledger.allocation_engine_facts().size());
+  cache.replay_environment_fact_count =
+      static_cast<std::int64_t>(scan.ledger.replay_environment_facts().size());
   cache.selection_signal_fact_count =
       static_cast<std::int64_t>(scan.ledger.selection_signal_facts().size());
   cache.representation_support_fact_count = static_cast<std::int64_t>(
@@ -6427,6 +13988,50 @@ make_runtime_index_cache_from_scan(const std::filesystem::path &runtime_root,
             fact.parent_exposure_fact_digest + "|" +
                 std::to_string(fact.receipt_index),
             source_receipt_fact_digest(fact));
+  }
+  for (const auto &fact : scan.ledger.source_analytics_facts()) {
+    add_row("source_analytics",
+            fact.parent_exposure_fact_digest + "|" + fact.job_id + "|" +
+                fact.source_cursor_token,
+            source_analytics_fact_digest(fact));
+  }
+  for (const auto &fact : scan.ledger.target_transform_facts()) {
+    add_row("target_transform",
+            fact.parent_exposure_fact_digest + "|" + fact.job_id + "|" +
+                std::to_string(fact.horizon),
+            target_transform_fact_digest(fact));
+  }
+  for (const auto &fact : scan.ledger.forecast_baseline_facts()) {
+    add_row("forecast_baseline",
+            fact.parent_exposure_fact_digest + "|" + fact.job_id + "|" +
+                fact.baseline_kind + "|" + std::to_string(fact.horizon),
+            forecast_baseline_fact_digest(fact));
+  }
+  for (const auto &fact : scan.ledger.forecast_eval_facts()) {
+    add_row("forecast_eval",
+            fact.parent_exposure_fact_digest + "|" + fact.job_id + "|" +
+                fact.forecast_artifact_digest + "|" +
+                std::to_string(fact.horizon),
+            forecast_eval_fact_digest(fact));
+  }
+  for (const auto &fact : scan.ledger.observer_belief_facts()) {
+    add_row("observer_belief",
+            fact.parent_exposure_fact_digest + "|" + fact.job_id + "|" +
+                fact.belief_kind + "|" + fact.forecast_artifact_digest,
+            observer_belief_fact_digest(fact));
+  }
+  for (const auto &fact : scan.ledger.allocation_engine_facts()) {
+    add_row("allocation_engine",
+            fact.parent_exposure_fact_digest + "|" + fact.job_id + "|" +
+                fact.reserve_node_id + "|" + fact.observer_belief_fact_digest,
+            allocation_engine_fact_digest(fact));
+  }
+  for (const auto &fact : scan.ledger.replay_environment_facts()) {
+    add_row("replay_environment",
+            fact.parent_exposure_fact_digest + "|" + fact.job_id + "|" +
+                fact.experiment_id + "|" + fact.runtime_run_id + "|" +
+                fact.environment_run_id,
+            replay_environment_fact_digest(fact));
   }
   for (const auto &fact : scan.ledger.selection_signal_facts()) {
     add_row("selection_signal",
@@ -6484,6 +14089,19 @@ canonical_runtime_index_cache_text(const lattice_runtime_index_cache_t &cache) {
   out << "node_exposure_fact_count=" << cache.node_exposure_fact_count << "\n";
   out << "checkpoint_fact_count=" << cache.checkpoint_fact_count << "\n";
   out << "source_receipt_fact_count=" << cache.source_receipt_fact_count
+      << "\n";
+  out << "source_analytics_fact_count=" << cache.source_analytics_fact_count
+      << "\n";
+  out << "target_transform_fact_count=" << cache.target_transform_fact_count
+      << "\n";
+  out << "forecast_baseline_fact_count=" << cache.forecast_baseline_fact_count
+      << "\n";
+  out << "forecast_eval_fact_count=" << cache.forecast_eval_fact_count << "\n";
+  out << "observer_belief_fact_count=" << cache.observer_belief_fact_count
+      << "\n";
+  out << "allocation_engine_fact_count=" << cache.allocation_engine_fact_count
+      << "\n";
+  out << "replay_environment_fact_count=" << cache.replay_environment_fact_count
       << "\n";
   out << "selection_signal_fact_count=" << cache.selection_signal_fact_count
       << "\n";
@@ -6543,6 +14161,20 @@ read_runtime_index_cache(const std::filesystem::path &path) {
       detail::map_get(map, "checkpoint_fact_count"), 0);
   cache.source_receipt_fact_count = detail::parse_i64_fallback(
       detail::map_get(map, "source_receipt_fact_count"), 0);
+  cache.source_analytics_fact_count = detail::parse_i64_fallback(
+      detail::map_get(map, "source_analytics_fact_count"), 0);
+  cache.target_transform_fact_count = detail::parse_i64_fallback(
+      detail::map_get(map, "target_transform_fact_count"), 0);
+  cache.forecast_baseline_fact_count = detail::parse_i64_fallback(
+      detail::map_get(map, "forecast_baseline_fact_count"), 0);
+  cache.forecast_eval_fact_count = detail::parse_i64_fallback(
+      detail::map_get(map, "forecast_eval_fact_count"), 0);
+  cache.observer_belief_fact_count = detail::parse_i64_fallback(
+      detail::map_get(map, "observer_belief_fact_count"), 0);
+  cache.allocation_engine_fact_count = detail::parse_i64_fallback(
+      detail::map_get(map, "allocation_engine_fact_count"), 0);
+  cache.replay_environment_fact_count = detail::parse_i64_fallback(
+      detail::map_get(map, "replay_environment_fact_count"), 0);
   cache.selection_signal_fact_count = detail::parse_i64_fallback(
       detail::map_get(map, "selection_signal_fact_count"), 0);
   cache.representation_support_fact_count = detail::parse_i64_fallback(

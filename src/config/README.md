@@ -7,8 +7,9 @@ payloads live at the config root.
 Current migrated sections:
 
 - `UJCAMEI`: source registry and source retrieval channel DSL paths.
-- `KIKIJYEBA`: topology graph, wave settings, and lattice target DSL paths.
-- `WIKIMYEI`: expression, representation, inference, observer, and engine DSL
+- `KIKIJYEBA`: protocol, topology graph, wave settings, lattice target, and
+  replay environment DSL paths.
+- `WIKIMYEI`: expression, representation, inference, observer, and policy DSL
   paths.
 - `JKIMYEI`: training orchestration DSL paths.
 - `HERO`: Config Hero, Runtime Hero, Lattice Hero, and Marshal Hero policy
@@ -46,12 +47,12 @@ and Jkimyei keys. The active runtime uses channel-preserving VICReg and strict
 channel-context MDN targets.
 
 `wikimyei.observer.belief.dsl` and
-`wikimyei.engine.portfolio.spot_distributional_utility.dsl` extend the
+`wikimyei.policy.portfolio.spot_distributional_utility.dsl` extend the
 graph-first contract after inference. The belief observer is deterministic: it
 consumes MDN future NodeLift-potential distributions, resolves feature meaning
 through the dock/kline registry, and declares that portfolio returns must be
 base-relative NodeLift projections rather than raw node potentials. The
-portfolio engine consumes only post-projection `AllocationBelief`; it performs a
+portfolio policy consumes only post-projection `AllocationBelief`; it performs a
 long-only spot allocation over risky graph nodes. Its reserve weight is assigned
 to an explicit graph node supplied by `BasePolicy`, not to an external cash
 bucket. Both DSLs currently require projection validation and explicitly disable
@@ -60,6 +61,42 @@ it is checked against realized tradable base-denominated returns. Both
 components are registered as deterministic Wikimyei assemblies in the
 graph-first bundle and therefore appear in the dock-binding/Lattice audit
 surface with stable assembly fingerprints.
+
+`kikijyeba.environment.replay.dsl` defines the first operating-world contract
+around those observer/allocation outputs. It is deliberately an environment
+contract, not a new allocator and not a replacement for Runtime: Runtime still
+resolves waves and source ranges, while replay V1 binds historical-replay world
+mode, consumes resolved Ujcamei/component-stream cursor identity, enforces the
+time-`t` observation law, reveals the next realization only after simulated
+action/execution, computes decomposed reward after ledger update, and emits
+audit-only replay artifacts. Actions use
+`kikijyeba.environment.action.target_weights.v1`: target risky-node weights plus
+a base reserve graph node from `BasePolicy`. Reports persist bundle/policy task
+identity, requested/resolved parallelism, aggregate time-law/projection
+counters, and `direct_edge_realized_return_truth_v1` evidence for realized
+asset/base returns. Runtime may write replay artifacts for MDN run jobs, but
+that writer is best-effort sidecar evidence: failures are recorded in job state
+and do not fail the MDN job. Replay V1 has no allocation, execution,
+market-readiness, deployment, or live-capital authority.
+Treat this as a `historical_replay_environment`, not as future
+`experience replay` buffer storage. Paper-online and live-online modes are not
+implemented by this DSL. Cajtucu is the output/execution pillar used by replay
+for paper fills, ledger mutation, and execution traces; it is not the
+environment driver and does not compute reward.
+
+`cajtucu.execution.paper.dsl` defines the first Cajtucu paper execution
+contract. It consumes target-weight execution intents, market execution state,
+and an execution ledger; it emits direct reserve-edge paper orders, fills or
+rejects, a mutated ledger, and an execution trace. The backend executes sells
+before buys, sizes order notional from marked ledger equity, rejects synthetic
+direct-edge markets by default, and returns invalid traces for large equity
+mismatches or invalid sell-price cost models before ledger mutation. Research
+replay must explicitly opt in when synthetic markets are needed. The trace
+records market source identity and warns when replay used synthetic direct
+asset/reserve edges or when intent equity disagrees with mark-to-market ledger
+equity. Paper V1 has no credential surface, no network I/O, no broker API, and
+no live-capital authority. It is the backend that historical replay calls today
+and that a later paper-online environment should reuse with live market data.
 `MODE=run` executes the target dependency closure without optimizer steps.
 `MODE=train` mutates only `TARGET`; upstream dependencies run frozen.
 Wave source ranges may be authored as `SOURCE_RANGE=anchor_index` for explicit
@@ -167,6 +204,19 @@ independent execution, scheduling, proof, model-selection, checkpoint-selection,
 or config-editing authority. Marshal exposes a small deterministic coordination
 surface over Lattice target state and Runtime policy/wave evidence, while
 Runtime remains the executor and Lattice remains the proof authority.
+`hero.marshal.inspect_evidence_panel` is the read-only path for Lattice
+artifact-readiness targets and fact-family summaries. It can also request
+`hero.lattice.fact_preview` for a concrete family row by digest, digest prefix,
+or fact index, but that preview remains audit-only and cannot satisfy a target,
+select a checkpoint, or create Marshal reachability. Preview rows include the
+typed Lattice catalog `identity_envelope` so inspection tools can read fact
+identity, parent lineage, support counters, and authority flags without
+family-specific parsing. Artifact proof failures
+now include `fact_preview_hint` metadata so operators can navigate from a
+failed proof to the concrete catalog fact without changing proof or dispatch
+authority. `reach_lattice_target` routes `target_class=artifact_readiness`
+there instead of preparing Runtime handoffs, dispatch validation, or dry-run
+previews.
 
 The lattice target DSL is now profile/guard aware. `LATTICE_PROFILE` captures
 reusable readiness defaults, `LATTICE_GUARD` remains available for low-level
@@ -181,6 +231,27 @@ The DSL also accepts clause blocks keyed by `TARGET_ID`: `LATTICE_DEPENDS`,
 v0 these clauses are proof-language syntax that lower into the existing target
 evaluator fields; they do not execute waves and they do not make the lattice a
 scheduler. `LATTICE_WARN` is explicitly non-blocking.
+Artifact-readiness targets use `TARGET_CLASS=artifact_readiness`,
+`SUBJECT_FACT_FAMILY`, and optional `PROOF_KIND` rather than expanding
+`TARGET_KIND`. The default target catalog declares the first cwu_02v
+validation-scope artifact proofs as `target_transform_contract_ready`,
+`forecast_baseline_artifact_ready`, `forecast_eval_artifact_ready`,
+`observer_belief_artifact_ready`, and `allocation_artifact_ready`. Policy gates
+are still disabled:
+`LATTICE_POLICY_GATE` currently accepts only `forecast_quality_acceptance` and
+`allocation_acceptance` reservations with `ENABLED=false`, and each reservation
+must bind to the matching artifact-readiness proof target. Reserved gates must
+declare the future decision-policy inputs now: metric and baseline definitions,
+threshold, uncertainty policy/model, support minimum, selector split,
+anti-leakage policy, tie policy, negative tests, calibration requirements,
+holdout declaration, and threshold-selection audit. Hero reports input-contract
+completeness and missing-policy-input lists while keeping decision-policy
+authority false. Policy, performance, market-readiness, and
+deployment-readiness target classes are not active readiness proofs.
+`replay_environment` is parked outside the active Lattice proof catalog. Replay
+environment facts may still be inspected as audit evidence, but they do not
+define an active artifact-readiness target and are not derived by default
+Lattice scans.
 
 Fresh Config Hero is intentionally a small policy-controlled config file
 surface. It lists, reads, writes, and deletes managed config files under
@@ -441,13 +512,30 @@ V1 validation-readiness/visibility rows, one deferred future performance row, no
 V1 performance-gate authority, uncertainty required for future gates, and no
 runtime executor authority.
 
-Runtime now writes canonical `lattice.exposure.fact` sidecars after successful
-terminal jobs and a `lattice.checkpoint.fact` sidecar when a checkpoint exists.
-The exposure scanner prefers exposure sidecars, ingests checkpoint fact sidecars,
-and falls back to manifest/state/report derivation for older jobs. Exposure
-facts include `coverage_precision`: readiness coverage is credited only from
-`contiguous_completed_range_v1` facts, while requested ranges that cannot prove
-completion are treated as `requested_range_untrusted_v0`.
+Runtime now writes canonical `lattice.exposure.fact` and
+`lattice.source_analytics.fact` sidecars after terminal jobs, plus a
+`lattice.checkpoint.fact` sidecar when a checkpoint exists. The source-analytics
+sidecar records source-range health and anchor acceptance visibility only and
+can reuse job-local source data analytics `.lls` metrics when they already
+exist; it does not grant readiness, coverage, leakage, or contract-identity
+authority.
+The exposure scanner prefers exposure sidecars, ingests source-analytics and
+checkpoint fact sidecars, and falls back to manifest/state/report derivation
+for older jobs. Exposure facts include `coverage_precision`: readiness coverage
+is credited only from `contiguous_completed_range_v1` facts, while requested
+ranges that cannot prove completion are treated as
+`requested_range_untrusted_v0`.
+For non-mutating channel-MDN run jobs, Runtime also emits forecast evidence
+sidecars for target transform, deterministic baseline references, and forecast
+evaluation. The baseline family is emitted as separate previous-value,
+zero-return, moving-average, and last-valid-channel catalog facts. The
+forecast-eval fact carries aggregate and stratified NLL/support surfaces,
+including horizon-level support, as visibility evidence. Lattice derives
+skill-versus-baseline summaries only when the referenced baseline fact resolves
+under the same identity. Forecast-baseline summaries also expose distinct
+baseline-kind coverage for previous-value, zero-return, moving-average, and
+last-valid-channel references. These remain warning/summary diagnostics, not a
+performance gate or checkpoint selector.
 
 Lattice Hero is the read-only agent surface for these checks. It provides
 `hero.lattice.status`, `hero.lattice.list_targets`,
@@ -687,11 +775,12 @@ conditions, digest participation, and planner relevance.
 `proof_certificate_digest_policy_vocabulary` makes the digest boundary explicit:
 the required canonical certificate digest binds proof content such as
 target/split identity, identity matches, dependency checkpoint bindings,
-coverage/load, closure, leakage, checkpoint-preview audit fields, and MDN node
-support, while warnings, deficits, plan advice, evidence-order projections,
-policy vocabularies, and the digest field itself stay outside the digest.
+artifact proofs, coverage/load, closure, leakage, checkpoint-preview audit
+fields, and MDN node support, while warnings, deficits, plan advice,
+evidence-order projections, policy vocabularies, and the digest field itself
+stay outside the digest.
 `proof_certificate_digest_policy_summary` self-checks that boundary by counting
-the 11 digest-policy rows, 8 hashed proof surfaces, 3 excluded report/policy
+the 12 digest-policy rows, 9 hashed proof surfaces, 3 excluded report/policy
 surfaces, zero advisory digest overlap, and zero visibility-only status
 authority.
 `checkpoint_identity_policy_vocabulary` states that V1 closure authority is

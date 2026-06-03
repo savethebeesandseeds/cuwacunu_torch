@@ -5,11 +5,15 @@
 #include <filesystem>
 #include <iostream>
 #include <limits>
+#include <sstream>
 #include <string>
+#include <vector>
 
+#include "kikijyeba/environment/runtime/experiment_driver.h"
 #include "kikijyeba/runtime/job_runner.h"
 #include "ujcamei/source/registry/types/data.h"
 
+namespace env = cuwacunu::kikijyeba::environment;
 namespace runtime = cuwacunu::kikijyeba::runtime;
 namespace types = cuwacunu::ujcamei::source::registry::types;
 
@@ -20,6 +24,7 @@ constexpr const char *kDefaultConfigPath = "/cuwacunu/src/config/.config";
 void print_usage(const char *argv0) {
   std::cerr << "usage: " << argv0
             << " [--config PATH] [--job-dir PATH] [--dry-run]\n"
+            << "       [--replay-from-job-dir PATH]\n"
             << "       [--force-rebuild-cache]\n"
             << "       [--source-range all|anchor_index|source_key]\n"
             << "       [--anchor-index-begin N] [--anchor-index-end N]\n"
@@ -27,6 +32,23 @@ void print_usage(const char *argv0) {
             << "       [--runtime-handoff-id ID]\n"
             << "       [--runtime-handoff-digest DIGEST]\n"
             << "       [--marshal-target-driver-run-id ID]\n"
+            << "       [--no-replay-artifacts]\n"
+            << "       [--replay-base-reserve-node NODE]\n"
+            << "       [--replay-risky-nodes CSV]\n"
+            << "       [--replay-experiment-id ID]\n"
+            << "       [--replay-report-path PATH]\n"
+            << "       [--replay-initial-equity-base VALUE]\n"
+            << "       [--replay-min-base-reserve-weight VALUE]\n"
+            << "       [--replay-max-risky-weight VALUE]\n"
+            << "       [--replay-max-turnover-l1 VALUE]\n"
+            << "       [--replay-max-steps N]\n"
+            << "       [--replay-max-parallel-jobs N]\n"
+            << "       [--replay-linear-transaction-cost-rate VALUE]\n"
+            << "       [--replay-allow-synthetic-direct-edges]\n"
+            << "       [--replay-include-equal-weight]\n"
+            << "       [--replay-include-current-weight]\n"
+            << "       [--replay-no-base-reserve-policy]\n"
+            << "       [--replay-no-sdu-policy]\n"
             << "default config: " << kDefaultConfigPath << "\n";
 }
 
@@ -61,12 +83,59 @@ void print_usage(const char *argv0) {
   return static_cast<std::int64_t>(parsed);
 }
 
+[[nodiscard]] double parse_double_arg(const std::string &value,
+                                      const std::string &flag) {
+  std::size_t consumed = 0;
+  const double parsed = std::stod(value, &consumed);
+  if (consumed != value.size()) {
+    throw std::runtime_error("[cuwacunu_exec] invalid value for " + flag);
+  }
+  return parsed;
+}
+
+[[nodiscard]] std::vector<std::string> parse_csv_arg(std::string value) {
+  std::vector<std::string> out;
+  std::stringstream stream(value);
+  std::string item;
+  while (std::getline(stream, item, ',')) {
+    const auto first = item.find_first_not_of(" \t\r\n");
+    const auto last = item.find_last_not_of(" \t\r\n");
+    if (first == std::string::npos) {
+      continue;
+    }
+    out.push_back(item.substr(first, last - first + 1U));
+  }
+  return out;
+}
+
+void print_replay_result(
+    const env::runtime_job_replay_driver_result_t &result) {
+  std::cout << "replay_experiment_id=" << result.report.experiment_id << "\n";
+  std::cout << "replay_config_path=" << result.config_path << "\n";
+  std::cout << "replay_bundle_count=" << result.replay_bundle_count << "\n";
+  std::cout << "replay_attempted_count=" << result.report.attempted_count
+            << "\n";
+  std::cout << "replay_completed_count=" << result.report.completed_count
+            << "\n";
+  std::cout << "replay_mean_total_reward=" << result.report.mean_total_reward()
+            << "\n";
+  std::cout << "replay_mean_total_log_growth="
+            << result.report.mean_total_log_growth() << "\n";
+  std::cout << "replay_mean_final_equity_base="
+            << result.report.mean_final_equity_base() << "\n";
+  if (!result.report_path.empty()) {
+    std::cout << "replay_report_path=" << result.report_path.string() << "\n";
+  }
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
   try {
     std::string config_path{kDefaultConfigPath};
     runtime::job_runner_options_t options{};
+    env::runtime_job_replay_driver_options_t replay_options{};
+    bool replay_from_job_dir{false};
 
     for (int i = 1; i < argc; ++i) {
       const std::string arg = argv[i];
@@ -76,6 +145,9 @@ int main(int argc, char **argv) {
       }
       if (arg == "--config") {
         config_path = require_next_arg(argc, argv, &i, arg);
+      } else if (arg == "--replay-from-job-dir") {
+        replay_options.job_dir = require_next_arg(argc, argv, &i, arg);
+        replay_from_job_dir = true;
       } else if (arg == "--job-dir") {
         options.job_dir = require_next_arg(argc, argv, &i, arg);
       } else if (arg == "--dry-run") {
@@ -120,9 +192,76 @@ int main(int argc, char **argv) {
       } else if (arg == "--marshal-target-driver-run-id") {
         options.marshal_target_driver_run_id =
             require_next_arg(argc, argv, &i, arg);
+      } else if (arg == "--no-replay-artifacts") {
+        options.write_replay_artifacts = false;
+      } else if (arg == "--replay-base-reserve-node") {
+        options.replay_base_reserve_node_id =
+            require_next_arg(argc, argv, &i, arg);
+        replay_options.base_reserve_node_id =
+            options.replay_base_reserve_node_id;
+      } else if (arg == "--replay-risky-nodes") {
+        options.replay_risky_node_ids =
+            parse_csv_arg(require_next_arg(argc, argv, &i, arg));
+        replay_options.risky_node_ids = options.replay_risky_node_ids;
+      } else if (arg == "--replay-experiment-id") {
+        replay_options.experiment_id = require_next_arg(argc, argv, &i, arg);
+      } else if (arg == "--replay-report-path") {
+        replay_options.report_path = require_next_arg(argc, argv, &i, arg);
+      } else if (arg == "--replay-initial-equity-base") {
+        replay_options.initial_equity_base =
+            parse_double_arg(require_next_arg(argc, argv, &i, arg), arg);
+      } else if (arg == "--replay-min-base-reserve-weight") {
+        replay_options.min_base_reserve_weight =
+            parse_double_arg(require_next_arg(argc, argv, &i, arg), arg);
+      } else if (arg == "--replay-max-risky-weight") {
+        replay_options.max_risky_weight =
+            parse_double_arg(require_next_arg(argc, argv, &i, arg), arg);
+      } else if (arg == "--replay-max-turnover-l1") {
+        replay_options.max_turnover_l1 =
+            parse_double_arg(require_next_arg(argc, argv, &i, arg), arg);
+      } else if (arg == "--replay-max-steps") {
+        replay_options.experiment_options.episode_options.max_steps =
+            parse_size_arg(require_next_arg(argc, argv, &i, arg), arg);
+      } else if (arg == "--replay-max-parallel-jobs") {
+        replay_options.experiment_options.max_parallel_jobs =
+            parse_size_arg(require_next_arg(argc, argv, &i, arg), arg);
+      } else if (arg == "--replay-linear-transaction-cost-rate") {
+        replay_options.world_options.linear_transaction_cost_rate =
+            parse_double_arg(require_next_arg(argc, argv, &i, arg), arg);
+      } else if (arg == "--replay-allow-synthetic-direct-edges") {
+        replay_options.world_options.paper_execution_options
+            .allow_synthetic_direct_edges = true;
+      } else if (arg == "--replay-include-equal-weight") {
+        replay_options.include_equal_weight_policy = true;
+      } else if (arg == "--replay-include-current-weight") {
+        replay_options.include_current_weight_policy = true;
+      } else if (arg == "--replay-no-base-reserve-policy") {
+        replay_options.include_base_reserve_policy = false;
+      } else if (arg == "--replay-no-sdu-policy") {
+        replay_options.include_spot_distributional_utility_policy = false;
       } else {
         throw std::runtime_error("[cuwacunu_exec] unknown argument: " + arg);
       }
+    }
+
+    if (replay_from_job_dir) {
+      if (!options.job_dir.empty()) {
+        throw std::runtime_error(
+            "[cuwacunu_exec] --job-dir writes a new Runtime job and cannot be "
+            "combined with --replay-from-job-dir");
+      }
+      if (options.dry_run || options.force_rebuild_cache ||
+          options.source_range_override_enabled) {
+        throw std::runtime_error(
+            "[cuwacunu_exec] replay-from-job mode cannot be combined with "
+            "Runtime launch-only flags");
+      }
+      replay_options.config_path =
+          (config_path == kDefaultConfigPath) ? std::string{} : config_path;
+      const auto replay_result =
+          env::run_runtime_job_replay_experiment(replay_options);
+      print_replay_result(replay_result);
+      return 0;
     }
 
     const auto result =
@@ -155,6 +294,17 @@ int main(int argc, char **argv) {
     if (!result.delegated_report_path.empty()) {
       std::cout << "report_path=" << result.delegated_report_path.string()
                 << "\n";
+    }
+    std::cout << "replay_artifacts_written="
+              << (result.state.replay_artifacts_written ? "true" : "false")
+              << "\n";
+    if (!result.state.replay_batch_index_path.empty()) {
+      std::cout << "replay_batch_index_path="
+                << result.state.replay_batch_index_path << "\n";
+    }
+    if (!result.state.replay_artifact_path_index_path.empty()) {
+      std::cout << "replay_artifact_path_index_path="
+                << result.state.replay_artifact_path_index_path << "\n";
     }
     return 0;
   } catch (const std::exception &ex) {

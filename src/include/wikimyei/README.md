@@ -11,7 +11,7 @@ surfaces that are actively used by the node-centered pipeline:
 - `inference/expected_value/mdn/`
 - `observer/belief/`
 - `observer/utility/`
-- `engine/portfolio/`
+- `policy/portfolio/`
 
 Ujcamei is intentionally not nested under Wikimyei. Wikimyei consumes input or
 source contracts; Ujcamei owns that boundary.
@@ -41,8 +41,8 @@ Fresh Wikimyei C++ namespaces mirror the room path:
 - `cuwacunu::wikimyei::inference::expected_value::mdn`
 - `cuwacunu::wikimyei::observer`
 - `cuwacunu::wikimyei::observer::belief`
-- `cuwacunu::wikimyei::engine::portfolio`
-- `cuwacunu::wikimyei::engine::portfolio::spot_distributional_utility`
+- `cuwacunu::wikimyei::policy::portfolio`
+- `cuwacunu::wikimyei::policy::portfolio::spot_distributional_utility`
 
 The active VICReg surface is the strict channel-preserving representation path:
 feature-level NodeLift masks enter the channel node adapter, the encoder keeps
@@ -126,27 +126,27 @@ scenarios with realized log returns through MAE, bias, directional accuracy,
 correlation, interval coverage, and per-node scores.
 
 The first portfolio method is
-`engine::portfolio::spot_distributional_utility`, rooted on disk at
-`engine/portfolio/spot_distributional_utility/`. Its deterministic Wikimyei
+`policy::portfolio::spot_distributional_utility`, rooted on disk at
+`policy/portfolio/spot_distributional_utility/`. Its deterministic Wikimyei
 assembly consumes a post-projection `AllocationBelief` dock and produces an
 allocation target dock. The method is a long-only, base-reserve-aware, spot-only
 V1 allocator over correlated arithmetic-return scenarios. It consumes
 `AllocationBelief`, `PortfolioState`, `MarketState`, and
 `PortfolioConstraints`, and falls back through
-`engine::portfolio::spot_distributional_utility::base_reserve_fallback` when
+`policy::portfolio::spot_distributional_utility::base_reserve_fallback` when
 belief quality or scenario feasibility fails.
 `PortfolioState` names the V1 graph-node reserve explicitly with
 `accounting_node_id`, `reserve_node_id`, and `base_reserve_weight`; there is no
 separate non-graph cash bucket in the method contract.
-`engine::portfolio::spot_distributional_utility::decision_step` is the thin
+`policy::portfolio::spot_distributional_utility::decision_step` is the thin
 operational wrapper for that method: it evaluates method-local
 `risk::risk_gate`, selects either the main allocator or method-local
 `base_reserve_fallback`, routes the resulting target through method-local
 `execution::spot_rebalance_router`, and emits a monitoring report for the full
 decision step.
 Diagnostic and fallback allocators are now method-local support modules under
-`engine/portfolio/spot_distributional_utility/utility/`. They do not define
-additional engines; they share the same confidence, capacity, base-reserve,
+`policy/portfolio/spot_distributional_utility/utility/`. They do not define
+additional policy methods; they share the same confidence, capacity, base-reserve,
 turnover, and tradability constraints as the main method. The utility folder also
 contains the method-local execution router, risk gate, ledger, reporter,
 base-reserve fallback, and solver helpers, so the method does not sprawl into

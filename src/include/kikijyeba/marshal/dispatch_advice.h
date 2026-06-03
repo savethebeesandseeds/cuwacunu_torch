@@ -205,6 +205,7 @@ struct marshal_dispatch_request_t {
   std::string runtime_root{};
   std::string advice_digest{};
   std::string operator_confirmation_token{};
+  std::string target_driver_run_id{};
   std::map<std::string, std::string> requested_overrides{};
   std::map<std::string, std::string> lattice_certificate_refs{};
 };
@@ -311,7 +312,8 @@ dispatchable_target_status(const std::string &status) {
   return status == "blocked" || status == "exposure_failed" ||
          status == "metric_failed" || status == "missing_report" ||
          status == "missing_checkpoint" || status == "unsatisfied" ||
-         status == "not_satisfied" || status == "pending";
+         status == "not_satisfied" || status == "pending" ||
+         status == "stale_contract";
 }
 
 [[nodiscard]] inline bool
@@ -564,6 +566,7 @@ canonical_dispatch_request_text(const marshal_dispatch_request_t &request) {
   detail::append_kv(out, "advice_digest", request.advice_digest);
   detail::append_kv(out, "operator_confirmation_token",
                     request.operator_confirmation_token);
+  detail::append_kv(out, "target_driver_run_id", request.target_driver_run_id);
   detail::append_string_map(out, "requested_overrides",
                             request.requested_overrides);
   detail::append_string_map(out, "lattice_certificate_refs",
@@ -587,6 +590,7 @@ dispatch_request_digest(const marshal_dispatch_request_t &request) {
   detail::append_kv(out, "runtime_root",
                     detail::normalize_path_text(request.runtime_root));
   detail::append_kv(out, "advice_digest", request.advice_digest);
+  detail::append_kv(out, "target_driver_run_id", request.target_driver_run_id);
   detail::append_string_map(out, "requested_overrides",
                             request.requested_overrides);
   detail::append_string_map(out, "lattice_certificate_refs",

@@ -195,6 +195,9 @@ struct marshal_target_driver_iteration_t {
 struct marshal_target_driver_ledger_t {
   std::string schema_version{k_marshal_target_driver_ledger_schema_v1};
   std::string target_driver_run_id{};
+  std::string target_driver_run_key{};
+  std::string ledger_created_at_utc{};
+  std::string ledger_nonce{};
   std::string target_id{};
   marshal_active_identity_t active_identity{};
   marshal_target_drive_mode_t drive_mode{marshal_target_drive_mode_t::one_step};
@@ -229,6 +232,9 @@ struct marshal_target_driver_ledger_t {
   std::ostringstream out;
   detail::append_kv(out, "schema_version", ledger.schema_version);
   detail::append_kv(out, "target_driver_run_id", ledger.target_driver_run_id);
+  detail::append_kv(out, "target_driver_run_key", ledger.target_driver_run_key);
+  detail::append_kv(out, "ledger_created_at_utc", ledger.ledger_created_at_utc);
+  detail::append_kv(out, "ledger_nonce", ledger.ledger_nonce);
   detail::append_kv(out, "target_id", ledger.target_id);
   detail::append_kv(out, "active_identity",
                     canonical_active_identity_text(ledger.active_identity));
@@ -287,13 +293,59 @@ target_driver_ledger_digest(const marshal_target_driver_ledger_t &ledger) {
                                  canonical_target_driver_ledger_text(ledger));
 }
 
+[[nodiscard]] inline std::string canonical_target_driver_run_key_text(
+    const marshal_target_driver_ledger_t &ledger) {
+  std::ostringstream out;
+  detail::append_kv(out, "schema_version", ledger.schema_version);
+  detail::append_kv(out, "target_id", ledger.target_id);
+  detail::append_kv(out, "active_identity",
+                    canonical_active_identity_text(ledger.active_identity));
+  detail::append_kv(out, "drive_mode", to_string(ledger.drive_mode));
+  detail::append_kv(out, "requested_mode", to_string(ledger.requested_mode));
+  detail::append_kv(out, "driver_policy_digest", ledger.driver_policy_digest);
+  detail::append_kv(out, "non_authority_statement",
+                    ledger.non_authority_statement);
+  return out.str();
+}
+
+[[nodiscard]] inline std::string
+target_driver_run_key_digest(const marshal_target_driver_ledger_t &ledger) {
+  return marshal_digest_for_text("kikijyeba.marshal.target_driver_run_key.v1",
+                                 canonical_target_driver_run_key_text(ledger));
+}
+
+[[nodiscard]] inline std::string canonical_target_driver_run_id_text(
+    const marshal_target_driver_ledger_t &ledger) {
+  std::ostringstream out;
+  detail::append_kv(out, "schema_version", ledger.schema_version);
+  detail::append_kv(out, "target_driver_run_key", ledger.target_driver_run_key);
+  detail::append_kv(out, "ledger_created_at_utc", ledger.ledger_created_at_utc);
+  detail::append_kv(out, "ledger_nonce", ledger.ledger_nonce);
+  detail::append_kv(out, "resumed_from_run_id", ledger.resumed_from_run_id);
+  detail::append_kv(out, "non_authority_statement",
+                    ledger.non_authority_statement);
+  return out.str();
+}
+
+[[nodiscard]] inline std::string
+target_driver_run_id_digest(const marshal_target_driver_ledger_t &ledger) {
+  return marshal_digest_for_text("kikijyeba.marshal.target_driver_run_id.v1",
+                                 canonical_target_driver_run_id_text(ledger));
+}
+
 inline void
 finalize_target_driver_run_id(marshal_target_driver_ledger_t *ledger) {
   if (!ledger) {
     return;
   }
-  ledger->target_driver_run_id =
-      "marshal_target_driver_" + target_driver_ledger_digest(*ledger);
+  if (ledger->target_driver_run_key.empty()) {
+    ledger->target_driver_run_key =
+        "marshal_target_driver_key_" + target_driver_run_key_digest(*ledger);
+  }
+  if (ledger->target_driver_run_id.empty()) {
+    ledger->target_driver_run_id =
+        "marshal_target_driver_run_" + target_driver_run_id_digest(*ledger);
+  }
 }
 
 } // namespace cuwacunu::kikijyeba::marshal
