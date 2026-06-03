@@ -51,37 +51,46 @@ struct tool_descriptor_t {
 
 constexpr tool_descriptor_t kTools[] = {
     {"hero.runtime.status",
-     "Summarize Runtime Hero policy, executable, active wave, and job "
+     "Read-only health: summarize Runtime Hero policy, executable, active "
+     "wave, and job "
      "root.",
      R"({"type":"object","properties":{},"additionalProperties":false})"},
-    {"hero.runtime.schema", "List Runtime Hero policy keys and constraints.",
+    {"hero.runtime.schema",
+     "Read-only catalog: list Runtime Hero policy keys and constraints.",
      R"({"type":"object","properties":{},"additionalProperties":false})"},
     {"hero.runtime.wave",
-     "Decode active wave intent from the configured runtime .config.",
+     "Read-only inspection: decode active wave intent from the configured "
+     "runtime .config.",
      R"({"type":"object","properties":{"config_path":{"type":"string"}},"additionalProperties":false})"},
     {"hero.runtime.dry_run",
-     "Run cuwacunu_exec with --dry-run and return stdout plus job "
+     "Runtime preview: run cuwacunu_exec with --dry-run and return stdout "
+     "plus job "
      "artifacts.",
      R"({"type":"object","properties":{"config_path":{"type":"string"},"job_dir":{"type":"string"},"force_rebuild_cache":{"type":"boolean"},"timeout_seconds":{"type":"integer"},"wave_overlay":{"type":"object","properties":{"source_range":{"type":"string"},"anchor_index_begin":{"type":"string"},"anchor_index_end":{"type":"string"},"source_key_begin":{"type":"string"},"source_key_end":{"type":"string"}}}},"additionalProperties":false})"},
     {"hero.runtime.execute",
-     "Run cuwacunu_exec with policy guards; dry_run defaults to true.",
+     "Runtime execution: run cuwacunu_exec with policy guards; dry_run "
+     "defaults to true.",
      R"({"type":"object","properties":{"config_path":{"type":"string"},"job_dir":{"type":"string"},"dry_run":{"type":"boolean"},"force_rebuild_cache":{"type":"boolean"},"confirm_execute":{"type":"boolean"},"timeout_seconds":{"type":"integer"},"wave_overlay":{"type":"object","properties":{"source_range":{"type":"string"},"anchor_index_begin":{"type":"string"},"anchor_index_end":{"type":"string"},"source_key_begin":{"type":"string"},"source_key_end":{"type":"string"}}},"runtime_handoff":{"type":"object","properties":{}},"marshal_expected_wave":{"type":"object","properties":{"target_component_family_id":{"type":"string"},"mode":{"type":"string"},"source_range":{"type":"string"},"source_order":{"type":"string"},"anchor_index_begin":{"type":"string"},"anchor_index_end":{"type":"string"},"source_key_begin":{"type":"string"},"source_key_end":{"type":"string"},"model_state_inputs":{"type":"object"}}}},"additionalProperties":false})"},
-    {"hero.runtime.replay_from_job",
-     "Run kikijyeba.environment replay from an existing Runtime job "
-     "directory.",
-     R"({"type":"object","properties":{"job_id":{"type":"string"},"job_dir":{"type":"string"},"config_path":{"type":"string"},"dry_run":{"type":"boolean"},"base_reserve_node_id":{"type":"string"},"risky_node_ids":{"type":"string"},"experiment_id":{"type":"string"},"report_path":{"type":"string"},"initial_equity_base":{"type":"number"},"min_base_reserve_weight":{"type":"number"},"max_risky_weight":{"type":"number"},"max_turnover_l1":{"type":"number"},"max_steps":{"type":"integer"},"max_parallel_jobs":{"type":"integer"},"include_equal_weight":{"type":"boolean"},"include_current_weight":{"type":"boolean"},"include_base_reserve_policy":{"type":"boolean"},"include_spot_distributional_utility_policy":{"type":"boolean"},"timeout_seconds":{"type":"integer"}},"additionalProperties":false})"},
+    {"hero.runtime.replay",
+     "Runtime replay: run kikijyeba.environment replay from an existing "
+     "completed Runtime job directory.",
+     R"({"type":"object","properties":{"job_id":{"type":"string"},"job_dir":{"type":"string"},"config_path":{"type":"string"},"dry_run":{"type":"boolean"},"base_reserve_node_id":{"type":"string"},"risky_node_ids":{"type":"string"},"experiment_id":{"type":"string"},"report_path":{"type":"string"},"initial_equity_base":{"type":"number"},"min_base_reserve_weight":{"type":"number"},"max_risky_weight":{"type":"number"},"max_turnover_l1":{"type":"number"},"max_steps":{"type":"integer"},"max_parallel_jobs":{"type":"integer"},"include_equal_weight":{"type":"boolean"},"include_current_weight":{"type":"boolean"},"include_base_reserve_policy":{"type":"boolean"},"include_spot_distributional_utility_policy":{"type":"boolean"},"allow_synthetic_direct_edges":{"type":"boolean"},"linear_transaction_cost_rate":{"type":"number"},"timeout_seconds":{"type":"integer"}},"additionalProperties":false})"},
     {"hero.runtime.dev_nuke",
-     "Developer reset for runtime-root contents with dry-run, idle "
+     "Guarded developer reset: clear runtime-root contents with dry-run, "
+     "idle "
      "checks, and "
      "optional backup snapshot.",
      R"({"type":"object","properties":{"runtime_root":{"type":"string"},"dry_run":{"type":"boolean"},"backup":{"type":"boolean"},"confirm_dev_nuke":{"type":"boolean"}},"additionalProperties":false})"},
-    {"hero.runtime.list_jobs", "List Runtime Hero job directories.",
+    {"hero.runtime.list_jobs",
+     "Read-only evidence: list Runtime Hero job directories.",
      R"({"type":"object","properties":{"root":{"type":"string"},"limit":{"type":"integer"},"include_artifacts":{"type":"boolean"}},"additionalProperties":false})"},
     {"hero.runtime.get_job",
-     "Inspect one runtime job directory by job_id or job_dir.",
+     "Read-only evidence: inspect one runtime job directory by job_id or "
+     "job_dir.",
      R"({"type":"object","properties":{"job_id":{"type":"string"},"job_dir":{"type":"string"},"include_text":{"type":"boolean"},"max_bytes":{"type":"integer"}},"additionalProperties":false})"},
     {"hero.runtime.read_artifact",
-     "Read a bounded job artifact: manifest, state, report, replay "
+     "Read-only evidence: read a bounded job artifact: manifest, state, "
+     "report, replay "
      "indexes/report, or explicit path.",
      R"({"type":"object","properties":{"job_id":{"type":"string"},"job_dir":{"type":"string"},"artifact":{"type":"string"},"path":{"type":"string"},"max_bytes":{"type":"integer"}},"additionalProperties":false})"},
 };
@@ -3111,9 +3120,9 @@ replay_dry_run_json(const std::vector<std::string> &argv,
   return json.str();
 }
 
-[[nodiscard]] bool handle_replay_from_job(const std::string &args,
-                                          runtime_context_t *ctx,
-                                          std::string *out, std::string *err) {
+[[nodiscard]] bool handle_replay(const std::string &args,
+                                 runtime_context_t *ctx, std::string *out,
+                                 std::string *err) {
   fs::path job_dir;
   if (!resolve_job_dir_from_args(args, ctx->policy, &job_dir, err)) {
     return false;
@@ -3191,6 +3200,11 @@ replay_dry_run_json(const std::vector<std::string> &argv,
                                true, &include_sdu_policy, err)) {
     return false;
   }
+  bool allow_synthetic_direct_edges = false;
+  if (!parse_optional_bool_arg(args, "allow_synthetic_direct_edges", false,
+                               &allow_synthetic_direct_edges, err)) {
+    return false;
+  }
 
   int timeout_seconds = policy_int_or(ctx->policy, "max_runtime_seconds", 600);
   if (!parse_optional_int_arg(args, "timeout_seconds", timeout_seconds,
@@ -3263,6 +3277,14 @@ replay_dry_run_json(const std::vector<std::string> &argv,
   }
   if (!include_sdu_policy) {
     argv.push_back("--replay-no-sdu-policy");
+  }
+  if (allow_synthetic_direct_edges) {
+    argv.push_back("--replay-allow-synthetic-direct-edges");
+  }
+  if (!append_optional_double_cli_arg(args, "linear_transaction_cost_rate",
+                                      "--replay-linear-transaction-cost-rate",
+                                      &argv, err)) {
+    return false;
   }
 
   if (dry_run) {
@@ -3646,8 +3668,8 @@ using handler_fn = bool (*)(const std::string &, runtime_context_t *,
   if (name == "hero.runtime.execute") {
     return handle_execute;
   }
-  if (name == "hero.runtime.replay_from_job") {
-    return handle_replay_from_job;
+  if (name == "hero.runtime.replay") {
+    return handle_replay;
   }
   if (name == "hero.runtime.dev_nuke") {
     return handle_dev_nuke;

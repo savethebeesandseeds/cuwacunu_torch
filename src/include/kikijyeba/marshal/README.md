@@ -17,9 +17,187 @@ Runtime Hero:
   proves.
 ```
 
-## M1 Dispatch Advice Schema
+## Operator Quick Start
 
-M1 defines the deterministic schema and validation rules for consuming lattice
+Marshal has four public Hero tools:
+
+```text
+hero.marshal.status
+hero.marshal.prepare
+hero.marshal.rollout
+hero.marshal.inspect
+```
+
+The shortest rule is:
+
+```text
+status   = what Marshal can see
+prepare  = how one Lattice target can move next
+rollout  = how one completed Runtime job can be replayed through environment
+inspect  = what existing evidence says
+```
+
+Use the direct CLI when checking behavior from a shell:
+
+```bash
+/cuwacunu/.build/hero/hero_marshal.mcp --help
+/cuwacunu/.build/hero/hero_marshal.mcp \
+  --global-config /cuwacunu/src/config/.config \
+  --list-tools
+/cuwacunu/.build/hero/hero_marshal.mcp \
+  --global-config /cuwacunu/src/config/.config \
+  --list-tools-json
+```
+
+Use `--help` for the human runbook. Use `--list-tools-json` when an MCP client
+needs exact tool schemas.
+
+### Which Tool To Use
+
+`hero.marshal.status` is the first smoke check. It is read-only and tells an
+operator whether Marshal is healthy, what recent receipts are visible, and
+whether Marshal is still denying execution/proof/deployment authority.
+
+```bash
+/cuwacunu/.build/hero/hero_marshal.mcp \
+  --global-config /cuwacunu/src/config/.config \
+  --tool hero.marshal.status \
+  --args-json '{}'
+```
+
+`hero.marshal.prepare` is for target pursuit. It starts from one dispatchable
+Lattice training/evaluation target, then prepares the next finite Runtime
+handoff under policy.
+
+Current dispatchable target movement is the training/evaluation path. Replay is
+not a `prepare` responsibility; use `hero.marshal.rollout`. Artifact-readiness
+targets are evidence proofs and route to `inspect`. Policy-training handoffs are
+reserved until a concrete finite Runtime job contract exists.
+
+```bash
+ARGS='{"target_id":"channel_mdn_train_core_ready","requested_mode":"plan","drive_mode":"one_step"}'
+/cuwacunu/.build/hero/hero_marshal.mcp \
+  --global-config /cuwacunu/src/config/.config \
+  --tool hero.marshal.prepare \
+  --args-json "$ARGS"
+```
+
+`hero.marshal.rollout` is for environment replay. It starts from an already
+completed Runtime job directory, binds a policy set and Cajtucu paper execution
+profile, then prepares or delegates a bounded historical replay through Runtime
+Hero.
+
+```bash
+ARGS='{
+  "rollout_id":"holdout_rollout_v1",
+  "rollout_attempt_id":"holdout_rollout_v1_attempt_001",
+  "idempotency_key":"holdout_rollout_v1_attempt_001",
+  "runtime_job_dir":"/tmp/runtime_job",
+  "replay_batch_index_path":"/tmp/runtime_job/artifacts/kikijyeba.environment.replay.v1/runtime_replay_batches.index",
+  "requested_mode":"plan",
+  "graph_order_fingerprint":"<graph_fingerprint>",
+  "asset_universe_digest":"<asset_universe_digest>",
+  "base_reserve_node_id":"USDT",
+  "risky_node_ids":["BTC","ETH"],
+  "policy_set":["reserve","equal_weight","sdu"],
+  "max_steps":250,
+  "max_parallel_jobs":4
+}'
+/cuwacunu/.build/hero/hero_marshal.mcp \
+  --global-config /cuwacunu/src/config/.config \
+  --tool hero.marshal.rollout \
+  --args-json "$ARGS"
+```
+
+`hero.marshal.inspect` is for reading evidence. It is the tool to use after
+Runtime has written jobs, replay reports, or fact sidecars.
+
+```bash
+ARGS='{"subject":"run","mode":"latest_chain","runtime_root":"/tmp/cuwacunu_runtime"}'
+/cuwacunu/.build/hero/hero_marshal.mcp \
+  --global-config /cuwacunu/src/config/.config \
+  --tool hero.marshal.inspect \
+  --args-json "$ARGS"
+```
+
+### Safe Workflow
+
+A normal training-oriented control loop is:
+
+```text
+hero.marshal.status
+  -> hero.marshal.prepare requested_mode=plan
+  -> inspect the planned handoff, refusal fields, and next_safe_actions
+  -> hero.marshal.prepare requested_mode=dry_run when Runtime dry-run is wanted
+  -> hero.marshal.prepare requested_mode=execute only when policy allows it
+  -> Runtime writes evidence
+  -> hero.marshal.inspect
+  -> Lattice re-reads evidence and proves or refuses the target
+```
+
+A normal environment rollout loop is:
+
+```text
+completed Runtime job with replay batches
+  -> hero.marshal.rollout requested_mode=plan
+  -> inspect rollout plan, policy set, finite limits, and execution profile
+  -> hero.marshal.rollout requested_mode=execute when the plan is accepted
+  -> Runtime Hero calls hero.runtime.replay
+  -> Runtime writes replay report / trajectory evidence
+  -> hero.marshal.inspect reads the evidence later
+```
+
+`prepare` and `rollout` are not synonyms. `prepare` is target-driven and starts
+from Lattice. `rollout` is environment-driven and starts from a completed
+Runtime job.
+
+### Authority Boundaries
+
+Marshal must keep these statements true:
+
+```text
+target_satisfaction_claimed=false
+marshal_runtime_executor=false
+runtime_handoff_delegated=true only when Marshal invoked Runtime Hero
+lattice_proof_authority=false
+marshal_policy_training_authority=false
+live_execution_authority=false
+checkpoint_selected=false
+allocation_decision=false
+market_readiness_decision=false
+deployment_decision=false
+```
+
+Runtime executes. Lattice proves. Cajtucu paper-executes replay mechanics under
+the Runtime replay contract. Marshal coordinates, delegates, records, and
+explains; it does not obtain live execution authority from Cajtucu.
+
+### Evidence Terms
+
+Use these terms consistently:
+
+```text
+marshal_handoff_receipt
+  Marshal audit record for what Marshal requested or delegated.
+  Never target satisfaction.
+
+runtime_report
+  Runtime-owned output after execution or replay.
+  May contain metrics, trajectories, terminal facts, or replay reports.
+
+lattice_proof
+  Lattice-owned proof or refusal from Runtime evidence.
+
+inspection_summary
+  Marshal read-only explanation of existing Runtime/Lattice/Marshal evidence.
+```
+
+Marshal may quote `lattice_target_status=satisfied` when the value came from
+Lattice, but it must still keep `marshal_proves_target=false`.
+
+## D1 Dispatch Advice Schema
+
+D1 defines the deterministic schema and validation rules for consuming lattice
 plan advice. It intentionally does not execute or dry-run Runtime Hero.
 
 Implemented surface:
@@ -68,12 +246,15 @@ canonical_*_text(...)
 validate_dispatch_advice(...)
 ```
 
-## M2 Evaluation Marshal Contract
+## Legacy E1 Evaluation Marshal Contract
 
-M2 defines the first reusable environment-evaluation marshal contract. It does
+E1 defines the first reusable environment-evaluation marshal contract. It does
 not execute replay, choose a policy, or prove performance. It prepares a bounded
 Runtime replay evaluation request and records a non-authoritative receipt after
 Runtime has produced replay reports.
+
+This contract is retained as compatibility and receipt-shape reference material.
+New environment handoff language should use `rollout`.
 
 Implemented surface:
 
@@ -186,9 +367,9 @@ lattice_proof_authority=false
 Lattice must still re-read Runtime evidence to prove any target. Marshal
 evaluation receipts are coordination and audit metadata only.
 
-## M3 Rollout Marshal Contract
+## R1 Rollout Marshal Contract
 
-M3 defines the environment rollout preparation contract. A rollout is a bounded
+R1 defines the environment rollout preparation contract. A rollout is a bounded
 historical environment run:
 
 ```text
@@ -215,9 +396,20 @@ rollout_plan_digest(...)
 rollout_plan_json(...)
 ```
 
-`hero.marshal.prepare intent=rollout` returns a plan only. It does not execute,
-train, inspect reports, choose a policy, produce a receipt, or claim Lattice
-target satisfaction.
+`hero.marshal.rollout` has two modes:
+
+```text
+requested_mode=plan
+  validate and return a rollout plan / replay command template
+
+requested_mode=execute
+  validate the same rollout plan, then call Runtime Hero replay
+```
+
+The execute path still does not train, inspect reports, choose a policy,
+produce a receipt, or claim Lattice target satisfaction. Runtime remains the
+executor, Kikijyeba remains the environment, and Cajtucu remains the paper
+execution backend.
 
 The accepted V1 rollout mode is:
 
@@ -231,40 +423,105 @@ The request must bind:
 
 ```text
 rollout_id
+rollout_attempt_id
+idempotency_key
+config_path
 completed Runtime job directory with replay_artifacts_written=true
 replay_batch_index_path
+graph_order_fingerprint
+asset_universe_digest
 base_reserve_node_id
 risky_node_ids
-finite max_steps / max_parallel_jobs
-policy_set
+policy_set as a non-empty explicit policy list
+max_steps as a positive finite step cap
+max_parallel_jobs as a positive finite worker cap
 Cajtucu paper execution profile
 ```
+
+`idempotency_key` is identity binding in this checkpoint. It is included in
+request and plan digests for audit and future retry handling, but Marshal does
+not yet maintain a durable duplicate-handoff ledger and does not claim durable
+duplicate execution prevention.
+
+Path-bearing rollout fields are trust boundaries. `runtime_job_dir` must be an
+existing completed Runtime job when the corresponding requirements are enabled.
+`replay_batch_index_path` must match the path recorded by that job's state.
+`runtime_exec_path` is used for plan templates and Runtime replay delegation
+only under Runtime Hero policy. `report_path`, when supplied, names the replay
+report target that Runtime will write; Marshal records it but does not treat it
+as proof.
+
+`asset_universe_digest` is the Marshal digest of the ordered reserve/risky-node
+action universe:
+
+```text
+schema_version=kikijyeba.marshal.rollout_asset_universe.v1
+base_reserve_node_id=<reserve node>
+risky_node_ids=<comma-separated risky nodes in action order>
+```
+
+The graph fingerprint must match the completed Runtime job manifest. The asset
+universe digest must match the request's `base_reserve_node_id` and
+`risky_node_ids`; it is not inferred silently.
 
 Synthetic direct execution edges are rejected by default. Research replay may
 opt in only by setting `allow_synthetic_direct_edges=true` and providing
 `synthetic_edge_research_reason`.
 
-`prepare` emits a replay command template for:
+The Cajtucu paper execution profile is part of rollout identity. Marshal emits
+an `execution_profile_digest` and a `policy_set_digest` in the rollout plan so
+costs, synthetic-edge policy, and resolved policy identity are visible in
+replay handoff evidence. The V1 linear transaction cost rate is interpreted as
+a fraction of traded notional. Equity mismatch tolerances are carried as
+Cajtucu paper-backend profile values and remain forbidden for live execution.
+
+The V1 Cajtucu profile is typed at the Marshal boundary:
 
 ```text
-cuwacunu_exec --replay-from-job-dir ...
+execution_backend_id=cajtucu.execution.paper.v1
+cost_model_id=linear_transaction_cost_rate.v1
+allow_synthetic_direct_edges=false by default
+allow_partial_fills=false
+allow_negative_base_reserve=false
+live_execution_allowed=false
 ```
 
-The receipt lifecycle is intentionally separate:
+Runtime replay currently forwards synthetic-edge opt-in and linear transaction
+cost. Marshal rejects partial fills for rollout until Runtime replay has a
+concrete forwarding contract for that option.
+
+`rollout` emits a replay command template for:
 
 ```text
-prepare rollout request -> marshal_rollout_plan_t
-Runtime executes replay command -> replay report / trajectory evidence
-inspect reads report later -> receipt/summary, future work
+cuwacunu_exec --config ... --replay-from-job-dir ...
 ```
+
+In `requested_mode=execute`, Marshal builds the equivalent
+`hero.runtime.replay` argument payload and hands it to Runtime Hero.
+The response records Runtime tool digests and whether replay execution
+completed, but it remains a handoff result, not a rollout receipt.
+
+The report/summary lifecycle is intentionally separate:
+
+```text
+plan rollout -> marshal_rollout_plan_t
+execute rollout -> Runtime replay handoff result
+Runtime writes replay report / trajectory evidence
+inspect reads report later -> inspection_summary, future work
+```
+
+`hero.marshal.rollout requested_mode=execute` records handoff digests in the
+response. Durable rollout handoff receipts are future work. Runtime reports,
+metrics, and trajectory evidence are Runtime-owned artifacts, not Marshal
+receipts.
 
 The rollout plan always carries:
 
 ```text
 target_satisfaction_claimed=false
-runtime_executor=false
+marshal_runtime_executor=false
 lattice_proof_authority=false
-policy_training_authority=false
+marshal_policy_training_authority=false
 live_execution_authority=false
 ```
 
@@ -357,6 +614,7 @@ The current high-level Marshal surface is intentionally small:
 ```text
 hero.marshal.status
 hero.marshal.prepare
+hero.marshal.rollout
 hero.marshal.inspect
 ```
 
@@ -377,10 +635,25 @@ allows execution, Runtime policy allows execution, and the existing execution
 gate accepts the dry-run evidence. The target is reported reached only after
 Lattice reports satisfaction.
 
+For V1, `prepare` should be read as dispatchable Runtime target movement, not
+as a general environment or artifact tool. Replay rollout uses
+`hero.marshal.rollout`; artifact-readiness targets stop with
+`next_safe_actions=["inspect"]`; policy-training remains reserved until the
+Runtime job contract is finite and explicit.
+
+`rollout` is the deterministic Marshal for replaying already produced Runtime
+job evidence through the Kikijyeba environment and Cajtucu paper execution
+backend. It starts from a completed Runtime job directory, a policy set, a
+base-reserve graph node, risky graph nodes, finite replay limits, and an
+execution profile. In `requested_mode=plan` it returns a rollout plan. In
+`requested_mode=execute` it delegates to `hero.runtime.replay` and records the
+handoff state and digests. It does not train, tune, inspect reports, produce a
+rollout receipt, or claim Lattice target satisfaction.
+
 Artifact-readiness targets are evidence proofs, not Runtime wave requests.
 When `hero.lattice.target_deficit` reports `target_class=artifact_readiness`,
 `prepare` returns a non-dispatchable packet with
-`next_action=inspect`; it does not resolve checkpoints, inspect
+`next_safe_actions=["inspect"]`; it does not resolve checkpoints, inspect
 Runtime wave shape, or dry-run Runtime. Use `hero.marshal.inspect`
 to view the target proof and any related fact-family summary.
 
@@ -414,9 +687,9 @@ Fact panels include a compact `lineage_panel` by default. It relays
 explicit non-authority flags such as
 `cache_rows_used_for_target_satisfaction=false`; operators may pass
 `include_lineage=false` only to suppress that audit view.
-Fact panels include `preview_panel` only when requested with `include_preview`,
-`digest`, `fact_digest`, `digest_prefix`, `fact_index`, or `index`. The preview
-relays `hero.lattice.fact_preview` rows and keeps
+Fact panels include `preview_panel` only when requested with `mode=preview`,
+`include_preview`, `fact_digest`, `fact_digest_prefix`, or `fact_index`. The
+preview relays `hero.lattice.fact_preview` rows and keeps
 `preview_rows_are_audit_only=true`,
 `facts_used_for_target_satisfaction=false`, `checkpoint_selected=false`, and
 `model_selector=false`. The relayed rows include Lattice's normalized
@@ -455,9 +728,9 @@ The operator packet presents a compact `operator_summary`, `stop_reason`,
 `wave_panel`, `runtime_panel`, `lattice_panel`, and `audit_panel`, followed by
 the compatibility fields for target, blocker, advised wave, concrete
 model-state inputs, Runtime wave match, dry-run result, target-driver terminal
-state, target-driver ledger, and next safe action.
+state, target-driver ledger, and next safe actions.
 
-`inspect` is also the high-level deterministic read-only evaluator. It
+`inspect` is also the high-level deterministic read-only evidence inspector. It
 supports:
 
 ```text
@@ -466,6 +739,7 @@ subject = target
 subject = protocol
 subject = spawn
 subject = component
+subject = facts
 ```
 
 `subject=run` wraps the operational report and comparison paths through
@@ -560,9 +834,9 @@ fact-integrity issue codes from Lattice proof deficits so the compact run view
 can connect an artifact issue to the exact catalog issue row without
 re-evaluating proof.
 
-## M2 Preview And Handoff Core
+## D2 Preview And Handoff Core
 
-The M2 adapter core can turn validated M1 advice plus Runtime Hero policy/wave
+The D2 adapter core can turn validated D1 advice plus Runtime Hero policy/wave
 snapshots into a deterministic dry-run request preview.
 
 It checks:
@@ -584,7 +858,7 @@ reads the MCP result's top-level `isError` and `structuredContent.ok` fields so
 nested text or nested objects cannot accidentally masquerade as Runtime
 acceptance.
 
-The public M2 operation accepts explicit fresh Lattice Hero advice, refuses
+The public D2 operation accepts explicit fresh Lattice Hero advice, refuses
 unproven advice, calls the handoff helper, and includes the live Runtime Hero
 dry-run result in the Marshal response.
 
@@ -600,12 +874,17 @@ handoff path and routes the operator to `hero.marshal.inspect`.
 This keeps non-trainable Lattice evidence surfaces out of Runtime dispatch
 semantics.
 
-In `one_step` mode, `include_runtime_dry_run=true` is still an explicit opt-in.
-In `budgeted` mode, Runtime dry-run is part of the driver loop and is bounded by
+In `one_step` mode, `requested_mode=plan` prepares without a Runtime call,
+`requested_mode=dry_run` calls Runtime dry-run, and
+`requested_mode=execute` requires accepted dry-run evidence before any Runtime
+execution gate can pass. In `budgeted` mode, Runtime dry-run is part of the
+driver loop for `dry_run` and `execute`, and is bounded by
 `driver_policy.max_waves`. `budgeted` execution also requires
 `driver_policy.max_wall_clock_seconds`, `driver_policy.allow_execute=true`, and
 Runtime `allow_execute=true`. Train waves additionally require both
 `driver_policy.allow_train_execute=true` and Runtime `allow_train_execute=true`.
+`include_runtime_dry_run` remains accepted only as a compatibility field; the
+requested mode controls whether Runtime dry-run is requested.
 Marshal reports desired wave differences but does not edit wave config, select
 checkpoints, or claim target satisfaction.
 
@@ -657,9 +936,9 @@ wave using the canonical fields `target_component_family_id`, `mode`,
 `source_range`, range bounds, `job_kind`, `train_target`, and
 `model_state_inputs`.
 
-## M3 Execution Gate
+## D3 Execution Gate
 
-M3 allows an execution handoff only after the dry-run path has produced
+D3 allows an execution handoff only after the dry-run path has produced
 structured accepted dry-run evidence for the same dispatch. A non-empty string
 or placeholder digest is not enough.
 
@@ -724,9 +1003,9 @@ manifest, terminal result fact, and derived lattice exposure fact using
 canonical Runtime active-wave field names. Runtime also rejects symbolic
 model-state inputs on that legacy path.
 
-## M4 Dispatch Receipts
+## D4 Dispatch Receipts
 
-M4 receipts explain what Marshal requested and what Runtime Hero returned. They
+D4 receipts explain what Marshal requested and what Runtime Hero returned. They
 record:
 
 ```text
@@ -758,7 +1037,7 @@ retain request/advice/decision/runtime-response digests, refusal reasons,
 identity, compacted-field notes, and the non-authority statement. Compact and
 tombstone receipts remain audit metadata only.
 
-## M6 Status And M7 Batch Preview
+## S1 Status And Batch Preview
 
 Marshal status is a compact read-only summary over recent receipts and Runtime
 policy. It reports last accepted dry-run, last execution handoff, latest refusal
@@ -812,7 +1091,7 @@ Use `mode=compare` for run-to-run comparison, `mode=latest_chain` for the
 latest training/eval chain, and `mode=single_job` for a bounded inspection of
 one job.
 
-## M5, M9, And M10
+## Auxiliary Surfaces
 
 Codex-assisted Marshal wrappers call deterministic primitives and keep free-form
 text as operator explanation or prompt text. They cannot bypass validation,

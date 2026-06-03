@@ -8309,7 +8309,7 @@ struct lattice_target_evaluation_t {
   struct plan_basis_t {
     struct fact_preview_hint_t {
       std::string tool{"hero.lattice.fact_preview"};
-      std::string marshal_tool{"hero.marshal.inspect_evidence_panel"};
+      std::string marshal_tool{"hero.marshal.inspect"};
       std::string fact_family{};
       std::string fact_digest{};
       bool include_preview{true};

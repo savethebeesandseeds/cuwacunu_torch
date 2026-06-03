@@ -29,12 +29,15 @@ inline constexpr const char *k_marshal_dispatch_non_authority_statement =
 
 enum class marshal_dispatch_mode_t {
   unknown,
+  plan,
   dry_run,
   execute,
 };
 
 [[nodiscard]] inline const char *to_string(marshal_dispatch_mode_t mode) {
   switch (mode) {
+  case marshal_dispatch_mode_t::plan:
+    return "plan";
   case marshal_dispatch_mode_t::dry_run:
     return "dry_run";
   case marshal_dispatch_mode_t::execute:

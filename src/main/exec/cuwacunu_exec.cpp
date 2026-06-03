@@ -135,7 +135,7 @@ int main(int argc, char **argv) {
     std::string config_path{kDefaultConfigPath};
     runtime::job_runner_options_t options{};
     env::runtime_job_replay_driver_options_t replay_options{};
-    bool replay_from_job_dir{false};
+    bool replay_job_dir_mode{false};
 
     for (int i = 1; i < argc; ++i) {
       const std::string arg = argv[i];
@@ -147,7 +147,7 @@ int main(int argc, char **argv) {
         config_path = require_next_arg(argc, argv, &i, arg);
       } else if (arg == "--replay-from-job-dir") {
         replay_options.job_dir = require_next_arg(argc, argv, &i, arg);
-        replay_from_job_dir = true;
+        replay_job_dir_mode = true;
       } else if (arg == "--job-dir") {
         options.job_dir = require_next_arg(argc, argv, &i, arg);
       } else if (arg == "--dry-run") {
@@ -244,7 +244,7 @@ int main(int argc, char **argv) {
       }
     }
 
-    if (replay_from_job_dir) {
+    if (replay_job_dir_mode) {
       if (!options.job_dir.empty()) {
         throw std::runtime_error(
             "[cuwacunu_exec] --job-dir writes a new Runtime job and cannot be "

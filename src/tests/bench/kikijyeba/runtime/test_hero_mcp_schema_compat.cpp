@@ -1212,7 +1212,7 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
   require_contains(artifact_explain, "\"runtime_wave_dispatchable\":false",
                    "artifact explain must not expose runtime waves");
   require_contains(artifact_explain,
-                   "\"recommended_operator_action\":\"inspect_evidence_panel\"",
+                   "\"recommended_operator_action\":\"inspect\"",
                    "artifact explain should route to evidence panel");
   require_contains(artifact_explain,
                    "artifact_readiness targets are evidence catalog proof "
@@ -1318,7 +1318,7 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
   require_contains(artifact_deficit, "\"runtime_wave_dispatchable\":false",
                    "artifact target deficit must not expose runtime waves");
   require_contains(artifact_deficit,
-                   "\"recommended_operator_action\":\"inspect_evidence_panel\"",
+                   "\"recommended_operator_action\":\"inspect\"",
                    "artifact target deficit should route to evidence panel");
   require_contains(artifact_deficit, "\"suggested_wave\":null",
                    "artifact target deficit should not suggest a wave");
@@ -1333,8 +1333,7 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
                    "artifact_readiness target is non-dispatchable; inspect "
                    "evidence catalog",
                    "artifact target plan basis should be evidence inspection");
-  require_contains(artifact_deficit,
-                   "\"suggested_action\":\"inspect_evidence_panel\"",
+  require_contains(artifact_deficit, "\"suggested_action\":\"inspect\"",
                    "artifact target plan basis should suggest evidence panel");
   require_contains(artifact_deficit,
                    "\"fact_integrity_summary_available\":true",
@@ -1407,7 +1406,7 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
                    "artifact evaluation should include target-scoped fact "
                    "integrity summary");
   require_contains(artifact_evaluation,
-                   "\"recommended_operator_action\":\"inspect_evidence_panel\"",
+                   "\"recommended_operator_action\":\"inspect\"",
                    "artifact evaluation should route to evidence panel");
   require_contains(artifact_evaluation,
                    "\"key\":\"artifact:forecast_eval_fact\"",
@@ -1844,7 +1843,7 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
   require_contains(scanned_artifact_evaluation, "\"dispatchable_target\":false",
                    "scanned artifact evaluation must not become dispatchable");
   require_contains(scanned_artifact_evaluation,
-                   "\"recommended_operator_action\":\"inspect_evidence_panel\"",
+                   "\"recommended_operator_action\":\"inspect\"",
                    "scanned artifact evaluation should route to inspection");
   require_contains(scanned_artifact_evaluation,
                    "\"fact_integrity_summary_available\":true",
@@ -2079,7 +2078,7 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
                    "scanned bad-baseline artifact proof should point to fact "
                    "preview");
   require_contains(scanned_bad_baseline,
-                   "\"marshal_tool\":\"hero.marshal.inspect_evidence_panel\","
+                   "\"marshal_tool\":\"hero.marshal.inspect\","
                    "\"fact_family\":\"forecast_eval\",\"fact_digest\":\"",
                    "scanned bad-baseline artifact preview hint should include "
                    "family and digest");

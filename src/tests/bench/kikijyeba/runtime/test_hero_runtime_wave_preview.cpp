@@ -585,8 +585,8 @@ void test_execute_wave_overlay() {
   std::filesystem::remove_all(dir);
 }
 
-void test_replay_from_job_operator_tool() {
-  const auto dir = make_tmp_dir("replay_from_job_tool");
+void test_replay_operator_tool() {
+  const auto dir = make_tmp_dir("replay_tool");
   const auto runtime_root = dir / "runtime";
   const auto job_dir = runtime_root / "jobs" / "completed_job";
   const auto replay_artifact_dir =
@@ -686,26 +686,32 @@ void test_replay_from_job_operator_tool() {
                                "\"risky_node_ids\":\"BTC,ETH\","
                                "\"experiment_id\":\"hero_replay\","
                                "\"max_steps\":8,"
-                               "\"include_equal_weight\":true}";
+                               "\"include_equal_weight\":true,"
+                               "\"allow_synthetic_direct_edges\":true,"
+                               "\"linear_transaction_cost_rate\":0.001}";
   std::string result;
   error.clear();
-  check(hero_runtime::execute_tool_json("hero.runtime.replay_from_job",
-                                        dry_args, &ctx, &result, &error),
-        "replay_from_job dry-run failed: " + error);
+  check(hero_runtime::execute_tool_json("hero.runtime.replay", dry_args, &ctx,
+                                        &result, &error),
+        "replay dry-run failed: " + error);
   check(!hero_runtime::tool_result_is_error(result),
-        "replay_from_job dry-run returned error: " + result);
+        "replay dry-run returned error: " + result);
   require_contains(result, "\"dry_run\":true",
-                   "replay_from_job dry-run should not execute process");
+                   "replay dry-run should not execute process");
   require_contains(result, "\"--replay-from-job-dir\"",
-                   "replay_from_job should target job-dir replay mode");
+                   "replay should target job-dir replay mode");
   require_contains(result, "\"--replay-base-reserve-node\"",
-                   "replay_from_job should pass base reserve override");
+                   "replay should pass base reserve override");
   require_contains(result, "\"--replay-risky-nodes\"",
-                   "replay_from_job should pass risky-node override");
+                   "replay should pass risky-node override");
   require_contains(result, "\"--replay-max-steps\"",
-                   "replay_from_job should pass max steps");
+                   "replay should pass max steps");
   require_contains(result, "\"--replay-include-equal-weight\"",
-                   "replay_from_job should pass baseline policy flag");
+                   "replay should pass baseline policy flag");
+  require_contains(result, "\"--replay-allow-synthetic-direct-edges\"",
+                   "replay should pass synthetic-edge replay flag");
+  require_contains(result, "\"--replay-linear-transaction-cost-rate\"",
+                   "replay should pass transaction-cost replay flag");
 
   const std::string run_args = "{\"job_dir\":\"" + job_dir.string() +
                                "\",\"dry_run\":false,"
@@ -715,15 +721,14 @@ void test_replay_from_job_operator_tool() {
                                "\"max_steps\":8}";
   result.clear();
   error.clear();
-  check(hero_runtime::execute_tool_json("hero.runtime.replay_from_job",
-                                        run_args, &ctx, &result, &error),
-        "replay_from_job execution failed with allow_execute=false: " + error);
+  check(hero_runtime::execute_tool_json("hero.runtime.replay", run_args, &ctx,
+                                        &result, &error),
+        "replay execution failed with allow_execute=false: " + error);
   check(!hero_runtime::tool_result_is_error(result),
-        "replay_from_job execution returned error: " + result);
-  require_contains(result, "\"ok\":true",
-                   "replay_from_job execution should succeed");
+        "replay execution returned error: " + result);
+  require_contains(result, "\"ok\":true", "replay execution should succeed");
   require_contains(result, "\"replay_completed_count\":\"2\"",
-                   "replay_from_job should expose replay stdout fields");
+                   "replay should expose replay stdout fields");
 
   result.clear();
   error.clear();
@@ -856,11 +861,11 @@ void test_replay_from_job_operator_tool() {
   write_text(job_dir / "job.state", "status=failed\n");
   result.clear();
   error.clear();
-  check(!hero_runtime::execute_tool_json("hero.runtime.replay_from_job",
-                                         dry_args, &ctx, &result, &error),
-        "replay_from_job should reject non-completed jobs");
+  check(!hero_runtime::execute_tool_json("hero.runtime.replay", dry_args, &ctx,
+                                         &result, &error),
+        "replay should reject non-completed jobs");
   require_contains(error, "E_RUNTIME_REPLAY_JOB_NOT_COMPLETED",
-                   "replay_from_job should report non-completed job error");
+                   "replay should report non-completed job error");
 
   std::filesystem::remove_all(dir);
 }
@@ -1091,7 +1096,7 @@ int main() {
     test_mdn_wave_preview_reads_jkimyei_model_state_inputs();
     test_execute_expected_wave_binding();
     test_execute_wave_overlay();
-    test_replay_from_job_operator_tool();
+    test_replay_operator_tool();
     std::cout << "hero runtime wave preview tests passed\n";
     return 0;
   } catch (const std::exception &ex) {

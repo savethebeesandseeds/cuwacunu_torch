@@ -179,10 +179,12 @@ from the per-step replay evidence. This remains a post-job replay adapter and
 does not change Runtime's MDN execution semantics. The executable surface is
 `cuwacunu_exec --replay-from-job-dir <job_dir>`, which consumes an already
 completed job directory instead of launching a new graph-first wave. Runtime
-Hero exposes the same path as `hero.runtime.replay_from_job`; the tool accepts
-`job_id` or `job_dir`, checks the job is completed and has replay batch
-evidence, then delegates to the executable with the requested replay policy
-options. The matching read path is named too: `hero.runtime.read_artifact` can
-inspect `replay_batch_index`, `replay_experiment_index`, and
+Hero exposes the same path as `hero.runtime.replay`. The tool accepts `job_id`
+or `job_dir`, checks the job is completed and has replay batch evidence, then
+delegates to the executable with the requested replay policy options and
+Cajtucu paper profile hints such as `allow_synthetic_direct_edges` and
+`linear_transaction_cost_rate`. The matching read path is named too:
+`hero.runtime.read_artifact` can inspect `replay_batch_index`,
+`replay_experiment_index`, and
 `replay_experiment_report`, and `hero.runtime.get_job` summarizes those replay
 artifacts beside the regular Runtime manifest/state/report summaries.

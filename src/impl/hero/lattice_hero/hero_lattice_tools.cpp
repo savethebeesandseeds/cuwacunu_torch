@@ -1444,7 +1444,7 @@ target_spec_json(const target::lattice_target_spec_t &spec) {
       << bool_json(runtime_wave_dispatchable)
       << ",\"recommended_operator_action\":"
       << json_quote(artifact_readiness_target
-                        ? "inspect_evidence_panel"
+                        ? "inspect"
                         : (runtime_wave_dispatchable
                                ? "evaluate_target_then_review_suggested_wave"
                                : "inspect_lattice_status"))
@@ -2772,7 +2772,7 @@ node_support_summary_json(const exposure::node_support_summary_t &summary) {
   std::ostringstream out;
   out << "{\"available\":" << bool_json(available)
       << ",\"tool\":\"hero.lattice.fact_preview\""
-      << ",\"marshal_tool\":\"hero.marshal.inspect_evidence_panel\""
+      << ",\"marshal_tool\":\"hero.marshal.inspect\""
       << ",\"fact_family\":" << json_quote(family)
       << ",\"fact_digest\":" << json_quote(digest) << ",\"lattice_args\":";
   if (available) {
@@ -6277,7 +6277,7 @@ evaluation_json(const target::lattice_target_evaluation_t &eval) {
                    !eval.suggested_wave.empty())
       << ",\"recommended_operator_action\":"
       << json_quote(artifact_readiness_target
-                        ? "inspect_evidence_panel"
+                        ? "inspect"
                         : (eval.plan_ready ? "review_suggested_wave"
                                            : "inspect_lattice_status"))
       << ",\"component\":" << json_quote(eval.component) << ",\"status\":"
@@ -10614,7 +10614,7 @@ build_target_evaluator(const std::string &args, lattice_context_t *ctx,
                       !eval.suggested_wave.empty())
          << ",\"recommended_operator_action\":"
          << json_quote(artifact_readiness_target
-                           ? "inspect_evidence_panel"
+                           ? "inspect"
                            : (eval.plan_ready ? "review_suggested_wave"
                                               : "inspect_lattice_status"))
          << ",\"kind\":"

@@ -458,7 +458,7 @@ flags.
 Artifact-readiness proof JSON also emits `fact_preview_hint` for concrete
 artifact facts, and blocked artifact plan-basis JSON aggregates those hints in
 `fact_preview_hints`. These hints name `hero.lattice.fact_preview` and
-`hero.marshal.inspect_evidence_panel` arguments for inspection only; they do
+`hero.marshal.inspect` arguments for inspection only; they do
 not alter proof certificates, target status, checkpoint selection, or dispatch.
 
 Narrow catalog proofs use `TARGET_CLASS = artifact_readiness`, `PROOF_KIND`,
@@ -1116,7 +1116,7 @@ not from target-dependency scheduling. `list_targets`, `explain_target`,
 `evaluate_target`, and `target_deficit` expose this as `target_surface_kind =
 evidence_catalog_artifact`, `dispatchable_target = false`,
 `runtime_wave_dispatchable = false`, and
-`recommended_operator_action = inspect_evidence_panel`. They also emit
+`recommended_operator_action = inspect`. They also emit
 `kind = not_applicable`, `target_kind_applicable = false`, and
 `target_kind_effective = none`, so the internal default enum cannot masquerade
 as a declared `TARGET_KIND`.

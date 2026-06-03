@@ -127,7 +127,21 @@ void print_help(const char *argv0) {
             << "  default mode: JSON-RPC over stdio\n"
             << "  default config path: [HERO].config_hero_dsl_path in "
                "--global-config, then "
-            << kDefaultHeroConfigPath << "\n";
+            << kDefaultHeroConfigPath << "\n"
+            << "\n"
+            << "Authority groups:\n"
+            << "  Read-only inspection:\n"
+            << "    hero.config.status, schema, show, get, validate, map,\n"
+            << "    capture_bundle, resolve, diff, list, read, backups\n"
+            << "  Config mutation under policy-controlled roots:\n"
+            << "    hero.config.set, save, reload, rollback, write, delete\n"
+            << "  Boundary:\n"
+            << "    Config Hero does not execute Runtime, prove Lattice "
+               "targets,\n"
+            << "    select checkpoints, or make deployment/allocation "
+               "decisions.\n"
+            << "    Use dry_run and expected digests for file write/delete "
+               "work.\n";
 }
 
 } // namespace

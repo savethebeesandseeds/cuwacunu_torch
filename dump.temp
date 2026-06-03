@@ -1,488 +1,502 @@
-CAJTUCU PAPER EXECUTION REVIEW PACKET
-=====================================
+Marshal V2 / Rollout Review Packet
+Generated for colleague review on 2026-06-03.
 
-Date: 2026-06-02
-Scope: cajtucu.execution.paper.v1 and Kikijyeba replay integration.
+Purpose
+-------
+Please review the current Marshal public contract and the latest finite cleanup
+state. The important question is whether the Marshal boundary, public tool
+surface, rollout handoff model, and operator response vocabulary are now
+coherent enough to commit as a stable checkpoint.
 
-This packet is for colleague review. It intentionally focuses on the Cajtucu
-paper execution contract and the replay integration points affected by it.
+Core operative model
+--------------------
+Lattice proves.
+Runtime executes.
+Marshal coordinates, validates, delegates, records, and explains.
+Cajtucu paper-executes replay mechanics under Runtime replay.
 
+Public Marshal tools
+--------------------
+The public Marshal surface is exactly:
 
-SOURCE FILES
-------------
+  hero.marshal.status
+  hero.marshal.prepare
+  hero.marshal.rollout
+  hero.marshal.inspect
 
-Core Cajtucu:
+Short meanings:
 
-  src/include/cajtucu/README.md
-  src/include/cajtucu/ROADMAP.md
-  src/include/cajtucu/cajtucu.h
-  src/include/cajtucu/execution/assembly.h
-  src/include/cajtucu/execution/types.h
-  src/include/cajtucu/execution/paper_backend.h
+  status   = what Marshal can see
+  prepare  = how one Lattice target can move next
+  rollout  = how one completed Runtime job can be replayed through environment
+  inspect  = what existing evidence says
 
-Config/contract:
+Recent implemented roadmap slices
+---------------------------------
+V2.2a/V2.2b:
+  - rollout is now a first-class public tool, not prepare intent=rollout.
+  - rollout requested_mode is plan|execute.
+  - legacy rollout requested_mode=dry_run is rejected.
+  - legacy rollout prepare_only is rejected.
+  - rollout requires:
+      rollout_id
+      rollout_attempt_id
+      idempotency_key
+      runtime_job_dir
+      replay_batch_index_path
+      graph_order_fingerprint
+      asset_universe_digest
+      base_reserve_node_id
+      risky_node_ids
+  - rollout execution_profile is typed enough for Cajtucu paper V1:
+      execution_backend_id
+      cost_model_id
+      allow_synthetic_direct_edges
+      synthetic_edge_research_reason
+      linear_transaction_cost_rate
+      allow_partial_fills
+      allow_negative_base_reserve
+      equity_mismatch_tolerance
+      equity_mismatch_fail_tolerance
+      live_execution_allowed
+  - synthetic direct edges require an explicit research reason.
+  - allow_partial_fills=true is refused until Runtime replay forwards it.
+  - cost_model_id must be linear_transaction_cost_rate.v1.
 
-  src/config/cajtucu.execution.paper.dsl
-  src/config/grammar/cajtucu.execution.paper.dsl.bnf
-  src/config/man/cajtucu.config.man
+V2.3:
+  - prepare is target-dispatch oriented.
+  - target_id is canonical.
+  - requested_mode is plan|dry_run|execute.
+  - plan does not call Runtime.
+  - dry_run calls Runtime dry-run.
+  - execute requires dry-run gate and Runtime policy permission.
+  - replay/rollout intent routes to hero.marshal.rollout.
+  - artifact_validation routes to inspect.
+  - policy_training remains reserved until a finite Runtime contract exists.
 
-Focused Cajtucu tests:
+V2.4:
+  - inspect canonical public fields:
+      fact_family_id
+      fact_digest
+      fact_digest_prefix
+      fact_index
+      component_family_id
+  - old public aliases are rejected:
+      family
+      fact_family
+      digest
+      digest_prefix
+      index
+      component
+  - subject=facts validates modes summary|lineage|preview.
 
-  src/tests/bench/cajtucu/execution/test_cajtucu_execution_paper.cpp
+V2.5a/V2.5b:
+  - status and inspect expose the shared read-only operator envelope.
+  - prepare and rollout expose the dispatch/delegation envelope supplement.
+  - public packets now expose:
+      schema_version
+      refusal_reasons
+      warnings
+      next_safe_actions
+      authority
+      observed
+      evidence_refs
+      digests
+  - top-level legacy next_action was removed from prepare/rollout operator
+    packets.
+  - target-driver iteration records may still carry next_action as historical
+    ledger evidence, not as the top-level operator command field.
 
-Kikijyeba integration touched for Cajtucu evidence:
+V2.6:
+  - live --help documents status, prepare, rollout, and inspect.
+  - rollout help uses requested_mode=plan|execute and labels plan examples as
+    plan.
+  - README and ROADMAP use next_safe_actions for public operator guidance.
 
-  src/include/kikijyeba/environment/replay/world.h
-  src/include/kikijyeba/environment/control/types.h
-  src/include/kikijyeba/environment/run/episode_runner.h
-  src/include/kikijyeba/environment/runtime/experiment_driver.h
-  src/tests/bench/kikijyeba/environment/test_kikijyeba_environment_contract.cpp
+Verification performed
+----------------------
+These commands passed:
 
+  make -C src/tests/bench/kikijyeba/marshal -j12 run-test_kikijyeba_marshal_rollout
+  make -C src/tests/bench/kikijyeba/marshal -j12 run-test_kikijyeba_marshal_dispatch
+  make -C src/main/hero -j12 build-marshal-hero
+  make -C src/tests/bench/kikijyeba/runtime -j12 run-test_hero_mcp_schema_compat
+  /cuwacunu/.build/hero/hero_marshal.mcp --global-config /cuwacunu/src/config/.config --list-tools-json
+  /cuwacunu/.build/hero/hero_marshal.mcp --global-config /cuwacunu/src/config/.config --help
+  git diff --check
 
-VALIDATION RUN
---------------
+Current modified files relevant to this review
+----------------------------------------------
+  src/include/hero/marshal_hero/hero_marshal.def
+  src/include/kikijyeba/marshal/README.md
+  src/include/kikijyeba/marshal/ROADMAP.md
+  src/include/kikijyeba/marshal/dispatch_advice.h
+  src/include/kikijyeba/marshal/rollout_marshal.h
+  src/include/kikijyeba/marshal/tool_handler.h
+  src/main/hero/hero_marshal_mcp.cpp
+  src/main/hero/README.md
+  src/tests/bench/kikijyeba/marshal/test_kikijyeba_marshal_dispatch.cpp
+  src/tests/bench/kikijyeba/marshal/test_kikijyeba_marshal_rollout.cpp
 
-Passed:
+Runtime-side files also touched as part of rollout execution support:
+  src/impl/hero/runtime_hero/hero_runtime_tools.cpp
+  src/include/kikijyeba/runtime/README.md
+  src/main/exec/cuwacunu_exec.cpp
+  src/tests/bench/kikijyeba/runtime/test_hero_runtime_wave_preview.cpp
 
-  make -C src/tests/bench/cajtucu/execution -j12 run-test_cajtucu_execution_paper
-  make -C src/tests/bench/kikijyeba/environment -j12 run-test_kikijyeba_environment_contract
+Live tool catalog excerpt
+-------------------------
+From:
+  /cuwacunu/.build/hero/hero_marshal.mcp --global-config /cuwacunu/src/config/.config --list-tools-json
 
-Whitespace:
+Public tools:
 
-  git diff --check -- src/include/cajtucu \
-    src/config/cajtucu.execution.paper.dsl \
-    src/config/grammar/cajtucu.execution.paper.dsl.bnf \
-    src/config/man/cajtucu.config.man \
-    src/config/README.md \
-    src/include/kikijyeba/environment/replay/world.h \
-    src/include/kikijyeba/environment/control/types.h \
-    src/include/kikijyeba/environment/run/episode_runner.h \
-    src/include/kikijyeba/environment/runtime/experiment_driver.h \
-    src/tests/bench/cajtucu/execution/test_cajtucu_execution_paper.cpp \
-    src/tests/bench/kikijyeba/environment/test_kikijyeba_environment_contract.cpp
+  hero.marshal.status
+    Read-only Marshal health and authority-boundary summary: recent receipts,
+    policy/advice visibility, refusal state, caller-supplied test surfaces,
+    and explicit non-executor/non-proof flags.
 
-Passed.
+  hero.marshal.prepare
+    Prepare finite movement for one dispatchable Lattice target. Train/evaluate
+    are the current target-movement path; replay uses rollout,
+    artifact-readiness routes to inspect, and policy-training is reserved until
+    a concrete Runtime contract exists.
 
+  hero.marshal.rollout
+    Prepare or execute a bounded Kikijyeba historical replay rollout from a
+    completed Runtime job: policy set plus Cajtucu paper execution profile
+    becomes Runtime replay trajectory evidence. Runtime executes and writes
+    reports; Marshal records the handoff.
 
-WHAT CAJTUCU PAPER V1 DOES
---------------------------
+  hero.marshal.inspect
+    Read-only evidence inspection. Subjects run, target, protocol, spawn,
+    component, and facts explain Runtime/Lattice/Marshal state without
+    execution, proof claims, checkpoint selection, policy selection, or writes.
 
-Cajtucu paper V1 does not choose a portfolio. It executes a target-weight
-intent.
+Important public schema facts
+-----------------------------
+prepare:
+  required:
+    target_id
+  requested_mode:
+    plan | dry_run | execute
+  drive_mode:
+    one_step | budgeted
+  additionalProperties:
+    false
 
-Inputs:
+rollout:
+  required:
+    rollout_id
+    rollout_attempt_id
+    idempotency_key
+    runtime_job_dir
+    replay_batch_index_path
+    requested_mode
+    graph_order_fingerprint
+    asset_universe_digest
+    base_reserve_node_id
+    risky_node_ids
+  requested_mode:
+    plan | execute
+  execution_profile:
+    additionalProperties=false
+    fields:
+      execution_backend_id
+      cost_model_id
+      allow_synthetic_direct_edges
+      synthetic_edge_research_reason
+      linear_transaction_cost_rate
+      allow_partial_fills
+      allow_negative_base_reserve
+      equity_mismatch_tolerance
+      equity_mismatch_fail_tolerance
+      live_execution_allowed
 
-  execution_intent_t
-      policy/method/run/episode/anchor identity
-      risky node ids
-      base reserve node id
-      current risky weights
-      target risky weights
-      current base reserve weight
-      target base reserve weight
-      intent equity value in base units
+inspect:
+  required:
+    subject
+  subject:
+    run | target | protocol | spawn | component | facts
+  identity_mode:
+    report | strict
+  canonical fact fields:
+    fact_family_id
+    fact_digest
+    fact_digest_prefix
+    fact_index
+  canonical component field:
+    component_family_id
+  additionalProperties:
+    false
 
-  market_execution_state_t
-      market graph
-      edge mid prices
-      fee rates
-      spread rates
-      slippage rates
-      min/max notional
-      tradable mask
-      market source id
-      synthetic-direct-edge flag
+Live help excerpt
+-----------------
+From:
+  /cuwacunu/.build/hero/hero_marshal.mcp --global-config /cuwacunu/src/config/.config --help
 
-  execution_ledger_t
-      risky asset units
-      base reserve units
-      mark-to-market weights
-      equity value
-      cumulative execution cost counters
+Marshal role and authority boundary:
+  Marshal is a coordinator. It prepares bounded handoffs, checks request shape,
+  records receipts, and explains evidence. Runtime Hero executes allowed
+  waves/replay. Lattice Hero proves target satisfaction. Marshal does not
+  become proof authority, market-readiness authority, deployment authority,
+  checkpoint selector, or allocation authority.
 
-Output:
+hero.marshal.prepare:
+  Purpose: prepare a bounded Runtime handoff for one Lattice target.
+  requested_mode: plan, dry_run, or execute.
+  Returns: target-driver packet, dispatchability/refusal reasons, optional
+  Runtime dry-run handoff, and next safe actions.
 
-  execution_trace_t
-      intent
-      orders
-      fills/rejects/partials
-      ledger_before
-      ledger_after
-      costs
-      turnover
-      market source evidence
-      equity mismatch evidence
-      warnings/failures
+hero.marshal.rollout:
+  Purpose: prepare or execute a bounded historical replay rollout of a policy
+  set against completed Runtime job artifacts.
+  Core model:
+    completed Runtime job + policy set + replay environment + Cajtucu paper
+    execution profile -> Runtime replay report/evidence.
+  requested_mode:
+    plan or execute
+  Returns:
+    rollout plan in plan mode; in execute, Runtime replay handoff result
+    digests and dispatch state. Runtime reports are written by Runtime;
+    inspection summaries come from later inspect.
 
+hero.marshal.inspect:
+  Purpose: read-only operator inspection over Runtime/Lattice/Marshal evidence.
+  Subjects:
+    run
+    target
+    protocol
+    spawn
+    component
+    facts
 
-CAJTUCU DSL
------------
+Key code excerpt: rollout contract
+----------------------------------
+File:
+  src/include/kikijyeba/marshal/rollout_marshal.h
 
-File: src/config/cajtucu.execution.paper.dsl
-
-/*
-  cajtucu.execution.paper.dsl
-  ===========================
-  Authored contract for the first Cajtucu output/execution method.
-
-  V1 is paper-only. It converts target-weight execution intents into direct
-  reserve-edge orders, simulated paper fills, ledger mutation, and durable
-  execution traces. It has no live broker API, no credentials, no network calls,
-  and no real-capital authority.
-*/
-CAJTUCU_EXECUTION_PAPER {
-  VERSION = cajtucu.execution.paper.v1;
-  COMPONENT_ASSEMBLY_ID = paper_execution_v1;
-  INPUT_INTENT_SCHEMA = cajtucu.execution.intent.v1;
-  OUTPUT_TRACE_SCHEMA = cajtucu.execution.trace.v1;
-  LEDGER_SCHEMA = cajtucu.execution.ledger.v1;
-  BACKEND_KIND = deterministic_paper_execution;
-  ACTION_SOURCE = kikijyeba_environment_target_weights;
-  MARKET_SOURCE_POLICY = explicit_market_execution_state;
-  SYNTHETIC_MARKET_SOURCE_POLICY = allowed_with_trace_warning;
-  ROUTE_POLICY = direct_base_reserve_edge_only;
-  RESERVE_NODE_POLICY = graph_node_from_execution_intent;
-  EXECUTION_ORDER_POLICY = sells_before_buys;
-  ORDER_MODEL = target_weight_delta_to_base_notional;
-  FILL_PRICE_MODEL = mid_plus_half_spread_plus_slippage;
-  INVALID_SELL_PRICE_POLICY = invalid_trace_before_ledger_mutation;
-  FEE_MODEL = linear_fee_rate_per_edge;
-  MIN_NOTIONAL_POLICY = reject_when_enabled;
-  MAX_NOTIONAL_POLICY = reject_or_partial_fill;
-  PARTIAL_FILL_POLICY = configurable_default_false;
-  LEDGER_POLICY = mutate_units_and_base_reserve_from_fills;
-  MARK_TO_MARKET_POLICY = direct_edge_mid_price;
-  EQUITY_MISMATCH_POLICY = warn_and_size_from_mark_to_market_ledger;
-  TRACE_POLICY = include_intent_orders_fills_ledgers_costs_source_identity;
-  EXECUTION_AUTHORITY = false;
-  LIVE_EXECUTION_ALLOWED = false;
-  BROKER_CREDENTIALS_ALLOWED = false;
-  NETWORK_IO_ALLOWED = false;
-  DEFAULT_ALLOW_PARTIAL_FILLS = false;
-  DEFAULT_ALLOW_NEGATIVE_BASE_RESERVE = false;
-  DEFAULT_ALLOW_SYNTHETIC_DIRECT_EDGES = false;
-  DEFAULT_EQUITY_MISMATCH_TOLERANCE = 0.000001;
-  DEFAULT_EQUITY_MISMATCH_FAIL_TOLERANCE = 0.01;
-  EPS = 0.000000000001;
+struct marshal_rollout_execution_profile_t {
+  std::string schema_version{k_marshal_rollout_execution_profile_schema_v1};
+  std::string execution_backend_id{"cajtucu.execution.paper.v1"};
+  std::string cost_model_id{"linear_transaction_cost_rate.v1"};
+  bool allow_synthetic_direct_edges{false};
+  std::string synthetic_edge_research_reason{};
+  double linear_transaction_cost_rate{0.0};
+  bool allow_partial_fills{false};
+  bool allow_negative_base_reserve{false};
+  double equity_mismatch_tolerance{1.0e-6};
+  double equity_mismatch_fail_tolerance{0.01};
+  bool live_execution_allowed{false};
 };
 
+struct marshal_rollout_request_t {
+  std::string schema_version{k_marshal_rollout_request_schema_v1};
+  std::string rollout_id{};
+  std::string rollout_attempt_id{};
+  std::string idempotency_key{};
+  std::string experiment_id{};
+  std::filesystem::path config_path{"/cuwacunu/src/config/.config"};
+  std::filesystem::path runtime_job_dir{};
+  std::filesystem::path replay_batch_index_path{};
+  std::filesystem::path runtime_exec_path{
+      "/cuwacunu/.build/exec/cuwacunu_exec"};
+  std::filesystem::path report_path{};
+  std::string requested_mode{"plan"};
+  std::string environment_mode{"historical_replay"};
+  std::string environment_assembly_id{"kikijyeba.environment.replay.v1"};
+  std::string graph_order_fingerprint{};
+  std::string asset_universe_digest{};
+  std::string base_reserve_node_id{};
+  std::vector<std::string> risky_node_ids{};
+  std::vector<std::string> policy_tokens{};
+  std::int64_t max_steps{0};
+  std::int64_t max_parallel_jobs{1};
+  std::int64_t timeout_seconds{600};
+  marshal_rollout_execution_profile_t execution_profile{};
+  bool require_existing_runtime_job_dir{true};
+  bool require_completed_runtime_job{true};
+  bool require_replay_artifacts{true};
+};
 
-BNF
----
+Validation highlights in validate_rollout_request:
+  - missing rollout_id -> missing_rollout_id
+  - missing rollout_attempt_id -> missing_rollout_attempt_id
+  - missing idempotency_key -> missing_idempotency_key
+  - requested_mode other than plan|execute -> unsupported_requested_mode
+  - environment_mode other than historical_replay -> unsupported_environment_mode
+  - environment_assembly_id other than kikijyeba.environment.replay.v1
+    -> unsupported_environment_assembly_id
+  - execution_backend_id other than cajtucu.execution.paper.v1
+    -> unsupported_execution_backend_id
+  - missing graph_order_fingerprint -> missing_graph_order_fingerprint
+  - missing asset_universe_digest -> missing_asset_universe_digest
+  - duplicate reserve in risky nodes -> base_reserve_node_duplicated_in_risky_nodes
+  - duplicate risky nodes -> duplicate_risky_node_id
+  - asset_universe_digest mismatch -> asset_universe_digest_mismatch
+  - unsupported policy token -> unsupported_policy_token:<token>
+  - unsupported cost_model_id -> unsupported_cost_model_id
+  - synthetic edges enabled without reason -> missing_synthetic_edge_research_reason
 
-File: src/config/grammar/cajtucu.execution.paper.dsl.bnf
+Key code excerpt: operator envelope
+-----------------------------------
+File:
+  src/include/kikijyeba/marshal/tool_handler.h
 
-<instruction> ::= "CAJTUCU_EXECUTION_PAPER" [<whitespace>] "{" <line_end> {<assignment>} [<whitespace>] "}" [<whitespace>] ";" [<line_end>] ;
-<assignment> ::= [<whitespace>] <key> [<whitespace>] "=" [<whitespace>] <value> [<whitespace>] ";" <line_end> ;
-<key> ::= "VERSION" | "COMPONENT_ASSEMBLY_ID" | "INPUT_INTENT_SCHEMA" | "OUTPUT_TRACE_SCHEMA" | "LEDGER_SCHEMA" | "BACKEND_KIND" | "ACTION_SOURCE" | "MARKET_SOURCE_POLICY" | "SYNTHETIC_MARKET_SOURCE_POLICY" | "ROUTE_POLICY" | "RESERVE_NODE_POLICY" | "EXECUTION_ORDER_POLICY" | "ORDER_MODEL" | "FILL_PRICE_MODEL" | "INVALID_SELL_PRICE_POLICY" | "FEE_MODEL" | "MIN_NOTIONAL_POLICY" | "MAX_NOTIONAL_POLICY" | "PARTIAL_FILL_POLICY" | "LEDGER_POLICY" | "MARK_TO_MARKET_POLICY" | "EQUITY_MISMATCH_POLICY" | "TRACE_POLICY" | "EXECUTION_AUTHORITY" | "LIVE_EXECUTION_ALLOWED" | "BROKER_CREDENTIALS_ALLOWED" | "NETWORK_IO_ALLOWED" | "DEFAULT_ALLOW_PARTIAL_FILLS" | "DEFAULT_ALLOW_NEGATIVE_BASE_RESERVE" | "DEFAULT_ALLOW_SYNTHETIC_DIRECT_EDGES" | "DEFAULT_EQUITY_MISMATCH_TOLERANCE" | "DEFAULT_EQUITY_MISMATCH_FAIL_TOLERANCE" | "EPS" ;
-<value> ::= <value_char> {<value_char>} ;
-<value_char> ::= <letter> | <digit> | "_" | "." | "-" | "+" ;
-<line_end> ::= [<whitespace>] <break_block> ;
-<break_block> ::= {<newline>} ;
-<whitespace> ::= {<empty>} ;
+marshal_operator_envelope_fields_json(...) emits:
+  schema_version
+  dispatch_state
+  refusal_reasons
+  warnings
+  next_safe_actions
+  authority
+  observed
+  evidence_refs
+  digests
 
+marshal_operator_envelope_supplement_json(...) emits the same fields except
+dispatch_state, because prepare/rollout already expose dispatch_state directly.
 
-MANPAGE
--------
+prepare operator packet:
+  tool = hero.marshal.prepare
+  schema_version = kikijyeba.marshal.prepare.v2.5b
+  next_safe_actions = [step.next_action]
+  top-level next_action is not emitted
 
-File: src/config/man/cajtucu.config.man
+rollout operator packet:
+  tool = hero.marshal.rollout
+  schema_version = kikijyeba.marshal.rollout.v2.5b
+  requested_mode = request.requested_mode
+  dispatch_state = blocked | prepared | executed
+  next_safe_actions =
+    - fix_rollout_request
+    - run_replay_command_or_inspect
+    - inspect_rollout_report
+    - inspect_runtime_replay_failure
+  top-level next_action is not emitted
 
-# Cajtucu Config Contracts
+Authority namespace emitted by Marshal:
+  marshal_proves_target=false
+  marshal_executes_runtime=false
+  marshal_selects_checkpoint=false
+  marshal_selects_policy=false
+  marshal_edits_config=false
+  marshal_makes_allocation_decision=false
+  marshal_makes_market_readiness_decision=false
+  marshal_makes_deployment_decision=false
 
-`src/config/cajtucu.execution.paper.dsl`
+Test evidence excerpts
+----------------------
+File:
+  src/tests/bench/kikijyeba/marshal/test_kikijyeba_marshal_dispatch.cpp
 
-- Contract for `cajtucu.execution.paper.v1`.
-- V1 is deterministic paper execution only.
-- It consumes an execution intent, market execution state, and execution ledger.
-- It emits paper orders/fills/rejects, a mutated ledger, and an execution trace.
-- It uses direct risky-asset/base-reserve graph edges only.
-- It records market source identity in the trace.
-- It warns when replay used synthetic direct asset/reserve edges.
-- It warns when intent equity and mark-to-market ledger equity disagree beyond
-  tolerance, and sizes paper orders from marked ledger equity.
-- It exposes no broker credentials, network I/O, live broker API, or live
-  capital authority.
+prepare plan unresolved model-state test checks:
+  dispatch_state == blocked
+  blocker_bucket == unresolved_model_state
+  next_safe_actions == ["resolve_model_state"]
+  runtime_dry_run.requested == false
+  runtime_dry_run.attempted == false
 
-`src/config/grammar/cajtucu.execution.paper.dsl.bnf`
+prepare plan resolved test checks:
+  dispatch_state == ready_for_dry_run
+  blocker_bucket == none
+  next_safe_actions == ["dry_run"]
+  runtime_dry_run.requested == false
+  runtime_dry_run.attempted == false
 
-- Grammar for `cajtucu.execution.paper.dsl`.
+prepare dry_run test checks:
+  runtime_dry_run.requested == true
+  runtime_dry_run.attempted == true
+  runtime_dry_run.accepted == true
+  dispatch_state == ready_for_execution_gate
+  next_safe_actions == ["execution_gate"]
 
-The current Cajtucu paper DSL is a contract artifact. It is intentionally not
-yet selected through `src/config/.config`; Kikijyeba replay constructs the paper
-backend directly through the C++ contract.
+prepare alias/reserved-intent tests include:
+  lattice_target alias rejected
+  rollout/replay intent rejected with route to hero.marshal.rollout
+  artifact_validation intent rejected with route to hero.marshal.inspect
+  policy_training remains reserved
 
+File:
+  src/tests/bench/kikijyeba/marshal/test_kikijyeba_marshal_rollout.cpp
 
-KEY TYPES
----------
+rollout plan test checks:
+  tool == hero.marshal.rollout
+  schema_version == kikijyeba.marshal.rollout.v2.5b
+  next_safe_actions == ["run_replay_command_or_inspect"]
+  authority.marshal_proves_target == false
+  dispatch_state == prepared
+  top-level next_action is absent
+  receipt_produced == false
+  rollout_plan present
+  hero.lattice does not appear
 
-File: src/include/cajtucu/execution/types.h
+rollout negative tests include:
+  missing rollout_attempt_id
+  missing idempotency_key
+  missing replay_batch_index_path
+  graph fingerprint mismatch
+  asset universe digest mismatch
+  unsupported cost model
+  partial fills unsupported by Runtime replay V1
+  legacy requested_mode=dry_run rejected
+  legacy prepare_only rejected
+  unknown execution_profile field rejected
 
-Added/important fields:
+Questions for review
+--------------------
+1. Is the public separation now correct?
+     prepare = target-dispatch from Lattice advice
+     rollout = replay from completed Runtime job evidence
+     inspect = read-only evidence explanation
+     status = read-only Marshal visibility
 
-  struct market_execution_state_t {
-    std::string market_source_id{kCajtucuMarketSourceUnknown};
-    bool synthetic_direct_edges{false};
-    timestamp_ms_t timestamp_ms{0};
-    graph::market_graph_t graph{};
+2. Is the name rollout acceptable as the RL/environment operation?
+   Current intended meaning:
+     policy set + environment + Cajtucu paper profile + completed Runtime job
+       -> trajectory evidence through Runtime replay
 
-    torch::Tensor edge_mid_price{};     // [E], quote per edge base
-    torch::Tensor edge_fee_rate{};      // optional [E]
-    torch::Tensor edge_spread_rate{};   // optional [E]
-    torch::Tensor edge_slippage_rate{}; // optional [E]
-    torch::Tensor min_notional_base{};  // optional [E], reserve units
-    torch::Tensor max_notional_base{};  // optional [E], reserve units
-    torch::Tensor edge_tradable_mask{}; // optional [E], bool
-  };
+3. Is requested_mode=plan|execute for rollout the right public vocabulary?
+   We removed rollout dry_run terminology because plan is the non-executing
+   mode, and execute delegates to hero.runtime.replay.
 
-  struct execution_trace_t {
-    ...
-    std::string market_source_id{kCajtucuMarketSourceUnknown};
-    bool synthetic_direct_edges{false};
-    double ledger_intent_equity_difference_base{0.0};
-    bool ledger_intent_equity_mismatch{false};
-    std::int64_t rejected_fill_count{0};
-    std::int64_t partial_fill_count{0};
-    bool valid{true};
-    std::vector<std::string> warnings{};
-    std::vector<std::string> failures{};
-  };
+4. Is the current idempotency story acceptable as a contract checkpoint?
+   Current state:
+     rollout_attempt_id and idempotency_key are required and bound into request
+     digests.
+   Not yet implemented:
+     durable duplicate-handoff ledger.
 
-  struct paper_execution_options_t {
-    double min_delta_weight{1.0e-8};
-    bool enforce_min_notional{true};
-    bool allow_partial_fills{false};
-    bool allow_negative_base_reserve{false};
-    bool allow_synthetic_direct_edges{false};
-    bool live_execution_allowed{false};
-    double equity_mismatch_tolerance{1.0e-6};
-    double equity_mismatch_fail_tolerance{1.0e-2};
-    double eps{1.0e-12};
-  };
+5. Is it acceptable that target-driver ledger internals still use next_action
+   as historical evidence while public prepare/rollout operator packets expose
+   next_safe_actions?
 
-Validation hardening:
+6. Should response envelope cleanup continue later into older nested inspect
+   panels that still expose singular next_safe_action, or is the current
+   top-level envelope enough for this checkpoint?
 
-  - market_source_id is required.
-  - live_execution_allowed must be false.
-  - equity_mismatch_tolerance must be finite and nonnegative.
-  - equity_mismatch_fail_tolerance must be at least equity_mismatch_tolerance.
-  - trace orders and fills must align one-to-one.
-  - trace rejected/partial fill counters must match actual fills.
-  - trace valid flag must match failures.empty().
+7. Is Cajtucu paper V1 correctly bound as an execution profile here, or should
+   Marshal require more explicit Cajtucu profile identity fields before commit?
 
+8. Are the current tests sufficient for this checkpoint, or should we add a
+   direct live --tool smoke call for rollout plan mode before commit?
 
-PAPER BACKEND CORRECTED BEHAVIOR
+Recommended checkpoint statement
 --------------------------------
-
-File: src/include/cajtucu/execution/paper_backend.h
-
-Important behavior:
-
-  - Cajtucu initializes an execution_trace_t before mark-to-market.
-  - It checks that every risky node has a direct edge to the reserve node.
-  - If a direct reserve edge is missing, it returns an invalid trace with:
-
-      order.reject_reason = "missing_direct_reserve_edge"
-      fill.status         = rejected
-      trace.valid         = false
-      trace.failures      = ["missing_direct_reserve_edge:<node>"]
-
-    It does not throw without evidence for this route-support failure.
-
-  - If route support is complete, it marks ledger_before to market.
-  - If intent equity and marked ledger equity disagree, it records:
-
-      trace.ledger_intent_equity_difference_base
-      trace.ledger_intent_equity_mismatch
-      warning "ledger_intent_equity_mismatch"
-
-  - If the equity mismatch exceeds the large mismatch threshold, it returns an
-    invalid trace with no execution:
-
-      failure "ledger_intent_equity_mismatch_exceeds_limit"
-
-  - Paper order sizing uses:
-
-      execution_equity_base = trace.ledger_before.equity_value_base
-      requested_notional    = abs(delta_weight) * execution_equity_base
-
-    not intent.equity_value_base.
-
-  - If market.synthetic_direct_edges is true, trace warns:
-
-      "synthetic_direct_edges_market_source"
-
-    options.allow_synthetic_direct_edges defaults false. Cajtucu returns an
-    invalid trace with failure "synthetic_direct_edges_disallowed" unless
-    research replay explicitly opts in.
-
-  - Execution order is deterministic:
-
-      sell orders first
-      buy orders second
-
-    This lets sells fund later buys during one rebalance.
-
-  - If a sell would produce an invalid price because:
-
-      spread/2 + slippage >= 1
-
-    Cajtucu returns an invalid trace before any ledger mutation.
-
-  - Fill model:
-
-      asset_mid_base = edge_mid if asset is edge base
-                     = 1 / edge_mid if reserve is edge base
-
-      buy_price  = asset_mid_base * (1 + spread/2 + slippage)
-      sell_price = asset_mid_base * (1 - spread/2 - slippage)
-      fee        = routed_notional * fee_rate
-
-  - Ledger mutation:
-
-      buy:
-        asset units increase
-        base reserve units decrease by gross notional + fee
-
-      sell:
-        asset units decrease
-        base reserve units increase by gross notional - fee
-
-  - Partial fills are counted once per partially filled fill.
-
-
-KIKIJYEBA REPLAY INTEGRATION
-----------------------------
-
-File: src/include/kikijyeba/environment/replay/world.h
-
-Market source construction:
-
-  - If observation.edge_market_state is present:
-
-      market_source_id = "kikijyeba.environment.replay.edge_market_state"
-      synthetic_direct_edges = false
-
-  - If replay must fall back to node MarketState:
-
-      market_source_id =
-        "kikijyeba.environment.replay.synthetic_node_market_state_direct_edges"
-      synthetic_direct_edges = true
-
-Ledger construction fix:
-
-  Old behavior:
-
-      units = (weights * equity_value_base) / prices
-
-  Corrected behavior:
-
-      units = portfolio_state.current_units if defined
-            = derived from weights only as fallback
-
-This means Cajtucu receives the portfolio units carried by the replay state
-instead of a reconstructed approximation.
-
-Step flow:
-
-  current_portfolio_
-    -> make_cajtucu_market_execution_state(...)
-    -> make_cajtucu_execution_ledger(...)
-    -> make_cajtucu_execution_intent(...)
-    -> paper_backend.execute(...)
-    -> execution_trace.ledger_after.units
-    -> apply historical t+1 realized returns
-    -> portfolio_after
-    -> reward
-
-Replay report additions:
-
-  cajtucu_market_source_id
-  cajtucu_synthetic_direct_edges
-  cajtucu_ledger_intent_equity_difference_base
-  cajtucu_ledger_intent_equity_mismatch
-
-
-FOCUSED CAJTUCU TEST COVERAGE
------------------------------
-
-File: src/tests/bench/cajtucu/execution/test_cajtucu_execution_paper.cpp
-
-Covered cases:
-
-  test_buy_updates_ledger_and_trace
-  test_reverse_edge_orientation_prices_asset_in_reserve_units
-  test_sell_reduces_units
-  test_sells_execute_before_buys_to_fund_rebalance
-  test_nontradable_edge_rejects_fill
-  test_below_min_notional_rejects_fill
-  test_above_max_notional_rejects_without_partial
-  test_above_max_notional_partial_fill_when_enabled
-  test_rejects_insufficient_reserve_without_partial
-  test_insufficient_units_reject_sell_without_partial
-  test_insufficient_units_partial_sell_when_enabled
-  test_missing_direct_edge_fails_closed_before_execution
-  test_equity_mismatch_is_warned
-  test_large_equity_mismatch_fails_closed_before_execution
-  test_synthetic_market_source_is_warned
-  test_synthetic_market_source_can_be_rejected
-  test_invalid_sell_price_rejects_before_ledger_mutation
-  test_live_execution_flag_is_impossible_in_v1
-
-Specific corrected assertions:
-
-  - Missing direct edge now returns an invalid trace with a rejected fill,
-    instead of throwing without evidence.
-
-  - Equity mismatch warning is present and order notional is sized from marked
-    ledger equity, not intent equity.
-
-  - Synthetic market source is preserved and warned in trace evidence.
-
-  - Synthetic market source can be rejected by option.
-
-  - Large equity mismatch returns an invalid trace before execution.
-
-  - Sells execute before buys and can fund the later buy phase.
-
-  - Invalid sell price cost model returns an invalid trace before ledger
-    mutation.
-
-
-ENVIRONMENT TEST COVERAGE ADDED
--------------------------------
-
-File: src/tests/bench/kikijyeba/environment/test_kikijyeba_environment_contract.cpp
-
-Added/updated assertions:
-
-  - Replay Cajtucu ledger_before preserves BTC/ETH current_units from
-    observation portfolio state.
-
-  - Replay report text includes:
-
-      episode_0_step_0_cajtucu_market_source_id=
-      episode_0_step_0_cajtucu_synthetic_direct_edges=
-      episode_0_step_0_cajtucu_ledger_intent_equity_mismatch=
-
-  - Underfunded-cost fixture was adjusted after ledger-equity sizing. The test
-    now uses a high enough fee rate to remain genuinely underfunded under the
-    corrected marked-ledger-equity execution model.
-
-
-REVIEW QUESTIONS
-----------------
-
-1. Is direct base-reserve-edge-only the right Cajtucu V1 route policy, or should
-   routed execution be introduced before paper-online?
-
-2. Should Cajtucu own a richer ledger type before paper-online, including
-   precision/lot/tick constraints and per-node reserve valuation history?
-
-3. Should paper V1 keep one execution result per order, or should we already
-   prepare for one order producing multiple fills?
-
-4. Should buy-side partial fills remain per-asset, or should a future option
-   scale all buy orders pro-rata when reserve is insufficient?
-
-5. Is the updated synthetic direct-edge policy correct: default reject, with
-   explicit research-replay opt-in when synthetic execution markets are needed?
+Marshal V2 public contract is now stable enough for review:
+  - four public tools only
+  - rollout is a first-class environment replay handoff
+  - prepare is target-dispatch only
+  - inspect is canonical and read-only
+  - public packets use next_safe_actions and namespaced authority
+  - Runtime remains executor
+  - Lattice remains proof authority
+  - Cajtucu remains paper execution backend under Runtime replay
+
+Known non-blocking future work
+------------------------------
+  - durable idempotency / duplicate-handoff ledger for rollout execute
+  - deeper response-envelope migration for older nested panels
+  - future finite policy-training Marshal handoff once Runtime has a concrete
+    policy-training job contract
+  - future paper-online/live boundaries outside this Marshal checkpoint

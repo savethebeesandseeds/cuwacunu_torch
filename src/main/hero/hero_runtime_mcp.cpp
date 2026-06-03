@@ -31,7 +31,24 @@ void print_help(const char *argv0) {
                " [--list-tools] [--list-tools-json]\n"
             << "  default mode: JSON-RPC over stdio\n"
             << "  default policy path: [HERO].runtime_hero_dsl_path in "
-               "--global-config, then /cuwacunu/src/config/hero.runtime.dsl\n";
+               "--global-config, then /cuwacunu/src/config/hero.runtime.dsl\n"
+            << "\n"
+            << "Authority groups:\n"
+            << "  Read-only Runtime visibility:\n"
+            << "    hero.runtime.status, schema, wave, list_jobs, get_job,\n"
+            << "    read_artifact\n"
+            << "  Runtime preview:\n"
+            << "    hero.runtime.dry_run\n"
+            << "  Runtime execution/delegation target:\n"
+            << "    hero.runtime.execute, hero.runtime.replay\n"
+            << "  Guarded developer reset:\n"
+            << "    hero.runtime.dev_nuke\n"
+            << "  Boundary:\n"
+            << "    Runtime Hero executes allowed waves/replay and reads job "
+               "evidence.\n"
+            << "    It does not prove Lattice targets, select checkpoints, "
+               "or edit\n"
+            << "    Config Hero policy files.\n";
 }
 
 } // namespace

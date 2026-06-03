@@ -2101,7 +2101,7 @@ private:
               : "artifact_readiness target is non-dispatchable; inspect "
                 "evidence catalog for proof deficits: " +
                     join_keys(out.deficit_keys);
-      out.suggested_action = "inspect_evidence_panel";
+      out.suggested_action = "inspect";
       return out;
     }
 

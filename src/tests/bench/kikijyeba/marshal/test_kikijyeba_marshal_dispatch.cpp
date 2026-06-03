@@ -53,6 +53,20 @@ void write_text(const std::filesystem::path &path, const std::string &text) {
   out << text;
 }
 
+std::size_t count_substrings(const std::string &text,
+                             const std::string &needle) {
+  if (needle.empty()) {
+    return 0;
+  }
+  std::size_t count = 0;
+  std::size_t pos = 0;
+  while ((pos = text.find(needle, pos)) != std::string::npos) {
+    ++count;
+    pos += needle.size();
+  }
+  return count;
+}
+
 std::string shell_quote(const std::string &value) {
   std::string out = "'";
   for (const char c : value) {
@@ -2184,7 +2198,7 @@ void test_m9_marshal_tool_schema_compatibility() {
         "Marshal direct CLI and MCP surfaces should expose same primitives");
   const auto names = marshal::marshal_tool_names();
   check(!names.empty(), "Marshal tool catalog should not be empty");
-  check(names.size() == 3, "Marshal tool catalog should expose exactly three "
+  check(names.size() == 4, "Marshal tool catalog should expose exactly four "
                            "operator-facing tools");
   check(std::find(names.begin(), names.end(), "hero.marshal.status") !=
             names.end(),
@@ -2192,6 +2206,9 @@ void test_m9_marshal_tool_schema_compatibility() {
   check(std::find(names.begin(), names.end(), "hero.marshal.prepare") !=
             names.end(),
         "Marshal tool catalog should expose prepare");
+  check(std::find(names.begin(), names.end(), "hero.marshal.rollout") !=
+            names.end(),
+        "Marshal tool catalog should expose rollout");
   check(std::find(names.begin(), names.end(), "hero.marshal.inspect") !=
             names.end(),
         "Marshal tool catalog should expose inspect");
@@ -2201,18 +2218,100 @@ void test_m9_marshal_tool_schema_compatibility() {
               std::string::npos &&
           tools_list_json.find("\"include_preview\":{\"type\":\"boolean\"}") !=
               std::string::npos &&
-          tools_list_json.find("\"digest\":{\"type\":\"string\"}") !=
+          tools_list_json.find("\"fact_family_id\":{\"type\":\"string\"}") !=
               std::string::npos &&
           tools_list_json.find("\"fact_digest\":{\"type\":\"string\"}") !=
               std::string::npos &&
-          tools_list_json.find("\"digest_prefix\":{\"type\":\"string\"}") !=
+          tools_list_json.find(
+              "\"fact_digest_prefix\":{\"type\":\"string\"}") !=
               std::string::npos &&
           tools_list_json.find("\"fact_index\":{\"type\":\"integer\"}") !=
-              std::string::npos &&
-          tools_list_json.find("\"index\":{\"type\":\"integer\"}") !=
               std::string::npos,
       "inspect MCP schema should advertise fact-preview "
       "selectors accepted by the handler");
+  check(tools_list_json.find("\"fact_family\":{\"type\":\"string\"}") ==
+                std::string::npos &&
+            tools_list_json.find("\"family\":{\"type\":\"string\"}") ==
+                std::string::npos &&
+            tools_list_json.find("\"digest\":{\"type\":\"string\"}") ==
+                std::string::npos &&
+            tools_list_json.find("\"digest_prefix\":{\"type\":\"string\"}") ==
+                std::string::npos &&
+            tools_list_json.find("\"index\":{\"type\":\"integer\"}") ==
+                std::string::npos &&
+            tools_list_json.find("\"component\":{\"type\":\"string\"}") ==
+                std::string::npos,
+        "inspect MCP schema should not advertise retired inspect aliases");
+  const std::string requested_mode_enum =
+      "\"requested_mode\":{\"type\":\"string\",\"enum\":[\"plan\","
+      "\"dry_run\",\"execute\"]}";
+  check(count_substrings(tools_list_json, requested_mode_enum) == 1,
+        "prepare MCP schema should advertise current target-dispatch "
+        "requested_mode values");
+  check(tools_list_json.find("\"lattice_target\"") == std::string::npos,
+        "prepare MCP schema should not advertise legacy lattice_target alias");
+  check(tools_list_json.find(
+            "\"requested_mode\":{\"type\":\"string\",\"enum\":[\"plan\","
+            "\"execute\"]}") != std::string::npos,
+        "rollout MCP schema should advertise V2.2a requested_mode values");
+  check(tools_list_json.find("\"rollout_attempt_id\":{\"type\":\"string\"}") !=
+            std::string::npos,
+        "rollout MCP schema should advertise rollout_attempt_id");
+  check(tools_list_json.find("\"idempotency_key\":{\"type\":\"string\"}") !=
+            std::string::npos,
+        "rollout MCP schema should advertise idempotency_key");
+  check(tools_list_json.find(
+            "\"replay_batch_index_path\":{\"type\":\"string\"}") !=
+            std::string::npos,
+        "rollout MCP schema should advertise replay_batch_index_path");
+  check(tools_list_json.find(
+            "\"graph_order_fingerprint\":{\"type\":\"string\"}") !=
+            std::string::npos,
+        "rollout MCP schema should advertise graph_order_fingerprint");
+  check(
+      tools_list_json.find("\"asset_universe_digest\":{\"type\":\"string\"}") !=
+          std::string::npos,
+      "rollout MCP schema should advertise asset_universe_digest");
+  check(tools_list_json.find("\"policy_set\":{\"type\":\"array\"") !=
+            std::string::npos,
+        "rollout MCP schema should advertise policy_set");
+  check(tools_list_json.find("\"max_steps\":{\"type\":\"integer\"") !=
+            std::string::npos,
+        "rollout MCP schema should advertise max_steps");
+  check(tools_list_json.find(
+            "\"required\":[\"rollout_id\",\"rollout_attempt_id\","
+            "\"idempotency_key\",\"runtime_job_dir\","
+            "\"replay_batch_index_path\",\"requested_mode\","
+            "\"graph_order_fingerprint\",\"asset_universe_digest\","
+            "\"base_reserve_node_id\",\"risky_node_ids\",\"policy_set\","
+            "\"max_steps\"]") != std::string::npos,
+        "rollout MCP schema should require bounded policy rollout fields");
+  check(tools_list_json.find(
+            "\"execution_profile\":{\"type\":\"object\",\"properties\"") !=
+            std::string::npos,
+        "rollout MCP schema should type execution_profile");
+  check(tools_list_json.find("\"cost_model_id\":{\"type\":\"string\"}") !=
+            std::string::npos,
+        "rollout MCP schema should advertise Cajtucu cost_model_id");
+  check(
+      tools_list_json.find("\"allow_partial_fills\":{\"type\":\"boolean\"}") !=
+          std::string::npos,
+      "rollout MCP schema should advertise partial-fill policy");
+  check(tools_list_json.find("\"prepare_only\"") == std::string::npos,
+        "rollout MCP schema should not advertise legacy prepare_only");
+  check(tools_list_json.find(
+            "\"drive_mode\":{\"type\":\"string\",\"enum\":[\"one_step\","
+            "\"budgeted\"]}") != std::string::npos,
+        "prepare MCP schema should advertise current V1 drive_mode values");
+  check(tools_list_json.find(
+            "\"identity_mode\":{\"type\":\"string\",\"enum\":[\"report\","
+            "\"strict\"]}") != std::string::npos,
+        "inspect MCP schema should advertise current V1 identity_mode values");
+  check(tools_list_json.find(
+            "\"subject\":{\"type\":\"string\",\"enum\":[\"run\",\"target\","
+            "\"protocol\",\"spawn\",\"component\",\"facts\"]}") !=
+            std::string::npos,
+        "inspect MCP schema should advertise all current V1 subjects");
   for (const auto &hidden_name :
        {"hero.marshal.summarize_training_state", "hero.marshal.compare_runs",
         "hero.marshal.lookup_target_advice",
@@ -2257,6 +2356,37 @@ void test_m9_marshal_tool_schema_compatibility() {
         "inspect should require an explicit subject");
   check(error.find("missing required field: subject") != std::string::npos,
         "missing inspect subject should fail explicitly");
+  for (
+      const auto &legacy_args :
+      {R"({"subject":"facts","family":"forecast_eval"})",
+       R"({"subject":"facts","fact_family":"forecast_eval"})",
+       R"({"subject":"facts","fact_family_id":"forecast_eval","digest":"x"})",
+       R"({"subject":"facts","fact_family_id":"forecast_eval","digest_prefix":"x"})",
+       R"({"subject":"facts","fact_family_id":"forecast_eval","index":0})",
+       R"({"subject":"component","component":"wikimyei.inference.expected_value.mdn"})"}) {
+    result.clear();
+    error.clear();
+    check(!marshal::execute_marshal_tool_json("hero.marshal.inspect",
+                                              legacy_args, &result, &error),
+          "inspect should reject retired V2.4 aliases");
+    check(error.find("unknown field") != std::string::npos,
+          "retired inspect aliases should fail as unknown fields");
+  }
+  check(
+      !marshal::execute_marshal_tool_json(
+          "hero.marshal.inspect",
+          R"({"subject":"facts","mode":"evidence","fact_family_id":"forecast_eval"})",
+          &result, &error),
+      "facts subject should reject non-canonical modes");
+  check(error.find("subject=facts mode must be summary, lineage, or preview") !=
+            std::string::npos,
+        "facts mode rejection should name the canonical modes");
+  check(!marshal::execute_marshal_tool_json(
+            "hero.marshal.status", R"({"unexpected":true})", &result, &error),
+        "status should reject unknown fields");
+  check(error.find("hero.marshal.status unknown field: unexpected") !=
+            std::string::npos,
+        "status unknown-field rejection should name the field");
 
   const auto malformed =
       cuwacunu::hero::mcp_schema_compat::validate_tool_input_schema(
@@ -2885,13 +3015,15 @@ std::string prepare_wave_json(bool include_checkpoint_inputs) {
 }
 
 std::string prepare_args_json(bool include_checkpoint_inputs,
-                              bool include_machine_payload) {
+                              bool include_machine_payload,
+                              const std::string &requested_mode = "plan") {
   return "{\"target_id\":\"channel_mdn_validation_eval_ready\","
          "\"source_lattice_timestamp\":\"2026-05-24T00:00:00Z\","
          "\"drive_mode\":\"one_step\","
-         "\"requested_mode\":\"dry_run\","
+         "\"requested_mode\":\"" +
+         requested_mode +
+         "\","
          "\"materialize_plan_inputs\":true,"
-         "\"include_runtime_dry_run\":false,"
          "\"include_machine_payload\":" +
          std::string(include_machine_payload ? "true" : "false") +
          ",\"context\":" + prepare_context_json() +
@@ -3211,7 +3343,7 @@ write_checkpoint_io_runtime_exec(bool write_checkpoint_io_fact) {
   return script;
 }
 
-void test_target_reach_lattice_target_unresolved_model_state() {
+void test_prepare_target_unresolved_model_state() {
   g_fake_lattice_resolve_count = 0;
   g_fake_lattice_resolve_concrete = false;
   g_fake_lattice_resolve_fault.clear();
@@ -3228,7 +3360,7 @@ void test_target_reach_lattice_target_unresolved_model_state() {
   check(result.find("\"blocker_bucket\":\"unresolved_model_state\"") !=
             std::string::npos,
         "unresolved latest_satisfying hints should be bucketed clearly");
-  check(result.find("\"next_action\":\"resolve_model_state\"") !=
+  check(result.find("\"next_safe_actions\":[\"resolve_model_state\"]") !=
             std::string::npos,
         "operator packet should name model-state resolution as next action");
   check(result.find("\"shape_match\":true") != std::string::npos,
@@ -3238,14 +3370,14 @@ void test_target_reach_lattice_target_unresolved_model_state() {
         "symbolic checkpoint inputs should report pending checkpoint match");
   check(result.find("\"runtime_dry_run\":{\"requested\":false,"
                     "\"attempted\":false") != std::string::npos,
-        "prepare must not dry-run by default");
+        "prepare requested_mode=plan must not call Runtime dry-run");
   check(g_fake_lattice_resolve_count == 2,
         "prepare should ask Lattice to resolve both hints");
 
   marshal::set_marshal_lattice_tool_callback(nullptr);
 }
 
-void test_target_reach_lattice_target_resolved_ready_for_dry_run() {
+void test_prepare_target_resolved_ready_for_dry_run() {
   g_fake_lattice_resolve_count = 0;
   g_fake_lattice_resolve_concrete = true;
   g_fake_lattice_resolve_fault.clear();
@@ -3257,21 +3389,20 @@ void test_target_reach_lattice_target_resolved_ready_for_dry_run() {
                                            prepare_args_json(true, true),
                                            &result, &error),
         "prepare should materialize resolved hints");
-  check(
-      result.find("\"dispatch_state\":\"ready_for_dry_run\"") !=
-          std::string::npos,
-      "resolved inputs and matching Runtime wave should be ready for dry-run");
+  check(result.find("\"dispatch_state\":\"ready_for_dry_run\"") !=
+            std::string::npos,
+        "plan mode with resolved inputs should prepare a Runtime dry-run");
   check(result.find("\"blocker_bucket\":\"none\"") != std::string::npos,
         "resolved prepare packet should not carry a blocker bucket");
-  check(result.find("\"next_action\":\"dry_run\"") != std::string::npos,
-        "ready prepare packet should point to the explicit dry-run action");
+  check(result.find("\"next_safe_actions\":[\"dry_run\"]") != std::string::npos,
+        "plan packet should point to dry-run as the next action");
   check(result.find("\"checkpoint_inputs_match\":true") != std::string::npos,
         "concrete Runtime checkpoint inputs should match materialized advice");
   check(result.find("/tmp/marshal_prepare/runtime/mdn.pt") != std::string::npos,
         "operator packet should expose the resolved MDN checkpoint path");
   check(result.find("\"runtime_dry_run\":{\"requested\":false,"
                     "\"attempted\":false") != std::string::npos,
-        "resolved preparation should still stop before dry-run by default");
+        "plan mode should stop before calling Runtime dry-run");
   check(result.find("\"machine_payload\"") != std::string::npos,
         "machine payload should be available when explicitly requested");
   check(g_fake_lattice_resolve_count == 2,
@@ -3280,7 +3411,82 @@ void test_target_reach_lattice_target_resolved_ready_for_dry_run() {
   marshal::set_marshal_lattice_tool_callback(nullptr);
 }
 
-void test_reach_lattice_target_wraps_target_dispatch() {
+void test_prepare_dry_run_calls_runtime_dry_run() {
+  const auto root = write_prepare_runtime_files();
+  const auto config_path = root / ".config";
+  g_fake_lattice_resolve_count = 0;
+  g_fake_lattice_resolve_concrete = true;
+  g_fake_lattice_resolve_fault.clear();
+  marshal::set_marshal_lattice_tool_callback(fake_lattice_prepare_callback);
+
+  auto args = prepare_args_json(true, true, "dry_run");
+  args.insert(args.size() - 1, ",\"config_path\":\"" + config_path.string() +
+                                   "\",\"timeout_seconds\":5");
+  std::string result;
+  std::string error;
+  check(marshal::execute_marshal_tool_json("hero.marshal.prepare", args,
+                                           &result, &error),
+        "prepare requested_mode=dry_run should produce an operator packet");
+  check(result.find("\"runtime_dry_run\":{\"requested\":true,"
+                    "\"attempted\":true,\"accepted\":true") !=
+            std::string::npos,
+        "prepare requested_mode=dry_run should call Runtime dry-run");
+  check(result.find("\"dispatch_state\":\"ready_for_execution_gate\"") !=
+            std::string::npos,
+        "accepted Runtime dry-run should move prepare to execution-gate "
+        "readiness");
+  check(result.find("\"next_safe_actions\":[\"execution_gate\"]") !=
+            std::string::npos,
+        "dry-run packet should point to execution gate as next action");
+
+  marshal::set_marshal_lattice_tool_callback(nullptr);
+  std::filesystem::remove_all(root);
+}
+
+void test_prepare_rejects_legacy_alias_and_reserved_intents() {
+  marshal::set_marshal_lattice_tool_callback(nullptr);
+  std::string result;
+  std::string error;
+
+  const std::string alias_args =
+      "{\"lattice_target\":\"channel_mdn_validation_eval_ready\","
+      "\"drive_mode\":\"one_step\"}";
+  check(!marshal::execute_marshal_tool_json("hero.marshal.prepare", alias_args,
+                                            &result, &error),
+        "prepare should reject legacy lattice_target alias");
+  check(error.find("unknown field: lattice_target") != std::string::npos,
+        "lattice_target rejection should be explicit");
+
+  const std::string replay_args =
+      "{\"target_id\":\"channel_mdn_validation_eval_ready\","
+      "\"intent\":\"replay\",\"drive_mode\":\"one_step\"}";
+  check(!marshal::execute_marshal_tool_json("hero.marshal.prepare", replay_args,
+                                            &result, &error),
+        "prepare should reject replay intent");
+  check(error.find("use hero.marshal.rollout") != std::string::npos,
+        "replay intent should route to rollout");
+
+  const std::string artifact_args =
+      "{\"target_id\":\"forecast_eval_artifact_ready\","
+      "\"intent\":\"artifact_validation\",\"drive_mode\":\"one_step\"}";
+  check(!marshal::execute_marshal_tool_json("hero.marshal.prepare",
+                                            artifact_args, &result, &error),
+        "prepare should reject artifact_validation intent");
+  check(error.find("use hero.marshal.inspect") != std::string::npos,
+        "artifact_validation intent should route to inspect");
+
+  const std::string policy_training_args =
+      "{\"target_id\":\"policy_training_ready\","
+      "\"intent\":\"policy_training\",\"drive_mode\":\"one_step\"}";
+  check(!marshal::execute_marshal_tool_json(
+            "hero.marshal.prepare", policy_training_args, &result, &error),
+        "prepare should reject policy_training intent");
+  check(error.find("reserved until a finite Runtime policy-training contract "
+                   "exists") != std::string::npos,
+        "policy_training refusal should be explicit");
+}
+
+void test_prepare_wraps_target_dispatch() {
   g_fake_lattice_resolve_count = 0;
   g_fake_lattice_resolve_concrete = true;
   g_fake_lattice_resolve_fault.clear();
@@ -3316,7 +3522,7 @@ void test_reach_lattice_target_wraps_target_dispatch() {
   marshal::set_marshal_lattice_tool_callback(nullptr);
 }
 
-void test_target_reach_lattice_target_rejects_untrusted_resolution() {
+void test_prepare_target_rejects_untrusted_resolution() {
   g_fake_lattice_resolve_count = 0;
   g_fake_lattice_resolve_concrete = true;
   g_fake_lattice_resolve_fault = "proof_check_failed";
@@ -3381,7 +3587,7 @@ void test_target_reach_lattice_target_rejects_untrusted_resolution() {
   marshal::set_marshal_lattice_tool_callback(nullptr);
 }
 
-void test_m15_budgeted_reach_lattice_target_dry_run_driver() {
+void test_m15_budgeted_prepare_target_dry_run_driver() {
   const auto root = write_prepare_runtime_files();
   g_fake_lattice_resolve_count = 0;
   g_fake_lattice_resolve_concrete = true;
@@ -3440,7 +3646,7 @@ void test_m15_budgeted_reach_lattice_target_dry_run_driver() {
   std::filesystem::remove_all(root);
 }
 
-void test_m16_5_budgeted_reach_lattice_target_requires_explicit_policy() {
+void test_m16_5_budgeted_prepare_target_requires_explicit_policy() {
   g_fake_lattice_resolve_count = 0;
   g_fake_lattice_resolve_concrete = true;
   g_fake_lattice_resolve_fault.clear();
@@ -3488,7 +3694,7 @@ void test_m16_5_budgeted_reach_lattice_target_requires_explicit_policy() {
   marshal::set_marshal_lattice_tool_callback(nullptr);
 }
 
-void test_m15_budgeted_reach_lattice_target_no_progress_window() {
+void test_m15_budgeted_prepare_target_no_progress_window() {
   const auto root = write_prepare_runtime_files();
   g_fake_lattice_resolve_count = 0;
   g_fake_lattice_resolve_concrete = true;
@@ -3974,7 +4180,7 @@ void test_m20_execute_binds_checkpoint_io_fact() {
   std::filesystem::remove_all(root);
 }
 
-void test_m15_budgeted_reach_lattice_target_stops_on_lattice_warning() {
+void test_m15_budgeted_prepare_target_stops_on_lattice_warning() {
   const auto root = write_prepare_runtime_files();
   g_fake_lattice_resolve_count = 0;
   g_fake_lattice_resolve_concrete = true;
@@ -4682,6 +4888,12 @@ void test_m9_marshal_tool_handlers_validate_arguments() {
         "prepare should pass target_id to Lattice");
   check(result.find("\"tool\":\"hero.marshal.prepare\"") != std::string::npos,
         "prepare should return the public operator packet");
+  check(result.find("\"schema_version\":\"kikijyeba.marshal.prepare."
+                    "v2.5b\"") != std::string::npos &&
+            result.find("\"next_safe_actions\":[") != std::string::npos &&
+            result.find("\"authority\":{\"marshal_proves_target\":false") !=
+                std::string::npos,
+        "prepare should expose the V2.5b shared dispatch envelope supplement");
   check(
       result.find("\"target_status\":\"metric_failed\"") != std::string::npos,
       "metric_failed Lattice targets should remain dispatchable when planned");
@@ -4764,6 +4976,14 @@ void test_m9_marshal_tool_handlers_validate_arguments() {
         "status handler should expose receipt count");
   check(result.find("\"schema\":\"kikijyeba.marshal.status.v1\"") !=
                 std::string::npos &&
+            result.find("\"schema_version\":\"kikijyeba.marshal.status."
+                        "v2.5a\"") != std::string::npos &&
+            result.find("\"dispatch_state\":\"read_only\"") !=
+                std::string::npos &&
+            result.find("\"next_safe_actions\":[\"inspect\"]") !=
+                std::string::npos &&
+            result.find("\"authority\":{\"marshal_proves_target\":false") !=
+                std::string::npos &&
             result.find("\"target_proof\":false") != std::string::npos &&
             result.find("\"fact_families_are_not_target_kinds\":true") !=
                 std::string::npos &&
@@ -4788,7 +5008,7 @@ void test_m9_marshal_tool_handlers_validate_arguments() {
   }
 }
 
-void test_artifact_evidence_panel_and_reach_boundary() {
+void test_artifact_evidence_panel_and_prepare_boundary() {
   g_fake_lattice_evaluate_target_count = 0;
   g_fake_lattice_scan_facts_count = 0;
   g_fake_lattice_fact_summary_count = 0;
@@ -4802,7 +5022,7 @@ void test_artifact_evidence_panel_and_reach_boundary() {
   const std::string panel_args =
       "{\"subject\":\"facts\","
       "\"target_id\":\"forecast_eval_artifact_ready\","
-      "\"fact_family\":\"forecast_eval\","
+      "\"fact_family_id\":\"forecast_eval\","
       "\"runtime_root\":\"/tmp/marshal_artifact/runtime\","
       "\"include_facts\":true,"
       "\"include_machine_payload\":true}";
@@ -4810,22 +5030,31 @@ void test_artifact_evidence_panel_and_reach_boundary() {
                                            &result, &error),
         "inspect should expose a read-only target/fact packet");
   check(g_fake_lattice_evaluate_target_count == 1,
-        "evidence panel should call Lattice evaluate_target for target proof");
+        "inspect panel should call Lattice evaluate_target for target proof");
   check(g_fake_lattice_scan_facts_count == 1,
-        "evidence panel should call Lattice scan_facts when facts are "
+        "inspect panel should call Lattice scan_facts when facts are "
         "requested");
   check(g_fake_lattice_fact_lineage_count == 1,
-        "evidence panel should call Lattice fact_lineage for fact-family "
+        "inspect panel should call Lattice fact_lineage for fact-family "
         "lineage");
   check(g_fake_lattice_arguments_json.find("\"family\":\"forecast_eval\"") !=
             std::string::npos,
-        "evidence panel should pass fact_family to Lattice as family");
+        "inspect panel should pass fact_family_id to Lattice as family");
   check(result.find("\"tool\":\"hero.marshal.inspect\"") != std::string::npos,
-        "evidence panel should identify the public tool");
+        "inspect panel should identify the public tool");
+  check(result.find("\"schema_version\":\"kikijyeba.marshal.inspect."
+                    "v2.5a\"") != std::string::npos &&
+            result.find("\"dispatch_state\":\"read_only\"") !=
+                std::string::npos &&
+            result.find("\"next_safe_actions\":[\"inspect\"]") !=
+                std::string::npos &&
+            result.find("\"authority\":{\"marshal_proves_target\":false") !=
+                std::string::npos,
+        "inspect panel should expose the V2.5a shared read-only envelope");
   check(result.find("\"read_only\":true") != std::string::npos &&
             result.find("\"dispatchable\":false") != std::string::npos &&
             result.find("\"runtime_executor\":false") != std::string::npos,
-        "evidence panel must be read-only and non-dispatchable");
+        "inspect panel must be read-only and non-dispatchable");
   check(result.find("\"target_proof\":false") != std::string::npos &&
             result.find("\"fact_families_are_not_target_kinds\":true") !=
                 std::string::npos &&
@@ -4835,11 +5064,11 @@ void test_artifact_evidence_panel_and_reach_boundary() {
             result.find("\"deployment_decision\":false") != std::string::npos &&
             result.find("\"marshal_proof_authority\":false") !=
                 std::string::npos,
-        "evidence panel must declare fact families as non-targets and avoid "
+        "inspect panel must declare fact families as non-targets and avoid "
         "proof, allocation, market, or deployment authority");
   check(result.find("\"target_satisfaction_claimed\":false") !=
             std::string::npos,
-        "evidence panel must not claim target satisfaction for Marshal");
+        "inspect panel must not claim target satisfaction for Marshal");
   check(result.find("\"target_class\":\"artifact_readiness\"") !=
                 std::string::npos &&
             result.find("\"kind\":\"not_applicable\"") != std::string::npos &&
@@ -4850,7 +5079,7 @@ void test_artifact_evidence_panel_and_reach_boundary() {
             result.find("\"proof_kind\":\"forecast_eval_artifact_bound\"") !=
                 std::string::npos &&
             result.find("\"artifact_proof_count\":1") != std::string::npos,
-        "evidence panel should summarize artifact proof identity and target "
+        "inspect panel should summarize artifact proof identity and target "
         "kind non-applicability");
   check(result.find("\"artifact_proof_template_bound_count\":1") !=
                 std::string::npos &&
@@ -4860,7 +5089,7 @@ void test_artifact_evidence_panel_and_reach_boundary() {
                         "bound\"]") != std::string::npos &&
             result.find("forecast evaluation artifact existence, checkpoint "
                         "lineage") != std::string::npos,
-        "evidence panel should relay explicit artifact proof-template binding");
+        "inspect panel should relay explicit artifact proof-template binding");
   check(
       result.find("\"artifact_failed_proof_count\":1") != std::string::npos &&
           result.find("\"artifact_proof_template_bound_count\":1") !=
@@ -4890,7 +5119,7 @@ void test_artifact_evidence_panel_and_reach_boundary() {
                       "found\"]") != std::string::npos &&
           result.find("\"primary_deficit_key\":\"artifact:forecast_eval_"
                       "authority\"") != std::string::npos,
-      "evidence panel should preserve failed artifact proof authority "
+      "inspect panel should preserve failed artifact proof authority "
       "details from Lattice");
   check(
       result.find("\"artifact_authority_denial_flags\":[\"target_dependency_"
@@ -4918,7 +5147,7 @@ void test_artifact_evidence_panel_and_reach_boundary() {
               std::string::npos &&
           result.find("\"artifact_plan_checkpoint_input_authority\":false") !=
               std::string::npos,
-      "evidence panel should relay explicit artifact boundary denials without "
+      "inspect panel should relay explicit artifact boundary denials without "
       "turning them into Marshal authority");
   check(
       result.find("\"policy_gate_reservation_count\":1") != std::string::npos &&
@@ -4965,7 +5194,7 @@ void test_artifact_evidence_panel_and_reach_boundary() {
           result.find(
               "\"policy_id\":\"forecast_quality_acceptance_reserved\"") !=
               std::string::npos,
-      "evidence panel should relay disabled policy-gate reservations without "
+      "inspect panel should relay disabled policy-gate reservations without "
       "granting Marshal proof, status, dispatch, or fingerprint authority");
 
   g_fake_lattice_policy_fingerprint_mismatch = true;
@@ -4980,7 +5209,7 @@ void test_artifact_evidence_panel_and_reach_boundary() {
         "inspect should surface a Lattice policy-fingerprint "
         "mismatch as read-only audit context");
   check(g_fake_lattice_evaluate_target_count == 1,
-        "fingerprint mismatch evidence panel should still ask Lattice for the "
+        "fingerprint mismatch inspect panel should still ask Lattice for the "
         "target proof");
   check(
       result.find("\"policy_gate_policy_fingerprint_verified_count\":0") !=
@@ -5065,7 +5294,7 @@ void test_artifact_evidence_panel_and_reach_boundary() {
   error.clear();
   const std::string family_only_panel_args =
       "{\"subject\":\"facts\","
-      "\"fact_family\":\"replay_environment\","
+      "\"fact_family_id\":\"replay_environment\","
       "\"runtime_root\":\"/tmp/marshal_artifact/runtime\","
       "\"include_machine_payload\":true}";
   check(marshal::execute_marshal_tool_json(
@@ -5116,7 +5345,7 @@ void test_artifact_evidence_panel_and_reach_boundary() {
                 std::string::npos &&
             result.find("\"dispatchable\":false") != std::string::npos &&
             result.find("\"runtime_executor\":false") != std::string::npos,
-        "fact-family-only replay evidence panel must remain read-only and "
+        "fact-family-only replay inspect panel must remain read-only and "
         "surface replay contract counters");
 
   g_fake_lattice_fact_summary_count = 0;
@@ -5125,7 +5354,7 @@ void test_artifact_evidence_panel_and_reach_boundary() {
   error.clear();
   const std::string family_only_forecast_eval_args =
       "{\"subject\":\"facts\","
-      "\"fact_family\":\"forecast_eval\","
+      "\"fact_family_id\":\"forecast_eval\","
       "\"runtime_root\":\"/tmp/marshal_artifact/runtime\","
       "\"include_machine_payload\":true}";
   check(marshal::execute_marshal_tool_json("hero.marshal.inspect",
@@ -5155,7 +5384,7 @@ void test_artifact_evidence_panel_and_reach_boundary() {
                         "\"forecast_eval\"]") != std::string::npos &&
             result.find("\"artifact_readiness_proof_kinds\":[\"forecast_eval_"
                         "artifact_bound\"]") != std::string::npos,
-        "forecast_eval fact-family-only evidence panel should surface "
+        "forecast_eval fact-family-only inspect panel should surface "
         "unresolved transform/baseline/selection lineage");
 
   g_fake_lattice_fact_summary_count = 0;
@@ -5165,7 +5394,7 @@ void test_artifact_evidence_panel_and_reach_boundary() {
   error.clear();
   const std::string family_preview_args =
       "{\"subject\":\"facts\","
-      "\"fact_family\":\"forecast_eval\","
+      "\"fact_family_id\":\"forecast_eval\","
       "\"runtime_root\":\"/tmp/marshal_artifact/runtime\","
       "\"include_preview\":true,\"fact_index\":0,"
       "\"include_machine_payload\":true}";
@@ -5212,11 +5441,39 @@ void test_artifact_evidence_panel_and_reach_boundary() {
 
   g_fake_lattice_fact_summary_count = 0;
   g_fake_lattice_fact_lineage_count = 0;
+  g_fake_lattice_fact_preview_count = 0;
+  result.clear();
+  error.clear();
+  const std::string family_prefix_preview_args =
+      "{\"subject\":\"facts\","
+      "\"mode\":\"preview\","
+      "\"fact_family_id\":\"forecast_eval\","
+      "\"runtime_root\":\"/tmp/marshal_artifact/runtime\","
+      "\"fact_digest_prefix\":\"forecast\","
+      "\"include_machine_payload\":true}";
+  check(marshal::execute_marshal_tool_json("hero.marshal.inspect",
+                                           family_prefix_preview_args, &result,
+                                           &error),
+        "inspect should expose fact_preview from canonical digest-prefix "
+        "selection");
+  check(g_fake_lattice_fact_summary_count == 1 &&
+            g_fake_lattice_fact_lineage_count == 1 &&
+            g_fake_lattice_fact_preview_count == 1,
+        "canonical digest-prefix preview should remain summary plus lineage "
+        "plus preview");
+  check(result.find("\"preview_lattice_args\":\"{\\\"runtime_root\\\":"
+                    "\\\"/tmp/marshal_artifact/runtime\\\",\\\"family\\\":"
+                    "\\\"forecast_eval\\\",\\\"digest_prefix\\\":"
+                    "\\\"forecast\\\"}\"") != std::string::npos,
+        "Marshal should translate fact_digest_prefix to Lattice digest_prefix");
+
+  g_fake_lattice_fact_summary_count = 0;
+  g_fake_lattice_fact_lineage_count = 0;
   result.clear();
   error.clear();
   const std::string family_only_selection_signal_args =
       "{\"subject\":\"facts\","
-      "\"fact_family\":\"selection_signal\","
+      "\"fact_family_id\":\"selection_signal\","
       "\"runtime_root\":\"/tmp/marshal_artifact/runtime\","
       "\"include_machine_payload\":true}";
   check(marshal::execute_marshal_tool_json("hero.marshal.inspect",
@@ -5247,13 +5504,13 @@ void test_artifact_evidence_panel_and_reach_boundary() {
   result.clear();
   error.clear();
   g_fake_lattice_resolve_count = 0;
-  const std::string reach_args =
+  const std::string prepare_args =
       "{\"target_id\":\"forecast_eval_artifact_ready\","
       "\"drive_mode\":\"one_step\","
       "\"requested_mode\":\"dry_run\","
       "\"include_runtime_dry_run\":true,"
       "\"include_machine_payload\":true}";
-  check(marshal::execute_marshal_tool_json("hero.marshal.prepare", reach_args,
+  check(marshal::execute_marshal_tool_json("hero.marshal.prepare", prepare_args,
                                            &result, &error),
         "prepare should return an operator packet for artifact "
         "targets");
@@ -5269,21 +5526,22 @@ void test_artifact_evidence_panel_and_reach_boundary() {
                 std::string::npos &&
             result.find("\"target_kind_effective\":\"none\"") !=
                 std::string::npos,
-        "artifact readiness reach should relay Lattice target-kind "
+        "artifact readiness prepare should relay Lattice target-kind "
         "non-applicability");
-  check(result.find("\"next_action\":\"inspect\"") != std::string::npos,
-        "artifact readiness reach should route to evidence inspection");
+  check(result.find("\"next_safe_actions\":[\"inspect\"]") != std::string::npos,
+        "artifact readiness prepare should route to evidence inspection");
   check(result.find("\"tool\":\"hero.marshal.inspect\"") != std::string::npos,
-        "artifact readiness reach should suggest the evidence-panel tool");
+        "artifact readiness prepare should suggest the inspect tool");
   check(result.find("\"runtime_dry_run\":{\"requested\":true,"
                     "\"attempted\":false") != std::string::npos,
-        "artifact readiness reach must not attempt Runtime dry-run");
-  check(g_fake_lattice_resolve_count == 0,
-        "artifact readiness reach must not materialize latest_satisfying plan "
-        "inputs");
+        "artifact readiness prepare must not attempt Runtime dry-run");
+  check(
+      g_fake_lattice_resolve_count == 0,
+      "artifact readiness prepare must not materialize latest_satisfying plan "
+      "inputs");
   check(result.find("\"dispatch_validation_applied\":false") !=
             std::string::npos,
-        "artifact readiness reach must skip Runtime dispatch validation");
+        "artifact readiness prepare must skip Runtime dispatch validation");
   check(result.find("\"target_proof\":false") != std::string::npos &&
             result.find("\"target_satisfaction_claimed_by_marshal\":false") !=
                 std::string::npos &&
@@ -5294,7 +5552,7 @@ void test_artifact_evidence_panel_and_reach_boundary() {
             result.find("\"allocation_decision\":false") != std::string::npos &&
             result.find("\"market_readiness_decision\":false") !=
                 std::string::npos,
-        "artifact readiness reach should remain a non-proof, non-decision "
+        "artifact readiness prepare should remain a non-proof, non-decision "
         "operator packet even when it prepares dispatch context");
   check(
       result.find("\"policy_gate_reservation_count\":1") != std::string::npos &&
@@ -5316,7 +5574,7 @@ void test_artifact_evidence_panel_and_reach_boundary() {
           result.find(
               "\"policy_id\":\"forecast_quality_acceptance_reserved\"") !=
               std::string::npos,
-      "artifact readiness reach should carry policy-gate reservations and "
+      "artifact readiness prepare should carry policy-gate reservations and "
       "fingerprint audit only as read-only Lattice context");
   check(result.find("\"validation\":{\"dispatchable\":false,"
                     "\"refusal_reasons\":[]}") != std::string::npos,
@@ -5329,25 +5587,26 @@ void test_artifact_evidence_panel_and_reach_boundary() {
           std::string::npos,
       "artifact readiness machine payload must not derive a Runtime preview "
       "request");
-  check(result.find("missing_suggested_wave") == std::string::npos,
-        "artifact readiness reach must not report missing suggested_wave as a "
-        "dispatch refusal");
+  check(
+      result.find("missing_suggested_wave") == std::string::npos,
+      "artifact readiness prepare must not report missing suggested_wave as a "
+      "dispatch refusal");
   check(g_fake_lattice_resolve_count == 0,
-        "artifact readiness reach must not resolve model-state checkpoints");
+        "artifact readiness prepare must not resolve model-state checkpoints");
 
   result.clear();
   error.clear();
-  const std::string evaluate_artifact_args =
+  const std::string inspect_artifact_args =
       "{\"subject\":\"target\","
       "\"target_id\":\"forecast_eval_artifact_ready\","
       "\"runtime_root\":\"/tmp/marshal_artifact/runtime\","
       "\"include_machine_payload\":true}";
   check(marshal::execute_marshal_tool_json(
-            "hero.marshal.inspect", evaluate_artifact_args, &result, &error),
-        "evaluate subject=target should report artifact-readiness targets: " +
+            "hero.marshal.inspect", inspect_artifact_args, &result, &error),
+        "inspect subject=target should report artifact-readiness targets: " +
             error);
   check(g_fake_lattice_tool_name == "hero.lattice.target_deficit",
-        "evaluate subject=target should use Lattice target_deficit for "
+        "inspect subject=target should use Lattice target_deficit for "
         "artifact targets");
   check(result.find("\"target_class\":\"artifact_readiness\"") !=
                 std::string::npos &&
@@ -5360,14 +5619,14 @@ void test_artifact_evidence_panel_and_reach_boundary() {
                 std::string::npos &&
             result.find("\"subject_fact_family\":\"forecast_eval\"") !=
                 std::string::npos,
-        "target evaluation should preserve artifact proof identity and target "
+        "target inspection should preserve artifact proof identity and target "
         "kind non-applicability");
   check(result.find("\"next_safe_action\":\"inspect\"") != std::string::npos,
-        "artifact target evaluation should route to evidence inspection");
+        "artifact target inspection should route to evidence inspection");
   check(result.find("\"next_safe_action\":\"prepare\"") == std::string::npos,
-        "artifact target evaluation must not suggest prepare");
+        "artifact target inspection must not suggest prepare");
   check(result.find("\"suggested_wave\":null") != std::string::npos,
-        "artifact target evaluation should preserve the absent suggested wave");
+        "artifact target inspection should preserve the absent suggested wave");
   check(result.find("\"target_proof\":false") != std::string::npos &&
             result.find("\"target_satisfaction_claimed_by_marshal\":false") !=
                 std::string::npos &&
@@ -5378,7 +5637,7 @@ void test_artifact_evidence_panel_and_reach_boundary() {
             result.find("\"allocation_decision\":false") != std::string::npos &&
             result.find("\"market_readiness_decision\":false") !=
                 std::string::npos,
-        "target evaluation should relay Lattice proof context without making "
+        "target inspection should relay Lattice proof context without making "
         "Marshal a proof or decision authority");
   check(
       result.find("\"policy_gate_reservation_count\":1") != std::string::npos &&
@@ -5397,17 +5656,17 @@ void test_artifact_evidence_panel_and_reach_boundary() {
               std::string::npos &&
           result.find("\"policy_gate_proof_authority\":false") !=
               std::string::npos,
-      "target evaluation should relay policy-gate reservations without "
+      "target inspection should relay policy-gate reservations without "
       "turning them into Marshal authority");
 
   result.clear();
   error.clear();
-  const std::string fact_family_reach_args =
+  const std::string fact_family_prepare_args =
       "{\"target_id\":\"forecast_eval_artifact_ready\","
       "\"fact_family\":\"forecast_eval\","
       "\"drive_mode\":\"one_step\"}";
   check(!marshal::execute_marshal_tool_json(
-            "hero.marshal.prepare", fact_family_reach_args, &result, &error),
+            "hero.marshal.prepare", fact_family_prepare_args, &result, &error),
         "prepare must reject fact_family arguments instead of "
         "treating fact evidence as reachable work");
   check(error.find("unknown field: fact_family") != std::string::npos,
@@ -5417,7 +5676,7 @@ void test_artifact_evidence_panel_and_reach_boundary() {
   marshal::set_marshal_lattice_tool_callback(nullptr);
 }
 
-void test_artifact_reach_warning_policy_remains_inspection_only() {
+void test_artifact_prepare_warning_policy_remains_inspection_only() {
   g_fake_lattice_resolve_count = 0;
   g_fake_lattice_artifact_warning = true;
   marshal::set_marshal_lattice_tool_callback(
@@ -5425,7 +5684,7 @@ void test_artifact_reach_warning_policy_remains_inspection_only() {
 
   std::string result;
   std::string error;
-  const std::string reach_args =
+  const std::string prepare_args =
       "{\"target_id\":\"forecast_eval_artifact_ready\","
       "\"drive_mode\":\"budgeted\","
       "\"requested_mode\":\"dry_run\","
@@ -5436,11 +5695,12 @@ void test_artifact_reach_warning_policy_remains_inspection_only() {
       "\"stop_on_lattice_warning\":true,"
       "\"stop_on_warning_severity\":\"watch\","
       "\"no_progress_window\":1}}";
-  check(marshal::execute_marshal_tool_json("hero.marshal.prepare", reach_args,
-                                           &result, &error),
-        "budgeted artifact reach should produce an inspection packet even when "
-        "Lattice warnings are present: " +
-            error);
+  check(
+      marshal::execute_marshal_tool_json("hero.marshal.prepare", prepare_args,
+                                         &result, &error),
+      "budgeted artifact prepare should produce an inspection packet even when "
+      "Lattice warnings are present: " +
+          error);
   check(result.find("\"driver_terminal_state\":\"blocked_non_dispatchable_"
                     "artifact_readiness\"") != std::string::npos &&
             result.find("\"blocker_bucket\":\"non_dispatchable_artifact_"
@@ -5455,7 +5715,8 @@ void test_artifact_reach_warning_policy_remains_inspection_only() {
         "artifact warnings must not reframe the non-dispatchable evidence "
         "target as a warning-gated runtime target");
   check(result.find("\"next_safe_action\":\"inspect\"") != std::string::npos &&
-            result.find("\"next_action\":\"inspect\"") != std::string::npos &&
+            result.find("\"next_safe_actions\":[\"inspect\"]") !=
+                std::string::npos &&
             result.find("\"tool\":\"hero.marshal.inspect\"") !=
                 std::string::npos,
         "artifact warning packets should still route operators to evidence "
@@ -5494,7 +5755,7 @@ void test_artifact_evidence_panel_with_real_lattice_response() {
   const std::string panel_args =
       "{\"subject\":\"facts\","
       "\"target_id\":\"forecast_eval_artifact_ready\","
-      "\"fact_family\":\"forecast_eval\","
+      "\"fact_family_id\":\"forecast_eval\","
       "\"runtime_root\":" +
       marshal::detail::json_quote(runtime_root.string()) +
       ",\"config_path\":\"/cuwacunu/src/config/.config\","
@@ -6021,7 +6282,7 @@ void test_operational_report_summarizes_training_state() {
   std::string error;
   check(marshal::execute_marshal_tool_json("hero.marshal.inspect", args,
                                            &result, &error),
-        "evaluate subject=run training_state mode should produce a report");
+        "inspect subject=run training_state mode should produce a report");
   check(g_fake_lattice_tool_name == "hero.lattice.evaluate_targets",
         "operational report should quote Lattice target statuses");
   check(result.find("\"read_only\":true") != std::string::npos,
@@ -6152,9 +6413,9 @@ void test_operational_report_quotes_target_blockers() {
   std::string error;
   check(marshal::execute_marshal_tool_json("hero.marshal.inspect", args,
                                            &result, &error),
-        "evaluate subject=run should quote Lattice target blockers");
+        "inspect subject=run should quote Lattice target blockers");
   check(g_fake_lattice_tool_name == "hero.lattice.evaluate_targets",
-        "target blocker view should come from Lattice target evaluation");
+        "target blocker view should come from Lattice target inspection");
   check(result.find("\"target_satisfaction_claimed\":false") !=
             std::string::npos,
         "target blocker view must not become Marshal proof authority");
@@ -6302,7 +6563,7 @@ void test_operational_report_quotes_target_blockers() {
       "reservations and fingerprint audit without Marshal status, proof, or "
       "dispatch authority");
   check(result.find("\"next_safe_action\":\"inspect\"") != std::string::npos,
-        "artifact target blockers should route to the evidence panel");
+        "artifact target blockers should route to inspect");
   check(result.find("\"next_safe_actions\":[\"inspect\"") != std::string::npos,
         "run-level next safe actions should prioritize artifact evidence "
         "inspection");
@@ -6317,8 +6578,8 @@ void test_operational_report_quotes_target_blockers() {
   std::filesystem::remove_all(root);
 }
 
-void test_evaluate_deterministic_subjects() {
-  const auto root = make_tmp_dir("evaluate_deterministic_subjects");
+void test_inspect_deterministic_subjects() {
+  const auto root = make_tmp_dir("inspect_deterministic_subjects");
   const auto runtime_root = root / "runtime";
   const auto config_path = root / ".config";
   const auto vicreg_dir =
@@ -6399,7 +6660,7 @@ void test_evaluate_deterministic_subjects() {
       ",\"include_machine_payload\":true}";
   check(marshal::execute_marshal_tool_json("hero.marshal.inspect", target_args,
                                            &result, &error),
-        "evaluate subject=target should query Lattice target deficit");
+        "inspect subject=target should query Lattice target deficit");
   check(g_fake_lattice_tool_name == "hero.lattice.target_deficit",
         "target subject should use Lattice target_deficit");
   check(result.find("\"subject\":\"target\"") != std::string::npos &&
@@ -6475,7 +6736,7 @@ void test_evaluate_deterministic_subjects() {
   error.clear();
   check(marshal::execute_marshal_tool_json("hero.marshal.inspect",
                                            protocol_args, &result, &error),
-        "evaluate subject=protocol should inspect identity evidence");
+        "inspect subject=protocol should inspect identity evidence");
   check(result.find("\"subject\":\"protocol\"") != std::string::npos &&
             result.find("\"issue_count\":0") != std::string::npos,
         "protocol subject should report matched identity evidence");
@@ -6569,7 +6830,7 @@ void test_evaluate_deterministic_subjects() {
   error.clear();
   check(marshal::execute_marshal_tool_json("hero.marshal.inspect", spawn_args,
                                            &result, &error),
-        "evaluate subject=spawn should inspect spawn evidence");
+        "inspect subject=spawn should inspect spawn evidence");
   check(result.find("\"subject\":\"spawn\"") != std::string::npos &&
             result.find("\"match_count\":1") != std::string::npos &&
             result.find("\"spawn_fingerprints\":[\"mdn_fp\"]") !=
@@ -6618,7 +6879,7 @@ void test_evaluate_deterministic_subjects() {
   error.clear();
   check(marshal::execute_marshal_tool_json("hero.marshal.inspect",
                                            component_args, &result, &error),
-        "evaluate subject=component should inspect component evidence");
+        "inspect subject=component should inspect component evidence");
   check(result.find("\"subject\":\"component\"") != std::string::npos &&
             result.find("\"component_family_id\":\"wikimyei.inference."
                         "expected_value.mdn\"") != std::string::npos &&
@@ -6879,7 +7140,7 @@ void test_compare_runs_reports_descriptive_deltas() {
   std::string error;
   check(marshal::execute_marshal_tool_json("hero.marshal.inspect", args,
                                            &result, &error),
-        "evaluate subject=run compare mode should produce a read-only "
+        "inspect subject=run compare mode should produce a read-only "
         "comparison");
   check(result.find("\"read_only\":true") != std::string::npos,
         "compare_runs should be read-only");
@@ -6941,7 +7202,7 @@ void test_compare_runs_reports_descriptive_deltas() {
             std::string::npos,
         "compare_runs should preserve the descriptive invariant");
 
-  const std::string evaluate_args =
+  const std::string inspect_args =
       "{\"subject\":\"run\",\"mode\":\"compare\",\"runtime_root\":" +
       marshal::detail::json_quote(runtime_root.string()) +
       ",\"config_path\":" + marshal::detail::json_quote(config_path.string()) +
@@ -6950,9 +7211,9 @@ void test_compare_runs_reports_descriptive_deltas() {
       ",\"include_machine_payload\":false}";
   result.clear();
   error.clear();
-  check(marshal::execute_marshal_tool_json("hero.marshal.inspect",
-                                           evaluate_args, &result, &error),
-        "evaluate subject=run mode=compare should wrap descriptive run "
+  check(marshal::execute_marshal_tool_json("hero.marshal.inspect", inspect_args,
+                                           &result, &error),
+        "inspect subject=run mode=compare should wrap descriptive run "
         "comparison");
   check(result.find("\"tool\":\"hero.marshal.inspect\"") != std::string::npos,
         "evaluate should identify the high-level Marshal report tool");
@@ -6963,7 +7224,7 @@ void test_compare_runs_reports_descriptive_deltas() {
   check(
       result.find("\"result\":{\"ok\":true,\"report_kind\":\"run_compare\"") !=
           std::string::npos,
-      "evaluate subject=run compare mode should preserve the comparison "
+      "inspect subject=run compare mode should preserve the comparison "
       "payload");
   check(result.find("\"operator_summary\":{") != std::string::npos,
         "default compare output should include compact operator summary");
@@ -6979,7 +7240,7 @@ void test_compare_runs_reports_descriptive_deltas() {
         "default compare output should not include full audit payload");
   check(result.find("Compare does not choose. Compare explains.") !=
             std::string::npos,
-        "evaluate subject=run compare mode should preserve the descriptive "
+        "inspect subject=run compare mode should preserve the descriptive "
         "invariant");
 
   std::filesystem::remove_all(root);
@@ -7026,7 +7287,7 @@ void test_operational_report_missing_eval_steps_is_not_mutation_evidence() {
             std::string::npos,
         "missing eval optimizer-step evidence must not be treated as mutation");
 
-  const std::string evaluate_args =
+  const std::string inspect_args =
       "{\"subject\":\"run\",\"mode\":\"single_job\",\"runtime_root\":" +
       marshal::detail::json_quote(runtime_root.string()) +
       ",\"config_path\":" + marshal::detail::json_quote(config_path.string()) +
@@ -7034,9 +7295,9 @@ void test_operational_report_missing_eval_steps_is_not_mutation_evidence() {
       "channel_inference_mdn\"}";
   std::string result;
   std::string error;
-  check(marshal::execute_marshal_tool_json("hero.marshal.inspect",
-                                           evaluate_args, &result, &error),
-        "evaluate subject=run mode=single_job should wrap the operational "
+  check(marshal::execute_marshal_tool_json("hero.marshal.inspect", inspect_args,
+                                           &result, &error),
+        "inspect subject=run mode=single_job should wrap the operational "
         "report");
   check(result.find("\"tool\":\"hero.marshal.inspect\"") != std::string::npos,
         "evaluate single-job mode should identify the high-level tool");
@@ -7093,13 +7354,15 @@ int main() {
   test_m7_batch_preview_independence();
   test_m5_codex_assist_uses_deterministic_primitives();
   test_m9_marshal_tool_schema_compatibility();
-  test_target_reach_lattice_target_unresolved_model_state();
-  test_target_reach_lattice_target_resolved_ready_for_dry_run();
-  test_reach_lattice_target_wraps_target_dispatch();
-  test_target_reach_lattice_target_rejects_untrusted_resolution();
-  test_m15_budgeted_reach_lattice_target_dry_run_driver();
-  test_m16_5_budgeted_reach_lattice_target_requires_explicit_policy();
-  test_m15_budgeted_reach_lattice_target_no_progress_window();
+  test_prepare_target_unresolved_model_state();
+  test_prepare_target_resolved_ready_for_dry_run();
+  test_prepare_dry_run_calls_runtime_dry_run();
+  test_prepare_rejects_legacy_alias_and_reserved_intents();
+  test_prepare_wraps_target_dispatch();
+  test_prepare_target_rejects_untrusted_resolution();
+  test_m15_budgeted_prepare_target_dry_run_driver();
+  test_m16_5_budgeted_prepare_target_requires_explicit_policy();
+  test_m15_budgeted_prepare_target_no_progress_window();
   test_m16_5_execute_requires_runtime_terminal_evidence();
   test_m16_5_execute_binds_runtime_terminal_evidence();
   test_m16_5_execute_rejects_terminal_evidence_handoff_mismatch();
@@ -7109,7 +7372,7 @@ int main() {
   test_m20_execute_requires_runtime_result_fact_not_state_only();
   test_m20_execute_requires_checkpoint_io_fact_when_checkpoint_io_occurs();
   test_m20_execute_binds_checkpoint_io_fact();
-  test_m15_budgeted_reach_lattice_target_stops_on_lattice_warning();
+  test_m15_budgeted_prepare_target_stops_on_lattice_warning();
   test_m21_typed_warning_policy_decision();
   test_m21_warning_only_visibility_does_not_stop_below_threshold();
   test_m21_blocking_lattice_warning_stops_with_owner_reason();
@@ -7122,12 +7385,12 @@ int main() {
   test_m16_5_target_driver_resume_requires_ledger_digest();
   test_m16_5_target_driver_resume_requires_terminal_identity_after_execute();
   test_m9_marshal_tool_handlers_validate_arguments();
-  test_artifact_evidence_panel_and_reach_boundary();
-  test_artifact_reach_warning_policy_remains_inspection_only();
+  test_artifact_evidence_panel_and_prepare_boundary();
+  test_artifact_prepare_warning_policy_remains_inspection_only();
   test_artifact_evidence_panel_with_real_lattice_response();
   test_operational_report_summarizes_training_state();
   test_operational_report_quotes_target_blockers();
-  test_evaluate_deterministic_subjects();
+  test_inspect_deterministic_subjects();
   test_compare_runs_reports_descriptive_deltas();
   test_operational_report_missing_eval_steps_is_not_mutation_evidence();
   return 0;

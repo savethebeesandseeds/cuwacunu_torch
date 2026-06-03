@@ -21,6 +21,7 @@
 #include <utility>
 #include <vector>
 
+#include "hero/runtime_hero/hero_runtime_tools.h"
 #include "kikijyeba/marshal/codex_assist.h"
 #include "kikijyeba/marshal/dispatch_receipt.h"
 #include "kikijyeba/marshal/operational_report.h"
@@ -437,7 +438,8 @@ parse_rollout_execution_profile(const std::string &raw) {
   marshal_rollout_execution_profile_t out{};
   const auto fields = object_fields(raw);
   validate_fields(fields,
-                  {"execution_backend_id", "allow_synthetic_direct_edges",
+                  {"execution_backend_id", "cost_model_id",
+                   "allow_synthetic_direct_edges",
                    "synthetic_edge_research_reason",
                    "linear_transaction_cost_rate", "allow_partial_fills",
                    "allow_negative_base_reserve", "equity_mismatch_tolerance",
@@ -445,6 +447,8 @@ parse_rollout_execution_profile(const std::string &raw) {
                   {}, "rollout execution_profile");
   out.execution_backend_id =
       optional_string(fields, "execution_backend_id", out.execution_backend_id);
+  out.cost_model_id =
+      optional_string(fields, "cost_model_id", out.cost_model_id);
   out.allow_synthetic_direct_edges = optional_bool(
       fields, "allow_synthetic_direct_edges", out.allow_synthetic_direct_edges);
   out.synthetic_edge_research_reason =
@@ -469,23 +473,36 @@ parse_rollout_execution_profile(const std::string &raw) {
 parse_rollout_request(const std::map<std::string, std::string> &fields) {
   marshal_rollout_request_t out{};
   out.rollout_id = optional_string(fields, "rollout_id");
+  out.rollout_attempt_id = optional_string(fields, "rollout_attempt_id");
+  out.idempotency_key = optional_string(fields, "idempotency_key");
   out.experiment_id = optional_string(fields, "experiment_id");
+  out.config_path = std::filesystem::path(
+      optional_string(fields, "config_path", out.config_path.string()));
   out.runtime_job_dir =
       std::filesystem::path(optional_string(fields, "runtime_job_dir"));
+  out.replay_batch_index_path =
+      std::filesystem::path(optional_string(fields, "replay_batch_index_path"));
   out.runtime_exec_path = std::filesystem::path(optional_string(
       fields, "runtime_exec_path", out.runtime_exec_path.string()));
   out.report_path =
       std::filesystem::path(optional_string(fields, "report_path"));
+  out.requested_mode =
+      optional_string(fields, "requested_mode", out.requested_mode);
   out.environment_mode =
       optional_string(fields, "environment_mode", out.environment_mode);
   out.environment_assembly_id = optional_string(
       fields, "environment_assembly_id", out.environment_assembly_id);
+  out.graph_order_fingerprint =
+      optional_string(fields, "graph_order_fingerprint");
+  out.asset_universe_digest = optional_string(fields, "asset_universe_digest");
   out.base_reserve_node_id = optional_string(fields, "base_reserve_node_id");
   out.risky_node_ids = optional_string_array(fields, "risky_node_ids");
   out.policy_tokens = optional_string_array(fields, "policy_set");
   out.max_steps = optional_i64(fields, "max_steps", out.max_steps);
   out.max_parallel_jobs =
       optional_i64(fields, "max_parallel_jobs", out.max_parallel_jobs);
+  out.timeout_seconds =
+      optional_i64(fields, "timeout_seconds", out.timeout_seconds);
   if (const auto profile = optional_raw(fields, "execution_profile")) {
     out.execution_profile = parse_rollout_execution_profile(*profile);
   }
@@ -497,12 +514,14 @@ parse_rollout_request(const std::map<std::string, std::string> &fields) {
                     out.require_completed_runtime_job);
   out.require_replay_artifacts = optional_bool(
       fields, "require_replay_artifacts", out.require_replay_artifacts);
-  out.prepare_only = optional_bool(fields, "prepare_only", out.prepare_only);
   return out;
 }
 
 [[nodiscard]] inline marshal_dispatch_mode_t
 parse_mode_text(const std::string &value) {
+  if (value == "plan") {
+    return marshal_dispatch_mode_t::plan;
+  }
   if (value == "dry_run") {
     return marshal_dispatch_mode_t::dry_run;
   }
@@ -2159,7 +2178,49 @@ string_array_json(const std::vector<std::string> &values) {
          ",\"marshal_proof_authority\":false";
 }
 
-[[nodiscard]] inline std::string marshal_reach_non_proof_contract_json() {
+[[nodiscard]] inline std::string marshal_authority_namespace_json() {
+  return "{\"marshal_proves_target\":false"
+         ",\"marshal_executes_runtime\":false"
+         ",\"marshal_selects_checkpoint\":false"
+         ",\"marshal_selects_policy\":false"
+         ",\"marshal_edits_config\":false"
+         ",\"marshal_makes_allocation_decision\":false"
+         ",\"marshal_makes_market_readiness_decision\":false"
+         ",\"marshal_makes_deployment_decision\":false}";
+}
+
+[[nodiscard]] inline std::string marshal_operator_envelope_fields_json(
+    const std::string &schema_version, const std::string &dispatch_state,
+    const std::vector<std::string> &next_safe_actions) {
+  std::ostringstream out;
+  out << ",\"schema_version\":" << detail::json_quote(schema_version)
+      << ",\"dispatch_state\":" << detail::json_quote(dispatch_state)
+      << ",\"refusal_reasons\":[]"
+      << ",\"warnings\":[]"
+      << ",\"next_safe_actions\":" << string_array_json(next_safe_actions)
+      << ",\"authority\":" << marshal_authority_namespace_json()
+      << ",\"observed\":{}"
+      << ",\"evidence_refs\":[]"
+      << ",\"digests\":{}";
+  return out.str();
+}
+
+[[nodiscard]] inline std::string marshal_operator_envelope_supplement_json(
+    const std::string &schema_version,
+    const std::vector<std::string> &next_safe_actions) {
+  std::ostringstream out;
+  out << ",\"schema_version\":" << detail::json_quote(schema_version)
+      << ",\"refusal_reasons\":[]"
+      << ",\"warnings\":[]"
+      << ",\"next_safe_actions\":" << string_array_json(next_safe_actions)
+      << ",\"authority\":" << marshal_authority_namespace_json()
+      << ",\"observed\":{}"
+      << ",\"evidence_refs\":[]"
+      << ",\"digests\":{}";
+  return out.str();
+}
+
+[[nodiscard]] inline std::string marshal_prepare_non_proof_contract_json() {
   return "\"target_proof\":false"
          ",\"target_satisfaction_claimed\":false"
          ",\"target_satisfaction_claimed_by_marshal\":false"
@@ -3117,8 +3178,8 @@ operator_explanation(const std::string &bucket,
   }
   if (bucket == "non_dispatchable_artifact_readiness") {
     return "This target is an artifact-readiness proof over Lattice facts, not "
-           "a dispatchable Runtime wave. Marshal will not try to reach it; use "
-           "the read-only evidence panel.";
+           "a dispatchable Runtime wave. Marshal will not try to prepare it; "
+           "use hero.marshal.inspect.";
   }
   if (bucket == "runtime_dry_run_refused") {
     return "The target packet passed Marshal preparation, but the explicit "
@@ -3476,18 +3537,6 @@ inline void collect_artifact_boundary_flag(
   append_unique_string(authority_denial_flags, flag);
 }
 
-[[nodiscard]] inline std::string
-normalize_public_marshal_tool_name(const std::string &tool_name) {
-  if (tool_name == "hero.marshal.inspect_evidence_panel" ||
-      tool_name == "hero.marshal.evaluate") {
-    return "hero.marshal.inspect";
-  }
-  if (tool_name == "hero.marshal.reach_lattice_target") {
-    return "hero.marshal.prepare";
-  }
-  return tool_name;
-}
-
 [[nodiscard]] inline artifact_panel_summary_t summarize_lattice_artifact_panel(
     const std::map<std::string, std::string> &eval) {
   artifact_panel_summary_t summary{};
@@ -3517,10 +3566,8 @@ normalize_public_marshal_tool_name(const std::string &tool_name) {
                                      optional_string(hint, "fact_digest"));
                 append_unique_string(&summary.fact_preview_tools,
                                      optional_string(hint, "tool"));
-                append_unique_string(
-                    &summary.fact_preview_marshal_tools,
-                    normalize_public_marshal_tool_name(
-                        optional_string(hint, "marshal_tool")));
+                append_unique_string(&summary.fact_preview_marshal_tools,
+                                     optional_string(hint, "marshal_tool"));
               }
             } catch (const std::exception &) {
             }
@@ -3661,8 +3708,7 @@ normalize_public_marshal_tool_name(const std::string &tool_name) {
   for (const auto &key : {"runtime_root"}) {
     append_optional_lattice_arg(out, &has_field, args, key);
   }
-  const std::string family = first_non_empty(
-      {optional_string(args, "fact_family"), optional_string(args, "family")});
+  const std::string family = optional_string(args, "fact_family_id");
   if (!family.empty()) {
     if (has_field) {
       out << ",";
@@ -3699,8 +3745,7 @@ normalize_public_marshal_tool_name(const std::string &tool_name) {
   for (const auto &key : {"runtime_root"}) {
     append_optional_lattice_arg(out, &has_field, args, key);
   }
-  const std::string family = first_non_empty(
-      {optional_string(args, "fact_family"), optional_string(args, "family")});
+  const std::string family = optional_string(args, "fact_family_id");
   if (!family.empty()) {
     if (has_field) {
       out << ",";
@@ -3728,8 +3773,7 @@ normalize_public_marshal_tool_name(const std::string &tool_name) {
   for (const auto &key : {"runtime_root"}) {
     append_optional_lattice_arg(out, &has_field, args, key);
   }
-  const std::string family = first_non_empty(
-      {optional_string(args, "fact_family"), optional_string(args, "family")});
+  const std::string family = optional_string(args, "fact_family_id");
   if (!family.empty()) {
     if (has_field) {
       out << ",";
@@ -3737,10 +3781,16 @@ normalize_public_marshal_tool_name(const std::string &tool_name) {
     out << "\"family\":" << detail::json_quote(family);
     has_field = true;
   }
-  for (const auto &key : {"digest", "fact_digest", "digest_prefix"}) {
-    append_optional_lattice_arg(out, &has_field, args, key);
+  append_optional_lattice_arg(out, &has_field, args, "fact_digest");
+  const std::string digest_prefix = optional_string(args, "fact_digest_prefix");
+  if (!digest_prefix.empty()) {
+    if (has_field) {
+      out << ",";
+    }
+    out << "\"digest_prefix\":" << detail::json_quote(digest_prefix);
+    has_field = true;
   }
-  for (const auto &key : {"fact_index", "index", "limit"}) {
+  for (const auto &key : {"fact_index", "limit"}) {
     if (const auto raw = optional_raw(args, key)) {
       if (has_field) {
         out << ",";
@@ -3974,7 +4024,7 @@ refusal_reasons_json(const std::vector<marshal_refusal_reason_t> &reasons) {
   return string_array_json(out);
 }
 
-struct reach_lattice_target_step_result_t {
+struct prepare_target_step_result_t {
   marshal_dispatch_advice_t advice{};
   marshal_dispatch_advice_t original_advice{};
   marshal_dispatch_request_t request{};
@@ -4007,16 +4057,14 @@ struct reach_lattice_target_step_result_t {
   std::string dry_run_bucket{"none"};
 };
 
-[[nodiscard]] inline reach_lattice_target_step_result_t
-run_reach_lattice_target_step(const std::map<std::string, std::string> &args,
-                              marshal_lattice_tool_callback_t callback,
-                              std::int64_t max_waves,
-                              std::int64_t recommendation_attempt_count,
-                              marshal_dispatch_mode_t requested_mode,
-                              bool include_runtime_dry_run,
-                              bool include_machine_payload,
-                              const std::string &target_driver_run_id = {}) {
-  reach_lattice_target_step_result_t step{};
+[[nodiscard]] inline prepare_target_step_result_t run_prepare_target_step(
+    const std::map<std::string, std::string> &args,
+    marshal_lattice_tool_callback_t callback, std::int64_t max_waves,
+    std::int64_t recommendation_attempt_count,
+    marshal_dispatch_mode_t requested_mode, bool include_runtime_dry_run,
+    bool include_machine_payload,
+    const std::string &target_driver_run_id = {}) {
+  prepare_target_step_result_t step{};
   step.include_runtime_dry_run = include_runtime_dry_run;
   step.include_machine_payload = include_machine_payload;
 
@@ -4165,8 +4213,8 @@ run_reach_lattice_target_step(const std::map<std::string, std::string> &args,
 }
 
 [[nodiscard]] inline std::string
-reach_terminal_state(const reach_lattice_target_step_result_t &step,
-                     const marshal_target_driver_ledger_t *ledger) {
+prepare_target_terminal_state(const prepare_target_step_result_t &step,
+                              const marshal_target_driver_ledger_t *ledger) {
   if (ledger != nullptr && !ledger->terminal_state.empty()) {
     return ledger->terminal_state;
   }
@@ -4183,8 +4231,8 @@ reach_terminal_state(const reach_lattice_target_step_result_t &step,
 }
 
 [[nodiscard]] inline std::string
-reach_blocking_owner(const std::string &bucket,
-                     const std::string &terminal_state) {
+prepare_target_blocking_owner(const std::string &bucket,
+                              const std::string &terminal_state) {
   if (terminal_state == "reached" || terminal_state == "ready_for_dry_run" ||
       terminal_state == "ready_for_execution_gate") {
     return "none";
@@ -4210,10 +4258,10 @@ reach_blocking_owner(const std::string &bucket,
   return "marshal";
 }
 
-[[nodiscard]] inline std::string
-reach_operator_summary_json(const reach_lattice_target_step_result_t &step,
-                            const marshal_target_driver_ledger_t *ledger) {
-  const auto terminal_state = reach_terminal_state(step, ledger);
+[[nodiscard]] inline std::string prepare_target_operator_summary_json(
+    const prepare_target_step_result_t &step,
+    const marshal_target_driver_ledger_t *ledger) {
+  const auto terminal_state = prepare_target_terminal_state(step, ledger);
   std::string headline = "Target dispatch prepared.";
   if (terminal_state == "reached") {
     headline = "Lattice target is reached.";
@@ -4250,9 +4298,9 @@ reach_operator_summary_json(const reach_lattice_target_step_result_t &step,
 }
 
 [[nodiscard]] inline std::string
-reach_stop_reason_json(const reach_lattice_target_step_result_t &step,
-                       const marshal_target_driver_ledger_t *ledger) {
-  const auto terminal_state = reach_terminal_state(step, ledger);
+prepare_target_stop_reason_json(const prepare_target_step_result_t &step,
+                                const marshal_target_driver_ledger_t *ledger) {
+  const auto terminal_state = prepare_target_terminal_state(step, ledger);
   const std::string reason =
       ledger != nullptr && !ledger->terminal_reason.empty()
           ? ledger->terminal_reason
@@ -4261,14 +4309,15 @@ reach_stop_reason_json(const reach_lattice_target_step_result_t &step,
   out << "{\"terminal_state\":" << detail::json_quote(terminal_state)
       << ",\"human_reason\":" << detail::json_quote(reason)
       << ",\"blocking_owner\":"
-      << detail::json_quote(reach_blocking_owner(step.bucket, terminal_state))
+      << detail::json_quote(
+             prepare_target_blocking_owner(step.bucket, terminal_state))
       << ",\"next_safe_action\":" << detail::json_quote(step.next_action)
       << "}";
   return out.str();
 }
 
 [[nodiscard]] inline std::string
-reach_wave_panel_json(const reach_lattice_target_step_result_t &step) {
+prepare_target_wave_panel_json(const prepare_target_step_result_t &step) {
   std::ostringstream out;
   out << "{\"suggested_wave\":"
       << operator_wave_json(step.advice.suggested_wave)
@@ -4283,7 +4332,7 @@ reach_wave_panel_json(const reach_lattice_target_step_result_t &step) {
 }
 
 [[nodiscard]] inline std::string
-reach_runtime_panel_json(const reach_lattice_target_step_result_t &step) {
+prepare_target_runtime_panel_json(const prepare_target_step_result_t &step) {
   std::ostringstream out;
   out << "{\"policy\":{\"runtime_hero_available\":"
       << (step.policy.runtime_hero_available ? "true" : "false")
@@ -4322,7 +4371,7 @@ reach_runtime_panel_json(const reach_lattice_target_step_result_t &step) {
 }
 
 [[nodiscard]] inline std::string
-reach_lattice_panel_json(const reach_lattice_target_step_result_t &step) {
+prepare_target_lattice_panel_json(const prepare_target_step_result_t &step) {
   const auto policy_gate_panel =
       summarize_lattice_policy_gate_reservations_from_tool_result(
           step.lattice_result);
@@ -4360,8 +4409,8 @@ reach_lattice_panel_json(const reach_lattice_target_step_result_t &step) {
 }
 
 [[nodiscard]] inline std::string
-reach_audit_panel_json(const reach_lattice_target_step_result_t &step,
-                       const marshal_target_driver_ledger_t *ledger) {
+prepare_target_audit_panel_json(const prepare_target_step_result_t &step,
+                                const marshal_target_driver_ledger_t *ledger) {
   std::ostringstream out;
   out << "{\"receipt_id\":" << detail::json_quote(step.prepare_digest)
       << ",\"full_payload_available\":true"
@@ -4389,14 +4438,16 @@ reach_audit_panel_json(const reach_lattice_target_step_result_t &step,
   return out.str();
 }
 
-[[nodiscard]] inline std::string reach_lattice_target_operator_packet_json(
-    const reach_lattice_target_step_result_t &step,
+[[nodiscard]] inline std::string prepare_target_operator_packet_json(
+    const prepare_target_step_result_t &step,
     const marshal_target_driver_ledger_t *ledger = nullptr) {
   std::ostringstream structured;
   structured
       << "{\"ok\":true"
-      << ",\"tool\":" << detail::json_quote("hero.marshal.prepare") << ","
-      << marshal_reach_non_proof_contract_json()
+      << ",\"tool\":" << detail::json_quote("hero.marshal.prepare")
+      << marshal_operator_envelope_supplement_json(
+             "kikijyeba.marshal.prepare.v2.5b", {step.next_action})
+      << "," << marshal_prepare_non_proof_contract_json()
       << ",\"target_id\":" << detail::json_quote(step.advice.target_id)
       << ",\"target_status\":" << detail::json_quote(step.advice.target_status)
       << ",\"target_class\":" << detail::json_quote(step.target_class)
@@ -4412,12 +4463,13 @@ reach_audit_panel_json(const reach_lattice_target_step_result_t &step,
       << ",\"blocker_bucket\":" << detail::json_quote(step.bucket)
       << ",\"explanation\":"
       << detail::json_quote(operator_explanation(step.bucket, step.advice))
-      << ",\"operator_summary\":" << reach_operator_summary_json(step, ledger)
-      << ",\"stop_reason\":" << reach_stop_reason_json(step, ledger)
-      << ",\"wave_panel\":" << reach_wave_panel_json(step)
-      << ",\"runtime_panel\":" << reach_runtime_panel_json(step)
-      << ",\"lattice_panel\":" << reach_lattice_panel_json(step)
-      << ",\"audit_panel\":" << reach_audit_panel_json(step, ledger)
+      << ",\"operator_summary\":"
+      << prepare_target_operator_summary_json(step, ledger)
+      << ",\"stop_reason\":" << prepare_target_stop_reason_json(step, ledger)
+      << ",\"wave_panel\":" << prepare_target_wave_panel_json(step)
+      << ",\"runtime_panel\":" << prepare_target_runtime_panel_json(step)
+      << ",\"lattice_panel\":" << prepare_target_lattice_panel_json(step)
+      << ",\"audit_panel\":" << prepare_target_audit_panel_json(step, ledger)
       << ",\"suggested_wave\":"
       << operator_wave_json(step.advice.suggested_wave)
       << ",\"model_state_inputs\":"
@@ -4425,7 +4477,6 @@ reach_audit_panel_json(const reach_lattice_target_step_result_t &step,
       << ",\"runtime_wave_match\":"
       << runtime_wave_match_json(step.advice, step.policy, step.wave,
                                  step.model_state_inputs)
-      << ",\"next_action\":" << detail::json_quote(step.next_action)
       << ",\"next_command\":{\"tool\":"
       << detail::json_quote(step.artifact_readiness_target
                                 ? "hero.marshal.inspect"
@@ -4865,18 +4916,17 @@ summarize_fact_preview_panel_json(const std::string &lattice_result) {
     std::string *lineage_lattice_result_out,
     std::string *preview_lattice_args_out,
     std::string *preview_lattice_result_out) {
-  const std::string family = first_non_empty(
-      {optional_string(args, "fact_family"), optional_string(args, "family")});
+  const std::string family = optional_string(args, "fact_family_id");
+  const std::string mode = optional_string(args, "mode", "summary");
   const bool include_facts = optional_bool(args, "include_facts", false);
   const bool include_lineage = optional_bool(args, "include_lineage", true);
   const bool include_preview =
-      optional_bool(args, "include_preview", false) ||
-      !optional_string(args, "digest").empty() ||
+      mode == "preview" || optional_bool(args, "include_preview", false) ||
       !optional_string(args, "fact_digest").empty() ||
-      !optional_string(args, "digest_prefix").empty() ||
-      args.find("fact_index") != args.end() || args.find("index") != args.end();
+      !optional_string(args, "fact_digest_prefix").empty() ||
+      args.find("fact_index") != args.end();
   if (include_preview && family.empty()) {
-    throw std::runtime_error("fact preview requires fact_family or family");
+    throw std::runtime_error("fact preview requires fact_family_id");
   }
   const std::string lattice_tool =
       include_facts ? "hero.lattice.scan_facts" : "hero.lattice.fact_summary";
@@ -5012,16 +5062,15 @@ summarize_fact_preview_panel_json(const std::string &lattice_result) {
 }
 
 [[nodiscard]] inline std::string
-inspect_evidence_panel_json(const std::map<std::string, std::string> &args,
-                            marshal_lattice_tool_callback_t callback,
-                            bool include_machine_payload) {
+inspect_facts_subject_json(const std::map<std::string, std::string> &args,
+                           marshal_lattice_tool_callback_t callback,
+                           bool include_machine_payload) {
   if (callback == nullptr) {
     throw std::runtime_error(
-        "Marshal evidence panel requires a Lattice Hero callback");
+        "Marshal inspect subject=facts requires a Lattice Hero callback");
   }
   const std::string target_id = optional_string(args, "target_id");
-  const std::string family = first_non_empty(
-      {optional_string(args, "fact_family"), optional_string(args, "family")});
+  const std::string family = optional_string(args, "fact_family_id");
   const bool include_fact_panel =
       !family.empty() || target_id.empty() ||
       optional_raw(args, "include_facts").has_value();
@@ -5046,7 +5095,7 @@ inspect_evidence_panel_json(const std::map<std::string, std::string> &args,
                                &preview_lattice_args, &preview_lattice_result)
                          : "null";
 
-  std::string headline = "Lattice evidence panel is ready.";
+  std::string headline = "Lattice facts inspection is ready.";
   if (!target_id.empty() && !family.empty()) {
     headline = "Target proof and fact-family evidence are ready to inspect.";
   } else if (!target_id.empty()) {
@@ -5059,6 +5108,8 @@ inspect_evidence_panel_json(const std::map<std::string, std::string> &args,
   out << "{\"ok\":true"
       << ",\"schema\":\"kikijyeba.marshal.evidence_panel.v1\""
       << ",\"tool\":" << detail::json_quote("hero.marshal.inspect")
+      << marshal_operator_envelope_fields_json(
+             "kikijyeba.marshal.inspect.v2.5a", "read_only", {"inspect"})
       << ",\"target_id\":" << detail::json_quote(target_id)
       << ",\"fact_family\":"
       << detail::json_quote(family.empty() ? "all" : family) << ","
@@ -5110,22 +5161,22 @@ make_tool_result(const std::string &tool_name, const std::string &structured) {
 }
 
 [[nodiscard]] inline std::filesystem::path
-evaluate_runtime_root(const std::map<std::string, std::string> &args) {
+inspect_runtime_root(const std::map<std::string, std::string> &args) {
   return std::filesystem::path(optional_string(
       args, "runtime_root", "/cuwacunu/.runtime/cuwacunu_exec"));
 }
 
 [[nodiscard]] inline std::filesystem::path
-evaluate_config_path(const std::map<std::string, std::string> &args) {
+inspect_config_path(const std::map<std::string, std::string> &args) {
   return std::filesystem::path(
       optional_string(args, "config_path", "/cuwacunu/src/config/.config"));
 }
 
 [[nodiscard]] inline std::vector<operational_report_detail::job_summary_t>
-discover_all_evaluate_jobs(const std::map<std::string, std::string> &args) {
+discover_all_inspect_jobs(const std::map<std::string, std::string> &args) {
   marshal_operational_report_options_t options{};
-  options.runtime_root = evaluate_runtime_root(args);
-  options.config_path = evaluate_config_path(args);
+  options.runtime_root = inspect_runtime_root(args);
+  options.config_path = inspect_config_path(args);
   options.job_ids = optional_string_array(args, "job_ids");
   if (options.job_ids.empty()) {
     const auto job_id = optional_string(args, "job_id");
@@ -5180,14 +5231,14 @@ inline void append_unique_value(std::vector<std::string> *values,
 }
 
 [[nodiscard]] inline std::string
-evaluate_audit_json(const std::string &subject,
-                    const std::map<std::string, std::string> &args,
-                    std::size_t job_count) {
+inspect_audit_json(const std::string &subject,
+                   const std::map<std::string, std::string> &args,
+                   std::size_t job_count) {
   std::ostringstream out;
   out << "{\"subject\":" << detail::json_quote(subject) << ",\"runtime_root\":"
-      << detail::json_quote(evaluate_runtime_root(args).string())
+      << detail::json_quote(inspect_runtime_root(args).string())
       << ",\"config_path\":"
-      << detail::json_quote(evaluate_config_path(args).string())
+      << detail::json_quote(inspect_config_path(args).string())
       << ",\"job_count\":" << job_count << ","
       << marshal_read_only_non_proof_contract_json()
       << ",\"non_authority_statement\":"
@@ -5243,8 +5294,8 @@ inline void append_protocol_issue(std::vector<std::string> *issues,
 }
 
 [[nodiscard]] inline std::string
-evaluate_protocol_subject_json(const std::map<std::string, std::string> &args,
-                               bool include_machine_payload) {
+inspect_protocol_subject_json(const std::map<std::string, std::string> &args,
+                              bool include_machine_payload) {
   const auto identity_mode = optional_string(args, "identity_mode", "report");
   if (identity_mode != "report" && identity_mode != "strict") {
     throw std::runtime_error(
@@ -5276,7 +5327,7 @@ evaluate_protocol_subject_json(const std::map<std::string, std::string> &args,
           missing.str());
     }
   }
-  const auto jobs = discover_all_evaluate_jobs(args);
+  const auto jobs = discover_all_inspect_jobs(args);
   const auto protocol =
       unique_job_values(jobs, {"protocol_contract_fingerprint"});
   const auto graph = unique_job_values(jobs, {"graph_order_fingerprint"});
@@ -5327,7 +5378,11 @@ evaluate_protocol_subject_json(const std::map<std::string, std::string> &args,
 
   std::ostringstream out;
   out << "{\"ok\":true,\"tool\":" << detail::json_quote("hero.marshal.inspect")
-      << ",\"subject\":\"protocol\","
+      << ",\"subject\":\"protocol\""
+      << marshal_operator_envelope_fields_json(
+             "kikijyeba.marshal.inspect.v2.5a", "read_only",
+             {issues.empty() ? "inspect_protocol_identity"
+                             : "inspect_protocol_identity_issues"})
       << marshal_read_only_non_proof_contract_json()
       << ",\"evidence_scope\":\"runtime_jobs_only\""
       << ",\"proof_authority\":\"none\""
@@ -5366,7 +5421,7 @@ evaluate_protocol_subject_json(const std::map<std::string, std::string> &args,
       << ",\"runtime_panel\":"
       << operational_report_detail::runtime_panel_json(jobs)
       << ",\"audit_panel\":"
-      << evaluate_audit_json("protocol", args, jobs.size())
+      << inspect_audit_json("protocol", args, jobs.size())
       << ",\"non_authority_statement\":"
       << detail::json_quote(k_marshal_dispatch_non_authority_statement);
   if (include_machine_payload) {
@@ -5409,8 +5464,8 @@ job_matches_component_query(const operational_report_detail::job_summary_t &job,
 }
 
 [[nodiscard]] inline std::string
-evaluate_spawn_subject_json(const std::map<std::string, std::string> &args,
-                            bool include_machine_payload) {
+inspect_spawn_subject_json(const std::map<std::string, std::string> &args,
+                           bool include_machine_payload) {
   const std::string requested_spawn =
       first_non_empty({optional_string(args, "spawn_id"),
                        optional_string(args, "component_spawn_id")});
@@ -5420,7 +5475,7 @@ evaluate_spawn_subject_json(const std::map<std::string, std::string> &args,
         "hero.marshal.inspect subject=spawn requires spawn_id, "
         "component_spawn_id, or component_spawn_fingerprint");
   }
-  const auto all_jobs = discover_all_evaluate_jobs(args);
+  const auto all_jobs = discover_all_inspect_jobs(args);
   std::vector<operational_report_detail::job_summary_t> jobs;
   for (const auto &job : all_jobs) {
     if (job_matches_spawn_query(job, args)) {
@@ -5430,7 +5485,11 @@ evaluate_spawn_subject_json(const std::map<std::string, std::string> &args,
   const bool found = !jobs.empty();
   std::ostringstream out;
   out << "{\"ok\":true,\"tool\":" << detail::json_quote("hero.marshal.inspect")
-      << ",\"subject\":\"spawn\","
+      << ",\"subject\":\"spawn\""
+      << marshal_operator_envelope_fields_json(
+             "kikijyeba.marshal.inspect.v2.5a", "read_only",
+             {found ? "inspect_spawn_runtime_evidence"
+                    : "inspect_spawn_identity_or_runtime_root"})
       << marshal_read_only_non_proof_contract_json()
       << ",\"evidence_scope\":\"runtime_jobs_only\""
       << ",\"proof_authority\":\"none\""
@@ -5473,7 +5532,7 @@ evaluate_spawn_subject_json(const std::map<std::string, std::string> &args,
       << "}"
       << ",\"runtime_panel\":"
       << operational_report_detail::runtime_panel_json(jobs)
-      << ",\"audit_panel\":" << evaluate_audit_json("spawn", args, jobs.size())
+      << ",\"audit_panel\":" << inspect_audit_json("spawn", args, jobs.size())
       << ",\"non_authority_statement\":"
       << detail::json_quote(k_marshal_dispatch_non_authority_statement);
   if (include_machine_payload) {
@@ -5486,16 +5545,15 @@ evaluate_spawn_subject_json(const std::map<std::string, std::string> &args,
 }
 
 [[nodiscard]] inline std::string
-evaluate_component_subject_json(const std::map<std::string, std::string> &args,
-                                bool include_machine_payload) {
+inspect_component_subject_json(const std::map<std::string, std::string> &args,
+                               bool include_machine_payload) {
   const std::string component_family_id =
-      first_non_empty({optional_string(args, "component_family_id"),
-                       optional_string(args, "component")});
+      optional_string(args, "component_family_id");
   if (component_family_id.empty()) {
     throw std::runtime_error("hero.marshal.inspect subject=component requires "
-                             "component_family_id or component");
+                             "component_family_id");
   }
-  const auto all_jobs = discover_all_evaluate_jobs(args);
+  const auto all_jobs = discover_all_inspect_jobs(args);
   std::vector<operational_report_detail::job_summary_t> jobs;
   for (const auto &job : all_jobs) {
     if (job_matches_component_query(job, component_family_id)) {
@@ -5505,7 +5563,11 @@ evaluate_component_subject_json(const std::map<std::string, std::string> &args,
   const bool found = !jobs.empty();
   std::ostringstream out;
   out << "{\"ok\":true,\"tool\":" << detail::json_quote("hero.marshal.inspect")
-      << ",\"subject\":\"component\","
+      << ",\"subject\":\"component\""
+      << marshal_operator_envelope_fields_json(
+             "kikijyeba.marshal.inspect.v2.5a", "read_only",
+             {found ? "inspect_component_runtime_evidence"
+                    : "inspect_component_family_or_runtime_root"})
       << marshal_read_only_non_proof_contract_json()
       << ",\"evidence_scope\":\"runtime_jobs_only\""
       << ",\"proof_authority\":\"none\""
@@ -5548,7 +5610,7 @@ evaluate_component_subject_json(const std::map<std::string, std::string> &args,
       << ",\"runtime_panel\":"
       << operational_report_detail::runtime_panel_json(jobs)
       << ",\"audit_panel\":"
-      << evaluate_audit_json("component", args, jobs.size())
+      << inspect_audit_json("component", args, jobs.size())
       << ",\"non_authority_statement\":"
       << detail::json_quote(k_marshal_dispatch_non_authority_statement);
   if (include_machine_payload) {
@@ -5561,9 +5623,9 @@ evaluate_component_subject_json(const std::map<std::string, std::string> &args,
 }
 
 [[nodiscard]] inline std::string
-evaluate_target_subject_json(const std::map<std::string, std::string> &args,
-                             marshal_lattice_tool_callback_t callback,
-                             bool include_machine_payload) {
+inspect_target_subject_json(const std::map<std::string, std::string> &args,
+                            marshal_lattice_tool_callback_t callback,
+                            bool include_machine_payload) {
   const auto target_id = optional_string(args, "target_id");
   if (target_id.empty()) {
     throw std::runtime_error(
@@ -5653,7 +5715,9 @@ evaluate_target_subject_json(const std::map<std::string, std::string> &args,
           : (plan_ready ? "prepare" : "ask_lattice_to_recheck_target");
   std::ostringstream out;
   out << "{\"ok\":true,\"tool\":" << detail::json_quote("hero.marshal.inspect")
-      << ",\"subject\":\"target\","
+      << ",\"subject\":\"target\""
+      << marshal_operator_envelope_fields_json(
+             "kikijyeba.marshal.inspect.v2.5a", "read_only", {next_action})
       << marshal_read_only_non_proof_contract_json()
       << ",\"proof_authority\":\"lattice\""
       << ",\"operator_summary\":{\"headline\":"
@@ -5749,7 +5813,7 @@ evaluate_target_subject_json(const std::map<std::string, std::string> &args,
       << ",\"plan_ready\":" << (plan_ready ? "true" : "false");
   append_policy_gate_reservation_panel_json(out, policy_gate_panel);
   out << "}"
-      << ",\"audit_panel\":" << evaluate_audit_json("target", args, 0)
+      << ",\"audit_panel\":" << inspect_audit_json("target", args, 0)
       << ",\"non_authority_statement\":"
       << detail::json_quote(k_marshal_dispatch_non_authority_statement);
   if (include_machine_payload) {
@@ -5795,23 +5859,19 @@ evaluate_target_subject_json(const std::map<std::string, std::string> &args,
                                     "baseline_job_id",
                                     "candidate_job_id",
                                     "component_family_id",
-                                    "component",
                                     "spawn_id",
                                     "component_spawn_id",
                                     "component_spawn_registry_id",
                                     "component_spawn_label",
                                     "component_spawn_fingerprint",
-                                    "fact_family",
-                                    "family",
+                                    "fact_family_id",
                                     "limit",
                                     "include_facts",
                                     "include_lineage",
                                     "include_preview",
-                                    "digest",
                                     "fact_digest",
-                                    "digest_prefix",
+                                    "fact_digest_prefix",
                                     "fact_index",
-                                    "index",
                                     "include_machine_payload",
                                     "protocol_contract_fingerprint",
                                     "graph_order_fingerprint",
@@ -5822,34 +5882,25 @@ evaluate_target_subject_json(const std::map<std::string, std::string> &args,
       const std::string subject = tool_detail::optional_string(args, "subject");
       const bool include_machine_payload =
           tool_detail::optional_bool(args, "include_machine_payload", false);
-      if (subject == "facts" ||
-          (subject == "target" &&
-           tool_detail::optional_string(args, "mode") == "evidence")) {
-        tool_detail::validate_fields(args,
-                                     {"subject",
-                                      "mode",
-                                      "target_id",
-                                      "fact_family",
-                                      "family",
-                                      "config_path",
-                                      "runtime_root",
-                                      "protocol_contract_fingerprint",
-                                      "graph_order_fingerprint",
-                                      "source_cursor_token",
-                                      "vicreg_assembly_fingerprint",
-                                      "mdn_assembly_fingerprint",
-                                      "limit",
-                                      "include_facts",
-                                      "include_lineage",
-                                      "include_preview",
-                                      "digest",
-                                      "fact_digest",
-                                      "digest_prefix",
-                                      "fact_index",
-                                      "index",
-                                      "include_machine_payload"},
-                                     {"subject"}, "hero.marshal.inspect facts");
-        structured << tool_detail::inspect_evidence_panel_json(
+      if (subject == "facts") {
+        tool_detail::validate_fields(
+            args,
+            {"subject", "mode", "target_id", "fact_family_id", "config_path",
+             "runtime_root", "protocol_contract_fingerprint",
+             "graph_order_fingerprint", "source_cursor_token",
+             "vicreg_assembly_fingerprint", "mdn_assembly_fingerprint", "limit",
+             "include_facts", "include_lineage", "include_preview",
+             "fact_digest", "fact_digest_prefix", "fact_index",
+             "include_machine_payload"},
+            {"subject"}, "hero.marshal.inspect facts");
+        const std::string mode =
+            tool_detail::optional_string(args, "mode", "summary");
+        if (mode != "summary" && mode != "lineage" && mode != "preview") {
+          throw std::runtime_error(
+              "hero.marshal.inspect subject=facts mode must be summary, "
+              "lineage, or preview");
+        }
+        structured << tool_detail::inspect_facts_subject_json(
             args, marshal_lattice_tool_callback_slot(),
             include_machine_payload);
       } else if (subject == "run") {
@@ -5885,7 +5936,10 @@ evaluate_target_subject_json(const std::map<std::string, std::string> &args,
               args, "include_machine_payload", false);
           structured << "{\"ok\":true,\"tool\":"
                      << detail::json_quote("hero.marshal.inspect")
-                     << ",\"subject\":\"run\",\"mode\":\"compare\","
+                     << ",\"subject\":\"run\",\"mode\":\"compare\""
+                     << tool_detail::marshal_operator_envelope_fields_json(
+                            "kikijyeba.marshal.inspect.v2.5a", "read_only",
+                            {"inspect_run_compare"})
                      << tool_detail::marshal_read_only_non_proof_contract_json()
                      << ",\"result\":"
                      << build_marshal_run_comparison_json(options) << "}";
@@ -5947,7 +6001,10 @@ evaluate_target_subject_json(const std::map<std::string, std::string> &args,
           structured << "{\"ok\":true,\"tool\":"
                      << detail::json_quote("hero.marshal.inspect")
                      << ",\"subject\":\"run\",\"mode\":"
-                     << detail::json_quote(mode) << ","
+                     << detail::json_quote(mode)
+                     << tool_detail::marshal_operator_envelope_fields_json(
+                            "kikijyeba.marshal.inspect.v2.5a", "read_only",
+                            {"inspect_run"})
                      << tool_detail::marshal_read_only_non_proof_contract_json()
                      << ",\"result\":"
                      << build_marshal_operational_report_json(options) << "}";
@@ -5964,7 +6021,7 @@ evaluate_target_subject_json(const std::map<std::string, std::string> &args,
              "graph_order_fingerprint", "source_cursor_token",
              "vicreg_assembly_fingerprint", "mdn_assembly_fingerprint"},
             {"subject"}, "hero.marshal.inspect subject=target");
-        structured << tool_detail::evaluate_target_subject_json(
+        structured << tool_detail::inspect_target_subject_json(
             args, marshal_lattice_tool_callback_slot(),
             include_machine_payload);
       } else if (subject == "protocol") {
@@ -5976,7 +6033,7 @@ evaluate_target_subject_json(const std::map<std::string, std::string> &args,
              "source_cursor_token", "vicreg_assembly_fingerprint",
              "mdn_assembly_fingerprint"},
             {"subject"}, "hero.marshal.inspect subject=protocol");
-        structured << tool_detail::evaluate_protocol_subject_json(
+        structured << tool_detail::inspect_protocol_subject_json(
             args, include_machine_payload);
       } else if (subject == "spawn") {
         tool_detail::validate_fields(
@@ -5986,825 +6043,947 @@ evaluate_target_subject_json(const std::map<std::string, std::string> &args,
              "component_spawn_label", "component_spawn_fingerprint",
              "include_machine_payload"},
             {"subject"}, "hero.marshal.inspect subject=spawn");
-        structured << tool_detail::evaluate_spawn_subject_json(
+        structured << tool_detail::inspect_spawn_subject_json(
             args, include_machine_payload);
       } else if (subject == "component") {
         tool_detail::validate_fields(
             args,
             {"subject", "runtime_root", "config_path", "job_id", "job_ids",
-             "component_family_id", "component", "include_machine_payload"},
+             "component_family_id", "include_machine_payload"},
             {"subject"}, "hero.marshal.inspect subject=component");
-        structured << tool_detail::evaluate_component_subject_json(
+        structured << tool_detail::inspect_component_subject_json(
             args, include_machine_payload);
       } else {
         throw std::runtime_error(
             "hero.marshal.inspect subject must be run, target, protocol, "
             "spawn, component, or facts");
       }
+    } else if (tool_name == "hero.marshal.rollout") {
+      tool_detail::validate_fields(args,
+                                   {"rollout_id",
+                                    "rollout_attempt_id",
+                                    "idempotency_key",
+                                    "experiment_id",
+                                    "config_path",
+                                    "runtime_job_dir",
+                                    "replay_batch_index_path",
+                                    "runtime_exec_path",
+                                    "report_path",
+                                    "requested_mode",
+                                    "environment_mode",
+                                    "environment_assembly_id",
+                                    "graph_order_fingerprint",
+                                    "asset_universe_digest",
+                                    "base_reserve_node_id",
+                                    "risky_node_ids",
+                                    "policy_set",
+                                    "max_steps",
+                                    "max_parallel_jobs",
+                                    "execution_profile",
+                                    "timeout_seconds",
+                                    "require_existing_runtime_job_dir",
+                                    "require_completed_runtime_job",
+                                    "require_replay_artifacts",
+                                    "include_machine_payload"},
+                                   {}, tool_name);
+      const auto request = tool_detail::parse_rollout_request(args);
+      const auto plan = prepare_rollout_plan(request);
+      const bool include_machine_payload =
+          tool_detail::optional_bool(args, "include_machine_payload", false);
+      const bool execute_requested =
+          plan.accepted && request.requested_mode == "execute";
+      bool runtime_replay_attempted = false;
+      bool runtime_replay_ok = false;
+      bool runtime_tool_call_ok = false;
+      bool runtime_tool_result_error = false;
+      const std::string runtime_tool_name = "hero.runtime.replay";
+      std::string runtime_args_json{};
+      std::string runtime_args_digest{};
+      std::string runtime_result_json{};
+      std::string runtime_result_digest{};
+      std::string runtime_error_message{};
+      if (execute_requested) {
+        runtime_replay_attempted = true;
+        cuwacunu::hero::runtime::runtime_context_t ctx{};
+        ctx.global_config_path = request.config_path;
+        ctx.policy_path =
+            cuwacunu::hero::runtime::resolve_runtime_hero_dsl_path(
+                ctx.global_config_path);
+        if (!cuwacunu::hero::runtime::load_runtime_policy(
+                ctx.policy_path, ctx.global_config_path, &ctx.policy,
+                &runtime_error_message)) {
+          runtime_replay_ok = false;
+        } else {
+          runtime_args_json =
+              rollout_runtime_replay_args_json(request, plan, false);
+          runtime_args_digest = marshal_digest_for_text(
+              "kikijyeba.marshal.rollout.runtime_replay_args.v1",
+              runtime_args_json);
+          runtime_tool_call_ok = cuwacunu::hero::runtime::execute_tool_json(
+              runtime_tool_name, runtime_args_json, &ctx, &runtime_result_json,
+              &runtime_error_message);
+          runtime_tool_result_error =
+              cuwacunu::hero::runtime::tool_result_is_error(
+                  runtime_result_json);
+          runtime_result_digest = marshal_digest_for_text(
+              "kikijyeba.marshal.rollout.runtime_replay_result.v1",
+              runtime_result_json);
+          runtime_replay_ok =
+              runtime_tool_call_ok && !runtime_tool_result_error &&
+              runtime_result_json.find("\"ok\":true") != std::string::npos;
+        }
+      }
+      const std::string dispatch_state =
+          !plan.accepted ? "blocked"
+                         : (execute_requested
+                                ? (runtime_replay_ok ? "executed" : "blocked")
+                                : "prepared");
+      const std::vector<std::string> next_actions =
+          !plan.accepted
+              ? std::vector<std::string>{"fix_rollout_request"}
+              : (execute_requested
+                     ? (runtime_replay_ok
+                            ? std::vector<std::string>{"inspect_rollout_report"}
+                            : std::vector<std::string>{"inspect_runtime_replay_"
+                                                       "failure"})
+                     : std::vector<std::string>{"execute_rollout_via_marshal",
+                                                "inspect_rollout_plan"});
+      structured << "{\"ok\":true,\"tool\":"
+                 << detail::json_quote("hero.marshal.rollout")
+                 << tool_detail::marshal_operator_envelope_supplement_json(
+                        "kikijyeba.marshal.rollout.v2.5b", next_actions)
+                 << ",\"requested_mode\":"
+                 << detail::json_quote(request.requested_mode)
+                 << ",\"dispatch_state\":" << detail::json_quote(dispatch_state)
+                 << ",\"idempotency\":{\"scope\":\"request_digest_binding\","
+                    "\"durable_duplicate_handoff_ledger\":false,"
+                    "\"duplicate_execution_prevented_by_marshal\":false}"
+                 << ",\"receipt_produced\":false"
+                 << ",\"rollout_plan\":" << rollout_plan_json(plan)
+                 << ",\"runtime_replay\":{\"attempted\":"
+                 << (runtime_replay_attempted ? "true" : "false")
+                 << ",\"tool_name\":" << detail::json_quote(runtime_tool_name)
+                 << ",\"ok\":" << (runtime_replay_ok ? "true" : "false")
+                 << ",\"tool_call_ok\":"
+                 << (runtime_tool_call_ok ? "true" : "false")
+                 << ",\"tool_result_error\":"
+                 << (runtime_tool_result_error ? "true" : "false")
+                 << ",\"arguments_digest\":"
+                 << detail::json_quote(runtime_args_digest)
+                 << ",\"tool_result_digest\":"
+                 << detail::json_quote(runtime_result_digest)
+                 << ",\"error_message\":"
+                 << detail::json_quote(runtime_error_message);
+      if (include_machine_payload) {
+        structured << ",\"arguments_json\":"
+                   << detail::json_quote(runtime_args_json)
+                   << ",\"tool_result_json\":"
+                   << detail::json_quote(runtime_result_json);
+      }
+      structured << "}}";
     } else if (tool_name == "hero.marshal.prepare") {
       const std::string intent =
           tool_detail::optional_string(args, "intent", "train");
-      if (intent == "rollout") {
-        tool_detail::validate_fields(
-            args,
-            {"intent", "rollout_id", "experiment_id", "runtime_job_dir",
-             "runtime_exec_path", "report_path", "environment_mode",
-             "environment_assembly_id", "base_reserve_node_id",
-             "risky_node_ids", "policy_set", "max_steps", "max_parallel_jobs",
-             "execution_profile", "require_existing_runtime_job_dir",
-             "require_completed_runtime_job", "require_replay_artifacts",
-             "prepare_only", "include_machine_payload"},
-            {}, tool_name);
-        const auto request = tool_detail::parse_rollout_request(args);
-        const auto plan = prepare_rollout_plan(request);
-        structured << "{\"ok\":true,\"tool\":"
-                   << detail::json_quote("hero.marshal.prepare")
-                   << ",\"intent\":\"rollout\""
-                   << ",\"dispatch_state\":"
-                   << detail::json_quote(plan.accepted ? "prepared" : "blocked")
-                   << ",\"next_action\":"
-                   << detail::json_quote(plan.accepted
-                                             ? "run_replay_command_or_inspect"
-                                             : "fix_rollout_request")
-                   << ",\"receipt_produced\":false"
-                   << ",\"rollout_plan\":" << rollout_plan_json(plan) << "}";
+      tool_detail::validate_fields(args,
+                                   {"target_id",
+                                    "intent",
+                                    "config_path",
+                                    "runtime_root",
+                                    "requested_mode",
+                                    "drive_mode",
+                                    "driver_policy",
+                                    "resume_ledger",
+                                    "source_lattice_timestamp",
+                                    "max_waves",
+                                    "recommendation_attempt_count",
+                                    "context",
+                                    "protocol_contract_fingerprint",
+                                    "graph_order_fingerprint",
+                                    "source_cursor_token",
+                                    "vicreg_assembly_fingerprint",
+                                    "mdn_assembly_fingerprint",
+                                    "materialize_plan_inputs",
+                                    "include_runtime_dry_run",
+                                    "include_machine_payload",
+                                    "runtime_policy",
+                                    "runtime_wave",
+                                    "timeout_seconds",
+                                    "ledger_created_at_utc",
+                                    "ledger_nonce"},
+                                   {"drive_mode"}, tool_name);
+      if (tool_detail::optional_string(args, "target_id").empty()) {
+        throw std::runtime_error("hero.marshal.prepare requires target_id");
+      }
+      if (intent == "replay" || intent == "rollout") {
+        throw std::runtime_error(
+            "hero.marshal.prepare replay/rollout intent is not supported; use "
+            "hero.marshal.rollout");
+      }
+      if (intent == "artifact_validation") {
+        throw std::runtime_error(
+            "hero.marshal.prepare intent=artifact_validation is not "
+            "supported; use hero.marshal.inspect");
+      }
+      if (intent == "policy_training") {
+        throw std::runtime_error(
+            "hero.marshal.prepare intent=policy_training is reserved until a "
+            "finite Runtime policy-training contract exists");
+      }
+      if (intent != "train" && intent != "evaluate") {
+        throw std::runtime_error(
+            "hero.marshal.prepare intent must be train or evaluate");
+      }
+      auto callback = marshal_lattice_tool_callback_slot();
+      if (callback == nullptr) {
+        throw std::runtime_error(
+            "Marshal target dispatch preparation requires a Lattice Hero "
+            "callback");
+      }
+      const auto drive_mode = tool_detail::parse_drive_mode_text(
+          tool_detail::optional_string(args, "drive_mode", "one_step"));
+      if (drive_mode == marshal_target_drive_mode_t::unknown) {
+        throw std::runtime_error(
+            "hero.marshal.prepare drive_mode must be one_step or "
+            "budgeted");
+      }
+      const auto requested_mode = tool_detail::parse_mode_text(
+          tool_detail::optional_string(args, "requested_mode", "plan"));
+      if (requested_mode == marshal_dispatch_mode_t::unknown) {
+        throw std::runtime_error(
+            "hero.marshal.prepare requested_mode must be plan, dry_run, "
+            "or execute");
+      }
+      marshal_target_driver_policy_t driver_policy{};
+      const auto driver_policy_raw =
+          tool_detail::optional_raw(args, "driver_policy");
+      bool driver_policy_has_max_waves = false;
+      if (driver_policy_raw.has_value()) {
+        const auto policy_fields =
+            tool_detail::object_fields(*driver_policy_raw);
+        driver_policy_has_max_waves =
+            policy_fields.find("max_waves") != policy_fields.end();
+        driver_policy = tool_detail::parse_driver_policy(*driver_policy_raw);
       } else {
-        tool_detail::validate_fields(args,
-                                     {"target_id",
-                                      "lattice_target",
-                                      "intent",
-                                      "config_path",
-                                      "runtime_root",
-                                      "requested_mode",
-                                      "drive_mode",
-                                      "driver_policy",
-                                      "resume_ledger",
-                                      "source_lattice_timestamp",
-                                      "max_waves",
-                                      "recommendation_attempt_count",
-                                      "context",
-                                      "protocol_contract_fingerprint",
-                                      "graph_order_fingerprint",
-                                      "source_cursor_token",
-                                      "vicreg_assembly_fingerprint",
-                                      "mdn_assembly_fingerprint",
-                                      "materialize_plan_inputs",
-                                      "include_runtime_dry_run",
-                                      "include_machine_payload",
-                                      "runtime_policy",
-                                      "runtime_wave",
-                                      "timeout_seconds",
-                                      "ledger_created_at_utc",
-                                      "ledger_nonce"},
-                                     {"drive_mode"}, tool_name);
-        if (tool_detail::optional_string(args, "target_id").empty()) {
-          const std::string lattice_target =
-              tool_detail::optional_string(args, "lattice_target");
-          if (!lattice_target.empty()) {
-            args["target_id"] = lattice_target;
-          }
-        }
-        if (tool_detail::optional_string(args, "target_id").empty()) {
-          throw std::runtime_error(
-              "hero.marshal.prepare requires target_id or lattice_target");
-        }
-        if (intent != "train" && intent != "evaluate" && intent != "replay" &&
-            intent != "artifact_validation" && intent != "policy_training") {
-          throw std::runtime_error(
-              "hero.marshal.prepare intent must be train, evaluate, replay, "
-              "artifact_validation, policy_training, or rollout");
-        }
-        auto callback = marshal_lattice_tool_callback_slot();
-        if (callback == nullptr) {
-          throw std::runtime_error(
-              "Marshal target dispatch preparation requires a Lattice Hero "
-              "callback");
-        }
-        const auto drive_mode = tool_detail::parse_drive_mode_text(
-            tool_detail::optional_string(args, "drive_mode", "one_step"));
-        if (drive_mode == marshal_target_drive_mode_t::unknown) {
-          throw std::runtime_error(
-              "hero.marshal.prepare drive_mode must be one_step or "
-              "budgeted");
-        }
-        const auto requested_mode = tool_detail::parse_mode_text(
-            tool_detail::optional_string(args, "requested_mode", "dry_run"));
-        if (requested_mode == marshal_dispatch_mode_t::unknown) {
-          throw std::runtime_error(
-              "hero.marshal.prepare requested_mode must be dry_run "
-              "or execute");
-        }
-        marshal_target_driver_policy_t driver_policy{};
-        const auto driver_policy_raw =
-            tool_detail::optional_raw(args, "driver_policy");
-        bool driver_policy_has_max_waves = false;
-        if (driver_policy_raw.has_value()) {
-          const auto policy_fields =
-              tool_detail::object_fields(*driver_policy_raw);
-          driver_policy_has_max_waves =
-              policy_fields.find("max_waves") != policy_fields.end();
-          driver_policy = tool_detail::parse_driver_policy(*driver_policy_raw);
-        } else {
-          driver_policy.max_waves =
-              tool_detail::optional_i64(args, "max_waves", 1);
-        }
-        if (drive_mode == marshal_target_drive_mode_t::budgeted &&
-            !driver_policy_raw.has_value()) {
-          throw std::runtime_error(
-              "budgeted drive_mode requires explicit driver_policy");
-        }
-        if (drive_mode == marshal_target_drive_mode_t::budgeted &&
-            !driver_policy_has_max_waves) {
-          throw std::runtime_error(
-              "budgeted drive_mode requires driver_policy.max_waves");
-        }
-        if (drive_mode == marshal_target_drive_mode_t::one_step) {
-          driver_policy.max_waves = 1;
-        }
-        if (driver_policy.max_waves <= 0) {
-          throw std::runtime_error("driver_policy.max_waves must be positive");
-        }
-        if (driver_policy.no_progress_window <= 0) {
-          throw std::runtime_error(
-              "driver_policy.no_progress_window must be positive");
-        }
-        if (drive_mode == marshal_target_drive_mode_t::budgeted &&
-            driver_policy.max_wall_clock_seconds <= 0) {
-          throw std::runtime_error("budgeted drive_mode requires "
-                                   "driver_policy.max_wall_clock_seconds");
-        }
+        driver_policy.max_waves =
+            tool_detail::optional_i64(args, "max_waves", 1);
+      }
+      if (drive_mode == marshal_target_drive_mode_t::budgeted &&
+          !driver_policy_raw.has_value()) {
+        throw std::runtime_error(
+            "budgeted drive_mode requires explicit driver_policy");
+      }
+      if (drive_mode == marshal_target_drive_mode_t::budgeted &&
+          !driver_policy_has_max_waves) {
+        throw std::runtime_error(
+            "budgeted drive_mode requires driver_policy.max_waves");
+      }
+      if (drive_mode == marshal_target_drive_mode_t::one_step) {
+        driver_policy.max_waves = 1;
+      }
+      if (driver_policy.max_waves <= 0) {
+        throw std::runtime_error("driver_policy.max_waves must be positive");
+      }
+      if (driver_policy.no_progress_window <= 0) {
+        throw std::runtime_error(
+            "driver_policy.no_progress_window must be positive");
+      }
+      if (drive_mode == marshal_target_drive_mode_t::budgeted &&
+          driver_policy.max_wall_clock_seconds <= 0) {
+        throw std::runtime_error("budgeted drive_mode requires "
+                                 "driver_policy.max_wall_clock_seconds");
+      }
 
-        tool_detail::target_driver_resume_state_t resume{};
-        if (const auto raw = tool_detail::optional_raw(args, "resume_ledger")) {
-          resume = tool_detail::parse_target_driver_resume_state(*raw);
-        }
+      tool_detail::target_driver_resume_state_t resume{};
+      if (const auto raw = tool_detail::optional_raw(args, "resume_ledger")) {
+        resume = tool_detail::parse_target_driver_resume_state(*raw);
+      }
 
-        const bool include_machine_payload =
-            tool_detail::optional_bool(args, "include_machine_payload", false);
-        bool include_runtime_dry_run =
-            tool_detail::optional_bool(args, "include_runtime_dry_run", false);
-        if (drive_mode == marshal_target_drive_mode_t::budgeted) {
-          include_runtime_dry_run = true;
-        }
+      const bool include_machine_payload =
+          tool_detail::optional_bool(args, "include_machine_payload", false);
+      const bool include_runtime_dry_run =
+          requested_mode != marshal_dispatch_mode_t::plan;
 
-        marshal_target_driver_ledger_t ledger{};
-        ledger.target_id = tool_detail::optional_string(args, "target_id");
-        ledger.drive_mode = drive_mode;
-        ledger.requested_mode = requested_mode;
-        ledger.driver_policy = driver_policy;
-        ledger.driver_policy_digest =
-            target_driver_policy_digest(driver_policy);
-        ledger.ledger_created_at_utc =
-            tool_detail::optional_string(args, "ledger_created_at_utc",
-                                         tool_detail::current_utc_timestamp());
+      marshal_target_driver_ledger_t ledger{};
+      ledger.target_id = tool_detail::optional_string(args, "target_id");
+      ledger.drive_mode = drive_mode;
+      ledger.requested_mode = requested_mode;
+      ledger.driver_policy = driver_policy;
+      ledger.driver_policy_digest = target_driver_policy_digest(driver_policy);
+      ledger.ledger_created_at_utc = tool_detail::optional_string(
+          args, "ledger_created_at_utc", tool_detail::current_utc_timestamp());
+      ledger.ledger_nonce = tool_detail::optional_string(args, "ledger_nonce");
+      if (ledger.ledger_nonce.empty()) {
         ledger.ledger_nonce =
-            tool_detail::optional_string(args, "ledger_nonce");
-        if (ledger.ledger_nonce.empty()) {
-          ledger.ledger_nonce =
-              tool_detail::generated_target_driver_ledger_nonce();
+            tool_detail::generated_target_driver_ledger_nonce();
+      }
+      bool prepare_result_ready = false;
+      if (resume.present) {
+        ledger.target_driver_run_id = resume.target_driver_run_id;
+        ledger.target_driver_run_key = resume.target_driver_run_key;
+        ledger.ledger_created_at_utc = resume.ledger_created_at_utc;
+        ledger.ledger_nonce = resume.ledger_nonce;
+        ledger.resumed_from_run_id = resume.target_driver_run_id;
+        ledger.resumed_iteration_count = resume.iteration_count;
+        ledger.runtime_handoff_attempt_count =
+            resume.runtime_handoff_attempt_count;
+        ledger.execution_attempt_count = resume.execution_attempt_count;
+        ledger.last_target_deficit_digest = resume.last_target_deficit_digest;
+        ledger.last_suggested_wave_digest = resume.last_suggested_wave_digest;
+        ledger.last_progress_signature = resume.last_progress_signature;
+        ledger.last_runtime_job_id = resume.last_runtime_job_id;
+        ledger.last_runtime_job_state_digest =
+            resume.last_runtime_job_state_digest;
+        ledger.last_runtime_job_manifest_digest =
+            resume.last_runtime_job_manifest_digest;
+        ledger.last_runtime_terminal_fact_digest =
+            resume.last_runtime_terminal_fact_digest;
+        ledger.last_runtime_checkpoint_io_fact_digest =
+            resume.last_runtime_checkpoint_io_fact_digest;
+        ledger.last_runtime_handoff_id = resume.last_runtime_handoff_id;
+        ledger.last_runtime_handoff_digest = resume.last_runtime_handoff_digest;
+        ledger.last_runtime_policy_digest = resume.last_runtime_policy_digest;
+        if (resume.target_id != ledger.target_id ||
+            (!resume.driver_policy_digest.empty() &&
+             resume.driver_policy_digest != ledger.driver_policy_digest) ||
+            (!resume.drive_mode.empty() &&
+             resume.drive_mode != to_string(drive_mode)) ||
+            (!resume.requested_mode.empty() &&
+             resume.requested_mode != to_string(requested_mode))) {
+          ledger.terminal_state = "blocked_stale_resume";
+          ledger.terminal_reason =
+              "resume_ledger target, mode, requested_mode, or driver_policy "
+              "does not match this request";
+          finalize_target_driver_run_id(&ledger);
+          structured << "{\"ok\":true,\"tool\":"
+                     << detail::json_quote("hero.marshal.prepare")
+                     << tool_detail::marshal_operator_envelope_supplement_json(
+                            "kikijyeba.marshal.prepare.v2.5b",
+                            {"inspect_blocker"})
+                     << ","
+                     << tool_detail::marshal_prepare_non_proof_contract_json()
+                     << ",\"target_id\":"
+                     << detail::json_quote(ledger.target_id)
+                     << ",\"dispatch_state\":\"blocked\""
+                     << ",\"blocker_bucket\":\"stale_resume\""
+                     << ",\"drive_mode\":"
+                     << detail::json_quote(to_string(ledger.drive_mode))
+                     << ",\"driver_terminal_state\":"
+                     << detail::json_quote(ledger.terminal_state)
+                     << ",\"driver_terminal_reason\":"
+                     << detail::json_quote(ledger.terminal_reason)
+                     << ",\"target_driver\":"
+                     << tool_detail::target_driver_ledger_json(ledger) << "}";
+          prepare_result_ready = true;
+        } else if (resume.ledger_digest.empty()) {
+          ledger.terminal_state = "blocked_stale_resume";
+          ledger.terminal_reason = "resume_ledger is missing ledger_digest";
+          finalize_target_driver_run_id(&ledger);
+          structured << "{\"ok\":true,\"tool\":"
+                     << detail::json_quote("hero.marshal.prepare")
+                     << tool_detail::marshal_operator_envelope_supplement_json(
+                            "kikijyeba.marshal.prepare.v2.5b",
+                            {"inspect_blocker"})
+                     << ","
+                     << tool_detail::marshal_prepare_non_proof_contract_json()
+                     << ",\"target_id\":"
+                     << detail::json_quote(ledger.target_id)
+                     << ",\"dispatch_state\":\"blocked\""
+                     << ",\"blocker_bucket\":\"stale_resume\""
+                     << ",\"drive_mode\":"
+                     << detail::json_quote(to_string(ledger.drive_mode))
+                     << ",\"driver_terminal_state\":"
+                     << detail::json_quote(ledger.terminal_state)
+                     << ",\"driver_terminal_reason\":"
+                     << detail::json_quote(ledger.terminal_reason)
+                     << ",\"target_driver\":"
+                     << tool_detail::target_driver_ledger_json(ledger) << "}";
+          prepare_result_ready = true;
+        } else if (resume.execution_attempt_count > 0 &&
+                   (resume.last_runtime_job_id.empty() ||
+                    resume.last_runtime_job_manifest_digest.empty() ||
+                    resume.last_runtime_terminal_fact_digest.empty() ||
+                    resume.last_runtime_handoff_digest.empty())) {
+          ledger.terminal_state = "blocked_stale_resume";
+          ledger.terminal_reason =
+              "resume_ledger with execution history is missing Runtime "
+              "terminal evidence, job manifest, or handoff identity";
+          finalize_target_driver_run_id(&ledger);
+          structured << "{\"ok\":true,\"tool\":"
+                     << detail::json_quote("hero.marshal.prepare")
+                     << tool_detail::marshal_operator_envelope_supplement_json(
+                            "kikijyeba.marshal.prepare.v2.5b",
+                            {"inspect_blocker"})
+                     << ","
+                     << tool_detail::marshal_prepare_non_proof_contract_json()
+                     << ",\"target_id\":"
+                     << detail::json_quote(ledger.target_id)
+                     << ",\"dispatch_state\":\"blocked\""
+                     << ",\"blocker_bucket\":\"stale_resume\""
+                     << ",\"drive_mode\":"
+                     << detail::json_quote(to_string(ledger.drive_mode))
+                     << ",\"driver_terminal_state\":"
+                     << detail::json_quote(ledger.terminal_state)
+                     << ",\"driver_terminal_reason\":"
+                     << detail::json_quote(ledger.terminal_reason)
+                     << ",\"target_driver\":"
+                     << tool_detail::target_driver_ledger_json(ledger) << "}";
+          prepare_result_ready = true;
+        } else if (resume.terminal_state == "reached") {
+          ledger.terminal_state = "reached";
+          ledger.terminal_reason =
+              "resume_ledger already records the target as reached";
+          finalize_target_driver_run_id(&ledger);
+          structured << "{\"ok\":true,\"tool\":"
+                     << detail::json_quote("hero.marshal.prepare")
+                     << tool_detail::marshal_operator_envelope_supplement_json(
+                            "kikijyeba.marshal.prepare.v2.5b",
+                            {"inspect_lattice_certificate"})
+                     << ","
+                     << tool_detail::marshal_prepare_non_proof_contract_json()
+                     << ",\"target_id\":"
+                     << detail::json_quote(ledger.target_id)
+                     << ",\"dispatch_state\":\"already_satisfied\""
+                     << ",\"blocker_bucket\":\"none\""
+                     << ",\"drive_mode\":"
+                     << detail::json_quote(to_string(ledger.drive_mode))
+                     << ",\"driver_terminal_state\":"
+                     << detail::json_quote(ledger.terminal_state)
+                     << ",\"driver_terminal_reason\":"
+                     << detail::json_quote(ledger.terminal_reason)
+                     << ",\"target_driver\":"
+                     << tool_detail::target_driver_ledger_json(ledger) << "}";
+          prepare_result_ready = true;
         }
-        bool reach_result_ready = false;
-        if (resume.present) {
-          ledger.target_driver_run_id = resume.target_driver_run_id;
-          ledger.target_driver_run_key = resume.target_driver_run_key;
-          ledger.ledger_created_at_utc = resume.ledger_created_at_utc;
-          ledger.ledger_nonce = resume.ledger_nonce;
-          ledger.resumed_from_run_id = resume.target_driver_run_id;
-          ledger.resumed_iteration_count = resume.iteration_count;
-          ledger.runtime_handoff_attempt_count =
-              resume.runtime_handoff_attempt_count;
-          ledger.execution_attempt_count = resume.execution_attempt_count;
-          ledger.last_target_deficit_digest = resume.last_target_deficit_digest;
-          ledger.last_suggested_wave_digest = resume.last_suggested_wave_digest;
-          ledger.last_progress_signature = resume.last_progress_signature;
-          ledger.last_runtime_job_id = resume.last_runtime_job_id;
-          ledger.last_runtime_job_state_digest =
-              resume.last_runtime_job_state_digest;
-          ledger.last_runtime_job_manifest_digest =
-              resume.last_runtime_job_manifest_digest;
-          ledger.last_runtime_terminal_fact_digest =
-              resume.last_runtime_terminal_fact_digest;
-          ledger.last_runtime_checkpoint_io_fact_digest =
-              resume.last_runtime_checkpoint_io_fact_digest;
-          ledger.last_runtime_handoff_id = resume.last_runtime_handoff_id;
-          ledger.last_runtime_handoff_digest =
-              resume.last_runtime_handoff_digest;
-          ledger.last_runtime_policy_digest = resume.last_runtime_policy_digest;
-          if (resume.target_id != ledger.target_id ||
-              (!resume.driver_policy_digest.empty() &&
-               resume.driver_policy_digest != ledger.driver_policy_digest) ||
-              (!resume.drive_mode.empty() &&
-               resume.drive_mode != to_string(drive_mode)) ||
-              (!resume.requested_mode.empty() &&
-               resume.requested_mode != to_string(requested_mode))) {
-            ledger.terminal_state = "blocked_stale_resume";
-            ledger.terminal_reason =
-                "resume_ledger target, mode, requested_mode, or driver_policy "
-                "does not match this request";
-            finalize_target_driver_run_id(&ledger);
-            structured << "{\"ok\":true,\"tool\":"
-                       << detail::json_quote("hero.marshal.prepare") << ","
-                       << tool_detail::marshal_reach_non_proof_contract_json()
-                       << ",\"target_id\":"
-                       << detail::json_quote(ledger.target_id)
-                       << ",\"dispatch_state\":\"blocked\""
-                       << ",\"blocker_bucket\":\"stale_resume\""
-                       << ",\"next_action\":\"inspect_blocker\""
-                       << ",\"drive_mode\":"
-                       << detail::json_quote(to_string(ledger.drive_mode))
-                       << ",\"driver_terminal_state\":"
-                       << detail::json_quote(ledger.terminal_state)
-                       << ",\"driver_terminal_reason\":"
-                       << detail::json_quote(ledger.terminal_reason)
-                       << ",\"target_driver\":"
-                       << tool_detail::target_driver_ledger_json(ledger) << "}";
-            reach_result_ready = true;
-          } else if (resume.ledger_digest.empty()) {
-            ledger.terminal_state = "blocked_stale_resume";
-            ledger.terminal_reason = "resume_ledger is missing ledger_digest";
-            finalize_target_driver_run_id(&ledger);
-            structured << "{\"ok\":true,\"tool\":"
-                       << detail::json_quote("hero.marshal.prepare") << ","
-                       << tool_detail::marshal_reach_non_proof_contract_json()
-                       << ",\"target_id\":"
-                       << detail::json_quote(ledger.target_id)
-                       << ",\"dispatch_state\":\"blocked\""
-                       << ",\"blocker_bucket\":\"stale_resume\""
-                       << ",\"next_action\":\"inspect_blocker\""
-                       << ",\"drive_mode\":"
-                       << detail::json_quote(to_string(ledger.drive_mode))
-                       << ",\"driver_terminal_state\":"
-                       << detail::json_quote(ledger.terminal_state)
-                       << ",\"driver_terminal_reason\":"
-                       << detail::json_quote(ledger.terminal_reason)
-                       << ",\"target_driver\":"
-                       << tool_detail::target_driver_ledger_json(ledger) << "}";
-            reach_result_ready = true;
-          } else if (resume.execution_attempt_count > 0 &&
-                     (resume.last_runtime_job_id.empty() ||
-                      resume.last_runtime_job_manifest_digest.empty() ||
-                      resume.last_runtime_terminal_fact_digest.empty() ||
-                      resume.last_runtime_handoff_digest.empty())) {
-            ledger.terminal_state = "blocked_stale_resume";
-            ledger.terminal_reason =
-                "resume_ledger with execution history is missing Runtime "
-                "terminal evidence, job manifest, or handoff identity";
-            finalize_target_driver_run_id(&ledger);
-            structured << "{\"ok\":true,\"tool\":"
-                       << detail::json_quote("hero.marshal.prepare") << ","
-                       << tool_detail::marshal_reach_non_proof_contract_json()
-                       << ",\"target_id\":"
-                       << detail::json_quote(ledger.target_id)
-                       << ",\"dispatch_state\":\"blocked\""
-                       << ",\"blocker_bucket\":\"stale_resume\""
-                       << ",\"next_action\":\"inspect_blocker\""
-                       << ",\"drive_mode\":"
-                       << detail::json_quote(to_string(ledger.drive_mode))
-                       << ",\"driver_terminal_state\":"
-                       << detail::json_quote(ledger.terminal_state)
-                       << ",\"driver_terminal_reason\":"
-                       << detail::json_quote(ledger.terminal_reason)
-                       << ",\"target_driver\":"
-                       << tool_detail::target_driver_ledger_json(ledger) << "}";
-            reach_result_ready = true;
-          } else if (resume.terminal_state == "reached") {
+      }
+
+      finalize_target_driver_run_id(&ledger);
+
+      if (!prepare_result_ready) {
+        auto make_iteration =
+            [&](const tool_detail::prepare_target_step_result_t &step) {
+              marshal_target_driver_iteration_t iteration{};
+              iteration.iteration_index =
+                  ledger.resumed_iteration_count + ledger.iteration_count;
+              iteration.active_identity = step.advice.active_identity;
+              iteration.target_status = step.advice.target_status;
+              iteration.dispatch_state = step.state;
+              iteration.blocker_bucket = step.bucket;
+              iteration.next_action = step.next_action;
+              iteration.target_deficit_digest = marshal_digest_for_text(
+                  "kikijyeba.marshal.lattice_target_deficit_result.v1",
+                  step.lattice_result);
+              iteration.suggested_wave_digest =
+                  suggested_wave_digest(step.advice.suggested_wave);
+              iteration.plan_input_digest =
+                  plan_input_digest(step.advice.suggested_wave.plan_inputs);
+              iteration.advice_digest = dispatch_advice_digest(step.advice);
+              iteration.request_digest = dispatch_request_digest(step.request);
+              iteration.runtime_policy_digest =
+                  runtime_policy_snapshot_digest(step.policy);
+              iteration.runtime_wave_digest =
+                  runtime_wave_snapshot_digest(step.wave);
+              iteration.runtime_preview_request_digest =
+                  runtime_dry_run_request_digest(step.decision.runtime_request);
+              iteration.dry_run_attempted = step.dry_run_attempted;
+              iteration.dry_run_accepted = step.dry_run_accepted;
+              iteration.dry_run_response_digest = step.dry_run_response_digest;
+              iteration.progress_signature = marshal_digest_for_text(
+                  "kikijyeba.marshal.target_driver.progress_signature.v1",
+                  iteration.target_deficit_digest + "\n" +
+                      iteration.suggested_wave_digest + "\n" +
+                      iteration.plan_input_digest + "\n");
+              if (step.state == "already_satisfied") {
+                iteration.refusal_reasons.emplace_back(to_string(
+                    marshal_refusal_reason_t::target_already_satisfied));
+              } else {
+                for (const auto reason : step.decision.refusal_reasons) {
+                  iteration.refusal_reasons.emplace_back(to_string(reason));
+                }
+                for (const auto reason : step.dry_run_refusal_reasons) {
+                  iteration.refusal_reasons.emplace_back(to_string(reason));
+                }
+              }
+              return iteration;
+            };
+
+        auto append_iteration =
+            [&](const marshal_target_driver_iteration_t &iteration) {
+              ledger.iterations.push_back(iteration);
+              ledger.iteration_count =
+                  static_cast<std::int64_t>(ledger.iterations.size());
+              ledger.last_target_deficit_digest =
+                  iteration.target_deficit_digest;
+              ledger.last_suggested_wave_digest =
+                  iteration.suggested_wave_digest;
+              ledger.last_progress_signature = iteration.progress_signature;
+              if (!iteration.active_identity.target_spec_fingerprint.empty() ||
+                  !iteration.active_identity.split_policy_fingerprint.empty() ||
+                  !iteration.active_identity.protocol_contract_fingerprint
+                       .empty() ||
+                  !iteration.active_identity.graph_order_fingerprint.empty()) {
+                ledger.active_identity = iteration.active_identity;
+              }
+              if (!iteration.runtime_policy_digest.empty()) {
+                ledger.last_runtime_policy_digest =
+                    iteration.runtime_policy_digest;
+              }
+              if (!iteration.runtime_job_id.empty()) {
+                ledger.last_runtime_job_id = iteration.runtime_job_id;
+              }
+              if (!iteration.runtime_job_state_digest.empty()) {
+                ledger.last_runtime_job_state_digest =
+                    iteration.runtime_job_state_digest;
+              }
+              if (!iteration.runtime_job_manifest_digest.empty()) {
+                ledger.last_runtime_job_manifest_digest =
+                    iteration.runtime_job_manifest_digest;
+              }
+              if (!iteration.runtime_terminal_fact_digest.empty()) {
+                ledger.last_runtime_terminal_fact_digest =
+                    iteration.runtime_terminal_fact_digest;
+              }
+              if (!iteration.runtime_checkpoint_io_fact_digest.empty()) {
+                ledger.last_runtime_checkpoint_io_fact_digest =
+                    iteration.runtime_checkpoint_io_fact_digest;
+              }
+              if (!iteration.runtime_handoff_id.empty()) {
+                ledger.last_runtime_handoff_id = iteration.runtime_handoff_id;
+              }
+              if (!iteration.runtime_handoff_digest.empty()) {
+                ledger.last_runtime_handoff_digest =
+                    iteration.runtime_handoff_digest;
+              }
+            };
+
+        tool_detail::prepare_target_step_result_t last_step{};
+        if (drive_mode == marshal_target_drive_mode_t::one_step) {
+          last_step = tool_detail::run_prepare_target_step(
+              args, callback, 1,
+              tool_detail::optional_i64(args, "recommendation_attempt_count",
+                                        0),
+              requested_mode, include_runtime_dry_run, include_machine_payload,
+              ledger.target_driver_run_id);
+          auto iteration = make_iteration(last_step);
+          if (last_step.state == "already_satisfied") {
             ledger.terminal_state = "reached";
+            ledger.terminal_reason = "Lattice reported target satisfied";
+          } else if (requested_mode == marshal_dispatch_mode_t::plan) {
+            ledger.terminal_state = last_step.state;
             ledger.terminal_reason =
-                "resume_ledger already records the target as reached";
-            finalize_target_driver_run_id(&ledger);
-            structured << "{\"ok\":true,\"tool\":"
-                       << detail::json_quote("hero.marshal.prepare") << ","
-                       << tool_detail::marshal_reach_non_proof_contract_json()
-                       << ",\"target_id\":"
-                       << detail::json_quote(ledger.target_id)
-                       << ",\"dispatch_state\":\"already_satisfied\""
-                       << ",\"blocker_bucket\":\"none\""
-                       << ",\"next_action\":\"inspect_lattice_certificate\""
-                       << ",\"drive_mode\":"
-                       << detail::json_quote(to_string(ledger.drive_mode))
-                       << ",\"driver_terminal_state\":"
-                       << detail::json_quote(ledger.terminal_state)
-                       << ",\"driver_terminal_reason\":"
-                       << detail::json_quote(ledger.terminal_reason)
-                       << ",\"target_driver\":"
-                       << tool_detail::target_driver_ledger_json(ledger) << "}";
-            reach_result_ready = true;
+                last_step.state == "ready_for_dry_run"
+                    ? "plan mode prepared a Runtime dry-run handoff without "
+                      "calling Runtime"
+                    : last_step.bucket;
+          } else if (last_step.bucket != "none") {
+            ledger.terminal_state = last_step.bucket == "runtime_policy_refused"
+                                        ? "blocked_runtime_policy"
+                                        : "blocked_" + last_step.bucket;
+            ledger.terminal_reason = last_step.bucket;
+          } else {
+            ledger.terminal_state = "one_step_completed";
+            ledger.terminal_reason =
+                "one_step computes at most one movement toward the target";
+          }
+          iteration.terminal_state = ledger.terminal_state;
+          iteration.terminal_reason = ledger.terminal_reason;
+          append_iteration(iteration);
+        } else {
+          const auto started_at = std::chrono::steady_clock::now();
+          std::string previous_progress_signature =
+              ledger.last_progress_signature;
+          std::int64_t repeated_progress_count = 0;
+          for (std::int64_t attempt = ledger.runtime_handoff_attempt_count;
+               attempt < driver_policy.max_waves; ++attempt) {
+            if (driver_policy.max_wall_clock_seconds > 0) {
+              const auto elapsed =
+                  std::chrono::duration_cast<std::chrono::seconds>(
+                      std::chrono::steady_clock::now() - started_at)
+                      .count();
+              if (elapsed >= driver_policy.max_wall_clock_seconds) {
+                ledger.terminal_state = "blocked_timeout";
+                ledger.terminal_reason =
+                    "driver_policy.max_wall_clock_seconds exhausted";
+                break;
+              }
+            }
+
+            const auto step_requested_mode =
+                requested_mode == marshal_dispatch_mode_t::plan
+                    ? marshal_dispatch_mode_t::plan
+                    : marshal_dispatch_mode_t::dry_run;
+            const bool step_include_runtime_dry_run =
+                requested_mode != marshal_dispatch_mode_t::plan;
+            last_step = tool_detail::run_prepare_target_step(
+                args, callback, driver_policy.max_waves, attempt,
+                step_requested_mode, step_include_runtime_dry_run,
+                include_machine_payload, ledger.target_driver_run_id);
+            auto iteration = make_iteration(last_step);
+
+            if (last_step.state == "already_satisfied" ||
+                last_step.advice.target_status == "satisfied") {
+              ledger.terminal_state = "reached";
+              ledger.terminal_reason = "Lattice reported target satisfied";
+              iteration.terminal_state = ledger.terminal_state;
+              iteration.terminal_reason = ledger.terminal_reason;
+              append_iteration(iteration);
+              break;
+            }
+
+            if (last_step.artifact_readiness_target) {
+              ledger.terminal_state =
+                  "blocked_non_dispatchable_artifact_readiness";
+              ledger.terminal_reason = last_step.bucket;
+              iteration.terminal_state = ledger.terminal_state;
+              iteration.terminal_reason = ledger.terminal_reason;
+              append_iteration(iteration);
+              break;
+            }
+
+            const auto lattice_warning_stop =
+                driver_policy.stop_on_lattice_warning
+                    ? tool_detail::warning_stop_decision(
+                          last_step.lattice_result, "lattice",
+                          driver_policy.stop_on_warning_severity)
+                    : tool_detail::warning_stop_decision_t{};
+            if (lattice_warning_stop.stop) {
+              ledger.terminal_state = "blocked_lattice_warning";
+              ledger.terminal_reason = std::string("Lattice warning ") +
+                                       lattice_warning_stop.reason_code +
+                                       " matched driver_policy stop condition";
+              iteration.refusal_reasons.emplace_back(
+                  lattice_warning_stop.reason_code.empty()
+                      ? "lattice_warning_stop"
+                      : lattice_warning_stop.reason_code);
+              if (!lattice_warning_stop.warning.warning_id.empty()) {
+                iteration.refusal_reasons.emplace_back(
+                    "lattice_warning_id:" +
+                    lattice_warning_stop.warning.warning_id);
+              }
+              iteration.terminal_state = ledger.terminal_state;
+              iteration.terminal_reason = ledger.terminal_reason;
+              append_iteration(iteration);
+              break;
+            }
+
+            if (!previous_progress_signature.empty() &&
+                previous_progress_signature == iteration.progress_signature) {
+              ++repeated_progress_count;
+            } else {
+              repeated_progress_count = 0;
+            }
+            previous_progress_signature = iteration.progress_signature;
+            if (repeated_progress_count >= driver_policy.no_progress_window) {
+              ledger.terminal_state = "blocked_no_progress";
+              ledger.terminal_reason =
+                  "target_deficit and suggested_wave repeated without new "
+                  "Runtime evidence";
+              iteration.terminal_state = ledger.terminal_state;
+              iteration.terminal_reason = ledger.terminal_reason;
+              append_iteration(iteration);
+              break;
+            }
+
+            if (last_step.bucket != "none") {
+              ledger.terminal_state =
+                  last_step.bucket == "runtime_policy_refused"
+                      ? "blocked_runtime_policy"
+                      : (last_step.bucket == "runtime_wave_not_aligned"
+                             ? "blocked_runtime_wave_mismatch"
+                             : "blocked_" + last_step.bucket);
+              ledger.terminal_reason = last_step.bucket;
+              iteration.terminal_state = ledger.terminal_state;
+              iteration.terminal_reason = ledger.terminal_reason;
+              append_iteration(iteration);
+              break;
+            }
+            if (requested_mode == marshal_dispatch_mode_t::plan) {
+              ledger.terminal_state = "ready_for_dry_run";
+              ledger.terminal_reason =
+                  "budgeted plan prepared one Runtime dry-run handoff without "
+                  "calling Runtime";
+              iteration.terminal_state = ledger.terminal_state;
+              iteration.terminal_reason = ledger.terminal_reason;
+              append_iteration(iteration);
+              break;
+            }
+            if (!last_step.dry_run_attempted || !last_step.dry_run_accepted) {
+              ledger.terminal_state = "blocked_runtime_refused";
+              ledger.terminal_reason = "Runtime dry-run was not accepted";
+              iteration.terminal_state = ledger.terminal_state;
+              iteration.terminal_reason = ledger.terminal_reason;
+              append_iteration(iteration);
+              break;
+            }
+            ++ledger.runtime_handoff_attempt_count;
+
+            const auto runtime_dry_run_warning_stop =
+                driver_policy.stop_on_runtime_warning
+                    ? tool_detail::warning_stop_decision(
+                          last_step.dry_run_response.runtime_handoff
+                              .tool_result_json,
+                          "runtime", driver_policy.stop_on_warning_severity)
+                    : tool_detail::warning_stop_decision_t{};
+            if (runtime_dry_run_warning_stop.stop) {
+              ledger.terminal_state = "blocked_runtime_warning";
+              iteration.refusal_reasons.emplace_back(
+                  runtime_dry_run_warning_stop.reason_code.empty()
+                      ? "runtime_dry_run_warning_stop"
+                      : runtime_dry_run_warning_stop.reason_code);
+              if (!runtime_dry_run_warning_stop.warning.warning_id.empty()) {
+                iteration.refusal_reasons.emplace_back(
+                    "runtime_warning_id:" +
+                    runtime_dry_run_warning_stop.warning.warning_id);
+              }
+              ledger.terminal_reason =
+                  std::string("Runtime dry-run warning ") +
+                  runtime_dry_run_warning_stop.reason_code +
+                  " matched driver_policy stop condition";
+              iteration.terminal_state = ledger.terminal_state;
+              iteration.terminal_reason = ledger.terminal_reason;
+              append_iteration(iteration);
+              break;
+            }
+
+            if (requested_mode == marshal_dispatch_mode_t::dry_run) {
+              const bool budget_exhausted =
+                  ledger.runtime_handoff_attempt_count >=
+                  driver_policy.max_waves;
+              if (budget_exhausted) {
+                ledger.terminal_state = "blocked_max_waves";
+                ledger.terminal_reason =
+                    "budgeted dry_run exhausted driver_policy.max_waves";
+              }
+              iteration.terminal_state = ledger.terminal_state;
+              iteration.terminal_reason =
+                  budget_exhausted
+                      ? ledger.terminal_reason
+                      : "budgeted dry_run handoff accepted; continuing until "
+                        "budget or no-progress stop";
+              if (!budget_exhausted) {
+                iteration.terminal_state = "continued";
+              }
+              append_iteration(iteration);
+              if (budget_exhausted) {
+                break;
+              }
+              continue;
+            }
+
+            if (!driver_policy.allow_execute ||
+                !last_step.policy.allow_execute) {
+              ledger.terminal_state = "blocked_runtime_policy";
+              ledger.terminal_reason = "driver_policy.allow_execute or Runtime "
+                                       "allow_execute is false";
+              iteration.terminal_state = ledger.terminal_state;
+              iteration.terminal_reason = ledger.terminal_reason;
+              append_iteration(iteration);
+              break;
+            }
+            if (last_step.wave.train_target &&
+                (!driver_policy.allow_train_execute ||
+                 !last_step.policy.allow_train_execute)) {
+              ledger.terminal_state = "blocked_runtime_policy";
+              ledger.terminal_reason =
+                  "train wave requires driver_policy.allow_train_execute and "
+                  "Runtime allow_train_execute";
+              iteration.terminal_state = ledger.terminal_state;
+              iteration.terminal_reason = ledger.terminal_reason;
+              append_iteration(iteration);
+              break;
+            }
+
+            auto execute_request = last_step.request;
+            execute_request.requested_mode = marshal_dispatch_mode_t::execute;
+            execute_request.operator_confirmation_token =
+                confirmation_token(last_step.advice, execute_request);
+            marshal_execution_gate_input_t gate_input{};
+            gate_input.advice = last_step.advice;
+            gate_input.request = execute_request;
+            gate_input.validation_context = last_step.context;
+            gate_input.policy = last_step.policy;
+            gate_input.active_wave = last_step.wave;
+            gate_input.prior_dry_run = make_prior_dry_run_evidence(
+                last_step.advice, last_step.request, last_step.dry_run_response,
+                last_step.policy, last_step.wave);
+            const auto gate = validate_execution_gate(gate_input);
+            if (!gate.accepted) {
+              ledger.terminal_state = "blocked_execution_gate";
+              ledger.terminal_reason = "Marshal execution gate refused";
+              for (const auto reason : gate.refusal_reasons) {
+                iteration.refusal_reasons.emplace_back(to_string(reason));
+              }
+              iteration.terminal_state = ledger.terminal_state;
+              iteration.terminal_reason = ledger.terminal_reason;
+              append_iteration(iteration);
+              break;
+            }
+
+            marshal_runtime_hero_handoff_options_t options{};
+            options.timeout_seconds = static_cast<int>(
+                tool_detail::optional_i64(args, "timeout_seconds", 600));
+            const auto handoff = call_runtime_hero_execution(gate, options);
+            iteration.execution_attempted = true;
+            iteration.execution_accepted = handoff.ok;
+            iteration.runtime_execution_request_digest =
+                runtime_execution_request_digest(gate.decision.runtime_request);
+            iteration.runtime_handoff_arguments_digest =
+                handoff.arguments_digest;
+            iteration.runtime_response_digest =
+                marshal_digest_for_text("kikijyeba.marshal.runtime_response.v1",
+                                        handoff.tool_result_json);
+            ++ledger.execution_attempt_count;
+
+            if (!handoff.ok) {
+              ledger.terminal_state = "blocked_runtime_refused";
+              ledger.terminal_reason =
+                  handoff.error_message.empty()
+                      ? "Runtime execution was not accepted"
+                      : handoff.error_message;
+              iteration.terminal_state = ledger.terminal_state;
+              iteration.terminal_reason = ledger.terminal_reason;
+              append_iteration(iteration);
+              break;
+            }
+
+            const auto terminal_evidence =
+                tool_detail::reconcile_runtime_terminal_evidence_after_handoff(
+                    handoff, gate.decision.runtime_request.runtime_root);
+            iteration.runtime_job_id = terminal_evidence.job_id;
+            iteration.runtime_job_state_digest =
+                terminal_evidence.job_state_digest;
+            iteration.runtime_job_manifest_digest =
+                terminal_evidence.job_manifest_digest;
+            iteration.runtime_terminal_fact_digest =
+                terminal_evidence.terminal_fact_digest;
+            iteration.runtime_checkpoint_io_fact_digest =
+                terminal_evidence.checkpoint_io_fact_digest;
+            iteration.runtime_terminal_status =
+                terminal_evidence.terminal_status;
+            iteration.runtime_handoff_id = terminal_evidence.runtime_handoff_id;
+            iteration.runtime_handoff_digest =
+                terminal_evidence.runtime_handoff_digest;
+            iteration.runtime_job_completion_observed =
+                terminal_evidence.observed;
+            if (terminal_evidence.ambiguous) {
+              ledger.terminal_state =
+                  "blocked_runtime_terminal_evidence_ambiguous";
+              ledger.terminal_reason =
+                  terminal_evidence.ambiguity_reason.empty()
+                      ? "multiple Runtime terminal evidence records matched "
+                        "the handoff identity"
+                      : terminal_evidence.ambiguity_reason;
+              iteration.refusal_reasons.emplace_back(
+                  "runtime_terminal_evidence_ambiguous");
+              iteration.terminal_state = ledger.terminal_state;
+              iteration.terminal_reason = ledger.terminal_reason;
+              append_iteration(iteration);
+              break;
+            }
+            if (driver_policy.require_runtime_job_completion &&
+                !terminal_evidence.observed) {
+              ledger.terminal_state = "blocked_runtime_completion_missing";
+              ledger.terminal_reason =
+                  "Runtime execution returned ok but no durable "
+                  "runtime.result.fact and job.manifest were observed";
+              iteration.refusal_reasons.emplace_back(
+                  terminal_evidence.terminal_fact_digest.empty()
+                      ? "runtime_result_fact_missing"
+                      : "runtime_terminal_evidence_missing");
+              iteration.terminal_state = ledger.terminal_state;
+              iteration.terminal_reason = ledger.terminal_reason;
+              append_iteration(iteration);
+              break;
+            }
+            if (driver_policy.require_runtime_job_completion &&
+                terminal_evidence.checkpoint_io_required &&
+                terminal_evidence.checkpoint_io_fact_digest.empty()) {
+              ledger.terminal_state = "blocked_runtime_checkpoint_io_missing";
+              ledger.terminal_reason =
+                  "Runtime terminal evidence reports checkpoint I/O but no "
+                  "runtime.checkpoint_io.fact was observed";
+              iteration.refusal_reasons.emplace_back(
+                  "runtime_checkpoint_io_fact_missing");
+              iteration.terminal_state = ledger.terminal_state;
+              iteration.terminal_reason = ledger.terminal_reason;
+              append_iteration(iteration);
+              break;
+            }
+            if (driver_policy.require_runtime_job_completion &&
+                terminal_evidence.terminal_status != "completed") {
+              ledger.terminal_state = "blocked_runtime_refused";
+              ledger.terminal_reason = "Runtime terminal job status was " +
+                                       terminal_evidence.terminal_status;
+              iteration.refusal_reasons.emplace_back(
+                  "runtime_terminal_status_not_completed");
+              iteration.terminal_state = ledger.terminal_state;
+              iteration.terminal_reason = ledger.terminal_reason;
+              append_iteration(iteration);
+              break;
+            }
+
+            const auto runtime_execution_warning_stop =
+                driver_policy.stop_on_runtime_warning
+                    ? tool_detail::warning_stop_decision(
+                          handoff.tool_result_json, "runtime",
+                          driver_policy.stop_on_warning_severity)
+                    : tool_detail::warning_stop_decision_t{};
+            if (runtime_execution_warning_stop.stop) {
+              ledger.terminal_state = "blocked_runtime_warning";
+              iteration.refusal_reasons.emplace_back(
+                  runtime_execution_warning_stop.reason_code.empty()
+                      ? "runtime_execution_warning_stop"
+                      : runtime_execution_warning_stop.reason_code);
+              if (!runtime_execution_warning_stop.warning.warning_id.empty()) {
+                iteration.refusal_reasons.emplace_back(
+                    "runtime_warning_id:" +
+                    runtime_execution_warning_stop.warning.warning_id);
+              }
+              ledger.terminal_reason =
+                  std::string("Runtime execution warning ") +
+                  runtime_execution_warning_stop.reason_code +
+                  " matched driver_policy stop condition";
+              iteration.terminal_state = ledger.terminal_state;
+              iteration.terminal_reason = ledger.terminal_reason;
+              append_iteration(iteration);
+              break;
+            }
+
+            if (driver_policy.require_post_wave_lattice_satisfied_check) {
+              auto post_step = tool_detail::run_prepare_target_step(
+                  args, callback, driver_policy.max_waves, attempt + 1,
+                  marshal_dispatch_mode_t::dry_run, false,
+                  include_machine_payload, ledger.target_driver_run_id);
+              iteration.post_run_lattice_evaluation_digest =
+                  marshal_digest_for_text(
+                      "kikijyeba.marshal.post_wave_lattice_evaluation.v1",
+                      post_step.lattice_result);
+              iteration.lattice_target_satisfied_after_wave =
+                  post_step.advice.target_status == "satisfied";
+              if (iteration.lattice_target_satisfied_after_wave) {
+                ledger.terminal_state = "reached";
+                ledger.terminal_reason =
+                    "post-wave Lattice evaluation reported target satisfied";
+                iteration.terminal_state = ledger.terminal_state;
+                iteration.terminal_reason = ledger.terminal_reason;
+                append_iteration(iteration);
+                break;
+              }
+            }
+
+            iteration.terminal_state = "continued";
+            iteration.terminal_reason =
+                "Runtime execution completed but target is not yet satisfied";
+            append_iteration(iteration);
+          }
+          if (ledger.terminal_state.empty()) {
+            ledger.terminal_state = "blocked_max_waves";
+            ledger.terminal_reason = "driver_policy.max_waves exhausted";
           }
         }
 
         finalize_target_driver_run_id(&ledger);
-
-        if (!reach_result_ready) {
-          auto make_iteration =
-              [&](const tool_detail::reach_lattice_target_step_result_t &step) {
-                marshal_target_driver_iteration_t iteration{};
-                iteration.iteration_index =
-                    ledger.resumed_iteration_count + ledger.iteration_count;
-                iteration.active_identity = step.advice.active_identity;
-                iteration.target_status = step.advice.target_status;
-                iteration.dispatch_state = step.state;
-                iteration.blocker_bucket = step.bucket;
-                iteration.next_action = step.next_action;
-                iteration.target_deficit_digest = marshal_digest_for_text(
-                    "kikijyeba.marshal.lattice_target_deficit_result.v1",
-                    step.lattice_result);
-                iteration.suggested_wave_digest =
-                    suggested_wave_digest(step.advice.suggested_wave);
-                iteration.plan_input_digest =
-                    plan_input_digest(step.advice.suggested_wave.plan_inputs);
-                iteration.advice_digest = dispatch_advice_digest(step.advice);
-                iteration.request_digest =
-                    dispatch_request_digest(step.request);
-                iteration.runtime_policy_digest =
-                    runtime_policy_snapshot_digest(step.policy);
-                iteration.runtime_wave_digest =
-                    runtime_wave_snapshot_digest(step.wave);
-                iteration.runtime_preview_request_digest =
-                    runtime_dry_run_request_digest(
-                        step.decision.runtime_request);
-                iteration.dry_run_attempted = step.dry_run_attempted;
-                iteration.dry_run_accepted = step.dry_run_accepted;
-                iteration.dry_run_response_digest =
-                    step.dry_run_response_digest;
-                iteration.progress_signature = marshal_digest_for_text(
-                    "kikijyeba.marshal.target_driver.progress_signature.v1",
-                    iteration.target_deficit_digest + "\n" +
-                        iteration.suggested_wave_digest + "\n" +
-                        iteration.plan_input_digest + "\n");
-                if (step.state == "already_satisfied") {
-                  iteration.refusal_reasons.emplace_back(to_string(
-                      marshal_refusal_reason_t::target_already_satisfied));
-                } else {
-                  for (const auto reason : step.decision.refusal_reasons) {
-                    iteration.refusal_reasons.emplace_back(to_string(reason));
-                  }
-                  for (const auto reason : step.dry_run_refusal_reasons) {
-                    iteration.refusal_reasons.emplace_back(to_string(reason));
-                  }
-                }
-                return iteration;
-              };
-
-          auto append_iteration = [&](const marshal_target_driver_iteration_t
-                                          &iteration) {
-            ledger.iterations.push_back(iteration);
-            ledger.iteration_count =
-                static_cast<std::int64_t>(ledger.iterations.size());
-            ledger.last_target_deficit_digest = iteration.target_deficit_digest;
-            ledger.last_suggested_wave_digest = iteration.suggested_wave_digest;
-            ledger.last_progress_signature = iteration.progress_signature;
-            if (!iteration.active_identity.target_spec_fingerprint.empty() ||
-                !iteration.active_identity.split_policy_fingerprint.empty() ||
-                !iteration.active_identity.protocol_contract_fingerprint
-                     .empty() ||
-                !iteration.active_identity.graph_order_fingerprint.empty()) {
-              ledger.active_identity = iteration.active_identity;
-            }
-            if (!iteration.runtime_policy_digest.empty()) {
-              ledger.last_runtime_policy_digest =
-                  iteration.runtime_policy_digest;
-            }
-            if (!iteration.runtime_job_id.empty()) {
-              ledger.last_runtime_job_id = iteration.runtime_job_id;
-            }
-            if (!iteration.runtime_job_state_digest.empty()) {
-              ledger.last_runtime_job_state_digest =
-                  iteration.runtime_job_state_digest;
-            }
-            if (!iteration.runtime_job_manifest_digest.empty()) {
-              ledger.last_runtime_job_manifest_digest =
-                  iteration.runtime_job_manifest_digest;
-            }
-            if (!iteration.runtime_terminal_fact_digest.empty()) {
-              ledger.last_runtime_terminal_fact_digest =
-                  iteration.runtime_terminal_fact_digest;
-            }
-            if (!iteration.runtime_checkpoint_io_fact_digest.empty()) {
-              ledger.last_runtime_checkpoint_io_fact_digest =
-                  iteration.runtime_checkpoint_io_fact_digest;
-            }
-            if (!iteration.runtime_handoff_id.empty()) {
-              ledger.last_runtime_handoff_id = iteration.runtime_handoff_id;
-            }
-            if (!iteration.runtime_handoff_digest.empty()) {
-              ledger.last_runtime_handoff_digest =
-                  iteration.runtime_handoff_digest;
-            }
-          };
-
-          tool_detail::reach_lattice_target_step_result_t last_step{};
-          if (drive_mode == marshal_target_drive_mode_t::one_step) {
-            last_step = tool_detail::run_reach_lattice_target_step(
-                args, callback, 1,
-                tool_detail::optional_i64(args, "recommendation_attempt_count",
-                                          0),
-                requested_mode, include_runtime_dry_run,
-                include_machine_payload, ledger.target_driver_run_id);
-            auto iteration = make_iteration(last_step);
-            if (last_step.state == "already_satisfied") {
-              ledger.terminal_state = "reached";
-              ledger.terminal_reason = "Lattice reported target satisfied";
-            } else if (last_step.bucket != "none") {
-              ledger.terminal_state =
-                  last_step.bucket == "runtime_policy_refused"
-                      ? "blocked_runtime_policy"
-                      : "blocked_" + last_step.bucket;
-              ledger.terminal_reason = last_step.bucket;
-            } else {
-              ledger.terminal_state = "one_step_completed";
-              ledger.terminal_reason =
-                  "one_step computes at most one movement toward the target";
-            }
-            iteration.terminal_state = ledger.terminal_state;
-            iteration.terminal_reason = ledger.terminal_reason;
-            append_iteration(iteration);
-          } else {
-            const auto started_at = std::chrono::steady_clock::now();
-            std::string previous_progress_signature =
-                ledger.last_progress_signature;
-            std::int64_t repeated_progress_count = 0;
-            for (std::int64_t attempt = ledger.runtime_handoff_attempt_count;
-                 attempt < driver_policy.max_waves; ++attempt) {
-              if (driver_policy.max_wall_clock_seconds > 0) {
-                const auto elapsed =
-                    std::chrono::duration_cast<std::chrono::seconds>(
-                        std::chrono::steady_clock::now() - started_at)
-                        .count();
-                if (elapsed >= driver_policy.max_wall_clock_seconds) {
-                  ledger.terminal_state = "blocked_timeout";
-                  ledger.terminal_reason =
-                      "driver_policy.max_wall_clock_seconds exhausted";
-                  break;
-                }
-              }
-
-              last_step = tool_detail::run_reach_lattice_target_step(
-                  args, callback, driver_policy.max_waves, attempt,
-                  marshal_dispatch_mode_t::dry_run, true,
-                  include_machine_payload, ledger.target_driver_run_id);
-              auto iteration = make_iteration(last_step);
-
-              if (last_step.state == "already_satisfied" ||
-                  last_step.advice.target_status == "satisfied") {
-                ledger.terminal_state = "reached";
-                ledger.terminal_reason = "Lattice reported target satisfied";
-                iteration.terminal_state = ledger.terminal_state;
-                iteration.terminal_reason = ledger.terminal_reason;
-                append_iteration(iteration);
-                break;
-              }
-
-              if (last_step.artifact_readiness_target) {
-                ledger.terminal_state =
-                    "blocked_non_dispatchable_artifact_readiness";
-                ledger.terminal_reason = last_step.bucket;
-                iteration.terminal_state = ledger.terminal_state;
-                iteration.terminal_reason = ledger.terminal_reason;
-                append_iteration(iteration);
-                break;
-              }
-
-              const auto lattice_warning_stop =
-                  driver_policy.stop_on_lattice_warning
-                      ? tool_detail::warning_stop_decision(
-                            last_step.lattice_result, "lattice",
-                            driver_policy.stop_on_warning_severity)
-                      : tool_detail::warning_stop_decision_t{};
-              if (lattice_warning_stop.stop) {
-                ledger.terminal_state = "blocked_lattice_warning";
-                ledger.terminal_reason =
-                    std::string("Lattice warning ") +
-                    lattice_warning_stop.reason_code +
-                    " matched driver_policy stop condition";
-                iteration.refusal_reasons.emplace_back(
-                    lattice_warning_stop.reason_code.empty()
-                        ? "lattice_warning_stop"
-                        : lattice_warning_stop.reason_code);
-                if (!lattice_warning_stop.warning.warning_id.empty()) {
-                  iteration.refusal_reasons.emplace_back(
-                      "lattice_warning_id:" +
-                      lattice_warning_stop.warning.warning_id);
-                }
-                iteration.terminal_state = ledger.terminal_state;
-                iteration.terminal_reason = ledger.terminal_reason;
-                append_iteration(iteration);
-                break;
-              }
-
-              if (!previous_progress_signature.empty() &&
-                  previous_progress_signature == iteration.progress_signature) {
-                ++repeated_progress_count;
-              } else {
-                repeated_progress_count = 0;
-              }
-              previous_progress_signature = iteration.progress_signature;
-              if (repeated_progress_count >= driver_policy.no_progress_window) {
-                ledger.terminal_state = "blocked_no_progress";
-                ledger.terminal_reason =
-                    "target_deficit and suggested_wave repeated without new "
-                    "Runtime evidence";
-                iteration.terminal_state = ledger.terminal_state;
-                iteration.terminal_reason = ledger.terminal_reason;
-                append_iteration(iteration);
-                break;
-              }
-
-              if (last_step.bucket != "none") {
-                ledger.terminal_state =
-                    last_step.bucket == "runtime_policy_refused"
-                        ? "blocked_runtime_policy"
-                        : (last_step.bucket == "runtime_wave_not_aligned"
-                               ? "blocked_runtime_wave_mismatch"
-                               : "blocked_" + last_step.bucket);
-                ledger.terminal_reason = last_step.bucket;
-                iteration.terminal_state = ledger.terminal_state;
-                iteration.terminal_reason = ledger.terminal_reason;
-                append_iteration(iteration);
-                break;
-              }
-              if (!last_step.dry_run_attempted || !last_step.dry_run_accepted) {
-                ledger.terminal_state = "blocked_runtime_refused";
-                ledger.terminal_reason = "Runtime dry-run was not accepted";
-                iteration.terminal_state = ledger.terminal_state;
-                iteration.terminal_reason = ledger.terminal_reason;
-                append_iteration(iteration);
-                break;
-              }
-              ++ledger.runtime_handoff_attempt_count;
-
-              const auto runtime_dry_run_warning_stop =
-                  driver_policy.stop_on_runtime_warning
-                      ? tool_detail::warning_stop_decision(
-                            last_step.dry_run_response.runtime_handoff
-                                .tool_result_json,
-                            "runtime", driver_policy.stop_on_warning_severity)
-                      : tool_detail::warning_stop_decision_t{};
-              if (runtime_dry_run_warning_stop.stop) {
-                ledger.terminal_state = "blocked_runtime_warning";
-                iteration.refusal_reasons.emplace_back(
-                    runtime_dry_run_warning_stop.reason_code.empty()
-                        ? "runtime_dry_run_warning_stop"
-                        : runtime_dry_run_warning_stop.reason_code);
-                if (!runtime_dry_run_warning_stop.warning.warning_id.empty()) {
-                  iteration.refusal_reasons.emplace_back(
-                      "runtime_warning_id:" +
-                      runtime_dry_run_warning_stop.warning.warning_id);
-                }
-                ledger.terminal_reason =
-                    std::string("Runtime dry-run warning ") +
-                    runtime_dry_run_warning_stop.reason_code +
-                    " matched driver_policy stop condition";
-                iteration.terminal_state = ledger.terminal_state;
-                iteration.terminal_reason = ledger.terminal_reason;
-                append_iteration(iteration);
-                break;
-              }
-
-              if (requested_mode == marshal_dispatch_mode_t::dry_run) {
-                const bool budget_exhausted =
-                    ledger.runtime_handoff_attempt_count >=
-                    driver_policy.max_waves;
-                if (budget_exhausted) {
-                  ledger.terminal_state = "blocked_max_waves";
-                  ledger.terminal_reason =
-                      "budgeted dry_run exhausted driver_policy.max_waves";
-                }
-                iteration.terminal_state = ledger.terminal_state;
-                iteration.terminal_reason =
-                    budget_exhausted
-                        ? ledger.terminal_reason
-                        : "budgeted dry_run handoff accepted; continuing until "
-                          "budget or no-progress stop";
-                if (!budget_exhausted) {
-                  iteration.terminal_state = "continued";
-                }
-                append_iteration(iteration);
-                if (budget_exhausted) {
-                  break;
-                }
-                continue;
-              }
-
-              if (!driver_policy.allow_execute ||
-                  !last_step.policy.allow_execute) {
-                ledger.terminal_state = "blocked_runtime_policy";
-                ledger.terminal_reason =
-                    "driver_policy.allow_execute or Runtime "
-                    "allow_execute is false";
-                iteration.terminal_state = ledger.terminal_state;
-                iteration.terminal_reason = ledger.terminal_reason;
-                append_iteration(iteration);
-                break;
-              }
-              if (last_step.wave.train_target &&
-                  (!driver_policy.allow_train_execute ||
-                   !last_step.policy.allow_train_execute)) {
-                ledger.terminal_state = "blocked_runtime_policy";
-                ledger.terminal_reason =
-                    "train wave requires driver_policy.allow_train_execute and "
-                    "Runtime allow_train_execute";
-                iteration.terminal_state = ledger.terminal_state;
-                iteration.terminal_reason = ledger.terminal_reason;
-                append_iteration(iteration);
-                break;
-              }
-
-              auto execute_request = last_step.request;
-              execute_request.requested_mode = marshal_dispatch_mode_t::execute;
-              execute_request.operator_confirmation_token =
-                  confirmation_token(last_step.advice, execute_request);
-              marshal_execution_gate_input_t gate_input{};
-              gate_input.advice = last_step.advice;
-              gate_input.request = execute_request;
-              gate_input.validation_context = last_step.context;
-              gate_input.policy = last_step.policy;
-              gate_input.active_wave = last_step.wave;
-              gate_input.prior_dry_run = make_prior_dry_run_evidence(
-                  last_step.advice, last_step.request,
-                  last_step.dry_run_response, last_step.policy, last_step.wave);
-              const auto gate = validate_execution_gate(gate_input);
-              if (!gate.accepted) {
-                ledger.terminal_state = "blocked_execution_gate";
-                ledger.terminal_reason = "Marshal execution gate refused";
-                for (const auto reason : gate.refusal_reasons) {
-                  iteration.refusal_reasons.emplace_back(to_string(reason));
-                }
-                iteration.terminal_state = ledger.terminal_state;
-                iteration.terminal_reason = ledger.terminal_reason;
-                append_iteration(iteration);
-                break;
-              }
-
-              marshal_runtime_hero_handoff_options_t options{};
-              options.timeout_seconds = static_cast<int>(
-                  tool_detail::optional_i64(args, "timeout_seconds", 600));
-              const auto handoff = call_runtime_hero_execution(gate, options);
-              iteration.execution_attempted = true;
-              iteration.execution_accepted = handoff.ok;
-              iteration.runtime_execution_request_digest =
-                  runtime_execution_request_digest(
-                      gate.decision.runtime_request);
-              iteration.runtime_handoff_arguments_digest =
-                  handoff.arguments_digest;
-              iteration.runtime_response_digest = marshal_digest_for_text(
-                  "kikijyeba.marshal.runtime_response.v1",
-                  handoff.tool_result_json);
-              ++ledger.execution_attempt_count;
-
-              if (!handoff.ok) {
-                ledger.terminal_state = "blocked_runtime_refused";
-                ledger.terminal_reason =
-                    handoff.error_message.empty()
-                        ? "Runtime execution was not accepted"
-                        : handoff.error_message;
-                iteration.terminal_state = ledger.terminal_state;
-                iteration.terminal_reason = ledger.terminal_reason;
-                append_iteration(iteration);
-                break;
-              }
-
-              const auto terminal_evidence = tool_detail::
-                  reconcile_runtime_terminal_evidence_after_handoff(
-                      handoff, gate.decision.runtime_request.runtime_root);
-              iteration.runtime_job_id = terminal_evidence.job_id;
-              iteration.runtime_job_state_digest =
-                  terminal_evidence.job_state_digest;
-              iteration.runtime_job_manifest_digest =
-                  terminal_evidence.job_manifest_digest;
-              iteration.runtime_terminal_fact_digest =
-                  terminal_evidence.terminal_fact_digest;
-              iteration.runtime_checkpoint_io_fact_digest =
-                  terminal_evidence.checkpoint_io_fact_digest;
-              iteration.runtime_terminal_status =
-                  terminal_evidence.terminal_status;
-              iteration.runtime_handoff_id =
-                  terminal_evidence.runtime_handoff_id;
-              iteration.runtime_handoff_digest =
-                  terminal_evidence.runtime_handoff_digest;
-              iteration.runtime_job_completion_observed =
-                  terminal_evidence.observed;
-              if (terminal_evidence.ambiguous) {
-                ledger.terminal_state =
-                    "blocked_runtime_terminal_evidence_ambiguous";
-                ledger.terminal_reason =
-                    terminal_evidence.ambiguity_reason.empty()
-                        ? "multiple Runtime terminal evidence records matched "
-                          "the handoff identity"
-                        : terminal_evidence.ambiguity_reason;
-                iteration.refusal_reasons.emplace_back(
-                    "runtime_terminal_evidence_ambiguous");
-                iteration.terminal_state = ledger.terminal_state;
-                iteration.terminal_reason = ledger.terminal_reason;
-                append_iteration(iteration);
-                break;
-              }
-              if (driver_policy.require_runtime_job_completion &&
-                  !terminal_evidence.observed) {
-                ledger.terminal_state = "blocked_runtime_completion_missing";
-                ledger.terminal_reason =
-                    "Runtime execution returned ok but no durable "
-                    "runtime.result.fact and job.manifest were observed";
-                iteration.refusal_reasons.emplace_back(
-                    terminal_evidence.terminal_fact_digest.empty()
-                        ? "runtime_result_fact_missing"
-                        : "runtime_terminal_evidence_missing");
-                iteration.terminal_state = ledger.terminal_state;
-                iteration.terminal_reason = ledger.terminal_reason;
-                append_iteration(iteration);
-                break;
-              }
-              if (driver_policy.require_runtime_job_completion &&
-                  terminal_evidence.checkpoint_io_required &&
-                  terminal_evidence.checkpoint_io_fact_digest.empty()) {
-                ledger.terminal_state = "blocked_runtime_checkpoint_io_missing";
-                ledger.terminal_reason =
-                    "Runtime terminal evidence reports checkpoint I/O but no "
-                    "runtime.checkpoint_io.fact was observed";
-                iteration.refusal_reasons.emplace_back(
-                    "runtime_checkpoint_io_fact_missing");
-                iteration.terminal_state = ledger.terminal_state;
-                iteration.terminal_reason = ledger.terminal_reason;
-                append_iteration(iteration);
-                break;
-              }
-              if (driver_policy.require_runtime_job_completion &&
-                  terminal_evidence.terminal_status != "completed") {
-                ledger.terminal_state = "blocked_runtime_refused";
-                ledger.terminal_reason = "Runtime terminal job status was " +
-                                         terminal_evidence.terminal_status;
-                iteration.refusal_reasons.emplace_back(
-                    "runtime_terminal_status_not_completed");
-                iteration.terminal_state = ledger.terminal_state;
-                iteration.terminal_reason = ledger.terminal_reason;
-                append_iteration(iteration);
-                break;
-              }
-
-              const auto runtime_execution_warning_stop =
-                  driver_policy.stop_on_runtime_warning
-                      ? tool_detail::warning_stop_decision(
-                            handoff.tool_result_json, "runtime",
-                            driver_policy.stop_on_warning_severity)
-                      : tool_detail::warning_stop_decision_t{};
-              if (runtime_execution_warning_stop.stop) {
-                ledger.terminal_state = "blocked_runtime_warning";
-                iteration.refusal_reasons.emplace_back(
-                    runtime_execution_warning_stop.reason_code.empty()
-                        ? "runtime_execution_warning_stop"
-                        : runtime_execution_warning_stop.reason_code);
-                if (!runtime_execution_warning_stop.warning.warning_id
-                         .empty()) {
-                  iteration.refusal_reasons.emplace_back(
-                      "runtime_warning_id:" +
-                      runtime_execution_warning_stop.warning.warning_id);
-                }
-                ledger.terminal_reason =
-                    std::string("Runtime execution warning ") +
-                    runtime_execution_warning_stop.reason_code +
-                    " matched driver_policy stop condition";
-                iteration.terminal_state = ledger.terminal_state;
-                iteration.terminal_reason = ledger.terminal_reason;
-                append_iteration(iteration);
-                break;
-              }
-
-              if (driver_policy.require_post_wave_lattice_satisfied_check) {
-                auto post_step = tool_detail::run_reach_lattice_target_step(
-                    args, callback, driver_policy.max_waves, attempt + 1,
-                    marshal_dispatch_mode_t::dry_run, false,
-                    include_machine_payload, ledger.target_driver_run_id);
-                iteration.post_run_lattice_evaluation_digest =
-                    marshal_digest_for_text(
-                        "kikijyeba.marshal.post_wave_lattice_evaluation.v1",
-                        post_step.lattice_result);
-                iteration.lattice_target_satisfied_after_wave =
-                    post_step.advice.target_status == "satisfied";
-                if (iteration.lattice_target_satisfied_after_wave) {
-                  ledger.terminal_state = "reached";
-                  ledger.terminal_reason =
-                      "post-wave Lattice evaluation reported target satisfied";
-                  iteration.terminal_state = ledger.terminal_state;
-                  iteration.terminal_reason = ledger.terminal_reason;
-                  append_iteration(iteration);
-                  break;
-                }
-              }
-
-              iteration.terminal_state = "continued";
-              iteration.terminal_reason =
-                  "Runtime execution completed but target is not yet satisfied";
-              append_iteration(iteration);
-            }
-            if (ledger.terminal_state.empty()) {
-              ledger.terminal_state = "blocked_max_waves";
-              ledger.terminal_reason = "driver_policy.max_waves exhausted";
-            }
-          }
-
-          finalize_target_driver_run_id(&ledger);
-          structured << tool_detail::reach_lattice_target_operator_packet_json(
-              last_step, &ledger);
-        }
+        structured << tool_detail::prepare_target_operator_packet_json(
+            last_step, &ledger);
       }
     } else if (tool_name == "hero.marshal.status") {
       tool_detail::validate_fields(args,
@@ -6826,7 +7005,12 @@ evaluate_target_subject_json(const std::map<std::string, std::string> &args,
           tool_detail::optional_string(args, "receipt_root"), receipts, policy,
           tool_detail::optional_bool(args, "lattice_advice_surface_available",
                                      false));
-      structured << "{\"ok\":true,\"schema\":\"kikijyeba.marshal.status.v1\","
+      structured << "{\"ok\":true,\"tool\":\"hero.marshal.status\""
+                 << ",\"schema\":\"kikijyeba.marshal.status.v1\""
+                 << tool_detail::marshal_operator_envelope_fields_json(
+                        "kikijyeba.marshal.status.v2.5a", "read_only",
+                        {"inspect"})
+                 << ","
                  << tool_detail::marshal_read_only_non_proof_contract_json()
                  << ",\"recent_receipt_count\":" << status.recent_receipt_count
                  << ",\"last_refusal_reason\":"

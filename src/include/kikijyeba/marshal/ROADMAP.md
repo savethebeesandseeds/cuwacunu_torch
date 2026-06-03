@@ -5,6 +5,7 @@ Marshal is now intentionally small:
 ```text
 hero.marshal.status
 hero.marshal.prepare
+hero.marshal.rollout
 hero.marshal.inspect
 ```
 
@@ -15,6 +16,427 @@ Avoid broad "finish Marshal" goals.
 Current testing work should be recorded here only when it is still active.
 Completed test receipts belong in runtime/Lattice evidence, not in a separate
 Marshal status file.
+
+## Marshal V2 Contract Refactor Roadmap
+
+Current state:
+
+```text
+V1 public tools are stable and tested:
+  hero.marshal.status
+  hero.marshal.prepare
+  hero.marshal.rollout
+  hero.marshal.inspect
+
+Recent cleanup clarified the operative model:
+  Lattice proves.
+  Runtime executes.
+  Marshal coordinates, validates, delegates, records, and explains.
+  Cajtucu paper-executes replay mechanics under Runtime replay.
+```
+
+Known remaining V1 debt:
+
+```text
+schemas are still permissive where prose is strict
+some public fields are test hooks or compatibility aliases
+prepare still exposes reserved intent values
+rollout execution profile is still permissive
+rollout idempotency is bound into the request but does not yet have a durable
+  duplicate-handoff ledger
+inspect still accepts alias fields such as family/fact_family and digest/fact_digest
+authority fields are mostly flat instead of namespaced
+responses do not yet share one operator envelope
+```
+
+The V2 refactor should happen as finite milestones, stopping after the first
+failed gate. Do not attempt another broad "all Marshal cleanup" pass.
+
+### V2.1a Static MCP Surface And Schema Lock
+
+Goal: make the public Marshal MCP catalog and schemas match the current V1
+operator contract without changing Runtime behavior, Lattice behavior,
+target-driver behavior, rollout execution behavior, receipt semantics, or the
+response-envelope shape.
+
+Changes:
+
+```text
+preserve exactly four public tools: status, prepare, rollout, inspect
+add property-level enums for current V1 mode fields:
+  prepare.requested_mode = dry_run|execute
+  prepare.drive_mode = one_step|budgeted
+  rollout.requested_mode = dry_run|execute before V2.2a
+  inspect.subject = run|target|protocol|spawn|component|facts
+  inspect.identity_mode = report|strict
+add required fields only where the current handler has a single canonical
+  required field and the constraint is expressible without top-level schema
+  unions
+leave compatibility alias pairs such as target_id|lattice_target to
+  handler-level validation
+keep MCP-compatible root schemas; no top-level oneOf/anyOf/allOf
+make tool descriptions match the operator model
+add tests proving old hidden tool names are still unknown
+add tests proving unknown fields and unsupported inspect subjects fail closed
+```
+
+Out of scope:
+
+```text
+removing lattice_target
+removing or narrowing prepare.intent
+changing prepare requested_mode semantics
+introducing requested_mode=plan
+changing rollout requested_mode=dry_run to plan
+removing prepare_only
+adding rollout_attempt_id or idempotency_key behavior
+adding replay_batch_index_path requirements
+typing rollout execution_profile
+inspect alias removal
+nested request payloads
+response envelope rewrite
+next_action removal
+policy-training support
+PPO or environment scheduling
+Runtime/Lattice behavior changes
+```
+
+Acceptance:
+
+```text
+build-marshal-hero passes
+run-test_hero_mcp_schema_compat passes from src/tests/bench/kikijyeba/runtime
+run-test_kikijyeba_marshal_dispatch passes
+hero_marshal.mcp --list-tools-json exposes only the four public tools
+```
+
+### V2.1b Help And Documentation Synchronization
+
+Goal: after V2.1a is locked, keep `--help`, README, ROADMAP, and
+`hero_marshal.def` synchronized without changing behavior.
+
+Changes:
+
+```text
+refresh help examples when public schema text changes
+keep the operator model consistent across README and main Hero docs
+keep the accepted command list aligned with actual Makefile locations
+```
+
+### V2.2a Rollout Public Vocabulary Cleanup
+
+Goal: make rollout use the RL/environment public vocabulary before deeper
+identity and execution-profile validation.
+
+Changes:
+
+```text
+requested_mode becomes plan|execute
+prepare_only is removed from the public schema and handler
+add rollout_attempt_id and idempotency_key
+add replay_batch_index_path as an explicit public field
+request/plan digests bind rollout_attempt_id, idempotency_key, and
+  replay_batch_index_path
+```
+
+Acceptance:
+
+```text
+rollout plan accepts valid completed Runtime job evidence with explicit
+  replay_batch_index_path
+rollout execute delegates to hero.runtime.replay
+requested_mode=dry_run is rejected
+prepare_only is rejected as an unknown field
+missing rollout_attempt_id, idempotency_key, or replay_batch_index_path fails
+  closed
+run-test_kikijyeba_marshal_rollout passes
+```
+
+### V2.2b Rollout Identity And Execution Profile Validation
+
+Goal: make rollout identity and Cajtucu profile validation strict enough for
+larger environment dispatch.
+
+Status: implemented for the current static/handler contract.
+
+Changes:
+
+```text
+add graph_order_fingerprint and asset_universe_digest
+type the Cajtucu execution profile enough to expose backend id, synthetic-edge
+  policy, partial-fill policy, and transaction-cost model identity
+```
+
+Rules:
+
+```text
+rollout_id is the stable logical rollout identity
+rollout_attempt_id is per invocation
+idempotency_key is bound into rollout identity digests for audit and future
+  duplicate-handoff prevention
+durable duplicate-handoff prevention requires a future ledger and is not
+  claimed by this checkpoint
+Runtime remains the replay executor
+Marshal produces no metrics and no Lattice proof
+```
+
+Acceptance:
+
+```text
+rollout plan binds graph and asset-universe identity
+typed execution profile rejects unsupported Cajtucu paper profile fields
+synthetic execution edges require an explicit research reason
+run-test_kikijyeba_marshal_rollout passes
+```
+
+Implemented notes:
+
+```text
+graph_order_fingerprint is a required rollout request field and is checked
+  against the completed Runtime job manifest
+asset_universe_digest is required and must match the ordered
+  base_reserve_node_id + risky_node_ids action universe
+policy_set is required and must be non-empty
+max_steps is required and must be positive
+execution_profile is typed in the public Marshal schema
+execution_profile_digest and policy_set_digest are emitted in rollout plans
+cost_model_id=linear_transaction_cost_rate.v1 is the only accepted V1 cost
+  model
+allow_partial_fills=true is refused until Runtime replay forwards that option
+```
+
+### V2.3 Prepare Contract Cleanup
+
+Goal: make prepare strictly target-dispatch oriented.
+
+Status: implemented for the current target-dispatch handler and public schema.
+
+Changes:
+
+```text
+remove lattice_target public alias; target_id is canonical
+remove public intent or narrow accepted public values to train|evaluate
+requested_mode becomes plan|dry_run|execute
+plan means no Runtime call
+dry_run means Runtime dry-run is called for dispatchable targets
+execute means dry-run gate then Runtime execution if policy allows
+artifact-readiness targets route to inspect
+replay routes to rollout
+policy-training is reserved until a finite Runtime job contract exists
+```
+
+Acceptance:
+
+```text
+prepare plan does not call Runtime
+prepare dry_run calls Runtime dry-run
+prepare execute requires accepted dry-run evidence and policy permission
+artifact-readiness refusal has next_safe_actions=[inspect]
+replay refusal has next_safe_actions=[rollout]
+policy-training refusal is explicit and stable
+target-driver tests pass
+```
+
+Implemented notes:
+
+```text
+target_id is now the only public target identity; lattice_target is rejected
+requested_mode accepts plan|dry_run|execute
+plan is the safe default and does not call Runtime
+dry_run and execute request Runtime dry-run for dispatchable targets
+replay/rollout intent is refused with a pointer to hero.marshal.rollout
+artifact_validation intent is refused with a pointer to hero.marshal.inspect
+policy_training intent remains reserved until a finite Runtime contract exists
+```
+
+### V2.4 Inspect Alias Cleanup
+
+Goal: keep inspect read-only while making its inputs canonical.
+
+Status: implemented for the current public schema, handler validation, help,
+and focused dispatch tests.
+
+Changes:
+
+```text
+subject remains run|target|protocol|spawn|component|facts
+mode validation becomes subject-specific in handler code
+family/fact_family becomes fact_family_id
+digest/fact_digest becomes fact_digest
+digest_prefix becomes fact_digest_prefix
+index/fact_index becomes fact_index
+component becomes component_family_id where that is the intended domain
+```
+
+Acceptance:
+
+```text
+all six subjects have positive and negative tests
+old aliases are rejected
+facts summary, lineage, preview, and ambiguous digest-prefix behavior are tested
+compare mode still never chooses a winner
+```
+
+Implemented notes:
+
+```text
+fact_family_id is the only public fact-family selector
+fact_digest, fact_digest_prefix, and fact_index are the only public fact
+  preview selectors
+component_family_id is the only component subject selector
+retired aliases family, fact_family, digest, digest_prefix, index, and
+  component are rejected as unknown fields
+facts mode is validated as summary|lineage|preview
+Marshal still translates canonical fact selectors into the Lattice fact tool
+  argument names expected by hero.lattice.fact_summary/fact_lineage/fact_preview
+```
+
+### V2.5a Shared Read-Only Operator Envelope
+
+Goal: add the shared operator-envelope fields to read-only packets first,
+without changing dispatch/delegation semantics or removing legacy flat fields.
+
+Status: implemented for `hero.marshal.status` and `hero.marshal.inspect`
+top-level packets.
+
+Implemented fields:
+
+```text
+schema_version
+dispatch_state
+refusal_reasons
+warnings
+next_safe_actions
+authority
+observed
+evidence_refs
+digests
+```
+
+Implemented authority namespace:
+
+```text
+authority.marshal_proves_target=false
+authority.marshal_executes_runtime=false
+authority.marshal_selects_checkpoint=false
+authority.marshal_selects_policy=false
+authority.marshal_edits_config=false
+authority.marshal_makes_allocation_decision=false
+authority.marshal_makes_market_readiness_decision=false
+authority.marshal_makes_deployment_decision=false
+```
+
+Notes:
+
+```text
+existing flat authority flags remain for compatibility in V2.5a
+status and inspect now expose next_safe_actions alongside existing
+  next_safe_action fields where present
+prepare and rollout response migration is intentionally left for V2.5b
+```
+
+### V2.5b Shared Dispatch/Delegation Operator Envelope
+
+Goal: make all public tools easier for humans and automation to consume.
+
+Status: implemented as an additive envelope supplement for
+`hero.marshal.prepare` and `hero.marshal.rollout`.
+
+Response envelope:
+
+```text
+ok
+tool
+schema_version
+requested_mode
+dispatch_state
+operator_summary
+stop_reason
+refusal_reasons
+warnings
+next_safe_actions
+authority
+observed
+evidence_refs
+digests
+machine_payload
+```
+
+Authority namespace:
+
+```text
+authority.marshal_proves_target=false
+authority.marshal_executes_runtime=false
+authority.marshal_selects_checkpoint=false
+authority.marshal_selects_policy=false
+authority.marshal_makes_allocation_decision=false
+authority.marshal_makes_market_readiness_decision=false
+authority.marshal_makes_deployment_decision=false
+```
+
+Observed evidence stays separate:
+
+```text
+observed.lattice_target_status
+observed.lattice_proof_quoted
+observed.runtime_handoff_delegated
+observed.runtime_tool
+observed.runtime_result_observed
+```
+
+Acceptance:
+
+```text
+status, prepare, rollout, and inspect all return the envelope
+next_safe_actions is used everywhere
+legacy top-level next_action is removed from public operator packets
+Marshal may quote Lattice satisfaction but never sets marshal_proves_target=true
+```
+
+Implemented notes:
+
+```text
+prepare and rollout keep existing dispatch_state fields
+prepare and rollout now add schema_version, refusal_reasons, warnings,
+  next_safe_actions, authority, observed, evidence_refs, and digests
+top-level next_action has been removed from prepare/rollout operator packets;
+  use next_safe_actions
+existing flat authority fields remain for compatibility
+target-driver iteration records may still carry next_action as historical
+  ledger evidence, not as the top-level operator command field
+```
+
+### V2.6 Documentation And Review Packet
+
+Goal: keep the operator surface understandable while the contract changes.
+
+Status: implemented for the current public Marshal V2 surface.
+
+Changes:
+
+```text
+refresh hero_marshal.mcp --help after every public schema/mode change
+keep README as the conceptual/operator manual
+keep ROADMAP as the milestone and test contract
+regenerate dump.temp only when sending a review packet
+```
+
+Acceptance:
+
+```text
+--help, README, ROADMAP, and hero_marshal.def agree on public modes and fields
+dump.temp contains only review-relevant files when requested
+```
+
+Implemented notes:
+
+```text
+live --help documents status, prepare, rollout, and inspect
+rollout help uses requested_mode=plan|execute and labels plan examples as plan
+README and ROADMAP use next_safe_actions for public operator guidance
+dump.temp was not regenerated during this pass because no review packet was
+  requested
+```
 
 
 ## Boundary
@@ -57,6 +479,13 @@ Given one target_id and finite driver policy, what is the next safe movement
 toward that target, and can Marshal drive it through Runtime under policy?
 ```
 
+`hero.marshal.rollout` answers:
+
+```text
+Given a completed Runtime job, policy set, finite replay limits, and Cajtucu
+paper execution profile, what historical replay rollout can Runtime run next?
+```
+
 `hero.marshal.inspect` answers:
 
 ```text
@@ -72,12 +501,15 @@ subject=target
 subject=protocol
 subject=spawn
 subject=component
+subject=facts
 ```
 
 All inspect subjects are read-only. `subject=target` labels target status as
 Lattice-sourced. `subject=protocol` has `identity_mode=report|strict`; strict
 mode requires explicit expected identity fields. `subject=spawn` and
-`subject=component` are Runtime evidence grouping only.
+`subject=component` are Runtime evidence grouping only. `subject=facts` is an
+audit-only fact-family summary/lineage/preview surface and never promotes facts
+into target satisfaction.
 
 ## Testing Goal
 
@@ -129,8 +561,11 @@ Current implemented rollout slice:
 rollout_marshal.v1
   Input:
     completed Runtime job directory
+    Runtime Hero config path
     replay artifact state and runtime_replay_batches.index
     Runtime executable path
+    rollout_attempt_id and idempotency_key
+    requested_mode=plan|execute
     base reserve graph node
     risky node universe
     policy set
@@ -139,10 +574,13 @@ rollout_marshal.v1
 
   Gate:
     reject missing/non-directory Runtime job dir
+    reject missing rollout_attempt_id or idempotency_key
     reject missing Runtime job state when replay evidence is required
     reject replay_artifacts_written=false
     reject missing replay_batch_index_path
     reject missing reserve/risky nodes
+    reject missing or empty policy set
+    reject missing or nonpositive max_steps
     reject reserve duplication inside risky nodes
     reject duplicate risky nodes
     reject unsupported policy tokens
@@ -155,6 +593,7 @@ rollout_marshal.v1
     resolved policy ids
     Cajtucu paper execution profile
     expected report path
+    Runtime replay handoff result when requested_mode=execute
     all authority flags false
 ```
 
@@ -179,8 +618,9 @@ Expected evolution:
 
 2. Prepare deterministic rollout readiness
    Marshal prepares bounded historical replay rollout plans from completed
-   Runtime jobs. Runtime runs the replay. Lattice re-reads Runtime evidence to
-   prove any target.
+   Runtime jobs. With `requested_mode=execute`, Marshal invokes Runtime Hero
+   replay and records handoff digests; Runtime still runs the replay. Lattice
+   re-reads Runtime evidence to prove any target.
 
 3. Reach policy-training artifact readiness
    Marshal may dispatch bounded Runtime environment jobs only when Lattice has
@@ -202,10 +642,11 @@ reach_policy_training_artifact_target
   dispatchable only for concrete finite Runtime policy-training job contracts
 ```
 
-`hero.marshal.prepare intent=rollout` is plan-only. It does not produce
-metrics or receipts. Whether dispatchable policy training uses the existing
-`prepare` path or a separate environment-specific handoff remains an open
-design question.
+`hero.marshal.rollout requested_mode=plan` is plan-only.
+`hero.marshal.rollout requested_mode=execute` delegates the already bounded
+rollout to Runtime Hero replay. Neither mode produces metrics or receipts.
+Whether dispatchable policy training uses the existing `prepare` path or a
+separate environment-specific handoff remains an open design question.
 
 No policy-training handoff tool should be implemented until the contract
 specifies:
@@ -263,7 +704,7 @@ Checks:
 - Marshal tool catalog exposes exactly:
   hero.marshal.status
   hero.marshal.prepare
-  hero.marshal.inspect
+  hero.marshal.rollout
   hero.marshal.inspect
 
 - old hidden or compatibility tools are not callable:
@@ -328,6 +769,13 @@ subject=spawn:
 subject=component:
   groups jobs by component family
   reports spawn ids, fingerprints, wave actions, and job summaries
+
+subject=facts:
+  fact summary works
+  lineage is audit-only
+  preview is opt-in
+  digest_prefix ambiguity fails closed
+  facts are never promoted into target satisfaction
 ```
 
 Acceptance:
@@ -369,7 +817,7 @@ Acceptance:
 dry-run accepted or blocked with a stable reason
 no Runtime mutation
 no target satisfaction claim by Marshal
-next safe action is clear
+next safe actions are clear
 ```
 
 ### T3: Target Driver Execute On A Small Controlled Wave
@@ -583,7 +1031,14 @@ hero.marshal.prepare:
   what wave would move it?
   did Runtime run or dry-run?
   why did the loop stop?
-  what is the next safe action?
+  what are the next safe actions?
+
+hero.marshal.rollout:
+  what completed Runtime job is being replayed?
+  what policy set and Cajtucu execution profile are bound?
+  is this a plan-mode rollout plan or a Runtime replay handoff?
+  what finite step/parallel limits apply?
+  what Runtime replay evidence should be inspected next?
 
 hero.marshal.inspect:
   what happened?
@@ -599,7 +1054,7 @@ Acceptance:
 default output fits in a compact operator packet
 machine payload is opt-in
 no raw digest wall unless include_machine_payload=true
-next_safe_action is actionable
+next_safe_actions is actionable
 ```
 
 ## Complete Test Run Order
@@ -627,7 +1082,7 @@ Marshal testing is considered complete for the current cycle when:
 
 ```text
 - public tool surface is exactly
-  status/prepare/inspect
+  status/prepare/rollout/inspect
 - every inspect subject has passing positive and negative tests
 - target driver dry-run is deterministic and non-mutating
 - target driver execute is bounded by explicit finite policy

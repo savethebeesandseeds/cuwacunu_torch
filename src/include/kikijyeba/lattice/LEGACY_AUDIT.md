@@ -45,7 +45,7 @@ Keep these. They are the current Lattice target/training path.
 | --- | --- | --- |
 | Active `TARGET_KIND` enum: `vicreg_ready`, `mtf_representation_ready`, `channel_mdn_ready` | `src/include/kikijyeba/lattice/target/lattice_target.h`, `src/config/kikijyeba.lattice.targets.dsl` | Core trainable/checkpoint-producing readiness targets. Marshal uses these dispatchable targets to prepare bounded Runtime handoffs. |
 | `latest_satisfying:<target_id>` readiness selection | `src/include/kikijyeba/lattice/target/lattice_target.h`, `src/config/kikijyeba.lattice.targets.dsl` | Deterministic readiness-based checkpoint source. It is not a best-model selector, but it is part of the current target dependency path. |
-| `hero.marshal.reach_lattice_target` for dispatchable readiness targets | `src/include/hero/marshal_hero/hero_marshal.def`, `src/tests/bench/kikijyeba/marshal/test_kikijyeba_marshal_dispatch.cpp` | Current coordination path from Lattice target advice to Runtime handoff preparation. |
+| `hero.marshal.prepare` for dispatchable readiness targets | `src/include/hero/marshal_hero/hero_marshal.def`, `src/tests/bench/kikijyeba/marshal/test_kikijyeba_marshal_dispatch.cpp` | Current coordination path from Lattice target advice to Runtime handoff preparation. The retired `hero.marshal.reach_lattice_target` name is kept only in negative tests. |
 | Active artifact-readiness targets | `src/config/kikijyeba.lattice.targets.dsl`, `src/include/kikijyeba/lattice/target/lattice_target.h` | Current non-dispatchable proof targets over catalog facts. They protect fact expansion from becoming `TARGET_KIND` expansion. |
 | Disabled policy-gate reservations | `src/include/kikijyeba/lattice/target/lattice_target.h`, `src/config/kikijyeba.lattice.targets.dsl` | Current reserved/fail-closed future-policy syntax. It documents future policy inputs without granting authority. |
 
@@ -132,7 +132,7 @@ git diff --check
 
 - active `TARGET_KIND` readiness targets
 - `latest_satisfying` readiness checkpoint source semantics
-- `hero.marshal.reach_lattice_target` for dispatchable readiness targets
+- `hero.marshal.prepare` for dispatchable readiness targets
 - artifact-readiness proof templates for active fact families
 - disabled policy-gate reservations and fail-closed checks
 - warning non-blocking behavior and authority flags

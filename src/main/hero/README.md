@@ -62,22 +62,60 @@ The default policy paths are `[HERO].config_hero_dsl_path`,
 `/cuwacunu/src/config/hero.lattice.dsl` and
 `/cuwacunu/src/config/hero.marshal.dsl`.
 
+## Hero Authority Map
+
+The Hero surface is intentionally split by authority. When choosing a tool,
+start from what kind of authority is needed, not from which subsystem name is
+familiar:
+
+| Authority | Tool families | Use | Boundary |
+| --- | --- | --- | --- |
+| Read-only health | `hero.config.status`, `hero.runtime.status`, `hero.lattice.status`, `hero.marshal.status` | Check policy paths, visible roots, active wave/advice state, and explicit non-authority flags. | No mutation, proof escalation, Runtime launch, or policy selection. |
+| Schema/help | `hero.config.schema`, `hero.runtime.schema`, `hero.lattice.schema`, `--list-tools`, `--list-tools-json`, `--help` | Inspect exact MCP arguments or operator runbooks. | Documentation/catalog surface only. |
+| Config inspection | `hero.config.show`, `hero.config.get`, `hero.config.validate`, `hero.config.map`, `hero.config.capture_bundle`, `hero.config.resolve`, `hero.config.diff`, `hero.config.list`, `hero.config.read`, `hero.config.backups` | Read policy-controlled config files and config provenance. | Does not execute Runtime or prove Lattice targets. |
+| Config mutation | `hero.config.set`, `hero.config.save`, `hero.config.reload`, `hero.config.rollback`, `hero.config.write`, `hero.config.delete` | Change in-memory policy/session config or files under allowed roots. | Config-scope only; use dry-run and expected digests for file writes/deletes. |
+| Runtime execution | `hero.runtime.dry_run`, `hero.runtime.execute`, `hero.runtime.replay`, `hero.runtime.dev_nuke` | Preview or perform guarded Runtime work. | Runtime Hero is the executor. `dev_nuke` is a guarded developer reset surface. |
+| Runtime evidence | `hero.runtime.wave`, `hero.runtime.list_jobs`, `hero.runtime.get_job`, `hero.runtime.read_artifact` | Read active wave or durable Runtime job/replay artifacts. | No target proof or config mutation. |
+| Lattice proof/evidence | `hero.lattice.*` | Scan evidence, explain/evaluate targets, inspect fact/catalog/checkpoint lineage, compare proof vectors. | Read-only. Lattice proves; it does not execute or select deployments. |
+| Marshal coordination | `hero.marshal.prepare`, `hero.marshal.rollout` | Prepare/delegate bounded target handoffs or replay rollouts through Runtime policy. | Marshal coordinates and records handoffs; Runtime executes, Lattice proves. |
+| Marshal inspection | `hero.marshal.status`, `hero.marshal.inspect` | Read Marshal visibility and explain Runtime/Lattice/Marshal evidence. | Read-only and non-decision-making. |
+
+Shortest routing rules:
+
+1. Need current visibility: call the matching `status`.
+2. Need a config value or file: use `hero.config.get`, `show`, `resolve`, or
+   `read`.
+3. Need target truth: use `hero.lattice.evaluate_target` or
+   `hero.lattice.target_deficit`.
+4. Need a finite next step toward one target: use `hero.marshal.prepare`.
+5. Need historical environment replay from a completed job:
+   use `hero.marshal.rollout`.
+6. Need an actual Runtime action: use Runtime Hero directly or a Marshal
+   handoff that delegates to Runtime Hero.
+
 Marshal Hero has a minimal policy DSL for symmetry only. Its preferred
 operator-facing surface is small:
 
 ```text
 hero.marshal.status
 hero.marshal.prepare
+hero.marshal.rollout
 hero.marshal.inspect
 ```
 
 Marshal is a deterministic coordination surface over explicit Lattice target
-state/advice and Runtime Hero policy/wave snapshots. Marshal exposes no
-low-level compatibility tools: advice lookup, target-dispatch preparation,
-validation, dry-run dispatch, execution gating, receipt replay, and batch
-preview are internal C++ methods used by the high-level tools where needed.
-Marshal does not prove target satisfaction and does not execute waves by
-itself; execution handoff still goes through Runtime Hero.
+state/advice, Runtime Hero policy/wave snapshots, and bounded replay rollout
+requests. Marshal exposes no low-level compatibility tools: advice lookup,
+target-dispatch preparation, validation, dry-run dispatch, execution gating,
+receipt replay, and batch preview are internal C++ methods used by the
+high-level tools where needed. Marshal does not prove target satisfaction and
+does not execute waves by itself; execution handoff still goes through Runtime
+Hero.
+
+For Marshal specifically, `hero_marshal.mcp --help` is maintained as the
+operator runbook. It explains when to use `status`, `prepare`, `rollout`, and
+`inspect`, lists the high-value arguments, and gives direct one-shot examples.
+`--list-tools-json` remains the machine schema surface.
 
 For operator visibility, use `hero.marshal.inspect`. Its `subject=run` modes
 (`latest_chain`, `training_state`, `single_job`, and `compare`) read Runtime
@@ -97,7 +135,7 @@ with `include_machine_payload=true`. It is read-only and does not prepare or
 execute a wave.
 
 For operator-facing target pursuit, use
-`hero.marshal.prepare`. It accepts one `target_id` and an explicit
+`hero.marshal.prepare`. It accepts one canonical `target_id`, plus an explicit
 `drive_mode`:
 
 ```text
@@ -189,7 +227,7 @@ or deployment authority by implication.
 The same artifact summary is preserved in run-level `target_blockers` when
 `hero.marshal.inspect` asks Lattice for bulk target status.
 If `prepare` sees `target_class=artifact_readiness`, it stops with
-`next_action=inspect` before Runtime dispatch validation or
+`next_safe_actions=["inspect"]` before Runtime dispatch validation or
 dry-run preview construction.
 Fact-family-only panels never call target proof evaluation and remain
 non-dispatchable audit views. Parked `replay_environment` rows, when explicitly
@@ -249,12 +287,14 @@ Runtime agent workflow:
    `cuwacunu_exec --dry-run` and returns job artifacts.
 4. `hero.runtime.list_jobs` and `hero.runtime.get_job` inspect prior job
    directories.
-5. `hero.runtime.replay_from_job` runs the Kikijyeba replay adapter against an
-   already completed Runtime job that has
+5. `hero.runtime.replay` runs the Kikijyeba replay adapter against an already
+   completed Runtime job that has
    `artifacts/kikijyeba.environment.replay.v1/runtime_replay_batches.index`.
    It delegates to `cuwacunu_exec --replay-from-job-dir`, writes replay reports
    and `runtime_replay_experiments.index`, and does not launch a new wave or
-   mutate model checkpoints.
+   mutate model checkpoints. Replay arguments can bind Cajtucu paper execution
+   profile hints such as `allow_synthetic_direct_edges` and
+   `linear_transaction_cost_rate`.
 6. `hero.runtime.read_artifact` can read replay evidence by name:
    `replay_batch_index`, `replay_experiment_index`, and
    `replay_experiment_report`. `hero.runtime.get_job` includes the same replay
@@ -273,10 +313,10 @@ Runtime agent workflow:
 `hero.runtime.execute` defaults to dry-run. Non-dry-run execution is denied
 unless `allow_execute=true`; MODE=train has the additional
 `allow_train_execute=true` guard.
-`hero.runtime.replay_from_job` also defaults to the policy `default_dry_run`,
-but it is a post-job report adapter rather than a wave executor: non-dry-run
-replay is permitted under the default locked policy once the job is completed,
-inside an allowed job root, and has the replay batch index.
+`hero.runtime.replay` also defaults to the policy `default_dry_run`, but it is
+a post-job report adapter rather than a wave executor: non-dry-run replay is
+permitted under the default locked policy once the job is completed, inside an
+allowed job root, and has the replay batch index.
 
 Marshal handoffs should use the explicit `runtime_handoff` object accepted by
 `hero.runtime.execute`. Runtime validates the object against the effective wave
