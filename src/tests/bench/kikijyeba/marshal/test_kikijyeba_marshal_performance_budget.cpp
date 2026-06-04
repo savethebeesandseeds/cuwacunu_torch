@@ -81,7 +81,7 @@ valid_advice(const std::filesystem::path &config_path,
   advice.recommendation_attempt_count = 0;
   advice.required_plan_inputs = {"PLAN_INPUT_MDN_CHECKPOINT",
                                  "PLAN_INPUT_REPRESENTATION_CHECKPOINT"};
-  advice.source_lattice_tool = "hero.lattice.target_deficit";
+  advice.source_lattice_tool = "hero.lattice.evaluate";
   advice.source_lattice_timestamp = "2026-05-23T00:00:00Z";
   return advice;
 }

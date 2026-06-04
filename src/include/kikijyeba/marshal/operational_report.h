@@ -1750,7 +1750,8 @@ runtime_panel_json(const std::vector<job_summary_t> &jobs) {
     warning_count += static_cast<std::int64_t>(status.warning_ids.size());
   }
   std::ostringstream out;
-  out << "{\"source\":\"hero.lattice.evaluate_targets\""
+  out << "{\"source\":\"hero.lattice.evaluate\""
+      << ",\"source_operation\":\"targets\""
       << ",\"read_only\":true"
       << ",\"target_proof\":false"
       << ",\"dispatchable\":false"

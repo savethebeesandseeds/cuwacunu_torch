@@ -107,11 +107,12 @@ std::string run_wave_preview(const std::string &target, const std::string &mode,
   std::string result;
   std::string error;
   const bool ok = hero_runtime::execute_tool_json(
-      "hero.runtime.wave", "{\"config_path\":\"" + config_path.string() + "\"}",
+      "hero.runtime.inspect",
+      "{\"subject\":\"wave\",\"config_path\":\"" + config_path.string() + "\"}",
       &ctx, &result, &error);
-  check(ok, "hero.runtime.wave failed: " + error);
+  check(ok, "hero.runtime.inspect subject=wave failed: " + error);
   check(!hero_runtime::tool_result_is_error(result),
-        "hero.runtime.wave returned error: " + result);
+        "hero.runtime.inspect subject=wave returned error: " + result);
   std::filesystem::remove_all(dir);
   return result;
 }
@@ -258,8 +259,10 @@ void test_execute_expected_wave_binding() {
       "runtime_handoff_" + symbolic_handoff_digest;
 
   const std::string good_args =
-      "{\"config_path\":\"" + config_path.string() +
-      "\",\"dry_run\":true,\"marshal_expected_wave\":{"
+      "{\"operation\":\"wave\",\"requested_mode\":\"dry_run\","
+      "\"config_path\":\"" +
+      config_path.string() +
+      "\",\"marshal_expected_wave\":{"
       "\"target_component_family_id\":\"wikimyei.inference.expected_value."
       "mdn\","
       "\"mode\":\"run|debug\","
@@ -272,7 +275,7 @@ void test_execute_expected_wave_binding() {
       "\"PLAN_INPUT_REPRESENTATION_CHECKPOINT\":\"/tmp/rep.pt\"}}}";
   std::string result;
   error.clear();
-  check(hero_runtime::execute_tool_json("hero.runtime.execute", good_args, &ctx,
+  check(hero_runtime::execute_tool_json("hero.runtime.run", good_args, &ctx,
                                         &result, &error),
         "expected-wave-bound execute failed: " + error);
   check(!hero_runtime::tool_result_is_error(result),
@@ -281,8 +284,10 @@ void test_execute_expected_wave_binding() {
                    "expected-wave-bound execute should run when fields match");
 
   const std::string handoff_args =
-      "{\"config_path\":\"" + config_path.string() +
-      "\",\"dry_run\":true,\"confirm_execute\":false,\"runtime_handoff\":{"
+      "{\"operation\":\"wave\",\"requested_mode\":\"dry_run\","
+      "\"config_path\":\"" +
+      config_path.string() +
+      "\",\"confirm_execute\":false,\"runtime_handoff\":{"
       "\"handoff_schema_version\":\"1\","
       "\"handoff_id\":\"" +
       good_handoff_id +
@@ -320,8 +325,8 @@ void test_execute_expected_wave_binding() {
       "\"unresolved_symbols\":[]}}";
   result.clear();
   error.clear();
-  check(hero_runtime::execute_tool_json("hero.runtime.execute", handoff_args,
-                                        &ctx, &result, &error),
+  check(hero_runtime::execute_tool_json("hero.runtime.run", handoff_args, &ctx,
+                                        &result, &error),
         "runtime_handoff execute failed: " + error);
   check(!hero_runtime::tool_result_is_error(result),
         "runtime_handoff execute returned error: " + result);
@@ -339,8 +344,10 @@ void test_execute_expected_wave_binding() {
                    "digest");
 
   const std::string stale_hash_handoff_args =
-      "{\"config_path\":\"" + config_path.string() +
-      "\",\"dry_run\":true,\"confirm_execute\":false,\"runtime_handoff\":{"
+      "{\"operation\":\"wave\",\"requested_mode\":\"dry_run\","
+      "\"config_path\":\"" +
+      config_path.string() +
+      "\",\"confirm_execute\":false,\"runtime_handoff\":{"
       "\"handoff_schema_version\":\"1\","
       "\"handoff_id\":\"" +
       stale_handoff_id +
@@ -379,7 +386,7 @@ void test_execute_expected_wave_binding() {
   result.clear();
   error.clear();
   const bool stale_hash_ok = hero_runtime::execute_tool_json(
-      "hero.runtime.execute", stale_hash_handoff_args, &ctx, &result, &error);
+      "hero.runtime.run", stale_hash_handoff_args, &ctx, &result, &error);
   check(!stale_hash_ok,
         "runtime_handoff stale base config hash should fail before execution: "
         "result=" +
@@ -388,8 +395,10 @@ void test_execute_expected_wave_binding() {
         "runtime_handoff stale hash should report base_config hash failure");
 
   const std::string unresolved_handoff_args =
-      "{\"config_path\":\"" + config_path.string() +
-      "\",\"dry_run\":true,\"confirm_execute\":false,\"runtime_handoff\":{"
+      "{\"operation\":\"wave\",\"requested_mode\":\"dry_run\","
+      "\"config_path\":\"" +
+      config_path.string() +
+      "\",\"confirm_execute\":false,\"runtime_handoff\":{"
       "\"handoff_schema_version\":\"1\","
       "\"handoff_id\":\"" +
       symbolic_handoff_id +
@@ -429,16 +438,17 @@ void test_execute_expected_wave_binding() {
       "channel_mdn_train_core_ready\"]}}";
   result.clear();
   error.clear();
-  check(!hero_runtime::execute_tool_json("hero.runtime.execute",
-                                         unresolved_handoff_args, &ctx, &result,
-                                         &error),
+  check(!hero_runtime::execute_tool_json(
+            "hero.runtime.run", unresolved_handoff_args, &ctx, &result, &error),
         "runtime_handoff unresolved selector should fail before execution");
   check(error.find("E_RUNTIME_HANDOFF_UNRESOLVED_SYMBOLS") != std::string::npos,
         "runtime_handoff unresolved selector should report unresolved symbols");
 
   const std::string bad_args =
-      "{\"config_path\":\"" + config_path.string() +
-      "\",\"dry_run\":true,\"marshal_expected_wave\":{"
+      "{\"operation\":\"wave\",\"requested_mode\":\"dry_run\","
+      "\"config_path\":\"" +
+      config_path.string() +
+      "\",\"marshal_expected_wave\":{"
       "\"target_component_family_id\":\"wikimyei.inference.expected_value."
       "mdn\","
       "\"mode\":\"train|debug\","
@@ -450,15 +460,17 @@ void test_execute_expected_wave_binding() {
       "\"PLAN_INPUT_REPRESENTATION_CHECKPOINT\":\"/tmp/rep.pt\"}}}";
   result.clear();
   error.clear();
-  check(!hero_runtime::execute_tool_json("hero.runtime.execute", bad_args, &ctx,
+  check(!hero_runtime::execute_tool_json("hero.runtime.run", bad_args, &ctx,
                                          &result, &error),
         "expected-wave mismatch should fail before execution");
   check(error.find("E_RUNTIME_EXPECTED_WAVE_MISMATCH") != std::string::npos,
         "expected-wave mismatch should report a specific error");
 
   const std::string bad_checkpoint_args =
-      "{\"config_path\":\"" + config_path.string() +
-      "\",\"dry_run\":true,\"marshal_expected_wave\":{"
+      "{\"operation\":\"wave\",\"requested_mode\":\"dry_run\","
+      "\"config_path\":\"" +
+      config_path.string() +
+      "\",\"marshal_expected_wave\":{"
       "\"target_component_family_id\":\"wikimyei.inference.expected_value."
       "mdn\","
       "\"mode\":\"run|debug\","
@@ -471,7 +483,7 @@ void test_execute_expected_wave_binding() {
   result.clear();
   error.clear();
   check(!hero_runtime::execute_tool_json(
-            "hero.runtime.execute", bad_checkpoint_args, &ctx, &result, &error),
+            "hero.runtime.run", bad_checkpoint_args, &ctx, &result, &error),
         "expected-wave checkpoint mismatch should fail before execution");
   check(error.find("model_state_inputs differs") != std::string::npos,
         "checkpoint mismatch should report model_state_inputs failure");
@@ -539,8 +551,10 @@ void test_execute_wave_overlay() {
         "failed to load runtime policy: " + error);
 
   const std::string args =
-      "{\"config_path\":\"" + config_path.string() +
-      "\",\"dry_run\":true,"
+      "{\"operation\":\"wave\",\"requested_mode\":\"dry_run\","
+      "\"config_path\":\"" +
+      config_path.string() +
+      "\","
       "\"wave_overlay\":{\"source_range\":\"anchor_index\","
       "\"anchor_index_begin\":\"1\",\"anchor_index_end\":\"3\"},"
       "\"marshal_expected_wave\":{"
@@ -553,8 +567,8 @@ void test_execute_wave_overlay() {
       "\"anchor_index_end\":\"3\"}}";
   std::string result;
   error.clear();
-  check(hero_runtime::execute_tool_json("hero.runtime.execute", args, &ctx,
-                                        &result, &error),
+  check(hero_runtime::execute_tool_json("hero.runtime.run", args, &ctx, &result,
+                                        &error),
         "wave-overlay execute failed: " + error);
   check(!hero_runtime::tool_result_is_error(result),
         "wave-overlay execute returned error: " + result);
@@ -570,14 +584,16 @@ void test_execute_wave_overlay() {
   require_contains(result, "\"3\"", "wave overlay should pass anchor end");
 
   const std::string invalid_args =
-      "{\"config_path\":\"" + config_path.string() +
-      "\",\"dry_run\":true,"
+      "{\"operation\":\"wave\",\"requested_mode\":\"dry_run\","
+      "\"config_path\":\"" +
+      config_path.string() +
+      "\","
       "\"wave_overlay\":{\"source_range\":\"all\","
       "\"anchor_index_begin\":\"1\",\"anchor_index_end\":\"3\"}}";
   result.clear();
   error.clear();
-  check(!hero_runtime::execute_tool_json("hero.runtime.execute", invalid_args,
-                                         &ctx, &result, &error),
+  check(!hero_runtime::execute_tool_json("hero.runtime.run", invalid_args, &ctx,
+                                         &result, &error),
         "invalid wave overlay should fail");
   check(error.find("E_RUNTIME_WAVE_OVERLAY_INVALID") != std::string::npos,
         "invalid wave overlay reports overlay error");
@@ -680,18 +696,21 @@ void test_replay_operator_tool() {
                                           &error),
         "failed to load replay runtime policy: " + error);
 
-  const std::string dry_args = "{\"job_dir\":\"" + job_dir.string() +
-                               "\",\"dry_run\":true,"
-                               "\"base_reserve_node_id\":\"USDT\","
-                               "\"risky_node_ids\":\"BTC,ETH\","
-                               "\"experiment_id\":\"hero_replay\","
-                               "\"max_steps\":8,"
-                               "\"include_equal_weight\":true,"
-                               "\"allow_synthetic_direct_edges\":true,"
-                               "\"linear_transaction_cost_rate\":0.001}";
+  const std::string dry_args =
+      "{\"operation\":\"replay\",\"requested_mode\":\"plan\","
+      "\"job_dir\":\"" +
+      job_dir.string() +
+      "\","
+      "\"base_reserve_node_id\":\"USDT\","
+      "\"risky_node_ids\":\"BTC,ETH\","
+      "\"experiment_id\":\"hero_replay\","
+      "\"max_steps\":8,"
+      "\"include_equal_weight\":true,"
+      "\"allow_synthetic_direct_edges\":true,"
+      "\"linear_transaction_cost_rate\":0.001}";
   std::string result;
   error.clear();
-  check(hero_runtime::execute_tool_json("hero.runtime.replay", dry_args, &ctx,
+  check(hero_runtime::execute_tool_json("hero.runtime.run", dry_args, &ctx,
                                         &result, &error),
         "replay dry-run failed: " + error);
   check(!hero_runtime::tool_result_is_error(result),
@@ -713,15 +732,18 @@ void test_replay_operator_tool() {
   require_contains(result, "\"--replay-linear-transaction-cost-rate\"",
                    "replay should pass transaction-cost replay flag");
 
-  const std::string run_args = "{\"job_dir\":\"" + job_dir.string() +
-                               "\",\"dry_run\":false,"
-                               "\"base_reserve_node_id\":\"USDT\","
-                               "\"risky_node_ids\":\"BTC,ETH\","
-                               "\"experiment_id\":\"hero_replay\","
-                               "\"max_steps\":8}";
+  const std::string run_args =
+      "{\"operation\":\"replay\",\"requested_mode\":\"execute\","
+      "\"job_dir\":\"" +
+      job_dir.string() +
+      "\","
+      "\"base_reserve_node_id\":\"USDT\","
+      "\"risky_node_ids\":\"BTC,ETH\","
+      "\"experiment_id\":\"hero_replay\","
+      "\"max_steps\":8}";
   result.clear();
   error.clear();
-  check(hero_runtime::execute_tool_json("hero.runtime.replay", run_args, &ctx,
+  check(hero_runtime::execute_tool_json("hero.runtime.run", run_args, &ctx,
                                         &result, &error),
         "replay execution failed with allow_execute=false: " + error);
   check(!hero_runtime::tool_result_is_error(result),
@@ -733,8 +755,8 @@ void test_replay_operator_tool() {
   result.clear();
   error.clear();
   check(hero_runtime::execute_tool_json(
-            "hero.runtime.read_artifact",
-            "{\"job_dir\":\"" + job_dir.string() +
+            "hero.runtime.inspect",
+            "{\"subject\":\"artifact\",\"job_dir\":\"" + job_dir.string() +
                 "\",\"artifact\":\"replay_experiment_index\"}",
             &ctx, &result, &error),
         "read replay experiment index failed: " + error);
@@ -748,8 +770,8 @@ void test_replay_operator_tool() {
   result.clear();
   error.clear();
   check(hero_runtime::execute_tool_json(
-            "hero.runtime.read_artifact",
-            "{\"job_dir\":\"" + job_dir.string() +
+            "hero.runtime.inspect",
+            "{\"subject\":\"artifact\",\"job_dir\":\"" + job_dir.string() +
                 "\",\"artifact\":\"replay_experiment_report\"}",
             &ctx, &result, &error),
         "read replay experiment report failed: " + error);
@@ -770,8 +792,9 @@ void test_replay_operator_tool() {
 
   result.clear();
   error.clear();
-  check(hero_runtime::execute_tool_json("hero.runtime.get_job",
-                                        "{\"job_dir\":\"" + job_dir.string() +
+  check(hero_runtime::execute_tool_json("hero.runtime.inspect",
+                                        "{\"subject\":\"job\",\"job_dir\":\"" +
+                                            job_dir.string() +
                                             "\",\"include_text\":false}",
                                         &ctx, &result, &error),
         "get_job replay artifact summary failed: " + error);
@@ -810,8 +833,8 @@ void test_replay_operator_tool() {
   result.clear();
   error.clear();
   check(hero_runtime::execute_tool_json(
-            "hero.runtime.read_artifact",
-            "{\"job_dir\":\"" + job_dir.string() +
+            "hero.runtime.inspect",
+            "{\"subject\":\"artifact\",\"job_dir\":\"" + job_dir.string() +
                 "\",\"artifact\":\"replay_experiment_report\"}",
             &ctx, &result, &error),
         "read replay experiment report with unsafe index path failed: " +
@@ -841,8 +864,8 @@ void test_replay_operator_tool() {
   result.clear();
   error.clear();
   check(hero_runtime::execute_tool_json(
-            "hero.runtime.read_artifact",
-            "{\"job_dir\":\"" + job_dir.string() +
+            "hero.runtime.inspect",
+            "{\"subject\":\"artifact\",\"job_dir\":\"" + job_dir.string() +
                 "\",\"artifact\":\"replay_experiment_report\"}",
             &ctx, &result, &error),
         "read replay experiment report with mismatched digest failed: " +
@@ -861,7 +884,7 @@ void test_replay_operator_tool() {
   write_text(job_dir / "job.state", "status=failed\n");
   result.clear();
   error.clear();
-  check(!hero_runtime::execute_tool_json("hero.runtime.replay", dry_args, &ctx,
+  check(!hero_runtime::execute_tool_json("hero.runtime.run", dry_args, &ctx,
                                          &result, &error),
         "replay should reject non-completed jobs");
   require_contains(error, "E_RUNTIME_REPLAY_JOB_NOT_COMPLETED",
@@ -1014,11 +1037,15 @@ void test_source_key_wave_preview_reports_key_bounds() {
   std::string result;
   std::string error;
   const bool ok = hero_runtime::execute_tool_json(
-      "hero.runtime.wave", "{\"config_path\":\"" + config_path.string() + "\"}",
+      "hero.runtime.inspect",
+      "{\"subject\":\"wave\",\"config_path\":\"" + config_path.string() + "\"}",
       &ctx, &result, &error);
-  check(ok, "hero.runtime.wave source-key preview failed: " + error);
-  check(!hero_runtime::tool_result_is_error(result),
-        "hero.runtime.wave source-key preview returned error: " + result);
+  check(ok, "hero.runtime.inspect subject=wave source-key preview failed: " +
+                error);
+  check(
+      !hero_runtime::tool_result_is_error(result),
+      "hero.runtime.inspect subject=wave source-key preview returned error: " +
+          result);
   require_contains(result, "\"source_range\":\"source_key\"",
                    "source-key preview reports source range");
   require_contains(result, "\"source_key_begin\":\"1002\"",
@@ -1067,11 +1094,15 @@ void test_mdn_wave_preview_reads_jkimyei_model_state_inputs() {
   std::string result;
   std::string error;
   const bool ok = hero_runtime::execute_tool_json(
-      "hero.runtime.wave", "{\"config_path\":\"" + config_path.string() + "\"}",
+      "hero.runtime.inspect",
+      "{\"subject\":\"wave\",\"config_path\":\"" + config_path.string() + "\"}",
       &ctx, &result, &error);
-  check(ok, "hero.runtime.wave jkimyei-input preview failed: " + error);
+  check(ok, "hero.runtime.inspect subject=wave jkimyei-input preview failed: " +
+                error);
   check(!hero_runtime::tool_result_is_error(result),
-        "hero.runtime.wave jkimyei-input preview returned error: " + result);
+        "hero.runtime.inspect subject=wave jkimyei-input preview returned "
+        "error: " +
+            result);
   require_contains(
       result, "\"PLAN_INPUT_REPRESENTATION_CHECKPOINT\":\"/tmp/rep.pt\"",
       "MDN wave preview should expose jkimyei representation input");

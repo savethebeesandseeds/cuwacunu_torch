@@ -1672,36 +1672,43 @@ private:
   [[nodiscard]] static std::string
   warning_inspection_panel_for_family(const std::string &family) {
     if (family == "source_health") {
-      return "hero.lattice.fact_summary:source_analytics";
+      return "hero.lattice.inspect subject=facts mode=summary "
+             "family=source_analytics";
     }
     if (family == "target_transform_contract") {
-      return "hero.lattice.fact_summary:target_transform";
+      return "hero.lattice.inspect subject=facts mode=summary "
+             "family=target_transform";
     }
     if (family == "forecast_quality_visibility" ||
         family == "forecast_calibration" ||
         family == "forecast_baseline_comparison" ||
         family == "forecast_support") {
-      return "hero.lattice.fact_summary:forecast_eval";
+      return "hero.lattice.inspect subject=facts mode=summary "
+             "family=forecast_eval";
     }
     if (family == "lineage_integrity") {
-      return "hero.lattice.fact_lineage";
+      return "hero.lattice.inspect subject=facts mode=lineage";
     }
     if (family == "selection_signal_audit") {
-      return "hero.lattice.fact_summary:selection_signal";
+      return "hero.lattice.inspect subject=facts mode=summary "
+             "family=selection_signal";
     }
     if (family == "observer_belief_consistency") {
-      return "hero.lattice.fact_summary:observer_belief";
+      return "hero.lattice.inspect subject=facts mode=summary "
+             "family=observer_belief";
     }
     if (family == "allocation_engine_diagnostics") {
-      return "hero.lattice.fact_summary:allocation_engine";
+      return "hero.lattice.inspect subject=facts mode=summary "
+             "family=allocation_engine";
     }
     if (family == "replay_environment_diagnostics") {
-      return "hero.lattice.fact_summary:replay_environment";
+      return "hero.lattice.inspect subject=facts mode=summary "
+             "family=replay_environment";
     }
     if (family == "runtime_health") {
       return "hero.runtime.health";
     }
-    return "hero.lattice.explain_target";
+    return "hero.lattice.inspect subject=target";
   }
 
   [[nodiscard]] static std::string warning_reason_code(

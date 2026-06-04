@@ -25,30 +25,31 @@ constexpr const char *kDefaultGlobalConfigPath = "/cuwacunu/src/config/.config";
 }
 
 void print_help(const char *argv0) {
-  std::cout << "Usage: " << argv0
-            << " [--global-config <path>] [--config <hero_runtime_dsl>]"
-               " [--tool <name>] [--args-json <json>]"
-               " [--list-tools] [--list-tools-json]\n"
-            << "  default mode: JSON-RPC over stdio\n"
-            << "  default policy path: [HERO].runtime_hero_dsl_path in "
-               "--global-config, then /cuwacunu/src/config/hero.runtime.dsl\n"
-            << "\n"
-            << "Authority groups:\n"
-            << "  Read-only Runtime visibility:\n"
-            << "    hero.runtime.status, schema, wave, list_jobs, get_job,\n"
-            << "    read_artifact\n"
-            << "  Runtime preview:\n"
-            << "    hero.runtime.dry_run\n"
-            << "  Runtime execution/delegation target:\n"
-            << "    hero.runtime.execute, hero.runtime.replay\n"
-            << "  Guarded developer reset:\n"
-            << "    hero.runtime.dev_nuke\n"
-            << "  Boundary:\n"
-            << "    Runtime Hero executes allowed waves/replay and reads job "
-               "evidence.\n"
-            << "    It does not prove Lattice targets, select checkpoints, "
-               "or edit\n"
-            << "    Config Hero policy files.\n";
+  std::cout
+      << "Usage: " << argv0
+      << " [--global-config <path>] [--config <hero_runtime_dsl>]"
+         " [--tool <name>] [--args-json <json>]"
+         " [--list-tools] [--list-tools-json]\n"
+      << "  default mode: JSON-RPC over stdio\n"
+      << "  default policy path: [HERO].runtime_hero_dsl_path in "
+         "--global-config, then /cuwacunu/src/config/hero.runtime.dsl\n"
+      << "\n"
+      << "Authority groups:\n"
+      << "  Read-only Runtime visibility:\n"
+      << "    hero.runtime.status\n"
+      << "    hero.runtime.inspect subject=schema|wave|jobs|job|artifact\n"
+      << "  Runtime execution/delegation:\n"
+      << "    hero.runtime.run operation=wave requested_mode=dry_run|execute\n"
+      << "    hero.runtime.run operation=replay "
+         "requested_mode=plan|dry_run|execute\n"
+      << "  Guarded developer reset:\n"
+      << "    hero.runtime.reset requested_mode=plan|execute\n"
+      << "  Boundary:\n"
+      << "    Runtime Hero executes allowed waves/replay and reads job "
+         "evidence.\n"
+      << "    It does not prove Lattice targets, select checkpoints, "
+         "or edit\n"
+      << "    Config Hero policy files.\n";
 }
 
 } // namespace

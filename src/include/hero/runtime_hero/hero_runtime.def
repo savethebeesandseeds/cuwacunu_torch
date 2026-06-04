@@ -34,7 +34,7 @@ HERO_RUNTIME_POLICY_KEY(
     "Roots under which explicit job_dir arguments may live.")
 HERO_RUNTIME_POLICY_KEY("default_dry_run", "bool", 1, "true", "true|false",
                         "true,false",
-                        "Default dry_run value for hero.runtime.execute.")
+                        "Default dry-run value for hero.runtime.run.")
 HERO_RUNTIME_POLICY_KEY("allow_execute", "bool", 1, "false", "true|false",
                         "true,false", "Allow non-dry-run runtime execution.")
 HERO_RUNTIME_POLICY_KEY(
@@ -49,7 +49,7 @@ HERO_RUNTIME_POLICY_KEY(
     "Require confirm_execute=true for non-dry-run execution.")
 HERO_RUNTIME_POLICY_KEY("allow_dev_nuke", "bool", 1, "false", "true|false",
                         "true,false",
-                        "Allow hero.runtime.dev_nuke to clear runtime state.")
+                        "Allow hero.runtime.reset to clear runtime state.")
 HERO_RUNTIME_POLICY_KEY(
     "require_confirm_dev_nuke", "bool", 1, "true", "true|false",
     "true,false",
@@ -63,12 +63,12 @@ HERO_RUNTIME_POLICY_KEY(
     "/tmp/cuwacunu_runtime_dev_nuke_backups/hero.runtime_dev_nuke",
     "directory path",
     "absolute_or_relative_path",
-    "Root for hero.runtime.dev_nuke backup snapshots.")
+    "Root for hero.runtime.reset backup snapshots.")
 HERO_RUNTIME_POLICY_KEY(
     "allowed_dev_nuke_roots", "path_list", 1, "/cuwacunu/.runtime",
     "comma-separated path list",
     "absolute_or_relative_paths",
-    "Runtime roots that hero.runtime.dev_nuke may clear.")
+    "Runtime roots that hero.runtime.reset may clear.")
 HERO_RUNTIME_POLICY_KEY(
     "max_capture_bytes", "int", 1, "65536", ">=1024", "integer",
     "Maximum stdout/stderr bytes retained inline per stream.")

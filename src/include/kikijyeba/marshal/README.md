@@ -142,7 +142,7 @@ completed Runtime job with replay batches
   -> hero.marshal.rollout requested_mode=plan
   -> inspect rollout plan, policy set, finite limits, and execution profile
   -> hero.marshal.rollout requested_mode=execute when the plan is accepted
-  -> Runtime Hero calls hero.runtime.replay
+  -> Runtime Hero calls hero.runtime.run operation=replay
   -> Runtime writes replay report / trajectory evidence
   -> hero.marshal.inspect reads the evidence later
 ```
@@ -313,7 +313,7 @@ The plan emits command templates for:
 The evaluation runtime handoff prepares a bounded dry-run argument package for:
 
 ```text
-hero.runtime.execute
+hero.runtime.run operation=wave requested_mode=dry_run
 ```
 
 It binds the validation anchor range, expected Runtime wave identity, replay
@@ -497,7 +497,8 @@ cuwacunu_exec --config ... --replay-from-job-dir ...
 ```
 
 In `requested_mode=execute`, Marshal builds the equivalent
-`hero.runtime.replay` argument payload and hands it to Runtime Hero.
+`hero.runtime.run operation=replay` argument payload and hands it to Runtime
+Hero.
 The response records Runtime tool digests and whether replay execution
 completed, but it remains a handoff result, not a rollout receipt.
 
@@ -646,21 +647,22 @@ job evidence through the Kikijyeba environment and Cajtucu paper execution
 backend. It starts from a completed Runtime job directory, a policy set, a
 base-reserve graph node, risky graph nodes, finite replay limits, and an
 execution profile. In `requested_mode=plan` it returns a rollout plan. In
-`requested_mode=execute` it delegates to `hero.runtime.replay` and records the
+`requested_mode=execute` it delegates to
+`hero.runtime.run operation=replay requested_mode=execute` and records the
 handoff state and digests. It does not train, tune, inspect reports, produce a
 rollout receipt, or claim Lattice target satisfaction.
 
 Artifact-readiness targets are evidence proofs, not Runtime wave requests.
-When `hero.lattice.target_deficit` reports `target_class=artifact_readiness`,
+When `hero.lattice.evaluate operation=deficit` reports `target_class=artifact_readiness`,
 `prepare` returns a non-dispatchable packet with
 `next_safe_actions=["inspect"]`; it does not resolve checkpoints, inspect
 Runtime wave shape, or dry-run Runtime. Use `hero.marshal.inspect`
 to view the target proof and any related fact-family summary.
 
 `inspect` is read-only. It calls Lattice
-`evaluate_target` for a target proof, `fact_summary` or `scan_facts` for
-fact-family evidence, `fact_lineage` for audit-only relation/key/digest lineage
-rows, and `fact_preview` when the caller explicitly asks for a concrete fact
+`evaluate operation=target` for a target proof, `inspect subject=facts mode=summary` or `inspect subject=facts mode=scan` for
+fact-family evidence, `inspect subject=facts mode=lineage` for audit-only relation/key/digest lineage
+rows, and `inspect subject=facts mode=preview` when the caller explicitly asks for a concrete fact
 row by digest, digest prefix, or fact index. Marshal does not become proof
 authority, does not claim target satisfaction, and does not select checkpoints
 from this panel.
@@ -683,13 +685,13 @@ families, and issue codes. This keeps unresolved transform, baseline,
 selection-signal, observer, and forecast artifact lineage visible before an
 artifact proof failure is interpreted as a generic target problem.
 Fact panels include a compact `lineage_panel` by default. It relays
-`hero.lattice.fact_lineage` row counts, selected relations, lineage rows, and
+`hero.lattice.inspect subject=facts mode=lineage` row counts, selected relations, lineage rows, and
 explicit non-authority flags such as
 `cache_rows_used_for_target_satisfaction=false`; operators may pass
 `include_lineage=false` only to suppress that audit view.
 Fact panels include `preview_panel` only when requested with `mode=preview`,
 `include_preview`, `fact_digest`, `fact_digest_prefix`, or `fact_index`. The
-preview relays `hero.lattice.fact_preview` rows and keeps
+preview relays `hero.lattice.inspect subject=facts mode=preview` rows and keeps
 `preview_rows_are_audit_only=true`,
 `facts_used_for_target_satisfaction=false`, `checkpoint_selected=false`, and
 `model_selector=false`. The relayed rows include Lattice's normalized
@@ -751,7 +753,7 @@ to `inspect` rather than presenting the failure as a dispatchable
 training deficit. Disabled policy-gate reservations remain attached as
 read-only blocker context and do not change next-safe-action selection.
 `subject=target` asks Lattice for the target deficit and explains the plan or
-blocker. It labels target status as sourced from `hero.lattice.target_deficit`
+blocker. It labels target status as sourced from `hero.lattice.evaluate operation=deficit`
 and only suggests certificate inspection when Lattice returned certificate
 material. `subject=protocol` checks observed Runtime identity fields against
 the requested protocol/graph/source/assembly identity. Its default
@@ -851,9 +853,10 @@ dry_run=true and confirm_execute=false
 field derivations for each generated Runtime request field
 ```
 
-The handoff helper calls Runtime Hero through `hero.runtime.execute` with
-`dry_run=true` and `confirm_execute=false`, returning the Runtime Hero tool
-result JSON plus the Marshal non-authority statement. Runtime handoff parsing
+The handoff helper calls Runtime Hero through
+`hero.runtime.run operation=wave requested_mode=dry_run` with
+`confirm_execute=false`, returning the Runtime Hero tool result JSON plus the
+Marshal non-authority statement. Runtime handoff parsing
 reads the MCP result's top-level `isError` and `structuredContent.ok` fields so
 nested text or nested objects cannot accidentally masquerade as Runtime
 acceptance.
@@ -986,10 +989,11 @@ confirmation token.
 
 The public execution handoff takes an accepted `marshal_execution_gate_result_t`.
 It cannot be called from a plain dry-run decision. Immediately before calling
-`hero.runtime.execute`, Marshal asks Runtime Hero to decode the active wave and
+`hero.runtime.run operation=wave requested_mode=execute`, Marshal asks Runtime
+Hero to decode the active wave and
 compares target, mode, source range, and anchor bounds against the derived
 request, including concrete `PLAN_INPUT_*` model-state inputs. The Runtime Hero
-execute schema accepts a canonical `runtime_handoff` object. The object carries
+run schema accepts a canonical `runtime_handoff` object. The object carries
 handoff schema/id/digest, creator/timestamp, target id, base config path/hash,
 concrete wave fields, concrete checkpoint inputs, Runtime policy path/hash,
 dry-run or execute intent, and an `unresolved_symbols` list. Runtime rejects

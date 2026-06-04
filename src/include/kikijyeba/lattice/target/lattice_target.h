@@ -1739,7 +1739,7 @@ lattice_benchmark_regression_budget_vocabulary() {
        "live scan cost is separated from cache query cost", true, true, false,
        false, false, true, true},
       {"long_lived_mcp_header_only_index_query", "long_lived_mcp",
-       "header_only", "hero.lattice.index_query",
+       "header_only", "hero.lattice.inspect subject=index mode=query",
        "one Hero MCP process, repeated header-only audit queries, and session "
        "cache behavior visible",
        "compare_live_scan=false, allow_unproven_cache=true, "
@@ -1747,7 +1747,7 @@ lattice_benchmark_regression_budget_vocabulary() {
        "no live scan inside the fast audit query after cache is present", false,
        false, false, false, true, true, true},
       {"long_lived_mcp_evaluate_targets_batch", "long_lived_mcp", "live_scan",
-       "hero.lattice.evaluate_targets",
+       "hero.lattice.evaluate operation=targets",
        "one Hero MCP process, multiple targets evaluated through one loaded "
        "target evaluator and session-scanned runtime ledger",
        "result_source=target_evaluation_batch and cache_used_for_target_"
@@ -1755,7 +1755,7 @@ lattice_benchmark_regression_budget_vocabulary() {
        "batch scan reuse is measured separately from cache audit queries", true,
        true, false, false, true, true, true},
       {"direct_cli_header_only_index_query", "direct_cli", "header_only",
-       "hero_lattice.mcp --tool hero.lattice.index_query",
+       "hero_lattice.mcp --tool hero.lattice.inspect subject=index mode=query",
        "full direct process call timing for explicit header-only unproven "
        "audit-cache query",
        "compare_live_scan=false, allow_unproven_cache=true, "
@@ -1764,14 +1764,14 @@ lattice_benchmark_regression_budget_vocabulary() {
        "direct CLI startup is charged to this row, not to library timings",
        false, false, false, true, false, true, true},
       {"direct_cli_live_parity_index_query", "direct_cli", "live_parity",
-       "hero_lattice.mcp --tool hero.lattice.index_query",
+       "hero_lattice.mcp --tool hero.lattice.inspect subject=index mode=query",
        "full direct process call timing for cache validation plus live-scan "
        "parity proof",
        "compare_live_scan=true and selected_answer_parity.checked=true",
        "proof/parity cost is allowed and named separately from fast audit mode",
        true, true, false, true, false, true, true},
       {"direct_cli_evaluate_targets_batch", "direct_cli", "live_scan",
-       "hero_lattice.mcp --tool hero.lattice.evaluate_targets",
+       "hero_lattice.mcp --tool hero.lattice.evaluate operation=targets",
        "full direct process call timing for batch target evaluation over live "
        "runtime evidence",
        "result_source=target_evaluation_batch and target satisfaction never "
@@ -6547,7 +6547,7 @@ lattice_plan_advice_scope_policy_vocabulary() {
        "satisfaction",
        "attempts are created by Runtime Hero/runtime jobs, not by planning",
        true, false, false, false, false, true},
-      {"runtime_hero_executor_boundary", "hero.runtime.execute",
+      {"runtime_hero_executor_boundary", "hero.runtime.run",
        "accepted suggested wave plus Runtime Hero policy",
        "execute or dry-run the accepted runtime wave under Runtime Hero guards",
        "Lattice Hero execution authority or automatic scheduling from "
@@ -8308,7 +8308,7 @@ struct lattice_target_evaluation_t {
   evidence_order_vector_t evidence_order_vector{};
   struct plan_basis_t {
     struct fact_preview_hint_t {
-      std::string tool{"hero.lattice.fact_preview"};
+      std::string tool{"hero.lattice.inspect"};
       std::string marshal_tool{"hero.marshal.inspect"};
       std::string fact_family{};
       std::string fact_digest{};

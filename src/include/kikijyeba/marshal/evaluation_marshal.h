@@ -97,7 +97,7 @@ struct marshal_evaluation_runtime_handoff_t {
   bool target_satisfaction_claimed{false};
   bool runtime_executor{false};
   bool lattice_proof_authority{false};
-  std::string runtime_tool_name{"hero.runtime.execute"};
+  std::string runtime_tool_name{"hero.runtime.run"};
   std::string runtime_execute_args_json{};
   std::string runtime_execute_args_digest{};
   std::string runtime_replay_command_template{};
@@ -693,9 +693,8 @@ prepare_evaluation_plan(const marshal_evaluation_request_t &request) {
   bool first = true;
   detail::append_json_string_field(
       args, "config_path", request.evaluation_config_path.string(), &first);
-  detail::append_json_string_field(args, "target_id", request.target_id,
-                                   &first);
-  detail::append_json_bool_field(args, "dry_run", true, &first);
+  detail::append_json_string_field(args, "operation", "wave", &first);
+  detail::append_json_string_field(args, "requested_mode", "dry_run", &first);
   detail::append_json_bool_field(args, "confirm_execute", false, &first);
   detail::append_json_i64_field(args, "timeout_seconds",
                                 request.runtime_timeout_seconds, &first);

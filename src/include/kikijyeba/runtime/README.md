@@ -97,14 +97,15 @@ training policy lives in `.jkimyei` files consumed by Jkimyei.
 V1 deliberately does not implement resume. Resume requests fail fast after
 configuration entry and before pipeline materialization.
 
-`hero.runtime.execute` accepts a Marshal `runtime_handoff` object for concrete
-operator handoffs. The object binds schema/id/digest, target id, base config,
-concrete wave fields, concrete checkpoint inputs, Runtime policy identity, and
-dry-run/execute intent. Runtime rejects non-empty unresolved-symbol lists and
-symbolic model-state selectors such as `latest_satisfying:*` before launching
-`cuwacunu_exec`. When a handoff is accepted, Runtime passes the handoff id and
-digest into the job runner so `job.manifest`, `runtime.result.fact`, and the
-derived lattice exposure sidecar can echo the same identity.
+`hero.runtime.run operation=wave` accepts a Marshal `runtime_handoff` object for
+concrete operator handoffs. The object binds schema/id/digest, target id, base
+config, concrete wave fields, concrete checkpoint inputs, Runtime policy
+identity, and dry-run/execute intent. Runtime rejects non-empty
+unresolved-symbol lists and symbolic model-state selectors such as
+`latest_satisfying:*` before launching `cuwacunu_exec`. When a handoff is
+accepted, Runtime passes the handoff id and digest into the job runner so
+`job.manifest`, `runtime.result.fact`, and the derived lattice exposure sidecar
+can echo the same identity.
 
 Reusable wave profile files should keep protocol/target/mode/source-order intent
 stable and avoid baked-in anchor indexes. Concrete launch ranges are supplied as
@@ -179,12 +180,14 @@ from the per-step replay evidence. This remains a post-job replay adapter and
 does not change Runtime's MDN execution semantics. The executable surface is
 `cuwacunu_exec --replay-from-job-dir <job_dir>`, which consumes an already
 completed job directory instead of launching a new graph-first wave. Runtime
-Hero exposes the same path as `hero.runtime.replay`. The tool accepts `job_id`
-or `job_dir`, checks the job is completed and has replay batch evidence, then
-delegates to the executable with the requested replay policy options and
-Cajtucu paper profile hints such as `allow_synthetic_direct_edges` and
-`linear_transaction_cost_rate`. The matching read path is named too:
-`hero.runtime.read_artifact` can inspect `replay_batch_index`,
-`replay_experiment_index`, and
-`replay_experiment_report`, and `hero.runtime.get_job` summarizes those replay
-artifacts beside the regular Runtime manifest/state/report summaries.
+Hero exposes the same path as
+`hero.runtime.run operation=replay requested_mode=plan|dry_run|execute`. The
+tool accepts `job_id` or `job_dir`, checks the job is completed and has replay
+batch evidence, then delegates to the executable with the requested replay
+policy options and Cajtucu paper profile hints such as
+`allow_synthetic_direct_edges` and `linear_transaction_cost_rate`. The matching
+read path is named too: `hero.runtime.inspect subject=artifact` can inspect
+`replay_batch_index`, `replay_experiment_index`, and
+`replay_experiment_report`, and `hero.runtime.inspect subject=job` summarizes
+those replay artifacts beside the regular Runtime manifest/state/report
+summaries.

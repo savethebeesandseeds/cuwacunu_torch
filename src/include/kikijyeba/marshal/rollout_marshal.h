@@ -934,11 +934,13 @@ rollout_runtime_replay_args_json(const marshal_rollout_request_t &request,
   std::ostringstream out;
   out << "{";
   bool first = true;
+  detail::append_json_string_field(out, "operation", "replay", &first);
+  detail::append_json_string_field(out, "requested_mode",
+                                   dry_run ? "plan" : "execute", &first);
   detail::append_json_string_field(out, "job_dir",
                                    request.runtime_job_dir.string(), &first);
   detail::append_json_string_field(out, "config_path",
                                    request.config_path.string(), &first);
-  detail::append_json_bool_field(out, "dry_run", dry_run, &first);
   detail::append_json_string_field(out, "base_reserve_node_id",
                                    request.base_reserve_node_id, &first);
   detail::append_json_string_field(out, "risky_node_ids",

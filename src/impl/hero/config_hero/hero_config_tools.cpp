@@ -45,73 +45,22 @@ constexpr tool_descriptor_t kTools[] = {
      "Read-only health: summarize Config Hero policy and global config "
      "state.",
      R"({"type":"object","properties":{},"additionalProperties":false})"},
-    {"hero.config.schema",
-     "Read-only catalog: list Config Hero policy keys and constraints.",
-     R"({"type":"object","properties":{},"additionalProperties":false})"},
-    {"hero.config.show",
-     "Read-only inspection: show loaded Config Hero policy values.",
-     R"({"type":"object","properties":{},"additionalProperties":false})"},
-    {"hero.config.get",
-     "Read-only inspection: get one Config Hero policy value.",
-     R"({"type":"object","properties":{"key":{"type":"string"}},"required":["key"],"additionalProperties":false})"},
-    {"hero.config.set",
-     "Config mutation: update one Config Hero policy value in memory.",
-     R"({"type":"object","properties":{"key":{"type":"string"},"value":{"type":"string"}},"required":["key","value"],"additionalProperties":false})"},
-    {"hero.config.validate",
-     "Read-only validation: check Config Hero policy and fresh global "
-     "config paths.",
-     R"({"type":"object","properties":{},"additionalProperties":false})"},
-    {"hero.config.map",
-     "Read-only inspection: map global config path references with "
-     "existence and optional sha256.",
-     R"({"type":"object","properties":{"include_sha256":{"type":"boolean"}},"additionalProperties":false})"},
-    {"hero.config.capture_bundle",
-     "Read-only provenance: return an exact config bundle receipt.",
-     R"({"type":"object","properties":{"config_path":{"type":"string"},"include_text":{"type":"boolean"}},"additionalProperties":false})"},
-    {"hero.config.resolve",
-     "Read-only preflight: resolve one Config Hero path and report policy "
-     "gates before use.",
-     R"({"type":"object","properties":{"path":{"type":"string"},"for_write":{"type":"boolean"},"include_sha256":{"type":"boolean"}},"required":["path"],"additionalProperties":false})"},
-    {"hero.config.diff",
-     "Read-only preview: diff pending Config Hero policy save.",
-     R"({"type":"object","properties":{"include_text":{"type":"boolean"}},"additionalProperties":false})"},
-    {"hero.config.save",
-     "Config mutation: persist the Config Hero policy file.",
-     R"({"type":"object","properties":{},"additionalProperties":false})"},
-    {"hero.config.reload",
-     "Session mutation: reload the Config Hero policy file from disk.",
-     R"({"type":"object","properties":{},"additionalProperties":false})"},
-    {"hero.config.backups",
-     "Read-only inspection: list Config Hero policy backups.",
-     R"({"type":"object","properties":{},"additionalProperties":false})"},
-    {"hero.config.rollback",
-     "Config mutation: restore the Config Hero policy from a backup.",
-     R"({"type":"object","properties":{"backup":{"type":"string"}},"additionalProperties":false})"},
-    {"hero.config.list", "Read-only inspection: list managed config files.",
-     R"({"type":"object","properties":{"root":{"type":"string"},"recursive":{"type":"boolean"},"include_sha256":{"type":"boolean"}},"additionalProperties":false})"},
-    {"hero.config.read", "Read-only inspection: read one managed config file.",
-     R"({"type":"object","properties":{"path":{"type":"string"}},"required":["path"],"additionalProperties":false})"},
-    {"hero.config.write",
-     "File mutation: create or replace one managed config file as a whole "
-     "file.",
-     R"({"type":"object","properties":{"path":{"type":"string"},"content":{"type":"string"},"expected_sha256":{"type":"string"},"dry_run":{"type":"boolean"}},"required":["path","content"],"additionalProperties":false})"},
-    {"hero.config.delete",
-     "File mutation: delete one managed config file after sha256 check.",
-     R"({"type":"object","properties":{"path":{"type":"string"},"expected_sha256":{"type":"string"},"dry_run":{"type":"boolean"}},"required":["path"],"additionalProperties":false})"},
+    {"hero.config.inspect",
+     "Read-only inspection: route Config schema, policy values, validation, "
+     "path provenance, backups, and managed file reads through subject.",
+     R"({"type":"object","properties":{"subject":{"type":"string","enum":["schema","show","value","validate","map","bundle","resolve_path","diff","backups","file_list","file_read"]},"key":{"type":"string"},"path":{"type":"string"},"config_path":{"type":"string"},"include_content":{"type":"boolean"},"include_machine_payload":{"type":"boolean"},"include_sha256":{"type":"boolean"},"for_write":{"type":"boolean"},"recursive":{"type":"boolean"},"limit":{"type":"integer"}},"required":["subject"],"additionalProperties":false})"},
+    {"hero.config.apply",
+     "Config mutation: plan or execute policy/file changes through operation. "
+     "Only this Config Hero tool mutates.",
+     R"({"type":"object","properties":{"operation":{"type":"string","enum":["set","save","reload","rollback","write","delete"]},"requested_mode":{"type":"string","enum":["plan","execute"]},"key":{"type":"string"},"value":{"type":"string"},"path":{"type":"string"},"content":{"type":"string"},"backup_id":{"type":"string"},"expected_sha256":{"type":"string"},"expected_current_sha256":{"type":"string"},"reason":{"type":"string"},"create_backup":{"type":"boolean"},"include_content":{"type":"boolean"}},"required":["operation","requested_mode"],"additionalProperties":false})"},
 };
 
 [[nodiscard]] bool tool_is_read_only(std::string_view name) {
-  return name == "hero.config.status" || name == "hero.config.schema" ||
-         name == "hero.config.show" || name == "hero.config.get" ||
-         name == "hero.config.validate" || name == "hero.config.diff" ||
-         name == "hero.config.map" || name == "hero.config.capture_bundle" ||
-         name == "hero.config.resolve" || name == "hero.config.backups" ||
-         name == "hero.config.list" || name == "hero.config.read";
+  return name == "hero.config.status" || name == "hero.config.inspect";
 }
 
 [[nodiscard]] bool tool_is_destructive(std::string_view name) {
-  return name == "hero.config.rollback" || name == "hero.config.write" ||
-         name == "hero.config.delete";
+  return name == "hero.config.apply";
 }
 
 [[nodiscard]] std::string trim_ascii(std::string_view in) {
@@ -445,6 +394,230 @@ void skip_ws(const std::string &s, std::size_t *idx) {
     return true;
   }
   return false;
+}
+
+[[nodiscard]] bool extract_json_int_field(const std::string &json,
+                                          std::string_view key, int *out) {
+  std::string raw;
+  if (!extract_json_raw_field(json, key, &raw)) {
+    return false;
+  }
+  int value = 0;
+  if (!parse_int(raw, &value)) {
+    return false;
+  }
+  if (out) {
+    *out = value;
+  }
+  return true;
+}
+
+struct json_field_t {
+  std::string key;
+  std::string raw_value;
+};
+
+[[nodiscard]] bool parse_json_object_fields(const std::string &json,
+                                            std::vector<json_field_t> *out,
+                                            std::string *err) {
+  if (out) {
+    out->clear();
+  }
+  std::size_t idx = 0;
+  skip_ws(json, &idx);
+  if (idx >= json.size() || json[idx] != '{') {
+    if (err) {
+      *err = "arguments must be a JSON object";
+    }
+    return false;
+  }
+  ++idx;
+  skip_ws(json, &idx);
+  if (idx < json.size() && json[idx] == '}') {
+    ++idx;
+    skip_ws(json, &idx);
+    if (idx != json.size()) {
+      if (err) {
+        *err = "unexpected trailing content after JSON object";
+      }
+      return false;
+    }
+    return true;
+  }
+  while (idx < json.size()) {
+    std::string key;
+    if (!parse_json_string_token(json, &idx, &key)) {
+      if (err) {
+        *err = "expected JSON object key";
+      }
+      return false;
+    }
+    if (out) {
+      for (const auto &field : *out) {
+        if (field.key == key) {
+          if (err) {
+            *err = "duplicate field: " + key;
+          }
+          return false;
+        }
+      }
+    }
+    skip_ws(json, &idx);
+    if (idx >= json.size() || json[idx] != ':') {
+      if (err) {
+        *err = "expected ':' after JSON object key";
+      }
+      return false;
+    }
+    ++idx;
+    skip_ws(json, &idx);
+    const std::size_t value_begin = idx;
+    if (!skip_json_value(json, &idx)) {
+      if (err) {
+        *err = "invalid JSON value for field: " + key;
+      }
+      return false;
+    }
+    if (out) {
+      out->push_back({key, trim_ascii(std::string_view(json).substr(
+                               value_begin, idx - value_begin))});
+    }
+    skip_ws(json, &idx);
+    if (idx < json.size() && json[idx] == ',') {
+      ++idx;
+      skip_ws(json, &idx);
+      continue;
+    }
+    if (idx < json.size() && json[idx] == '}') {
+      ++idx;
+      skip_ws(json, &idx);
+      if (idx != json.size()) {
+        if (err) {
+          *err = "unexpected trailing content after JSON object";
+        }
+        return false;
+      }
+      return true;
+    }
+    if (err) {
+      *err = "expected ',' or '}' in JSON object";
+    }
+    return false;
+  }
+  if (err) {
+    *err = "unterminated JSON object";
+  }
+  return false;
+}
+
+[[nodiscard]] bool raw_field(const std::vector<json_field_t> &fields,
+                             std::string_view key, std::string *out) {
+  for (const auto &field : fields) {
+    if (field.key == key) {
+      if (out) {
+        *out = field.raw_value;
+      }
+      return true;
+    }
+  }
+  return false;
+}
+
+[[nodiscard]] bool has_field(const std::vector<json_field_t> &fields,
+                             std::string_view key) {
+  return raw_field(fields, key, nullptr);
+}
+
+[[nodiscard]] bool
+field_allowed(std::string_view key,
+              std::initializer_list<std::string_view> allowed) {
+  return std::find(allowed.begin(), allowed.end(), key) != allowed.end();
+}
+
+[[nodiscard]] bool
+validate_allowed_fields(const std::vector<json_field_t> &fields,
+                        std::initializer_list<std::string_view> allowed,
+                        std::string *err) {
+  for (const auto &field : fields) {
+    if (!field_allowed(field.key, allowed)) {
+      if (err) {
+        *err = "unknown field: " + field.key;
+      }
+      return false;
+    }
+  }
+  return true;
+}
+
+[[nodiscard]] bool validate_optional_bool_field(const std::string &args,
+                                                std::string_view key,
+                                                std::string *err) {
+  if (!extract_json_raw_field(args, key, nullptr)) {
+    return true;
+  }
+  bool ignored = false;
+  if (!extract_json_bool_field(args, key, &ignored)) {
+    if (err) {
+      *err = std::string(key) + " must be boolean";
+    }
+    return false;
+  }
+  return true;
+}
+
+[[nodiscard]] bool optional_bool_value(const std::string &args,
+                                       std::string_view key, bool fallback,
+                                       std::string *err) {
+  if (!extract_json_raw_field(args, key, nullptr)) {
+    return fallback;
+  }
+  bool value = fallback;
+  if (!extract_json_bool_field(args, key, &value)) {
+    if (err) {
+      *err = std::string(key) + " must be boolean";
+    }
+    return fallback;
+  }
+  return value;
+}
+
+void append_raw_member(std::ostringstream *out, bool *has_any,
+                       const std::vector<json_field_t> &fields,
+                       std::string_view source_key,
+                       std::string_view output_key = {}) {
+  std::string raw;
+  if (!raw_field(fields, source_key, &raw)) {
+    return;
+  }
+  if (*has_any) {
+    *out << ",";
+  }
+  *out << json_quote(output_key.empty() ? source_key : output_key) << ":"
+       << raw;
+  *has_any = true;
+}
+
+[[nodiscard]] std::string object_with_fields(
+    const std::vector<json_field_t> &fields,
+    std::initializer_list<std::pair<std::string_view, std::string_view>>
+        field_map) {
+  std::ostringstream out;
+  bool has_any = false;
+  out << "{";
+  for (const auto &[source_key, output_key] : field_map) {
+    append_raw_member(&out, &has_any, fields, source_key, output_key);
+  }
+  out << "}";
+  return out.str();
+}
+
+void append_literal_member(std::ostringstream *out, bool *has_any,
+                           std::string_view key, std::string_view raw_value) {
+  if (*has_any) {
+    *out << ",";
+  }
+  *out << json_quote(key) << ":" << raw_value;
+  *has_any = true;
 }
 
 [[nodiscard]] fs::path normalize_path(const fs::path &path) {
@@ -1264,7 +1437,7 @@ build_global_config_map_json(const hero_config_store_t &store,
                               std::string *err) {
   std::string key;
   if (!extract_json_string_field(args, "key", &key) || key.empty()) {
-    *err = "hero.config.get requires string argument key";
+    *err = "hero.config.inspect subject=value requires string argument key";
     return false;
   }
   const auto value = store->get_value(key);
@@ -1283,11 +1456,11 @@ build_global_config_map_json(const hero_config_store_t &store,
   std::string key;
   std::string value;
   if (!extract_json_string_field(args, "key", &key) || key.empty()) {
-    *err = "hero.config.set requires string argument key";
+    *err = "hero.config.apply operation=set requires string argument key";
     return false;
   }
   if (!extract_json_string_field(args, "value", &value)) {
-    *err = "hero.config.set requires string argument value";
+    *err = "hero.config.apply operation=set requires string argument value";
     return false;
   }
   if (!store->set_value(key, value, err)) {
@@ -1373,7 +1546,8 @@ build_global_config_map_json(const hero_config_store_t &store,
   std::string path_arg;
   if (!extract_json_string_field(args, "path", &path_arg) ||
       trim_ascii(path_arg).empty()) {
-    *err = "hero.config.resolve requires string argument path";
+    *err = "hero.config.inspect subject=resolve_path requires string argument "
+           "path";
     return false;
   }
   bool for_write = false;
@@ -1494,6 +1668,16 @@ build_global_config_map_json(const hero_config_store_t &store,
     *err = "include_sha256 must be boolean";
     return false;
   }
+  int limit = 0;
+  const bool has_limit = extract_json_raw_field(args, "limit", nullptr);
+  if (has_limit && !extract_json_int_field(args, "limit", &limit)) {
+    *err = "limit must be integer";
+    return false;
+  }
+  if (has_limit && limit < 0) {
+    *err = "limit must be non-negative";
+    return false;
+  }
   fs::path root;
   if (!resolve_managed_path(*store, root_arg.empty() ? "." : root_arg, false,
                             &root, err, false)) {
@@ -1530,6 +1714,9 @@ build_global_config_map_json(const hero_config_store_t &store,
     return false;
   }
   std::sort(files.begin(), files.end());
+  if (has_limit && static_cast<std::size_t>(limit) < files.size()) {
+    files.resize(static_cast<std::size_t>(limit));
+  }
 
   std::ostringstream json;
   json << "{\"root\":" << json_quote(root.string())
@@ -1566,7 +1753,8 @@ build_global_config_map_json(const hero_config_store_t &store,
   std::string path_arg;
   if (!extract_json_string_field(args, "path", &path_arg) ||
       trim_ascii(path_arg).empty()) {
-    *err = "hero.config.read requires string argument path";
+    *err =
+        "hero.config.inspect subject=file_read requires string argument path";
     return false;
   }
   fs::path path;
@@ -1595,11 +1783,11 @@ build_global_config_map_json(const hero_config_store_t &store,
   std::string content;
   if (!extract_json_string_field(args, "path", &path_arg) ||
       trim_ascii(path_arg).empty()) {
-    *err = "hero.config.write requires string argument path";
+    *err = "hero.config.apply operation=write requires string argument path";
     return false;
   }
   if (!extract_json_string_field(args, "content", &content)) {
-    *err = "hero.config.write requires string argument content";
+    *err = "hero.config.apply operation=write requires string argument content";
     return false;
   }
   bool dry_run = false;
@@ -1697,7 +1885,7 @@ build_global_config_map_json(const hero_config_store_t &store,
   std::string path_arg;
   if (!extract_json_string_field(args, "path", &path_arg) ||
       trim_ascii(path_arg).empty()) {
-    *err = "hero.config.delete requires string argument path";
+    *err = "hero.config.apply operation=delete requires string argument path";
     return false;
   }
   bool dry_run = false;
@@ -1765,6 +1953,413 @@ build_global_config_map_json(const hero_config_store_t &store,
   return true;
 }
 
+[[nodiscard]] bool
+validate_inspect_fields(const std::string &subject,
+                        const std::vector<json_field_t> &fields,
+                        std::string *err) {
+  if (subject == "schema" || subject == "show" || subject == "validate" ||
+      subject == "backups") {
+    return validate_allowed_fields(fields,
+                                   {"subject", "include_machine_payload"}, err);
+  }
+  if (subject == "value") {
+    return validate_allowed_fields(
+        fields, {"subject", "key", "include_machine_payload"}, err);
+  }
+  if (subject == "map") {
+    return validate_allowed_fields(
+        fields, {"subject", "include_sha256", "include_machine_payload"}, err);
+  }
+  if (subject == "bundle") {
+    return validate_allowed_fields(fields,
+                                   {"subject", "config_path", "include_content",
+                                    "include_machine_payload"},
+                                   err);
+  }
+  if (subject == "resolve_path") {
+    return validate_allowed_fields(fields,
+                                   {"subject", "path", "for_write",
+                                    "include_sha256",
+                                    "include_machine_payload"},
+                                   err);
+  }
+  if (subject == "diff") {
+    return validate_allowed_fields(
+        fields, {"subject", "include_content", "include_machine_payload"}, err);
+  }
+  if (subject == "file_list") {
+    return validate_allowed_fields(fields,
+                                   {"subject", "path", "recursive",
+                                    "include_sha256", "limit",
+                                    "include_machine_payload"},
+                                   err);
+  }
+  if (subject == "file_read") {
+    return validate_allowed_fields(
+        fields, {"subject", "path", "include_machine_payload"}, err);
+  }
+  if (err) {
+    *err = "hero.config.inspect subject must be one of schema, show, value, "
+           "validate, map, bundle, resolve_path, diff, backups, file_list, "
+           "file_read";
+  }
+  return false;
+}
+
+[[nodiscard]] bool handle_inspect(const std::string &args,
+                                  hero_config_store_t *store, std::string *out,
+                                  std::string *err) {
+  std::vector<json_field_t> fields;
+  if (!parse_json_object_fields(args, &fields, err)) {
+    return false;
+  }
+  std::string subject;
+  if (!extract_json_string_field(args, "subject", &subject) ||
+      trim_ascii(subject).empty()) {
+    *err = "hero.config.inspect requires string argument subject";
+    return false;
+  }
+  subject = trim_ascii(subject);
+  if (!validate_inspect_fields(subject, fields, err)) {
+    return false;
+  }
+  for (const auto &bool_key : {"include_content", "include_machine_payload",
+                               "include_sha256", "for_write", "recursive"}) {
+    if (!validate_optional_bool_field(args, bool_key, err)) {
+      return false;
+    }
+  }
+
+  if (subject == "schema") {
+    return handle_schema("{}", store, out, err);
+  }
+  if (subject == "show") {
+    return handle_show("{}", store, out, err);
+  }
+  if (subject == "value") {
+    const std::string subargs = object_with_fields(fields, {{"key", "key"}});
+    return handle_get(subargs, store, out, err);
+  }
+  if (subject == "validate") {
+    return handle_validate("{}", store, out, err);
+  }
+  if (subject == "map") {
+    const std::string subargs =
+        object_with_fields(fields, {{"include_sha256", "include_sha256"}});
+    return handle_map(subargs, store, out, err);
+  }
+  if (subject == "bundle") {
+    std::ostringstream subargs;
+    bool has_any = false;
+    subargs << "{";
+    append_raw_member(&subargs, &has_any, fields, "config_path", "config_path");
+    append_raw_member(&subargs, &has_any, fields, "include_content",
+                      "include_text");
+    subargs << "}";
+    return handle_capture_bundle(subargs.str(), store, out, err);
+  }
+  if (subject == "resolve_path") {
+    const std::string subargs =
+        object_with_fields(fields, {{"path", "path"},
+                                    {"for_write", "for_write"},
+                                    {"include_sha256", "include_sha256"}});
+    return handle_resolve(subargs, store, out, err);
+  }
+  if (subject == "diff") {
+    std::ostringstream subargs;
+    bool has_any = false;
+    subargs << "{";
+    append_raw_member(&subargs, &has_any, fields, "include_content",
+                      "include_text");
+    subargs << "}";
+    return handle_diff(subargs.str(), store, out, err);
+  }
+  if (subject == "backups") {
+    return handle_backups("{}", store, out, err);
+  }
+  if (subject == "file_list") {
+    std::ostringstream subargs;
+    bool has_any = false;
+    subargs << "{";
+    append_raw_member(&subargs, &has_any, fields, "path", "root");
+    append_raw_member(&subargs, &has_any, fields, "recursive", "recursive");
+    append_raw_member(&subargs, &has_any, fields, "include_sha256",
+                      "include_sha256");
+    append_raw_member(&subargs, &has_any, fields, "limit", "limit");
+    subargs << "}";
+    return handle_list(subargs.str(), store, out, err);
+  }
+  if (subject == "file_read") {
+    const std::string subargs = object_with_fields(fields, {{"path", "path"}});
+    return handle_read(subargs, store, out, err);
+  }
+  *err = "unsupported hero.config.inspect subject: " + subject;
+  return false;
+}
+
+[[nodiscard]] bool select_backup_for_plan(const hero_config_store_t &store,
+                                          const std::string &selector,
+                                          std::string *selected,
+                                          std::string *err) {
+  std::vector<hero_config_store_t::backup_entry_t> backups;
+  if (!store.list_backups(&backups, err)) {
+    return false;
+  }
+  if (backups.empty()) {
+    if (err) {
+      *err = "no Config Hero policy backups found";
+    }
+    return false;
+  }
+  if (trim_ascii(selector).empty()) {
+    if (selected) {
+      *selected = backups.front().path;
+    }
+    return true;
+  }
+  int index = -1;
+  if (parse_int(selector, &index) && index >= 0 &&
+      static_cast<std::size_t>(index) < backups.size()) {
+    if (selected) {
+      *selected = backups[static_cast<std::size_t>(index)].path;
+    }
+    return true;
+  }
+  for (const auto &backup : backups) {
+    if (backup.filename == selector || backup.path == selector) {
+      if (selected) {
+        *selected = backup.path;
+      }
+      return true;
+    }
+  }
+  if (err) {
+    *err = "backup not found: " + selector;
+  }
+  return false;
+}
+
+[[nodiscard]] bool
+build_expected_sha256_args(const std::vector<json_field_t> &fields,
+                           std::ostringstream *subargs, bool *has_any,
+                           std::string *err) {
+  std::string expected_sha;
+  std::string expected_current_sha;
+  const bool has_expected = extract_json_string_field(
+      object_with_fields(fields, {{"expected_sha256", "expected_sha256"}}),
+      "expected_sha256", &expected_sha);
+  const bool has_expected_current = extract_json_string_field(
+      object_with_fields(
+          fields, {{"expected_current_sha256", "expected_current_sha256"}}),
+      "expected_current_sha256", &expected_current_sha);
+  if (has_expected && has_expected_current &&
+      expected_sha != expected_current_sha) {
+    if (err) {
+      *err = "expected_sha256 and expected_current_sha256 must match when "
+             "both are provided";
+    }
+    return false;
+  }
+  if (has_expected || has_expected_current) {
+    append_literal_member(
+        subargs, has_any, "expected_sha256",
+        json_quote(has_expected ? expected_sha : expected_current_sha));
+  }
+  return true;
+}
+
+[[nodiscard]] bool
+validate_apply_fields(const std::string &operation,
+                      const std::vector<json_field_t> &fields,
+                      std::string *err) {
+  if (operation == "set") {
+    return validate_allowed_fields(fields,
+                                   {"operation", "requested_mode", "key",
+                                    "value", "reason", "include_content"},
+                                   err);
+  }
+  if (operation == "save" || operation == "reload") {
+    return validate_allowed_fields(
+        fields, {"operation", "requested_mode", "reason", "include_content"},
+        err);
+  }
+  if (operation == "rollback") {
+    return validate_allowed_fields(fields,
+                                   {"operation", "requested_mode", "backup_id",
+                                    "reason", "include_content"},
+                                   err);
+  }
+  if (operation == "write") {
+    return validate_allowed_fields(fields,
+                                   {"operation", "requested_mode", "path",
+                                    "content", "expected_sha256",
+                                    "expected_current_sha256", "reason",
+                                    "create_backup", "include_content"},
+                                   err);
+  }
+  if (operation == "delete") {
+    return validate_allowed_fields(fields,
+                                   {"operation", "requested_mode", "path",
+                                    "expected_sha256",
+                                    "expected_current_sha256", "reason",
+                                    "create_backup", "include_content"},
+                                   err);
+  }
+  if (err) {
+    *err = "hero.config.apply operation must be one of set, save, reload, "
+           "rollback, write, delete";
+  }
+  return false;
+}
+
+[[nodiscard]] bool handle_apply_plan(const std::string &operation,
+                                     const std::vector<json_field_t> &fields,
+                                     hero_config_store_t *store,
+                                     std::string *out, std::string *err) {
+  if (operation == "set") {
+    std::string key;
+    std::string value;
+    if (!extract_json_string_field(object_with_fields(fields, {{"key", "key"}}),
+                                   "key", &key) ||
+        key.empty()) {
+      *err = "hero.config.apply operation=set requires string argument key";
+      return false;
+    }
+    if (!extract_json_string_field(
+            object_with_fields(fields, {{"value", "value"}}), "value",
+            &value)) {
+      *err = "hero.config.apply operation=set requires string argument value";
+      return false;
+    }
+    hero_config_store_t copy = *store;
+    std::string validation_error;
+    if (!copy.set_value(key, value, &validation_error)) {
+      *err = validation_error;
+      return false;
+    }
+    *out = "{\"planned\":true,\"operation\":\"set\",\"would_mutate\":true,"
+           "\"key\":" +
+           json_quote(key) + ",\"value\":" + json_quote(value) + "}";
+    return true;
+  }
+  if (operation == "save") {
+    hero_config_store_t::save_preview_t preview;
+    if (!store->preview_save(&preview, err)) {
+      return false;
+    }
+    const bool include_content = optional_bool_value(
+        object_with_fields(fields, {{"include_content", "include_content"}}),
+        "include_content", false, err);
+    if (!err->empty()) {
+      return false;
+    }
+    *out = "{\"planned\":true,\"operation\":\"save\",\"would_mutate\":true,"
+           "\"preview\":" +
+           build_preview_json(preview, include_content) + "}";
+    return true;
+  }
+  if (operation == "reload") {
+    *out = "{\"planned\":true,\"operation\":\"reload\",\"would_mutate\":true,"
+           "\"path\":" +
+           json_quote(store->config_path()) + "}";
+    return true;
+  }
+  if (operation == "rollback") {
+    std::string selector;
+    (void)extract_json_string_field(
+        object_with_fields(fields, {{"backup_id", "backup"}}), "backup",
+        &selector);
+    std::string selected;
+    if (!select_backup_for_plan(*store, selector, &selected, err)) {
+      return false;
+    }
+    *out = "{\"planned\":true,\"operation\":\"rollback\",\"would_mutate\":true,"
+           "\"selected_backup\":" +
+           json_quote(selected) + "}";
+    return true;
+  }
+  *err = "unsupported hero.config.apply plan operation: " + operation;
+  return false;
+}
+
+[[nodiscard]] bool handle_apply(const std::string &args,
+                                hero_config_store_t *store, std::string *out,
+                                std::string *err) {
+  std::vector<json_field_t> fields;
+  if (!parse_json_object_fields(args, &fields, err)) {
+    return false;
+  }
+  std::string operation;
+  if (!extract_json_string_field(args, "operation", &operation) ||
+      trim_ascii(operation).empty()) {
+    *err = "hero.config.apply requires string argument operation";
+    return false;
+  }
+  operation = trim_ascii(operation);
+  std::string requested_mode;
+  if (!extract_json_string_field(args, "requested_mode", &requested_mode) ||
+      trim_ascii(requested_mode).empty()) {
+    *err = "hero.config.apply requires string argument requested_mode";
+    return false;
+  }
+  requested_mode = trim_ascii(requested_mode);
+  if (requested_mode != "plan" && requested_mode != "execute") {
+    *err = "hero.config.apply requested_mode must be plan or execute";
+    return false;
+  }
+  if (!validate_apply_fields(operation, fields, err)) {
+    return false;
+  }
+  for (const auto &bool_key : {"create_backup", "include_content"}) {
+    if (!validate_optional_bool_field(args, bool_key, err)) {
+      return false;
+    }
+  }
+
+  if (requested_mode == "plan" &&
+      (operation == "set" || operation == "save" || operation == "reload" ||
+       operation == "rollback")) {
+    return handle_apply_plan(operation, fields, store, out, err);
+  }
+
+  if (operation == "set") {
+    const std::string subargs =
+        object_with_fields(fields, {{"key", "key"}, {"value", "value"}});
+    return handle_set(subargs, store, out, err);
+  }
+  if (operation == "save") {
+    return handle_save("{}", store, out, err);
+  }
+  if (operation == "reload") {
+    return handle_reload("{}", store, out, err);
+  }
+  if (operation == "rollback") {
+    const std::string subargs =
+        object_with_fields(fields, {{"backup_id", "backup"}});
+    return handle_rollback(subargs, store, out, err);
+  }
+  if (operation == "write" || operation == "delete") {
+    std::ostringstream subargs;
+    bool has_any = false;
+    subargs << "{";
+    append_raw_member(&subargs, &has_any, fields, "path", "path");
+    append_raw_member(&subargs, &has_any, fields, "content", "content");
+    if (!build_expected_sha256_args(fields, &subargs, &has_any, err)) {
+      return false;
+    }
+    append_literal_member(&subargs, &has_any, "dry_run",
+                          requested_mode == "plan" ? "true" : "false");
+    subargs << "}";
+    if (operation == "write") {
+      return handle_write(subargs.str(), store, out, err);
+    }
+    return handle_delete(subargs.str(), store, out, err);
+  }
+
+  *err = "unsupported hero.config.apply operation: " + operation;
+  return false;
+}
+
 using handler_fn = bool (*)(const std::string &, hero_config_store_t *,
                             std::string *, std::string *);
 
@@ -1772,56 +2367,11 @@ using handler_fn = bool (*)(const std::string &, hero_config_store_t *,
   if (name == "hero.config.status") {
     return handle_status;
   }
-  if (name == "hero.config.schema") {
-    return handle_schema;
+  if (name == "hero.config.inspect") {
+    return handle_inspect;
   }
-  if (name == "hero.config.show") {
-    return handle_show;
-  }
-  if (name == "hero.config.get") {
-    return handle_get;
-  }
-  if (name == "hero.config.set") {
-    return handle_set;
-  }
-  if (name == "hero.config.validate") {
-    return handle_validate;
-  }
-  if (name == "hero.config.map") {
-    return handle_map;
-  }
-  if (name == "hero.config.capture_bundle") {
-    return handle_capture_bundle;
-  }
-  if (name == "hero.config.resolve") {
-    return handle_resolve;
-  }
-  if (name == "hero.config.diff") {
-    return handle_diff;
-  }
-  if (name == "hero.config.save") {
-    return handle_save;
-  }
-  if (name == "hero.config.reload") {
-    return handle_reload;
-  }
-  if (name == "hero.config.backups") {
-    return handle_backups;
-  }
-  if (name == "hero.config.rollback") {
-    return handle_rollback;
-  }
-  if (name == "hero.config.list") {
-    return handle_list;
-  }
-  if (name == "hero.config.read") {
-    return handle_read;
-  }
-  if (name == "hero.config.write") {
-    return handle_write;
-  }
-  if (name == "hero.config.delete") {
-    return handle_delete;
+  if (name == "hero.config.apply") {
+    return handle_apply;
   }
   return std::nullopt;
 }

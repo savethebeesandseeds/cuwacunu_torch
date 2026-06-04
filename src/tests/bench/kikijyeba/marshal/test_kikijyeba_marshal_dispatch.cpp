@@ -169,7 +169,7 @@ marshal::marshal_dispatch_advice_t valid_advice() {
   advice.recommendation_attempt_count = 0;
   advice.required_plan_inputs = {"PLAN_INPUT_MDN_CHECKPOINT",
                                  "PLAN_INPUT_REPRESENTATION_CHECKPOINT"};
-  advice.source_lattice_tool = "hero.lattice.evaluate_target";
+  advice.source_lattice_tool = "hero.lattice.evaluate";
   advice.source_lattice_timestamp = "2026-05-23T00:00:00Z";
   advice.plan_basis_digest = marshal::plan_basis_digest(advice.plan_basis);
   advice.suggested_wave_digest =
@@ -773,7 +773,7 @@ void test_digest_and_root_guards() {
 
 void test_lattice_advice_provenance_and_freshness() {
   auto advice = valid_advice();
-  advice.source_lattice_tool = "hero.runtime.execute";
+  advice.source_lattice_tool = "hero.runtime.run";
   auto result = marshal::validate_dispatch_advice(advice, valid_request(advice),
                                                   context());
   check(!result.dispatchable, "wrong advice provenance tool must fail");
@@ -1288,7 +1288,7 @@ void test_m2_public_dry_run_dispatch_operation() {
   auto advice = valid_advice();
   advice.config_path = config_path.string();
   advice.runtime_root = runtime_root.string();
-  advice.source_lattice_tool = "hero.lattice.target_deficit";
+  advice.source_lattice_tool = "hero.lattice.evaluate";
   advice.plan_basis_digest.clear();
   advice.suggested_wave_digest.clear();
   advice.plan_input_digest.clear();
@@ -1544,7 +1544,7 @@ void test_m3_accepted_execution_handoff() {
   auto advice = valid_advice();
   advice.config_path = config_path.string();
   advice.runtime_root = runtime_root.string();
-  advice.source_lattice_tool = "hero.lattice.target_deficit";
+  advice.source_lattice_tool = "hero.lattice.evaluate";
   advice.plan_basis_digest.clear();
   advice.suggested_wave_digest.clear();
   advice.plan_input_digest.clear();
@@ -1673,7 +1673,7 @@ void test_m3_execution_handoff_rechecks_runtime_wave() {
   auto advice = valid_advice();
   advice.config_path = config_path.string();
   advice.runtime_root = runtime_root.string();
-  advice.source_lattice_tool = "hero.lattice.target_deficit";
+  advice.source_lattice_tool = "hero.lattice.evaluate";
   advice.plan_basis_digest.clear();
   advice.suggested_wave_digest.clear();
   advice.plan_input_digest.clear();
@@ -1799,7 +1799,7 @@ void test_m4_dispatch_receipt_replay_audit() {
   auto advice = valid_advice();
   advice.config_path = config_path.string();
   advice.runtime_root = runtime_root.string();
-  advice.source_lattice_tool = "hero.lattice.target_deficit";
+  advice.source_lattice_tool = "hero.lattice.evaluate";
   advice.plan_basis_digest.clear();
   advice.suggested_wave_digest.clear();
   advice.plan_input_digest.clear();
@@ -2022,7 +2022,7 @@ void test_m7_batch_preview_independence() {
   auto advice = valid_advice();
   advice.config_path = config_path.string();
   advice.runtime_root = runtime_root.string();
-  advice.source_lattice_tool = "hero.lattice.target_deficit";
+  advice.source_lattice_tool = "hero.lattice.evaluate";
   advice.plan_basis_digest.clear();
   advice.suggested_wave_digest.clear();
   advice.plan_input_digest.clear();
@@ -2144,7 +2144,7 @@ void test_m5_codex_assist_uses_deterministic_primitives() {
   auto advice = valid_advice();
   advice.config_path = config_path.string();
   advice.runtime_root = runtime_root.string();
-  advice.source_lattice_tool = "hero.lattice.target_deficit";
+  advice.source_lattice_tool = "hero.lattice.evaluate";
   advice.plan_basis_digest.clear();
   advice.suggested_wave_digest.clear();
   advice.plan_input_digest.clear();
@@ -2463,15 +2463,20 @@ bool real_lattice_hero_callback(const std::string &tool_name,
                                 std::string *out_error_message) {
   g_fake_lattice_tool_name = tool_name;
   g_fake_lattice_arguments_json = arguments_json;
-  if (tool_name == "hero.lattice.evaluate_target") {
+  if (tool_name == "hero.lattice.evaluate" &&
+      arguments_json.find("\"operation\":\"target\"") != std::string::npos) {
     ++g_fake_lattice_evaluate_target_count;
-  } else if (tool_name == "hero.lattice.scan_facts") {
+  } else if (tool_name == "hero.lattice.inspect" &&
+             arguments_json.find("\"mode\":\"scan\"") != std::string::npos) {
     ++g_fake_lattice_scan_facts_count;
-  } else if (tool_name == "hero.lattice.fact_summary") {
+  } else if (tool_name == "hero.lattice.inspect" &&
+             arguments_json.find("\"mode\":\"summary\"") != std::string::npos) {
     ++g_fake_lattice_fact_summary_count;
-  } else if (tool_name == "hero.lattice.fact_lineage") {
+  } else if (tool_name == "hero.lattice.inspect" &&
+             arguments_json.find("\"mode\":\"lineage\"") != std::string::npos) {
     ++g_fake_lattice_fact_lineage_count;
-  } else if (tool_name == "hero.lattice.fact_preview") {
+  } else if (tool_name == "hero.lattice.inspect" &&
+             arguments_json.find("\"mode\":\"preview\"") != std::string::npos) {
     ++g_fake_lattice_fact_preview_count;
   }
   if (out_error_message) {
@@ -2506,7 +2511,7 @@ bool fake_lattice_target_deficit_callback(const std::string &tool_name,
   if (out_error_message) {
     out_error_message->clear();
   }
-  if (tool_name != "hero.lattice.target_deficit") {
+  if (tool_name != "hero.lattice.evaluate") {
     if (out_error_message) {
       *out_error_message = "unexpected lattice tool";
     }
@@ -2514,7 +2519,7 @@ bool fake_lattice_target_deficit_callback(const std::string &tool_name,
   }
   if (out_tool_result_json) {
     *out_tool_result_json =
-        R"({"content":[{"type":"text","text":"hero.lattice.target_deficit executed"}],"structuredContent":{"config_path":"/tmp/marshal_lookup/.config","runtime_root":"/tmp/marshal_lookup/runtime","active_identity":{"protocol_contract_fingerprint":"pc","graph_order_fingerprint":"go","source_cursor_token":"cursor","vicreg_assembly_fingerprint":"vic","mdn_assembly_fingerprint":"mdn"},"target_id":"lookup_target","status":"metric_failed","split_policy_fingerprint":"sp","plan_ready":true,"plan_basis":{"available":true,"reason":"suggested wave addresses proof deficits","primary_deficit_key":"coverage:missing","primary_deficit_message":"coverage missing","primary_deficit_priority_class":"coverage","deficit_keys":["coverage:missing"],"deficit_priority_classes":["coverage"]},"suggested_wave":{"target":"wikimyei.inference.expected_value.mdn","mode":"run|debug","source_range":"anchor_index","anchor_index_begin":10,"anchor_index_end":20,"input_mdn_checkpoint":"/tmp/marshal_lookup/runtime/mdn.pt","input_representation_checkpoint":"/tmp/marshal_lookup/runtime/rep.pt","text":"TARGET=wikimyei.inference.expected_value.mdn\n"},"proof_certificate":{"target_id":"lookup_target","target_spec_fingerprint":"ts","split_policy_fingerprint":"sp"}},"isError":false})";
+        R"({"content":[{"type":"text","text":"hero.lattice.evaluate operation=deficit executed"}],"structuredContent":{"config_path":"/tmp/marshal_lookup/.config","runtime_root":"/tmp/marshal_lookup/runtime","active_identity":{"protocol_contract_fingerprint":"pc","graph_order_fingerprint":"go","source_cursor_token":"cursor","vicreg_assembly_fingerprint":"vic","mdn_assembly_fingerprint":"mdn"},"target_id":"lookup_target","status":"metric_failed","split_policy_fingerprint":"sp","plan_ready":true,"plan_basis":{"available":true,"reason":"suggested wave addresses proof deficits","primary_deficit_key":"coverage:missing","primary_deficit_message":"coverage missing","primary_deficit_priority_class":"coverage","deficit_keys":["coverage:missing"],"deficit_priority_classes":["coverage"]},"suggested_wave":{"target":"wikimyei.inference.expected_value.mdn","mode":"run|debug","source_range":"anchor_index","anchor_index_begin":10,"anchor_index_end":20,"input_mdn_checkpoint":"/tmp/marshal_lookup/runtime/mdn.pt","input_representation_checkpoint":"/tmp/marshal_lookup/runtime/rep.pt","text":"TARGET=wikimyei.inference.expected_value.mdn\n"},"proof_certificate":{"target_id":"lookup_target","target_spec_fingerprint":"ts","split_policy_fingerprint":"sp"}},"isError":false})";
   }
   return true;
 }
@@ -2527,7 +2532,7 @@ bool fake_lattice_satisfied_without_certificate_callback(
   if (out_error_message) {
     out_error_message->clear();
   }
-  if (tool_name != "hero.lattice.target_deficit") {
+  if (tool_name != "hero.lattice.evaluate") {
     if (out_error_message) {
       *out_error_message = "unexpected lattice tool";
     }
@@ -2535,7 +2540,7 @@ bool fake_lattice_satisfied_without_certificate_callback(
   }
   if (out_tool_result_json) {
     *out_tool_result_json =
-        R"({"content":[{"type":"text","text":"hero.lattice.target_deficit executed"}],"structuredContent":{"target_id":"satisfied_without_certificate","status":"satisfied","plan_ready":false,"suggested_wave":null,"proof_certificate":null,"active_identity":{"protocol_contract_fingerprint":"pc","graph_order_fingerprint":"go","source_cursor_token":"cursor","vicreg_assembly_fingerprint":"vic","mdn_assembly_fingerprint":"mdn"}},"isError":false})";
+        R"({"content":[{"type":"text","text":"hero.lattice.evaluate operation=deficit executed"}],"structuredContent":{"target_id":"satisfied_without_certificate","status":"satisfied","plan_ready":false,"suggested_wave":null,"proof_certificate":null,"active_identity":{"protocol_contract_fingerprint":"pc","graph_order_fingerprint":"go","source_cursor_token":"cursor","vicreg_assembly_fingerprint":"vic","mdn_assembly_fingerprint":"mdn"}},"isError":false})";
   }
   return true;
 }
@@ -2549,10 +2554,11 @@ bool fake_lattice_artifact_evidence_callback(const std::string &tool_name,
   if (out_error_message) {
     out_error_message->clear();
   }
-  if (tool_name == "hero.lattice.target_deficit") {
+  if (tool_name == "hero.lattice.evaluate" &&
+      arguments_json.find("\"operation\":\"deficit\"") != std::string::npos) {
     if (out_tool_result_json) {
       *out_tool_result_json =
-          R"({"content":[{"type":"text","text":"hero.lattice.target_deficit executed"}],"structuredContent":{"config_path":"/tmp/marshal_artifact/.config","runtime_root":"/tmp/marshal_artifact/runtime","active_identity":{"protocol_contract_fingerprint":"pc","graph_order_fingerprint":"go","source_cursor_token":"cursor","vicreg_assembly_fingerprint":"vic","mdn_assembly_fingerprint":"mdn"},"target_id":"forecast_eval_artifact_ready","status":"metric_failed","target_class":"artifact_readiness","kind":"not_applicable","target_kind_applicable":false,"target_kind_effective":"none","proof_kind":"forecast_eval_artifact_bound","subject_fact_family":"forecast_eval","component":"","split_policy_fingerprint":"sp","plan_ready":false,"plan_basis":null,"suggested_wave":null,"proof_certificate":{"target_id":"forecast_eval_artifact_ready","target_spec_fingerprint":"ts","split_policy_fingerprint":"sp","artifacts":[{"proof_kind":"forecast_eval_artifact_bound","proof_template_bound":true,"proof_template_claim":"forecast evaluation artifact existence, checkpoint lineage, target-transform binding, baseline binding, selection-signal audit binding, and support counts","fact_family":"forecast_eval","fact_digest":"forecast_eval_fact","passed":false,"issues":["missing_baseline_fact"]}]}},"isError":false})";
+          R"({"content":[{"type":"text","text":"hero.lattice.evaluate operation=deficit executed"}],"structuredContent":{"config_path":"/tmp/marshal_artifact/.config","runtime_root":"/tmp/marshal_artifact/runtime","active_identity":{"protocol_contract_fingerprint":"pc","graph_order_fingerprint":"go","source_cursor_token":"cursor","vicreg_assembly_fingerprint":"vic","mdn_assembly_fingerprint":"mdn"},"target_id":"forecast_eval_artifact_ready","status":"metric_failed","target_class":"artifact_readiness","kind":"not_applicable","target_kind_applicable":false,"target_kind_effective":"none","proof_kind":"forecast_eval_artifact_bound","subject_fact_family":"forecast_eval","component":"","split_policy_fingerprint":"sp","plan_ready":false,"plan_basis":null,"suggested_wave":null,"proof_certificate":{"target_id":"forecast_eval_artifact_ready","target_spec_fingerprint":"ts","split_policy_fingerprint":"sp","artifacts":[{"proof_kind":"forecast_eval_artifact_bound","proof_template_bound":true,"proof_template_claim":"forecast evaluation artifact existence, checkpoint lineage, target-transform binding, baseline binding, selection-signal audit binding, and support counts","fact_family":"forecast_eval","fact_digest":"forecast_eval_fact","passed":false,"issues":["missing_baseline_fact"]}]}},"isError":false})";
       if (g_fake_lattice_artifact_warning) {
         const std::string tail = R"(},"isError":false})";
         const auto pos = out_tool_result_json->rfind(tail);
@@ -2567,42 +2573,46 @@ bool fake_lattice_artifact_evidence_callback(const std::string &tool_name,
     }
     return true;
   }
-  if (tool_name == "hero.lattice.evaluate_target") {
+  if (tool_name == "hero.lattice.evaluate" &&
+      arguments_json.find("\"operation\":\"target\"") != std::string::npos) {
     ++g_fake_lattice_evaluate_target_count;
     if (out_tool_result_json) {
       *out_tool_result_json =
-          R"({"content":[{"type":"text","text":"hero.lattice.evaluate_target executed"}],"structuredContent":{"config_path":"/tmp/marshal_artifact/.config","runtime_root":"/tmp/marshal_artifact/runtime","active_identity":{"protocol_contract_fingerprint":"pc","graph_order_fingerprint":"go","source_cursor_token":"cursor","vicreg_assembly_fingerprint":"vic","mdn_assembly_fingerprint":"mdn"},"evaluation":{"target_id":"forecast_eval_artifact_ready","status":"blocked","target_class":"artifact_readiness","proof_kind":"forecast_eval_artifact_bound","subject_fact_family":"forecast_eval","kind":"not_applicable","target_kind_applicable":false,"target_kind_effective":"none","component":"","plan_ready":false,"suggested_wave":null,"deficits":[{"kind":"artifact","dimension":"forecast_eval_authority","key":"artifact:forecast_eval_authority","status":"forbidden","message":"artifact proof contains forbidden authority flags: quality_authority"},{"kind":"artifact","dimension":"forecast_eval_lineage","key":"artifact:forecast_eval_lineage","status":"missing","message":"artifact proof lineage is unbound"},{"kind":"artifact","dimension":"forecast_eval_issue_forecast_eval_must_remain_artifact_evidence_only","key":"artifact:forecast_eval_issue_forecast_eval_must_remain_artifact_evidence_only","status":"forbidden","message":"artifact proof issue: forecast_eval_must_remain_artifact_evidence_only"},{"kind":"artifact","dimension":"forecast_eval_issue_baseline_fact_digest_not_found","key":"artifact:forecast_eval_issue_baseline_fact_digest_not_found","status":"missing","message":"artifact proof issue: baseline_fact_digest_not_found","related_fact_integrity_issue_codes":["mdn:baseline_fact_digest_not_found"]}],"plan_basis":{"available":false,"reason":"artifact_readiness target is non-dispatchable; inspect evidence catalog for proof deficits: artifact:forecast_eval_authority","primary_deficit_key":"artifact:forecast_eval_authority","primary_deficit_message":"artifact proof contains forbidden authority flags: quality_authority","primary_deficit_priority_class":"artifact","deficit_keys":["artifact:forecast_eval_authority","artifact:forecast_eval_lineage","artifact:forecast_eval_issue_forecast_eval_must_remain_artifact_evidence_only","artifact:forecast_eval_issue_baseline_fact_digest_not_found"],"deficit_priority_classes":["artifact"],"suggested_action":"inspect"},"proof_certificate":{"target_id":"forecast_eval_artifact_ready","artifacts":[{"proof_kind":"forecast_eval_artifact_bound","proof_template_bound":true,"proof_template_claim":"forecast evaluation artifact existence, checkpoint lineage, target-transform binding, baseline binding, selection-signal audit binding, and support counts","fact_family":"forecast_eval","fact_digest":"forecast_eval_fact","identity_match":true,"artifact_evidence":true,"deterministic_artifact":true,"visibility_only":true,"authority_clean":false,"quality_authority":true,"lineage_bound":false,"passed":false,"issues":["forecast_eval_must_remain_artifact_evidence_only","baseline_fact_digest_not_found"]}]}}},"isError":false})";
+          R"({"content":[{"type":"text","text":"hero.lattice.evaluate operation=target executed"}],"structuredContent":{"config_path":"/tmp/marshal_artifact/.config","runtime_root":"/tmp/marshal_artifact/runtime","active_identity":{"protocol_contract_fingerprint":"pc","graph_order_fingerprint":"go","source_cursor_token":"cursor","vicreg_assembly_fingerprint":"vic","mdn_assembly_fingerprint":"mdn"},"evaluation":{"target_id":"forecast_eval_artifact_ready","status":"blocked","target_class":"artifact_readiness","proof_kind":"forecast_eval_artifact_bound","subject_fact_family":"forecast_eval","kind":"not_applicable","target_kind_applicable":false,"target_kind_effective":"none","component":"","plan_ready":false,"suggested_wave":null,"deficits":[{"kind":"artifact","dimension":"forecast_eval_authority","key":"artifact:forecast_eval_authority","status":"forbidden","message":"artifact proof contains forbidden authority flags: quality_authority"},{"kind":"artifact","dimension":"forecast_eval_lineage","key":"artifact:forecast_eval_lineage","status":"missing","message":"artifact proof lineage is unbound"},{"kind":"artifact","dimension":"forecast_eval_issue_forecast_eval_must_remain_artifact_evidence_only","key":"artifact:forecast_eval_issue_forecast_eval_must_remain_artifact_evidence_only","status":"forbidden","message":"artifact proof issue: forecast_eval_must_remain_artifact_evidence_only"},{"kind":"artifact","dimension":"forecast_eval_issue_baseline_fact_digest_not_found","key":"artifact:forecast_eval_issue_baseline_fact_digest_not_found","status":"missing","message":"artifact proof issue: baseline_fact_digest_not_found","related_fact_integrity_issue_codes":["mdn:baseline_fact_digest_not_found"]}],"plan_basis":{"available":false,"reason":"artifact_readiness target is non-dispatchable; inspect evidence catalog for proof deficits: artifact:forecast_eval_authority","primary_deficit_key":"artifact:forecast_eval_authority","primary_deficit_message":"artifact proof contains forbidden authority flags: quality_authority","primary_deficit_priority_class":"artifact","deficit_keys":["artifact:forecast_eval_authority","artifact:forecast_eval_lineage","artifact:forecast_eval_issue_forecast_eval_must_remain_artifact_evidence_only","artifact:forecast_eval_issue_baseline_fact_digest_not_found"],"deficit_priority_classes":["artifact"],"suggested_action":"inspect"},"proof_certificate":{"target_id":"forecast_eval_artifact_ready","artifacts":[{"proof_kind":"forecast_eval_artifact_bound","proof_template_bound":true,"proof_template_claim":"forecast evaluation artifact existence, checkpoint lineage, target-transform binding, baseline binding, selection-signal audit binding, and support counts","fact_family":"forecast_eval","fact_digest":"forecast_eval_fact","identity_match":true,"artifact_evidence":true,"deterministic_artifact":true,"visibility_only":true,"authority_clean":false,"quality_authority":true,"lineage_bound":false,"passed":false,"issues":["forecast_eval_must_remain_artifact_evidence_only","baseline_fact_digest_not_found"]}]}}},"isError":false})";
       inject_fake_artifact_boundary_denials(out_tool_result_json);
       inject_fake_policy_gate_reservations(out_tool_result_json);
     }
     return true;
   }
-  if (tool_name == "hero.lattice.scan_facts") {
+  if (tool_name == "hero.lattice.inspect" &&
+      arguments_json.find("\"mode\":\"scan\"") != std::string::npos) {
     ++g_fake_lattice_scan_facts_count;
     if (out_tool_result_json) {
       *out_tool_result_json =
-          R"({"content":[{"type":"text","text":"hero.lattice.scan_facts executed"}],"structuredContent":{"schema":"kikijyeba.lattice.fact_catalog_scan.v1","runtime_root":"/tmp/marshal_artifact/runtime","read_only":true,"target_proof":false,"dispatchable":false,"runtime_executor":false,"returned_family_count":1,"fact_integrity_summary":{"schema":"kikijyeba.lattice.fact_integrity_summary.v1","inspected_family_count":1,"reported_family_count":1,"relation_declared_count":3,"relation_bound_count":0,"unresolved_relation_count":3,"identity_mismatch_count":0,"digest_mismatch_count":0,"warning_count":3,"relation_integrity_clean":false,"read_only":true,"target_proof":false,"dispatchable":false,"runtime_executor":false,"families_with_unresolved_relation":["forecast_eval"],"families_with_identity_mismatch":[],"families_with_digest_mismatch":[],"integrity_flags":["unresolved_relation"],"issue_codes":["mdn:target_transform_fact_digest_not_found","mdn:baseline_fact_digest_not_found","mdn:selection_signal_fact_digest_not_found"],"families":[{"schema":"kikijyeba.lattice.fact_integrity_family_summary.v1","family":"forecast_eval","summary_schema":"kikijyeba.lattice.forecast_eval_summary.v1","relation_declared_count":3,"relation_bound_count":0,"unresolved_relation_count":3,"identity_mismatch_count":0,"digest_mismatch_count":0,"warning_count":3,"relation_integrity_clean":false,"issues":["mdn:target_transform_fact_digest_not_found","mdn:baseline_fact_digest_not_found","mdn:selection_signal_fact_digest_not_found"]}]},"families":[{"catalog_summary":{"family":"forecast_eval","fact_count":1,"artifact_readiness_proofable":true,"artifact_readiness_proof_kind":"forecast_eval_artifact_bound","artifact_readiness_proof_claim":"forecast evaluation artifact existence, checkpoint lineage, target-transform binding, baseline binding, selection-signal audit binding, and support counts","artifact_readiness_target_promotion_allowed":true,"artifact_readiness_target_promotion_blocked":false,"artifact_readiness_target_promotion_blocked_reason":null,"artifact_readiness_warning_summary_only":false},"payload_summary":{"schema":"kikijyeba.lattice.forecast_eval_summary.v1","exposure_fact_count":1,"forecast_eval_fact_count":1,"parent_exposure_fact_count":1,"target_transform_declared_count":1,"target_transform_bound_count":0,"unresolved_target_transform_count":1,"target_transform_identity_mismatch_count":0,"baseline_declared_count":1,"baseline_bound_count":0,"unresolved_baseline_count":1,"baseline_identity_mismatch_count":0,"selection_signal_declared_count":1,"selection_signal_audit_count":0,"unresolved_selection_signal_count":1,"selection_signal_identity_mismatch_count":0,"warning_count":3,"artifact_evidence":true,"visibility_only":true,"readiness_authority":false,"quality_authority":false,"performance_authority":false,"checkpoint_selector":false,"coverage_authority":false,"leakage_authority":false,"contract_identity_authority":false,"issues":["mdn:target_transform_fact_digest_not_found","mdn:baseline_fact_digest_not_found","mdn:selection_signal_fact_digest_not_found"]},"facts":[]}],"warnings":[]},"isError":false})";
+          R"({"content":[{"type":"text","text":"hero.lattice.inspect subject=facts mode=scan executed"}],"structuredContent":{"schema":"kikijyeba.lattice.fact_catalog_scan.v1","runtime_root":"/tmp/marshal_artifact/runtime","read_only":true,"target_proof":false,"dispatchable":false,"runtime_executor":false,"returned_family_count":1,"fact_integrity_summary":{"schema":"kikijyeba.lattice.fact_integrity_summary.v1","inspected_family_count":1,"reported_family_count":1,"relation_declared_count":3,"relation_bound_count":0,"unresolved_relation_count":3,"identity_mismatch_count":0,"digest_mismatch_count":0,"warning_count":3,"relation_integrity_clean":false,"read_only":true,"target_proof":false,"dispatchable":false,"runtime_executor":false,"families_with_unresolved_relation":["forecast_eval"],"families_with_identity_mismatch":[],"families_with_digest_mismatch":[],"integrity_flags":["unresolved_relation"],"issue_codes":["mdn:target_transform_fact_digest_not_found","mdn:baseline_fact_digest_not_found","mdn:selection_signal_fact_digest_not_found"],"families":[{"schema":"kikijyeba.lattice.fact_integrity_family_summary.v1","family":"forecast_eval","summary_schema":"kikijyeba.lattice.forecast_eval_summary.v1","relation_declared_count":3,"relation_bound_count":0,"unresolved_relation_count":3,"identity_mismatch_count":0,"digest_mismatch_count":0,"warning_count":3,"relation_integrity_clean":false,"issues":["mdn:target_transform_fact_digest_not_found","mdn:baseline_fact_digest_not_found","mdn:selection_signal_fact_digest_not_found"]}]},"families":[{"catalog_summary":{"family":"forecast_eval","fact_count":1,"artifact_readiness_proofable":true,"artifact_readiness_proof_kind":"forecast_eval_artifact_bound","artifact_readiness_proof_claim":"forecast evaluation artifact existence, checkpoint lineage, target-transform binding, baseline binding, selection-signal audit binding, and support counts","artifact_readiness_target_promotion_allowed":true,"artifact_readiness_target_promotion_blocked":false,"artifact_readiness_target_promotion_blocked_reason":null,"artifact_readiness_warning_summary_only":false},"payload_summary":{"schema":"kikijyeba.lattice.forecast_eval_summary.v1","exposure_fact_count":1,"forecast_eval_fact_count":1,"parent_exposure_fact_count":1,"target_transform_declared_count":1,"target_transform_bound_count":0,"unresolved_target_transform_count":1,"target_transform_identity_mismatch_count":0,"baseline_declared_count":1,"baseline_bound_count":0,"unresolved_baseline_count":1,"baseline_identity_mismatch_count":0,"selection_signal_declared_count":1,"selection_signal_audit_count":0,"unresolved_selection_signal_count":1,"selection_signal_identity_mismatch_count":0,"warning_count":3,"artifact_evidence":true,"visibility_only":true,"readiness_authority":false,"quality_authority":false,"performance_authority":false,"checkpoint_selector":false,"coverage_authority":false,"leakage_authority":false,"contract_identity_authority":false,"issues":["mdn:target_transform_fact_digest_not_found","mdn:baseline_fact_digest_not_found","mdn:selection_signal_fact_digest_not_found"]},"facts":[]}],"warnings":[]},"isError":false})";
     }
     return true;
   }
-  if (tool_name == "hero.lattice.fact_summary") {
+  if (tool_name == "hero.lattice.inspect" &&
+      arguments_json.find("\"mode\":\"summary\"") != std::string::npos) {
     ++g_fake_lattice_fact_summary_count;
     if (out_tool_result_json) {
       if (arguments_json.find("selection_signal") != std::string::npos) {
         *out_tool_result_json =
-            R"({"content":[{"type":"text","text":"hero.lattice.fact_summary executed"}],"structuredContent":{"schema":"kikijyeba.lattice.fact_summary.v1","runtime_root":"/tmp/marshal_artifact/runtime","read_only":true,"target_proof":false,"returned_family_count":1,"fact_integrity_summary":{"schema":"kikijyeba.lattice.fact_integrity_summary.v1","inspected_family_count":1,"reported_family_count":1,"relation_declared_count":0,"relation_bound_count":0,"unresolved_relation_count":0,"identity_mismatch_count":0,"digest_mismatch_count":0,"warning_count":1,"relation_integrity_clean":true,"read_only":true,"target_proof":false,"dispatchable":false,"runtime_executor":false,"families_with_unresolved_relation":[],"families_with_identity_mismatch":[],"families_with_digest_mismatch":[],"integrity_flags":[],"issue_codes":["selection_signal:visibility_only"],"families":[{"schema":"kikijyeba.lattice.fact_integrity_family_summary.v1","family":"selection_signal","summary_schema":"kikijyeba.lattice.selection_signal_summary.v1","relation_declared_count":0,"relation_bound_count":0,"unresolved_relation_count":0,"identity_mismatch_count":0,"digest_mismatch_count":0,"warning_count":1,"relation_integrity_clean":true,"issues":["selection_signal:visibility_only"]}]},"families":[{"catalog_summary":{"family":"selection_signal","fact_count":1,"artifact_readiness_proofable":false,"artifact_readiness_proof_kind":null,"artifact_readiness_proof_claim":null,"artifact_readiness_target_promotion_allowed":false,"artifact_readiness_target_promotion_blocked":true,"artifact_readiness_target_promotion_blocked_reason":"leakage_visibility_only","artifact_readiness_warning_summary_only":false},"payload_summary":{"schema":"kikijyeba.lattice.selection_signal_summary.v1","selection_signal_fact_count":1,"warning_count":1,"artifact_evidence":true,"visibility_only":true,"selection_authority":false,"checkpoint_selector":false,"coverage_authority":false,"leakage_authority":false,"readiness_authority":false,"quality_authority":false,"performance_authority":false,"issues":["selection_signal:visibility_only"]}}],"warnings":[]},"isError":false})";
+            R"({"content":[{"type":"text","text":"hero.lattice.inspect subject=facts mode=summary executed"}],"structuredContent":{"schema":"kikijyeba.lattice.fact_summary.v1","runtime_root":"/tmp/marshal_artifact/runtime","read_only":true,"target_proof":false,"returned_family_count":1,"fact_integrity_summary":{"schema":"kikijyeba.lattice.fact_integrity_summary.v1","inspected_family_count":1,"reported_family_count":1,"relation_declared_count":0,"relation_bound_count":0,"unresolved_relation_count":0,"identity_mismatch_count":0,"digest_mismatch_count":0,"warning_count":1,"relation_integrity_clean":true,"read_only":true,"target_proof":false,"dispatchable":false,"runtime_executor":false,"families_with_unresolved_relation":[],"families_with_identity_mismatch":[],"families_with_digest_mismatch":[],"integrity_flags":[],"issue_codes":["selection_signal:visibility_only"],"families":[{"schema":"kikijyeba.lattice.fact_integrity_family_summary.v1","family":"selection_signal","summary_schema":"kikijyeba.lattice.selection_signal_summary.v1","relation_declared_count":0,"relation_bound_count":0,"unresolved_relation_count":0,"identity_mismatch_count":0,"digest_mismatch_count":0,"warning_count":1,"relation_integrity_clean":true,"issues":["selection_signal:visibility_only"]}]},"families":[{"catalog_summary":{"family":"selection_signal","fact_count":1,"artifact_readiness_proofable":false,"artifact_readiness_proof_kind":null,"artifact_readiness_proof_claim":null,"artifact_readiness_target_promotion_allowed":false,"artifact_readiness_target_promotion_blocked":true,"artifact_readiness_target_promotion_blocked_reason":"leakage_visibility_only","artifact_readiness_warning_summary_only":false},"payload_summary":{"schema":"kikijyeba.lattice.selection_signal_summary.v1","selection_signal_fact_count":1,"warning_count":1,"artifact_evidence":true,"visibility_only":true,"selection_authority":false,"checkpoint_selector":false,"coverage_authority":false,"leakage_authority":false,"readiness_authority":false,"quality_authority":false,"performance_authority":false,"issues":["selection_signal:visibility_only"]}}],"warnings":[]},"isError":false})";
       } else if (arguments_json.find("replay_environment") !=
                  std::string::npos) {
         *out_tool_result_json =
-            R"({"content":[{"type":"text","text":"hero.lattice.fact_summary executed"}],"structuredContent":{"schema":"kikijyeba.lattice.fact_summary.v1","runtime_root":"/tmp/marshal_artifact/runtime","read_only":true,"target_proof":false,"returned_family_count":1,"fact_integrity_summary":{"schema":"kikijyeba.lattice.fact_integrity_summary.v1","inspected_family_count":1,"reported_family_count":0,"relation_declared_count":0,"relation_bound_count":0,"unresolved_relation_count":0,"identity_mismatch_count":0,"digest_mismatch_count":0,"warning_count":0,"relation_integrity_clean":true,"read_only":true,"target_proof":false,"dispatchable":false,"runtime_executor":false,"families_with_unresolved_relation":[],"families_with_identity_mismatch":[],"families_with_digest_mismatch":[],"integrity_flags":[],"issue_codes":[],"families":[]},"families":[{"catalog_summary":{"family":"replay_environment","fact_count":1,"artifact_readiness_proofable":false,"artifact_readiness_proof_kind":null,"artifact_readiness_proof_claim":null,"artifact_readiness_target_promotion_allowed":false,"artifact_readiness_target_promotion_blocked":true,"artifact_readiness_target_promotion_blocked_reason":"no_artifact_proof_template","artifact_readiness_warning_summary_only":false},"payload_summary":{"schema":"kikijyeba.lattice.replay_environment_summary.v1","exposure_fact_count":1,"replay_environment_fact_count":1,"parent_exposure_fact_count":1,"batch_index_bound_count":1,"experiment_index_bound_count":1,"experiment_report_bound_count":1,"experiment_id_bound_count":1,"environment_run_id_bound_count":1,"replay_contract_version_bound_count":1,"replay_contract_component_bound_count":1,"replay_contract_policy_surface_bound_count":1,"replay_contract_time_law_bound_count":1,"replay_contract_guard_bound_count":1,"episode_requested_range_bound_count_total":2,"episode_cursor_bound_count_total":2,"episode_anchor_interval_bound_count_total":2,"episode_anchor_keys_bound_count_total":2,"missing_batch_index_count":0,"missing_experiment_index_count":0,"missing_experiment_report_count":0,"missing_episode_requested_range_count":0,"missing_episode_cursor_evidence_count":0,"missing_episode_anchor_interval_count":0,"missing_episode_anchor_keys_count":0,"artifact_evidence_count":1,"warning_count":0,"batch_entry_count_total":1,"experiment_entry_count_total":1,"replay_bundle_count_total":1,"policy_count_total":1,"attempted_count_total":1,"completed_count_total":1,"artifact_evidence":true,"visibility_only":true,"replay_executor":false,"allocation_authority":false,"execution_authority":false,"readiness_authority":false,"quality_authority":false,"performance_authority":false,"market_readiness_authority":false,"deployment_authority":false,"checkpoint_selector":false,"coverage_authority":false,"leakage_authority":false,"contract_identity_authority":false,"issues":[]}}],"warnings":[]},"isError":false})";
+            R"({"content":[{"type":"text","text":"hero.lattice.inspect subject=facts mode=summary executed"}],"structuredContent":{"schema":"kikijyeba.lattice.fact_summary.v1","runtime_root":"/tmp/marshal_artifact/runtime","read_only":true,"target_proof":false,"returned_family_count":1,"fact_integrity_summary":{"schema":"kikijyeba.lattice.fact_integrity_summary.v1","inspected_family_count":1,"reported_family_count":0,"relation_declared_count":0,"relation_bound_count":0,"unresolved_relation_count":0,"identity_mismatch_count":0,"digest_mismatch_count":0,"warning_count":0,"relation_integrity_clean":true,"read_only":true,"target_proof":false,"dispatchable":false,"runtime_executor":false,"families_with_unresolved_relation":[],"families_with_identity_mismatch":[],"families_with_digest_mismatch":[],"integrity_flags":[],"issue_codes":[],"families":[]},"families":[{"catalog_summary":{"family":"replay_environment","fact_count":1,"artifact_readiness_proofable":false,"artifact_readiness_proof_kind":null,"artifact_readiness_proof_claim":null,"artifact_readiness_target_promotion_allowed":false,"artifact_readiness_target_promotion_blocked":true,"artifact_readiness_target_promotion_blocked_reason":"no_artifact_proof_template","artifact_readiness_warning_summary_only":false},"payload_summary":{"schema":"kikijyeba.lattice.replay_environment_summary.v1","exposure_fact_count":1,"replay_environment_fact_count":1,"parent_exposure_fact_count":1,"batch_index_bound_count":1,"experiment_index_bound_count":1,"experiment_report_bound_count":1,"experiment_id_bound_count":1,"environment_run_id_bound_count":1,"replay_contract_version_bound_count":1,"replay_contract_component_bound_count":1,"replay_contract_policy_surface_bound_count":1,"replay_contract_time_law_bound_count":1,"replay_contract_guard_bound_count":1,"episode_requested_range_bound_count_total":2,"episode_cursor_bound_count_total":2,"episode_anchor_interval_bound_count_total":2,"episode_anchor_keys_bound_count_total":2,"missing_batch_index_count":0,"missing_experiment_index_count":0,"missing_experiment_report_count":0,"missing_episode_requested_range_count":0,"missing_episode_cursor_evidence_count":0,"missing_episode_anchor_interval_count":0,"missing_episode_anchor_keys_count":0,"artifact_evidence_count":1,"warning_count":0,"batch_entry_count_total":1,"experiment_entry_count_total":1,"replay_bundle_count_total":1,"policy_count_total":1,"attempted_count_total":1,"completed_count_total":1,"artifact_evidence":true,"visibility_only":true,"replay_executor":false,"allocation_authority":false,"execution_authority":false,"readiness_authority":false,"quality_authority":false,"performance_authority":false,"market_readiness_authority":false,"deployment_authority":false,"checkpoint_selector":false,"coverage_authority":false,"leakage_authority":false,"contract_identity_authority":false,"issues":[]}}],"warnings":[]},"isError":false})";
       } else {
         *out_tool_result_json =
-            R"({"content":[{"type":"text","text":"hero.lattice.fact_summary executed"}],"structuredContent":{"schema":"kikijyeba.lattice.fact_summary.v1","runtime_root":"/tmp/marshal_artifact/runtime","read_only":true,"target_proof":false,"returned_family_count":1,"fact_integrity_summary":{"schema":"kikijyeba.lattice.fact_integrity_summary.v1","inspected_family_count":1,"reported_family_count":1,"relation_declared_count":3,"relation_bound_count":0,"unresolved_relation_count":3,"identity_mismatch_count":0,"digest_mismatch_count":0,"warning_count":3,"relation_integrity_clean":false,"read_only":true,"target_proof":false,"dispatchable":false,"runtime_executor":false,"families_with_unresolved_relation":["forecast_eval"],"families_with_identity_mismatch":[],"families_with_digest_mismatch":[],"integrity_flags":["unresolved_relation"],"issue_codes":["mdn:target_transform_fact_digest_not_found","mdn:baseline_fact_digest_not_found","mdn:selection_signal_fact_digest_not_found"],"families":[{"schema":"kikijyeba.lattice.fact_integrity_family_summary.v1","family":"forecast_eval","summary_schema":"kikijyeba.lattice.forecast_eval_summary.v1","relation_declared_count":3,"relation_bound_count":0,"unresolved_relation_count":3,"identity_mismatch_count":0,"digest_mismatch_count":0,"warning_count":3,"relation_integrity_clean":false,"issues":["mdn:target_transform_fact_digest_not_found","mdn:baseline_fact_digest_not_found","mdn:selection_signal_fact_digest_not_found"]}]},"families":[{"catalog_summary":{"family":"forecast_eval","fact_count":1,"artifact_readiness_proofable":true,"artifact_readiness_proof_kind":"forecast_eval_artifact_bound","artifact_readiness_proof_claim":"forecast evaluation artifact existence, checkpoint lineage, target-transform binding, baseline binding, selection-signal audit binding, and support counts","artifact_readiness_target_promotion_allowed":true,"artifact_readiness_target_promotion_blocked":false,"artifact_readiness_target_promotion_blocked_reason":null,"artifact_readiness_warning_summary_only":false},"payload_summary":{"schema":"kikijyeba.lattice.forecast_eval_summary.v1","exposure_fact_count":1,"forecast_eval_fact_count":1,"parent_exposure_fact_count":1,"target_transform_declared_count":1,"target_transform_bound_count":0,"unresolved_target_transform_count":1,"target_transform_identity_mismatch_count":0,"baseline_declared_count":1,"baseline_bound_count":0,"unresolved_baseline_count":1,"baseline_identity_mismatch_count":0,"selection_signal_declared_count":1,"selection_signal_audit_count":0,"unresolved_selection_signal_count":1,"selection_signal_identity_mismatch_count":0,"warning_count":3,"artifact_evidence":true,"visibility_only":true,"readiness_authority":false,"quality_authority":false,"performance_authority":false,"checkpoint_selector":false,"coverage_authority":false,"leakage_authority":false,"contract_identity_authority":false,"issues":["mdn:target_transform_fact_digest_not_found","mdn:baseline_fact_digest_not_found","mdn:selection_signal_fact_digest_not_found"]}}],"warnings":[]},"isError":false})";
+            R"({"content":[{"type":"text","text":"hero.lattice.inspect subject=facts mode=summary executed"}],"structuredContent":{"schema":"kikijyeba.lattice.fact_summary.v1","runtime_root":"/tmp/marshal_artifact/runtime","read_only":true,"target_proof":false,"returned_family_count":1,"fact_integrity_summary":{"schema":"kikijyeba.lattice.fact_integrity_summary.v1","inspected_family_count":1,"reported_family_count":1,"relation_declared_count":3,"relation_bound_count":0,"unresolved_relation_count":3,"identity_mismatch_count":0,"digest_mismatch_count":0,"warning_count":3,"relation_integrity_clean":false,"read_only":true,"target_proof":false,"dispatchable":false,"runtime_executor":false,"families_with_unresolved_relation":["forecast_eval"],"families_with_identity_mismatch":[],"families_with_digest_mismatch":[],"integrity_flags":["unresolved_relation"],"issue_codes":["mdn:target_transform_fact_digest_not_found","mdn:baseline_fact_digest_not_found","mdn:selection_signal_fact_digest_not_found"],"families":[{"schema":"kikijyeba.lattice.fact_integrity_family_summary.v1","family":"forecast_eval","summary_schema":"kikijyeba.lattice.forecast_eval_summary.v1","relation_declared_count":3,"relation_bound_count":0,"unresolved_relation_count":3,"identity_mismatch_count":0,"digest_mismatch_count":0,"warning_count":3,"relation_integrity_clean":false,"issues":["mdn:target_transform_fact_digest_not_found","mdn:baseline_fact_digest_not_found","mdn:selection_signal_fact_digest_not_found"]}]},"families":[{"catalog_summary":{"family":"forecast_eval","fact_count":1,"artifact_readiness_proofable":true,"artifact_readiness_proof_kind":"forecast_eval_artifact_bound","artifact_readiness_proof_claim":"forecast evaluation artifact existence, checkpoint lineage, target-transform binding, baseline binding, selection-signal audit binding, and support counts","artifact_readiness_target_promotion_allowed":true,"artifact_readiness_target_promotion_blocked":false,"artifact_readiness_target_promotion_blocked_reason":null,"artifact_readiness_warning_summary_only":false},"payload_summary":{"schema":"kikijyeba.lattice.forecast_eval_summary.v1","exposure_fact_count":1,"forecast_eval_fact_count":1,"parent_exposure_fact_count":1,"target_transform_declared_count":1,"target_transform_bound_count":0,"unresolved_target_transform_count":1,"target_transform_identity_mismatch_count":0,"baseline_declared_count":1,"baseline_bound_count":0,"unresolved_baseline_count":1,"baseline_identity_mismatch_count":0,"selection_signal_declared_count":1,"selection_signal_audit_count":0,"unresolved_selection_signal_count":1,"selection_signal_identity_mismatch_count":0,"warning_count":3,"artifact_evidence":true,"visibility_only":true,"readiness_authority":false,"quality_authority":false,"performance_authority":false,"checkpoint_selector":false,"coverage_authority":false,"leakage_authority":false,"contract_identity_authority":false,"issues":["mdn:target_transform_fact_digest_not_found","mdn:baseline_fact_digest_not_found","mdn:selection_signal_fact_digest_not_found"]}}],"warnings":[]},"isError":false})";
       }
     }
     return true;
   }
-  if (tool_name == "hero.lattice.fact_lineage") {
+  if (tool_name == "hero.lattice.inspect" &&
+      arguments_json.find("\"mode\":\"lineage\"") != std::string::npos) {
     ++g_fake_lattice_fact_lineage_count;
     std::string relation = "forecast_eval";
     if (arguments_json.find("replay_environment") != std::string::npos) {
@@ -2667,7 +2677,8 @@ bool fake_lattice_artifact_evidence_callback(const std::string &tool_name,
     }
     return true;
   }
-  if (tool_name == "hero.lattice.fact_preview") {
+  if (tool_name == "hero.lattice.inspect" &&
+      arguments_json.find("\"mode\":\"preview\"") != std::string::npos) {
     ++g_fake_lattice_fact_preview_count;
     std::string relation = "forecast_eval";
     if (arguments_json.find("replay_environment") != std::string::npos) {
@@ -2774,7 +2785,7 @@ bool fake_lattice_malformed_target_deficit_callback(
   if (out_error_message) {
     out_error_message->clear();
   }
-  if (tool_name != "hero.lattice.target_deficit") {
+  if (tool_name != "hero.lattice.evaluate") {
     if (out_error_message) {
       *out_error_message = "unexpected lattice tool";
     }
@@ -2782,7 +2793,7 @@ bool fake_lattice_malformed_target_deficit_callback(
   }
   if (out_tool_result_json) {
     *out_tool_result_json =
-        R"({"content":[{"type":"text","text":"hero.lattice.target_deficit executed"}],"structuredContent":[],"isError":false})";
+        R"({"content":[{"type":"text","text":"hero.lattice.evaluate operation=deficit executed"}],"structuredContent":[],"isError":false})";
   }
   return true;
 }
@@ -2796,7 +2807,7 @@ bool fake_lattice_operational_report_callback(const std::string &tool_name,
   if (out_error_message) {
     out_error_message->clear();
   }
-  if (tool_name != "hero.lattice.evaluate_targets") {
+  if (tool_name != "hero.lattice.evaluate") {
     if (out_error_message) {
       *out_error_message = "unexpected lattice tool";
     }
@@ -2804,7 +2815,7 @@ bool fake_lattice_operational_report_callback(const std::string &tool_name,
   }
   if (out_tool_result_json) {
     *out_tool_result_json =
-        R"({"content":[{"type":"text","text":"hero.lattice.evaluate_targets executed"}],"structuredContent":{"read_only":true,"evaluations":[{"target_id":"vicreg_train_core_ready","status":"satisfied","proof_certificate_check":{"passed":true,"issues":[]}},{"target_id":"channel_mdn_train_core_ready","status":"satisfied","proof_certificate_check":{"passed":true,"issues":[]}},{"target_id":"channel_mdn_train_core_no_validation_leakage","status":"satisfied","proof_certificate_check":{"passed":true,"issues":[]}},{"target_id":"channel_mdn_train_core_no_test_leakage","status":"satisfied","proof_certificate_check":{"passed":true,"issues":[]}},{"target_id":"channel_mdn_validation_eval_ready","status":"satisfied","proof_certificate_check":{"passed":true,"issues":[]}}]},"isError":false})";
+        R"({"content":[{"type":"text","text":"hero.lattice.evaluate operation=targets executed"}],"structuredContent":{"read_only":true,"evaluations":[{"target_id":"vicreg_train_core_ready","status":"satisfied","proof_certificate_check":{"passed":true,"issues":[]}},{"target_id":"channel_mdn_train_core_ready","status":"satisfied","proof_certificate_check":{"passed":true,"issues":[]}},{"target_id":"channel_mdn_train_core_no_validation_leakage","status":"satisfied","proof_certificate_check":{"passed":true,"issues":[]}},{"target_id":"channel_mdn_train_core_no_test_leakage","status":"satisfied","proof_certificate_check":{"passed":true,"issues":[]}},{"target_id":"channel_mdn_validation_eval_ready","status":"satisfied","proof_certificate_check":{"passed":true,"issues":[]}}]},"isError":false})";
   }
   return true;
 }
@@ -2817,7 +2828,7 @@ bool fake_lattice_operational_report_blocker_callback(
   if (out_error_message) {
     out_error_message->clear();
   }
-  if (tool_name != "hero.lattice.evaluate_targets") {
+  if (tool_name != "hero.lattice.evaluate") {
     if (out_error_message) {
       *out_error_message = "unexpected lattice tool";
     }
@@ -2825,7 +2836,7 @@ bool fake_lattice_operational_report_blocker_callback(
   }
   if (out_tool_result_json) {
     *out_tool_result_json =
-        R"({"content":[{"type":"text","text":"hero.lattice.evaluate_targets executed"}],"structuredContent":{"read_only":true,"evaluations":[{"target_id":"vicreg_train_core_ready","status":"satisfied","proof_certificate_check":{"passed":true,"issues":[]}},{"target_id":"channel_mdn_train_core_ready","status":"satisfied","proof_certificate_check":{"passed":false,"issues":["closure_unresolved"]}},{"target_id":"channel_mdn_validation_eval_ready","status":"metric_failed","proof_certificate_check":{"passed":true,"issues":[]},"plan_basis":{"deficit_keys":["coverage:evaluation_metric"],"primary_deficit_key":"coverage:evaluation_metric"},"warnings":[{"warning_id":"validation_eval_missing","severity":"watch","source":"lattice"}]},{"target_id":"forecast_eval_artifact_ready","status":"blocked","target_class":"artifact_readiness","kind":"not_applicable","target_kind_applicable":false,"target_kind_effective":"none","proof_kind":"forecast_eval_artifact_bound","subject_fact_family":"forecast_eval","proof_certificate_check":{"passed":false,"issues":["artifact[0] quality authority present","artifact[0] authority drift present","artifact[0] lineage unbound"]},"deficits":[{"kind":"artifact","dimension":"forecast_eval_authority","key":"artifact:forecast_eval_authority","status":"forbidden"},{"kind":"artifact","dimension":"forecast_eval_lineage","key":"artifact:forecast_eval_lineage","status":"missing"},{"kind":"artifact","dimension":"forecast_eval_issue_forecast_eval_must_remain_artifact_evidence_only","key":"artifact:forecast_eval_issue_forecast_eval_must_remain_artifact_evidence_only","status":"forbidden"},{"kind":"artifact","dimension":"forecast_eval_issue_baseline_fact_digest_not_found","key":"artifact:forecast_eval_issue_baseline_fact_digest_not_found","status":"missing","related_fact_integrity_issue_codes":["mdn:baseline_fact_digest_not_found"]}],"plan_basis":{"primary_deficit_key":"artifact:forecast_eval_authority","deficit_keys":["artifact:forecast_eval_authority","artifact:forecast_eval_lineage","artifact:forecast_eval_issue_forecast_eval_must_remain_artifact_evidence_only","artifact:forecast_eval_issue_baseline_fact_digest_not_found"]},"proof_certificate":{"artifacts":[{"proof_kind":"forecast_eval_artifact_bound","proof_template_bound":true,"proof_template_claim":"forecast evaluation artifact existence, checkpoint lineage, target-transform binding, baseline binding, selection-signal audit binding, and support counts","fact_family":"forecast_eval","fact_digest":"forecast_eval_fact","identity_match":true,"artifact_evidence":true,"deterministic_artifact":true,"visibility_only":true,"authority_clean":false,"quality_authority":true,"lineage_bound":false,"passed":false,"issues":["forecast_eval_must_remain_artifact_evidence_only","baseline_fact_digest_not_found"]}]}}]},"isError":false})";
+        R"({"content":[{"type":"text","text":"hero.lattice.evaluate operation=targets executed"}],"structuredContent":{"read_only":true,"evaluations":[{"target_id":"vicreg_train_core_ready","status":"satisfied","proof_certificate_check":{"passed":true,"issues":[]}},{"target_id":"channel_mdn_train_core_ready","status":"satisfied","proof_certificate_check":{"passed":false,"issues":["closure_unresolved"]}},{"target_id":"channel_mdn_validation_eval_ready","status":"metric_failed","proof_certificate_check":{"passed":true,"issues":[]},"plan_basis":{"deficit_keys":["coverage:evaluation_metric"],"primary_deficit_key":"coverage:evaluation_metric"},"warnings":[{"warning_id":"validation_eval_missing","severity":"watch","source":"lattice"}]},{"target_id":"forecast_eval_artifact_ready","status":"blocked","target_class":"artifact_readiness","kind":"not_applicable","target_kind_applicable":false,"target_kind_effective":"none","proof_kind":"forecast_eval_artifact_bound","subject_fact_family":"forecast_eval","proof_certificate_check":{"passed":false,"issues":["artifact[0] quality authority present","artifact[0] authority drift present","artifact[0] lineage unbound"]},"deficits":[{"kind":"artifact","dimension":"forecast_eval_authority","key":"artifact:forecast_eval_authority","status":"forbidden"},{"kind":"artifact","dimension":"forecast_eval_lineage","key":"artifact:forecast_eval_lineage","status":"missing"},{"kind":"artifact","dimension":"forecast_eval_issue_forecast_eval_must_remain_artifact_evidence_only","key":"artifact:forecast_eval_issue_forecast_eval_must_remain_artifact_evidence_only","status":"forbidden"},{"kind":"artifact","dimension":"forecast_eval_issue_baseline_fact_digest_not_found","key":"artifact:forecast_eval_issue_baseline_fact_digest_not_found","status":"missing","related_fact_integrity_issue_codes":["mdn:baseline_fact_digest_not_found"]}],"plan_basis":{"primary_deficit_key":"artifact:forecast_eval_authority","deficit_keys":["artifact:forecast_eval_authority","artifact:forecast_eval_lineage","artifact:forecast_eval_issue_forecast_eval_must_remain_artifact_evidence_only","artifact:forecast_eval_issue_baseline_fact_digest_not_found"]},"proof_certificate":{"artifacts":[{"proof_kind":"forecast_eval_artifact_bound","proof_template_bound":true,"proof_template_claim":"forecast evaluation artifact existence, checkpoint lineage, target-transform binding, baseline binding, selection-signal audit binding, and support counts","fact_family":"forecast_eval","fact_digest":"forecast_eval_fact","identity_match":true,"artifact_evidence":true,"deterministic_artifact":true,"visibility_only":true,"authority_clean":false,"quality_authority":true,"lineage_bound":false,"passed":false,"issues":["forecast_eval_must_remain_artifact_evidence_only","baseline_fact_digest_not_found"]}]}}]},"isError":false})";
     inject_fake_artifact_boundary_denials(out_tool_result_json);
     inject_fake_policy_gate_reservations(out_tool_result_json);
   }
@@ -2841,11 +2852,12 @@ bool fake_lattice_prepare_callback(const std::string &tool_name,
   if (out_error_message) {
     out_error_message->clear();
   }
-  if (tool_name == "hero.lattice.target_deficit") {
+  if (tool_name == "hero.lattice.evaluate" &&
+      arguments_json.find("\"operation\":\"deficit\"") != std::string::npos) {
     if (out_tool_result_json) {
       std::ostringstream json;
       json
-          << R"({"content":[{"type":"text","text":"hero.lattice.target_deficit executed"}],"structuredContent":{"config_path":"/tmp/marshal_prepare/.config","runtime_root":"/tmp/marshal_prepare/runtime","active_identity":{"protocol_contract_fingerprint":"pc","graph_order_fingerprint":"go","source_cursor_token":"cursor","vicreg_assembly_fingerprint":"vic","mdn_assembly_fingerprint":"mdn"},"target_id":"channel_mdn_validation_eval_ready","status":"metric_failed","split_policy_fingerprint":"sp","plan_ready":true,"plan_basis":{"available":true,"reason":"suggested wave addresses proof deficits","primary_deficit_key":"coverage:evaluation_metric","primary_deficit_message":"validation evaluation coverage missing","primary_deficit_priority_class":"coverage","deficit_keys":["coverage:evaluation_metric"],"deficit_priority_classes":["coverage"]},"suggested_wave":{"target":"wikimyei.inference.expected_value.mdn","mode":"run|debug","source_range":"anchor_index","anchor_index_begin":1800,"anchor_index_end":2050,"input_mdn_checkpoint":"latest_satisfying:channel_mdn_train_core_no_test_leakage","input_representation_checkpoint":"latest_satisfying:vicreg_train_core_ready","text":"TARGET=wikimyei.inference.expected_value.mdn\n"},"proof_certificate":{"target_id":"channel_mdn_validation_eval_ready","target_spec_fingerprint":"ts","split_policy_fingerprint":"sp"})";
+          << R"({"content":[{"type":"text","text":"hero.lattice.evaluate operation=deficit executed"}],"structuredContent":{"config_path":"/tmp/marshal_prepare/.config","runtime_root":"/tmp/marshal_prepare/runtime","active_identity":{"protocol_contract_fingerprint":"pc","graph_order_fingerprint":"go","source_cursor_token":"cursor","vicreg_assembly_fingerprint":"vic","mdn_assembly_fingerprint":"mdn"},"target_id":"channel_mdn_validation_eval_ready","status":"metric_failed","split_policy_fingerprint":"sp","plan_ready":true,"plan_basis":{"available":true,"reason":"suggested wave addresses proof deficits","primary_deficit_key":"coverage:evaluation_metric","primary_deficit_message":"validation evaluation coverage missing","primary_deficit_priority_class":"coverage","deficit_keys":["coverage:evaluation_metric"],"deficit_priority_classes":["coverage"]},"suggested_wave":{"target":"wikimyei.inference.expected_value.mdn","mode":"run|debug","source_range":"anchor_index","anchor_index_begin":1800,"anchor_index_end":2050,"input_mdn_checkpoint":"latest_satisfying:channel_mdn_train_core_no_test_leakage","input_representation_checkpoint":"latest_satisfying:vicreg_train_core_ready","text":"TARGET=wikimyei.inference.expected_value.mdn\n"},"proof_certificate":{"target_id":"channel_mdn_validation_eval_ready","target_spec_fingerprint":"ts","split_policy_fingerprint":"sp"})";
       if (g_fake_lattice_prepare_warning) {
         if (g_fake_lattice_prepare_warning_kind == "blocking") {
           json
@@ -2869,7 +2881,9 @@ bool fake_lattice_prepare_callback(const std::string &tool_name,
     }
     return true;
   }
-  if (tool_name == "hero.lattice.latest_satisfying_checkpoint") {
+  if (tool_name == "hero.lattice.evaluate" &&
+      arguments_json.find("\"operation\":\"latest_satisfying_checkpoint\"") !=
+          std::string::npos) {
     ++g_fake_lattice_resolve_count;
     const bool is_representation =
         arguments_json.find("vicreg_train_core_ready") != std::string::npos;
@@ -2914,7 +2928,8 @@ bool fake_lattice_prepare_callback(const std::string &tool_name,
     std::ostringstream json;
     json << "{\"content\":[{\"type\":\"text\",\"text\":"
          << marshal::detail::json_quote(
-                "hero.lattice.latest_satisfying_checkpoint executed")
+                "hero.lattice.evaluate operation=latest_satisfying_checkpoint "
+                "executed")
          << "}],\"structuredContent\":{\"ok\":"
          << (resolver_ok ? "true" : "false")
          << ",\"read_only\":" << (read_only ? "true" : "false")
@@ -4881,7 +4896,7 @@ void test_m9_marshal_tool_handlers_validate_arguments() {
   check(marshal::execute_marshal_tool_json("hero.marshal.prepare", lookup_args,
                                            &result, &error),
         "prepare should ask Lattice and materialize advice");
-  check(g_fake_lattice_tool_name == "hero.lattice.target_deficit",
+  check(g_fake_lattice_tool_name == "hero.lattice.evaluate",
         "prepare should call Lattice target_deficit");
   check(g_fake_lattice_arguments_json.find("\"target_id\":\"lookup_target\"") !=
             std::string::npos,
@@ -5238,11 +5253,15 @@ void test_artifact_evidence_panel_and_prepare_boundary() {
       "proof, dispatch, allocation, or market authority");
   g_fake_lattice_policy_fingerprint_mismatch = false;
 
-  check(result.find("\"source_tool\":\"hero.lattice.scan_facts\"") !=
-            std::string::npos,
+  check(result.find("\"source_tool\":\"hero.lattice.inspect\"") !=
+                std::string::npos &&
+            result.find("\"source_subject\":\"facts\"") != std::string::npos &&
+            result.find("\"source_mode\":\"scan\"") != std::string::npos,
         "fact panel should report the Lattice fact scan source");
   check(result.find("\"lineage_panel\":{\"source_tool\":\"hero.lattice."
-                    "fact_lineage\"") != std::string::npos &&
+                    "inspect\"") != std::string::npos &&
+            result.find("\"source_subject\":\"facts\"") != std::string::npos &&
+            result.find("\"source_mode\":\"lineage\"") != std::string::npos &&
             result.find("\"lineage_rows_are_audit_only\":true") !=
                 std::string::npos &&
             result.find("\"cache_rows_used_for_target_satisfaction\":false") !=
@@ -5368,10 +5387,12 @@ void test_artifact_evidence_panel_and_prepare_boundary() {
         "forecast_eval fact-family-only evidence inspection should remain "
         "summary-only plus lineage audit");
   check(result.find("\"target_panel\":null") != std::string::npos &&
-            result.find("\"source_tool\":\"hero.lattice.fact_summary\"") !=
+            result.find("\"source_tool\":\"hero.lattice.inspect\"") !=
                 std::string::npos &&
+            result.find("\"source_mode\":\"summary\"") != std::string::npos &&
             result.find("\"lineage_panel\":{\"source_tool\":\"hero.lattice."
-                        "fact_lineage\"") != std::string::npos &&
+                        "inspect\"") != std::string::npos &&
+            result.find("\"source_mode\":\"lineage\"") != std::string::npos &&
             result.find("\"selected_relations\":[\"forecast_eval\"]") !=
                 std::string::npos &&
             result.find("\"fact_integrity_summary\":{") != std::string::npos &&
@@ -5410,7 +5431,9 @@ void test_artifact_evidence_panel_and_prepare_boundary() {
         "plus preview, without target proof");
   check(
       result.find("\"preview_panel\":{\"source_tool\":\"hero.lattice."
-                  "fact_preview\"") != std::string::npos &&
+                  "inspect\"") != std::string::npos &&
+          result.find("\"source_subject\":\"facts\"") != std::string::npos &&
+          result.find("\"source_mode\":\"preview\"") != std::string::npos &&
           result.find("\"preview_rows_are_audit_only\":true") !=
               std::string::npos &&
           result.find("\"facts_used_for_target_satisfaction\":false") !=
@@ -5433,10 +5456,11 @@ void test_artifact_evidence_panel_and_prepare_boundary() {
               std::string::npos &&
           result.find("\"forecast_artifact_digest\":\"forecast_artifact_1\"") !=
               std::string::npos &&
-          result.find("\"preview_lattice_args\":\"{\\\"runtime_root\\\":"
-                      "\\\"/tmp/marshal_artifact/runtime\\\",\\\"family\\\":"
-                      "\\\"forecast_eval\\\",\\\"fact_index\\\":0}\"") !=
-              std::string::npos,
+          result.find("\"preview_lattice_args\":\"{\\\"subject\\\":"
+                      "\\\"facts\\\",\\\"mode\\\":\\\"preview\\\","
+                      "\\\"runtime_root\\\":\\\"/tmp/marshal_artifact/"
+                      "runtime\\\",\\\"family\\\":\\\"forecast_eval\\\","
+                      "\\\"fact_index\\\":0}\"") != std::string::npos,
       "fact preview panel should relay concrete facts without authority");
 
   g_fake_lattice_fact_summary_count = 0;
@@ -5461,10 +5485,12 @@ void test_artifact_evidence_panel_and_prepare_boundary() {
             g_fake_lattice_fact_preview_count == 1,
         "canonical digest-prefix preview should remain summary plus lineage "
         "plus preview");
-  check(result.find("\"preview_lattice_args\":\"{\\\"runtime_root\\\":"
-                    "\\\"/tmp/marshal_artifact/runtime\\\",\\\"family\\\":"
-                    "\\\"forecast_eval\\\",\\\"digest_prefix\\\":"
-                    "\\\"forecast\\\"}\"") != std::string::npos,
+  check(result.find("\"preview_lattice_args\":\"{\\\"subject\\\":"
+                    "\\\"facts\\\",\\\"mode\\\":\\\"preview\\\","
+                    "\\\"runtime_root\\\":\\\"/tmp/marshal_artifact/"
+                    "runtime\\\",\\\"family\\\":\\\"forecast_eval\\\","
+                    "\\\"digest_prefix\\\":\\\"forecast\\\"}\"") !=
+            std::string::npos,
         "Marshal should translate fact_digest_prefix to Lattice digest_prefix");
 
   g_fake_lattice_fact_summary_count = 0;
@@ -5605,7 +5631,7 @@ void test_artifact_evidence_panel_and_prepare_boundary() {
             "hero.marshal.inspect", inspect_artifact_args, &result, &error),
         "inspect subject=target should report artifact-readiness targets: " +
             error);
-  check(g_fake_lattice_tool_name == "hero.lattice.target_deficit",
+  check(g_fake_lattice_tool_name == "hero.lattice.evaluate",
         "inspect subject=target should use Lattice target_deficit for "
         "artifact targets");
   check(result.find("\"target_class\":\"artifact_readiness\"") !=
@@ -5772,7 +5798,7 @@ void test_artifact_evidence_panel_with_real_lattice_response() {
             g_fake_lattice_fact_lineage_count == 1,
         "real Lattice panel should call evaluate_target, scan_facts, and "
         "fact_lineage");
-  check(g_fake_lattice_tool_name == "hero.lattice.fact_lineage",
+  check(g_fake_lattice_tool_name == "hero.lattice.inspect",
         "real Lattice panel should finish by inspecting requested fact "
         "lineage");
   check(result.find("\"tool\":\"hero.marshal.inspect\"") != std::string::npos,
@@ -5785,7 +5811,9 @@ void test_artifact_evidence_panel_with_real_lattice_response() {
             std::string::npos,
         "real Lattice panel must not claim target satisfaction for Marshal");
   check(result.find("\"target_panel\":{\"source_tool\":\"hero.lattice."
-                    "evaluate_target\"") != std::string::npos &&
+                    "evaluate\"") != std::string::npos &&
+            result.find("\"source_operation\":\"target\"") !=
+                std::string::npos &&
             result.find("\"status\":\"blocked\"") != std::string::npos &&
             result.find("\"target_class\":\"artifact_readiness\"") !=
                 std::string::npos &&
@@ -5821,7 +5849,7 @@ void test_artifact_evidence_panel_with_real_lattice_response() {
               "\"artifact_fact_preview_families\":[\"forecast_eval\"]") !=
               std::string::npos &&
           result.find("\"artifact_fact_preview_tools\":[\"hero.lattice."
-                      "fact_preview\"]") != std::string::npos &&
+                      "inspect\"]") != std::string::npos &&
           result.find("\"artifact_fact_preview_marshal_tools\":[\"hero."
                       "marshal.inspect\"]") != std::string::npos &&
           result.find("\"artifact_issue_codes\":[\"baseline_fact_digest_not_"
@@ -5891,7 +5919,9 @@ void test_artifact_evidence_panel_with_real_lattice_response() {
                     "digest_not_found\"") != std::string::npos,
         "real Lattice target panel should relay artifact deficit keys");
   check(result.find("\"fact_panel\":{\"source_tool\":\"hero.lattice."
-                    "scan_facts\"") != std::string::npos &&
+                    "inspect\"") != std::string::npos &&
+            result.find("\"source_subject\":\"facts\"") != std::string::npos &&
+            result.find("\"source_mode\":\"scan\"") != std::string::npos &&
             result.find("\"fact_family\":\"forecast_eval\"") !=
                 std::string::npos &&
             result.find("\"relation_declared_count\":3") != std::string::npos &&
@@ -5906,7 +5936,9 @@ void test_artifact_evidence_panel_with_real_lattice_response() {
                 std::string::npos,
         "real Lattice fact panel should relay scanner-backed fact integrity");
   check(result.find("\"lineage_panel\":{\"source_tool\":\"hero.lattice."
-                    "fact_lineage\"") != std::string::npos &&
+                    "inspect\"") != std::string::npos &&
+            result.find("\"source_subject\":\"facts\"") != std::string::npos &&
+            result.find("\"source_mode\":\"lineage\"") != std::string::npos &&
             result.find("\"lineage_rows_are_audit_only\":true") !=
                 std::string::npos &&
             result.find("\"cache_rows_used_for_target_satisfaction\":false") !=
@@ -6283,7 +6315,7 @@ void test_operational_report_summarizes_training_state() {
   check(marshal::execute_marshal_tool_json("hero.marshal.inspect", args,
                                            &result, &error),
         "inspect subject=run training_state mode should produce a report");
-  check(g_fake_lattice_tool_name == "hero.lattice.evaluate_targets",
+  check(g_fake_lattice_tool_name == "hero.lattice.evaluate",
         "operational report should quote Lattice target statuses");
   check(result.find("\"read_only\":true") != std::string::npos,
         "operational report should be read-only");
@@ -6414,7 +6446,7 @@ void test_operational_report_quotes_target_blockers() {
   check(marshal::execute_marshal_tool_json("hero.marshal.inspect", args,
                                            &result, &error),
         "inspect subject=run should quote Lattice target blockers");
-  check(g_fake_lattice_tool_name == "hero.lattice.evaluate_targets",
+  check(g_fake_lattice_tool_name == "hero.lattice.evaluate",
         "target blocker view should come from Lattice target inspection");
   check(result.find("\"target_satisfaction_claimed\":false") !=
             std::string::npos,
@@ -6661,17 +6693,18 @@ void test_inspect_deterministic_subjects() {
   check(marshal::execute_marshal_tool_json("hero.marshal.inspect", target_args,
                                            &result, &error),
         "inspect subject=target should query Lattice target deficit");
-  check(g_fake_lattice_tool_name == "hero.lattice.target_deficit",
+  check(g_fake_lattice_tool_name == "hero.lattice.evaluate",
         "target subject should use Lattice target_deficit");
   check(result.find("\"subject\":\"target\"") != std::string::npos &&
             result.find("\"target_panel\":{") != std::string::npos,
         "target subject should return a target panel");
   check(result.find("\"target_status\":\"metric_failed\"") != std::string::npos,
         "target subject should expose Lattice target status");
-  check(
-      result.find("\"target_status_source\":\"hero.lattice.target_deficit\"") !=
-          std::string::npos,
-      "target subject should mark the Lattice status source");
+  check(result.find("\"target_status_source\":\"hero.lattice.evaluate\"") !=
+                std::string::npos &&
+            result.find("\"source_operation\":\"deficit\"") !=
+                std::string::npos,
+        "target subject should mark the Lattice status source");
   check(result.find("\"proof_authority\":\"lattice\"") != std::string::npos,
         "target subject should name Lattice as proof authority");
   check(result.find("\"certificate_status\":\"available\"") !=

@@ -26,22 +26,33 @@ struct tool_schema_t {
   std::string input_schema{};
 };
 
-[[nodiscard]] std::string read_command_stdout(const std::string &command) {
+struct command_result_t {
+  int status{0};
+  std::string output{};
+};
+
+[[nodiscard]] command_result_t run_command_capture(const std::string &command) {
   std::array<char, 4096> buffer{};
-  std::string out;
   FILE *pipe = popen((command + " 2>&1").c_str(), "r");
   if (pipe == nullptr) {
     throw std::runtime_error("popen failed for command: " + command);
   }
+  command_result_t result{};
   while (fgets(buffer.data(), static_cast<int>(buffer.size()), pipe) !=
          nullptr) {
-    out.append(buffer.data());
+    result.output.append(buffer.data());
   }
-  const int status = pclose(pipe);
-  if (status != 0) {
-    throw std::runtime_error("command failed: " + command + "\n" + out);
+  result.status = pclose(pipe);
+  return result;
+}
+
+[[nodiscard]] std::string read_command_stdout(const std::string &command) {
+  const auto result = run_command_capture(command);
+  if (result.status != 0) {
+    throw std::runtime_error("command failed: " + command + "\n" +
+                             result.output);
   }
-  return out;
+  return result.output;
 }
 
 [[nodiscard]] fs::path first_existing(std::vector<fs::path> candidates) {
@@ -146,6 +157,9 @@ extract_tool_schemas(const std::string &catalog_json) {
   return out;
 }
 
+void require_contains(const std::string &output, const std::string &needle,
+                      const std::string &message);
+
 void check_catalog(const std::string &label, const fs::path &binary,
                    bool require_lattice_checkpoint_closure) {
   const std::string output = read_command_stdout(
@@ -153,11 +167,18 @@ void check_catalog(const std::string &label, const fs::path &binary,
                         "--list-tools-json");
   const auto tools = extract_tool_schemas(output);
   assert(!tools.empty());
-  bool saw_lattice_checkpoint_closure = false;
-  bool saw_lattice_target_deficit = false;
-  bool saw_lattice_latest_satisfying_checkpoint = false;
-  bool saw_lattice_fact_lineage = false;
-  bool saw_lattice_fact_preview = false;
+  bool saw_lattice_status = false;
+  bool saw_lattice_inspect = false;
+  bool saw_lattice_evaluate = false;
+  bool saw_lattice_compare = false;
+  int lattice_public_tool_count = 0;
+  bool saw_config_status = false;
+  bool saw_config_inspect = false;
+  bool saw_config_apply = false;
+  bool saw_runtime_status = false;
+  bool saw_runtime_inspect = false;
+  bool saw_runtime_run = false;
+  bool saw_runtime_reset = false;
   for (const auto &tool : tools) {
     const auto issues =
         schema::validate_tool_input_schema(tool.name, tool.input_schema);
@@ -165,42 +186,181 @@ void check_catalog(const std::string &label, const fs::path &binary,
       throw std::runtime_error(label + " schema compatibility failure: " +
                                schema::format_issue(issues.front()));
     }
-    if (tool.name == "hero.lattice.checkpoint_closure") {
-      saw_lattice_checkpoint_closure = true;
+    if (tool.name.rfind("hero.lattice.", 0) == 0) {
+      ++lattice_public_tool_count;
+      if (tool.name == "hero.lattice.status") {
+        saw_lattice_status = true;
+      } else if (tool.name == "hero.lattice.inspect") {
+        saw_lattice_inspect = true;
+      } else if (tool.name == "hero.lattice.evaluate") {
+        saw_lattice_evaluate = true;
+      } else if (tool.name == "hero.lattice.compare") {
+        saw_lattice_compare = true;
+      } else {
+        throw std::runtime_error(
+            "Lattice catalog still exposes retired tool: " + tool.name);
+      }
     }
-    if (tool.name == "hero.lattice.target_deficit") {
-      saw_lattice_target_deficit = true;
+    if (tool.name == "hero.config.status") {
+      saw_config_status = true;
     }
-    if (tool.name == "hero.lattice.latest_satisfying_checkpoint") {
-      saw_lattice_latest_satisfying_checkpoint = true;
+    if (tool.name == "hero.config.inspect") {
+      saw_config_inspect = true;
     }
-    if (tool.name == "hero.lattice.fact_lineage") {
-      saw_lattice_fact_lineage = true;
+    if (tool.name == "hero.config.apply") {
+      saw_config_apply = true;
     }
-    if (tool.name == "hero.lattice.fact_preview") {
-      saw_lattice_fact_preview = true;
+    if (tool.name == "hero.runtime.status") {
+      saw_runtime_status = true;
+    }
+    if (tool.name == "hero.runtime.inspect") {
+      saw_runtime_inspect = true;
+    }
+    if (tool.name == "hero.runtime.run") {
+      saw_runtime_run = true;
+    }
+    if (tool.name == "hero.runtime.reset") {
+      saw_runtime_reset = true;
+    }
+    if (label == "Config") {
+      for (const auto retired_name :
+           {"hero.config.schema", "hero.config.show", "hero.config.get",
+            "hero.config.set", "hero.config.validate", "hero.config.map",
+            "hero.config.capture_bundle", "hero.config.resolve",
+            "hero.config.diff", "hero.config.save", "hero.config.reload",
+            "hero.config.backups", "hero.config.rollback", "hero.config.list",
+            "hero.config.read", "hero.config.write", "hero.config.delete"}) {
+        if (tool.name == retired_name) {
+          throw std::runtime_error(
+              "Config catalog still exposes retired tool: " + tool.name);
+        }
+      }
+    }
+    if (label == "Runtime") {
+      for (const auto retired_name :
+           {"hero.runtime.schema", "hero.runtime.wave", "hero.runtime.dry_run",
+            "hero.runtime.execute", "hero.runtime.replay",
+            "hero.runtime.dev_nuke", "hero.runtime.list_jobs",
+            "hero.runtime.get_job", "hero.runtime.read_artifact"}) {
+        if (tool.name == retired_name) {
+          throw std::runtime_error(
+              "Runtime catalog still exposes retired tool: " + tool.name);
+        }
+      }
     }
   }
-  if (require_lattice_checkpoint_closure && !saw_lattice_checkpoint_closure) {
+  if (label == "Config" && (tools.size() != 3U || !saw_config_status ||
+                            !saw_config_inspect || !saw_config_apply)) {
     throw std::runtime_error(
-        "missing regression tool hero.lattice.checkpoint_closure");
+        "Config catalog must expose exactly hero.config.status, "
+        "hero.config.inspect, and hero.config.apply");
   }
-  if (require_lattice_checkpoint_closure && !saw_lattice_target_deficit) {
+  if (label == "Runtime" &&
+      (tools.size() != 4U || !saw_runtime_status || !saw_runtime_inspect ||
+       !saw_runtime_run || !saw_runtime_reset)) {
     throw std::runtime_error(
-        "missing regression tool hero.lattice.target_deficit");
+        "Runtime catalog must expose exactly hero.runtime.status, "
+        "hero.runtime.inspect, hero.runtime.run, and hero.runtime.reset");
   }
   if (require_lattice_checkpoint_closure &&
-      !saw_lattice_latest_satisfying_checkpoint) {
+      (!saw_lattice_status || !saw_lattice_inspect || !saw_lattice_evaluate ||
+       !saw_lattice_compare || lattice_public_tool_count != 4)) {
     throw std::runtime_error(
-        "missing regression tool hero.lattice.latest_satisfying_checkpoint");
+        "Lattice catalog must expose exactly status/inspect/evaluate/compare");
   }
-  if (require_lattice_checkpoint_closure && !saw_lattice_fact_lineage) {
+}
+
+void check_config_collapsed_surface(const fs::path &binary) {
+  const std::string base =
+      binary.string() + " --global-config /cuwacunu/src/config/.config ";
+
+  const std::string schema_output =
+      read_command_stdout(base + "--tool hero.config.inspect --args-json "
+                                 "'{\"subject\":\"schema\"}'");
+  require_contains(schema_output, "\"keys\":[",
+                   "Config inspect subject=schema should return schema keys");
+
+  const std::string value_output = read_command_stdout(
+      base + "--tool hero.config.inspect --args-json "
+             "'{\"subject\":\"value\",\"key\":\"protocol_layer\"}'");
+  require_contains(value_output, "\"key\":\"protocol_layer\"",
+                   "Config inspect subject=value should read policy values");
+  require_contains(value_output, "\"value\":\"STDIO\"",
+                   "Config inspect subject=value should expose protocol_layer");
+
+  const std::string plan_output = read_command_stdout(
+      base + "--tool hero.config.apply --args-json "
+             "'{\"operation\":\"set\",\"requested_mode\":\"plan\","
+             "\"key\":\"protocol_layer\",\"value\":\"STDIO\"}'");
+  require_contains(plan_output, "\"planned\":true",
+                   "Config apply requested_mode=plan should not mutate");
+  require_contains(plan_output, "\"operation\":\"set\"",
+                   "Config apply plan should preserve operation identity");
+
+  const auto unknown_old_tool =
+      run_command_capture(base + "--tool hero.config.schema --args-json '{}'");
+  if (unknown_old_tool.status == 0 ||
+      unknown_old_tool.output.find("unknown tool: hero.config.schema") ==
+          std::string::npos) {
     throw std::runtime_error(
-        "missing regression tool hero.lattice.fact_lineage");
+        "retired Config tool hero.config.schema should fail as unknown\n" +
+        unknown_old_tool.output);
   }
-  if (require_lattice_checkpoint_closure && !saw_lattice_fact_preview) {
+
+  const auto unknown_field = run_command_capture(
+      base + "--tool hero.config.inspect --args-json "
+             "'{\"subject\":\"schema\",\"old_field\":true}'");
+  if (unknown_field.status == 0 ||
+      unknown_field.output.find("unknown field: old_field") ==
+          std::string::npos) {
     throw std::runtime_error(
-        "missing regression tool hero.lattice.fact_preview");
+        "Config inspect should fail closed on unknown fields\n" +
+        unknown_field.output);
+  }
+}
+
+void check_runtime_collapsed_surface(const fs::path &binary) {
+  const std::string base =
+      binary.string() + " --global-config /cuwacunu/src/config/.config ";
+
+  const std::string schema_output =
+      read_command_stdout(base + "--tool hero.runtime.inspect --args-json "
+                                 "'{\"subject\":\"schema\"}'");
+  require_contains(schema_output, "\"keys\":[",
+                   "Runtime inspect subject=schema should return policy keys");
+
+  const std::string wave_output =
+      read_command_stdout(base + "--tool hero.runtime.inspect --args-json "
+                                 "'{\"subject\":\"wave\"}'");
+  require_contains(wave_output, "\"source_range\"",
+                   "Runtime inspect subject=wave should decode active wave");
+
+  const std::string reset_plan_output =
+      read_command_stdout(base + "--tool hero.runtime.reset --args-json "
+                                 "'{\"requested_mode\":\"plan\"}'");
+  require_contains(reset_plan_output, "\"dry_run\":true",
+                   "Runtime reset requested_mode=plan should preview reset");
+
+  const auto unknown_old_tool =
+      run_command_capture(base + "--tool hero.runtime.schema --args-json '{}'");
+  if (unknown_old_tool.status == 0 ||
+      unknown_old_tool.output.find("unknown tool: hero.runtime.schema") ==
+          std::string::npos) {
+    throw std::runtime_error(
+        "retired Runtime tool hero.runtime.schema should fail as unknown\n" +
+        unknown_old_tool.output);
+  }
+
+  const auto old_dry_run_field = run_command_capture(
+      base + "--tool hero.runtime.run --args-json "
+             "'{\"operation\":\"wave\",\"requested_mode\":\"dry_run\","
+             "\"dry_run\":true}'");
+  if (old_dry_run_field.status == 0 ||
+      old_dry_run_field.output.find("unknown field: dry_run") ==
+          std::string::npos) {
+    throw std::runtime_error(
+        "Runtime run should reject retired top-level dry_run field\n" +
+        old_dry_run_field.output);
   }
 }
 
@@ -468,6 +628,16 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
   const auto base =
       binary.string() + " --global-config /cuwacunu/src/config/.config ";
 
+  const auto unknown_old_tool =
+      run_command_capture(base + "--tool hero.lattice.schema --args-json '{}'");
+  if (unknown_old_tool.status == 0 ||
+      unknown_old_tool.output.find("unknown tool: hero.lattice.schema") ==
+          std::string::npos) {
+    throw std::runtime_error(
+        "retired Lattice tool hero.lattice.schema should fail as unknown\n" +
+        unknown_old_tool.output);
+  }
+
   const std::string lattice_status =
       read_command_stdout(base +
                           "--tool hero.lattice.status --args-json "
@@ -482,8 +652,9 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
       "catalog boundaries");
   require_lattice_non_decision_boundary(lattice_status, "hero.lattice.status");
 
-  const std::string lattice_schema =
-      read_command_stdout(base + "--tool hero.lattice.schema --args-json '{}'");
+  const std::string lattice_schema = read_command_stdout(
+      base +
+      "--tool hero.lattice.inspect --args-json '{\"subject\":\"schema\"}'");
   require_contains(
       lattice_schema,
       "\"schema\":\"kikijyeba.lattice.hero_policy_schema.v1\","
@@ -496,7 +667,8 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
                    "schema must not act as a policy gate");
 
   const std::string target_list = read_command_stdout(
-      base + "--tool hero.lattice.list_targets --args-json '{}'");
+      base +
+      "--tool hero.lattice.inspect --args-json '{\"subject\":\"targets\"}'");
   require_contains(
       target_list,
       "\"schema\":\"kikijyeba.lattice.target_catalog.v1\","
@@ -506,7 +678,7 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
       "list_targets should expose top-level read-only, non-proof, "
       "non-dispatchable boundaries");
   require_lattice_non_decision_boundary(target_list,
-                                        "hero.lattice.list_targets");
+                                        "hero.lattice.inspect subject=targets");
   require_contains(
       target_list,
       "\"policy_gate_reservation_summary\":{\"schema\":\"kikijyeba."
@@ -614,8 +786,10 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
 
   const std::string latest = read_command_stdout(
       base +
-      "--tool hero.lattice.latest_satisfying_checkpoint "
-      "--args-json '{\"target_id\":\"channel_mdn_train_core_no_test_leakage\","
+      "--tool hero.lattice.evaluate "
+      "--args-json "
+      "'{\"operation\":\"latest_satisfying_checkpoint\",\"target_id\":"
+      "\"channel_mdn_train_core_no_test_leakage\","
       "\"runtime_root\":\"" +
       runtime_root.string() + "\"}'");
   require_contains(
@@ -645,12 +819,14 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
   require_contains(latest, "\"deployment_decision\":false",
                    "latest_satisfying must not make deployment decisions");
 
-  const std::string artifact_latest = read_command_stdout(
-      base +
-      "--tool hero.lattice.latest_satisfying_checkpoint "
-      "--args-json '{\"target_id\":\"forecast_eval_artifact_ready\","
-      "\"runtime_root\":\"" +
-      runtime_root.string() + "\"}'");
+  const std::string artifact_latest =
+      read_command_stdout(base +
+                          "--tool hero.lattice.evaluate "
+                          "--args-json "
+                          "'{\"operation\":\"latest_satisfying_checkpoint\","
+                          "\"target_id\":\"forecast_eval_artifact_ready\","
+                          "\"runtime_root\":\"" +
+                          runtime_root.string() + "\"}'");
   require_contains(artifact_latest,
                    "\"source_target_class\":\"artifact_readiness\"",
                    "latest_satisfying should expose artifact source class");
@@ -665,8 +841,9 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
 
   const std::string checkpoint_closure = read_command_stdout(
       base +
-      "--tool hero.lattice.checkpoint_closure "
-      "--args-json '{\"checkpoint_id\":\"missing_checkpoint\","
+      "--tool hero.lattice.inspect "
+      "--args-json "
+      "'{\"subject\":\"checkpoint\",\"checkpoint_id\":\"missing_checkpoint\","
       "\"checkpoint_file_digest\":\"missing_digest\","
       "\"runtime_root\":\"" +
       runtime_root.string() + "\"}'");
@@ -688,7 +865,7 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
 
   const std::string comparison = read_command_stdout(
       base +
-      "--tool hero.lattice.compare_evidence "
+      "--tool hero.lattice.compare "
       "--args-json '{\"left_target_id\":\"channel_mdn_train_core_no_test_"
       "leakage\","
       "\"right_target_id\":\"channel_mdn_train_core_ready\","
@@ -729,8 +906,9 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
 
   const std::string fact_summary = read_command_stdout(
       base +
-      "--tool hero.lattice.fact_summary "
-      "--args-json '{\"runtime_root\":\"" +
+      "--tool hero.lattice.inspect "
+      "--args-json "
+      "'{\"subject\":\"facts\",\"mode\":\"summary\",\"runtime_root\":\"" +
       runtime_root.string() + "\",\"family\":\"forecast_eval\"}'");
   require_contains(
       fact_summary,
@@ -741,11 +919,12 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
           "true",
       "fact_summary should expose top-level non-proof, non-dispatchable "
       "catalog boundaries");
-  require_lattice_non_decision_boundary(fact_summary,
-                                        "hero.lattice.fact_summary");
-  require_fact_catalog_no_decision_authority(fact_summary,
-                                             "hero.lattice.fact_summary");
-  require_fact_identity_contract(fact_summary, "hero.lattice.fact_summary");
+  require_lattice_non_decision_boundary(
+      fact_summary, "hero.lattice.inspect subject=facts mode=summary");
+  require_fact_catalog_no_decision_authority(
+      fact_summary, "hero.lattice.inspect subject=facts mode=summary");
+  require_fact_identity_contract(
+      fact_summary, "hero.lattice.inspect subject=facts mode=summary");
   require_contains(fact_summary, "\"fact_integrity_summary\":",
                    "fact_summary should expose top-level fact integrity");
   require_contains(fact_summary,
@@ -777,11 +956,11 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
       "binding, selection-signal audit binding, and support counts\"",
       "fact_summary should mark forecast_eval as explicitly proofable");
 
-  const std::string fact_family_registry =
-      read_command_stdout(base +
-                          "--tool hero.lattice.list_fact_families "
-                          "--args-json '{\"runtime_root\":\"" +
-                          runtime_root.string() + "\"}'");
+  const std::string fact_family_registry = read_command_stdout(
+      base +
+      "--tool hero.lattice.inspect "
+      "--args-json '{\"subject\":\"fact_families\",\"runtime_root\":\"" +
+      runtime_root.string() + "\"}'");
   require_contains(
       fact_family_registry,
       "\"schema\":\"kikijyeba.lattice.fact_family_registry.v1\","
@@ -789,12 +968,12 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
       "\"runtime_executor\":false,\"fact_families_are_not_target_kinds\":true",
       "list_fact_families should expose top-level non-proof, non-dispatchable "
       "catalog boundaries");
-  require_lattice_non_decision_boundary(fact_family_registry,
-                                        "hero.lattice.list_fact_families");
-  require_fact_catalog_no_decision_authority(fact_family_registry,
-                                             "hero.lattice.list_fact_families");
+  require_lattice_non_decision_boundary(
+      fact_family_registry, "hero.lattice.inspect subject=fact_families");
+  require_fact_catalog_no_decision_authority(
+      fact_family_registry, "hero.lattice.inspect subject=fact_families");
   require_fact_identity_contract(fact_family_registry,
-                                 "hero.lattice.list_fact_families");
+                                 "hero.lattice.inspect subject=fact_families");
   require_contains(
       fact_family_registry,
       "\"artifact_readiness_proof_template_registry\":{\"schema\":\"kikijyeba."
@@ -898,8 +1077,9 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
 
   const std::string fact_scan = read_command_stdout(
       base +
-      "--tool hero.lattice.scan_facts "
-      "--args-json '{\"runtime_root\":\"" +
+      "--tool hero.lattice.inspect "
+      "--args-json "
+      "'{\"subject\":\"facts\",\"mode\":\"scan\",\"runtime_root\":\"" +
       runtime_root.string() +
       "\",\"family\":\"forecast_eval\",\"include_facts\":false}'");
   require_contains(
@@ -912,10 +1092,12 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
           "true",
       "scan_facts should expose top-level non-proof, non-dispatchable catalog "
       "boundaries");
-  require_lattice_non_decision_boundary(fact_scan, "hero.lattice.scan_facts");
-  require_fact_catalog_no_decision_authority(fact_scan,
-                                             "hero.lattice.scan_facts");
-  require_fact_identity_contract(fact_scan, "hero.lattice.scan_facts");
+  require_lattice_non_decision_boundary(
+      fact_scan, "hero.lattice.inspect subject=facts mode=scan");
+  require_fact_catalog_no_decision_authority(
+      fact_scan, "hero.lattice.inspect subject=facts mode=scan");
+  require_fact_identity_contract(
+      fact_scan, "hero.lattice.inspect subject=facts mode=scan");
   require_contains(fact_scan, "\"fact_integrity_summary\":",
                    "scan_facts should expose top-level fact integrity");
   require_contains(fact_scan, "\"inspected_family_count\":1",
@@ -939,8 +1121,9 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
 
   const std::string fact_lineage = read_command_stdout(
       base +
-      "--tool hero.lattice.fact_lineage "
-      "--args-json '{\"runtime_root\":\"" +
+      "--tool hero.lattice.inspect "
+      "--args-json "
+      "'{\"subject\":\"facts\",\"mode\":\"lineage\",\"runtime_root\":\"" +
       runtime_root.string() + "\",\"family\":\"forecast_eval\",\"limit\":4}'");
   require_contains(fact_lineage,
                    "\"schema\":\"kikijyeba.lattice.fact_lineage.v1\"",
@@ -955,8 +1138,8 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
                    "fact_lineage must not execute runtime work");
   require_contains(fact_lineage, "\"fact_families_are_not_target_kinds\":true",
                    "fact_lineage should preserve the catalog boundary");
-  require_lattice_non_decision_boundary(fact_lineage,
-                                        "hero.lattice.fact_lineage");
+  require_lattice_non_decision_boundary(
+      fact_lineage, "hero.lattice.inspect subject=facts mode=lineage");
   require_contains(fact_lineage, "\"lineage_rows_are_audit_only\":true",
                    "fact_lineage rows should be audit-only");
   require_contains(fact_lineage,
@@ -978,11 +1161,12 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
   require_contains(fact_lineage, "\"truncated\":false",
                    "empty fact_lineage should not be truncated");
 
-  const std::string index_status =
-      read_command_stdout(base +
-                          "--tool hero.lattice.index_status "
-                          "--args-json '{\"runtime_root\":\"" +
-                          runtime_root.string() + "\",\"limit\":4}'");
+  const std::string index_status = read_command_stdout(
+      base +
+      "--tool hero.lattice.inspect "
+      "--args-json "
+      "'{\"subject\":\"index\",\"mode\":\"status\",\"runtime_root\":\"" +
+      runtime_root.string() + "\",\"limit\":4}'");
   require_contains(
       index_status,
       "\"schema\":\"kikijyeba.lattice.runtime_index_status.v1\","
@@ -1000,12 +1184,13 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
   require_contains(index_status, "\"cache_used_for_target_satisfaction\":false",
                    "index_status cache rows must not satisfy targets");
 
-  const std::string index_query =
-      read_command_stdout(base +
-                          "--tool hero.lattice.index_query "
-                          "--args-json '{\"runtime_root\":\"" +
-                          runtime_root.string() +
-                          "\",\"relation\":\"forecast_eval\",\"limit\":4}'");
+  const std::string index_query = read_command_stdout(
+      base +
+      "--tool hero.lattice.inspect "
+      "--args-json "
+      "'{\"subject\":\"index\",\"mode\":\"query\",\"runtime_root\":\"" +
+      runtime_root.string() +
+      "\",\"relation\":\"forecast_eval\",\"limit\":4}'");
   require_contains(
       index_query,
       "\"schema\":\"kikijyeba.lattice.runtime_index_query_result.v1\","
@@ -1025,11 +1210,13 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
   require_contains(index_query, "\"cache_used_unproven_for_audit_query\":false",
                    "default index_query must not use unproven cache answers");
 
-  const std::string derived_query = read_command_stdout(
-      base +
-      "--tool hero.lattice.derived_query "
-      "--args-json '{\"relation\":\"stale_cache\",\"runtime_root\":\"" +
-      runtime_root.string() + "\",\"limit\":4}'");
+  const std::string derived_query =
+      read_command_stdout(base +
+                          "--tool hero.lattice.inspect "
+                          "--args-json "
+                          "'{\"subject\":\"derived\",\"relation\":\"stale_"
+                          "cache\",\"runtime_root\":\"" +
+                          runtime_root.string() + "\",\"limit\":4}'");
   require_contains(
       derived_query,
       "\"schema\":\"kikijyeba.lattice.derived_query.v1\","
@@ -1052,11 +1239,11 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
                    "\"cache_rows_used_for_target_satisfaction\":false",
                    "derived_query cache rows must not satisfy targets");
 
-  const std::string exposure_scan =
-      read_command_stdout(base +
-                          "--tool hero.lattice.scan_exposure "
-                          "--args-json '{\"runtime_root\":\"" +
-                          runtime_root.string() + "\",\"limit\":4}'");
+  const std::string exposure_scan = read_command_stdout(
+      base +
+      "--tool hero.lattice.inspect "
+      "--args-json '{\"subject\":\"exposure\",\"runtime_root\":\"" +
+      runtime_root.string() + "\",\"limit\":4}'");
   require_contains(
       exposure_scan, "\"read_only\":true",
       "scan_exposure should advertise read-only evidence scanning");
@@ -1068,16 +1255,18 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
                    "scan_exposure must not execute runtime work");
   require_contains(exposure_scan, "\"fact_families_are_not_target_kinds\":true",
                    "scan_exposure should preserve the fact-catalog boundary");
-  require_lattice_non_decision_boundary(exposure_scan,
-                                        "hero.lattice.scan_exposure");
+  require_lattice_non_decision_boundary(
+      exposure_scan, "hero.lattice.inspect subject=exposure");
 
   const fs::path source_analytics_runtime_root =
       "/tmp/hero_mcp_schema_compat/lattice_source_analytics_warning";
   write_mtf_source_analytics_warning_fixture(source_analytics_runtime_root);
   const std::string source_analytics_eval = read_command_stdout(
       base +
-      "--tool hero.lattice.evaluate_target "
-      "--args-json '{\"target_id\":\"mtf_jepa_mae_vicreg_train_core_ready\","
+      "--tool hero.lattice.evaluate "
+      "--args-json "
+      "'{\"operation\":\"target\",\"target_id\":\"mtf_jepa_mae_vicreg_train_"
+      "core_ready\","
       "\"runtime_root\":\"" +
       source_analytics_runtime_root.string() +
       "\",\"protocol_id\":\"cwu_02v\","
@@ -1158,9 +1347,11 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
                    "source analytics warning summary should prove warnings are "
                    "non-blocking");
 
-  const std::string artifact_explain = read_command_stdout(
-      base + "--tool hero.lattice.explain_target "
-             "--args-json '{\"target_id\":\"forecast_eval_artifact_ready\"}'");
+  const std::string artifact_explain =
+      read_command_stdout(base + "--tool hero.lattice.inspect "
+                                 "--args-json "
+                                 "'{\"subject\":\"target\",\"target_id\":"
+                                 "\"forecast_eval_artifact_ready\"}'");
   require_contains(
       artifact_explain,
       "\"schema\":\"kikijyeba.lattice.target_explanation.v1\","
@@ -1276,16 +1467,18 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
                    "artifact policy reservation must not affect proof "
                    "certificates");
 
-  const std::string artifact_deficit = read_command_stdout(
-      base +
-      "--tool hero.lattice.target_deficit "
-      "--args-json '{\"target_id\":\"forecast_eval_artifact_ready\","
-      "\"runtime_root\":\"" +
-      runtime_root.string() +
-      "\",\"protocol_contract_fingerprint\":\"contract_1\","
-      "\"graph_order_fingerprint\":\"graph_1\","
-      "\"source_cursor_token\":\"cursor_1\","
-      "\"mdn_assembly_fingerprint\":\"mdn_1\"}'");
+  const std::string artifact_deficit =
+      read_command_stdout(base +
+                          "--tool hero.lattice.evaluate "
+                          "--args-json "
+                          "'{\"operation\":\"deficit\",\"target_id\":"
+                          "\"forecast_eval_artifact_ready\","
+                          "\"runtime_root\":\"" +
+                          runtime_root.string() +
+                          "\",\"protocol_contract_fingerprint\":\"contract_1\","
+                          "\"graph_order_fingerprint\":\"graph_1\","
+                          "\"source_cursor_token\":\"cursor_1\","
+                          "\"mdn_assembly_fingerprint\":\"mdn_1\"}'");
   require_contains(
       artifact_deficit,
       "\"schema\":\"kikijyeba.lattice.target_deficit_response.v1\","
@@ -1355,16 +1548,18 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
                        "artifact target deficit should not fall back to a "
                        "generic train/readiness status deficit");
 
-  const std::string artifact_evaluation = read_command_stdout(
-      base +
-      "--tool hero.lattice.evaluate_target "
-      "--args-json '{\"target_id\":\"forecast_eval_artifact_ready\","
-      "\"runtime_root\":\"" +
-      runtime_root.string() +
-      "\",\"protocol_contract_fingerprint\":\"contract_1\","
-      "\"graph_order_fingerprint\":\"graph_1\","
-      "\"source_cursor_token\":\"cursor_1\","
-      "\"mdn_assembly_fingerprint\":\"mdn_1\"}'");
+  const std::string artifact_evaluation =
+      read_command_stdout(base +
+                          "--tool hero.lattice.evaluate "
+                          "--args-json "
+                          "'{\"operation\":\"target\",\"target_id\":\"forecast_"
+                          "eval_artifact_ready\","
+                          "\"runtime_root\":\"" +
+                          runtime_root.string() +
+                          "\",\"protocol_contract_fingerprint\":\"contract_1\","
+                          "\"graph_order_fingerprint\":\"graph_1\","
+                          "\"source_cursor_token\":\"cursor_1\","
+                          "\"mdn_assembly_fingerprint\":\"mdn_1\"}'");
   require_contains(
       artifact_evaluation,
       "\"schema\":\"kikijyeba.lattice.target_evaluation_response.v1\","
@@ -1416,16 +1611,18 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
       "artifact evaluation deficits should expose related fact-integrity issue "
       "codes even when empty");
 
-  const std::string artifact_bulk_evaluation = read_command_stdout(
-      base +
-      "--tool hero.lattice.evaluate_targets "
-      "--args-json '{\"target_ids\":[\"forecast_eval_artifact_ready\"],"
-      "\"runtime_root\":\"" +
-      runtime_root.string() +
-      "\",\"protocol_contract_fingerprint\":\"contract_1\","
-      "\"graph_order_fingerprint\":\"graph_1\","
-      "\"source_cursor_token\":\"cursor_1\","
-      "\"mdn_assembly_fingerprint\":\"mdn_1\"}'");
+  const std::string artifact_bulk_evaluation =
+      read_command_stdout(base +
+                          "--tool hero.lattice.evaluate "
+                          "--args-json "
+                          "'{\"operation\":\"targets\",\"target_ids\":["
+                          "\"forecast_eval_artifact_ready\"],"
+                          "\"runtime_root\":\"" +
+                          runtime_root.string() +
+                          "\",\"protocol_contract_fingerprint\":\"contract_1\","
+                          "\"graph_order_fingerprint\":\"graph_1\","
+                          "\"source_cursor_token\":\"cursor_1\","
+                          "\"mdn_assembly_fingerprint\":\"mdn_1\"}'");
   require_contains(
       artifact_bulk_evaluation,
       "\"schema\":\"kikijyeba.lattice.target_evaluation_batch.v1\","
@@ -1515,8 +1712,9 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
       scanned_runtime_root, /*forecast_baseline_digest_mismatch=*/false);
   const std::string fact_preview = read_command_stdout(
       base +
-      "--tool hero.lattice.fact_preview "
-      "--args-json '{\"runtime_root\":\"" +
+      "--tool hero.lattice.inspect "
+      "--args-json "
+      "'{\"subject\":\"facts\",\"mode\":\"preview\",\"runtime_root\":\"" +
       scanned_runtime_root.string() +
       "\",\"family\":\"forecast_eval\",\"fact_index\":0,\"limit\":1}'");
   require_contains(
@@ -1529,8 +1727,8 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
           "true",
       "fact_preview should expose top-level non-proof, non-dispatchable "
       "catalog boundaries");
-  require_lattice_non_decision_boundary(fact_preview,
-                                        "hero.lattice.fact_preview");
+  require_lattice_non_decision_boundary(
+      fact_preview, "hero.lattice.inspect subject=facts mode=preview");
   require_contains(fact_preview, "\"preview_rows_are_audit_only\":true",
                    "fact_preview rows should be audit-only");
   require_contains(fact_preview, "\"facts_used_for_target_satisfaction\":false",
@@ -1582,16 +1780,18 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
                    "\"forecast_artifact_digest\":\"forecast_artifact_1\"",
                    "fact_preview should include the concrete forecast fact");
 
-  const std::string scanned_baseline_evaluation = read_command_stdout(
-      base +
-      "--tool hero.lattice.evaluate_target "
-      "--args-json '{\"target_id\":\"forecast_baseline_artifact_ready\","
-      "\"runtime_root\":\"" +
-      scanned_runtime_root.string() +
-      "\",\"protocol_contract_fingerprint\":\"contract_1\","
-      "\"graph_order_fingerprint\":\"graph_1\","
-      "\"source_cursor_token\":\"cursor_1\","
-      "\"mdn_assembly_fingerprint\":\"mdn_1\"}'");
+  const std::string scanned_baseline_evaluation =
+      read_command_stdout(base +
+                          "--tool hero.lattice.evaluate "
+                          "--args-json "
+                          "'{\"operation\":\"target\",\"target_id\":\"forecast_"
+                          "baseline_artifact_ready\","
+                          "\"runtime_root\":\"" +
+                          scanned_runtime_root.string() +
+                          "\",\"protocol_contract_fingerprint\":\"contract_1\","
+                          "\"graph_order_fingerprint\":\"graph_1\","
+                          "\"source_cursor_token\":\"cursor_1\","
+                          "\"mdn_assembly_fingerprint\":\"mdn_1\"}'");
   require_contains(
       scanned_baseline_evaluation, "\"status\":\"satisfied\"",
       "scanned baseline artifact evaluation should satisfy target");
@@ -1666,16 +1866,18 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
                    "\"warning_messages\":[\"forecast-baseline valid_count",
                    "forecast baseline warning messages remain visible");
 
-  const std::string scanned_observer_evaluation = read_command_stdout(
-      base +
-      "--tool hero.lattice.evaluate_target "
-      "--args-json '{\"target_id\":\"observer_belief_artifact_ready\","
-      "\"runtime_root\":\"" +
-      scanned_runtime_root.string() +
-      "\",\"protocol_contract_fingerprint\":\"contract_1\","
-      "\"graph_order_fingerprint\":\"graph_1\","
-      "\"source_cursor_token\":\"cursor_1\","
-      "\"mdn_assembly_fingerprint\":\"mdn_1\"}'");
+  const std::string scanned_observer_evaluation =
+      read_command_stdout(base +
+                          "--tool hero.lattice.evaluate "
+                          "--args-json "
+                          "'{\"operation\":\"target\",\"target_id\":\"observer_"
+                          "belief_artifact_ready\","
+                          "\"runtime_root\":\"" +
+                          scanned_runtime_root.string() +
+                          "\",\"protocol_contract_fingerprint\":\"contract_1\","
+                          "\"graph_order_fingerprint\":\"graph_1\","
+                          "\"source_cursor_token\":\"cursor_1\","
+                          "\"mdn_assembly_fingerprint\":\"mdn_1\"}'");
   require_contains(
       scanned_observer_evaluation, "\"status\":\"satisfied\"",
       "scanned observer artifact evaluation should satisfy target");
@@ -1740,8 +1942,9 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
 
   const std::string scanned_allocation_evaluation = read_command_stdout(
       base +
-      "--tool hero.lattice.evaluate_target "
-      "--args-json '{\"target_id\":\"allocation_artifact_ready\","
+      "--tool hero.lattice.evaluate "
+      "--args-json "
+      "'{\"operation\":\"target\",\"target_id\":\"allocation_artifact_ready\","
       "\"runtime_root\":\"" +
       scanned_runtime_root.string() +
       "\",\"protocol_contract_fingerprint\":\"contract_1\","
@@ -1825,16 +2028,18 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
                    "\"warning_messages\":[\"allocation-engine turnover",
                    "allocation engine warning messages remain visible");
 
-  const std::string scanned_artifact_evaluation = read_command_stdout(
-      base +
-      "--tool hero.lattice.evaluate_target "
-      "--args-json '{\"target_id\":\"forecast_eval_artifact_ready\","
-      "\"runtime_root\":\"" +
-      scanned_runtime_root.string() +
-      "\",\"protocol_contract_fingerprint\":\"contract_1\","
-      "\"graph_order_fingerprint\":\"graph_1\","
-      "\"source_cursor_token\":\"cursor_1\","
-      "\"mdn_assembly_fingerprint\":\"mdn_1\"}'");
+  const std::string scanned_artifact_evaluation =
+      read_command_stdout(base +
+                          "--tool hero.lattice.evaluate "
+                          "--args-json "
+                          "'{\"operation\":\"target\",\"target_id\":\"forecast_"
+                          "eval_artifact_ready\","
+                          "\"runtime_root\":\"" +
+                          scanned_runtime_root.string() +
+                          "\",\"protocol_contract_fingerprint\":\"contract_1\","
+                          "\"graph_order_fingerprint\":\"graph_1\","
+                          "\"source_cursor_token\":\"cursor_1\","
+                          "\"mdn_assembly_fingerprint\":\"mdn_1\"}'");
   require_contains(scanned_artifact_evaluation, "\"status\":\"satisfied\"",
                    "scanned artifact evaluation should satisfy target");
   require_contains(scanned_artifact_evaluation,
@@ -2007,16 +2212,18 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
                    "forecast eval warning summary should prove warnings are "
                    "non-blocking");
 
-  const std::string scanned_artifact_bulk = read_command_stdout(
-      base +
-      "--tool hero.lattice.evaluate_targets "
-      "--args-json '{\"target_ids\":[\"forecast_eval_artifact_ready\"],"
-      "\"runtime_root\":\"" +
-      scanned_runtime_root.string() +
-      "\",\"protocol_contract_fingerprint\":\"contract_1\","
-      "\"graph_order_fingerprint\":\"graph_1\","
-      "\"source_cursor_token\":\"cursor_1\","
-      "\"mdn_assembly_fingerprint\":\"mdn_1\"}'");
+  const std::string scanned_artifact_bulk =
+      read_command_stdout(base +
+                          "--tool hero.lattice.evaluate "
+                          "--args-json "
+                          "'{\"operation\":\"targets\",\"target_ids\":["
+                          "\"forecast_eval_artifact_ready\"],"
+                          "\"runtime_root\":\"" +
+                          scanned_runtime_root.string() +
+                          "\",\"protocol_contract_fingerprint\":\"contract_1\","
+                          "\"graph_order_fingerprint\":\"graph_1\","
+                          "\"source_cursor_token\":\"cursor_1\","
+                          "\"mdn_assembly_fingerprint\":\"mdn_1\"}'");
   require_contains(scanned_artifact_bulk, "\"evaluated_target_count\":1",
                    "bulk scanned artifact evaluation should evaluate one "
                    "target");
@@ -2036,16 +2243,18 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
   lattice_fixture::write_scanned_forecast_artifact_fixture(
       scanned_bad_baseline_root,
       /*forecast_baseline_digest_mismatch=*/true);
-  const std::string scanned_bad_baseline = read_command_stdout(
-      base +
-      "--tool hero.lattice.evaluate_target "
-      "--args-json '{\"target_id\":\"forecast_eval_artifact_ready\","
-      "\"runtime_root\":\"" +
-      scanned_bad_baseline_root.string() +
-      "\",\"protocol_contract_fingerprint\":\"contract_1\","
-      "\"graph_order_fingerprint\":\"graph_1\","
-      "\"source_cursor_token\":\"cursor_1\","
-      "\"mdn_assembly_fingerprint\":\"mdn_1\"}'");
+  const std::string scanned_bad_baseline =
+      read_command_stdout(base +
+                          "--tool hero.lattice.evaluate "
+                          "--args-json "
+                          "'{\"operation\":\"target\",\"target_id\":\"forecast_"
+                          "eval_artifact_ready\","
+                          "\"runtime_root\":\"" +
+                          scanned_bad_baseline_root.string() +
+                          "\",\"protocol_contract_fingerprint\":\"contract_1\","
+                          "\"graph_order_fingerprint\":\"graph_1\","
+                          "\"source_cursor_token\":\"cursor_1\","
+                          "\"mdn_assembly_fingerprint\":\"mdn_1\"}'");
   require_contains(scanned_bad_baseline, "\"status\":\"blocked\"",
                    "scanned bad-baseline artifact should block target");
   require_contains(scanned_bad_baseline, "\"baseline_fact_digest_not_found\"",
@@ -2073,8 +2282,8 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
                    "fact-integrity issue code");
   require_contains(scanned_bad_baseline,
                    "\"fact_preview_hint\":{\"available\":"
-                   "true,\"tool\":\"hero.lattice."
-                   "fact_preview\"",
+                   "true,\"tool\":\"hero.lattice.inspect\","
+                   "\"subject\":\"facts\",\"mode\":\"preview\"",
                    "scanned bad-baseline artifact proof should point to fact "
                    "preview");
   require_contains(scanned_bad_baseline,
@@ -2126,14 +2335,14 @@ int main() {
   assert(ok_issues.empty());
 
   const fs::path hero_root = "/cuwacunu/.build/hero";
-  check_catalog("Config",
-                first_existing({hero_root / "hero_config.mcp",
-                                hero_root / "hero_config_mcp"}),
-                false);
-  check_catalog("Runtime",
-                first_existing({hero_root / "hero_runtime.mcp",
-                                hero_root / "hero_runtime_mcp"}),
-                false);
+  const auto config_binary = first_existing(
+      {hero_root / "hero_config.mcp", hero_root / "hero_config_mcp"});
+  check_catalog("Config", config_binary, false);
+  check_config_collapsed_surface(config_binary);
+  const auto runtime_binary = first_existing(
+      {hero_root / "hero_runtime.mcp", hero_root / "hero_runtime_mcp"});
+  check_catalog("Runtime", runtime_binary, false);
+  check_runtime_collapsed_surface(runtime_binary);
   const auto lattice_binary = first_existing(
       {hero_root / "hero_lattice.mcp", hero_root / "hero_lattice_mcp"});
   check_catalog("Lattice", lattice_binary, true);

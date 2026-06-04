@@ -2119,7 +2119,7 @@ materialize_advice_from_lattice_plan_result(
     }
   }
   std::sort(out.required_plan_inputs.begin(), out.required_plan_inputs.end());
-  out.source_lattice_tool = "hero.lattice.target_deficit";
+  out.source_lattice_tool = "hero.lattice.evaluate";
   out.source_lattice_timestamp = source_lattice_timestamp.empty()
                                      ? current_utc_timestamp()
                                      : source_lattice_timestamp;
@@ -2683,8 +2683,10 @@ lattice_latest_satisfying_checkpoint_arguments_json(
   std::ostringstream out;
   bool has_field = false;
   out << "{";
-  out << "\"symbolic_hint\":" << detail::json_quote(symbolic_hint);
+  out << "\"operation\":\"latest_satisfying_checkpoint\"";
   has_field = true;
+  out << ",";
+  out << "\"symbolic_hint\":" << detail::json_quote(symbolic_hint);
   for (const auto &key :
        {"config_path", "runtime_root", "protocol_contract_fingerprint",
         "graph_order_fingerprint", "source_cursor_token",
@@ -2734,8 +2736,8 @@ materialize_plan_inputs(const std::map<std::string, std::string> &args,
         lattice_latest_satisfying_checkpoint_arguments_json(args, value);
     if (callback == nullptr) {
       row.status = "resolver_unavailable";
-    } else if (callback("hero.lattice.latest_satisfying_checkpoint",
-                        resolver_args, &resolver_result, &resolver_error) &&
+    } else if (callback("hero.lattice.evaluate", resolver_args,
+                        &resolver_result, &resolver_error) &&
                !tool_result_has_error_marker(resolver_result)) {
       try {
         const auto structured = structured_content_json(resolver_result);
@@ -2909,12 +2911,12 @@ load_live_runtime_snapshots(const std::map<std::string, std::string> &args,
   std::string wave_result;
   std::string wave_error;
   const std::string wave_args =
-      "{\"config_path\":" +
+      "{\"subject\":\"wave\",\"config_path\":" +
       detail::json_quote(first_non_empty(
           {optional_string(args, "config_path"), advice.config_path})) +
       "}";
   if (cuwacunu::hero::runtime::execute_tool_json(
-          "hero.runtime.wave", wave_args, &ctx, &wave_result, &wave_error) &&
+          "hero.runtime.inspect", wave_args, &ctx, &wave_result, &wave_error) &&
       wave_result.find("\"isError\":true") == std::string::npos) {
     *wave = parse_runtime_wave_tool_result(wave_result);
   } else {
@@ -3232,6 +3234,8 @@ append_optional_lattice_arg(std::ostringstream &out, bool *has_field,
   std::ostringstream out;
   bool has_field = false;
   out << "{";
+  out << "\"operation\":\"deficit\"";
+  has_field = true;
   for (const auto &key :
        {"target_id", "config_path", "runtime_root",
         "protocol_contract_fingerprint", "graph_order_fingerprint",
@@ -3245,7 +3249,20 @@ append_optional_lattice_arg(std::ostringstream &out, bool *has_field,
 
 [[nodiscard]] inline std::string lattice_evaluate_target_arguments_json(
     const std::map<std::string, std::string> &args) {
-  return lattice_target_deficit_arguments_json(args);
+  std::ostringstream out;
+  bool has_field = false;
+  out << "{";
+  out << "\"operation\":\"target\"";
+  has_field = true;
+  for (const auto &key :
+       {"target_id", "config_path", "runtime_root",
+        "protocol_contract_fingerprint", "graph_order_fingerprint",
+        "source_cursor_token", "vicreg_assembly_fingerprint",
+        "mdn_assembly_fingerprint"}) {
+    append_optional_lattice_arg(out, &has_field, args, key);
+  }
+  out << "}";
+  return out.str();
 }
 
 inline void append_unique_string(std::vector<std::string> *values,
@@ -3705,6 +3722,9 @@ inline void collect_artifact_boundary_flag(
   std::ostringstream out;
   bool has_field = false;
   out << "{";
+  out << "\"subject\":\"facts\",\"mode\":"
+      << detail::json_quote(scan_facts ? "scan" : "summary");
+  has_field = true;
   for (const auto &key : {"runtime_root"}) {
     append_optional_lattice_arg(out, &has_field, args, key);
   }
@@ -3742,6 +3762,8 @@ inline void collect_artifact_boundary_flag(
   std::ostringstream out;
   bool has_field = false;
   out << "{";
+  out << "\"subject\":\"facts\",\"mode\":\"lineage\"";
+  has_field = true;
   for (const auto &key : {"runtime_root"}) {
     append_optional_lattice_arg(out, &has_field, args, key);
   }
@@ -3770,6 +3792,8 @@ inline void collect_artifact_boundary_flag(
   std::ostringstream out;
   bool has_field = false;
   out << "{";
+  out << "\"subject\":\"facts\",\"mode\":\"preview\"";
+  has_field = true;
   for (const auto &key : {"runtime_root"}) {
     append_optional_lattice_arg(out, &has_field, args, key);
   }
@@ -3809,7 +3833,8 @@ inline void collect_artifact_boundary_flag(
     const std::filesystem::path &runtime_root,
     const std::filesystem::path &config_path) {
   std::ostringstream out;
-  out << "{\"target_ids\":" << string_array_json(target_ids)
+  out << "{\"operation\":\"targets\",\"target_ids\":"
+      << string_array_json(target_ids)
       << ",\"runtime_root\":" << detail::json_quote(runtime_root.string())
       << ",\"config_path\":" << detail::json_quote(config_path.string());
   bool has_field = true;
@@ -4070,8 +4095,8 @@ struct prepare_target_step_result_t {
 
   std::string lattice_error;
   const std::string lattice_args = lattice_target_deficit_arguments_json(args);
-  if (!callback("hero.lattice.target_deficit", lattice_args,
-                &step.lattice_result, &lattice_error)) {
+  if (!callback("hero.lattice.evaluate", lattice_args, &step.lattice_result,
+                &lattice_error)) {
     throw std::runtime_error("Lattice Hero target_deficit failed: " +
                              lattice_error);
   }
@@ -4376,7 +4401,8 @@ prepare_target_lattice_panel_json(const prepare_target_step_result_t &step) {
       summarize_lattice_policy_gate_reservations_from_tool_result(
           step.lattice_result);
   std::ostringstream out;
-  out << "{\"source_tool\":\"hero.lattice.target_deficit\""
+  out << "{\"source_tool\":\"hero.lattice.evaluate\""
+      << ",\"source_operation\":\"deficit\""
       << ",\"target_id\":" << detail::json_quote(step.advice.target_id)
       << ",\"target_status\":" << detail::json_quote(step.advice.target_status)
       << ",\"target_class\":" << detail::json_quote(step.target_class)
@@ -4514,7 +4540,7 @@ prepare_target_audit_panel_json(const prepare_target_step_result_t &step,
   }
   if (step.include_machine_payload) {
     structured << ",\"machine_payload\":{\"source_lattice_tool\":"
-               << detail::json_quote("hero.lattice.target_deficit")
+               << detail::json_quote("hero.lattice.evaluate")
                << ",\"lattice_plan_result\":"
                << detail::json_quote(step.lattice_result)
                << ",\"original_advice\":" << advice_json(step.original_advice)
@@ -4561,7 +4587,7 @@ prepare_target_audit_panel_json(const prepare_target_step_result_t &step,
   const std::string lattice_args = lattice_evaluate_target_arguments_json(args);
   std::string lattice_result;
   std::string lattice_error;
-  if (!callback("hero.lattice.evaluate_target", lattice_args, &lattice_result,
+  if (!callback("hero.lattice.evaluate", lattice_args, &lattice_result,
                 &lattice_error)) {
     throw std::runtime_error("Lattice Hero evaluate_target failed: " +
                              lattice_error);
@@ -4611,7 +4637,8 @@ prepare_target_audit_panel_json(const prepare_target_step_result_t &step,
   }
 
   std::ostringstream out;
-  out << "{\"source_tool\":\"hero.lattice.evaluate_target\""
+  out << "{\"source_tool\":\"hero.lattice.evaluate\""
+      << ",\"source_operation\":\"target\""
       << ",\"target_id\":" << detail::json_quote(target_id)
       << ",\"status\":" << detail::json_quote(status)
       << ",\"target_class\":" << detail::json_quote(target_class)
@@ -4791,7 +4818,8 @@ summarize_fact_lineage_panel_json(const std::string &lattice_result) {
   const auto fact_integrity_summary =
       optional_non_null_raw(fields, "fact_integrity_summary");
   std::ostringstream out;
-  out << "{\"source_tool\":\"hero.lattice.fact_lineage\""
+  out << "{\"source_tool\":\"hero.lattice.inspect\""
+      << ",\"source_subject\":\"facts\",\"source_mode\":\"lineage\""
       << ",\"schema\":" << detail::json_quote(optional_string(fields, "schema"))
       << ",\"read_only\":" << lineage_bool_json(fields, "read_only", true)
       << ",\"target_proof\":"
@@ -4847,7 +4875,8 @@ summarize_fact_preview_panel_json(const std::string &lattice_result) {
   const auto fact_integrity_summary =
       optional_non_null_raw(fields, "fact_integrity_summary");
   std::ostringstream out;
-  out << "{\"source_tool\":\"hero.lattice.fact_preview\""
+  out << "{\"source_tool\":\"hero.lattice.inspect\""
+      << ",\"source_subject\":\"facts\",\"source_mode\":\"preview\""
       << ",\"schema\":" << detail::json_quote(optional_string(fields, "schema"))
       << ",\"family\":" << detail::json_quote(optional_string(fields, "family"))
       << ",\"relation\":"
@@ -4929,7 +4958,7 @@ summarize_fact_preview_panel_json(const std::string &lattice_result) {
     throw std::runtime_error("fact preview requires fact_family_id");
   }
   const std::string lattice_tool =
-      include_facts ? "hero.lattice.scan_facts" : "hero.lattice.fact_summary";
+      include_facts ? "hero.lattice.inspect" : "hero.lattice.inspect";
   const std::string lattice_args =
       lattice_fact_panel_arguments_json(args, include_facts);
   std::string lattice_result;
@@ -4956,7 +4985,7 @@ summarize_fact_preview_panel_json(const std::string &lattice_result) {
     const std::string lineage_lattice_args =
         lattice_fact_lineage_arguments_json(args);
     std::string lineage_lattice_result;
-    if (!callback("hero.lattice.fact_lineage", lineage_lattice_args,
+    if (!callback("hero.lattice.inspect", lineage_lattice_args,
                   &lineage_lattice_result, &lattice_error)) {
       throw std::runtime_error("Lattice Hero fact lineage panel failed: " +
                                lattice_error);
@@ -4979,7 +5008,7 @@ summarize_fact_preview_panel_json(const std::string &lattice_result) {
     const std::string preview_lattice_args =
         lattice_fact_preview_arguments_json(args);
     std::string preview_lattice_result;
-    if (!callback("hero.lattice.fact_preview", preview_lattice_args,
+    if (!callback("hero.lattice.inspect", preview_lattice_args,
                   &preview_lattice_result, &lattice_error)) {
       throw std::runtime_error("Lattice Hero fact preview panel failed: " +
                                lattice_error);
@@ -5020,6 +5049,8 @@ summarize_fact_preview_panel_json(const std::string &lattice_result) {
   }
   std::ostringstream out;
   out << "{\"source_tool\":" << detail::json_quote(lattice_tool)
+      << ",\"source_subject\":\"facts\",\"source_mode\":"
+      << detail::json_quote(include_facts ? "scan" : "summary")
       << ",\"fact_family\":"
       << detail::json_quote(family.empty() ? "all" : family)
       << ",\"schema\":" << detail::json_quote(optional_string(fields, "schema"))
@@ -5639,11 +5670,12 @@ inspect_target_subject_json(const std::map<std::string, std::string> &args,
   const auto lattice_args = lattice_target_deficit_arguments_json(args);
   std::string lattice_result;
   std::string lattice_error;
-  if (!callback("hero.lattice.target_deficit", lattice_args, &lattice_result,
+  if (!callback("hero.lattice.evaluate", lattice_args, &lattice_result,
                 &lattice_error) ||
       tool_result_has_error_marker(lattice_result)) {
     throw std::runtime_error(lattice_error.empty()
-                                 ? "hero.lattice.target_deficit failed"
+                                 ? "hero.lattice.evaluate operation=deficit "
+                                   "failed"
                                  : lattice_error);
   }
 
@@ -5738,7 +5770,7 @@ inspect_target_subject_json(const std::map<std::string, std::string> &args,
       << ",\"proof_kind\":" << detail::json_quote(proof_kind)
       << ",\"subject_fact_family\":" << detail::json_quote(subject_fact_family)
       << ",\"target_status_source\":"
-      << detail::json_quote("hero.lattice.target_deficit")
+      << detail::json_quote("hero.lattice.evaluate")
       << ",\"proof_authority\":\"lattice\""
       << ",\"certificate_status\":" << detail::json_quote(certificate_status)
       << ",\"next_safe_action\":" << detail::json_quote(next_action)
@@ -5771,9 +5803,10 @@ inspect_target_subject_json(const std::map<std::string, std::string> &args,
       << detail::json_quote(target_kind_effective)
       << ",\"proof_kind\":" << detail::json_quote(proof_kind)
       << ",\"subject_fact_family\":" << detail::json_quote(subject_fact_family)
-      << ",\"source\":\"hero.lattice.target_deficit\""
+      << ",\"source\":\"hero.lattice.evaluate\""
+      << ",\"source_operation\":\"deficit\""
       << ",\"target_status_source\":"
-      << detail::json_quote("hero.lattice.target_deficit")
+      << detail::json_quote("hero.lattice.evaluate")
       << ",\"proof_authority\":\"lattice\""
       << ",\"certificate_status\":" << detail::json_quote(certificate_status)
       << ",\"certificate_ref\":" << detail::json_quote(certificate_ref)
@@ -5792,7 +5825,8 @@ inspect_target_subject_json(const std::map<std::string, std::string> &args,
       << ",\"deployment_decision\":false";
   append_policy_gate_reservation_panel_json(out, policy_gate_panel);
   out << ",\"target_satisfaction_claimed_by_marshal\":false}"
-      << ",\"lattice_panel\":{\"source\":\"hero.lattice.target_deficit\""
+      << ",\"lattice_panel\":{\"source\":\"hero.lattice.evaluate\""
+      << ",\"source_operation\":\"deficit\""
       << ",\"target_id\":" << detail::json_quote(target_id)
       << ",\"status\":" << detail::json_quote(status)
       << ",\"target_class\":" << detail::json_quote(target_class)
@@ -5804,7 +5838,7 @@ inspect_target_subject_json(const std::map<std::string, std::string> &args,
       << ",\"proof_kind\":" << detail::json_quote(proof_kind)
       << ",\"subject_fact_family\":" << detail::json_quote(subject_fact_family)
       << ",\"target_status_source\":"
-      << detail::json_quote("hero.lattice.target_deficit")
+      << detail::json_quote("hero.lattice.evaluate")
       << ",\"proof_authority\":\"lattice\""
       << ",\"certificate_status\":" << detail::json_quote(certificate_status)
       << ",\"certificate_ref\":" << detail::json_quote(certificate_ref)
@@ -5982,8 +6016,8 @@ inspect_target_subject_json(const std::map<std::string, std::string> &args,
                 tool_detail::lattice_evaluate_targets_arguments_json(
                     args, options.target_ids, options.runtime_root,
                     options.config_path);
-            if (callback("hero.lattice.evaluate_targets", lattice_args,
-                         &lattice_result, &lattice_error) &&
+            if (callback("hero.lattice.evaluate", lattice_args, &lattice_result,
+                         &lattice_error) &&
                 !tool_detail::tool_result_has_error_marker(lattice_result)) {
               options.target_statuses =
                   tool_detail::parse_lattice_evaluate_targets_statuses(
@@ -6096,7 +6130,7 @@ inspect_target_subject_json(const std::map<std::string, std::string> &args,
       bool runtime_replay_ok = false;
       bool runtime_tool_call_ok = false;
       bool runtime_tool_result_error = false;
-      const std::string runtime_tool_name = "hero.runtime.replay";
+      const std::string runtime_tool_name = "hero.runtime.run";
       std::string runtime_args_json{};
       std::string runtime_args_digest{};
       std::string runtime_result_json{};

@@ -71,11 +71,11 @@ familiar:
 | Authority | Tool families | Use | Boundary |
 | --- | --- | --- | --- |
 | Read-only health | `hero.config.status`, `hero.runtime.status`, `hero.lattice.status`, `hero.marshal.status` | Check policy paths, visible roots, active wave/advice state, and explicit non-authority flags. | No mutation, proof escalation, Runtime launch, or policy selection. |
-| Schema/help | `hero.config.schema`, `hero.runtime.schema`, `hero.lattice.schema`, `--list-tools`, `--list-tools-json`, `--help` | Inspect exact MCP arguments or operator runbooks. | Documentation/catalog surface only. |
-| Config inspection | `hero.config.show`, `hero.config.get`, `hero.config.validate`, `hero.config.map`, `hero.config.capture_bundle`, `hero.config.resolve`, `hero.config.diff`, `hero.config.list`, `hero.config.read`, `hero.config.backups` | Read policy-controlled config files and config provenance. | Does not execute Runtime or prove Lattice targets. |
-| Config mutation | `hero.config.set`, `hero.config.save`, `hero.config.reload`, `hero.config.rollback`, `hero.config.write`, `hero.config.delete` | Change in-memory policy/session config or files under allowed roots. | Config-scope only; use dry-run and expected digests for file writes/deletes. |
-| Runtime execution | `hero.runtime.dry_run`, `hero.runtime.execute`, `hero.runtime.replay`, `hero.runtime.dev_nuke` | Preview or perform guarded Runtime work. | Runtime Hero is the executor. `dev_nuke` is a guarded developer reset surface. |
-| Runtime evidence | `hero.runtime.wave`, `hero.runtime.list_jobs`, `hero.runtime.get_job`, `hero.runtime.read_artifact` | Read active wave or durable Runtime job/replay artifacts. | No target proof or config mutation. |
+| Schema/help | `hero.config.inspect subject=schema`, `hero.runtime.inspect subject=schema`, `hero.lattice.inspect subject=schema`, `--list-tools`, `--list-tools-json`, `--help` | Inspect exact MCP arguments or operator runbooks. | Documentation/catalog surface only. |
+| Config inspection | `hero.config.inspect` | Read policy-controlled config values, files, path provenance, validation, diffs, backups, and config-bundle receipts by `subject`. | Does not execute Runtime or prove Lattice targets. |
+| Config mutation | `hero.config.apply` | Plan or execute in-memory policy/session config changes or file mutations by `operation`. | Config-scope only; use `requested_mode=plan` and expected digests for file writes/deletes. |
+| Runtime execution | `hero.runtime.run`, `hero.runtime.reset` | Preview or perform guarded Runtime wave/replay work, or plan/execute a guarded developer reset. | Runtime Hero is the executor. `reset` is a guarded developer reset surface. |
+| Runtime evidence | `hero.runtime.inspect` | Read active wave or durable Runtime job/replay artifacts by `subject`. | No target proof or config mutation. |
 | Lattice proof/evidence | `hero.lattice.*` | Scan evidence, explain/evaluate targets, inspect fact/catalog/checkpoint lineage, compare proof vectors. | Read-only. Lattice proves; it does not execute or select deployments. |
 | Marshal coordination | `hero.marshal.prepare`, `hero.marshal.rollout` | Prepare/delegate bounded target handoffs or replay rollouts through Runtime policy. | Marshal coordinates and records handoffs; Runtime executes, Lattice proves. |
 | Marshal inspection | `hero.marshal.status`, `hero.marshal.inspect` | Read Marshal visibility and explain Runtime/Lattice/Marshal evidence. | Read-only and non-decision-making. |
@@ -83,10 +83,9 @@ familiar:
 Shortest routing rules:
 
 1. Need current visibility: call the matching `status`.
-2. Need a config value or file: use `hero.config.get`, `show`, `resolve`, or
-   `read`.
-3. Need target truth: use `hero.lattice.evaluate_target` or
-   `hero.lattice.target_deficit`.
+2. Need a config value or file: use `hero.config.inspect`.
+3. Need target truth: use `hero.lattice.evaluate operation=target` or
+   `hero.lattice.evaluate operation=deficit`.
 4. Need a finite next step toward one target: use `hero.marshal.prepare`.
 5. Need historical environment replay from a completed job:
    use `hero.marshal.rollout`.
@@ -125,7 +124,7 @@ panels, current state, job chain, explicit chain summary, target blockers,
 warnings, suspicious items, comparison deltas, and next safe actions. Compare
 mode exposes config-identity, wave/range, metric, checkpoint, warning, and
 proof-context deltas without choosing a winner. `subject=target` quotes
-`hero.lattice.target_deficit` status and only points at certificate inspection
+`hero.lattice.evaluate operation=deficit` status and only points at certificate inspection
 when Lattice returned certificate material. `subject=protocol` has report and
 strict identity modes; report mode is observed-only and strict mode requires
 explicit expected identity. `subject=spawn` and `subject=component` group
@@ -157,8 +156,12 @@ authority.
 
 For Lattice artifact-readiness targets and fact-family evidence, use
 `hero.marshal.inspect`. It is read-only and calls Lattice
-`evaluate_target`, `fact_summary`, `scan_facts`, `fact_lineage`, or
-`fact_preview`; Marshal does not dispatch, dry-run Runtime, select checkpoints,
+`hero.lattice.evaluate operation=target`,
+`hero.lattice.inspect subject=facts mode=summary`,
+`hero.lattice.inspect subject=facts mode=scan`,
+`hero.lattice.inspect subject=facts mode=lineage`, or
+`hero.lattice.inspect subject=facts mode=preview`; Marshal does not dispatch,
+dry-run Runtime, select checkpoints,
 or become proof authority from this panel.
 Failed artifact proofs are summarized with failed-proof count,
 proof-template bound/unbound count, proof kind, proof-template claim,
@@ -172,8 +175,8 @@ Fact panels relay Lattice's native `fact_integrity_summary` with declared,
 bound, unresolved, identity-mismatch, and digest-mismatch relation counts plus
 affected families and issue codes. This makes unresolved fact lineage visible in
 the evidence panel before it becomes a target-proof blocker. The same field is
-native to `hero.lattice.scan_facts`, `hero.lattice.fact_summary`, and
-`hero.lattice.fact_lineage`; `hero.lattice.fact_preview` adds concrete
+native to `hero.lattice.inspect subject=facts mode=scan`, `hero.lattice.inspect subject=facts mode=summary`, and
+`hero.lattice.inspect subject=facts mode=lineage`; `hero.lattice.inspect subject=facts mode=preview` adds concrete
 family-row inspection by digest, digest prefix, or fact index while preserving
 the same audit-only contract. Clients do not need Marshal to see relation
 integrity. Lattice fact-catalog tools expose top-level read-only,
@@ -191,10 +194,10 @@ protocol/contract/graph/source-cursor/split/component/job-wave identity,
 row-index anchor/completed intervals, lineage digest fields, and support
 fields. It keeps row-index intervals authoritative, source-key windows
 audit-only, and target-kind, Runtime-wave, Marshal reachability, and policy-gate
-authority false. `hero.lattice.fact_lineage` adds
+authority false. `hero.lattice.inspect subject=facts mode=lineage` adds
 selected runtime-index relation/key/digest rows as audit-only lineage witnesses;
 those rows do not satisfy targets or create Marshal reachability.
-`hero.lattice.fact_preview` returns concrete rows plus matching lineage rows
+`hero.lattice.inspect subject=facts mode=preview` returns concrete rows plus matching lineage rows
 with `facts_used_for_target_satisfaction=false` and `checkpoint_selected=false`.
 Those preview rows now include `identity_envelope`, a normalized typed Lattice
 catalog projection of the common fact identity contract. Hero serializes that
@@ -243,29 +246,33 @@ belonged to retired migration layers:
 - no default/temp/objective split
 
 Config Hero is now a small policy-controlled config file surface. It can list,
-read, write, and delete files under configured roots, while domain-specific DSL
-validation remains owned by Ujcamei, Kikijyeba, Wikimyei, and Jkimyei. It can
-also describe an exact global config bundle with `hero.config.capture_bundle`:
-the receipt records every `_path`/`_filename` entry, canonical file paths,
-content digests, a stable `config_bundle_id`, and a per-capture
-`config_receipt_id`.
+read, plan writes/deletes, execute guarded writes/deletes, and inspect config
+provenance under configured roots, while domain-specific DSL validation remains
+owned by Ujcamei, Kikijyeba, Wikimyei, and Jkimyei. It can also describe an
+exact global config bundle with `hero.config.inspect subject=bundle`: the
+receipt records every `_path`/`_filename` entry, canonical file paths, content
+digests, a stable `config_bundle_id`, and a per-capture `config_receipt_id`.
 
 Agent workflow:
 
 1. `hero.config.status` checks policy health.
-2. `hero.config.map` finds global config path references and missing files.
-3. `hero.config.capture_bundle` records the current config provenance receipt
-   when runtime spawn evidence or target proof context needs an exact config
-   link.
-4. `hero.config.resolve` preflights a target path before read or mutation.
-5. `hero.config.read` returns file content plus `sha256`.
-6. `hero.config.write` uses `dry_run=true`, then writes with
-   `expected_sha256` when replacing an existing file.
+2. `hero.config.inspect subject=map` finds global config path references and
+   missing files.
+3. `hero.config.inspect subject=bundle` records the current config provenance
+   receipt when runtime spawn evidence or target proof context needs an exact
+   config link.
+4. `hero.config.inspect subject=resolve_path` preflights a target path before
+   read or mutation.
+5. `hero.config.inspect subject=file_read` returns file content plus `sha256`.
+6. `hero.config.apply operation=write requested_mode=plan` previews a write;
+   `requested_mode=execute` writes with `expected_sha256` or
+   `expected_current_sha256` when replacing an existing file.
 
-`hero.config.delete` also supports `dry_run=true` and requires
-`expected_sha256` by default. Direct one-shot CLI calls are useful for smoke
-tests; MCP sessions are better for multi-step agent work because in-memory
-policy edits from `hero.config.set` stay alive for the session.
+`hero.config.apply operation=delete requested_mode=plan` previews deletion;
+`requested_mode=execute` deletes and requires `expected_sha256` by default.
+Direct one-shot CLI calls are useful for smoke tests; MCP sessions are better
+for multi-step agent work because in-memory policy edits from
+`hero.config.apply operation=set` stay alive for the session.
 
 Runtime Hero is the agent surface around `/cuwacunu/.build/exec/cuwacunu_exec`.
 It does not own model logic; it decodes the active wave, invokes the runtime
@@ -276,29 +283,33 @@ Runtime agent workflow:
 
 1. `hero.runtime.status` checks policy, executable availability, and active
    wave intent.
-2. `hero.runtime.wave` decodes `kikijyeba.settings.wave.dsl`. Canonical
-   VICReg/MDN targets report channel job kinds; old node MDN targets are not
-   active.
+2. `hero.runtime.inspect subject=wave` decodes
+   `kikijyeba.settings.wave.dsl`. Canonical VICReg/MDN targets report channel
+   job kinds; old node MDN targets are not active.
    The experimental
    `wikimyei.representation.encoding.mtf_jepa_mae_vicreg` target reports the
    separate `channel_representation_mtf_jepa_mae_vicreg` job kind. It is
    representation-only and does not reuse the production VICReg job identity.
-3. `hero.runtime.dry_run` builds and validates the protocol contract through
-   `cuwacunu_exec --dry-run` and returns job artifacts.
-4. `hero.runtime.list_jobs` and `hero.runtime.get_job` inspect prior job
+3. `hero.runtime.run operation=wave requested_mode=dry_run` builds and
+   validates the protocol contract through `cuwacunu_exec --dry-run` and
+   returns job artifacts. `requested_mode=execute` uses the same surface with
+   Runtime policy guards and confirmation.
+4. `hero.runtime.inspect subject=jobs` and `subject=job` inspect prior job
    directories.
-5. `hero.runtime.replay` runs the Kikijyeba replay adapter against an already
-   completed Runtime job that has
+5. `hero.runtime.run operation=replay requested_mode=plan|dry_run|execute`
+   runs the Kikijyeba replay adapter against an already completed Runtime job
+   that has
    `artifacts/kikijyeba.environment.replay.v1/runtime_replay_batches.index`.
    It delegates to `cuwacunu_exec --replay-from-job-dir`, writes replay reports
    and `runtime_replay_experiments.index`, and does not launch a new wave or
    mutate model checkpoints. Replay arguments can bind Cajtucu paper execution
    profile hints such as `allow_synthetic_direct_edges` and
    `linear_transaction_cost_rate`.
-6. `hero.runtime.read_artifact` can read replay evidence by name:
+6. `hero.runtime.inspect subject=artifact` can read replay evidence by name:
    `replay_batch_index`, `replay_experiment_index`, and
-   `replay_experiment_report`. `hero.runtime.get_job` includes the same replay
-   artifact summaries next to the normal manifest/state/report summaries.
+   `replay_experiment_report`. `hero.runtime.inspect subject=job` includes the
+   same replay artifact summaries next to the normal manifest/state/report
+   summaries.
    Runtime Hero does not follow parent-directory components in report paths
    declared by `runtime_replay_experiments.index`, so malformed replay indexes
    cannot redirect `replay_experiment_report` reads outside the replay artifact
@@ -307,22 +318,23 @@ Runtime agent workflow:
    bound/match booleans, and whether an indexed report path was rejected. These
    fields are operator visibility; Lattice replay targets remain the proof
    authority.
-7. `hero.runtime.dev_nuke` previews and, when explicitly enabled, clears the
-   runtime artifact root for developer reset workflows.
+7. `hero.runtime.reset requested_mode=plan|execute` previews and, when
+   explicitly enabled, clears the runtime artifact root for developer reset
+   workflows.
 
-`hero.runtime.execute` defaults to dry-run. Non-dry-run execution is denied
-unless `allow_execute=true`; MODE=train has the additional
-`allow_train_execute=true` guard.
-`hero.runtime.replay` also defaults to the policy `default_dry_run`, but it is
-a post-job report adapter rather than a wave executor: non-dry-run replay is
-permitted under the default locked policy once the job is completed, inside an
-allowed job root, and has the replay batch index.
+`hero.runtime.run operation=wave requested_mode=execute` is denied unless
+`allow_execute=true`; MODE=train has the additional `allow_train_execute=true`
+guard. `operation=replay requested_mode=execute` is a post-job report adapter
+rather than a wave executor: it is permitted under the default locked policy
+once the job is completed, inside an allowed job root, and has the replay batch
+index.
 
 Marshal handoffs should use the explicit `runtime_handoff` object accepted by
-`hero.runtime.execute`. Runtime validates the object against the effective wave
-and policy, rejects unresolved `latest_satisfying:*` model-state selectors, and
-only then launches `cuwacunu_exec`. Concrete source ranges should be supplied as
-`wave_overlay` launch fields rather than baked into reusable wave profiles.
+`hero.runtime.run operation=wave`. Runtime validates the object against the
+effective wave and policy, rejects unresolved `latest_satisfying:*` model-state
+selectors, and only then launches `cuwacunu_exec`. Concrete source ranges
+should be supplied as `wave_overlay` launch fields rather than baked into
+reusable wave profiles.
 Accepted handoff id/digest values are passed into the Runtime job and echoed in
 `job.manifest`, `runtime.result.fact`, and the derived lattice exposure fact;
 Lattice proof certificates then carry the same handoff identity on closure causal
@@ -331,13 +343,14 @@ exposures when that evidence participates in checkpoint lineage. The older
 
 The checked-in default policy is intentionally locked for Codex/MCP safety:
 execute/train remain disabled, while developer reset is available only through
-the guarded `hero.runtime.dev_nuke` path with explicit confirmation. Use
+the guarded `hero.runtime.reset` path with explicit confirmation. Use
 `src/config/hero.runtime.train.dsl` or an operator-local equivalent for
 intentional training runs; it enables execute/train with confirmation while
 keeping developer reset disabled.
 
-`hero.runtime.dev_nuke` also defaults to dry-run. Non-dry-run reset is denied
-unless `allow_dev_nuke=true` and, by default, `confirm_dev_nuke=true` is passed.
+`hero.runtime.reset requested_mode=plan` is a dry-run preview. Non-dry-run reset
+is denied unless `allow_dev_nuke=true` and, by default,
+`confirm_dev_nuke=true` is passed.
 The checked-in policies allow the disposable `/cuwacunu/.runtime` tree to be
 selected for reset, but keep `dev_nuke_backup_enabled=false` so reset does not
 create new backup clutter under `.runtime`. Operators can explicitly enable
@@ -371,12 +384,12 @@ Lattice Hero agent runbook:
    execution; it writes no evidence and has no model, performance, policy-gate,
    allocation, market-readiness, or deployment authority. Fact counts are catalog
    evidence, not `TARGET_KIND` declarations.
-2. Call `hero.lattice.list_targets` to discover target ids. V0 has one active
+2. Call `hero.lattice.inspect subject=targets` to discover target ids. V0 has one active
    target file per global config, but that file may contain many
    `LATTICE_TARGET` blocks. The response is a read-only catalog:
    `target_proof=false`, `dispatchable=false`, `runtime_executor=false`, and
    `fact_families_are_not_target_kinds=true`.
-3. Call `hero.lattice.explain_target` before editing or evaluating a target. It
+3. Call `hero.lattice.inspect subject=target mode=explain` before editing or evaluating a target. It
    does not scan runtime evidence; it explains the compiled proof obligation,
    profile, dependency, cursor-epoch exposure requirements, split protection,
    checkpoint source, resolved split range, derived query vocabulary, proof
@@ -399,7 +412,7 @@ Lattice Hero agent runbook:
 	   templates rather than target-dependency scheduling. The explanation
 	   response is not live proof: `target_proof=false`,
 	   `dispatchable=false`, and `runtime_executor=false`.
-4. Call `hero.lattice.scan_exposure` before evaluating unfamiliar runtime
+4. Call `hero.lattice.inspect subject=exposure` before evaluating unfamiliar runtime
    roots. Runtime roots contain job directories with `job.manifest`,
    `job.state`, component reports, Runtime terminal facts
    (`runtime.result.fact`, `runtime.checkpoint_io.fact`,
@@ -420,7 +433,7 @@ Lattice Hero agent runbook:
    The audit object exposes parsed endpoints, order-preservation booleans, and
    inferred key-step/affine-consistency fields, gap-warning counts, and
    row/source-key mismatch counts so agents can inspect the auxiliary source-key
-   coordinate map without parsing warning text. `scan_exposure` also emits
+   coordinate map without parsing warning text. `inspect subject=exposure` also emits
    `source_key_map_audit_summary`, binding audits to graph-order identity,
    source-cursor identity, and source-receipt parent facts while preserving
    row-index authority.
@@ -445,7 +458,7 @@ Lattice Hero agent runbook:
    Hero JSON also exposes `node_support_scope_policy_summary`, self-checking
    that boundary with four policy rows, no VICReg per-node readiness authority,
    no synthetic backfill, and no runtime executor authority.
-   `scan_exposure` also exposes `representation_support_facts` and
+   `inspect subject=exposure` also exposes `representation_support_facts` and
    `representation_support_summary` when representation reports or NodeLift
    `.lls` sidecars emit aggregate shared-encoder support payloads. These rows
    bind to the parent representation exposure digest, inherit protocol identity,
@@ -467,14 +480,14 @@ Lattice Hero agent runbook:
    summaries. Lattice must not ingest raw embeddings, token tensors, per-token
    masks, unbounded histograms, or downstream forecast claims from this
    representation family.
-5. Call `hero.lattice.evaluate_target` to ask whether a target is satisfied by
-   evidence. Call `hero.lattice.target_deficit` when the user asks what proof
+5. Call `hero.lattice.evaluate operation=target` to ask whether a target is satisfied by
+   evidence. Call `hero.lattice.evaluate operation=deficit` when the user asks what proof
    deficit remains or which target-authored wave would address it; it returns
    the same proof certificate/check plus any suggested wave, and the wave is a
    recommendation only. Both responses are read-only proof-engine outputs:
    `target_proof=true`, `target_proof_engine=lattice_target_evaluator`,
    `dispatchable=false`, `runtime_executor=false`, and `writes_evidence=false`.
-   `target_deficit` additionally declares `plan_advice_only=true`.
+   `evaluate operation=deficit` additionally declares `plan_advice_only=true`.
    Exposure-backed target results
    include `exposure_summaries`: unique cursor coverage, repeated cursor-epoch
    load, and optimizer-step density. These are visibility metrics, not
@@ -505,7 +518,7 @@ Lattice Hero agent runbook:
    default to the target range. If trusted completed coverage is unavailable,
    warning overlap can use anchor-range visibility without making that evidence
    satisfy readiness coverage. Hero JSON exposes the resolved interval as
-   `warning_results[].warning_anchor_range`; `hero.lattice.explain_target`
+   `warning_results[].warning_anchor_range`; `hero.lattice.inspect subject=target mode=explain`
    exposes the same pre-evaluation scope as
    `warning_scope_previews[].resolved_warning_anchor_range`; and
    `warning_anchor_scope_policy_vocabulary` describes the visibility-only
@@ -593,7 +606,7 @@ Lattice Hero agent runbook:
    `derived_query_projection_semantics_vocabulary` defines the allowed
    projection-scope, quantifier, empty-policy, and compatibility-alias values
    used by rule and result rows.
-   `evaluate_target` and `target_deficit` also include
+   `evaluate operation=target` and `evaluate operation=deficit` also include
    `derived_query_results`, a read-only projection of those relation truth
    values from the existing proof certificate, warning summary, deficits, plan
    basis, and status. It is not separate evidence and does not affect target
@@ -607,7 +620,7 @@ Lattice Hero agent runbook:
    their proof issue matches concrete catalog issue rows, preserving the link
    from a proof issue such as `baseline_fact_digest_not_found` to the exact
    job/component-prefixed fact-integrity issue code.
-   `hero.lattice.derived_query` is the V3-E standalone pilot for asking one
+   `hero.lattice.inspect subject=derived` is the V3-E standalone pilot for asking one
    named relation for concrete witnesses. It supports `target_satisfied`,
    `checkpoint_ancestor`, `forbidden_overlap`, `stale_cache`, and
    `unresolved_lineage`; each response reports the rule row, result source,
@@ -659,20 +672,20 @@ Lattice Hero agent runbook:
    files/facts are the source of truth, DB/cache rows are rebuildable read
    models, cached plans are not evidence, checkpoint ids/digests are preview
    cache keys until v2, and Runtime Hero remains the only executor.
-   V3-A adds `hero.lattice.index_query`, a read-only audit query surface over
+   V3-A adds `hero.lattice.inspect subject=index mode=query`, a read-only audit query surface over
    rebuildable index rows. It filters by relation/key/digest, reports stored
    cache parity against live scan, falls back to live scan on missing/stale/
    mismatched cache rows, and never upgrades target satisfaction. Interactive
    callers can opt into `validation_strength=header_only` plus
    `allow_unproven_cache=true` and `compare_live_scan=false` for a fast
    read-only audit query; the response marks that as
-   `cache_used_unproven_for_audit_query=true`, not proof. `index_status` and
-   `index_query` both declare `target_proof=false`, `dispatchable=false`,
+   `cache_used_unproven_for_audit_query=true`, not proof. `inspect subject=index mode=status` and
+   `inspect subject=index mode=query` both declare `target_proof=false`, `dispatchable=false`,
    `checkpoint_selector=false`, `automatic_checkpoint_selection=false`,
    `db_source_of_truth=false`, and `fact_families_are_not_target_kinds=true`.
-	   V3-B adds `hero.lattice.evaluate_targets` so agents can evaluate several
+	   V3-B adds `hero.lattice.evaluate operation=targets` so agents can evaluate several
 	   readiness targets through one runtime scan. The batch response has the same
-	   read-only, non-dispatching proof-engine envelope as `evaluate_target`.
+	   read-only, non-dispatching proof-engine envelope as `evaluate operation=target`.
 	   Runtime index caches also carry
    `watched_file_metadata_digest`, `row_set_digest`, and `relation_counts`;
    `validation_strength=watched_file_manifest` is a bounded freshness check,
@@ -835,7 +848,7 @@ Lattice Hero agent runbook:
    as clean load; if it comes with more
    warnings, the relation remains
    incomparable.
-   `hero.lattice.compare_evidence` is the read-only V3-F surface for comparing
+   `hero.lattice.compare` is the read-only V3-F surface for comparing
 	   two clean satisfying checkpoint targets. It reports both vectors, the
 	   per-dimension dominance rows, participation/exclusion reasons, and the final
 	   relation; it is read-only, not target proof, non-dispatchable, not a Runtime
@@ -846,7 +859,7 @@ Lattice Hero agent runbook:
 	   that `latest_satisfying` is deterministic readiness selection over a
 	   referenced satisfied target, not a best-model, Pareto, performance,
 	   deployment, or scalar-score selector.
-	   `hero.lattice.latest_satisfying_checkpoint` now reports the
+	   `hero.lattice.evaluate operation=latest_satisfying_checkpoint` now reports the
 	   `source_target_class` and `checkpoint_selectable_source_target` gate; calls
 	   against `artifact_readiness` or `evaluation_readiness` sources fail closed as
 	   `resolution_status=non_checkpoint_target_class`. Its top-level JSON also
@@ -937,7 +950,7 @@ Lattice Hero agent runbook:
    consolidated V1 scope table for included read-only evidence-authority claims,
    deferred DB/performance/checkpoint-identity/source-receipt/selection-event/
    VICReg-node-support work, and explicit non-authority boundaries.
-   V2 `scan_exposure` now emits read-only `selection_signal_facts` and a
+   V2 `inspect subject=exposure` now emits read-only `selection_signal_facts` and a
    `selection_signal_summary` when runtime evidence contains
    `use_selection_signal=true`; these rows explain selector lineage and selected
    checkpoint paths without becoming coverage, contract identity, execution, or
@@ -1061,7 +1074,7 @@ Lattice Hero agent runbook:
    symbolic model-state source hints such as `INPUT_MDN_CHECKPOINT`, but
    Runtime Hero remains responsible for resolving/executing them and the
    runtime report remains the proof.
-6. Call `hero.lattice.checkpoint_closure` for checkpoint lineage. A complete
+6. Call `hero.lattice.inspect subject=checkpoint mode=closure` for checkpoint lineage. A complete
    MDN closure should include the MDN exposure fact and the exact upstream
    VICReg checkpoint producer fact. The tool accepts either checkpoint_path or
    checkpoint_id plus checkpoint_file_digest. Missing input lineage or
@@ -1082,7 +1095,7 @@ wave.
 When the active runtime root is empty, graph-anchor targets cannot infer active
 identity. Pass `protocol_contract_fingerprint`, `graph_order_fingerprint`,
 `source_cursor_token`, and component assembly fingerprints explicitly to
-`evaluate_target` or `target_deficit`, or run a Runtime Hero dry-run first to
+`evaluate operation=target` or `evaluate operation=deficit`, or run a Runtime Hero dry-run first to
 produce identity-bearing manifests. Lattice Hero may suggest a wave, but Runtime
 Hero remains the only executor.
 
@@ -1090,13 +1103,13 @@ Agent invariants:
 
 - Lattice Hero is read-only: never use it as an executor or scheduler.
 - Runtime Hero is the execution surface for any suggested wave.
-- `explain_target` is the source of truth for target language meaning.
-- `scan_exposure` is the source of truth for runtime evidence warnings,
+- `inspect subject=target mode=explain` is the source of truth for target language meaning.
+- `inspect subject=exposure` is the source of truth for runtime evidence warnings,
   including Ujcamei graph-anchor domain health warnings and derived MDN
   node-exposure previews. It also exposes audit-only source receipt facts and
   summaries; malformed non-empty receipts warn, while missing receipts are
   counted as audit absence.
-- `evaluate_target` is the source of truth for exposure-load summaries,
+- `evaluate operation=target` is the source of truth for exposure-load summaries,
   non-blocking target warnings, and proof deficits. Warning measurements are
   anchor-interval scoped. Repeated exposure is suspicious only when an explicit
   `LATTICE_WARN` policy says it is suspicious.

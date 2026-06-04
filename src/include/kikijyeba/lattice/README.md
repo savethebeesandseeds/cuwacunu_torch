@@ -65,14 +65,14 @@ affine row-to-key map. It also counts missing endpoint pairs, irregular anchor
 steps, and row/source-key mismatches as explicit gap warnings. That treats the
 source-key map as an audit-only order-preserving coordinate system; row-index
 leakage math remains authoritative.
-`hero.lattice.scan_exposure` is a read-only, non-dispatchable evidence scan; it
+`hero.lattice.inspect subject=exposure` is a read-only, non-dispatchable evidence scan; it
 is not a target proof or Runtime executor, and its fact families are not
 `TARGET_KIND` values. It also exposes a structured
 `source_key_window_audit` object with the parsed endpoints,
 completeness/numeric/monotonicity/order-preservation/affine-consistency booleans,
 the inferred reference key step when available, gap/mismatch counters, and issue
 ids so agents do not have to parse warning text to inspect the auxiliary
-coordinate map. `scan_exposure` also returns
+coordinate map. `inspect subject=exposure` also returns
 `source_key_map_audit_summary`, which binds available audits to graph-order
 identity, source-cursor identity, and source-receipt parent facts while keeping
 the summary audit-only.
@@ -296,9 +296,9 @@ kikijyeba.lattice.representation_support.v1
 ```
 
 The generic fact catalog is the expansion path for roadmap evidence. Hero
-exposes `hero.lattice.list_fact_families`, `hero.lattice.scan_facts`,
-`hero.lattice.fact_summary`, `hero.lattice.fact_lineage`, and
-`hero.lattice.fact_preview` so agents can inspect fact families without
+exposes `hero.lattice.inspect subject=fact_families`, `hero.lattice.inspect subject=facts mode=scan`,
+`hero.lattice.inspect subject=facts mode=summary`, `hero.lattice.inspect subject=facts mode=lineage`, and
+`hero.lattice.inspect subject=facts mode=preview` so agents can inspect fact families without
 promoting them to `TARGET_KIND`. Catalog families are read-only,
 non-dispatchable, not target-proof authority, not Runtime executors, do not
 write evidence, and are not Marshal reachability surfaces.
@@ -434,15 +434,15 @@ row-index anchor/completed intervals, family-specific lineage digest fields, and
 support fields. The contract keeps row-index intervals authoritative,
 source-key windows audit-only, and target-kind, Runtime-wave, Marshal
 reachability, and policy-gate authority false.
-`scan_facts`, `fact_summary`, `fact_lineage`, and `fact_preview` also return
+`inspect subject=facts mode=scan`, `inspect subject=facts mode=summary`, `inspect subject=facts mode=lineage`, and `inspect subject=facts mode=preview` also return
 `fact_integrity_summary`, a native Lattice rollup that separates declared
 relation digests from resolved, identity-compatible bindings. It reports bound,
 unresolved, identity-mismatch, and digest-mismatch relation counts, affected
 families, integrity flags, and issue codes for transform, baseline,
-selection-signal, forecast, observer, and allocation lineage. `fact_lineage`
+selection-signal, forecast, observer, and allocation lineage. `inspect subject=facts mode=lineage`
 adds selected relation/key/digest rows from the rebuildable runtime index as
 audit-only witnesses; those cache rows are not target-proof authority and are
-never used for Marshal dispatch or target satisfaction. `fact_preview` returns
+never used for Marshal dispatch or target satisfaction. `inspect subject=facts mode=preview` returns
 concrete fact rows for one family by digest, digest prefix, or fact index, plus
 matching lineage rows; preview rows are audit-only and explicitly report
 `facts_used_for_target_satisfaction=false`. Each preview row also carries a
@@ -457,7 +457,7 @@ counters when present, and the same no-proof/no-dispatch/no-selection authority
 flags.
 Artifact-readiness proof JSON also emits `fact_preview_hint` for concrete
 artifact facts, and blocked artifact plan-basis JSON aggregates those hints in
-`fact_preview_hints`. These hints name `hero.lattice.fact_preview` and
+`fact_preview_hints`. These hints name `hero.lattice.inspect subject=facts mode=preview` and
 `hero.marshal.inspect` arguments for inspection only; they do
 not alter proof certificates, target status, checkpoint selection, or dispatch.
 
@@ -927,7 +927,7 @@ plan clauses, warning clauses, language warnings, and a deterministic
 preserved in the compiled object and lowered target, but excluded from that
 fingerprint. Non-blocking warning clauses are also preserved for explanation
 and evaluation while remaining outside proof-obligation identity. The existing
-evaluator still consumes the lowered v0 target, while `hero.lattice.explain_target`
+evaluator still consumes the lowered v0 target, while `hero.lattice.inspect subject=target mode=explain`
 exposes the preserved proof object without scanning runtime evidence.
 
 Targets can optionally bind readiness to the exposure ledger with cursor-indexed
@@ -965,7 +965,7 @@ back to the target range when no warning-local range is provided. If trusted
 completed coverage is unavailable, warning overlap can use anchor-range
 visibility; that does not make untrusted coverage satisfy readiness. Hero JSON
 returns the resolved interval as `warning_results[].warning_anchor_range`, while
-`hero.lattice.explain_target` exposes the same pre-evaluation scope as
+`hero.lattice.inspect subject=target mode=explain` exposes the same pre-evaluation scope as
 `warning_scope_previews[].resolved_warning_anchor_range`.
 `warning_anchor_scope_policy_vocabulary` documents the visibility-only fallback
 and node-support warning matrix scope for both surfaces.
@@ -1112,8 +1112,8 @@ it does not reuse training-job checks such as optimizer steps, finite loss, or
 checkpoint output. It also cannot use `UPSTREAM_TARGET_ID`, `LATTICE_DEPENDS`,
 `EVALUATED_CHECKPOINT_SOURCE`, or `PLAN_INPUT_*` checkpoint hints; artifact
 lineage is proved from fact parent digests and the registered proof template,
-not from target-dependency scheduling. `list_targets`, `explain_target`,
-`evaluate_target`, and `target_deficit` expose this as `target_surface_kind =
+not from target-dependency scheduling. `inspect subject=targets`, `inspect subject=target mode=explain`,
+`evaluate operation=target`, and `evaluate operation=deficit` expose this as `target_surface_kind =
 evidence_catalog_artifact`, `dispatchable_target = false`,
 `runtime_wave_dispatchable = false`, and
 `recommended_operator_action = inspect`. They also emit
@@ -1185,7 +1185,7 @@ evaluation-style targets may still require evaluated-node-head evidence.
 
 ## Proof Certificates
 
-Every `evaluate_target` result now carries a
+Every `evaluate operation=target` result now carries a
 `kikijyeba.lattice.target_certificate.v1` proof certificate. The certificate is
 not a second evaluator; it is the structured record of the same checks that
 produced the target status. It currently records:
@@ -1277,7 +1277,7 @@ auxiliary audit coordinates.
 Hero JSON also emits `source_key_coordinate_policy_summary`, the compact
 self-check for the row-index authority row, audit-only source-key coordinate
 rows, order-preserving/affine/gap audit fields, and no coverage/leakage
-authority on source-key audit rows. `hero.lattice.scan_exposure` emits
+authority on source-key audit rows. `hero.lattice.inspect subject=exposure` emits
 `source_key_map_audit_summary`, a runtime summary of monotonicity,
 order-preservation, affine consistency, gap/irregular-key warnings,
 row/source-key mismatches, and source-receipt binding counts.
@@ -1337,7 +1337,7 @@ Datalog-style vocabulary over the evaluator's derived relations:
 `stale_cache`, `plan_deficit`, `proof_certificate_check_passed`,
 `no_blocking_deficit`, `status_satisfied`, and `target_satisfied`. These rules
 name the proof fields and fail-closed policies that evaluate/plan projections
-and `hero.lattice.derived_query` use, but they do not execute waves and do not
+and `hero.lattice.inspect subject=derived` use, but they do not execute waves and do not
 replace runtime files as evidence authority. Rule rows declare
 `projection_scope`, so clients can distinguish target-wide predicates from
 per-row and compact aggregate relations before evaluation, and
@@ -1348,11 +1348,11 @@ They also declare `empty_projection_policy`, so zero-row `all`, `any`, and
 Hero JSON also emits `derived_query_rule_vocabulary_digest_schema` and
 `derived_query_rule_vocabulary_digest`, the same stable digest reported by live
 `derived_query_results`, so clients can compare the declared query vocabulary
-from `explain_target` with evaluate/plan projections.
+from `inspect subject=target mode=explain` with evaluate/plan projections.
 Hero JSON also emits `derived_query_projection_semantics_vocabulary`, which
 defines the allowed quantifier, empty-policy, and compatibility-alias values
 used by rule vocabulary and live result rows.
-`evaluate_target` and `target_deficit` additionally emit
+`evaluate operation=target` and `evaluate operation=deficit` additionally emit
 `derived_query_results`, a compact read-only projection of those relation truth
 values from the existing proof object, warning summary, deficits, plan basis,
 and status. It is a query view only: it is excluded from certificate digests,
@@ -1564,7 +1564,7 @@ more warnings, the comparator reports incomparability rather than hiding the
 warning behind a scalar score. The compatibility `warning_count` field remains
 an alias for `triggered_warning_count`; comparison uses the structured
 `triggered_warning_count` dimension.
-`hero.lattice.compare_evidence` evaluates two targets with one scan and returns
+`hero.lattice.compare` evaluates two targets with one scan and returns
 the two vectors, per-dimension comparison rows, clean-checkpoint participation
 reasons, and the dominance relation. It is read-only, not target proof,
 non-dispatchable, not a Runtime executor, and emits explicit false authority
@@ -1716,11 +1716,11 @@ Agent runbook:
    are catalog evidence rather than `TARGET_KIND` declarations. It also declares
    no model-selection, performance-selection, policy-gate, allocation,
    market-readiness, or deployment authority.
-2. `hero.lattice.list_targets`
+2. `hero.lattice.inspect subject=targets`
    Use this to discover the target ids compiled from the active target DSL. It
    is read-only, not target proof, non-dispatchable, not a Runtime executor, and
    not a fact-family target-kind expansion path.
-3. `hero.lattice.explain_target`
+3. `hero.lattice.inspect subject=target mode=explain`
    Use this before editing or evaluating a target. It is the source of truth for
    what the compiled proof obligation means without scanning runtime evidence,
    including derived query vocabulary, proof obligation vocabulary, numeric
@@ -1733,7 +1733,7 @@ Agent runbook:
    vocabulary, and per-warning resolved scope previews. An unbounded warning
    preview means no anchor-range filter is applied for that warning kind. It is
    read-only explanation, not a live target proof or dispatch authority.
-4. `hero.lattice.scan_exposure`
+4. `hero.lattice.inspect subject=exposure`
    Use this before evaluating unfamiliar runtime roots. Report warnings
    verbatim. The preview ledger is derived from `job.manifest`, `job.state`,
    reports, checkpoints, and lattice fact sidecars. It includes
@@ -1741,7 +1741,7 @@ Agent runbook:
    heavily clipped by source availability before interpreting readiness. For
    MDN jobs it also previews derived `node_exposure` facts so agents can inspect
    per-node target support without making shared-encoder claims for VICReg.
-5. `hero.lattice.evaluate_target`
+5. `hero.lattice.evaluate operation=target`
    Use this when the question is "is this target satisfied?" A satisfied
    train-core node-MDN target proves the exact loaded representation checkpoint
    has compatible upstream VICReg producer lineage. A validation evaluation
@@ -1754,7 +1754,7 @@ Agent runbook:
    `target_proof=true` and `target_proof_engine=lattice_target_evaluator`, while
    still declaring `dispatchable=false`, `runtime_executor=false`, and
    `writes_evidence=false`.
-6. `hero.lattice.target_deficit`
+6. `hero.lattice.evaluate operation=deficit`
    Use this when the question is "what proof deficit remains, and what
    target-authored wave would address it?" Treat the returned wave as advice
    only. It does not execute anything. The result carries the same proof
@@ -1762,7 +1762,7 @@ Agent runbook:
    suggested wave is auditable against the proof deficits it is intended to
    resolve. Its envelope marks `target_proof=true`, `plan_advice_only=true`,
    `dispatchable=false`, and `runtime_executor=false`.
-7. `hero.lattice.latest_satisfying_checkpoint`
+7. `hero.lattice.evaluate operation=latest_satisfying_checkpoint`
    Use this when a target-deficit result carries a symbolic
    `latest_satisfying:<target_id>` model-state hint. Lattice resolves the hint
    only when the source target is cleanly satisfied and its checkpoint closure
@@ -1772,13 +1772,13 @@ Agent runbook:
    read-only, declares `target_proof=false`, `dispatchable=false`, and
    `fact_families_are_not_target_kinds=true`, does not rank alternatives, and
    does not execute or select a fallback checkpoint.
-8. `hero.lattice.compare_evidence`
+8. `hero.lattice.compare`
    Use this to compare two clean satisfying checkpoint targets by Pareto
    evidence vector. The tool reports each vector, per-dimension dominance
    reasons, explicit incomparable/unavailable/selector-leaked states, and the
    boundary that `latest_satisfying` remains separate. It never emits a scalar
    lattice score or deployment decision.
-9. `hero.lattice.checkpoint_closure`
+9. `hero.lattice.inspect subject=checkpoint mode=closure`
    Use this for checkpoint lineage. The tool accepts either a checkpoint path
    or `checkpoint_id` plus `checkpoint_file_digest`. Missing upstream producer
    evidence or id/digest mismatch must fail closed and should be reported as a
@@ -1787,7 +1787,7 @@ Agent runbook:
    `dispatchable=false`, `checkpoint_selector=false`,
    `automatic_checkpoint_selection=false`, and
    `fact_families_are_not_target_kinds=true`.
-10. `hero.lattice.derived_query`
+10. `hero.lattice.inspect subject=derived`
    Use this when the question is "show the proof witnesses for one named
    derived rule." The V3-E pilot supports `target_satisfied`,
    `checkpoint_ancestor`, `forbidden_overlap`, `stale_cache`, and
@@ -1811,7 +1811,7 @@ MUST NOT execute waves from Lattice Hero.
 MUST report Lattice Hero warnings and blocked/exposure_failed reasons verbatim.
 MUST provide active identity explicitly when evaluating an empty runtime root.
 MUST use Runtime Hero, not Lattice Hero, for execution.
-SHOULD prefer explain_target before changing target DSL.
+SHOULD prefer inspect subject=target mode=explain before changing target DSL.
 SHOULD prefer OVER_SPLIT, PROTECT_SPLIT, and CURSOR_EPOCHS when authoring.
 ```
 
@@ -1889,9 +1889,14 @@ contract/runtime root:
    no-VICReg-readiness/no-synthetic-backfill boundary.
 
 7. Hero surface
-   hero.lattice.status, list_targets, explain_target, scan_exposure,
-   evaluate_target, target_deficit, latest_satisfying_checkpoint, and
-   checkpoint_closure are enough for an agent to understand evidence, failure
+   `hero.lattice.status`, `hero.lattice.inspect subject=targets`,
+   `hero.lattice.inspect subject=target mode=explain`,
+   `hero.lattice.inspect subject=exposure`,
+   `hero.lattice.evaluate operation=target`,
+   `hero.lattice.evaluate operation=deficit`,
+   `hero.lattice.evaluate operation=latest_satisfying_checkpoint`, and
+   `hero.lattice.inspect subject=checkpoint mode=closure` are enough for an
+   agent to understand evidence, failure
    reasons, warnings, closure completeness, and the checkpoint identity
    authority used by closure, plus the next suggested wave without executing
    anything. Config/catalog surfaces declare `target_proof=false`; evaluation and
@@ -1939,18 +1944,18 @@ source of truth. Runtime writes immutable files first: `job.manifest`,
 `kikijyeba.lattice.runtime_index_cache.v1` read model over scanned exposure,
 node, checkpoint, source-receipt, selection-signal, and representation-support
 rows. Cache validity is tied to a runtime-file metadata digest, and
-`hero.lattice.index_status` reports whether it is using valid cache rows or a
+`hero.lattice.inspect subject=index mode=status` reports whether it is using valid cache rows or a
 live scan fallback. Target evaluation still uses live runtime evidence; a stale
 or missing cache never upgrades readiness. Its top-level JSON declares
 `read_only=true`, `target_proof=false`, `dispatchable=false`,
 `runtime_executor=false`, `db_source_of_truth=false`,
 `checkpoint_selector=false`, and `fact_families_are_not_target_kinds=true`.
-V3-A adds `hero.lattice.index_query`, a read-only audit query surface over the
+V3-A adds `hero.lattice.inspect subject=index mode=query`, a read-only audit query surface over the
 same rows. It filters by relation, exact key, key substring, exact digest, or
 digest prefix, and reports cache/live-scan parity. By default, a stored cache
 is used for the query only when metadata validation passes and its row answers
 match a fresh live scan. It declares the same non-proof, non-dispatchable,
-non-selector boundary as `index_status`. V3-B adds `hero.lattice.evaluate_targets` for one-scan
+non-selector boundary as `inspect subject=index mode=status`. V3-B adds `hero.lattice.evaluate operation=targets` for one-scan
 multi-target evaluation, long-lived watched-file-guarded scan reuse, internal
 cache `row_set_digest`/`relation_counts` integrity checks, and streaming
 checkpoint file digesting. `validation_strength=watched_file_manifest` checks

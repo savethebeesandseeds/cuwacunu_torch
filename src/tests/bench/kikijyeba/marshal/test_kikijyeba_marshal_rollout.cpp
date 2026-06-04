@@ -598,9 +598,8 @@ void test_rollout_execute_calls_runtime_replay() {
   check(result.find("\"runtime_replay\":{\"attempted\":true") !=
             std::string::npos,
         "execute rollout should attempt Runtime replay");
-  check(result.find("\"tool_name\":\"hero.runtime.replay\"") !=
-            std::string::npos,
-        "execute rollout should name Runtime replay tool");
+  check(result.find("\"tool_name\":\"hero.runtime.run\"") != std::string::npos,
+        "execute rollout should name collapsed Runtime run tool");
   check(result.find("\"tool_result_error\":false") != std::string::npos,
         "execute rollout Runtime result should not be an error");
   check(result.find("replay_completed_count") != std::string::npos,

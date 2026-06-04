@@ -120,28 +120,35 @@ resolve_near(const std::filesystem::path &base_file,
 }
 
 void print_help(const char *argv0) {
-  std::cout << "Usage: " << argv0
-            << " [--global-config <path>] [--config <hero_config_dsl>]"
-               " [--tool <name>] [--args-json <json>]"
-               " [--list-tools] [--list-tools-json]\n"
-            << "  default mode: JSON-RPC over stdio\n"
-            << "  default config path: [HERO].config_hero_dsl_path in "
-               "--global-config, then "
-            << kDefaultHeroConfigPath << "\n"
-            << "\n"
-            << "Authority groups:\n"
-            << "  Read-only inspection:\n"
-            << "    hero.config.status, schema, show, get, validate, map,\n"
-            << "    capture_bundle, resolve, diff, list, read, backups\n"
-            << "  Config mutation under policy-controlled roots:\n"
-            << "    hero.config.set, save, reload, rollback, write, delete\n"
-            << "  Boundary:\n"
-            << "    Config Hero does not execute Runtime, prove Lattice "
-               "targets,\n"
-            << "    select checkpoints, or make deployment/allocation "
-               "decisions.\n"
-            << "    Use dry_run and expected digests for file write/delete "
-               "work.\n";
+  std::cout
+      << "Usage: " << argv0
+      << " [--global-config <path>] [--config <hero_config_dsl>]"
+         " [--tool <name>] [--args-json <json>]"
+         " [--list-tools] [--list-tools-json]\n"
+      << "  default mode: JSON-RPC over stdio\n"
+      << "  default config path: [HERO].config_hero_dsl_path in "
+         "--global-config, then "
+      << kDefaultHeroConfigPath << "\n"
+      << "\n"
+      << "Authority groups:\n"
+      << "  Read-only health:\n"
+      << "    hero.config.status\n"
+      << "  Read-only inspection:\n"
+      << "    hero.config.inspect subject=schema|show|value|validate|map\n"
+      << "    hero.config.inspect subject=bundle|resolve_path|diff|backups\n"
+      << "    hero.config.inspect subject=file_list|file_read\n"
+      << "  Config mutation under policy-controlled roots:\n"
+      << "    hero.config.apply "
+         "operation=set|save|reload|rollback|write|delete\n"
+      << "    requested_mode=plan validates/previews without mutation;\n"
+      << "    requested_mode=execute performs the Config-scope mutation.\n"
+      << "  Boundary:\n"
+      << "    Config Hero does not execute Runtime, prove Lattice "
+         "targets,\n"
+      << "    select checkpoints, or make deployment/allocation "
+         "decisions.\n"
+      << "    Use requested_mode=plan and expected digests for file "
+         "write/delete work.\n";
 }
 
 } // namespace

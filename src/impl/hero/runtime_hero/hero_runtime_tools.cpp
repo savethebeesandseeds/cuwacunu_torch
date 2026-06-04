@@ -52,57 +52,31 @@ struct tool_descriptor_t {
 constexpr tool_descriptor_t kTools[] = {
     {"hero.runtime.status",
      "Read-only health: summarize Runtime Hero policy, executable, active "
-     "wave, and job "
-     "root.",
+     "wave, job root, and explicit non-proof boundary state.",
      R"({"type":"object","properties":{},"additionalProperties":false})"},
-    {"hero.runtime.schema",
-     "Read-only catalog: list Runtime Hero policy keys and constraints.",
-     R"({"type":"object","properties":{},"additionalProperties":false})"},
-    {"hero.runtime.wave",
-     "Read-only inspection: decode active wave intent from the configured "
-     "runtime .config.",
-     R"({"type":"object","properties":{"config_path":{"type":"string"}},"additionalProperties":false})"},
-    {"hero.runtime.dry_run",
-     "Runtime preview: run cuwacunu_exec with --dry-run and return stdout "
-     "plus job "
-     "artifacts.",
-     R"({"type":"object","properties":{"config_path":{"type":"string"},"job_dir":{"type":"string"},"force_rebuild_cache":{"type":"boolean"},"timeout_seconds":{"type":"integer"},"wave_overlay":{"type":"object","properties":{"source_range":{"type":"string"},"anchor_index_begin":{"type":"string"},"anchor_index_end":{"type":"string"},"source_key_begin":{"type":"string"},"source_key_end":{"type":"string"}}}},"additionalProperties":false})"},
-    {"hero.runtime.execute",
-     "Runtime execution: run cuwacunu_exec with policy guards; dry_run "
-     "defaults to true.",
-     R"({"type":"object","properties":{"config_path":{"type":"string"},"job_dir":{"type":"string"},"dry_run":{"type":"boolean"},"force_rebuild_cache":{"type":"boolean"},"confirm_execute":{"type":"boolean"},"timeout_seconds":{"type":"integer"},"wave_overlay":{"type":"object","properties":{"source_range":{"type":"string"},"anchor_index_begin":{"type":"string"},"anchor_index_end":{"type":"string"},"source_key_begin":{"type":"string"},"source_key_end":{"type":"string"}}},"runtime_handoff":{"type":"object","properties":{}},"marshal_expected_wave":{"type":"object","properties":{"target_component_family_id":{"type":"string"},"mode":{"type":"string"},"source_range":{"type":"string"},"source_order":{"type":"string"},"anchor_index_begin":{"type":"string"},"anchor_index_end":{"type":"string"},"source_key_begin":{"type":"string"},"source_key_end":{"type":"string"},"model_state_inputs":{"type":"object"}}}},"additionalProperties":false})"},
-    {"hero.runtime.replay",
-     "Runtime replay: run kikijyeba.environment replay from an existing "
-     "completed Runtime job directory.",
-     R"({"type":"object","properties":{"job_id":{"type":"string"},"job_dir":{"type":"string"},"config_path":{"type":"string"},"dry_run":{"type":"boolean"},"base_reserve_node_id":{"type":"string"},"risky_node_ids":{"type":"string"},"experiment_id":{"type":"string"},"report_path":{"type":"string"},"initial_equity_base":{"type":"number"},"min_base_reserve_weight":{"type":"number"},"max_risky_weight":{"type":"number"},"max_turnover_l1":{"type":"number"},"max_steps":{"type":"integer"},"max_parallel_jobs":{"type":"integer"},"include_equal_weight":{"type":"boolean"},"include_current_weight":{"type":"boolean"},"include_base_reserve_policy":{"type":"boolean"},"include_spot_distributional_utility_policy":{"type":"boolean"},"allow_synthetic_direct_edges":{"type":"boolean"},"linear_transaction_cost_rate":{"type":"number"},"timeout_seconds":{"type":"integer"}},"additionalProperties":false})"},
-    {"hero.runtime.dev_nuke",
-     "Guarded developer reset: clear runtime-root contents with dry-run, "
-     "idle "
-     "checks, and "
-     "optional backup snapshot.",
-     R"({"type":"object","properties":{"runtime_root":{"type":"string"},"dry_run":{"type":"boolean"},"backup":{"type":"boolean"},"confirm_dev_nuke":{"type":"boolean"}},"additionalProperties":false})"},
-    {"hero.runtime.list_jobs",
-     "Read-only evidence: list Runtime Hero job directories.",
-     R"({"type":"object","properties":{"root":{"type":"string"},"limit":{"type":"integer"},"include_artifacts":{"type":"boolean"}},"additionalProperties":false})"},
-    {"hero.runtime.get_job",
-     "Read-only evidence: inspect one runtime job directory by job_id or "
-     "job_dir.",
-     R"({"type":"object","properties":{"job_id":{"type":"string"},"job_dir":{"type":"string"},"include_text":{"type":"boolean"},"max_bytes":{"type":"integer"}},"additionalProperties":false})"},
-    {"hero.runtime.read_artifact",
-     "Read-only evidence: read a bounded job artifact: manifest, state, "
-     "report, replay "
-     "indexes/report, or explicit path.",
-     R"({"type":"object","properties":{"job_id":{"type":"string"},"job_dir":{"type":"string"},"artifact":{"type":"string"},"path":{"type":"string"},"max_bytes":{"type":"integer"}},"additionalProperties":false})"},
+    {"hero.runtime.inspect",
+     "Read-only Runtime inspection. subject=schema reads policy keys; "
+     "subject=wave decodes the active wave; subject=jobs/job/artifact reads "
+     "bounded Runtime evidence.",
+     R"({"type":"object","required":["subject"],"properties":{"subject":{"type":"string","enum":["schema","wave","jobs","job","artifact"]},"config_path":{"type":"string"},"root":{"type":"string"},"job_id":{"type":"string"},"job_dir":{"type":"string"},"artifact":{"type":"string"},"path":{"type":"string"},"include_artifacts":{"type":"boolean"},"include_text":{"type":"boolean"},"max_bytes":{"type":"integer"},"limit":{"type":"integer"}},"additionalProperties":false})"},
+    {"hero.runtime.run",
+     "Runtime execution/delegation. operation=wave runs the active Runtime "
+     "wave with requested_mode=dry_run|execute. operation=replay plans, "
+     "dry-runs, or executes replay from a completed Runtime job.",
+     R"({"type":"object","required":["operation","requested_mode"],"properties":{"operation":{"type":"string","enum":["wave","replay"]},"requested_mode":{"type":"string","enum":["plan","dry_run","execute"]},"config_path":{"type":"string"},"job_id":{"type":"string"},"job_dir":{"type":"string"},"force_rebuild_cache":{"type":"boolean"},"confirm_execute":{"type":"boolean"},"timeout_seconds":{"type":"integer"},"wave_overlay":{"type":"object","properties":{"source_range":{"type":"string"},"anchor_index_begin":{"type":"string"},"anchor_index_end":{"type":"string"},"source_key_begin":{"type":"string"},"source_key_end":{"type":"string"}}},"runtime_handoff":{"type":"object","properties":{}},"marshal_expected_wave":{"type":"object","properties":{"target_component_family_id":{"type":"string"},"mode":{"type":"string"},"source_range":{"type":"string"},"source_order":{"type":"string"},"anchor_index_begin":{"type":"string"},"anchor_index_end":{"type":"string"},"source_key_begin":{"type":"string"},"source_key_end":{"type":"string"},"model_state_inputs":{"type":"object"}}},"base_reserve_node_id":{"type":"string"},"risky_node_ids":{"type":"string"},"experiment_id":{"type":"string"},"report_path":{"type":"string"},"initial_equity_base":{"type":"number"},"min_base_reserve_weight":{"type":"number"},"max_risky_weight":{"type":"number"},"max_turnover_l1":{"type":"number"},"max_steps":{"type":"integer"},"max_parallel_jobs":{"type":"integer"},"include_equal_weight":{"type":"boolean"},"include_current_weight":{"type":"boolean"},"include_base_reserve_policy":{"type":"boolean"},"include_spot_distributional_utility_policy":{"type":"boolean"},"allow_synthetic_direct_edges":{"type":"boolean"},"linear_transaction_cost_rate":{"type":"number"},"execution_profile_digest":{"type":"string"},"policy_set_digest":{"type":"string"}},"additionalProperties":false})"},
+    {"hero.runtime.reset",
+     "Guarded developer reset. requested_mode=plan previews the reset; "
+     "requested_mode=execute clears allowed Runtime roots only with explicit "
+     "confirmation and policy permission.",
+     R"({"type":"object","required":["requested_mode"],"properties":{"requested_mode":{"type":"string","enum":["plan","execute"]},"runtime_root":{"type":"string"},"backup":{"type":"boolean"},"confirm_dev_nuke":{"type":"boolean"}},"additionalProperties":false})"},
 };
 
 [[nodiscard]] bool tool_is_read_only(std::string_view name) {
-  return name == "hero.runtime.status" || name == "hero.runtime.schema" ||
-         name == "hero.runtime.wave" || name == "hero.runtime.list_jobs" ||
-         name == "hero.runtime.get_job" || name == "hero.runtime.read_artifact";
+  return name == "hero.runtime.status" || name == "hero.runtime.inspect";
 }
 
 [[nodiscard]] bool tool_is_destructive(std::string_view name) {
-  return name == "hero.runtime.execute" || name == "hero.runtime.dev_nuke";
+  return name == "hero.runtime.run" || name == "hero.runtime.reset";
 }
 
 [[nodiscard]] std::string trim_ascii(std::string_view in) {
@@ -529,6 +503,202 @@ extract_json_string_object(const std::string &json,
     return false;
   }
   return parse_int(raw, out);
+}
+
+struct json_field_t {
+  std::string key;
+  std::string raw_value;
+};
+
+[[nodiscard]] bool parse_json_object_fields(const std::string &json,
+                                            std::vector<json_field_t> *out,
+                                            std::string *err) {
+  if (out) {
+    out->clear();
+  }
+  std::size_t idx = 0;
+  skip_ws(json, &idx);
+  if (idx >= json.size() || json[idx] != '{') {
+    if (err) {
+      *err = "arguments must be a JSON object";
+    }
+    return false;
+  }
+  ++idx;
+  skip_ws(json, &idx);
+  if (idx < json.size() && json[idx] == '}') {
+    ++idx;
+    skip_ws(json, &idx);
+    if (idx != json.size()) {
+      if (err) {
+        *err = "unexpected trailing content after JSON object";
+      }
+      return false;
+    }
+    return true;
+  }
+  while (idx < json.size()) {
+    std::string key;
+    if (!parse_json_string_token(json, &idx, &key)) {
+      if (err) {
+        *err = "expected JSON object key";
+      }
+      return false;
+    }
+    if (out) {
+      for (const auto &field : *out) {
+        if (field.key == key) {
+          if (err) {
+            *err = "duplicate field: " + key;
+          }
+          return false;
+        }
+      }
+    }
+    skip_ws(json, &idx);
+    if (idx >= json.size() || json[idx] != ':') {
+      if (err) {
+        *err = "expected ':' after JSON object key";
+      }
+      return false;
+    }
+    ++idx;
+    skip_ws(json, &idx);
+    const std::size_t value_begin = idx;
+    if (!skip_json_value(json, &idx)) {
+      if (err) {
+        *err = "invalid JSON value for field: " + key;
+      }
+      return false;
+    }
+    if (out) {
+      out->push_back({key, trim_ascii(std::string_view(json).substr(
+                               value_begin, idx - value_begin))});
+    }
+    skip_ws(json, &idx);
+    if (idx < json.size() && json[idx] == ',') {
+      ++idx;
+      skip_ws(json, &idx);
+      continue;
+    }
+    if (idx < json.size() && json[idx] == '}') {
+      ++idx;
+      skip_ws(json, &idx);
+      if (idx != json.size()) {
+        if (err) {
+          *err = "unexpected trailing content after JSON object";
+        }
+        return false;
+      }
+      return true;
+    }
+    if (err) {
+      *err = "expected ',' or '}' in JSON object";
+    }
+    return false;
+  }
+  if (err) {
+    *err = "unterminated JSON object";
+  }
+  return false;
+}
+
+[[nodiscard]] bool
+field_allowed(std::string_view key,
+              std::initializer_list<std::string_view> allowed) {
+  return std::find(allowed.begin(), allowed.end(), key) != allowed.end();
+}
+
+[[nodiscard]] bool
+validate_allowed_fields(const std::vector<json_field_t> &fields,
+                        std::initializer_list<std::string_view> allowed,
+                        std::string *err) {
+  for (const auto &field : fields) {
+    if (!field_allowed(field.key, allowed)) {
+      if (err) {
+        *err = "unknown field: " + field.key;
+      }
+      return false;
+    }
+  }
+  return true;
+}
+
+[[nodiscard]] bool
+validate_tool_fields(const std::string &args,
+                     std::initializer_list<std::string_view> allowed,
+                     std::vector<json_field_t> *fields, std::string *err) {
+  if (!parse_json_object_fields(args, fields, err)) {
+    return false;
+  }
+  return validate_allowed_fields(*fields, allowed, err);
+}
+
+[[nodiscard]] bool parse_required_string_arg(const std::string &args,
+                                             std::string_view key,
+                                             std::string *out,
+                                             std::string *err) {
+  std::string raw;
+  if (!extract_json_raw_field(args, key, &raw)) {
+    if (err) {
+      *err = "missing required field: " + std::string(key);
+    }
+    return false;
+  }
+  std::string value;
+  if (!extract_json_string_field(args, key, &value)) {
+    if (err) {
+      *err = std::string(key) + " must be string";
+    }
+    return false;
+  }
+  value = trim_ascii(value);
+  if (value.empty()) {
+    if (err) {
+      *err = std::string(key) + " must be non-empty";
+    }
+    return false;
+  }
+  if (out) {
+    *out = std::move(value);
+  }
+  return true;
+}
+
+void append_raw_json_field(std::ostringstream &out, std::string_view key,
+                           const std::string &raw, bool *first) {
+  if (!*first) {
+    out << ",";
+  }
+  out << json_quote(key) << ":" << raw;
+  *first = false;
+}
+
+void append_bool_json_field(std::ostringstream &out, std::string_view key,
+                            bool value, bool *first) {
+  append_raw_json_field(out, key, value ? "true" : "false", first);
+}
+
+void append_optional_raw_json_field(const std::string &args,
+                                    std::ostringstream &out,
+                                    std::string_view key, bool *first) {
+  std::string raw;
+  if (extract_json_raw_field(args, key, &raw)) {
+    append_raw_json_field(out, key, raw, first);
+  }
+}
+
+[[nodiscard]] std::string
+object_with_selected_fields(const std::string &args,
+                            std::initializer_list<std::string_view> keys) {
+  std::ostringstream out;
+  out << "{";
+  bool first = true;
+  for (const auto key : keys) {
+    append_optional_raw_json_field(args, out, key, &first);
+  }
+  out << "}";
+  return out.str();
 }
 
 [[nodiscard]] fs::path normalize_path(const fs::path &path) {
@@ -2828,8 +2998,13 @@ struct runtime_handoff_binding_t {
   return true;
 }
 
-[[nodiscard]] bool handle_status(const std::string &, runtime_context_t *ctx,
-                                 std::string *out, std::string *) {
+[[nodiscard]] bool handle_status(const std::string &args,
+                                 runtime_context_t *ctx, std::string *out,
+                                 std::string *err) {
+  std::vector<json_field_t> fields;
+  if (!validate_tool_fields(args, {}, &fields, err)) {
+    return false;
+  }
   const fs::path exec_path = policy_path(ctx->policy, "runtime_exec_path");
   const fs::path root = runtime_root(ctx->policy);
   const wave_info_t wave =
@@ -3649,6 +3824,190 @@ replay_dry_run_json(const std::vector<std::string> &argv,
   return true;
 }
 
+[[nodiscard]] bool handle_inspect(const std::string &args,
+                                  runtime_context_t *ctx, std::string *out,
+                                  std::string *err) {
+  std::vector<json_field_t> fields;
+  if (!validate_tool_fields(args,
+                            {"subject", "config_path", "root", "job_id",
+                             "job_dir", "artifact", "path", "include_artifacts",
+                             "include_text", "max_bytes", "limit"},
+                            &fields, err)) {
+    return false;
+  }
+  std::string subject;
+  if (!parse_required_string_arg(args, "subject", &subject, err)) {
+    return false;
+  }
+  subject = lowercase_ascii(subject);
+  if (subject == "schema") {
+    const std::string forwarded = "{}";
+    return handle_schema(forwarded, ctx, out, err);
+  }
+  if (subject == "wave") {
+    const std::string forwarded =
+        object_with_selected_fields(args, {"config_path"});
+    return handle_wave(forwarded, ctx, out, err);
+  }
+  if (subject == "jobs") {
+    const std::string forwarded = object_with_selected_fields(
+        args, {"root", "limit", "include_artifacts"});
+    return handle_list_jobs(forwarded, ctx, out, err);
+  }
+  if (subject == "job") {
+    const std::string forwarded = object_with_selected_fields(
+        args, {"job_id", "job_dir", "include_text", "max_bytes"});
+    return handle_get_job(forwarded, ctx, out, err);
+  }
+  if (subject == "artifact") {
+    const std::string forwarded = object_with_selected_fields(
+        args, {"job_id", "job_dir", "artifact", "path", "max_bytes"});
+    return handle_read_artifact(forwarded, ctx, out, err);
+  }
+  *err = "subject must be schema, wave, jobs, job, or artifact";
+  return false;
+}
+
+[[nodiscard]] bool handle_run(const std::string &args, runtime_context_t *ctx,
+                              std::string *out, std::string *err) {
+  std::vector<json_field_t> fields;
+  if (!validate_tool_fields(args,
+                            {"operation",
+                             "requested_mode",
+                             "config_path",
+                             "job_id",
+                             "job_dir",
+                             "force_rebuild_cache",
+                             "confirm_execute",
+                             "timeout_seconds",
+                             "wave_overlay",
+                             "runtime_handoff",
+                             "marshal_expected_wave",
+                             "base_reserve_node_id",
+                             "risky_node_ids",
+                             "experiment_id",
+                             "report_path",
+                             "initial_equity_base",
+                             "min_base_reserve_weight",
+                             "max_risky_weight",
+                             "max_turnover_l1",
+                             "max_steps",
+                             "max_parallel_jobs",
+                             "include_equal_weight",
+                             "include_current_weight",
+                             "include_base_reserve_policy",
+                             "include_spot_distributional_utility_policy",
+                             "allow_synthetic_direct_edges",
+                             "linear_transaction_cost_rate",
+                             "execution_profile_digest",
+                             "policy_set_digest"},
+                            &fields, err)) {
+    return false;
+  }
+  std::string operation;
+  std::string requested_mode;
+  if (!parse_required_string_arg(args, "operation", &operation, err) ||
+      !parse_required_string_arg(args, "requested_mode", &requested_mode,
+                                 err)) {
+    return false;
+  }
+  operation = lowercase_ascii(operation);
+  requested_mode = lowercase_ascii(requested_mode);
+  if (requested_mode != "plan" && requested_mode != "dry_run" &&
+      requested_mode != "execute") {
+    *err = "requested_mode must be plan, dry_run, or execute";
+    return false;
+  }
+
+  if (operation == "wave") {
+    if (requested_mode == "plan") {
+      *err = "requested_mode=plan is not supported for operation=wave; use "
+             "dry_run or execute";
+      return false;
+    }
+    std::ostringstream forwarded;
+    forwarded << "{";
+    bool first = true;
+    for (const auto key : {"config_path", "job_dir", "force_rebuild_cache",
+                           "confirm_execute", "timeout_seconds", "wave_overlay",
+                           "runtime_handoff", "marshal_expected_wave"}) {
+      append_optional_raw_json_field(args, forwarded, key, &first);
+    }
+    append_bool_json_field(forwarded, "dry_run", requested_mode == "dry_run",
+                           &first);
+    forwarded << "}";
+    return execute_runtime(forwarded.str(), ctx, false, out, err);
+  }
+
+  if (operation == "replay") {
+    std::ostringstream forwarded;
+    forwarded << "{";
+    bool first = true;
+    for (const auto key : {"job_id",
+                           "job_dir",
+                           "config_path",
+                           "base_reserve_node_id",
+                           "risky_node_ids",
+                           "experiment_id",
+                           "report_path",
+                           "initial_equity_base",
+                           "min_base_reserve_weight",
+                           "max_risky_weight",
+                           "max_turnover_l1",
+                           "max_steps",
+                           "max_parallel_jobs",
+                           "include_equal_weight",
+                           "include_current_weight",
+                           "include_base_reserve_policy",
+                           "include_spot_distributional_utility_policy",
+                           "allow_synthetic_direct_edges",
+                           "linear_transaction_cost_rate",
+                           "timeout_seconds",
+                           "execution_profile_digest",
+                           "policy_set_digest"}) {
+      append_optional_raw_json_field(args, forwarded, key, &first);
+    }
+    append_bool_json_field(forwarded, "dry_run", requested_mode != "execute",
+                           &first);
+    forwarded << "}";
+    return handle_replay(forwarded.str(), ctx, out, err);
+  }
+
+  *err = "operation must be wave or replay";
+  return false;
+}
+
+[[nodiscard]] bool handle_reset(const std::string &args, runtime_context_t *ctx,
+                                std::string *out, std::string *err) {
+  std::vector<json_field_t> fields;
+  if (!validate_tool_fields(
+          args,
+          {"requested_mode", "runtime_root", "backup", "confirm_dev_nuke"},
+          &fields, err)) {
+    return false;
+  }
+  std::string requested_mode;
+  if (!parse_required_string_arg(args, "requested_mode", &requested_mode,
+                                 err)) {
+    return false;
+  }
+  requested_mode = lowercase_ascii(requested_mode);
+  if (requested_mode != "plan" && requested_mode != "execute") {
+    *err = "requested_mode must be plan or execute";
+    return false;
+  }
+  std::ostringstream forwarded;
+  forwarded << "{";
+  bool first = true;
+  for (const auto key : {"runtime_root", "backup", "confirm_dev_nuke"}) {
+    append_optional_raw_json_field(args, forwarded, key, &first);
+  }
+  append_bool_json_field(forwarded, "dry_run", requested_mode == "plan",
+                         &first);
+  forwarded << "}";
+  return handle_dev_nuke(forwarded.str(), ctx, out, err);
+}
+
 using handler_fn = bool (*)(const std::string &, runtime_context_t *,
                             std::string *, std::string *);
 
@@ -3656,32 +4015,14 @@ using handler_fn = bool (*)(const std::string &, runtime_context_t *,
   if (name == "hero.runtime.status") {
     return handle_status;
   }
-  if (name == "hero.runtime.schema") {
-    return handle_schema;
+  if (name == "hero.runtime.inspect") {
+    return handle_inspect;
   }
-  if (name == "hero.runtime.wave") {
-    return handle_wave;
+  if (name == "hero.runtime.run") {
+    return handle_run;
   }
-  if (name == "hero.runtime.dry_run") {
-    return handle_dry_run;
-  }
-  if (name == "hero.runtime.execute") {
-    return handle_execute;
-  }
-  if (name == "hero.runtime.replay") {
-    return handle_replay;
-  }
-  if (name == "hero.runtime.dev_nuke") {
-    return handle_dev_nuke;
-  }
-  if (name == "hero.runtime.list_jobs") {
-    return handle_list_jobs;
-  }
-  if (name == "hero.runtime.get_job") {
-    return handle_get_job;
-  }
-  if (name == "hero.runtime.read_artifact") {
-    return handle_read_artifact;
+  if (name == "hero.runtime.reset") {
+    return handle_reset;
   }
   return std::nullopt;
 }

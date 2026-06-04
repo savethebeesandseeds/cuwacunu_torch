@@ -144,7 +144,7 @@ Acceptance:
 ```text
 rollout plan accepts valid completed Runtime job evidence with explicit
   replay_batch_index_path
-rollout execute delegates to hero.runtime.replay
+rollout execute delegates to hero.runtime.run operation=replay
 requested_mode=dry_run is rejected
 prepare_only is rejected as an unknown field
 missing rollout_attempt_id, idempotency_key, or replay_batch_index_path fails
@@ -287,8 +287,11 @@ component_family_id is the only component subject selector
 retired aliases family, fact_family, digest, digest_prefix, index, and
   component are rejected as unknown fields
 facts mode is validated as summary|lineage|preview
-Marshal still translates canonical fact selectors into the Lattice fact tool
-  argument names expected by hero.lattice.fact_summary/fact_lineage/fact_preview
+Marshal still translates canonical fact selectors into the collapsed Lattice
+  inspect arguments:
+  hero.lattice.inspect subject=facts mode=summary
+  hero.lattice.inspect subject=facts mode=lineage
+  hero.lattice.inspect subject=facts mode=preview
 ```
 
 ### V2.5a Shared Read-Only Operator Envelope
@@ -750,8 +753,8 @@ subject=run:
   compare describes deltas and does not choose a winner
 
 subject=target:
-  calls hero.lattice.target_deficit
-  labels target_status_source=hero.lattice.target_deficit
+  calls hero.lattice.evaluate operation=deficit
+  labels target_status_source=hero.lattice.evaluate operation=deficit
   labels proof_authority=lattice
   does not imply certificate inspection unless certificate material exists
   malformed Lattice payload fails closed
@@ -803,12 +806,12 @@ include_runtime_dry_run = true
 Checks:
 
 ```text
-- Marshal calls Lattice target_deficit
+- Marshal calls Lattice evaluate operation=deficit
 - symbolic latest_satisfying inputs are materialized or blocked explicitly
 - Runtime active wave or handoff matches target/mode/range/checkpoints
 - Runtime policy is respected
 - dry-run does not write model evidence
-- target-driver ledger records target_deficit and handoff/request digests
+- target-driver ledger records evaluate operation=deficit and handoff/request digests
 ```
 
 Acceptance:
@@ -905,7 +908,7 @@ Runtime policy refusal:
   allow_train_execute=false blocks train execute
 
 Lattice blocker:
-  target_deficit has no dispatchable plan
+  evaluate operation=deficit has no dispatchable plan
   unresolved latest_satisfying input blocks Runtime handoff
 
 Protocol identity:
@@ -936,7 +939,7 @@ Warnings:
   missing severity fails closed when warning stop policy is enabled
 
 No progress:
-  repeated target_deficit/suggested_wave signature stops with no-progress reason
+  repeated evaluate operation=deficit/suggested_wave signature stops with no-progress reason
 ```
 
 Acceptance:
@@ -957,7 +960,7 @@ Checks:
 - target-driver ledger binds:
   target id
   driver policy digest
-  Lattice target_deficit digest
+  Lattice evaluate operation=deficit digest
   suggested wave digest
   Runtime handoff digest
   Runtime job id

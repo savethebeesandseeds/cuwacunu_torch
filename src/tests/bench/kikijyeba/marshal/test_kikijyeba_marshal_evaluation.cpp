@@ -130,16 +130,19 @@ void test_evaluation_plan_accepts_out_of_sample_request() {
         "evaluation handoff must not become runtime executor");
   check(!handoff.lattice_proof_authority,
         "evaluation handoff must not become lattice proof authority");
-  check(handoff.runtime_tool_name == "hero.runtime.execute",
-        "evaluation handoff should target Runtime Hero execute");
+  check(handoff.runtime_tool_name == "hero.runtime.run",
+        "evaluation handoff should target collapsed Runtime Hero run");
   check(marshal::marshal_digest_is_strong_hex(
             handoff.runtime_execute_args_digest),
         "runtime execute args digest should be strong hex");
   check(marshal::marshal_digest_is_strong_hex(handoff.handoff_digest),
         "runtime handoff digest should be strong hex");
-  check(handoff.runtime_execute_args_json.find("\"dry_run\":true") !=
+  check(handoff.runtime_execute_args_json.find("\"operation\":\"wave\"") !=
             std::string::npos,
-        "runtime handoff args should force dry_run=true");
+        "runtime handoff args should target wave operation");
+  check(handoff.runtime_execute_args_json.find(
+            "\"requested_mode\":\"dry_run\"") != std::string::npos,
+        "runtime handoff args should force requested_mode=dry_run");
   check(handoff.runtime_execute_args_json.find("\"confirm_execute\":false") !=
             std::string::npos,
         "runtime handoff args should force confirm_execute=false");

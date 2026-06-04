@@ -219,9 +219,7 @@ struct marshal_dispatch_validation_context_t {
   marshal_active_identity_t active_identity{};
   std::set<std::string> supported_wave_targets{};
   std::set<std::string> supported_source_ranges{"anchor_index", "source_key"};
-  std::set<std::string> allowed_lattice_tools{"hero.lattice.target_deficit",
-                                              "hero.lattice.evaluate_target",
-                                              "hero.lattice.evaluate_targets"};
+  std::set<std::string> allowed_lattice_tools{"hero.lattice.evaluate"};
   std::vector<std::string> allowed_model_state_roots{};
   std::string freshness_check_timestamp_utc{};
   std::int64_t max_advice_age_seconds{3600};
@@ -388,9 +386,7 @@ path_within_any_allowed_root(const std::string &path,
 
 [[nodiscard]] inline bool
 source_lattice_tool_is_proven_advice(const std::string &tool) {
-  return tool == "hero.lattice.target_deficit" ||
-         tool == "hero.lattice.evaluate_target" ||
-         tool == "hero.lattice.evaluate_targets";
+  return tool == "hero.lattice.evaluate";
 }
 
 [[nodiscard]] inline std::string

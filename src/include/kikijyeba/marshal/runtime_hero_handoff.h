@@ -29,7 +29,7 @@ struct marshal_runtime_hero_handoff_result_t {
   bool tool_result_error{false};
   bool decoded_wave_checked{false};
   bool decoded_wave_matches_request{false};
-  std::string tool_name{"hero.runtime.execute"};
+  std::string tool_name{"hero.runtime.run"};
   std::string arguments_json{};
   std::string arguments_digest{};
   std::string decoded_wave_json{};
@@ -587,9 +587,10 @@ runtime_hero_execute_args_json(const marshal_runtime_dry_run_request_t &request,
                                bool confirm_execute = false,
                                const std::filesystem::path &policy_path = {}) {
   std::ostringstream out;
-  out << "{\"config_path\":"
+  out << "{\"operation\":\"wave\",\"requested_mode\":"
+      << detail::json_quote(dry_run ? "dry_run" : "execute")
+      << ",\"config_path\":"
       << detail::json_quote(detail::normalize_path_text(request.config_path))
-      << ",\"dry_run\":" << (dry_run ? "true" : "false")
       << ",\"confirm_execute\":" << (confirm_execute ? "true" : "false");
   if (request.force_rebuild_cache) {
     out << ",\"force_rebuild_cache\":true";
@@ -700,11 +701,11 @@ call_runtime_hero_execute_request(
 
   std::string wave_error;
   const std::string wave_args =
-      "{\"config_path\":" +
+      "{\"subject\":\"wave\",\"config_path\":" +
       json_quote(detail::normalize_path_text(request.config_path)) + "}";
   out.decoded_wave_checked = true;
   const bool wave_call_ok = cuwacunu::hero::runtime::execute_tool_json(
-      "hero.runtime.wave", wave_args, &ctx, &out.decoded_wave_json,
+      "hero.runtime.inspect", wave_args, &ctx, &out.decoded_wave_json,
       &wave_error);
   out.decoded_wave_digest = marshal_digest_for_text(
       "kikijyeba.marshal.runtime_decoded_wave.v1", out.decoded_wave_json);
