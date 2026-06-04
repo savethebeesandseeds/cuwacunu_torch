@@ -1,209 +1,61 @@
 # Lattice Roadmap
 
-This roadmap is now a final review packet for the recovered Lattice expansion.
-It is not a backlog for an open-ended goal.
-
-Use it to finish documentation cleanup, run focused validation, and preserve the
-architecture boundary that was restored during the interrupted-goal recovery.
+This roadmap is the active Lattice work index. It is not a history log for the
+recovered Lattice expansion or the completed Hero surface collapse.
 
 ## Operating Rules
 
-- Pick one bounded milestone at a time.
-- Do not expand roadmap evidence by adding `TARGET_KIND` values.
 - Runtime and components write durable evidence.
 - Lattice reads evidence, normalizes facts, proves explicit target claims, and
   emits warnings.
-- Marshal coordinates and inspects; it does not prove, execute, select
-  checkpoints, allocate, or make market/deployment decisions.
+- Lattice does not execute, schedule, optimize, select checkpoints by quality,
+  allocate, or make market/deployment decisions.
+- Marshal coordinates and inspects; it does not prove.
 - Policy gates remain disabled until thresholds, uncertainty, baselines,
-  leakage policy, selector policy, and negative tests are explicit.
-- A severe warning may be loud, but it must not become a hidden readiness gate.
+  selector policy, leakage policy, and negative tests are explicit.
+- Warnings are diagnostic. They do not become hidden readiness gates.
 
-## Architecture Boundary
+## Current Stable Surface
+
+Lattice Hero public tools:
 
 ```text
-Runtime / components
-  write reports, facts, sidecars, checkpoints, replay artifacts
-
-Lattice evidence catalog
-  scans durable evidence
-  normalizes fact families
-  builds summaries
-  preserves lineage
-  emits warnings
-
-Lattice target proof engine
-  proves explicit readiness or artifact claims
-  emits proof certificates
-  never runs components
-  never ranks checkpoints by quality
-  never allocates
-
-Future policy gate layer
-  remains disabled until decision policy is explicit and tested
-
-Marshal
-  reaches dispatchable readiness targets only
-  inspects non-dispatchable evidence panels
-  never proves or executes
+hero.lattice.status
+hero.lattice.inspect
+hero.lattice.evaluate
+hero.lattice.compare
 ```
 
-## Recovery Ledger
+Active proof/evidence boundaries:
 
-The broad lattice expansion goal has been split into finite completed slices.
-Do not reopen these as one umbrella goal.
+```text
+fact families
+  read-only catalog evidence, not target kinds
 
-1. Evidence catalog boundary: complete for the active catalog families.
-   Fact families are read-only evidence rows, not target kinds, wave sources,
-   checkpoint selectors, policy gates, Marshal reachability surfaces, or
-   allocation/deployment authority.
+artifact_readiness targets
+  narrow non-dispatchable proof targets for artifact existence, identity,
+  lineage, support, non-mutation, and completeness
 
-2. Runtime fact producers and fact contracts: complete for the active fact
-   families. Durable sidecar/scanner contracts exist for `source_analytics`,
-   `target_transform`, `forecast_baseline`, `forecast_eval`,
-   `observer_belief`, and `allocation_engine`, with malformed cases preserved
-   as warnings or proof failures according to declared authority.
+warnings
+  non-blocking diagnostic evidence
 
-3. Artifact-readiness proof engine: complete for the active proofable families.
-   `target_transform_contract_ready`, `forecast_baseline_artifact_ready`,
-   `forecast_eval_artifact_ready`, `observer_belief_artifact_ready`, and
-   `allocation_artifact_ready` prove narrow artifact existence, identity,
-   lineage, support, non-mutation, and completeness. They do not prove quality
-   or dispatch Runtime waves.
+latest_satisfying
+  deterministic readiness-recency selection, not best-model selection
 
-4. Warning surface cleanup: complete for active warning surfaces. Warning
-   envelopes are structured, typed, non-blocking, and visible in Hero output;
-   severity does not change target status, plan readiness, suggested waves,
-   checkpoint selection, Marshal reachability, or policy-gate status.
+policy gates
+  reserved/fail-closed only
+```
 
-5. Hero and Marshal boundary audit: complete for current Lattice surfaces.
-   Hero exposes fact summaries, previews, target evaluation, and disabled
-   policy-gate reservations as read/proof/inspection data. Marshal routes
-   non-dispatchable artifact targets and fact-family panels to read-only
-   inspection.
-
-6. Policy gates stay reserved: complete for current reserved/fail-closed
-   surfaces. `LATTICE_POLICY_GATE` loads only disabled
-   `forecast_quality_acceptance` and `allocation_acceptance` reservations
-   bound to matching artifact-readiness proof targets. `ENABLED=true`,
-   `TARGET_CLASS=policy_gate`, `performance_acceptance`,
-   `validation_performance`, `market_readiness`, and `deployment_readiness`
-   fail closed. `POLICY_KIND=performance_acceptance`, `market_readiness`, and
-   `deployment_readiness` remain unsupported future decision surfaces.
-
-7. Final documentation and review packet: complete enough for this recovery
-   phase. The compact review packet exists, related Markdown now agrees on
-   catalog/proof/policy/Marshal boundaries, and the colleague review identified
-   hardening tests as the next bounded action before compatibility cleanup.
-
-## Active Milestone
-
-### 8. Lattice Boundary Hardening
+## Active Milestone: Environment Evidence Targets
 
 Goal:
 
 ```text
-Turn the recovered architecture boundary into regression tests before deleting
-runtime-data compatibility paths or refactoring target-spec types.
+Add policy-neutral replay environment evidence and proof shapes before any
+trainable policy or PPO work.
 ```
 
-Deliverables:
-
-- Prove `artifact_readiness` targets stay non-dispatchable and do not inherit
-  trainable target machinery.
-- Prove warning severity and triggered warning counts do not create target
-  deficits, plan readiness, suggested waves, Marshal reachability, checkpoint
-  selection, or policy status.
-- Keep warning envelopes machine-explicit: `blocking=false`,
-  `authority=diagnostic_only`, `affects_target_status=false`,
-  `affects_plan=false`, `affects_marshal=false`, and
-  `affects_policy_gate=false` where the output surface supports those fields.
-- Prove disabled `LATTICE_POLICY_GATE` reservations do not alter target
-  fingerprints, target status, proof certificates, warnings, deficits, plans,
-  or dispatch advice.
-- Prove `latest_satisfying:<target_id>` is deterministic readiness-recency
-  selection, not quality or best-metric selection.
-- Prove parked `replay_environment` evidence remains default-muted,
-  audit-only, and unable to satisfy active targets.
-
-Completion evidence:
-
-- `make -C src/tests/bench/kikijyeba/lattice_target -j12 run-test_kikijyeba_lattice_target`
-  passes.
-- Run catalog or Marshal tests only if this milestone touches those subsystems.
-- `git diff --check` passes.
-
-## Future Discussion: Environment Policy Training
-
-Status: not active.
-
-The environment era must preserve the split between evidence, proof, dispatch,
-and acceptance. `replay_environment` facts are parked audit evidence, and
-`replay_environment_artifact_ready` is a reserved future proof shape rather
-than an active target. It may eventually prove schema identity, report digest
-identity, source order, parallelism bounds, time-law cleanliness,
-projection-counter presence, and parent evidence binding. It must not become
-policy training, policy selection, reward acceptance, market readiness, or
-deployment authority.
-
-Lifecycle state:
-
-```text
-replay_environment fact family
-  known / parked / catalog-listed
-
-replay_environment fact derivation
-  disabled by default
-  explicit audit scan only
-
-replay_environment_artifact_ready proof template
-  designed / reserved / not active yet
-
-replay_environment_artifact_ready target instance
-  absent until Runtime replay artifacts and fact contracts are stable
-
-policy_training_artifact_ready
-  future dispatchable target only with a concrete Runtime job contract
-
-policy_acceptance
-  disabled policy reservation only
-```
-
-Use this staged model:
-
-```text
-1. Environment facts
-   Policy-neutral, read-only catalog rows from Runtime replay artifacts.
-   They describe what happened inside the experience, independent of whether
-   the actor was a baseline, deterministic Wikimyei policy, learned policy, or
-   external policy.
-
-2. Environment artifact readiness
-   Reserved non-dispatchable proof template. Once active, it proves
-   replay/environment artifacts are complete, schema-consistent,
-   lineage-bound, time-law-clean, and bounded. It does not train, select, or
-   accept a policy.
-
-3. Policy-training artifact readiness
-   Potentially dispatchable later, but only if Runtime has a concrete
-   policy-training job contract and writes durable policy-training evidence.
-   This proves that a training run produced usable artifacts, not that the
-   policy is good.
-
-4. Policy acceptance
-   Disabled policy-gate reservation until reward thresholds, mandatory
-   baselines, uncertainty, selector/eval split policy, and negative leakage
-   tests are explicit.
-```
-
-Hero and Marshal surfaces should render disabled gates as
-`disabled_policy_reservation` or equivalent reserved-policy language, not as an
-active policy gate. A disabled reservation is review metadata and must not
-alter target status, target fingerprints, proof certificates, warnings,
-deficits, plans, or dispatch advice.
-
-Policy-neutral `replay_environment` fact families should be designed before any
-training target:
+Design the following fact families:
 
 ```text
 replay_environment_run
@@ -213,155 +65,349 @@ replay_action_schema
 replay_reward_definition
 replay_policy_identity
 replay_projection_validation
-replay_execution_simulation
+replay_execution_trace
 replay_artifact_lineage
 ```
 
-These facts may support artifact-readiness proof and operator inspection. They
-must not become trainable readiness, reward acceptance, policy selection,
-checkpoint ranking, market readiness, or online deployment authority.
-
-Reserved proof wording:
+First target:
 
 ```text
-replay_environment_artifact_bound proves:
-  replay run artifact exists
-  episode artifacts exist
-  requested range and accepted cursor identity are preserved
-  source order and graph order identity are bound
-  action schema digest is present
-  reward definition identity digest is present
-  acting policy identity is present
-  observation/action/execution time-law checks are present and clean
-  execution simulation contract is present
-  projection-validation counters and metric fields are present when required
-  parent forecast, observer, allocation, source, and environment digests bind
-  declared parallelism and replay bounds are observed
-
-replay_environment_artifact_bound does not prove:
-  reward quality
-  profitability
-  projection economic validity
-  policy quality
-  policy acceptance
-  policy selection
-  deployment readiness
-  market readiness
+replay_environment_artifact_ready
 ```
 
-Apply the same wording discipline to active artifact templates:
+Status:
 
 ```text
-forecast_eval_artifact_bound
-  Say: declared selection-signal fact digests are present and lineage-bound
-  when the contract requires them.
-  Do not imply: checkpoint selection, ranking, acceptance, or recommendation.
-
-observer_belief_artifact_bound
-  Say: scenario/covariance diagnostic fields are present and lineage-bound.
-  Do not imply: confidence, liquidity, data quality, tradability, or return
-  validity is acceptable.
-
-allocation_artifact_bound
-  Say: objective, constraint, cost, CVaR, turnover, reserve, and
-  fallback/de-risk fields are present and lineage-bound.
-  Do not imply: feasibility, optimality, suitability, execution readiness,
-  portfolio readiness, or market readiness.
+Implemented as a non-dispatchable artifact_readiness target over the
+replay_environment fact family.
 ```
 
-A future policy-training target may be dispatchable only when it has a concrete
-Runtime execution contract:
+Target class:
+
+```text
+artifact_readiness
+non_dispatchable
+```
+
+Core fact fields:
+
+```text
+identity
+  fact_schema_id
+  fact_schema_version
+  runtime_job_dir
+  runtime_job_digest
+  runtime_run_id
+  environment_run_id
+  rollout_id
+  experiment_id
+  report_path
+  report_digest
+  experience_trace_path
+  experience_trace_digest
+
+contract_identity
+  environment_assembly_id
+  action_schema_id
+  reward_contract_id
+  execution_backend_id
+  execution_profile_digest
+  policy_set_digest
+
+source_range_identity
+  requested_range
+  accepted_range
+  accepted_cursor_wave_id
+  accepted_cursor_kind
+  accepted_cursor_scope
+  accepted_source_range_policy
+  accepted_source_order_policy
+  accepted_batch_cursor_token
+  graph_order_fingerprint
+  source_order_policy
+  bounded_parallelism
+
+time_law
+  future_observation_violation_count
+  mixed_future_realization_key_count
+  realization_before_action_violation_count
+  action_timestamp_violation_count
+
+projection_counters
+  projection_validation_step_count
+  projection_metric_present_count
+  projection_interval_width_present_count
+  projection_baseline_skill_present_count
+
+cajtucu_counters
+  cajtucu_trace_present_count
+  cajtucu_valid_trace_count
+  cajtucu_invalid_trace_count
+  cajtucu_rejected_fill_count
+  cajtucu_partial_fill_count
+  cajtucu_synthetic_market_step_count
+  cajtucu_total_transaction_cost_base_present
+
+denials
+  allocation_authority=false
+  execution_authority=false
+  live_capital_allowed=false
+  target_satisfaction_claimed=false
+  policy_quality_claimed=false
+  market_readiness_claimed=false
+```
+
+It proves:
+
+- replay run artifact exists
+- episode artifacts exist
+- report digest identity is bound
+- requested range and accepted cursor identity are preserved
+- graph/source order identity is bound
+- action schema digest is present
+- reward definition digest is present
+- acting policy identity is present
+- Cajtucu execution trace counters are present
+- observation/action/execution time-law counters are present and clean
+- projection-validation counters are present when required
+- declared parallelism and replay bounds are observed
+- parent forecast, observer, allocation, source, and environment digests bind
+
+It does not prove:
+
+- reward quality
+- profitability
+- projection economic validity
+- policy quality
+- policy acceptance
+- checkpoint ranking
+- market readiness
+- deployment readiness
+
+Acceptance:
+
+- Fact schema and summary are documented.
+- Scanner derives or reads replay environment evidence only from durable Runtime
+  replay artifacts.
+- Scanner binds execution_profile_digest and policy_set_digest from the replay
+  report.
+- Scanner reads Cajtucu execution feasibility, cost anatomy, target tracking,
+  ledger integrity, projection, and time-law counters.
+- Missing or malformed replay evidence fails closed as artifact proof failure,
+  not as dispatch advice.
+- `hero.lattice.inspect` can inspect the facts.
+- `hero.lattice.evaluate operation=target` can evaluate the artifact target
+  once the target is activated.
+- Marshal can read the proof/evidence but cannot dispatch from it.
+
+Implementation checkpoint:
+
+```text
+Goal: replay_environment_artifact_ready.v1
+
+Implemented:
+- replay_environment facts bind report digest, Runtime run id, environment run
+  id, experiment id, execution_profile_digest, policy_set_digest, accepted
+  cursor evidence, graph/source identity, replay contract fields, projection
+  counters, Cajtucu trace/order/cost/target-tracking counters, and authority
+  denials.
+- replay_environment_fact_issues fails closed on missing digests, missing trace
+  evidence, invalid traces, synthetic execution markets, missing order evidence,
+  invalid fill/notional metrics, missing cost metrics, leakage counters, and
+  incomplete replay/projection evidence.
+- hero.lattice.inspect can expose replay_environment facts and summaries.
+- hero.lattice.evaluate can evaluate replay_environment_artifact_ready without
+  dispatching Runtime or Marshal work.
+
+Still out of scope:
+- proving policy quality
+- proving projection economic validity
+- proving market readiness
+- selecting policies or checkpoints
+- PPO or any trainable policy work
+```
+
+## Completed Milestone: Policy Training Artifact Readiness
+
+Status: implemented as a non-dispatchable artifact-readiness proof. Runtime now
+has a contract-only policy-training handoff surface, but executable training is
+still refused until a dedicated trainable-policy runner exists.
+
+Target:
+
+```text
+policy_training_artifact_ready
+```
+
+Fact family:
+
+```text
+policy_training
+```
+
+Proof kind:
+
+```text
+policy_training_artifact_bound
+```
+
+Implemented contract:
+
+- scanner accepts `lattice.policy_training.fact`, `policy_training.fact`,
+  `runtime.policy_training.fact`, and the policy-training artifact directory
+  sidecar
+- fact digest/canonical text bind policy identity, checkpoint identity, range
+  digests, schema digests, causal schedule identity, typed cursor-key ordering,
+  ledger-derived no-future snapshot source, selector policy, sealed-test
+  evidence, and parent forecast/observer/allocation/replay digests
+- summary resolves parent fact digests against forecast-eval, observer-belief,
+  allocation-engine, and replay-environment facts
+- target proof fails closed on missing anti-leakage, selector, sealed-test,
+  Runtime job-kind, checkpoint, parent evidence, or authority-denial fields
+- Hero inspect/evaluate can expose the fact family and target through the
+  Lattice read surface
+
+This target may become dispatch-related only after Runtime defines an executable
+trainable-policy runner on top of the existing contract-only handoff:
 
 ```text
 producer component family
 Runtime job kind
-environment/replay contract version
+environment contract id
 episode bundle identity and source ranges
-max environment jobs, workers, episodes, and attempts
-resume ledger identity and terminal stop condition
-report schema
-checkpoint or policy-artifact contract
-parent forecast/observer/allocation/evidence digests
+max workers, episodes, attempts, and wall-clock budget
+resume ledger identity
+terminal stop condition
+policy artifact/checkpoint schema
 reward definition digest
-anti-leakage and selector-split policy
+  execution profile digest
+  causal policy-training schedule schema/digest
+  anti-leakage and selector split policy
 post-run Lattice target to recheck
 ```
 
-Parallel environment rollout is Runtime evidence production. Lattice may prove
-that the produced episode/training evidence is complete, bounded, time-law
-clean, lineage-bound, and leakage-clean; it must not run workers, allocate
-capital, rank policies, or choose the best checkpoint.
-
-For the current deterministic policy, there is no policy-training target. The
-useful Lattice work is environment artifact readiness and projection-validation
-evidence over the same action/reward/report grammar used by baselines and future
-learned policies.
-
-Do not add `environment_ready`, `policy_good`, `policy_accepted`,
-`market_ready`, or similar targets as shorthand. First define fact families,
-artifact contracts, proof kind, target class, and policy-gate reservation
-boundaries.
-
-Open questions for the next design session:
+The policy artifact evidence binds:
 
 ```text
-Which policy artifacts are checkpoints, and which are deterministic artifacts?
-What reward definition digest is authoritative?
-Which split selects policy checkpoints, and which split evaluates them?
-What baselines are mandatory before any acceptance gate is even reserved?
-How are episode independence and replay/live separation proven?
-What negative tests catch time-law and selector leakage?
+policy_id
+policy_kind
+policy_architecture_digest
+training_config_digest
+training_range_digest
+validation_range_digest
+test_range_digest
+environment_contract_id
+observation_schema_digest
+action_schema_digest
+reward_contract_digest
+execution_profile_digest
+training_schedule_mode
+causal_schedule_schema_id
+causal_schedule_digest
+causal_schedule_cursor_key_kind
+causal_schedule_no_future_snapshot_use_source
+causal_schedule_no_future_snapshot_use
+normalization_fit_range_digest
+replay_buffer_source_range_digest
+early_stopping_policy_digest
+hyperparameter_selection_policy_digest
+random_seed
+parent_checkpoint_digest
+checkpoint_digest
 ```
 
-## Documentation Audit
+Required anti-leakage proofs:
 
-Keep these files aligned during final cleanup:
+- training, validation, and test ranges are disjoint
+- training_schedule_mode is causal_walk_forward_training.v1
+- causal schedule schema/digest/cursor-key kind are bound
+- no-future snapshot source is derived_from_artifact_fit_use_ledgers
+- every snapshot used by a policy-training block was usable before that block
+  began
+- opaque cursor keys are rejected
+- target-label, reward, and trajectory availability are no later than artifact
+  usable_from_key
+- offline_full_window_research is not accepted as readiness evidence
+- normalization/scalers are fit only on training evidence
+- replay buffers contain only training-range frames
+- reward baselines are fit only on training evidence
+- validation-based checkpoint selection records selector policy and candidates
+- test evidence is first accessed only after selected checkpoint identity exists
 
-- `src/include/kikijyeba/lattice/LEGACY_AUDIT.md`
-  marks which legacy/compatibility surfaces are runtime-data cleanup candidates
-  after `dev_nuke` and which ones are active API or target behavior.
-- `src/include/kikijyeba/lattice/README.md`
-  must describe fact families as read-only evidence, artifact-readiness targets
-  as narrow proofs, `latest_satisfying` as deterministic readiness selection,
-  warnings as non-blocking, and policy gates as reserved/fail-closed.
-- `src/config/README.md`
-  must match the current config/DSL behavior and avoid implying policy,
-  performance, market-readiness, deployment, allocation, scheduler, or
-  execution authority.
-- `src/config/man/hero.lattice.man`
-  must match the Lattice Hero tool behavior and schema fields.
-- `src/main/hero/README.md`
-  must keep Hero as read/proof/inspection and Marshal as bounded coordination.
-- `src/include/kikijyeba/lattice/ROADMAP.md`
-  must stay finite and should not accumulate historical completion logs.
+It proves only that a bounded policy-training run produced complete artifacts
+with anti-leakage structure. It must not prove that the policy is good,
+accepted, profitable, market-ready, or deployable.
 
-## Completion Audit
+## Completed Milestone: Runtime Policy-Training Job Contract
 
-Use this mapping when reviewing the final diff.
+Milestone:
 
-- Evidence catalog boundary:
-  catalog families expose identity, lineage, support, and authority flags; fact
-  rows do not satisfy trainable readiness by themselves.
-- Target proof boundary:
-  active artifact-readiness targets prove only artifact integrity and
-  completeness; they are non-dispatchable and do not select checkpoints.
-- Warning boundary:
-  warnings expose diagnostics and inspection hints; they never block readiness
-  or become hidden policy gates.
-- Hero/Marshal boundary:
-  Hero reports proof and catalog state; Marshal inspects or prepares bounded
-  handoffs only for dispatchable readiness targets.
-- Policy-gate boundary:
-  disabled reservations are review metadata; enabled or unsupported decision
-  surfaces fail closed.
-- `latest_satisfying` boundary:
-  readiness-based checkpoint selection is not a best-model, Pareto,
-  performance, deployment, or scalar-score selector.
+```text
+runtime_policy_training_job_contract.v1
+```
+
+Goal:
+
+```text
+Define the finite Runtime contract for future policy_training facts and
+checkpoints under the existing Kikijyeba environment and Cajtucu paper execution
+contracts.
+```
+
+Status: implemented as a contract-only Runtime Hero path:
+
+```text
+hero.runtime.run operation=policy_training requested_mode=plan|dry_run
+```
+
+Acceptance:
+
+- Runtime can plan/dry-run a bounded policy-training job without implementing
+  PPO yet.
+- The job contract declares training/validation/test range inputs, replay batch
+  identity, environment/action/reward/execution profile digests, episode/worker
+  limits, resume/idempotency identity, terminal stop condition, selector policy,
+  and policy checkpoint artifact schema.
+- The planned artifact payload matches `policy_training_artifact_contract.v1`.
+- Marshal remains a coordinator and cannot train or select.
+- Lattice remains proof authority for artifacts only.
+- Execute mode is refused until Runtime owns a real trainable-policy runner.
+
+Next optional Lattice refinement before executable PPO:
+
+```text
+policy_training_causal_schedule_ready
+```
+
+This target would prove only schedule schema identity, schedule digest binding,
+block/fit/use ledger completeness, typed cursor ordering, no same-block
+snapshot use, no future snapshot use, and exclusion of full-window research from
+readiness. `policy_training_artifact_ready` would continue to prove the broader
+policy artifact lineage and anti-leakage contract.
+
+## Reserved: Policy Acceptance And Tsodao
+
+Policy acceptance remains a disabled policy-gate topic until these are explicit:
+
+```text
+mandatory baselines
+reward thresholds
+uncertainty policy
+selector split
+test split
+negative leakage tests
+cost/slippage assumptions
+promotion criteria
+Tsodao settings-protection contract
+```
+
+Tsodao should later protect approved settings and evidence digests. Lattice may
+prove that Tsodao-bound settings match evidence, but Lattice must not search for
+or choose those settings.
 
 ## Validation Groups
 
-Run only the smallest group needed for the final review. For a full final
-packet, run the focused set below.
+Run only the smallest group needed for the current change.
 
 Catalog and fact contracts:
 
@@ -395,9 +441,6 @@ git diff --check
 
 ## Explicit Non-Goals
 
-Do not add these as active work without a new bounded roadmap section and
-explicit policy requirements:
-
 - scalar lattice score
 - best checkpoint selector
 - forecast quality approval
@@ -408,16 +451,3 @@ explicit policy requirements:
 - Runtime execution authority inside Lattice
 - Marshal proof authority
 - DB/cache rows as source of truth
-
-## Next Candidate Milestone
-
-Only open this after `dev_nuke` has removed old `.runtime` records and the
-boundary-hardening tests pass:
-
-```text
-Runtime-Data Compatibility Cleanup
-  remove runtime-data compatibility readers and fallback paths marked in
-  LEGACY_AUDIT.md, while keeping active trainable targets, Marshal
-  reachability, artifact-readiness proofs, and parked environment support
-  intact.
-```

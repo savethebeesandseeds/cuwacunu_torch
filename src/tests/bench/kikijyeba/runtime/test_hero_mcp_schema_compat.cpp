@@ -758,14 +758,14 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
       "\"artifact_readiness_proof_template_registry\":{\"schema\":\"kikijyeba."
       "lattice.artifact_readiness_proof_template_registry.v1\"",
       "list_targets should expose artifact readiness proof template registry");
-  require_contains(target_list, "\"proof_template_count\":5",
+  require_contains(target_list, "\"proof_template_count\":7",
                    "artifact readiness registry should enumerate proof "
                    "templates");
   require_contains(
       target_list,
       "\"proofable_fact_families\":[\"target_transform\","
       "\"forecast_baseline\",\"forecast_eval\",\"observer_belief\","
-      "\"allocation_engine\"]",
+      "\"allocation_engine\",\"replay_environment\",\"policy_training\"]",
       "artifact readiness registry should expose proofable fact families");
   require_contains(
       target_list,
@@ -783,6 +783,11 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
       "\"subject_fact_family\":\"forecast_eval\",\"proof_kind\":\"forecast_"
       "eval_artifact_bound\"",
       "artifact readiness registry should expose forecast eval proof kind");
+  require_contains(
+      target_list,
+      "\"subject_fact_family\":\"policy_training\",\"proof_kind\":\"policy_"
+      "training_artifact_bound\"",
+      "artifact readiness registry should expose policy training proof kind");
 
   const std::string latest = read_command_stdout(
       base +

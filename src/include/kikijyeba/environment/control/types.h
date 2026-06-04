@@ -338,16 +338,49 @@ struct step_report_t {
   std::string cajtucu_trace_id{};
   std::string cajtucu_market_source_id{};
   bool cajtucu_synthetic_direct_edges{false};
+  bool cajtucu_trace_valid{true};
+  std::uint64_t cajtucu_failure_count{0};
   double cajtucu_ledger_intent_equity_difference_base{0.0};
   bool cajtucu_ledger_intent_equity_mismatch{false};
   std::uint64_t cajtucu_order_count{0};
+  std::uint64_t cajtucu_executed_order_count{0};
   std::uint64_t cajtucu_fill_count{0};
   std::uint64_t cajtucu_rejected_fill_count{0};
   std::uint64_t cajtucu_partial_fill_count{0};
+  std::uint64_t cajtucu_missing_direct_reserve_edge_count{0};
+  std::uint64_t cajtucu_nontradable_edge_reject_count{0};
+  std::uint64_t cajtucu_below_min_notional_reject_count{0};
+  std::uint64_t cajtucu_above_max_notional_reject_count{0};
+  std::uint64_t cajtucu_insufficient_reserve_reject_count{0};
+  std::uint64_t cajtucu_insufficient_units_reject_count{0};
+  std::uint64_t cajtucu_invalid_sell_price_count{0};
+  std::uint64_t cajtucu_large_equity_mismatch_count{0};
+  double cajtucu_requested_notional_base{0.0};
+  double cajtucu_executed_notional_base{0.0};
+  double cajtucu_rejected_notional_base{0.0};
+  double cajtucu_partial_notional_base{0.0};
+  double cajtucu_fill_ratio{std::numeric_limits<double>::quiet_NaN()};
   double cajtucu_total_fee_base{0.0};
   double cajtucu_total_spread_cost_base{0.0};
   double cajtucu_total_slippage_base{0.0};
   double cajtucu_total_transaction_cost_base{0.0};
+  double target_weight_error_l1{std::numeric_limits<double>::quiet_NaN()};
+  double target_weight_error_linf{std::numeric_limits<double>::quiet_NaN()};
+  double post_execution_risky_weight_sum{
+      std::numeric_limits<double>::quiet_NaN()};
+  double post_execution_base_reserve_weight{
+      std::numeric_limits<double>::quiet_NaN()};
+  std::uint64_t reserve_shortfall_count{0};
+  double ledger_before_equity{std::numeric_limits<double>::quiet_NaN()};
+  double ledger_after_execution_equity{
+      std::numeric_limits<double>::quiet_NaN()};
+  double ledger_after_realization_equity{
+      std::numeric_limits<double>::quiet_NaN()};
+  double ledger_equity_reconciliation_error{
+      std::numeric_limits<double>::quiet_NaN()};
+  double base_reserve_units_before{std::numeric_limits<double>::quiet_NaN()};
+  double base_reserve_units_after{std::numeric_limits<double>::quiet_NaN()};
+  std::uint64_t unit_nonnegativity_violation_count{0};
 
   double reward_log_growth{std::numeric_limits<double>::quiet_NaN()};
   double reward_drawdown_penalty{std::numeric_limits<double>::quiet_NaN()};
@@ -437,6 +470,49 @@ struct episode_report_t {
   double max_drawdown{0.0};
   double total_turnover{0.0};
   double total_transaction_cost_base{0.0};
+  std::uint64_t cajtucu_valid_trace_count{0};
+  std::uint64_t cajtucu_invalid_trace_count{0};
+  std::uint64_t cajtucu_missing_direct_reserve_edge_count{0};
+  std::uint64_t cajtucu_nontradable_edge_reject_count{0};
+  std::uint64_t cajtucu_below_min_notional_reject_count{0};
+  std::uint64_t cajtucu_above_max_notional_reject_count{0};
+  std::uint64_t cajtucu_insufficient_reserve_reject_count{0};
+  std::uint64_t cajtucu_insufficient_units_reject_count{0};
+  std::uint64_t cajtucu_invalid_sell_price_count{0};
+  std::uint64_t cajtucu_large_equity_mismatch_count{0};
+  std::uint64_t cajtucu_synthetic_market_step_count{0};
+  std::uint64_t requested_order_count{0};
+  std::uint64_t executed_order_count{0};
+  std::uint64_t rejected_order_count{0};
+  std::uint64_t partial_order_count{0};
+  double requested_notional_base{0.0};
+  double executed_notional_base{0.0};
+  double rejected_notional_base{0.0};
+  double partial_notional_base{0.0};
+  double fill_ratio{std::numeric_limits<double>::quiet_NaN()};
+  double fee_cost_base{0.0};
+  double spread_cost_base{0.0};
+  double slippage_cost_base{0.0};
+  double cost_as_fraction_of_equity{std::numeric_limits<double>::quiet_NaN()};
+  double cost_as_fraction_of_gross_return{
+      std::numeric_limits<double>::quiet_NaN()};
+  double mean_target_weight_error_l1{std::numeric_limits<double>::quiet_NaN()};
+  double mean_target_weight_error_linf{
+      std::numeric_limits<double>::quiet_NaN()};
+  double mean_post_execution_risky_weight_sum{
+      std::numeric_limits<double>::quiet_NaN()};
+  double mean_post_execution_base_reserve_weight{
+      std::numeric_limits<double>::quiet_NaN()};
+  std::uint64_t reserve_shortfall_count{0};
+  double mean_ledger_before_equity{std::numeric_limits<double>::quiet_NaN()};
+  double mean_ledger_after_execution_equity{
+      std::numeric_limits<double>::quiet_NaN()};
+  double mean_ledger_after_realization_equity{
+      std::numeric_limits<double>::quiet_NaN()};
+  double max_ledger_equity_reconciliation_error{0.0};
+  double base_reserve_units_before{std::numeric_limits<double>::quiet_NaN()};
+  double base_reserve_units_after{std::numeric_limits<double>::quiet_NaN()};
+  std::uint64_t unit_nonnegativity_violation_count{0};
   std::string allocation_target_risky_node_weights{};
   std::string allocation_reserve_node_id{};
   double allocation_reserve_weight{std::numeric_limits<double>::quiet_NaN()};

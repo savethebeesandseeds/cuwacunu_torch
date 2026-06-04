@@ -160,6 +160,12 @@ void test_rollout_plan_accepts_completed_runtime_job() {
   check(plan.replay_command_template.find(
             "--replay-linear-transaction-cost-rate 0.001") != std::string::npos,
         "rollout command should carry Cajtucu cost profile");
+  check(plan.replay_command_template.find(
+            "--replay-execution-profile-digest") != std::string::npos,
+        "rollout command should carry execution profile digest");
+  check(plan.replay_command_template.find("--replay-policy-set-digest") !=
+            std::string::npos,
+        "rollout command should carry policy set digest");
 
   const auto plan_json = marshal::rollout_plan_json(plan);
   check(plan_json.find("\"receipt_produced\"") == std::string::npos,
@@ -285,6 +291,12 @@ void test_rollout_validates_typed_execution_profile() {
   auto refusals = marshal::validate_rollout_request(unsupported_cost_model);
   check(has_refusal(refusals, "unsupported_cost_model_id"),
         "rollout should reject unsupported Cajtucu cost model id");
+
+  auto zero_cost_validation = request;
+  zero_cost_validation.execution_profile.linear_transaction_cost_rate = 0.0;
+  refusals = marshal::validate_rollout_request(zero_cost_validation);
+  check(has_refusal(refusals, "nonzero_cost_required_for_validation_rollout"),
+        "cost-aware validation rollout should reject zero-cost profiles");
 
   auto partial_fills = request;
   partial_fills.execution_profile.allow_partial_fills = true;

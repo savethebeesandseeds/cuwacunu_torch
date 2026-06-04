@@ -239,6 +239,86 @@ format_node_metric_vector(const std::vector<std::string> &node_ids,
   return out.str();
 }
 
+[[nodiscard]] inline bool starts_with(const std::string &text,
+                                      const std::string &prefix) {
+  return text.rfind(prefix, 0) == 0;
+}
+
+[[nodiscard]] inline std::uint64_t
+count_rejected_fill_reason(const cajtucu_execution::execution_trace_t &trace,
+                           const std::string &reason) {
+  std::uint64_t out = 0;
+  for (const auto &fill : trace.fills) {
+    if (fill.status == cajtucu_execution::fill_status_t::rejected &&
+        fill.reject_reason == reason) {
+      ++out;
+    }
+  }
+  return out;
+}
+
+[[nodiscard]] inline std::uint64_t
+count_failure_prefix(const cajtucu_execution::execution_trace_t &trace,
+                     const std::string &prefix) {
+  std::uint64_t out = 0;
+  for (const auto &failure : trace.failures) {
+    if (starts_with(failure, prefix)) {
+      ++out;
+    }
+  }
+  return out;
+}
+
+[[nodiscard]] inline double
+rejected_notional_base(const cajtucu_execution::execution_trace_t &trace) {
+  double out = 0.0;
+  const auto count = std::min(trace.orders.size(), trace.fills.size());
+  for (std::size_t i = 0; i < count; ++i) {
+    if (trace.fills[i].status == cajtucu_execution::fill_status_t::rejected) {
+      out += std::max(0.0, trace.orders[i].requested_notional_base);
+    }
+  }
+  return out;
+}
+
+[[nodiscard]] inline double
+partial_notional_base(const cajtucu_execution::execution_trace_t &trace) {
+  double out = 0.0;
+  for (const auto &fill : trace.fills) {
+    if (fill.status == cajtucu_execution::fill_status_t::partially_filled) {
+      out += std::max(0.0, fill.gross_notional_base);
+    }
+  }
+  return out;
+}
+
+[[nodiscard]] inline std::uint64_t
+executed_order_count(const cajtucu_execution::execution_trace_t &trace) {
+  std::uint64_t out = 0;
+  for (const auto &fill : trace.fills) {
+    if (fill.status == cajtucu_execution::fill_status_t::filled ||
+        fill.status == cajtucu_execution::fill_status_t::partially_filled) {
+      ++out;
+    }
+  }
+  return out;
+}
+
+[[nodiscard]] inline std::uint64_t
+negative_unit_count(const torch::Tensor &units, double tolerance = 1.0e-10) {
+  if (!units.defined() || units.numel() == 0) {
+    return 0;
+  }
+  auto flat = units.to(torch::kFloat64).cpu().contiguous().view({-1});
+  std::uint64_t out = 0;
+  for (std::int64_t i = 0; i < flat.numel(); ++i) {
+    if (flat.index({i}).item<double>() < -tolerance) {
+      ++out;
+    }
+  }
+  return out;
+}
+
 struct node_projection_series_t {
   std::vector<double> predicted{};
   std::vector<double> realized{};
@@ -1078,20 +1158,89 @@ make_step_report(std::uint64_t step_index, const observation_t &observation,
     out.cajtucu_trace_id = trace.trace_id;
     out.cajtucu_market_source_id = trace.market_source_id;
     out.cajtucu_synthetic_direct_edges = trace.synthetic_direct_edges;
+    out.cajtucu_trace_valid = trace.valid;
+    out.cajtucu_failure_count =
+        static_cast<std::uint64_t>(trace.failures.size());
     out.cajtucu_ledger_intent_equity_difference_base =
         trace.ledger_intent_equity_difference_base;
     out.cajtucu_ledger_intent_equity_mismatch =
         trace.ledger_intent_equity_mismatch;
     out.cajtucu_order_count = static_cast<std::uint64_t>(trace.orders.size());
+    out.cajtucu_executed_order_count = executed_order_count(trace);
     out.cajtucu_fill_count = static_cast<std::uint64_t>(trace.fills.size());
     out.cajtucu_rejected_fill_count =
         static_cast<std::uint64_t>(trace.rejected_fill_count);
     out.cajtucu_partial_fill_count =
         static_cast<std::uint64_t>(trace.partial_fill_count);
+    out.cajtucu_missing_direct_reserve_edge_count =
+        count_rejected_fill_reason(trace, "missing_direct_reserve_edge");
+    out.cajtucu_nontradable_edge_reject_count =
+        count_rejected_fill_reason(trace, "edge_not_tradable");
+    out.cajtucu_below_min_notional_reject_count =
+        count_rejected_fill_reason(trace, "below_min_notional");
+    out.cajtucu_above_max_notional_reject_count =
+        count_rejected_fill_reason(trace, "above_max_notional");
+    out.cajtucu_insufficient_reserve_reject_count =
+        count_rejected_fill_reason(trace, "insufficient_base_reserve");
+    out.cajtucu_insufficient_units_reject_count =
+        count_rejected_fill_reason(trace, "insufficient_asset_units");
+    out.cajtucu_invalid_sell_price_count = count_rejected_fill_reason(
+        trace, "invalid_sell_price_after_spread_slippage");
+    out.cajtucu_large_equity_mismatch_count =
+        count_failure_prefix(trace, "ledger_intent_equity_mismatch_exceeds_"
+                                    "limit");
+    out.cajtucu_requested_notional_base = trace.requested_notional_base;
+    out.cajtucu_executed_notional_base = trace.routed_notional_base;
+    out.cajtucu_rejected_notional_base = rejected_notional_base(trace);
+    out.cajtucu_partial_notional_base = partial_notional_base(trace);
+    out.cajtucu_fill_ratio =
+        trace.requested_notional_base > 1.0e-12
+            ? trace.routed_notional_base / trace.requested_notional_base
+            : 1.0;
     out.cajtucu_total_fee_base = trace.total_fee_base;
     out.cajtucu_total_spread_cost_base = trace.total_spread_cost_base;
     out.cajtucu_total_slippage_base = trace.total_slippage_base;
     out.cajtucu_total_transaction_cost_base = trace.total_transaction_cost_base;
+    if (trace.ledger_after.weights.defined() &&
+        trace.intent.target_weights.defined()) {
+      auto executed_weights = trace.ledger_after.weights.to(torch::kFloat64)
+                                  .contiguous()
+                                  .view({-1});
+      auto target_weights = trace.intent.target_weights.to(torch::kFloat64)
+                                .contiguous()
+                                .view({-1});
+      const auto n = std::min(executed_weights.numel(), target_weights.numel());
+      if (n > 0) {
+        auto diff =
+            (executed_weights.slice(0, 0, n) - target_weights.slice(0, 0, n))
+                .abs();
+        out.target_weight_error_l1 = diff.sum().item<double>();
+        out.target_weight_error_linf = diff.max().item<double>();
+        out.post_execution_risky_weight_sum =
+            executed_weights.slice(0, 0, n).sum().item<double>();
+      }
+    }
+    out.post_execution_base_reserve_weight =
+        trace.ledger_after.base_reserve_weight;
+    out.reserve_shortfall_count =
+        (trace.ledger_after.base_reserve_units < -1.0e-10 ||
+         out.cajtucu_insufficient_reserve_reject_count > 0)
+            ? 1U
+            : 0U;
+    out.ledger_before_equity = trace.ledger_before.equity_value_base;
+    out.ledger_after_execution_equity = trace.ledger_after.equity_value_base;
+    out.ledger_after_realization_equity =
+        transition.info.portfolio_after.equity_value_base;
+    out.ledger_equity_reconciliation_error =
+        std::isfinite(out.ledger_after_execution_equity)
+            ? std::abs(out.ledger_after_execution_equity -
+                       trace.ledger_after.equity_value_base)
+            : std::numeric_limits<double>::quiet_NaN();
+    out.base_reserve_units_before = trace.ledger_before.base_reserve_units;
+    out.base_reserve_units_after = trace.ledger_after.base_reserve_units;
+    out.unit_nonnegativity_violation_count =
+        negative_unit_count(trace.ledger_before.units) +
+        negative_unit_count(trace.ledger_after.units);
   }
   out.reward_log_growth = transition.reward.log_growth_reward;
   out.reward_drawdown_penalty = transition.reward.drawdown_penalty;
@@ -1235,6 +1384,13 @@ run_episode(world_iface_t &world, policy_adapter_iface_t &policy,
   std::vector<double> model_skill_vs_zero_rmse;
   std::vector<episode_runner_detail::node_projection_series_t>
       node_projection_series(spec.risky_node_ids.size());
+  std::vector<double> target_weight_error_l1;
+  std::vector<double> target_weight_error_linf;
+  std::vector<double> post_execution_risky_weight_sum;
+  std::vector<double> post_execution_base_reserve_weight;
+  std::vector<double> ledger_before_equity;
+  std::vector<double> ledger_after_execution_equity;
+  std::vector<double> ledger_after_realization_equity;
 
   bool done = false;
   while (!done && report.transition_count < max_steps) {
@@ -1254,8 +1410,88 @@ run_episode(world_iface_t &world, policy_adapter_iface_t &policy,
           "[episode_runner] action method_id changed within episode");
     }
     ++report.transition_count;
-    report.step_reports.push_back(episode_runner_detail::make_step_report(
-        report.transition_count - 1, observation, action, transition, spec));
+    auto step_report = episode_runner_detail::make_step_report(
+        report.transition_count - 1, observation, action, transition, spec);
+    if (step_report.cajtucu_execution_trace_available) {
+      report.cajtucu_valid_trace_count +=
+          step_report.cajtucu_trace_valid ? 1U : 0U;
+      report.cajtucu_invalid_trace_count +=
+          step_report.cajtucu_trace_valid ? 0U : 1U;
+      report.cajtucu_missing_direct_reserve_edge_count +=
+          step_report.cajtucu_missing_direct_reserve_edge_count;
+      report.cajtucu_nontradable_edge_reject_count +=
+          step_report.cajtucu_nontradable_edge_reject_count;
+      report.cajtucu_below_min_notional_reject_count +=
+          step_report.cajtucu_below_min_notional_reject_count;
+      report.cajtucu_above_max_notional_reject_count +=
+          step_report.cajtucu_above_max_notional_reject_count;
+      report.cajtucu_insufficient_reserve_reject_count +=
+          step_report.cajtucu_insufficient_reserve_reject_count;
+      report.cajtucu_insufficient_units_reject_count +=
+          step_report.cajtucu_insufficient_units_reject_count;
+      report.cajtucu_invalid_sell_price_count +=
+          step_report.cajtucu_invalid_sell_price_count;
+      report.cajtucu_large_equity_mismatch_count +=
+          step_report.cajtucu_large_equity_mismatch_count;
+      report.cajtucu_synthetic_market_step_count +=
+          step_report.cajtucu_synthetic_direct_edges ? 1U : 0U;
+      report.requested_order_count += step_report.cajtucu_order_count;
+      report.executed_order_count += step_report.cajtucu_executed_order_count;
+      report.rejected_order_count += step_report.cajtucu_rejected_fill_count;
+      report.partial_order_count += step_report.cajtucu_partial_fill_count;
+      report.requested_notional_base +=
+          step_report.cajtucu_requested_notional_base;
+      report.executed_notional_base +=
+          step_report.cajtucu_executed_notional_base;
+      report.rejected_notional_base +=
+          step_report.cajtucu_rejected_notional_base;
+      report.partial_notional_base += step_report.cajtucu_partial_notional_base;
+      report.fee_cost_base += step_report.cajtucu_total_fee_base;
+      report.spread_cost_base += step_report.cajtucu_total_spread_cost_base;
+      report.slippage_cost_base += step_report.cajtucu_total_slippage_base;
+      report.reserve_shortfall_count += step_report.reserve_shortfall_count;
+      report.unit_nonnegativity_violation_count +=
+          step_report.unit_nonnegativity_violation_count;
+      report.max_ledger_equity_reconciliation_error =
+          std::max(report.max_ledger_equity_reconciliation_error,
+                   std::isfinite(step_report.ledger_equity_reconciliation_error)
+                       ? step_report.ledger_equity_reconciliation_error
+                       : 0.0);
+      if (std::isfinite(step_report.target_weight_error_l1)) {
+        target_weight_error_l1.push_back(step_report.target_weight_error_l1);
+      }
+      if (std::isfinite(step_report.target_weight_error_linf)) {
+        target_weight_error_linf.push_back(
+            step_report.target_weight_error_linf);
+      }
+      if (std::isfinite(step_report.post_execution_risky_weight_sum)) {
+        post_execution_risky_weight_sum.push_back(
+            step_report.post_execution_risky_weight_sum);
+      }
+      if (std::isfinite(step_report.post_execution_base_reserve_weight)) {
+        post_execution_base_reserve_weight.push_back(
+            step_report.post_execution_base_reserve_weight);
+      }
+      if (std::isfinite(step_report.ledger_before_equity)) {
+        ledger_before_equity.push_back(step_report.ledger_before_equity);
+      }
+      if (std::isfinite(step_report.ledger_after_execution_equity)) {
+        ledger_after_execution_equity.push_back(
+            step_report.ledger_after_execution_equity);
+      }
+      if (std::isfinite(step_report.ledger_after_realization_equity)) {
+        ledger_after_realization_equity.push_back(
+            step_report.ledger_after_realization_equity);
+      }
+      if (std::isfinite(step_report.base_reserve_units_before)) {
+        report.base_reserve_units_before =
+            step_report.base_reserve_units_before;
+      }
+      if (std::isfinite(step_report.base_reserve_units_after)) {
+        report.base_reserve_units_after = step_report.base_reserve_units_after;
+      }
+    }
+    report.step_reports.push_back(std::move(step_report));
     episode_runner_detail::record_allocation_evidence(report,
                                                       transition.info.target);
 
@@ -1333,6 +1569,33 @@ run_episode(world_iface_t &world, policy_adapter_iface_t &policy,
       episode_runner_detail::mean_or_nan(model_skill_vs_zero_mae);
   report.model_skill_vs_zero_rmse =
       episode_runner_detail::mean_or_nan(model_skill_vs_zero_rmse);
+  report.fill_ratio =
+      report.requested_notional_base > 1.0e-12
+          ? report.executed_notional_base / report.requested_notional_base
+          : 1.0;
+  report.cost_as_fraction_of_equity =
+      std::isfinite(report.final_equity_base) && report.final_equity_base > 0.0
+          ? report.total_transaction_cost_base / report.final_equity_base
+          : std::numeric_limits<double>::quiet_NaN();
+  report.cost_as_fraction_of_gross_return =
+      std::abs(report.total_log_growth) > 1.0e-12
+          ? report.total_transaction_cost_base /
+                std::abs(report.total_log_growth)
+          : std::numeric_limits<double>::quiet_NaN();
+  report.mean_target_weight_error_l1 =
+      episode_runner_detail::mean_or_nan(target_weight_error_l1);
+  report.mean_target_weight_error_linf =
+      episode_runner_detail::mean_or_nan(target_weight_error_linf);
+  report.mean_post_execution_risky_weight_sum =
+      episode_runner_detail::mean_or_nan(post_execution_risky_weight_sum);
+  report.mean_post_execution_base_reserve_weight =
+      episode_runner_detail::mean_or_nan(post_execution_base_reserve_weight);
+  report.mean_ledger_before_equity =
+      episode_runner_detail::mean_or_nan(ledger_before_equity);
+  report.mean_ledger_after_execution_equity =
+      episode_runner_detail::mean_or_nan(ledger_after_execution_equity);
+  report.mean_ledger_after_realization_equity =
+      episode_runner_detail::mean_or_nan(ledger_after_realization_equity);
 
   std::vector<double> per_node_projection_mae;
   std::vector<double> per_node_projection_rmse;

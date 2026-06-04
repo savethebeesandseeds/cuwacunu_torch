@@ -9217,7 +9217,18 @@ lattice_artifact_readiness_proof_templates() {
           {"allocation_engine", "allocation_artifact_bound",
            "allocation artifact existence, observer-belief binding, forecast "
            "lineage, reserve-node binding, objective/constraint diagnostics, "
-           "and fallback/de-risk reasons"}};
+           "and fallback/de-risk reasons"},
+          {"replay_environment", "replay_environment_artifact_bound",
+           "replay environment report existence, lineage, digest identity, "
+           "bounded reset/step evidence, time-law cleanliness, projection "
+           "coverage, Cajtucu execution traces, execution profile binding, and "
+           "policy-set binding"},
+          {"policy_training", "policy_training_artifact_bound",
+           "policy training artifact identity, checkpoint lineage, train/"
+           "validation/test range separation, training-only normalization and "
+           "replay-buffer binding, selector policy, sealed-test declaration, "
+           "environment/action/reward/execution-profile binding, and parent "
+           "replay evidence binding"}};
   return templates;
 }
 

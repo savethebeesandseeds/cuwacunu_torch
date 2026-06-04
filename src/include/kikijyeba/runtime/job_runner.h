@@ -130,6 +130,8 @@ delegated_report_path_for_job(const std::filesystem::path &job_dir,
     return job_dir / "channel_representation.report";
   case runtime_job_kind_t::channel_inference_mdn:
     return job_dir / "channel_inference.report";
+  case runtime_job_kind_t::policy_training:
+    return job_dir / "policy_training.contract";
   }
   return job_dir / "job.report";
 }
@@ -716,6 +718,11 @@ public:
     case runtime_job_kind_t::channel_representation_mtf_jepa_mae_vicreg:
     case runtime_job_kind_t::channel_inference_mdn:
       return run_channel_graph_first(resolved_job_kind);
+    case runtime_job_kind_t::policy_training:
+      throw std::runtime_error(
+          "[kikijyeba_job_runner] policy_training is a Runtime contract-only "
+          "job kind in v1; use hero.runtime.run operation=policy_training "
+          "requested_mode=plan to build the bounded handoff contract");
     }
     throw std::runtime_error("[kikijyeba_job_runner] unknown runtime job kind");
   }
@@ -955,6 +962,10 @@ private:
       state.replay_artifact_error = replay_artifact_error;
       return state;
     }
+    case runtime_job_kind_t::policy_training:
+      throw std::runtime_error(
+          "[kikijyeba_job_runner] policy_training execution is not "
+          "implemented in v1");
     }
     throw std::runtime_error("[kikijyeba_job_runner] unknown runtime job kind");
   }

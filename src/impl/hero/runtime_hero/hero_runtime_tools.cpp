@@ -4,6 +4,7 @@
 #include "hero/runtime_hero/hero_runtime.h"
 #include "kikijyeba/marshal/digest.h"
 #include "kikijyeba/runtime/job_layout.h"
+#include "kikijyeba/runtime/policy_training_job_contract.h"
 #include "wikimyei/assembly.h"
 
 #include <algorithm>
@@ -49,26 +50,37 @@ struct tool_descriptor_t {
   const char *input_schema_json;
 };
 
-constexpr tool_descriptor_t kTools[] = {
-    {"hero.runtime.status",
-     "Read-only health: summarize Runtime Hero policy, executable, active "
-     "wave, job root, and explicit non-proof boundary state.",
-     R"({"type":"object","properties":{},"additionalProperties":false})"},
-    {"hero.runtime.inspect",
-     "Read-only Runtime inspection. subject=schema reads policy keys; "
-     "subject=wave decodes the active wave; subject=jobs/job/artifact reads "
-     "bounded Runtime evidence.",
-     R"({"type":"object","required":["subject"],"properties":{"subject":{"type":"string","enum":["schema","wave","jobs","job","artifact"]},"config_path":{"type":"string"},"root":{"type":"string"},"job_id":{"type":"string"},"job_dir":{"type":"string"},"artifact":{"type":"string"},"path":{"type":"string"},"include_artifacts":{"type":"boolean"},"include_text":{"type":"boolean"},"max_bytes":{"type":"integer"},"limit":{"type":"integer"}},"additionalProperties":false})"},
-    {"hero.runtime.run",
-     "Runtime execution/delegation. operation=wave runs the active Runtime "
-     "wave with requested_mode=dry_run|execute. operation=replay plans, "
-     "dry-runs, or executes replay from a completed Runtime job.",
-     R"({"type":"object","required":["operation","requested_mode"],"properties":{"operation":{"type":"string","enum":["wave","replay"]},"requested_mode":{"type":"string","enum":["plan","dry_run","execute"]},"config_path":{"type":"string"},"job_id":{"type":"string"},"job_dir":{"type":"string"},"force_rebuild_cache":{"type":"boolean"},"confirm_execute":{"type":"boolean"},"timeout_seconds":{"type":"integer"},"wave_overlay":{"type":"object","properties":{"source_range":{"type":"string"},"anchor_index_begin":{"type":"string"},"anchor_index_end":{"type":"string"},"source_key_begin":{"type":"string"},"source_key_end":{"type":"string"}}},"runtime_handoff":{"type":"object","properties":{}},"marshal_expected_wave":{"type":"object","properties":{"target_component_family_id":{"type":"string"},"mode":{"type":"string"},"source_range":{"type":"string"},"source_order":{"type":"string"},"anchor_index_begin":{"type":"string"},"anchor_index_end":{"type":"string"},"source_key_begin":{"type":"string"},"source_key_end":{"type":"string"},"model_state_inputs":{"type":"object"}}},"base_reserve_node_id":{"type":"string"},"risky_node_ids":{"type":"string"},"experiment_id":{"type":"string"},"report_path":{"type":"string"},"initial_equity_base":{"type":"number"},"min_base_reserve_weight":{"type":"number"},"max_risky_weight":{"type":"number"},"max_turnover_l1":{"type":"number"},"max_steps":{"type":"integer"},"max_parallel_jobs":{"type":"integer"},"include_equal_weight":{"type":"boolean"},"include_current_weight":{"type":"boolean"},"include_base_reserve_policy":{"type":"boolean"},"include_spot_distributional_utility_policy":{"type":"boolean"},"allow_synthetic_direct_edges":{"type":"boolean"},"linear_transaction_cost_rate":{"type":"number"},"execution_profile_digest":{"type":"string"},"policy_set_digest":{"type":"string"}},"additionalProperties":false})"},
-    {"hero.runtime.reset",
-     "Guarded developer reset. requested_mode=plan previews the reset; "
-     "requested_mode=execute clears allowed Runtime roots only with explicit "
-     "confirmation and policy permission.",
-     R"({"type":"object","required":["requested_mode"],"properties":{"requested_mode":{"type":"string","enum":["plan","execute"]},"runtime_root":{"type":"string"},"backup":{"type":"boolean"},"confirm_dev_nuke":{"type":"boolean"}},"additionalProperties":false})"},
+constexpr tool_descriptor_t
+    kTools[] =
+        {
+            {"hero.runtime.status",
+             "Read-only health: summarize Runtime Hero policy, executable, "
+             "active "
+             "wave, job root, and explicit non-proof boundary state.",
+             R"({"type":"object","properties":{},"additionalProperties":false})"},
+            {"hero.runtime.inspect",
+             "Read-only Runtime inspection. subject=schema reads policy keys; "
+             "subject=wave decodes the active wave; subject=jobs/job/artifact "
+             "reads "
+             "bounded Runtime evidence.",
+             R"({"type":"object","required":["subject"],"properties":{"subject":{"type":"string","enum":["schema","wave","jobs","job","artifact"]},"config_path":{"type":"string"},"root":{"type":"string"},"job_id":{"type":"string"},"job_dir":{"type":"string"},"artifact":{"type":"string"},"path":{"type":"string"},"include_artifacts":{"type":"boolean"},"include_text":{"type":"boolean"},"max_bytes":{"type":"integer"},"limit":{"type":"integer"}},"additionalProperties":false})"},
+            {"hero.runtime.run",
+             "Runtime execution/delegation. operation=wave runs the active "
+             "Runtime "
+             "wave with requested_mode=dry_run|execute. operation=replay "
+             "plans, "
+             "dry-runs, or executes replay from a completed Runtime job. "
+             "operation=policy_training validates the contract-only "
+             "trainable-policy "
+             "job handoff and refuses execute until a dedicated trainer "
+             "exists.",
+             R"({"type":"object","required":["operation","requested_mode"],"properties":{"operation":{"type":"string","enum":["wave","replay","policy_training"]},"requested_mode":{"type":"string","enum":["plan","dry_run","execute"]},"config_path":{"type":"string"},"job_id":{"type":"string"},"job_dir":{"type":"string"},"force_rebuild_cache":{"type":"boolean"},"confirm_execute":{"type":"boolean"},"timeout_seconds":{"type":"integer"},"wave_overlay":{"type":"object","properties":{"source_range":{"type":"string"},"anchor_index_begin":{"type":"string"},"anchor_index_end":{"type":"string"},"source_key_begin":{"type":"string"},"source_key_end":{"type":"string"}}},"runtime_handoff":{"type":"object","properties":{}},"marshal_expected_wave":{"type":"object","properties":{"target_component_family_id":{"type":"string"},"mode":{"type":"string"},"source_range":{"type":"string"},"source_order":{"type":"string"},"anchor_index_begin":{"type":"string"},"anchor_index_end":{"type":"string"},"source_key_begin":{"type":"string"},"source_key_end":{"type":"string"},"model_state_inputs":{"type":"object"}}},"base_reserve_node_id":{"type":"string"},"risky_node_ids":{"type":"string"},"experiment_id":{"type":"string"},"report_path":{"type":"string"},"initial_equity_base":{"type":"number"},"min_base_reserve_weight":{"type":"number"},"max_risky_weight":{"type":"number"},"max_turnover_l1":{"type":"number"},"max_steps":{"type":"integer"},"max_parallel_jobs":{"type":"integer"},"include_equal_weight":{"type":"boolean"},"include_current_weight":{"type":"boolean"},"include_base_reserve_policy":{"type":"boolean"},"include_spot_distributional_utility_policy":{"type":"boolean"},"allow_synthetic_direct_edges":{"type":"boolean"},"linear_transaction_cost_rate":{"type":"number"},"execution_profile_digest":{"type":"string"},"policy_set_digest":{"type":"string"},"policy_id":{"type":"string"},"policy_kind":{"type":"string"},"policy_architecture_digest":{"type":"string"},"training_config_digest":{"type":"string"},"training_range_digest":{"type":"string"},"validation_range_digest":{"type":"string"},"test_range_digest":{"type":"string"},"environment_contract_id":{"type":"string"},"observation_schema_digest":{"type":"string"},"action_schema_digest":{"type":"string"},"reward_contract_digest":{"type":"string"},"training_schedule_mode":{"type":"string","enum":["causal_walk_forward_training.v1","offline_full_window_research","batch_final_refit_candidate"]},"causal_schedule_schema_id":{"type":"string"},"causal_schedule_digest":{"type":"string"},"causal_schedule_cursor_key_kind":{"type":"string","enum":["numeric_anchor_index","numeric_source_key","fixed_width_source_key","timestamp_ms"]},"causal_schedule_no_future_snapshot_use_source":{"type":"string"},"normalization_fit_range_digest":{"type":"string"},"replay_buffer_source_range_digest":{"type":"string"},"early_stopping_policy_digest":{"type":"string"},"hyperparameter_selection_policy_digest":{"type":"string"},"selector_split":{"type":"string","enum":["none","train","training","validation"]},"parent_forecast_eval_fact_digest":{"type":"string"},"parent_observer_belief_fact_digest":{"type":"string"},"parent_allocation_engine_fact_digest":{"type":"string"},"parent_replay_environment_fact_digest":{"type":"string"},"final_refit_parent_selected_checkpoint_digest":{"type":"string"},"max_episodes":{"type":"integer"},"max_wall_clock_seconds":{"type":"integer"},"causal_schedule_readiness_eligible":{"type":"boolean"},"causal_schedule_no_future_snapshot_use":{"type":"boolean"},"offline_full_window_research_allowed":{"type":"boolean"},"final_refit_uses_validation":{"type":"boolean"},"validation_no_longer_proof":{"type":"boolean"},"sealed_test_required":{"type":"boolean"},"live_execution_allowed":{"type":"boolean"}},"additionalProperties":false})"},
+            {"hero.runtime.reset",
+             "Guarded developer reset. requested_mode=plan previews the reset; "
+             "requested_mode=execute clears allowed Runtime roots only with "
+             "explicit "
+             "confirmation and policy permission.",
+             R"({"type":"object","required":["requested_mode"],"properties":{"requested_mode":{"type":"string","enum":["plan","execute"]},"runtime_root":{"type":"string"},"backup":{"type":"boolean"},"confirm_dev_nuke":{"type":"boolean"}},"additionalProperties":false})"},
 };
 
 [[nodiscard]] bool tool_is_read_only(std::string_view name) {
@@ -2525,6 +2537,262 @@ runtime_terminal_evidence_json(const fs::path &job_dir) {
   return true;
 }
 
+[[nodiscard]] bool parse_policy_training_required_int(const std::string &args,
+                                                      std::string_view key,
+                                                      int *out,
+                                                      std::string *err) {
+  if (!extract_json_raw_field(args, key, nullptr)) {
+    *err = "missing required field: " + std::string(key);
+    return false;
+  }
+  int value = 0;
+  if (!extract_json_int_field(args, key, &value)) {
+    *err = std::string(key) + " must be integer";
+    return false;
+  }
+  *out = value;
+  return true;
+}
+
+[[nodiscard]] std::string policy_training_contract_json(
+    const cuwacunu::kikijyeba::runtime::policy_training_job_contract_t
+        &contract) {
+  std::ostringstream out;
+  out << "{\"schema_version\":" << json_quote(contract.schema_version)
+      << ",\"artifact_schema_id\":" << json_quote(contract.artifact_schema_id)
+      << ",\"runtime_job_kind\":" << json_quote(contract.runtime_job_kind)
+      << ",\"policy_id\":" << json_quote(contract.policy_id)
+      << ",\"policy_kind\":" << json_quote(contract.policy_kind)
+      << ",\"policy_architecture_digest\":"
+      << json_quote(contract.policy_architecture_digest)
+      << ",\"training_config_digest\":"
+      << json_quote(contract.training_config_digest)
+      << ",\"training_range_digest\":"
+      << json_quote(contract.training_range_digest)
+      << ",\"validation_range_digest\":"
+      << json_quote(contract.validation_range_digest)
+      << ",\"test_range_digest\":" << json_quote(contract.test_range_digest)
+      << ",\"environment_contract_id\":"
+      << json_quote(contract.environment_contract_id)
+      << ",\"observation_schema_digest\":"
+      << json_quote(contract.observation_schema_digest)
+      << ",\"action_schema_digest\":"
+      << json_quote(contract.action_schema_digest)
+      << ",\"reward_contract_digest\":"
+      << json_quote(contract.reward_contract_digest)
+      << ",\"execution_profile_digest\":"
+      << json_quote(contract.execution_profile_digest)
+      << ",\"training_schedule_mode\":"
+      << json_quote(contract.training_schedule_mode)
+      << ",\"causal_schedule_schema_id\":"
+      << json_quote(contract.causal_schedule_schema_id)
+      << ",\"causal_schedule_digest\":"
+      << json_quote(contract.causal_schedule_digest)
+      << ",\"causal_schedule_cursor_key_kind\":"
+      << json_quote(contract.causal_schedule_cursor_key_kind)
+      << ",\"causal_schedule_no_future_snapshot_use_source\":"
+      << json_quote(contract.causal_schedule_no_future_snapshot_use_source)
+      << ",\"normalization_fit_range_digest\":"
+      << json_quote(contract.normalization_fit_range_digest)
+      << ",\"replay_buffer_source_range_digest\":"
+      << json_quote(contract.replay_buffer_source_range_digest)
+      << ",\"early_stopping_policy_digest\":"
+      << json_quote(contract.early_stopping_policy_digest)
+      << ",\"hyperparameter_selection_policy_digest\":"
+      << json_quote(contract.hyperparameter_selection_policy_digest)
+      << ",\"selector_split\":" << json_quote(contract.selector_split)
+      << ",\"parent_forecast_eval_fact_digest\":"
+      << json_quote(contract.parent_forecast_eval_fact_digest)
+      << ",\"parent_observer_belief_fact_digest\":"
+      << json_quote(contract.parent_observer_belief_fact_digest)
+      << ",\"parent_allocation_engine_fact_digest\":"
+      << json_quote(contract.parent_allocation_engine_fact_digest)
+      << ",\"parent_replay_environment_fact_digest\":"
+      << json_quote(contract.parent_replay_environment_fact_digest)
+      << ",\"final_refit_parent_selected_checkpoint_digest\":"
+      << json_quote(contract.final_refit_parent_selected_checkpoint_digest)
+      << ",\"max_episodes\":" << contract.max_episodes
+      << ",\"max_steps\":" << contract.max_steps
+      << ",\"max_parallel_jobs\":" << contract.max_parallel_jobs
+      << ",\"max_wall_clock_seconds\":" << contract.max_wall_clock_seconds
+      << ",\"causal_schedule_readiness_eligible\":"
+      << bool_json(contract.causal_schedule_readiness_eligible)
+      << ",\"causal_schedule_no_future_snapshot_use\":"
+      << bool_json(contract.causal_schedule_no_future_snapshot_use)
+      << ",\"offline_full_window_research_allowed\":"
+      << bool_json(contract.offline_full_window_research_allowed)
+      << ",\"final_refit_uses_validation\":"
+      << bool_json(contract.final_refit_uses_validation)
+      << ",\"validation_no_longer_proof\":"
+      << bool_json(contract.validation_no_longer_proof)
+      << ",\"sealed_test_required\":"
+      << bool_json(contract.sealed_test_required)
+      << ",\"live_execution_allowed\":"
+      << bool_json(contract.live_execution_allowed) << "}";
+  return out.str();
+}
+
+[[nodiscard]] bool
+handle_policy_training_contract(const std::string &args,
+                                std::string_view requested_mode,
+                                std::string *out, std::string *err) {
+  if (requested_mode == "execute") {
+    *err = "E_RUNTIME_POLICY_TRAINING_EXECUTION_NOT_IMPLEMENTED: "
+           "operation=policy_training is contract-only in v1; Runtime does not "
+           "train PPO or mutate policy checkpoints yet";
+    return false;
+  }
+
+  namespace runtime_contract = cuwacunu::kikijyeba::runtime;
+  runtime_contract::policy_training_job_contract_t contract{};
+  if (!parse_required_string_arg(args, "policy_id", &contract.policy_id, err) ||
+      !parse_required_string_arg(args, "policy_kind", &contract.policy_kind,
+                                 err) ||
+      !parse_required_string_arg(args, "policy_architecture_digest",
+                                 &contract.policy_architecture_digest, err) ||
+      !parse_required_string_arg(args, "training_config_digest",
+                                 &contract.training_config_digest, err) ||
+      !parse_required_string_arg(args, "training_range_digest",
+                                 &contract.training_range_digest, err) ||
+      !parse_required_string_arg(args, "validation_range_digest",
+                                 &contract.validation_range_digest, err) ||
+      !parse_required_string_arg(args, "test_range_digest",
+                                 &contract.test_range_digest, err) ||
+      !parse_required_string_arg(args, "observation_schema_digest",
+                                 &contract.observation_schema_digest, err) ||
+      !parse_required_string_arg(args, "action_schema_digest",
+                                 &contract.action_schema_digest, err) ||
+      !parse_required_string_arg(args, "reward_contract_digest",
+                                 &contract.reward_contract_digest, err) ||
+      !parse_required_string_arg(args, "execution_profile_digest",
+                                 &contract.execution_profile_digest, err) ||
+      !parse_required_string_arg(args, "training_schedule_mode",
+                                 &contract.training_schedule_mode, err) ||
+      !parse_required_string_arg(args, "causal_schedule_schema_id",
+                                 &contract.causal_schedule_schema_id, err) ||
+      !parse_required_string_arg(args, "causal_schedule_digest",
+                                 &contract.causal_schedule_digest, err) ||
+      !parse_required_string_arg(args, "causal_schedule_cursor_key_kind",
+                                 &contract.causal_schedule_cursor_key_kind,
+                                 err) ||
+      !parse_required_string_arg(
+          args, "causal_schedule_no_future_snapshot_use_source",
+          &contract.causal_schedule_no_future_snapshot_use_source, err) ||
+      !parse_required_string_arg(args, "normalization_fit_range_digest",
+                                 &contract.normalization_fit_range_digest,
+                                 err) ||
+      !parse_required_string_arg(args, "replay_buffer_source_range_digest",
+                                 &contract.replay_buffer_source_range_digest,
+                                 err) ||
+      !parse_required_string_arg(args, "early_stopping_policy_digest",
+                                 &contract.early_stopping_policy_digest, err) ||
+      !parse_required_string_arg(
+          args, "hyperparameter_selection_policy_digest",
+          &contract.hyperparameter_selection_policy_digest, err) ||
+      !parse_required_string_arg(
+          args, "parent_replay_environment_fact_digest",
+          &contract.parent_replay_environment_fact_digest, err)) {
+    return false;
+  }
+  (void)extract_json_string_field(args, "environment_contract_id",
+                                  &contract.environment_contract_id);
+  (void)extract_json_string_field(args, "selector_split",
+                                  &contract.selector_split);
+  (void)extract_json_string_field(args, "parent_forecast_eval_fact_digest",
+                                  &contract.parent_forecast_eval_fact_digest);
+  (void)extract_json_string_field(args, "parent_observer_belief_fact_digest",
+                                  &contract.parent_observer_belief_fact_digest);
+  (void)extract_json_string_field(
+      args, "parent_allocation_engine_fact_digest",
+      &contract.parent_allocation_engine_fact_digest);
+  (void)extract_json_string_field(
+      args, "final_refit_parent_selected_checkpoint_digest",
+      &contract.final_refit_parent_selected_checkpoint_digest);
+
+  int parsed_int = 0;
+  if (!parse_policy_training_required_int(args, "max_episodes", &parsed_int,
+                                          err)) {
+    return false;
+  }
+  contract.max_episodes = parsed_int;
+  if (!parse_policy_training_required_int(args, "max_steps", &parsed_int,
+                                          err)) {
+    return false;
+  }
+  contract.max_steps = parsed_int;
+  if (!parse_optional_int_arg(args, "max_parallel_jobs", 1, &parsed_int, err)) {
+    return false;
+  }
+  contract.max_parallel_jobs = parsed_int;
+  if (!parse_policy_training_required_int(args, "max_wall_clock_seconds",
+                                          &parsed_int, err)) {
+    return false;
+  }
+  contract.max_wall_clock_seconds = parsed_int;
+  if (!parse_optional_bool_arg(args, "causal_schedule_readiness_eligible", true,
+                               &contract.causal_schedule_readiness_eligible,
+                               err)) {
+    return false;
+  }
+  if (!parse_optional_bool_arg(
+          args, "causal_schedule_no_future_snapshot_use", true,
+          &contract.causal_schedule_no_future_snapshot_use, err)) {
+    return false;
+  }
+  if (!parse_optional_bool_arg(
+          args, "offline_full_window_research_allowed", false,
+          &contract.offline_full_window_research_allowed, err)) {
+    return false;
+  }
+  if (!parse_optional_bool_arg(args, "final_refit_uses_validation", false,
+                               &contract.final_refit_uses_validation, err)) {
+    return false;
+  }
+  if (!parse_optional_bool_arg(args, "validation_no_longer_proof", false,
+                               &contract.validation_no_longer_proof, err)) {
+    return false;
+  }
+  if (!parse_optional_bool_arg(args, "sealed_test_required", false,
+                               &contract.sealed_test_required, err)) {
+    return false;
+  }
+  if (!parse_optional_bool_arg(args, "live_execution_allowed", false,
+                               &contract.live_execution_allowed, err)) {
+    return false;
+  }
+
+  const auto issues =
+      runtime_contract::validate_policy_training_job_contract(contract);
+  if (!issues.empty()) {
+    *err = "E_RUNTIME_POLICY_TRAINING_CONTRACT_INVALID: " +
+           string_array_json(issues);
+    return false;
+  }
+
+  const auto contract_text = contract.to_text();
+  const auto contract_digest =
+      runtime_contract::policy_training_contract_digest_for_text(contract_text);
+  std::ostringstream json;
+  json << "{\"ok\":true,\"requested_mode\":" << json_quote(requested_mode)
+       << ",\"dry_run\":true"
+       << ",\"schema_version\":\"kikijyeba.runtime.policy_training_job_"
+          "contract_packet.v1\""
+       << ",\"contract_digest\":" << json_quote(contract_digest)
+       << ",\"policy_training_execution_supported\":false"
+       << ",\"artifact_schema_id\":" << json_quote(contract.artifact_schema_id)
+       << ",\"contract\":" << policy_training_contract_json(contract)
+       << ",\"contract_text\":" << json_quote(contract_text)
+       << ",\"authority\":{\"runtime_trains_policy\":false,"
+          "\"runtime_executes_live_capital\":false,"
+          "\"runtime_selects_policy\":false,"
+          "\"runtime_proves_lattice_target\":false}"
+       << ",\"next_safe_actions\":[\"persist_contract_with_future_"
+          "policy_training_runner\","
+          "\"inspect_policy_training_contract\"]}";
+  *out = json.str();
+  return true;
+}
+
 [[nodiscard]] bool json_raw_is_empty_array(const std::string &raw) {
   const std::string value = trim_ascii(raw);
   return value == "[]";
@@ -3271,6 +3539,20 @@ struct runtime_handoff_binding_t {
   return true;
 }
 
+[[nodiscard]] bool
+append_optional_string_cli_arg(const std::string &args, std::string_view key,
+                               std::string_view flag,
+                               std::vector<std::string> *argv) {
+  std::string value;
+  if (!extract_json_string_field(args, key, &value) ||
+      trim_ascii(value).empty()) {
+    return true;
+  }
+  argv->push_back(std::string(flag));
+  argv->push_back(trim_ascii(value));
+  return true;
+}
+
 [[nodiscard]] std::string
 replay_dry_run_json(const std::vector<std::string> &argv,
                     const fs::path &job_dir, const fs::path &batch_index_path,
@@ -3459,6 +3741,13 @@ replay_dry_run_json(const std::vector<std::string> &argv,
   if (!append_optional_double_cli_arg(args, "linear_transaction_cost_rate",
                                       "--replay-linear-transaction-cost-rate",
                                       &argv, err)) {
+    return false;
+  }
+  if (!append_optional_string_cli_arg(args, "execution_profile_digest",
+                                      "--replay-execution-profile-digest",
+                                      &argv) ||
+      !append_optional_string_cli_arg(args, "policy_set_digest",
+                                      "--replay-policy-set-digest", &argv)) {
     return false;
   }
 
@@ -3900,7 +4189,42 @@ replay_dry_run_json(const std::vector<std::string> &argv,
                              "allow_synthetic_direct_edges",
                              "linear_transaction_cost_rate",
                              "execution_profile_digest",
-                             "policy_set_digest"},
+                             "policy_set_digest",
+                             "policy_id",
+                             "policy_kind",
+                             "policy_architecture_digest",
+                             "training_config_digest",
+                             "training_range_digest",
+                             "validation_range_digest",
+                             "test_range_digest",
+                             "environment_contract_id",
+                             "observation_schema_digest",
+                             "action_schema_digest",
+                             "reward_contract_digest",
+                             "training_schedule_mode",
+                             "causal_schedule_schema_id",
+                             "causal_schedule_digest",
+                             "causal_schedule_cursor_key_kind",
+                             "causal_schedule_no_future_snapshot_use_source",
+                             "normalization_fit_range_digest",
+                             "replay_buffer_source_range_digest",
+                             "early_stopping_policy_digest",
+                             "hyperparameter_selection_policy_digest",
+                             "selector_split",
+                             "parent_forecast_eval_fact_digest",
+                             "parent_observer_belief_fact_digest",
+                             "parent_allocation_engine_fact_digest",
+                             "parent_replay_environment_fact_digest",
+                             "final_refit_parent_selected_checkpoint_digest",
+                             "max_episodes",
+                             "max_wall_clock_seconds",
+                             "causal_schedule_readiness_eligible",
+                             "causal_schedule_no_future_snapshot_use",
+                             "offline_full_window_research_allowed",
+                             "final_refit_uses_validation",
+                             "validation_no_longer_proof",
+                             "sealed_test_required",
+                             "live_execution_allowed"},
                             &fields, err)) {
     return false;
   }
@@ -3973,7 +4297,11 @@ replay_dry_run_json(const std::vector<std::string> &argv,
     return handle_replay(forwarded.str(), ctx, out, err);
   }
 
-  *err = "operation must be wave or replay";
+  if (operation == "policy_training") {
+    return handle_policy_training_contract(args, requested_mode, out, err);
+  }
+
+  *err = "operation must be wave, replay, or policy_training";
   return false;
 }
 

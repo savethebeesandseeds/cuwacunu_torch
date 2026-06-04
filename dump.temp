@@ -1,502 +1,570 @@
-Marshal V2 / Rollout Review Packet
-Generated for colleague review on 2026-06-03.
+Causal Policy-Training Schedule Contract V1
+Review packet for colleague
+Date: 2026-06-04
 
-Purpose
+Context
 -------
-Please review the current Marshal public contract and the latest finite cleanup
-state. The important question is whether the Marshal boundary, public tool
-surface, rollout handoff model, and operator response vocabulary are now
-coherent enough to commit as a stable checkpoint.
 
-Core operative model
---------------------
-Lattice proves.
-Runtime executes.
-Marshal coordinates, validates, delegates, records, and explains.
-Cajtucu paper-executes replay mechanics under Runtime replay.
+We found a real future-within-training leakage problem before implementing PPO.
 
-Public Marshal tools
---------------------
-The public Marshal surface is exactly:
+The old policy-training contract was split-aware:
 
-  hero.marshal.status
-  hero.marshal.prepare
-  hero.marshal.rollout
-  hero.marshal.inspect
+  train_range_digest != validation_range_digest != test_range_digest
+  normalization_fit_range_digest == training_range_digest
+  replay_buffer_source_range_digest == training_range_digest
+  selector_split != test
 
-Short meanings:
+That was necessary, but not sufficient.
 
-  status   = what Marshal can see
-  prepare  = how one Lattice target can move next
-  rollout  = how one completed Runtime job can be replayed through environment
-  inspect  = what existing evidence says
+The deeper issue is that full-window upstream training can leak future
+information inside the training window itself:
 
-Recent implemented roadmap slices
----------------------------------
-V2.2a/V2.2b:
-  - rollout is now a first-class public tool, not prepare intent=rollout.
-  - rollout requested_mode is plan|execute.
-  - legacy rollout requested_mode=dry_run is rejected.
-  - legacy rollout prepare_only is rejected.
-  - rollout requires:
-      rollout_id
-      rollout_attempt_id
-      idempotency_key
-      runtime_job_dir
-      replay_batch_index_path
-      graph_order_fingerprint
-      asset_universe_digest
-      base_reserve_node_id
-      risky_node_ids
-  - rollout execution_profile is typed enough for Cajtucu paper V1:
-      execution_backend_id
-      cost_model_id
-      allow_synthetic_direct_edges
-      synthetic_edge_research_reason
-      linear_transaction_cost_rate
-      allow_partial_fills
-      allow_negative_base_reserve
-      equity_mismatch_tolerance
-      equity_mismatch_fail_tolerance
-      live_execution_allowed
-  - synthetic direct edges require an explicit research reason.
-  - allow_partial_fills=true is refused until Runtime replay forwards it.
-  - cost_model_id must be linear_transaction_cost_rate.v1.
+  representation trained on full train window
+      -> MDN trained on same train window using representation that saw later
+         rows
+      -> observer/belief produced from that MDN
+      -> policy trained/evaluated on same apparent training window
 
-V2.3:
-  - prepare is target-dispatch oriented.
-  - target_id is canonical.
-  - requested_mode is plan|dry_run|execute.
-  - plan does not call Runtime.
-  - dry_run calls Runtime dry-run.
-  - execute requires dry-run gate and Runtime policy permission.
-  - replay/rollout intent routes to hero.marshal.rollout.
-  - artifact_validation routes to inspect.
-  - policy_training remains reserved until a finite Runtime contract exists.
+This means an observation/action at time t may depend on artifacts fitted with
+data from times later than t, even though validation/test ranges are disjoint.
 
-V2.4:
-  - inspect canonical public fields:
-      fact_family_id
-      fact_digest
-      fact_digest_prefix
-      fact_index
-      component_family_id
-  - old public aliases are rejected:
-      family
-      fact_family
-      digest
-      digest_prefix
-      index
-      component
-  - subject=facts validates modes summary|lineage|preview.
+The corrected law is:
 
-V2.5a/V2.5b:
-  - status and inspect expose the shared read-only operator envelope.
-  - prepare and rollout expose the dispatch/delegation envelope supplement.
-  - public packets now expose:
-      schema_version
-      refusal_reasons
-      warnings
-      next_safe_actions
-      authority
-      observed
-      evidence_refs
-      digests
-  - top-level legacy next_action was removed from prepare/rollout operator
-    packets.
-  - target-driver iteration records may still carry next_action as historical
-    ledger evidence, not as the top-level operator command field.
+  For any rollout/training block B_k, every artifact used to produce
+  observations, beliefs, actions, rewards, or policy-training trajectories
+  inside B_k must have been usable before B_k began.
 
-V2.6:
-  - live --help documents status, prepare, rollout, and inspect.
-  - rollout help uses requested_mode=plan|execute and labels plan examples as
-    plan.
-  - README and ROADMAP use next_safe_actions for public operator guidance.
+In contract terms:
 
-Verification performed
+  used_artifact.usable_from_key <= block_cursor_begin
+
+and:
+
+  artifacts fitted on B_k must not be used inside B_k.
+
+
+What We Implemented
+-------------------
+
+1. Runtime causal schedule contract
+-----------------------------------
+
+New file:
+
+  src/include/kikijyeba/runtime/policy_training_causal_schedule.h
+
+New contract types:
+
+  artifact_fit_ledger_t
+  artifact_use_ledger_t
+  snapshot_family_t
+  causal_training_block_t
+  causal_policy_training_schedule_t
+
+Canonical schema:
+
+  kikijyeba.runtime.policy_training_causal_schedule.v1
+
+Supported schedule modes:
+
+  causal_walk_forward_training.v1
+      Readiness-grade path.
+
+  offline_full_window_research
+      Diagnostic/research only. Cannot satisfy readiness.
+
+  batch_final_refit_candidate
+      Final refit candidate. Must declare validation_no_longer_proof and
+      sealed_test_required. Cannot itself be the validation proof.
+
+Core validation:
+
+  - missing schedule id/range digests/mode is rejected
+  - missing cursor_key_kind is rejected
+  - opaque or unsupported cursor key ordering is rejected
+  - unsupported mode is rejected
+  - same-block snapshot use is rejected
+  - future snapshot use is rejected:
+
+      artifact.usable_from_key > block.block_cursor_begin
+
+  - every used snapshot digest must appear in the fit ledger
+  - no_future_snapshot_use is derived from artifact fit/use ledgers, not
+    trusted as a caller assertion
+  - normalization, calibration, covariance/coupler, replay-buffer, and
+    reward-baseline future-use are rejected
+  - target-label, reward, and trajectory availability cannot be later than
+    artifact.usable_from_key
+  - causal mode requires at least one training block
+  - offline_full_window_research with readiness_eligible=true is rejected
+  - batch_final_refit_candidate with readiness_eligible=true is rejected
+  - final refit must declare:
+
+      final_refit_uses_validation=true
+      validation_no_longer_proof=true
+      sealed_test_required=true
+
+
+2. Runtime policy-training job contract now requires schedule identity
+----------------------------------------------------------------------
+
+Updated file:
+
+  src/include/kikijyeba/runtime/policy_training_job_contract.h
+
+Added fields:
+
+  training_schedule_mode
+  causal_schedule_schema_id
+  causal_schedule_digest
+  causal_schedule_cursor_key_kind
+  causal_schedule_no_future_snapshot_use_source
+  causal_schedule_readiness_eligible
+  causal_schedule_no_future_snapshot_use
+  offline_full_window_research_allowed
+  final_refit_parent_selected_checkpoint_digest
+  final_refit_uses_validation
+  validation_no_longer_proof
+  sealed_test_required
+
+Runtime policy-training validation now requires:
+
+  training_schedule_mode is present
+  causal_schedule_schema_id is present and equals:
+
+    kikijyeba.runtime.policy_training_causal_schedule.v1
+
+  causal_schedule_digest is present
+  causal_schedule_cursor_key_kind is present and sortable:
+
+    numeric_anchor_index
+    numeric_source_key
+    fixed_width_source_key
+    timestamp_ms
+
+  causal_schedule_no_future_snapshot_use_source is present and equals:
+
+    derived_from_artifact_fit_use_ledgers
+
+  causal_schedule_no_future_snapshot_use=true for causal readiness
+  offline_full_window_research cannot satisfy readiness
+  causal mode cannot enable full-window research
+  batch_final_refit_candidate requires final_refit_parent_selected_checkpoint_digest
+  live execution remains forbidden
+
+
+3. Runtime Hero policy-training surface updated
+-----------------------------------------------
+
+Updated file:
+
+  src/impl/hero/runtime_hero/hero_runtime_tools.cpp
+
+Public tool:
+
+  hero.runtime.run operation=policy_training requested_mode=plan|dry_run
+
+Now accepts and validates:
+
+  training_schedule_mode
+  causal_schedule_schema_id
+  causal_schedule_digest
+  causal_schedule_readiness_eligible
+  causal_schedule_no_future_snapshot_use
+  offline_full_window_research_allowed
+  final_refit_uses_validation
+  validation_no_longer_proof
+  sealed_test_required
+
+Still refuses:
+
+  requested_mode=execute
+
+with:
+
+  E_RUNTIME_POLICY_TRAINING_EXECUTION_NOT_IMPLEMENTED
+
+Important behavior:
+
+  Old schedule-less policy-training handoffs now fail closed.
+
+  offline_full_window_research now fails as readiness evidence.
+
+
+4. Lattice policy-training fact evidence updated
+------------------------------------------------
+
+Updated file:
+
+  src/include/kikijyeba/lattice/exposure/exposure_ledger.h
+
+Policy-training fact now binds:
+
+  training_schedule_mode
+  causal_schedule_schema_id
+  causal_schedule_digest
+  causal_schedule_readiness_eligible
+  causal_schedule_no_future_snapshot_use
+  offline_full_window_research
+  final_refit_uses_validation
+  validation_no_longer_proof
+  sealed_test_required
+
+Canonical policy-training fact text and digest include these fields, so a
+schedule change changes the fact digest.
+
+New policy-training fact issues include:
+
+  missing_training_schedule_mode
+  missing_causal_schedule_schema_id
+  missing_causal_schedule_digest
+  unsupported_training_schedule_mode
+  unsupported_causal_schedule_schema_id
+  causal_schedule_not_readiness_eligible
+  causal_schedule_future_snapshot_use_not_proven
+  offline_full_window_research_not_readiness_eligible
+  batch_final_refit_not_policy_training_readiness
+  validation_refit_requires_sealed_test_disclaimer
+
+Policy-training summaries now count:
+
+  causal_schedule_digest_bound_count
+  causal_schedule_ready_count
+  no_future_snapshot_use_count
+  offline_full_window_research_count
+  final_refit_validation_disclaimer_count
+
+
+5. Lattice target proof updated
+-------------------------------
+
+Updated file:
+
+  src/include/kikijyeba/lattice/target/lattice_target_evaluator.h
+
+The target:
+
+  policy_training_artifact_ready
+
+now requires the policy_training fact to prove:
+
+  training_schedule_mode == causal_walk_forward_training.v1
+  causal_schedule_schema_id present
+  causal_schedule_digest present
+  causal_schedule_readiness_eligible == true
+  causal_schedule_no_future_snapshot_use == true
+  offline_full_window_research == false
+
+This means the old split-only policy-training readiness path cannot pass.
+
+
+6. Documentation and roadmap alignment
+--------------------------------------
+
+Updated files include:
+
+  ROADMAP.md
+  src/include/kikijyeba/runtime/README.md
+  src/main/hero/README.md
+  src/main/hero/hero_runtime_mcp.cpp
+  src/include/kikijyeba/lattice/ROADMAP.md
+  src/include/kikijyeba/environment/ROADMAP.md
+  src/include/kikijyeba/marshal/ROADMAP.md
+
+The roadmaps now state:
+
+  - PPO waits on causal_policy_training_schedule_contract.v1
+  - train/validation/test disjointness is necessary but not sufficient
+  - readiness-grade policy training requires causal walk-forward schedule
+    evidence
+  - offline_full_window_research is diagnostics-only
+  - batch_final_refit_candidate requires sealed-test discipline
+
+
+Operative Training Law
 ----------------------
-These commands passed:
 
-  make -C src/tests/bench/kikijyeba/marshal -j12 run-test_kikijyeba_marshal_rollout
-  make -C src/tests/bench/kikijyeba/marshal -j12 run-test_kikijyeba_marshal_dispatch
-  make -C src/main/hero -j12 build-marshal-hero
-  make -C src/tests/bench/kikijyeba/runtime -j12 run-test_hero_mcp_schema_compat
-  /cuwacunu/.build/hero/hero_marshal.mcp --global-config /cuwacunu/src/config/.config --list-tools-json
-  /cuwacunu/.build/hero/hero_marshal.mcp --global-config /cuwacunu/src/config/.config --help
+The readiness-grade schedule is:
+
+  At block B_k start:
+      freeze SnapshotFamily_{k-1}
+
+  During B_k:
+      observations use prior representation/MDN/observer snapshots
+      actions use prior policy snapshot
+      Cajtucu executes under the bound paper execution profile
+      reward uses the bound reward contract
+      trajectory evidence is recorded
+
+  After B_k closes:
+      representation, MDN, observer fitted components, normalization, and
+      policy may be updated to SnapshotFamily_k
+
+  At B_{k+1}:
+      SnapshotFamily_k may become usable
+
+The contract allows block-close joint updates in V1. It does not require strict
+staggering across representation -> MDN -> policy generations, as long as the
+updated snapshots are not used inside the same block.
+
+
+What Is Removed From Readiness
+------------------------------
+
+The leaky readiness method is no longer accepted:
+
+  full-window representation training
+  + full-window MDN training on same range
+  + full-window policy training/evaluation on same range
+  + calling that readiness evidence
+
+This is now classified as:
+
+  offline_full_window_research
+
+Allowed use:
+
+  diagnostics
+  debugging
+  ablations
+  non-readiness research reports
+
+Forbidden use:
+
+  policy_training_artifact_ready
+  policy-training readiness
+  rollout readiness
+  market readiness
+  PPO readiness claims
+
+
+Verification Run
+----------------
+
+Passed:
+
+  make -C src/main/hero -j12 build-runtime-hero
+
+  make -C src/tests/bench/kikijyeba/runtime -j12 \
+    run-test_hero_runtime_wave_preview
+
+  make -C src/tests/bench/kikijyeba/lattice_exposure -j12 \
+    run-test_kikijyeba_lattice_exposure
+
+  make -C src/tests/bench/kikijyeba/lattice_target -j12 \
+    run-test_kikijyeba_lattice_target
+
+  make -C src/tests/bench/kikijyeba/runtime -j12 \
+    run-test_hero_mcp_schema_compat
+
+  /cuwacunu/.build/hero/hero_runtime.mcp \
+    --global-config /cuwacunu/src/config/.config \
+    --list-tools-json
+
   git diff --check
 
-Current modified files relevant to this review
-----------------------------------------------
-  src/include/hero/marshal_hero/hero_marshal.def
-  src/include/kikijyeba/marshal/README.md
-  src/include/kikijyeba/marshal/ROADMAP.md
-  src/include/kikijyeba/marshal/dispatch_advice.h
-  src/include/kikijyeba/marshal/rollout_marshal.h
-  src/include/kikijyeba/marshal/tool_handler.h
-  src/main/hero/hero_marshal_mcp.cpp
-  src/main/hero/README.md
-  src/tests/bench/kikijyeba/marshal/test_kikijyeba_marshal_dispatch.cpp
-  src/tests/bench/kikijyeba/marshal/test_kikijyeba_marshal_rollout.cpp
+Live Runtime smokes:
 
-Runtime-side files also touched as part of rollout execution support:
-  src/impl/hero/runtime_hero/hero_runtime_tools.cpp
-  src/include/kikijyeba/runtime/README.md
-  src/main/exec/cuwacunu_exec.cpp
+  Positive policy-training plan with hardened causal schedule:
+      passed
+      returned contract_digest=e9289ca4a055cac4
+
+  Missing causal_schedule_digest:
+      failed closed with:
+      missing required field: causal_schedule_digest
+
+  Missing causal_schedule_no_future_snapshot_use_source:
+      failed closed with:
+      missing required field: causal_schedule_no_future_snapshot_use_source
+
+  causal_schedule_no_future_snapshot_use_source=asserted_by_caller:
+      failed closed with:
+      unsupported_no_future_snapshot_use_source
+
+  causal_schedule_cursor_key_kind=opaque_unsortable:
+      failed closed with:
+      opaque_or_unsupported_causal_schedule_cursor_key_kind
+
+  offline_full_window_research as readiness:
+      failed closed with:
+      offline_full_window_research_not_readiness_eligible
+      offline_full_window_research_requires_explicit_allow
+
+
+Tests Added / Updated
+---------------------
+
+Runtime:
+
   src/tests/bench/kikijyeba/runtime/test_hero_runtime_wave_preview.cpp
 
-Live tool catalog excerpt
--------------------------
-From:
-  /cuwacunu/.build/hero/hero_marshal.mcp --global-config /cuwacunu/src/config/.config --list-tools-json
+Added:
 
-Public tools:
+  test_policy_training_causal_schedule_contract
 
-  hero.marshal.status
-    Read-only Marshal health and authority-boundary summary: recent receipts,
-    policy/advice visibility, refusal state, caller-supplied test surfaces,
-    and explicit non-executor/non-proof flags.
+This checks:
 
-  hero.marshal.prepare
-    Prepare finite movement for one dispatchable Lattice target. Train/evaluate
-    are the current target-movement path; replay uses rollout,
-    artifact-readiness routes to inspect, and policy-training is reserved until
-    a concrete Runtime contract exists.
+  - valid causal walk-forward schedule
+  - ledger-derived no_future_snapshot_use; caller flag alone is not trusted
+  - opaque cursor key ordering rejected
+  - same-block snapshot use rejected
+  - future snapshot use rejected
+  - future normalization snapshot use rejected
+  - future calibration snapshot use rejected
+  - future covariance/coupler snapshot use rejected
+  - future replay-buffer snapshot use rejected
+  - future reward-baseline snapshot use rejected
+  - late target-label availability rejected
+  - late reward availability rejected
+  - late trajectory availability rejected
+  - offline_full_window_research rejected as readiness
 
-  hero.marshal.rollout
-    Prepare or execute a bounded Kikijyeba historical replay rollout from a
-    completed Runtime job: policy set plus Cajtucu paper execution profile
-    becomes Runtime replay trajectory evidence. Runtime executes and writes
-    reports; Marshal records the handoff.
+Updated:
 
-  hero.marshal.inspect
-    Read-only evidence inspection. Subjects run, target, protocol, spawn,
-    component, and facts explain Runtime/Lattice/Marshal state without
-    execution, proof claims, checkpoint selection, policy selection, or writes.
+  valid_policy_training_args now includes causal schedule identity, typed cursor
+  key ordering, and derived no-future snapshot source.
 
-Important public schema facts
------------------------------
-prepare:
-  required:
-    target_id
-  requested_mode:
-    plan | dry_run | execute
-  drive_mode:
-    one_step | budgeted
-  additionalProperties:
-    false
+Negative Runtime handler checks now include:
 
-rollout:
-  required:
-    rollout_id
-    rollout_attempt_id
-    idempotency_key
-    runtime_job_dir
-    replay_batch_index_path
-    requested_mode
-    graph_order_fingerprint
-    asset_universe_digest
-    base_reserve_node_id
-    risky_node_ids
-  requested_mode:
-    plan | execute
-  execution_profile:
-    additionalProperties=false
-    fields:
-      execution_backend_id
-      cost_model_id
-      allow_synthetic_direct_edges
-      synthetic_edge_research_reason
-      linear_transaction_cost_rate
-      allow_partial_fills
-      allow_negative_base_reserve
-      equity_mismatch_tolerance
-      equity_mismatch_fail_tolerance
-      live_execution_allowed
+  - missing causal_schedule_digest
+  - offline_full_window_research as readiness
 
-inspect:
-  required:
-    subject
-  subject:
-    run | target | protocol | spawn | component | facts
-  identity_mode:
-    report | strict
-  canonical fact fields:
-    fact_family_id
-    fact_digest
-    fact_digest_prefix
-    fact_index
-  canonical component field:
-    component_family_id
-  additionalProperties:
-    false
+Lattice exposure:
 
-Live help excerpt
------------------
-From:
-  /cuwacunu/.build/hero/hero_marshal.mcp --global-config /cuwacunu/src/config/.config --help
+  src/tests/bench/kikijyeba/lattice_exposure/test_kikijyeba_lattice_exposure.cpp
 
-Marshal role and authority boundary:
-  Marshal is a coordinator. It prepares bounded handoffs, checks request shape,
-  records receipts, and explains evidence. Runtime Hero executes allowed
-  waves/replay. Lattice Hero proves target satisfaction. Marshal does not
-  become proof authority, market-readiness authority, deployment authority,
-  checkpoint selector, or allocation authority.
+Updated policy-training sidecar fixture with causal schedule fields.
 
-hero.marshal.prepare:
-  Purpose: prepare a bounded Runtime handoff for one Lattice target.
-  requested_mode: plan, dry_run, or execute.
-  Returns: target-driver packet, dispatchability/refusal reasons, optional
-  Runtime dry-run handoff, and next safe actions.
+Added check that policy-training fact issues reject:
 
-hero.marshal.rollout:
-  Purpose: prepare or execute a bounded historical replay rollout of a policy
-  set against completed Runtime job artifacts.
-  Core model:
-    completed Runtime job + policy set + replay environment + Cajtucu paper
-    execution profile -> Runtime replay report/evidence.
-  requested_mode:
-    plan or execute
-  Returns:
-    rollout plan in plan mode; in execute, Runtime replay handoff result
-    digests and dispatch state. Runtime reports are written by Runtime;
-    inspection summaries come from later inspect.
+  causal_schedule_future_snapshot_use_not_proven
 
-hero.marshal.inspect:
-  Purpose: read-only operator inspection over Runtime/Lattice/Marshal evidence.
-  Subjects:
-    run
-    target
-    protocol
-    spawn
-    component
-    facts
+Lattice target:
 
-Key code excerpt: rollout contract
-----------------------------------
-File:
-  src/include/kikijyeba/marshal/rollout_marshal.h
+  src/tests/bench/kikijyeba/lattice_target/test_kikijyeba_lattice_target.cpp
 
-struct marshal_rollout_execution_profile_t {
-  std::string schema_version{k_marshal_rollout_execution_profile_schema_v1};
-  std::string execution_backend_id{"cajtucu.execution.paper.v1"};
-  std::string cost_model_id{"linear_transaction_cost_rate.v1"};
-  bool allow_synthetic_direct_edges{false};
-  std::string synthetic_edge_research_reason{};
-  double linear_transaction_cost_rate{0.0};
-  bool allow_partial_fills{false};
-  bool allow_negative_base_reserve{false};
-  double equity_mismatch_tolerance{1.0e-6};
-  double equity_mismatch_fail_tolerance{0.01};
-  bool live_execution_allowed{false};
-};
+Updated policy_training_artifact_ready fixture to include causal schedule
+identity and no-future-snapshot evidence.
 
-struct marshal_rollout_request_t {
-  std::string schema_version{k_marshal_rollout_request_schema_v1};
-  std::string rollout_id{};
-  std::string rollout_attempt_id{};
-  std::string idempotency_key{};
-  std::string experiment_id{};
-  std::filesystem::path config_path{"/cuwacunu/src/config/.config"};
-  std::filesystem::path runtime_job_dir{};
-  std::filesystem::path replay_batch_index_path{};
-  std::filesystem::path runtime_exec_path{
-      "/cuwacunu/.build/exec/cuwacunu_exec"};
-  std::filesystem::path report_path{};
-  std::string requested_mode{"plan"};
-  std::string environment_mode{"historical_replay"};
-  std::string environment_assembly_id{"kikijyeba.environment.replay.v1"};
-  std::string graph_order_fingerprint{};
-  std::string asset_universe_digest{};
-  std::string base_reserve_node_id{};
-  std::vector<std::string> risky_node_ids{};
-  std::vector<std::string> policy_tokens{};
-  std::int64_t max_steps{0};
-  std::int64_t max_parallel_jobs{1};
-  std::int64_t timeout_seconds{600};
-  marshal_rollout_execution_profile_t execution_profile{};
-  bool require_existing_runtime_job_dir{true};
-  bool require_completed_runtime_job{true};
-  bool require_replay_artifacts{true};
-};
 
-Validation highlights in validate_rollout_request:
-  - missing rollout_id -> missing_rollout_id
-  - missing rollout_attempt_id -> missing_rollout_attempt_id
-  - missing idempotency_key -> missing_idempotency_key
-  - requested_mode other than plan|execute -> unsupported_requested_mode
-  - environment_mode other than historical_replay -> unsupported_environment_mode
-  - environment_assembly_id other than kikijyeba.environment.replay.v1
-    -> unsupported_environment_assembly_id
-  - execution_backend_id other than cajtucu.execution.paper.v1
-    -> unsupported_execution_backend_id
-  - missing graph_order_fingerprint -> missing_graph_order_fingerprint
-  - missing asset_universe_digest -> missing_asset_universe_digest
-  - duplicate reserve in risky nodes -> base_reserve_node_duplicated_in_risky_nodes
-  - duplicate risky nodes -> duplicate_risky_node_id
-  - asset_universe_digest mismatch -> asset_universe_digest_mismatch
-  - unsupported policy token -> unsupported_policy_token:<token>
-  - unsupported cost_model_id -> unsupported_cost_model_id
-  - synthetic edges enabled without reason -> missing_synthetic_edge_research_reason
-
-Key code excerpt: operator envelope
------------------------------------
-File:
-  src/include/kikijyeba/marshal/tool_handler.h
-
-marshal_operator_envelope_fields_json(...) emits:
-  schema_version
-  dispatch_state
-  refusal_reasons
-  warnings
-  next_safe_actions
-  authority
-  observed
-  evidence_refs
-  digests
-
-marshal_operator_envelope_supplement_json(...) emits the same fields except
-dispatch_state, because prepare/rollout already expose dispatch_state directly.
-
-prepare operator packet:
-  tool = hero.marshal.prepare
-  schema_version = kikijyeba.marshal.prepare.v2.5b
-  next_safe_actions = [step.next_action]
-  top-level next_action is not emitted
-
-rollout operator packet:
-  tool = hero.marshal.rollout
-  schema_version = kikijyeba.marshal.rollout.v2.5b
-  requested_mode = request.requested_mode
-  dispatch_state = blocked | prepared | executed
-  next_safe_actions =
-    - fix_rollout_request
-    - run_replay_command_or_inspect
-    - inspect_rollout_report
-    - inspect_runtime_replay_failure
-  top-level next_action is not emitted
-
-Authority namespace emitted by Marshal:
-  marshal_proves_target=false
-  marshal_executes_runtime=false
-  marshal_selects_checkpoint=false
-  marshal_selects_policy=false
-  marshal_edits_config=false
-  marshal_makes_allocation_decision=false
-  marshal_makes_market_readiness_decision=false
-  marshal_makes_deployment_decision=false
-
-Test evidence excerpts
-----------------------
-File:
-  src/tests/bench/kikijyeba/marshal/test_kikijyeba_marshal_dispatch.cpp
-
-prepare plan unresolved model-state test checks:
-  dispatch_state == blocked
-  blocker_bucket == unresolved_model_state
-  next_safe_actions == ["resolve_model_state"]
-  runtime_dry_run.requested == false
-  runtime_dry_run.attempted == false
-
-prepare plan resolved test checks:
-  dispatch_state == ready_for_dry_run
-  blocker_bucket == none
-  next_safe_actions == ["dry_run"]
-  runtime_dry_run.requested == false
-  runtime_dry_run.attempted == false
-
-prepare dry_run test checks:
-  runtime_dry_run.requested == true
-  runtime_dry_run.attempted == true
-  runtime_dry_run.accepted == true
-  dispatch_state == ready_for_execution_gate
-  next_safe_actions == ["execution_gate"]
-
-prepare alias/reserved-intent tests include:
-  lattice_target alias rejected
-  rollout/replay intent rejected with route to hero.marshal.rollout
-  artifact_validation intent rejected with route to hero.marshal.inspect
-  policy_training remains reserved
-
-File:
-  src/tests/bench/kikijyeba/marshal/test_kikijyeba_marshal_rollout.cpp
-
-rollout plan test checks:
-  tool == hero.marshal.rollout
-  schema_version == kikijyeba.marshal.rollout.v2.5b
-  next_safe_actions == ["run_replay_command_or_inspect"]
-  authority.marshal_proves_target == false
-  dispatch_state == prepared
-  top-level next_action is absent
-  receipt_produced == false
-  rollout_plan present
-  hero.lattice does not appear
-
-rollout negative tests include:
-  missing rollout_attempt_id
-  missing idempotency_key
-  missing replay_batch_index_path
-  graph fingerprint mismatch
-  asset universe digest mismatch
-  unsupported cost model
-  partial fills unsupported by Runtime replay V1
-  legacy requested_mode=dry_run rejected
-  legacy prepare_only rejected
-  unknown execution_profile field rejected
-
-Questions for review
---------------------
-1. Is the public separation now correct?
-     prepare = target-dispatch from Lattice advice
-     rollout = replay from completed Runtime job evidence
-     inspect = read-only evidence explanation
-     status = read-only Marshal visibility
-
-2. Is the name rollout acceptable as the RL/environment operation?
-   Current intended meaning:
-     policy set + environment + Cajtucu paper profile + completed Runtime job
-       -> trajectory evidence through Runtime replay
-
-3. Is requested_mode=plan|execute for rollout the right public vocabulary?
-   We removed rollout dry_run terminology because plan is the non-executing
-   mode, and execute delegates to hero.runtime.replay.
-
-4. Is the current idempotency story acceptable as a contract checkpoint?
-   Current state:
-     rollout_attempt_id and idempotency_key are required and bound into request
-     digests.
-   Not yet implemented:
-     durable duplicate-handoff ledger.
-
-5. Is it acceptable that target-driver ledger internals still use next_action
-   as historical evidence while public prepare/rollout operator packets expose
-   next_safe_actions?
-
-6. Should response envelope cleanup continue later into older nested inspect
-   panels that still expose singular next_safe_action, or is the current
-   top-level envelope enough for this checkpoint?
-
-7. Is Cajtucu paper V1 correctly bound as an execution profile here, or should
-   Marshal require more explicit Cajtucu profile identity fields before commit?
-
-8. Are the current tests sufficient for this checkpoint, or should we add a
-   direct live --tool smoke call for rollout plan mode before commit?
-
-Recommended checkpoint statement
---------------------------------
-Marshal V2 public contract is now stable enough for review:
-  - four public tools only
-  - rollout is a first-class environment replay handoff
-  - prepare is target-dispatch only
-  - inspect is canonical and read-only
-  - public packets use next_safe_actions and namespaced authority
-  - Runtime remains executor
-  - Lattice remains proof authority
-  - Cajtucu remains paper execution backend under Runtime replay
-
-Known non-blocking future work
+Files Most Relevant For Review
 ------------------------------
-  - durable idempotency / duplicate-handoff ledger for rollout execute
-  - deeper response-envelope migration for older nested panels
-  - future finite policy-training Marshal handoff once Runtime has a concrete
-    policy-training job contract
-  - future paper-online/live boundaries outside this Marshal checkpoint
+
+Runtime contract:
+
+  src/include/kikijyeba/runtime/policy_training_causal_schedule.h
+  src/include/kikijyeba/runtime/policy_training_job_contract.h
+
+Runtime Hero surface:
+
+  src/impl/hero/runtime_hero/hero_runtime_tools.cpp
+  src/main/hero/hero_runtime_mcp.cpp
+
+Lattice proof/evidence:
+
+  src/include/kikijyeba/lattice/exposure/exposure_ledger.h
+  src/include/kikijyeba/lattice/target/lattice_target_evaluator.h
+
+Tests:
+
+  src/tests/bench/kikijyeba/runtime/test_hero_runtime_wave_preview.cpp
+  src/tests/bench/kikijyeba/lattice_exposure/test_kikijyeba_lattice_exposure.cpp
+  src/tests/bench/kikijyeba/lattice_target/test_kikijyeba_lattice_target.cpp
+
+Docs:
+
+  ROADMAP.md
+  src/include/kikijyeba/runtime/README.md
+  src/main/hero/README.md
+  src/include/kikijyeba/lattice/ROADMAP.md
+  src/include/kikijyeba/environment/ROADMAP.md
+  src/include/kikijyeba/marshal/ROADMAP.md
+
+
+Questions For Review
+--------------------
+
+1. Is block-close joint update acceptable for V1?
+
+   Current rule:
+
+     update R_k/M_k/O_k/pi_k after B_k closes
+     use SnapshotFamily_k only from B_{k+1}
+
+   We did not require strict staggered generations in V1.
+
+2. Is `usable_from_key <= block_cursor_begin` the right primary invariant?
+
+   We also track:
+
+     fit_input_cutoff_key
+     fit_target_cutoff_key
+     normalization_cutoff_key
+     fit_cutoff_key
+     usable_from_key
+
+   The validator currently compares numeric keys numerically when possible,
+   otherwise lexicographically.
+
+3. Should Runtime policy-training allow `offline_full_window_research` in
+   plan/dry_run when explicitly marked non-readiness?
+
+   Current behavior:
+
+     If mode is offline_full_window_research and readiness_eligible remains
+     true, Runtime rejects.
+
+     It also requires explicit offline_full_window_research_allowed=true.
+
+   This keeps research possible but noisy. We should confirm whether this is
+   the right public boundary.
+
+4. Should batch_final_refit_candidate be allowed by Runtime plan/dry_run now?
+
+   Current behavior:
+
+     It cannot be readiness_eligible.
+     It must declare:
+
+       final_refit_uses_validation=true
+       validation_no_longer_proof=true
+       sealed_test_required=true
+
+5. Should Lattice add a separate target:
+
+     policy_training_causal_schedule_ready
+
+   or is it enough that:
+
+     policy_training_artifact_ready
+
+   now requires causal schedule evidence?
+
+6. Are there any current full-window training commands or Marshal handoff paths
+   that should be renamed to offline_full_window_research immediately?
+
+   The current implementation blocks readiness evidence, but executable PPO
+   does not exist yet. Before PPO arrives, we should make sure no operator path
+   implies full-window training is readiness-grade.
+
+
+Current Verdict
+---------------
+
+The anti-leakage floor before PPO is now installed:
+
+  Runtime requires causal schedule identity for policy-training contracts.
+  Runtime requires typed cursor-key ordering.
+  Runtime rejects caller-asserted no-future snapshot source.
+  Lattice requires causal schedule evidence for policy_training_artifact_ready.
+  Lattice requires derived no-future snapshot source.
+  Schedule-less policy training fails.
+  Opaque cursor keys fail closed.
+  Same-block and future-use snapshots fail closed across the core artifact
+  categories, including normalizers, calibration, covariance/couplers,
+  replay buffers, and reward baselines.
+  Full-window research is quarantined from readiness.
+  PPO remains unimplemented and should be built only on this contract.
+
+This milestone should be considered complete unless review finds a semantic
+gap in the causal schedule model itself.

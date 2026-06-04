@@ -22,6 +22,7 @@ enum class runtime_job_kind_t {
   channel_representation_vicreg,
   channel_representation_mtf_jepa_mae_vicreg,
   channel_inference_mdn,
+  policy_training,
 };
 
 [[nodiscard]] inline const char *
@@ -33,6 +34,8 @@ runtime_job_kind_name(runtime_job_kind_t kind) {
     return "channel_representation_mtf_jepa_mae_vicreg";
   case runtime_job_kind_t::channel_inference_mdn:
     return "channel_inference_mdn";
+  case runtime_job_kind_t::policy_training:
+    return "policy_training";
   }
   return "unknown";
 }
@@ -126,6 +129,9 @@ struct job_manifest_t {
   std::string runtime_handoff_id{};
   std::string runtime_handoff_digest{};
   std::string marshal_target_driver_run_id{};
+  std::string policy_training_contract_schema{};
+  std::string policy_training_contract_digest{};
+  std::string policy_training_artifact_schema{};
   std::string manifest_format{"kikijyeba.runtime.job_manifest.v1"};
 
   [[nodiscard]] std::string to_text() const {
@@ -247,6 +253,12 @@ struct job_manifest_t {
     out << "runtime_handoff_digest=" << runtime_handoff_digest << "\n";
     out << "marshal_target_driver_run_id=" << marshal_target_driver_run_id
         << "\n";
+    out << "policy_training_contract_schema=" << policy_training_contract_schema
+        << "\n";
+    out << "policy_training_contract_digest=" << policy_training_contract_digest
+        << "\n";
+    out << "policy_training_artifact_schema=" << policy_training_artifact_schema
+        << "\n";
     return out.str();
   }
 };
@@ -297,6 +309,11 @@ execution_chain_for_job(runtime_job_kind_t job_kind,
                  "wikimyei.expression.nodelift.srl:run -> "
                  "wikimyei.representation.encoding.vicreg:run_frozen "
                  "-> wikimyei.inference.expected_value.mdn:run";
+  case runtime_job_kind_t::policy_training:
+    return "runtime.completed_replay_job:read -> "
+           "kikijyeba.environment.replay.v1:rollout -> "
+           "cajtucu.execution.paper.v1:paper_execute -> "
+           "wikimyei.policy.trainable:train_contract";
   }
   return {};
 }
@@ -314,6 +331,8 @@ mutated_components_for_job(runtime_job_kind_t job_kind,
     return "wikimyei.representation.encoding.mtf_jepa_mae_vicreg";
   case runtime_job_kind_t::channel_inference_mdn:
     return "wikimyei.inference.expected_value.mdn";
+  case runtime_job_kind_t::policy_training:
+    return "wikimyei.policy.trainable";
   }
   return {};
 }
@@ -326,6 +345,11 @@ frozen_components_for_job(runtime_job_kind_t job_kind) {
     return {};
   case runtime_job_kind_t::channel_inference_mdn:
     return "wikimyei.representation.encoding.vicreg";
+  case runtime_job_kind_t::policy_training:
+    return "wikimyei.inference.expected_value.mdn,"
+           "wikimyei.observer.belief,"
+           "kikijyeba.environment.replay.v1,"
+           "cajtucu.execution.paper.v1";
   }
   return {};
 }
@@ -333,6 +357,9 @@ frozen_components_for_job(runtime_job_kind_t job_kind) {
 [[nodiscard]] inline std::string
 frozen_components_for_job(runtime_job_kind_t job_kind,
                           const std::string &active_representation_family) {
+  if (job_kind == runtime_job_kind_t::policy_training) {
+    return frozen_components_for_job(job_kind);
+  }
   if (job_kind != runtime_job_kind_t::channel_inference_mdn) {
     return frozen_components_for_job(job_kind);
   }

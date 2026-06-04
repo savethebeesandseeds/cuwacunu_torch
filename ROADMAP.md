@@ -1,14 +1,16 @@
 # Active Roadmap
 
-This is the short operator-facing index for current work. Keep it finite. Do
-not use this file as a history log for completed Lattice, Runtime, Marshal,
-source-range, dataloader, legacy-cleanup, or MDN-shape work.
+This is the short operator-facing roadmap. Keep it finite. Do not use this
+file as a history log for completed Hero cleanup, Lattice recovery, Runtime
+replay plumbing, Marshal contract refactors, or Cajtucu paper-engine hardening.
 
 Detailed subsystem records live in:
 
 ```text
+src/include/kikijyeba/environment/ROADMAP.md
 src/include/kikijyeba/lattice/ROADMAP.md
 src/include/kikijyeba/marshal/ROADMAP.md
+src/include/cajtucu/ROADMAP.md
 src/include/wikimyei/inference/expected_value/mdn/README.md
 .deprecated/src_legacy/MIGRATION_INVENTORY.md
 ```
@@ -18,396 +20,581 @@ src/include/wikimyei/inference/expected_value/mdn/README.md
 ```text
 Runtime executes and writes durable evidence.
 Lattice proves target satisfaction from Runtime evidence.
-Marshal prepares bounded handoffs and explains state.
+Marshal prepares bounded handoffs, delegates to Runtime, records, and explains.
+Kikijyeba Environment drives reset/step/reward/trajectory evidence.
+Wikimyei owns representation, belief, and policy/allocation math.
+Cajtucu owns output execution, paper fills, ledgers, and execution traces.
+Tsodao later protects approved settings and promotion contracts.
 ```
 
-The system should keep these boundaries:
+Boundary rules:
 
 ```text
 Runtime is not proof authority.
-Lattice is not an executor or scheduler.
-Marshal is not proof authority, a config editor, a checkpoint selector, or an
-unbounded scheduler.
+Lattice is not an executor, scheduler, optimizer, or policy selector.
+Marshal is not proof authority, config editor, checkpoint selector, policy
+  trainer, reward judge, or unbounded scheduler.
+Kikijyeba Environment is not a broker or policy trainer by itself.
+Cajtucu is not a policy, evaluator, readiness oracle, or live-capital authority.
+Tsodao is not an optimizer; it protects selected settings after evidence exists.
 ```
 
-## Active Item
+## Stable Checkpoint
 
-### Source Facts And Analytics Into Lattice
+Status: current base.
 
-Status: in progress.
-
-Add source-side evidence to Lattice without changing the current authority
-boundaries. Existing source receipts and source-key windows remain audit
-metadata; row-index intervals stay authoritative for coverage and leakage.
-
-Initial scope:
-
-- Carry source analytics such as source entropic load, entropy rate,
-  information density, compression ratio, power-spectrum entropy, sample
-  validity, and related source-health measurements into Lattice evidence.
-- Bind those facts to source receipts, source cursor identity, graph order,
-  split/window, and parent exposure fact digests.
-- Start as read-only summaries and `LATTICE_WARN` diagnostics, not hard
-  readiness gates, performance gates, contract identity, or executor authority.
-- Update the Lattice roadmap, DSL/man docs, and tests when implementation
-  begins.
-
-Current implementation emits `lattice.source_analytics.fact` sidecars from
-Runtime terminal jobs with source-range health, anchor acceptance, missingness,
-duplicate-anchor, source cursor, graph order, split/window, and parent exposure
-identity. When job-local `data_analytics.v2.latest.lls` and symbolic analytics
-reports already exist, Runtime folds their entropy, density, compression, and
-spectrum metrics into the same visibility-only fact. Lattice scans these rows
-as warning/summary-only catalog evidence and keeps row-index coverage/leakage
-authority unchanged. Source-analytics summaries also expose compatible
-train-validation metric, volatility, feature-variance, and anchor-support deltas
-as warning-only source-regime visibility.
-
-### Forecast Quality Evidence Into Lattice
-
-Status: in progress.
-
-Add a compact forecast-evaluation evidence contract so Lattice can answer
-whether an end-to-end protocol is forecasting well enough to inspect, without
-turning Lattice into a model runner, checkpoint selector, or performance gate.
-
-Initial scope:
-
-- Emit protocol-bound validation facts for MDN forecasting runs, including the
-  evaluated protocol id, representation checkpoint, MDN checkpoint, split,
-  source cursor identity, graph order, and parent exposure/checkpoint digests.
-- Add protocol-specific validation targets such as
-  `cwu_02v_mdn_validation_eval_ready` that depend on the matching
-  protocol-specific representation and MDN train-core readiness targets.
-- Carry forecast-quality visibility fields such as mean NLL, expected-value
-  MAE/RMSE, signed error, directional accuracy, naive-baseline error,
-  skill-versus-naive, valid target support, and calibration coverage summaries.
-- Bind every forecast metric to target-transform facts: target feature ids,
-  horizon, raw/return/log-return mode, normalization and inverse transform,
-  units, and target mask policy. A forecast error without this contract is not
-  interpretable evidence.
-- Emit baseline facts next to model facts, starting with previous-value,
-  zero-return, moving-average, and last-valid-channel baselines. Lattice should
-  see skill versus baseline, not only raw error numbers.
-  Current Lattice summaries expose baseline-kind coverage as warning-only
-  evidence so missing reference families are visible without becoming quality
-  gates.
-- Add selection-signal facts before any checkpoint is chosen by validation
-  performance: candidate checkpoints, chosen checkpoint, selector split,
-  selector metric, tie policy, and parent evaluation facts. These remain
-  read-only evidence and are required to audit validation leakage.
-- Track evaluation support by node, channel, target feature, and horizon,
-  including weakest-support rows, so aggregate quality cannot hide unsupported
-  forecast surfaces.
-- Add MDN calibration visibility: interval coverage, PIT summaries,
-  sigma/scale sanity over valid targets, and overconfidence or underconfidence
-  warnings.
-- Carry source/regime-shift visibility between train and validation windows:
-  missingness drift, volatility drift, feature variance drift, support drift,
-  and source entropy/complexity drift.
-- Keep these as read-only facts and `LATTICE_WARN` diagnostics first. Do not
-  promote them to hard readiness or deployment gates until uncertainty,
-  baselines, split leakage policy, and threshold policy are explicit.
-- Preserve the existing Lattice boundary: Runtime produces forecast evidence;
-  Lattice scans, explains, evaluates readiness, and reports warnings. Lattice
-  does not execute runs, train models, choose best checkpoints, or claim market
-  readiness from a single point estimate.
-
-Current implementation writes target-transform, forecast-baseline, and
-forecast-eval facts for non-mutating channel-MDN run jobs. Runtime now emits
-the deterministic baseline family set as separate catalog facts for
-previous-value, zero-return, moving-average, and last-valid-channel references.
-Forecast-eval facts carry aggregate NLL plus the MDN report's stratified NLL
-and valid-target support surfaces by channel, target feature,
-channel-target-feature, and horizon. Forecast summaries also expose
-calibration-coverage, PIT-summary, and sigma-scale availability diagnostics as
-warning-only visibility.
-Forecast summaries also derive skill-versus-baseline diagnostics when the
-referenced baseline fact resolves under the same identity. These fields are
-catalog evidence for inspection and warnings only; they do not make Lattice a
-quality gate, checkpoint selector, or deployment authority.
-
-### Deterministic Observer And Allocation Engine Evidence Into Lattice
-
-Status: in progress.
-
-Extend Lattice so deterministic post-inference Wikimyei components can be
-audited as first-class evidence surfaces, without making Lattice responsible
-for portfolio execution or capital allocation.
-
-Initial scope:
-
-- Add read-only Lattice visibility for deterministic Wikimyei assemblies after
-  MDN inference, starting with `wikimyei.observer.belief` and
-  `wikimyei.engine.portfolio.spot_distributional_utility`.
-- Bind observer/engine evidence to the same protocol id, graph order,
-  source cursor identity, MDN assembly fingerprint, MDN forecast artifact,
-  feature-semantics fingerprint, and dock-binding fingerprint used by the
-  graph-first contract.
-- Require Lattice evidence to distinguish raw NodeLift potential belief from
-  post-projection `AllocationBelief`; raw NodeLift potentials must not be
-  treated as tradable return evidence.
-- Carry explicit base/reserve semantics: the reserve asset must be a graph
-  node supplied by `BasePolicy`, not an external cash bucket or unbound scalar.
-- Track observer outputs such as channel consensus, potential-surface
-  diagnostics, NodeLift return projection, covariance coupling, scenario bank
-  identity, NodeLift residual quality, projection-validation scores,
-  confidence, data quality, liquidity, and forecast-artifact lineage.
-- Track allocation-engine outputs such as target risky node weights, reserve
-  node id, reserve weight, turnover, scenario-growth floor status, objective
-  terms, CVaR loss, transaction-cost estimate, constraint/cap diagnostics, and
-  fallback/de-risk reasons.
-- Start with `LATTICE_WARN` diagnostics and artifact-readiness targets only.
-  Do not make Lattice judge market readiness, select allocations, route
-  execution, or override the portfolio engine.
-- Current implementation tracks these as `observer_belief` and
-  `allocation_engine` fact families. The first active slice keeps confidence,
-  data-quality, liquidity, observer diagnostic completeness, cap diagnostics,
-  scenario-growth floor, fallback, and de-risk signals warning-only.
-- Update the Lattice roadmap, DSL/man docs, target vocabulary, contract tests,
-  and Runtime evidence writers when this becomes active implementation work.
-
-### Kikijyeba Replay Environment
-
-Status: in progress.
-
-Build `kikijyeba.environment.replay.v1` as the validation-first operating world
-for portfolio belief/action loops. The environment should use the same
-`reset(EpisodeSpec) -> Observation` and `step(Action) -> Transition` contract
-for historical replay, paper mode, and later live mode. Its action surface is
-target risky node weights plus a graph-node base reserve weight, so the current
-deterministic Wikimyei allocator and future reinforcement-learning policies can
-share execution simulation, ledger accounting, rewards, and reports.
-
-The current environment code includes the contract scaffold, a preloaded
-`replay_world_t` for deterministic fixture/historical frames, and a
-`kikijyeba.environment.replay.dsl` contract that fixes reset/step, cursor,
-time-law, action, reward, artifact, and audit-only authority semantics before
-the implementation grows wider. It also includes a `replay_source` helper that
-converts accepted Ujcamei graph-anchor cursors plus
-future edge batches into spawnable replay episode bundles. A bundle is the
-current unit of parallelization: one accepted episode range can spawn one
-independent replay-world instance, with sequential steps inside that instance.
-Baseline policy adapters, a deterministic Wikimyei allocation policy adapter,
-and a bounded-parallel replay experiment runner now allow the same bundles to be
-compared across multiple policy factories, with per-policy summaries in the
-experiment report. A replay bundle source interface is now the streaming
-boundary between bundle construction and experiment execution, and the
-graph-anchor implementation can materialize bundles from resolved Ujcamei cursor
-evidence and edge batches. A replay observation artifact source/enricher now
-attaches time-`t` MDN, NodeLift potential, `AllocationBelief`, market-state,
-projected-return, and residual-quality artifacts to accepted frames while
-rejecting anchor, graph, node-order, base-policy, and timestamp mismatches. It
-can read a replay observation artifact index, load persisted Wikimyei forecast
-artifacts, reconstruct replay-ready `AllocationBelief`, and expose projected
-log-return scenarios for validation. A
-Runtime graph-anchor replay bundle source now consumes Runtime `job_manifest_t`
-and `wave_plan_t` evidence plus resolved Ujcamei cursor/batch/artifact records,
-then validates job id, protocol id, graph fingerprint, graph nodes/edges,
-requested and resolved anchor ranges, accepted anchor count, first/last keys,
-and cursor identity before exposing bundles. It can now read `job.manifest` from a Runtime
-job directory and reconstruct the replay wave evidence, save/load persisted
-graph-anchor edge-batch artifacts, write/read a job-local replay artifact path
-index, persist accepted replay batches plus forecast artifacts into the
-job-local tree, and build a runtime replay record from a Runtime job directory.
-Representation stream batches now carry future realization keys, and the replay
-Runtime adapter can derive the persisted replay edge-batch artifact from that
-actual stream output. It can also convert observer
-`allocation_belief_build_result_t` outputs into persisted replay forecast
-records, and it can build those forecast records directly from an MDN `MdnOut`
-plus `channel_mdn_input_batch_t` using explicit observer builder options. The
-graph-first MDN inference launcher now exposes an optional run-mode batch
-observer carrying `MdnOut`, `channel_mdn_input_batch_t`, and the representation
-batch with future realization keys, so Runtime can install the replay artifact
-writer without changing the inference loop. Runtime/job execution now installs
-that observer for non-dry-run MDN `MODE=run` jobs, derives observer options from
-the graph and belief DSL, supports explicit base-reserve and risky-node
-overrides, and writes one pulse-local replay artifact packet plus a job-local
-batch index for each streamed MDN pulse. The environment now has a direct
-Runtime job-directory replay source that reads those indexed pulse packets,
-materializes replay bundles, and runs complete reserve-baseline and
-deterministic Wikimyei allocation episodes in focused Runtime tests. A
-code-level Runtime job replay experiment driver now loads the protocol graph
-from the config recorded in `job.manifest`, consumes the job-local replay
-artifact index, runs enabled replay policies, and writes a Cajtucu-ready
-experiment report plus a job-local replay experiment index under the replay
-artifact tree. The report now carries common runtime/environment ids, explicit
-audit-only authority flags, policy summaries, episode summaries, requested and
-accepted cursor/range evidence, and compact per-step evidence for timing,
-target weights, realized growth, reward components, projection metrics, and
-warnings/failures. Source-side replay now rejects frames whose direct
-asset/base projections resolve to mixed future realization keys, and experiment
-reports now persist explicit task, bundle, and policy indices for every
-bundle/policy episode product. `cuwacunu_exec` now
-exposes that driver through
-`--replay-from-job-dir`, keeping replay as a post-job adapter rather than
-replacing normal Runtime job launch. Runtime Hero now exposes the same bounded
-post-job path as `hero.runtime.replay_from_job`: it accepts `job_id` or
-`job_dir`, verifies the job is completed and has replay batch evidence, and then
-delegates to the replay CLI surface. Runtime Hero read paths can also inspect
-`replay_batch_index`, `replay_experiment_index`, and
-`replay_experiment_report` by name, and job summaries include those replay
-artifact summaries beside the standard Runtime manifest/state/report. Marshal's
-read-only `subject=run` operational report now also surfaces replay evidence
-from those same job-local indexes in `chain_summary`, `runtime_panel`, and
-`current_state` without executing or claiming proof authority. Lattice has a
-parked `replay_environment` fact-family design for those job-local replay
-indexes/reports, including per-episode requested-range, accepted-cursor,
-accepted-anchor-interval, accepted-anchor-key evidence counts, explicit
-historical world-mode identity, V1 runtime batch-index/experiment-index/report
-schema identity, runtime experiment-index report digests matched against the
-referenced report body, observation/action/execution time-law step evidence,
-expected completed-step counts, sequential source-order evidence, action
-decision timestamps bound to the observation-to-realization window,
-future-observation violation counts, realization-key violation counts, bounded
-requested/resolved parallelism, and projection-validation step evidence.
-Runtime replay experiment reports now emit those counters from their compact
-per-step evidence. `replay_environment` remains parked evidence: it is
-catalog-listed, not derived by default, explicit-audit-scan only, and not an
-active target instance. A future non-dispatchable
-`replay_environment_artifact_ready` proof shape is reserved for proving schema
-identity, report digest identity, source order, declared/observed parallelism,
-time-law cleanliness, lineage binding, and required projection-counter presence
-once Runtime replay artifacts and fact contracts are stable. That future proof
-must remain audit evidence, not execution, allocation, policy selection, reward
-acceptance, or market-readiness authority. The next accepted replay milestone
-should continue hardening this end-to-end path against real Runtime job
-directories while preserving the time law: observations contain only time-`t`
-information while time-`t+1` realizations are revealed only after action and
-execution simulation.
-#### Environment, Lattice, And Marshal Design Checkpoint
-
-Status: discussion required before implementation.
-
-The next environment-era challenge is not only adding replay facts. The hard
-part is deciding how future trainable policies use the environment without
-collapsing the recovered Lattice/Marshal boundary.
-
-Keep four surfaces separate:
+The Hero public surfaces have been collapsed and tested enough to use as a
+stable checkpoint:
 
 ```text
-environment evidence
-  Replay reports, episode records, time-law checks, and
-  replay_environment facts. These are audit/proof inputs, not work orders.
+Config Hero:
+  hero.config.status
+  hero.config.inspect
+  hero.config.apply
 
-environment execution
-  Runtime-owned workers, episode bundles, parallel replay, simulation,
-  policy-gradient or other training loops, checkpoint writing, and reports.
+Runtime Hero:
+  hero.runtime.status
+  hero.runtime.inspect
+  hero.runtime.run
+  hero.runtime.reset
 
-policy-training readiness
-  A future dispatchable target only if backed by an explicit Runtime job kind,
-  component family, report schema, artifact/checkpoint contract, finite
-  episode budget, finite parallelism budget, and lineage contract.
+Lattice Hero:
+  hero.lattice.status
+  hero.lattice.inspect
+  hero.lattice.evaluate
+  hero.lattice.compare
 
-policy acceptance
-  Reward thresholds, baseline comparisons, uncertainty, selector policy,
-  deployment, and market readiness. This remains a reserved policy-gate
-  discussion, not an active target.
+Marshal Hero:
+  hero.marshal.status
+  hero.marshal.prepare
+  hero.marshal.rollout
+  hero.marshal.inspect
 ```
 
-`replay_environment` facts and the reserved future
-`replay_environment_artifact_ready` proof shape should prove replay/artifact
-lineage, schema identity, report digest identity, source order, parallelism
-bounds, time-law cleanliness, and projection-counter presence. They must not
-train a policy, select a policy, judge reward quality, or imply
-execution/allocation/market readiness.
+Do not reopen Hero cleanup as an umbrella goal. Future Hero changes must be
+finite, local, and tied to one tool family or one public contract.
 
-Lifecycle state:
+## Active Sequence
+
+### 1. Cost-Aware Paper Replay Rollout V1
+
+Goal:
 
 ```text
-replay_environment fact family
-  known / parked / catalog-listed
-
-replay_environment fact derivation
-  disabled by default
-  explicit audit scan only
-
-replay_environment_artifact_ready proof template
-  designed / reserved / not active yet
-
-replay_environment_artifact_ready target instance
-  absent until Runtime replay artifacts and fact contracts are stable
-
-policy_training_artifact_ready
-  future dispatchable target only with a concrete Runtime job contract
-
-policy_acceptance
-  disabled policy reservation only
+completed Runtime job
+  -> hero.marshal.rollout
+  -> Runtime replay
+  -> Kikijyeba replay environment
+  -> Cajtucu paper execution
+  -> trajectory/report artifacts
+  -> Lattice-readable evidence
 ```
 
-Marshal may eventually need an environment-era surface, but the first candidate
-is read-only inspection: a panel over Runtime replay artifacts and Lattice
-`replay_environment` facts. A second, separate future surface may coordinate a
-bounded Runtime handoff for a dispatchable policy-training target, but only
-after the target contract is explicit. Marshal must never become an open-ended
-environment scheduler, policy optimizer, reward judge, checkpoint selector,
-allocation engine, or deployment authority.
-
-The design is not ready for code until these are specified:
+Milestone name:
 
 ```text
-Runtime job kind and producer component family
-environment/replay contract version
-episode bundle identity and source ranges
-max environment jobs, workers, episodes, and attempts
-resume ledger identity and terminal stop condition
-policy artifact/checkpoint output contract
-parent forecast, observer, allocation, and environment evidence digests
-reward definition digest and accounting assumptions
-baseline policy and comparison semantics
-selector split, anti-leakage policy, and replay/live separation
-support minimums, uncertainty policy, and negative tests
-checkpoint-source policy for policy artifacts
-post-run Lattice target to recheck
+cost_aware_paper_replay_rollout.v1
 ```
 
-Prompt for a future refinement session:
+Acceptance:
+
+- Rollouts run over multiple validation windows from completed Runtime job
+  evidence.
+- Environment assembly is `kikijyeba.environment.replay.v1`.
+- Execution backend is `cajtucu.execution.paper.v1`.
+- Cajtucu paper execution costs are nonzero and profile-bound.
+- Execution profile digest is recorded in the rollout plan, Runtime replay
+  handoff, report, and Marshal receipt/summary.
+- Synthetic direct-edge markets are forbidden for validation rollouts; research
+  replay must opt in explicitly and mark validation satisfaction false.
+- Required policies include base reserve, current-weight/no-trade,
+  equal-weight, and deterministic Wikimyei SDU.
+- Baseline policies and deterministic Wikimyei policy share the same execution
+  profile, reward contract, source range, and accounting assumptions.
+- Reports separate projection metrics, portfolio metrics, and execution
+  feasibility metrics.
+- Reports include policy-wise final equity, total log growth, drawdown,
+  requested/executed/rejected turnover, transaction costs, target tracking
+  error, invalid trace count, rejects, partial fills, and synthetic-market step
+  count.
+- Reports include Cajtucu trace presence/validity counters and cost anatomy:
+  fee, spread, slippage, and total transaction cost.
+- Aggregate metrics declare scope: step, episode, policy, bundle, or experiment.
+- Time-law counters remain explicit and fail closed on leakage.
+- Marshal does not claim Lattice satisfaction, policy quality, training
+  authority, market readiness, or deployment readiness.
+
+### 2. Environment Lattice Targets
+
+Goal:
 
 ```text
-Refine the environment-era Lattice/Marshal design without implementing it.
-Separate replay_environment artifact proof, policy-training readiness, and
-policy acceptance. Decide which future targets are dispatchable, which are
-inspection-only, which remain disabled policy gates, and what bounded Marshal
-handoff contract is required before Runtime may parallelize environment jobs.
+Add policy-neutral Lattice evidence and narrow proof targets for replay
+environment health before any trainable policy is introduced.
 ```
 
-Initial scope:
+The cost-aware rollout report is the evidence producer. The next milestone is
+to make Lattice read those durable Runtime/Kikijyeba/Cajtucu artifacts and
+prove only artifact readiness.
 
-- Run episodes over graph-anchor source ranges, parallel across episodes and
-  sequential within each episode.
-- Keep direct asset/reference edge orientation explicit when deriving realized
-  asset/base log returns from historical future close coordinates; routed
-  projections remain out of V1.
-- Carry `runtime_run_id`, `environment_run_id`, requested range, resolved cursor
-  identity, batch cursor token, accepted anchor interval, and accepted anchor
-  keys for every episode.
-- Validate `AllocationBelief` projection semantics by comparing
-  `phi_asset - phi_reference` against realized executable asset/base log
-  returns.
-- Emit per-step observation/action/execution/ledger/reward evidence and
-  per-episode summaries with projection MAE, bias, directional accuracy,
-  interval coverage, log growth, drawdown, turnover, costs, and warnings.
-- Compare deterministic policies against simple baselines under the same
-  accounting and execution assumptions.
-- Emit Cajtucu-ready step, episode, experiment, and policy-comparison artifact
-  schemas without creating the `cajtucu` pillar before its evaluation boundary
-  is defined.
+Initial targets/facts should cover:
 
-## Not Active Here
+- no future observation leakage
+- train/validation/test range separation
+- resolved cursor identity and accepted range identity
+- action schema identity
+- reward definition identity
+- Cajtucu execution trace validity
+- rollout completeness and boundedness
+- projection-validation coverage
+- policy identity and method identity
 
-Do not redispatch these from this root roadmap:
+The first target is now active as a non-dispatchable artifact proof:
 
 ```text
-multi-target scheduling
-dependency traversal
-automatic config editing
+replay_environment_artifact_ready
+```
+
+It proves artifact completeness, lineage, schema identity, report digest
+identity, source order, bounded parallelism, time-law cleanliness, and required
+projection and Cajtucu counters. It does not prove profitability, policy
+quality, projection economic validity, market readiness, or deployment
+readiness.
+
+Implementation checkpoint:
+
+```text
+Goal: replay_environment_artifact_ready.v1
+
+Status:
+Implemented as a Lattice artifact-readiness target and fact proof path.
+
+Bound evidence:
+- replay report digest and runtime/environment/experiment identity
+- execution_profile_digest and policy_set_digest
+- time-law step counters and leakage counters
+- projection-validation counters
+- Cajtucu trace validity, reject, synthetic-market, order, notional, cost, and
+  target-tracking counters
+- authority denials
+
+Verified:
+- Lattice scanner/fact summary tests
+- Lattice target proof tests
+- Lattice Hero build
+- hero.lattice.inspect exposes replay_environment_artifact_ready as
+  artifact_readiness, non-dispatchable, and non-authoritative
+```
+
+### 3. Policy Training Artifact Contract V1
+
+Goal:
+
+```text
+Define the artifact and anti-leakage contract for trainable policies before
+implementing PPO.
+```
+
+Milestone name:
+
+```text
+policy_training_artifact_contract.v1
+```
+
+The policy artifact contract must bind:
+
+```text
+policy_id
+policy_kind
+policy_architecture_digest
+training_config_digest
+training_range_digest
+validation_range_digest
+test_range_digest
+environment_contract_id
+observation_schema_digest
+action_schema_digest
+reward_contract_digest
+execution_profile_digest
+training_schedule_mode
+causal_schedule_schema_id
+causal_schedule_digest
+causal_schedule_cursor_key_kind
+causal_schedule_no_future_snapshot_use_source
+causal_schedule_no_future_snapshot_use
+normalization_fit_range_digest
+replay_buffer_source_range_digest
+early_stopping_policy_digest
+hyperparameter_selection_policy_digest
+random_seed
+parent_checkpoint_digest
+checkpoint_digest
+parent forecast/observer/allocation/environment evidence digests
+```
+
+Hard rule:
+
+```text
+Training may see only training ranges.
+Validation may compare or select under explicit selector policy.
+Test remains sealed until final report.
+
+For readiness-grade policy training, every representation, MDN,
+observer/belief, normalization, calibration, covariance/coupler, replay-buffer,
+reward-baseline, and policy snapshot used in a rollout block must have been
+usable before that block began. Train/validation/test disjointness is necessary,
+but not sufficient.
+```
+
+No optimizer state, normalization, calibration, covariance/coupler, reward
+baseline, replay buffer, early-stop decision, or hyperparameter choice may be
+fit using future validation/test information. Target-label, reward, and
+trajectory availability must be no later than the artifact `usable_from_key`.
+
+Full-window same-range upstream training is quarantined as:
+
+```text
+offline_full_window_research
+```
+
+It can remain useful for diagnostics and ablations, but it cannot satisfy
+policy_training_artifact_ready, policy-training readiness, rollout readiness, or
+market-readiness claims.
+
+Implementation checkpoint:
+
+```text
+Goal: policy_training_artifact_contract.v1
+
+Status:
+Implemented at the Lattice artifact-readiness layer.
+
+Bound evidence:
+- policy identity, kind, architecture digest, config digest, random seed, parent
+  checkpoint digest, and produced checkpoint digest
+- training, validation, and test range digests
+- environment, observation, action, reward, and Cajtucu execution profile
+  identities
+- causal walk-forward schedule mode/schema/digest and no-future-snapshot-use
+  evidence derived from artifact fit/use ledgers
+- typed cursor-key ordering and rejected opaque cursor keys
+- normalization-fit range, replay-buffer source range, reward-baseline
+  isolation, label/reward/trajectory availability, early-stopping policy,
+  hyperparameter selector policy, and sealed test-access evidence
+- parent forecast-eval, observer-belief, allocation-engine, and replay-
+  environment fact digests
+- authority denials
+
+Verified:
+- Lattice exposure scanner/fact summary tests
+- Lattice target proof tests
+- active Lattice target policy_training_artifact_ready
+```
+
+PPO or any trainable policy still must enter as a Runtime-owned job before
+Marshal can dispatch it. The current Runtime surface validates the
+policy-training contract only; executable training remains future work. Marshal
+coordinates bounded handoffs, Runtime owns execution when a runner exists, and
+Lattice reads the artifacts.
+
+### 4. Runtime Policy-Training Job Contract V1
+
+Goal:
+
+```text
+Define the bounded Runtime contract for future policy_training artifacts without
+giving Marshal, Lattice, or the policy itself hidden execution or selection
+authority.
+```
+
+Milestone name:
+
+```text
+runtime_policy_training_job_contract.v1
+```
+
+The Runtime contract should define:
+
+- job kind and producer component family
+- training/validation/test range inputs and disjointness checks
+- environment contract id and replay batch identity
+- observation/action/reward/execution profile digests
+- causal walk-forward schedule mode/schema/digest
+- causal schedule cursor-key ordering and derived no-future-snapshot source
+- max episodes, workers, attempts, and wall-clock budget
+- resume ledger and idempotency identity
+- policy checkpoint artifact schema and digest rules
+- selector policy and sealed-test access rules
+- terminal stop condition and post-run Lattice target to recheck
+
+Implementation checkpoint:
+
+```text
+Status:
+Implemented as a Runtime contract-only job surface.
+
+Runtime additions:
+- runtime_job_kind_t::policy_training
+- job manifest naming/chain helpers for policy_training
+- kikijyeba.runtime.policy_training_job_contract.v1
+- hero.runtime.run operation=policy_training requested_mode=plan|dry_run
+- deterministic contract digest and contract packet
+- execute-mode refusal:
+  E_RUNTIME_POLICY_TRAINING_EXECUTION_NOT_IMPLEMENTED
+
+Contract checks:
+- policy id/kind/architecture/config digests are required
+- training, validation, and test range digests are required and must differ
+- normalization fit range must equal training range
+- replay buffer source range must equal training range
+- observation/action/reward/execution profile digests are required
+- training_schedule_mode must be causal_walk_forward_training.v1 for readiness
+- causal schedule schema/digest/cursor-key kind are required
+- causal_schedule_no_future_snapshot_use_source must be
+  derived_from_artifact_fit_use_ledgers
+- causal_schedule_no_future_snapshot_use must be true
+- offline_full_window_research cannot satisfy readiness
+- early-stopping and hyperparameter-selection policy digests are required
+- parent replay-environment fact digest is required
+- max episodes, max steps, max parallel jobs, and wall-clock bounds must be
+  positive
+- live execution is forbidden
+
+Verified:
+- Runtime Hero focused wave/rollout/policy-training handler test
+- Runtime MCP schema compatibility
+- live hero.runtime.run operation=policy_training positive plan smoke
+- live execute refusal smoke
+- live train/validation-overlap refusal smoke
+```
+
+No PPO optimizer exists yet. Runtime can validate the handoff contract, but it
+does not train, mutate policy checkpoints, select policies, or claim Lattice
+target satisfaction. Marshal still cannot train; it may only prepare a bounded
+handoff once the next Runtime trainer exists. Lattice proves only artifact
+completeness and anti-leakage structure, not policy quality.
+
+### 5. Causal Policy-Training Schedule Contract V1
+
+Goal:
+
+```text
+Prevent future-within-training leakage before PPO or any other trainable policy
+can produce readiness evidence.
+```
+
+Milestone name:
+
+```text
+causal_policy_training_schedule_contract.v1
+```
+
+Operative law:
+
+```text
+At block B_k start:
+  use SnapshotFamily_{k-1}
+
+During B_k:
+  observations use prior representation/MDN/observer snapshots
+  actions use the prior policy snapshot
+  Cajtucu executes under the bound paper execution profile
+  rewards use the bound reward contract
+  trajectory evidence is recorded
+
+After B_k closes:
+  representation, MDN, observer fitted components, and policy may be updated
+  to SnapshotFamily_k
+
+At B_{k+1}:
+  SnapshotFamily_k may become usable
+```
+
+Required contract fields:
+
+```text
+artifact_fit_ledger:
+  artifact_digest
+  artifact_kind
+  fit_input_cutoff_key
+  fit_target_cutoff_key
+  normalization_cutoff_key
+  calibration_cutoff_key
+  covariance_fit_cutoff_key
+  replay_buffer_cutoff_key
+  fit_cutoff_key
+  target_label_available_from_key
+  reward_available_from_key
+  trajectory_usable_from_key
+  usable_from_key
+  embargo_policy_id
+  embargo_steps
+  training_block_id
+  parent_artifact_digests
+
+artifact_use_ledger:
+  block_id
+  block_cursor_begin
+  block_cursor_end
+  representation_snapshot_digest_used
+  mdn_snapshot_digest_used
+  observer_belief_snapshot_digest_used
+  policy_snapshot_digest_used
+  normalization_snapshot_digest_used
+  calibration_snapshot_digest_used
+  covariance_coupler_snapshot_digest_used
+  replay_buffer_snapshot_digest_used
+  reward_baseline_snapshot_digest_used
+  no_future_snapshot_use_source
+```
+
+Acceptance:
+
+- same-block snapshot use is rejected
+- snapshots with usable_from_key after block_cursor_begin are rejected
+- cursor keys require explicit ordering kind; opaque keys are rejected
+- no_future_snapshot_use is derived from artifact fit/use ledgers rather than
+  trusted as a caller assertion
+- normalization, calibration, covariance/coupler, replay-buffer, and
+  reward-baseline future-use are rejected
+- target-label, reward, and trajectory availability must be no later than the
+  artifact `usable_from_key`
+- schedule-less policy-training contracts are rejected
+- offline_full_window_research is allowed only as non-readiness diagnostic
+  evidence
+- batch_final_refit_candidate must declare validation_no_longer_proof and
+  sealed_test_required
+- Lattice policy_training_artifact_ready requires causal schedule identity and
+  no_future_snapshot_use
+
+### 6. PPO V0
+
+Goal:
+
+```text
+Implement PPO as a policy inside the existing environment, not as a separate
+simulator or shortcut around Cajtucu/Runtime/Lattice.
+```
+
+PPO must consume the same policy input and emit the same action:
+
+```text
+observation_t or narrowed policy_input_t
+  -> action_t = target risky-node weights + graph-node reserve weight
+```
+
+Acceptance:
+
+- PPO training runs only on bounded historical training windows.
+- PPO training must use causal_walk_forward_training.v1 schedule evidence.
+- PPO rollout/evaluation uses Runtime replay and Cajtucu paper execution.
+- Baselines and PPO share the same reward and execution profile.
+- Lattice proves training/validation/test separation and policy artifact
+  lineage.
+- Marshal coordinates bounded handoffs but does not train, select, prove, or
+  tune policies by itself.
+
+### 7. Tsodao Settings Protection
+
+Goal:
+
+```text
+Introduce Tsodao after trainable-policy artifacts and selection evidence exist,
+so approved settings cannot drift silently.
+```
+
+Tsodao should protect:
+
+- approved environment profiles
+- approved Cajtucu execution profiles
+- approved reward definitions
+- approved policy-training configs
+- approved hyperparameters
+- approved selector/evaluation split policies
+- promotion criteria and evidence digests
+
+Tsodao does not search for optimal settings. It records and protects settings
+that were selected by an explicit evidence process.
+
+For V1, Tsodao should protect final promoted settings and record candidate
+setting digests as lineage. It should not guard every experimental candidate.
+
+### 8. Paper-Online Readiness Contract V1
+
+Goal:
+
+```text
+Define what must be true before any online paper session starts.
+```
+
+Milestone name:
+
+```text
+paper_online_readiness_contract.v1
+```
+
+Required design points:
+
+- market data staleness policy
+- persistent paper ledger recovery
+- idempotent execution intent handling
+- duplicate action/execution protection
+- session start/stop semantics
+- direct-edge universe validation
+- synthetic execution markets forbidden
+- Cajtucu paper execution profile locked by digest
+- reward/report artifact path policy
+- operator abort/kill-switch semantics
+- clock and timestamp policy
+
+This is a readiness contract only. It does not run paper-online.
+
+### 9. Paper-Online
+
+Goal:
+
+```text
+live market stream
+  -> Kikijyeba paper_online world
+  -> policy
+  -> Cajtucu paper execution
+  -> ledger
+  -> Runtime/Lattice/Marshal evidence
+```
+
+No real capital. The same action, execution, ledger, reward, and evidence
+contracts from replay must be reused.
+
+### 10. Live
+
+Goal:
+
+```text
+Only after replay, policy training, Tsodao settings protection, paper-online,
+and Lattice readiness proofs are mature.
+```
+
+Live requires:
+
+- Cajtucu broker adapter
+- no direct policy-to-broker path
+- strict execution limits and kill switches
+- Tsodao-approved settings
+- Lattice readiness proof
+- Marshal handoff receipt
+- Runtime execution authority
+
+## Not Active
+
+Do not start these without a new finite goal:
+
+```text
+PPO before policy-training anti-leakage contract
+paper-online before replay evidence and Cajtucu traces are mature
+live broker APIs before paper-online
+allocator tuning against one validation window
 checkpoint ranking by validation metric
-best-model selection
-Marshal-owned performance gates
+market-readiness or deployment-readiness policy gates
+unbounded Marshal scheduling
 Codex-in-the-loop public evaluation
-unbounded objective agents
-completed cleanup/testing receipts
 ```
-
-Open a new finite goal and update the relevant subsystem roadmap when one of
-those items becomes current work.

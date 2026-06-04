@@ -362,9 +362,9 @@ inline void append_json_double_field(std::ostringstream &out,
 
 } // namespace rollout_marshal_detail
 
-[[nodiscard]] inline std::string rollout_asset_universe_text(
-    const std::string &base_reserve_node_id,
-    const std::vector<std::string> &risky_node_ids) {
+[[nodiscard]] inline std::string
+rollout_asset_universe_text(const std::string &base_reserve_node_id,
+                            const std::vector<std::string> &risky_node_ids) {
   namespace detail = rollout_marshal_detail;
   std::ostringstream out;
   detail::append_kv(out, "schema_version",
@@ -374,9 +374,9 @@ inline void append_json_double_field(std::ostringstream &out,
   return out.str();
 }
 
-[[nodiscard]] inline std::string rollout_asset_universe_digest(
-    const std::string &base_reserve_node_id,
-    const std::vector<std::string> &risky_node_ids) {
+[[nodiscard]] inline std::string
+rollout_asset_universe_digest(const std::string &base_reserve_node_id,
+                              const std::vector<std::string> &risky_node_ids) {
   return marshal_digest_for_text(
       k_marshal_rollout_asset_universe_schema_v1,
       rollout_asset_universe_text(base_reserve_node_id, risky_node_ids));
@@ -395,9 +395,8 @@ rollout_policy_set_text(const std::vector<std::string> &resolved_policy_ids) {
 
 [[nodiscard]] inline std::string
 rollout_policy_set_digest(const std::vector<std::string> &resolved_policy_ids) {
-  return marshal_digest_for_text(
-      "kikijyeba.marshal.rollout_policy_set.v1",
-      rollout_policy_set_text(resolved_policy_ids));
+  return marshal_digest_for_text("kikijyeba.marshal.rollout_policy_set.v1",
+                                 rollout_policy_set_text(resolved_policy_ids));
 }
 
 [[nodiscard]] inline std::string canonical_rollout_execution_profile_text(
@@ -590,6 +589,10 @@ validate_rollout_request(const marshal_rollout_request_t &request) {
   if (!std::isfinite(profile.linear_transaction_cost_rate) ||
       profile.linear_transaction_cost_rate < 0.0) {
     refusals.emplace_back("invalid_linear_transaction_cost_rate");
+  }
+  if (std::isfinite(profile.linear_transaction_cost_rate) &&
+      profile.linear_transaction_cost_rate == 0.0) {
+    refusals.emplace_back("nonzero_cost_required_for_validation_rollout");
   }
   if (!std::isfinite(profile.equity_mismatch_tolerance) ||
       profile.equity_mismatch_tolerance < 0.0) {
@@ -805,6 +808,14 @@ prepare_rollout_plan(const marshal_rollout_request_t &request) {
               << std::setprecision(17)
               << request.execution_profile.linear_transaction_cost_rate;
     }
+    if (!plan.execution_profile_digest.empty()) {
+      command << " --replay-execution-profile-digest "
+              << detail::shell_quote(plan.execution_profile_digest);
+    }
+    if (!plan.policy_set_digest.empty()) {
+      command << " --replay-policy-set-digest "
+              << detail::shell_quote(plan.policy_set_digest);
+    }
     plan.replay_command_template = command.str();
   }
 
@@ -822,8 +833,8 @@ prepare_rollout_plan(const marshal_rollout_request_t &request) {
                                    profile.schema_version, &first);
   detail::append_json_string_field(out, "execution_backend_id",
                                    profile.execution_backend_id, &first);
-  detail::append_json_string_field(out, "cost_model_id",
-                                   profile.cost_model_id, &first);
+  detail::append_json_string_field(out, "cost_model_id", profile.cost_model_id,
+                                   &first);
   detail::append_json_bool_field(out, "allow_synthetic_direct_edges",
                                  profile.allow_synthetic_direct_edges, &first);
   detail::append_json_string_field(out, "synthetic_edge_research_reason",

@@ -318,7 +318,21 @@ Runtime agent workflow:
    bound/match booleans, and whether an indexed report path was rejected. These
    fields are operator visibility; Lattice replay targets remain the proof
    authority.
-7. `hero.runtime.reset requested_mode=plan|execute` previews and, when
+7. `hero.runtime.run operation=policy_training requested_mode=plan|dry_run`
+   validates a contract-only trainable-policy job handoff. It returns a
+   `kikijyeba.runtime.policy_training_job_contract.v1` packet and digest binding
+   policy identity, train/validation/test range digests, normalization and
+   replay-buffer isolation, environment/action/reward/execution-profile
+   identity, causal walk-forward schedule identity, typed cursor-key ordering,
+   ledger-derived no-future-snapshot source, parent replay-environment
+   evidence, and finite bounds. Schedule-less policy training, caller-asserted
+   no-future-snapshot claims, opaque cursor keys, late target-label/reward/
+   trajectory availability, and `offline_full_window_research` cannot satisfy
+   readiness-grade contracts.
+   `requested_mode=execute` is refused until Runtime has a dedicated
+   trainable-policy runner; this surface does not run PPO, write checkpoints, or
+   claim Lattice target satisfaction.
+8. `hero.runtime.reset requested_mode=plan|execute` previews and, when
    explicitly enabled, clears the runtime artifact root for developer reset
    workflows.
 

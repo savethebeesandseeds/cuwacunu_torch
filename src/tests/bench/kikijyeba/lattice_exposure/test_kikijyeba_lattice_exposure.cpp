@@ -803,6 +803,8 @@ int main() {
           "experiment_id=replay_experiment_1\n"
           "runtime_run_id=runtime_run_1\n"
           "environment_run_id=replay_env_1\n"
+          "execution_profile_digest=execution_profile_digest_1\n"
+          "policy_set_digest=policy_set_digest_1\n"
           "replay_environment_version=kikijyeba.environment.replay.v1\n"
           "replay_environment_component_assembly_id=replay_environment_v1\n"
           "replay_environment_world_mode=historical_replay\n"
@@ -859,6 +861,21 @@ int main() {
           "time_law_future_observation_violation_count=0\n"
           "mixed_future_realization_key_count=0\n"
           "projection_validation_step_count=4\n"
+          "cajtucu_valid_trace_count=4\n"
+          "cajtucu_invalid_trace_count=0\n"
+          "cajtucu_missing_direct_reserve_edge_count=0\n"
+          "cajtucu_nontradable_edge_reject_count=0\n"
+          "cajtucu_below_min_notional_reject_count=0\n"
+          "cajtucu_above_max_notional_reject_count=0\n"
+          "cajtucu_insufficient_reserve_reject_count=0\n"
+          "cajtucu_insufficient_units_reject_count=0\n"
+          "cajtucu_invalid_sell_price_count=0\n"
+          "cajtucu_large_equity_mismatch_count=0\n"
+          "cajtucu_synthetic_market_step_count=0\n"
+          "requested_order_count=4\n"
+          "executed_order_count=4\n"
+          "rejected_order_count=0\n"
+          "partial_order_count=0\n"
           "episode_count=2\n"
           "episode_0_requested_anchor_index_begin=10\n"
           "episode_0_requested_anchor_index_end=12\n"
@@ -883,6 +900,18 @@ int main() {
           "mean_total_reward=1.5\n"
           "mean_total_log_growth=0.03\n"
           "mean_final_equity_base=103.0\n"
+          "mean_max_drawdown=0.08\n"
+          "mean_total_turnover=0.40\n"
+          "mean_total_transaction_cost_base=0.015\n"
+          "requested_notional_base=10.0\n"
+          "executed_notional_base=9.8\n"
+          "rejected_notional_base=0.0\n"
+          "fill_ratio=0.98\n"
+          "fee_cost_base=0.006\n"
+          "spread_cost_base=0.005\n"
+          "slippage_cost_base=0.004\n"
+          "mean_target_weight_error_l1=0.02\n"
+          "mean_target_weight_error_linf=0.01\n"
           "mean_projection_mae=0.012\n"
           "mean_projection_signed_bias=-0.002\n"
           "mean_projection_directional_accuracy=0.75\n"
@@ -1499,8 +1528,12 @@ int main() {
       fact_catalog_summary.families.end(), [](const auto &summary) {
         return summary.family == "replay_environment";
       });
+  const auto policy_training_family = std::find_if(
+      fact_catalog_summary.families.begin(),
+      fact_catalog_summary.families.end(),
+      [](const auto &summary) { return summary.family == "policy_training"; });
   check(
-      fact_family_registry.size() == 13 &&
+      fact_family_registry.size() == 14 &&
           exposure::parse_lattice_fact_family("source_analytics").has_value() &&
           exposure::parse_lattice_fact_family(
               "kikijyeba.lattice.source_analytics.v1")
@@ -1532,7 +1565,11 @@ int main() {
           exposure::parse_lattice_fact_family(
               "kikijyeba.lattice.replay_environment.v1")
               .has_value() &&
-          fact_catalog_summary.family_count == 13 &&
+          exposure::parse_lattice_fact_family("policy_training").has_value() &&
+          exposure::parse_lattice_fact_family(
+              "kikijyeba.lattice.policy_training.v1")
+              .has_value() &&
+          fact_catalog_summary.family_count == 14 &&
           fact_catalog_summary.target_kind_family_count == 0 &&
           fact_catalog_summary.dispatchable_family_count == 0 &&
           fact_catalog_summary.runtime_executor_family_count == 0 &&
@@ -1611,13 +1648,23 @@ int main() {
           !replay_environment_family->readiness_authority &&
           !replay_environment_family->coverage_authority &&
           !replay_environment_family->leakage_authority &&
-          !replay_environment_family->contract_identity_authority,
+          !replay_environment_family->contract_identity_authority &&
+          policy_training_family != fact_catalog_summary.families.end() &&
+          policy_training_family->fact_count == 0 &&
+          policy_training_family->parent_exposure_bound_count == 0 &&
+          !policy_training_family->target_kind &&
+          !policy_training_family->dispatchable &&
+          !policy_training_family->runtime_executor &&
+          !policy_training_family->readiness_authority &&
+          !policy_training_family->coverage_authority &&
+          !policy_training_family->leakage_authority &&
+          !policy_training_family->contract_identity_authority,
       "fact catalog lists source analytics, target transforms, and forecast "
       "baselines/evals plus observer/allocation evidence as non-target, "
       "non-dispatchable fact families while replay remains parked by default");
   check(fact_integrity_summary.schema ==
                 "kikijyeba.lattice.fact_integrity_summary.v1" &&
-            fact_integrity_summary.inspected_family_count == 13 &&
+            fact_integrity_summary.inspected_family_count == 14 &&
             fact_integrity_summary.reported_family_count == 4 &&
             fact_integrity_summary.relation_declared_count == 7 &&
             fact_integrity_summary.relation_bound_count == 1 &&
@@ -1671,6 +1718,7 @@ int main() {
       runtime_index_cache.observer_belief_fact_count +
       runtime_index_cache.allocation_engine_fact_count +
       runtime_index_cache.replay_environment_fact_count +
+      runtime_index_cache.policy_training_fact_count +
       runtime_index_cache.selection_signal_fact_count +
       runtime_index_cache.representation_support_fact_count;
   check(runtime_index_cache.schema ==
@@ -1690,6 +1738,7 @@ int main() {
             runtime_index_cache.observer_belief_fact_count == 1 &&
             runtime_index_cache.allocation_engine_fact_count == 1 &&
             runtime_index_cache.replay_environment_fact_count == 0 &&
+            runtime_index_cache.policy_training_fact_count == 0 &&
             runtime_index_cache.representation_support_fact_count == 4 &&
             static_cast<std::int64_t>(runtime_index_cache.rows.size()) ==
                 expected_runtime_index_rows &&
@@ -1914,6 +1963,194 @@ int main() {
             stale_header_only_runtime_index_cache.issues.empty(),
         "header-only runtime index validation stays an explicit structural "
         "check, not a freshness proof");
+
+  const auto &policy_parent_forecast_eval =
+      parked_environment_scan.ledger.forecast_eval_facts().front();
+  const auto &policy_parent_observer_belief =
+      parked_environment_scan.ledger.observer_belief_facts().front();
+  const auto &policy_parent_allocation_engine =
+      parked_environment_scan.ledger.allocation_engine_facts().front();
+  const auto &policy_parent_replay_environment =
+      parked_environment_scan.ledger.replay_environment_facts().front();
+  std::ostringstream policy_training_sidecar;
+  policy_training_sidecar
+      << "schema=kikijyeba.lattice.policy_training.v1\n"
+      << "policy_id=wikimyei.policy.rl.ppo_portfolio.v0\n"
+      << "policy_kind=ppo_policy_adapter\n"
+      << "policy_architecture_digest=policy_architecture_1\n"
+      << "training_config_digest=policy_training_config_1\n"
+      << "training_range_digest=train_range_digest_1\n"
+      << "validation_range_digest=validation_range_digest_1\n"
+      << "test_range_digest=test_range_digest_1\n"
+      << "environment_contract_id=kikijyeba.environment.replay.v1\n"
+      << "observation_schema_digest=observation_schema_1\n"
+      << "action_schema_digest="
+         "kikijyeba.environment.action.target_weights.v1\n"
+      << "reward_contract_digest=reward_contract_1\n"
+      << "execution_profile_digest="
+      << policy_parent_replay_environment.execution_profile_digest << "\n"
+      << "training_schedule_mode=causal_walk_forward_training.v1\n"
+      << "causal_schedule_schema_id="
+         "kikijyeba.runtime.policy_training_causal_schedule.v1\n"
+      << "causal_schedule_digest=causal_schedule_digest_1\n"
+      << "causal_schedule_cursor_key_kind=numeric_anchor_index\n"
+      << "causal_schedule_no_future_snapshot_use_source="
+         "derived_from_artifact_fit_use_ledgers\n"
+      << "normalization_fit_range_digest=train_range_digest_1\n"
+      << "replay_buffer_source_range_digest=train_range_digest_1\n"
+      << "early_stopping_policy_digest=early_stopping_validation_1\n"
+      << "hyperparameter_selection_policy_digest="
+         "hyperparameter_selection_validation_1\n"
+      << "selector_split=validation\n"
+      << "selector_policy_digest=selector_policy_1\n"
+      << "parent_checkpoint_digest=sdu_seed_checkpoint_1\n"
+      << "checkpoint_digest=ppo_checkpoint_1\n"
+      << "parent_forecast_eval_fact_digest="
+      << exposure::forecast_eval_fact_digest(policy_parent_forecast_eval)
+      << "\n"
+      << "parent_observer_belief_fact_digest="
+      << exposure::observer_belief_fact_digest(policy_parent_observer_belief)
+      << "\n"
+      << "parent_allocation_engine_fact_digest="
+      << exposure::allocation_engine_fact_digest(
+             policy_parent_allocation_engine)
+      << "\n"
+      << "parent_replay_environment_fact_digest="
+      << exposure::replay_environment_fact_digest(
+             policy_parent_replay_environment)
+      << "\n"
+      << "random_seed=0\n"
+      << "training_range_disjoint_validation=true\n"
+      << "training_range_disjoint_test=true\n"
+      << "validation_range_disjoint_test=true\n"
+      << "normalization_fit_training_only=true\n"
+      << "replay_buffer_training_only=true\n"
+      << "reward_baseline_training_only=true\n"
+      << "early_stopping_uses_validation_only=true\n"
+      << "hyperparameter_selection_uses_validation_only=true\n"
+      << "test_sealed_until_final_report=true\n"
+      << "test_first_access_after_selection=true\n"
+      << "runtime_job_kind_bound=true\n"
+      << "policy_checkpoint_written=true\n"
+      << "causal_schedule_readiness_eligible=true\n"
+      << "causal_schedule_no_future_snapshot_use=true\n"
+      << "offline_full_window_research=false\n"
+      << "artifact_evidence=true\n"
+      << "visibility_only=true\n"
+      << "runtime_trainer=false\n"
+      << "policy_training_authority=false\n"
+      << "policy_selector=false\n";
+  write_text(channel_mdn_dir / "lattice.policy_training.fact",
+             policy_training_sidecar.str());
+  const auto policy_training_scan =
+      exposure::scan_exposure_ledger_from_runtime_root(
+          root, train_context, parked_environment_scan_options);
+  check(policy_training_scan.ledger.policy_training_facts().size() == 1,
+        "explicit replay scan derives policy-training artifact evidence when "
+        "a policy-training sidecar is present");
+  const auto &policy_training_fact =
+      policy_training_scan.ledger.policy_training_facts().front();
+  const auto policy_training_summary = exposure::summarize_policy_trainings(
+      policy_training_scan.ledger.facts(),
+      policy_training_scan.ledger.policy_training_facts(),
+      policy_training_scan.ledger.forecast_eval_facts(),
+      policy_training_scan.ledger.observer_belief_facts(),
+      policy_training_scan.ledger.allocation_engine_facts(),
+      policy_training_scan.ledger.replay_environment_facts());
+  check(
+      policy_training_fact.random_seed == 0 &&
+          policy_training_fact.random_seed_bound &&
+          policy_training_fact.training_range_disjoint_validation &&
+          policy_training_fact.training_range_disjoint_test &&
+          policy_training_fact.validation_range_disjoint_test &&
+          policy_training_fact.normalization_fit_training_only &&
+          policy_training_fact.replay_buffer_training_only &&
+          policy_training_fact.reward_baseline_training_only &&
+          policy_training_fact.early_stopping_uses_validation_only &&
+          policy_training_fact.hyperparameter_selection_uses_validation_only &&
+          policy_training_fact.test_sealed_until_final_report &&
+          policy_training_fact.test_first_access_after_selection &&
+          policy_training_fact.runtime_job_kind_bound &&
+          policy_training_fact.policy_checkpoint_written &&
+          policy_training_fact.training_schedule_mode ==
+              "causal_walk_forward_training.v1" &&
+          !policy_training_fact.causal_schedule_digest.empty() &&
+          policy_training_fact.causal_schedule_cursor_key_kind ==
+              "numeric_anchor_index" &&
+          policy_training_fact.causal_schedule_no_future_snapshot_use_source ==
+              "derived_from_artifact_fit_use_ledgers" &&
+          policy_training_fact.causal_schedule_readiness_eligible &&
+          policy_training_fact.causal_schedule_no_future_snapshot_use &&
+          !policy_training_fact.offline_full_window_research &&
+          exposure::policy_training_fact_issues(policy_training_fact).empty() &&
+          policy_training_summary.policy_training_fact_count == 1 &&
+          policy_training_summary.policy_id_bound_count == 1 &&
+          policy_training_summary.training_config_digest_bound_count == 1 &&
+          policy_training_summary.training_range_digest_bound_count == 1 &&
+          policy_training_summary.validation_range_digest_bound_count == 1 &&
+          policy_training_summary.test_range_digest_bound_count == 1 &&
+          policy_training_summary.execution_profile_digest_bound_count == 1 &&
+          policy_training_summary.causal_schedule_digest_bound_count == 1 &&
+          policy_training_summary.causal_schedule_ready_count == 1 &&
+          policy_training_summary.causal_schedule_derived_source_count == 1 &&
+          policy_training_summary.no_future_snapshot_use_count == 1 &&
+          policy_training_summary.offline_full_window_research_count == 0 &&
+          policy_training_summary.random_seed_bound_count == 1 &&
+          policy_training_summary.forecast_eval_declared_count == 1 &&
+          policy_training_summary.forecast_eval_bound_count == 1 &&
+          policy_training_summary.observer_belief_declared_count == 1 &&
+          policy_training_summary.observer_belief_bound_count == 1 &&
+          policy_training_summary.allocation_engine_declared_count == 1 &&
+          policy_training_summary.allocation_engine_bound_count == 1 &&
+          policy_training_summary.replay_environment_declared_count == 1 &&
+          policy_training_summary.replay_environment_bound_count == 1 &&
+          policy_training_summary.disjoint_range_contract_count == 1 &&
+          policy_training_summary.training_only_normalization_count == 1 &&
+          policy_training_summary.training_only_replay_buffer_count == 1 &&
+          policy_training_summary.training_only_reward_baseline_count == 1 &&
+          policy_training_summary.validation_selector_policy_count == 1 &&
+          policy_training_summary.sealed_test_count == 1 &&
+          policy_training_summary.runtime_job_kind_bound_count == 1 &&
+          policy_training_summary.policy_checkpoint_written_count == 1 &&
+          policy_training_summary.warning_count == 0 &&
+          policy_training_summary.issues.empty() &&
+          policy_training_summary.artifact_evidence &&
+          policy_training_summary.visibility_only &&
+          !policy_training_summary.runtime_trainer &&
+          !policy_training_summary.policy_training_authority &&
+          !policy_training_summary.policy_selector,
+      "policy-training artifact facts bind checkpoint lineage, split "
+      "separation, training-only normalization/replay-buffer evidence, "
+      "validation-only selector policy, sealed-test evidence, Runtime job "
+      "kind, and parent replay evidence without becoming a trainer or "
+      "policy selector");
+
+  auto policy_training_future_snapshot = policy_training_fact;
+  policy_training_future_snapshot.causal_schedule_no_future_snapshot_use =
+      false;
+  check(contains_text(exposure::policy_training_fact_issues(
+                          policy_training_future_snapshot),
+                      "causal_schedule_future_snapshot_use_not_proven"),
+        "policy-training facts reject schedule evidence that does not prove "
+        "no future snapshot use");
+
+  auto policy_training_asserted_source = policy_training_fact;
+  policy_training_asserted_source
+      .causal_schedule_no_future_snapshot_use_source = "asserted_by_caller";
+  check(contains_text(exposure::policy_training_fact_issues(
+                          policy_training_asserted_source),
+                      "unsupported_no_future_snapshot_use_source"),
+        "policy-training facts reject caller-asserted no-future snapshot "
+        "source");
+
+  auto policy_training_opaque_cursor = policy_training_fact;
+  policy_training_opaque_cursor.causal_schedule_cursor_key_kind =
+      "opaque_unsortable";
+  check(contains_text(exposure::policy_training_fact_issues(
+                          policy_training_opaque_cursor),
+                      "opaque_or_unsupported_causal_schedule_cursor_key_kind"),
+        "policy-training facts reject opaque cursor key ordering");
+
   const auto scan_receipt_summary = exposure::summarize_source_receipts(
       scan.ledger.facts(), scan.ledger.source_receipt_facts());
   check(scan_receipt_summary.exposure_fact_count == 3 &&
@@ -3653,6 +3890,9 @@ int main() {
           mdn_replay_environment.experiment_id == "replay_experiment_1" &&
           mdn_replay_environment.runtime_run_id == "runtime_run_1" &&
           mdn_replay_environment.environment_run_id == "replay_env_1" &&
+          mdn_replay_environment.execution_profile_digest ==
+              "execution_profile_digest_1" &&
+          mdn_replay_environment.policy_set_digest == "policy_set_digest_1" &&
           mdn_replay_environment.runtime_replay_batch_index_schema ==
               "kikijyeba.environment.replay.runtime_batch_index.v1" &&
           mdn_replay_environment.runtime_replay_experiment_index_schema ==
@@ -3739,11 +3979,46 @@ int main() {
               0 &&
           mdn_replay_environment.mixed_future_realization_key_count == 0 &&
           mdn_replay_environment.projection_validation_step_count == 4 &&
+          mdn_replay_environment.cajtucu_valid_trace_count == 4 &&
+          mdn_replay_environment.cajtucu_invalid_trace_count == 0 &&
+          mdn_replay_environment.cajtucu_missing_direct_reserve_edge_count ==
+              0 &&
+          mdn_replay_environment.cajtucu_nontradable_edge_reject_count == 0 &&
+          mdn_replay_environment.cajtucu_below_min_notional_reject_count == 0 &&
+          mdn_replay_environment.cajtucu_above_max_notional_reject_count == 0 &&
+          mdn_replay_environment.cajtucu_insufficient_reserve_reject_count ==
+              0 &&
+          mdn_replay_environment.cajtucu_insufficient_units_reject_count == 0 &&
+          mdn_replay_environment.cajtucu_invalid_sell_price_count == 0 &&
+          mdn_replay_environment.cajtucu_large_equity_mismatch_count == 0 &&
+          mdn_replay_environment.cajtucu_synthetic_market_step_count == 0 &&
+          mdn_replay_environment.requested_order_count == 4 &&
+          mdn_replay_environment.executed_order_count == 4 &&
+          mdn_replay_environment.rejected_order_count == 0 &&
+          mdn_replay_environment.partial_order_count == 0 &&
           std::abs(mdn_replay_environment.mean_total_reward - 1.5) < 1e-12 &&
           std::abs(mdn_replay_environment.mean_total_log_growth - 0.03) <
               1e-12 &&
           std::abs(mdn_replay_environment.mean_final_equity_base - 103.0) <
               1e-12 &&
+          std::abs(mdn_replay_environment.mean_max_drawdown - 0.08) < 1e-12 &&
+          std::abs(mdn_replay_environment.mean_total_turnover - 0.40) < 1e-12 &&
+          std::abs(mdn_replay_environment.mean_total_transaction_cost_base -
+                   0.015) < 1e-12 &&
+          std::abs(mdn_replay_environment.requested_notional_base - 10.0) <
+              1e-12 &&
+          std::abs(mdn_replay_environment.executed_notional_base - 9.8) <
+              1e-12 &&
+          std::abs(mdn_replay_environment.rejected_notional_base - 0.0) <
+              1e-12 &&
+          std::abs(mdn_replay_environment.fill_ratio - 0.98) < 1e-12 &&
+          std::abs(mdn_replay_environment.fee_cost_base - 0.006) < 1e-12 &&
+          std::abs(mdn_replay_environment.spread_cost_base - 0.005) < 1e-12 &&
+          std::abs(mdn_replay_environment.slippage_cost_base - 0.004) < 1e-12 &&
+          std::abs(mdn_replay_environment.mean_target_weight_error_l1 - 0.02) <
+              1e-12 &&
+          std::abs(mdn_replay_environment.mean_target_weight_error_linf -
+                   0.01) < 1e-12 &&
           std::abs(mdn_replay_environment.mean_projection_mae - 0.012) <
               1e-12 &&
           std::abs(mdn_replay_environment.mean_projection_signed_bias + 0.002) <
@@ -3795,6 +4070,9 @@ int main() {
           scan_replay_environment_summary.experiment_id_bound_count == 1 &&
           scan_replay_environment_summary.runtime_run_id_bound_count == 1 &&
           scan_replay_environment_summary.environment_run_id_bound_count == 1 &&
+          scan_replay_environment_summary
+                  .execution_profile_digest_bound_count == 1 &&
+          scan_replay_environment_summary.policy_set_digest_bound_count == 1 &&
           scan_replay_environment_summary.replay_contract_version_bound_count ==
               1 &&
           scan_replay_environment_summary
@@ -3885,9 +4163,23 @@ int main() {
                   .mixed_future_realization_key_count_total == 0 &&
           scan_replay_environment_summary
                   .projection_validation_step_count_total == 4 &&
+          scan_replay_environment_summary.cajtucu_valid_trace_count_total ==
+              4 &&
+          scan_replay_environment_summary.cajtucu_invalid_trace_count_total ==
+              0 &&
+          scan_replay_environment_summary
+                  .cajtucu_synthetic_market_step_count_total == 0 &&
+          scan_replay_environment_summary.requested_order_count_total == 4 &&
+          scan_replay_environment_summary.executed_order_count_total == 4 &&
+          scan_replay_environment_summary.rejected_order_count_total == 0 &&
+          scan_replay_environment_summary.partial_order_count_total == 0 &&
           scan_replay_environment_summary.missing_batch_index_count == 0 &&
           scan_replay_environment_summary.missing_experiment_index_count == 0 &&
           scan_replay_environment_summary.missing_experiment_report_count ==
+              0 &&
+          scan_replay_environment_summary
+                  .missing_execution_profile_digest_count == 0 &&
+          scan_replay_environment_summary.missing_policy_set_digest_count ==
               0 &&
           scan_replay_environment_summary.incomplete_replay_attempt_count ==
               0 &&
@@ -3897,6 +4189,22 @@ int main() {
                   .missing_time_law_step_evidence_count == 0 &&
           scan_replay_environment_summary
                   .missing_projection_validation_step_evidence_count == 0 &&
+          scan_replay_environment_summary
+                  .missing_cajtucu_trace_evidence_count == 0 &&
+          scan_replay_environment_summary.cajtucu_invalid_trace_fact_count ==
+              0 &&
+          scan_replay_environment_summary.cajtucu_synthetic_market_fact_count ==
+              0 &&
+          scan_replay_environment_summary.missing_cajtucu_cost_metric_count ==
+              0 &&
+          scan_replay_environment_summary.invalid_cajtucu_order_metric_count ==
+              0 &&
+          scan_replay_environment_summary
+                  .invalid_cajtucu_notional_metric_count == 0 &&
+          scan_replay_environment_summary.invalid_cajtucu_fill_ratio_count ==
+              0 &&
+          scan_replay_environment_summary
+                  .invalid_cajtucu_target_tracking_count == 0 &&
           scan_replay_environment_summary.time_law_violation_count == 0 &&
           scan_replay_environment_summary
                   .missing_episode_requested_range_count == 0 &&
@@ -3922,6 +4230,46 @@ int main() {
           scan_replay_environment_summary.mean_final_equity_base.count == 1 &&
           std::abs(scan_replay_environment_summary.mean_final_equity_base.mean -
                    103.0) < 1e-12 &&
+          scan_replay_environment_summary.mean_max_drawdown.count == 1 &&
+          std::abs(scan_replay_environment_summary.mean_max_drawdown.mean -
+                   0.08) < 1e-12 &&
+          scan_replay_environment_summary.mean_total_turnover.count == 1 &&
+          std::abs(scan_replay_environment_summary.mean_total_turnover.mean -
+                   0.40) < 1e-12 &&
+          scan_replay_environment_summary.mean_total_transaction_cost_base
+                  .count == 1 &&
+          std::abs(scan_replay_environment_summary
+                       .mean_total_transaction_cost_base.mean -
+                   0.015) < 1e-12 &&
+          scan_replay_environment_summary.requested_notional_base.count == 1 &&
+          std::abs(
+              scan_replay_environment_summary.requested_notional_base.mean -
+              10.0) < 1e-12 &&
+          scan_replay_environment_summary.executed_notional_base.count == 1 &&
+          std::abs(scan_replay_environment_summary.executed_notional_base.mean -
+                   9.8) < 1e-12 &&
+          scan_replay_environment_summary.fill_ratio.count == 1 &&
+          std::abs(scan_replay_environment_summary.fill_ratio.mean - 0.98) <
+              1e-12 &&
+          scan_replay_environment_summary.fee_cost_base.count == 1 &&
+          std::abs(scan_replay_environment_summary.fee_cost_base.mean - 0.006) <
+              1e-12 &&
+          scan_replay_environment_summary.spread_cost_base.count == 1 &&
+          std::abs(scan_replay_environment_summary.spread_cost_base.mean -
+                   0.005) < 1e-12 &&
+          scan_replay_environment_summary.slippage_cost_base.count == 1 &&
+          std::abs(scan_replay_environment_summary.slippage_cost_base.mean -
+                   0.004) < 1e-12 &&
+          scan_replay_environment_summary.mean_target_weight_error_l1.count ==
+              1 &&
+          std::abs(
+              scan_replay_environment_summary.mean_target_weight_error_l1.mean -
+              0.02) < 1e-12 &&
+          scan_replay_environment_summary.mean_target_weight_error_linf.count ==
+              1 &&
+          std::abs(scan_replay_environment_summary.mean_target_weight_error_linf
+                       .mean -
+                   0.01) < 1e-12 &&
           scan_replay_environment_summary.mean_projection_mae.count == 1 &&
           std::abs(scan_replay_environment_summary.mean_projection_mae.mean -
                    0.012) < 1e-12 &&
@@ -3979,6 +4327,40 @@ int main() {
             !bad_time_law_replay_environment_summary.issues.empty(),
         "replay environment time-law violations are exposed as lattice "
         "warnings for parked environment audit visibility");
+  auto missing_profile_replay_environment = mdn_replay_environment;
+  missing_profile_replay_environment.execution_profile_digest.clear();
+  missing_profile_replay_environment.policy_set_digest.clear();
+  const auto missing_profile_issues = exposure::replay_environment_fact_issues(
+      missing_profile_replay_environment);
+  check(contains_text(missing_profile_issues,
+                      "missing_execution_profile_digest") &&
+            contains_text(missing_profile_issues, "missing_policy_set_digest"),
+        "replay environment artifact readiness requires execution profile and "
+        "policy set digest binding");
+  auto bad_cajtucu_replay_environment = mdn_replay_environment;
+  bad_cajtucu_replay_environment.cajtucu_valid_trace_count = 3;
+  bad_cajtucu_replay_environment.cajtucu_invalid_trace_count = 1;
+  bad_cajtucu_replay_environment.cajtucu_synthetic_market_step_count = 1;
+  const auto bad_cajtucu_issues =
+      exposure::replay_environment_fact_issues(bad_cajtucu_replay_environment);
+  check(contains_text(bad_cajtucu_issues, "cajtucu_invalid_trace_evidence") &&
+            contains_text(bad_cajtucu_issues, "cajtucu_synthetic_market_used"),
+        "replay environment artifact readiness fails closed on invalid "
+        "Cajtucu traces and synthetic execution markets");
+  auto missing_cost_replay_environment = mdn_replay_environment;
+  missing_cost_replay_environment.requested_order_count = 0;
+  missing_cost_replay_environment.mean_total_transaction_cost_base =
+      std::numeric_limits<double>::quiet_NaN();
+  missing_cost_replay_environment.fill_ratio =
+      std::numeric_limits<double>::quiet_NaN();
+  const auto missing_cost_issues =
+      exposure::replay_environment_fact_issues(missing_cost_replay_environment);
+  check(contains_text(missing_cost_issues, "missing_cajtucu_order_evidence") &&
+            contains_text(missing_cost_issues,
+                          "missing_or_invalid_cajtucu_cost_metrics") &&
+            contains_text(missing_cost_issues, "invalid_cajtucu_fill_ratio"),
+        "replay environment artifact readiness requires cost-aware order, "
+        "cost, and fill-ratio evidence");
 
   check(rep_fact.target_component_family_id ==
             "wikimyei.representation.encoding.vicreg",

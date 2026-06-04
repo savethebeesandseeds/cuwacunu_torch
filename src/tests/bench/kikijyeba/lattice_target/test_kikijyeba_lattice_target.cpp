@@ -586,7 +586,8 @@ exposure::lattice_exposure_ledger_t artifact_readiness_ledger(
     bool forecast_missing_baseline_binding = false,
     bool forecast_missing_evaluated_checkpoint_lineage = false,
     bool forecast_model_state_mutation = false,
-    bool forecast_negative_skill = false) {
+    bool forecast_negative_skill = false,
+    bool policy_training_future_snapshot_use = false) {
   exposure::lattice_exposure_fact_t parent{};
   parent.fact_type = "exposure";
   parent.contract_fingerprint = "contract_1";
@@ -801,6 +802,7 @@ exposure::lattice_exposure_ledger_t artifact_readiness_ledger(
   observer.dock_binding_fingerprint = "dock_binding_1";
   observer.raw_potential_tradable_return = observer_authority_drift;
   ledger.add_observer_belief(observer);
+  const auto observer_digest = exposure::observer_belief_fact_digest(observer);
 
   exposure::lattice_allocation_engine_fact_t allocation{};
   allocation.parent_exposure_fact_digest = parent_digest;
@@ -839,14 +841,15 @@ exposure::lattice_exposure_ledger_t artifact_readiness_ledger(
       allocation_missing_reason_contract ? "" : "none";
   allocation.derisk_reasons = allocation_missing_reason_contract ? "" : "none";
   allocation.observer_belief_fact_digest =
-      allocation_observer_digest_mismatch
-          ? "missing_observer_belief_digest"
-          : exposure::observer_belief_fact_digest(observer);
+      allocation_observer_digest_mismatch ? "missing_observer_belief_digest"
+                                          : observer_digest;
   allocation.forecast_artifact_digest = allocation_forecast_artifact_mismatch
                                             ? "different_forecast_artifact"
                                             : observer.forecast_artifact_digest;
   allocation.base_policy_digest = "base_policy_1";
   ledger.add_allocation_engine(allocation);
+  const auto allocation_digest =
+      exposure::allocation_engine_fact_digest(allocation);
 
   exposure::lattice_replay_environment_fact_t replay{};
   replay.parent_exposure_fact_digest = parent_digest;
@@ -893,6 +896,8 @@ exposure::lattice_exposure_ledger_t artifact_readiness_ledger(
   replay.experiment_id = "replay_validation";
   replay.runtime_run_id = replay_runtime_run_id_missing ? "" : "runtime_run_1";
   replay.environment_run_id = "env_run_1";
+  replay.execution_profile_digest = "execution_profile_digest_1";
+  replay.policy_set_digest = "policy_set_digest_1";
   replay.replay_environment_version = "kikijyeba.environment.replay.v1";
   replay.replay_environment_component_assembly_id = "replay_environment_v1";
   replay.replay_environment_world_mode =
@@ -976,9 +981,36 @@ exposure::lattice_exposure_ledger_t artifact_readiness_ledger(
   if (!replay_missing_projection_step_evidence) {
     replay.projection_validation_step_count = 4;
   }
+  replay.cajtucu_valid_trace_count = 4;
+  replay.cajtucu_invalid_trace_count = 0;
+  replay.cajtucu_missing_direct_reserve_edge_count = 0;
+  replay.cajtucu_nontradable_edge_reject_count = 0;
+  replay.cajtucu_below_min_notional_reject_count = 0;
+  replay.cajtucu_above_max_notional_reject_count = 0;
+  replay.cajtucu_insufficient_reserve_reject_count = 0;
+  replay.cajtucu_insufficient_units_reject_count = 0;
+  replay.cajtucu_invalid_sell_price_count = 0;
+  replay.cajtucu_large_equity_mismatch_count = 0;
+  replay.cajtucu_synthetic_market_step_count = 0;
+  replay.requested_order_count = 4;
+  replay.executed_order_count = 4;
+  replay.rejected_order_count = 0;
+  replay.partial_order_count = 0;
   replay.mean_total_reward = 0.12;
   replay.mean_total_log_growth = 0.03;
   replay.mean_final_equity_base = 103.0;
+  replay.mean_max_drawdown = 0.08;
+  replay.mean_total_turnover = 0.40;
+  replay.mean_total_transaction_cost_base = 0.015;
+  replay.requested_notional_base = 10.0;
+  replay.executed_notional_base = 9.8;
+  replay.rejected_notional_base = 0.0;
+  replay.fill_ratio = 0.98;
+  replay.fee_cost_base = 0.006;
+  replay.spread_cost_base = 0.005;
+  replay.slippage_cost_base = 0.004;
+  replay.mean_target_weight_error_l1 = 0.02;
+  replay.mean_target_weight_error_linf = 0.01;
   if (!replay_missing_projection_metrics) {
     replay.mean_projection_mae = 0.012;
     replay.mean_projection_signed_bias = -0.002;
@@ -987,6 +1019,81 @@ exposure::lattice_exposure_ledger_t artifact_readiness_ledger(
   }
   replay.replay_executor = replay_authority_drift;
   ledger.add_replay_environment(replay);
+  const auto replay_digest = exposure::replay_environment_fact_digest(replay);
+
+  exposure::lattice_policy_training_fact_t policy_training{};
+  policy_training.parent_exposure_fact_digest = parent_digest;
+  policy_training.contract_fingerprint = parent.contract_fingerprint;
+  policy_training.protocol_id = parent.protocol_id;
+  policy_training.graph_order_fingerprint = parent.graph_order_fingerprint;
+  policy_training.source_cursor_token = parent.source_cursor_token;
+  policy_training.split_policy_fingerprint = parent.split_policy_fingerprint;
+  policy_training.component_assembly_fingerprint =
+      parent.component_assembly_fingerprint;
+  policy_training.target_component_family_id =
+      parent.target_component_family_id;
+  policy_training.job_id = parent.job_id;
+  policy_training.wave_id = parent.wave_id;
+  policy_training.job_status = parent.job_status;
+  policy_training.wave_action = parent.wave_action;
+  policy_training.split_name = parent.split_name;
+  policy_training.split_role = parent.split_role;
+  policy_training.anchor_range = parent.anchor_range;
+  policy_training.completed_anchor_range = parent.completed_anchor_range;
+  policy_training.policy_id = "wikimyei.policy.rl.ppo_portfolio.v0";
+  policy_training.policy_kind = "ppo_policy_adapter";
+  policy_training.policy_architecture_digest = "policy_architecture_1";
+  policy_training.training_config_digest = "policy_training_config_1";
+  policy_training.training_range_digest = "train_range_digest_1";
+  policy_training.validation_range_digest = "validation_range_digest_1";
+  policy_training.test_range_digest = "test_range_digest_1";
+  policy_training.environment_contract_id = "kikijyeba.environment.replay.v1";
+  policy_training.observation_schema_digest = "observation_schema_1";
+  policy_training.action_schema_digest =
+      "kikijyeba.environment.action.target_weights.v1";
+  policy_training.reward_contract_digest = "reward_contract_1";
+  policy_training.execution_profile_digest = replay.execution_profile_digest;
+  policy_training.training_schedule_mode = "causal_walk_forward_training.v1";
+  policy_training.causal_schedule_schema_id =
+      "kikijyeba.runtime.policy_training_causal_schedule.v1";
+  policy_training.causal_schedule_digest = "causal_schedule_digest_1";
+  policy_training.causal_schedule_cursor_key_kind = "numeric_anchor_index";
+  policy_training.causal_schedule_no_future_snapshot_use_source =
+      "derived_from_artifact_fit_use_ledgers";
+  policy_training.normalization_fit_range_digest =
+      policy_training.training_range_digest;
+  policy_training.replay_buffer_source_range_digest =
+      policy_training.training_range_digest;
+  policy_training.early_stopping_policy_digest = "early_stopping_validation_1";
+  policy_training.hyperparameter_selection_policy_digest =
+      "hyperparameter_selection_validation_1";
+  policy_training.selector_split = "validation";
+  policy_training.selector_policy_digest = "selector_policy_1";
+  policy_training.parent_checkpoint_digest = "sdu_seed_checkpoint_1";
+  policy_training.checkpoint_digest = "ppo_checkpoint_1";
+  policy_training.parent_forecast_eval_fact_digest = forecast_digest;
+  policy_training.parent_observer_belief_fact_digest = observer_digest;
+  policy_training.parent_allocation_engine_fact_digest = allocation_digest;
+  policy_training.parent_replay_environment_fact_digest = replay_digest;
+  policy_training.random_seed = 0;
+  policy_training.random_seed_bound = true;
+  policy_training.training_range_disjoint_validation = true;
+  policy_training.training_range_disjoint_test = true;
+  policy_training.validation_range_disjoint_test = true;
+  policy_training.normalization_fit_training_only = true;
+  policy_training.replay_buffer_training_only = true;
+  policy_training.reward_baseline_training_only = true;
+  policy_training.early_stopping_uses_validation_only = true;
+  policy_training.hyperparameter_selection_uses_validation_only = true;
+  policy_training.test_sealed_until_final_report = true;
+  policy_training.test_first_access_after_selection = true;
+  policy_training.runtime_job_kind_bound = true;
+  policy_training.policy_checkpoint_written = true;
+  policy_training.causal_schedule_readiness_eligible = true;
+  policy_training.causal_schedule_no_future_snapshot_use =
+      !policy_training_future_snapshot_use;
+  policy_training.offline_full_window_research = false;
+  ledger.add_policy_training(policy_training);
 
   return ledger;
 }
@@ -1242,6 +1349,10 @@ LATTICE_TARGET {
   const auto &active_observer =
       find_active_spec("observer_belief_artifact_ready");
   const auto &active_allocation = find_active_spec("allocation_artifact_ready");
+  const auto &active_replay =
+      find_active_spec("replay_environment_artifact_ready");
+  const auto &active_policy_training =
+      find_active_spec("policy_training_artifact_ready");
   check(active_transform.target_class == "artifact_readiness" &&
             active_transform.subject_fact_family == "target_transform" &&
             active_transform.proof_kind == "target_transform_contract_bound" &&
@@ -1350,29 +1461,55 @@ LATTICE_TARGET {
                         [](const auto &w) {
                           return w.kind == "allocation_engine" &&
                                  w.metric == "derisk_active";
-                        }),
+                        }) &&
+            active_replay.target_class == "artifact_readiness" &&
+            active_replay.subject_fact_family == "replay_environment" &&
+            active_replay.proof_kind == "replay_environment_artifact_bound" &&
+            active_replay.protocol_id == "cwu_02v" &&
+            active_replay.train_split == "validation_holdout" &&
+            active_replay.checkpoint_source == "none" &&
+            active_replay.plan_mode == "none" && active_replay.max_waves == 0 &&
+            active_replay.warning_specs.empty() &&
+            active_policy_training.target_class == "artifact_readiness" &&
+            active_policy_training.subject_fact_family == "policy_training" &&
+            active_policy_training.proof_kind ==
+                "policy_training_artifact_bound" &&
+            active_policy_training.protocol_id == "cwu_02v" &&
+            active_policy_training.component == "wikimyei.policy.trainable" &&
+            active_policy_training.train_split == "validation_holdout" &&
+            active_policy_training.checkpoint_source == "none" &&
+            active_policy_training.plan_mode == "none" &&
+            active_policy_training.max_waves == 0 &&
+            active_policy_training.warning_specs.empty(),
         "active target catalog exposes roadmap evidence families through "
         "artifact proofs, not TARGET_KIND expansion");
   const auto &artifact_proof_templates =
       target::lattice_artifact_readiness_proof_templates();
-  check(artifact_proof_templates.size() == 5 &&
+  check(artifact_proof_templates.size() == 7 &&
             target::artifact_readiness_proof_template_for_subject_fact_family(
                 "forecast_eval") != nullptr &&
             target::artifact_readiness_proof_template_for_subject_fact_family(
                 "forecast_eval")
                     ->proof_kind == "forecast_eval_artifact_bound" &&
             target::artifact_readiness_proof_template_for_subject_fact_family(
+                "replay_environment") != nullptr &&
+            target::artifact_readiness_proof_template_for_subject_fact_family(
+                "replay_environment")
+                    ->proof_kind == "replay_environment_artifact_bound" &&
+            target::artifact_readiness_proof_template_for_subject_fact_family(
+                "policy_training") != nullptr &&
+            target::artifact_readiness_proof_template_for_subject_fact_family(
+                "policy_training")
+                    ->proof_kind == "policy_training_artifact_bound" &&
+            target::artifact_readiness_proof_template_for_subject_fact_family(
                 "source_analytics") == nullptr &&
             target::artifact_readiness_proof_template_for_subject_fact_family(
                 "selection_signal") == nullptr &&
             target::artifact_readiness_proof_template_for_subject_fact_family(
-                "representation_support") == nullptr &&
-            target::artifact_readiness_proof_template_for_subject_fact_family(
-                "replay_environment") == nullptr,
+                "representation_support") == nullptr,
         "artifact-readiness proof templates explicitly enumerate proofable "
         "fact families and leave source analytics, selection signals, "
-        "representation support, and replay environment as non-promotable "
-        "catalog evidence");
+        "and representation support as non-promotable catalog evidence");
 
   const auto artifact_specs = target::decode_lattice_targets_from_dsl(R"DSL(
 LATTICE_TARGET {
@@ -1513,6 +1650,31 @@ LATTICE_TARGET {
   REQUIRE_CONTRACT_MATCH = true;
 };
 
+LATTICE_TARGET {
+  TARGET_ID = replay_environment_artifact_ready;
+  TARGET_CLASS = artifact_readiness;
+  SUBJECT_FACT_FAMILY = replay_environment;
+  SUBJECT_COMPONENT = wikimyei.inference.expected_value.mdn;
+  PROTOCOL_ID = cwu_02v;
+  SOURCE_RANGE = anchor_index;
+  ANCHOR_INDEX_BEGIN = 0;
+  ANCHOR_INDEX_END = 10;
+  REQUIRE_CONTRACT_MATCH = true;
+};
+
+LATTICE_TARGET {
+  TARGET_ID = policy_training_artifact_ready;
+  TARGET_CLASS = artifact_readiness;
+  PROOF_KIND = policy_training_artifact_bound;
+  SUBJECT_FACT_FAMILY = policy_training;
+  SUBJECT_COMPONENT = wikimyei.inference.expected_value.mdn;
+  PROTOCOL_ID = cwu_02v;
+  SOURCE_RANGE = anchor_index;
+  ANCHOR_INDEX_BEGIN = 0;
+  ANCHOR_INDEX_END = 10;
+  REQUIRE_CONTRACT_MATCH = true;
+};
+
 LATTICE_WARN {
   TARGET_ID = allocation_artifact_ready;
   WARNING_ID = allocation_turnover_high_visibility_only;
@@ -1525,7 +1687,7 @@ LATTICE_WARN {
 };
 )DSL");
 
-  check(artifact_specs.size() == 5,
+  check(artifact_specs.size() == 7,
         "artifact readiness targets decode without TARGET_KIND expansion");
   check(artifact_specs[0].target_class == "artifact_readiness" &&
             artifact_specs[0].subject_fact_family == "observer_belief" &&
@@ -1545,55 +1707,73 @@ LATTICE_WARN {
             !artifact_specs[0].require_finite_loss,
         "observer artifact readiness defaults to fact proof, no checkpoint, "
         "and no wave dispatch");
-  check(artifact_specs[1].target_class == "artifact_readiness" &&
-            artifact_specs[1].subject_fact_family == "target_transform" &&
-            artifact_specs[1].proof_kind == "target_transform_contract_bound" &&
-            artifact_specs[1].kind ==
-                target::lattice_target_kind_t::not_applicable &&
-            !artifact_specs[1].target_kind_applicable &&
-            artifact_specs[1].checkpoint_source == "none" &&
-            artifact_specs[1].plan_mode == "none" &&
-            artifact_specs[1].max_waves == 0 &&
-            artifact_specs[2].subject_fact_family == "forecast_baseline" &&
-            artifact_specs[2].proof_kind ==
-                "forecast_baseline_artifact_bound" &&
-            artifact_specs[2].kind ==
-                target::lattice_target_kind_t::not_applicable &&
-            !artifact_specs[2].target_kind_applicable &&
-            artifact_specs[2].checkpoint_source == "none" &&
-            artifact_specs[2].plan_mode == "none" &&
-            artifact_specs[2].max_waves == 0 &&
-            artifact_specs[2].warning_specs.size() == 3 &&
-            std::all_of(
-                artifact_specs[2].warning_specs.begin(),
-                artifact_specs[2].warning_specs.end(),
-                [](const auto &w) { return w.kind == "forecast_baseline"; }) &&
-            artifact_specs[3].subject_fact_family == "forecast_eval" &&
-            artifact_specs[3].proof_kind == "forecast_eval_artifact_bound" &&
-            artifact_specs[3].kind ==
-                target::lattice_target_kind_t::not_applicable &&
-            !artifact_specs[3].target_kind_applicable &&
-            artifact_specs[3].checkpoint_source == "none" &&
-            artifact_specs[3].plan_mode == "none" &&
-            artifact_specs[3].max_waves == 0 &&
-            artifact_specs[3].warning_specs.size() == 3 &&
-            std::all_of(
-                artifact_specs[3].warning_specs.begin(),
-                artifact_specs[3].warning_specs.end(),
-                [](const auto &w) { return w.kind == "forecast_eval"; }) &&
-            artifact_specs[4].target_class == "artifact_readiness" &&
-            artifact_specs[4].subject_fact_family == "allocation_engine" &&
-            artifact_specs[4].proof_kind == "allocation_artifact_bound" &&
-            artifact_specs[4].kind ==
-                target::lattice_target_kind_t::not_applicable &&
-            !artifact_specs[4].target_kind_applicable &&
-            artifact_specs[4].checkpoint_source == "none" &&
-            artifact_specs[4].plan_mode == "none" &&
-            artifact_specs[4].max_waves == 0 &&
-            artifact_specs[4].warning_specs.size() == 1 &&
-            artifact_specs[4].warning_specs.front().kind == "allocation_engine",
-        "allocation artifact readiness keeps proof kind separate from target "
-        "kind");
+  check(
+      artifact_specs[1].target_class == "artifact_readiness" &&
+          artifact_specs[1].subject_fact_family == "target_transform" &&
+          artifact_specs[1].proof_kind == "target_transform_contract_bound" &&
+          artifact_specs[1].kind ==
+              target::lattice_target_kind_t::not_applicable &&
+          !artifact_specs[1].target_kind_applicable &&
+          artifact_specs[1].checkpoint_source == "none" &&
+          artifact_specs[1].plan_mode == "none" &&
+          artifact_specs[1].max_waves == 0 &&
+          artifact_specs[2].subject_fact_family == "forecast_baseline" &&
+          artifact_specs[2].proof_kind == "forecast_baseline_artifact_bound" &&
+          artifact_specs[2].kind ==
+              target::lattice_target_kind_t::not_applicable &&
+          !artifact_specs[2].target_kind_applicable &&
+          artifact_specs[2].checkpoint_source == "none" &&
+          artifact_specs[2].plan_mode == "none" &&
+          artifact_specs[2].max_waves == 0 &&
+          artifact_specs[2].warning_specs.size() == 3 &&
+          std::all_of(
+              artifact_specs[2].warning_specs.begin(),
+              artifact_specs[2].warning_specs.end(),
+              [](const auto &w) { return w.kind == "forecast_baseline"; }) &&
+          artifact_specs[3].subject_fact_family == "forecast_eval" &&
+          artifact_specs[3].proof_kind == "forecast_eval_artifact_bound" &&
+          artifact_specs[3].kind ==
+              target::lattice_target_kind_t::not_applicable &&
+          !artifact_specs[3].target_kind_applicable &&
+          artifact_specs[3].checkpoint_source == "none" &&
+          artifact_specs[3].plan_mode == "none" &&
+          artifact_specs[3].max_waves == 0 &&
+          artifact_specs[3].warning_specs.size() == 3 &&
+          std::all_of(
+              artifact_specs[3].warning_specs.begin(),
+              artifact_specs[3].warning_specs.end(),
+              [](const auto &w) { return w.kind == "forecast_eval"; }) &&
+          artifact_specs[4].target_class == "artifact_readiness" &&
+          artifact_specs[4].subject_fact_family == "allocation_engine" &&
+          artifact_specs[4].proof_kind == "allocation_artifact_bound" &&
+          artifact_specs[4].kind ==
+              target::lattice_target_kind_t::not_applicable &&
+          !artifact_specs[4].target_kind_applicable &&
+          artifact_specs[4].checkpoint_source == "none" &&
+          artifact_specs[4].plan_mode == "none" &&
+          artifact_specs[4].max_waves == 0 &&
+          artifact_specs[4].warning_specs.size() == 1 &&
+          artifact_specs[4].warning_specs.front().kind == "allocation_engine" &&
+          artifact_specs[5].target_class == "artifact_readiness" &&
+          artifact_specs[5].subject_fact_family == "replay_environment" &&
+          artifact_specs[5].proof_kind == "replay_environment_artifact_bound" &&
+          artifact_specs[5].kind ==
+              target::lattice_target_kind_t::not_applicable &&
+          !artifact_specs[5].target_kind_applicable &&
+          artifact_specs[5].checkpoint_source == "none" &&
+          artifact_specs[5].plan_mode == "none" &&
+          artifact_specs[5].max_waves == 0 &&
+          artifact_specs[6].target_class == "artifact_readiness" &&
+          artifact_specs[6].subject_fact_family == "policy_training" &&
+          artifact_specs[6].proof_kind == "policy_training_artifact_bound" &&
+          artifact_specs[6].kind ==
+              target::lattice_target_kind_t::not_applicable &&
+          !artifact_specs[6].target_kind_applicable &&
+          artifact_specs[6].checkpoint_source == "none" &&
+          artifact_specs[6].plan_mode == "none" &&
+          artifact_specs[6].max_waves == 0,
+      "allocation artifact readiness keeps proof kind separate from target "
+      "kind");
 
   const auto artifact_canonical =
       target::canonical_lattice_target_spec_text(artifact_specs[0]);
@@ -1620,9 +1800,10 @@ LATTICE_TARGET {
                       "not_applicable remains an internal sentinel, not a "
                       "declared target kind");
 
-  expect_decode_error(R"DSL(
+  const auto replay_artifact_specs =
+      target::decode_lattice_targets_from_dsl(R"DSL(
 LATTICE_TARGET {
-  TARGET_ID = accidental_replay_environment_artifact_ready;
+  TARGET_ID = replay_environment_artifact_ready;
   TARGET_CLASS = artifact_readiness;
   SUBJECT_FACT_FAMILY = replay_environment;
   SUBJECT_COMPONENT = wikimyei.inference.expected_value.mdn;
@@ -1632,11 +1813,14 @@ LATTICE_TARGET {
   ANCHOR_INDEX_END = 10;
   REQUIRE_CONTRACT_MATCH = true;
 };
-)DSL",
-                      "has no default PROOF_KIND for SUBJECT_FACT_FAMILY "
-                      "replay_environment",
-                      "replay environment is not an active artifact-readiness "
-                      "proof template");
+)DSL");
+  check(replay_artifact_specs.size() == 1 &&
+            replay_artifact_specs.front().proof_kind ==
+                "replay_environment_artifact_bound" &&
+            replay_artifact_specs.front().checkpoint_source == "none" &&
+            replay_artifact_specs.front().max_waves == 0,
+        "replay environment is now an explicit non-dispatchable artifact "
+        "readiness proof template");
 
   expect_decode_error(R"DSL(
 LATTICE_TARGET {
@@ -2425,6 +2609,70 @@ LATTICE_TARGET {
                          "allocation_artifact_ready",
                          "allocation_engine_diagnostics", "allocation_engine",
                          "allocation turnover warning");
+
+  const auto replay_eval =
+      artifact_evaluator.evaluate("replay_environment_artifact_ready");
+  check(replay_eval.status == target::lattice_target_status_t::satisfied &&
+            replay_eval.target_class == "artifact_readiness" &&
+            !replay_eval.target_kind_applicable &&
+            replay_eval.proof_kind == "replay_environment_artifact_bound" &&
+            replay_eval.subject_fact_family == "replay_environment" &&
+            !replay_eval.plan_ready && replay_eval.suggested_wave.empty() &&
+            replay_eval.proof_certificate.artifacts.size() == 1 &&
+            replay_eval.proof_certificate.artifacts.front().fact_family ==
+                "replay_environment" &&
+            replay_eval.proof_certificate.artifacts.front().passed &&
+            replay_eval.proof_certificate.artifacts.front().lineage_bound &&
+            replay_eval.proof_certificate.artifacts.front()
+                .proof_template_bound &&
+            replay_eval.proof_certificate_check.passed &&
+            replay_eval.warning_results.empty() && replay_eval.deficits.empty(),
+        "replay environment artifact readiness proves cost-aware replay "
+        "report lineage, time-law evidence, Cajtucu traces, and profile "
+        "identity without dispatch authority");
+  check_artifact_proof_no_decision_authority(
+      replay_eval.proof_certificate.artifacts.front(),
+      "replay_environment_artifact_ready");
+
+  const auto policy_training_eval =
+      artifact_evaluator.evaluate("policy_training_artifact_ready");
+  check(
+      policy_training_eval.status ==
+              target::lattice_target_status_t::satisfied &&
+          policy_training_eval.target_class == "artifact_readiness" &&
+          !policy_training_eval.target_kind_applicable &&
+          policy_training_eval.proof_kind == "policy_training_artifact_bound" &&
+          policy_training_eval.subject_fact_family == "policy_training" &&
+          !policy_training_eval.plan_ready &&
+          policy_training_eval.suggested_wave.empty() &&
+          policy_training_eval.fact_integrity_summary_available &&
+          policy_training_eval.fact_integrity_summary.inspected_family_count ==
+              1 &&
+          policy_training_eval.fact_integrity_summary.relation_declared_count ==
+              4 &&
+          policy_training_eval.fact_integrity_summary.relation_bound_count ==
+              4 &&
+          policy_training_eval.fact_integrity_summary
+              .relation_integrity_clean &&
+          policy_training_eval.proof_certificate.artifacts.size() == 1 &&
+          policy_training_eval.proof_certificate.artifacts.front()
+                  .fact_family == "policy_training" &&
+          policy_training_eval.proof_certificate.artifacts.front().passed &&
+          policy_training_eval.proof_certificate.artifacts.front()
+              .lineage_bound &&
+          policy_training_eval.proof_certificate.artifacts.front()
+              .proof_template_bound &&
+          policy_training_eval.proof_certificate_check.passed &&
+          policy_training_eval.warning_results.empty() &&
+          policy_training_eval.deficits.empty(),
+      "policy training artifact readiness proves checkpoint lineage, "
+      "range separation, training-only normalizers/replay buffers, selector "
+      "policy, sealed test access, environment/action/reward/execution "
+      "profile identity, and parent replay evidence without training or "
+      "selection authority");
+  check_artifact_proof_no_decision_authority(
+      policy_training_eval.proof_certificate.artifacts.front(),
+      "policy_training_artifact_ready");
 
   const auto bad_artifact_ledger =
       artifact_readiness_ledger(/*observer_authority_drift=*/true);

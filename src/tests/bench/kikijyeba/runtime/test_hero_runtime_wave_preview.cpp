@@ -1,8 +1,10 @@
 #include "hero/runtime_hero/hero_runtime_tools.h"
 #include "kikijyeba/marshal/digest.h"
+#include "kikijyeba/runtime/policy_training_causal_schedule.h"
 #include "kikijyeba/runtime/wave_settings.h"
 #include "wikimyei/assembly.h"
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -10,6 +12,8 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <utility>
+#include <vector>
 
 #include <unistd.h>
 
@@ -121,6 +125,13 @@ void require_contains(const std::string &text, std::string_view needle,
                       const std::string &message) {
   check(text.find(needle) != std::string::npos,
         message + " missing needle: " + std::string(needle) + "\n" + text);
+}
+
+bool has_issue_containing(const std::vector<std::string> &issues,
+                          const std::string &needle) {
+  return std::any_of(issues.begin(), issues.end(), [&](const auto &issue) {
+    return issue.find(needle) != std::string::npos;
+  });
 }
 
 std::string cwu02_mtf_protocol_text() {
@@ -707,7 +718,9 @@ void test_replay_operator_tool() {
       "\"max_steps\":8,"
       "\"include_equal_weight\":true,"
       "\"allow_synthetic_direct_edges\":true,"
-      "\"linear_transaction_cost_rate\":0.001}";
+      "\"linear_transaction_cost_rate\":0.001,"
+      "\"execution_profile_digest\":\"profile_digest_fixture\","
+      "\"policy_set_digest\":\"policy_set_digest_fixture\"}";
   std::string result;
   error.clear();
   check(hero_runtime::execute_tool_json("hero.runtime.run", dry_args, &ctx,
@@ -731,6 +744,14 @@ void test_replay_operator_tool() {
                    "replay should pass synthetic-edge replay flag");
   require_contains(result, "\"--replay-linear-transaction-cost-rate\"",
                    "replay should pass transaction-cost replay flag");
+  require_contains(result, "\"--replay-execution-profile-digest\"",
+                   "replay should pass execution profile identity digest");
+  require_contains(result, "\"profile_digest_fixture\"",
+                   "replay should bind execution profile digest value");
+  require_contains(result, "\"--replay-policy-set-digest\"",
+                   "replay should pass policy set identity digest");
+  require_contains(result, "\"policy_set_digest_fixture\"",
+                   "replay should bind policy set digest value");
 
   const std::string run_args =
       "{\"operation\":\"replay\",\"requested_mode\":\"execute\","
@@ -1111,6 +1132,395 @@ void test_mdn_wave_preview_reads_jkimyei_model_state_inputs() {
   std::filesystem::remove_all(dir);
 }
 
+void test_policy_training_causal_schedule_contract() {
+  namespace schedule_contract = cuwacunu::kikijyeba::runtime;
+  schedule_contract::causal_policy_training_schedule_t schedule{};
+  schedule.schedule_id = "causal_policy_training_schedule_1";
+  schedule.cursor_key_kind = "numeric_anchor_index";
+  schedule.training_range_digest = "range_train_digest";
+  schedule.validation_range_digest = "range_validation_digest";
+  schedule.test_range_digest = "range_test_digest";
+
+  const auto make_artifact =
+      [](std::string digest,
+         std::string kind) -> schedule_contract::artifact_fit_ledger_t {
+    schedule_contract::artifact_fit_ledger_t artifact{};
+    artifact.artifact_digest = std::move(digest);
+    artifact.artifact_kind = std::move(kind);
+    artifact.artifact_schema_id = "artifact_schema_v1";
+    artifact.producer_job_id = "producer_job";
+    artifact.fit_cutoff_key = "100";
+    artifact.fit_input_cutoff_key = "90";
+    artifact.fit_target_cutoff_key = "100";
+    artifact.normalization_cutoff_key = "100";
+    artifact.calibration_cutoff_key = "100";
+    artifact.covariance_fit_cutoff_key = "100";
+    artifact.replay_buffer_cutoff_key = "100";
+    artifact.target_label_available_from_key = "120";
+    artifact.reward_available_from_key = "120";
+    artifact.trajectory_usable_from_key = "120";
+    artifact.usable_from_key = "120";
+    artifact.embargo_policy_id = "target_horizon_embargo.v1";
+    artifact.training_block_id = "B0";
+    artifact.snapshot_generation = "0";
+    return artifact;
+  };
+  schedule.artifact_fits.push_back(
+      make_artifact("rep_snapshot_0", "representation"));
+  schedule.artifact_fits.push_back(make_artifact("mdn_snapshot_0", "mdn"));
+  schedule.artifact_fits.push_back(
+      make_artifact("observer_snapshot_0", "observer_belief"));
+  schedule.artifact_fits.push_back(
+      make_artifact("policy_snapshot_0", "policy"));
+  schedule.artifact_fits.push_back(
+      make_artifact("normalization_snapshot_0", "normalization"));
+  schedule.artifact_fits.push_back(
+      make_artifact("calibration_snapshot_0", "calibration"));
+  schedule.artifact_fits.push_back(
+      make_artifact("covariance_snapshot_0", "covariance_coupler"));
+  schedule.artifact_fits.push_back(
+      make_artifact("replay_buffer_snapshot_0", "replay_buffer"));
+  schedule.artifact_fits.push_back(
+      make_artifact("reward_baseline_snapshot_0", "reward_baseline"));
+
+  schedule_contract::snapshot_family_t family{};
+  family.snapshot_family_digest = "snapshot_family_0";
+  family.representation_snapshot_digest = "rep_snapshot_0";
+  family.mdn_snapshot_digest = "mdn_snapshot_0";
+  family.observer_belief_snapshot_digest = "observer_snapshot_0";
+  family.policy_snapshot_digest = "policy_snapshot_0";
+  family.normalization_snapshot_digest = "normalization_snapshot_0";
+  family.calibration_snapshot_digest = "calibration_snapshot_0";
+  family.covariance_coupler_snapshot_digest = "covariance_snapshot_0";
+  family.replay_buffer_snapshot_digest = "replay_buffer_snapshot_0";
+  family.reward_baseline_snapshot_digest = "reward_baseline_snapshot_0";
+  schedule.snapshot_families.push_back(family);
+
+  schedule_contract::causal_training_block_t block{};
+  block.block_id = "B1";
+  block.block_cursor_begin = "200";
+  block.block_cursor_end = "300";
+  block.block_digest = "block_digest_1";
+  block.observation_count = 64;
+  block.artifact_use.block_id = block.block_id;
+  block.artifact_use.block_cursor_begin = block.block_cursor_begin;
+  block.artifact_use.block_cursor_end = block.block_cursor_end;
+  block.artifact_use.snapshot_family_digest_used =
+      family.snapshot_family_digest;
+  block.artifact_use.representation_snapshot_digest_used =
+      family.representation_snapshot_digest;
+  block.artifact_use.mdn_snapshot_digest_used = family.mdn_snapshot_digest;
+  block.artifact_use.observer_belief_snapshot_digest_used =
+      family.observer_belief_snapshot_digest;
+  block.artifact_use.policy_snapshot_digest_used =
+      family.policy_snapshot_digest;
+  block.artifact_use.normalization_snapshot_digest_used =
+      family.normalization_snapshot_digest;
+  block.artifact_use.calibration_snapshot_digest_used =
+      family.calibration_snapshot_digest;
+  block.artifact_use.covariance_coupler_snapshot_digest_used =
+      family.covariance_coupler_snapshot_digest;
+  block.artifact_use.replay_buffer_snapshot_digest_used =
+      family.replay_buffer_snapshot_digest;
+  block.artifact_use.reward_baseline_snapshot_digest_used =
+      family.reward_baseline_snapshot_digest;
+  block.artifact_use.cajtucu_execution_profile_digest =
+      "execution_profile_digest_v1";
+  block.artifact_use.reward_contract_digest = "reward_contract_digest_v1";
+  block.artifact_use.no_future_snapshot_use = true;
+  schedule.blocks.push_back(block);
+
+  auto issues =
+      schedule_contract::validate_causal_policy_training_schedule(schedule);
+  check(issues.empty(), "causal walk-forward schedule should validate");
+  check(!schedule_contract::policy_training_causal_schedule_digest(schedule)
+             .empty(),
+        "causal walk-forward schedule has a stable digest");
+  check(
+      schedule_contract::causal_policy_training_schedule_no_future_snapshot_use(
+          schedule),
+      "no-future-snapshot proof is derived from fit/use ledgers");
+
+  auto declared_false = schedule;
+  declared_false.blocks.front().artifact_use.no_future_snapshot_use = false;
+  issues = schedule_contract::validate_causal_policy_training_schedule(
+      declared_false);
+  check(issues.empty(),
+        "schedule validity derives no-future-snapshot use from ledgers rather "
+        "than trusting the declaration flag");
+
+  auto same_block = schedule;
+  same_block.artifact_fits.front().training_block_id = "B1";
+  issues =
+      schedule_contract::validate_causal_policy_training_schedule(same_block);
+  check(has_issue_containing(issues, "same_block_snapshot_use"),
+        "schedule rejects snapshots trained on the same block they serve");
+
+  auto future_use = schedule;
+  future_use.artifact_fits.front().usable_from_key = "250";
+  issues =
+      schedule_contract::validate_causal_policy_training_schedule(future_use);
+  check(has_issue_containing(issues, "future_snapshot_use"),
+        "schedule rejects snapshots unavailable at block start");
+
+  for (const auto &pair :
+       {std::pair<std::size_t, std::string>{4, "normalization"},
+        std::pair<std::size_t, std::string>{5, "calibration"},
+        std::pair<std::size_t, std::string>{6, "covariance_coupler"},
+        std::pair<std::size_t, std::string>{7, "replay_buffer"},
+        std::pair<std::size_t, std::string>{8, "reward_baseline"}}) {
+    auto future_support = schedule;
+    future_support.artifact_fits[pair.first].usable_from_key = "250";
+    issues = schedule_contract::validate_causal_policy_training_schedule(
+        future_support);
+    check(has_issue_containing(issues, "future_snapshot_use:" + pair.second),
+          "schedule rejects future " + pair.second + " snapshot use");
+  }
+
+  auto late_target_label = schedule;
+  late_target_label.artifact_fits.front().target_label_available_from_key =
+      "130";
+  issues = schedule_contract::validate_causal_policy_training_schedule(
+      late_target_label);
+  check(
+      has_issue_containing(issues, "target_label_available_after_usable_from"),
+      "schedule rejects labels unavailable by artifact usable_from_key");
+
+  auto late_reward = schedule;
+  late_reward.artifact_fits.front().reward_available_from_key = "130";
+  issues =
+      schedule_contract::validate_causal_policy_training_schedule(late_reward);
+  check(has_issue_containing(issues, "reward_available_after_usable_from"),
+        "schedule rejects rewards unavailable by artifact usable_from_key");
+
+  auto late_trajectory = schedule;
+  late_trajectory.artifact_fits.front().trajectory_usable_from_key = "130";
+  issues = schedule_contract::validate_causal_policy_training_schedule(
+      late_trajectory);
+  check(
+      has_issue_containing(issues, "trajectory_available_after_usable_from"),
+      "schedule rejects trajectories unavailable by artifact usable_from_key");
+
+  auto opaque_keys = schedule;
+  opaque_keys.cursor_key_kind = "opaque_unsortable";
+  issues =
+      schedule_contract::validate_causal_policy_training_schedule(opaque_keys);
+  check(has_issue_containing(issues, "opaque_or_unsupported_cursor_key_kind"),
+        "schedule rejects opaque cursor keys without an ordering map");
+
+  auto offline = schedule;
+  offline.training_schedule_mode =
+      schedule_contract::k_policy_training_schedule_mode_offline_research;
+  issues = schedule_contract::validate_causal_policy_training_schedule(offline);
+  check(has_issue_containing(
+            issues, "offline_full_window_research_not_readiness_eligible"),
+        "full-window research cannot satisfy readiness");
+}
+
+std::string valid_policy_training_args(std::string requested_mode = "plan") {
+  return "{\"operation\":\"policy_training\",\"requested_mode\":\"" +
+         requested_mode +
+         "\",\"policy_id\":\"wikimyei.policy.rl.ppo_portfolio.v0\","
+         "\"policy_kind\":\"ppo\","
+         "\"policy_architecture_digest\":\"arch_digest_v0\","
+         "\"training_config_digest\":\"train_config_digest_v0\","
+         "\"training_range_digest\":\"range_train_digest\","
+         "\"validation_range_digest\":\"range_validation_digest\","
+         "\"test_range_digest\":\"range_test_digest\","
+         "\"environment_contract_id\":\"kikijyeba.environment.replay.v1\","
+         "\"observation_schema_digest\":\"observation_schema_digest_v1\","
+         "\"action_schema_digest\":\"action_schema_digest_v1\","
+         "\"reward_contract_digest\":\"reward_contract_digest_v1\","
+         "\"execution_profile_digest\":\"execution_profile_digest_v1\","
+         "\"training_schedule_mode\":\"causal_walk_forward_training.v1\","
+         "\"causal_schedule_schema_id\":\"kikijyeba.runtime.policy_training_"
+         "causal_schedule.v1\","
+         "\"causal_schedule_digest\":\"causal_schedule_digest_v1\","
+         "\"causal_schedule_cursor_key_kind\":\"numeric_anchor_index\","
+         "\"causal_schedule_no_future_snapshot_use_source\":\"derived_from_"
+         "artifact_fit_use_ledgers\","
+         "\"normalization_fit_range_digest\":\"range_train_digest\","
+         "\"replay_buffer_source_range_digest\":\"range_train_digest\","
+         "\"early_stopping_policy_digest\":\"early_stop_digest_v1\","
+         "\"hyperparameter_selection_policy_digest\":\"selector_digest_v1\","
+         "\"selector_split\":\"validation\","
+         "\"parent_replay_environment_fact_digest\":\"replay_env_fact_digest\","
+         "\"max_episodes\":4,"
+         "\"max_steps\":64,"
+         "\"max_parallel_jobs\":1,"
+         "\"max_wall_clock_seconds\":120,"
+         "\"causal_schedule_readiness_eligible\":true,"
+         "\"causal_schedule_no_future_snapshot_use\":true,"
+         "\"offline_full_window_research_allowed\":false,"
+         "\"final_refit_uses_validation\":false,"
+         "\"validation_no_longer_proof\":false,"
+         "\"sealed_test_required\":false,"
+         "\"live_execution_allowed\":false}";
+}
+
+void test_policy_training_contract_operation_is_plan_only() {
+  hero_runtime::runtime_context_t ctx{};
+  std::string result;
+  std::string error;
+  check(hero_runtime::execute_tool_json("hero.runtime.run",
+                                        valid_policy_training_args("plan"),
+                                        &ctx, &result, &error),
+        "policy-training plan failed: " + error);
+  check(!hero_runtime::tool_result_is_error(result),
+        "policy-training plan returned error: " + result);
+  require_contains(result,
+                   "\"schema_version\":\"kikijyeba.runtime.policy_training_"
+                   "job_contract_packet.v1\"",
+                   "policy-training plan reports contract packet schema");
+  require_contains(result, "\"contract_digest\":",
+                   "policy-training plan reports contract digest");
+  require_contains(result, "\"policy_training_execution_supported\":false",
+                   "policy-training plan remains contract-only");
+  require_contains(result,
+                   "\"normalization_fit_range_digest\":\"range_train_digest\"",
+                   "policy-training plan binds normalization fit range");
+  require_contains(result,
+                   "\"training_schedule_mode\":\"causal_walk_forward_"
+                   "training.v1\"",
+                   "policy-training plan binds causal schedule mode");
+  require_contains(result,
+                   "\"causal_schedule_digest\":\"causal_schedule_digest_v1\"",
+                   "policy-training plan binds causal schedule digest");
+  require_contains(
+      result, "\"causal_schedule_cursor_key_kind\":\"numeric_anchor_index\"",
+      "policy-training plan binds causal cursor key ordering");
+  require_contains(result,
+                   "\"causal_schedule_no_future_snapshot_use_source\":"
+                   "\"derived_from_artifact_fit_use_ledgers\"",
+                   "policy-training plan binds derived no-future proof source");
+  require_contains(result, "\"runtime_trains_policy\":false",
+                   "policy-training plan denies training authority");
+
+  result.clear();
+  error.clear();
+  check(hero_runtime::execute_tool_json("hero.runtime.run",
+                                        valid_policy_training_args("dry_run"),
+                                        &ctx, &result, &error),
+        "policy-training dry_run failed: " + error);
+  require_contains(result, "\"requested_mode\":\"dry_run\"",
+                   "policy-training dry_run reports requested mode");
+
+  std::string leaking_args = valid_policy_training_args("plan");
+  const std::string validation_digest_field =
+      "\"validation_range_digest\":\"range_validation_digest\"";
+  const auto validation_pos = leaking_args.find(validation_digest_field);
+  check(validation_pos != std::string::npos,
+        "test fixture should contain validation range digest");
+  leaking_args.replace(validation_pos, validation_digest_field.size(),
+                       "\"validation_range_digest\":\"range_train_digest\"");
+  result.clear();
+  error.clear();
+  check(!hero_runtime::execute_tool_json("hero.runtime.run", leaking_args, &ctx,
+                                         &result, &error),
+        "policy-training contract should reject train/validation overlap");
+  require_contains(error, "training_validation_range_overlap",
+                   "policy-training overlap refusal should name the issue");
+
+  std::string scheduleless_args = valid_policy_training_args("plan");
+  const std::string schedule_digest_field =
+      "\"causal_schedule_digest\":\"causal_schedule_digest_v1\",";
+  const auto schedule_digest_pos =
+      scheduleless_args.find(schedule_digest_field);
+  check(schedule_digest_pos != std::string::npos,
+        "test fixture should contain causal schedule digest");
+  scheduleless_args.erase(schedule_digest_pos, schedule_digest_field.size());
+  result.clear();
+  error.clear();
+  check(!hero_runtime::execute_tool_json("hero.runtime.run", scheduleless_args,
+                                         &ctx, &result, &error),
+        "policy-training contract should reject missing causal schedule");
+  require_contains(error, "missing required field: causal_schedule_digest",
+                   "missing causal schedule refusal should be stable");
+
+  std::string missing_source_args = valid_policy_training_args("plan");
+  const std::string schedule_source_field =
+      "\"causal_schedule_no_future_snapshot_use_source\":\"derived_from_"
+      "artifact_fit_use_ledgers\",";
+  const auto schedule_source_pos =
+      missing_source_args.find(schedule_source_field);
+  check(schedule_source_pos != std::string::npos,
+        "test fixture should contain causal schedule no-future source");
+  missing_source_args.erase(schedule_source_pos, schedule_source_field.size());
+  result.clear();
+  error.clear();
+  check(!hero_runtime::execute_tool_json(
+            "hero.runtime.run", missing_source_args, &ctx, &result, &error),
+        "policy-training contract should reject missing causal schedule "
+        "no-future source");
+  require_contains(
+      error,
+      "missing required field: causal_schedule_no_future_snapshot_use_source",
+      "missing causal schedule no-future source refusal should be stable");
+
+  std::string asserted_source_args = valid_policy_training_args("plan");
+  const auto asserted_source_pos =
+      asserted_source_args.find(schedule_source_field);
+  check(asserted_source_pos != std::string::npos,
+        "test fixture should contain causal schedule no-future source");
+  asserted_source_args.replace(
+      asserted_source_pos, schedule_source_field.size(),
+      "\"causal_schedule_no_future_snapshot_use_source\":\"asserted_by_"
+      "caller\",");
+  result.clear();
+  error.clear();
+  check(!hero_runtime::execute_tool_json(
+            "hero.runtime.run", asserted_source_args, &ctx, &result, &error),
+        "policy-training contract should reject caller-asserted no-future "
+        "source");
+  require_contains(error, "unsupported_no_future_snapshot_use_source",
+                   "caller-asserted no-future source refusal should be stable");
+
+  std::string opaque_cursor_args = valid_policy_training_args("plan");
+  const std::string cursor_kind_field =
+      "\"causal_schedule_cursor_key_kind\":\"numeric_anchor_index\",";
+  const auto cursor_kind_pos = opaque_cursor_args.find(cursor_kind_field);
+  check(cursor_kind_pos != std::string::npos,
+        "test fixture should contain causal schedule cursor kind");
+  opaque_cursor_args.replace(
+      cursor_kind_pos, cursor_kind_field.size(),
+      "\"causal_schedule_cursor_key_kind\":\"opaque_unsortable\",");
+  result.clear();
+  error.clear();
+  check(!hero_runtime::execute_tool_json("hero.runtime.run", opaque_cursor_args,
+                                         &ctx, &result, &error),
+        "policy-training contract should reject opaque cursor key ordering");
+  require_contains(error,
+                   "opaque_or_unsupported_causal_schedule_cursor_key_kind",
+                   "opaque cursor key refusal should be stable");
+
+  std::string offline_args = valid_policy_training_args("plan");
+  const std::string causal_mode =
+      "\"training_schedule_mode\":\"causal_walk_forward_training.v1\"";
+  const auto causal_mode_pos = offline_args.find(causal_mode);
+  check(causal_mode_pos != std::string::npos,
+        "test fixture should contain causal schedule mode");
+  offline_args.replace(causal_mode_pos, causal_mode.size(),
+                       "\"training_schedule_mode\":\"offline_full_window_"
+                       "research\"");
+  result.clear();
+  error.clear();
+  check(!hero_runtime::execute_tool_json("hero.runtime.run", offline_args, &ctx,
+                                         &result, &error),
+        "policy-training contract should reject full-window research as "
+        "readiness evidence");
+  require_contains(error, "offline_full_window_research_not_readiness_eligible",
+                   "full-window research refusal should name readiness leak");
+
+  result.clear();
+  error.clear();
+  check(!hero_runtime::execute_tool_json("hero.runtime.run",
+                                         valid_policy_training_args("execute"),
+                                         &ctx, &result, &error),
+        "policy-training execute should be refused");
+  require_contains(error, "E_RUNTIME_POLICY_TRAINING_EXECUTION_NOT_IMPLEMENTED",
+                   "policy-training execute refusal should be stable");
+}
+
 } // namespace
 
 int main() {
@@ -1125,6 +1535,8 @@ int main() {
     test_wave_settings_train_defaults_to_random_source_order();
     test_source_key_wave_preview_reports_key_bounds();
     test_mdn_wave_preview_reads_jkimyei_model_state_inputs();
+    test_policy_training_causal_schedule_contract();
+    test_policy_training_contract_operation_is_plan_only();
     test_execute_expected_wave_binding();
     test_execute_wave_overlay();
     test_replay_operator_tool();

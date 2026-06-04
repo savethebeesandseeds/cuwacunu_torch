@@ -3364,6 +3364,147 @@ private:
         fact.visibility_only, lineage_bound, std::move(issues));
   }
 
+  [[nodiscard]] lattice_target_proof_certificate_t::artifact_proof_t
+  make_replay_environment_artifact_proof(
+      const lattice_target_spec_t &spec,
+      const cuwacunu::kikijyeba::lattice::exposure::
+          lattice_replay_environment_fact_t &fact,
+      bool identity_match) const {
+    namespace exposure = cuwacunu::kikijyeba::lattice::exposure;
+    auto issues = exposure::replay_environment_fact_issues(fact);
+    const bool trace_count_bound =
+        fact.cajtucu_valid_trace_count + fact.cajtucu_invalid_trace_count ==
+            fact.time_law_execution_step_count &&
+        fact.cajtucu_valid_trace_count > 0 &&
+        fact.cajtucu_invalid_trace_count == 0;
+    const bool lineage_bound =
+        !fact.parent_exposure_fact_digest.empty() &&
+        !fact.batch_index_path.empty() && !fact.experiment_index_path.empty() &&
+        !fact.experiment_report_path.empty() &&
+        !fact.experiment_index_report_digest.empty() &&
+        !fact.experiment_report_digest.empty() &&
+        fact.experiment_index_report_digest == fact.experiment_report_digest &&
+        !fact.experiment_id.empty() && !fact.runtime_run_id.empty() &&
+        !fact.environment_run_id.empty() &&
+        !fact.execution_profile_digest.empty() &&
+        !fact.policy_set_digest.empty() && fact.attempted_count > 0 &&
+        fact.completed_count == fact.attempted_count &&
+        fact.episode_count > 0 &&
+        fact.episode_requested_range_bound_count >= fact.episode_count &&
+        fact.episode_cursor_bound_count >= fact.episode_count &&
+        fact.episode_anchor_interval_bound_count >= fact.episode_count &&
+        fact.episode_anchor_keys_bound_count >= fact.episode_count &&
+        fact.projection_validation_step_count > 0 && trace_count_bound &&
+        fact.cajtucu_synthetic_market_step_count == 0 &&
+        std::isfinite(fact.mean_total_transaction_cost_base) &&
+        fact.mean_total_transaction_cost_base > 0.0 &&
+        std::isfinite(fact.fill_ratio) && fact.fill_ratio >= 0.0 &&
+        fact.fill_ratio <= 1.0;
+    return make_common_artifact_proof(
+        spec, fact, "replay_environment",
+        exposure::replay_environment_fact_digest(fact), identity_match,
+        fact.artifact_evidence, fact.artifact_evidence, fact.visibility_only,
+        lineage_bound, std::move(issues));
+  }
+
+  [[nodiscard]] lattice_target_proof_certificate_t::artifact_proof_t
+  make_policy_training_artifact_proof(
+      const lattice_target_spec_t &spec,
+      const cuwacunu::kikijyeba::lattice::exposure::
+          lattice_policy_training_fact_t &fact,
+      bool identity_match, const std::set<std::string> &forecast_eval_digests,
+      const std::set<std::string> &observer_belief_digests,
+      const std::set<std::string> &allocation_engine_digests,
+      const std::set<std::string> &replay_environment_digests) const {
+    namespace exposure = cuwacunu::kikijyeba::lattice::exposure;
+    auto issues = exposure::policy_training_fact_issues(fact);
+    const auto digest_missing = [&](const std::string &digest,
+                                    const std::set<std::string> &known) {
+      return digest.empty() || known.find(digest) == known.end();
+    };
+    if (digest_missing(fact.parent_forecast_eval_fact_digest,
+                       forecast_eval_digests)) {
+      issues.emplace_back("parent_forecast_eval_fact_digest_not_found");
+    }
+    if (digest_missing(fact.parent_observer_belief_fact_digest,
+                       observer_belief_digests)) {
+      issues.emplace_back("parent_observer_belief_fact_digest_not_found");
+    }
+    if (digest_missing(fact.parent_allocation_engine_fact_digest,
+                       allocation_engine_digests)) {
+      issues.emplace_back("parent_allocation_engine_fact_digest_not_found");
+    }
+    if (digest_missing(fact.parent_replay_environment_fact_digest,
+                       replay_environment_digests)) {
+      issues.emplace_back("parent_replay_environment_fact_digest_not_found");
+    }
+    const bool parent_lineage_bound =
+        !fact.parent_forecast_eval_fact_digest.empty() &&
+        forecast_eval_digests.find(fact.parent_forecast_eval_fact_digest) !=
+            forecast_eval_digests.end() &&
+        !fact.parent_observer_belief_fact_digest.empty() &&
+        observer_belief_digests.find(fact.parent_observer_belief_fact_digest) !=
+            observer_belief_digests.end() &&
+        !fact.parent_allocation_engine_fact_digest.empty() &&
+        allocation_engine_digests.find(
+            fact.parent_allocation_engine_fact_digest) !=
+            allocation_engine_digests.end() &&
+        !fact.parent_replay_environment_fact_digest.empty() &&
+        replay_environment_digests.find(
+            fact.parent_replay_environment_fact_digest) !=
+            replay_environment_digests.end();
+    const bool anti_leakage_bound =
+        fact.training_range_disjoint_validation &&
+        fact.training_range_disjoint_test &&
+        fact.validation_range_disjoint_test &&
+        fact.normalization_fit_training_only &&
+        fact.replay_buffer_training_only &&
+        fact.reward_baseline_training_only &&
+        fact.training_schedule_mode == "causal_walk_forward_training.v1" &&
+        fact.causal_schedule_readiness_eligible &&
+        fact.causal_schedule_no_future_snapshot_use &&
+        fact.causal_schedule_no_future_snapshot_use_source ==
+            "derived_from_artifact_fit_use_ledgers" &&
+        !fact.offline_full_window_research &&
+        fact.early_stopping_uses_validation_only &&
+        fact.hyperparameter_selection_uses_validation_only &&
+        fact.test_sealed_until_final_report &&
+        fact.test_first_access_after_selection;
+    const bool contract_bound =
+        !fact.policy_id.empty() && !fact.policy_kind.empty() &&
+        !fact.policy_architecture_digest.empty() &&
+        !fact.training_config_digest.empty() &&
+        !fact.training_range_digest.empty() &&
+        !fact.validation_range_digest.empty() &&
+        !fact.test_range_digest.empty() &&
+        !fact.environment_contract_id.empty() &&
+        !fact.observation_schema_digest.empty() &&
+        !fact.action_schema_digest.empty() &&
+        !fact.reward_contract_digest.empty() &&
+        !fact.execution_profile_digest.empty() &&
+        !fact.training_schedule_mode.empty() &&
+        !fact.causal_schedule_schema_id.empty() &&
+        !fact.causal_schedule_digest.empty() &&
+        !fact.causal_schedule_cursor_key_kind.empty() &&
+        !fact.causal_schedule_no_future_snapshot_use_source.empty() &&
+        !fact.normalization_fit_range_digest.empty() &&
+        !fact.replay_buffer_source_range_digest.empty() &&
+        !fact.early_stopping_policy_digest.empty() &&
+        !fact.hyperparameter_selection_policy_digest.empty() &&
+        !fact.selector_split.empty() && !fact.selector_policy_digest.empty() &&
+        fact.random_seed_bound && !fact.parent_checkpoint_digest.empty() &&
+        !fact.checkpoint_digest.empty() && fact.runtime_job_kind_bound &&
+        fact.policy_checkpoint_written;
+    const bool lineage_bound = !fact.parent_exposure_fact_digest.empty() &&
+                               contract_bound && parent_lineage_bound &&
+                               anti_leakage_bound;
+    return make_common_artifact_proof(
+        spec, fact, "policy_training",
+        exposure::policy_training_fact_digest(fact), identity_match,
+        fact.artifact_evidence, fact.artifact_evidence, fact.visibility_only,
+        lineage_bound, std::move(issues));
+  }
+
   [[nodiscard]] lattice_target_evaluation_t evaluate_artifact_readiness_spec(
       const lattice_target_spec_t &spec, lattice_target_evaluation_t result,
       std::vector<lattice_target_proof_certificate_t::dependency_proof_t>
@@ -3469,11 +3610,13 @@ private:
     }
     std::unordered_map<std::string, std::string>
         forecast_artifact_by_eval_digest{};
+    std::set<std::string> forecast_eval_digests{};
     std::set<std::string> forecast_artifact_digests{};
     for (const auto &fact : ledger->forecast_eval_facts()) {
       if (artifact_fact_matches_identity(spec, fact,
                                          expected_split_policy_fingerprint)) {
         const auto digest = exposure::forecast_eval_fact_digest(fact);
+        forecast_eval_digests.insert(digest);
         forecast_artifact_by_eval_digest[digest] =
             fact.forecast_artifact_digest;
         if (!fact.forecast_artifact_digest.empty()) {
@@ -3491,6 +3634,22 @@ private:
         observer_belief_digests.insert(digest);
         forecast_artifact_by_observer_digest[digest] =
             fact.forecast_artifact_digest;
+      }
+    }
+    std::set<std::string> allocation_engine_digests{};
+    for (const auto &fact : ledger->allocation_engine_facts()) {
+      if (artifact_fact_matches_identity(spec, fact,
+                                         expected_split_policy_fingerprint)) {
+        allocation_engine_digests.insert(
+            exposure::allocation_engine_fact_digest(fact));
+      }
+    }
+    std::set<std::string> replay_environment_digests{};
+    for (const auto &fact : ledger->replay_environment_facts()) {
+      if (artifact_fact_matches_identity(spec, fact,
+                                         expected_split_policy_fingerprint)) {
+        replay_environment_digests.insert(
+            exposure::replay_environment_fact_digest(fact));
       }
     }
     const auto remember_identity_proof = [&](const auto &fact,
@@ -3588,6 +3747,44 @@ private:
         auto proof = make_allocation_engine_artifact_proof(
             spec, fact, identity_match, observer_belief_digests,
             forecast_artifact_by_observer_digest, forecast_artifact_digests);
+        if (identity_match) {
+          remember_identity_proof(fact, proof);
+        }
+        if (proof.passed) {
+          selected_evidence = artifact_evidence_from_fact(
+              fact, family_fact_count, identity_fact_count);
+          selected_proof = std::move(proof);
+          break;
+        }
+      }
+    } else if (spec.subject_fact_family == "replay_environment") {
+      family_fact_count =
+          static_cast<std::int64_t>(ledger->replay_environment_facts().size());
+      for (const auto &fact : ledger->replay_environment_facts()) {
+        const bool identity_match = artifact_fact_matches_identity(
+            spec, fact, expected_split_policy_fingerprint);
+        auto proof =
+            make_replay_environment_artifact_proof(spec, fact, identity_match);
+        if (identity_match) {
+          remember_identity_proof(fact, proof);
+        }
+        if (proof.passed) {
+          selected_evidence = artifact_evidence_from_fact(
+              fact, family_fact_count, identity_fact_count);
+          selected_proof = std::move(proof);
+          break;
+        }
+      }
+    } else if (spec.subject_fact_family == "policy_training") {
+      family_fact_count =
+          static_cast<std::int64_t>(ledger->policy_training_facts().size());
+      for (const auto &fact : ledger->policy_training_facts()) {
+        const bool identity_match = artifact_fact_matches_identity(
+            spec, fact, expected_split_policy_fingerprint);
+        auto proof = make_policy_training_artifact_proof(
+            spec, fact, identity_match, forecast_eval_digests,
+            observer_belief_digests, allocation_engine_digests,
+            replay_environment_digests);
         if (identity_match) {
           remember_identity_proof(fact, proof);
         }

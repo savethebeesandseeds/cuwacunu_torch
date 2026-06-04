@@ -7794,6 +7794,9 @@ forecast_eval_summary_json(const exposure::forecast_eval_summary_t &summary) {
       << ",\"experiment_id\":" << json_quote(fact.experiment_id)
       << ",\"runtime_run_id\":" << json_quote(fact.runtime_run_id)
       << ",\"environment_run_id\":" << json_quote(fact.environment_run_id)
+      << ",\"execution_profile_digest\":"
+      << json_quote(fact.execution_profile_digest)
+      << ",\"policy_set_digest\":" << json_quote(fact.policy_set_digest)
       << ",\"replay_environment_version\":"
       << json_quote(fact.replay_environment_version)
       << ",\"replay_environment_component_assembly_id\":"
@@ -7891,11 +7894,53 @@ forecast_eval_summary_json(const exposure::forecast_eval_summary_t &summary) {
       << fact.mixed_future_realization_key_count
       << ",\"projection_validation_step_count\":"
       << fact.projection_validation_step_count
+      << ",\"cajtucu_valid_trace_count\":" << fact.cajtucu_valid_trace_count
+      << ",\"cajtucu_invalid_trace_count\":" << fact.cajtucu_invalid_trace_count
+      << ",\"cajtucu_missing_direct_reserve_edge_count\":"
+      << fact.cajtucu_missing_direct_reserve_edge_count
+      << ",\"cajtucu_nontradable_edge_reject_count\":"
+      << fact.cajtucu_nontradable_edge_reject_count
+      << ",\"cajtucu_below_min_notional_reject_count\":"
+      << fact.cajtucu_below_min_notional_reject_count
+      << ",\"cajtucu_above_max_notional_reject_count\":"
+      << fact.cajtucu_above_max_notional_reject_count
+      << ",\"cajtucu_insufficient_reserve_reject_count\":"
+      << fact.cajtucu_insufficient_reserve_reject_count
+      << ",\"cajtucu_insufficient_units_reject_count\":"
+      << fact.cajtucu_insufficient_units_reject_count
+      << ",\"cajtucu_invalid_sell_price_count\":"
+      << fact.cajtucu_invalid_sell_price_count
+      << ",\"cajtucu_large_equity_mismatch_count\":"
+      << fact.cajtucu_large_equity_mismatch_count
+      << ",\"cajtucu_synthetic_market_step_count\":"
+      << fact.cajtucu_synthetic_market_step_count
+      << ",\"requested_order_count\":" << fact.requested_order_count
+      << ",\"executed_order_count\":" << fact.executed_order_count
+      << ",\"rejected_order_count\":" << fact.rejected_order_count
+      << ",\"partial_order_count\":" << fact.partial_order_count
       << ",\"mean_total_reward\":" << double_json(fact.mean_total_reward)
       << ",\"mean_total_log_growth\":"
       << double_json(fact.mean_total_log_growth)
       << ",\"mean_final_equity_base\":"
       << double_json(fact.mean_final_equity_base)
+      << ",\"mean_max_drawdown\":" << double_json(fact.mean_max_drawdown)
+      << ",\"mean_total_turnover\":" << double_json(fact.mean_total_turnover)
+      << ",\"mean_total_transaction_cost_base\":"
+      << double_json(fact.mean_total_transaction_cost_base)
+      << ",\"requested_notional_base\":"
+      << double_json(fact.requested_notional_base)
+      << ",\"executed_notional_base\":"
+      << double_json(fact.executed_notional_base)
+      << ",\"rejected_notional_base\":"
+      << double_json(fact.rejected_notional_base)
+      << ",\"fill_ratio\":" << double_json(fact.fill_ratio)
+      << ",\"fee_cost_base\":" << double_json(fact.fee_cost_base)
+      << ",\"spread_cost_base\":" << double_json(fact.spread_cost_base)
+      << ",\"slippage_cost_base\":" << double_json(fact.slippage_cost_base)
+      << ",\"mean_target_weight_error_l1\":"
+      << double_json(fact.mean_target_weight_error_l1)
+      << ",\"mean_target_weight_error_linf\":"
+      << double_json(fact.mean_target_weight_error_linf)
       << ",\"mean_projection_mae\":" << double_json(fact.mean_projection_mae)
       << ",\"mean_projection_signed_bias\":"
       << double_json(fact.mean_projection_signed_bias)
@@ -7974,6 +8019,10 @@ forecast_eval_summary_json(const exposure::forecast_eval_summary_t &summary) {
       << summary.runtime_run_id_bound_count
       << ",\"environment_run_id_bound_count\":"
       << summary.environment_run_id_bound_count
+      << ",\"execution_profile_digest_bound_count\":"
+      << summary.execution_profile_digest_bound_count
+      << ",\"policy_set_digest_bound_count\":"
+      << summary.policy_set_digest_bound_count
       << ",\"replay_contract_version_bound_count\":"
       << summary.replay_contract_version_bound_count
       << ",\"replay_contract_component_bound_count\":"
@@ -8064,11 +8113,44 @@ forecast_eval_summary_json(const exposure::forecast_eval_summary_t &summary) {
       << summary.mixed_future_realization_key_count_total
       << ",\"projection_validation_step_count_total\":"
       << summary.projection_validation_step_count_total
+      << ",\"cajtucu_valid_trace_count_total\":"
+      << summary.cajtucu_valid_trace_count_total
+      << ",\"cajtucu_invalid_trace_count_total\":"
+      << summary.cajtucu_invalid_trace_count_total
+      << ",\"cajtucu_missing_direct_reserve_edge_count_total\":"
+      << summary.cajtucu_missing_direct_reserve_edge_count_total
+      << ",\"cajtucu_nontradable_edge_reject_count_total\":"
+      << summary.cajtucu_nontradable_edge_reject_count_total
+      << ",\"cajtucu_below_min_notional_reject_count_total\":"
+      << summary.cajtucu_below_min_notional_reject_count_total
+      << ",\"cajtucu_above_max_notional_reject_count_total\":"
+      << summary.cajtucu_above_max_notional_reject_count_total
+      << ",\"cajtucu_insufficient_reserve_reject_count_total\":"
+      << summary.cajtucu_insufficient_reserve_reject_count_total
+      << ",\"cajtucu_insufficient_units_reject_count_total\":"
+      << summary.cajtucu_insufficient_units_reject_count_total
+      << ",\"cajtucu_invalid_sell_price_count_total\":"
+      << summary.cajtucu_invalid_sell_price_count_total
+      << ",\"cajtucu_large_equity_mismatch_count_total\":"
+      << summary.cajtucu_large_equity_mismatch_count_total
+      << ",\"cajtucu_synthetic_market_step_count_total\":"
+      << summary.cajtucu_synthetic_market_step_count_total
+      << ",\"requested_order_count_total\":"
+      << summary.requested_order_count_total
+      << ",\"executed_order_count_total\":"
+      << summary.executed_order_count_total
+      << ",\"rejected_order_count_total\":"
+      << summary.rejected_order_count_total
+      << ",\"partial_order_count_total\":" << summary.partial_order_count_total
       << ",\"missing_batch_index_count\":" << summary.missing_batch_index_count
       << ",\"missing_experiment_index_count\":"
       << summary.missing_experiment_index_count
       << ",\"missing_experiment_report_count\":"
       << summary.missing_experiment_report_count
+      << ",\"missing_execution_profile_digest_count\":"
+      << summary.missing_execution_profile_digest_count
+      << ",\"missing_policy_set_digest_count\":"
+      << summary.missing_policy_set_digest_count
       << ",\"incomplete_replay_attempt_count\":"
       << summary.incomplete_replay_attempt_count
       << ",\"missing_projection_validation_metric_count\":"
@@ -8077,6 +8159,22 @@ forecast_eval_summary_json(const exposure::forecast_eval_summary_t &summary) {
       << summary.missing_time_law_step_evidence_count
       << ",\"missing_projection_validation_step_evidence_count\":"
       << summary.missing_projection_validation_step_evidence_count
+      << ",\"missing_cajtucu_trace_evidence_count\":"
+      << summary.missing_cajtucu_trace_evidence_count
+      << ",\"cajtucu_invalid_trace_fact_count\":"
+      << summary.cajtucu_invalid_trace_fact_count
+      << ",\"cajtucu_synthetic_market_fact_count\":"
+      << summary.cajtucu_synthetic_market_fact_count
+      << ",\"missing_cajtucu_cost_metric_count\":"
+      << summary.missing_cajtucu_cost_metric_count
+      << ",\"invalid_cajtucu_order_metric_count\":"
+      << summary.invalid_cajtucu_order_metric_count
+      << ",\"invalid_cajtucu_notional_metric_count\":"
+      << summary.invalid_cajtucu_notional_metric_count
+      << ",\"invalid_cajtucu_fill_ratio_count\":"
+      << summary.invalid_cajtucu_fill_ratio_count
+      << ",\"invalid_cajtucu_target_tracking_count\":"
+      << summary.invalid_cajtucu_target_tracking_count
       << ",\"time_law_violation_count\":" << summary.time_law_violation_count
       << ",\"missing_episode_requested_range_count\":"
       << summary.missing_episode_requested_range_count
@@ -8101,6 +8199,33 @@ forecast_eval_summary_json(const exposure::forecast_eval_summary_t &summary) {
       << source_analytics_metric_summary_json(summary.mean_total_log_growth)
       << ",\"mean_final_equity_base\":"
       << source_analytics_metric_summary_json(summary.mean_final_equity_base)
+      << ",\"mean_max_drawdown\":"
+      << source_analytics_metric_summary_json(summary.mean_max_drawdown)
+      << ",\"mean_total_turnover\":"
+      << source_analytics_metric_summary_json(summary.mean_total_turnover)
+      << ",\"mean_total_transaction_cost_base\":"
+      << source_analytics_metric_summary_json(
+             summary.mean_total_transaction_cost_base)
+      << ",\"requested_notional_base\":"
+      << source_analytics_metric_summary_json(summary.requested_notional_base)
+      << ",\"executed_notional_base\":"
+      << source_analytics_metric_summary_json(summary.executed_notional_base)
+      << ",\"rejected_notional_base\":"
+      << source_analytics_metric_summary_json(summary.rejected_notional_base)
+      << ",\"fill_ratio\":"
+      << source_analytics_metric_summary_json(summary.fill_ratio)
+      << ",\"fee_cost_base\":"
+      << source_analytics_metric_summary_json(summary.fee_cost_base)
+      << ",\"spread_cost_base\":"
+      << source_analytics_metric_summary_json(summary.spread_cost_base)
+      << ",\"slippage_cost_base\":"
+      << source_analytics_metric_summary_json(summary.slippage_cost_base)
+      << ",\"mean_target_weight_error_l1\":"
+      << source_analytics_metric_summary_json(
+             summary.mean_target_weight_error_l1)
+      << ",\"mean_target_weight_error_linf\":"
+      << source_analytics_metric_summary_json(
+             summary.mean_target_weight_error_linf)
       << ",\"mean_projection_mae\":"
       << source_analytics_metric_summary_json(summary.mean_projection_mae)
       << ",\"mean_projection_signed_bias\":"
@@ -8115,6 +8240,263 @@ forecast_eval_summary_json(const exposure::forecast_eval_summary_t &summary) {
       << ",\"artifact_evidence\":" << bool_json(summary.artifact_evidence)
       << ",\"visibility_only\":" << bool_json(summary.visibility_only)
       << ",\"replay_executor\":" << bool_json(summary.replay_executor)
+      << ",\"allocation_authority\":" << bool_json(summary.allocation_authority)
+      << ",\"execution_authority\":" << bool_json(summary.execution_authority)
+      << ",\"readiness_authority\":" << bool_json(summary.readiness_authority)
+      << ",\"quality_authority\":" << bool_json(summary.quality_authority)
+      << ",\"performance_authority\":"
+      << bool_json(summary.performance_authority)
+      << ",\"market_readiness_authority\":"
+      << bool_json(summary.market_readiness_authority)
+      << ",\"deployment_authority\":" << bool_json(summary.deployment_authority)
+      << ",\"checkpoint_selector\":" << bool_json(summary.checkpoint_selector)
+      << ",\"coverage_authority\":" << bool_json(summary.coverage_authority)
+      << ",\"leakage_authority\":" << bool_json(summary.leakage_authority)
+      << ",\"contract_identity_authority\":"
+      << bool_json(summary.contract_identity_authority)
+      << ",\"issues\":" << string_array_json(summary.issues) << "}";
+  return out.str();
+}
+
+[[nodiscard]] std::string policy_training_fact_json(
+    const exposure::lattice_policy_training_fact_t &fact) {
+  std::ostringstream out;
+  out << "{\"schema\":" << json_quote(fact.schema)
+      << ",\"fact_type\":" << json_quote(fact.fact_type)
+      << ",\"parent_exposure_fact_digest\":"
+      << json_quote(fact.parent_exposure_fact_digest)
+      << ",\"contract_fingerprint\":" << json_quote(fact.contract_fingerprint)
+      << ",\"protocol_id\":" << json_quote(fact.protocol_id)
+      << ",\"graph_order_fingerprint\":"
+      << json_quote(fact.graph_order_fingerprint)
+      << ",\"source_cursor_token\":" << json_quote(fact.source_cursor_token)
+      << ",\"split_policy_fingerprint\":"
+      << json_quote(fact.split_policy_fingerprint)
+      << ",\"component_assembly_fingerprint\":"
+      << json_quote(fact.component_assembly_fingerprint)
+      << ",\"target_component_family_id\":"
+      << json_quote(fact.target_component_family_id)
+      << ",\"job_id\":" << json_quote(fact.job_id)
+      << ",\"wave_id\":" << json_quote(fact.wave_id)
+      << ",\"job_status\":" << json_quote(fact.job_status)
+      << ",\"wave_action\":" << json_quote(fact.wave_action)
+      << ",\"split_name\":" << json_quote(fact.split_name) << ",\"split_role\":"
+      << json_quote(exposure::exposure_split_role_name(fact.split_role))
+      << ",\"anchor_range\":" << interval_json(fact.anchor_range)
+      << ",\"completed_anchor_range\":"
+      << interval_json(fact.completed_anchor_range)
+      << ",\"policy_id\":" << json_quote(fact.policy_id)
+      << ",\"policy_kind\":" << json_quote(fact.policy_kind)
+      << ",\"policy_architecture_digest\":"
+      << json_quote(fact.policy_architecture_digest)
+      << ",\"training_config_digest\":"
+      << json_quote(fact.training_config_digest)
+      << ",\"training_range_digest\":" << json_quote(fact.training_range_digest)
+      << ",\"validation_range_digest\":"
+      << json_quote(fact.validation_range_digest)
+      << ",\"test_range_digest\":" << json_quote(fact.test_range_digest)
+      << ",\"environment_contract_id\":"
+      << json_quote(fact.environment_contract_id)
+      << ",\"observation_schema_digest\":"
+      << json_quote(fact.observation_schema_digest)
+      << ",\"action_schema_digest\":" << json_quote(fact.action_schema_digest)
+      << ",\"reward_contract_digest\":"
+      << json_quote(fact.reward_contract_digest)
+      << ",\"execution_profile_digest\":"
+      << json_quote(fact.execution_profile_digest)
+      << ",\"normalization_fit_range_digest\":"
+      << json_quote(fact.normalization_fit_range_digest)
+      << ",\"replay_buffer_source_range_digest\":"
+      << json_quote(fact.replay_buffer_source_range_digest)
+      << ",\"early_stopping_policy_digest\":"
+      << json_quote(fact.early_stopping_policy_digest)
+      << ",\"hyperparameter_selection_policy_digest\":"
+      << json_quote(fact.hyperparameter_selection_policy_digest)
+      << ",\"selector_split\":" << json_quote(fact.selector_split)
+      << ",\"selector_policy_digest\":"
+      << json_quote(fact.selector_policy_digest)
+      << ",\"parent_checkpoint_digest\":"
+      << json_quote(fact.parent_checkpoint_digest)
+      << ",\"checkpoint_digest\":" << json_quote(fact.checkpoint_digest)
+      << ",\"parent_forecast_eval_fact_digest\":"
+      << json_quote(fact.parent_forecast_eval_fact_digest)
+      << ",\"parent_observer_belief_fact_digest\":"
+      << json_quote(fact.parent_observer_belief_fact_digest)
+      << ",\"parent_allocation_engine_fact_digest\":"
+      << json_quote(fact.parent_allocation_engine_fact_digest)
+      << ",\"parent_replay_environment_fact_digest\":"
+      << json_quote(fact.parent_replay_environment_fact_digest)
+      << ",\"random_seed\":" << fact.random_seed
+      << ",\"random_seed_bound\":" << bool_json(fact.random_seed_bound)
+      << ",\"training_range_disjoint_validation\":"
+      << bool_json(fact.training_range_disjoint_validation)
+      << ",\"training_range_disjoint_test\":"
+      << bool_json(fact.training_range_disjoint_test)
+      << ",\"validation_range_disjoint_test\":"
+      << bool_json(fact.validation_range_disjoint_test)
+      << ",\"normalization_fit_training_only\":"
+      << bool_json(fact.normalization_fit_training_only)
+      << ",\"replay_buffer_training_only\":"
+      << bool_json(fact.replay_buffer_training_only)
+      << ",\"reward_baseline_training_only\":"
+      << bool_json(fact.reward_baseline_training_only)
+      << ",\"early_stopping_uses_validation_only\":"
+      << bool_json(fact.early_stopping_uses_validation_only)
+      << ",\"hyperparameter_selection_uses_validation_only\":"
+      << bool_json(fact.hyperparameter_selection_uses_validation_only)
+      << ",\"test_sealed_until_final_report\":"
+      << bool_json(fact.test_sealed_until_final_report)
+      << ",\"test_first_access_after_selection\":"
+      << bool_json(fact.test_first_access_after_selection)
+      << ",\"runtime_job_kind_bound\":"
+      << bool_json(fact.runtime_job_kind_bound)
+      << ",\"policy_checkpoint_written\":"
+      << bool_json(fact.policy_checkpoint_written)
+      << ",\"artifact_evidence\":" << bool_json(fact.artifact_evidence)
+      << ",\"visibility_only\":" << bool_json(fact.visibility_only)
+      << ",\"runtime_trainer\":" << bool_json(fact.runtime_trainer)
+      << ",\"policy_training_authority\":"
+      << bool_json(fact.policy_training_authority)
+      << ",\"policy_selector\":" << bool_json(fact.policy_selector)
+      << ",\"allocation_authority\":" << bool_json(fact.allocation_authority)
+      << ",\"execution_authority\":" << bool_json(fact.execution_authority)
+      << ",\"readiness_authority\":" << bool_json(fact.readiness_authority)
+      << ",\"quality_authority\":" << bool_json(fact.quality_authority)
+      << ",\"performance_authority\":" << bool_json(fact.performance_authority)
+      << ",\"market_readiness_authority\":"
+      << bool_json(fact.market_readiness_authority)
+      << ",\"deployment_authority\":" << bool_json(fact.deployment_authority)
+      << ",\"checkpoint_selector\":" << bool_json(fact.checkpoint_selector)
+      << ",\"coverage_authority\":" << bool_json(fact.coverage_authority)
+      << ",\"leakage_authority\":" << bool_json(fact.leakage_authority)
+      << ",\"contract_identity_authority\":"
+      << bool_json(fact.contract_identity_authority) << ",\"issues\":"
+      << string_array_json(exposure::policy_training_fact_issues(fact))
+      << ",\"digest\":"
+      << json_quote(exposure::policy_training_fact_digest(fact)) << "}";
+  return out.str();
+}
+
+[[nodiscard]] std::string policy_training_facts_json(
+    const std::vector<exposure::lattice_policy_training_fact_t> &facts,
+    std::size_t limit) {
+  const std::size_t n = std::min(facts.size(), limit);
+  std::ostringstream out;
+  out << "[";
+  for (std::size_t i = 0; i < n; ++i) {
+    if (i != 0) {
+      out << ",";
+    }
+    out << policy_training_fact_json(facts[i]);
+  }
+  out << "]";
+  return out.str();
+}
+
+[[nodiscard]] std::string policy_training_summary_json(
+    const exposure::policy_training_summary_t &summary) {
+  std::ostringstream out;
+  out << "{\"schema\":" << json_quote(summary.schema)
+      << ",\"exposure_fact_count\":" << summary.exposure_fact_count
+      << ",\"policy_training_fact_count\":"
+      << summary.policy_training_fact_count
+      << ",\"parent_exposure_fact_count\":"
+      << summary.parent_exposure_fact_count
+      << ",\"policy_id_bound_count\":" << summary.policy_id_bound_count
+      << ",\"policy_kind_bound_count\":" << summary.policy_kind_bound_count
+      << ",\"architecture_digest_bound_count\":"
+      << summary.architecture_digest_bound_count
+      << ",\"training_config_digest_bound_count\":"
+      << summary.training_config_digest_bound_count
+      << ",\"training_range_digest_bound_count\":"
+      << summary.training_range_digest_bound_count
+      << ",\"validation_range_digest_bound_count\":"
+      << summary.validation_range_digest_bound_count
+      << ",\"test_range_digest_bound_count\":"
+      << summary.test_range_digest_bound_count
+      << ",\"environment_contract_bound_count\":"
+      << summary.environment_contract_bound_count
+      << ",\"observation_schema_bound_count\":"
+      << summary.observation_schema_bound_count
+      << ",\"action_schema_bound_count\":" << summary.action_schema_bound_count
+      << ",\"reward_contract_bound_count\":"
+      << summary.reward_contract_bound_count
+      << ",\"execution_profile_digest_bound_count\":"
+      << summary.execution_profile_digest_bound_count
+      << ",\"normalization_fit_range_bound_count\":"
+      << summary.normalization_fit_range_bound_count
+      << ",\"replay_buffer_source_range_bound_count\":"
+      << summary.replay_buffer_source_range_bound_count
+      << ",\"early_stopping_policy_bound_count\":"
+      << summary.early_stopping_policy_bound_count
+      << ",\"hyperparameter_selection_policy_bound_count\":"
+      << summary.hyperparameter_selection_policy_bound_count
+      << ",\"selector_split_bound_count\":"
+      << summary.selector_split_bound_count
+      << ",\"selector_policy_bound_count\":"
+      << summary.selector_policy_bound_count
+      << ",\"random_seed_bound_count\":" << summary.random_seed_bound_count
+      << ",\"parent_checkpoint_bound_count\":"
+      << summary.parent_checkpoint_bound_count
+      << ",\"checkpoint_digest_bound_count\":"
+      << summary.checkpoint_digest_bound_count
+      << ",\"forecast_eval_declared_count\":"
+      << summary.forecast_eval_declared_count
+      << ",\"forecast_eval_bound_count\":" << summary.forecast_eval_bound_count
+      << ",\"unresolved_forecast_eval_count\":"
+      << summary.unresolved_forecast_eval_count
+      << ",\"forecast_eval_identity_mismatch_count\":"
+      << summary.forecast_eval_identity_mismatch_count
+      << ",\"observer_belief_declared_count\":"
+      << summary.observer_belief_declared_count
+      << ",\"observer_belief_bound_count\":"
+      << summary.observer_belief_bound_count
+      << ",\"unresolved_observer_belief_count\":"
+      << summary.unresolved_observer_belief_count
+      << ",\"observer_belief_identity_mismatch_count\":"
+      << summary.observer_belief_identity_mismatch_count
+      << ",\"allocation_engine_declared_count\":"
+      << summary.allocation_engine_declared_count
+      << ",\"allocation_engine_bound_count\":"
+      << summary.allocation_engine_bound_count
+      << ",\"unresolved_allocation_engine_count\":"
+      << summary.unresolved_allocation_engine_count
+      << ",\"allocation_engine_identity_mismatch_count\":"
+      << summary.allocation_engine_identity_mismatch_count
+      << ",\"replay_environment_declared_count\":"
+      << summary.replay_environment_declared_count
+      << ",\"replay_environment_bound_count\":"
+      << summary.replay_environment_bound_count
+      << ",\"unresolved_replay_environment_count\":"
+      << summary.unresolved_replay_environment_count
+      << ",\"replay_environment_identity_mismatch_count\":"
+      << summary.replay_environment_identity_mismatch_count
+      << ",\"disjoint_range_contract_count\":"
+      << summary.disjoint_range_contract_count
+      << ",\"training_only_normalization_count\":"
+      << summary.training_only_normalization_count
+      << ",\"training_only_replay_buffer_count\":"
+      << summary.training_only_replay_buffer_count
+      << ",\"training_only_reward_baseline_count\":"
+      << summary.training_only_reward_baseline_count
+      << ",\"validation_selector_policy_count\":"
+      << summary.validation_selector_policy_count
+      << ",\"sealed_test_count\":" << summary.sealed_test_count
+      << ",\"runtime_job_kind_bound_count\":"
+      << summary.runtime_job_kind_bound_count
+      << ",\"policy_checkpoint_written_count\":"
+      << summary.policy_checkpoint_written_count
+      << ",\"artifact_evidence_count\":" << summary.artifact_evidence_count
+      << ",\"leakage_contract_issue_count\":"
+      << summary.leakage_contract_issue_count
+      << ",\"authority_drift_count\":" << summary.authority_drift_count
+      << ",\"warning_count\":" << summary.warning_count
+      << ",\"artifact_evidence\":" << bool_json(summary.artifact_evidence)
+      << ",\"visibility_only\":" << bool_json(summary.visibility_only)
+      << ",\"runtime_trainer\":" << bool_json(summary.runtime_trainer)
+      << ",\"policy_training_authority\":"
+      << bool_json(summary.policy_training_authority)
+      << ",\"policy_selector\":" << bool_json(summary.policy_selector)
       << ",\"allocation_authority\":" << bool_json(summary.allocation_authority)
       << ",\"execution_authority\":" << bool_json(summary.execution_authority)
       << ",\"readiness_authority\":" << bool_json(summary.readiness_authority)
@@ -8560,6 +8942,7 @@ runtime_index_cache_json(const exposure::lattice_runtime_index_cache_t &cache,
       << cache.allocation_engine_fact_count
       << ",\"replay_environment_fact_count\":"
       << cache.replay_environment_fact_count
+      << ",\"policy_training_fact_count\":" << cache.policy_training_fact_count
       << ",\"selection_signal_fact_count\":"
       << cache.selection_signal_fact_count
       << ",\"representation_support_fact_count\":"
@@ -9291,6 +9674,11 @@ simple_fact_family_summary_json(const char *schema, std::int64_t fact_count) {
     return replay_environment_summary_json(
         exposure::summarize_replay_environments(
             ledger.facts(), ledger.replay_environment_facts()));
+  case exposure::lattice_fact_family_t::policy_training:
+    return policy_training_summary_json(exposure::summarize_policy_trainings(
+        ledger.facts(), ledger.policy_training_facts(),
+        ledger.forecast_eval_facts(), ledger.observer_belief_facts(),
+        ledger.allocation_engine_facts(), ledger.replay_environment_facts()));
   case exposure::lattice_fact_family_t::selection_signal:
     return selection_signal_summary_json(exposure::summarize_selection_signals(
         ledger.facts(), ledger.selection_signal_facts(),
@@ -9333,6 +9721,8 @@ fact_family_facts_json(const exposure::lattice_exposure_ledger_t &ledger,
   case exposure::lattice_fact_family_t::replay_environment:
     return replay_environment_facts_json(ledger.replay_environment_facts(),
                                          limit);
+  case exposure::lattice_fact_family_t::policy_training:
+    return policy_training_facts_json(ledger.policy_training_facts(), limit);
   case exposure::lattice_fact_family_t::selection_signal:
     return selection_signal_facts_json(ledger.selection_signal_facts(), limit);
   case exposure::lattice_fact_family_t::representation_support:
@@ -9493,6 +9883,12 @@ fact_family_preview_rows_json(const exposure::lattice_exposure_ledger_t &ledger,
                                   exposure::lattice_fact_family_name(family),
                                   exposure::replay_environment_fact_digest,
                                   replay_environment_fact_json, matching_count,
+                                  truncated);
+  case exposure::lattice_fact_family_t::policy_training:
+    return fact_preview_rows_json(ledger.policy_training_facts(), filter,
+                                  exposure::lattice_fact_family_name(family),
+                                  exposure::policy_training_fact_digest,
+                                  policy_training_fact_json, matching_count,
                                   truncated);
   case exposure::lattice_fact_family_t::selection_signal:
     return fact_preview_rows_json(ledger.selection_signal_facts(), filter,
@@ -9919,6 +10315,8 @@ build_target_evaluator(const std::string &args, lattice_context_t *ctx,
        << scan.ledger.allocation_engine_facts().size()
        << ",\"replay_environment_fact_count\":"
        << scan.ledger.replay_environment_facts().size()
+       << ",\"policy_training_fact_count\":"
+       << scan.ledger.policy_training_facts().size()
        << ",\"selection_signal_fact_count\":"
        << scan.ledger.selection_signal_facts().size()
        << ",\"representation_support_fact_count\":"
@@ -10484,6 +10882,8 @@ build_target_evaluator(const std::string &args, lattice_context_t *ctx,
        << scan.ledger.allocation_engine_facts().size()
        << ",\"replay_environment_fact_count\":"
        << scan.ledger.replay_environment_facts().size()
+       << ",\"policy_training_fact_count\":"
+       << scan.ledger.policy_training_facts().size()
        << ",\"selection_signal_fact_count\":"
        << scan.ledger.selection_signal_facts().size()
        << ",\"representation_support_fact_count\":"
@@ -10832,6 +11232,8 @@ build_target_evaluator(const std::string &args, lattice_context_t *ctx,
        << scan.ledger.allocation_engine_facts().size()
        << ",\"replay_environment_fact_count\":"
        << scan.ledger.replay_environment_facts().size()
+       << ",\"policy_training_fact_count\":"
+       << scan.ledger.policy_training_facts().size()
        << ",\"selection_signal_fact_count\":"
        << scan.ledger.selection_signal_facts().size()
        << ",\"representation_support_fact_count\":"
@@ -11156,6 +11558,8 @@ build_target_evaluator(const std::string &args, lattice_context_t *ctx,
        << scan.ledger.allocation_engine_facts().size()
        << ",\"replay_environment_fact_count\":"
        << scan.ledger.replay_environment_facts().size()
+       << ",\"policy_training_fact_count\":"
+       << scan.ledger.policy_training_facts().size()
        << ",\"selection_signal_fact_count\":"
        << scan.ledger.selection_signal_facts().size()
        << ",\"representation_support_fact_count\":"
@@ -11192,6 +11596,9 @@ build_target_evaluator(const std::string &args, lattice_context_t *ctx,
                                 static_cast<std::size_t>(limit))
        << ",\"returned_replay_environment_fact_count\":"
        << std::min<std::size_t>(scan.ledger.replay_environment_facts().size(),
+                                static_cast<std::size_t>(limit))
+       << ",\"returned_policy_training_fact_count\":"
+       << std::min<std::size_t>(scan.ledger.policy_training_facts().size(),
                                 static_cast<std::size_t>(limit))
        << ",\"returned_selection_signal_fact_count\":"
        << std::min<std::size_t>(scan.ledger.selection_signal_facts().size(),
@@ -12472,6 +12879,8 @@ evidence_dimension_comparison_rows(
        << scan.ledger.allocation_engine_facts().size()
        << ",\"replay_environment_fact_count\":"
        << scan.ledger.replay_environment_facts().size()
+       << ",\"policy_training_fact_count\":"
+       << scan.ledger.policy_training_facts().size()
        << ",\"selection_signal_fact_count\":"
        << scan.ledger.selection_signal_facts().size()
        << ",\"representation_support_fact_count\":"

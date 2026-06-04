@@ -976,6 +976,30 @@ LATTICE_TARGET {
   REQUIRE_CONTRACT_MATCH = true;
 };
 
+LATTICE_TARGET {
+  TARGET_ID = replay_environment_artifact_ready;
+  TARGET_CLASS = artifact_readiness;
+  PROOF_KIND = replay_environment_artifact_bound;
+  SUBJECT_FACT_FAMILY = replay_environment;
+  SUBJECT_COMPONENT = wikimyei.inference.expected_value.mdn;
+  PROTOCOL_ID = cwu_02v;
+  SOURCE_RANGE = anchor_index;
+  OVER_SPLIT = validation_holdout;
+  REQUIRE_CONTRACT_MATCH = true;
+};
+
+LATTICE_TARGET {
+  TARGET_ID = policy_training_artifact_ready;
+  TARGET_CLASS = artifact_readiness;
+  PROOF_KIND = policy_training_artifact_bound;
+  SUBJECT_FACT_FAMILY = policy_training;
+  SUBJECT_COMPONENT = wikimyei.policy.trainable;
+  PROTOCOL_ID = cwu_02v;
+  SOURCE_RANGE = anchor_index;
+  OVER_SPLIT = validation_holdout;
+  REQUIRE_CONTRACT_MATCH = true;
+};
+
 LATTICE_WARN {
   TARGET_ID = allocation_artifact_ready;
   WARNING_ID = allocation_turnover_high_visibility_only;

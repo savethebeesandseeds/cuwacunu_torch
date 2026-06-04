@@ -44,6 +44,8 @@ void print_usage(const char *argv0) {
             << "       [--replay-max-steps N]\n"
             << "       [--replay-max-parallel-jobs N]\n"
             << "       [--replay-linear-transaction-cost-rate VALUE]\n"
+            << "       [--replay-execution-profile-digest DIGEST]\n"
+            << "       [--replay-policy-set-digest DIGEST]\n"
             << "       [--replay-allow-synthetic-direct-edges]\n"
             << "       [--replay-include-equal-weight]\n"
             << "       [--replay-include-current-weight]\n"
@@ -228,6 +230,12 @@ int main(int argc, char **argv) {
       } else if (arg == "--replay-linear-transaction-cost-rate") {
         replay_options.world_options.linear_transaction_cost_rate =
             parse_double_arg(require_next_arg(argc, argv, &i, arg), arg);
+      } else if (arg == "--replay-execution-profile-digest") {
+        replay_options.execution_profile_digest =
+            require_next_arg(argc, argv, &i, arg);
+      } else if (arg == "--replay-policy-set-digest") {
+        replay_options.policy_set_digest =
+            require_next_arg(argc, argv, &i, arg);
       } else if (arg == "--replay-allow-synthetic-direct-edges") {
         replay_options.world_options.paper_execution_options
             .allow_synthetic_direct_edges = true;

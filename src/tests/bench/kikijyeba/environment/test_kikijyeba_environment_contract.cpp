@@ -3667,6 +3667,8 @@ void test_replay_source_graph_anchor_binding() {
   auto experiment = env::run_replay_experiment(
       "source_bundle_baseline_compare", std::vector{enriched_bundle},
       policy_factories, experiment_options);
+  experiment.execution_profile_digest = "profile_digest_fixture";
+  experiment.policy_set_digest = "policy_set_digest_fixture";
   check(experiment.experiment_artifact_schema_id ==
             std::string(env::kReplayExperimentArtifactSchema),
         "experiment runner emits replay audit experiment schema");
@@ -3949,6 +3951,14 @@ void test_replay_source_graph_anchor_binding() {
                                 bundle.spec.environment_run_id) !=
             std::string::npos,
         "replay experiment report writes environment run id");
+  check(replay_report_text.find("execution_profile_digest="
+                                "profile_digest_fixture") !=
+                std::string::npos &&
+            replay_report_text.find("policy_set_digest="
+                                    "policy_set_digest_fixture") !=
+                std::string::npos,
+        "replay experiment report writes rollout execution and policy "
+        "identity digests");
   check(replay_report_text.find("config_path=" + replay_config_path.string()) !=
                 std::string::npos &&
             replay_report_text.find("config_path_content_digest=") !=
@@ -4018,6 +4028,29 @@ void test_replay_source_graph_anchor_binding() {
             replay_report_text.find("mean_projection_directional_accuracy=") !=
                 std::string::npos,
         "replay experiment report writes aggregate projection metrics");
+  check(replay_report_text.find("cajtucu_valid_trace_count=") !=
+                std::string::npos &&
+            replay_report_text.find("cajtucu_invalid_trace_count=") !=
+                std::string::npos &&
+            replay_report_text.find("requested_notional_base=") !=
+                std::string::npos &&
+            replay_report_text.find("executed_notional_base=") !=
+                std::string::npos &&
+            replay_report_text.find("rejected_notional_base=") !=
+                std::string::npos &&
+            replay_report_text.find("fee_cost_base=") != std::string::npos &&
+            replay_report_text.find("spread_cost_base=") != std::string::npos &&
+            replay_report_text.find("slippage_cost_base=") !=
+                std::string::npos &&
+            replay_report_text.find("mean_target_weight_error_l1=") !=
+                std::string::npos &&
+            replay_report_text.find("mean_target_weight_error_linf=") !=
+                std::string::npos &&
+            replay_report_text.find("policy_0_cajtucu_valid_trace_count=") !=
+                std::string::npos &&
+            replay_report_text.find("episode_0_cajtucu_valid_trace_count=") !=
+                std::string::npos,
+        "replay experiment report writes cost-aware Cajtucu rollout metrics");
   check(replay_report_text.find("time_law_observation_step_count=4") !=
                 std::string::npos &&
             replay_report_text.find("time_law_expected_step_count=4") !=
@@ -4745,8 +4778,18 @@ void test_replay_source_graph_anchor_binding() {
               std::string::npos &&
           replay_report_text.find("episode_0_step_0_cajtucu_order_count=") !=
               std::string::npos &&
+          replay_report_text.find("episode_0_step_0_cajtucu_trace_valid=") !=
+              std::string::npos &&
+          replay_report_text.find(
+              "episode_0_step_0_cajtucu_requested_notional_base=") !=
+              std::string::npos &&
           replay_report_text.find(
               "episode_0_step_0_cajtucu_total_transaction_cost_base=") !=
+              std::string::npos &&
+          replay_report_text.find("episode_0_step_0_target_weight_error_l1=") !=
+              std::string::npos &&
+          replay_report_text.find(
+              "episode_0_step_0_ledger_after_execution_equity=") !=
               std::string::npos &&
           replay_report_text.find(
               "episode_0_step_0_residual_quality_available=") !=

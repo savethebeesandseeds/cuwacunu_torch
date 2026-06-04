@@ -191,3 +191,35 @@ read path is named too: `hero.runtime.inspect subject=artifact` can inspect
 `replay_experiment_report`, and `hero.runtime.inspect subject=job` summarizes
 those replay artifacts beside the regular Runtime manifest/state/report
 summaries.
+
+Policy-training is now represented as a Runtime contract, not as a trainer.
+`hero.runtime.run operation=policy_training requested_mode=plan|dry_run`
+validates a bounded trainable-policy handoff and returns a deterministic
+`kikijyeba.runtime.policy_training_job_contract.v1` packet with a contract
+digest. The contract binds policy identity, architecture/training-config
+digests, disjoint train/validation/test range digests, normalization and replay
+buffer ranges, environment/observation/action/reward/execution-profile digests,
+causal walk-forward schedule mode/schema/digest, selection-policy digests,
+parent replay-environment evidence, and finite episode/step/wall-clock bounds.
+Runtime rejects contracts where normalization or replay-buffer inputs are not
+training-bound, where train/validation/test ranges overlap by digest, where the
+causal schedule does not bind a typed cursor-key ordering and ledger-derived
+`no_future_snapshot_use` source, where target-label/reward/trajectory
+availability extends beyond artifact `usable_from_key`, where
+`offline_full_window_research` is presented as readiness evidence, or where live
+execution is requested.
+`requested_mode=execute` is explicitly refused in this checkpoint; PPO or any
+future trainable policy needs a dedicated Runtime runner before checkpoints can
+be mutated.
+
+The readiness-grade schedule is `causal_walk_forward_training.v1`: each rollout
+block must use a snapshot family whose artifacts declare `usable_from_key <=
+block_cursor_begin`. Artifacts fitted on a block may be updated after that block
+closes, but they cannot generate observations, beliefs, actions, rewards, or
+policy-training trajectories inside that same block. The proof source is
+`derived_from_artifact_fit_use_ledgers`; caller assertions are not enough.
+Schedules must declare an explicit cursor-key ordering and reject opaque keys
+without an ordering map. Target-label, reward, and trajectory availability must
+be no later than the artifact `usable_from_key`. Full-window training is
+quarantined as `offline_full_window_research`; it remains useful for diagnostics
+but cannot satisfy policy-training readiness.
