@@ -3387,7 +3387,10 @@ private:
         !fact.experiment_id.empty() && !fact.runtime_run_id.empty() &&
         !fact.environment_run_id.empty() &&
         !fact.execution_profile_digest.empty() &&
-        !fact.policy_set_digest.empty() && fact.attempted_count > 0 &&
+        !fact.policy_set_digest.empty() && fact.policy_count > 0 &&
+        fact.policy_summary_count > 0 &&
+        fact.policy_summary_count == fact.policy_count &&
+        fact.attempted_count > 0 && fact.failed_count == 0 &&
         fact.completed_count == fact.attempted_count &&
         fact.episode_count > 0 &&
         fact.episode_requested_range_bound_count >= fact.episode_count &&
@@ -3550,8 +3553,12 @@ private:
     if (ledger == nullptr && options_.auto_build_exposure_ledger) {
       exposure::exposure_build_context_t context{};
       context.split_policy_fingerprint = expected_split_policy_fingerprint;
+      exposure::exposure_scan_options_t scan_options{};
+      if (spec.subject_fact_family == "replay_environment") {
+        scan_options.derive_replay_environment_facts = true;
+      }
       scanned_ledger = exposure::scan_exposure_ledger_from_runtime_root(
-          options_.runtime_root, context);
+          options_.runtime_root, context, scan_options);
       ledger = &scanned_ledger->ledger;
     }
     if (ledger == nullptr) {

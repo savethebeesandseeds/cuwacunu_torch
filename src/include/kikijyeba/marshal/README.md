@@ -464,9 +464,10 @@ The graph fingerprint must match the completed Runtime job manifest. The asset
 universe digest must match the request's `base_reserve_node_id` and
 `risky_node_ids`; it is not inferred silently.
 
-Synthetic direct execution edges are rejected by default. Research replay may
-opt in only by setting `allow_synthetic_direct_edges=true` and providing
-`synthetic_edge_research_reason`.
+Synthetic direct execution edges are forbidden for Marshal validation rollout.
+Research replay with synthetic execution surfaces belongs outside this
+validation contract and must not be used to satisfy cost-aware rollout or
+readiness claims.
 
 The Cajtucu paper execution profile is part of rollout identity. Marshal emits
 an `execution_profile_digest` and a `policy_set_digest` in the rollout plan so
@@ -486,9 +487,14 @@ allow_negative_base_reserve=false
 live_execution_allowed=false
 ```
 
-Runtime replay currently forwards synthetic-edge opt-in and linear transaction
-cost. Marshal rejects partial fills for rollout until Runtime replay has a
-concrete forwarding contract for that option.
+Marshal execute mode marks the delegated Runtime replay payload with
+`validation_rollout=true`. Runtime then requires nonzero transaction cost,
+finite replay bounds, execution-profile and policy-set digests, and rejects
+synthetic execution edges at the request boundary. Runtime also checks the
+produced replay report before accepting validation replay: synthetic Cajtucu
+market steps or invalid Cajtucu traces block the handoff, even if the underlying
+environment episodes completed. Marshal rejects partial fills for rollout until
+Runtime replay has a concrete forwarding contract for that option.
 
 `rollout` emits a replay command template for:
 

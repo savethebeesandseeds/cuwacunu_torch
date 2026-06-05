@@ -15,6 +15,11 @@ HERO_RUNTIME_POLICY_KEY("protocol_layer", "enum", 1, "STDIO", "one token",
                         "STDIO,HTTPS/SSE",
                         "MCP protocol layer. HTTPS/SSE is reserved and fails "
                         "fast.")
+HERO_RUNTIME_POLICY_KEY("runtime_profile", "enum", 1, "locked_default",
+                        "one token", "locked_default,train_operator",
+                        "Named profile selected from this Runtime policy "
+                        "surface. CLI --profile overrides [HERO]."
+                        "runtime_hero_profile, which overrides this value.")
 HERO_RUNTIME_POLICY_KEY("runtime_exec_path", "path", 1,
                         "/cuwacunu/.build/exec/cuwacunu_exec",
                         "executable path", "absolute_or_relative_path",

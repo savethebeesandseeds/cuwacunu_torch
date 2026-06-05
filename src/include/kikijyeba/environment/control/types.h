@@ -49,7 +49,7 @@ inline constexpr const char *kReplayStepArtifactSchema =
 inline constexpr const char *kReplayEpisodeArtifactSchema =
     "kikijyeba.environment.replay.episode_artifact.v1";
 inline constexpr const char *kReplayExperimentArtifactSchema =
-    "kikijyeba.environment.replay.experiment_artifact.v1";
+    "kikijyeba.environment.replay.cajtucu_ready_experiment_artifact.v1";
 inline constexpr const char *kReplayPolicyComparisonArtifactSchema =
     "kikijyeba.environment.replay.policy_comparison_artifact.v1";
 inline constexpr const char *kTargetWeightsActionSchema =

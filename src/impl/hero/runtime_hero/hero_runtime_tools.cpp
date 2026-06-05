@@ -13,6 +13,7 @@
 #include <cerrno>
 #include <charconv>
 #include <chrono>
+#include <cmath>
 #include <csignal>
 #include <cstdint>
 #include <cstdlib>
@@ -51,36 +52,41 @@ struct tool_descriptor_t {
 };
 
 constexpr tool_descriptor_t
-    kTools[] =
-        {
-            {"hero.runtime.status",
-             "Read-only health: summarize Runtime Hero policy, executable, "
-             "active "
-             "wave, job root, and explicit non-proof boundary state.",
-             R"({"type":"object","properties":{},"additionalProperties":false})"},
-            {"hero.runtime.inspect",
-             "Read-only Runtime inspection. subject=schema reads policy keys; "
-             "subject=wave decodes the active wave; subject=jobs/job/artifact "
-             "reads "
-             "bounded Runtime evidence.",
-             R"({"type":"object","required":["subject"],"properties":{"subject":{"type":"string","enum":["schema","wave","jobs","job","artifact"]},"config_path":{"type":"string"},"root":{"type":"string"},"job_id":{"type":"string"},"job_dir":{"type":"string"},"artifact":{"type":"string"},"path":{"type":"string"},"include_artifacts":{"type":"boolean"},"include_text":{"type":"boolean"},"max_bytes":{"type":"integer"},"limit":{"type":"integer"}},"additionalProperties":false})"},
-            {"hero.runtime.run",
-             "Runtime execution/delegation. operation=wave runs the active "
-             "Runtime "
-             "wave with requested_mode=dry_run|execute. operation=replay "
-             "plans, "
-             "dry-runs, or executes replay from a completed Runtime job. "
-             "operation=policy_training validates the contract-only "
-             "trainable-policy "
-             "job handoff and refuses execute until a dedicated trainer "
-             "exists.",
-             R"({"type":"object","required":["operation","requested_mode"],"properties":{"operation":{"type":"string","enum":["wave","replay","policy_training"]},"requested_mode":{"type":"string","enum":["plan","dry_run","execute"]},"config_path":{"type":"string"},"job_id":{"type":"string"},"job_dir":{"type":"string"},"force_rebuild_cache":{"type":"boolean"},"confirm_execute":{"type":"boolean"},"timeout_seconds":{"type":"integer"},"wave_overlay":{"type":"object","properties":{"source_range":{"type":"string"},"anchor_index_begin":{"type":"string"},"anchor_index_end":{"type":"string"},"source_key_begin":{"type":"string"},"source_key_end":{"type":"string"}}},"runtime_handoff":{"type":"object","properties":{}},"marshal_expected_wave":{"type":"object","properties":{"target_component_family_id":{"type":"string"},"mode":{"type":"string"},"source_range":{"type":"string"},"source_order":{"type":"string"},"anchor_index_begin":{"type":"string"},"anchor_index_end":{"type":"string"},"source_key_begin":{"type":"string"},"source_key_end":{"type":"string"},"model_state_inputs":{"type":"object"}}},"base_reserve_node_id":{"type":"string"},"risky_node_ids":{"type":"string"},"experiment_id":{"type":"string"},"report_path":{"type":"string"},"initial_equity_base":{"type":"number"},"min_base_reserve_weight":{"type":"number"},"max_risky_weight":{"type":"number"},"max_turnover_l1":{"type":"number"},"max_steps":{"type":"integer"},"max_parallel_jobs":{"type":"integer"},"include_equal_weight":{"type":"boolean"},"include_current_weight":{"type":"boolean"},"include_base_reserve_policy":{"type":"boolean"},"include_spot_distributional_utility_policy":{"type":"boolean"},"allow_synthetic_direct_edges":{"type":"boolean"},"linear_transaction_cost_rate":{"type":"number"},"execution_profile_digest":{"type":"string"},"policy_set_digest":{"type":"string"},"policy_id":{"type":"string"},"policy_kind":{"type":"string"},"policy_architecture_digest":{"type":"string"},"training_config_digest":{"type":"string"},"training_range_digest":{"type":"string"},"validation_range_digest":{"type":"string"},"test_range_digest":{"type":"string"},"environment_contract_id":{"type":"string"},"observation_schema_digest":{"type":"string"},"action_schema_digest":{"type":"string"},"reward_contract_digest":{"type":"string"},"training_schedule_mode":{"type":"string","enum":["causal_walk_forward_training.v1","offline_full_window_research","batch_final_refit_candidate"]},"causal_schedule_schema_id":{"type":"string"},"causal_schedule_digest":{"type":"string"},"causal_schedule_cursor_key_kind":{"type":"string","enum":["numeric_anchor_index","numeric_source_key","fixed_width_source_key","timestamp_ms"]},"causal_schedule_no_future_snapshot_use_source":{"type":"string"},"normalization_fit_range_digest":{"type":"string"},"replay_buffer_source_range_digest":{"type":"string"},"early_stopping_policy_digest":{"type":"string"},"hyperparameter_selection_policy_digest":{"type":"string"},"selector_split":{"type":"string","enum":["none","train","training","validation"]},"parent_forecast_eval_fact_digest":{"type":"string"},"parent_observer_belief_fact_digest":{"type":"string"},"parent_allocation_engine_fact_digest":{"type":"string"},"parent_replay_environment_fact_digest":{"type":"string"},"final_refit_parent_selected_checkpoint_digest":{"type":"string"},"max_episodes":{"type":"integer"},"max_wall_clock_seconds":{"type":"integer"},"causal_schedule_readiness_eligible":{"type":"boolean"},"causal_schedule_no_future_snapshot_use":{"type":"boolean"},"offline_full_window_research_allowed":{"type":"boolean"},"final_refit_uses_validation":{"type":"boolean"},"validation_no_longer_proof":{"type":"boolean"},"sealed_test_required":{"type":"boolean"},"live_execution_allowed":{"type":"boolean"}},"additionalProperties":false})"},
-            {"hero.runtime.reset",
-             "Guarded developer reset. requested_mode=plan previews the reset; "
-             "requested_mode=execute clears allowed Runtime roots only with "
-             "explicit "
-             "confirmation and policy permission.",
-             R"({"type":"object","required":["requested_mode"],"properties":{"requested_mode":{"type":"string","enum":["plan","execute"]},"runtime_root":{"type":"string"},"backup":{"type":"boolean"},"confirm_dev_nuke":{"type":"boolean"}},"additionalProperties":false})"},
+    kTools
+        [] =
+            {
+                {"hero.runtime.status",
+                 "Read-only health: summarize Runtime Hero policy, executable, "
+                 "active "
+                 "wave, job root, and explicit non-proof boundary state.",
+                 R"({"type":"object","properties":{},"additionalProperties":false})"},
+                {"hero.runtime.inspect",
+                 "Read-only Runtime inspection. subject=schema reads policy "
+                 "keys; "
+                 "subject=wave decodes the active wave; "
+                 "subject=jobs/job/artifact "
+                 "reads "
+                 "bounded Runtime evidence.",
+                 R"({"type":"object","required":["subject"],"properties":{"subject":{"type":"string","enum":["schema","wave","jobs","job","artifact"]},"config_path":{"type":"string"},"root":{"type":"string"},"job_id":{"type":"string"},"job_dir":{"type":"string"},"artifact":{"type":"string"},"path":{"type":"string"},"include_artifacts":{"type":"boolean"},"include_text":{"type":"boolean"},"max_bytes":{"type":"integer"},"limit":{"type":"integer"}},"additionalProperties":false})"},
+                {"hero.runtime.run",
+                 "Runtime execution/delegation. operation=wave runs the active "
+                 "Runtime "
+                 "wave with requested_mode=dry_run|execute. operation=replay "
+                 "plans, "
+                 "dry-runs, or executes replay from a completed Runtime job. "
+                 "operation=policy_training validates the contract-only "
+                 "trainable-policy "
+                 "job handoff and refuses execute until a dedicated trainer "
+                 "exists.",
+                 R"({"type":"object","required":["operation","requested_mode"],"properties":{"operation":{"type":"string","enum":["wave","replay","policy_training"]},"requested_mode":{"type":"string","enum":["plan","dry_run","execute"]},"config_path":{"type":"string"},"job_id":{"type":"string"},"job_dir":{"type":"string"},"force_rebuild_cache":{"type":"boolean"},"confirm_execute":{"type":"boolean"},"timeout_seconds":{"type":"integer"},"wave_overlay":{"type":"object","properties":{"source_range":{"type":"string"},"anchor_index_begin":{"type":"string"},"anchor_index_end":{"type":"string"},"source_key_begin":{"type":"string"},"source_key_end":{"type":"string"}}},"runtime_handoff":{"type":"object","properties":{}},"marshal_expected_wave":{"type":"object","properties":{"target_component_family_id":{"type":"string"},"mode":{"type":"string"},"source_range":{"type":"string"},"source_order":{"type":"string"},"anchor_index_begin":{"type":"string"},"anchor_index_end":{"type":"string"},"source_key_begin":{"type":"string"},"source_key_end":{"type":"string"},"model_state_inputs":{"type":"object"}}},"base_reserve_node_id":{"type":"string"},"risky_node_ids":{"type":"string"},"experiment_id":{"type":"string"},"report_path":{"type":"string"},"initial_equity_base":{"type":"number"},"min_base_reserve_weight":{"type":"number"},"max_risky_weight":{"type":"number"},"max_turnover_l1":{"type":"number"},"max_steps":{"type":"integer"},"max_parallel_jobs":{"type":"integer"},"include_equal_weight":{"type":"boolean"},"include_current_weight":{"type":"boolean"},"include_base_reserve_policy":{"type":"boolean"},"include_spot_distributional_utility_policy":{"type":"boolean"},"allow_synthetic_direct_edges":{"type":"boolean"},"validation_rollout":{"type":"boolean"},"linear_transaction_cost_rate":{"type":"number"},"execution_profile_digest":{"type":"string"},"policy_set_digest":{"type":"string"},"policy_id":{"type":"string"},"policy_kind":{"type":"string"},"policy_architecture_digest":{"type":"string"},"training_config_digest":{"type":"string"},"training_range_digest":{"type":"string"},"validation_range_digest":{"type":"string"},"test_range_digest":{"type":"string"},"environment_contract_id":{"type":"string"},"observation_schema_digest":{"type":"string"},"action_schema_digest":{"type":"string"},"reward_contract_digest":{"type":"string"},"training_schedule_mode":{"type":"string","enum":["causal_walk_forward_training.v1","offline_full_window_research","batch_final_refit_candidate"]},"causal_schedule_schema_id":{"type":"string"},"causal_schedule_digest":{"type":"string"},"causal_schedule_cursor_key_kind":{"type":"string","enum":["numeric_anchor_index","numeric_source_key","fixed_width_source_key","timestamp_ms"]},"causal_schedule_no_future_snapshot_use_source":{"type":"string"},"normalization_fit_range_digest":{"type":"string"},"replay_buffer_source_range_digest":{"type":"string"},"early_stopping_policy_digest":{"type":"string"},"hyperparameter_selection_policy_digest":{"type":"string"},"selector_split":{"type":"string","enum":["none","train","training","validation"]},"parent_forecast_eval_fact_digest":{"type":"string"},"parent_observer_belief_fact_digest":{"type":"string"},"parent_allocation_engine_fact_digest":{"type":"string"},"parent_replay_environment_fact_digest":{"type":"string"},"final_refit_parent_selected_checkpoint_digest":{"type":"string"},"max_episodes":{"type":"integer"},"max_wall_clock_seconds":{"type":"integer"},"causal_schedule_readiness_eligible":{"type":"boolean"},"causal_schedule_no_future_snapshot_use":{"type":"boolean"},"offline_full_window_research_allowed":{"type":"boolean"},"final_refit_uses_validation":{"type":"boolean"},"validation_no_longer_proof":{"type":"boolean"},"sealed_test_required":{"type":"boolean"},"live_execution_allowed":{"type":"boolean"}},"additionalProperties":false})"},
+                {"hero.runtime.reset",
+                 "Guarded developer reset. requested_mode=plan previews the "
+                 "reset; "
+                 "requested_mode=execute clears allowed Runtime roots only "
+                 "with "
+                 "explicit "
+                 "confirmation and policy permission.",
+                 R"({"type":"object","required":["requested_mode"],"properties":{"requested_mode":{"type":"string","enum":["plan","execute"]},"runtime_root":{"type":"string"},"backup":{"type":"boolean"},"confirm_dev_nuke":{"type":"boolean"}},"additionalProperties":false})"},
 };
 
 [[nodiscard]] bool tool_is_read_only(std::string_view name) {
@@ -945,6 +951,115 @@ parse_assignment_text(std::string_view text, bool semicolon_terminated) {
   return out;
 }
 
+struct runtime_profile_blocks_t {
+  std::string base_text{};
+  std::unordered_map<std::string, std::string> profile_text_by_id{};
+};
+
+[[nodiscard]] bool valid_runtime_profile_id(std::string_view raw) {
+  const std::string value = trim_ascii(raw);
+  if (value.empty()) {
+    return false;
+  }
+  for (const unsigned char c : value) {
+    if (std::isalnum(c) == 0 && c != '_' && c != '-' && c != '.') {
+      return false;
+    }
+  }
+  return true;
+}
+
+[[nodiscard]] bool split_runtime_profile_blocks(
+    std::string_view text, runtime_profile_blocks_t *out,
+    std::string *error) {
+  if (!out) {
+    if (error) {
+      *error = "runtime profile block output pointer is null";
+    }
+    return false;
+  }
+
+  runtime_profile_blocks_t parsed{};
+  std::istringstream lines{std::string(text)};
+  std::string line;
+  bool in_profile = false;
+  std::string active_profile_id;
+  std::ostringstream active_profile_text;
+  std::size_t line_no = 0;
+
+  while (std::getline(lines, line)) {
+    ++line_no;
+    const std::string trimmed = trim_ascii(strip_ini_comment(line));
+    if (!in_profile) {
+      if (trimmed.rfind("RUNTIME_PROFILE", 0) != 0) {
+        parsed.base_text += line;
+        parsed.base_text.push_back('\n');
+        continue;
+      }
+
+      const std::size_t brace = trimmed.find('{');
+      if (brace == std::string::npos) {
+        if (error) {
+          *error = "RUNTIME_PROFILE missing opening brace at line " +
+                   std::to_string(line_no);
+        }
+        return false;
+      }
+      active_profile_id =
+          trim_ascii(trimmed.substr(std::string_view{"RUNTIME_PROFILE"}.size(),
+                                    brace - std::string_view{"RUNTIME_PROFILE"}
+                                                .size()));
+      const std::string after_brace = trim_ascii(trimmed.substr(brace + 1));
+      if (!valid_runtime_profile_id(active_profile_id)) {
+        if (error) {
+          *error = "invalid RUNTIME_PROFILE id at line " +
+                   std::to_string(line_no) + ": " + active_profile_id;
+        }
+        return false;
+      }
+      if (!after_brace.empty()) {
+        if (error) {
+          *error =
+              "RUNTIME_PROFILE opening line must end after `{` at line " +
+              std::to_string(line_no);
+        }
+        return false;
+      }
+      if (parsed.profile_text_by_id.count(active_profile_id) != 0) {
+        if (error) {
+          *error = "duplicate RUNTIME_PROFILE id: " + active_profile_id;
+        }
+        return false;
+      }
+      in_profile = true;
+      active_profile_text.str(std::string{});
+      active_profile_text.clear();
+      continue;
+    }
+
+    if (trimmed == "}" || trimmed == "};") {
+      parsed.profile_text_by_id.emplace(active_profile_id,
+                                        active_profile_text.str());
+      active_profile_id.clear();
+      active_profile_text.str(std::string{});
+      active_profile_text.clear();
+      in_profile = false;
+      continue;
+    }
+    active_profile_text << line << '\n';
+  }
+
+  if (in_profile) {
+    if (error) {
+      *error = "unterminated RUNTIME_PROFILE block: " + active_profile_id;
+    }
+    return false;
+  }
+
+  *out = std::move(parsed);
+  return true;
+}
+
 [[nodiscard]] std::unordered_map<std::string, std::string>
 parse_kv_file(const fs::path &path) {
   std::string text;
@@ -1498,6 +1613,12 @@ execution_chain(std::string_view target, std::string_view action,
       wave_protocol_compatible(compatible_protocols, protocol_id);
   const std::string active_representation =
       active_representation_from_info(info);
+  const std::string protocol_observer =
+      protocol_value_from_info(info, "OBSERVER",
+                               "wikimyei.observer.belief");
+  const std::string protocol_allocation_policy = protocol_value_from_info(
+      info, "ALLOCATION_POLICY",
+      "wikimyei.policy.portfolio.spot_distributional_utility");
   const bool target_compatible =
       protocol_target_compatible(target, active_representation);
   std::ostringstream out;
@@ -1527,6 +1648,9 @@ execution_chain(std::string_view target, std::string_view action,
                         : "active_protocol_not_declared_by_wave_profile")
       << ",\"active_representation_family\":"
       << json_quote(active_representation)
+      << ",\"protocol_observer_family\":" << json_quote(protocol_observer)
+      << ",\"protocol_allocation_policy_family\":"
+      << json_quote(protocol_allocation_policy)
       << ",\"protocol_target_compatible\":" << bool_json(target_compatible)
       << ",\"protocol_target_warning\":"
       << json_quote(target_compatible ? std::string{}
@@ -2495,6 +2619,96 @@ runtime_terminal_evidence_json(const fs::path &job_dir) {
   return out.str();
 }
 
+[[nodiscard]] bool
+report_i64_field(const std::unordered_map<std::string, std::string> &report,
+                 std::string_view key, long long *out, std::string *err) {
+  const auto found = report.find(std::string(key));
+  if (found == report.end()) {
+    *err = "missing report field: " + std::string(key);
+    return false;
+  }
+  const std::string value = trim_ascii(found->second);
+  if (value.empty()) {
+    *err = "empty report field: " + std::string(key);
+    return false;
+  }
+  long long parsed = 0;
+  const auto result =
+      std::from_chars(value.data(), value.data() + value.size(), parsed);
+  if (result.ec != std::errc{} || result.ptr != value.data() + value.size()) {
+    *err = "non-integer report field: " + std::string(key) + "=" + value;
+    return false;
+  }
+  *out = parsed;
+  return true;
+}
+
+[[nodiscard]] bool
+validate_replay_report_for_validation_rollout(const fs::path &report_path,
+                                              std::string *err) {
+  if (report_path.empty() || !fs::exists(report_path) ||
+      !fs::is_regular_file(report_path)) {
+    *err = "E_RUNTIME_REPLAY_VALIDATION_REPORT_MISSING";
+    return false;
+  }
+  const auto report = parse_kv_file(report_path);
+  if (report.empty()) {
+    *err = "E_RUNTIME_REPLAY_VALIDATION_REPORT_EMPTY";
+    return false;
+  }
+
+  const auto require_nonempty = [&](std::string_view key,
+                                    const char *code) -> bool {
+    const auto found = report.find(std::string(key));
+    if (found == report.end() || trim_ascii(found->second).empty()) {
+      *err = code;
+      return false;
+    }
+    return true;
+  };
+  if (!require_nonempty("execution_profile_digest",
+                        "E_RUNTIME_REPLAY_VALIDATION_PROFILE_DIGEST_MISSING") ||
+      !require_nonempty(
+          "policy_set_digest",
+          "E_RUNTIME_REPLAY_VALIDATION_POLICY_SET_DIGEST_MISSING")) {
+    return false;
+  }
+
+  long long completed_count = 0;
+  long long invalid_trace_count = 0;
+  long long synthetic_step_count = 0;
+  std::string field_error;
+  if (!report_i64_field(report, "completed_count", &completed_count,
+                        &field_error)) {
+    *err = "E_RUNTIME_REPLAY_VALIDATION_REPORT_FIELD_INVALID: " + field_error;
+    return false;
+  }
+  if (completed_count <= 0) {
+    *err = "E_RUNTIME_REPLAY_VALIDATION_NO_COMPLETED_EPISODES";
+    return false;
+  }
+  if (!report_i64_field(report, "cajtucu_invalid_trace_count",
+                        &invalid_trace_count, &field_error) ||
+      !report_i64_field(report, "cajtucu_synthetic_market_step_count",
+                        &synthetic_step_count, &field_error)) {
+    *err = "E_RUNTIME_REPLAY_VALIDATION_REPORT_FIELD_INVALID: " + field_error;
+    return false;
+  }
+  if (synthetic_step_count > 0) {
+    *err = "E_RUNTIME_REPLAY_VALIDATION_SYNTHETIC_MARKET_USED: "
+           "cajtucu_synthetic_market_step_count=" +
+           std::to_string(synthetic_step_count);
+    return false;
+  }
+  if (invalid_trace_count > 0) {
+    *err = "E_RUNTIME_REPLAY_VALIDATION_INVALID_CAJTUCU_TRACE: "
+           "cajtucu_invalid_trace_count=" +
+           std::to_string(invalid_trace_count);
+    return false;
+  }
+  return true;
+}
+
 [[nodiscard]] bool parse_optional_bool_arg(const std::string &args,
                                            std::string_view key,
                                            bool default_value, bool *out,
@@ -3283,7 +3497,11 @@ struct runtime_handoff_binding_t {
   std::ostringstream json;
   json << "{\"policy_path\":" << json_quote(ctx->policy.policy_path.string())
        << ",\"global_config_path\":"
-       << json_quote(ctx->global_config_path.string()) << ",\"protocol_layer\":"
+       << json_quote(ctx->global_config_path.string())
+       << ",\"runtime_profile\":" << json_quote(ctx->policy.profile_id)
+       << ",\"runtime_profile_source\":"
+       << json_quote(policy_get(ctx->policy, "runtime_profile_source"))
+       << ",\"protocol_layer\":"
        << json_quote(policy_get(ctx->policy, "protocol_layer"))
        << ",\"runtime_exec_path\":" << json_quote(exec_path.string())
        << ",\"runtime_exec_exists\":" << bool_json(fs::exists(exec_path))
@@ -3662,6 +3880,66 @@ replay_dry_run_json(const std::vector<std::string> &argv,
                                &allow_synthetic_direct_edges, err)) {
     return false;
   }
+  bool validation_rollout = false;
+  if (!parse_optional_bool_arg(args, "validation_rollout", false,
+                               &validation_rollout, err)) {
+    return false;
+  }
+
+  const bool has_linear_transaction_cost_rate =
+      extract_json_raw_field(args, "linear_transaction_cost_rate", nullptr);
+  double linear_transaction_cost_rate = 0.0;
+  if (!parse_optional_double_arg(args, "linear_transaction_cost_rate", 0.0,
+                                 &linear_transaction_cost_rate, err)) {
+    return false;
+  }
+  const bool has_max_steps = extract_json_raw_field(args, "max_steps", nullptr);
+  int max_steps = 0;
+  if (!parse_optional_int_arg(args, "max_steps", 0, &max_steps, err)) {
+    return false;
+  }
+  const bool has_max_parallel_jobs =
+      extract_json_raw_field(args, "max_parallel_jobs", nullptr);
+  int max_parallel_jobs = 0;
+  if (!parse_optional_int_arg(args, "max_parallel_jobs", 0, &max_parallel_jobs,
+                              err)) {
+    return false;
+  }
+  std::string execution_profile_digest;
+  std::string policy_set_digest;
+  (void)extract_json_string_field(args, "execution_profile_digest",
+                                  &execution_profile_digest);
+  (void)extract_json_string_field(args, "policy_set_digest",
+                                  &policy_set_digest);
+
+  if (validation_rollout) {
+    if (trim_ascii(execution_profile_digest).empty()) {
+      *err = "E_RUNTIME_REPLAY_VALIDATION_PROFILE_DIGEST_MISSING";
+      return false;
+    }
+    if (trim_ascii(policy_set_digest).empty()) {
+      *err = "E_RUNTIME_REPLAY_VALIDATION_POLICY_SET_DIGEST_MISSING";
+      return false;
+    }
+    if (!has_linear_transaction_cost_rate ||
+        !std::isfinite(linear_transaction_cost_rate) ||
+        linear_transaction_cost_rate <= 0.0) {
+      *err = "E_RUNTIME_REPLAY_VALIDATION_NONZERO_COST_REQUIRED";
+      return false;
+    }
+    if (allow_synthetic_direct_edges) {
+      *err = "E_RUNTIME_REPLAY_VALIDATION_SYNTHETIC_EDGES_FORBIDDEN";
+      return false;
+    }
+    if (!has_max_steps || max_steps <= 0) {
+      *err = "E_RUNTIME_REPLAY_VALIDATION_MAX_STEPS_REQUIRED";
+      return false;
+    }
+    if (!has_max_parallel_jobs || max_parallel_jobs <= 0) {
+      *err = "E_RUNTIME_REPLAY_VALIDATION_PARALLELISM_INVALID";
+      return false;
+    }
+  }
 
   int timeout_seconds = policy_int_or(ctx->policy, "max_runtime_seconds", 600);
   if (!parse_optional_int_arg(args, "timeout_seconds", timeout_seconds,
@@ -3759,6 +4037,23 @@ replay_dry_run_json(const std::vector<std::string> &argv,
   process_result_t result =
       run_process(argv, timeout_seconds, static_cast<std::size_t>(max_capture));
   const auto stdout_kv = parse_process_stdout_kv(result.stdout_text);
+  if (validation_rollout) {
+    if (result.exit_code != 0 || result.timed_out) {
+      *err = "E_RUNTIME_REPLAY_VALIDATION_PROCESS_FAILED";
+      return false;
+    }
+    fs::path validation_report_path = report_path;
+    if (validation_report_path.empty()) {
+      const auto found_report = stdout_kv.find("replay_report_path");
+      if (found_report != stdout_kv.end()) {
+        validation_report_path = normalize_path(fs::path(found_report->second));
+      }
+    }
+    if (!validate_replay_report_for_validation_rollout(validation_report_path,
+                                                       err)) {
+      return false;
+    }
+  }
   *out = process_result_json(argv, result, job_dir, stdout_kv, false,
                              static_cast<std::size_t>(max_capture));
   return true;
@@ -4187,6 +4482,7 @@ replay_dry_run_json(const std::vector<std::string> &argv,
                              "include_base_reserve_policy",
                              "include_spot_distributional_utility_policy",
                              "allow_synthetic_direct_edges",
+                             "validation_rollout",
                              "linear_transaction_cost_rate",
                              "execution_profile_digest",
                              "policy_set_digest",
@@ -4285,6 +4581,7 @@ replay_dry_run_json(const std::vector<std::string> &argv,
                            "include_base_reserve_policy",
                            "include_spot_distributional_utility_policy",
                            "allow_synthetic_direct_edges",
+                           "validation_rollout",
                            "linear_transaction_cost_rate",
                            "timeout_seconds",
                            "execution_profile_digest",
@@ -4368,7 +4665,8 @@ resolve_runtime_hero_dsl_path(const std::filesystem::path &global_config_path) {
 
 bool load_runtime_policy(const std::filesystem::path &policy_path,
                          const std::filesystem::path &global_config,
-                         runtime_policy_t *out, std::string *error) {
+                         runtime_policy_t *out, std::string *error,
+                         std::string_view profile_override) {
   if (!out) {
     if (error) {
       *error = "runtime policy output pointer is null";
@@ -4387,9 +4685,67 @@ bool load_runtime_policy(const std::filesystem::path &policy_path,
     policy.from_template = true;
     text = std::string(kRuntimePolicyTemplateText);
   }
-  for (auto &[key, value] : parse_assignment_text(text, false)) {
+
+  runtime_profile_blocks_t profile_blocks{};
+  if (!split_runtime_profile_blocks(text, &profile_blocks, error)) {
+    return false;
+  }
+
+  for (auto &[key, value] : parse_assignment_text(profile_blocks.base_text,
+                                                  false)) {
     policy.values[std::move(key)] = std::move(value);
   }
+
+  std::string selected_profile = trim_ascii(profile_override);
+  std::string selected_profile_source = "cli";
+  if (selected_profile.empty()) {
+    selected_profile_source = "global_config";
+    if (const auto configured = read_ini_value(global_config, "HERO",
+                                              "runtime_hero_profile")) {
+      selected_profile = trim_ascii(*configured);
+    }
+  }
+  if (selected_profile.empty()) {
+    selected_profile = trim_ascii(policy_get(policy, "runtime_profile"));
+    selected_profile_source = "policy_file";
+  }
+  if (selected_profile.empty()) {
+    selected_profile = "locked_default";
+    selected_profile_source = "default";
+  }
+  if (!valid_runtime_profile_id(selected_profile)) {
+    if (error) {
+      *error = "invalid runtime profile id: " + selected_profile;
+    }
+    return false;
+  }
+
+  const auto profile_it =
+      profile_blocks.profile_text_by_id.find(selected_profile);
+  if (profile_it == profile_blocks.profile_text_by_id.end() &&
+      !(profile_blocks.profile_text_by_id.empty() &&
+        selected_profile == "locked_default")) {
+    if (error) {
+      *error = "unknown runtime profile `" + selected_profile +
+               "` in policy file: " + policy_path.string();
+    }
+    return false;
+  }
+  if (profile_it != profile_blocks.profile_text_by_id.end()) {
+    for (auto &[key, value] : parse_assignment_text(profile_it->second, false)) {
+      if (key == "runtime_profile") {
+        if (error) {
+          *error = "RUNTIME_PROFILE block must not set runtime_profile";
+        }
+        return false;
+      }
+      policy.values[std::move(key)] = std::move(value);
+    }
+  }
+  policy.profile_id = selected_profile;
+  policy.values["runtime_profile"] = selected_profile;
+  policy.values["runtime_profile_source"] = selected_profile_source;
+
   if (policy_get(policy, "protocol_layer") != kProtocolLayerStdio) {
     if (error) {
       *error = std::string(kProtocolLayerHttpsSseFailFastMessage);

@@ -7869,8 +7869,10 @@ forecast_eval_summary_json(const exposure::forecast_eval_summary_t &summary) {
       << ",\"experiment_entry_count\":" << fact.experiment_entry_count
       << ",\"replay_bundle_count\":" << fact.replay_bundle_count
       << ",\"policy_count\":" << fact.policy_count
+      << ",\"policy_summary_count\":" << fact.policy_summary_count
       << ",\"attempted_count\":" << fact.attempted_count
       << ",\"completed_count\":" << fact.completed_count
+      << ",\"failed_count\":" << fact.failed_count
       << ",\"episode_count\":" << fact.episode_count
       << ",\"episode_requested_range_bound_count\":"
       << fact.episode_requested_range_bound_count
@@ -10143,6 +10145,9 @@ session_scan_for_runtime_root(const fs::path &runtime_root) {
     // Interactive Hero queries read sidecars as the runtime evidence surface.
     // Sidecar-vs-derived parity belongs to audit mode, not default status.
     options.compare_sidecar_to_derived_fact = false;
+    // replay_environment_artifact_ready is an active Lattice target; its facts
+    // are derived from Runtime replay indexes and reports.
+    options.derive_replay_environment_facts = true;
     g_runtime_scan_session_cache.scan =
         exposure::scan_exposure_ledger_from_runtime_root(runtime_root, {},
                                                          options);

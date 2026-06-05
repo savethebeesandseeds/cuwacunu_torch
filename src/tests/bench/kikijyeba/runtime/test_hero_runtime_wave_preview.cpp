@@ -143,6 +143,9 @@ std::string cwu02_mtf_protocol_text() {
                      "  REPRESENTATION = "
                      "wikimyei.representation.encoding.mtf_jepa_mae_vicreg;\n"
                      "  INFERENCE = wikimyei.inference.expected_value.mdn;\n"
+                     "  OBSERVER = wikimyei.observer.belief;\n"
+                     "  ALLOCATION_POLICY = "
+                     "wikimyei.policy.portfolio.spot_distributional_utility;\n"
                      "  REPRESENTATION_CONTRACT = "
                      "graph_order.channel_node_representation.v1;\n"
                      "};\n");
@@ -190,6 +193,86 @@ void test_wave_settings_train_defaults_to_random_source_order() {
   check(std::string(wave_settings::source_order_warning_token(
             explicit_train)) == "train_wave_explicit_sequential_source_order",
         "explicit sequential train SOURCE_ORDER must warn");
+}
+
+void test_runtime_policy_profiles() {
+  const auto dir = make_tmp_dir("runtime_policy_profiles");
+  const auto config_path = dir / ".config";
+  const auto policy_path = dir / "hero.runtime.dsl";
+  const auto runtime_root = dir / "runtime";
+  std::filesystem::create_directories(runtime_root);
+
+  write_text(config_path, "[HERO]\n"
+                          "runtime_hero_dsl_path = " +
+                              policy_path.string() +
+                              "\n"
+                              "runtime_hero_profile = train_operator\n");
+  write_text(policy_path,
+             "protocol_layer[STDIO|HTTPS/SSE]:enum = STDIO\n"
+             "runtime_profile:enum = locked_default\n"
+             "runtime_exec_path:path = /bin/true\n"
+             "default_config_path:path = " +
+                 config_path.string() +
+                 "\n"
+                 "runtime_root:path = " +
+                 runtime_root.string() +
+                 "\n"
+                 "allowed_job_roots:path_list = " +
+                 runtime_root.string() +
+                 "\n"
+                 "require_confirm_execute:bool = true\n"
+                 "require_confirm_dev_nuke:bool = true\n"
+                 "max_capture_bytes:int = 4096\n"
+                 "RUNTIME_PROFILE locked_default {\n"
+                 "  default_dry_run:bool = true\n"
+                 "  allow_execute:bool = false\n"
+                 "  allow_train_execute:bool = false\n"
+                 "  allow_dev_nuke:bool = true\n"
+                 "  max_runtime_seconds:int = 5\n"
+                 "}\n"
+                 "RUNTIME_PROFILE train_operator {\n"
+                 "  default_dry_run:bool = true\n"
+                 "  allow_execute:bool = true\n"
+                 "  allow_train_execute:bool = true\n"
+                 "  allow_dev_nuke:bool = false\n"
+                 "  max_runtime_seconds:int = 21600\n"
+                 "}\n");
+
+  hero_runtime::runtime_policy_t policy{};
+  std::string error;
+  check(hero_runtime::load_runtime_policy(policy_path, config_path, &policy,
+                                          &error),
+        "profile policy should load: " + error);
+  check(policy.profile_id == "train_operator",
+        "global config runtime_hero_profile should select train_operator");
+  check(policy.values.at("allow_execute") == "true",
+        "train_operator should allow execute");
+  check(policy.values.at("allow_train_execute") == "true",
+        "train_operator should allow train execute");
+  check(policy.values.at("allow_dev_nuke") == "false",
+        "train_operator should disable developer reset");
+
+  policy = {};
+  error.clear();
+  check(hero_runtime::load_runtime_policy(policy_path, config_path, &policy,
+                                          &error, "locked_default"),
+        "profile override should load locked_default: " + error);
+  check(policy.profile_id == "locked_default",
+        "explicit profile override should win");
+  check(policy.values.at("allow_execute") == "false",
+        "locked_default should deny execute");
+  check(policy.values.at("allow_dev_nuke") == "true",
+        "locked_default should keep guarded developer reset available");
+
+  policy = {};
+  error.clear();
+  check(!hero_runtime::load_runtime_policy(policy_path, config_path, &policy,
+                                           &error, "missing_profile"),
+        "unknown runtime profile should fail closed");
+  check(error.find("unknown runtime profile") != std::string::npos,
+        "unknown profile failure should be explicit");
+
+  std::filesystem::remove_all(dir);
 }
 
 void test_execute_expected_wave_binding() {
@@ -641,7 +724,11 @@ void test_replay_operator_tool() {
       "schema=kikijyeba.environment.replay.cajtucu_ready_experiment_"
       "artifact.v1\n"
       "experiment_id=hero_replay\n"
-      "completed_count=2\n";
+      "completed_count=2\n"
+      "execution_profile_digest=profile_digest_fixture\n"
+      "policy_set_digest=policy_set_digest_fixture\n"
+      "cajtucu_invalid_trace_count=0\n"
+      "cajtucu_synthetic_market_step_count=0\n";
   const std::string hero_replay_report_digest =
       replay_report_digest_for_text(hero_replay_report_text);
   write_text(replay_artifact_dir / "runtime_replay_experiments.index",
@@ -753,6 +840,111 @@ void test_replay_operator_tool() {
   require_contains(result, "\"policy_set_digest_fixture\"",
                    "replay should bind policy set digest value");
 
+  const std::string validation_args =
+      "{\"operation\":\"replay\",\"requested_mode\":\"plan\","
+      "\"job_dir\":\"" +
+      job_dir.string() +
+      "\","
+      "\"base_reserve_node_id\":\"USDT\","
+      "\"risky_node_ids\":\"BTC,ETH\","
+      "\"experiment_id\":\"hero_validation_replay\","
+      "\"max_steps\":8,"
+      "\"max_parallel_jobs\":2,"
+      "\"include_equal_weight\":true,"
+      "\"validation_rollout\":true,"
+      "\"linear_transaction_cost_rate\":0.001,"
+      "\"execution_profile_digest\":\"profile_digest_fixture\","
+      "\"policy_set_digest\":\"policy_set_digest_fixture\"}";
+  result.clear();
+  error.clear();
+  check(hero_runtime::execute_tool_json("hero.runtime.run", validation_args,
+                                        &ctx, &result, &error),
+        "validation replay dry-run failed: " + error);
+  check(!hero_runtime::tool_result_is_error(result),
+        "validation replay dry-run returned error: " + result);
+  require_contains(result, "\"dry_run\":true",
+                   "validation replay plan should not execute process");
+  require_contains(result, "\"--replay-linear-transaction-cost-rate\"",
+                   "validation replay should pass nonzero transaction cost");
+  require_contains(result, "\"--replay-execution-profile-digest\"",
+                   "validation replay should bind execution profile digest");
+  require_contains(result, "\"--replay-policy-set-digest\"",
+                   "validation replay should bind policy set digest");
+  check(result.find("\"--replay-allow-synthetic-direct-edges\"") ==
+            std::string::npos,
+        "validation replay must not pass synthetic edge CLI flag");
+
+  const auto expect_validation_replay_rejection =
+      [&](const std::string &bad_args, const std::string &error_needle,
+          const std::string &message) {
+        result.clear();
+        error.clear();
+        check(!hero_runtime::execute_tool_json("hero.runtime.run", bad_args,
+                                               &ctx, &result, &error),
+              message);
+        require_contains(error, error_needle, message + " error");
+      };
+
+  expect_validation_replay_rejection(
+      "{\"operation\":\"replay\",\"requested_mode\":\"plan\",\"job_dir\":\"" +
+          job_dir.string() +
+          "\",\"max_steps\":8,\"max_parallel_jobs\":1,"
+          "\"validation_rollout\":true,"
+          "\"linear_transaction_cost_rate\":0.001,"
+          "\"policy_set_digest\":\"policy_set_digest_fixture\"}",
+      "E_RUNTIME_REPLAY_VALIDATION_PROFILE_DIGEST_MISSING",
+      "validation replay should reject missing execution profile digest");
+  expect_validation_replay_rejection(
+      "{\"operation\":\"replay\",\"requested_mode\":\"plan\",\"job_dir\":\"" +
+          job_dir.string() +
+          "\",\"max_steps\":8,\"max_parallel_jobs\":1,"
+          "\"validation_rollout\":true,"
+          "\"linear_transaction_cost_rate\":0.001,"
+          "\"execution_profile_digest\":\"profile_digest_fixture\"}",
+      "E_RUNTIME_REPLAY_VALIDATION_POLICY_SET_DIGEST_MISSING",
+      "validation replay should reject missing policy set digest");
+  expect_validation_replay_rejection(
+      "{\"operation\":\"replay\",\"requested_mode\":\"plan\",\"job_dir\":\"" +
+          job_dir.string() +
+          "\",\"max_steps\":8,\"max_parallel_jobs\":1,"
+          "\"validation_rollout\":true,"
+          "\"linear_transaction_cost_rate\":0.0,"
+          "\"execution_profile_digest\":\"profile_digest_fixture\","
+          "\"policy_set_digest\":\"policy_set_digest_fixture\"}",
+      "E_RUNTIME_REPLAY_VALIDATION_NONZERO_COST_REQUIRED",
+      "validation replay should reject zero transaction cost");
+  expect_validation_replay_rejection(
+      "{\"operation\":\"replay\",\"requested_mode\":\"plan\",\"job_dir\":\"" +
+          job_dir.string() +
+          "\",\"max_steps\":8,\"max_parallel_jobs\":1,"
+          "\"validation_rollout\":true,"
+          "\"allow_synthetic_direct_edges\":true,"
+          "\"linear_transaction_cost_rate\":0.001,"
+          "\"execution_profile_digest\":\"profile_digest_fixture\","
+          "\"policy_set_digest\":\"policy_set_digest_fixture\"}",
+      "E_RUNTIME_REPLAY_VALIDATION_SYNTHETIC_EDGES_FORBIDDEN",
+      "validation replay should reject synthetic execution markets");
+  expect_validation_replay_rejection(
+      "{\"operation\":\"replay\",\"requested_mode\":\"plan\",\"job_dir\":\"" +
+          job_dir.string() +
+          "\",\"max_parallel_jobs\":1,"
+          "\"validation_rollout\":true,"
+          "\"linear_transaction_cost_rate\":0.001,"
+          "\"execution_profile_digest\":\"profile_digest_fixture\","
+          "\"policy_set_digest\":\"policy_set_digest_fixture\"}",
+      "E_RUNTIME_REPLAY_VALIDATION_MAX_STEPS_REQUIRED",
+      "validation replay should reject missing max_steps");
+  expect_validation_replay_rejection(
+      "{\"operation\":\"replay\",\"requested_mode\":\"plan\",\"job_dir\":\"" +
+          job_dir.string() +
+          "\",\"max_steps\":8,"
+          "\"validation_rollout\":true,"
+          "\"linear_transaction_cost_rate\":0.001,"
+          "\"execution_profile_digest\":\"profile_digest_fixture\","
+          "\"policy_set_digest\":\"policy_set_digest_fixture\"}",
+      "E_RUNTIME_REPLAY_VALIDATION_PARALLELISM_INVALID",
+      "validation replay should reject missing max_parallel_jobs");
+
   const std::string run_args =
       "{\"operation\":\"replay\",\"requested_mode\":\"execute\","
       "\"job_dir\":\"" +
@@ -772,6 +964,69 @@ void test_replay_operator_tool() {
   require_contains(result, "\"ok\":true", "replay execution should succeed");
   require_contains(result, "\"replay_completed_count\":\"2\"",
                    "replay should expose replay stdout fields");
+
+  const std::string validation_run_args =
+      "{\"operation\":\"replay\",\"requested_mode\":\"execute\","
+      "\"job_dir\":\"" +
+      job_dir.string() +
+      "\","
+      "\"base_reserve_node_id\":\"USDT\","
+      "\"risky_node_ids\":\"BTC,ETH\","
+      "\"experiment_id\":\"hero_validation_replay\","
+      "\"max_steps\":8,"
+      "\"max_parallel_jobs\":2,"
+      "\"validation_rollout\":true,"
+      "\"linear_transaction_cost_rate\":0.001,"
+      "\"execution_profile_digest\":\"profile_digest_fixture\","
+      "\"policy_set_digest\":\"policy_set_digest_fixture\"}";
+  result.clear();
+  error.clear();
+  check(hero_runtime::execute_tool_json("hero.runtime.run", validation_run_args,
+                                        &ctx, &result, &error),
+        "validation replay execution should accept clean Cajtucu report: " +
+            error);
+  check(!hero_runtime::tool_result_is_error(result),
+        "validation replay execution returned error: " + result);
+  require_contains(result, "\"ok\":true",
+                   "validation replay execution should succeed with clean "
+                   "Cajtucu counters");
+
+  const auto expect_validation_execute_rejection =
+      [&](const std::string &report_text, const std::string &error_needle,
+          const std::string &message) {
+        write_text(replay_artifact_dir / "hero_replay.report", report_text);
+        result.clear();
+        error.clear();
+        check(!hero_runtime::execute_tool_json("hero.runtime.run",
+                                               validation_run_args, &ctx,
+                                               &result, &error),
+              message);
+        require_contains(error, error_needle, message + " error");
+      };
+  expect_validation_execute_rejection(
+      "schema=kikijyeba.environment.replay.cajtucu_ready_experiment_"
+      "artifact.v1\n"
+      "experiment_id=hero_replay\n"
+      "completed_count=2\n"
+      "execution_profile_digest=profile_digest_fixture\n"
+      "policy_set_digest=policy_set_digest_fixture\n"
+      "cajtucu_invalid_trace_count=0\n"
+      "cajtucu_synthetic_market_step_count=3\n",
+      "E_RUNTIME_REPLAY_VALIDATION_SYNTHETIC_MARKET_USED",
+      "validation replay should reject synthetic Cajtucu market evidence");
+  expect_validation_execute_rejection(
+      "schema=kikijyeba.environment.replay.cajtucu_ready_experiment_"
+      "artifact.v1\n"
+      "experiment_id=hero_replay\n"
+      "completed_count=2\n"
+      "execution_profile_digest=profile_digest_fixture\n"
+      "policy_set_digest=policy_set_digest_fixture\n"
+      "cajtucu_invalid_trace_count=4\n"
+      "cajtucu_synthetic_market_step_count=0\n",
+      "E_RUNTIME_REPLAY_VALIDATION_INVALID_CAJTUCU_TRACE",
+      "validation replay should reject invalid Cajtucu traces");
+  write_text(replay_artifact_dir / "hero_replay.report",
+             hero_replay_report_text);
 
   result.clear();
   error.clear();
@@ -1532,6 +1787,7 @@ int main() {
     test_mismatched_protocol_representation_preview_warns();
     test_wave_profile_protocol_preview_warns();
     test_train_wave_explicit_sequential_source_order_warns();
+    test_runtime_policy_profiles();
     test_wave_settings_train_defaults_to_random_source_order();
     test_source_key_wave_preview_reports_key_bounds();
     test_mdn_wave_preview_reads_jkimyei_model_state_inputs();

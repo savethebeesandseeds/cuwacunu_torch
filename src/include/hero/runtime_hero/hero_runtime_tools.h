@@ -11,6 +11,7 @@ namespace cuwacunu::hero::runtime {
 struct runtime_policy_t {
   std::filesystem::path policy_path{};
   std::filesystem::path global_config_path{};
+  std::string profile_id{"locked_default"};
   std::unordered_map<std::string, std::string> values{};
   bool from_template{false};
 };
@@ -27,7 +28,8 @@ resolve_runtime_hero_dsl_path(const std::filesystem::path &global_config_path);
 [[nodiscard]] bool
 load_runtime_policy(const std::filesystem::path &policy_path,
                     const std::filesystem::path &global_config,
-                    runtime_policy_t *out, std::string *error);
+                    runtime_policy_t *out, std::string *error,
+                    std::string_view profile_override = {});
 
 [[nodiscard]] bool execute_tool_json(const std::string &tool_name,
                                      std::string arguments_json,

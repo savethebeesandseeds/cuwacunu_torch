@@ -196,8 +196,8 @@ Acceptance:
 - Missing or malformed replay evidence fails closed as artifact proof failure,
   not as dispatch advice.
 - `hero.lattice.inspect` can inspect the facts.
-- `hero.lattice.evaluate operation=target` can evaluate the artifact target
-  once the target is activated.
+- `hero.lattice.evaluate operation=target` evaluates the active artifact target
+  from durable replay evidence.
 - Marshal can read the proof/evidence but cannot dispatch from it.
 
 Implementation checkpoint:

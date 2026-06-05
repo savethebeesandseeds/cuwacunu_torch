@@ -606,9 +606,9 @@ validate_rollout_request(const marshal_rollout_request_t &request) {
       profile.equity_mismatch_tolerance) {
     refusals.emplace_back("equity_mismatch_fail_tolerance_below_warn");
   }
-  if (profile.allow_synthetic_direct_edges &&
-      profile.synthetic_edge_research_reason.empty()) {
-    refusals.emplace_back("missing_synthetic_edge_research_reason");
+  if (profile.allow_synthetic_direct_edges) {
+    refusals.emplace_back(
+        "synthetic_direct_edges_forbidden_for_validation_rollout");
   }
   if (profile.allow_negative_base_reserve) {
     refusals.emplace_back("negative_base_reserve_forbidden_v1");
@@ -993,6 +993,7 @@ rollout_runtime_replay_args_json(const marshal_rollout_request_t &request,
   detail::append_json_bool_field(
       out, "allow_synthetic_direct_edges",
       request.execution_profile.allow_synthetic_direct_edges, &first);
+  detail::append_json_bool_field(out, "validation_rollout", true, &first);
   if (request.execution_profile.linear_transaction_cost_rate > 0.0) {
     detail::append_json_double_field(
         out, "linear_transaction_cost_rate",

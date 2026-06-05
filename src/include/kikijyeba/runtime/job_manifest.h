@@ -64,6 +64,8 @@ struct job_manifest_t {
   std::string protocol_warning{};
   std::string active_representation_family{};
   std::string active_representation_component_assembly_id{};
+  std::string protocol_observer_family{};
+  std::string protocol_allocation_policy_family{};
   std::string protocol_representation_contract{};
   std::string wave_id{};
   std::string target_component_family_id{};
@@ -164,6 +166,9 @@ struct job_manifest_t {
         << "\n";
     out << "active_representation_component_assembly_id="
         << active_representation_component_assembly_id << "\n";
+    out << "protocol_observer_family=" << protocol_observer_family << "\n";
+    out << "protocol_allocation_policy_family="
+        << protocol_allocation_policy_family << "\n";
     out << "protocol_representation_contract="
         << protocol_representation_contract << "\n";
     out << "wave_id=" << wave_id << "\n";
@@ -464,6 +469,9 @@ make_job_manifest(const BuilderT &builder, const wave_plan_t &wave_plan,
   out.active_representation_family = dry_run.active_representation_family;
   out.active_representation_component_assembly_id =
       dry_run.active_representation_component_assembly_id;
+  out.protocol_observer_family = dry_run.protocol_observer_family;
+  out.protocol_allocation_policy_family =
+      dry_run.protocol_allocation_policy_family;
   out.protocol_representation_contract =
       dry_run.protocol_representation_contract;
   out.wave_id = wave_plan.wave_id;

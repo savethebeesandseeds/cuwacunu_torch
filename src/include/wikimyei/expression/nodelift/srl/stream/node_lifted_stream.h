@@ -218,6 +218,9 @@ template <typename KeyT>
 } // namespace node_lifted_stream_detail
 
 template <typename KeyT> struct node_lifted_batch_t {
+  torch::Tensor edge_features{}; // [B,L,C,Hx,9]
+  torch::Tensor edge_mask{};     // [B,L,C,Hx], bool
+
   torch::Tensor node_features{}; // [B,C,Hx,N,9]
   torch::Tensor node_mask{};     // [B,C,Hx,N,9], bool
   std::optional<torch::Tensor> node_mask_any{};
@@ -312,6 +315,8 @@ template <typename KeyT>
       future_lifted_for_report{std::nullopt};
 
   node_lifted_batch_t<KeyT> out{};
+  out.edge_features = graph_batch.edge_features;
+  out.edge_mask = graph_batch.edge_mask;
   out.node_features = lifted.node_features;
   out.node_mask = lifted.node_mask;
   out.node_mask_any = lifted.node_mask_any;

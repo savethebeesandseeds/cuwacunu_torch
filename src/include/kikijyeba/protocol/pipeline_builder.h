@@ -113,6 +113,8 @@ struct graph_first_pipeline_dry_run_report_t {
   std::string protocol_warning{};
   std::string active_representation_family{};
   std::string active_representation_component_assembly_id{};
+  std::string protocol_observer_family{};
+  std::string protocol_allocation_policy_family{};
   std::string protocol_representation_contract{};
   std::string protocol_contract_fingerprint{};
   std::string protocol_contract_token{};
@@ -160,6 +162,9 @@ struct graph_first_pipeline_dry_run_report_t {
         << " successor_protocol=" << successor_protocol
         << " protocol_warning=" << protocol_warning
         << " active_representation_family=" << active_representation_family
+        << " protocol_observer=" << protocol_observer_family
+        << " protocol_allocation_policy="
+        << protocol_allocation_policy_family
         << " protocol_contract=" << protocol_contract_fingerprint
         << " nodelift_assembly=" << nodelift_assembly_fingerprint
         << " vicreg_assembly=" << vicreg_assembly_fingerprint
@@ -551,6 +556,9 @@ public:
         cuwacunu::kikijyeba::protocol::active_representation_family_id(bundle_);
     out.active_representation_component_assembly_id = cuwacunu::kikijyeba::
         protocol::active_representation_component_assembly_id(bundle_);
+    out.protocol_observer_family = bundle_.protocol_variant.observer_family;
+    out.protocol_allocation_policy_family =
+        bundle_.protocol_variant.allocation_policy_family;
     out.protocol_representation_contract =
         bundle_.protocol_variant.representation_contract;
     out.protocol_contract_fingerprint = cuwacunu::kikijyeba::protocol::

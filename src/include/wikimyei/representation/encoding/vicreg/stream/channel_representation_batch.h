@@ -32,6 +32,10 @@ template <typename KeyT> struct channel_representation_batch_t {
   torch::Tensor price_residual{};      // [B_anchor,C,Hx,L,4]
   torch::Tensor price_residual_mask{}; // [B_anchor,C,Hx,L,4], bool
 
+  torch::Tensor edge_features{}; // [B_anchor,L,C,Hx,9]
+  torch::Tensor edge_mask{};     // [B_anchor,L,C,Hx], bool
+  torch::Tensor past_keys{};     // [B_anchor,L,C,Hx]
+
   std::optional<torch::Tensor> activity_total{};
   std::optional<torch::Tensor> activity_support{};
   std::optional<torch::Tensor> activity_coverage{};

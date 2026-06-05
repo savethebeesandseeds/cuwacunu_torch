@@ -582,6 +582,12 @@ make_runtime_replay_edge_batch_from_channel_representation(
               "[replay_runtime_source] future_edge_features are required");
   TORCH_CHECK(batch.future_edge_mask.defined(),
               "[replay_runtime_source] future_edge_mask is required");
+  TORCH_CHECK(batch.edge_features.defined(),
+              "[replay_runtime_source] edge_features are required");
+  TORCH_CHECK(batch.edge_mask.defined(),
+              "[replay_runtime_source] edge_mask is required");
+  TORCH_CHECK(batch.past_keys.defined(),
+              "[replay_runtime_source] past_keys are required");
   TORCH_CHECK(batch.future_keys.defined(),
               "[replay_runtime_source] future_keys are required");
   TORCH_CHECK(batch.anchor_keys.defined(),
@@ -591,12 +597,29 @@ make_runtime_replay_edge_batch_from_channel_representation(
               "[B,L,C,Hf,9]");
   TORCH_CHECK(batch.future_edge_mask.dim() == 4,
               "[replay_runtime_source] future_edge_mask must be [B,L,C,Hf]");
+  TORCH_CHECK(batch.edge_features.dim() == 5,
+              "[replay_runtime_source] edge_features must be [B,L,C,Hx,9]");
+  TORCH_CHECK(batch.edge_mask.dim() == 4,
+              "[replay_runtime_source] edge_mask must be [B,L,C,Hx]");
+  TORCH_CHECK(batch.past_keys.dim() == 4,
+              "[replay_runtime_source] past_keys must be [B,L,C,Hx]");
   TORCH_CHECK(batch.future_keys.dim() == 4,
               "[replay_runtime_source] future_keys must be [B,L,C,Hf]");
   const auto B = batch.future_edge_features.size(0);
   const auto L = batch.future_edge_features.size(1);
   const auto C = batch.future_edge_features.size(2);
   const auto Hf = batch.future_edge_features.size(3);
+  const auto Hx = batch.edge_features.size(3);
+  TORCH_CHECK(
+      batch.edge_features.sizes() ==
+          torch::IntArrayRef(
+              {B, L, C, Hx,
+               cuwacunu::ujcamei::source::registry::types::kKlineFeatureWidth}),
+      "[replay_runtime_source] edge_features shape mismatch");
+  TORCH_CHECK(batch.edge_mask.sizes() == torch::IntArrayRef({B, L, C, Hx}),
+              "[replay_runtime_source] edge_mask shape mismatch");
+  TORCH_CHECK(batch.past_keys.sizes() == torch::IntArrayRef({B, L, C, Hx}),
+              "[replay_runtime_source] past_keys shape mismatch");
   TORCH_CHECK(batch.future_edge_mask.sizes() ==
                   torch::IntArrayRef({B, L, C, Hf}),
               "[replay_runtime_source] future_edge_mask shape mismatch");
@@ -608,6 +631,9 @@ make_runtime_replay_edge_batch_from_channel_representation(
               "[replay_runtime_source] anchor_keys must be [B]");
 
   replay_source_detail::dataloader::graph_anchor_edge_batch_t<KeyT> out{};
+  out.edge_features = batch.edge_features;
+  out.edge_mask = batch.edge_mask;
+  out.past_keys = batch.past_keys;
   out.future_features = batch.future_edge_features;
   out.future_mask = batch.future_edge_mask;
   out.future_keys = batch.future_keys;

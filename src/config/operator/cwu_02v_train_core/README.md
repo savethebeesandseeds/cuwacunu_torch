@@ -35,11 +35,10 @@ Changing only the MDN training profile after representation training changes the
 active protocol contract fingerprint and makes the representation dependency
 stale for MDN. If these files change, rerun representation first.
 
-The profile configs intentionally carry both the new
-`wikimyei_policy_portfolio_spot_distributional_utility_*` keys and the older
-`wikimyei_engine_portfolio_spot_distributional_utility_*` aliases. The aliases
-are parser compatibility for the current local `cuwacunu_exec` binary only; they
-do not make portfolio policy evidence a train-core target or Lattice authority.
+The profile configs use only the canonical
+`wikimyei_policy_portfolio_spot_distributional_utility_*` keys. Portfolio
+policy evidence remains protocol/config identity; it does not make portfolio
+policy output a train-core target or Lattice authority.
 
 The previous direct 5000-step run is exploratory only because it used an
 all-source wave and overlaps validation/test holdouts. These profiles let

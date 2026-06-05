@@ -587,7 +587,9 @@ exposure::lattice_exposure_ledger_t artifact_readiness_ledger(
     bool forecast_missing_evaluated_checkpoint_lineage = false,
     bool forecast_model_state_mutation = false,
     bool forecast_negative_skill = false,
-    bool policy_training_future_snapshot_use = false) {
+    bool policy_training_future_snapshot_use = false,
+    bool replay_missing_policy_summary = false,
+    bool replay_failed_attempts = false) {
   exposure::lattice_exposure_fact_t parent{};
   parent.fact_type = "exposure";
   parent.contract_fingerprint = "contract_1";
@@ -961,8 +963,11 @@ exposure::lattice_exposure_ledger_t artifact_readiness_ledger(
   replay.experiment_entry_count = 1;
   replay.replay_bundle_count = 2;
   replay.policy_count = 2;
+  replay.policy_summary_count = replay_missing_policy_summary ? 0 : 2;
   replay.attempted_count = 2;
-  replay.completed_count = replay_incomplete_attempts ? 1 : 2;
+  replay.completed_count =
+      (replay_incomplete_attempts || replay_failed_attempts) ? 1 : 2;
+  replay.failed_count = replay_failed_attempts ? 1 : 0;
   replay.episode_count = 2;
   replay.episode_requested_range_bound_count = 2;
   replay.episode_cursor_bound_count = 2;
@@ -2633,6 +2638,124 @@ LATTICE_TARGET {
   check_artifact_proof_no_decision_authority(
       replay_eval.proof_certificate.artifacts.front(),
       "replay_environment_artifact_ready");
+
+  const auto missing_replay_policy_summary_ledger = artifact_readiness_ledger(
+      /*observer_authority_drift=*/false,
+      /*forecast_authority_drift=*/false,
+      /*replay_authority_drift=*/false,
+      /*baseline_transform_digest_mismatch=*/false,
+      /*forecast_baseline_digest_mismatch=*/false,
+      /*forecast_selection_signal_digest_mismatch=*/false,
+      /*observer_forecast_lineage_mismatch=*/false,
+      /*allocation_observer_digest_mismatch=*/false,
+      /*allocation_forecast_artifact_mismatch=*/false,
+      /*allocation_reserve_source_mismatch=*/false,
+      /*allocation_reserve_base_policy_mismatch=*/false,
+      /*allocation_reserve_graph_unbound=*/false,
+      /*allocation_missing_reason_contract=*/false,
+      /*replay_contract_mismatch=*/false,
+      /*replay_incomplete_attempts=*/false,
+      /*replay_missing_projection_metrics=*/false,
+      /*forecast_missing_horizon_support=*/false,
+      /*replay_missing_time_law_steps=*/false,
+      /*replay_future_observation_violation=*/false,
+      /*replay_mixed_future_keys=*/false,
+      /*replay_missing_projection_step_evidence=*/false,
+      /*replay_expected_step_mismatch=*/false,
+      /*replay_action_time_policy_mismatch=*/false,
+      /*replay_source_order_policy_mismatch=*/false,
+      /*replay_parallelism_mismatch=*/false,
+      /*replay_world_mode_mismatch=*/false,
+      /*replay_schema_mismatch=*/false,
+      /*replay_runtime_run_id_missing=*/false,
+      /*replay_report_digest_mismatch=*/false,
+      /*transform_missing_support_surface=*/false,
+      /*baseline_missing_support=*/false,
+      /*forecast_missing_target_transform_binding=*/false,
+      /*forecast_missing_baseline_binding=*/false,
+      /*forecast_missing_evaluated_checkpoint_lineage=*/false,
+      /*forecast_model_state_mutation=*/false,
+      /*forecast_negative_skill=*/false,
+      /*policy_training_future_snapshot_use=*/false,
+      /*replay_missing_policy_summary=*/true);
+  target::lattice_target_evaluator_t missing_replay_policy_summary_evaluator(
+      artifact_specs,
+      artifact_eval_options(missing_replay_policy_summary_ledger));
+  const auto missing_replay_policy_summary_eval =
+      missing_replay_policy_summary_evaluator.evaluate(
+          "replay_environment_artifact_ready");
+  check(missing_replay_policy_summary_eval.status !=
+                target::lattice_target_status_t::satisfied &&
+            has_reason_containing(missing_replay_policy_summary_eval.reasons,
+                                  "missing_replay_policy_summary_evidence") &&
+            missing_replay_policy_summary_eval.proof_certificate.artifacts
+                    .size() == 1 &&
+            !missing_replay_policy_summary_eval.proof_certificate.artifacts
+                 .front()
+                 .passed &&
+            !missing_replay_policy_summary_eval.proof_certificate.artifacts
+                 .front()
+                 .lineage_bound,
+        "replay environment artifact readiness rejects reports without "
+        "policy-summary evidence");
+
+  const auto failed_replay_attempt_ledger = artifact_readiness_ledger(
+      /*observer_authority_drift=*/false,
+      /*forecast_authority_drift=*/false,
+      /*replay_authority_drift=*/false,
+      /*baseline_transform_digest_mismatch=*/false,
+      /*forecast_baseline_digest_mismatch=*/false,
+      /*forecast_selection_signal_digest_mismatch=*/false,
+      /*observer_forecast_lineage_mismatch=*/false,
+      /*allocation_observer_digest_mismatch=*/false,
+      /*allocation_forecast_artifact_mismatch=*/false,
+      /*allocation_reserve_source_mismatch=*/false,
+      /*allocation_reserve_base_policy_mismatch=*/false,
+      /*allocation_reserve_graph_unbound=*/false,
+      /*allocation_missing_reason_contract=*/false,
+      /*replay_contract_mismatch=*/false,
+      /*replay_incomplete_attempts=*/false,
+      /*replay_missing_projection_metrics=*/false,
+      /*forecast_missing_horizon_support=*/false,
+      /*replay_missing_time_law_steps=*/false,
+      /*replay_future_observation_violation=*/false,
+      /*replay_mixed_future_keys=*/false,
+      /*replay_missing_projection_step_evidence=*/false,
+      /*replay_expected_step_mismatch=*/false,
+      /*replay_action_time_policy_mismatch=*/false,
+      /*replay_source_order_policy_mismatch=*/false,
+      /*replay_parallelism_mismatch=*/false,
+      /*replay_world_mode_mismatch=*/false,
+      /*replay_schema_mismatch=*/false,
+      /*replay_runtime_run_id_missing=*/false,
+      /*replay_report_digest_mismatch=*/false,
+      /*transform_missing_support_surface=*/false,
+      /*baseline_missing_support=*/false,
+      /*forecast_missing_target_transform_binding=*/false,
+      /*forecast_missing_baseline_binding=*/false,
+      /*forecast_missing_evaluated_checkpoint_lineage=*/false,
+      /*forecast_model_state_mutation=*/false,
+      /*forecast_negative_skill=*/false,
+      /*policy_training_future_snapshot_use=*/false,
+      /*replay_missing_policy_summary=*/false,
+      /*replay_failed_attempts=*/true);
+  target::lattice_target_evaluator_t failed_replay_attempt_evaluator(
+      artifact_specs, artifact_eval_options(failed_replay_attempt_ledger));
+  const auto failed_replay_attempt_eval =
+      failed_replay_attempt_evaluator.evaluate(
+          "replay_environment_artifact_ready");
+  check(failed_replay_attempt_eval.status !=
+                target::lattice_target_status_t::satisfied &&
+            has_reason_containing(failed_replay_attempt_eval.reasons,
+                                  "replay_environment_failed_attempts") &&
+            failed_replay_attempt_eval.proof_certificate.artifacts.size() ==
+                1 &&
+            !failed_replay_attempt_eval.proof_certificate.artifacts.front()
+                 .passed &&
+            !failed_replay_attempt_eval.proof_certificate.artifacts.front()
+                 .lineage_bound,
+        "replay environment artifact readiness rejects reports with failed "
+        "rollout attempts");
 
   const auto policy_training_eval =
       artifact_evaluator.evaluate("policy_training_artifact_ready");

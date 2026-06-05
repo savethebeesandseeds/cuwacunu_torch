@@ -429,6 +429,10 @@ canonical_channel_graph_first_protocol_contract_text(
       << "\n";
   out << "protocol_inference=" << contract.protocol_variant.inference_family
       << "\n";
+  out << "protocol_observer=" << contract.protocol_variant.observer_family
+      << "\n";
+  out << "protocol_allocation_policy="
+      << contract.protocol_variant.allocation_policy_family << "\n";
   out << "protocol_representation_contract="
       << contract.protocol_variant.representation_contract << "\n";
   out << "source_count=" << contract.source_universe.source_forms.size()

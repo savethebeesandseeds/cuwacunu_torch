@@ -35,7 +35,9 @@ REPLAY_ENVIRONMENT {
   EXPERIMENT_RUN_IDENTITY = single_runtime_environment_run;
   STEP_ARTIFACT_IDENTITY = episode_run_policy_cursor;
   EXPERIMENT_REPORT_COUNT_POLICY = counts_match_evidence;
-  ARTIFACT_SCHEMA = replay_audit_artifacts;
+  ARTIFACT_SCHEMA = cajtucu_ready_replay_artifacts;
+  LATTICE_FACT_FAMILY = replay_environment;
+  LATTICE_TARGET = replay_environment_artifact_ready;
   REQUIRE_RESOLVED_CURSOR = true;
   REQUIRE_NO_FUTURE_LEAKAGE = true;
   REQUIRE_PROJECTION_VALIDATION = true;

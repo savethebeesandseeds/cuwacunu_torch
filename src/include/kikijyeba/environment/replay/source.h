@@ -769,6 +769,120 @@ template <typename KeyT>
 }
 
 template <typename KeyT>
+[[nodiscard]] std::vector<execution::spot_edge_market_state_t>
+relative_edge_market_states_from_graph_anchor_edge_batch(
+    const replay_source_detail::dataloader::graph_anchor_edge_batch_t<KeyT>
+        &batch,
+    const replay_source_detail::market_graph_t &graph,
+    replay_frame_build_options_t options = {}) {
+  static_assert(std::is_integral_v<KeyT>,
+                "replay source V1 requires integral timestamp-like keys");
+  graph.validate();
+  TORCH_CHECK(batch.edge_features.defined(),
+              "[replay_source] edge_features are required for replay "
+              "edge_market_state");
+  TORCH_CHECK(batch.edge_features.is_floating_point(),
+              "[replay_source] edge_features must be floating point");
+  TORCH_CHECK(batch.edge_mask.defined(),
+              "[replay_source] edge_mask is required for replay "
+              "edge_market_state");
+  TORCH_CHECK(batch.edge_features.dim() == 5,
+              "[replay_source] edge_features must be [B,L,C,Hx,D]");
+  TORCH_CHECK(batch.edge_mask.dim() == 4,
+              "[replay_source] edge_mask must be [B,L,C,Hx]");
+
+  const auto B = batch.edge_features.size(0);
+  const auto L = batch.edge_features.size(1);
+  const auto C = batch.edge_features.size(2);
+  const auto Hx = batch.edge_features.size(3);
+  const auto D = batch.edge_features.size(4);
+  TORCH_CHECK(batch.edge_mask.sizes() == torch::IntArrayRef({B, L, C, Hx}),
+              "[replay_source] edge_mask shape mismatch");
+  TORCH_CHECK(static_cast<std::size_t>(L) == batch.edge_ids.size(),
+              "[replay_source] edge_ids size must match L");
+  TORCH_CHECK(Hx > 0, "[replay_source] observed edge history is empty");
+
+  const auto close_coord = replay_source_detail::close_log_return_coord();
+  TORCH_CHECK(close_coord >= 0 && close_coord < D,
+              "[replay_source] close coordinate outside feature width");
+  const auto batch_edge_index =
+      replay_source_detail::make_batch_edge_index(batch.edge_ids);
+  std::vector<std::int64_t> graph_to_batch_edge;
+  graph_to_batch_edge.reserve(static_cast<std::size_t>(graph.num_edges()));
+  for (const auto &edge_id : graph.edge_ids) {
+    graph_to_batch_edge.push_back(
+        replay_source_detail::require_batch_edge_index(batch_edge_index,
+                                                       edge_id));
+  }
+
+  const auto edge_features =
+      batch.edge_features.to(torch::kCPU).to(torch::kFloat64).contiguous();
+  const auto edge_mask =
+      batch.edge_mask.to(torch::kCPU).to(torch::kBool).contiguous();
+  const auto E = static_cast<std::int64_t>(graph.num_edges());
+  auto cumulative_log_price =
+      torch::zeros({E}, torch::TensorOptions().dtype(torch::kFloat64));
+  std::vector<execution::spot_edge_market_state_t> out;
+  out.reserve(static_cast<std::size_t>(B));
+  const std::int64_t terminal_h = Hx - 1;
+  const std::int64_t channel_begin =
+      options.realization_channel_index == -2
+          ? C - 1
+          : (options.realization_channel_index >= 0
+                 ? options.realization_channel_index
+                 : 0);
+  const std::int64_t channel_end =
+      options.realization_channel_index == -2
+          ? C
+          : (options.realization_channel_index >= 0
+                 ? options.realization_channel_index + 1
+                 : C);
+  TORCH_CHECK(channel_begin >= 0 && channel_begin < C && channel_end <= C &&
+                  channel_begin < channel_end,
+              "[replay_source] realization_channel_index out of range");
+
+  for (std::int64_t b = 0; b < B; ++b) {
+    if (b > 0) {
+      for (std::int64_t e = 0; e < E; ++e) {
+        const auto batch_edge =
+            graph_to_batch_edge[static_cast<std::size_t>(e)];
+        double sum = 0.0;
+        std::int64_t count = 0;
+        for (std::int64_t c = channel_begin; c < channel_end; ++c) {
+          if (!edge_mask.index({b, batch_edge, c, terminal_h})
+                   .template item<bool>()) {
+            continue;
+          }
+          const double value =
+              edge_features.index({b, batch_edge, c, terminal_h, close_coord})
+                  .template item<double>();
+          if (!std::isfinite(value)) {
+            throw std::runtime_error(
+                "[replay_source] non-finite observed close log-return value");
+          }
+          sum += value;
+          ++count;
+        }
+        if (count == 0) {
+          throw std::runtime_error(
+              "[replay_source] no active observed close channels for edge");
+        }
+        cumulative_log_price.index_put_(
+            {e}, cumulative_log_price.index({e}).template item<double>() +
+                     (sum / static_cast<double>(count)));
+      }
+    }
+
+    execution::spot_edge_market_state_t market{};
+    market.graph = graph;
+    market.edge_mid_price = cumulative_log_price.exp().clone();
+    execution::validate_spot_edge_market_state(market);
+    out.push_back(std::move(market));
+  }
+  return out;
+}
+
+template <typename KeyT>
 [[nodiscard]] std::vector<replay_frame_t>
 make_replay_frames_from_graph_anchor_edge_batch(
     const replay_source_detail::dataloader::graph_anchor_edge_batch_t<KeyT>
@@ -778,7 +892,12 @@ make_replay_frames_from_graph_anchor_edge_batch(
   const auto realized_log_return =
       realized_log_returns_from_graph_anchor_edge_batch(batch, graph, spec,
                                                         options);
+  const auto edge_market_states =
+      relative_edge_market_states_from_graph_anchor_edge_batch(batch, graph,
+                                                               options);
   const auto B = realized_log_return.size(0);
+  TORCH_CHECK(static_cast<std::int64_t>(edge_market_states.size()) == B,
+              "[replay_source] edge market state count must match frames");
   TORCH_CHECK(batch.future_keys.defined(),
               "[replay_source] future_keys are required to build observations");
   TORCH_CHECK(batch.future_keys.dim() == 4,
@@ -830,6 +949,8 @@ make_replay_frames_from_graph_anchor_edge_batch(
     observation.portfolio_state.base_reserve_weight = 1.0;
     observation.portfolio_state.equity_value_base = spec.initial_equity_base;
     observation.market_state.timestamp_ms = observation.timestamp_ms;
+    observation.edge_market_state =
+        edge_market_states[static_cast<std::size_t>(b)];
 
     replay_frame_t frame{};
     frame.observation = std::move(observation);

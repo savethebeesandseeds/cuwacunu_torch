@@ -568,3 +568,600 @@ The anti-leakage floor before PPO is now installed:
 
 This milestone should be considered complete unless review finds a semantic
 gap in the causal schedule model itself.
+
+
+2026-06-04 Cost-Aware Validation Rollout Reality Check
+======================================================
+
+We attempted the next end-to-end check:
+
+  run_cost_aware_validation_rollout_on_real_runtime_job.v1
+
+Selected completed Runtime job:
+
+  /cuwacunu/.runtime/cuwacunu_exec/components/wikimyei.inference.expected_value.mdn/spawns/hbe_a482bf811328ab7b/jobs/run/cwu_02v_channel_validation_eval_mdn_1800_2050.run.channel_inference_mdn.attempt_000000
+
+Runtime job facts:
+
+  status=completed
+  job_kind=channel_inference_mdn
+  replay_artifacts_written=true
+  graph_order_fingerprint=507df53170ffab6a
+  node_ids=BTC,USDT,ETH
+  edge_ids=BTCUSDT,ETHBTC,ETHUSDT
+
+Marshal rollout request:
+
+  rollout_id=cost_aware_validation_real_job_v1
+  requested_mode=plan, then execute
+  base_reserve_node_id=USDT
+  risky_node_ids=BTC,ETH
+  policy_set=base_reserve,current_weight,equal_weight,sdu
+  max_steps=128
+  max_parallel_jobs=4
+  cost_model_id=linear_transaction_cost_rate.v1
+  linear_transaction_cost_rate=0.001
+  allow_synthetic_direct_edges=false
+
+Plan result:
+
+  dispatch_state=prepared
+  accepted=true
+  execution_profile_digest=0c9d5d891455529b0a143065fa89cef99559cc72419c124b770971cc5cc7e56a
+  policy_set_digest=df9bb1ba591912b354c254770f1c35d8f52035403978760327b26a084389b007
+  no --replay-allow-synthetic-direct-edges flag was emitted
+  authority flags remained false
+
+Execute result:
+
+  dispatch_state=executed
+  report_path=/cuwacunu/.runtime/cuwacunu_exec/components/wikimyei.inference.expected_value.mdn/spawns/hbe_a482bf811328ab7b/jobs/run/cwu_02v_channel_validation_eval_mdn_1800_2050.run.channel_inference_mdn.attempt_000000/artifacts/cost_aware_validation_real_job_v1.replay.report
+
+Top-level report facts:
+
+  attempted_count=16
+  completed_count=16
+  failed_count=0
+  policy_summary_count=4
+  projection_validation_step_count=1000
+  time_law_future_observation_violation_count=0
+  mixed_future_realization_key_count=0
+  execution_profile_digest and policy_set_digest were present
+  projection metrics, portfolio metrics, execution metrics, and time-law
+  counters were separated in the report
+
+Important failure:
+
+  cajtucu_valid_trace_count=0
+  cajtucu_invalid_trace_count=1000
+  cajtucu_synthetic_market_step_count=1000
+  total_transaction_cost_base=0
+  requested_notional_base=0
+  executed_notional_base=0
+  rejected_notional_base=0
+
+Step traces showed:
+
+  cajtucu_market_source_id=kikijyeba.environment.replay.synthetic_node_market_state_direct_edges
+  cajtucu_synthetic_direct_edges=true
+  warnings=synthetic_direct_edges_market_source,cajtucu.paper.invalid_trace
+  failures=synthetic_direct_edges_disallowed
+
+Interpretation:
+
+  The public Marshal/Runtime validation-rollout contract is doing the right
+  thing at the request boundary: it requires nonzero cost, binds execution and
+  policy digests, rejects the synthetic-edge option, and emits no synthetic
+  CLI flag.
+
+  The existing replay artifacts are not yet validation-grade for Cajtucu paper
+  execution. They contain graph-anchor-edge batches and direct edge identities,
+  but they do not provide an explicit executable edge market state with
+  non-synthetic executable prices/fees/spread/slippage. Kikijyeba therefore
+  falls back to a synthetic node-market direct-edge surface. Cajtucu correctly
+  refuses that surface when synthetic edges are disallowed, but the experiment
+  runner still counts the episodes as completed with invalid Cajtucu traces.
+
+  This is a real artifact-readiness gap, not a Marshal naming issue.
+
+Digest note:
+
+  Runtime replay integrity reported:
+
+    report_digest_bound=true
+    declared_report_digest=a36cc457fef7f4fe
+    computed_report_digest=1b14f7d0beba1f6b
+    report_digest_match=false
+
+  This should be inspected. It may be an index/report digest timing issue or
+  a digest-algorithm mismatch, but it should not be ignored before Lattice
+  artifact-readiness proof.
+
+Recommended next finite goal:
+
+  replay_execution_market_artifact_ready.v1
+
+Objective:
+
+  Make validation-grade replay refuse or satisfy the Cajtucu execution-market
+  contract explicitly. A validation rollout must not silently complete with
+  synthetic execution markets or invalid traces.
+
+Scope:
+
+  1. Define required replay execution-market artifact fields:
+
+       edge_market_state present for every replay frame
+       market_source_id non-synthetic
+       graph_order_fingerprint bound
+       direct reserve edges present for all risky nodes
+       edge_mid_price positive and finite
+       edge_fee_rate / spread / slippage finite and nonnegative
+       tradable mask present or explicitly defaulted by policy
+       min/max notional policy explicit
+
+  2. Add validation-grade Runtime replay preflight or post-run gate:
+
+       validation_rollout=true must fail closed if report contains:
+
+         cajtucu_synthetic_market_step_count > 0
+         cajtucu_invalid_trace_count > 0
+         missing execution_profile_digest
+         missing policy_set_digest
+         zero nonzero-cost evidence when turnover/orders exist
+
+  3. Make the report distinguish:
+
+       completed_environment_episode_count
+       validation_eligible_episode_count
+       invalid_execution_episode_count
+
+     so "environment replay completed" cannot be confused with
+     "validation rollout satisfied".
+
+  4. Fix or explain replay report digest binding:
+
+       declared report digest in runtime_replay_experiments.index must match
+       the digest computed by the inspection path, or the two digest algorithms
+       must be named separately.
+
+  5. Add tests:
+
+       validation rollout with synthetic fallback is refused or marked
+       validation_ineligible
+
+       validation rollout with invalid Cajtucu traces is refused or marked
+       validation_ineligible
+
+       report/index digest check matches
+
+       research rollout can still opt into synthetic execution surfaces with
+       loud warnings and no readiness claim
+
+Out of scope:
+
+  PPO
+  allocator tuning
+  paper-online
+  live broker adapters
+  fake relabeling of synthetic unit-price edges as real executable markets
+
+Review question for colleague:
+
+  Should the next implementation prioritize producing real edge_market_state
+  artifacts from the Runtime job, or should we first add the validation-grade
+  fail-closed gate so synthetic/invalid Cajtucu traces cannot appear as
+  completed validation rollouts?
+
+Follow-up implemented in this session:
+
+  We implemented the fail-closed validation gate first.
+
+  Runtime now validates the produced replay report when
+  validation_rollout=true. It rejects validation replay if:
+
+    replay report is missing or empty
+    completed_count <= 0
+    execution_profile_digest is missing
+    policy_set_digest is missing
+    cajtucu_synthetic_market_step_count > 0
+    cajtucu_invalid_trace_count > 0
+
+  Focused Runtime test coverage was added for:
+
+    clean validation replay report accepted
+    synthetic Cajtucu market evidence rejected
+    invalid Cajtucu traces rejected
+
+  Verified command:
+
+    make -C src/tests/bench/kikijyeba/runtime -j12 run-test_hero_runtime_wave_preview
+
+  Live real-job gate check:
+
+    rollout_id=cost_aware_validation_real_job_v1_gate_check
+    dispatch_state=blocked
+    next_safe_actions=inspect_runtime_replay_failure
+    runtime_replay.error_message=
+      E_RUNTIME_REPLAY_VALIDATION_SYNTHETIC_MARKET_USED:
+      cajtucu_synthetic_market_step_count=1000
+
+  This means the current real Runtime job still cannot satisfy
+  cost-aware validation rollout, but the system no longer allows that failure
+  to masquerade as an executed validation success.
+
+Remaining requirement for the original green validation rollout:
+
+  Produce or attach real, non-synthetic edge_market_state artifacts for replay
+  frames, then rerun the same Marshal rollout. Until that exists, the correct
+  result is the fail-closed Runtime/Marshal block above.
+
+Final follow-up implemented:
+
+  We added observed edge-market replay support so new Runtime replay artifacts
+  no longer need the synthetic direct-edge fallback for validation rollout.
+
+  Source/runtime propagation added:
+
+    wikimyei.expression.nodelift.srl.node_lifted_batch_t
+      carries edge_features and edge_mask from graph anchor source batches
+
+    wikimyei.representation.encoding.vicreg.channel_representation_batch_t
+      carries edge_features, edge_mask, and past_keys
+
+    kikijyeba.environment.runtime.replay_source
+      persists those tensors into graph_anchor_edge_batch replay artifacts
+
+    kikijyeba.environment.replay.source
+      derives a deterministic relative edge market state from observed close
+      log-return features in graph-edge order:
+
+        frame 0 edge_mid_price = 1.0
+        frame k edge_mid_price = exp(cumulative observed close log return)
+
+      This is explicitly sourced from observed edge features and is different
+      from the old synthetic unit-price direct-edge fallback.
+
+  Runtime validation hardening added:
+
+    Runtime report gating now rejects validation_rollout=true if the produced
+    replay report has:
+
+      missing report
+      completed_count <= 0
+      missing execution_profile_digest
+      missing policy_set_digest
+      cajtucu_synthetic_market_step_count > 0
+      cajtucu_invalid_trace_count > 0
+
+    The old attempt_000000 replay remains a useful negative control: it fails
+    closed because it produces 1000 synthetic Cajtucu market steps.
+
+  Digest binding fix:
+
+    The replay experiment index writer and Runtime/Lattice inspection path were
+    using different digest domains for replay reports.
+
+    Fixed by aligning
+
+      kikijyeba.environment.runtime.experiment_driver::replay_report_digest
+
+    with the Lattice-compatible domain:
+
+      kikijyeba.lattice.exposure.v1
+      kikijyeba.environment.replay.report_digest.v1\n<report_text>
+
+    This matters because Lattice readiness already treats report/index digest
+    agreement as artifact integrity evidence.
+
+Final successful real-job validation rollout:
+
+  Fresh completed Runtime job:
+
+    job_id=
+      cwu_02v_channel_validation_eval_mdn_1800_2050.run.channel_inference_mdn.attempt_000003
+
+    runtime_job_dir=
+      /cuwacunu/.runtime/cuwacunu_exec/components/wikimyei.inference.expected_value.mdn/spawns/hbe_a482bf811328ab7b/jobs/run/cwu_02v_channel_validation_eval_mdn_1800_2050.run.channel_inference_mdn.attempt_000003
+
+    replay_batch_index_path=
+      /cuwacunu/.runtime/cuwacunu_exec/components/wikimyei.inference.expected_value.mdn/spawns/hbe_a482bf811328ab7b/jobs/run/cwu_02v_channel_validation_eval_mdn_1800_2050.run.channel_inference_mdn.attempt_000003/artifacts/kikijyeba.environment.replay.v1/runtime_replay_batches.index
+
+  Marshal rollout:
+
+    rollout_id=cost_aware_validation_real_job_v1_final
+    requested_mode=plan -> dispatch_state=prepared
+    requested_mode=execute -> dispatch_state=executed
+    runtime_replay.ok=true
+    runtime_replay.exit_code=0
+
+  Validation profile:
+
+    execution_backend_id=cajtucu.execution.paper.v1
+    cost_model_id=linear_transaction_cost_rate.v1
+    linear_transaction_cost_rate=0.001
+    allow_synthetic_direct_edges=false
+    allow_partial_fills=false
+    allow_negative_base_reserve=false
+    live_execution_allowed=false
+
+    execution_profile_digest=
+      0c9d5d891455529b0a143065fa89cef99559cc72419c124b770971cc5cc7e56a
+
+    policy_set_digest=
+      df9bb1ba591912b354c254770f1c35d8f52035403978760327b26a084389b007
+
+  Replay report:
+
+    report_path=
+      /cuwacunu/.runtime/cuwacunu_exec/components/wikimyei.inference.expected_value.mdn/spawns/hbe_a482bf811328ab7b/jobs/run/cwu_02v_channel_validation_eval_mdn_1800_2050.run.channel_inference_mdn.attempt_000003/artifacts/cost_aware_validation_real_job_v1_final.replay.report
+
+    replay_bundle_count=4
+    attempted_count=16
+    completed_count=16
+    failed_count=0
+    episode_count=16
+
+    projection_validation_step_count=1000
+    time_law_expected_step_count=1000
+    time_law_observation_step_count=1000
+    time_law_action_step_count=1000
+    time_law_execution_step_count=1000
+    time_law_realization_after_action_count=1000
+    time_law_future_observation_violation_count=0
+    mixed_future_realization_key_count=0
+
+    cajtucu_valid_trace_count=1000
+    cajtucu_invalid_trace_count=0
+    cajtucu_synthetic_market_step_count=0
+
+    requested_order_count=827
+    executed_order_count=577
+    rejected_order_count=250
+    partial_order_count=0
+    requested_notional_base=144.558
+    executed_notional_base=19.26
+    rejected_notional_base=125.298
+    fee_cost_base=0.01926
+    spread_cost_base=0
+    slippage_cost_base=0
+    mean_total_transaction_cost_base=0.00120375
+
+    policy_summary_count=4
+
+      policy_0=base_reserve_only.v1
+        completed_count=4
+        valid_traces=250
+        synthetic_steps=0
+        final_equity=1
+
+      policy_1=equal_weight.v1
+        completed_count=4
+        valid_traces=250
+        synthetic_steps=0
+        final_equity=1.02238
+        rejected_order_count=250
+        reserve_shortfall_count=250
+
+      policy_2=current_weight_no_trade.v1
+        completed_count=4
+        valid_traces=250
+        synthetic_steps=0
+        final_equity=1
+
+      policy_3=kikijyeba.environment.policy.spot_distributional_utility.v1
+        completed_count=4
+        valid_traces=250
+        synthetic_steps=0
+        final_equity=1.01328
+        requested_order_count=327
+        executed_order_count=327
+        rejected_order_count=0
+        fee_cost_base=0.0163079
+        mean_target_weight_error_l1=1.14292e-05
+
+  Report/index digest integrity:
+
+    runtime_replay_experiments.index entry_count=1
+    entry_0_report_digest=a6fcb2d3e17f0c53
+    Runtime Hero computed_report_digest=a6fcb2d3e17f0c53
+    report_digest_match=true
+
+Current interpretation:
+
+  run_cost_aware_validation_rollout_on_real_runtime_job.v1 now has a real
+  green path:
+
+    completed Runtime job
+      -> Marshal rollout plan
+      -> Runtime replay execute
+      -> Cajtucu paper execution with nonzero cost
+      -> zero synthetic-market steps
+      -> zero invalid traces
+      -> Lattice-ready report/index digest binding
+
+  Economic interpretation remains deliberately limited:
+
+    This proves the end-to-end machinery works under cost-aware paper replay.
+    It does not prove alpha, market readiness, PPO readiness, or allocator
+    optimality.
+
+===============================================================================
+Replay Environment Artifact Readiness V1 - Final Lattice Proof Checkpoint
+===============================================================================
+
+Date:
+  2026-06-04
+
+Review request:
+  Please review this as the completion checkpoint for:
+
+    replay_environment_artifact_ready.v1
+
+  The intended claim is narrow:
+
+    Lattice can now prove that a completed Runtime replay produced a durable,
+    Cajtucu-ready replay-environment artifact with clean lineage, bounded replay
+    accounting, nonzero paper execution costs, no synthetic execution markets,
+    clean time-law counters, projection coverage, policy summary coverage, and
+    non-authoritative proof boundaries.
+
+  The intended claim is not:
+
+    profitability, projection economic validity, policy quality, PPO readiness,
+    market readiness, paper-online readiness, or deployment readiness.
+
+Implementation summary:
+
+  Lattice:
+
+    - replay_environment facts are derived from durable Runtime replay reports
+      in the Hero scanner/evaluator paths.
+    - replay_environment_artifact_ready is evaluated as a non-dispatchable
+      artifact_readiness target.
+    - replay_environment_fact_issues now fails closed on missing policy summary
+      evidence, failed replay attempts, incomplete completed+failed accounting,
+      missing digest/profile/policy identity, invalid Cajtucu traces, synthetic
+      execution markets, missing order/cost/fill evidence, leakage counters, and
+      incomplete projection/time-law evidence.
+    - The selected proof fact is lineage-bound and does not give Lattice,
+      Marshal, Runtime, or Cajtucu extra authority.
+
+  Kikijyeba replay environment:
+
+    - replay reports now use:
+
+        schema=kikijyeba.environment.replay.cajtucu_ready_experiment_artifact.v1
+
+    - replay DSL/report identity now binds:
+
+        replay_environment_artifact_schema=cajtucu_ready_replay_artifacts
+        replay_environment_lattice_fact_family=replay_environment
+        replay_environment_lattice_target=replay_environment_artifact_ready
+
+  Tests:
+
+    - Lattice target tests cover valid replay-environment proof plus negative
+      cases for missing policy summary evidence and failed replay attempts.
+    - Lattice exposure tests parse and assert policy_summary_count and
+      failed_count.
+    - Environment contract tests assert the replay DSL/report Lattice binding.
+    - Runtime job-runner tests expect the Cajtucu-ready replay report schema.
+
+Final real Runtime job:
+
+  job_id:
+    cwu_02v_channel_validation_eval_mdn_1800_2050.run.channel_inference_mdn.attempt_000002
+
+  job_dir:
+    /cuwacunu/.runtime/cuwacunu_exec/components/wikimyei.inference.expected_value.mdn/spawns/wsn_3644b457377deea4/jobs/run/cwu_02v_channel_validation_eval_mdn_1800_2050.run.channel_inference_mdn.attempt_000002
+
+  replay_batch_index:
+    /cuwacunu/.runtime/cuwacunu_exec/components/wikimyei.inference.expected_value.mdn/spawns/wsn_3644b457377deea4/jobs/run/cwu_02v_channel_validation_eval_mdn_1800_2050.run.channel_inference_mdn.attempt_000002/artifacts/kikijyeba.environment.replay.v1/runtime_replay_batches.index
+
+Final cost-aware replay report:
+
+  experiment_id:
+    cost_aware_validation_real_job_v1_lattice_ready_final
+
+  report_path:
+    /cuwacunu/.runtime/cuwacunu_exec/components/wikimyei.inference.expected_value.mdn/spawns/wsn_3644b457377deea4/jobs/run/cwu_02v_channel_validation_eval_mdn_1800_2050.run.channel_inference_mdn.attempt_000002/artifacts/cost_aware_validation_real_job_v1_lattice_ready_final.replay.report
+
+  report_digest:
+    3cee86bbfaf228bb
+
+  execution_profile_digest:
+    0c9d5d891455529b0a143065fa89cef99559cc72419c124b770971cc5cc7e56a
+
+  policy_set_digest:
+    df9bb1ba591912b354c254770f1c35d8f52035403978760327b26a084389b007
+
+  key report counters:
+
+    attempted_count=16
+    completed_count=16
+    failed_count=0
+    episode_count=16
+    policy_summary_count=4
+
+    projection_validation_step_count=1000
+    time_law_expected_step_count=1000
+    time_law_future_observation_violation_count=0
+    mixed_future_realization_key_count=0
+
+    cajtucu_valid_trace_count=1000
+    cajtucu_invalid_trace_count=0
+    cajtucu_synthetic_market_step_count=0
+
+    requested_order_count=827
+    executed_order_count=577
+    rejected_order_count=250
+    partial_order_count=0
+    fill_ratio=0.133234
+
+    fee_cost_base=0.01926
+    spread_cost_base=0
+    slippage_cost_base=0
+    mean_total_transaction_cost_base=0.00120375
+
+Final live Lattice target evaluation:
+
+  command:
+
+    /cuwacunu/.build/hero/hero_lattice.mcp \
+      --global-config /cuwacunu/src/config/.config \
+      --tool hero.lattice.evaluate \
+      --args-json '{"operation":"target","target_id":"replay_environment_artifact_ready"}'
+
+  saved_output:
+    /tmp/replay_environment_artifact_ready_eval_final.json
+
+  result:
+
+    satisfied=true
+    blocking_deficit_count=0
+    proof_certificate_check.passed=true
+
+    selected_fact_digest=ea1dd72b9758ec12
+    selected_job_id=cwu_02v_channel_validation_eval_mdn_1800_2050.run.channel_inference_mdn.attempt_000002
+    selected_fact_passed=true
+    selected_fact_lineage_bound=true
+    selected_fact_issues=[]
+
+  Note:
+    The scanner still reports warnings for older stale replay_environment facts
+    left in Runtime history. This is expected audit context. The target proof
+    selected the clean final fact above and has no blocking deficits.
+
+Verification commands run:
+
+  Passed:
+
+    make -C src/tests/bench/kikijyeba/lattice_target -j12 run-test_kikijyeba_lattice_target
+    make -C src/tests/bench/kikijyeba/lattice_exposure -j12 run-test_kikijyeba_lattice_exposure
+    make -C src/tests/bench/kikijyeba/environment -j12 run-test_kikijyeba_environment_contract
+    make -C src/tests/bench/kikijyeba/runtime -j12 run-test_kikijyeba_job_runner
+    make -C src/main/hero -j12 build-lattice-hero
+    make -C src/main/exec -j12 build-cuwacunu-exec
+
+  Also passed:
+
+    live hero.lattice.evaluate replay_environment_artifact_ready
+
+Review questions:
+
+  1. Is this sufficient to accept replay_environment_artifact_ready.v1 as a
+     completed artifact-readiness target?
+
+  2. Are any required Lattice readiness fields still missing before PPO V0?
+
+  3. Should the older stale replay_environment warnings remain as useful audit
+     evidence, or should we eventually add a selector/filter mode for latest
+     clean replay-only proof scans?
+
+  4. Do you agree that the next roadmap item should stay focused on either:
+
+       policy_training_causal_schedule_ready
+
+     or the first PPO V0 policy-adapter contract, with no paper-online/live
+     expansion yet?

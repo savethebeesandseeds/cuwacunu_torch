@@ -10,6 +10,14 @@ default = STDIO
 allowed = STDIO,HTTPS/SSE
 nuance = STDIO is implemented; HTTPS/SSE is reserved and must fail fast.
 
+[FIELD runtime_profile]
+key = runtime_profile
+scope = Runtime Hero policy
+type = enum
+default = locked_default
+allowed = locked_default,train_operator
+nuance = Selects a named RUNTIME_PROFILE block from the same Runtime policy file. Selection order is CLI --profile, [HERO].runtime_hero_profile, then this field. checked-in locked_default denies wave/train execution; train_operator enables execute/train with confirmation and disables developer reset.
+
 [FIELD runtime_exec_path]
 key = runtime_exec_path
 scope = Runtime Hero policy

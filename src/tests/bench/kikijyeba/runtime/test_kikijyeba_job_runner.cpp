@@ -359,6 +359,9 @@ fixture_paths_t make_config_fixture(
                  protocol_representation +
                  ";\n"
                  "  INFERENCE = wikimyei.inference.expected_value.mdn;\n"
+                 "  OBSERVER = wikimyei.observer.belief;\n"
+                 "  ALLOCATION_POLICY = "
+                 "wikimyei.policy.portfolio.spot_distributional_utility;\n"
                  "  REPRESENTATION_CONTRACT = "
                  "graph_order.channel_node_representation.v1;\n"
                  "};\n");
@@ -732,6 +735,9 @@ void rewrite_fixture_protocol(const fixture_paths_t &fixture,
                  representation_family +
                  ";\n"
                  "  INFERENCE = wikimyei.inference.expected_value.mdn;\n"
+                 "  OBSERVER = wikimyei.observer.belief;\n"
+                 "  ALLOCATION_POLICY = "
+                 "wikimyei.policy.portfolio.spot_distributional_utility;\n"
                  "  REPRESENTATION_CONTRACT = "
                  "graph_order.channel_node_representation.v1;\n"
                  "};\n");
@@ -1973,9 +1979,10 @@ void test_strict_channel_baseline_runs_through_runtime() {
   const auto replay_driver_report_text =
       read_text(replay_driver_result.report_path);
   check(replay_driver_report_text.find(
-            "schema=kikijyeba.environment.replay.experiment_artifact.v1") !=
-            std::string::npos,
-        "strict baseline replay driver report carries experiment schema");
+            "schema=kikijyeba.environment.replay.cajtucu_ready_experiment_"
+            "artifact.v1") != std::string::npos,
+        "strict baseline replay driver report carries Cajtucu-ready "
+        "experiment schema");
   check(replay_driver_report_text.find("policy_summary_count=2") !=
             std::string::npos,
         "strict baseline replay driver report carries policy summaries");

@@ -85,9 +85,8 @@ valid_rollout_request(const std::filesystem::path &root) {
   request.max_steps = 250;
   request.max_parallel_jobs = 4;
   request.execution_profile.linear_transaction_cost_rate = 0.001;
-  request.execution_profile.allow_synthetic_direct_edges = true;
-  request.execution_profile.synthetic_edge_research_reason =
-      "research replay fixture without direct execution edge feed";
+  request.execution_profile.allow_synthetic_direct_edges = false;
+  request.execution_profile.synthetic_edge_research_reason.clear();
   return request;
 }
 
@@ -155,8 +154,8 @@ void test_rollout_plan_accepts_completed_runtime_job() {
             std::string::npos,
         "rollout command should include current-weight policy");
   check(plan.replay_command_template.find(
-            "--replay-allow-synthetic-direct-edges") != std::string::npos,
-        "synthetic execution edges must be explicit in the command");
+            "--replay-allow-synthetic-direct-edges") == std::string::npos,
+        "validation rollout command must not allow synthetic execution edges");
   check(plan.replay_command_template.find(
             "--replay-linear-transaction-cost-rate 0.001") != std::string::npos,
         "rollout command should carry Cajtucu cost profile");
@@ -298,6 +297,16 @@ void test_rollout_validates_typed_execution_profile() {
   check(has_refusal(refusals, "nonzero_cost_required_for_validation_rollout"),
         "cost-aware validation rollout should reject zero-cost profiles");
 
+  auto synthetic_edges = request;
+  synthetic_edges.execution_profile.allow_synthetic_direct_edges = true;
+  synthetic_edges.execution_profile.synthetic_edge_research_reason =
+      "research replay fixture";
+  refusals = marshal::validate_rollout_request(synthetic_edges);
+  check(has_refusal(refusals,
+                    "synthetic_direct_edges_forbidden_for_validation_rollout"),
+        "cost-aware validation rollout should reject synthetic execution "
+        "markets even when a research reason is present");
+
   auto partial_fills = request;
   partial_fills.execution_profile.allow_partial_fills = true;
   refusals = marshal::validate_rollout_request(partial_fills);
@@ -316,13 +325,14 @@ void test_rollout_rejects_legacy_dry_run_mode() {
         "rollout should reject legacy requested_mode=dry_run");
 }
 
-void test_rollout_rejects_synthetic_edges_without_reason() {
-  const auto root = make_tmp_dir("synthetic_reason");
+void test_rollout_rejects_synthetic_edges_for_validation() {
+  const auto root = make_tmp_dir("synthetic_validation");
   auto request = valid_rollout_request(root);
-  request.execution_profile.synthetic_edge_research_reason.clear();
+  request.execution_profile.allow_synthetic_direct_edges = true;
   const auto refusals = marshal::validate_rollout_request(request);
-  check(has_refusal(refusals, "missing_synthetic_edge_research_reason"),
-        "synthetic edge opt-in should require a research reason");
+  check(has_refusal(refusals,
+                    "synthetic_direct_edges_forbidden_for_validation_rollout"),
+        "validation rollout should forbid synthetic direct execution edges");
 }
 
 void test_rollout_rejects_missing_replay_artifacts() {
@@ -383,8 +393,7 @@ void test_rollout_tool_is_plan_only_without_lattice_callback() {
       "\"max_parallel_jobs\":4,"
       "\"execution_profile\":{"
       "\"cost_model_id\":\"linear_transaction_cost_rate.v1\","
-      "\"allow_synthetic_direct_edges\":true,"
-      "\"synthetic_edge_research_reason\":\"research replay fixture\","
+      "\"allow_synthetic_direct_edges\":false,"
       "\"linear_transaction_cost_rate\":0.001"
       "}"
       "}";
@@ -594,8 +603,7 @@ void test_rollout_execute_calls_runtime_replay() {
       "\"include_machine_payload\":true,"
       "\"execution_profile\":{"
       "\"cost_model_id\":\"linear_transaction_cost_rate.v1\","
-      "\"allow_synthetic_direct_edges\":true,"
-      "\"synthetic_edge_research_reason\":\"research replay fixture\","
+      "\"allow_synthetic_direct_edges\":false,"
       "\"linear_transaction_cost_rate\":0.001"
       "}"
       "}";
@@ -616,8 +624,11 @@ void test_rollout_execute_calls_runtime_replay() {
         "execute rollout Runtime result should not be an error");
   check(result.find("replay_completed_count") != std::string::npos,
         "execute rollout should expose Runtime replay stdout evidence");
-  check(result.find("allow_synthetic_direct_edges") != std::string::npos,
-        "execute rollout should pass synthetic edge policy to Runtime");
+  check(result.find("validation_rollout") != std::string::npos,
+        "execute rollout should mark Runtime replay as validation-grade");
+  check(result.find("--replay-allow-synthetic-direct-edges") ==
+            std::string::npos,
+        "execute rollout should not pass synthetic execution CLI flag");
   check(result.find("linear_transaction_cost_rate") != std::string::npos,
         "execute rollout should pass transaction cost profile to Runtime");
   check(result.find("execution_profile_digest") != std::string::npos &&
@@ -650,7 +661,7 @@ int main() {
   test_rollout_validates_graph_and_asset_universe_identity();
   test_rollout_validates_typed_execution_profile();
   test_rollout_rejects_legacy_dry_run_mode();
-  test_rollout_rejects_synthetic_edges_without_reason();
+  test_rollout_rejects_synthetic_edges_for_validation();
   test_rollout_rejects_missing_replay_artifacts();
   test_rollout_tool_is_plan_only_without_lattice_callback();
   test_rollout_tool_rejects_prepare_only_field();

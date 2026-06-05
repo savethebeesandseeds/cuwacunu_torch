@@ -147,8 +147,10 @@ replay_report_digest_for_text(const std::string &text) {
   std::uint64_t hash =
       cuwacunu::wikimyei::assembly::assembly_detail::kFnvOffsetBasis;
   cuwacunu::wikimyei::assembly::assembly_detail::mix_hash_string(
-      hash, "kikijyeba.environment.replay.report_digest.v1");
-  cuwacunu::wikimyei::assembly::assembly_detail::mix_hash_string(hash, text);
+      hash, "kikijyeba.lattice.exposure.v1");
+  cuwacunu::wikimyei::assembly::assembly_detail::mix_hash_string(
+      hash,
+      std::string("kikijyeba.environment.replay.report_digest.v1\n") + text);
   return cuwacunu::wikimyei::assembly::assembly_detail::hash_hex(hash);
 }
 
@@ -643,6 +645,10 @@ inline void write_replay_experiment_report(
            replay_spec.experiment_report_count_policy);
   write_kv(out, "replay_environment_artifact_schema",
            replay_spec.artifact_schema);
+  write_kv(out, "replay_environment_lattice_fact_family",
+           replay_spec.lattice_fact_family);
+  write_kv(out, "replay_environment_lattice_target",
+           replay_spec.lattice_target);
   out << "replay_environment_require_resolved_cursor="
       << replay_spec.require_resolved_cursor << "\n";
   out << "replay_environment_require_no_future_leakage="

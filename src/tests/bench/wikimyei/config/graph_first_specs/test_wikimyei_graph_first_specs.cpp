@@ -285,6 +285,8 @@ void test_channel_specs_decode_and_validate() {
       paths.at("wikimyei_inference_expected_value_mdn_jkimyei_bnf_path"));
   if (protocol_bnf.find("PROTOCOL") == std::string::npos ||
       protocol_bnf.find("REPRESENTATION_CONTRACT") == std::string::npos ||
+      protocol_bnf.find("OBSERVER") == std::string::npos ||
+      protocol_bnf.find("ALLOCATION_POLICY") == std::string::npos ||
       vicreg_dsl_bnf.find("VICREG") == std::string::npos ||
       vicreg_net_bnf.find("VICREG_NET") == std::string::npos ||
       vicreg_net_bnf.find("VICREG_INVARIANCE_WEIGHT") == std::string::npos ||
@@ -379,7 +381,10 @@ void test_channel_specs_decode_and_validate() {
   if (protocol_variant.protocol_id != "cwu_02v" ||
       protocol::protocol_representation_family_name(
           protocol_variant.representation_family) !=
-          std::string{"wikimyei.representation.encoding.mtf_jepa_mae_vicreg"}) {
+          std::string{"wikimyei.representation.encoding.mtf_jepa_mae_vicreg"} ||
+      protocol_variant.observer_family != "wikimyei.observer.belief" ||
+      protocol_variant.allocation_policy_family !=
+          "wikimyei.policy.portfolio.spot_distributional_utility") {
     throw std::runtime_error("active protocol variant mismatch");
   }
   if (mtf_spec.component_assembly_id != "mtf_jepa_mae_vicreg_v1" ||
@@ -945,6 +950,60 @@ void test_cross_reference_failures() {
       "channel source count mismatch");
 }
 
+void test_protocol_policy_identity_required() {
+  namespace protocol = cuwacunu::kikijyeba::protocol;
+
+  expect_throw(
+      [] {
+        (void)protocol::decode_protocol_variant_from_dsl(
+            "PROTOCOL {\n"
+            "  PROTOCOL_ID = cwu_bad;\n"
+            "  PROTOCOL_KIND = channel_graph_first;\n"
+            "  GRAPH_TOPOLOGY = kikijyeba.topology.graph;\n"
+            "  NODELIFT = wikimyei.expression.nodelift.srl;\n"
+            "  REPRESENTATION = "
+            "wikimyei.representation.encoding.mtf_jepa_mae_vicreg;\n"
+            "  INFERENCE = wikimyei.inference.expected_value.mdn;\n"
+            "  OBSERVER = wikimyei.observer.belief;\n"
+            "  REPRESENTATION_CONTRACT = "
+            "graph_order.channel_node_representation.v1;\n"
+            "};\n");
+      },
+      "missing allocation policy");
+
+  expect_throw(
+      [] {
+        (void)protocol::decode_protocol_variant_from_dsl(
+            "PROTOCOL {\n"
+            "  PROTOCOL_ID = cwu_bad;\n"
+            "  PROTOCOL_KIND = channel_graph_first;\n"
+            "  GRAPH_TOPOLOGY = kikijyeba.topology.graph;\n"
+            "  NODELIFT = wikimyei.expression.nodelift.srl;\n"
+            "  REPRESENTATION = "
+            "wikimyei.representation.encoding.mtf_jepa_mae_vicreg;\n"
+            "  INFERENCE = wikimyei.inference.expected_value.mdn;\n"
+            "  OBSERVER = wikimyei.observer.other;\n"
+            "  ALLOCATION_POLICY = "
+            "wikimyei.policy.portfolio.spot_distributional_utility;\n"
+            "  REPRESENTATION_CONTRACT = "
+            "graph_order.channel_node_representation.v1;\n"
+            "};\n");
+      },
+      "invalid observer");
+
+  auto bundle = protocol::load_channel_graph_first_config_bundle_from_config(
+      "/cuwacunu/src/config/.config");
+  const std::string contract_text =
+      protocol::canonical_channel_graph_first_protocol_contract_text(bundle);
+  if (contract_text.find("protocol_observer=wikimyei.observer.belief") ==
+          std::string::npos ||
+      contract_text.find("protocol_allocation_policy=wikimyei.policy.portfolio."
+                         "spot_distributional_utility") == std::string::npos) {
+    throw std::runtime_error(
+        "protocol contract text missing observer/allocation policy identity");
+  }
+}
+
 } // namespace
 
 int main() {
@@ -953,6 +1012,7 @@ int main() {
   test_channel_specs_decode_and_validate();
   test_invalid_specs_fail_fast();
   test_cross_reference_failures();
+  test_protocol_policy_identity_required();
   std::cout << "[test_wikimyei_graph_first_specs] all checks passed\n";
   return 0;
 }

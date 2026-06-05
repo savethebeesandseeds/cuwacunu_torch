@@ -286,6 +286,9 @@ make_channel_representation_stream_batch(
   out.nodelift_runtime_lls = lifted.runtime_lls;
   out.price_residual = lifted.price_residual;
   out.price_residual_mask = lifted.price_residual_mask;
+  out.edge_features = lifted.edge_features;
+  out.edge_mask = lifted.edge_mask;
+  out.past_keys = lifted.past_keys;
   out.activity_total = lifted.activity_total;
   out.activity_support = lifted.activity_support;
   out.activity_coverage = lifted.activity_coverage;

@@ -24,6 +24,9 @@ struct protocol_variant_t {
   protocol_representation_family_t representation_family{
       protocol_representation_family_t::vicreg};
   std::string inference_family{"wikimyei.inference.expected_value.mdn"};
+  std::string observer_family{"wikimyei.observer.belief"};
+  std::string allocation_policy_family{
+      "wikimyei.policy.portfolio.spot_distributional_utility"};
   std::string representation_contract{
       "graph_order.channel_node_representation.v1"};
 };
@@ -89,6 +92,16 @@ inline void validate_protocol_variant(const protocol_variant_t &variant) {
     throw std::runtime_error("[protocol_variant] INFERENCE must be "
                              "wikimyei.inference.expected_value.mdn");
   }
+  if (kv::trim(variant.observer_family) != "wikimyei.observer.belief") {
+    throw std::runtime_error(
+        "[protocol_variant] OBSERVER must be wikimyei.observer.belief");
+  }
+  if (kv::trim(variant.allocation_policy_family) !=
+      "wikimyei.policy.portfolio.spot_distributional_utility") {
+    throw std::runtime_error(
+        "[protocol_variant] ALLOCATION_POLICY must be "
+        "wikimyei.policy.portfolio.spot_distributional_utility");
+  }
   if (kv::trim(variant.representation_contract).empty()) {
     throw std::runtime_error(
         "[protocol_variant] REPRESENTATION_CONTRACT is required");
@@ -124,6 +137,8 @@ decode_protocol_variant_from_dsl(const std::string &dsl_text) {
       protocol_variant_detail::parse_representation_family(
           kv::required(block, "REPRESENTATION"));
   out.inference_family = kv::optional(block, "INFERENCE", out.inference_family);
+  out.observer_family = kv::required(block, "OBSERVER");
+  out.allocation_policy_family = kv::required(block, "ALLOCATION_POLICY");
   out.representation_contract = kv::optional(block, "REPRESENTATION_CONTRACT",
                                              out.representation_contract);
   validate_protocol_variant(out);

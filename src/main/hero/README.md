@@ -233,9 +233,10 @@ If `prepare` sees `target_class=artifact_readiness`, it stops with
 `next_safe_actions=["inspect"]` before Runtime dispatch validation or
 dry-run preview construction.
 Fact-family-only panels never call target proof evaluation and remain
-non-dispatchable audit views. Parked `replay_environment` rows, when explicitly
-inspected, are audit data only and are not Marshal reachability or active
-Lattice proof evidence.
+non-dispatchable audit views. `replay_environment_artifact_ready` is an active
+Lattice artifact-readiness proof, but it remains non-dispatchable: Marshal may
+inspect or quote the proof and must not turn it into Runtime dispatch,
+policy-selection, allocation, market-readiness, or deployment authority.
 
 This v2 surface intentionally removes old Config Hero responsibilities that
 belonged to retired migration layers:
@@ -303,8 +304,9 @@ Runtime agent workflow:
    It delegates to `cuwacunu_exec --replay-from-job-dir`, writes replay reports
    and `runtime_replay_experiments.index`, and does not launch a new wave or
    mutate model checkpoints. Replay arguments can bind Cajtucu paper execution
-   profile hints such as `allow_synthetic_direct_edges` and
-   `linear_transaction_cost_rate`.
+   profile hints. Validation rollouts set `validation_rollout=true`, which
+   requires nonzero transaction cost, finite bounds, profile/policy digests, and
+   rejects synthetic direct execution edges.
 6. `hero.runtime.inspect subject=artifact` can read replay evidence by name:
    `replay_batch_index`, `replay_experiment_index`, and
    `replay_experiment_report`. `hero.runtime.inspect subject=job` includes the
@@ -355,12 +357,13 @@ Lattice proof certificates then carry the same handoff identity on closure causa
 exposures when that evidence participates in checkpoint lineage. The older
 `marshal_expected_wave` field remains as compatibility scaffolding.
 
-The checked-in default policy is intentionally locked for Codex/MCP safety:
-execute/train remain disabled, while developer reset is available only through
-the guarded `hero.runtime.reset` path with explicit confirmation. Use
-`src/config/hero.runtime.train.dsl` or an operator-local equivalent for
-intentional training runs; it enables execute/train with confirmation while
-keeping developer reset disabled.
+The checked-in Runtime policy is intentionally profile-scoped for Codex/MCP
+safety. The default `locked_default` profile keeps wave execute/train disabled,
+while developer reset is available only through the guarded `hero.runtime.reset`
+path with explicit confirmation. Use `runtime_hero_profile = train_operator` in
+an operator-local `.config`, or pass `--profile train_operator`, for intentional
+training runs; it enables execute/train with confirmation while keeping
+developer reset disabled.
 
 `hero.runtime.reset requested_mode=plan` is a dry-run preview. Non-dry-run reset
 is denied unless `allow_dev_nuke=true` and, by default,

@@ -1,8 +1,8 @@
 /*
   Train-core VICReg wave profile.
   Concrete anchor/source-key ranges are launch overlays, not profile identity.
-  Default Runtime Hero policy remains locked; use hero.runtime.train.dsl when
-  intentionally executing this profile.
+  Default Runtime Hero profile remains locked; use runtime_hero_profile =
+  train_operator when intentionally executing this profile.
 */
 WAVE_SETTINGS {
   WAVE_ID = train_core_vicreg;

@@ -185,12 +185,19 @@ Hero exposes the same path as
 tool accepts `job_id` or `job_dir`, checks the job is completed and has replay
 batch evidence, then delegates to the executable with the requested replay
 policy options and Cajtucu paper profile hints such as
-`allow_synthetic_direct_edges` and `linear_transaction_cost_rate`. The matching
-read path is named too: `hero.runtime.inspect subject=artifact` can inspect
-`replay_batch_index`, `replay_experiment_index`, and
-`replay_experiment_report`, and `hero.runtime.inspect subject=job` summarizes
-those replay artifacts beside the regular Runtime manifest/state/report
-summaries.
+`allow_synthetic_direct_edges` and `linear_transaction_cost_rate`. When a caller
+sets `validation_rollout=true`, Runtime treats replay as validation-grade: it
+requires positive `max_steps`, positive `max_parallel_jobs`, nonzero
+`linear_transaction_cost_rate`, `execution_profile_digest`,
+`policy_set_digest`, and rejects synthetic direct execution edges at the request
+boundary. Execute mode also gates the produced replay report: validation replay
+fails closed if the report is missing, has no completed episodes, lacks profile
+or policy-set identity, contains `cajtucu_synthetic_market_step_count > 0`, or
+contains `cajtucu_invalid_trace_count > 0`. The matching read path is named too:
+`hero.runtime.inspect subject=artifact` can inspect `replay_batch_index`,
+`replay_experiment_index`, and `replay_experiment_report`, and
+`hero.runtime.inspect subject=job` summarizes those replay artifacts beside the
+regular Runtime manifest/state/report summaries.
 
 Policy-training is now represented as a Runtime contract, not as a trainer.
 `hero.runtime.run operation=policy_training requested_mode=plan|dry_run`

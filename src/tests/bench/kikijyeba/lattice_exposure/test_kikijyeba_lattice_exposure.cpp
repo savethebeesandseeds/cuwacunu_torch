@@ -795,7 +795,8 @@ int main() {
              "entry_0_replay_bundle_count=2\n"
              "entry_0_policy_count=2\n"
              "entry_0_attempted_count=2\n"
-             "entry_0_completed_count=2\n");
+             "entry_0_completed_count=2\n"
+             "entry_0_failed_count=0\n");
   write_text(
       replay_artifact_dir / "runtime_replay_experiment.report",
       std::string("schema=") +
@@ -853,6 +854,8 @@ int main() {
           "replay_environment_default_max_parallel_jobs=1\n"
           "experiment_requested_max_parallel_jobs=2\n"
           "experiment_resolved_parallelism=2\n"
+          "policy_summary_count=2\n"
+          "failed_count=0\n"
           "time_law_expected_step_count=4\n"
           "time_law_observation_step_count=4\n"
           "time_law_action_step_count=4\n"
@@ -3963,8 +3966,10 @@ int main() {
           mdn_replay_environment.experiment_entry_count == 1 &&
           mdn_replay_environment.replay_bundle_count == 2 &&
           mdn_replay_environment.policy_count == 2 &&
+          mdn_replay_environment.policy_summary_count == 2 &&
           mdn_replay_environment.attempted_count == 2 &&
           mdn_replay_environment.completed_count == 2 &&
+          mdn_replay_environment.failed_count == 0 &&
           mdn_replay_environment.episode_count == 2 &&
           mdn_replay_environment.episode_requested_range_bound_count == 2 &&
           mdn_replay_environment.episode_cursor_bound_count == 2 &&

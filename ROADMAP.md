@@ -74,6 +74,40 @@ Marshal Hero:
 Do not reopen Hero cleanup as an umbrella goal. Future Hero changes must be
 finite, local, and tied to one tool family or one public contract.
 
+Current config-surface baseline:
+
+```text
+Runtime Hero uses one policy file:
+  src/config/hero.runtime.dsl
+
+Runtime profile selection order:
+  --profile
+  [HERO].runtime_hero_profile
+  runtime_profile in the policy file
+
+Checked-in profiles:
+  locked_default
+    wave/train execution disabled
+    guarded developer reset available
+
+  train_operator
+    wave/train execution enabled with confirmation
+    developer reset disabled
+
+Protocol identity binds:
+  GRAPH_TOPOLOGY
+  NODELIFT
+  REPRESENTATION
+  INFERENCE
+  OBSERVER
+  ALLOCATION_POLICY
+  REPRESENTATION_CONTRACT
+
+Policy parameter DSLs still own policy parameters.
+Marshal rollout still owns comparison policy sets and Cajtucu execution profile.
+Kikijyeba replay DSL still owns world/reset-step/time-law/reward contract.
+```
+
 ## Active Sequence
 
 ### 1. Cost-Aware Paper Replay Rollout V1
@@ -181,9 +215,11 @@ Bound evidence:
 Verified:
 - Lattice scanner/fact summary tests
 - Lattice target proof tests
+- environment replay contract tests
+- runtime job-runner replay report tests
 - Lattice Hero build
-- hero.lattice.inspect exposes replay_environment_artifact_ready as
-  artifact_readiness, non-dispatchable, and non-authoritative
+- live hero.lattice.evaluate proves replay_environment_artifact_ready from a
+  completed Runtime job's cost-aware Cajtucu replay report
 ```
 
 ### 3. Policy Training Artifact Contract V1

@@ -468,9 +468,12 @@ The active proof templates are `target_transform_contract_bound`,
 `observer_belief_artifact_bound`, and `allocation_artifact_bound` over their
 matching fact families. These targets require matching protocol/contract and
 graph/source identity, a parent exposure digest, required lineage fields, and
-clean authority flags. `replay_environment` is parked future environment
-evidence in this catalog: audit-only when explicitly inspected and not an
-active artifact-readiness proof template.
+clean authority flags. `replay_environment` is an active non-dispatchable
+artifact-readiness family through `replay_environment_artifact_ready`. Its proof
+template binds durable Runtime replay reports, Cajtucu paper-execution counters,
+nonzero cost evidence, policy-set and execution-profile digests, clean time-law
+counters, and authority denials; it does not prove policy quality,
+profitability, market readiness, or deployment readiness.
 Certificate artifact rows bind the source fact back to the catalog contract with
 `fact_schema`, `fact_type`, `fact_identity_contract_id`,
 `fact_identity_contract_bound = true`, `fact_identity_envelope_complete = true`,

@@ -12,6 +12,10 @@ operating-world contracts that Runtime may execute as targets/delegates.
   - Grammar for `kikijyeba.protocol.*.dsl`.
 - `kikijyeba_protocol_dsl_path`
   - Active graph-first protocol variant.
+  - The protocol DSL binds active graph, nodelift, representation, inference,
+    observer, allocation-policy, and representation-contract identity. Policy
+    parameter files remain under `[WIKIMYEI]`; rollout comparison policy sets
+    remain Marshal/Runtime request identity, not protocol identity.
 - `kikijyeba_topology_graph_dsl_bnf_path`
   - Grammar for `kikijyeba.topology.graph.dsl`.
 - `kikijyeba_topology_graph_dsl_path`

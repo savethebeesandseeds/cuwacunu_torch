@@ -791,6 +791,11 @@ void test_environment_contract() {
         "semantics");
   check(replay_spec.experiment_report_count_policy == "counts_match_evidence",
         "environment replay DSL preserves report-count evidence semantics");
+  check(replay_spec.artifact_schema == "cajtucu_ready_replay_artifacts" &&
+            replay_spec.lattice_fact_family == "replay_environment" &&
+            replay_spec.lattice_target == "replay_environment_artifact_ready",
+        "environment replay DSL binds the Cajtucu-ready artifact schema to the "
+        "replay-environment Lattice target");
   check(replay_spec.default_max_parallel_jobs > 0,
         "environment replay DSL declares a positive default parallelism bound");
   bool rejected_live_capital_replay = false;
@@ -2261,6 +2266,11 @@ dataloader::graph_anchor_edge_batch_t<std::int64_t> make_source_edge_batch(
   batch.cursor = cursor;
   batch.anchor_keys = torch::tensor({1000, 2000}, torch::kInt64);
   batch.edge_present = torch::ones({2, 2}, torch::kBool);
+  batch.edge_features =
+      torch::zeros({2, 2, 2, 1, kline::kKlineFeatureWidth},
+                   torch::TensorOptions().dtype(torch::kFloat64));
+  batch.edge_mask = torch::ones({2, 2, 2, 1}, torch::kBool);
+  batch.past_keys = torch::zeros({2, 2, 2, 1}, torch::kInt64);
   batch.future_features =
       torch::zeros({2, 2, 2, 1, kline::kKlineFeatureWidth},
                    torch::TensorOptions().dtype(torch::kFloat64));
@@ -2271,10 +2281,17 @@ dataloader::graph_anchor_edge_batch_t<std::int64_t> make_source_edge_batch(
       kline::kline_feature_index(kline::kline_feature_e::close);
   for (std::int64_t e = 0; e < 2; ++e) {
     for (std::int64_t c = 0; c < 2; ++c) {
+      batch.past_keys.index_put_({0, e, c, 0}, 1000);
+      batch.past_keys.index_put_({1, e, c, 0}, 2000);
       batch.future_keys.index_put_({0, e, c, 0}, 1010);
       batch.future_keys.index_put_({1, e, c, 0}, 2010);
     }
   }
+
+  batch.edge_features.index_put_({1, 0, 0, 0, close_coord}, 0.04);
+  batch.edge_features.index_put_({1, 0, 1, 0, close_coord}, 0.02);
+  batch.edge_features.index_put_({1, 1, 0, 0, close_coord}, -0.02);
+  batch.edge_features.index_put_({1, 1, 1, 0, close_coord}, 0.00);
 
   // BTC/USDT is forward asset/base, so the channel mean is used directly.
   batch.future_features.index_put_({0, 0, 0, 0, close_coord}, 0.01);
@@ -2752,10 +2769,25 @@ void test_replay_source_graph_anchor_binding() {
   check(frames[0].observation.realization_available_after_timestamp_ms == 1010,
         "replay source frame realization timestamp");
   env::validate_observation_time_boundary(frames[0].observation);
+  check(frames[0].observation.edge_market_state.graph.num_edges() == 2,
+        "replay source attaches edge market state");
+  close(frames[0]
+            .observation.edge_market_state.edge_mid_price.index({0})
+            .item<double>(),
+        1.0, 1e-12, "first frame relative edge price starts at one");
+  close(frames[1]
+            .observation.edge_market_state.edge_mid_price.index({0})
+            .item<double>(),
+        std::exp(0.03), 1e-12,
+        "second frame relative BTCUSDT edge price uses observed log return");
+  close(frames[1]
+            .observation.edge_market_state.edge_mid_price.index({1})
+            .item<double>(),
+        std::exp(-0.01), 1e-12,
+        "second frame relative USDTETH edge price uses observed log return");
 
   replay::replay_world_options_t options{};
   options.require_projection_validation = false;
-  options.paper_execution_options.allow_synthetic_direct_edges = true;
   auto projection_optional_spec = spec;
   projection_optional_spec.require_projection_validation = false;
   replay::replay_world_t world(frames, options);
@@ -3671,7 +3703,7 @@ void test_replay_source_graph_anchor_binding() {
   experiment.policy_set_digest = "policy_set_digest_fixture";
   check(experiment.experiment_artifact_schema_id ==
             std::string(env::kReplayExperimentArtifactSchema),
-        "experiment runner emits replay audit experiment schema");
+        "experiment runner emits Cajtucu-ready replay experiment schema");
   check(experiment.attempted_count == 2,
         "experiment runner attempts bundle/policy product");
   check(experiment.requested_max_parallel_jobs == 2 &&
@@ -4148,6 +4180,13 @@ void test_replay_source_graph_anchor_binding() {
 
   check(replay_report_text.find("failed_count=0") != std::string::npos,
         "replay experiment report writes aggregate failed count");
+  check(replay_report_text.find("replay_environment_lattice_fact_family="
+                                "replay_environment") != std::string::npos &&
+            replay_report_text.find("replay_environment_lattice_target="
+                                    "replay_environment_artifact_ready") !=
+                std::string::npos,
+        "replay experiment report writes Lattice replay-environment target "
+        "identity");
   check(
       replay_report_text.find("top_level_metric_scope=") != std::string::npos &&
           replay_report_text.find("policy_metric_scope=") != std::string::npos,
@@ -4998,6 +5037,9 @@ void test_replay_source_graph_anchor_binding() {
         "runtime replay source derives observation anchor index from cursor");
   vicreg_stream::channel_representation_batch_t<std::int64_t>
       representation_replay_batch{};
+  representation_replay_batch.edge_features = batch.edge_features;
+  representation_replay_batch.edge_mask = batch.edge_mask;
+  representation_replay_batch.past_keys = batch.past_keys;
   representation_replay_batch.future_edge_features = batch.future_features;
   representation_replay_batch.future_edge_mask = batch.future_mask;
   representation_replay_batch.future_keys = batch.future_keys;
@@ -5011,6 +5053,8 @@ void test_replay_source_graph_anchor_binding() {
           representation_replay_batch);
   check(runtime_edge_batch.future_keys.defined(),
         "runtime replay source derives future keys from representation batch");
+  check(runtime_edge_batch.edge_features.defined(),
+        "runtime replay source preserves observed edge features");
   check(runtime_edge_batch.cursor.anchor_count() == cursor.anchor_count(),
         "runtime replay source derives cursor from representation batch");
   const auto empty_runtime_forecast_write_root =

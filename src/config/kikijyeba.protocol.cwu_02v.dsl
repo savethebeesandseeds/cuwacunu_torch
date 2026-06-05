@@ -18,5 +18,7 @@ PROTOCOL {
   NODELIFT = wikimyei.expression.nodelift.srl;
   REPRESENTATION = wikimyei.representation.encoding.mtf_jepa_mae_vicreg;
   INFERENCE = wikimyei.inference.expected_value.mdn;
+  OBSERVER = wikimyei.observer.belief;
+  ALLOCATION_POLICY = wikimyei.policy.portfolio.spot_distributional_utility;
   REPRESENTATION_CONTRACT = graph_order.channel_node_representation.v1;
 };

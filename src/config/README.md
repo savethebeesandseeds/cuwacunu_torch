@@ -144,6 +144,13 @@ for new training/evaluation runs. Wave files remain launch profiles for
 target/mode/cursor/source-order choices; they should not be the authority for
 which representation architecture is docked into a protocol.
 
+Protocol variants also bind the active observer and allocation-policy family:
+`OBSERVER = wikimyei.observer.belief` and
+`ALLOCATION_POLICY = wikimyei.policy.portfolio.spot_distributional_utility`.
+The protocol owns this stack identity and its fingerprint; the individual
+Wikimyei policy DSL owns SDU parameters, and Marshal rollout requests own
+baseline comparison sets such as reserve/current/equal-weight/SDU.
+
 Wave profiles may declare `COMPATIBLE_PROTOCOLS` as a comma-separated protocol
 allow-list. When present, Runtime rejects a wave whose active protocol is not in
 that list. This is profile metadata, not the architecture selector; the active
@@ -158,16 +165,18 @@ Config Hero starts from:
 Runtime Hero starts from:
 
 - `[HERO].runtime_hero_dsl_path`
+- `[HERO].runtime_hero_profile`
 - `src/config/hero.runtime.dsl`
 - `src/config/man/hero.runtime.man`
 
-`src/config/hero.runtime.dsl` is the locked default policy for MCP/Codex use:
-execution and train execution are disabled there, while developer reset is
-allowed only through the guarded `hero.runtime.dev_nuke` path with explicit
-confirmation. Intentional training should use `src/config/hero.runtime.train.dsl`
-or an equivalent operator-local overlay. That profile enables execute/train with
-explicit confirmation and longer runtime budget, but still leaves
-`allow_dev_nuke=false`.
+`src/config/hero.runtime.dsl` is the single Runtime Hero policy surface. Its
+default `locked_default` profile is used for MCP/Codex safety: wave execution
+and train execution are disabled, while developer reset is allowed only through
+the guarded `hero.runtime.reset` path with explicit confirmation. Intentional
+training should select `runtime_hero_profile = train_operator` in an
+operator-local `.config` or pass `--profile train_operator` to
+`hero_runtime.mcp`. That profile enables execute/train with explicit
+confirmation and a longer runtime budget, but keeps `allow_dev_nuke=false`.
 
 Reusable wave profiles live beside the active wave file:
 
@@ -248,10 +257,12 @@ holdout declaration, and threshold-selection audit. Hero reports input-contract
 completeness and missing-policy-input lists while keeping decision-policy
 authority false. Policy, performance, market-readiness, and
 deployment-readiness target classes are not active readiness proofs.
-`replay_environment` is parked outside the active Lattice proof catalog. Replay
-environment facts may still be inspected as audit evidence, but they do not
-define an active artifact-readiness target and are not derived by default
-Lattice scans.
+`replay_environment` now has the non-dispatchable
+`replay_environment_artifact_ready` artifact-readiness target. Lattice derives
+these facts from durable Runtime replay reports, binds Cajtucu paper-execution
+and policy-set identity, and proves only artifact completeness, lineage,
+time-law cleanliness, projection coverage, execution trace/cost evidence, and
+authority denials.
 
 Fresh Config Hero is intentionally a small policy-controlled config file
 surface. It lists, reads, writes, and deletes managed config files under

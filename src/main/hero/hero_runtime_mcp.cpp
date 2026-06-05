@@ -28,11 +28,14 @@ void print_help(const char *argv0) {
   std::cout
       << "Usage: " << argv0
       << " [--global-config <path>] [--config <hero_runtime_dsl>]"
+         " [--profile <runtime_profile>]"
          " [--tool <name>] [--args-json <json>]"
          " [--list-tools] [--list-tools-json]\n"
       << "  default mode: JSON-RPC over stdio\n"
       << "  default policy path: [HERO].runtime_hero_dsl_path in "
          "--global-config, then /cuwacunu/src/config/hero.runtime.dsl\n"
+      << "  default profile: --profile, then [HERO].runtime_hero_profile, "
+         "then runtime_profile in the policy file\n"
       << "\n"
       << "Authority groups:\n"
       << "  Read-only Runtime visibility:\n"
@@ -65,6 +68,7 @@ void print_help(const char *argv0) {
 int main(int argc, char **argv) {
   std::filesystem::path global_config_path = kDefaultGlobalConfigPath;
   std::filesystem::path policy_path;
+  std::string profile_override;
   bool policy_overridden = false;
   bool list_tools = false;
   bool list_tools_json = false;
@@ -82,6 +86,10 @@ int main(int argc, char **argv) {
     if (arg == "--config" && i + 1 < argc) {
       policy_path = argv[++i];
       policy_overridden = true;
+      continue;
+    }
+    if (arg == "--profile" && i + 1 < argc) {
+      profile_override = argv[++i];
       continue;
     }
     if (arg == "--tool" && i + 1 < argc) {
@@ -148,7 +156,8 @@ int main(int argc, char **argv) {
   ctx.policy_path = policy_path;
   std::string error;
   if (!cuwacunu::hero::runtime::load_runtime_policy(
-          policy_path, global_config_path, &ctx.policy, &error)) {
+          policy_path, global_config_path, &ctx.policy, &error,
+          profile_override)) {
     std::cerr << "failed to load Runtime Hero policy: " << error << "\n";
     return 1;
   }

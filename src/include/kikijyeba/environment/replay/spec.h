@@ -41,7 +41,9 @@ struct replay_environment_spec_t {
   std::string experiment_run_identity{"single_runtime_environment_run"};
   std::string step_artifact_identity{"episode_run_policy_cursor"};
   std::string experiment_report_count_policy{"counts_match_evidence"};
-  std::string artifact_schema{"replay_audit_artifacts"};
+  std::string artifact_schema{"cajtucu_ready_replay_artifacts"};
+  std::string lattice_fact_family{"replay_environment"};
+  std::string lattice_target{"replay_environment_artifact_ready"};
   bool require_resolved_cursor{true};
   bool require_no_future_leakage{true};
   bool require_projection_validation{true};
@@ -173,9 +175,19 @@ validate_replay_environment_spec(const replay_environment_spec_t &spec) {
         "[replay_environment_spec] EXPERIMENT_REPORT_COUNT_POLICY must require "
         "aggregate counts to match report evidence");
   }
-  if (spec.artifact_schema != "replay_audit_artifacts") {
+  if (spec.artifact_schema != "cajtucu_ready_replay_artifacts") {
     throw std::runtime_error(
-        "[replay_environment_spec] artifact schema mismatch");
+        "[replay_environment_spec] ARTIFACT_SCHEMA must be "
+        "cajtucu_ready_replay_artifacts");
+  }
+  if (spec.lattice_fact_family != "replay_environment") {
+    throw std::runtime_error(
+        "[replay_environment_spec] LATTICE_FACT_FAMILY must be "
+        "replay_environment");
+  }
+  if (spec.lattice_target != "replay_environment_artifact_ready") {
+    throw std::runtime_error("[replay_environment_spec] LATTICE_TARGET must be "
+                             "replay_environment_artifact_ready");
   }
   if (!spec.require_resolved_cursor || !spec.require_no_future_leakage ||
       !spec.require_projection_validation) {
@@ -232,6 +244,8 @@ decode_replay_environment_spec_from_dsl(const std::string &dsl_text) {
   spec.experiment_report_count_policy =
       kv::required(block, "EXPERIMENT_REPORT_COUNT_POLICY");
   spec.artifact_schema = kv::required(block, "ARTIFACT_SCHEMA");
+  spec.lattice_fact_family = kv::required(block, "LATTICE_FACT_FAMILY");
+  spec.lattice_target = kv::required(block, "LATTICE_TARGET");
   spec.require_resolved_cursor =
       kv::parse_bool(kv::required(block, "REQUIRE_RESOLVED_CURSOR"));
   spec.require_no_future_leakage =

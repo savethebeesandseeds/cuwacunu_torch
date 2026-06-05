@@ -2486,8 +2486,10 @@ struct lattice_replay_environment_fact_t {
   std::int64_t experiment_entry_count{0};
   std::int64_t replay_bundle_count{0};
   std::int64_t policy_count{0};
+  std::int64_t policy_summary_count{0};
   std::int64_t attempted_count{0};
   std::int64_t completed_count{0};
+  std::int64_t failed_count{0};
   std::int64_t episode_count{0};
   std::int64_t episode_requested_range_bound_count{0};
   std::int64_t episode_cursor_bound_count{0};
@@ -7520,8 +7522,11 @@ make_replay_environment_facts_from_job_dir(
   fact.replay_bundle_count =
       first_i64("replay_bundle_count", "replay_bundle_count");
   fact.policy_count = first_i64("policy_count", "policy_summary_count");
+  fact.policy_summary_count =
+      first_report_i64("policy_summary_count", "policy_count");
   fact.attempted_count = first_i64("attempted_count", "attempted_count");
   fact.completed_count = first_i64("completed_count", "completed_count");
+  fact.failed_count = first_i64("failed_count", "failed_count");
   fact.episode_count = detail::parse_i64_fallback(
       detail::map_get(experiment_report, "episode_count"), 0);
   fact.time_law_expected_step_count =
@@ -7835,8 +7840,10 @@ make_replay_environment_facts_from_job_dir(
   out << "experiment_entry_count=" << fact.experiment_entry_count << "\n";
   out << "replay_bundle_count=" << fact.replay_bundle_count << "\n";
   out << "policy_count=" << fact.policy_count << "\n";
+  out << "policy_summary_count=" << fact.policy_summary_count << "\n";
   out << "attempted_count=" << fact.attempted_count << "\n";
   out << "completed_count=" << fact.completed_count << "\n";
+  out << "failed_count=" << fact.failed_count << "\n";
   out << "episode_count=" << fact.episode_count << "\n";
   out << "episode_requested_range_bound_count="
       << fact.episode_requested_range_bound_count << "\n";
@@ -8193,11 +8200,25 @@ replay_environment_fact_issues(const lattice_replay_environment_fact_t &fact) {
   if (fact.attempted_count <= 0) {
     issues.emplace_back("missing_attempted_replay_episode");
   }
+  if (fact.policy_count <= 0 || fact.policy_summary_count <= 0) {
+    issues.emplace_back("missing_replay_policy_summary_evidence");
+  }
+  if (fact.policy_count > 0 && fact.policy_summary_count > 0 &&
+      fact.policy_count != fact.policy_summary_count) {
+    issues.emplace_back("replay_policy_summary_count_mismatch");
+  }
   if (fact.completed_count <= 0) {
     issues.emplace_back("missing_completed_replay_episode");
   }
+  if (fact.failed_count > 0) {
+    issues.emplace_back("replay_environment_failed_attempts");
+  }
   if (fact.attempted_count > 0 && fact.completed_count < fact.attempted_count) {
     issues.emplace_back("replay_environment_incomplete_attempts");
+  }
+  if (fact.attempted_count > 0 &&
+      fact.completed_count + fact.failed_count != fact.attempted_count) {
+    issues.emplace_back("replay_environment_attempt_count_mismatch");
   }
   if (fact.replay_environment_require_projection_validation &&
       (!std::isfinite(fact.mean_projection_mae) ||
