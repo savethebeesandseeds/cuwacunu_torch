@@ -8,8 +8,8 @@ Detailed subsystem records live in:
 
 ```text
 src/include/kikijyeba/environment/ROADMAP.md
-src/include/kikijyeba/lattice/ROADMAP.md
-src/include/kikijyeba/marshal/ROADMAP.md
+src/include/hero/lattice_hero/lattice/ROADMAP.md
+src/include/hero/marshal_hero/marshal/ROADMAP.md
 src/include/cajtucu/ROADMAP.md
 src/include/wikimyei/inference/expected_value/mdn/README.md
 .deprecated/src_legacy/MIGRATION_INVENTORY.md
@@ -86,13 +86,29 @@ Runtime profile selection order:
   runtime_profile in the policy file
 
 Checked-in profiles:
-  locked_default
-    wave/train execution disabled
+  operator_default
+    confirmed non-live wave/train execution enabled
     guarded developer reset available
 
-  train_operator
-    wave/train execution enabled with confirmation
+  long_train_operator
+    confirmed non-live wave/train execution enabled with longer timeout
     developer reset disabled
+
+Runtime waves use one catalog:
+  src/config/hero.runtime.wave.dsl
+
+Wave selection order:
+  [HERO].runtime_wave_id
+  WAVE_SELECTION.ACTIVE_WAVE_ID in the catalog
+  the only WAVE_SETTINGS block in legacy single-block fixtures
+
+Checked-in wave ids include:
+  cwu_02v_channel_validation_eval_mdn_1800_2050
+  validation_eval_channel_mdn
+  train_core_vicreg
+  train_core_mtf_jepa_mae_vicreg
+  train_core_channel_mdn
+  policy_training_pre_ppo_noop
 
 Protocol identity binds:
   GRAPH_TOPOLOGY
@@ -106,6 +122,8 @@ Protocol identity binds:
 Policy parameter DSLs still own policy parameters.
 Marshal rollout still owns comparison policy sets and Cajtucu execution profile.
 Kikijyeba replay DSL still owns world/reset-step/time-law/reward contract.
+Hero Runtime/Marshal/Lattice headers live under `src/include/hero/*_hero`.
+Kikijyeba keeps protocol, topology, and replay environment contracts.
 ```
 
 ## Active Sequence
@@ -328,19 +346,20 @@ Verified:
 ```
 
 PPO or any trainable policy still must enter as a Runtime-owned job before
-Marshal can dispatch it. The current Runtime surface validates the
-policy-training contract only; executable training remains future work. Marshal
-coordinates bounded handoffs, Runtime owns execution when a runner exists, and
-Lattice reads the artifacts.
+Marshal can dispatch it. Runtime now has a narrow pre-PPO
+`noop_policy_training.v1` executable smoke path that writes policy-training
+artifacts and Lattice-readable facts without optimizing a policy. Marshal
+coordinates bounded handoffs, Runtime owns execution, and Lattice reads the
+artifacts.
 
 ### 4. Runtime Policy-Training Job Contract V1
 
 Goal:
 
 ```text
-Define the bounded Runtime contract for future policy_training artifacts without
-giving Marshal, Lattice, or the policy itself hidden execution or selection
-authority.
+Define the bounded Runtime contract and pre-PPO smoke execution path for future
+policy_training artifacts without giving Marshal, Lattice, or the policy itself
+hidden execution or selection authority.
 ```
 
 Milestone name:
@@ -367,19 +386,25 @@ Implementation checkpoint:
 
 ```text
 Status:
-Implemented as a Runtime contract-only job surface.
+Implemented as a Runtime contract plus pre-PPO no-op executable smoke surface.
 
 Runtime additions:
 - runtime_job_kind_t::policy_training
 - job manifest naming/chain helpers for policy_training
 - kikijyeba.runtime.policy_training_job_contract.v1
-- hero.runtime.run operation=policy_training requested_mode=plan|dry_run
+- hero.runtime.run operation=wave requested_mode=plan|dry_run|execute with
+  policy-training contract fields
 - deterministic contract digest and contract packet
-- execute-mode refusal:
-  E_RUNTIME_POLICY_TRAINING_EXECUTION_NOT_IMPLEMENTED
+- execute-mode support only for policy_kind=noop_policy_training.v1
+- execute-mode PPO refusal:
+  E_RUNTIME_POLICY_TRAINING_PPO_NOT_IMPLEMENTED
+- no-op checkpoint, policy_training.report, terminal Runtime facts, and
+  runtime.policy_training.fact
 
 Contract checks:
 - policy id/kind/architecture/config digests are required
+- protocol/source identity, graph fingerprint, selector policy digest, parent
+  checkpoint digest, parent evidence digests, and random seed are required
 - training, validation, and test range digests are required and must differ
 - normalization fit range must equal training range
 - replay buffer source range must equal training range
@@ -391,7 +416,6 @@ Contract checks:
 - causal_schedule_no_future_snapshot_use must be true
 - offline_full_window_research cannot satisfy readiness
 - early-stopping and hyperparameter-selection policy digests are required
-- parent replay-environment fact digest is required
 - max episodes, max steps, max parallel jobs, and wall-clock bounds must be
   positive
 - live execution is forbidden
@@ -399,16 +423,17 @@ Contract checks:
 Verified:
 - Runtime Hero focused wave/rollout/policy-training handler test
 - Runtime MCP schema compatibility
-- live hero.runtime.run operation=policy_training positive plan smoke
-- live execute refusal smoke
+- live hero.runtime.run operation=wave policy-training positive plan smoke
+- live noop policy-training execute smoke
+- live PPO execute refusal smoke
 - live train/validation-overlap refusal smoke
 ```
 
-No PPO optimizer exists yet. Runtime can validate the handoff contract, but it
-does not train, mutate policy checkpoints, select policies, or claim Lattice
-target satisfaction. Marshal still cannot train; it may only prepare a bounded
-handoff once the next Runtime trainer exists. Lattice proves only artifact
-completeness and anti-leakage structure, not policy quality.
+No PPO optimizer exists yet. Runtime can validate the handoff contract and write
+a no-op pre-PPO checkpoint artifact for plumbing verification, but it does not
+optimize PPO, select policies, or claim Lattice target satisfaction. Marshal
+still cannot train. Lattice proves only artifact completeness and anti-leakage
+structure, not policy quality.
 
 ### 5. Causal Policy-Training Schedule Contract V1
 

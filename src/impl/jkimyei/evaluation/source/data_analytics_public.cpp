@@ -2,7 +2,7 @@ std::string sequence_analytics_to_latent_lineage_state_text(
     const sequence_analytics_report_t &report,
     const data_analytics_options_t &options, std::string_view sequence_label,
     const evaluation_report_identity_t &report_identity) {
-  return cuwacunu::kikijyeba::lattice::runtime_report::
+  return cuwacunu::hero::lattice::runtime_report::
       emit_runtime_lls_canonical(make_sequence_runtime_lls_document_(
           report, options, generic_sequence_report_keys_(), sequence_label,
           report_identity));
@@ -22,11 +22,11 @@ std::string data_analytics_to_latent_lineage_state_text(
       trim_ascii_ws_view_(contract_hash);
   if (!normalized_contract_hash.empty()) {
     document.entries.push_back(
-        cuwacunu::kikijyeba::lattice::runtime_report::
+        cuwacunu::hero::lattice::runtime_report::
             make_runtime_lls_string_entry(
                 "contract_hash", std::string(normalized_contract_hash)));
   }
-  return cuwacunu::kikijyeba::lattice::runtime_report::
+  return cuwacunu::hero::lattice::runtime_report::
       emit_runtime_lls_canonical(document);
 }
 
@@ -37,7 +37,7 @@ std::string sequence_symbolic_analytics_to_latent_lineage_state_text(
     sequence_symbolic_report_compaction_options_t compaction_options) {
   const auto compacted =
       compact_sequence_symbolic_analytics_report(report, compaction_options);
-  return cuwacunu::kikijyeba::lattice::runtime_report::
+  return cuwacunu::hero::lattice::runtime_report::
       emit_runtime_lls_canonical(make_symbolic_runtime_lls_document_(
           compacted, generic_symbolic_report_keys_(), sequence_label,
           report_identity));
@@ -57,11 +57,11 @@ std::string data_symbolic_analytics_to_latent_lineage_state_text(
       trim_ascii_ws_view_(contract_hash);
   if (!normalized_contract_hash.empty()) {
     document.entries.push_back(
-        cuwacunu::kikijyeba::lattice::runtime_report::
+        cuwacunu::hero::lattice::runtime_report::
             make_runtime_lls_string_entry(
                 "contract_hash", std::string(normalized_contract_hash)));
   }
-  return cuwacunu::kikijyeba::lattice::runtime_report::
+  return cuwacunu::hero::lattice::runtime_report::
       emit_runtime_lls_canonical(document);
 }
 
@@ -183,12 +183,12 @@ bool write_data_symbolic_analytics_file(
 std::string extract_data_analytics_kv_schema(std::string_view payload) {
   runtime_lls_document_t document{};
   std::string parse_error;
-  if (!cuwacunu::kikijyeba::lattice::runtime_report::
+  if (!cuwacunu::hero::lattice::runtime_report::
           parse_runtime_lls_text(payload, &document, &parse_error)) {
     return {};
   }
   std::unordered_map<std::string, std::string> kv{};
-  if (!cuwacunu::kikijyeba::lattice::runtime_report::
+  if (!cuwacunu::hero::lattice::runtime_report::
           runtime_lls_document_to_kv_map(document, &kv, &parse_error)) {
     return {};
   }

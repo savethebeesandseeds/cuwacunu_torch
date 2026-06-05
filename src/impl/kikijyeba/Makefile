@@ -3,7 +3,7 @@ include $(ROOT_PATH)/Makefile.config
 
 .DEFAULT_GOAL := all
 
-.PHONY: all protocol topology lattice
+.PHONY: all protocol topology
 
 protocol:
 	$(MAKE) -C $(IMPL_PATH)/kikijyeba/protocol all
@@ -11,8 +11,5 @@ protocol:
 topology:
 	$(MAKE) -C $(IMPL_PATH)/kikijyeba/topology/graph all
 
-lattice:
-	$(MAKE) -C $(IMPL_PATH)/kikijyeba/lattice all
-
-all: topology protocol lattice
+all: topology protocol
 	@$(LOG_SUCCESS)

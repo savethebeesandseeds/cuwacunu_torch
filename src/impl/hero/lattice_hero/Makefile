@@ -8,9 +8,12 @@ $(OUTPUT_PATH)/common/hero_lattice_tools.o: \
 	$(SRC_ROOT)/Makefile.config
 	$(CC_RULE)
 
-.PHONY: all clean
+.PHONY: all clean lattice
 
-all: $(OUTPUT_PATH)/common/hero_lattice_tools.o
+lattice:
+	$(MAKE) -C $(IMPL_PATH)/hero/lattice_hero/lattice all
+
+all: $(OUTPUT_PATH)/common/hero_lattice_tools.o lattice
 	@$(LOG_SUCCESS)
 
 clean:

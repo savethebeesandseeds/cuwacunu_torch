@@ -21,7 +21,7 @@ namespace {
 namespace env = cuwacunu::kikijyeba::environment;
 namespace replay = cuwacunu::kikijyeba::environment::replay;
 namespace protocol = cuwacunu::kikijyeba::protocol;
-namespace runtime = cuwacunu::kikijyeba::runtime;
+namespace runtime = cuwacunu::hero::runtime;
 namespace graph = cuwacunu::kikijyeba::topology::graph;
 namespace dataloader = cuwacunu::ujcamei::source::retrieval::dataloader;
 namespace kline = cuwacunu::ujcamei::source::registry::types;

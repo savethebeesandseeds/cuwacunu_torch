@@ -1,4 +1,4 @@
-#include "kikijyeba/lattice/target/lattice_target_evaluator.h"
+#include "hero/lattice_hero/lattice/target/lattice_target_evaluator.h"
 #include "tests/bench/kikijyeba/test_support/lattice_forecast_artifact_fixture.h"
 
 #include <algorithm>
@@ -10,9 +10,9 @@
 #include <string>
 #include <vector>
 
-namespace exposure = cuwacunu::kikijyeba::lattice::exposure;
+namespace exposure = cuwacunu::hero::lattice::exposure;
 namespace lattice_fixture = cuwacunu::tests::kikijyeba::lattice_fixture;
-namespace target = cuwacunu::kikijyeba::lattice::target;
+namespace target = cuwacunu::hero::lattice::target;
 namespace fs = std::filesystem;
 
 namespace {
@@ -201,9 +201,9 @@ std::string read_text(const fs::path &path) {
 
 std::string read_active_lattice_targets_dsl() {
   const std::vector<fs::path> candidates{
-      fs::current_path() / "src/config/kikijyeba.lattice.targets.dsl",
-      fs::current_path() / "../../../../config/kikijyeba.lattice.targets.dsl",
-      "/cuwacunu/src/config/kikijyeba.lattice.targets.dsl",
+      fs::current_path() / "src/config/hero.lattice.targets.dsl",
+      fs::current_path() / "../../../../config/hero.lattice.targets.dsl",
+      "/cuwacunu/src/config/hero.lattice.targets.dsl",
   };
   for (const auto &candidate : candidates) {
     if (fs::exists(candidate)) {

@@ -395,7 +395,7 @@ collect_runtime_policy(const std::filesystem::path &config_root) {
 inline RuntimeWaveSummary
 collect_runtime_wave(const std::filesystem::path &config_root) {
   RuntimeWaveSummary summary{};
-  summary.wave_path = config_root / "kikijyeba.settings.wave.dsl";
+  summary.wave_path = config_root / "hero.runtime.wave.dsl";
   const auto kv = read_assignment_file(summary.wave_path);
   summary.wave_id = assignment_value(kv, "WAVE_ID");
   summary.target = assignment_value(kv, "TARGET");
@@ -550,7 +550,7 @@ inline LatticeState
 scan_lattice_state(const std::filesystem::path &config_root,
                    const std::filesystem::path &runtime_root) {
   LatticeState state{};
-  state.targets_path = config_root / "kikijyeba.lattice.targets.dsl";
+  state.targets_path = config_root / "hero.lattice.targets.dsl";
   state.runtime_root = runtime_root;
   state.target_ids = collect_lattice_target_ids(state.targets_path);
   state.exposure_fact_count =

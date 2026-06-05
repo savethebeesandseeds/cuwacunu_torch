@@ -1,4 +1,4 @@
-#include "hero/config_hero/hero_config_store.h"
+#include "hero/config_hero/config/hero_config_store.h"
 
 #include "hero/config_hero/hero_config.h"
 

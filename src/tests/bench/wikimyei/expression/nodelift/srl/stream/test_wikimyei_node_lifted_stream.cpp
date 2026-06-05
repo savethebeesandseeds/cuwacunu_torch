@@ -27,7 +27,7 @@ namespace mdnstream =
 namespace vicreg = cuwacunu::wikimyei::representation::encoding::vicreg;
 namespace repstream =
     cuwacunu::wikimyei::representation::encoding::vicreg::stream;
-namespace runtime_lls = cuwacunu::kikijyeba::lattice::runtime_report;
+namespace runtime_lls = cuwacunu::hero::lattice::runtime_report;
 namespace source = cuwacunu::ujcamei::source;
 namespace types = cuwacunu::ujcamei::source::registry::types;
 

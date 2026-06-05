@@ -1,6 +1,6 @@
 # Runtime Hero v2 policy
 protocol_layer[STDIO|HTTPS/SSE]:enum = STDIO
-runtime_profile:enum = locked_default
+runtime_profile:enum = operator_default
 runtime_exec_path:path = /cuwacunu/.build/exec/cuwacunu_exec
 default_config_path:path = /cuwacunu/src/config/.config
 runtime_root:path = /cuwacunu/.runtime/cuwacunu_exec
@@ -14,15 +14,15 @@ allowed_dev_nuke_roots:path_list = /cuwacunu/.runtime
 max_capture_bytes:int = 65536
 max_runtime_seconds:int = 600
 
-RUNTIME_PROFILE locked_default {
+RUNTIME_PROFILE operator_default {
   default_dry_run:bool = true
-  allow_execute:bool = false
-  allow_train_execute:bool = false
+  allow_execute:bool = true
+  allow_train_execute:bool = true
   allow_dev_nuke:bool = true
   max_runtime_seconds:int = 600
 }
 
-RUNTIME_PROFILE train_operator {
+RUNTIME_PROFILE long_train_operator {
   default_dry_run:bool = true
   allow_execute:bool = true
   allow_train_execute:bool = true

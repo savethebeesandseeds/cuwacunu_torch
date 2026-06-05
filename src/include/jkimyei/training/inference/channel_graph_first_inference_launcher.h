@@ -18,10 +18,10 @@
 
 #include <torch/torch.h>
 
-#include "kikijyeba/lattice/runtime_report/component_runtime_lls.h"
+#include "hero/lattice_hero/lattice/runtime_report/component_runtime_lls.h"
 #include "kikijyeba/protocol/component_stream.h"
 #include "kikijyeba/protocol/pipeline_builder.h"
-#include "kikijyeba/runtime/wave_settings.h"
+#include "hero/runtime_hero/runtime/wave_settings.h"
 #include "kikijyeba/topology/dock_binding.h"
 #include "wikimyei/assembly.h"
 #include "wikimyei/inference/expected_value/mdn/channel_context_mdn_train_model.h"
@@ -39,8 +39,8 @@ struct channel_graph_first_inference_launcher_options_t {
   bool write_report{false};
   std::filesystem::path report_path{};
   bool force_empty_targets_for_test{false};
-  cuwacunu::kikijyeba::lattice::runtime_report::runtime_report_mode_t
-      runtime_report_mode{cuwacunu::kikijyeba::lattice::runtime_report::
+  cuwacunu::hero::lattice::runtime_report::runtime_report_mode_t
+      runtime_report_mode{cuwacunu::hero::lattice::runtime_report::
                               runtime_report_mode_t::normal};
 };
 
@@ -614,12 +614,12 @@ inline double bool_fraction_or_nan(const torch::Tensor &mask) {
 }
 
 inline void append_finite_double(
-    cuwacunu::kikijyeba::lattice::runtime_report::runtime_lls_document_t
+    cuwacunu::hero::lattice::runtime_report::runtime_lls_document_t
         &document,
     std::string key, double value, std::string domain = "(-inf,+inf)") {
   if (std::isfinite(value)) {
     document.entries.push_back(
-        cuwacunu::kikijyeba::lattice::runtime_report::
+        cuwacunu::hero::lattice::runtime_report::
             make_component_runtime_lls_double_entry(std::move(key), value,
                                                     std::move(domain)));
   }
@@ -634,10 +634,10 @@ inline std::string make_channel_mdn_runtime_lls(
     const std::string &component_assembly_id, const std::string &assembly_token,
     const std::string &dock_binding_token,
     const cuwacunu::kikijyeba::protocol::component_stream_wave_t &stream_wave,
-    cuwacunu::kikijyeba::lattice::runtime_report::runtime_report_mode_t
+    cuwacunu::hero::lattice::runtime_report::runtime_report_mode_t
         runtime_report_mode,
     int64_t optimizer_steps, int64_t wave_pulse_index) {
-  namespace lls = cuwacunu::kikijyeba::lattice::runtime_report;
+  namespace lls = cuwacunu::hero::lattice::runtime_report;
   auto stream_report =
       cuwacunu::kikijyeba::protocol::make_component_stream_report(
           cuwacunu::kikijyeba::protocol::component_stream_identity_t{
@@ -1470,7 +1470,7 @@ public:
     out.requested_source_key_begin = plan.requested_source_key_begin;
     out.requested_source_key_end = plan.requested_source_key_end;
     out.runtime_report_mode =
-        cuwacunu::kikijyeba::settings::runtime_report_mode_name(
+        cuwacunu::hero::runtime::settings::runtime_report_mode_name(
             cuwacunu::kikijyeba::protocol::graph_first_pipeline_builder_detail::
                 resolve_runtime_report_mode(builder_.bundle().wave_settings,
                                             options_.runtime_report_mode));
@@ -1641,7 +1641,7 @@ public:
     auto report = dry_run_report();
     report.seed_scope = seed_scope;
     report.runtime_report_mode =
-        cuwacunu::kikijyeba::settings::runtime_report_mode_name(
+        cuwacunu::hero::runtime::settings::runtime_report_mode_name(
             runtime_report_mode);
     report.representation_checkpoint_path =
         training_spec.input_representation_checkpoint_path;
@@ -2000,7 +2000,7 @@ public:
       report.finite_parameter_check =
           (report.finite_parameter_check != 0.0 && step.gradients_finite) ? 1.0
                                                                           : 0.0;
-      if (cuwacunu::kikijyeba::lattice::runtime_report::runtime_report_enabled(
+      if (cuwacunu::hero::lattice::runtime_report::runtime_report_enabled(
               runtime_report_mode)) {
         report.nodelift_runtime_lls = batch.nodelift_runtime_lls;
         report.representation_runtime_lls = batch.representation_runtime_lls;
@@ -2046,7 +2046,7 @@ private:
       return options_.train_target;
     }
     return builder_.bundle().wave_settings.action ==
-           cuwacunu::kikijyeba::settings::wave_action_t::train;
+           cuwacunu::hero::runtime::settings::wave_action_t::train;
   }
 
   void validate_batch_size_contract() const {

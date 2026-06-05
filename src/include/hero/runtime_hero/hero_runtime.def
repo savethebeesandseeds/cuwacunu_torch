@@ -15,8 +15,8 @@ HERO_RUNTIME_POLICY_KEY("protocol_layer", "enum", 1, "STDIO", "one token",
                         "STDIO,HTTPS/SSE",
                         "MCP protocol layer. HTTPS/SSE is reserved and fails "
                         "fast.")
-HERO_RUNTIME_POLICY_KEY("runtime_profile", "enum", 1, "locked_default",
-                        "one token", "locked_default,train_operator",
+HERO_RUNTIME_POLICY_KEY("runtime_profile", "enum", 1, "operator_default",
+                        "one token", "operator_default,long_train_operator",
                         "Named profile selected from this Runtime policy "
                         "surface. CLI --profile overrides [HERO]."
                         "runtime_hero_profile, which overrides this value.")
@@ -40,10 +40,10 @@ HERO_RUNTIME_POLICY_KEY(
 HERO_RUNTIME_POLICY_KEY("default_dry_run", "bool", 1, "true", "true|false",
                         "true,false",
                         "Default dry-run value for hero.runtime.run.")
-HERO_RUNTIME_POLICY_KEY("allow_execute", "bool", 1, "false", "true|false",
+HERO_RUNTIME_POLICY_KEY("allow_execute", "bool", 1, "true", "true|false",
                         "true,false", "Allow non-dry-run runtime execution.")
 HERO_RUNTIME_POLICY_KEY(
-    "allow_train_execute", "bool", 1, "false", "true|false", "true,false",
+    "allow_train_execute", "bool", 1, "true", "true|false", "true,false",
     "Allow non-dry-run execution when the active wave action "
     "is train.")
 HERO_RUNTIME_POLICY_KEY("allow_force_rebuild_cache", "bool", 1, "false",
@@ -52,7 +52,7 @@ HERO_RUNTIME_POLICY_KEY("allow_force_rebuild_cache", "bool", 1, "false",
 HERO_RUNTIME_POLICY_KEY(
     "require_confirm_execute", "bool", 1, "true", "true|false", "true,false",
     "Require confirm_execute=true for non-dry-run execution.")
-HERO_RUNTIME_POLICY_KEY("allow_dev_nuke", "bool", 1, "false", "true|false",
+HERO_RUNTIME_POLICY_KEY("allow_dev_nuke", "bool", 1, "true", "true|false",
                         "true,false",
                         "Allow hero.runtime.reset to clear runtime state.")
 HERO_RUNTIME_POLICY_KEY(

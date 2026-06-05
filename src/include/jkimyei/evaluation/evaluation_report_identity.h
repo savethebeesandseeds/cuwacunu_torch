@@ -5,7 +5,7 @@
 #include <string>
 #include <string_view>
 
-#include "kikijyeba/lattice/runtime_report/runtime_lls.h"
+#include "hero/lattice_hero/lattice/runtime_report/runtime_lls.h"
 
 namespace cuwacunu::jkimyei::evaluation {
 
@@ -31,7 +31,7 @@ make_evaluation_report_identity(std::string_view semantic_taxon,
   };
 }
 
-[[nodiscard]] inline cuwacunu::kikijyeba::lattice::
+[[nodiscard]] inline cuwacunu::hero::lattice::
     runtime_report::runtime_report_header_t
     make_runtime_report_header(const evaluation_report_identity_t &identity) {
   return {
@@ -48,13 +48,13 @@ make_evaluation_report_identity(std::string_view semantic_taxon,
 }
 
 inline void append_evaluation_report_identity_entries(
-    cuwacunu::kikijyeba::lattice::runtime_report::
+    cuwacunu::hero::lattice::runtime_report::
         runtime_lls_document_t *document,
     const evaluation_report_identity_t &identity) {
   if (!document) {
     return;
   }
-  cuwacunu::kikijyeba::lattice::runtime_report::
+  cuwacunu::hero::lattice::runtime_report::
       append_runtime_report_header_entries(
           document, make_runtime_report_header(identity));
 }

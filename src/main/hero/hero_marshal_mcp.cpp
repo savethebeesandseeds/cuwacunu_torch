@@ -278,8 +278,8 @@ void print_help(const char *argv0) {
       << "  Marshal\n"
       << "  records handoff state and digests, but Runtime remains the "
          "executor.\n"
-      << "  Deeper docs: src/include/kikijyeba/marshal/README.md and\n"
-      << "  src/include/kikijyeba/marshal/ROADMAP.md.\n";
+      << "  Deeper docs: src/include/hero/marshal_hero/marshal/README.md and\n"
+      << "  src/include/hero/marshal_hero/marshal/ROADMAP.md.\n";
 }
 
 } // namespace

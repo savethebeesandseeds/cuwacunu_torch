@@ -11,7 +11,7 @@ namespace cuwacunu::hero::runtime {
 struct runtime_policy_t {
   std::filesystem::path policy_path{};
   std::filesystem::path global_config_path{};
-  std::string profile_id{"locked_default"};
+  std::string profile_id{"operator_default"};
   std::unordered_map<std::string, std::string> values{};
   bool from_template{false};
 };

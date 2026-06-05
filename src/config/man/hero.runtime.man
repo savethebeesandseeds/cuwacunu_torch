@@ -14,9 +14,9 @@ nuance = STDIO is implemented; HTTPS/SSE is reserved and must fail fast.
 key = runtime_profile
 scope = Runtime Hero policy
 type = enum
-default = locked_default
-allowed = locked_default,train_operator
-nuance = Selects a named RUNTIME_PROFILE block from the same Runtime policy file. Selection order is CLI --profile, [HERO].runtime_hero_profile, then this field. checked-in locked_default denies wave/train execution; train_operator enables execute/train with confirmation and disables developer reset.
+default = operator_default
+allowed = operator_default,long_train_operator
+nuance = Selects a named RUNTIME_PROFILE block from the same Runtime policy file. Selection order is CLI --profile, [HERO].runtime_hero_profile, then this field. checked-in operator_default permits confirmed non-live wave/train execution; long_train_operator keeps the same execute/train authority with a longer timeout and disables developer reset.
 
 [FIELD runtime_exec_path]
 key = runtime_exec_path
@@ -39,6 +39,27 @@ type = path
 default = /cuwacunu/.runtime/cuwacunu_exec
 nuance = Job discovery starts here.
 
+[FIELD runtime_wave_dsl_bnf_path]
+key = runtime_wave_dsl_bnf_path
+scope = [HERO] global config
+type = path
+default = /cuwacunu/src/config/grammar/hero.runtime.wave.dsl.bnf
+nuance = Grammar for the canonical Runtime wave catalog.
+
+[FIELD runtime_wave_dsl_path]
+key = runtime_wave_dsl_path
+scope = [HERO] global config
+type = path
+default = /cuwacunu/src/config/hero.runtime.wave.dsl
+nuance = Canonical Runtime wave catalog. Runtime reads this from [HERO], not [KIKIJYEBA].
+
+[FIELD runtime_wave_id]
+key = runtime_wave_id
+scope = [HERO] global config
+type = string
+default = cwu_02v_channel_validation_eval_mdn_1800_2050
+nuance = Active WAVE_SETTINGS.WAVE_ID. If omitted, Runtime uses WAVE_SELECTION.ACTIVE_WAVE_ID from the file, or the only WAVE_SETTINGS block for single-block fixtures.
+
 [FIELD allowed_job_roots]
 key = allowed_job_roots
 scope = Runtime Hero policy
@@ -57,15 +78,15 @@ nuance = hero.runtime.run operation=wave requested_mode=dry_run is the conservat
 key = allow_execute
 scope = Runtime Hero policy
 type = bool
-default = false
-nuance = Non-dry-run execution is denied unless this is true.
+default = true
+nuance = Confirmed non-live Runtime execution is allowed by the operator_default profile; execute mode still requires confirm_execute=true when require_confirm_execute is true.
 
 [FIELD allow_train_execute]
 key = allow_train_execute
 scope = Runtime Hero policy
 type = bool
-default = false
-nuance = MODE=train execution has a separate guard because it mutates target model state.
+default = true
+nuance = Confirmed non-live MODE=train execution is allowed by the operator_default profile; training waves still require confirm_execute=true when require_confirm_execute is true.
 
 [FIELD allow_force_rebuild_cache]
 key = allow_force_rebuild_cache
@@ -86,7 +107,7 @@ key = allow_dev_nuke
 scope = Runtime Hero policy
 type = bool
 default = true
-nuance = hero.runtime.reset requested_mode=execute is denied unless this is true.
+nuance = Developer reset is available in the operator_default profile only through hero.runtime.reset with confirm_dev_nuke=true; long_train_operator disables it.
 
 [FIELD require_confirm_dev_nuke]
 key = require_confirm_dev_nuke
@@ -136,10 +157,11 @@ nuance = Default child-process timeout for cuwacunu_exec invocations.
 hero.runtime.status = policy, executable, active wave, and runtime-root summary
 hero.runtime.inspect = read-only inspection by subject=schema|wave|jobs|job|artifact
 hero.runtime.inspect subject=schema = policy key registry
-hero.runtime.inspect subject=wave = active wave intent decoded from kikijyeba.settings.wave.dsl
+hero.runtime.inspect subject=wave = active wave intent decoded from the selected WAVE_SETTINGS block in hero.runtime.wave.dsl
 hero.runtime.inspect subject=wave nuance = canonical VICReg/MDN TARGET values decode to channel job kinds; old MDN target aliases are unsupported.
 hero.runtime.inspect subject=wave nuance = wikimyei.representation.encoding.mtf_jepa_mae_vicreg decodes to channel_representation_mtf_jepa_mae_vicreg as a separate representation-only job kind.
-hero.runtime.inspect subject=wave nuance = The active protocol is selected by [KIKIJYEBA].kikijyeba_protocol_dsl_path; cwu_02v is the default MTF-JEPA-MAE-VICReg protocol and cwu_01v remains the legacy VICReg baseline. Wave files select launch target/mode/cursor/source-order, not the protocol architecture.
+hero.runtime.inspect subject=wave nuance = The active protocol is selected by [KIKIJYEBA].kikijyeba_protocol_dsl_path; cwu_02v is the default MTF-JEPA-MAE-VICReg protocol and cwu_01v remains the legacy VICReg baseline. Wave settings select launch target/mode/cursor/source-order, not the protocol architecture.
+hero.runtime.inspect subject=wave nuance = The checked-in wave catalog may contain multiple WAVE_SETTINGS blocks. [HERO].runtime_wave_id selects the active WAVE_ID; WAVE_SELECTION.ACTIVE_WAVE_ID is only the file fallback.
 hero.runtime.inspect subject=wave nuance = PROTOCOL_STATUS, SUCCESSOR_PROTOCOL, and PROTOCOL_WARNING are protocol metadata fields surfaced by Runtime status/manifests. cwu_01v should warn and recommend cwu_02v for new training/evaluation.
 hero.runtime.inspect subject=wave nuance = WAVE_SETTINGS may declare COMPATIBLE_PROTOCOLS as a comma-separated protocol allow-list. Runtime reports compatible_protocols, wave_protocol_compatible, and wave_protocol_warning; execution fails closed when the active protocol is not allowed.
 hero.runtime.inspect subject=wave nuance = The decoded active wave is Runtime-owned state. Its canonical shape fields are target_component_family_id, mode, source_range, anchor/source-key bounds, source_order, job_kind, train_target, and model_state_inputs.
@@ -148,11 +170,14 @@ hero.runtime.inspect subject=wave nuance = SOURCE_RANGE accepts all, anchor_inde
 hero.runtime.inspect subject=wave nuance = SOURCE_ORDER defaults by wave action: train defaults to random_per_epoch, run defaults to sequential. random_per_epoch uses Torch RandomSampler over graph anchors without changing graph-anchor source identity and is seeded from the target component training SEED; explicit train sequential emits a source_order warning.
 hero.runtime.run operation=wave requested_mode=dry_run = guarded cuwacunu_exec --dry-run with stdout/stderr and artifacts
 hero.runtime.run operation=wave requested_mode=execute = guarded cuwacunu_exec invocation; non-dry-run requires policy and confirm_execute
+hero.runtime.run operation=wave policy_training = policy-training is a wave contract. The selected WAVE_SETTINGS block may bind POLICY_ID, POLICY_KIND, TRAINING_SCHEDULE_MODE, and LIVE_EXECUTION_ALLOWED; callers still provide causal schedule evidence, parent evidence, range digests, and finite bounds. Execute is allowed only for noop_policy_training.v1 until a dedicated PPO trainer exists.
 hero.runtime.run operation=wave nuance = runtime_handoff is the preferred Marshal handoff object; it binds schema/id, target id, base config, concrete wave fields, checkpoint inputs, policy identity, intent, and an empty unresolved-symbol list before launch.
 hero.runtime.run operation=wave nuance = wave_overlay may provide launch-time SOURCE_RANGE plus anchor/source-key bounds. Runtime validates the effective wave against marshal_expected_wave/runtime_handoff and passes the concrete range to cuwacunu_exec without mutating the profile file.
 hero.runtime.run operation=wave nuance = Runtime rejects latest_satisfying:* and other symbolic model-state selectors before cuwacunu_exec is launched.
+hero.runtime.run operation=wave nuance = Direct cuwacunu_exec remains possible for recovery/debugging but warns on non-dry-run launches without Runtime/Marshal handoff identity.
 hero.runtime.run operation=wave nuance = marshal_expected_wave uses canonical active-wave field names: target_component_family_id, mode, source_range, source_order, source bounds, and model_state_inputs.
 hero.runtime.run operation=replay = post-job replay adapter for completed Runtime jobs with replay batch evidence
+hero.runtime.run operation=replay nuance = Direct cuwacunu_exec --replay-from-job-dir launches warn because they bypass Runtime/Marshal validation.
 hero.runtime.reset = guarded developer reset of runtime-root contents; requested_mode=plan previews and requested_mode=execute requires policy and confirm_dev_nuke
 hero.runtime.inspect subject=jobs = list runtime job directories and compact manifest/state summaries
 hero.runtime.inspect subject=job = inspect one job manifest/state/report bundle

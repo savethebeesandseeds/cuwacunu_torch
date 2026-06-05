@@ -292,9 +292,10 @@ std::filesystem::path make_config(const std::filesystem::path &dir,
           "kikijyeba_topology_graph_dsl_path = " +
           graph_dsl.string() +
           "\n"
-          "kikijyeba_settings_wave_dsl_bnf_path = "
-          "/cuwacunu/src/config/grammar/kikijyeba.settings.wave.dsl.bnf\n"
-          "kikijyeba_settings_wave_dsl_path = " +
+          "[HERO]\n"
+          "runtime_wave_dsl_bnf_path = "
+          "/cuwacunu/src/config/grammar/hero.runtime.wave.dsl.bnf\n"
+          "runtime_wave_dsl_path = " +
           wave_dsl.string() +
           "\n\n"
           "[WIKIMYEI]\n"

@@ -1,14 +1,14 @@
-#include "kikijyeba/marshal/batch_preview.h"
-#include "kikijyeba/marshal/codex_assist.h"
-#include "kikijyeba/marshal/dispatch_adapter.h"
-#include "kikijyeba/marshal/dispatch_advice.h"
-#include "kikijyeba/marshal/dispatch_operation.h"
-#include "kikijyeba/marshal/dispatch_receipt.h"
-#include "kikijyeba/marshal/execution_gate.h"
-#include "kikijyeba/marshal/runtime_hero_handoff.h"
-#include "kikijyeba/marshal/status.h"
-#include "kikijyeba/marshal/tool_handler.h"
-#include "kikijyeba/marshal/tool_schema.h"
+#include "hero/marshal_hero/marshal/batch_preview.h"
+#include "hero/marshal_hero/marshal/codex_assist.h"
+#include "hero/marshal_hero/marshal/dispatch_adapter.h"
+#include "hero/marshal_hero/marshal/dispatch_advice.h"
+#include "hero/marshal_hero/marshal/dispatch_operation.h"
+#include "hero/marshal_hero/marshal/dispatch_receipt.h"
+#include "hero/marshal_hero/marshal/execution_gate.h"
+#include "hero/marshal_hero/marshal/runtime_hero_handoff.h"
+#include "hero/marshal_hero/marshal/status.h"
+#include "hero/marshal_hero/marshal/tool_handler.h"
+#include "hero/marshal_hero/marshal/tool_schema.h"
 #include "tests/bench/kikijyeba/test_support/lattice_forecast_artifact_fixture.h"
 
 #include <array>
@@ -24,7 +24,7 @@
 
 #include <unistd.h>
 
-namespace marshal = cuwacunu::kikijyeba::marshal;
+namespace marshal = cuwacunu::hero::marshal;
 namespace lattice_fixture = cuwacunu::tests::kikijyeba::lattice_fixture;
 
 namespace {
@@ -1110,8 +1110,7 @@ void test_m2_runtime_hero_live_dry_run_handoff() {
                           "runtime_hero_dsl_path = " +
                               policy_path.string() +
                               "\n"
-                              "[KIKIJYEBA]\n"
-                              "kikijyeba_settings_wave_dsl_path = " +
+                              "runtime_wave_dsl_path = " +
                               wave_path.string() + "\n");
 
   write_text(policy_path, "protocol_layer[STDIO|HTTPS/SSE]:enum = STDIO\n"
@@ -1143,7 +1142,7 @@ void test_m2_runtime_hero_live_dry_run_handoff() {
                               "max_runtime_seconds:int = 5\n");
 
   write_text(wave_path,
-             "KIKIJYEBA_WAVE {\n"
+             "WAVE_SETTINGS {\n"
              "  WAVE_ID = cwu_01v_channel_validation_eval_mdn_1800_2050;\n"
              "  TARGET = wikimyei.inference.expected_value.mdn;\n"
              "  MODE = run|debug;\n"
@@ -1239,8 +1238,7 @@ void test_m2_public_dry_run_dispatch_operation() {
                           "runtime_hero_dsl_path = " +
                               policy_path.string() +
                               "\n"
-                              "[KIKIJYEBA]\n"
-                              "kikijyeba_settings_wave_dsl_path = " +
+                              "runtime_wave_dsl_path = " +
                               wave_path.string() + "\n");
   write_text(policy_path, "protocol_layer[STDIO|HTTPS/SSE]:enum = STDIO\n"
                           "runtime_exec_path:path = /bin/true\n"
@@ -1270,7 +1268,7 @@ void test_m2_public_dry_run_dispatch_operation() {
                               "max_capture_bytes:int = 4096\n"
                               "max_runtime_seconds:int = 5\n");
   write_text(wave_path,
-             "KIKIJYEBA_WAVE {\n"
+             "WAVE_SETTINGS {\n"
              "  WAVE_ID = cwu_01v_channel_validation_eval_mdn_1800_2050;\n"
              "  TARGET = wikimyei.inference.expected_value.mdn;\n"
              "  MODE = run|debug;\n"
@@ -1495,8 +1493,7 @@ void test_m3_accepted_execution_handoff() {
                           "runtime_hero_dsl_path = " +
                               policy_path.string() +
                               "\n"
-                              "[KIKIJYEBA]\n"
-                              "kikijyeba_settings_wave_dsl_path = " +
+                              "runtime_wave_dsl_path = " +
                               wave_path.string() + "\n");
   write_text(policy_path, "protocol_layer[STDIO|HTTPS/SSE]:enum = STDIO\n"
                           "runtime_exec_path:path = /bin/true\n"
@@ -1526,7 +1523,7 @@ void test_m3_accepted_execution_handoff() {
                               "max_capture_bytes:int = 4096\n"
                               "max_runtime_seconds:int = 5\n");
   write_text(wave_path,
-             "KIKIJYEBA_WAVE {\n"
+             "WAVE_SETTINGS {\n"
              "  WAVE_ID = cwu_01v_channel_validation_eval_mdn_1800_2050;\n"
              "  TARGET = wikimyei.inference.expected_value.mdn;\n"
              "  MODE = run|debug;\n"
@@ -1624,8 +1621,7 @@ void test_m3_execution_handoff_rechecks_runtime_wave() {
                           "runtime_hero_dsl_path = " +
                               policy_path.string() +
                               "\n"
-                              "[KIKIJYEBA]\n"
-                              "kikijyeba_settings_wave_dsl_path = " +
+                              "runtime_wave_dsl_path = " +
                               wave_path.string() + "\n");
   write_text(policy_path, "protocol_layer[STDIO|HTTPS/SSE]:enum = STDIO\n"
                           "runtime_exec_path:path = /bin/true\n"
@@ -1655,7 +1651,7 @@ void test_m3_execution_handoff_rechecks_runtime_wave() {
                               "max_capture_bytes:int = 4096\n"
                               "max_runtime_seconds:int = 5\n");
   write_text(wave_path,
-             "KIKIJYEBA_WAVE {\n"
+             "WAVE_SETTINGS {\n"
              "  WAVE_ID = cwu_01v_channel_validation_eval_mdn_1800_2050;\n"
              "  TARGET = wikimyei.inference.expected_value.mdn;\n"
              "  MODE = run|debug;\n"
@@ -1705,7 +1701,7 @@ void test_m3_execution_handoff_rechecks_runtime_wave() {
   check(gate.accepted, "pre-change execution gate should accept");
 
   write_text(wave_path,
-             "KIKIJYEBA_WAVE {\n"
+             "WAVE_SETTINGS {\n"
              "  WAVE_ID = cwu_01v_channel_validation_eval_mdn_1800_2050;\n"
              "  TARGET = wikimyei.inference.expected_value.mdn;\n"
              "  MODE = run|debug;\n"
@@ -1750,8 +1746,7 @@ void test_m4_dispatch_receipt_replay_audit() {
                           "runtime_hero_dsl_path = " +
                               policy_path.string() +
                               "\n"
-                              "[KIKIJYEBA]\n"
-                              "kikijyeba_settings_wave_dsl_path = " +
+                              "runtime_wave_dsl_path = " +
                               wave_path.string() + "\n");
   write_text(policy_path, "protocol_layer[STDIO|HTTPS/SSE]:enum = STDIO\n"
                           "runtime_exec_path:path = /bin/true\n"
@@ -1781,7 +1776,7 @@ void test_m4_dispatch_receipt_replay_audit() {
                               "max_capture_bytes:int = 4096\n"
                               "max_runtime_seconds:int = 5\n");
   write_text(wave_path,
-             "KIKIJYEBA_WAVE {\n"
+             "WAVE_SETTINGS {\n"
              "  WAVE_ID = cwu_01v_channel_validation_eval_mdn_1800_2050;\n"
              "  TARGET = wikimyei.inference.expected_value.mdn;\n"
              "  MODE = run|debug;\n"
@@ -1973,8 +1968,7 @@ void test_m7_batch_preview_independence() {
                           "runtime_hero_dsl_path = " +
                               policy_path.string() +
                               "\n"
-                              "[KIKIJYEBA]\n"
-                              "kikijyeba_settings_wave_dsl_path = " +
+                              "runtime_wave_dsl_path = " +
                               wave_path.string() + "\n");
   write_text(policy_path, "protocol_layer[STDIO|HTTPS/SSE]:enum = STDIO\n"
                           "runtime_exec_path:path = /bin/true\n"
@@ -2004,7 +1998,7 @@ void test_m7_batch_preview_independence() {
                               "max_capture_bytes:int = 4096\n"
                               "max_runtime_seconds:int = 5\n");
   write_text(wave_path,
-             "KIKIJYEBA_WAVE {\n"
+             "WAVE_SETTINGS {\n"
              "  WAVE_ID = cwu_01v_channel_validation_eval_mdn_1800_2050;\n"
              "  TARGET = wikimyei.inference.expected_value.mdn;\n"
              "  MODE = run|debug;\n"
@@ -2095,8 +2089,7 @@ void test_m5_codex_assist_uses_deterministic_primitives() {
                           "runtime_hero_dsl_path = " +
                               policy_path.string() +
                               "\n"
-                              "[KIKIJYEBA]\n"
-                              "kikijyeba_settings_wave_dsl_path = " +
+                              "runtime_wave_dsl_path = " +
                               wave_path.string() + "\n");
   write_text(policy_path, "protocol_layer[STDIO|HTTPS/SSE]:enum = STDIO\n"
                           "runtime_exec_path:path = /bin/true\n"
@@ -2126,7 +2119,7 @@ void test_m5_codex_assist_uses_deterministic_primitives() {
                               "max_capture_bytes:int = 4096\n"
                               "max_runtime_seconds:int = 5\n");
   write_text(wave_path,
-             "KIKIJYEBA_WAVE {\n"
+             "WAVE_SETTINGS {\n"
              "  WAVE_ID = cwu_01v_channel_validation_eval_mdn_1800_2050;\n"
              "  TARGET = wikimyei.inference.expected_value.mdn;\n"
              "  MODE = run|debug;\n"
@@ -3065,8 +3058,7 @@ write_prepare_runtime_files(bool allow_execute = false,
                           "runtime_hero_dsl_path = " +
                               policy_path.string() +
                               "\n"
-                              "[KIKIJYEBA]\n"
-                              "kikijyeba_settings_wave_dsl_path = " +
+                              "runtime_wave_dsl_path = " +
                               wave_path.string() + "\n");
   write_text(policy_path, "protocol_layer[STDIO|HTTPS/SSE]:enum = STDIO\n"
                           "runtime_exec_path:path = " +
@@ -3102,7 +3094,7 @@ write_prepare_runtime_files(bool allow_execute = false,
                               "max_capture_bytes:int = 4096\n"
                               "max_runtime_seconds:int = 5\n");
   write_text(wave_path,
-             "KIKIJYEBA_WAVE {\n"
+             "WAVE_SETTINGS {\n"
              "  WAVE_ID = prepare_validation_eval;\n"
              "  TARGET = wikimyei.inference.expected_value.mdn;\n"
              "  MODE = run|debug;\n"

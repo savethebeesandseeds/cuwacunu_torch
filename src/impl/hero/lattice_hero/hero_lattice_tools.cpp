@@ -2,9 +2,9 @@
 
 #include "hero/lattice_hero/hero_lattice.h"
 #include "hero/mcp_schema_compat.h"
-#include "kikijyeba/lattice/exposure/exposure_ledger.h"
-#include "kikijyeba/lattice/target/lattice_target_evaluator.h"
-#include "kikijyeba/runtime/job_layout.h"
+#include "hero/lattice_hero/lattice/exposure/exposure_ledger.h"
+#include "hero/lattice_hero/lattice/target/lattice_target_evaluator.h"
+#include "hero/runtime_hero/runtime/job_layout.h"
 #include "wikimyei/assembly.h"
 #include "wikimyei/representation/encoding/mtf_jepa_mae_vicreg/assembly.h"
 
@@ -29,8 +29,8 @@ namespace cuwacunu::hero::lattice {
 namespace {
 
 namespace fs = std::filesystem;
-namespace exposure = cuwacunu::kikijyeba::lattice::exposure;
-namespace target = cuwacunu::kikijyeba::lattice::target;
+namespace exposure = cuwacunu::hero::lattice::exposure;
+namespace target = cuwacunu::hero::lattice::target;
 
 [[nodiscard]] std::string fact_integrity_summary_json(
     const exposure::lattice_fact_integrity_summary_t &summary);
@@ -1117,7 +1117,7 @@ exposure_uses_json(const std::vector<exposure::exposure_use_t> &uses) {
 [[nodiscard]] std::string warning_scope_previews_json(
     const target::lattice_target_spec_t &spec,
     const std::optional<
-        cuwacunu::kikijyeba::lattice::split::lattice_split_policy_t>
+        cuwacunu::hero::lattice::split::lattice_split_policy_t>
         &split_policy) {
   namespace detail = target::lattice_target_eval_detail;
 
@@ -2924,7 +2924,7 @@ causal_exposure_json(const target::lattice_target_proof_certificate_t::
       << ",\"split_name\":" << json_quote(exposure.split_name)
       << ",\"split_role\":"
       << json_quote(
-             cuwacunu::kikijyeba::lattice::exposure::exposure_split_role_name(
+             cuwacunu::hero::lattice::exposure::exposure_split_role_name(
                  exposure.split_role))
       << ",\"anchor_range\":" << interval_json(exposure.anchor_range)
       << ",\"completed_anchor_range\":"
@@ -9992,7 +9992,7 @@ derive_active_identity_from_runtime_root(const fs::path &runtime_root) {
     rows.push_back(row_t{.dir = dir, .time = time});
   };
   for (const auto &job_dir :
-       cuwacunu::kikijyeba::runtime::job_layout::discover_runtime_job_dirs(
+       cuwacunu::hero::runtime::job_layout::discover_runtime_job_dirs(
            runtime_root)) {
     push_job_dir(job_dir.dir);
   }
@@ -10261,7 +10261,7 @@ build_target_evaluator(const std::string &args, lattice_context_t *ctx,
     policy_gates = target::load_lattice_policy_gates_from_config(config_path);
   } catch (...) {
   }
-  std::optional<cuwacunu::kikijyeba::lattice::split::lattice_split_policy_t>
+  std::optional<cuwacunu::hero::lattice::split::lattice_split_policy_t>
       split_policy{};
   try {
     split_policy =
@@ -10291,7 +10291,7 @@ build_target_evaluator(const std::string &args, lattice_context_t *ctx,
        << (split_policy.has_value() ? split_policy->splits.size() : 0)
        << ",\"split_policy_fingerprint\":"
        << json_quote(split_policy.has_value()
-                         ? cuwacunu::kikijyeba::lattice::split::
+                         ? cuwacunu::hero::lattice::split::
                                lattice_split_policy_fingerprint(*split_policy)
                          : std::string{})
        << ",\"target_count\":" << targets.size()
@@ -10461,7 +10461,7 @@ build_target_evaluator(const std::string &args, lattice_context_t *ctx,
     return false;
   }
 
-  std::optional<cuwacunu::kikijyeba::lattice::split::lattice_split_policy_t>
+  std::optional<cuwacunu::hero::lattice::split::lattice_split_policy_t>
       split_policy{};
   try {
     split_policy =

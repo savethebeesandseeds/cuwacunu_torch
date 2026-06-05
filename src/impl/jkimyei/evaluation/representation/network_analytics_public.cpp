@@ -1,12 +1,12 @@
 std::string extract_analytics_kv_schema(std::string_view payload) {
   runtime_lls_document_t document{};
   std::string parse_error;
-  if (!cuwacunu::kikijyeba::lattice::runtime_report::
+  if (!cuwacunu::hero::lattice::runtime_report::
           parse_runtime_lls_text(payload, &document, &parse_error)) {
     return {};
   }
   std::unordered_map<std::string, std::string> kv{};
-  if (!cuwacunu::kikijyeba::lattice::runtime_report::
+  if (!cuwacunu::hero::lattice::runtime_report::
           runtime_lls_document_to_kv_map(document, &kv, &parse_error)) {
     return {};
   }
@@ -27,7 +27,7 @@ std::string network_analytics_to_latent_lineage_state_text(
     const network_analytics_report_t &report,
     std::string_view checkpoint_filename,
     const evaluation_report_identity_t &report_identity) {
-  return cuwacunu::kikijyeba::lattice::runtime_report::
+  return cuwacunu::hero::lattice::runtime_report::
       emit_runtime_lls_canonical(make_runtime_lls_document_(
           report, checkpoint_filename, report_identity));
 }
@@ -42,7 +42,7 @@ network_analytics_to_pretty_text(const network_analytics_report_t &report,
 std::string network_design_analytics_to_latent_lineage_state_text(
     const network_design_analytics_report_t &report,
     std::string_view source_label) {
-  return cuwacunu::kikijyeba::lattice::
+  return cuwacunu::hero::lattice::
       convert_latent_lineage_state_payload_to_lattice_state(
           as_ascii_key_value_(report, source_label));
 }

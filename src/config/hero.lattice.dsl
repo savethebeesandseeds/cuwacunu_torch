@@ -9,7 +9,7 @@
 # than primary evidence.
 protocol_layer[STDIO|HTTPS/SSE]:enum = STDIO
 
-# Default global config that contains Kikijyeba lattice target DSL paths.
+# Default global config that contains Hero-owned Lattice target/split DSL paths.
 default_config_path:path = /cuwacunu/src/config/.config
 
 # Runtime artifact root scanned for job.manifest/job.state/report/checkpoint

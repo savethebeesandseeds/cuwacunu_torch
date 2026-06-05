@@ -27,7 +27,7 @@
 #include "kikijyeba/environment/runtime/replay_source.h"
 #include "kikijyeba/protocol/config_bundle.h"
 #include "kikijyeba/protocol/config_provenance.h"
-#include "kikijyeba/runtime/job_layout.h"
+#include "hero/runtime_hero/runtime/job_layout.h"
 #include "wikimyei/assembly.h"
 
 namespace cuwacunu::kikijyeba::environment {
@@ -98,7 +98,7 @@ namespace replay_driver_detail {
 
 namespace protocol = cuwacunu::kikijyeba::protocol;
 namespace graph = cuwacunu::kikijyeba::topology::graph;
-namespace runtime_layout = cuwacunu::kikijyeba::runtime::job_layout;
+namespace runtime_layout = cuwacunu::hero::runtime::job_layout;
 namespace sdu =
     cuwacunu::wikimyei::policy::portfolio::spot_distributional_utility;
 

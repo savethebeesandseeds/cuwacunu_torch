@@ -14,7 +14,7 @@
 #include "kikijyeba/environment/replay/spec.h"
 #include "kikijyeba/protocol/protocol_variant.h"
 #include "kikijyeba/protocol/source_dock.h"
-#include "kikijyeba/runtime/wave_settings.h"
+#include "hero/runtime_hero/runtime/wave_settings.h"
 #include "kikijyeba/topology/dock_binding.h"
 #include "kikijyeba/topology/node_value_chain.h"
 #include "kikijyeba/topology/wikimyei_registry.h"
@@ -89,15 +89,16 @@ struct channel_graph_first_protocol_contract_t {
   std::string wikimyei_representation_mtf_jepa_mae_vicreg_jkimyei_path{};
   std::string wikimyei_inference_expected_value_mdn_jkimyei_bnf_path{};
   std::string wikimyei_inference_expected_value_mdn_jkimyei_path{};
-  std::string kikijyeba_settings_wave_dsl_bnf_path{};
-  std::string kikijyeba_settings_wave_dsl_path{};
+  std::string runtime_wave_dsl_bnf_path{};
+  std::string runtime_wave_dsl_path{};
+  std::string runtime_wave_id{};
   std::string kikijyeba_protocol_dsl_bnf_path{};
   std::string kikijyeba_protocol_dsl_path{};
   std::string kikijyeba_environment_replay_dsl_bnf_path{};
   std::string kikijyeba_environment_replay_dsl_path{};
 
   cuwacunu::kikijyeba::protocol::protocol_variant_t protocol_variant{};
-  cuwacunu::kikijyeba::settings::wave_settings_t wave_settings{};
+  cuwacunu::hero::runtime::settings::wave_settings_t wave_settings{};
   cuwacunu::kikijyeba::environment::replay_environment_spec_t
       replay_environment{};
   cuwacunu::wikimyei::expression::nodelift::srl::nodelift_srl_spec_t nodelift{};
@@ -206,7 +207,7 @@ make_channel_graph_first_dock_binding(
   topo::dock_binding_t out{};
   out.binding_id = topo::kGraphTopologyDockBindingId;
   out.variables = {
-      topo::make_runtime_variable("B", "kikijyeba.settings.wave.batch_pulse"),
+      topo::make_runtime_variable("B", "hero.runtime.wave.batch_pulse"),
       topo::make_static_i64_variable("N", "kikijyeba.topology.graph.node_count",
                                      node_count),
       topo::make_static_i64_variable("L", "kikijyeba.topology.graph.edge_count",
@@ -1010,7 +1011,7 @@ inline void validate_channel_graph_first_protocol_contract(
   training::validate_training_run_spec(bundle.vicreg_training);
   training::validate_training_run_spec(bundle.mtf_jepa_mae_vicreg_training);
   training::validate_training_run_spec(bundle.channel_mdn_training);
-  cuwacunu::kikijyeba::settings::validate_wave_settings(bundle.wave_settings);
+  cuwacunu::hero::runtime::settings::validate_wave_settings(bundle.wave_settings);
   if (bundle.source_universe.empty()) {
     throw std::runtime_error(
         "[channel_graph_first_config] Ujcamei source universe is empty");
@@ -1029,21 +1030,21 @@ inline void validate_channel_graph_first_protocol_contract(
   const auto input_length = max_input_length(bundle.source_dock);
   const auto future_length = max_future_length(bundle.source_dock);
   const bool active_mtf = active_protocol_uses_mtf_jepa_mae_vicreg(bundle);
-  if (!cuwacunu::kikijyeba::settings::wave_supports_protocol(
+  if (!cuwacunu::hero::runtime::settings::wave_supports_protocol(
           bundle.wave_settings, bundle.protocol_variant.protocol_id)) {
     throw std::runtime_error("[channel_graph_first_config] active protocol " +
                              bundle.protocol_variant.protocol_id +
                              " is not declared by wave COMPATIBLE_PROTOCOLS");
   }
   if (bundle.wave_settings.target ==
-          cuwacunu::kikijyeba::settings::wave_target_t::vicreg_representation &&
+          cuwacunu::hero::runtime::settings::wave_target_t::vicreg_representation &&
       active_mtf) {
     throw std::runtime_error(
         "[channel_graph_first_config] active protocol docks "
         "MTF-JEPA-MAE-VICReg but active wave targets VICReg");
   }
   if (bundle.wave_settings.target ==
-          cuwacunu::kikijyeba::settings::wave_target_t::
+          cuwacunu::hero::runtime::settings::wave_target_t::
               mtf_jepa_mae_vicreg_representation &&
       !active_mtf) {
     throw std::runtime_error(
@@ -1181,7 +1182,7 @@ optional_config_value(const std::unordered_map<std::string, std::string> &cfg,
 
 } // namespace graph_first_config_detail
 
-[[nodiscard]] inline cuwacunu::kikijyeba::settings::wave_settings_t
+[[nodiscard]] inline cuwacunu::hero::runtime::settings::wave_settings_t
 load_wave_settings_from_config(std::string config_path = {}) {
   if (cuwacunu::piaabo::parse::simple_kv::trim(config_path).empty()) {
     config_path =
@@ -1189,10 +1190,12 @@ load_wave_settings_from_config(std::string config_path = {}) {
   }
   const auto cfg =
       graph_first_config_detail::parse_assignment_config(config_path);
-  return cuwacunu::kikijyeba::settings::decode_wave_settings_from_dsl(
+  return cuwacunu::hero::runtime::settings::decode_wave_settings_from_dsl(
       graph_first_config_detail::read_text_file_or_throw(
           graph_first_config_detail::required_config_value(
-              cfg, "kikijyeba_settings_wave_dsl_path", config_path)));
+              cfg, "runtime_wave_dsl_path", config_path)),
+      graph_first_config_detail::optional_config_value(
+          cfg, "runtime_wave_id", ""));
 }
 
 [[nodiscard]] inline channel_graph_first_protocol_contract_t
@@ -1333,12 +1336,15 @@ load_channel_graph_first_protocol_contract_from_config(
       graph_first_config_detail::required_config_value(
           cfg, "wikimyei_inference_expected_value_mdn_jkimyei_path",
           config_path);
-  out.kikijyeba_settings_wave_dsl_bnf_path =
+  out.runtime_wave_dsl_bnf_path =
       graph_first_config_detail::required_config_value(
-          cfg, "kikijyeba_settings_wave_dsl_bnf_path", config_path);
-  out.kikijyeba_settings_wave_dsl_path =
+          cfg, "runtime_wave_dsl_bnf_path", config_path);
+  out.runtime_wave_dsl_path =
       graph_first_config_detail::required_config_value(
-          cfg, "kikijyeba_settings_wave_dsl_path", config_path);
+          cfg, "runtime_wave_dsl_path", config_path);
+  out.runtime_wave_id =
+      graph_first_config_detail::optional_config_value(
+          cfg, "runtime_wave_id", "");
   out.kikijyeba_protocol_dsl_bnf_path =
       graph_first_config_detail::optional_config_value(
           cfg, "kikijyeba_protocol_dsl_bnf_path",
@@ -1381,7 +1387,7 @@ load_channel_graph_first_protocol_contract_from_config(
   (void)graph_first_config_detail::read_text_file_or_throw(
       out.wikimyei_inference_expected_value_mdn_jkimyei_bnf_path);
   (void)graph_first_config_detail::read_text_file_or_throw(
-      out.kikijyeba_settings_wave_dsl_bnf_path);
+      out.runtime_wave_dsl_bnf_path);
   (void)graph_first_config_detail::read_text_file_or_throw(
       out.kikijyeba_protocol_dsl_bnf_path);
   (void)graph_first_config_detail::read_text_file_or_throw(
@@ -1391,9 +1397,10 @@ load_channel_graph_first_protocol_contract_from_config(
       graph_first_config_detail::read_text_file_or_throw(
           out.kikijyeba_protocol_dsl_path));
   out.wave_settings =
-      cuwacunu::kikijyeba::settings::decode_wave_settings_from_dsl(
+      cuwacunu::hero::runtime::settings::decode_wave_settings_from_dsl(
           graph_first_config_detail::read_text_file_or_throw(
-              out.kikijyeba_settings_wave_dsl_path));
+              out.runtime_wave_dsl_path),
+          out.runtime_wave_id);
   out.replay_environment =
       cuwacunu::kikijyeba::environment::decode_replay_environment_spec_from_dsl(
           graph_first_config_detail::read_text_file_or_throw(

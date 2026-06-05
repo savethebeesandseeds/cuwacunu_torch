@@ -10,7 +10,7 @@
 #include <unistd.h>
 
 #include "hero/config_hero/hero_config.h"
-#include "hero/config_hero/hero_config_store.h"
+#include "hero/config_hero/config/hero_config_store.h"
 #include "hero/config_hero/hero_config_tools.h"
 
 namespace {

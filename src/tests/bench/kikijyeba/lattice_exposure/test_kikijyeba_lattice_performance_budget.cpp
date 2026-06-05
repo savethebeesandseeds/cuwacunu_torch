@@ -1,4 +1,4 @@
-#include "kikijyeba/lattice/exposure/exposure_ledger.h"
+#include "hero/lattice_hero/lattice/exposure/exposure_ledger.h"
 
 #include <chrono>
 #include <cstdlib>
@@ -7,7 +7,7 @@
 #include <stdexcept>
 #include <string>
 
-namespace exposure = cuwacunu::kikijyeba::lattice::exposure;
+namespace exposure = cuwacunu::hero::lattice::exposure;
 namespace fs = std::filesystem;
 
 namespace {

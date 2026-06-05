@@ -92,7 +92,7 @@ fixture_paths_t make_config_fixture(const std::string &label,
   const auto sources_dsl = out.dir / "ujcamei.source.registry.dsl";
   const auto channels_dsl = out.dir / "ujcamei.source.retrieval.channels.dsl";
   const auto graph_dsl = out.dir / "kikijyeba.topology.graph.dsl";
-  const auto wave_dsl = out.dir / "kikijyeba.settings.wave.dsl";
+  const auto wave_dsl = out.dir / "hero.runtime.wave.dsl";
   const auto vicreg_dsl = out.dir / "wikimyei.representation.vicreg.dsl";
   const auto vicreg_net = out.dir / "wikimyei.representation.vicreg.net";
   const auto channel_mdn_dsl =
@@ -327,9 +327,10 @@ fixture_paths_t make_config_fixture(const std::string &label,
           "kikijyeba_topology_graph_dsl_path = " +
           graph_dsl.string() +
           "\n"
-          "kikijyeba_settings_wave_dsl_bnf_path = "
-          "/cuwacunu/src/config/grammar/kikijyeba.settings.wave.dsl.bnf\n"
-          "kikijyeba_settings_wave_dsl_path = " +
+          "[HERO]\n"
+          "runtime_wave_dsl_bnf_path = "
+          "/cuwacunu/src/config/grammar/hero.runtime.wave.dsl.bnf\n"
+          "runtime_wave_dsl_path = " +
           wave_dsl.string() +
           "\n\n"
           "[WIKIMYEI]\n"
@@ -359,7 +360,18 @@ fixture_paths_t make_config_fixture(const std::string &label,
           "wikimyei.inference.expected_value.mdn.net.bnf\n"
           "wikimyei_inference_expected_value_mdn_net_path = "
           "/cuwacunu/src/config/"
-          "wikimyei.inference.expected_value.mdn.net\n\n"
+          "wikimyei.inference.expected_value.mdn.net\n"
+          "wikimyei_observer_belief_dsl_bnf_path = "
+          "/cuwacunu/src/config/grammar/"
+          "wikimyei.observer.belief.dsl.bnf\n"
+          "wikimyei_observer_belief_dsl_path = "
+          "/cuwacunu/src/config/wikimyei.observer.belief.dsl\n"
+          "wikimyei_policy_portfolio_spot_distributional_utility_dsl_bnf_path"
+          " = /cuwacunu/src/config/grammar/"
+          "wikimyei.policy.portfolio.spot_distributional_utility.dsl.bnf\n"
+          "wikimyei_policy_portfolio_spot_distributional_utility_dsl_path = "
+          "/cuwacunu/src/config/"
+          "wikimyei.policy.portfolio.spot_distributional_utility.dsl\n\n"
           "wikimyei_representation_vicreg_dsl_bnf_path = "
           "/cuwacunu/src/config/grammar/"
           "wikimyei.representation.vicreg.dsl.bnf\n"
@@ -456,12 +468,21 @@ void test_default_channel_config_dry_run_report() {
         "channel dry-run reports channel protocol token");
   check(report.stream_plan.steps.size() == 4,
         "channel dry-run reports four stream plan steps");
+  const bool default_uses_mtf_representation =
+      builder::active_protocol_uses_mtf_jepa_mae_vicreg(bundle);
+  const std::string expected_representation_family =
+      default_uses_mtf_representation
+          ? "wikimyei.representation.encoding.mtf_jepa_mae_vicreg"
+          : "wikimyei.representation.encoding.vicreg";
+  const std::string expected_representation_batch =
+      default_uses_mtf_representation
+          ? "mtf_jepa_mae_vicreg_representation_batch_t"
+          : "channel_representation_batch_t";
   check(report.stream_plan.steps.at(2).component_family_id ==
-            "wikimyei.representation.encoding.vicreg",
-        "channel stream plan includes channel VICReg");
-  check(report.stream_plan.steps.at(2).output_batch ==
-            "channel_representation_batch_t",
-        "channel stream plan exports channel representation batch");
+            expected_representation_family,
+        "channel stream plan includes active representation");
+  check(report.stream_plan.steps.at(2).output_batch == expected_representation_batch,
+        "channel stream plan exports active representation batch");
   check(report.stream_plan.steps.at(3).component_family_id ==
             "wikimyei.inference.expected_value.mdn",
         "channel stream plan includes MDN");
@@ -491,7 +512,7 @@ void test_train_wave_defaults_to_random_source_order_in_pipeline() {
       builder::load_channel_graph_first_config_bundle_from_config(
           fixture.config);
   check(bundle.wave_settings.source_order_policy ==
-            cuwacunu::kikijyeba::settings::wave_source_order_policy_t::
+            cuwacunu::hero::runtime::settings::wave_source_order_policy_t::
                 random_per_epoch,
         "train fixture defaults to random_per_epoch source order");
   check(!bundle.wave_settings.source_order_policy_explicit,

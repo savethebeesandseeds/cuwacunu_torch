@@ -2,9 +2,9 @@
 
 `src/config/.config` section: `[KIKIJYEBA]`
 
-The Kikijyeba section binds protocol, topology, wave, Lattice, and environment
-DSL files. Runtime remains the executable entrypoint; environment DSLs describe
-operating-world contracts that Runtime may execute as targets/delegates.
+The Kikijyeba section binds protocol, topology, and environment DSL files.
+Runtime wave catalogs and Lattice target/split catalogs are Hero-owned config
+surfaces under `[HERO]`.
 
 ## Protocol And Topology
 
@@ -20,24 +20,6 @@ operating-world contracts that Runtime may execute as targets/delegates.
   - Grammar for `kikijyeba.topology.graph.dsl`.
 - `kikijyeba_topology_graph_dsl_path`
   - Active market graph/topology contract.
-
-## Wave Settings
-
-- `kikijyeba_settings_wave_dsl_bnf_path`
-  - Grammar for `kikijyeba.settings.wave.dsl`.
-- `kikijyeba_settings_wave_dsl_path`
-  - Active Runtime wave target/mode/source-range profile.
-
-## Lattice
-
-- `kikijyeba_lattice_splits_dsl_bnf_path`
-  - Grammar for named Lattice split/range declarations.
-- `kikijyeba_lattice_splits_dsl_path`
-  - Validation/test holdout and protected split definitions.
-- `kikijyeba_lattice_targets_dsl_bnf_path`
-  - Grammar for Lattice readiness target declarations.
-- `kikijyeba_lattice_targets_dsl_path`
-  - Active Lattice target catalog.
 
 ## Replay Environment
 

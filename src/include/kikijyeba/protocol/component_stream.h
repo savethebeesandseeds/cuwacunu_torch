@@ -13,8 +13,8 @@
 #include <utility>
 #include <vector>
 
-#include "kikijyeba/lattice/runtime_report/component_runtime_lls.h"
-#include "kikijyeba/runtime/wave_settings.h"
+#include "hero/lattice_hero/lattice/runtime_report/component_runtime_lls.h"
+#include "hero/runtime_hero/runtime/wave_settings.h"
 #include "ujcamei/source/retrieval/dataloader/source_cursor.h"
 
 namespace cuwacunu::kikijyeba::protocol {
@@ -73,8 +73,8 @@ struct component_stream_cursor_t {
 struct component_stream_report_t {
   component_stream_identity_t identity{};
   component_stream_cursor_t cursor{};
-  cuwacunu::kikijyeba::lattice::runtime_report::runtime_report_mode_t
-      runtime_report_mode{cuwacunu::kikijyeba::lattice::runtime_report::
+  cuwacunu::hero::lattice::runtime_report::runtime_report_mode_t
+      runtime_report_mode{cuwacunu::hero::lattice::runtime_report::
                               runtime_report_mode_t::normal};
   double elapsed_ms{std::numeric_limits<double>::quiet_NaN()};
   std::uint64_t input_count{0};
@@ -153,17 +153,17 @@ validate_component_stream_cursor(const component_stream_cursor_t &cursor) {
 
 [[nodiscard]] inline component_stream_wave_t
 component_stream_wave_from_settings(
-    const cuwacunu::kikijyeba::settings::wave_settings_t &settings) {
+    const cuwacunu::hero::runtime::settings::wave_settings_t &settings) {
   return component_stream_wave_t{
       .wave_id = settings.wave_id,
       .mode_text = settings.mode_text,
       .source_cursor_kind = settings.source_cursor_kind,
       .source_cursor_scope = settings.source_cursor_scope,
       .source_range_policy =
-          cuwacunu::kikijyeba::settings::source_range_policy_name(
+          cuwacunu::hero::runtime::settings::source_range_policy_name(
               settings.source_range_policy),
       .source_order_policy =
-          cuwacunu::kikijyeba::settings::source_order_policy_name(
+          cuwacunu::hero::runtime::settings::source_order_policy_name(
               settings.source_order_policy),
       .anchor_index_begin = settings.anchor_index_begin,
       .anchor_index_end = settings.anchor_index_end,
@@ -188,14 +188,14 @@ template <typename KeyT>
       .anchor_index_end = wave.anchor_index_end,
       .source_key_begin = wave.source_key_begin,
       .source_key_end = wave.source_key_end,
-      .batch_cursor_token = cuwacunu::kikijyeba::lattice::runtime_report::
+      .batch_cursor_token = cuwacunu::hero::lattice::runtime_report::
           require_graph_anchor_cursor_token(cursor),
   };
 }
 
 [[nodiscard]] inline component_stream_report_t make_component_stream_report(
     component_stream_identity_t identity, component_stream_cursor_t cursor,
-    cuwacunu::kikijyeba::lattice::runtime_report::runtime_report_mode_t
+    cuwacunu::hero::lattice::runtime_report::runtime_report_mode_t
         runtime_report_mode,
     double elapsed_ms = std::numeric_limits<double>::quiet_NaN(),
     std::uint64_t input_count = 0, std::uint64_t output_count = 0,
@@ -213,11 +213,11 @@ template <typename KeyT>
   };
 }
 
-[[nodiscard]] inline cuwacunu::kikijyeba::lattice::runtime_report::
+[[nodiscard]] inline cuwacunu::hero::lattice::runtime_report::
     runtime_lls_document_t
     make_component_stream_runtime_document(
         const std::string &schema, const component_stream_report_t &report) {
-  namespace lls = cuwacunu::kikijyeba::lattice::runtime_report;
+  namespace lls = cuwacunu::hero::lattice::runtime_report;
   validate_component_stream_identity(report.identity);
   validate_component_stream_cursor(report.cursor);
 
@@ -269,7 +269,7 @@ template <typename KeyT>
   }
   document.entries.push_back(lls::make_component_runtime_lls_string_entry(
       "runtime_report_mode",
-      cuwacunu::kikijyeba::settings::runtime_report_mode_name(
+      cuwacunu::hero::runtime::settings::runtime_report_mode_name(
           report.runtime_report_mode)));
   if (std::isfinite(report.elapsed_ms)) {
     document.entries.push_back(lls::make_component_runtime_lls_double_entry(

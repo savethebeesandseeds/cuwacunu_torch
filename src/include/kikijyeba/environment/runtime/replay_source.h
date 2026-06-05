@@ -18,9 +18,9 @@
 #include <torch/torch.h>
 
 #include "kikijyeba/environment/replay/bundle_source.h"
-#include "kikijyeba/runtime/job_layout.h"
-#include "kikijyeba/runtime/job_manifest.h"
-#include "kikijyeba/runtime/wave_plan.h"
+#include "hero/runtime_hero/runtime/job_layout.h"
+#include "hero/runtime_hero/runtime/job_manifest.h"
+#include "hero/runtime_hero/runtime/wave_plan.h"
 #include "kikijyeba/topology/graph/graph.h"
 #include "wikimyei/inference/expected_value/mdn/stream/mdn_adapter.h"
 #include "wikimyei/observer/belief/builder.h"
@@ -31,7 +31,7 @@ namespace cuwacunu::kikijyeba::environment::replay {
 
 namespace replay_runtime_detail {
 
-namespace runtime = cuwacunu::kikijyeba::runtime;
+namespace runtime = cuwacunu::hero::runtime;
 namespace dataloader = cuwacunu::ujcamei::source::retrieval::dataloader;
 namespace mdn = cuwacunu::wikimyei::inference::expected_value::mdn;
 namespace mdn_stream =

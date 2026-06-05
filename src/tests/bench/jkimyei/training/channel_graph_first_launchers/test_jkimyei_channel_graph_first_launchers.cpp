@@ -14,7 +14,7 @@
 namespace protocol = cuwacunu::kikijyeba::protocol;
 namespace inference_launcher = cuwacunu::jkimyei::training::inference;
 namespace representation_launcher = cuwacunu::jkimyei::training::representation;
-namespace runtime_report = cuwacunu::kikijyeba::lattice::runtime_report;
+namespace runtime_report = cuwacunu::hero::lattice::runtime_report;
 namespace types = cuwacunu::ujcamei::source::registry::types;
 namespace mdn = cuwacunu::wikimyei::inference::expected_value::mdn;
 namespace mdn_stream =
@@ -118,7 +118,7 @@ fixture_paths_t make_config_fixture(const std::string &label,
   const auto sources_dsl = out.dir / "ujcamei.source.registry.dsl";
   const auto channels_dsl = out.dir / "ujcamei.source.retrieval.channels.dsl";
   const auto graph_dsl = out.dir / "kikijyeba.topology.graph.dsl";
-  const auto wave_dsl = out.dir / "kikijyeba.settings.wave.dsl";
+  const auto wave_dsl = out.dir / "hero.runtime.wave.dsl";
   const auto vicreg_dsl = out.dir / "wikimyei.representation.vicreg.dsl";
   const auto vicreg_net = out.dir / "wikimyei.representation.vicreg.net";
   const auto channel_mdn_dsl =
@@ -371,9 +371,10 @@ fixture_paths_t make_config_fixture(const std::string &label,
           "kikijyeba_topology_graph_dsl_path = " +
           graph_dsl.string() +
           "\n"
-          "kikijyeba_settings_wave_dsl_bnf_path = "
-          "/cuwacunu/src/config/grammar/kikijyeba.settings.wave.dsl.bnf\n"
-          "kikijyeba_settings_wave_dsl_path = " +
+          "[HERO]\n"
+          "runtime_wave_dsl_bnf_path = "
+          "/cuwacunu/src/config/grammar/hero.runtime.wave.dsl.bnf\n"
+          "runtime_wave_dsl_path = " +
           wave_dsl.string() +
           "\n\n"
           "[WIKIMYEI]\n"

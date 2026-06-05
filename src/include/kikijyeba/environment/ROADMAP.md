@@ -243,9 +243,10 @@ Implemented Runtime checkpoint:
 
 ```text
 runtime_policy_training_job_contract.v1
-  Runtime Hero: hero.runtime.run operation=policy_training
-  Modes: plan|dry_run
-  Execute: refused until a dedicated trainable-policy runner exists
+  Runtime Hero: hero.runtime.run operation=wave with policy-training fields
+  Modes: plan|dry_run|execute
+  Execute: allowed only for noop_policy_training.v1 pre-PPO smoke
+  PPO: explicitly refused until a dedicated Runtime trainer exists
 ```
 
 The Runtime contract should bind the environment id, observation/action/reward
@@ -253,7 +254,9 @@ schemas, replay batch identity, Cajtucu execution profile digest, training/
 validation/test range digests, normalization/replay-buffer isolation, selector
 policy, causal walk-forward schedule digest, typed cursor-key ordering,
 ledger-derived no-future-snapshot source, sealed-test access, and policy
-checkpoint output identity. It does not implement PPO yet.
+checkpoint output identity. Runtime can write a no-op pre-PPO checkpoint and
+Lattice-readable policy-training facts for plumbing verification, but it does
+not optimize PPO, select policies, or claim policy quality.
 
 ## PPO V0
 

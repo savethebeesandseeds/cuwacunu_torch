@@ -1,7 +1,7 @@
-#include "kikijyeba/marshal/dispatch_operation.h"
-#include "kikijyeba/marshal/dispatch_receipt.h"
-#include "kikijyeba/marshal/performance_budget.h"
-#include "kikijyeba/marshal/tool_schema.h"
+#include "hero/marshal_hero/marshal/dispatch_operation.h"
+#include "hero/marshal_hero/marshal/dispatch_receipt.h"
+#include "hero/marshal_hero/marshal/performance_budget.h"
+#include "hero/marshal_hero/marshal/tool_schema.h"
 
 #include "hero/runtime_hero/hero_runtime_tools.h"
 
@@ -14,7 +14,7 @@
 
 #include <unistd.h>
 
-namespace marshal = cuwacunu::kikijyeba::marshal;
+namespace marshal = cuwacunu::hero::marshal;
 
 namespace {
 
@@ -147,8 +147,7 @@ int main() {
                           "runtime_hero_dsl_path = " +
                               policy_path.string() +
                               "\n"
-                              "[KIKIJYEBA]\n"
-                              "kikijyeba_settings_wave_dsl_path = " +
+                              "runtime_wave_dsl_path = " +
                               wave_path.string() + "\n");
   write_text(policy_path, "protocol_layer[STDIO|HTTPS/SSE]:enum = STDIO\n"
                           "runtime_exec_path:path = /bin/true\n"
@@ -178,7 +177,7 @@ int main() {
                               "max_capture_bytes:int = 4096\n"
                               "max_runtime_seconds:int = 5\n");
   const std::string wave_text =
-      "KIKIJYEBA_WAVE {\n"
+      "WAVE_SETTINGS {\n"
       "  WAVE_ID = cwu_01v_channel_validation_eval_mdn_1800_2050;\n"
       "  TARGET = wikimyei.inference.expected_value.mdn;\n"
       "  MODE = run|debug;\n"

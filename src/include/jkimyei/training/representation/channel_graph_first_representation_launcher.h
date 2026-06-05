@@ -17,10 +17,10 @@
 
 #include <torch/torch.h>
 
-#include "kikijyeba/lattice/runtime_report/component_runtime_lls.h"
+#include "hero/lattice_hero/lattice/runtime_report/component_runtime_lls.h"
 #include "kikijyeba/protocol/component_stream.h"
 #include "kikijyeba/protocol/pipeline_builder.h"
-#include "kikijyeba/runtime/wave_settings.h"
+#include "hero/runtime_hero/runtime/wave_settings.h"
 #include "kikijyeba/topology/dock_binding.h"
 #include "wikimyei/assembly.h"
 #include "wikimyei/representation/encoding/vicreg/channel_node_stream_adapter.h"
@@ -35,8 +35,8 @@ struct channel_graph_first_representation_launcher_options_t {
   bool train_target{true};
   bool write_report{false};
   std::filesystem::path report_path{};
-  cuwacunu::kikijyeba::lattice::runtime_report::runtime_report_mode_t
-      runtime_report_mode{cuwacunu::kikijyeba::lattice::runtime_report::
+  cuwacunu::hero::lattice::runtime_report::runtime_report_mode_t
+      runtime_report_mode{cuwacunu::hero::lattice::runtime_report::
                               runtime_report_mode_t::normal};
 };
 
@@ -407,12 +407,12 @@ inline double scalar_or_nan(const torch::Tensor &tensor) {
 }
 
 inline void append_finite_double(
-    cuwacunu::kikijyeba::lattice::runtime_report::runtime_lls_document_t
+    cuwacunu::hero::lattice::runtime_report::runtime_lls_document_t
         &document,
     std::string key, double value, std::string domain = "(-inf,+inf)") {
   if (std::isfinite(value)) {
     document.entries.push_back(
-        cuwacunu::kikijyeba::lattice::runtime_report::
+        cuwacunu::hero::lattice::runtime_report::
             make_component_runtime_lls_double_entry(std::move(key), value,
                                                     std::move(domain)));
   }
@@ -464,10 +464,10 @@ inline std::string join_double_list(const std::vector<double> &values) {
 }
 
 inline void append_string_list_entry(
-    cuwacunu::kikijyeba::lattice::runtime_report::runtime_lls_document_t
+    cuwacunu::hero::lattice::runtime_report::runtime_lls_document_t
         &document,
     const std::string &key, const std::string &value) {
-  namespace lls = cuwacunu::kikijyeba::lattice::runtime_report;
+  namespace lls = cuwacunu::hero::lattice::runtime_report;
   if (!value.empty()) {
     document.entries.push_back(
         lls::make_component_runtime_lls_string_entry(key, value));
@@ -831,10 +831,10 @@ inline std::string make_channel_representation_training_runtime_lls(
     const std::string &component_assembly_id, const std::string &assembly_token,
     const std::string &dock_binding_token,
     const cuwacunu::kikijyeba::protocol::component_stream_wave_t &stream_wave,
-    cuwacunu::kikijyeba::lattice::runtime_report::runtime_report_mode_t
+    cuwacunu::hero::lattice::runtime_report::runtime_report_mode_t
         runtime_report_mode,
     int64_t optimizer_steps, int64_t wave_pulse_index) {
-  namespace lls = cuwacunu::kikijyeba::lattice::runtime_report;
+  namespace lls = cuwacunu::hero::lattice::runtime_report;
   auto stream_report =
       cuwacunu::kikijyeba::protocol::make_component_stream_report(
           cuwacunu::kikijyeba::protocol::component_stream_identity_t{
@@ -1093,7 +1093,7 @@ public:
     out.requested_source_key_begin = plan.requested_source_key_begin;
     out.requested_source_key_end = plan.requested_source_key_end;
     out.runtime_report_mode =
-        cuwacunu::kikijyeba::settings::runtime_report_mode_name(
+        cuwacunu::hero::runtime::settings::runtime_report_mode_name(
             cuwacunu::kikijyeba::protocol::graph_first_pipeline_builder_detail::
                 resolve_runtime_report_mode(builder_.bundle().wave_settings,
                                             options_.runtime_report_mode));
@@ -1146,7 +1146,7 @@ public:
     auto report = dry_run_report();
     report.seed_scope = seed_scope;
     report.runtime_report_mode =
-        cuwacunu::kikijyeba::settings::runtime_report_mode_name(
+        cuwacunu::hero::runtime::settings::runtime_report_mode_name(
             runtime_report_mode);
     report.source_cursor_token = source_cursor_report.cursor_token();
     report.source_anchor_count =
@@ -1433,7 +1433,7 @@ public:
       report.finite_parameter_check =
           (report.finite_parameter_check != 0.0 && step.gradients_finite) ? 1.0
                                                                           : 0.0;
-      if (cuwacunu::kikijyeba::lattice::runtime_report::runtime_report_enabled(
+      if (cuwacunu::hero::lattice::runtime_report::runtime_report_enabled(
               runtime_report_mode)) {
         report.nodelift_runtime_lls = lifted.runtime_lls;
         report.representation_training_runtime_lls =
@@ -1503,7 +1503,7 @@ private:
       return options_.train_target;
     }
     return builder_.bundle().wave_settings.action ==
-           cuwacunu::kikijyeba::settings::wave_action_t::train;
+           cuwacunu::hero::runtime::settings::wave_action_t::train;
   }
 
   void validate_batch_size_contract() const {

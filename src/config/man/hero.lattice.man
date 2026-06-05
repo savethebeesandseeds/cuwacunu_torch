@@ -4,7 +4,7 @@ PRIMARY_VALIDATORS = src/include/hero/lattice_hero/hero_lattice.h
 DESCRIPTION
   Lattice Hero v0 is a read-only MCP/direct-tool surface for target readiness
   and lineage inspection. It scans runtime job artifacts into an in-memory
-  exposure ledger, evaluates kikijyeba.lattice.targets.dsl, and can inspect
+  exposure ledger, evaluates hero.lattice.targets.dsl, and can inspect
   checkpoint exposure closures.
 
 KEYS
@@ -13,7 +13,21 @@ KEYS
     Current runtime supports STDIO only. HTTPS/SSE fails fast.
 
   default_config_path
-    Global .config used to find Kikijyeba lattice target DSL paths.
+    Global .config used to find Hero-owned Lattice target and split DSL paths.
+
+  lattice_targets_dsl_bnf_path
+    Grammar for hero.lattice.targets.dsl.
+
+  lattice_targets_dsl_path
+    Active Lattice target catalog. This is a Hero-owned config pointer under
+    [HERO], not a Kikijyeba environment/protocol pointer.
+
+  lattice_splits_dsl_bnf_path
+    Grammar for hero.lattice.splits.dsl.
+
+  lattice_splits_dsl_path
+    Active Lattice split/range catalog. This is a Hero-owned config pointer
+    under [HERO].
 
   runtime_root
     Default runtime job artifact root.
@@ -29,31 +43,17 @@ KEYS
     those same artifacts.
 
   max_fact_preview
-    Maximum facts returned inline by hero.lattice.scan_exposure, scan_facts,
-    and fact_preview.
+    Maximum facts returned inline by Lattice inspect/evaluate fact panels.
 
   max_closure_facts
-    Maximum facts returned inline by hero.lattice.checkpoint_closure.
+    Maximum facts returned inline by closure-oriented Lattice inspect/evaluate
+    operations.
 
 TOOLS
   hero.lattice.status
-  hero.lattice.schema
-  hero.lattice.list_targets
-  hero.lattice.explain_target
-  hero.lattice.evaluate_target
-  hero.lattice.evaluate_targets
-  hero.lattice.compare_evidence
-  hero.lattice.plan_target
-  hero.lattice.scan_exposure
-  hero.lattice.list_fact_families
-  hero.lattice.scan_facts
-  hero.lattice.fact_summary
-  hero.lattice.fact_lineage
-  hero.lattice.fact_preview
-  hero.lattice.index_status
-  hero.lattice.index_query
-  hero.lattice.derived_query
-  hero.lattice.checkpoint_closure
+  hero.lattice.inspect
+  hero.lattice.evaluate
+  hero.lattice.compare
 
 MCP SCHEMA HYGIENE
   Tool schemas are a harness-safety gate, not a lattice proof condition.
@@ -61,8 +61,8 @@ MCP SCHEMA HYGIENE
   tools/list JSON: the root must have type=object, and top-level oneOf, anyOf,
   allOf, enum, and not are rejected. Failure messages name the tool,
   schema_path, offending construct, and message. The focused schema smoke covers
-  Config, Runtime, Lattice, and Marshal catalogs and protects the prior
-  hero.lattice.checkpoint_closure harness failure.
+  Config, Runtime, Lattice, and Marshal catalogs and protects prior closure
+  schema harness failures.
 
 AGENT RUNBOOK
   Lattice Hero is read-only. It does not execute waves and it does not mutate
@@ -478,7 +478,7 @@ AGENT RUNBOOK
     compare_lattice_evidence_order_vectors for the explicit
     dominance/equivalence/incomparability/selector-leaked relation; Hero JSON
     includes the same relation vocabulary, dimension-order polarity, and
-	    dimension_vocabulary. hero.lattice.compare_evidence evaluates two targets
+	    dimension_vocabulary. hero.lattice.compare evaluates two targets
 	    with one scan and returns both vectors, per-dimension dominance rows,
 	    participation/exclusion reasons, and the final partial-order relation
 	    with explicit false authority flags for checkpoint selection, model
@@ -539,7 +539,7 @@ AGENT RUNBOOK
     planning, certificate-check, blocking-deficit, status, and satisfaction
     proofs. evaluate_target and plan_target also emit derived_query_results, a
     read-only projection of those relation truth values from the existing proof
-    result. hero.lattice.derived_query answers the finite V3-E pilot rule set
+    result. Lattice inspect/evaluate derived-query panels answer the finite rule set
     target_satisfied, checkpoint_ancestor, forbidden_overlap, stale_cache, and
     unresolved_lineage with concrete witnesses and fail-closed flags. These
     relations are query/cache metadata over runtime evidence, do not execute

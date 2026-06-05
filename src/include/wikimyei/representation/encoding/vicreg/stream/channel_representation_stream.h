@@ -13,7 +13,7 @@
 
 #include <torch/torch.h>
 
-#include "kikijyeba/lattice/runtime_report/component_runtime_lls.h"
+#include "hero/lattice_hero/lattice/runtime_report/component_runtime_lls.h"
 #include "kikijyeba/protocol/component_stream.h"
 #include "wikimyei/expression/nodelift/srl/stream/node_lifted_stream.h"
 #include "wikimyei/representation/encoding/vicreg/channel_node_stream_adapter.h"
@@ -25,7 +25,7 @@ namespace cuwacunu::wikimyei::representation::encoding::vicreg::stream {
 
 namespace channel_representation_stream_detail {
 
-namespace lls = cuwacunu::kikijyeba::lattice::runtime_report;
+namespace lls = cuwacunu::hero::lattice::runtime_report;
 
 inline double elapsed_millis(std::chrono::steady_clock::time_point begin,
                              std::chrono::steady_clock::time_point end) {
@@ -182,7 +182,7 @@ template <typename KeyT>
     const std::string &component_family_id,
     const std::string &runtime_document_schema_id,
     const cuwacunu::kikijyeba::protocol::component_stream_wave_t &stream_wave,
-    cuwacunu::kikijyeba::lattice::runtime_report::runtime_report_mode_t
+    cuwacunu::hero::lattice::runtime_report::runtime_report_mode_t
         runtime_report_mode) {
   auto stream_report =
       cuwacunu::kikijyeba::protocol::make_component_stream_report(
@@ -250,8 +250,8 @@ make_channel_representation_stream_batch(
     const cuwacunu::wikimyei::expression::nodelift::srl::stream::
         node_lifted_batch_t<KeyT> &lifted,
     bool require_finite_valid_features = true, bool detach_to_cpu = false,
-    cuwacunu::kikijyeba::lattice::runtime_report::runtime_report_mode_t
-        runtime_report_mode = cuwacunu::kikijyeba::lattice::runtime_report::
+    cuwacunu::hero::lattice::runtime_report::runtime_report_mode_t
+        runtime_report_mode = cuwacunu::hero::lattice::runtime_report::
             runtime_report_mode_t::normal,
     std::string component_assembly_id = "vicreg_v1",
     std::string assembly_token = "wikimyei.representation.vicreg.v1",
@@ -311,7 +311,7 @@ make_channel_representation_stream_batch(
 
   const auto elapsed_ms =
       channel_representation_stream_detail::elapsed_millis(begin, end);
-  if (cuwacunu::kikijyeba::lattice::runtime_report::runtime_report_enabled(
+  if (cuwacunu::hero::lattice::runtime_report::runtime_report_enabled(
           runtime_report_mode)) {
     out.runtime_lls = channel_representation_stream_detail::
         make_channel_representation_runtime_lls(
@@ -350,8 +350,8 @@ public:
   channel_representation_stream_t(
       lifted_stream_t &&lifted_stream, EncoderT &encoder,
       bool require_finite_valid_features = true, bool detach_to_cpu = false,
-      cuwacunu::kikijyeba::lattice::runtime_report::runtime_report_mode_t
-          runtime_report_mode = cuwacunu::kikijyeba::lattice::runtime_report::
+      cuwacunu::hero::lattice::runtime_report::runtime_report_mode_t
+          runtime_report_mode = cuwacunu::hero::lattice::runtime_report::
               runtime_report_mode_t::normal,
       std::string component_assembly_id = "vicreg_v1",
       std::string assembly_token = "wikimyei.representation.vicreg.v1",
@@ -397,8 +397,8 @@ private:
   EncoderT *encoder_{nullptr};
   bool require_finite_valid_features_{true};
   bool detach_to_cpu_{false};
-  cuwacunu::kikijyeba::lattice::runtime_report::runtime_report_mode_t
-      runtime_report_mode_{cuwacunu::kikijyeba::lattice::runtime_report::
+  cuwacunu::hero::lattice::runtime_report::runtime_report_mode_t
+      runtime_report_mode_{cuwacunu::hero::lattice::runtime_report::
                                runtime_report_mode_t::normal};
   std::string component_assembly_id_{"vicreg_v1"};
   std::string assembly_token_{"wikimyei.representation.vicreg.v1"};

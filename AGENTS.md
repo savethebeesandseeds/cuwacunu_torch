@@ -95,10 +95,13 @@ training/inference pipelines, and DSL-driven system configuration.
 
 # Runtime and Training Dispatch
 - Marshal is the preferred operator surface for readiness-target dispatch.
-  For trainable Lattice targets, use `hero.marshal.reach_lattice_target`
-  before Runtime execution. Treat Marshal advice and receipts as the dispatch
-  audit trail; Lattice remains the proof authority and Runtime remains the
-  executor.
+  For dispatchable Lattice targets, use `hero.marshal.prepare` before Runtime
+  execution. Treat Marshal advice and receipts as the dispatch audit trail;
+  Lattice remains the proof authority and Runtime remains the executor.
+- Trainable-policy work must go through Runtime policy-training contracts.
+  Runtime currently supports only the bounded pre-PPO
+  `noop_policy_training.v1` execute smoke path; PPO execution remains refused
+  until a dedicated Runtime trainer exists.
 - Do not launch non-dry-run model training with ad hoc `/tmp` configs. Temporary
   configs are acceptable for dry-run/smoke checks only. Training that writes
   checkpoints must use durable repo config, a reviewed durable overlay, or a
@@ -123,7 +126,7 @@ training/inference pipelines, and DSL-driven system configuration.
   whether the artifacts can be reconciled into the official target path.
 - A safe readiness-target training preflight is:
   - `hero.marshal.status`
-  - `hero.marshal.reach_lattice_target` with `requested_mode=dry_run`,
+  - `hero.marshal.prepare` with `requested_mode=dry_run`,
     `materialize_plan_inputs=true`, and `include_runtime_dry_run=true`
   - align durable Runtime config/wave if Marshal blocks
   - rerun the Marshal dry-run until it accepts the handoff

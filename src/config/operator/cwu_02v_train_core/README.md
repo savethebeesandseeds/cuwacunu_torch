@@ -8,21 +8,21 @@ baseline.
 Run order:
 
 1. `representation.config`
-   - active wave: `train_core.mtf_jepa_mae_vicreg`
+   - active wave id: `train_core_mtf_jepa_mae_vicreg`
    - training policy: `mtf_jepa_mae_vicreg.train_core_3000.jkimyei`
    - training id: `real_mtf_jepa_mae_vicreg_train_core_v1_operator_3000_clean_parent`
    - full contract also references `mdn.train_core_3500.jkimyei`, so the
      representation and MDN runs share one active contract fingerprint
-   - execution must go through `hero.marshal.reach_lattice_target`
+   - execution must go through the current Marshal/Runtime target-dispatch path
    - target: `cwu_02v_representation_train_core_ready`
 
 2. `mdn.config`
-   - active wave: `train_core.mdn`
+   - active wave id: `train_core_channel_mdn`
    - training policy: `mdn.train_core_3500.jkimyei`
    - full contract also references `mtf_jepa_mae_vicreg.train_core_3000.jkimyei`
    - keep `INPUT_REPRESENTATION_CHECKPOINT` empty while training
-     representation; fill it only after representation is proven, using the concrete
-     `hero.lattice.latest_satisfying_checkpoint` result for
+     representation; fill it only after representation is proven, using concrete
+     Lattice/Marshal checkpoint evidence for
      `cwu_02v_representation_train_core_ready` before execution
    - target: `cwu_02v_mdn_train_core_no_test_leakage`
 

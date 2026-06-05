@@ -1,6 +1,6 @@
 #include "jkimyei/evaluation/source/data_analytics.h"
 
-#include "kikijyeba/lattice/runtime_report/runtime_lls.h"
+#include "hero/lattice_hero/lattice/runtime_report/runtime_lls.h"
 #include <ATen/ops/linalg_eigvalsh.h>
 
 #include <algorithm>
@@ -40,7 +40,7 @@ constexpr double kAutocorrelationDecayThreshold = 0.36787944117144233;
 constexpr double kPi = 3.14159265358979323846;
 
 using runtime_lls_document_t =
-    cuwacunu::kikijyeba::lattice::runtime_report::runtime_lls_document_t;
+    cuwacunu::hero::lattice::runtime_report::runtime_lls_document_t;
 
 [[nodiscard]] inline double clamp_nonneg(double v) {
   return (v > 0.0) ? v : 0.0;
@@ -187,14 +187,14 @@ void append_string_entry_if_nonempty_(runtime_lls_document_t *document,
   if (!document || value.empty())
     return;
   document->entries.push_back(
-      cuwacunu::kikijyeba::lattice::runtime_report::
+      cuwacunu::hero::lattice::runtime_report::
           make_runtime_lls_string_entry(std::string(key), std::string(value)));
 }
 
 void append_bool_entry_(runtime_lls_document_t *document, std::string_view key,
                         bool value) {
   document->entries.push_back(
-      cuwacunu::kikijyeba::lattice::runtime_report::make_runtime_lls_bool_entry(
+      cuwacunu::hero::lattice::runtime_report::make_runtime_lls_bool_entry(
           std::string(key), value));
 }
 
@@ -202,7 +202,7 @@ void append_u64_entry_(
     runtime_lls_document_t *document, std::string_view key, std::uint64_t value,
     std::string_view declared_domain = kRefRangeNonNegative) {
   document->entries.push_back(
-      cuwacunu::kikijyeba::lattice::runtime_report::make_runtime_lls_uint_entry(
+      cuwacunu::hero::lattice::runtime_report::make_runtime_lls_uint_entry(
           std::string(key), value, std::string(declared_domain)));
 }
 
@@ -210,7 +210,7 @@ void append_i64_entry_(runtime_lls_document_t *document, std::string_view key,
                        std::int64_t value,
                        std::string_view declared_domain = kRefRangeSigned) {
   document->entries.push_back(
-      cuwacunu::kikijyeba::lattice::runtime_report::make_runtime_lls_int_entry(
+      cuwacunu::hero::lattice::runtime_report::make_runtime_lls_int_entry(
           std::string(key), value, std::string(declared_domain)));
 }
 
@@ -218,7 +218,7 @@ void append_double_entry_(runtime_lls_document_t *document,
                           std::string_view key, double value,
                           std::string_view declared_domain = kRefRangeSigned) {
   document->entries.push_back(
-      cuwacunu::kikijyeba::lattice::runtime_report::
+      cuwacunu::hero::lattice::runtime_report::
           make_runtime_lls_double_entry(std::string(key), value,
                                         std::string(declared_domain)));
 }
@@ -842,7 +842,7 @@ void fill_remaining_stream_indices_evenly_(
   runtime_lls_document_t document{};
   document.entries.reserve(18);
   document.entries.push_back(
-      cuwacunu::kikijyeba::lattice::runtime_report::
+      cuwacunu::hero::lattice::runtime_report::
           make_runtime_lls_string_entry("schema", report.schema));
   append_component_report_identity_entries_(&document, report_identity);
   append_string_entry_if_nonempty_(&document, keys.label_key, report_label);
@@ -896,7 +896,7 @@ void fill_remaining_stream_indices_evenly_(
   runtime_lls_document_t document{};
   document.entries.reserve(40 + report.streams.size() * 15);
   document.entries.push_back(
-      cuwacunu::kikijyeba::lattice::runtime_report::
+      cuwacunu::hero::lattice::runtime_report::
           make_runtime_lls_string_entry("schema", report.schema));
   append_component_report_identity_entries_(&document, report_identity);
   append_string_entry_if_nonempty_(&document, keys.label_key, report_label);

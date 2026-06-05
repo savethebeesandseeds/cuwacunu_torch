@@ -12,7 +12,7 @@
 
 #include <torch/torch.h>
 
-#include "kikijyeba/lattice/runtime_report/component_runtime_lls.h"
+#include "hero/lattice_hero/lattice/runtime_report/component_runtime_lls.h"
 #include "kikijyeba/protocol/component_stream.h"
 #include "kikijyeba/protocol/config_bundle.h"
 #include "kikijyeba/topology/dock_binding.h"
@@ -40,8 +40,8 @@ struct graph_first_pipeline_builder_options_t {
   bool display_mdn_model{false};
   torch::Dtype dtype{torch::kFloat32};
   torch::Device device{torch::kCPU};
-  cuwacunu::kikijyeba::lattice::runtime_report::runtime_report_mode_t
-      runtime_report_mode{cuwacunu::kikijyeba::lattice::runtime_report::
+  cuwacunu::hero::lattice::runtime_report::runtime_report_mode_t
+      runtime_report_mode{cuwacunu::hero::lattice::runtime_report::
                               runtime_report_mode_t::normal};
 };
 
@@ -199,16 +199,21 @@ resolve_batch_size(const channel_graph_first_config_bundle_t &bundle,
   }
 
   switch (bundle.wave_settings.target) {
-  case cuwacunu::kikijyeba::settings::wave_target_t::vicreg_representation:
+  case cuwacunu::hero::runtime::settings::wave_target_t::vicreg_representation:
     return checked_batch_size_from_config(bundle.vicreg_training.batch_size,
                                           "vicreg_training.batch_size");
-  case cuwacunu::kikijyeba::settings::wave_target_t::
+  case cuwacunu::hero::runtime::settings::wave_target_t::
       mtf_jepa_mae_vicreg_representation:
     return checked_batch_size_from_config(
         bundle.mtf_jepa_mae_vicreg_training.batch_size,
         "mtf_jepa_mae_vicreg_training.batch_size");
-  case cuwacunu::kikijyeba::settings::wave_target_t::inference_channel_mdn:
+  case cuwacunu::hero::runtime::settings::wave_target_t::inference_channel_mdn:
     break;
+  case cuwacunu::hero::runtime::settings::wave_target_t::policy_trainable:
+    throw std::runtime_error(
+        "[graph_first_pipeline_builder] wikimyei.policy.trainable is a "
+        "Runtime Hero policy-training wave target, not a graph-first channel "
+        "pipeline target");
   }
 
   const auto representation_batch = checked_batch_size_from_config(
@@ -227,20 +232,24 @@ resolve_batch_size(const channel_graph_first_config_bundle_t &bundle,
 [[nodiscard]] inline bool
 uses_random_source_order(const channel_graph_first_config_bundle_t &bundle) {
   return bundle.wave_settings.source_order_policy ==
-         cuwacunu::kikijyeba::settings::wave_source_order_policy_t::
+         cuwacunu::hero::runtime::settings::wave_source_order_policy_t::
              random_per_epoch;
 }
 
 [[nodiscard]] inline int64_t
 source_order_random_seed(const channel_graph_first_config_bundle_t &bundle) {
   switch (bundle.wave_settings.target) {
-  case cuwacunu::kikijyeba::settings::wave_target_t::vicreg_representation:
+  case cuwacunu::hero::runtime::settings::wave_target_t::vicreg_representation:
     return bundle.vicreg_training.seed;
-  case cuwacunu::kikijyeba::settings::wave_target_t::
+  case cuwacunu::hero::runtime::settings::wave_target_t::
       mtf_jepa_mae_vicreg_representation:
     return bundle.mtf_jepa_mae_vicreg_training.seed;
-  case cuwacunu::kikijyeba::settings::wave_target_t::inference_channel_mdn:
+  case cuwacunu::hero::runtime::settings::wave_target_t::inference_channel_mdn:
     return bundle.channel_mdn_training.seed;
+  case cuwacunu::hero::runtime::settings::wave_target_t::policy_trainable:
+    throw std::runtime_error(
+        "[graph_first_pipeline_builder] wikimyei.policy.trainable has no "
+        "graph-first source-order seed");
   }
   throw std::runtime_error(
       "[graph_first_pipeline_builder] unknown wave TARGET for source-order "
@@ -250,13 +259,17 @@ source_order_random_seed(const channel_graph_first_config_bundle_t &bundle) {
 [[nodiscard]] inline const char *source_order_random_seed_source(
     const channel_graph_first_config_bundle_t &bundle) {
   switch (bundle.wave_settings.target) {
-  case cuwacunu::kikijyeba::settings::wave_target_t::vicreg_representation:
+  case cuwacunu::hero::runtime::settings::wave_target_t::vicreg_representation:
     return "vicreg_training.seed";
-  case cuwacunu::kikijyeba::settings::wave_target_t::
+  case cuwacunu::hero::runtime::settings::wave_target_t::
       mtf_jepa_mae_vicreg_representation:
     return "mtf_jepa_mae_vicreg_training.seed";
-  case cuwacunu::kikijyeba::settings::wave_target_t::inference_channel_mdn:
+  case cuwacunu::hero::runtime::settings::wave_target_t::inference_channel_mdn:
     return "channel_mdn_training.seed";
+  case cuwacunu::hero::runtime::settings::wave_target_t::policy_trainable:
+    throw std::runtime_error(
+        "[graph_first_pipeline_builder] wikimyei.policy.trainable has no "
+        "graph-first source-order seed source");
   }
   throw std::runtime_error(
       "[graph_first_pipeline_builder] unknown wave TARGET for source-order "
@@ -351,15 +364,15 @@ parse_cuda_device_index(const std::string &normalized_device) {
   return "unknown";
 }
 
-[[nodiscard]] inline cuwacunu::kikijyeba::lattice::runtime_report::
+[[nodiscard]] inline cuwacunu::hero::lattice::runtime_report::
     runtime_report_mode_t
     resolve_runtime_report_mode(
-        const cuwacunu::kikijyeba::settings::wave_settings_t &wave_settings,
-        cuwacunu::kikijyeba::lattice::runtime_report::runtime_report_mode_t
+        const cuwacunu::hero::runtime::settings::wave_settings_t &wave_settings,
+        cuwacunu::hero::lattice::runtime_report::runtime_report_mode_t
             option_mode) {
-  namespace runtime_report = cuwacunu::kikijyeba::lattice::runtime_report;
+  namespace runtime_report = cuwacunu::hero::lattice::runtime_report;
   const auto wave_mode =
-      cuwacunu::kikijyeba::settings::runtime_report_mode_from_wave(
+      cuwacunu::hero::runtime::settings::runtime_report_mode_from_wave(
           wave_settings);
   if (runtime_report::runtime_report_enabled(wave_mode)) {
     return wave_mode;
@@ -394,10 +407,10 @@ public:
                                                                 options_);
     const bool use_mtf_runtime_device =
         bundle_.wave_settings.target ==
-            cuwacunu::kikijyeba::settings::wave_target_t::
+            cuwacunu::hero::runtime::settings::wave_target_t::
                 mtf_jepa_mae_vicreg_representation ||
         (bundle_.wave_settings.target ==
-             cuwacunu::kikijyeba::settings::wave_target_t::
+             cuwacunu::hero::runtime::settings::wave_target_t::
                  inference_channel_mdn &&
          cuwacunu::kikijyeba::protocol::
              active_protocol_uses_mtf_jepa_mae_vicreg(bundle_));
@@ -507,15 +520,15 @@ public:
     out.wave_source_cursor_kind = bundle_.wave_settings.source_cursor_kind;
     out.wave_source_cursor_scope = bundle_.wave_settings.source_cursor_scope;
     out.wave_source_range_policy =
-        cuwacunu::kikijyeba::settings::source_range_policy_name(
+        cuwacunu::hero::runtime::settings::source_range_policy_name(
             bundle_.wave_settings.source_range_policy);
     out.wave_source_order_policy =
-        cuwacunu::kikijyeba::settings::source_order_policy_name(
+        cuwacunu::hero::runtime::settings::source_order_policy_name(
             bundle_.wave_settings.source_order_policy);
     out.wave_source_order_policy_explicit =
         bundle_.wave_settings.source_order_policy_explicit;
     out.wave_source_order_warnings =
-        cuwacunu::kikijyeba::settings::source_order_warning_token(
+        cuwacunu::hero::runtime::settings::source_order_warning_token(
             bundle_.wave_settings);
     out.wave_source_order_warning_level =
         out.wave_source_order_warnings.empty() ? "none" : "warning";
@@ -545,7 +558,7 @@ public:
           std::to_string(*bundle_.wave_settings.source_key_end);
     }
     out.runtime_report_mode =
-        cuwacunu::kikijyeba::settings::runtime_report_mode_name(
+        cuwacunu::hero::runtime::settings::runtime_report_mode_name(
             effective_runtime_report_mode());
     out.protocol_id = bundle_.protocol_variant.protocol_id;
     out.protocol_kind = bundle_.protocol_variant.protocol_kind;
@@ -595,10 +608,10 @@ public:
 
   [[nodiscard]] int64_t context_dim() const {
     if (bundle_.wave_settings.target ==
-            cuwacunu::kikijyeba::settings::wave_target_t::
+            cuwacunu::hero::runtime::settings::wave_target_t::
                 mtf_jepa_mae_vicreg_representation ||
         (bundle_.wave_settings.target ==
-             cuwacunu::kikijyeba::settings::wave_target_t::
+             cuwacunu::hero::runtime::settings::wave_target_t::
                  inference_channel_mdn &&
          cuwacunu::kikijyeba::protocol::
              active_protocol_uses_mtf_jepa_mae_vicreg(bundle_))) {
@@ -638,10 +651,10 @@ public:
         });
     const bool use_mtf_representation =
         bundle_.wave_settings.target ==
-            cuwacunu::kikijyeba::settings::wave_target_t::
+            cuwacunu::hero::runtime::settings::wave_target_t::
                 mtf_jepa_mae_vicreg_representation ||
         (bundle_.wave_settings.target ==
-             cuwacunu::kikijyeba::settings::wave_target_t::
+             cuwacunu::hero::runtime::settings::wave_target_t::
                  inference_channel_mdn &&
          cuwacunu::kikijyeba::protocol::
              active_protocol_uses_mtf_jepa_mae_vicreg(bundle_));
@@ -682,7 +695,7 @@ public:
     return out;
   }
 
-  [[nodiscard]] cuwacunu::kikijyeba::lattice::runtime_report::
+  [[nodiscard]] cuwacunu::hero::lattice::runtime_report::
       runtime_report_mode_t
       effective_runtime_report_mode() const {
     return graph_first_pipeline_builder_detail::resolve_runtime_report_mode(
@@ -725,7 +738,7 @@ public:
   [[nodiscard]] lifted_stream_t make_node_lifted_stream(
       graph_source_t &&source,
       std::optional<
-          cuwacunu::kikijyeba::lattice::runtime_report::runtime_report_mode_t>
+          cuwacunu::hero::lattice::runtime_report::runtime_report_mode_t>
           runtime_report_mode = std::nullopt) const {
     if (options_.dry_run) {
       throw std::runtime_error(
@@ -744,13 +757,13 @@ public:
         cuwacunu::wikimyei::expression::nodelift::srl::lift_future_enabled(
             bundle_.nodelift);
     const auto resolved_range =
-        cuwacunu::kikijyeba::settings::resolve_source_range_to_anchor_indices(
+        cuwacunu::hero::runtime::settings::resolve_source_range_to_anchor_indices(
             bundle_.wave_settings, source.cursor_report());
     stream_options.begin_anchor_index = resolved_range.anchor_index_begin;
     stream_options.end_anchor_index = resolved_range.anchor_index_end;
     stream_options.source_order =
         bundle_.wave_settings.source_order_policy ==
-                cuwacunu::kikijyeba::settings::wave_source_order_policy_t::
+                cuwacunu::hero::runtime::settings::wave_source_order_policy_t::
                     random_per_epoch
             ? cuwacunu::wikimyei::expression::nodelift::srl::stream::
                   node_lifted_source_order_t::random_per_epoch
@@ -763,14 +776,14 @@ public:
               bundle_));
     }
     const auto source_order_warning =
-        cuwacunu::kikijyeba::settings::source_order_warning_token(
+        cuwacunu::hero::runtime::settings::source_order_warning_token(
             bundle_.wave_settings);
     if (source_order_warning[0] != '\0') {
       log_warn("[channel_graph_first_pipeline_builder][SOURCE_ORDER_WARNING] "
                "%s: MODE=train is using SOURCE_ORDER=%s; stochastic "
                "graph-anchor train loading is disabled.\n",
                source_order_warning,
-               cuwacunu::kikijyeba::settings::source_order_policy_name(
+               cuwacunu::hero::runtime::settings::source_order_policy_name(
                    bundle_.wave_settings.source_order_policy));
     }
     stream_options.component_assembly_id =
@@ -803,7 +816,7 @@ public:
   [[nodiscard]] auto make_channel_representation_stream(
       lifted_stream_t &&lifted_stream, EncoderT &encoder,
       std::optional<
-          cuwacunu::kikijyeba::lattice::runtime_report::runtime_report_mode_t>
+          cuwacunu::hero::lattice::runtime_report::runtime_report_mode_t>
           runtime_report_mode = std::nullopt) const {
     namespace repstream =
         cuwacunu::wikimyei::representation::encoding::vicreg::stream;

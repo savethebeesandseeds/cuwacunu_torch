@@ -27,7 +27,7 @@ namespace mdn_stream =
 namespace vicreg = cuwacunu::wikimyei::representation::encoding::vicreg;
 namespace vicreg_stream =
     cuwacunu::wikimyei::representation::encoding::vicreg::stream;
-namespace runtime_lls = cuwacunu::kikijyeba::lattice::runtime_report;
+namespace runtime_lls = cuwacunu::hero::lattice::runtime_report;
 namespace nodelift = cuwacunu::wikimyei::expression::nodelift::srl::stream;
 
 namespace {

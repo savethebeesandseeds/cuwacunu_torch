@@ -1,5 +1,5 @@
-#include "kikijyeba/lattice/target/lattice_target_evaluator.h"
-#include "kikijyeba/runtime/job_runner.h"
+#include "hero/lattice_hero/lattice/target/lattice_target_evaluator.h"
+#include "hero/runtime_hero/runtime/job_runner.h"
 
 #include <cmath>
 #include <exception>
@@ -22,11 +22,11 @@
 #include <unistd.h>
 
 namespace env = cuwacunu::kikijyeba::environment;
-namespace exposure = cuwacunu::kikijyeba::lattice::exposure;
+namespace exposure = cuwacunu::hero::lattice::exposure;
 namespace replay = cuwacunu::kikijyeba::environment::replay;
-namespace runtime = cuwacunu::kikijyeba::runtime;
-namespace runtime_report = cuwacunu::kikijyeba::lattice::runtime_report;
-namespace target = cuwacunu::kikijyeba::lattice::target;
+namespace runtime = cuwacunu::hero::runtime;
+namespace runtime_report = cuwacunu::hero::lattice::runtime_report;
+namespace target = cuwacunu::hero::lattice::target;
 namespace provenance = cuwacunu::kikijyeba::protocol::config_provenance;
 namespace types = cuwacunu::ujcamei::source::registry::types;
 
@@ -208,7 +208,7 @@ fixture_paths_t make_config_fixture(
   const auto channels_dsl = out.dir / "ujcamei.source.retrieval.channels.dsl";
   const auto graph_dsl = out.dir / "kikijyeba.topology.graph.dsl";
   out.protocol_dsl = out.dir / "kikijyeba.protocol.dsl";
-  out.wave_dsl = out.dir / "kikijyeba.settings.wave.dsl";
+  out.wave_dsl = out.dir / "hero.runtime.wave.dsl";
   const auto vicreg_dsl = out.dir / "wikimyei.representation.vicreg.dsl";
   const auto vicreg_net = out.dir / "wikimyei.representation.vicreg.net";
   const auto mtf_dsl =
@@ -566,9 +566,10 @@ fixture_paths_t make_config_fixture(
           "kikijyeba_topology_graph_dsl_path = " +
           graph_dsl.string() +
           "\n"
-          "kikijyeba_settings_wave_dsl_bnf_path = "
-          "/cuwacunu/src/config/grammar/kikijyeba.settings.wave.dsl.bnf\n"
-          "kikijyeba_settings_wave_dsl_path = " +
+          "[HERO]\n"
+          "runtime_wave_dsl_bnf_path = "
+          "/cuwacunu/src/config/grammar/hero.runtime.wave.dsl.bnf\n"
+          "runtime_wave_dsl_path = " +
           out.wave_dsl.string() +
           "\n\n"
           "[WIKIMYEI]\n"

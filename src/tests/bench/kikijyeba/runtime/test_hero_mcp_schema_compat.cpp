@@ -14,9 +14,9 @@
 #include <vector>
 
 namespace lattice_fixture = cuwacunu::tests::kikijyeba::lattice_fixture;
-namespace exposure = cuwacunu::kikijyeba::lattice::exposure;
+namespace exposure = cuwacunu::hero::lattice::exposure;
 namespace schema = cuwacunu::hero::mcp_schema_compat;
-namespace split = cuwacunu::kikijyeba::lattice::split;
+namespace split = cuwacunu::hero::lattice::split;
 namespace fs = std::filesystem;
 
 namespace {
@@ -554,7 +554,7 @@ void write_mtf_source_analytics_warning_fixture(const fs::path &runtime_root) {
   const auto job_dir = runtime_root / "mtf_source_analytics_warn_job";
 
   const auto split_policy = split::load_lattice_split_policy_from_file(
-      "/cuwacunu/src/config/kikijyeba.lattice.splits.dsl");
+      "/cuwacunu/src/config/hero.lattice.splits.dsl");
   const auto *train_core = split_policy.find_split("train_core");
   if (train_core == nullptr) {
     throw std::runtime_error("missing train_core split");

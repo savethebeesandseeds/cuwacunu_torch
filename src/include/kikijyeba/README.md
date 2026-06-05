@@ -2,25 +2,19 @@
 
 Kikijyeba means brain.
 
-This pillar is for intent, coordination, objectives, and memory of what the
-system is trying to become.
+This pillar is for protocol, topology, and environment/world contracts.
 
 It is not Ujcamei: it does not own input/source.
 
 It is not Wikimyei: it does not perform worker/model labor directly.
 
-It should eventually help answer questions like:
-
-- what active world are we working on,
-- what workers are needed,
-- what evidence is sufficient,
-- what target or objective is being pursued,
-- how source, expression, representation, inference, and training should be
-  coordinated without reviving legacy orchestration dependencies.
+Hero Runtime, Hero Lattice, and Hero Marshal own execution, proof/inspection,
+and coordination surfaces. They may read Kikijyeba contracts, but they do not
+live inside Kikijyeba.
 
 Current migrated rooms:
 
-- `kikijyeba.h`, umbrella include for the current runtime-planning surface.
+- `kikijyeba.h`, umbrella include for the current protocol/topology surface.
 - `environment`, the historical replay operating-world contract. V1 keeps
   episodes, observations, target-weight actions, simulated execution, rewards,
   and replay evidence in Kikijyeba while policy math remains in Wikimyei.
@@ -40,30 +34,28 @@ Current migrated rooms:
 - `protocol`, current graph-first protocol API. It compiles authored config
   files into a protocol contract, resolves source docking, and builds runtime
   objects.
-- `runtime`, executable job layer. It runs a wave against a compiled protocol
-  contract, producing a job manifest, job state, resolved wave plan, and a call
-  into the existing Jkimyei representation or inference launcher. Runtime also
-  houses current wave settings, where run/debug mode, graph-wide source ranges,
-  and Ujcamei cursor-reporting scope are declared for the active wave.
 - `topology`, protocol-owned active-world topology. It includes graph topology,
   graph-order identity, Wikimyei registry checks, and dock bindings between
   active component assemblies.
-- `lattice`, the symbolic lattice/memory language. Parser helpers and
-  left-hand-side value declarations live directly in
-  `cuwacunu::kikijyeba::lattice`; emitted runtime component reports live in
-  `lattice/runtime_report`. Read-only lattice targets live in `lattice/target`
-  and evaluate whether contract/component/source-cursor evidence is sufficient
-  before suggesting the next wave.
+
+Hero-owned rooms now live under `src/include/hero`:
+
+- `hero/runtime_hero`, Runtime Hero public entry headers; executable wave/job
+  contracts live under `hero/runtime_hero/runtime`.
+- `hero/lattice_hero`, Lattice Hero public entry headers; read-only proof,
+  exposure, split, and report contracts live under `hero/lattice_hero/lattice`.
+- `hero/marshal_hero`, Marshal Hero public entry headers; bounded coordination,
+  handoff, rollout, and inspection contracts live under
+  `hero/marshal_hero/marshal`.
+- `hero/config_hero`, Config Hero public entry headers; config store contracts
+  live under `hero/config_hero/config`.
 
 Current C++ namespaces:
 
 - `cuwacunu::kikijyeba::protocol`
 - `cuwacunu::kikijyeba::environment`
-- `cuwacunu::kikijyeba::runtime`
-- `cuwacunu::kikijyeba::settings` (stable wave-settings API namespace)
 - `cuwacunu::kikijyeba::topology`
 - `cuwacunu::kikijyeba::topology::graph`
-- `cuwacunu::kikijyeba::lattice`
 
 Canonical runtime vocabulary:
 
@@ -71,13 +63,5 @@ Canonical runtime vocabulary:
   run. The current graph-first contract is built from Ujcamei source/retrieval
   config, Kikijyeba topology, Wikimyei assemblies and networks, dock bindings,
   and Jkimyei training/inference specs.
-- Wave: one runtime instruction over a protocol contract. It chooses mode and
-  graph-wide source cursor range. A wave does not redefine topology or worker
-  assemblies.
-- Lattice target: a desired state over contract-scoped evidence. V0 targets
-  read manifests, state, reports, and checkpoints; they can recommend a next
-  wave but cannot execute it.
-- Job: one execution attempt of a wave against a protocol contract. Jobs write
-  a manifest, mutable state, reports, and optional `.lls` sidecars.
 - Dock binding: the compatibility binding between component dock variables such
   as `B`, `N`, `L`, `C`, `Hx`, `Hf`, `F`, `De`, `Df`, and `K`.

@@ -7,13 +7,12 @@ payloads live at the config root.
 Current migrated sections:
 
 - `UJCAMEI`: source registry and source retrieval channel DSL paths.
-- `KIKIJYEBA`: protocol, topology graph, wave settings, lattice target, and
-  replay environment DSL paths.
+- `KIKIJYEBA`: protocol, topology graph, and replay environment DSL paths.
 - `WIKIMYEI`: expression, representation, inference, observer, and policy DSL
   paths.
 - `JKIMYEI`: training orchestration DSL paths.
-- `HERO`: Config Hero, Runtime Hero, Lattice Hero, and Marshal Hero policy
-  paths.
+- `HERO`: Config Hero, Runtime Hero, Lattice Hero, Marshal Hero policy paths,
+  Runtime wave selection, and Lattice target/split paths.
 - `GUI`: `cuwacunu_cmd`/`iinuji_cmd` terminal Shell Logs defaults plus image
   and animation asset paths.
 
@@ -29,7 +28,9 @@ fallback, `iinuji_closing_logo_path` for the bundled farewell splash logo, and
 asset paths resolve against the directory that contains the active `.config`;
 invalid assets fall back to the bundled waajacamaya resources or text wordmark.
 
-`kikijyeba.settings.wave.dsl` selects the focal runtime component with `TARGET`.
+`hero.runtime.wave.dsl` is a Runtime-owned wave catalog. The active block is
+selected by `[HERO].runtime_wave_id`, and each selected block names the focal runtime
+component with `TARGET`.
 The default graph-first path is now the strict channel-preserving pair:
 `wikimyei.representation.encoding.vicreg` and
 `wikimyei.inference.expected_value.mdn`. The MDN path consumes the
@@ -170,27 +171,28 @@ Runtime Hero starts from:
 - `src/config/man/hero.runtime.man`
 
 `src/config/hero.runtime.dsl` is the single Runtime Hero policy surface. Its
-default `locked_default` profile is used for MCP/Codex safety: wave execution
-and train execution are disabled, while developer reset is allowed only through
-the guarded `hero.runtime.reset` path with explicit confirmation. Intentional
-training should select `runtime_hero_profile = train_operator` in an
-operator-local `.config` or pass `--profile train_operator` to
-`hero_runtime.mcp`. That profile enables execute/train with explicit
+default `operator_default` profile permits confirmed non-live wave/train
+execution while keeping developer reset available only through the guarded
+`hero.runtime.reset` path with explicit confirmation. Intentional long-running
+training may select `runtime_hero_profile = long_train_operator` in an
+operator-local `.config` or pass `--profile long_train_operator` to
+`hero_runtime.mcp`. That profile keeps execute/train enabled with explicit
 confirmation and a longer runtime budget, but keeps `allow_dev_nuke=false`.
 
-Reusable wave profiles live beside the active wave file:
+Reusable wave profiles now live inside the single canonical wave catalog:
 
-- `kikijyeba.settings.wave.train_core.vicreg.dsl`
-- `kikijyeba.settings.wave.train_core.mtf_jepa_mae_vicreg.dsl`
-- `kikijyeba.settings.wave.train_core.mdn.dsl`
-- `kikijyeba.settings.wave.validation_eval.mdn.dsl`
+- `src/config/hero.runtime.wave.dsl`
+- checked-in wave ids include `train_core_vicreg`,
+  `train_core_mtf_jepa_mae_vicreg`, `train_core_channel_mdn`,
+  `validation_eval_channel_mdn`, and `policy_training_pre_ppo_noop`
 
-They are templates for operator-local `.config` overlays. The default
-`kikijyeba.settings.wave.dsl` remains the single active wave named by `.config`.
-Reusable profiles use `SOURCE_RANGE=all` by default. Concrete anchor/source-key
-ranges are overlaid per launch through Runtime Hero `wave_overlay` or the
-equivalent `cuwacunu_exec --source-range ...` flags; they are not protocol
-identity.
+Operator-local `.config` files point `[HERO].runtime_wave_dsl_path` at this
+same file and select the active block with `[HERO].runtime_wave_id`. The
+checked-in `WAVE_SELECTION.ACTIVE_WAVE_ID` is only a fallback for direct file
+decoding. Reusable profiles use `SOURCE_RANGE=all` by default. Concrete
+anchor/source-key ranges are overlaid per launch through Runtime Hero
+`wave_overlay` or the equivalent `cuwacunu_exec --source-range ...` flags; they
+are not protocol identity.
 
 Lattice Hero starts from:
 
@@ -213,25 +215,25 @@ independent execution, scheduling, proof, model-selection, checkpoint-selection,
 or config-editing authority. Marshal exposes a small deterministic coordination
 surface over Lattice target state and Runtime policy/wave evidence, while
 Runtime remains the executor and Lattice remains the proof authority.
-`hero.marshal.inspect_evidence_panel` is the read-only path for Lattice
-artifact-readiness targets and fact-family summaries. It can also request
-`hero.lattice.fact_preview` for a concrete family row by digest, digest prefix,
-or fact index, but that preview remains audit-only and cannot satisfy a target,
-select a checkpoint, or create Marshal reachability. Preview rows include the
-typed Lattice catalog `identity_envelope` so inspection tools can read fact
-identity, parent lineage, support counters, and authority flags without
-family-specific parsing. Artifact proof failures
+`hero.marshal.inspect` is the read-only path for Lattice artifact-readiness
+targets and fact-family summaries. It can relay current Lattice inspect panels
+for concrete fact rows by digest, digest prefix, or fact index, but that preview
+remains audit-only and cannot satisfy a target, select a checkpoint, or create
+Marshal reachability. Preview rows include the typed Lattice catalog
+`identity_envelope` so inspection tools can read fact identity, parent lineage,
+support counters, and authority flags without family-specific parsing. Artifact
+proof failures
 now include `fact_preview_hint` metadata so operators can navigate from a
 failed proof to the concrete catalog fact without changing proof or dispatch
-authority. `reach_lattice_target` routes `target_class=artifact_readiness`
-there instead of preparing Runtime handoffs, dispatch validation, or dry-run
-previews.
+authority. Current Marshal routing sends `target_class=artifact_readiness`
+operators to inspect evidence instead of preparing Runtime handoffs, dispatch
+validation, or dry-run previews.
 
 The lattice target DSL is now profile/guard aware. `LATTICE_PROFILE` captures
 reusable readiness defaults, `LATTICE_GUARD` remains available for low-level
 forbidden exposure policy, and `LATTICE_TARGET` binds those pieces to a concrete
 split or source range. Validation/test holdout protection should usually live in
-`kikijyeba.lattice.splits.dsl` through `PROTECT_FROM_USES`; targets can opt into
+`hero.lattice.splits.dsl` through `PROTECT_FROM_USES`; targets can opt into
 that default with `PROTECT_SPLIT`. The preferred target spellings are
 `SUBJECT_COMPONENT`, `OVER_SPLIT`, `WAVE_MODE`, and `PLAN_MAX_ATTEMPTS`;
 compatibility aliases still load so older flat targets remain valid.
@@ -306,10 +308,11 @@ clearing `/cuwacunu/.runtime` but keep backup snapshots disabled by default so a
 reset does not leave legacy backup folders under the disposable runtime tree.
 Operators can explicitly enable backups to the configured `/tmp` backup root.
 
-`kikijyeba.lattice.targets.dsl` sits one level above waves. It declares
-read-only readiness targets over contract-scoped runtime evidence and may
-recommend the next wave, but it does not execute anything.
-`kikijyeba.lattice.splits.dsl` defines named graph-anchor cursor ranges such as
+`hero.lattice.targets.dsl` sits one level above waves and is pointed to by
+`[HERO].lattice_targets_dsl_path`. It declares read-only readiness targets over
+contract-scoped runtime evidence and may recommend the next wave, but it does
+not execute anything. `hero.lattice.splits.dsl` is pointed to by
+`[HERO].lattice_splits_dsl_path` and defines named graph-anchor cursor ranges such as
 `train_core`, `validation_holdout`, and `test_holdout`. Targets can refer to
 those names with `TRAIN_SPLIT` / `OVER_SPLIT`, and validation/test splits can
 declare default `PROTECT_FROM_USES` so targets can simply use `PROTECT_SPLIT`.
@@ -354,7 +357,7 @@ whether the auxiliary row-to-source-key map is complete, numeric, monotone,
 order-preserving, and affine-consistent with the inferred regular key step
 without making it the leakage authority. The audit also counts missing endpoint
 pairs, irregular anchor steps, and row/source-key mismatches as explicit gap
-warnings. `hero.lattice.scan_exposure` adds `source_key_map_audit_summary`,
+warnings. `hero.lattice.inspect` exposes `source_key_map_audit_summary`,
 which binds available audits to graph-order identity, source-cursor identity,
 and source-receipt parent facts while preserving row-index authority. Manifests
 also include
@@ -416,7 +419,7 @@ anchor interval, defaulting to the target range. Warning interval overlap may
 use anchor-range visibility when trusted completed coverage is unavailable; that
 does not make untrusted coverage satisfy readiness. Hero JSON exposes the
 resolved interval as `warning_results[].warning_anchor_range`;
-`hero.lattice.explain_target` exposes the same pre-evaluation scope as
+`hero.lattice.inspect` exposes the same pre-evaluation scope as
 `warning_scope_previews[].resolved_warning_anchor_range`; and
 `warning_anchor_scope_policy_vocabulary` describes the visibility-only fallback
 rules for both surfaces. Repeated exposure is therefore visible without being
@@ -549,17 +552,15 @@ last-valid-channel references. These remain warning/summary diagnostics, not a
 performance gate or checkpoint selector.
 
 Lattice Hero is the read-only agent surface for these checks. It provides
-`hero.lattice.status`, `hero.lattice.list_targets`,
-`hero.lattice.explain_target`, `hero.lattice.evaluate_target`,
-`hero.lattice.plan_target`, `hero.lattice.scan_exposure`, and
-`hero.lattice.checkpoint_closure`. `explain_target` reports the compiled target
-proof object, fingerprint, derived query vocabulary, proof obligation
-vocabulary, proof digest policy, checkpoint selection policy, plan-advice
-policy, contract identity boundary, mathematical readiness crosswalk,
-operational V1 scope/gate crosswalks, static mathematical policy vocabularies,
-deficit priority and evidence-order vocabularies, and numeric dimension
-vocabulary without scanning runtime evidence; evaluation and planning then read
-the in-memory exposure ledger built from runtime files. A
+`hero.lattice.status`, `hero.lattice.inspect`, `hero.lattice.evaluate`, and
+`hero.lattice.compare`. Inspect modes report compiled target proof objects,
+fingerprints, derived query vocabulary, proof obligation vocabulary, proof digest
+policy, checkpoint selection policy, plan-advice policy, contract identity
+boundary, mathematical readiness crosswalk, operational scope/gate crosswalks,
+static mathematical policy vocabularies, deficit priority and evidence-order
+vocabularies, and numeric dimension vocabulary without scanning runtime
+evidence; evaluation and planning then read the in-memory exposure ledger built
+from runtime files. A
 future lattice DB should be a
 rebuildable query/index cache over immutable runtime/fact files, not the primary
 writer of evidence.
@@ -568,8 +569,8 @@ catalog generation validates each tool `inputSchema` as a harness-safety gate:
 the root must be `type=object`, and top-level `oneOf`, `anyOf`, `allOf`,
 `enum`, and `not` are rejected with a message naming the tool, schema path, and
 offending construct. The schema smoke covers Config, Runtime, Lattice, and
-Marshal catalogs and specifically protects the prior
-`hero.lattice.checkpoint_closure` failure mode.
+Marshal catalogs and specifically protects the prior Lattice closure schema
+failure mode.
 Target compilation applies small dimensional checks: fractions stay in `[0,1]`,
 counts are non-negative integral thresholds, and representation condition-number
 thresholds must be at least `1`. Representation-health warnings also reject
@@ -584,7 +585,7 @@ of emitting a single score. The vector separates total warning results,
 triggered warning count, unavailable warning-measurement count, source-key audit
 counts/issues/affine mismatches, unresolved lineage count, selector-leakage
 participation state, node-support imbalance maxima, and the compatibility
-`warning_count` alias for triggered warnings. `hero.lattice.compare_evidence`
+`warning_count` alias for triggered warnings. `hero.lattice.compare`
 evaluates two targets from one scan and reports the vectors, per-dimension
 dominance reasons, and the relation `left_dominates`, `right_dominates`,
 `equivalent`, `incomparable`, `selector_leaked`, or `unavailable`; it emits no
@@ -691,25 +692,24 @@ must preserve those rules rather than becoming evidence authority.
 identity, coverage lattice, exposure-load monoid, closure graph, leakage
 predicate, metric/warning vector, node-support matrix, source-receipt audit set,
 and deficit vector, with their partial orders and identity-scoped join rules.
-V3-A adds `hero.lattice.index_query` as a read-only audit query over the
-rebuildable index rows. It filters by relation/key/digest and reports whether a
-stored cache answer matches a fresh live scan; invalid or mismatched cache rows
-fall back to live scan and do not affect target satisfaction. A separate
+Lattice inspect modes include read-only audit queries over rebuildable index
+rows. They filter by relation/key/digest and report whether a stored cache
+answer matches a fresh live scan; invalid or mismatched cache rows fall back to
+live scan and do not affect target satisfaction. A separate
 `validation_strength=header_only`, `allow_unproven_cache=true`,
 `compare_live_scan=false` mode gives agents a fast read-only cache query while
 marking the answer unproven and still non-authoritative for target readiness.
-V3-B adds `hero.lattice.evaluate_targets` for one-scan multi-target readiness
-checks and strengthens cache files with `watched_file_metadata_digest`,
+Multi-target readiness checks and cache files use `watched_file_metadata_digest`,
 `row_set_digest`, and `relation_counts`; `watched_file_manifest` is a bounded
 freshness mode, while `header_only` is the explicit unproven fast lane.
 The runtime metadata digests are metadata freshness checks over path, size, and
 mtime records. They are not content digests and do not make cache rows proof
 authority for target satisfaction.
-V3-E adds `hero.lattice.derived_query`, a read-only witness surface for a finite
-pilot rule set: `target_satisfied`, `checkpoint_ancestor`,
-`forbidden_overlap`, `stale_cache`, and `unresolved_lineage`. The response
-includes the rule row, result source, concrete witnesses, and fail-closed flags;
-cache rows remain non-authoritative for target satisfaction.
+Derived-query inspect/evaluate panels remain read-only witness surfaces for a
+finite rule set: `target_satisfied`, `checkpoint_ancestor`,
+`forbidden_overlap`, `stale_cache`, and `unresolved_lineage`. Responses include
+the rule row, result source, concrete witnesses, and fail-closed flags; cache
+rows remain non-authoritative for target satisfaction.
 `join_law_vocabulary` makes those joins cache-safe and machine-readable:
 coverage/closure/leakage/warnings/deficits join idempotently inside one
 identity scope, repeated exposure load and distinct node-support rows are

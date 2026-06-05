@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
-#include "kikijyeba/lattice/exposure/exposure_ledger.h"
-#include "kikijyeba/lattice/split/split_policy.h"
+#include "hero/lattice_hero/lattice/exposure/exposure_ledger.h"
+#include "hero/lattice_hero/lattice/split/split_policy.h"
 
 #include <filesystem>
 #include <fstream>
@@ -12,14 +12,14 @@
 
 namespace cuwacunu::tests::kikijyeba::lattice_fixture {
 
-namespace exposure = cuwacunu::kikijyeba::lattice::exposure;
-namespace split = cuwacunu::kikijyeba::lattice::split;
+namespace exposure = cuwacunu::hero::lattice::exposure;
+namespace split = cuwacunu::hero::lattice::split;
 
 struct scanned_forecast_artifact_fixture_options_t {
   bool forecast_baseline_digest_mismatch{false};
   bool load_split_policy{true};
   std::filesystem::path split_policy_path{
-      "/cuwacunu/src/config/kikijyeba.lattice.splits.dsl"};
+      "/cuwacunu/src/config/hero.lattice.splits.dsl"};
   std::string split_id{"validation_holdout"};
 
   std::string contract_fingerprint{"contract_1"};

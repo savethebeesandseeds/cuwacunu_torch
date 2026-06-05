@@ -10,11 +10,11 @@
 #include <vector>
 
 #include "kikijyeba/environment/runtime/experiment_driver.h"
-#include "kikijyeba/runtime/job_runner.h"
+#include "hero/runtime_hero/runtime/job_runner.h"
 #include "ujcamei/source/registry/types/data.h"
 
 namespace env = cuwacunu::kikijyeba::environment;
-namespace runtime = cuwacunu::kikijyeba::runtime;
+namespace runtime = cuwacunu::hero::runtime;
 namespace types = cuwacunu::ujcamei::source::registry::types;
 
 namespace {
@@ -51,7 +51,10 @@ void print_usage(const char *argv0) {
             << "       [--replay-include-current-weight]\n"
             << "       [--replay-no-base-reserve-policy]\n"
             << "       [--replay-no-sdu-policy]\n"
-            << "default config: " << kDefaultConfigPath << "\n";
+            << "default config: " << kDefaultConfigPath << "\n"
+            << "warning: direct non-dry-run or replay launches without "
+               "Runtime/Marshal handoff identity bypass operator lineage; "
+               "prefer hero.marshal.* or hero.runtime.* for normal use.\n";
 }
 
 [[nodiscard]] std::string require_next_arg(int argc, char **argv, int *index,
@@ -266,10 +269,30 @@ int main(int argc, char **argv) {
       }
       replay_options.config_path =
           (config_path == kDefaultConfigPath) ? std::string{} : config_path;
+      std::cerr
+          << "[cuwacunu_exec] WARNING: direct --replay-from-job-dir launch "
+             "bypasses Runtime Hero and Marshal handoff validation; prefer "
+             "hero.marshal.rollout or hero.runtime.run operation=replay for "
+             "Lattice-auditable evidence.\n";
       const auto replay_result =
           env::run_runtime_job_replay_experiment(replay_options);
       print_replay_result(replay_result);
       return 0;
+    }
+
+    if (options.runtime_handoff_id.empty() !=
+        options.runtime_handoff_digest.empty()) {
+      throw std::runtime_error(
+          "[cuwacunu_exec] --runtime-handoff-id and --runtime-handoff-digest "
+          "must be supplied together");
+    }
+    if (!options.dry_run && options.runtime_handoff_id.empty()) {
+      std::cerr
+          << "[cuwacunu_exec] WARNING: direct non-dry-run launch without "
+             "Runtime/Marshal handoff identity; this can bypass Marshal "
+             "coordination and Lattice lineage guarantees. Prefer "
+             "hero.marshal.prepare -> hero.runtime.run operation=wave for "
+             "operator launches.\n";
     }
 
     const auto result =

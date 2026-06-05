@@ -20,9 +20,9 @@
 
 #include <torch/torch.h>
 
-#include "kikijyeba/lattice/runtime_report/component_runtime_lls.h"
+#include "hero/lattice_hero/lattice/runtime_report/component_runtime_lls.h"
 #include "kikijyeba/protocol/pipeline_builder.h"
-#include "kikijyeba/runtime/wave_settings.h"
+#include "hero/runtime_hero/runtime/wave_settings.h"
 #include "wikimyei/assembly.h"
 #include "wikimyei/representation/encoding/mtf_jepa_mae_vicreg/channel_node_stream_adapter.h"
 #include "wikimyei/representation/encoding/mtf_jepa_mae_vicreg/mtf_jepa_mae_vicreg.h"
@@ -35,8 +35,8 @@ struct mtf_jepa_mae_vicreg_graph_first_launcher_options_t {
   bool train_target{true};
   bool write_report{false};
   std::filesystem::path report_path{};
-  cuwacunu::kikijyeba::lattice::runtime_report::runtime_report_mode_t
-      runtime_report_mode{cuwacunu::kikijyeba::lattice::runtime_report::
+  cuwacunu::hero::lattice::runtime_report::runtime_report_mode_t
+      runtime_report_mode{cuwacunu::hero::lattice::runtime_report::
                               runtime_report_mode_t::normal};
 };
 
@@ -817,7 +817,7 @@ public:
     out.completed_anchor_end = out.source_range_end;
     out.checkpoint_trained_anchor_end = out.source_range_end;
     out.runtime_report_mode =
-        cuwacunu::kikijyeba::settings::runtime_report_mode_name(
+        cuwacunu::hero::runtime::settings::runtime_report_mode_name(
             cuwacunu::kikijyeba::protocol::graph_first_pipeline_builder_detail::
                 resolve_runtime_report_mode(bundle.wave_settings,
                                             options_.runtime_report_mode));
@@ -863,7 +863,7 @@ public:
     auto report = dry_run_report();
     report.seed_scope = seed_scope;
     report.runtime_report_mode =
-        cuwacunu::kikijyeba::settings::runtime_report_mode_name(
+        cuwacunu::hero::runtime::settings::runtime_report_mode_name(
             runtime_report_mode);
     report.source_cursor_token = source_cursor_report.cursor_token();
     report.source_anchor_count =
@@ -1221,7 +1221,7 @@ private:
       return options_.train_target;
     }
     return builder_.bundle().wave_settings.action ==
-           cuwacunu::kikijyeba::settings::wave_action_t::train;
+           cuwacunu::hero::runtime::settings::wave_action_t::train;
   }
 
   void validate_batch_size_contract() const {

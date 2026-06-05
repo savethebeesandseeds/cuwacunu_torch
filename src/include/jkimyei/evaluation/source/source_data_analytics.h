@@ -6,7 +6,7 @@
 #include <string_view>
 
 #include "jkimyei/evaluation/source/data_analytics.h"
-#include "kikijyeba/lattice/runtime_report/report_taxonomy.h"
+#include "hero/lattice_hero/lattice/runtime_report/report_taxonomy.h"
 
 namespace cuwacunu::jkimyei::evaluation {
 
@@ -33,7 +33,7 @@ latest_source_data_analytics_artifact_paths(
 make_source_data_analytics_report_identity(
     std::string_view binding_id, std::string_view source_runtime_cursor) {
   return make_evaluation_report_identity(
-      cuwacunu::kikijyeba::lattice::runtime_report::
+      cuwacunu::hero::lattice::runtime_report::
           report_taxonomy::kSourceData,
       binding_id, "ujcamei.source.retrieval", source_runtime_cursor);
 }
@@ -42,7 +42,7 @@ make_source_data_analytics_report_identity(
 make_source_data_symbolic_analytics_report_identity(
     std::string_view binding_id, std::string_view source_runtime_cursor) {
   return make_evaluation_report_identity(
-      cuwacunu::kikijyeba::lattice::runtime_report::
+      cuwacunu::hero::lattice::runtime_report::
           report_taxonomy::kSourceData,
       binding_id, "ujcamei.source.retrieval.symbolic", source_runtime_cursor);
 }

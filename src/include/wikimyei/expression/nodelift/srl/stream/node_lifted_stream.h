@@ -14,7 +14,7 @@
 
 #include <torch/torch.h>
 
-#include "kikijyeba/lattice/runtime_report/component_runtime_lls.h"
+#include "hero/lattice_hero/lattice/runtime_report/component_runtime_lls.h"
 #include "kikijyeba/protocol/component_stream.h"
 #include "ujcamei/source/retrieval/dataloader/graph_anchor_edge_batch.h"
 #include "ujcamei/source/retrieval/dataloader/graph_anchor_edge_dataset.h"
@@ -24,7 +24,7 @@ namespace cuwacunu::wikimyei::expression::nodelift::srl::stream {
 
 namespace node_lifted_stream_detail {
 
-namespace lls = cuwacunu::kikijyeba::lattice::runtime_report;
+namespace lls = cuwacunu::hero::lattice::runtime_report;
 
 inline double tensor_mean_or_nan(const torch::Tensor &tensor) {
   if (!tensor.defined() || tensor.numel() == 0) {
@@ -156,7 +156,7 @@ template <typename KeyT>
           },
           cuwacunu::kikijyeba::protocol::make_component_stream_cursor(
               stream_wave, batch_cursor),
-          cuwacunu::kikijyeba::lattice::runtime_report::runtime_report_mode_t::
+          cuwacunu::hero::lattice::runtime_report::runtime_report_mode_t::
               debug,
           elapsed_ms,
           static_cast<std::uint64_t>(graph_batch.edge_features.numel()),
@@ -278,8 +278,8 @@ template <typename KeyT>
     const cuwacunu::wikimyei::expression::nodelift::srl::nodelift_options_t
         &options = {},
     bool compute_alignment_diagnostics = true, bool lift_future = true,
-    cuwacunu::kikijyeba::lattice::runtime_report::runtime_report_mode_t
-        runtime_report_mode = cuwacunu::kikijyeba::lattice::runtime_report::
+    cuwacunu::hero::lattice::runtime_report::runtime_report_mode_t
+        runtime_report_mode = cuwacunu::hero::lattice::runtime_report::
             runtime_report_mode_t::normal,
     std::string component_assembly_id = "nodelift_srl_v1",
     std::string assembly_token = "wikimyei.expression.nodelift.srl.v1",
@@ -368,7 +368,7 @@ template <typename KeyT>
         cuwacunu::ujcamei::source::retrieval::dataloader::
             compute_graph_anchor_edge_alignment_diagnostics<KeyT>(graph_batch);
   }
-  if (cuwacunu::kikijyeba::lattice::runtime_report::runtime_report_enabled(
+  if (cuwacunu::hero::lattice::runtime_report::runtime_report_enabled(
           runtime_report_mode)) {
     out.runtime_lls = node_lifted_stream_detail::make_nodelift_runtime_lls(
         graph_batch, batch_cursor, graph, lifted, future_lifted_for_report,
@@ -429,8 +429,8 @@ template <typename DatatypeT> struct node_lifted_stream_options_t {
   std::string assembly_token{"wikimyei.expression.nodelift.srl.v1"};
   std::string dock_binding_token{};
   cuwacunu::kikijyeba::protocol::component_stream_wave_t stream_wave{};
-  cuwacunu::kikijyeba::lattice::runtime_report::runtime_report_mode_t
-      runtime_report_mode{cuwacunu::kikijyeba::lattice::runtime_report::
+  cuwacunu::hero::lattice::runtime_report::runtime_report_mode_t
+      runtime_report_mode{cuwacunu::hero::lattice::runtime_report::
                               runtime_report_mode_t::normal};
 };
 

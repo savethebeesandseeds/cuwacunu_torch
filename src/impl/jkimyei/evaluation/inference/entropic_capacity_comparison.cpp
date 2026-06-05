@@ -1,6 +1,6 @@
 #include "jkimyei/evaluation/inference/entropic_capacity_comparison.h"
 
-#include "kikijyeba/lattice/runtime_report/runtime_lls.h"
+#include "hero/lattice_hero/lattice/runtime_report/runtime_lls.h"
 
 #include <cmath>
 #include <optional>
@@ -21,7 +21,7 @@ constexpr std::string_view kRefRangeSigned = "(-inf,+inf)";
 constexpr std::string_view kCapacityRegimeDomain =
     "[under_capacity,matched,surplus_capacity]";
 
-using runtime_lls_document_t = cuwacunu::kikijyeba::lattice::runtime_report::runtime_lls_document_t;
+using runtime_lls_document_t = cuwacunu::hero::lattice::runtime_report::runtime_lls_document_t;
 
 void append_component_report_identity_entries_(
     runtime_lls_document_t *document,
@@ -130,20 +130,20 @@ bool summarize_entropic_capacity_comparison_from_payloads(
   std::unordered_map<std::string, std::string> source_kv{};
   std::unordered_map<std::string, std::string> network_kv{};
   std::string parse_error{};
-  if (!cuwacunu::kikijyeba::lattice::runtime_report::
+  if (!cuwacunu::hero::lattice::runtime_report::
           parse_runtime_lls_text(source_analytics_payload, &source_document,
                                  &parse_error) ||
-      !cuwacunu::kikijyeba::lattice::runtime_report::
+      !cuwacunu::hero::lattice::runtime_report::
           runtime_lls_document_to_kv_map(source_document, &source_kv,
                                          &parse_error)) {
     if (error)
       *error = "invalid source analytics payload: " + parse_error;
     return false;
   }
-  if (!cuwacunu::kikijyeba::lattice::runtime_report::
+  if (!cuwacunu::hero::lattice::runtime_report::
           parse_runtime_lls_text(network_analytics_payload, &network_document,
                                  &parse_error) ||
-      !cuwacunu::kikijyeba::lattice::runtime_report::
+      !cuwacunu::hero::lattice::runtime_report::
           runtime_lls_document_to_kv_map(network_document, &network_kv,
                                          &parse_error)) {
     if (error)
@@ -159,41 +159,41 @@ std::string entropic_capacity_comparison_to_latent_lineage_state_text(
     const evaluation_report_identity_t &report_identity) {
   runtime_lls_document_t document{};
   document.entries.push_back(
-      cuwacunu::kikijyeba::lattice::runtime_report::
+      cuwacunu::hero::lattice::runtime_report::
           make_runtime_lls_string_entry("schema", report.schema));
   append_component_report_identity_entries_(&document, report_identity);
   document.entries.push_back(
-      cuwacunu::kikijyeba::lattice::runtime_report::
+      cuwacunu::hero::lattice::runtime_report::
           make_runtime_lls_double_entry("source_entropic_load",
                                         report.source_entropic_load,
                                         std::string(kRefRangeNonNegative)));
   document.entries.push_back(
-      cuwacunu::kikijyeba::lattice::runtime_report::
+      cuwacunu::hero::lattice::runtime_report::
           make_runtime_lls_double_entry("network_entropic_capacity",
                                         report.network_entropic_capacity,
                                         std::string(kRefRangeNonNegative)));
   document.entries.push_back(
-      cuwacunu::kikijyeba::lattice::runtime_report::
+      cuwacunu::hero::lattice::runtime_report::
           make_runtime_lls_double_entry("capacity_margin",
                                         report.capacity_margin,
                                         std::string(kRefRangeSigned)));
   document.entries.push_back(
-      cuwacunu::kikijyeba::lattice::runtime_report::
+      cuwacunu::hero::lattice::runtime_report::
           make_runtime_lls_string_entry("capacity_margin_preference",
                                         "higher_is_better"));
   document.entries.push_back(
-      cuwacunu::kikijyeba::lattice::runtime_report::
+      cuwacunu::hero::lattice::runtime_report::
           make_runtime_lls_double_entry("capacity_ratio", report.capacity_ratio,
                                         std::string(kRefRangeNonNegative)));
   document.entries.push_back(
-      cuwacunu::kikijyeba::lattice::runtime_report::
+      cuwacunu::hero::lattice::runtime_report::
           make_runtime_lls_string_entry("capacity_ratio_reference",
                                         "1.0=matched_load_capacity"));
   document.entries.push_back(
-      cuwacunu::kikijyeba::lattice::runtime_report::
+      cuwacunu::hero::lattice::runtime_report::
           make_runtime_lls_entry("capacity_regime", report.capacity_regime,
                                  "str", std::string(kCapacityRegimeDomain)));
-  return cuwacunu::kikijyeba::lattice::runtime_report::
+  return cuwacunu::hero::lattice::runtime_report::
       emit_runtime_lls_canonical(document);
 }
 

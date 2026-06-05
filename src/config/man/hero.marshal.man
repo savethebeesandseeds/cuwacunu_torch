@@ -14,9 +14,9 @@ KEYS
 
 TOOLS
   hero.marshal.status
-  hero.marshal.reach_lattice_target
-  hero.marshal.inspect_evidence_panel
-  hero.marshal.evaluate
+  hero.marshal.prepare
+  hero.marshal.rollout
+  hero.marshal.inspect
 
 BOUNDARY
   This policy file is intentionally minimal. It exists for Hero policy-path
@@ -25,13 +25,12 @@ BOUNDARY
   editing authority. Runtime Hero policy still controls execution. Lattice Hero
   still controls proof.
   Artifact-readiness targets and fact-family evidence, including
-  replay_environment, are inspected through hero.marshal.inspect_evidence_panel.
-  They are read-only, non-dispatchable, and are not accepted by
-  hero.marshal.reach_lattice_target as Runtime work. Artifact-readiness reach
-  packets stop before Runtime dispatch validation or dry-run preview
-  construction. Failed artifact proofs are summarized in the evidence panel
-  with failed-proof count, proof-template bound/unbound count, proof kind,
-  proof-template claim, identity-mismatch count, lineage-unbound count,
+  replay_environment, are inspected through hero.marshal.inspect. They are
+  read-only, non-dispatchable, and are not accepted by hero.marshal.prepare as
+  Runtime wave work. Artifact-readiness packets stop before Runtime dispatch
+  validation or dry-run preview construction. Failed artifact proofs are
+  summarized with failed-proof count, proof-template bound/unbound count, proof
+  kind, proof-template claim, identity-mismatch count, lineage-unbound count,
   authority-drift count, integrity flags, authority flags, explicit boundary
   denial flags for target dependencies, Runtime waves, Marshal reachability,
   checkpoint sources, and plan checkpoint inputs, issue codes, artifact deficit
@@ -44,8 +43,9 @@ BOUNDARY
   runtime-index relation/key/digest rows with
   cache_rows_used_for_target_satisfaction=false; include_lineage=false only
   suppresses that audit view. When include_preview, digest, fact_digest,
-  digest_prefix, fact_index, or index is supplied, the panel also relays
-  hero.lattice.fact_preview as preview_panel. Preview rows are audit-only:
+  digest_prefix, fact_index, or index is supplied, the panel may relay a
+  current Lattice inspect fact preview as preview_panel. Preview rows are
+  audit-only:
   facts_used_for_target_satisfaction=false, checkpoint_selected=false, and
   model_selector=false. The relayed facts include identity_envelope so clients
   can inspect normalized fact identity, parent lineage, support counters, and

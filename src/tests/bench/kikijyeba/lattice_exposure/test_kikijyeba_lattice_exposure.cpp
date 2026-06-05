@@ -1,4 +1,4 @@
-#include "kikijyeba/lattice/exposure/exposure_ledger.h"
+#include "hero/lattice_hero/lattice/exposure/exposure_ledger.h"
 
 #include <algorithm>
 #include <cmath>
@@ -13,7 +13,7 @@
 
 #include <unistd.h>
 
-namespace exposure = cuwacunu::kikijyeba::lattice::exposure;
+namespace exposure = cuwacunu::hero::lattice::exposure;
 
 namespace {
 

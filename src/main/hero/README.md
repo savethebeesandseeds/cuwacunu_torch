@@ -285,7 +285,7 @@ Runtime agent workflow:
 1. `hero.runtime.status` checks policy, executable availability, and active
    wave intent.
 2. `hero.runtime.inspect subject=wave` decodes
-   `kikijyeba.settings.wave.dsl`. Canonical VICReg/MDN targets report channel
+   `hero.runtime.wave.dsl`. Canonical VICReg/MDN targets report channel
    job kinds; old node MDN targets are not active.
    The experimental
    `wikimyei.representation.encoding.mtf_jepa_mae_vicreg` target reports the
@@ -320,20 +320,27 @@ Runtime agent workflow:
    bound/match booleans, and whether an indexed report path was rejected. These
    fields are operator visibility; Lattice replay targets remain the proof
    authority.
-7. `hero.runtime.run operation=policy_training requested_mode=plan|dry_run`
-   validates a contract-only trainable-policy job handoff. It returns a
+7. `hero.runtime.run operation=wave requested_mode=plan|dry_run|execute` with
+   policy-training contract fields validates a causal trainable-policy job
+   handoff. The selected `WAVE_SETTINGS` block may bind `POLICY_ID`,
+   `POLICY_KIND`, `TRAINING_SCHEDULE_MODE`, and `LIVE_EXECUTION_ALLOWED`; the
+   request still supplies causal schedule evidence, parent evidence, range
+   digests, and finite bounds. It returns a
    `kikijyeba.runtime.policy_training_job_contract.v1` packet and digest binding
-   policy identity, train/validation/test range digests, normalization and
-   replay-buffer isolation, environment/action/reward/execution-profile
-   identity, causal walk-forward schedule identity, typed cursor-key ordering,
-   ledger-derived no-future-snapshot source, parent replay-environment
-   evidence, and finite bounds. Schedule-less policy training, caller-asserted
-   no-future-snapshot claims, opaque cursor keys, late target-label/reward/
-   trajectory availability, and `offline_full_window_research` cannot satisfy
-   readiness-grade contracts.
-   `requested_mode=execute` is refused until Runtime has a dedicated
-   trainable-policy runner; this surface does not run PPO, write checkpoints, or
-   claim Lattice target satisfaction.
+   protocol/source identity, policy identity, train/validation/test range
+   digests, normalization and replay-buffer isolation,
+   environment/action/reward/execution-profile identity, causal walk-forward
+   schedule identity, typed cursor-key ordering, ledger-derived
+   no-future-snapshot source, selector/checkpoint lineage, parent evidence
+   digests, random seed, and finite bounds. Schedule-less policy training,
+   caller-asserted no-future-snapshot claims, opaque cursor keys, late
+   target-label/reward/trajectory availability, and
+   `offline_full_window_research` cannot satisfy readiness-grade contracts.
+   In this mode, `requested_mode=execute` is available only for
+   `policy_kind=noop_policy_training.v1` under Runtime execute/train policy. It
+   writes a no-op checkpoint, `policy_training.report`, terminal Runtime facts,
+   and `runtime.policy_training.fact` for Lattice inspection. PPO remains
+   explicitly refused, and Runtime does not claim Lattice target satisfaction.
 8. `hero.runtime.reset requested_mode=plan|execute` previews and, when
    explicitly enabled, clears the runtime artifact root for developer reset
    workflows.
@@ -350,7 +357,9 @@ Marshal handoffs should use the explicit `runtime_handoff` object accepted by
 effective wave and policy, rejects unresolved `latest_satisfying:*` model-state
 selectors, and only then launches `cuwacunu_exec`. Concrete source ranges
 should be supplied as `wave_overlay` launch fields rather than baked into
-reusable wave profiles.
+reusable wave profiles. Checked-in reusable wave profiles are selected from the
+single `hero.runtime.wave.dsl` catalog with
+`[HERO].runtime_wave_id`.
 Accepted handoff id/digest values are passed into the Runtime job and echoed in
 `job.manifest`, `runtime.result.fact`, and the derived lattice exposure fact;
 Lattice proof certificates then carry the same handoff identity on closure causal
@@ -358,12 +367,20 @@ exposures when that evidence participates in checkpoint lineage. The older
 `marshal_expected_wave` field remains as compatibility scaffolding.
 
 The checked-in Runtime policy is intentionally profile-scoped for Codex/MCP
-safety. The default `locked_default` profile keeps wave execute/train disabled,
-while developer reset is available only through the guarded `hero.runtime.reset`
-path with explicit confirmation. Use `runtime_hero_profile = train_operator` in
-an operator-local `.config`, or pass `--profile train_operator`, for intentional
-training runs; it enables execute/train with confirmation while keeping
-developer reset disabled.
+safety. The default `operator_default` profile permits confirmed non-live
+wave/train execution, while developer reset is available only through the
+guarded `hero.runtime.reset` path with explicit confirmation. Use
+`runtime_hero_profile = long_train_operator` in an operator-local `.config`, or
+pass `--profile long_train_operator`, for longer intentional training runs; it
+keeps execute/train enabled with confirmation, extends the timeout, and disables
+developer reset.
+
+Direct `cuwacunu_exec` remains available for recovery/debugging, but it is not
+the normal operator path. Non-dry-run direct launches without handoff identity
+warn because they can bypass Marshal coordination and Lattice lineage checks.
+Direct `--replay-from-job-dir` launches also warn; prefer
+`hero.marshal.rollout` or `hero.runtime.run operation=replay` for auditable
+replay reports.
 
 `hero.runtime.reset requested_mode=plan` is a dry-run preview. Non-dry-run reset
 is denied unless `allow_dev_nuke=true` and, by default,
@@ -378,10 +395,10 @@ unknown-status `job.state` files are present.
 Lattice Hero is the read-only control surface above runtime evidence. It scans
 normal job artifacts and lattice fact sidecars into an in-memory exposure
 ledger, explains the compiled proof object for
-`kikijyeba.lattice.targets.dsl`, evaluates targets, recommends the next wave
+`hero.lattice.targets.dsl`, evaluates targets, recommends the next wave
 when a target is not satisfied, and inspects checkpoint exposure closures. It
 does not execute waves. Named train/validation/test ranges live in
-`kikijyeba.lattice.splits.dsl`; target evaluation resolves `TRAIN_SPLIT` /
+`hero.lattice.splits.dsl`; target evaluation resolves `TRAIN_SPLIT` /
 `OVER_SPLIT` from that file before planning and can apply split-level holdout
 defaults through `PROTECT_SPLIT`. The future lattice DB should index immutable
 runtime/fact files for faster queries; runtime remains the producer of durable
