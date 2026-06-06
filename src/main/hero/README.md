@@ -355,10 +355,13 @@ index.
 Marshal handoffs should use the explicit `runtime_handoff` object accepted by
 `hero.runtime.run operation=wave`. Runtime validates the object against the
 effective wave and policy, rejects unresolved `latest_satisfying:*` model-state
-selectors, and only then launches `cuwacunu_exec`. Concrete source ranges
-should be supplied as `wave_overlay` launch fields rather than baked into
-reusable wave profiles. Checked-in reusable wave profiles are selected from the
-single `hero.runtime.wave.dsl` catalog with
+selectors, and only then launches `cuwacunu_exec`. Accepted
+`PLAN_INPUT_REPRESENTATION_CHECKPOINT` and `PLAN_INPUT_MDN_CHECKPOINT` values are
+passed as launch-time checkpoint overrides, so readiness-grade operator launches
+do not need to copy materialized checkpoint paths into static `.jkimyei` files.
+Concrete source ranges should be supplied as `wave_overlay` launch fields rather
+than baked into reusable wave profiles. Checked-in reusable wave profiles are
+selected from the single `hero.runtime.wave.dsl` catalog with
 `[HERO].runtime_wave_id`.
 Accepted handoff id/digest values are passed into the Runtime job and echoed in
 `job.manifest`, `runtime.result.fact`, and the derived lattice exposure fact;
@@ -377,8 +380,12 @@ developer reset.
 
 Direct `cuwacunu_exec` remains available for recovery/debugging, but it is not
 the normal operator path. Non-dry-run direct launches without handoff identity
-warn because they can bypass Marshal coordination and Lattice lineage checks.
-Direct `--replay-from-job-dir` launches also warn; prefer
+warn because they do not prove Marshal validated Lattice advice, Runtime policy,
+active wave bounds, checkpoint/source identity, or handoff lineage. Direct
+`--replay-from-job-dir` launches also warn because they do not prove Marshal
+validated rollout bounds, Runtime policy, or Cajtucu execution-profile identity.
+Artifacts from direct debug/recovery launches may be unsuitable for readiness
+claims; prefer
 `hero.marshal.rollout` or `hero.runtime.run operation=replay` for auditable
 replay reports.
 
@@ -1105,9 +1112,9 @@ Lattice Hero agent runbook:
    `EVALUATED_CHECKPOINT_SOURCE = latest_satisfying:<target_id>` means the
    evaluation report must prove it loaded that exact MDN checkpoint, with the
    matching representation checkpoint lineage. Suggested waves may include
-   symbolic model-state source hints such as `INPUT_MDN_CHECKPOINT`, but
-   Runtime Hero remains responsible for resolving/executing them and the
-   runtime report remains the proof.
+   symbolic model-state source hints such as `PLAN_INPUT_MDN_CHECKPOINT`, which
+   Marshal must materialize into concrete Runtime handoff checkpoint inputs
+   before Runtime executes. The runtime report remains the proof.
 6. Call `hero.lattice.inspect subject=checkpoint mode=closure` for checkpoint lineage. A complete
    MDN closure should include the MDN exposure fact and the exact upstream
    VICReg checkpoint producer fact. The tool accepts either checkpoint_path or

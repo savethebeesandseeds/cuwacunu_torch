@@ -15,19 +15,19 @@
 #include <utility>
 #include <vector>
 
-#include "jkimyei/training/inference/channel_graph_first_inference_launcher.h"
-#include "jkimyei/training/representation/channel_graph_first_representation_launcher.h"
-#include "jkimyei/training/representation/mtf_jepa_mae_vicreg_graph_first_launcher.h"
-#include "kikijyeba/environment/runtime/replay_source.h"
 #include "hero/lattice_hero/lattice/exposure/exposure_ledger.h"
-#include "kikijyeba/protocol/config_bundle.h"
-#include "kikijyeba/protocol/config_provenance.h"
-#include "kikijyeba/protocol/pipeline_builder.h"
 #include "hero/runtime_hero/runtime/job_layout.h"
 #include "hero/runtime_hero/runtime/job_manifest.h"
 #include "hero/runtime_hero/runtime/job_state.h"
 #include "hero/runtime_hero/runtime/terminal_facts.h"
 #include "hero/runtime_hero/runtime/wave_plan.h"
+#include "jkimyei/training/inference/channel_graph_first_inference_launcher.h"
+#include "jkimyei/training/representation/channel_graph_first_representation_launcher.h"
+#include "jkimyei/training/representation/mtf_jepa_mae_vicreg_graph_first_launcher.h"
+#include "kikijyeba/environment/runtime/replay_source.h"
+#include "kikijyeba/protocol/config_bundle.h"
+#include "kikijyeba/protocol/config_provenance.h"
+#include "kikijyeba/protocol/pipeline_builder.h"
 
 namespace cuwacunu::hero::runtime {
 
@@ -49,6 +49,8 @@ struct job_runner_options_t {
   std::string runtime_handoff_id{};
   std::string runtime_handoff_digest{};
   std::string marshal_target_driver_run_id{};
+  std::string input_representation_checkpoint_path{};
+  std::string input_mdn_checkpoint_path{};
   bool source_range_override_enabled{false};
   std::string source_range_override{};
   std::optional<std::size_t> anchor_index_begin_override{std::nullopt};
@@ -326,8 +328,7 @@ resolve_replay_index_path(const std::filesystem::path &path,
 
 inline void write_runtime_replay_observer_belief_fact_sidecar(
     const std::filesystem::path &job_dir,
-    const cuwacunu::hero::lattice::exposure::lattice_exposure_fact_t
-        &parent) {
+    const cuwacunu::hero::lattice::exposure::lattice_exposure_fact_t &parent) {
   namespace exposure = cuwacunu::hero::lattice::exposure;
   namespace replay = cuwacunu::kikijyeba::environment::replay;
 
@@ -536,6 +537,26 @@ inline void apply_source_range_override(
   cuwacunu::hero::runtime::settings::validate_wave_settings(*settings);
 }
 
+inline void apply_model_state_input_overrides(
+    cuwacunu::kikijyeba::protocol::channel_graph_first_config_bundle_t *bundle,
+    const job_runner_options_t &options) {
+  if (bundle == nullptr) {
+    return;
+  }
+  if (!options.input_representation_checkpoint_path.empty()) {
+    bundle->channel_mdn_training.input_representation_checkpoint_path =
+        std::filesystem::path(options.input_representation_checkpoint_path)
+            .lexically_normal()
+            .string();
+  }
+  if (!options.input_mdn_checkpoint_path.empty()) {
+    bundle->channel_mdn_training.input_mdn_checkpoint_path =
+        std::filesystem::path(options.input_mdn_checkpoint_path)
+            .lexically_normal()
+            .string();
+  }
+}
+
 inline void write_lattice_fact_sidecars(const std::filesystem::path &job_dir,
                                         job_state_t *state) {
   if (state == nullptr) {
@@ -736,6 +757,7 @@ private:
         load_channel_graph_first_protocol_contract_from_config(config_path_);
     job_runner_detail::apply_source_range_override(&bundle.wave_settings,
                                                    options_);
+    job_runner_detail::apply_model_state_input_overrides(&bundle, options_);
     cuwacunu::kikijyeba::protocol::validate_channel_graph_first_config_bundle(
         bundle);
     cuwacunu::kikijyeba::protocol::graph_first_pipeline_builder_options_t

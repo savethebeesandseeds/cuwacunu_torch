@@ -1,8 +1,8 @@
 #include "hero/runtime_hero/hero_runtime_tools.h"
 
+#include "hero/marshal_hero/marshal/digest.h"
 #include "hero/mcp_schema_compat.h"
 #include "hero/runtime_hero/hero_runtime.h"
-#include "hero/marshal_hero/marshal/digest.h"
 #include "hero/runtime_hero/runtime/job_layout.h"
 #include "hero/runtime_hero/runtime/policy_training_job_contract.h"
 #include "hero/runtime_hero/runtime/wave_settings.h"
@@ -52,41 +52,38 @@ struct tool_descriptor_t {
   const char *input_schema_json;
 };
 
-constexpr tool_descriptor_t
-    kTools
-        [] =
-            {
-                {"hero.runtime.status",
-                 "Read-only health: summarize Runtime Hero policy, executable, "
-                 "active "
-                 "wave, job root, and explicit non-proof boundary state.",
-                 R"({"type":"object","properties":{},"additionalProperties":false})"},
-                {"hero.runtime.inspect",
-                 "Read-only Runtime inspection. subject=schema reads policy "
-                 "keys; "
-                 "subject=wave decodes the active wave; "
-                 "subject=jobs/job/artifact "
-                 "reads "
-                 "bounded Runtime evidence.",
-                 R"({"type":"object","required":["subject"],"properties":{"subject":{"type":"string","enum":["schema","wave","jobs","job","artifact"]},"config_path":{"type":"string"},"root":{"type":"string"},"job_id":{"type":"string"},"job_dir":{"type":"string"},"artifact":{"type":"string"},"path":{"type":"string"},"include_artifacts":{"type":"boolean"},"include_text":{"type":"boolean"},"max_bytes":{"type":"integer"},"limit":{"type":"integer"}},"additionalProperties":false})"},
-                {"hero.runtime.run",
-                 "Runtime execution/delegation. operation=wave runs the active "
-                 "Runtime "
-                 "wave with requested_mode=dry_run|execute. Policy-training "
-                 "contracts are also submitted as operation=wave with policy "
-                 "identity and causal schedule fields; execute is limited to "
-                 "the bounded pre-PPO noop_policy_training.v1 smoke trainer. "
-                 "operation=replay plans, dry-runs, or executes replay from a "
-                 "completed Runtime job.",
-                 R"({"type":"object","required":["operation","requested_mode"],"properties":{"operation":{"type":"string","enum":["wave","replay"]},"requested_mode":{"type":"string","enum":["plan","dry_run","execute"]},"config_path":{"type":"string"},"job_id":{"type":"string"},"job_dir":{"type":"string"},"force_rebuild_cache":{"type":"boolean"},"confirm_execute":{"type":"boolean"},"timeout_seconds":{"type":"integer"},"wave_overlay":{"type":"object","properties":{"source_range":{"type":"string"},"anchor_index_begin":{"type":"string"},"anchor_index_end":{"type":"string"},"source_key_begin":{"type":"string"},"source_key_end":{"type":"string"}}},"runtime_handoff":{"type":"object","properties":{}},"marshal_expected_wave":{"type":"object","properties":{"target_component_family_id":{"type":"string"},"mode":{"type":"string"},"source_range":{"type":"string"},"source_order":{"type":"string"},"anchor_index_begin":{"type":"string"},"anchor_index_end":{"type":"string"},"source_key_begin":{"type":"string"},"source_key_end":{"type":"string"},"model_state_inputs":{"type":"object"}}},"base_reserve_node_id":{"type":"string"},"risky_node_ids":{"type":"string"},"experiment_id":{"type":"string"},"report_path":{"type":"string"},"initial_equity_base":{"type":"number"},"min_base_reserve_weight":{"type":"number"},"max_risky_weight":{"type":"number"},"max_turnover_l1":{"type":"number"},"max_steps":{"type":"integer"},"max_parallel_jobs":{"type":"integer"},"include_equal_weight":{"type":"boolean"},"include_current_weight":{"type":"boolean"},"include_base_reserve_policy":{"type":"boolean"},"include_spot_distributional_utility_policy":{"type":"boolean"},"allow_synthetic_direct_edges":{"type":"boolean"},"validation_rollout":{"type":"boolean"},"linear_transaction_cost_rate":{"type":"number"},"execution_profile_digest":{"type":"string"},"policy_set_digest":{"type":"string"},"protocol_id":{"type":"string"},"protocol_contract_fingerprint":{"type":"string"},"graph_order_fingerprint":{"type":"string"},"source_cursor_token":{"type":"string"},"split_policy_fingerprint":{"type":"string"},"component_assembly_fingerprint":{"type":"string"},"policy_id":{"type":"string"},"policy_kind":{"type":"string"},"policy_architecture_digest":{"type":"string"},"training_config_digest":{"type":"string"},"training_range_digest":{"type":"string"},"validation_range_digest":{"type":"string"},"test_range_digest":{"type":"string"},"environment_contract_id":{"type":"string"},"observation_schema_digest":{"type":"string"},"action_schema_digest":{"type":"string"},"reward_contract_digest":{"type":"string"},"training_schedule_mode":{"type":"string","enum":["causal_walk_forward_training.v1","offline_full_window_research","batch_final_refit_candidate"]},"causal_schedule_schema_id":{"type":"string"},"causal_schedule_digest":{"type":"string"},"causal_schedule_cursor_key_kind":{"type":"string","enum":["numeric_anchor_index","numeric_source_key","fixed_width_source_key","timestamp_ms"]},"causal_schedule_no_future_snapshot_use_source":{"type":"string"},"normalization_fit_range_digest":{"type":"string"},"replay_buffer_source_range_digest":{"type":"string"},"early_stopping_policy_digest":{"type":"string"},"hyperparameter_selection_policy_digest":{"type":"string"},"selector_split":{"type":"string","enum":["none","train","training","validation"]},"selector_policy_digest":{"type":"string"},"parent_checkpoint_digest":{"type":"string"},"parent_forecast_eval_fact_digest":{"type":"string"},"parent_observer_belief_fact_digest":{"type":"string"},"parent_allocation_engine_fact_digest":{"type":"string"},"parent_replay_environment_fact_digest":{"type":"string"},"final_refit_parent_selected_checkpoint_digest":{"type":"string"},"random_seed":{"type":"integer"},"max_episodes":{"type":"integer"},"max_wall_clock_seconds":{"type":"integer"},"causal_schedule_readiness_eligible":{"type":"boolean"},"causal_schedule_no_future_snapshot_use":{"type":"boolean"},"offline_full_window_research_allowed":{"type":"boolean"},"final_refit_uses_validation":{"type":"boolean"},"validation_no_longer_proof":{"type":"boolean"},"sealed_test_required":{"type":"boolean"},"live_execution_allowed":{"type":"boolean"}},"additionalProperties":false})"},
-                {"hero.runtime.reset",
-                 "Guarded developer reset. requested_mode=plan previews the "
-                 "reset; "
-                 "requested_mode=execute clears allowed Runtime roots only "
-                 "with "
-                 "explicit "
-                 "confirmation and policy permission.",
-                 R"({"type":"object","required":["requested_mode"],"properties":{"requested_mode":{"type":"string","enum":["plan","execute"]},"runtime_root":{"type":"string"},"backup":{"type":"boolean"},"confirm_dev_nuke":{"type":"boolean"}},"additionalProperties":false})"},
+constexpr tool_descriptor_t kTools[] = {
+    {"hero.runtime.status",
+     "Read-only health: summarize Runtime Hero policy, executable, "
+     "active "
+     "wave, job root, and explicit non-proof boundary state.",
+     R"({"type":"object","properties":{},"additionalProperties":false})"},
+    {"hero.runtime.inspect",
+     "Read-only Runtime inspection. subject=schema reads policy "
+     "keys; "
+     "subject=wave decodes the active wave; "
+     "subject=jobs/job/artifact "
+     "reads "
+     "bounded Runtime evidence.",
+     R"({"type":"object","required":["subject"],"properties":{"subject":{"type":"string","enum":["schema","wave","jobs","job","artifact"]},"config_path":{"type":"string"},"root":{"type":"string"},"job_id":{"type":"string"},"job_dir":{"type":"string"},"artifact":{"type":"string"},"path":{"type":"string"},"include_artifacts":{"type":"boolean"},"include_text":{"type":"boolean"},"max_bytes":{"type":"integer"},"limit":{"type":"integer"}},"additionalProperties":false})"},
+    {"hero.runtime.run",
+     "Runtime execution/delegation. operation=wave runs the active "
+     "Runtime "
+     "wave with requested_mode=dry_run|execute. Policy-training "
+     "contracts are also submitted as operation=wave with policy "
+     "identity and causal schedule fields; execute is limited to "
+     "the bounded pre-PPO noop_policy_training.v1 smoke trainer. "
+     "operation=replay plans, dry-runs, or executes replay from a "
+     "completed Runtime job.",
+     R"({"type":"object","required":["operation","requested_mode"],"properties":{"operation":{"type":"string","enum":["wave","replay"]},"requested_mode":{"type":"string","enum":["plan","dry_run","execute"]},"config_path":{"type":"string"},"job_id":{"type":"string"},"job_dir":{"type":"string"},"force_rebuild_cache":{"type":"boolean"},"confirm_execute":{"type":"boolean"},"timeout_seconds":{"type":"integer"},"wave_overlay":{"type":"object","properties":{"source_range":{"type":"string"},"anchor_index_begin":{"type":"string"},"anchor_index_end":{"type":"string"},"source_key_begin":{"type":"string"},"source_key_end":{"type":"string"}}},"runtime_handoff":{"type":"object","properties":{}},"marshal_expected_wave":{"type":"object","properties":{"target_component_family_id":{"type":"string"},"mode":{"type":"string"},"source_range":{"type":"string"},"source_order":{"type":"string"},"anchor_index_begin":{"type":"string"},"anchor_index_end":{"type":"string"},"source_key_begin":{"type":"string"},"source_key_end":{"type":"string"},"model_state_inputs":{"type":"object"}}},"base_reserve_node_id":{"type":"string"},"risky_node_ids":{"type":"string"},"experiment_id":{"type":"string"},"report_path":{"type":"string"},"initial_equity_base":{"type":"number"},"min_base_reserve_weight":{"type":"number"},"max_risky_weight":{"type":"number"},"max_turnover_l1":{"type":"number"},"max_steps":{"type":"integer"},"max_parallel_jobs":{"type":"integer"},"include_equal_weight":{"type":"boolean"},"include_current_weight":{"type":"boolean"},"include_base_reserve_policy":{"type":"boolean"},"include_spot_distributional_utility_policy":{"type":"boolean"},"allow_synthetic_direct_edges":{"type":"boolean"},"validation_rollout":{"type":"boolean"},"linear_transaction_cost_rate":{"type":"number"},"execution_profile_digest":{"type":"string"},"policy_set_digest":{"type":"string"},"protocol_id":{"type":"string"},"protocol_contract_fingerprint":{"type":"string"},"graph_order_fingerprint":{"type":"string"},"source_cursor_token":{"type":"string"},"split_policy_fingerprint":{"type":"string"},"component_assembly_fingerprint":{"type":"string"},"policy_id":{"type":"string"},"policy_kind":{"type":"string"},"policy_architecture_digest":{"type":"string"},"training_config_digest":{"type":"string"},"training_range_digest":{"type":"string"},"validation_range_digest":{"type":"string"},"test_range_digest":{"type":"string"},"environment_contract_id":{"type":"string"},"observation_schema_digest":{"type":"string"},"action_schema_digest":{"type":"string"},"reward_contract_digest":{"type":"string"},"training_schedule_mode":{"type":"string","enum":["causal_walk_forward_training.v1","offline_full_window_research","batch_final_refit_candidate"]},"causal_schedule_schema_id":{"type":"string"},"causal_schedule_digest":{"type":"string"},"causal_schedule_cursor_key_kind":{"type":"string","enum":["numeric_anchor_index","numeric_source_key","fixed_width_source_key","timestamp_ms"]},"causal_schedule_no_future_snapshot_use_source":{"type":"string"},"normalization_fit_range_digest":{"type":"string"},"replay_buffer_source_range_digest":{"type":"string"},"early_stopping_policy_digest":{"type":"string"},"hyperparameter_selection_policy_digest":{"type":"string"},"selector_split":{"type":"string","enum":["none","train","training","validation"]},"selector_policy_digest":{"type":"string"},"parent_checkpoint_digest":{"type":"string"},"parent_forecast_eval_fact_digest":{"type":"string"},"parent_observer_belief_fact_digest":{"type":"string"},"parent_allocation_engine_fact_digest":{"type":"string"},"parent_replay_environment_fact_digest":{"type":"string"},"final_refit_parent_selected_checkpoint_digest":{"type":"string"},"random_seed":{"type":"integer"},"max_episodes":{"type":"integer"},"max_wall_clock_seconds":{"type":"integer"},"causal_schedule_readiness_eligible":{"type":"boolean"},"causal_schedule_no_future_snapshot_use":{"type":"boolean"},"offline_full_window_research_allowed":{"type":"boolean"},"final_refit_uses_validation":{"type":"boolean"},"validation_no_longer_proof":{"type":"boolean"},"sealed_test_required":{"type":"boolean"},"live_execution_allowed":{"type":"boolean"}},"additionalProperties":false})"},
+    {"hero.runtime.reset",
+     "Guarded developer reset. requested_mode=plan previews the "
+     "reset; "
+     "requested_mode=execute clears allowed Runtime roots only "
+     "with "
+     "explicit "
+     "confirmation and policy permission.",
+     R"({"type":"object","required":["requested_mode"],"properties":{"requested_mode":{"type":"string","enum":["plan","execute"]},"runtime_root":{"type":"string"},"backup":{"type":"boolean"},"confirm_dev_nuke":{"type":"boolean"}},"additionalProperties":false})"},
 };
 
 [[nodiscard]] bool tool_is_read_only(std::string_view name) {
@@ -969,9 +966,9 @@ struct runtime_profile_blocks_t {
   return true;
 }
 
-[[nodiscard]] bool split_runtime_profile_blocks(
-    std::string_view text, runtime_profile_blocks_t *out,
-    std::string *error) {
+[[nodiscard]] bool split_runtime_profile_blocks(std::string_view text,
+                                                runtime_profile_blocks_t *out,
+                                                std::string *error) {
   if (!out) {
     if (error) {
       *error = "runtime profile block output pointer is null";
@@ -1005,10 +1002,9 @@ struct runtime_profile_blocks_t {
         }
         return false;
       }
-      active_profile_id =
-          trim_ascii(trimmed.substr(std::string_view{"RUNTIME_PROFILE"}.size(),
-                                    brace - std::string_view{"RUNTIME_PROFILE"}
-                                                .size()));
+      active_profile_id = trim_ascii(
+          trimmed.substr(std::string_view{"RUNTIME_PROFILE"}.size(),
+                         brace - std::string_view{"RUNTIME_PROFILE"}.size()));
       const std::string after_brace = trim_ascii(trimmed.substr(brace + 1));
       if (!valid_runtime_profile_id(active_profile_id)) {
         if (error) {
@@ -1019,9 +1015,8 @@ struct runtime_profile_blocks_t {
       }
       if (!after_brace.empty()) {
         if (error) {
-          *error =
-              "RUNTIME_PROFILE opening line must end after `{` at line " +
-              std::to_string(line_no);
+          *error = "RUNTIME_PROFILE opening line must end after `{` at line " +
+                   std::to_string(line_no);
         }
         return false;
       }
@@ -1192,8 +1187,8 @@ struct wave_info_t {
   const auto maybe_wave =
       read_ini_value(config_path, "HERO", "runtime_wave_dsl_path");
   if (!maybe_wave.has_value()) {
-    info.error = "missing [HERO].runtime_wave_dsl_path in " +
-                 config_path.string();
+    info.error =
+        "missing [HERO].runtime_wave_dsl_path in " + config_path.string();
     return info;
   }
   info.wave_path = resolve_against(config_path, *maybe_wave);
@@ -1204,17 +1199,16 @@ struct wave_info_t {
   info.readable = true;
   const auto maybe_wave_id =
       read_ini_value(config_path, "HERO", "runtime_wave_id");
-  info.selected_wave_id = maybe_wave_id.has_value()
-                              ? trim_ascii(*maybe_wave_id)
-                              : std::string{};
+  info.selected_wave_id =
+      maybe_wave_id.has_value() ? trim_ascii(*maybe_wave_id) : std::string{};
   info.selected_wave_source =
       info.selected_wave_id.empty() ? "wave_file_or_single" : "global_config";
   try {
-    const auto block =
-        cuwacunu::hero::runtime::settings::selected_wave_settings_block_from_dsl(
-            text, info.selected_wave_id);
+    const auto block = cuwacunu::hero::runtime::settings::
+        selected_wave_settings_block_from_dsl(text, info.selected_wave_id);
     const auto settings =
-        cuwacunu::hero::runtime::settings::decode_wave_settings_from_block(block);
+        cuwacunu::hero::runtime::settings::decode_wave_settings_from_block(
+            block);
     if (info.selected_wave_id.empty()) {
       info.selected_wave_id = settings.wave_id;
     }
@@ -1429,8 +1423,8 @@ inline void apply_wave_overlay_to_info(wave_info_t *info,
       lower == "mdn_expected_value_inference") {
     return "channel_inference_mdn";
   }
-  if (lower == "wikimyei.policy.trainable" ||
-      lower == "policy_trainable" || lower == "trainable_policy") {
+  if (lower == "wikimyei.policy.trainable" || lower == "policy_trainable" ||
+      lower == "trainable_policy") {
     return "policy_training";
   }
   return "invalid_wave_target";
@@ -1672,8 +1666,7 @@ execution_chain(std::string_view target, std::string_view action,
   const std::string active_representation =
       active_representation_from_info(info);
   const std::string protocol_observer =
-      protocol_value_from_info(info, "OBSERVER",
-                               "wikimyei.observer.belief");
+      protocol_value_from_info(info, "OBSERVER", "wikimyei.observer.belief");
   const std::string protocol_allocation_policy = protocol_value_from_info(
       info, "ALLOCATION_POLICY",
       "wikimyei.policy.portfolio.spot_distributional_utility");
@@ -1691,8 +1684,7 @@ execution_chain(std::string_view target, std::string_view action,
       << ",\"wave_path\":" << json_quote(info.wave_path.string())
       << ",\"protocol_path\":" << json_quote(info.protocol_path.string())
       << ",\"selected_wave_id\":" << json_quote(info.selected_wave_id)
-      << ",\"selected_wave_source\":"
-      << json_quote(info.selected_wave_source)
+      << ",\"selected_wave_source\":" << json_quote(info.selected_wave_source)
       << ",\"readable\":" << bool_json(info.readable);
   if (!info.error.empty()) {
     out << ",\"error\":" << json_quote(info.error);
@@ -1764,8 +1756,7 @@ execution_chain(std::string_view target, std::string_view action,
   } else {
     out << "null";
   }
-  out << ",\"job_kind\":" << json_quote(job_kind)
-      << ",\"policy_id\":";
+  out << ",\"job_kind\":" << json_quote(job_kind) << ",\"policy_id\":";
   if (policy_id.empty()) {
     out << "null";
   } else {
@@ -2862,12 +2853,10 @@ validate_replay_report_for_validation_rollout(const fs::path &report_path,
   return true;
 }
 
-[[nodiscard]] bool
-parse_required_string_arg_or_wave(const std::string &args,
-                                  std::string_view json_key,
-                                  const wave_info_t *selected_wave,
-                                  std::string_view wave_key,
-                                  std::string *out, std::string *err) {
+[[nodiscard]] bool parse_required_string_arg_or_wave(
+    const std::string &args, std::string_view json_key,
+    const wave_info_t *selected_wave, std::string_view wave_key,
+    std::string *out, std::string *err) {
   if (extract_json_raw_field(args, json_key, nullptr)) {
     return parse_required_string_arg(args, json_key, out, err);
   }
@@ -2884,13 +2873,10 @@ parse_required_string_arg_or_wave(const std::string &args,
   return false;
 }
 
-[[nodiscard]] bool
-parse_optional_bool_arg_or_wave(const std::string &args,
-                                std::string_view json_key,
-                                const wave_info_t *selected_wave,
-                                std::string_view wave_key,
-                                bool default_value, bool *out,
-                                std::string *err) {
+[[nodiscard]] bool parse_optional_bool_arg_or_wave(
+    const std::string &args, std::string_view json_key,
+    const wave_info_t *selected_wave, std::string_view wave_key,
+    bool default_value, bool *out, std::string *err) {
   if (extract_json_raw_field(args, json_key, nullptr)) {
     return parse_optional_bool_arg(args, json_key, default_value, out, err);
   }
@@ -2917,8 +2903,7 @@ parse_optional_bool_arg_or_wave(const std::string &args,
 }
 
 [[nodiscard]] std::string policy_training_contract_json(
-    const cuwacunu::hero::runtime::policy_training_job_contract_t
-        &contract) {
+    const cuwacunu::hero::runtime::policy_training_job_contract_t &contract) {
   std::ostringstream out;
   out << "{\"schema_version\":" << json_quote(contract.schema_version)
       << ",\"artifact_schema_id\":" << json_quote(contract.artifact_schema_id)
@@ -2928,8 +2913,7 @@ parse_optional_bool_arg_or_wave(const std::string &args,
       << json_quote(contract.protocol_contract_fingerprint)
       << ",\"graph_order_fingerprint\":"
       << json_quote(contract.graph_order_fingerprint)
-      << ",\"source_cursor_token\":"
-      << json_quote(contract.source_cursor_token)
+      << ",\"source_cursor_token\":" << json_quote(contract.source_cursor_token)
       << ",\"split_policy_fingerprint\":"
       << json_quote(contract.split_policy_fingerprint)
       << ",\"component_assembly_fingerprint\":"
@@ -3017,8 +3001,7 @@ parse_optional_bool_arg_or_wave(const std::string &args,
 
 [[nodiscard]] std::string policy_training_unsupported_execute_reason(
     const cuwacunu::hero::runtime::policy_training_job_contract_t &contract) {
-  if (lowercase_ascii(contract.policy_kind).find("ppo") !=
-      std::string::npos) {
+  if (lowercase_ascii(contract.policy_kind).find("ppo") != std::string::npos) {
     return "E_RUNTIME_POLICY_TRAINING_PPO_NOT_IMPLEMENTED: PPO policy "
            "training is intentionally unavailable before the causal Runtime "
            "trainer milestone";
@@ -3139,8 +3122,7 @@ parse_optional_bool_arg_or_wave(const std::string &args,
       << contract.causal_schedule_cursor_key_kind << "\n";
   out << "protocol_contract_fingerprint="
       << contract.protocol_contract_fingerprint << "\n";
-  out << "graph_order_fingerprint=" << contract.graph_order_fingerprint
-      << "\n";
+  out << "graph_order_fingerprint=" << contract.graph_order_fingerprint << "\n";
   out << "nodelift_assembly_fingerprint=\n";
   out << "vicreg_assembly_fingerprint=\n";
   out << "mtf_jepa_mae_vicreg_assembly_fingerprint=\n";
@@ -3187,14 +3169,16 @@ parse_optional_bool_arg_or_wave(const std::string &args,
   out << "runtime_checkpoint_io_fact_written=true\n";
   out << "runtime_checkpoint_io_fact_path=runtime.checkpoint_io.fact\n";
   out << "runtime_health_measurement_fact_written=true\n";
-  out << "runtime_health_measurement_fact_path=runtime.health_measurement.fact\n";
+  out << "runtime_health_measurement_fact_path=runtime.health_measurement."
+         "fact\n";
   out << "lattice_exposure_fact_written=true\n";
   out << "lattice_exposure_fact_path=runtime.policy_training.fact\n";
   return out.str();
 }
 
-[[nodiscard]] std::string policy_training_runtime_result_fact_text(
-    std::string_view job_id, const fs::path &checkpoint_path) {
+[[nodiscard]] std::string
+policy_training_runtime_result_fact_text(std::string_view job_id,
+                                         const fs::path &checkpoint_path) {
   std::ostringstream out;
   out << "fact_type=runtime.result.fact\n";
   out << "schema_version=1\n";
@@ -3214,9 +3198,10 @@ parse_optional_bool_arg_or_wave(const std::string &args,
   return out.str();
 }
 
-[[nodiscard]] std::string policy_training_checkpoint_io_fact_text(
-    std::string_view job_id, const fs::path &checkpoint_path,
-    std::string_view checkpoint_digest) {
+[[nodiscard]] std::string
+policy_training_checkpoint_io_fact_text(std::string_view job_id,
+                                        const fs::path &checkpoint_path,
+                                        std::string_view checkpoint_digest) {
   std::error_code ec;
   const auto checkpoint_bytes = fs::exists(checkpoint_path, ec)
                                     ? fs::file_size(checkpoint_path, ec)
@@ -3241,8 +3226,8 @@ parse_optional_bool_arg_or_wave(const std::string &args,
   return out.str();
 }
 
-[[nodiscard]] std::string policy_training_health_fact_text(
-    std::string_view job_id) {
+[[nodiscard]] std::string
+policy_training_health_fact_text(std::string_view job_id) {
   std::ostringstream out;
   out << "fact_type=runtime.health_measurement.fact\n";
   out << "schema_version=1\n";
@@ -3368,8 +3353,8 @@ void append_assignment_bool(std::ostringstream &out, std::string_view key,
   return out.str();
 }
 
-[[nodiscard]] std::string unique_policy_training_attempt_leaf(
-    std::string_view contract_digest) {
+[[nodiscard]] std::string
+unique_policy_training_attempt_leaf(std::string_view contract_digest) {
   const auto stamp = std::chrono::duration_cast<std::chrono::microseconds>(
                          std::chrono::system_clock::now().time_since_epoch())
                          .count();
@@ -3395,8 +3380,8 @@ void append_assignment_bool(std::ostringstream &out, std::string_view key,
     const std::string &contract_text, std::string_view contract_digest,
     runtime_context_t *ctx, std::string *out, std::string *err) {
   bool confirm_execute = false;
-  if (!parse_optional_bool_arg(args, "confirm_execute", false,
-                               &confirm_execute, err)) {
+  if (!parse_optional_bool_arg(args, "confirm_execute", false, &confirm_execute,
+                               err)) {
     return false;
   }
   if (!policy_bool_or(ctx->policy, "allow_execute", false)) {
@@ -3417,10 +3402,10 @@ void append_assignment_bool(std::ostringstream &out, std::string_view key,
     return false;
   }
 
-  int timeout_seconds = contract.max_wall_clock_seconds > 0
-                            ? static_cast<int>(contract.max_wall_clock_seconds)
-                            : policy_int_or(ctx->policy, "max_runtime_seconds",
-                                            600);
+  int timeout_seconds =
+      contract.max_wall_clock_seconds > 0
+          ? static_cast<int>(contract.max_wall_clock_seconds)
+          : policy_int_or(ctx->policy, "max_runtime_seconds", 600);
   if (!parse_optional_int_arg(args, "timeout_seconds", timeout_seconds,
                               &timeout_seconds, err)) {
     return false;
@@ -3440,9 +3425,9 @@ void append_assignment_bool(std::ostringstream &out, std::string_view key,
       "policy_training_" + std::string(contract_digest.substr(0, 16));
   const std::string attempt_leaf =
       unique_policy_training_attempt_leaf(contract_digest);
-  const std::string job_id =
-      trim_ascii(job_id_arg).empty() ? job_stable_id + "." + attempt_leaf
-                                     : trim_ascii(job_id_arg);
+  const std::string job_id = trim_ascii(job_id_arg).empty()
+                                 ? job_stable_id + "." + attempt_leaf
+                                 : trim_ascii(job_id_arg);
   fs::path job_dir;
   if (!trim_ascii(job_dir_arg).empty()) {
     job_dir = normalize_path(fs::path(job_dir_arg));
@@ -3477,10 +3462,9 @@ void append_assignment_bool(std::ostringstream &out, std::string_view key,
         policy_training_checkpoint_text(contract, contract_digest);
     cuwacunu::hero::runtime::job_layout::write_text_file_atomically(
         checkpoint_path, checkpoint_text);
-    const std::string checkpoint_digest =
-        file_digest_or_empty(checkpoint_path,
-                             "kikijyeba.runtime.policy_training."
-                             "noop_checkpoint.v1");
+    const std::string checkpoint_digest = file_digest_or_empty(
+        checkpoint_path, "kikijyeba.runtime.policy_training."
+                         "noop_checkpoint.v1");
 
     const fs::path report_path = job_dir / "policy_training.report";
     const std::string report_text = policy_training_report_text(
@@ -3536,18 +3520,15 @@ void append_assignment_bool(std::ostringstream &out, std::string_view key,
          << ",\"job_dir\":" << json_quote(job_dir.string())
          << ",\"manifest_path\":"
          << json_quote((job_dir / "job.manifest").string())
-         << ",\"state_path\":"
-         << json_quote((job_dir / "job.state").string())
+         << ",\"state_path\":" << json_quote((job_dir / "job.state").string())
          << ",\"report_path\":" << json_quote(report_path.string())
          << ",\"checkpoint_path\":" << json_quote(checkpoint_path.string())
          << ",\"policy_training_fact_path\":"
-         << json_quote(policy_fact_path.string())
-         << ",\"artifacts\":"
+         << json_quote(policy_fact_path.string()) << ",\"artifacts\":"
          << job_artifacts_json(job_dir, report_path.string(), false,
                                static_cast<std::size_t>(policy_int_or(
                                    ctx->policy, "max_capture_bytes", 65536)))
-         << ",\"terminal_evidence\":"
-         << runtime_terminal_evidence_json(job_dir)
+         << ",\"terminal_evidence\":" << runtime_terminal_evidence_json(job_dir)
          << ",\"authority\":{\"runtime_executes_policy_training_smoke\":true,"
             "\"runtime_executes_live_capital\":false,"
             "\"runtime_trains_ppo\":false,"
@@ -3558,17 +3539,15 @@ void append_assignment_bool(std::ostringstream &out, std::string_view key,
     *out = json.str();
     return true;
   } catch (const std::exception &ex) {
-    *err = std::string("E_RUNTIME_POLICY_TRAINING_EXECUTION_FAILED: ") +
-           ex.what();
+    *err =
+        std::string("E_RUNTIME_POLICY_TRAINING_EXECUTION_FAILED: ") + ex.what();
     return false;
   }
 }
 
-[[nodiscard]] bool
-handle_policy_training_contract(const std::string &args,
-                                std::string_view requested_mode,
-                                runtime_context_t *ctx, std::string *out,
-                                std::string *err) {
+[[nodiscard]] bool handle_policy_training_contract(
+    const std::string &args, std::string_view requested_mode,
+    runtime_context_t *ctx, std::string *out, std::string *err) {
   namespace runtime_contract = cuwacunu::hero::runtime;
   std::optional<wave_info_t> selected_wave;
   if (ctx != nullptr) {
@@ -3650,9 +3629,9 @@ handle_policy_training_contract(const std::string &args,
       !parse_required_string_arg(args, "parent_observer_belief_fact_digest",
                                  &contract.parent_observer_belief_fact_digest,
                                  err) ||
-      !parse_required_string_arg(
-          args, "parent_allocation_engine_fact_digest",
-          &contract.parent_allocation_engine_fact_digest, err) ||
+      !parse_required_string_arg(args, "parent_allocation_engine_fact_digest",
+                                 &contract.parent_allocation_engine_fact_digest,
+                                 err) ||
       !parse_required_string_arg(
           args, "parent_replay_environment_fact_digest",
           &contract.parent_replay_environment_fact_digest, err)) {
@@ -3725,8 +3704,8 @@ handle_policy_training_contract(const std::string &args,
   }
   if (!parse_optional_bool_arg_or_wave(args, "live_execution_allowed",
                                        wave_defaults, "LIVE_EXECUTION_ALLOWED",
-                                       false,
-                                       &contract.live_execution_allowed, err)) {
+                                       false, &contract.live_execution_allowed,
+                                       err)) {
     return false;
   }
 
@@ -3814,10 +3793,21 @@ handle_policy_training_contract(const std::string &args,
   return true;
 }
 
+[[nodiscard]] std::unordered_map<std::string, std::string>
+normalized_path_string_map(
+    const std::unordered_map<std::string, std::string> &values) {
+  std::unordered_map<std::string, std::string> out;
+  for (const auto &[key, value] : values) {
+    out[key] = fs::path(value).lexically_normal().string();
+  }
+  return out;
+}
+
 struct runtime_handoff_binding_t {
   std::string handoff_id{};
   std::string handoff_digest{};
   std::string target_driver_run_id{};
+  std::unordered_map<std::string, std::string> model_state_inputs{};
 };
 
 [[nodiscard]] bool validate_runtime_handoff_object(
@@ -4049,6 +4039,7 @@ struct runtime_handoff_binding_t {
     binding->handoff_id = std::move(handoff_id);
     binding->handoff_digest = std::move(handoff_digest);
     binding->target_driver_run_id = std::move(target_driver_run_id);
+    binding->model_state_inputs = normalized_path_string_map(checkpoint_inputs);
   }
   return true;
 }
@@ -4057,7 +4048,9 @@ struct runtime_handoff_binding_t {
     const std::string &args, const fs::path &config_path,
     const fs::path &policy_path, bool dry_run, bool confirm_execute,
     bool force_rebuild_cache, const wave_info_t &wave,
-    runtime_handoff_binding_t *binding, std::string *err) {
+    runtime_handoff_binding_t *binding,
+    std::unordered_map<std::string, std::string> *effective_model_state_inputs,
+    std::string *err) {
   std::string expected_raw;
   std::string handoff_raw;
   if (args.find("\"runtime_handoff\"") != std::string::npos) {
@@ -4218,7 +4211,10 @@ struct runtime_handoff_binding_t {
       }
       return false;
     }
-    const auto actual_inputs = wave_model_state_inputs(wave);
+    const auto actual_inputs =
+        binding != nullptr && !binding->model_state_inputs.empty()
+            ? binding->model_state_inputs
+            : wave_model_state_inputs(wave);
     if (string_map_has_symbolic_values(actual_inputs, &symbolic_key)) {
       if (err) {
         *err = "E_RUNTIME_HANDOFF_UNRESOLVED_SYMBOLS: active wave input " +
@@ -4240,7 +4236,22 @@ struct runtime_handoff_binding_t {
     }
   }
 
+  if (effective_model_state_inputs != nullptr && binding != nullptr) {
+    *effective_model_state_inputs = binding->model_state_inputs;
+  }
   return true;
+}
+
+void append_model_state_checkpoint_arg(
+    const std::unordered_map<std::string, std::string> &model_state_inputs,
+    std::string_view input_key, std::string_view cli_flag,
+    std::vector<std::string> *argv) {
+  const auto found = model_state_inputs.find(std::string(input_key));
+  if (found == model_state_inputs.end() || trim_ascii(found->second).empty()) {
+    return;
+  }
+  argv->push_back(std::string(cli_flag));
+  argv->push_back(fs::path(found->second).lexically_normal().string());
 }
 
 [[nodiscard]] bool handle_status(const std::string &args,
@@ -4368,9 +4379,11 @@ struct runtime_handoff_binding_t {
     return false;
   }
   runtime_handoff_binding_t handoff_binding{};
+  std::unordered_map<std::string, std::string> handoff_model_state_inputs;
   if (!expected_wave_matches_runtime_wave(
           args, config_path, ctx->policy_path, dry_run, confirm_execute,
-          force_rebuild_cache, wave, &handoff_binding, err)) {
+          force_rebuild_cache, wave, &handoff_binding,
+          &handoff_model_state_inputs, err)) {
     return false;
   }
   const std::string mode = wave.values.count("MODE") != 0
@@ -4464,6 +4477,12 @@ struct runtime_handoff_binding_t {
     argv.push_back("--marshal-target-driver-run-id");
     argv.push_back(handoff_binding.target_driver_run_id);
   }
+  append_model_state_checkpoint_arg(handoff_model_state_inputs,
+                                    "PLAN_INPUT_REPRESENTATION_CHECKPOINT",
+                                    "--input-representation-checkpoint", &argv);
+  append_model_state_checkpoint_arg(handoff_model_state_inputs,
+                                    "PLAN_INPUT_MDN_CHECKPOINT",
+                                    "--input-mdn-checkpoint", &argv);
 
   process_result_t result =
       run_process(argv, timeout_seconds, static_cast<std::size_t>(max_capture));
@@ -5479,8 +5498,8 @@ bool load_runtime_policy(const std::filesystem::path &policy_path,
     return false;
   }
 
-  for (auto &[key, value] : parse_assignment_text(profile_blocks.base_text,
-                                                  false)) {
+  for (auto &[key, value] :
+       parse_assignment_text(profile_blocks.base_text, false)) {
     policy.values[std::move(key)] = std::move(value);
   }
 
@@ -5488,8 +5507,8 @@ bool load_runtime_policy(const std::filesystem::path &policy_path,
   std::string selected_profile_source = "cli";
   if (selected_profile.empty()) {
     selected_profile_source = "global_config";
-    if (const auto configured = read_ini_value(global_config, "HERO",
-                                              "runtime_hero_profile")) {
+    if (const auto configured =
+            read_ini_value(global_config, "HERO", "runtime_hero_profile")) {
       selected_profile = trim_ascii(*configured);
     }
   }
@@ -5520,7 +5539,8 @@ bool load_runtime_policy(const std::filesystem::path &policy_path,
     return false;
   }
   if (profile_it != profile_blocks.profile_text_by_id.end()) {
-    for (auto &[key, value] : parse_assignment_text(profile_it->second, false)) {
+    for (auto &[key, value] :
+         parse_assignment_text(profile_it->second, false)) {
       if (key == "runtime_profile") {
         if (error) {
           *error = "RUNTIME_PROFILE block must not set runtime_profile";

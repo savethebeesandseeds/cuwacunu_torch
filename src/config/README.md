@@ -117,8 +117,8 @@ change the protocol contract fingerprint. `ALLOW_UNTRAINED_REPRESENTATION`
 is runtime model-state admission policy and also does not change the protocol
 contract fingerprint. Keep the repository default MDN
 `.jkimyei` checkpoint fields empty; operational waves should receive concrete
-checkpoint paths by resolving Lattice Hero plan-input references or by applying
-runtime-local overlays. MDN run/evaluation also requires
+checkpoint paths through Marshal-resolved Runtime handoffs or explicit
+Runtime-local debug overlays. MDN run/evaluation also requires
 `INPUT_MDN_CHECKPOINT`; the runtime rejects evaluation with a fresh untrained
 channel-context MDN.
 

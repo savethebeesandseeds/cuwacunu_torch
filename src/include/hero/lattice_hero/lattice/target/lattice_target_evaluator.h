@@ -1363,6 +1363,11 @@ filter_facts_for_active_identity(
   return out;
 }
 
+[[nodiscard]] inline bool readiness_gate_fact_is_completed_or_legacy(
+    const cuwacunu::hero::lattice::exposure::lattice_exposure_fact_t &fact) {
+  return fact.job_status.empty() || fact.job_status == "completed";
+}
+
 [[nodiscard]] inline lattice_target_proof_certificate_t::proof_context_t
 make_proof_context(const lattice_target_spec_t &spec,
                    const lattice_target_active_identity_t &active_identity,
@@ -7314,6 +7319,9 @@ private:
     std::vector<exposure::lattice_exposure_fact_t>
         target_component_family_facts;
     for (const auto &fact : exposure_facts) {
+      if (!detail::readiness_gate_fact_is_completed_or_legacy(fact)) {
+        continue;
+      }
       if (fact.target_component_family_id == spec.component) {
         target_component_family_facts.push_back(fact);
       }

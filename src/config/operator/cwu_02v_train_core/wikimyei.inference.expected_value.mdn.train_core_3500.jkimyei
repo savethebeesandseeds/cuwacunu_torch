@@ -1,8 +1,9 @@
 /*
   Durable operator train-core policy for cwu_02v MDN recovery.
 
-  Fill INPUT_REPRESENTATION_CHECKPOINT with the concrete proof-clean
-  representation checkpoint before executing this profile through Marshal.
+  Leave model-state input fields blank in this static profile. Marshal resolves
+  proof-clean latest_satisfying checkpoint hints into a runtime_handoff, and
+  Runtime passes the concrete paths to cuwacunu_exec as launch-time overrides.
 */
 TRAINING {
   VERSION = wikimyei.inference.expected_value.mdn.jkimyei.v1;
@@ -19,7 +20,7 @@ TRAINING {
   VALIDATION_EVERY = 0;
   SEED = 31;
   FREEZE_REPRESENTATION = true;
-  INPUT_REPRESENTATION_CHECKPOINT = /cuwacunu/.runtime/cuwacunu_exec/components/wikimyei.representation.encoding.mtf_jepa_mae_vicreg/spawns/yde_a7dbda07135734cd/jobs/train/train_core_mtf_jepa_mae_vicreg.train.channel_representation_mtf_jepa_mae_vicreg.attempt_000003/channel_representation.report.mtf_jepa_mae_vicreg.pt;
+  INPUT_REPRESENTATION_CHECKPOINT = ;
   INPUT_MDN_CHECKPOINT = ;
   ALLOW_UNTRAINED_REPRESENTATION = false;
 };

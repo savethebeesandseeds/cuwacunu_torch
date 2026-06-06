@@ -20,10 +20,11 @@ Run order:
    - active wave id: `train_core_channel_mdn`
    - training policy: `mdn.train_core_3500.jkimyei`
    - full contract also references `mtf_jepa_mae_vicreg.train_core_3000.jkimyei`
-   - keep `INPUT_REPRESENTATION_CHECKPOINT` empty while training
-     representation; fill it only after representation is proven, using concrete
-     Lattice/Marshal checkpoint evidence for
-     `cwu_02v_representation_train_core_ready` before execution
+   - keep `INPUT_REPRESENTATION_CHECKPOINT` empty in the static profile; after
+     representation is proven, Marshal resolves
+     `latest_satisfying:cwu_02v_representation_train_core_ready` into a
+     `runtime_handoff`, and Runtime passes the concrete checkpoint path as a
+     launch-time override before execution
    - target: `cwu_02v_mdn_train_core_no_test_leakage`
 
 Do not use temporary config copies for these runs. The spawn identity should be

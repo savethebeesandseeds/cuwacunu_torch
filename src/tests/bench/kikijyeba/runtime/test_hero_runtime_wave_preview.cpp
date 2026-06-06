@@ -1,5 +1,5 @@
-#include "hero/runtime_hero/hero_runtime_tools.h"
 #include "hero/marshal_hero/marshal/digest.h"
+#include "hero/runtime_hero/hero_runtime_tools.h"
 #include "hero/runtime_hero/runtime/policy_training_causal_schedule.h"
 #include "hero/runtime_hero/runtime/wave_settings.h"
 #include "wikimyei/assembly.h"
@@ -51,8 +51,7 @@ std::string digest_file_for_handoff(const std::filesystem::path &path,
   check(in.is_open(), "failed to open digest input");
   std::ostringstream buffer;
   buffer << in.rdbuf();
-  return cuwacunu::hero::marshal::marshal_digest_for_text(domain,
-                                                               buffer.str());
+  return cuwacunu::hero::marshal::marshal_digest_for_text(domain, buffer.str());
 }
 
 std::string replay_report_digest_for_text(const std::string &text) {
@@ -252,12 +251,11 @@ void test_multi_wave_catalog_selection() {
   const auto wave_path = dir / "hero.runtime.wave.dsl";
   const auto config_path = dir / ".config";
   write_text(wave_path, catalog);
-  write_text(config_path,
-             "[HERO]\n"
-             "runtime_wave_dsl_path = " +
-                 wave_path.string() +
-                 "\n"
-                 "runtime_wave_id = train_wave\n");
+  write_text(config_path, "[HERO]\n"
+                          "runtime_wave_dsl_path = " +
+                              wave_path.string() +
+                              "\n"
+                              "runtime_wave_id = train_wave\n");
 
   hero_runtime::runtime_context_t ctx{};
   ctx.global_config_path = config_path;
@@ -295,36 +293,35 @@ void test_runtime_policy_profiles() {
                               policy_path.string() +
                               "\n"
                               "runtime_hero_profile = long_train_operator\n");
-  write_text(policy_path,
-             "protocol_layer[STDIO|HTTPS/SSE]:enum = STDIO\n"
-             "runtime_profile:enum = operator_default\n"
-             "runtime_exec_path:path = /bin/true\n"
-             "default_config_path:path = " +
-                 config_path.string() +
-                 "\n"
-                 "runtime_root:path = " +
-                 runtime_root.string() +
-                 "\n"
-                 "allowed_job_roots:path_list = " +
-                 runtime_root.string() +
-                 "\n"
-                 "require_confirm_execute:bool = true\n"
-                 "require_confirm_dev_nuke:bool = true\n"
-                 "max_capture_bytes:int = 4096\n"
-                 "RUNTIME_PROFILE operator_default {\n"
-                 "  default_dry_run:bool = true\n"
-                 "  allow_execute:bool = true\n"
-                 "  allow_train_execute:bool = true\n"
-                 "  allow_dev_nuke:bool = true\n"
-                 "  max_runtime_seconds:int = 5\n"
-                 "}\n"
-                 "RUNTIME_PROFILE long_train_operator {\n"
-                 "  default_dry_run:bool = true\n"
-                 "  allow_execute:bool = true\n"
-                 "  allow_train_execute:bool = true\n"
-                 "  allow_dev_nuke:bool = false\n"
-                 "  max_runtime_seconds:int = 21600\n"
-                 "}\n");
+  write_text(policy_path, "protocol_layer[STDIO|HTTPS/SSE]:enum = STDIO\n"
+                          "runtime_profile:enum = operator_default\n"
+                          "runtime_exec_path:path = /bin/true\n"
+                          "default_config_path:path = " +
+                              config_path.string() +
+                              "\n"
+                              "runtime_root:path = " +
+                              runtime_root.string() +
+                              "\n"
+                              "allowed_job_roots:path_list = " +
+                              runtime_root.string() +
+                              "\n"
+                              "require_confirm_execute:bool = true\n"
+                              "require_confirm_dev_nuke:bool = true\n"
+                              "max_capture_bytes:int = 4096\n"
+                              "RUNTIME_PROFILE operator_default {\n"
+                              "  default_dry_run:bool = true\n"
+                              "  allow_execute:bool = true\n"
+                              "  allow_train_execute:bool = true\n"
+                              "  allow_dev_nuke:bool = true\n"
+                              "  max_runtime_seconds:int = 5\n"
+                              "}\n"
+                              "RUNTIME_PROFILE long_train_operator {\n"
+                              "  default_dry_run:bool = true\n"
+                              "  allow_execute:bool = true\n"
+                              "  allow_train_execute:bool = true\n"
+                              "  allow_dev_nuke:bool = false\n"
+                              "  max_runtime_seconds:int = 21600\n"
+                              "}\n");
 
   hero_runtime::runtime_policy_t policy{};
   std::string error;
@@ -670,6 +667,136 @@ void test_execute_expected_wave_binding() {
         "expected-wave checkpoint mismatch should fail before execution");
   check(error.find("model_state_inputs differs") != std::string::npos,
         "checkpoint mismatch should report model_state_inputs failure");
+
+  std::filesystem::remove_all(dir);
+}
+
+void test_handoff_checkpoint_inputs_launch_without_static_config_inputs() {
+  const auto dir = make_tmp_dir("handoff_checkpoint_inputs_launch");
+  const auto runtime_root = dir / "runtime";
+  const auto wave_path = dir / "hero.runtime.wave.dsl";
+  const auto config_path = dir / ".config";
+  const auto policy_path = dir / "hero.runtime.dsl";
+  std::filesystem::create_directories(runtime_root);
+
+  write_text(wave_path, "WAVE_SETTINGS {\n"
+                        "  WAVE_ID = handoff_wave;\n"
+                        "  TARGET = wikimyei.inference.expected_value.mdn;\n"
+                        "  MODE = run|debug;\n"
+                        "  SOURCE_CURSOR_KIND = graph_anchor;\n"
+                        "  SOURCE_CURSOR_SCOPE = wave_batch;\n"
+                        "  SOURCE_RANGE = anchor_index;\n"
+                        "  ANCHOR_INDEX_BEGIN = 1;\n"
+                        "  ANCHOR_INDEX_END = 3;\n"
+                        "};\n");
+
+  write_text(config_path, "[HERO]\n"
+                          "runtime_hero_dsl_path = " +
+                              policy_path.string() +
+                              "\n"
+                              "runtime_wave_dsl_path = " +
+                              wave_path.string() + "\n");
+  write_text(policy_path, "protocol_layer[STDIO|HTTPS/SSE]:enum = STDIO\n"
+                          "runtime_exec_path:path = /bin/true\n"
+                          "default_config_path:path = " +
+                              config_path.string() +
+                              "\n"
+                              "runtime_root:path = " +
+                              runtime_root.string() +
+                              "\n"
+                              "allowed_job_roots:path_list = " +
+                              runtime_root.string() +
+                              ",/tmp\n"
+                              "default_dry_run:bool = true\n"
+                              "allow_execute:bool = false\n"
+                              "allow_train_execute:bool = false\n"
+                              "allow_force_rebuild_cache:bool = false\n"
+                              "require_confirm_execute:bool = true\n"
+                              "allow_dev_nuke:bool = false\n"
+                              "require_confirm_dev_nuke:bool = true\n"
+                              "dev_nuke_backup_enabled:bool = true\n"
+                              "dev_nuke_backup_root:path = " +
+                              (dir / "backups").string() +
+                              "\n"
+                              "allowed_dev_nuke_roots:path_list = " +
+                              runtime_root.string() +
+                              "\n"
+                              "max_capture_bytes:int = 4096\n"
+                              "max_runtime_seconds:int = 5\n");
+
+  hero_runtime::runtime_context_t ctx{};
+  ctx.global_config_path = config_path;
+  ctx.policy_path = policy_path;
+  std::string error;
+  check(hero_runtime::load_runtime_policy(policy_path, config_path, &ctx.policy,
+                                          &error),
+        "failed to load runtime policy: " + error);
+
+  const std::string config_hash = digest_file_for_handoff(
+      config_path, "kikijyeba.runtime.handoff.base_config_file.v1");
+  const std::string policy_hash = digest_file_for_handoff(
+      policy_path, "kikijyeba.runtime.handoff.runtime_policy_file.v1");
+  const std::string handoff_digest = "materialized";
+  const std::string handoff_id = "runtime_handoff_" + handoff_digest;
+
+  const std::string args =
+      "{\"operation\":\"wave\",\"requested_mode\":\"dry_run\","
+      "\"config_path\":\"" +
+      config_path.string() +
+      "\",\"confirm_execute\":false,\"runtime_handoff\":{"
+      "\"handoff_schema_version\":\"1\","
+      "\"handoff_id\":\"" +
+      handoff_id +
+      "\","
+      "\"handoff_digest\":\"" +
+      handoff_digest +
+      "\","
+      "\"created_by\":\"marshal\","
+      "\"created_at\":\"2026-06-05T00:00:00Z\","
+      "\"target_id\":\"channel_mdn_validation_eval_ready\","
+      "\"base_config\":{\"path\":\"" +
+      config_path.string() + "\",\"hash\":\"" + config_hash +
+      "\"},"
+      "\"wave\":{"
+      "\"target_component_family_id\":\"wikimyei.inference.expected_value."
+      "mdn\","
+      "\"mode\":\"run|debug\","
+      "\"source_range\":\"anchor_index\","
+      "\"source_order\":\"sequential\","
+      "\"anchor_index_begin\":\"1\","
+      "\"anchor_index_end\":\"3\","
+      "\"model_state_inputs\":{"
+      "\"PLAN_INPUT_MDN_CHECKPOINT\":\"/tmp/materialized_mdn.pt\","
+      "\"PLAN_INPUT_REPRESENTATION_CHECKPOINT\":\"/tmp/materialized_rep.pt\"}},"
+      "\"checkpoint_inputs\":{"
+      "\"PLAN_INPUT_MDN_CHECKPOINT\":\"/tmp/materialized_mdn.pt\","
+      "\"PLAN_INPUT_REPRESENTATION_CHECKPOINT\":\"/tmp/materialized_rep.pt\"},"
+      "\"checkpoint_artifact_hashes\":{},"
+      "\"lattice_certificate_refs\":{},"
+      "\"runtime_policy\":{\"path\":\"" +
+      policy_path.string() + "\",\"hash\":\"" + policy_hash +
+      "\"},"
+      "\"intent\":{\"dry_run\":true,\"confirm_execute\":false,"
+      "\"force_rebuild_cache\":false},"
+      "\"unresolved_symbols\":[]}}";
+
+  std::string result;
+  error.clear();
+  check(hero_runtime::execute_tool_json("hero.runtime.run", args, &ctx, &result,
+                                        &error),
+        "materialized runtime_handoff execute failed: result=" + result +
+            " error=" + error);
+  check(!hero_runtime::tool_result_is_error(result),
+        "materialized runtime_handoff execute returned error: " + result);
+  require_contains(
+      result, "\"--input-representation-checkpoint\"",
+      "Runtime should pass materialized representation checkpoint");
+  require_contains(result, "\"/tmp/materialized_rep.pt\"",
+                   "Runtime should pass concrete representation checkpoint");
+  require_contains(result, "\"--input-mdn-checkpoint\"",
+                   "Runtime should pass materialized MDN checkpoint");
+  require_contains(result, "\"/tmp/materialized_mdn.pt\"",
+                   "Runtime should pass concrete MDN checkpoint");
 
   std::filesystem::remove_all(dir);
 }
@@ -1661,11 +1788,9 @@ void test_policy_training_causal_schedule_contract() {
 }
 
 std::string valid_policy_training_args(
-    std::string requested_mode = "plan",
-    std::string policy_kind = "ppo",
+    std::string requested_mode = "plan", std::string policy_kind = "ppo",
     std::string policy_id = "wikimyei.policy.rl.ppo_portfolio.v0",
-    std::string config_path = {},
-    bool include_wave_identity_fields = true) {
+    std::string config_path = {}, bool include_wave_identity_fields = true) {
   std::ostringstream out;
   out << "{\"operation\":\"wave\",\"requested_mode\":\"" << requested_mode
       << "\"";
@@ -1736,8 +1861,7 @@ void test_policy_training_contract_and_pre_ppo_execute() {
   const bool plan_ok = hero_runtime::execute_tool_json(
       "hero.runtime.run", valid_policy_training_args("plan"), &ctx, &result,
       &error);
-  check(plan_ok,
-        "policy-training plan failed: " + error + " result=" + result);
+  check(plan_ok, "policy-training plan failed: " + error + " result=" + result);
   check(!hero_runtime::tool_result_is_error(result),
         "policy-training plan returned error: " + result);
   require_contains(result,
@@ -1768,8 +1892,7 @@ void test_policy_training_contract_and_pre_ppo_execute() {
   require_contains(result, "\"runtime_trains_policy\":false",
                    "policy-training plan denies training authority");
 
-  const auto wave_defaults_root =
-      make_tmp_dir("policy_training_wave_defaults");
+  const auto wave_defaults_root = make_tmp_dir("policy_training_wave_defaults");
   const auto wave_path = wave_defaults_root / "hero.runtime.wave.dsl";
   const auto config_path = wave_defaults_root / ".config";
   write_text(wave_path,
@@ -1791,11 +1914,12 @@ void test_policy_training_contract_and_pre_ppo_execute() {
              "  SOURCE_RANGE = all;\n"
              "  SOURCE_ORDER = random_per_epoch;\n"
              "};\n");
-  write_text(config_path, "[HERO]\n"
-                          "runtime_wave_dsl_path = " +
-                              wave_path.string() +
-                              "\n"
-                              "runtime_wave_id = policy_training_pre_ppo_noop\n");
+  write_text(config_path,
+             "[HERO]\n"
+             "runtime_wave_dsl_path = " +
+                 wave_path.string() +
+                 "\n"
+                 "runtime_wave_id = policy_training_pre_ppo_noop\n");
   hero_runtime::runtime_context_t wave_ctx{};
   wave_ctx.global_config_path = config_path;
   result.clear();
@@ -1819,13 +1943,14 @@ void test_policy_training_contract_and_pre_ppo_execute() {
             valid_policy_training_args("plan", "unused", "unused",
                                        config_path.string(), false),
             &wave_ctx, &result, &error),
-        "policy-training wave-default plan failed: " + error + " result=" +
-            result);
+        "policy-training wave-default plan failed: " + error +
+            " result=" + result);
   require_contains(result,
                    "\"policy_id\":\"wikimyei.policy.trainable.noop_pre_ppo\"",
                    "policy-training contract should take policy_id from wave");
-  require_contains(result, "\"policy_kind\":\"noop_policy_training.v1\"",
-                   "policy-training contract should take policy_kind from wave");
+  require_contains(
+      result, "\"policy_kind\":\"noop_policy_training.v1\"",
+      "policy-training contract should take policy_kind from wave");
   require_contains(result,
                    "\"training_schedule_mode\":\"causal_walk_forward_"
                    "training.v1\"",
@@ -1962,8 +2087,7 @@ void test_policy_training_contract_and_pre_ppo_execute() {
   ppo_ctx.policy.values["require_confirm_execute"] = "true";
   std::string ppo_execute_args = valid_policy_training_args("execute");
   const std::string ppo_live_forbidden = "\"live_execution_allowed\":false}";
-  const auto ppo_live_forbidden_pos =
-      ppo_execute_args.find(ppo_live_forbidden);
+  const auto ppo_live_forbidden_pos = ppo_execute_args.find(ppo_live_forbidden);
   check(ppo_live_forbidden_pos != std::string::npos,
         "PPO test fixture should contain live execution denial");
   ppo_execute_args.replace(ppo_live_forbidden_pos, ppo_live_forbidden.size(),
@@ -2063,6 +2187,7 @@ int main() {
     test_policy_training_causal_schedule_contract();
     test_policy_training_contract_and_pre_ppo_execute();
     test_execute_expected_wave_binding();
+    test_handoff_checkpoint_inputs_launch_without_static_config_inputs();
     test_execute_wave_overlay();
     test_replay_operator_tool();
     std::cout << "hero runtime wave preview tests passed\n";

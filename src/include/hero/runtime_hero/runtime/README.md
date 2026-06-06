@@ -106,7 +106,10 @@ unresolved-symbol lists and symbolic model-state selectors such as
 `latest_satisfying:*` before launching `cuwacunu_exec`. When a handoff is
 accepted, Runtime passes the handoff id and digest into the job runner so
 `job.manifest`, `runtime.result.fact`, and the derived lattice exposure sidecar
-can echo the same identity.
+can echo the same identity. Runtime also passes accepted
+`PLAN_INPUT_REPRESENTATION_CHECKPOINT` and `PLAN_INPUT_MDN_CHECKPOINT` values as
+launch-time checkpoint overrides to `cuwacunu_exec`; readiness-grade handoffs do
+not require copying those materialized paths back into static `.jkimyei` files.
 
 Reusable wave profiles live as multiple `WAVE_SETTINGS` blocks in the single
 `hero.runtime.wave.dsl` catalog. Operator configs select the active block
@@ -121,10 +124,14 @@ without editing the profile.
 
 Direct `cuwacunu_exec` use remains possible for developer recovery and narrow
 debugging, but it is not the preferred operator path. Non-dry-run launches
-without Runtime/Marshal handoff identity print a warning because they can bypass
-Marshal coordination and Lattice lineage checks. Direct
-`--replay-from-job-dir` launches also warn; prefer `hero.marshal.rollout` or
-`hero.runtime.run operation=replay` for auditable replay evidence.
+without Runtime/Marshal handoff identity print a warning because they do not
+prove Marshal validated Lattice advice, Runtime policy, active wave bounds,
+checkpoint/source identity, or handoff lineage. Direct `--replay-from-job-dir`
+launches also warn because they do not prove Marshal validated rollout bounds,
+Runtime policy, or Cajtucu execution-profile identity. Artifacts from direct
+debug/recovery launches may be unsuitable for readiness claims; prefer
+`hero.marshal.prepare`, `hero.marshal.rollout`, or `hero.runtime.run` for
+operator evidence.
 
 Every completed or failed job writes compact terminal sidecars:
 

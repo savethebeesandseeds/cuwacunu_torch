@@ -782,16 +782,17 @@ LATTICE_TARGET {
   TARGET_CLASS = evaluation_readiness;
   TARGET_KIND = channel_mdn_ready;
   SUBJECT_COMPONENT = wikimyei.inference.expected_value.mdn;
+  PROTOCOL_ID = cwu_02v;
   SOURCE_RANGE = anchor_index;
   OVER_SPLIT = validation_holdout;
-  UPSTREAM_TARGET_ID = channel_mdn_train_core_no_test_leakage;
+  UPSTREAM_TARGET_ID = cwu_02v_mdn_train_core_no_test_leakage;
   REQUIRE_CONTRACT_MATCH = true;
   REQUIRE_COMPONENT_MATCH = true;
   REQUIRE_CHECKPOINT_EXISTS = false;
   REQUIRE_FINITE_LOSS = true;
   MIN_OPTIMIZER_STEPS = 0;
   MIN_VALID_TARGET_FRACTION = 0.05;
-  EVALUATED_CHECKPOINT_SOURCE = latest_satisfying:channel_mdn_train_core_no_test_leakage;
+  EVALUATED_CHECKPOINT_SOURCE = latest_satisfying:cwu_02v_mdn_train_core_no_test_leakage;
   PROTECT_SPLIT = validation_holdout;
   WAVE_MODE = run|debug;
   PLAN_MAX_ATTEMPTS = 1;
@@ -1499,8 +1500,8 @@ LATTICE_PLAN {
   WAVE_TARGET = wikimyei.inference.expected_value.mdn;
   WAVE_MODE = run|debug;
   WAVE_RANGE = split:validation_holdout;
-  PLAN_INPUT_MDN_CHECKPOINT = latest_satisfying:channel_mdn_train_core_no_test_leakage;
-  PLAN_INPUT_REPRESENTATION_CHECKPOINT = latest_satisfying:vicreg_train_core_ready;
+  PLAN_INPUT_MDN_CHECKPOINT = latest_satisfying:cwu_02v_mdn_train_core_no_test_leakage;
+  PLAN_INPUT_REPRESENTATION_CHECKPOINT = latest_satisfying:cwu_02v_representation_train_core_ready;
   PLAN_MAX_ATTEMPTS = 1;
 };
 

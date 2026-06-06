@@ -9,8 +9,8 @@
 #include <string>
 #include <vector>
 
-#include "kikijyeba/environment/runtime/experiment_driver.h"
 #include "hero/runtime_hero/runtime/job_runner.h"
+#include "kikijyeba/environment/runtime/experiment_driver.h"
 #include "ujcamei/source/registry/types/data.h"
 
 namespace env = cuwacunu::kikijyeba::environment;
@@ -32,6 +32,8 @@ void print_usage(const char *argv0) {
             << "       [--runtime-handoff-id ID]\n"
             << "       [--runtime-handoff-digest DIGEST]\n"
             << "       [--marshal-target-driver-run-id ID]\n"
+            << "       [--input-representation-checkpoint PATH]\n"
+            << "       [--input-mdn-checkpoint PATH]\n"
             << "       [--no-replay-artifacts]\n"
             << "       [--replay-base-reserve-node NODE]\n"
             << "       [--replay-risky-nodes CSV]\n"
@@ -52,9 +54,12 @@ void print_usage(const char *argv0) {
             << "       [--replay-no-base-reserve-policy]\n"
             << "       [--replay-no-sdu-policy]\n"
             << "default config: " << kDefaultConfigPath << "\n"
-            << "warning: direct non-dry-run or replay launches without "
-               "Runtime/Marshal handoff identity bypass operator lineage; "
-               "prefer hero.marshal.* or hero.runtime.* for normal use.\n";
+            << "warning: direct non-dry-run or replay launches are for "
+               "debugging/recovery. They do not prove Marshal validated "
+               "Lattice advice, Runtime policy, active wave/replay bounds, "
+               "or execution-profile identity, so resulting artifacts may be "
+               "unsuitable for readiness claims. Prefer hero.marshal.* or "
+               "hero.runtime.* for normal operator use.\n";
 }
 
 [[nodiscard]] std::string require_next_arg(int argc, char **argv, int *index,
@@ -197,6 +202,12 @@ int main(int argc, char **argv) {
       } else if (arg == "--marshal-target-driver-run-id") {
         options.marshal_target_driver_run_id =
             require_next_arg(argc, argv, &i, arg);
+      } else if (arg == "--input-representation-checkpoint") {
+        options.input_representation_checkpoint_path =
+            require_next_arg(argc, argv, &i, arg);
+      } else if (arg == "--input-mdn-checkpoint") {
+        options.input_mdn_checkpoint_path =
+            require_next_arg(argc, argv, &i, arg);
       } else if (arg == "--no-replay-artifacts") {
         options.write_replay_artifacts = false;
       } else if (arg == "--replay-base-reserve-node") {
@@ -270,10 +281,13 @@ int main(int argc, char **argv) {
       replay_options.config_path =
           (config_path == kDefaultConfigPath) ? std::string{} : config_path;
       std::cerr
-          << "[cuwacunu_exec] WARNING: direct --replay-from-job-dir launch "
-             "bypasses Runtime Hero and Marshal handoff validation; prefer "
+          << "[cuwacunu_exec] WARNING: direct --replay-from-job-dir launch is "
+             "for debugging/recovery. It does not prove Marshal validated "
+             "rollout bounds, Lattice advice/readiness context, Runtime "
+             "policy, or Cajtucu execution-profile identity. Resulting replay "
+             "artifacts may be unsuitable for readiness claims. Prefer "
              "hero.marshal.rollout or hero.runtime.run operation=replay for "
-             "Lattice-auditable evidence.\n";
+             "operator evidence.\n";
       const auto replay_result =
           env::run_runtime_job_replay_experiment(replay_options);
       print_replay_result(replay_result);
@@ -289,10 +303,12 @@ int main(int argc, char **argv) {
     if (!options.dry_run && options.runtime_handoff_id.empty()) {
       std::cerr
           << "[cuwacunu_exec] WARNING: direct non-dry-run launch without "
-             "Runtime/Marshal handoff identity; this can bypass Marshal "
-             "coordination and Lattice lineage guarantees. Prefer "
-             "hero.marshal.prepare -> hero.runtime.run operation=wave for "
-             "operator launches.\n";
+             "Runtime/Marshal handoff identity is for debugging/recovery. It "
+             "does not prove Marshal validated Lattice advice, Runtime policy, "
+             "active wave bounds, checkpoint/source identity, or handoff "
+             "lineage. Resulting artifacts may be unsuitable for readiness "
+             "claims. Prefer hero.marshal.prepare -> hero.runtime.run "
+             "operation=wave for operator launches.\n";
     }
 
     const auto result =
