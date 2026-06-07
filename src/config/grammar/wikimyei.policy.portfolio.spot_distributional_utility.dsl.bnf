@@ -1,6 +1,6 @@
 <instruction> ::= "SPOT_DISTRIBUTIONAL_UTILITY" [<whitespace>] "{" <line_end> {<assignment>} [<whitespace>] "}" [<whitespace>] ";" [<line_end>] ;
 <assignment> ::= [<whitespace>] <key> [<whitespace>] "=" [<whitespace>] <value> [<whitespace>] ";" <line_end> ;
-<key> ::= "VERSION" | "COMPONENT_ASSEMBLY_ID" | "INPUT_BELIEF_ASSEMBLY_ID" | "OPTIMIZER" | "OBJECTIVE" | "SCENARIO_UNIT" | "RESERVE_NODE_POLICY" | "ITERATIONS" | "LEARNING_RATE" | "CVAR_ALPHA" | "SCENARIO_GROWTH_FLOOR" | "LONG_ONLY" | "SPOT_ONLY" | "REQUIRE_RESERVE_NODE" | "PROJECTION_VALIDATION_REQUIRED" | "LIVE_CAPITAL_ALLOWED" ;
+<key> ::= "VERSION" | "COMPONENT_ASSEMBLY_ID" | "INPUT_BELIEF_ASSEMBLY_ID" | "OPTIMIZER" | "OBJECTIVE" | "SCENARIO_UNIT" | "ITERATIONS" | "LEARNING_RATE" | "CVAR_ALPHA" | "SCENARIO_GROWTH_FLOOR" | "LONG_ONLY" | "SPOT_ONLY" | "REQUIRE_ACCOUNTING_NUMERAIRE_NODE" | "PROJECTION_VALIDATION_REQUIRED" | "LIVE_CAPITAL_ALLOWED" ;
 <value> ::= <value_char> {<value_char>} ;
 <value_char> ::= <letter> | <digit> | "_" | "." | "-" | "+" ;
 <line_end> ::= [<whitespace>] <break_block> ;

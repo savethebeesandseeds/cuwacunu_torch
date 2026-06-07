@@ -1,0 +1,21 @@
+/*
+  wikimyei.policy.portfolio.graph_node_allocation.net
+  =======================================================
+  Architecture identity for the future trainable graph-node allocation policy.
+
+  This file does not enable PPO. It only fixes the input/output shape and head
+  identities so Runtime and Lattice can bind policy artifacts before a concrete
+  optimizer exists.
+*/
+GRAPH_NODE_ALLOCATION_NET {
+  VERSION = wikimyei.policy.portfolio.graph_node_allocation.net.v1;
+  INPUT_NODE_FEATURE_DIM = 27;
+  INPUT_GLOBAL_FEATURE_DIM = 8;
+  NODE_ENCODER_HIDDEN_DIM = 64;
+  GLOBAL_ENCODER_HIDDEN_DIM = 32;
+  ALLOCATION_HEAD_HIDDEN_DIM = 128;
+  OUTPUT_HEAD = node_weight_logits;
+  VALUE_HEAD = reserved_for_ppo;
+  ACTION_ADAPTER = target_node_weights_simplex.v1;
+  PPO_EXECUTION_ALLOWED = false;
+};

@@ -270,23 +270,23 @@ count_failure_prefix(const cajtucu_execution::execution_trace_t &trace,
 }
 
 [[nodiscard]] inline double
-rejected_notional_base(const cajtucu_execution::execution_trace_t &trace) {
+rejected_notional_numeraire(const cajtucu_execution::execution_trace_t &trace) {
   double out = 0.0;
   const auto count = std::min(trace.orders.size(), trace.fills.size());
   for (std::size_t i = 0; i < count; ++i) {
     if (trace.fills[i].status == cajtucu_execution::fill_status_t::rejected) {
-      out += std::max(0.0, trace.orders[i].requested_notional_base);
+      out += std::max(0.0, trace.orders[i].requested_notional_numeraire);
     }
   }
   return out;
 }
 
 [[nodiscard]] inline double
-partial_notional_base(const cajtucu_execution::execution_trace_t &trace) {
+partial_notional_numeraire(const cajtucu_execution::execution_trace_t &trace) {
   double out = 0.0;
   for (const auto &fill : trace.fills) {
     if (fill.status == cajtucu_execution::fill_status_t::partially_filled) {
-      out += std::max(0.0, fill.gross_notional_base);
+      out += std::max(0.0, fill.gross_notional_numeraire);
     }
   }
   return out;
@@ -459,11 +459,11 @@ inline void validate_reward_evidence_matches_transition(
     const reward_t &reward, const step_info_t &info,
     const reward_options_t &reward_options) {
   validate_reward_evidence(reward);
-  const auto expected =
-      compute_reward(info.portfolio_before.equity_value_base,
-                     info.portfolio_after.equity_value_base,
-                     info.portfolio_after.drawdown, info.transaction_cost_base,
-                     info.turnover, info.invalid_action, reward_options);
+  const auto expected = compute_reward(
+      info.portfolio_before.equity_value_numeraire,
+      info.portfolio_after.equity_value_numeraire,
+      info.portfolio_after.drawdown, info.transaction_cost_numeraire,
+      info.turnover, info.invalid_action, reward_options);
   if (!approx_equal(reward.log_growth_reward, expected.log_growth_reward) ||
       !approx_equal(reward.drawdown_penalty, expected.drawdown_penalty) ||
       !approx_equal(reward.transaction_cost_penalty,
@@ -565,17 +565,18 @@ inline void
 validate_portfolio_state_for_episode(const portfolio::PortfolioState &state,
                                      const episode_spec_t &spec,
                                      const char *context) {
-  const auto A = static_cast<std::int64_t>(spec.risky_node_ids.size());
+  const auto A = static_cast<std::int64_t>(spec.target_node_ids.size());
   portfolio::validate_portfolio_state(state, A);
-  if (state.accounting_node_id != spec.base_policy.accounting_numeraire_id) {
+  if (state.accounting_numeraire_node_id !=
+      spec.base_policy.accounting_numeraire_id) {
     throw std::runtime_error(std::string("[episode_runner] ") + context +
-                             " accounting node does not match EpisodeSpec "
+                             " accounting numeraire node does not match "
+                             "EpisodeSpec "
                              "BasePolicy");
   }
-  if (state.reserve_node_id != spec.base_policy.reserve_asset_id) {
+  if (state.node_ids != spec.target_node_ids) {
     throw std::runtime_error(std::string("[episode_runner] ") + context +
-                             " reserve node does not match EpisodeSpec "
-                             "BasePolicy");
+                             " target node axis does not match EpisodeSpec");
   }
 }
 
@@ -620,30 +621,24 @@ inline void validate_edge_market_state_for_episode(
     return;
   }
   execution::validate_spot_edge_market_state(market_state);
-  for (const auto &node_id : spec.risky_node_ids) {
+  for (const auto &node_id : spec.target_node_ids) {
     if (!edge_market_graph_contains_node(market_state, node_id)) {
       throw std::runtime_error("[episode_runner] observation edge market graph "
-                               "missing risky node: " +
+                               "missing target node: " +
                                node_id);
     }
-  }
-  const auto &reserve_node_id = spec.base_policy.reserve_asset_id;
-  if (!edge_market_graph_contains_node(market_state, reserve_node_id)) {
-    throw std::runtime_error("[episode_runner] observation edge market graph "
-                             "missing base reserve node: " +
-                             reserve_node_id);
   }
 }
 
 [[nodiscard]] inline bool
 rebalance_plan_has_payload(const execution::spot_rebalance_plan_t &plan) {
-  return plan.valid || !plan.base_reserve_node_id.empty() ||
+  return plan.valid || !plan.accounting_numeraire_node_id.empty() ||
          !plan.node_ids.empty() || !plan.orders.empty() ||
          !plan.skipped.empty() || plan.requested_turnover_weight != 0.0 ||
          plan.routed_turnover_weight != 0.0 ||
-         plan.requested_notional_base != 0.0 ||
-         plan.routed_notional_base != 0.0 ||
-         plan.estimated_transaction_cost_base != 0.0 ||
+         plan.requested_notional_numeraire != 0.0 ||
+         plan.routed_notional_numeraire != 0.0 ||
+         plan.estimated_transaction_cost_numeraire != 0.0 ||
          !plan.diagnostics.notes.empty() ||
          !plan.diagnostics.warnings.empty() ||
          !plan.diagnostics.failures.empty();
@@ -691,35 +686,38 @@ inline void validate_rebalance_plan_evidence(
   }
   validate_execution_timestamp(plan.timestamp_ms, observation,
                                "transition rebalance plan");
-  if (plan.node_ids != spec.risky_node_ids) {
+  if (plan.node_ids != spec.target_node_ids) {
     throw std::runtime_error(
         "[episode_runner] transition rebalance plan node_ids mismatch");
   }
-  if (plan.base_reserve_node_id != spec.base_policy.reserve_asset_id) {
+  if (plan.accounting_numeraire_node_id !=
+      spec.base_policy.accounting_numeraire_id) {
     throw std::runtime_error(
-        "[episode_runner] transition rebalance plan reserve node mismatch");
+        "[episode_runner] transition rebalance plan accounting numeraire node "
+        "mismatch");
   }
   if (!std::isfinite(plan.requested_turnover_weight) ||
       !std::isfinite(plan.routed_turnover_weight) ||
-      !std::isfinite(plan.requested_notional_base) ||
-      !std::isfinite(plan.routed_notional_base) ||
-      !std::isfinite(plan.estimated_transaction_cost_base)) {
+      !std::isfinite(plan.requested_notional_numeraire) ||
+      !std::isfinite(plan.routed_notional_numeraire) ||
+      !std::isfinite(plan.estimated_transaction_cost_numeraire)) {
     throw std::runtime_error(
         "[episode_runner] transition rebalance plan numeric fields must be "
         "finite");
   }
   if (plan.requested_turnover_weight < -kTolerance ||
       plan.routed_turnover_weight < -kTolerance ||
-      plan.requested_notional_base < -kTolerance ||
-      plan.routed_notional_base < -kTolerance ||
-      plan.estimated_transaction_cost_base < -kTolerance) {
+      plan.requested_notional_numeraire < -kTolerance ||
+      plan.routed_notional_numeraire < -kTolerance ||
+      plan.estimated_transaction_cost_numeraire < -kTolerance) {
     throw std::runtime_error(
         "[episode_runner] transition rebalance plan numeric fields must be "
         "nonnegative");
   }
   if (plan.routed_turnover_weight >
           plan.requested_turnover_weight + kTolerance ||
-      plan.routed_notional_base > plan.requested_notional_base + kTolerance) {
+      plan.routed_notional_numeraire >
+          plan.requested_notional_numeraire + kTolerance) {
     throw std::runtime_error(
         "[episode_runner] transition rebalance plan routed values must not "
         "exceed requested values");
@@ -731,7 +729,7 @@ inline void validate_rebalance_plan_evidence(
   double order_estimated_cost = 0.0;
   for (const auto &order : plan.orders) {
     if (detail::blank(order.node_id) ||
-        !std::count(spec.risky_node_ids.begin(), spec.risky_node_ids.end(),
+        !std::count(spec.target_node_ids.begin(), spec.target_node_ids.end(),
                     order.node_id)) {
       throw std::runtime_error(
           "[episode_runner] transition rebalance order node_id mismatch");
@@ -741,44 +739,44 @@ inline void validate_rebalance_plan_evidence(
           "[episode_runner] transition rebalance order edge_id is required");
     }
     if (!std::isfinite(order.delta_weight) ||
-        !std::isfinite(order.requested_notional_base) ||
-        !std::isfinite(order.routed_notional_base) ||
-        !std::isfinite(order.estimated_cost_base)) {
+        !std::isfinite(order.requested_notional_numeraire) ||
+        !std::isfinite(order.routed_notional_numeraire) ||
+        !std::isfinite(order.estimated_cost_numeraire)) {
       throw std::runtime_error(
           "[episode_runner] transition rebalance order numeric fields must be "
           "finite");
     }
-    if (order.requested_notional_base < -kTolerance ||
-        order.routed_notional_base < -kTolerance ||
-        order.estimated_cost_base < -kTolerance) {
+    if (order.requested_notional_numeraire < -kTolerance ||
+        order.routed_notional_numeraire < -kTolerance ||
+        order.estimated_cost_numeraire < -kTolerance) {
       throw std::runtime_error(
           "[episode_runner] transition rebalance order notionals/cost must be "
           "nonnegative");
     }
-    if (order.routed_notional_base >
-        order.requested_notional_base + kTolerance) {
+    if (order.routed_notional_numeraire >
+        order.requested_notional_numeraire + kTolerance) {
       throw std::runtime_error(
           "[episode_runner] transition rebalance order routed notional must "
           "not exceed requested notional");
     }
-    order_requested_notional += order.requested_notional_base;
-    order_routed_notional += order.routed_notional_base;
-    order_estimated_cost += order.estimated_cost_base;
+    order_requested_notional += order.requested_notional_numeraire;
+    order_routed_notional += order.routed_notional_numeraire;
+    order_estimated_cost += order.estimated_cost_numeraire;
   }
   for (const auto &skipped : plan.skipped) {
     if (detail::blank(skipped.node_id) ||
-        !std::count(spec.risky_node_ids.begin(), spec.risky_node_ids.end(),
+        !std::count(spec.target_node_ids.begin(), spec.target_node_ids.end(),
                     skipped.node_id)) {
       throw std::runtime_error(
           "[episode_runner] transition rebalance skipped node_id mismatch");
     }
     if (!std::isfinite(skipped.delta_weight) ||
-        !std::isfinite(skipped.requested_notional_base)) {
+        !std::isfinite(skipped.requested_notional_numeraire)) {
       throw std::runtime_error(
           "[episode_runner] transition rebalance skipped numeric fields must "
           "be finite");
     }
-    if (skipped.requested_notional_base < -kTolerance) {
+    if (skipped.requested_notional_numeraire < -kTolerance) {
       throw std::runtime_error(
           "[episode_runner] transition rebalance skipped requested notional "
           "must be nonnegative");
@@ -787,23 +785,23 @@ inline void validate_rebalance_plan_evidence(
       throw std::runtime_error(
           "[episode_runner] transition rebalance skipped reason is required");
     }
-    skipped_requested_notional += skipped.requested_notional_base;
+    skipped_requested_notional += skipped.requested_notional_numeraire;
   }
   const bool has_route_breakdown =
       !plan.orders.empty() || !plan.skipped.empty();
   if (has_route_breakdown) {
-    if (!approx_equal(plan.requested_notional_base,
+    if (!approx_equal(plan.requested_notional_numeraire,
                       order_requested_notional + skipped_requested_notional)) {
       throw std::runtime_error(
           "[episode_runner] transition rebalance requested notional does not "
           "match order plus skipped requested notional");
     }
-    if (!approx_equal(plan.routed_notional_base, order_routed_notional)) {
+    if (!approx_equal(plan.routed_notional_numeraire, order_routed_notional)) {
       throw std::runtime_error(
           "[episode_runner] transition rebalance routed notional does not "
           "match order routed notional");
     }
-    if (!approx_equal(plan.estimated_transaction_cost_base,
+    if (!approx_equal(plan.estimated_transaction_cost_numeraire,
                       order_estimated_cost)) {
       throw std::runtime_error(
           "[episode_runner] transition rebalance estimated cost does not "
@@ -814,15 +812,16 @@ inline void validate_rebalance_plan_evidence(
 
 inline void
 validate_fill_evidence(const std::vector<accounting::executed_fill_t> &fills,
-                       double transaction_cost_base, const episode_spec_t &spec,
+                       double transaction_cost_numeraire,
+                       const episode_spec_t &spec,
                        const observation_t &observation) {
   constexpr double kTolerance = 1.0e-8;
-  double fill_fee_base = 0.0;
+  double fill_fee_numeraire = 0.0;
   for (const auto &fill : fills) {
     validate_execution_timestamp(fill.timestamp_ms, observation,
                                  "transition fill");
     if (detail::blank(fill.node_id) ||
-        !std::count(spec.risky_node_ids.begin(), spec.risky_node_ids.end(),
+        !std::count(spec.target_node_ids.begin(), spec.target_node_ids.end(),
                     fill.node_id)) {
       throw std::runtime_error(
           "[episode_runner] transition fill node_id mismatch");
@@ -832,20 +831,21 @@ validate_fill_evidence(const std::vector<accounting::executed_fill_t> &fills,
           "[episode_runner] transition fill edge_id is required");
     }
     if (!std::isfinite(fill.quantity_asset) ||
-        !std::isfinite(fill.gross_notional_base) ||
-        !std::isfinite(fill.fee_base)) {
+        !std::isfinite(fill.gross_notional_numeraire) ||
+        !std::isfinite(fill.fee_numeraire)) {
       throw std::runtime_error(
           "[episode_runner] transition fill numeric fields must be finite");
     }
     if (fill.quantity_asset < -kTolerance ||
-        fill.gross_notional_base < -kTolerance || fill.fee_base < -kTolerance) {
+        fill.gross_notional_numeraire < -kTolerance ||
+        fill.fee_numeraire < -kTolerance) {
       throw std::runtime_error(
           "[episode_runner] transition fill quantity/notional/fee must be "
           "nonnegative");
     }
-    fill_fee_base += fill.fee_base;
+    fill_fee_numeraire += fill.fee_numeraire;
   }
-  if (fill_fee_base > transaction_cost_base + kTolerance) {
+  if (fill_fee_numeraire > transaction_cost_numeraire + kTolerance) {
     throw std::runtime_error(
         "[episode_runner] transition fill fees exceed transaction cost");
   }
@@ -858,19 +858,20 @@ inline void validate_cajtucu_execution_trace_evidence(
   if (trace.intent.environment_run_id != spec.environment_run_id ||
       trace.intent.episode_id != spec.episode_id ||
       trace.intent.anchor_key != observation.anchor_key ||
-      trace.intent.node_ids != spec.risky_node_ids ||
-      trace.intent.base_reserve_node_id != spec.base_policy.reserve_asset_id) {
+      trace.intent.node_ids != spec.target_node_ids ||
+      trace.intent.accounting_numeraire_node_id !=
+          spec.base_policy.accounting_numeraire_id) {
     throw std::runtime_error(
         "[episode_runner] Cajtucu execution trace identity mismatch");
   }
-  if (!approx_equal(trace.total_transaction_cost_base,
-                    info.transaction_cost_base)) {
+  if (!approx_equal(trace.total_transaction_cost_numeraire,
+                    info.transaction_cost_numeraire)) {
     throw std::runtime_error(
         "[episode_runner] Cajtucu execution trace cost does not match "
         "transition cost");
   }
-  if (trace.ledger_before.node_ids != spec.risky_node_ids ||
-      trace.ledger_after.node_ids != spec.risky_node_ids) {
+  if (trace.ledger_before.node_ids != spec.target_node_ids ||
+      trace.ledger_after.node_ids != spec.target_node_ids) {
     throw std::runtime_error(
         "[episode_runner] Cajtucu ledger universe does not match episode");
   }
@@ -894,11 +895,13 @@ inline void validate_cajtucu_execution_trace_evidence(
     if (fill.status == cajtucu_execution::fill_status_t::rejected) {
       continue;
     }
-    if (fill.node_id.empty() ||
-        !std::count(spec.risky_node_ids.begin(), spec.risky_node_ids.end(),
-                    fill.node_id)) {
+    if (fill.sell_node_id.empty() || fill.buy_node_id.empty() ||
+        !std::count(spec.target_node_ids.begin(), spec.target_node_ids.end(),
+                    fill.sell_node_id) ||
+        !std::count(spec.target_node_ids.begin(), spec.target_node_ids.end(),
+                    fill.buy_node_id)) {
       throw std::runtime_error(
-          "[episode_runner] Cajtucu fill node_id mismatch");
+          "[episode_runner] Cajtucu fill node pair mismatch");
     }
     if (fill.edge_id.empty()) {
       throw std::runtime_error(
@@ -937,7 +940,7 @@ validate_observation_evidence_for_policy(const observation_t &observation,
   validate_portfolio_state_for_episode(observation.portfolio_state, spec,
                                        "observation portfolio_state");
   validate_observation_state_timestamps(observation);
-  const auto A = static_cast<std::int64_t>(spec.risky_node_ids.size());
+  const auto A = static_cast<std::int64_t>(spec.target_node_ids.size());
   portfolio::validate_market_state(observation.market_state, A);
   validate_edge_market_state_for_episode(observation.edge_market_state, spec);
 }
@@ -950,27 +953,28 @@ inline void validate_transition_evidence_for_report(
                                        "transition portfolio_before");
   validate_portfolio_state_for_episode(transition.info.portfolio_after, spec,
                                        "transition portfolio_after");
-  if (!approx_equal(transition.info.portfolio_before.equity_value_base,
-                    observation.portfolio_state.equity_value_base)) {
+  if (!approx_equal(transition.info.portfolio_before.equity_value_numeraire,
+                    observation.portfolio_state.equity_value_numeraire)) {
     throw std::runtime_error(
         "[episode_runner] transition portfolio_before equity must match "
         "policy observation equity");
   }
   if (!std::isfinite(transition.info.realized_log_growth) ||
       !std::isfinite(transition.info.realized_arithmetic_return) ||
-      !std::isfinite(transition.info.transaction_cost_base) ||
+      !std::isfinite(transition.info.transaction_cost_numeraire) ||
       !std::isfinite(transition.info.turnover)) {
     throw std::runtime_error(
         "[episode_runner] transition accounting fields must be finite");
   }
-  if (transition.info.transaction_cost_base < 0.0 ||
+  if (transition.info.transaction_cost_numeraire < 0.0 ||
       transition.info.turnover < 0.0) {
     throw std::runtime_error(
         "[episode_runner] transition cost and turnover must be nonnegative");
   }
   const double equity_before =
-      transition.info.portfolio_before.equity_value_base;
-  const double equity_after = transition.info.portfolio_after.equity_value_base;
+      transition.info.portfolio_before.equity_value_numeraire;
+  const double equity_after =
+      transition.info.portfolio_after.equity_value_numeraire;
   const double expected_log_growth = std::log(equity_after / equity_before);
   const double expected_arithmetic_return = equity_after / equity_before - 1.0;
   if (!approx_equal(transition.info.realized_log_growth, expected_log_growth) ||
@@ -983,8 +987,8 @@ inline void validate_transition_evidence_for_report(
   if (!transition.done) {
     validate_observation_evidence_for_policy(transition.next_observation, spec);
     if (!approx_equal(
-            transition.next_observation.portfolio_state.equity_value_base,
-            transition.info.portfolio_after.equity_value_base)) {
+            transition.next_observation.portfolio_state.equity_value_numeraire,
+            transition.info.portfolio_after.equity_value_numeraire)) {
       throw std::runtime_error(
           "[episode_runner] next observation equity must match transition "
           "portfolio_after equity");
@@ -1001,25 +1005,20 @@ inline void validate_transition_evidence_for_report(
       transition.info.rebalance_plan_enforced, spec, observation,
       allow_invalid_rebalance_plan);
   validate_fill_evidence(transition.info.fills,
-                         transition.info.transaction_cost_base, spec,
+                         transition.info.transaction_cost_numeraire, spec,
                          observation);
   if (transition.info.cajtucu_execution_trace_available) {
     validate_cajtucu_execution_trace_evidence(
         transition.info.execution_trace, transition.info, spec, observation);
   }
-  const auto A = static_cast<std::int64_t>(spec.risky_node_ids.size());
+  const auto A = static_cast<std::int64_t>(spec.target_node_ids.size());
   if (!transition.info.target.node_ids.empty() ||
       transition.info.target.target_weights.defined()) {
     validate_execution_timestamp(transition.info.target.timestamp_ms,
                                  observation, "transition target");
-    if (transition.info.target.node_ids != spec.risky_node_ids) {
+    if (transition.info.target.node_ids != spec.target_node_ids) {
       throw std::runtime_error(
           "[episode_runner] transition target node_ids mismatch");
-    }
-    if (transition.info.target.base_reserve_node_id !=
-        spec.base_policy.reserve_asset_id) {
-      throw std::runtime_error(
-          "[episode_runner] transition target reserve node mismatch");
     }
     portfolio::validate_target_portfolio(
         transition.info.target, A,
@@ -1029,13 +1028,26 @@ inline void validate_transition_evidence_for_report(
                                               transition.info, reward_options);
 }
 
-inline void
-record_allocation_evidence(episode_report_t &report,
-                           const portfolio::TargetPortfolio &target) {
-  report.allocation_target_risky_node_weights =
+inline void record_allocation_evidence(episode_report_t &report,
+                                       const portfolio::TargetPortfolio &target,
+                                       const episode_spec_t &spec) {
+  report.allocation_target_node_weights =
       format_node_weights(target.node_ids, target.target_weights);
-  report.allocation_reserve_node_id = target.base_reserve_node_id;
-  report.allocation_reserve_weight = target.target_base_reserve_weight;
+  report.allocation_numeraire_node_id =
+      spec.base_policy.accounting_numeraire_id;
+  report.allocation_numeraire_weight = std::numeric_limits<double>::quiet_NaN();
+  const auto numeraire_it =
+      std::find(target.node_ids.begin(), target.node_ids.end(),
+                spec.base_policy.accounting_numeraire_id);
+  if (numeraire_it != target.node_ids.end() &&
+      target.target_weights.defined()) {
+    const auto numeraire_index = static_cast<std::int64_t>(
+        std::distance(target.node_ids.begin(), numeraire_it));
+    report.allocation_numeraire_weight =
+        target.target_weights.to(torch::kFloat64)
+            .index({numeraire_index})
+            .item<double>();
+  }
   report.allocation_turnover = target.turnover;
   report.allocation_cvar_loss = target.cvar_loss;
   report.allocation_transaction_cost_estimate =
@@ -1052,7 +1064,7 @@ record_allocation_evidence(episode_report_t &report,
   report.allocation_constraint_diagnostics =
       target.valid ? "target_valid=true" : "target_valid=false";
   report.allocation_cap_diagnostics =
-      "reserve_weight=" + std::to_string(target.target_base_reserve_weight);
+      "numeraire_weight=" + std::to_string(report.allocation_numeraire_weight);
   report.allocation_scenario_growth_floor_status =
       target.diagnostics.ok() ? "not_triggered" : "diagnostic_failure";
   report.allocation_fallback_reasons =
@@ -1098,33 +1110,43 @@ make_step_report(std::uint64_t step_index, const observation_t &observation,
   out.accepted_cursor_offset = observation.observation_anchor_index -
                                spec.accepted_range.anchor_index_begin;
   out.action_schema_id = action.action_schema_id;
+  out.policy_input_schema_id = action.policy_input_schema_id;
+  out.action_adapter_id = action.action_adapter_id;
+  out.reward_contract_id = action.reward_contract_id;
+  out.policy_artifact_digest = action.policy_artifact_digest;
+  out.policy_net_digest = action.policy_net_digest;
+  out.policy_dsl_digest = action.policy_dsl_digest;
+  out.policy_jkimyei_digest = action.policy_jkimyei_digest;
   const auto &target = transition.info.target;
   const auto &node_ids =
       target.node_ids.empty() ? action.node_ids : target.node_ids;
   const auto &target_weights = target.target_weights.defined()
                                    ? target.target_weights
                                    : action.target_weights;
-  out.target_risky_node_weights = format_node_weights(node_ids, target_weights);
-  out.target_base_reserve_node_id = target.base_reserve_node_id.empty()
-                                        ? action.base_reserve_node_id
-                                        : target.base_reserve_node_id;
-  out.target_base_reserve_weight =
-      std::isfinite(target.target_base_reserve_weight)
-          ? target.target_base_reserve_weight
-          : action.target_base_reserve_weight;
+  out.target_node_weights = format_node_weights(node_ids, target_weights);
+  out.accounting_numeraire_node_id = spec.base_policy.accounting_numeraire_id;
+  const auto numeraire_it = std::find(node_ids.begin(), node_ids.end(),
+                                      out.accounting_numeraire_node_id);
+  if (numeraire_it != node_ids.end() && target_weights.defined()) {
+    const auto numeraire_index = static_cast<std::int64_t>(
+        std::distance(node_ids.begin(), numeraire_it));
+    out.target_numeraire_weight = target_weights.to(torch::kFloat64)
+                                      .index({numeraire_index})
+                                      .item<double>();
+  }
   out.portfolio_equity_before =
-      transition.info.portfolio_before.equity_value_base;
+      transition.info.portfolio_before.equity_value_numeraire;
   out.portfolio_equity_after =
-      transition.info.portfolio_after.equity_value_base;
+      transition.info.portfolio_after.equity_value_numeraire;
   out.realized_log_growth = transition.info.realized_log_growth;
   out.realized_arithmetic_return = transition.info.realized_arithmetic_return;
-  out.transaction_cost_base = transition.info.transaction_cost_base;
+  out.transaction_cost_numeraire = transition.info.transaction_cost_numeraire;
   out.turnover = transition.info.turnover;
   out.invalid_action = transition.info.invalid_action;
   out.risk_gate_evaluated = transition.info.risk_gate_evaluated;
   out.risk_gate_allow_trading = transition.info.risk_gate.allow_trading;
-  out.risk_gate_force_base_reserve_fallback =
-      transition.info.risk_gate.force_base_reserve_fallback;
+  out.risk_gate_force_numeraire_fallback =
+      transition.info.risk_gate.force_numeraire_fallback;
   out.risk_gate_reason_count =
       static_cast<std::uint64_t>(transition.info.risk_gate.reasons.size());
   out.risk_gate_warning_count =
@@ -1143,12 +1165,12 @@ make_step_report(std::uint64_t step_index, const observation_t &observation,
       transition.info.rebalance_plan.requested_turnover_weight;
   out.rebalance_routed_turnover_weight =
       transition.info.rebalance_plan.routed_turnover_weight;
-  out.rebalance_estimated_transaction_cost_base =
-      transition.info.rebalance_plan.estimated_transaction_cost_base;
+  out.rebalance_estimated_transaction_cost_numeraire =
+      transition.info.rebalance_plan.estimated_transaction_cost_numeraire;
   out.fill_count = static_cast<std::uint64_t>(transition.info.fills.size());
   for (const auto &fill : transition.info.fills) {
-    out.fill_gross_notional_base += fill.gross_notional_base;
-    out.fill_fee_base += fill.fee_base;
+    out.fill_gross_notional_numeraire += fill.gross_notional_numeraire;
+    out.fill_fee_numeraire += fill.fee_numeraire;
   }
   out.cajtucu_execution_trace_available =
       transition.info.cajtucu_execution_trace_available;
@@ -1161,8 +1183,8 @@ make_step_report(std::uint64_t step_index, const observation_t &observation,
     out.cajtucu_trace_valid = trace.valid;
     out.cajtucu_failure_count =
         static_cast<std::uint64_t>(trace.failures.size());
-    out.cajtucu_ledger_intent_equity_difference_base =
-        trace.ledger_intent_equity_difference_base;
+    out.cajtucu_ledger_intent_equity_difference_numeraire =
+        trace.ledger_intent_equity_difference_numeraire;
     out.cajtucu_ledger_intent_equity_mismatch =
         trace.ledger_intent_equity_mismatch;
     out.cajtucu_order_count = static_cast<std::uint64_t>(trace.orders.size());
@@ -1172,35 +1194,44 @@ make_step_report(std::uint64_t step_index, const observation_t &observation,
         static_cast<std::uint64_t>(trace.rejected_fill_count);
     out.cajtucu_partial_fill_count =
         static_cast<std::uint64_t>(trace.partial_fill_count);
-    out.cajtucu_missing_direct_reserve_edge_count =
-        count_rejected_fill_reason(trace, "missing_direct_reserve_edge");
+    out.cajtucu_missing_direct_pair_count =
+        trace.missing_direct_pair_count > 0
+            ? static_cast<std::uint64_t>(trace.missing_direct_pair_count)
+            : 0U;
+    out.cajtucu_numeraire_fallback_pair_count =
+        trace.numeraire_fallback_pair_count > 0
+            ? static_cast<std::uint64_t>(trace.numeraire_fallback_pair_count)
+            : 0U;
     out.cajtucu_nontradable_edge_reject_count =
         count_rejected_fill_reason(trace, "edge_not_tradable");
     out.cajtucu_below_min_notional_reject_count =
         count_rejected_fill_reason(trace, "below_min_notional");
     out.cajtucu_above_max_notional_reject_count =
         count_rejected_fill_reason(trace, "above_max_notional");
-    out.cajtucu_insufficient_reserve_reject_count =
-        count_rejected_fill_reason(trace, "insufficient_base_reserve");
+    out.cajtucu_insufficient_sell_units_reject_count =
+        count_rejected_fill_reason(trace, "insufficient_sell_units");
     out.cajtucu_insufficient_units_reject_count =
-        count_rejected_fill_reason(trace, "insufficient_asset_units");
-    out.cajtucu_invalid_sell_price_count = count_rejected_fill_reason(
-        trace, "invalid_sell_price_after_spread_slippage");
+        count_rejected_fill_reason(trace, "insufficient_sell_units");
+    out.cajtucu_invalid_sell_price_count =
+        count_rejected_fill_reason(trace, "invalid_direct_pair_fill_price");
     out.cajtucu_large_equity_mismatch_count =
         count_failure_prefix(trace, "ledger_intent_equity_mismatch_exceeds_"
                                     "limit");
-    out.cajtucu_requested_notional_base = trace.requested_notional_base;
-    out.cajtucu_executed_notional_base = trace.routed_notional_base;
-    out.cajtucu_rejected_notional_base = rejected_notional_base(trace);
-    out.cajtucu_partial_notional_base = partial_notional_base(trace);
-    out.cajtucu_fill_ratio =
-        trace.requested_notional_base > 1.0e-12
-            ? trace.routed_notional_base / trace.requested_notional_base
-            : 1.0;
-    out.cajtucu_total_fee_base = trace.total_fee_base;
-    out.cajtucu_total_spread_cost_base = trace.total_spread_cost_base;
-    out.cajtucu_total_slippage_base = trace.total_slippage_base;
-    out.cajtucu_total_transaction_cost_base = trace.total_transaction_cost_base;
+    out.cajtucu_requested_notional_numeraire =
+        trace.requested_notional_numeraire;
+    out.cajtucu_executed_notional_numeraire = trace.routed_notional_numeraire;
+    out.cajtucu_rejected_notional_numeraire =
+        rejected_notional_numeraire(trace);
+    out.cajtucu_partial_notional_numeraire = partial_notional_numeraire(trace);
+    out.cajtucu_fill_ratio = trace.requested_notional_numeraire > 1.0e-12
+                                 ? trace.routed_notional_numeraire /
+                                       trace.requested_notional_numeraire
+                                 : 1.0;
+    out.cajtucu_total_fee_numeraire = trace.total_fee_numeraire;
+    out.cajtucu_total_spread_cost_numeraire = trace.total_spread_cost_numeraire;
+    out.cajtucu_total_slippage_numeraire = trace.total_slippage_numeraire;
+    out.cajtucu_total_transaction_cost_numeraire =
+        trace.total_transaction_cost_numeraire;
     if (trace.ledger_after.weights.defined() &&
         trace.intent.target_weights.defined()) {
       auto executed_weights = trace.ledger_after.weights.to(torch::kFloat64)
@@ -1216,28 +1247,48 @@ make_step_report(std::uint64_t step_index, const observation_t &observation,
                 .abs();
         out.target_weight_error_l1 = diff.sum().item<double>();
         out.target_weight_error_linf = diff.max().item<double>();
-        out.post_execution_risky_weight_sum =
+        out.post_execution_target_weight_sum =
             executed_weights.slice(0, 0, n).sum().item<double>();
       }
     }
-    out.post_execution_base_reserve_weight =
-        trace.ledger_after.base_reserve_weight;
-    out.reserve_shortfall_count =
-        (trace.ledger_after.base_reserve_units < -1.0e-10 ||
-         out.cajtucu_insufficient_reserve_reject_count > 0)
-            ? 1U
-            : 0U;
-    out.ledger_before_equity = trace.ledger_before.equity_value_base;
-    out.ledger_after_execution_equity = trace.ledger_after.equity_value_base;
+    const auto numeraire_it = std::find(
+        trace.ledger_after.node_ids.begin(), trace.ledger_after.node_ids.end(),
+        trace.ledger_after.accounting_numeraire_node_id);
+    if (numeraire_it != trace.ledger_after.node_ids.end()) {
+      const auto numeraire_index = static_cast<std::int64_t>(
+          std::distance(trace.ledger_after.node_ids.begin(), numeraire_it));
+      if (trace.ledger_after.weights.defined()) {
+        out.post_execution_numeraire_weight =
+            trace.ledger_after.weights.to(torch::kFloat64)
+                .index({numeraire_index})
+                .item<double>();
+      }
+      if (trace.ledger_before.units.defined()) {
+        out.numeraire_units_before =
+            trace.ledger_before.units.to(torch::kFloat64)
+                .index({numeraire_index})
+                .item<double>();
+      }
+      if (trace.ledger_after.units.defined()) {
+        out.numeraire_units_after = trace.ledger_after.units.to(torch::kFloat64)
+                                        .index({numeraire_index})
+                                        .item<double>();
+      }
+    }
+    out.numeraire_shortfall_count = (std::isfinite(out.numeraire_units_after) &&
+                                     out.numeraire_units_after < -1.0e-10)
+                                        ? 1U
+                                        : 0U;
+    out.ledger_before_equity = trace.ledger_before.equity_value_numeraire;
+    out.ledger_after_execution_equity =
+        trace.ledger_after.equity_value_numeraire;
     out.ledger_after_realization_equity =
-        transition.info.portfolio_after.equity_value_base;
+        transition.info.portfolio_after.equity_value_numeraire;
     out.ledger_equity_reconciliation_error =
         std::isfinite(out.ledger_after_execution_equity)
             ? std::abs(out.ledger_after_execution_equity -
-                       trace.ledger_after.equity_value_base)
+                       trace.ledger_after.equity_value_numeraire)
             : std::numeric_limits<double>::quiet_NaN();
-    out.base_reserve_units_before = trace.ledger_before.base_reserve_units;
-    out.base_reserve_units_after = trace.ledger_after.base_reserve_units;
     out.unit_nonnegativity_violation_count =
         negative_unit_count(trace.ledger_before.units) +
         negative_unit_count(trace.ledger_after.units);
@@ -1316,9 +1367,10 @@ run_episode(world_iface_t &world, policy_adapter_iface_t &policy,
   report.graph_order_fingerprint = spec.graph_order_fingerprint;
   report.graph_node_ids =
       episode_runner_detail::join_tokens(spec.graph_node_ids);
-  report.risky_node_ids =
-      episode_runner_detail::join_tokens(spec.risky_node_ids);
-  report.base_reserve_node_id = spec.base_policy.reserve_asset_id;
+  report.target_node_ids =
+      episode_runner_detail::join_tokens(spec.target_node_ids);
+  report.accounting_numeraire_node_id =
+      spec.base_policy.accounting_numeraire_id;
   report.requested_anchor_index_begin =
       spec.requested_range.anchor_index_begin.value_or(-1);
   report.requested_anchor_index_end =
@@ -1350,7 +1402,7 @@ run_episode(world_iface_t &world, policy_adapter_iface_t &policy,
             spec.realized_return_projection.edge_ids);
     report.realized_return_projection_signs =
         episode_runner_detail::format_node_scalars(
-            spec.risky_node_ids, spec.realized_return_projection.signs);
+            spec.target_node_ids, spec.realized_return_projection.signs);
   }
 
   auto observation = world.reset(spec);
@@ -1383,11 +1435,11 @@ run_episode(world_iface_t &world, policy_adapter_iface_t &policy,
   std::vector<double> model_skill_vs_zero_mae;
   std::vector<double> model_skill_vs_zero_rmse;
   std::vector<episode_runner_detail::node_projection_series_t>
-      node_projection_series(spec.risky_node_ids.size());
+      node_projection_series(spec.target_node_ids.size());
   std::vector<double> target_weight_error_l1;
   std::vector<double> target_weight_error_linf;
-  std::vector<double> post_execution_risky_weight_sum;
-  std::vector<double> post_execution_base_reserve_weight;
+  std::vector<double> post_execution_target_weight_sum;
+  std::vector<double> post_execution_numeraire_weight;
   std::vector<double> ledger_before_equity;
   std::vector<double> ledger_after_execution_equity;
   std::vector<double> ledger_after_realization_equity;
@@ -1417,16 +1469,18 @@ run_episode(world_iface_t &world, policy_adapter_iface_t &policy,
           step_report.cajtucu_trace_valid ? 1U : 0U;
       report.cajtucu_invalid_trace_count +=
           step_report.cajtucu_trace_valid ? 0U : 1U;
-      report.cajtucu_missing_direct_reserve_edge_count +=
-          step_report.cajtucu_missing_direct_reserve_edge_count;
+      report.cajtucu_missing_direct_pair_count +=
+          step_report.cajtucu_missing_direct_pair_count;
+      report.cajtucu_numeraire_fallback_pair_count +=
+          step_report.cajtucu_numeraire_fallback_pair_count;
       report.cajtucu_nontradable_edge_reject_count +=
           step_report.cajtucu_nontradable_edge_reject_count;
       report.cajtucu_below_min_notional_reject_count +=
           step_report.cajtucu_below_min_notional_reject_count;
       report.cajtucu_above_max_notional_reject_count +=
           step_report.cajtucu_above_max_notional_reject_count;
-      report.cajtucu_insufficient_reserve_reject_count +=
-          step_report.cajtucu_insufficient_reserve_reject_count;
+      report.cajtucu_insufficient_sell_units_reject_count +=
+          step_report.cajtucu_insufficient_sell_units_reject_count;
       report.cajtucu_insufficient_units_reject_count +=
           step_report.cajtucu_insufficient_units_reject_count;
       report.cajtucu_invalid_sell_price_count +=
@@ -1439,17 +1493,20 @@ run_episode(world_iface_t &world, policy_adapter_iface_t &policy,
       report.executed_order_count += step_report.cajtucu_executed_order_count;
       report.rejected_order_count += step_report.cajtucu_rejected_fill_count;
       report.partial_order_count += step_report.cajtucu_partial_fill_count;
-      report.requested_notional_base +=
-          step_report.cajtucu_requested_notional_base;
-      report.executed_notional_base +=
-          step_report.cajtucu_executed_notional_base;
-      report.rejected_notional_base +=
-          step_report.cajtucu_rejected_notional_base;
-      report.partial_notional_base += step_report.cajtucu_partial_notional_base;
-      report.fee_cost_base += step_report.cajtucu_total_fee_base;
-      report.spread_cost_base += step_report.cajtucu_total_spread_cost_base;
-      report.slippage_cost_base += step_report.cajtucu_total_slippage_base;
-      report.reserve_shortfall_count += step_report.reserve_shortfall_count;
+      report.requested_notional_numeraire +=
+          step_report.cajtucu_requested_notional_numeraire;
+      report.executed_notional_numeraire +=
+          step_report.cajtucu_executed_notional_numeraire;
+      report.rejected_notional_numeraire +=
+          step_report.cajtucu_rejected_notional_numeraire;
+      report.partial_notional_numeraire +=
+          step_report.cajtucu_partial_notional_numeraire;
+      report.fee_cost_numeraire += step_report.cajtucu_total_fee_numeraire;
+      report.spread_cost_numeraire +=
+          step_report.cajtucu_total_spread_cost_numeraire;
+      report.slippage_cost_numeraire +=
+          step_report.cajtucu_total_slippage_numeraire;
+      report.numeraire_shortfall_count += step_report.numeraire_shortfall_count;
       report.unit_nonnegativity_violation_count +=
           step_report.unit_nonnegativity_violation_count;
       report.max_ledger_equity_reconciliation_error =
@@ -1464,13 +1521,13 @@ run_episode(world_iface_t &world, policy_adapter_iface_t &policy,
         target_weight_error_linf.push_back(
             step_report.target_weight_error_linf);
       }
-      if (std::isfinite(step_report.post_execution_risky_weight_sum)) {
-        post_execution_risky_weight_sum.push_back(
-            step_report.post_execution_risky_weight_sum);
+      if (std::isfinite(step_report.post_execution_target_weight_sum)) {
+        post_execution_target_weight_sum.push_back(
+            step_report.post_execution_target_weight_sum);
       }
-      if (std::isfinite(step_report.post_execution_base_reserve_weight)) {
-        post_execution_base_reserve_weight.push_back(
-            step_report.post_execution_base_reserve_weight);
+      if (std::isfinite(step_report.post_execution_numeraire_weight)) {
+        post_execution_numeraire_weight.push_back(
+            step_report.post_execution_numeraire_weight);
       }
       if (std::isfinite(step_report.ledger_before_equity)) {
         ledger_before_equity.push_back(step_report.ledger_before_equity);
@@ -1483,28 +1540,27 @@ run_episode(world_iface_t &world, policy_adapter_iface_t &policy,
         ledger_after_realization_equity.push_back(
             step_report.ledger_after_realization_equity);
       }
-      if (std::isfinite(step_report.base_reserve_units_before)) {
-        report.base_reserve_units_before =
-            step_report.base_reserve_units_before;
+      if (std::isfinite(step_report.numeraire_units_before)) {
+        report.numeraire_units_before = step_report.numeraire_units_before;
       }
-      if (std::isfinite(step_report.base_reserve_units_after)) {
-        report.base_reserve_units_after = step_report.base_reserve_units_after;
+      if (std::isfinite(step_report.numeraire_units_after)) {
+        report.numeraire_units_after = step_report.numeraire_units_after;
       }
     }
     report.step_reports.push_back(std::move(step_report));
-    episode_runner_detail::record_allocation_evidence(report,
-                                                      transition.info.target);
+    episode_runner_detail::record_allocation_evidence(
+        report, transition.info.target, spec);
 
     report.total_reward += transition.reward.total;
     report.total_log_growth += transition.info.realized_log_growth;
     report.total_turnover += std::max(0.0, transition.info.turnover);
-    report.total_transaction_cost_base +=
-        std::max(0.0, transition.info.transaction_cost_base);
+    report.total_transaction_cost_numeraire +=
+        std::max(0.0, transition.info.transaction_cost_numeraire);
     report.max_drawdown =
         std::max(report.max_drawdown, transition.info.portfolio_after.drawdown);
-    if (std::isfinite(transition.info.portfolio_after.equity_value_base)) {
-      report.final_equity_base =
-          transition.info.portfolio_after.equity_value_base;
+    if (std::isfinite(transition.info.portfolio_after.equity_value_numeraire)) {
+      report.final_equity_numeraire =
+          transition.info.portfolio_after.equity_value_numeraire;
     }
 
     if (transition.info.projection_validation.available) {
@@ -1569,27 +1625,29 @@ run_episode(world_iface_t &world, policy_adapter_iface_t &policy,
       episode_runner_detail::mean_or_nan(model_skill_vs_zero_mae);
   report.model_skill_vs_zero_rmse =
       episode_runner_detail::mean_or_nan(model_skill_vs_zero_rmse);
-  report.fill_ratio =
-      report.requested_notional_base > 1.0e-12
-          ? report.executed_notional_base / report.requested_notional_base
-          : 1.0;
+  report.fill_ratio = report.requested_notional_numeraire > 1.0e-12
+                          ? report.executed_notional_numeraire /
+                                report.requested_notional_numeraire
+                          : 1.0;
   report.cost_as_fraction_of_equity =
-      std::isfinite(report.final_equity_base) && report.final_equity_base > 0.0
-          ? report.total_transaction_cost_base / report.final_equity_base
+      std::isfinite(report.final_equity_numeraire) &&
+              report.final_equity_numeraire > 0.0
+          ? report.total_transaction_cost_numeraire /
+                report.final_equity_numeraire
           : std::numeric_limits<double>::quiet_NaN();
   report.cost_as_fraction_of_gross_return =
       std::abs(report.total_log_growth) > 1.0e-12
-          ? report.total_transaction_cost_base /
+          ? report.total_transaction_cost_numeraire /
                 std::abs(report.total_log_growth)
           : std::numeric_limits<double>::quiet_NaN();
   report.mean_target_weight_error_l1 =
       episode_runner_detail::mean_or_nan(target_weight_error_l1);
   report.mean_target_weight_error_linf =
       episode_runner_detail::mean_or_nan(target_weight_error_linf);
-  report.mean_post_execution_risky_weight_sum =
-      episode_runner_detail::mean_or_nan(post_execution_risky_weight_sum);
-  report.mean_post_execution_base_reserve_weight =
-      episode_runner_detail::mean_or_nan(post_execution_base_reserve_weight);
+  report.mean_post_execution_target_weight_sum =
+      episode_runner_detail::mean_or_nan(post_execution_target_weight_sum);
+  report.mean_post_execution_numeraire_weight =
+      episode_runner_detail::mean_or_nan(post_execution_numeraire_weight);
   report.mean_ledger_before_equity =
       episode_runner_detail::mean_or_nan(ledger_before_equity);
   report.mean_ledger_after_execution_equity =
@@ -1675,47 +1733,47 @@ run_episode(world_iface_t &world, policy_adapter_iface_t &policy,
         episode_runner_detail::safe_skill(rmse, zero_rmse));
   }
   report.per_node_projection_mae =
-      episode_runner_detail::format_node_metric_vector(spec.risky_node_ids,
+      episode_runner_detail::format_node_metric_vector(spec.target_node_ids,
                                                        per_node_projection_mae);
   report.per_node_projection_rmse =
       episode_runner_detail::format_node_metric_vector(
-          spec.risky_node_ids, per_node_projection_rmse);
+          spec.target_node_ids, per_node_projection_rmse);
   report.per_node_projection_signed_bias =
       episode_runner_detail::format_node_metric_vector(
-          spec.risky_node_ids, per_node_projection_signed_bias);
+          spec.target_node_ids, per_node_projection_signed_bias);
   report.per_node_projection_correlation =
       episode_runner_detail::format_node_metric_vector(
-          spec.risky_node_ids, per_node_projection_correlation);
+          spec.target_node_ids, per_node_projection_correlation);
   report.per_node_projection_directional_accuracy =
       episode_runner_detail::format_node_metric_vector(
-          spec.risky_node_ids, per_node_projection_directional_accuracy);
+          spec.target_node_ids, per_node_projection_directional_accuracy);
   report.per_node_projection_interval_coverage =
       episode_runner_detail::format_node_metric_vector(
-          spec.risky_node_ids, per_node_projection_interval_coverage);
+          spec.target_node_ids, per_node_projection_interval_coverage);
   report.per_node_projection_mean_interval_width =
       episode_runner_detail::format_node_metric_vector(
-          spec.risky_node_ids, per_node_projection_mean_interval_width);
+          spec.target_node_ids, per_node_projection_mean_interval_width);
   report.per_node_realized_volatility =
       episode_runner_detail::format_node_metric_vector(
-          spec.risky_node_ids, per_node_realized_volatility);
+          spec.target_node_ids, per_node_realized_volatility);
   report.per_node_normalized_projection_mae =
       episode_runner_detail::format_node_metric_vector(
-          spec.risky_node_ids, per_node_normalized_projection_mae);
+          spec.target_node_ids, per_node_normalized_projection_mae);
   report.per_node_normalized_projection_rmse =
       episode_runner_detail::format_node_metric_vector(
-          spec.risky_node_ids, per_node_normalized_projection_rmse);
+          spec.target_node_ids, per_node_normalized_projection_rmse);
   report.per_node_zero_return_baseline_mae =
       episode_runner_detail::format_node_metric_vector(
-          spec.risky_node_ids, per_node_zero_return_baseline_mae);
+          spec.target_node_ids, per_node_zero_return_baseline_mae);
   report.per_node_zero_return_baseline_rmse =
       episode_runner_detail::format_node_metric_vector(
-          spec.risky_node_ids, per_node_zero_return_baseline_rmse);
+          spec.target_node_ids, per_node_zero_return_baseline_rmse);
   report.per_node_model_skill_vs_zero_mae =
       episode_runner_detail::format_node_metric_vector(
-          spec.risky_node_ids, per_node_model_skill_vs_zero_mae);
+          spec.target_node_ids, per_node_model_skill_vs_zero_mae);
   report.per_node_model_skill_vs_zero_rmse =
       episode_runner_detail::format_node_metric_vector(
-          spec.risky_node_ids, per_node_model_skill_vs_zero_rmse);
+          spec.target_node_ids, per_node_model_skill_vs_zero_rmse);
 
   if (options.require_full_accepted_range) {
     if (report.transition_count != range_steps) {

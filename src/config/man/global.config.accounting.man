@@ -1,0 +1,33 @@
+MAN_SPEC_VERSION = 1
+
+[META]
+MAN_ID = global.config.accounting
+TARGET_DSL = src/config/.config
+TARGET_BNF = INI-like .config parser
+PRIMARY_DECODER = src/include/kikijyeba/protocol/config_bundle.h
+PRIMARY_VALIDATORS = src/include/kikijyeba/protocol/config_bundle.h
+
+[FIELD ACCOUNTING.accounting_numeraire_node_id]
+key = accounting_numeraire_node_id
+scope = ACCOUNTING section
+type = string
+required = true
+default = USDT
+range = graph node id
+allowed = one node id present in kikijyeba.topology.graph.dsl
+nuance = Global accounting, valuation, and projection-reference numeraire used across Runtime waves and replay reports. It is an ordinary graph node, not a separate cash bucket, policy output, or execution routing hub. Runtime replay, Marshal rollout, and direct cuwacunu_exec replay use this value when no explicit debug/recovery override is supplied.
+
+[RULE ACCOUNTING_NUMERAIRE_IS_GLOBAL]
+severity = required
+applies_to = ACCOUNTING.accounting_numeraire_node_id
+rule = The accounting numeraire belongs in src/config/.config, not in hero.runtime.wave.dsl, because it makes multi-wave reporting comparable while waves remain free to change source ranges and runtime movement.
+
+[RULE ACCOUNTING_NUMERAIRE_GRAPH_BOUND]
+severity = required
+applies_to = ACCOUNTING.accounting_numeraire_node_id
+rule = Runtime replay and Marshal rollout must fail closed when the resolved accounting numeraire is absent from the graph-node action universe or cannot be bound to the active graph.
+
+[RULE ACCOUNTING_NUMERAIRE_NOT_EXECUTION_ROUTE]
+severity = required
+applies_to = ACCOUNTING.accounting_numeraire_node_id
+rule = The accounting numeraire must not be treated as an implicit reserve-edge routing path. Cajtucu paper execution first matches direct node pairs. Missing direct pairs use the explicit Cajtucu missing-pair policy: default `skip_pair_warn`, strict `invalid_trace`, or opt-in `route_via_accounting_numeraire_warn` with visible two-leg costs.

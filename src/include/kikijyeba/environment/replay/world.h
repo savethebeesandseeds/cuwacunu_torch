@@ -125,32 +125,36 @@ require_realized_log_return(const replay_frame_t &frame, std::int64_t A,
 [[nodiscard]] inline portfolio::PortfolioState
 portfolio_state_or_default(const observation_t &observation,
                            const episode_spec_t &spec) {
-  const auto A = static_cast<std::int64_t>(spec.risky_node_ids.size());
+  const auto A = static_cast<std::int64_t>(spec.target_node_ids.size());
   auto state = observation.portfolio_state;
+  state.node_ids = spec.target_node_ids;
+  if (state.accounting_numeraire_node_id.empty()) {
+    state.accounting_numeraire_node_id =
+        spec.base_policy.accounting_numeraire_id;
+  }
+  const auto numeraire_it =
+      std::find(spec.target_node_ids.begin(), spec.target_node_ids.end(),
+                state.accounting_numeraire_node_id);
+  if (numeraire_it == spec.target_node_ids.end()) {
+    throw std::runtime_error(
+        "[replay_world] accounting numeraire must be in target_node_ids");
+  }
+  const auto numeraire_index =
+      static_cast<std::int64_t>(numeraire_it - spec.target_node_ids.begin());
+  if (state.equity_value_numeraire <= 0.0 ||
+      !std::isfinite(state.equity_value_numeraire)) {
+    state.equity_value_numeraire = spec.initial_equity_numeraire;
+  }
   if (!state.current_weights.defined()) {
-    state.current_weights =
-        torch::zeros({A}, torch::TensorOptions().dtype(torch::kFloat64));
+    state.current_weights = torch::zeros(
+        {A}, torch::TensorOptions().dtype(torch::kFloat64));
+    state.current_weights.index_put_({numeraire_index}, 1.0);
   }
   if (!state.current_units.defined()) {
-    state.current_units =
-        torch::zeros({A}, torch::TensorOptions().dtype(torch::kFloat64));
-  }
-  if (state.accounting_node_id.empty()) {
-    state.accounting_node_id = spec.base_policy.accounting_numeraire_id;
-  }
-  if (state.reserve_node_id.empty()) {
-    state.reserve_node_id = spec.base_policy.reserve_asset_id;
-  }
-  if (state.equity_value_base <= 0.0) {
-    state.equity_value_base = spec.initial_equity_base;
-  }
-  if (!std::isfinite(state.equity_value_base)) {
-    state.equity_value_base = spec.initial_equity_base;
-  }
-  const double risky_weight_sum =
-      state.current_weights.to(torch::kFloat64).sum().item<double>();
-  if (!std::isfinite(state.base_reserve_weight)) {
-    state.base_reserve_weight = std::max(0.0, 1.0 - risky_weight_sum);
+    state.current_units = torch::zeros(
+        {A}, torch::TensorOptions().dtype(torch::kFloat64));
+    state.current_units.index_put_({numeraire_index},
+                                   state.equity_value_numeraire);
   }
   return state;
 }
@@ -158,15 +162,16 @@ portfolio_state_or_default(const observation_t &observation,
 inline void
 validate_portfolio_state_matches_episode(const portfolio::PortfolioState &state,
                                          const episode_spec_t &spec) {
-  if (state.accounting_node_id != spec.base_policy.accounting_numeraire_id) {
+  if (state.accounting_numeraire_node_id !=
+      spec.base_policy.accounting_numeraire_id) {
     throw std::runtime_error(
-        "[replay_world] portfolio accounting node must match EpisodeSpec "
+        "[replay_world] portfolio accounting numeraire must match EpisodeSpec "
         "BasePolicy accounting numeraire");
   }
-  if (state.reserve_node_id != spec.base_policy.reserve_asset_id) {
+  if (state.node_ids != spec.target_node_ids) {
     throw std::runtime_error(
-        "[replay_world] portfolio reserve node must match EpisodeSpec "
-        "BasePolicy reserve asset");
+        "[replay_world] portfolio node order must match EpisodeSpec "
+        "target_node_ids");
   }
 }
 
@@ -211,17 +216,11 @@ inline void validate_edge_market_state_matches_episode(
     return;
   }
   execution::validate_spot_edge_market_state(market_state);
-  for (const auto &node_id : spec.risky_node_ids) {
+  for (const auto &node_id : spec.target_node_ids) {
     if (!edge_market_graph_contains_node(market_state, node_id)) {
       throw std::runtime_error(
-          "[replay_world] edge market graph missing risky node: " + node_id);
+          "[replay_world] edge market graph missing target node: " + node_id);
     }
-  }
-  const auto &reserve_node_id = spec.base_policy.reserve_asset_id;
-  if (!edge_market_graph_contains_node(market_state, reserve_node_id)) {
-    throw std::runtime_error(
-        "[replay_world] edge market graph missing base reserve node: " +
-        reserve_node_id);
   }
 }
 
@@ -308,16 +307,14 @@ inline void validate_allocation_belief_matches_frame(
     throw std::runtime_error(
         "[replay_world] AllocationBelief graph node order mismatch");
   }
-  if (belief_state.node_ids != spec.risky_node_ids) {
+  if (belief_state.node_ids != spec.target_node_ids) {
     throw std::runtime_error(
-        "[replay_world] AllocationBelief risky node order mismatch");
+        "[replay_world] AllocationBelief target node order mismatch");
   }
   if (belief_state.base_policy.accounting_numeraire_id !=
           spec.base_policy.accounting_numeraire_id ||
       belief_state.base_policy.settlement_asset_id !=
           spec.base_policy.settlement_asset_id ||
-      belief_state.base_policy.reserve_asset_id !=
-          spec.base_policy.reserve_asset_id ||
       belief_state.base_policy.projection_reference_node_id !=
           spec.base_policy.projection_reference_node_id) {
     throw std::runtime_error(
@@ -426,7 +423,7 @@ inline void validate_frame(const replay_frame_t &frame,
         "[replay_world] frame next-realization anchor must be the immediate "
         "next accepted anchor");
   }
-  const auto A = static_cast<std::int64_t>(spec.risky_node_ids.size());
+  const auto A = static_cast<std::int64_t>(spec.target_node_ids.size());
   auto log_return = require_realized_log_return(frame, A, options);
   (void)realized_arithmetic_return(frame, log_return, A, options);
   auto state = portfolio_state_or_default(frame.observation, spec);
@@ -464,9 +461,7 @@ make_target_from_action(const action_t &action,
   portfolio::TargetPortfolio target{};
   target.timestamp_ms = timestamp_ms;
   target.node_ids = action.node_ids;
-  target.base_reserve_node_id = action.base_reserve_node_id;
   target.target_weights = action.target_weights.to(torch::kFloat64);
-  target.target_base_reserve_weight = action.target_base_reserve_weight;
   target.delta_weights =
       target.target_weights - current_state.current_weights.to(torch::kFloat64);
   if (std::isfinite(action.expected_log_growth)) {
@@ -498,7 +493,7 @@ make_cajtucu_market_execution_state(
     const replay_world_options_t &options) {
   cajtucu_execution::market_execution_state_t out{};
   out.timestamp_ms = market_state.timestamp_ms;
-  const auto A = static_cast<std::int64_t>(spec.risky_node_ids.size());
+  const auto A = static_cast<std::int64_t>(spec.target_node_ids.size());
   auto tensor_options = torch::TensorOptions().dtype(torch::kFloat64);
 
   if (!edge_market_graph_is_empty(edge_market_state)) {
@@ -515,8 +510,8 @@ make_cajtucu_market_execution_state(
                           options.linear_transaction_cost_rate, tensor_options);
     out.edge_spread_rate = edge_market_state.edge_spread_rate;
     out.edge_slippage_rate = edge_market_state.edge_slippage_rate;
-    out.min_notional_base = edge_market_state.min_notional_base;
-    out.max_notional_base = edge_market_state.max_notional_base;
+    out.min_notional_numeraire = edge_market_state.min_notional_numeraire;
+    out.max_notional_numeraire = edge_market_state.max_notional_numeraire;
     out.edge_tradable_mask = edge_market_state.edge_tradable_mask;
     cajtucu_execution::validate_market_execution_state(out);
     return out;
@@ -526,15 +521,20 @@ make_cajtucu_market_execution_state(
   out.market_source_id =
       "kikijyeba.environment.replay.synthetic_node_market_state_direct_edges";
   out.synthetic_direct_edges = true;
-  out.graph.node_ids = spec.risky_node_ids;
-  out.graph.node_ids.push_back(spec.base_policy.reserve_asset_id);
-  const auto reserve_index = static_cast<graph::node_index_t>(A);
+  out.graph.node_ids = spec.target_node_ids;
   for (std::int64_t i = 0; i < A; ++i) {
+    if (spec.target_node_ids[static_cast<std::size_t>(i)] ==
+        spec.base_policy.accounting_numeraire_id) {
+      continue;
+    }
     out.graph.edge_ids.push_back(
-        spec.risky_node_ids[static_cast<std::size_t>(i)] + "/" +
-        spec.base_policy.reserve_asset_id);
+        spec.target_node_ids[static_cast<std::size_t>(i)] + "/" +
+        spec.base_policy.accounting_numeraire_id);
     out.graph.base_index.push_back(static_cast<graph::node_index_t>(i));
-    out.graph.quote_index.push_back(reserve_index);
+    out.graph.quote_index.push_back(static_cast<graph::node_index_t>(
+        std::find(spec.target_node_ids.begin(), spec.target_node_ids.end(),
+                  spec.base_policy.accounting_numeraire_id) -
+        spec.target_node_ids.begin()));
   }
   out.edge_mid_price = market_state.executable_mid.defined()
                            ? market_state.executable_mid.to(torch::kFloat64)
@@ -547,8 +547,8 @@ make_cajtucu_market_execution_state(
                         tensor_options);
   out.edge_spread_rate = market_state.bid_ask_spread;
   out.edge_slippage_rate = market_state.estimated_slippage;
-  out.min_notional_base = market_state.min_notional;
-  out.max_notional_base = market_state.max_notional;
+  out.min_notional_numeraire = market_state.min_notional;
+  out.max_notional_numeraire = market_state.max_notional;
   out.edge_tradable_mask = market_state.tradable_mask;
   cajtucu_execution::validate_market_execution_state(out);
   return out;
@@ -559,24 +559,24 @@ make_cajtucu_execution_ledger(
     const portfolio::PortfolioState &portfolio_state,
     const cajtucu_execution::market_execution_state_t &market,
     const episode_spec_t &spec) {
-  const auto A = static_cast<std::int64_t>(spec.risky_node_ids.size());
+  const auto A = static_cast<std::int64_t>(spec.target_node_ids.size());
   portfolio::validate_portfolio_state(portfolio_state, A);
   auto weights = portfolio_state.current_weights.to(torch::kFloat64);
-  auto prices = cajtucu_execution::asset_price_base_vector(
-      market, spec.risky_node_ids, spec.base_policy.reserve_asset_id);
   auto units = portfolio_state.current_units.defined()
                    ? portfolio_state.current_units.to(torch::kFloat64)
-                   : (weights * portfolio_state.equity_value_base) / prices;
+                   : torch::Tensor();
+  if (!units.defined()) {
+    auto prices = cajtucu_execution::node_price_numeraire_vector(
+        market, spec.target_node_ids, spec.base_policy.accounting_numeraire_id);
+    units = (weights * portfolio_state.equity_value_numeraire) / prices;
+  }
   cajtucu_execution::execution_ledger_t out{};
   out.timestamp_ms = portfolio_state.timestamp_ms;
-  out.base_reserve_node_id = spec.base_policy.reserve_asset_id;
-  out.node_ids = spec.risky_node_ids;
+  out.accounting_numeraire_node_id = spec.base_policy.accounting_numeraire_id;
+  out.node_ids = spec.target_node_ids;
   out.units = units.clamp_min(0.0);
   out.weights = weights.clamp_min(0.0);
-  out.base_reserve_units = std::max(0.0, portfolio_state.base_reserve_weight) *
-                           portfolio_state.equity_value_base;
-  out.base_reserve_weight = portfolio_state.base_reserve_weight;
-  out.equity_value_base = portfolio_state.equity_value_base;
+  out.equity_value_numeraire = portfolio_state.equity_value_numeraire;
   cajtucu_execution::validate_execution_ledger(out);
   return out;
 }
@@ -599,25 +599,21 @@ make_cajtucu_execution_intent(const action_t &action,
   intent.anchor_key = observation.anchor_key;
   intent.timestamp_ms = target.timestamp_ms;
   intent.node_ids = target.node_ids;
-  intent.base_reserve_node_id = target.base_reserve_node_id;
+  intent.accounting_numeraire_node_id =
+      spec.base_policy.accounting_numeraire_id;
   intent.current_weights = current_state.current_weights.to(torch::kFloat64);
   intent.target_weights = target.target_weights.to(torch::kFloat64);
-  intent.current_base_reserve_weight = current_state.base_reserve_weight;
-  intent.target_base_reserve_weight = target.target_base_reserve_weight;
-  intent.equity_value_base = current_state.equity_value_base;
+  intent.current_units = current_state.current_units.to(torch::kFloat64);
+  intent.equity_value_numeraire = current_state.equity_value_numeraire;
   cajtucu_execution::validate_execution_intent(intent);
   return intent;
 }
 
 [[nodiscard]] inline execution::order_side_t
 to_rebalance_order_side(const cajtucu_execution::execution_order_t &order) {
-  const bool asset_is_edge_base = order.edge_base_node_id == order.node_id;
-  if (order.side == cajtucu_execution::order_side_t::buy_asset) {
-    return asset_is_edge_base ? execution::order_side_t::buy_edge_base
-                              : execution::order_side_t::sell_edge_base;
-  }
-  return asset_is_edge_base ? execution::order_side_t::sell_edge_base
-                            : execution::order_side_t::buy_edge_base;
+  return order.sell_node_id == order.edge_base_node_id
+             ? execution::order_side_t::sell_edge_base
+             : execution::order_side_t::buy_edge_base;
 }
 
 [[nodiscard]] inline execution::spot_rebalance_plan_t
@@ -625,39 +621,42 @@ make_rebalance_plan_from_cajtucu_trace(
     const cajtucu_execution::execution_trace_t &trace) {
   execution::spot_rebalance_plan_t plan{};
   plan.timestamp_ms = trace.intent.timestamp_ms;
-  plan.base_reserve_node_id = trace.intent.base_reserve_node_id;
+  plan.accounting_numeraire_node_id =
+      trace.intent.accounting_numeraire_node_id;
   plan.node_ids = trace.intent.node_ids;
   plan.requested_turnover_weight = trace.turnover_weight;
-  plan.requested_notional_base = trace.requested_notional_base;
-  plan.routed_notional_base = trace.routed_notional_base;
-  plan.estimated_transaction_cost_base = trace.total_transaction_cost_base;
+  plan.requested_notional_numeraire = trace.requested_notional_numeraire;
+  plan.routed_notional_numeraire = trace.routed_notional_numeraire;
+  plan.estimated_transaction_cost_numeraire =
+      trace.total_transaction_cost_numeraire;
   plan.valid = trace.valid;
   for (const auto &order : trace.orders) {
     if (!order.valid) {
       plan.skipped.push_back({
-          .node_id = order.node_id,
-          .delta_weight = order.delta_weight,
-          .requested_notional_base = order.requested_notional_base,
+          .node_id = order.sell_node_id,
+          .delta_weight = order.sell_delta_weight,
+          .requested_notional_numeraire = order.requested_notional_numeraire,
           .reason =
               order.reject_reason.empty() ? "rejected" : order.reject_reason,
       });
       continue;
     }
     plan.orders.push_back({
-        .node_id = order.node_id,
+        .node_id = order.sell_node_id,
         .edge_id = order.edge_id,
         .edge_base_node_id = order.edge_base_node_id,
         .edge_quote_node_id = order.edge_quote_node_id,
         .side = to_rebalance_order_side(order),
-        .delta_weight = order.delta_weight,
-        .requested_notional_base = order.requested_notional_base,
-        .routed_notional_base = order.routed_notional_base,
-        .estimated_cost_base =
-            order.fee_base + order.spread_cost_base + order.slippage_base,
+        .delta_weight = order.sell_delta_weight,
+        .requested_notional_numeraire = order.requested_notional_numeraire,
+        .routed_notional_numeraire = order.routed_notional_numeraire,
+        .estimated_cost_numeraire =
+            order.fee_numeraire + order.spread_cost_numeraire +
+            order.slippage_numeraire,
     });
     plan.routed_turnover_weight +=
-        order.routed_notional_base /
-        std::max(trace.ledger_before.equity_value_base, 1.0e-12);
+        order.routed_notional_numeraire /
+        std::max(trace.ledger_before.equity_value_numeraire, 1.0e-12);
   }
   plan.diagnostics.notes.push_back(cajtucu_execution::kCajtucuPaperBackendIdV1);
   plan.diagnostics.warnings = trace.warnings;
@@ -675,14 +674,21 @@ make_fills_from_cajtucu_trace(
     }
     fills.push_back({
         .timestamp_ms = trace.intent.timestamp_ms,
-        .node_id = fill.node_id,
+        .node_id = fill.sell_node_id,
         .edge_id = fill.edge_id,
-        .side = fill.side == cajtucu_execution::order_side_t::buy_asset
-                    ? accounting::fill_side_t::buy_asset
-                    : accounting::fill_side_t::sell_asset,
-        .quantity_asset = fill.filled_quantity_asset,
-        .gross_notional_base = fill.gross_notional_base,
-        .fee_base = fill.fee_base,
+        .side = accounting::fill_side_t::sell_asset,
+        .quantity_asset = fill.filled_sell_quantity,
+        .gross_notional_numeraire = fill.gross_notional_numeraire,
+        .fee_numeraire = 0.0,
+    });
+    fills.push_back({
+        .timestamp_ms = trace.intent.timestamp_ms,
+        .node_id = fill.buy_node_id,
+        .edge_id = fill.edge_id,
+        .side = accounting::fill_side_t::buy_asset,
+        .quantity_asset = fill.filled_buy_quantity,
+        .gross_notional_numeraire = fill.gross_notional_numeraire,
+        .fee_numeraire = fill.fee_numeraire,
     });
   }
   return fills;
@@ -691,17 +697,19 @@ make_fills_from_cajtucu_trace(
 [[nodiscard]] inline execution::spot_rebalance_plan_t
 make_weight_rebalance_plan(const portfolio::TargetPortfolio &target,
                            const portfolio::PortfolioState &current_state,
-                           double estimated_transaction_cost_base) {
+                           double estimated_transaction_cost_numeraire) {
   execution::spot_rebalance_plan_t plan{};
   plan.timestamp_ms = target.timestamp_ms;
-  plan.base_reserve_node_id = target.base_reserve_node_id;
+  plan.accounting_numeraire_node_id =
+      current_state.accounting_numeraire_node_id;
   plan.node_ids = target.node_ids;
   plan.requested_turnover_weight = target.turnover;
   plan.routed_turnover_weight = target.turnover;
-  plan.requested_notional_base =
-      target.turnover * current_state.equity_value_base;
-  plan.routed_notional_base = plan.requested_notional_base;
-  plan.estimated_transaction_cost_base = estimated_transaction_cost_base;
+  plan.requested_notional_numeraire =
+      target.turnover * current_state.equity_value_numeraire;
+  plan.routed_notional_numeraire = plan.requested_notional_numeraire;
+  plan.estimated_transaction_cost_numeraire =
+      estimated_transaction_cost_numeraire;
   plan.valid = true;
   plan.diagnostics.notes.push_back(
       "kikijyeba.environment.replay.weight_rebalance_plan.v1");
@@ -729,9 +737,9 @@ inline void validate_policy_rebalance_plan_matches_step(
         "match target action turnover");
   }
   const double expected_requested_notional =
-      target.turnover * current_state.equity_value_base;
-  if (!approx_equal(plan.requested_notional_base, expected_requested_notional,
-                    tolerance)) {
+      target.turnover * current_state.equity_value_numeraire;
+  if (!approx_equal(plan.requested_notional_numeraire,
+                    expected_requested_notional, tolerance)) {
     throw std::runtime_error(
         "[replay_world] policy rebalance plan requested notional does not "
         "match target action turnover/equity");
@@ -751,20 +759,22 @@ inline void validate_policy_rebalance_plan_matches_step(
 make_weight_fills(const portfolio::TargetPortfolio &target,
                   const portfolio::PortfolioState &current_state,
                   const portfolio::MarketState &market_state,
-                  double total_transaction_cost_base) {
+                  double total_transaction_cost_numeraire) {
   std::vector<accounting::executed_fill_t> fills;
   const auto A = static_cast<std::int64_t>(target.node_ids.size());
   auto delta = target.delta_weights.to(torch::kFloat64);
   auto mid = market_state.executable_mid.defined()
                  ? market_state.executable_mid.to(torch::kFloat64)
                  : torch::Tensor();
-  double routed_notional = target.turnover * current_state.equity_value_base;
+  double routed_notional =
+      target.turnover * current_state.equity_value_numeraire;
   for (std::int64_t i = 0; i < A; ++i) {
     const double d = delta.index({i}).item<double>();
     if (std::abs(d) <= 1.0e-12) {
       continue;
     }
-    const double notional = std::abs(d) * current_state.equity_value_base;
+    const double notional =
+        std::abs(d) * current_state.equity_value_numeraire;
     double quantity = 0.0;
     if (mid.defined() && mid.dim() == 1 && mid.size(0) == A) {
       const double price = mid.index({i}).item<double>();
@@ -772,20 +782,20 @@ make_weight_fills(const portfolio::TargetPortfolio &target,
         quantity = notional / price;
       }
     }
-    const double fee = routed_notional > 0.0 ? total_transaction_cost_base *
-                                                   (notional / routed_notional)
-                                             : 0.0;
+    const double fee = routed_notional > 0.0
+                           ? total_transaction_cost_numeraire *
+                                 (notional / routed_notional)
+                           : 0.0;
     fills.push_back({
         .timestamp_ms = target.timestamp_ms,
         .node_id = target.node_ids[static_cast<std::size_t>(i)],
         .edge_id = std::string("replay_weight_fill:") +
-                   target.node_ids[static_cast<std::size_t>(i)] + "/" +
-                   target.base_reserve_node_id,
+                   target.node_ids[static_cast<std::size_t>(i)],
         .side = d >= 0.0 ? accounting::fill_side_t::buy_asset
                          : accounting::fill_side_t::sell_asset,
         .quantity_asset = quantity,
-        .gross_notional_base = notional,
-        .fee_base = fee,
+        .gross_notional_numeraire = notional,
+        .fee_numeraire = fee,
     });
   }
   return fills;
@@ -832,8 +842,8 @@ public:
         detail::portfolio_state_or_default(frames_.front().observation, spec_);
     portfolio::validate_portfolio_state(
         current_portfolio_,
-        static_cast<std::int64_t>(spec_.risky_node_ids.size()));
-    peak_equity_base_ = current_portfolio_.equity_value_base;
+        static_cast<std::int64_t>(spec_.target_node_ids.size()));
+    peak_equity_numeraire_ = current_portfolio_.equity_value_numeraire;
     auto observation = frames_.front().observation;
     observation.portfolio_state = current_portfolio_;
     validate_observation_time_boundary(observation);
@@ -850,7 +860,7 @@ public:
     }
     validate_episode_action(action, spec_);
 
-    const auto A = static_cast<std::int64_t>(spec_.risky_node_ids.size());
+    const auto A = static_cast<std::int64_t>(spec_.target_node_ids.size());
     const auto &frame = frames_[step_index_];
     validate_action_time_boundary(action, frame.observation);
     const auto decision_timestamp_ms =
@@ -876,7 +886,7 @@ public:
       transition.info.decision_report = action.decision_report;
     }
 
-    const double equity_before = current_portfolio_.equity_value_base;
+    const double equity_before = current_portfolio_.equity_value_numeraire;
     const auto cajtucu_market = detail::make_cajtucu_market_execution_state(
         frame.observation.edge_market_state, frame.observation.market_state,
         spec_, options_);
@@ -894,38 +904,34 @@ public:
     transition.info.failures.insert(transition.info.failures.end(),
                                     execution_trace.failures.begin(),
                                     execution_trace.failures.end());
-    const double transaction_cost_base =
-        execution_trace.total_transaction_cost_base;
+    const double transaction_cost_numeraire =
+        execution_trace.total_transaction_cost_numeraire;
 
     auto execution_units =
         execution_trace.ledger_after.units.to(torch::kFloat64);
-    auto execution_prices = cajtucu_execution::asset_price_base_vector(
-        cajtucu_market, spec_.risky_node_ids,
-        spec_.base_policy.reserve_asset_id);
-    auto risky_value_after =
+    auto execution_prices = cajtucu_execution::node_price_numeraire_vector(
+        cajtucu_market, spec_.target_node_ids,
+        spec_.base_policy.accounting_numeraire_id);
+    auto node_value_after =
         execution_units * execution_prices * (1.0 + arithmetic_return);
-    double reserve_value_after =
-        execution_trace.ledger_after.base_reserve_units;
-    double equity_after =
-        risky_value_after.sum().item<double>() + reserve_value_after;
+    double equity_after = node_value_after.sum().item<double>();
     if (!std::isfinite(equity_after) || equity_after <= options_.eps) {
       throw std::runtime_error(
           "[replay_world] action leads to nonpositive realized equity");
     }
 
-    auto risky_weight_after = risky_value_after / equity_after;
+    auto node_weight_after = node_value_after / equity_after;
 
     portfolio::PortfolioState after = current_portfolio_;
     after.timestamp_ms =
         frame.observation.realization_available_after_timestamp_ms;
-    after.current_weights = risky_weight_after.clamp_min(0.0);
-    after.base_reserve_weight = reserve_value_after / equity_after;
-    after.equity_value_base = equity_after;
+    after.current_weights = node_weight_after.clamp_min(0.0);
+    after.equity_value_numeraire = equity_after;
     after.current_units = execution_units.clone();
-    peak_equity_base_ = std::max(peak_equity_base_, equity_after);
-    after.drawdown = peak_equity_base_ > options_.eps
-                         ? std::max(0.0, (peak_equity_base_ - equity_after) /
-                                             peak_equity_base_)
+    peak_equity_numeraire_ = std::max(peak_equity_numeraire_, equity_after);
+    after.drawdown = peak_equity_numeraire_ > options_.eps
+                         ? std::max(0.0, (peak_equity_numeraire_ - equity_after) /
+                                             peak_equity_numeraire_)
                          : 0.0;
 
     portfolio::validate_portfolio_state(after, A);
@@ -935,7 +941,7 @@ public:
         std::log(equity_after / equity_before);
     transition.info.realized_arithmetic_return =
         (equity_after / equity_before) - 1.0;
-    transition.info.transaction_cost_base = transaction_cost_base;
+    transition.info.transaction_cost_numeraire = transaction_cost_numeraire;
     transition.info.execution_trace = execution_trace;
     transition.info.cajtucu_execution_trace_available = true;
     if (action.rebalance_plan_available) {
@@ -975,7 +981,7 @@ public:
 
     transition.reward =
         compute_reward(equity_before, equity_after, after.drawdown,
-                       transaction_cost_base, target.turnover,
+                       transaction_cost_numeraire, target.turnover,
                        transition.info.invalid_action, options_.reward_options);
 
     ++step_index_;
@@ -997,7 +1003,7 @@ private:
   replay_world_options_t options_{};
   episode_spec_t spec_{};
   portfolio::PortfolioState current_portfolio_{};
-  double peak_equity_base_{0.0};
+  double peak_equity_numeraire_{0.0};
   std::size_t step_index_{0};
   bool active_{false};
 };

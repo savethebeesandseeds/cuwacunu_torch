@@ -17,6 +17,8 @@
 #include "wikimyei/inference/expected_value/mdn/mdn_spec.h"
 #include "wikimyei/observer/belief/assembly.h"
 #include "wikimyei/observer/belief/spec.h"
+#include "wikimyei/policy/portfolio/graph_node_allocation/assembly.h"
+#include "wikimyei/policy/portfolio/graph_node_allocation/spec.h"
 #include "wikimyei/policy/portfolio/spot_distributional_utility/assembly.h"
 #include "wikimyei/policy/portfolio/spot_distributional_utility/spec.h"
 #include "wikimyei/representation/encoding/mtf_jepa_mae_vicreg/mtf_jepa_mae_vicreg_spec.h"
@@ -248,6 +250,8 @@ void test_channel_specs_decode_and_validate() {
   namespace belief = cuwacunu::wikimyei::observer::belief;
   namespace policy =
       cuwacunu::wikimyei::policy::portfolio::spot_distributional_utility;
+  namespace graph_allocation =
+      cuwacunu::wikimyei::policy::portfolio::graph_node_allocation;
   namespace environment = cuwacunu::kikijyeba::environment;
   namespace mdn = cuwacunu::wikimyei::inference::expected_value::mdn;
   namespace mtf =
@@ -279,10 +283,16 @@ void test_channel_specs_decode_and_validate() {
       read_text(paths.at("wikimyei_observer_belief_dsl_bnf_path"));
   const auto spot_distributional_utility_bnf = read_text(paths.at(
       "wikimyei_policy_portfolio_spot_distributional_utility_dsl_bnf_path"));
+  const auto graph_node_allocation_dsl_bnf = read_text(
+      paths.at("wikimyei_policy_portfolio_graph_node_allocation_dsl_bnf_path"));
+  const auto graph_node_allocation_net_bnf = read_text(
+      paths.at("wikimyei_policy_portfolio_graph_node_allocation_net_bnf_path"));
   const auto replay_environment_bnf =
       read_text(paths.at("kikijyeba_environment_replay_dsl_bnf_path"));
   const auto channel_mdn_jkimyei_bnf = read_text(
       paths.at("wikimyei_inference_expected_value_mdn_jkimyei_bnf_path"));
+  const auto graph_node_allocation_jkimyei_bnf = read_text(paths.at(
+      "wikimyei_policy_portfolio_graph_node_allocation_jkimyei_bnf_path"));
   if (protocol_bnf.find("PROTOCOL") == std::string::npos ||
       protocol_bnf.find("REPRESENTATION_CONTRACT") == std::string::npos ||
       protocol_bnf.find("OBSERVER") == std::string::npos ||
@@ -306,18 +316,28 @@ void test_channel_specs_decode_and_validate() {
       channel_mdn_net_bnf.find("FEATURE_EMBEDDING_DIM") == std::string::npos ||
       channel_mdn_net_bnf.find("CHANNEL_ADAPTER_RANK") == std::string::npos ||
       belief_observer_bnf.find("OBSERVER_BELIEF") == std::string::npos ||
-      belief_observer_bnf.find("RESERVE_ASSET_POLICY") == std::string::npos ||
+      belief_observer_bnf.find("ACCOUNTING_NUMERAIRE_POLICY") ==
+          std::string::npos ||
       belief_observer_bnf.find("PROJECTION_VALIDATION_REQUIRED") ==
           std::string::npos ||
       belief_observer_bnf.find("LIVE_CAPITAL_ALLOWED") == std::string::npos ||
       spot_distributional_utility_bnf.find("SPOT_DISTRIBUTIONAL_UTILITY") ==
           std::string::npos ||
-      spot_distributional_utility_bnf.find("RESERVE_NODE_POLICY") ==
-          std::string::npos ||
+      spot_distributional_utility_bnf.find(
+          "REQUIRE_ACCOUNTING_NUMERAIRE_NODE") == std::string::npos ||
       spot_distributional_utility_bnf.find("PROJECTION_VALIDATION_REQUIRED") ==
           std::string::npos ||
       spot_distributional_utility_bnf.find("LIVE_CAPITAL_ALLOWED") ==
           std::string::npos ||
+      graph_node_allocation_dsl_bnf.find("GRAPH_NODE_ALLOCATION") ==
+          std::string::npos ||
+      graph_node_allocation_dsl_bnf.find("POLICY_INPUT_SCHEMA") ==
+          std::string::npos ||
+      graph_node_allocation_dsl_bnf.find("ACTION_ADAPTER") ==
+          std::string::npos ||
+      graph_node_allocation_net_bnf.find("GRAPH_NODE_ALLOCATION_NET") ==
+          std::string::npos ||
+      graph_node_allocation_net_bnf.find("OUTPUT_HEAD") == std::string::npos ||
       replay_environment_bnf.find("REPLAY_ENVIRONMENT") == std::string::npos ||
       replay_environment_bnf.find("OBSERVATION_TIME_LAW") ==
           std::string::npos ||
@@ -326,6 +346,10 @@ void test_channel_specs_decode_and_validate() {
       replay_environment_bnf.find("LIVE_CAPITAL_ALLOWED") ==
           std::string::npos ||
       channel_mdn_jkimyei_bnf.find("INPUT_MDN_CHECKPOINT") ==
+          std::string::npos ||
+      graph_node_allocation_jkimyei_bnf.find("TRAINING_SCHEDULE_MODE") ==
+          std::string::npos ||
+      graph_node_allocation_jkimyei_bnf.find("PPO_EXECUTION_ALLOWED") ==
           std::string::npos) {
     throw std::runtime_error("channel config BNF surface mismatch");
   }
@@ -347,6 +371,10 @@ void test_channel_specs_decode_and_validate() {
       read_text(paths.at("wikimyei_observer_belief_dsl_path"));
   const auto spot_distributional_utility_dsl_text = read_text(paths.at(
       "wikimyei_policy_portfolio_spot_distributional_utility_dsl_path"));
+  const auto graph_node_allocation_dsl_text = read_text(
+      paths.at("wikimyei_policy_portfolio_graph_node_allocation_dsl_path"));
+  const auto graph_node_allocation_net_text = read_text(
+      paths.at("wikimyei_policy_portfolio_graph_node_allocation_net_path"));
   const auto replay_environment_dsl_text =
       read_text(paths.at("kikijyeba_environment_replay_dsl_path"));
   const auto representation_spec = vicreg::decode_vicreg_spec_from_split_dsl(
@@ -362,6 +390,12 @@ void test_channel_specs_decode_and_validate() {
   const auto policy_spec =
       policy::decode_spot_distributional_utility_spec_from_dsl(
           spot_distributional_utility_dsl_text);
+  const auto allocation_spec =
+      graph_allocation::decode_graph_node_allocation_spec_from_dsl(
+          graph_node_allocation_dsl_text);
+  const auto allocation_net_spec =
+      graph_allocation::decode_graph_node_allocation_net_spec_from_dsl(
+          graph_node_allocation_net_text);
   const auto replay_environment_spec =
       environment::decode_replay_environment_spec_from_dsl(
           replay_environment_dsl_text);
@@ -374,6 +408,9 @@ void test_channel_specs_decode_and_validate() {
   const auto mdn_training =
       training::decode_training_run_spec_from_dsl(read_text(
           paths.at("wikimyei_inference_expected_value_mdn_jkimyei_path")));
+  const auto allocation_training =
+      training::decode_training_run_spec_from_dsl(read_text(paths.at(
+          "wikimyei_policy_portfolio_graph_node_allocation_jkimyei_path")));
 
   if (representation_spec.component_assembly_id != "vicreg_v1") {
     throw std::runtime_error("VICReg component id mismatch");
@@ -398,7 +435,8 @@ void test_channel_specs_decode_and_validate() {
   }
   if (belief_spec.component_assembly_id != "nodelift_allocation_belief_v1" ||
       belief_spec.input_mdn_assembly_id != mdn_spec.component_assembly_id ||
-      belief_spec.reserve_asset_policy != "graph_node_from_base_policy" ||
+      belief_spec.accounting_numeraire_policy !=
+          "graph_node_from_base_policy" ||
       !belief_spec.projection_validation_required ||
       belief_spec.live_capital_allowed) {
     throw std::runtime_error("belief observer spec mismatch");
@@ -407,20 +445,42 @@ void test_channel_specs_decode_and_validate() {
       policy_spec.input_belief_assembly_id !=
           belief_spec.component_assembly_id ||
       policy_spec.optimizer != "projected_gradient" ||
-      policy_spec.reserve_node_policy != "graph_node_from_base_policy" ||
+      !policy_spec.require_accounting_numeraire_node ||
       !policy_spec.projection_validation_required ||
       policy_spec.live_capital_allowed) {
     throw std::runtime_error("spot distributional utility spec mismatch");
+  }
+  if (allocation_spec.component_assembly_id != "graph_node_allocation_v1" ||
+      allocation_spec.policy_input_schema !=
+          "kikijyeba.environment.policy_input.v1" ||
+      allocation_spec.action_adapter != "target_node_weights_simplex.v1" ||
+      allocation_spec.action_schema !=
+          "kikijyeba.environment.action.target_node_weights.v1" ||
+      allocation_spec.reward_contract !=
+          "kikijyeba.environment.reward.post_execution_ledger_log_growth_cost_"
+          "drawdown.v1" ||
+      allocation_spec.scenario_input_policy !=
+          "allocation_belief_distributional_summaries_v1" ||
+      allocation_spec.raw_mdn_input_allowed ||
+      allocation_spec.ppo_implemented || allocation_spec.live_capital_allowed) {
+    throw std::runtime_error("graph-node allocation policy spec mismatch");
+  }
+  if (allocation_net_spec.input_node_feature_dim != 27 ||
+      allocation_net_spec.input_global_feature_dim != 8 ||
+      allocation_net_spec.output_head != "node_weight_logits" ||
+      allocation_net_spec.value_head != "reserved_for_ppo" ||
+      allocation_net_spec.action_adapter != "target_node_weights_simplex.v1" ||
+      allocation_net_spec.ppo_execution_allowed) {
+    throw std::runtime_error("graph-node allocation policy net spec mismatch");
   }
   if (replay_environment_spec.component_assembly_id !=
           "replay_environment_v1" ||
       replay_environment_spec.range_source !=
           "ujcamei_component_stream_cursor" ||
       replay_environment_spec.observation_time_law != "time_t_only" ||
-      replay_environment_spec.action_kind !=
-          "target_node_weights_with_base_reserve" ||
+      replay_environment_spec.action_kind != "target_node_weights" ||
       replay_environment_spec.action_schema_id !=
-          "kikijyeba.environment.action.target_weights.v1" ||
+          "kikijyeba.environment.action.target_node_weights.v1" ||
       !replay_environment_spec.require_no_future_leakage ||
       replay_environment_spec.live_capital_allowed) {
     throw std::runtime_error("replay environment spec mismatch");
@@ -483,6 +543,20 @@ void test_channel_specs_decode_and_validate() {
       !mdn_training.freeze_representation) {
     throw std::runtime_error("MDN training spec mismatch");
   }
+  if (allocation_training.task !=
+          training::training_task_t::
+              policy_graph_node_allocation_contract_smoke ||
+      allocation_training.component_assembly_id !=
+          allocation_spec.component_assembly_id ||
+      allocation_training.optimizer != training::training_optimizer_t::noop ||
+      allocation_training.training_schedule_mode !=
+          "causal_walk_forward_training.v1" ||
+      !allocation_training.require_causal_schedule ||
+      allocation_training.ppo_execution_allowed ||
+      allocation_training.checkpoint_kind != "policy_contract_fixture") {
+    throw std::runtime_error(
+        "graph-node allocation policy training spec mismatch");
+  }
 
   auto channel_bundle =
       protocol::load_channel_graph_first_config_bundle_from_config(
@@ -504,12 +578,21 @@ void test_channel_specs_decode_and_validate() {
       channel_bundle
           .wikimyei_policy_portfolio_spot_distributional_utility_dsl_bnf_path
           .empty() ||
+      channel_bundle
+          .wikimyei_policy_portfolio_graph_node_allocation_dsl_bnf_path
+          .empty() ||
+      channel_bundle
+          .wikimyei_policy_portfolio_graph_node_allocation_net_bnf_path
+          .empty() ||
       channel_bundle.kikijyeba_environment_replay_dsl_bnf_path.empty() ||
       channel_bundle.wikimyei_representation_vicreg_jkimyei_bnf_path.empty() ||
       channel_bundle
           .wikimyei_representation_mtf_jepa_mae_vicreg_jkimyei_bnf_path
           .empty() ||
       channel_bundle.wikimyei_inference_expected_value_mdn_jkimyei_bnf_path
+          .empty() ||
+      channel_bundle
+          .wikimyei_policy_portfolio_graph_node_allocation_jkimyei_bnf_path
           .empty()) {
     throw std::runtime_error(
         "channel graph-first BNF paths missing from bundle");
@@ -535,6 +618,10 @@ void test_channel_specs_decode_and_validate() {
           policy_spec.component_assembly_id ||
       channel_bundle.spot_distributional_utility.input_belief_assembly_id !=
           belief_spec.component_assembly_id ||
+      channel_bundle.graph_node_allocation.component_assembly_id !=
+          allocation_spec.component_assembly_id ||
+      channel_bundle.graph_node_allocation_net.output_head !=
+          allocation_net_spec.output_head ||
       channel_bundle.replay_environment.component_assembly_id !=
           replay_environment_spec.component_assembly_id ||
       !channel_bundle.replay_environment.require_projection_validation) {
@@ -549,7 +636,9 @@ void test_channel_specs_decode_and_validate() {
       channel_bundle.belief_observer_assembly.family !=
           "wikimyei.observer.belief" ||
       channel_bundle.spot_distributional_utility_assembly.family !=
-          "wikimyei.policy.portfolio.spot_distributional_utility") {
+          "wikimyei.policy.portfolio.spot_distributional_utility" ||
+      channel_bundle.graph_node_allocation_assembly.family !=
+          "wikimyei.policy.portfolio.graph_node_allocation") {
     throw std::runtime_error("channel graph-first assembly family mismatch");
   }
   cuwacunu::kikijyeba::topology::validate_node_value_assembly_chain(
@@ -670,6 +759,9 @@ void test_channel_specs_decode_and_validate() {
   const auto policy_assembly =
       policy::make_spot_distributional_utility_assembly(
           policy_spec.component_assembly_id, policy_spec.version_token);
+  const auto allocation_assembly =
+      graph_allocation::make_graph_node_allocation_assembly(
+          allocation_spec.component_assembly_id, allocation_spec.version_token);
   if (!cuwacunu::wikimyei::assembly::dock_domain_compatible(
           representation_assembly.docks.at(1), mdn_assembly.docks.at(0))) {
     throw std::runtime_error("channel assemblies are not compatible");
@@ -679,6 +771,12 @@ void test_channel_specs_decode_and_validate() {
       !cuwacunu::wikimyei::assembly::dock_domain_compatible(
           belief_assembly.docks.at(2), policy_assembly.docks.at(0))) {
     throw std::runtime_error("observer/policy assemblies are not compatible");
+  }
+  if (allocation_assembly.docks.at(1).coordinate_space !=
+          "kikijyeba.environment.action.target_node_weights.v1" ||
+      allocation_assembly.docks.at(1).value_shape != "TargetNodeWeights[A]") {
+    throw std::runtime_error(
+        "graph-node allocation policy action dock mismatch");
   }
   const auto old_fused_producer = cuwacunu::wikimyei::assembly::make_dock(
       "old_fused_node_representation",
@@ -758,6 +856,8 @@ void test_invalid_specs_fail_fast() {
   namespace belief = cuwacunu::wikimyei::observer::belief;
   namespace policy =
       cuwacunu::wikimyei::policy::portfolio::spot_distributional_utility;
+  namespace graph_allocation =
+      cuwacunu::wikimyei::policy::portfolio::graph_node_allocation;
   namespace nodelift = cuwacunu::wikimyei::expression::nodelift::srl;
   namespace vicreg = cuwacunu::wikimyei::representation::encoding::vicreg;
   namespace mdn = cuwacunu::wikimyei::inference::expected_value::mdn;
@@ -853,9 +953,9 @@ void test_invalid_specs_fail_fast() {
                "negative seed");
 
   auto bad_belief = belief::belief_observer_spec_t{};
-  bad_belief.reserve_asset_policy = "external_cash_bucket";
+  bad_belief.accounting_numeraire_policy = "external_cash_bucket";
   expect_throw([&] { belief::validate_belief_observer_spec(bad_belief); },
-               "belief reserve must be graph node");
+               "accounting numeraire must be");
 
   bad_belief = belief::belief_observer_spec_t{};
   bad_belief.live_capital_allowed = true;
@@ -863,16 +963,51 @@ void test_invalid_specs_fail_fast() {
                "belief observer cannot allow live capital");
 
   auto bad_policy = policy::spot_distributional_utility_spec_t{};
-  bad_policy.reserve_node_policy = "external_cash_bucket";
+  bad_policy.require_accounting_numeraire_node = false;
   expect_throw(
       [&] { policy::validate_spot_distributional_utility_spec(bad_policy); },
-      "policy reserve must be graph node");
+      "accounting numeraire graph node");
 
   bad_policy = policy::spot_distributional_utility_spec_t{};
   bad_policy.projection_validation_required = false;
   expect_throw(
       [&] { policy::validate_spot_distributional_utility_spec(bad_policy); },
       "policy projection validation required");
+
+  auto bad_allocation = graph_allocation::graph_node_allocation_spec_t{};
+  bad_allocation.ppo_implemented = true;
+  expect_throw(
+      [&] {
+        graph_allocation::validate_graph_node_allocation_spec(bad_allocation);
+      },
+      "graph-node allocation PPO disabled");
+
+  auto bad_allocation_net =
+      graph_allocation::graph_node_allocation_net_spec_t{};
+  bad_allocation_net.ppo_execution_allowed = true;
+  expect_throw(
+      [&] {
+        graph_allocation::validate_graph_node_allocation_net_spec(
+            bad_allocation_net);
+      },
+      "graph-node allocation net PPO disabled");
+
+  auto bad_policy_training = training::training_run_spec_t{};
+  bad_policy_training.version_token =
+      "wikimyei.policy.portfolio.graph_node_allocation.jkimyei.v1";
+  bad_policy_training.training_id = "policy_contract";
+  bad_policy_training.task =
+      training::training_task_t::policy_graph_node_allocation_contract_smoke;
+  bad_policy_training.component_assembly_id = "graph_node_allocation_v1";
+  bad_policy_training.optimizer = training::training_optimizer_t::adam;
+  bad_policy_training.batch_size = 1;
+  bad_policy_training.training_schedule_mode =
+      "causal_walk_forward_training.v1";
+  bad_policy_training.require_causal_schedule = true;
+  bad_policy_training.checkpoint_kind = "policy_contract_fixture";
+  expect_throw(
+      [&] { training::validate_training_run_spec(bad_policy_training); },
+      "policy contract smoke rejects adam");
 }
 
 void test_cross_reference_failures() {

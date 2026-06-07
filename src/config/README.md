@@ -8,6 +8,7 @@ Current migrated sections:
 
 - `UJCAMEI`: source registry and source retrieval channel DSL paths.
 - `KIKIJYEBA`: protocol, topology graph, and replay environment DSL paths.
+- `ACCOUNTING`: global accounting/reporting defaults shared across waves.
 - `WIKIMYEI`: expression, representation, inference, observer, and policy DSL
   paths.
 - `JKIMYEI`: training orchestration DSL paths.
@@ -15,6 +16,16 @@ Current migrated sections:
   Runtime wave selection, and Lattice target/split paths.
 - `GUI`: `cuwacunu_cmd`/`iinuji_cmd` terminal Shell Logs defaults plus image
   and animation asset paths.
+
+The `[ACCOUNTING]` section currently defines
+`accounting_numeraire_node_id`. This value names the ordinary graph node used
+as the accounting/valuation/projection-reference numeraire across Runtime
+waves and replay reports. It is intentionally not a Runtime wave setting: waves
+change source ranges and job movement, while this default keeps multi-wave
+reporting comparable. It does not create a separate cash node, policy output,
+or execution route. Runtime replay, Marshal rollout, and direct
+`cuwacunu_exec --replay-from-job-dir` use this value when no explicit debug or
+recovery override is supplied.
 
 The `[GUI]` section restores the migrated terminal surface contract. Shell Logs
 defaults are controlled by `iinuji_logs_buffer_capacity`,
@@ -47,19 +58,38 @@ MDN net file. Channel-bearing config surfaces have their own BNF paths in
 and Jkimyei keys. The active runtime uses channel-preserving VICReg and strict
 channel-context MDN targets.
 
-`wikimyei.observer.belief.dsl` and
-`wikimyei.policy.portfolio.spot_distributional_utility.dsl` extend the
+`wikimyei.observer.belief.dsl`,
+`wikimyei.policy.portfolio.spot_distributional_utility.dsl`, and
+`wikimyei.policy.portfolio.graph_node_allocation.{dsl,net,jkimyei}` extend the
 graph-first contract after inference. The belief observer is deterministic: it
 consumes MDN future NodeLift-potential distributions, resolves feature meaning
 through the dock/kline registry, and declares that portfolio returns must be
-base-relative NodeLift projections rather than raw node potentials. The
-portfolio policy consumes only post-projection `AllocationBelief`; it performs a
-long-only spot allocation over risky graph nodes. Its reserve weight is assigned
-to an explicit graph node supplied by `BasePolicy`, not to an external cash
-bucket. Both DSLs currently require projection validation and explicitly disable
-live capital; this keeps `phi_asset - phi_reference` as a research bridge until
-it is checked against realized tradable base-denominated returns. Both
-components are registered as deterministic Wikimyei assemblies in the
+numeraire-relative NodeLift projections rather than raw node potentials. The
+portfolio policy consumes only post-projection `AllocationBelief`; it emits one
+unified target-weight vector over ordered graph nodes. The accounting numeraire
+is one of those graph nodes, resolved from
+`[ACCOUNTING].accounting_numeraire_node_id` into `BasePolicy`, not an external
+cash bucket, a separate policy output, or a routing hub.
+
+The graph-node allocation policy config is the pre-PPO trainable policy contract. Its DSL
+binds `kikijyeba.environment.policy_input.v1`,
+`target_node_weights_simplex.v1`,
+`kikijyeba.environment.action.target_node_weights.v1`, and
+`kikijyeba.environment.reward.post_execution_ledger_log_growth_cost_drawdown.v1`; its `.net`
+binds the V1 feature dimensions and `node_weight_logits` output head. V1 policy
+input exposes compressed `AllocationBelief` distributional summaries, portfolio
+weights, execution/cost state, and masks; it does not expose raw MDN tensors or
+the full scenario bank by default. Its
+`.jkimyei` is a noop contract-smoke task that requires
+`causal_walk_forward_training.v1` while keeping `PPO_EXECUTION_ALLOWED = false`.
+Raw MDN tensors are not exposed to the policy by default. PPO implementation,
+checkpoint selection, and optimizer execution remain outside this contract.
+
+The observer and deterministic policy DSLs currently require projection
+validation and explicitly disable live capital; this keeps
+`phi_asset - phi_reference` as a research bridge until it is checked against
+realized tradable numeraire-denominated returns. These components are registered
+as Wikimyei assemblies in the
 graph-first bundle and therefore appear in the dock-binding/Lattice audit
 surface with stable assembly fingerprints.
 
@@ -71,11 +101,12 @@ mode, consumes resolved Ujcamei/component-stream cursor identity, enforces the
 time-`t` observation law, reveals the next realization only after simulated
 action/execution, computes decomposed reward after ledger update, and emits
 audit-only replay artifacts. Actions use
-`kikijyeba.environment.action.target_weights.v1`: target risky-node weights plus
-a base reserve graph node from `BasePolicy`. Reports persist bundle/policy task
+`kikijyeba.environment.action.target_node_weights.v1`: target weights over the
+ordered graph-node action universe, including the accounting numeraire node.
+Reports persist bundle/policy task
 identity, requested/resolved parallelism, aggregate time-law/projection
 counters, and `direct_edge_realized_return_truth_v1` evidence for realized
-asset/base returns. Runtime may write replay artifacts for MDN run jobs, but
+asset/numeraire returns. Runtime may write replay artifacts for MDN run jobs, but
 that writer is best-effort sidecar evidence: failures are recorded in job state
 and do not fail the MDN job. Replay V1 has no allocation, execution,
 market-readiness, deployment, or live-capital authority.
@@ -86,18 +117,19 @@ for paper fills, ledger mutation, and execution traces; it is not the
 environment driver and does not compute reward.
 
 `cajtucu.execution.paper.dsl` defines the first Cajtucu paper execution
-contract. It consumes target-weight execution intents, market execution state,
-and an execution ledger; it emits direct reserve-edge paper orders, fills or
-rejects, a mutated ledger, and an execution trace. The backend executes sells
-before buys, sizes order notional from marked ledger equity, rejects synthetic
-direct-edge markets by default, and returns invalid traces for large equity
-mismatches or invalid sell-price cost models before ledger mutation. Research
-replay must explicitly opt in when synthetic markets are needed. The trace
-records market source identity and warns when replay used synthetic direct
-asset/reserve edges or when intent equity disagrees with mark-to-market ledger
-equity. Paper V1 has no credential surface, no network I/O, no broker API, and
-no live-capital authority. It is the backend that historical replay calls today
-and that a later paper-online environment should reuse with live market data.
+contract. It consumes graph-node target-weight execution intents, market
+execution state, and an execution ledger; it emits direct node-pair paper
+orders, fills or rejects, a mutated ledger, and an execution trace. The backend
+matches overweight nodes to underweight nodes, sizes order notional from marked
+ledger equity, rejects synthetic direct-pair markets by default, and returns
+invalid traces for large equity mismatches or invalid sell-price cost models
+before ledger mutation. Research replay must explicitly opt in when synthetic
+markets are needed. The trace records market source identity and warns when
+replay used synthetic direct node-pair edges or when intent equity disagrees
+with mark-to-market ledger equity. Paper V1 has no credential surface, no
+network I/O, no broker API, and no live-capital authority. It is the backend
+that historical replay calls today and that a later paper-online environment
+should reuse with live market data.
 `MODE=run` executes the target dependency closure without optimizer steps.
 `MODE=train` mutates only `TARGET`; upstream dependencies run frozen.
 Wave source ranges may be authored as `SOURCE_RANGE=anchor_index` for explicit
@@ -150,7 +182,7 @@ Protocol variants also bind the active observer and allocation-policy family:
 `ALLOCATION_POLICY = wikimyei.policy.portfolio.spot_distributional_utility`.
 The protocol owns this stack identity and its fingerprint; the individual
 Wikimyei policy DSL owns SDU parameters, and Marshal rollout requests own
-baseline comparison sets such as reserve/current/equal-weight/SDU.
+baseline comparison sets such as numeraire/current/equal-weight/SDU.
 
 Wave profiles may declare `COMPATIBLE_PROTOCOLS` as a comma-separated protocol
 allow-list. When present, Runtime rejects a wave whose active protocol is not in

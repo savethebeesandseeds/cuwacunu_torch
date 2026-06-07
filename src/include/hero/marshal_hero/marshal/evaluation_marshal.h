@@ -54,9 +54,9 @@ struct marshal_evaluation_request_t {
   std::string trained_range_evidence_digest{};
   std::string validation_split_policy_digest{};
 
-  std::string base_reserve_node_id{};
-  std::vector<std::string> risky_node_ids{};
-  bool include_base_reserve_policy{true};
+  std::string accounting_numeraire_node_id{};
+  std::vector<std::string> target_node_ids{};
+  bool include_numeraire_only_policy{true};
   bool include_equal_weight_policy{true};
   bool include_current_weight_policy{true};
   bool include_spot_distributional_utility_policy{true};
@@ -119,26 +119,26 @@ struct marshal_evaluation_policy_summary_t {
   std::int64_t cajtucu_partial_fill_count{0};
   double mean_total_reward{0.0};
   double mean_total_log_growth{0.0};
-  double mean_final_equity_base{0.0};
+  double mean_final_equity_numeraire{0.0};
   double mean_max_drawdown{0.0};
   double mean_total_turnover{0.0};
-  double mean_total_transaction_cost_base{0.0};
+  double mean_total_transaction_cost_numeraire{0.0};
   double mean_projection_mae{0.0};
   double mean_projection_rmse{0.0};
   double mean_projection_correlation{0.0};
   double mean_projection_directional_accuracy{0.0};
   double mean_projection_interval_coverage{0.0};
   double mean_projection_interval_width{0.0};
-  double mean_zero_return_baseline_mae{0.0};
-  double mean_zero_return_baseline_rmse{0.0};
+  double mean_zero_return_numeraireline_mae{0.0};
+  double mean_zero_return_numeraireline_rmse{0.0};
   double mean_model_skill_vs_zero_mae{0.0};
   double mean_model_skill_vs_zero_rmse{0.0};
   double mean_cajtucu_order_count{0.0};
   double mean_cajtucu_fill_count{0.0};
-  double mean_cajtucu_total_fee_base{0.0};
-  double mean_cajtucu_total_spread_cost_base{0.0};
-  double mean_cajtucu_total_slippage_base{0.0};
-  double mean_cajtucu_total_transaction_cost_base{0.0};
+  double mean_cajtucu_total_fee_numeraire{0.0};
+  double mean_cajtucu_total_spread_cost_numeraire{0.0};
+  double mean_cajtucu_total_slippage_numeraire{0.0};
+  double mean_cajtucu_total_transaction_cost_numeraire{0.0};
 };
 
 struct marshal_evaluation_receipt_t {
@@ -166,19 +166,19 @@ struct marshal_evaluation_receipt_t {
   double mean_projection_directional_accuracy{0.0};
   double mean_projection_interval_coverage{0.0};
   double mean_projection_interval_width{0.0};
-  double mean_zero_return_baseline_mae{0.0};
-  double mean_zero_return_baseline_rmse{0.0};
+  double mean_zero_return_numeraireline_mae{0.0};
+  double mean_zero_return_numeraireline_rmse{0.0};
   double mean_model_skill_vs_zero_mae{0.0};
   double mean_model_skill_vs_zero_rmse{0.0};
   double mean_total_log_growth{0.0};
-  double mean_final_equity_base{0.0};
-  double mean_total_transaction_cost_base{0.0};
+  double mean_final_equity_numeraire{0.0};
+  double mean_total_transaction_cost_numeraire{0.0};
   double mean_cajtucu_order_count{0.0};
   double mean_cajtucu_fill_count{0.0};
-  double mean_cajtucu_total_fee_base{0.0};
-  double mean_cajtucu_total_spread_cost_base{0.0};
-  double mean_cajtucu_total_slippage_base{0.0};
-  double mean_cajtucu_total_transaction_cost_base{0.0};
+  double mean_cajtucu_total_fee_numeraire{0.0};
+  double mean_cajtucu_total_spread_cost_numeraire{0.0};
+  double mean_cajtucu_total_slippage_numeraire{0.0};
+  double mean_cajtucu_total_transaction_cost_numeraire{0.0};
   std::int64_t time_law_future_observation_violation_count{0};
   std::int64_t mixed_future_realization_key_count{0};
   std::int64_t projection_validation_step_count{0};
@@ -352,13 +352,13 @@ append_policy_summary(std::ostringstream &out, const std::string &prefix,
   append_double(out, prefix + "mean_total_reward", summary.mean_total_reward);
   append_double(out, prefix + "mean_total_log_growth",
                 summary.mean_total_log_growth);
-  append_double(out, prefix + "mean_final_equity_base",
-                summary.mean_final_equity_base);
+  append_double(out, prefix + "mean_final_equity_numeraire",
+                summary.mean_final_equity_numeraire);
   append_double(out, prefix + "mean_max_drawdown", summary.mean_max_drawdown);
   append_double(out, prefix + "mean_total_turnover",
                 summary.mean_total_turnover);
-  append_double(out, prefix + "mean_total_transaction_cost_base",
-                summary.mean_total_transaction_cost_base);
+  append_double(out, prefix + "mean_total_transaction_cost_numeraire",
+                summary.mean_total_transaction_cost_numeraire);
   append_double(out, prefix + "mean_projection_mae",
                 summary.mean_projection_mae);
   append_double(out, prefix + "mean_projection_rmse",
@@ -371,10 +371,10 @@ append_policy_summary(std::ostringstream &out, const std::string &prefix,
                 summary.mean_projection_interval_coverage);
   append_double(out, prefix + "mean_projection_interval_width",
                 summary.mean_projection_interval_width);
-  append_double(out, prefix + "mean_zero_return_baseline_mae",
-                summary.mean_zero_return_baseline_mae);
-  append_double(out, prefix + "mean_zero_return_baseline_rmse",
-                summary.mean_zero_return_baseline_rmse);
+  append_double(out, prefix + "mean_zero_return_numeraireline_mae",
+                summary.mean_zero_return_numeraireline_mae);
+  append_double(out, prefix + "mean_zero_return_numeraireline_rmse",
+                summary.mean_zero_return_numeraireline_rmse);
   append_double(out, prefix + "mean_model_skill_vs_zero_mae",
                 summary.mean_model_skill_vs_zero_mae);
   append_double(out, prefix + "mean_model_skill_vs_zero_rmse",
@@ -383,14 +383,14 @@ append_policy_summary(std::ostringstream &out, const std::string &prefix,
                 summary.mean_cajtucu_order_count);
   append_double(out, prefix + "mean_cajtucu_fill_count",
                 summary.mean_cajtucu_fill_count);
-  append_double(out, prefix + "mean_cajtucu_total_fee_base",
-                summary.mean_cajtucu_total_fee_base);
-  append_double(out, prefix + "mean_cajtucu_total_spread_cost_base",
-                summary.mean_cajtucu_total_spread_cost_base);
-  append_double(out, prefix + "mean_cajtucu_total_slippage_base",
-                summary.mean_cajtucu_total_slippage_base);
-  append_double(out, prefix + "mean_cajtucu_total_transaction_cost_base",
-                summary.mean_cajtucu_total_transaction_cost_base);
+  append_double(out, prefix + "mean_cajtucu_total_fee_numeraire",
+                summary.mean_cajtucu_total_fee_numeraire);
+  append_double(out, prefix + "mean_cajtucu_total_spread_cost_numeraire",
+                summary.mean_cajtucu_total_spread_cost_numeraire);
+  append_double(out, prefix + "mean_cajtucu_total_slippage_numeraire",
+                summary.mean_cajtucu_total_slippage_numeraire);
+  append_double(out, prefix + "mean_cajtucu_total_transaction_cost_numeraire",
+                summary.mean_cajtucu_total_transaction_cost_numeraire);
 }
 
 } // namespace evaluation_marshal_detail
@@ -423,10 +423,10 @@ canonical_evaluation_request_text(const marshal_evaluation_request_t &request) {
                     request.trained_range_evidence_digest);
   detail::append_kv(out, "validation_split_policy_digest",
                     request.validation_split_policy_digest);
-  detail::append_kv(out, "base_reserve_node_id", request.base_reserve_node_id);
-  detail::append_kv(out, "risky_node_ids", detail::csv(request.risky_node_ids));
-  detail::append_bool(out, "include_base_reserve_policy",
-                      request.include_base_reserve_policy);
+  detail::append_kv(out, "accounting_numeraire_node_id", request.accounting_numeraire_node_id);
+  detail::append_kv(out, "target_node_ids", detail::csv(request.target_node_ids));
+  detail::append_bool(out, "include_numeraire_only_policy",
+                      request.include_numeraire_only_policy);
   detail::append_bool(out, "include_equal_weight_policy",
                       request.include_equal_weight_policy);
   detail::append_bool(out, "include_current_weight_policy",
@@ -504,24 +504,29 @@ validate_evaluation_request(const marshal_evaluation_request_t &request) {
                  request.validation_split_policy_digest)) {
     refusals.emplace_back("malformed_validation_split_policy_digest");
   }
-  if (request.base_reserve_node_id.empty()) {
-    refusals.emplace_back("missing_base_reserve_node_id");
+  if (request.accounting_numeraire_node_id.empty()) {
+    refusals.emplace_back("missing_accounting_numeraire_node_id");
   }
-  if (request.risky_node_ids.empty()) {
-    refusals.emplace_back("missing_risky_node_ids");
+  if (request.target_node_ids.empty()) {
+    refusals.emplace_back("missing_target_node_ids");
   }
   std::unordered_set<std::string> seen_nodes;
-  for (const auto &node_id : request.risky_node_ids) {
+  bool contains_numeraire = false;
+  for (const auto &node_id : request.target_node_ids) {
     if (node_id.empty()) {
-      refusals.emplace_back("empty_risky_node_id");
+      refusals.emplace_back("empty_target_node_id");
       continue;
     }
-    if (node_id == request.base_reserve_node_id) {
-      refusals.emplace_back("base_reserve_node_duplicated_in_risky_nodes");
+    if (node_id == request.accounting_numeraire_node_id) {
+      contains_numeraire = true;
     }
     if (!seen_nodes.insert(node_id).second) {
-      refusals.emplace_back("duplicate_risky_node_id");
+      refusals.emplace_back("duplicate_target_node_id");
     }
+  }
+  if (!request.accounting_numeraire_node_id.empty() &&
+      !contains_numeraire) {
+    refusals.emplace_back("accounting_numeraire_node_missing_from_target_nodes");
   }
   if (request.max_replay_steps < 0) {
     refusals.emplace_back("invalid_max_replay_steps");
@@ -602,13 +607,13 @@ prepare_evaluation_plan(const marshal_evaluation_request_t &request) {
         << " --anchor-index-begin "
         << request.validation_range.anchor_index_begin << " --anchor-index-end "
         << request.validation_range.anchor_index_end;
-    if (!request.base_reserve_node_id.empty()) {
-      run << " --replay-base-reserve-node "
-          << detail::shell_quote(request.base_reserve_node_id);
+    if (!request.accounting_numeraire_node_id.empty()) {
+      run << " --replay-accounting-numeraire-node "
+          << detail::shell_quote(request.accounting_numeraire_node_id);
     }
-    if (!request.risky_node_ids.empty()) {
-      run << " --replay-risky-nodes "
-          << detail::shell_quote(detail::csv(request.risky_node_ids));
+    if (!request.target_node_ids.empty()) {
+      run << " --replay-target-nodes "
+          << detail::shell_quote(detail::csv(request.target_node_ids));
     }
     plan.runtime_run_command = run.str();
 
@@ -634,8 +639,8 @@ prepare_evaluation_plan(const marshal_evaluation_request_t &request) {
     if (request.include_current_weight_policy) {
       replay << " --replay-include-current-weight";
     }
-    if (!request.include_base_reserve_policy) {
-      replay << " --replay-no-base-reserve-policy";
+    if (!request.include_numeraire_only_policy) {
+      replay << " --replay-no-numeraire-only-policy";
     }
     if (!request.include_spot_distributional_utility_policy) {
       replay << " --replay-no-sdu-policy";
@@ -831,32 +836,32 @@ canonical_evaluation_receipt_text(const marshal_evaluation_receipt_t &receipt) {
                         receipt.mean_projection_interval_coverage);
   detail::append_double(out, "mean_projection_interval_width",
                         receipt.mean_projection_interval_width);
-  detail::append_double(out, "mean_zero_return_baseline_mae",
-                        receipt.mean_zero_return_baseline_mae);
-  detail::append_double(out, "mean_zero_return_baseline_rmse",
-                        receipt.mean_zero_return_baseline_rmse);
+  detail::append_double(out, "mean_zero_return_numeraireline_mae",
+                        receipt.mean_zero_return_numeraireline_mae);
+  detail::append_double(out, "mean_zero_return_numeraireline_rmse",
+                        receipt.mean_zero_return_numeraireline_rmse);
   detail::append_double(out, "mean_model_skill_vs_zero_mae",
                         receipt.mean_model_skill_vs_zero_mae);
   detail::append_double(out, "mean_model_skill_vs_zero_rmse",
                         receipt.mean_model_skill_vs_zero_rmse);
   detail::append_double(out, "mean_total_log_growth",
                         receipt.mean_total_log_growth);
-  detail::append_double(out, "mean_final_equity_base",
-                        receipt.mean_final_equity_base);
-  detail::append_double(out, "mean_total_transaction_cost_base",
-                        receipt.mean_total_transaction_cost_base);
+  detail::append_double(out, "mean_final_equity_numeraire",
+                        receipt.mean_final_equity_numeraire);
+  detail::append_double(out, "mean_total_transaction_cost_numeraire",
+                        receipt.mean_total_transaction_cost_numeraire);
   detail::append_double(out, "mean_cajtucu_order_count",
                         receipt.mean_cajtucu_order_count);
   detail::append_double(out, "mean_cajtucu_fill_count",
                         receipt.mean_cajtucu_fill_count);
-  detail::append_double(out, "mean_cajtucu_total_fee_base",
-                        receipt.mean_cajtucu_total_fee_base);
-  detail::append_double(out, "mean_cajtucu_total_spread_cost_base",
-                        receipt.mean_cajtucu_total_spread_cost_base);
-  detail::append_double(out, "mean_cajtucu_total_slippage_base",
-                        receipt.mean_cajtucu_total_slippage_base);
-  detail::append_double(out, "mean_cajtucu_total_transaction_cost_base",
-                        receipt.mean_cajtucu_total_transaction_cost_base);
+  detail::append_double(out, "mean_cajtucu_total_fee_numeraire",
+                        receipt.mean_cajtucu_total_fee_numeraire);
+  detail::append_double(out, "mean_cajtucu_total_spread_cost_numeraire",
+                        receipt.mean_cajtucu_total_spread_cost_numeraire);
+  detail::append_double(out, "mean_cajtucu_total_slippage_numeraire",
+                        receipt.mean_cajtucu_total_slippage_numeraire);
+  detail::append_double(out, "mean_cajtucu_total_transaction_cost_numeraire",
+                        receipt.mean_cajtucu_total_transaction_cost_numeraire);
   detail::append_i64(out, "time_law_future_observation_violation_count",
                      receipt.time_law_future_observation_violation_count);
   detail::append_i64(out, "mixed_future_realization_key_count",

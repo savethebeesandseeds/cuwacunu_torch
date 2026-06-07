@@ -10,11 +10,11 @@
 #include <unordered_map>
 #include <vector>
 
+#include "hero/runtime_hero/runtime/wave_settings.h"
 #include "jkimyei/api/training_spec.h"
 #include "kikijyeba/environment/replay/spec.h"
 #include "kikijyeba/protocol/protocol_variant.h"
 #include "kikijyeba/protocol/source_dock.h"
-#include "hero/runtime_hero/runtime/wave_settings.h"
 #include "kikijyeba/topology/dock_binding.h"
 #include "kikijyeba/topology/node_value_chain.h"
 #include "kikijyeba/topology/wikimyei_registry.h"
@@ -27,6 +27,8 @@
 #include "wikimyei/inference/expected_value/mdn/mdn_spec.h"
 #include "wikimyei/observer/belief/assembly.h"
 #include "wikimyei/observer/belief/spec.h"
+#include "wikimyei/policy/portfolio/graph_node_allocation/assembly.h"
+#include "wikimyei/policy/portfolio/graph_node_allocation/spec.h"
 #include "wikimyei/policy/portfolio/spot_distributional_utility/assembly.h"
 #include "wikimyei/policy/portfolio/spot_distributional_utility/spec.h"
 #include "wikimyei/representation/encoding/mtf_jepa_mae_vicreg/assembly.h"
@@ -83,12 +85,19 @@ struct channel_graph_first_protocol_contract_t {
   std::string
       wikimyei_policy_portfolio_spot_distributional_utility_dsl_bnf_path{};
   std::string wikimyei_policy_portfolio_spot_distributional_utility_dsl_path{};
+  std::string wikimyei_policy_portfolio_graph_node_allocation_dsl_bnf_path{};
+  std::string wikimyei_policy_portfolio_graph_node_allocation_dsl_path{};
+  std::string wikimyei_policy_portfolio_graph_node_allocation_net_bnf_path{};
+  std::string wikimyei_policy_portfolio_graph_node_allocation_net_path{};
   std::string wikimyei_representation_vicreg_jkimyei_bnf_path{};
   std::string wikimyei_representation_vicreg_jkimyei_path{};
   std::string wikimyei_representation_mtf_jepa_mae_vicreg_jkimyei_bnf_path{};
   std::string wikimyei_representation_mtf_jepa_mae_vicreg_jkimyei_path{};
   std::string wikimyei_inference_expected_value_mdn_jkimyei_bnf_path{};
   std::string wikimyei_inference_expected_value_mdn_jkimyei_path{};
+  std::string
+      wikimyei_policy_portfolio_graph_node_allocation_jkimyei_bnf_path{};
+  std::string wikimyei_policy_portfolio_graph_node_allocation_jkimyei_path{};
   std::string runtime_wave_dsl_bnf_path{};
   std::string runtime_wave_dsl_path{};
   std::string runtime_wave_id{};
@@ -111,6 +120,10 @@ struct channel_graph_first_protocol_contract_t {
       belief_observer{};
   cuwacunu::wikimyei::policy::portfolio::spot_distributional_utility::
       spot_distributional_utility_spec_t spot_distributional_utility{};
+  cuwacunu::wikimyei::policy::portfolio::graph_node_allocation::
+      graph_node_allocation_spec_t graph_node_allocation{};
+  cuwacunu::wikimyei::policy::portfolio::graph_node_allocation::
+      graph_node_allocation_net_spec_t graph_node_allocation_net{};
   cuwacunu::wikimyei::assembly::wikimyei_assembly_t nodelift_assembly{};
   cuwacunu::wikimyei::assembly::wikimyei_assembly_t vicreg_assembly{};
   cuwacunu::wikimyei::assembly::wikimyei_assembly_t
@@ -119,6 +132,8 @@ struct channel_graph_first_protocol_contract_t {
   cuwacunu::wikimyei::assembly::wikimyei_assembly_t belief_observer_assembly{};
   cuwacunu::wikimyei::assembly::wikimyei_assembly_t
       spot_distributional_utility_assembly{};
+  cuwacunu::wikimyei::assembly::wikimyei_assembly_t
+      graph_node_allocation_assembly{};
   cuwacunu::kikijyeba::topology::wikimyei_registry_t wikimyei_registry{};
   cuwacunu::kikijyeba::topology::dock_binding_t dock_binding{};
   cuwacunu::kikijyeba::topology::dock_binding_validation_report_t
@@ -127,6 +142,8 @@ struct channel_graph_first_protocol_contract_t {
   cuwacunu::jkimyei::training::training_run_spec_t
       mtf_jepa_mae_vicreg_training{};
   cuwacunu::jkimyei::training::training_run_spec_t channel_mdn_training{};
+  cuwacunu::jkimyei::training::training_run_spec_t
+      graph_node_allocation_training{};
 };
 
 using channel_graph_first_config_bundle_t =
@@ -258,6 +275,8 @@ make_channel_graph_first_dock_binding(
       "allocation_belief");
   out.constraints.push_back("ObserverBelief.allocation_belief -> "
                             "SpotDistributionalUtility.allocation_target");
+  out.constraints.push_back("ObserverBelief.allocation_belief -> "
+                            "GraphNodeAllocation.policy_input");
   out.constraints.push_back("B is runtime-bound per wave pulse");
   out.constraints.push_back(
       "A is runtime-bound by the allocatable graph-node universe");
@@ -274,7 +293,8 @@ channel_graph_first_wikimyei_assemblies(
           bundle.mtf_jepa_mae_vicreg_assembly,
           bundle.channel_mdn_assembly,
           bundle.belief_observer_assembly,
-          bundle.spot_distributional_utility_assembly};
+          bundle.spot_distributional_utility_assembly,
+          bundle.graph_node_allocation_assembly};
 }
 
 namespace config_bundle_detail {
@@ -373,6 +393,8 @@ training_task_name(cuwacunu::jkimyei::training::training_task_t task) {
     return "vicreg_representation";
   case training::training_task_t::mtf_jepa_mae_vicreg_representation:
     return "mtf_jepa_mae_vicreg_representation";
+  case training::training_task_t::policy_graph_node_allocation_contract_smoke:
+    return "policy_graph_node_allocation_contract_smoke";
   }
   return "unknown";
 }
@@ -383,6 +405,8 @@ optimizer_name(cuwacunu::jkimyei::training::training_optimizer_t optimizer) {
   switch (optimizer) {
   case training::training_optimizer_t::adam:
     return "adam";
+  case training::training_optimizer_t::noop:
+    return "noop";
   }
   return "unknown";
 }
@@ -406,6 +430,14 @@ inline void append_training_contract_fields(
   out << prefix << "_seed=" << training.seed << "\n";
   out << prefix << "_freeze_representation=" << training.freeze_representation
       << "\n";
+  out << prefix << "_training_schedule_mode=" << training.training_schedule_mode
+      << "\n";
+  out << prefix
+      << "_require_causal_schedule=" << training.require_causal_schedule
+      << "\n";
+  out << prefix << "_ppo_execution_allowed=" << training.ppo_execution_allowed
+      << "\n";
+  out << prefix << "_checkpoint_kind=" << training.checkpoint_kind << "\n";
 }
 
 } // namespace config_bundle_detail
@@ -498,6 +530,9 @@ canonical_channel_graph_first_protocol_contract_text(
   out << "spot_distributional_utility_assembly="
       << assembly::assembly_fingerprint(
              contract.spot_distributional_utility_assembly)
+      << "\n";
+  out << "graph_node_allocation_assembly="
+      << assembly::assembly_fingerprint(contract.graph_node_allocation_assembly)
       << "\n";
   out << "dock_binding="
       << cuwacunu::kikijyeba::topology::dock_binding_fingerprint(
@@ -671,8 +706,8 @@ canonical_channel_graph_first_protocol_contract_text(
       << contract.belief_observer.return_projection << "\n";
   out << "belief_observer_scenario_unit="
       << contract.belief_observer.scenario_unit << "\n";
-  out << "belief_observer_reserve_asset_policy="
-      << contract.belief_observer.reserve_asset_policy << "\n";
+  out << "belief_observer_accounting_numeraire_policy="
+      << contract.belief_observer.accounting_numeraire_policy << "\n";
   out << "belief_observer_covariance_coupler="
       << contract.belief_observer.covariance_coupler << "\n";
   out << "belief_observer_scenario_count="
@@ -694,8 +729,6 @@ canonical_channel_graph_first_protocol_contract_text(
       << contract.spot_distributional_utility.objective << "\n";
   out << "spot_distributional_utility_scenario_unit="
       << contract.spot_distributional_utility.scenario_unit << "\n";
-  out << "spot_distributional_utility_reserve_node_policy="
-      << contract.spot_distributional_utility.reserve_node_policy << "\n";
   out << "spot_distributional_utility_iterations="
       << contract.spot_distributional_utility.iterations << "\n";
   out << "spot_distributional_utility_learning_rate="
@@ -708,13 +741,58 @@ canonical_channel_graph_first_protocol_contract_text(
       << contract.spot_distributional_utility.long_only << "\n";
   out << "spot_distributional_utility_spot_only="
       << contract.spot_distributional_utility.spot_only << "\n";
-  out << "spot_distributional_utility_require_reserve_node="
-      << contract.spot_distributional_utility.require_reserve_node << "\n";
+  out << "spot_distributional_utility_require_accounting_numeraire_node="
+      << contract.spot_distributional_utility.require_accounting_numeraire_node
+      << "\n";
   out << "spot_distributional_utility_projection_validation_required="
       << contract.spot_distributional_utility.projection_validation_required
       << "\n";
   out << "spot_distributional_utility_live_capital_allowed="
       << contract.spot_distributional_utility.live_capital_allowed << "\n";
+  out << "graph_node_allocation_version="
+      << contract.graph_node_allocation.version_token << "\n";
+  out << "graph_node_allocation_component_assembly_id="
+      << contract.graph_node_allocation.component_assembly_id << "\n";
+  out << "graph_node_allocation_policy_kind="
+      << contract.graph_node_allocation.policy_kind << "\n";
+  out << "graph_node_allocation_policy_input_schema="
+      << contract.graph_node_allocation.policy_input_schema << "\n";
+  out << "graph_node_allocation_action_adapter="
+      << contract.graph_node_allocation.action_adapter << "\n";
+  out << "graph_node_allocation_action_schema="
+      << contract.graph_node_allocation.action_schema << "\n";
+  out << "graph_node_allocation_reward_contract="
+      << contract.graph_node_allocation.reward_contract << "\n";
+  out << "graph_node_allocation_graph_node_universe_policy="
+      << contract.graph_node_allocation.graph_node_universe_policy << "\n";
+  out << "graph_node_allocation_scenario_input_policy="
+      << contract.graph_node_allocation.scenario_input_policy << "\n";
+  out << "graph_node_allocation_raw_mdn_input_allowed="
+      << contract.graph_node_allocation.raw_mdn_input_allowed << "\n";
+  out << "graph_node_allocation_ppo_implemented="
+      << contract.graph_node_allocation.ppo_implemented << "\n";
+  out << "graph_node_allocation_live_capital_allowed="
+      << contract.graph_node_allocation.live_capital_allowed << "\n";
+  out << "graph_node_allocation_net_version="
+      << contract.graph_node_allocation_net.version_token << "\n";
+  out << "graph_node_allocation_net_input_node_feature_dim="
+      << contract.graph_node_allocation_net.input_node_feature_dim << "\n";
+  out << "graph_node_allocation_net_input_global_feature_dim="
+      << contract.graph_node_allocation_net.input_global_feature_dim << "\n";
+  out << "graph_node_allocation_net_node_encoder_hidden_dim="
+      << contract.graph_node_allocation_net.node_encoder_hidden_dim << "\n";
+  out << "graph_node_allocation_net_global_encoder_hidden_dim="
+      << contract.graph_node_allocation_net.global_encoder_hidden_dim << "\n";
+  out << "graph_node_allocation_net_allocation_head_hidden_dim="
+      << contract.graph_node_allocation_net.allocation_head_hidden_dim << "\n";
+  out << "graph_node_allocation_net_output_head="
+      << contract.graph_node_allocation_net.output_head << "\n";
+  out << "graph_node_allocation_net_value_head="
+      << contract.graph_node_allocation_net.value_head << "\n";
+  out << "graph_node_allocation_net_action_adapter="
+      << contract.graph_node_allocation_net.action_adapter << "\n";
+  out << "graph_node_allocation_net_ppo_execution_allowed="
+      << contract.graph_node_allocation_net.ppo_execution_allowed << "\n";
   out << "replay_environment_version="
       << contract.replay_environment.version_token << "\n";
   out << "replay_environment_component_assembly_id="
@@ -743,8 +821,6 @@ canonical_channel_graph_first_protocol_contract_text(
       << contract.replay_environment.action_kind << "\n";
   out << "replay_environment_action_time_policy="
       << contract.replay_environment.action_time_policy << "\n";
-  out << "replay_environment_reserve_node_policy="
-      << contract.replay_environment.reserve_node_policy << "\n";
   out << "replay_environment_graph_node_universe_policy="
       << contract.replay_environment.graph_node_universe_policy << "\n";
   out << "replay_environment_reward_policy="
@@ -790,6 +866,9 @@ canonical_channel_graph_first_protocol_contract_text(
       contract.mtf_jepa_mae_vicreg_training);
   config_bundle_detail::append_training_contract_fields(
       out, "channel_mdn_training", contract.channel_mdn_training);
+  config_bundle_detail::append_training_contract_fields(
+      out, "graph_node_allocation_training",
+      contract.graph_node_allocation_training);
   return out.str();
 }
 
@@ -885,6 +964,8 @@ inline void validate_channel_graph_first_protocol_contract(
   namespace observer_belief = cuwacunu::wikimyei::observer::belief;
   namespace spot_policy =
       cuwacunu::wikimyei::policy::portfolio::spot_distributional_utility;
+  namespace graph_allocation_policy =
+      cuwacunu::wikimyei::policy::portfolio::graph_node_allocation;
   namespace replay_env = cuwacunu::kikijyeba::environment;
   namespace training = cuwacunu::jkimyei::training;
 
@@ -896,6 +977,10 @@ inline void validate_channel_graph_first_protocol_contract(
   observer_belief::validate_belief_observer_spec(bundle.belief_observer);
   spot_policy::validate_spot_distributional_utility_spec(
       bundle.spot_distributional_utility);
+  graph_allocation_policy::validate_graph_node_allocation_spec(
+      bundle.graph_node_allocation);
+  graph_allocation_policy::validate_graph_node_allocation_net_spec(
+      bundle.graph_node_allocation_net);
   replay_env::validate_replay_environment_spec(bundle.replay_environment);
   if (bundle.nodelift_assembly.component_assembly_id !=
           bundle.nodelift.component_assembly_id ||
@@ -942,6 +1027,14 @@ inline void validate_channel_graph_first_protocol_contract(
     throw std::runtime_error(
         "[channel_graph_first_config] spot distributional utility assembly "
         "does not match policy spec");
+  }
+  if (bundle.graph_node_allocation_assembly.component_assembly_id !=
+          bundle.graph_node_allocation.component_assembly_id ||
+      bundle.graph_node_allocation_assembly.version_token !=
+          bundle.graph_node_allocation.version_token) {
+    throw std::runtime_error("[channel_graph_first_config] graph node "
+                             "allocation policy assembly does "
+                             "not match policy spec");
   }
   if (bundle.belief_observer.input_mdn_assembly_id !=
       bundle.channel_mdn.component_assembly_id) {
@@ -1004,14 +1097,16 @@ inline void validate_channel_graph_first_protocol_contract(
         "[channel_graph_first_config] belief observer output dock is not "
         "compatible with spot distributional utility input dock");
   }
-  if (bundle.wikimyei_registry.assemblies.size() != 6) {
+  if (bundle.wikimyei_registry.assemblies.size() != 7) {
     throw std::runtime_error(
-        "[channel_graph_first_config] expected six Wikimyei assemblies");
+        "[channel_graph_first_config] expected seven Wikimyei assemblies");
   }
   training::validate_training_run_spec(bundle.vicreg_training);
   training::validate_training_run_spec(bundle.mtf_jepa_mae_vicreg_training);
   training::validate_training_run_spec(bundle.channel_mdn_training);
-  cuwacunu::hero::runtime::settings::validate_wave_settings(bundle.wave_settings);
+  training::validate_training_run_spec(bundle.graph_node_allocation_training);
+  cuwacunu::hero::runtime::settings::validate_wave_settings(
+      bundle.wave_settings);
   if (bundle.source_universe.empty()) {
     throw std::runtime_error(
         "[channel_graph_first_config] Ujcamei source universe is empty");
@@ -1036,8 +1131,8 @@ inline void validate_channel_graph_first_protocol_contract(
                              bundle.protocol_variant.protocol_id +
                              " is not declared by wave COMPATIBLE_PROTOCOLS");
   }
-  if (bundle.wave_settings.target ==
-          cuwacunu::hero::runtime::settings::wave_target_t::vicreg_representation &&
+  if (bundle.wave_settings.target == cuwacunu::hero::runtime::settings::
+                                         wave_target_t::vicreg_representation &&
       active_mtf) {
     throw std::runtime_error(
         "[channel_graph_first_config] active protocol docks "
@@ -1104,6 +1199,20 @@ inline void validate_channel_graph_first_protocol_contract(
         "[channel_graph_first_config] Channel MDN training component id does "
         "not match Channel MDN component id");
   }
+  if (bundle.graph_node_allocation_training.task !=
+      training::training_task_t::policy_graph_node_allocation_contract_smoke) {
+    throw std::runtime_error(
+        "[channel_graph_first_config] graph-node allocation policy training "
+        "spec must use "
+        "policy_graph_node_allocation_contract_smoke task");
+  }
+  if (bundle.graph_node_allocation_training.component_assembly_id !=
+      bundle.graph_node_allocation.component_assembly_id) {
+    throw std::runtime_error(
+        "[channel_graph_first_config] graph-node allocation policy training "
+        "component id "
+        "does not match graph-node allocation policy component id");
+  }
 }
 
 inline void validate_channel_graph_first_config_bundle(
@@ -1160,6 +1269,46 @@ parse_assignment_config(const std::string &config_path) {
 }
 
 [[nodiscard]] inline std::string
+required_section_config_value(const std::string &config_path,
+                              const std::string &section,
+                              const std::string &key) {
+  std::istringstream lines(read_text_file_or_throw(config_path));
+  std::string current_section;
+  std::string line;
+  std::size_t line_number = 0;
+  while (std::getline(lines, line)) {
+    ++line_number;
+    const auto comment = line.find('#');
+    if (comment != std::string::npos) {
+      line.resize(comment);
+    }
+    line = kv::trim(std::move(line));
+    if (line.empty()) {
+      continue;
+    }
+    if (line.front() == '[' && line.back() == ']') {
+      current_section = kv::trim(line.substr(1, line.size() - 2));
+      continue;
+    }
+    if (current_section != section) {
+      continue;
+    }
+    const auto eq = line.find('=');
+    if (eq == std::string::npos) {
+      throw std::runtime_error("[graph_first_config] invalid config line " +
+                               std::to_string(line_number) + ": missing '='");
+    }
+    auto lhs = kv::trim(line.substr(0, eq));
+    auto rhs = kv::trim(line.substr(eq + 1));
+    if (lhs == key && !rhs.empty()) {
+      return rhs;
+    }
+  }
+  throw std::runtime_error("[graph_first_config] missing required key '" +
+                           section + "." + key + "' in " + config_path);
+}
+
+[[nodiscard]] inline std::string
 required_config_value(const std::unordered_map<std::string, std::string> &cfg,
                       const std::string &key, const std::string &config_path) {
   const auto it = cfg.find(key);
@@ -1182,6 +1331,27 @@ optional_config_value(const std::unordered_map<std::string, std::string> &cfg,
 
 } // namespace graph_first_config_detail
 
+[[nodiscard]] inline std::string
+load_accounting_numeraire_node_id_from_config(std::string config_path = {}) {
+  if (cuwacunu::piaabo::parse::simple_kv::trim(config_path).empty()) {
+    config_path =
+        cuwacunu::ujcamei::source::contract::default_source_config_path();
+  }
+  return graph_first_config_detail::required_section_config_value(
+      config_path, "ACCOUNTING", "accounting_numeraire_node_id");
+}
+
+[[nodiscard]] inline std::string
+resolve_accounting_numeraire_node_id(std::string explicit_node_id,
+                                     std::string config_path = {}) {
+  explicit_node_id =
+      cuwacunu::piaabo::parse::simple_kv::trim(std::move(explicit_node_id));
+  if (!explicit_node_id.empty()) {
+    return explicit_node_id;
+  }
+  return load_accounting_numeraire_node_id_from_config(std::move(config_path));
+}
+
 [[nodiscard]] inline cuwacunu::hero::runtime::settings::wave_settings_t
 load_wave_settings_from_config(std::string config_path = {}) {
   if (cuwacunu::piaabo::parse::simple_kv::trim(config_path).empty()) {
@@ -1194,8 +1364,8 @@ load_wave_settings_from_config(std::string config_path = {}) {
       graph_first_config_detail::read_text_file_or_throw(
           graph_first_config_detail::required_config_value(
               cfg, "runtime_wave_dsl_path", config_path)),
-      graph_first_config_detail::optional_config_value(
-          cfg, "runtime_wave_id", ""));
+      graph_first_config_detail::optional_config_value(cfg, "runtime_wave_id",
+                                                       ""));
 }
 
 [[nodiscard]] inline channel_graph_first_protocol_contract_t
@@ -1312,6 +1482,26 @@ load_channel_graph_first_protocol_contract_from_config(
       graph_first_config_detail::required_config_value(
           cfg, "wikimyei_policy_portfolio_spot_distributional_utility_dsl_path",
           config_path);
+  out.wikimyei_policy_portfolio_graph_node_allocation_dsl_bnf_path =
+      graph_first_config_detail::optional_config_value(
+          cfg, "wikimyei_policy_portfolio_graph_node_allocation_dsl_bnf_path",
+          "/cuwacunu/src/config/grammar/"
+          "wikimyei.policy.portfolio.graph_node_allocation.dsl.bnf");
+  out.wikimyei_policy_portfolio_graph_node_allocation_dsl_path =
+      graph_first_config_detail::optional_config_value(
+          cfg, "wikimyei_policy_portfolio_graph_node_allocation_dsl_path",
+          "/cuwacunu/src/config/"
+          "wikimyei.policy.portfolio.graph_node_allocation.dsl");
+  out.wikimyei_policy_portfolio_graph_node_allocation_net_bnf_path =
+      graph_first_config_detail::optional_config_value(
+          cfg, "wikimyei_policy_portfolio_graph_node_allocation_net_bnf_path",
+          "/cuwacunu/src/config/grammar/"
+          "wikimyei.policy.portfolio.graph_node_allocation.net.bnf");
+  out.wikimyei_policy_portfolio_graph_node_allocation_net_path =
+      graph_first_config_detail::optional_config_value(
+          cfg, "wikimyei_policy_portfolio_graph_node_allocation_net_path",
+          "/cuwacunu/src/config/"
+          "wikimyei.policy.portfolio.graph_node_allocation.net");
   out.wikimyei_representation_vicreg_jkimyei_bnf_path =
       graph_first_config_detail::required_config_value(
           cfg, "wikimyei_representation_vicreg_jkimyei_bnf_path", config_path);
@@ -1336,15 +1526,25 @@ load_channel_graph_first_protocol_contract_from_config(
       graph_first_config_detail::required_config_value(
           cfg, "wikimyei_inference_expected_value_mdn_jkimyei_path",
           config_path);
+  out.wikimyei_policy_portfolio_graph_node_allocation_jkimyei_bnf_path =
+      graph_first_config_detail::optional_config_value(
+          cfg,
+          "wikimyei_policy_portfolio_graph_node_allocation_jkimyei_bnf_"
+          "path",
+          "/cuwacunu/src/config/grammar/"
+          "wikimyei.policy.portfolio.graph_node_allocation.jkimyei.bnf");
+  out.wikimyei_policy_portfolio_graph_node_allocation_jkimyei_path =
+      graph_first_config_detail::optional_config_value(
+          cfg, "wikimyei_policy_portfolio_graph_node_allocation_jkimyei_path",
+          "/cuwacunu/src/config/"
+          "wikimyei.policy.portfolio.graph_node_allocation.jkimyei");
   out.runtime_wave_dsl_bnf_path =
       graph_first_config_detail::required_config_value(
           cfg, "runtime_wave_dsl_bnf_path", config_path);
-  out.runtime_wave_dsl_path =
-      graph_first_config_detail::required_config_value(
-          cfg, "runtime_wave_dsl_path", config_path);
-  out.runtime_wave_id =
-      graph_first_config_detail::optional_config_value(
-          cfg, "runtime_wave_id", "");
+  out.runtime_wave_dsl_path = graph_first_config_detail::required_config_value(
+      cfg, "runtime_wave_dsl_path", config_path);
+  out.runtime_wave_id = graph_first_config_detail::optional_config_value(
+      cfg, "runtime_wave_id", "");
   out.kikijyeba_protocol_dsl_bnf_path =
       graph_first_config_detail::optional_config_value(
           cfg, "kikijyeba_protocol_dsl_bnf_path",
@@ -1381,11 +1581,17 @@ load_channel_graph_first_protocol_contract_from_config(
   (void)graph_first_config_detail::read_text_file_or_throw(
       out.wikimyei_policy_portfolio_spot_distributional_utility_dsl_bnf_path);
   (void)graph_first_config_detail::read_text_file_or_throw(
+      out.wikimyei_policy_portfolio_graph_node_allocation_dsl_bnf_path);
+  (void)graph_first_config_detail::read_text_file_or_throw(
+      out.wikimyei_policy_portfolio_graph_node_allocation_net_bnf_path);
+  (void)graph_first_config_detail::read_text_file_or_throw(
       out.wikimyei_representation_vicreg_jkimyei_bnf_path);
   (void)graph_first_config_detail::read_text_file_or_throw(
       out.wikimyei_representation_mtf_jepa_mae_vicreg_jkimyei_bnf_path);
   (void)graph_first_config_detail::read_text_file_or_throw(
       out.wikimyei_inference_expected_value_mdn_jkimyei_bnf_path);
+  (void)graph_first_config_detail::read_text_file_or_throw(
+      out.wikimyei_policy_portfolio_graph_node_allocation_jkimyei_bnf_path);
   (void)graph_first_config_detail::read_text_file_or_throw(
       out.runtime_wave_dsl_bnf_path);
   (void)graph_first_config_detail::read_text_file_or_throw(
@@ -1435,6 +1641,14 @@ load_channel_graph_first_protocol_contract_from_config(
       spot_distributional_utility::decode_spot_distributional_utility_spec_from_dsl(
           graph_first_config_detail::read_text_file_or_throw(
               out.wikimyei_policy_portfolio_spot_distributional_utility_dsl_path));
+  out.graph_node_allocation = cuwacunu::wikimyei::policy::portfolio::
+      graph_node_allocation::decode_graph_node_allocation_spec_from_dsl(
+          graph_first_config_detail::read_text_file_or_throw(
+              out.wikimyei_policy_portfolio_graph_node_allocation_dsl_path));
+  out.graph_node_allocation_net = cuwacunu::wikimyei::policy::portfolio::
+      graph_node_allocation::decode_graph_node_allocation_net_spec_from_dsl(
+          graph_first_config_detail::read_text_file_or_throw(
+              out.wikimyei_policy_portfolio_graph_node_allocation_net_path));
   out.nodelift_assembly =
       cuwacunu::wikimyei::expression::nodelift::srl::make_nodelift_srl_assembly(
           out.nodelift);
@@ -1457,12 +1671,17 @@ load_channel_graph_first_protocol_contract_from_config(
           make_spot_distributional_utility_assembly(
               out.spot_distributional_utility.component_assembly_id,
               out.spot_distributional_utility.version_token);
+  out.graph_node_allocation_assembly = cuwacunu::wikimyei::policy::portfolio::
+      graph_node_allocation::make_graph_node_allocation_assembly(
+          out.graph_node_allocation.component_assembly_id,
+          out.graph_node_allocation.version_token);
   out.wikimyei_registry.add(out.nodelift_assembly);
   out.wikimyei_registry.add(out.vicreg_assembly);
   out.wikimyei_registry.add(out.mtf_jepa_mae_vicreg_assembly);
   out.wikimyei_registry.add(out.channel_mdn_assembly);
   out.wikimyei_registry.add(out.belief_observer_assembly);
   out.wikimyei_registry.add(out.spot_distributional_utility_assembly);
+  out.wikimyei_registry.add(out.graph_node_allocation_assembly);
   out.vicreg_training =
       cuwacunu::jkimyei::training::decode_training_run_spec_from_dsl(
           graph_first_config_detail::read_text_file_or_throw(
@@ -1475,6 +1694,10 @@ load_channel_graph_first_protocol_contract_from_config(
       cuwacunu::jkimyei::training::decode_training_run_spec_from_dsl(
           graph_first_config_detail::read_text_file_or_throw(
               out.wikimyei_inference_expected_value_mdn_jkimyei_path));
+  out.graph_node_allocation_training =
+      cuwacunu::jkimyei::training::decode_training_run_spec_from_dsl(
+          graph_first_config_detail::read_text_file_or_throw(
+              out.wikimyei_policy_portfolio_graph_node_allocation_jkimyei_path));
 
   populate_channel_graph_first_source_plan(out);
   out.dock_binding = make_channel_graph_first_dock_binding(out);

@@ -72,8 +72,8 @@ valid_request(const std::filesystem::path &root) {
                               .anchor_index_end = 2050};
   request.trained_range_evidence_digest = hex_digest('a');
   request.validation_split_policy_digest = hex_digest('b');
-  request.base_reserve_node_id = "USDT";
-  request.risky_node_ids = {"BTC", "ETH", "SOL"};
+  request.accounting_numeraire_node_id = "USDT";
+  request.target_node_ids = {"USDT", "BTC", "ETH", "SOL"};
   request.max_replay_steps = 128;
   request.max_parallel_replay_jobs = 4;
   return request;
@@ -104,9 +104,9 @@ void test_evaluation_plan_accepts_out_of_sample_request() {
   check(plan.runtime_run_command.find("--anchor-index-end 2050") !=
             std::string::npos,
         "runtime command should bind validation end");
-  check(plan.runtime_run_command.find("--replay-base-reserve-node 'USDT'") !=
+  check(plan.runtime_run_command.find("--replay-accounting-numeraire-node 'USDT'") !=
             std::string::npos,
-        "runtime command should bind base reserve node");
+        "runtime command should bind accounting numeraire node");
   check(plan.runtime_replay_command_template.find("--replay-experiment-id "
                                                   "'eval_mdn_validation_1800_"
                                                   "2050'") != std::string::npos,
@@ -185,19 +185,19 @@ void test_evaluation_plan_accepts_out_of_sample_request() {
   receipt.mean_projection_directional_accuracy = 0.520137;
   receipt.mean_projection_interval_coverage = 0.966393;
   receipt.mean_projection_interval_width = 0.06125;
-  receipt.mean_zero_return_baseline_mae = 0.0241;
-  receipt.mean_zero_return_baseline_rmse = 0.0273;
+  receipt.mean_zero_return_numeraireline_mae = 0.0241;
+  receipt.mean_zero_return_numeraireline_rmse = 0.0273;
   receipt.mean_model_skill_vs_zero_mae = 0.0458;
   receipt.mean_model_skill_vs_zero_rmse = 0.0837;
   receipt.mean_total_log_growth = 0.01744;
-  receipt.mean_final_equity_base = 1.01744;
-  receipt.mean_total_transaction_cost_base = 0.0;
+  receipt.mean_final_equity_numeraire = 1.01744;
+  receipt.mean_total_transaction_cost_numeraire = 0.0;
   receipt.mean_cajtucu_order_count = 1.75;
   receipt.mean_cajtucu_fill_count = 1.73;
-  receipt.mean_cajtucu_total_fee_base = 0.0011;
-  receipt.mean_cajtucu_total_spread_cost_base = 0.0007;
-  receipt.mean_cajtucu_total_slippage_base = 0.0005;
-  receipt.mean_cajtucu_total_transaction_cost_base = 0.0023;
+  receipt.mean_cajtucu_total_fee_numeraire = 0.0011;
+  receipt.mean_cajtucu_total_spread_cost_numeraire = 0.0007;
+  receipt.mean_cajtucu_total_slippage_numeraire = 0.0005;
+  receipt.mean_cajtucu_total_transaction_cost_numeraire = 0.0023;
   receipt.time_law_future_observation_violation_count = 0;
   receipt.mixed_future_realization_key_count = 0;
   receipt.projection_validation_step_count = 1000;
@@ -206,13 +206,13 @@ void test_evaluation_plan_accepts_out_of_sample_request() {
   receipt.best_policy_by_drawdown_adjusted_return =
       "kikijyeba.environment.policy.spot_distributional_utility.v1";
   marshal::marshal_evaluation_policy_summary_t reserve{};
-  reserve.policy_id = "base_reserve_only.v1";
+  reserve.policy_id = "numeraire_only.v1";
   reserve.policy_kind = "baseline";
   reserve.execution_backend_id = "cajtucu.execution.paper.v1";
   reserve.attempted_count = 4;
   reserve.completed_count = 4;
   reserve.cajtucu_execution_step_count = 250;
-  reserve.mean_final_equity_base = 1.0;
+  reserve.mean_final_equity_numeraire = 1.0;
   marshal::marshal_evaluation_policy_summary_t sdu{};
   sdu.policy_id = "kikijyeba.environment.policy."
                   "spot_distributional_utility.v1";
@@ -224,7 +224,7 @@ void test_evaluation_plan_accepts_out_of_sample_request() {
   sdu.cajtucu_rejected_fill_count = 2;
   sdu.cajtucu_partial_fill_count = 1;
   sdu.mean_total_log_growth = 0.0160804;
-  sdu.mean_final_equity_base = 1.01744;
+  sdu.mean_final_equity_numeraire = 1.01744;
   sdu.mean_max_drawdown = 0.036356;
   sdu.mean_total_turnover = 4.10059;
   sdu.mean_projection_mae = 0.0232059;
@@ -233,16 +233,16 @@ void test_evaluation_plan_accepts_out_of_sample_request() {
   sdu.mean_projection_directional_accuracy = 0.520137;
   sdu.mean_projection_interval_coverage = 0.966393;
   sdu.mean_projection_interval_width = 0.06125;
-  sdu.mean_zero_return_baseline_mae = 0.0241;
-  sdu.mean_zero_return_baseline_rmse = 0.0273;
+  sdu.mean_zero_return_numeraireline_mae = 0.0241;
+  sdu.mean_zero_return_numeraireline_rmse = 0.0273;
   sdu.mean_model_skill_vs_zero_mae = 0.0458;
   sdu.mean_model_skill_vs_zero_rmse = 0.0837;
   sdu.mean_cajtucu_order_count = 2.1;
   sdu.mean_cajtucu_fill_count = 2.05;
-  sdu.mean_cajtucu_total_fee_base = 0.0014;
-  sdu.mean_cajtucu_total_spread_cost_base = 0.0009;
-  sdu.mean_cajtucu_total_slippage_base = 0.0007;
-  sdu.mean_cajtucu_total_transaction_cost_base = 0.003;
+  sdu.mean_cajtucu_total_fee_numeraire = 0.0014;
+  sdu.mean_cajtucu_total_spread_cost_numeraire = 0.0009;
+  sdu.mean_cajtucu_total_slippage_numeraire = 0.0007;
+  sdu.mean_cajtucu_total_transaction_cost_numeraire = 0.003;
   receipt.policy_summaries = {reserve, sdu};
   receipt = marshal::finalize_evaluation_receipt(std::move(receipt));
   check(marshal::marshal_digest_is_strong_hex(receipt.receipt_digest),
@@ -263,10 +263,10 @@ void test_evaluation_plan_accepts_out_of_sample_request() {
   check(receipt_text.find("cajtucu_execution_step_count=1000") !=
             std::string::npos,
         "receipt should carry Cajtucu execution step count");
-  check(receipt_text.find("mean_cajtucu_total_transaction_cost_base=") !=
+  check(receipt_text.find("mean_cajtucu_total_transaction_cost_numeraire=") !=
             std::string::npos,
         "receipt should carry Cajtucu transaction cost summary");
-  check(receipt_text.find("mean_zero_return_baseline_mae=") !=
+  check(receipt_text.find("mean_zero_return_numeraireline_mae=") !=
             std::string::npos,
         "receipt should carry projection baseline metrics");
   check(receipt_text.find("mean_model_skill_vs_zero_mae=") != std::string::npos,
@@ -275,7 +275,7 @@ void test_evaluation_plan_accepts_out_of_sample_request() {
                           "spot_distributional_utility.v1") !=
             std::string::npos,
         "receipt should carry policy-wise summaries");
-  check(receipt_text.find("embedded_policy_1_mean_zero_return_baseline_mae=") !=
+  check(receipt_text.find("embedded_policy_1_mean_zero_return_numeraireline_mae=") !=
             std::string::npos,
         "receipt should carry policy-wise baseline metrics");
   check(receipt_text.find("embedded_policy_1_mean_model_skill_vs_zero_mae=") !=
@@ -285,7 +285,7 @@ void test_evaluation_plan_accepts_out_of_sample_request() {
                           "cajtucu.execution.paper.v1") != std::string::npos,
         "receipt should carry policy-wise Cajtucu backend identity");
   check(receipt_text.find(
-            "embedded_policy_1_mean_cajtucu_total_transaction_cost_base=") !=
+            "embedded_policy_1_mean_cajtucu_total_transaction_cost_numeraire=") !=
             std::string::npos,
         "receipt should carry policy-wise Cajtucu cost summary");
   check(!receipt.target_satisfaction_claimed,
@@ -333,14 +333,14 @@ void test_evaluation_plan_rejects_leaky_or_ill_formed_requests() {
         "missing checkpoint refusal should be explicit");
 
   auto bad_nodes = valid_request(root / "bad_nodes");
-  bad_nodes.risky_node_ids = {"BTC", "USDT", "BTC"};
+  bad_nodes.target_node_ids = {"BTC", "ETH", "BTC"};
   plan = marshal::prepare_evaluation_plan(bad_nodes);
-  check(!plan.accepted, "bad risky universe must reject");
+  check(!plan.accepted, "bad target universe must reject");
   check(has_refusal(plan.refusal_reasons,
-                    "base_reserve_node_duplicated_in_risky_nodes"),
-        "base reserve duplication refusal should be explicit");
-  check(has_refusal(plan.refusal_reasons, "duplicate_risky_node_id"),
-        "duplicate risky node refusal should be explicit");
+                    "accounting_numeraire_node_missing_from_target_nodes"),
+        "accounting numeraire membership refusal should be explicit");
+  check(has_refusal(plan.refusal_reasons, "duplicate_target_node_id"),
+        "duplicate target node refusal should be explicit");
 
   auto unsupported = valid_request(root / "unsupported_component");
   unsupported.target_component_family_id = "wikimyei.policy.rl.ppo";

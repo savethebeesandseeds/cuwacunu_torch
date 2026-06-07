@@ -9,8 +9,8 @@
 #include <string_view>
 #include <unistd.h>
 
-#include "hero/config_hero/hero_config.h"
 #include "hero/config_hero/config/hero_config_store.h"
+#include "hero/config_hero/hero_config.h"
 #include "hero/config_hero/hero_config_tools.h"
 
 namespace {
@@ -134,7 +134,8 @@ void print_help(const char *argv0) {
       << "  Read-only health:\n"
       << "    hero.config.status\n"
       << "  Read-only inspection:\n"
-      << "    hero.config.inspect subject=schema|show|value|validate|map\n"
+      << "    hero.config.inspect subject=schema|show|value\n"
+      << "    hero.config.inspect subject=validate_global_config|map\n"
       << "    hero.config.inspect subject=bundle|resolve_path|diff|backups\n"
       << "    hero.config.inspect subject=file_list|file_read\n"
       << "  Config mutation under policy-controlled roots:\n"

@@ -757,12 +757,12 @@ int main() {
              "allocation_authority=false\n");
   write_text(channel_mdn_dir / "lattice.allocation_engine.fact",
              "schema=kikijyeba.lattice.allocation_engine.v1\n"
-             "target_risky_node_weights=BTC:0.40,ETH:0.25,SOL:0.10\n"
-             "reserve_node_id=USD_CASH\n"
-             "reserve_node_source=base_policy\n"
-             "base_policy_reserve_node_id=USD_CASH\n"
-             "reserve_node_graph_bound=true\n"
-             "reserve_weight=0.25\n"
+             "target_node_weights=BTC:0.40,ETH:0.25,SOL:0.10\n"
+             "accounting_numeraire_node_id=USD_CASH\n"
+             "accounting_numeraire_node_source=base_policy\n"
+             "base_policy_accounting_numeraire_node_id=USD_CASH\n"
+             "accounting_numeraire_node_graph_bound=true\n"
+             "numeraire_weight=0.25\n"
              "turnover=0.12\n"
              "objective_terms=growth:0.70,cvar:0.20,cost:0.10\n"
              "cvar_loss=0.08\n"
@@ -819,17 +819,15 @@ int main() {
           "replay_environment_observation_time_law=time_t_only\n"
           "replay_environment_realization_reveal=after_action_execution\n"
           "replay_environment_realization_key_policy=shared_key_per_frame\n"
-          "replay_environment_action_kind=target_node_weights_with_base_"
-          "reserve\n"
+          "replay_environment_action_kind=target_node_weights\n"
           "replay_environment_action_time_policy=decision_timestamp_after_"
           "knowledge_before_realization\n"
-          "replay_environment_reserve_node_policy=graph_node_from_base_policy\n"
           "replay_environment_graph_node_universe_policy="
           "episode_spec_graph_node_ids\n"
           "replay_environment_reward_policy=post_execution_ledger_log_growth_"
           "drawdown_cost_turnover_invalid\n"
           "replay_environment_projection_validation=projected_log_return_vs_"
-          "realized_asset_base_return\n"
+          "realized_asset_numeraire_return\n"
           "replay_environment_policy_surface=policy_adapter\n"
           "replay_environment_action_policy_identity="
           "policy_adapter_must_match_action\n"
@@ -866,11 +864,12 @@ int main() {
           "projection_validation_step_count=4\n"
           "cajtucu_valid_trace_count=4\n"
           "cajtucu_invalid_trace_count=0\n"
-          "cajtucu_missing_direct_reserve_edge_count=0\n"
+          "cajtucu_missing_direct_pair_count=0\n"
+          "cajtucu_numeraire_fallback_pair_count=0\n"
           "cajtucu_nontradable_edge_reject_count=0\n"
           "cajtucu_below_min_notional_reject_count=0\n"
           "cajtucu_above_max_notional_reject_count=0\n"
-          "cajtucu_insufficient_reserve_reject_count=0\n"
+          "cajtucu_insufficient_sell_units_reject_count=0\n"
           "cajtucu_insufficient_units_reject_count=0\n"
           "cajtucu_invalid_sell_price_count=0\n"
           "cajtucu_large_equity_mismatch_count=0\n"
@@ -902,17 +901,17 @@ int main() {
           "episode_1_accepted_anchor_keys=2000,2001\n"
           "mean_total_reward=1.5\n"
           "mean_total_log_growth=0.03\n"
-          "mean_final_equity_base=103.0\n"
+          "mean_final_equity_numeraire=103.0\n"
           "mean_max_drawdown=0.08\n"
           "mean_total_turnover=0.40\n"
-          "mean_total_transaction_cost_base=0.015\n"
-          "requested_notional_base=10.0\n"
-          "executed_notional_base=9.8\n"
-          "rejected_notional_base=0.0\n"
+          "mean_total_transaction_cost_numeraire=0.015\n"
+          "requested_notional_numeraire=10.0\n"
+          "executed_notional_numeraire=9.8\n"
+          "rejected_notional_numeraire=0.0\n"
           "fill_ratio=0.98\n"
-          "fee_cost_base=0.006\n"
-          "spread_cost_base=0.005\n"
-          "slippage_cost_base=0.004\n"
+          "fee_cost_numeraire=0.006\n"
+          "spread_cost_numeraire=0.005\n"
+          "slippage_cost_numeraire=0.004\n"
           "mean_target_weight_error_l1=0.02\n"
           "mean_target_weight_error_linf=0.01\n"
           "mean_projection_mae=0.012\n"
@@ -1125,7 +1124,7 @@ int main() {
              "support_by_horizon=h2:15\n"
              "pit_histogram_summary=flat\n"
              "sigma_sanity=ok\n"
-             "forecast_digest=forecast_alias_digest\n"
+             "forecast_digest=forecast_canonical_digest\n"
              "representation_checkpoint_digest=rep_alias_digest\n"
              "mdn_checkpoint_digest=mdn_alias_digest\n"
              "target_transform_digest=target_transform_alias_digest\n"
@@ -1182,7 +1181,7 @@ int main() {
           alias_forecast_evals.front().valid_target_count_per_horizon.size() ==
               1 &&
           alias_forecast_evals.front().forecast_artifact_digest ==
-              "forecast_alias_digest" &&
+              "forecast_canonical_digest" &&
           alias_forecast_evals.front()
                   .evaluated_representation_checkpoint_digest ==
               "rep_alias_digest" &&
@@ -1986,10 +1985,15 @@ int main() {
       << "validation_range_digest=validation_range_digest_1\n"
       << "test_range_digest=test_range_digest_1\n"
       << "environment_contract_id=kikijyeba.environment.replay.v1\n"
-      << "observation_schema_digest=observation_schema_1\n"
+      << "observation_schema_digest=kikijyeba.environment.policy_input.v1\n"
       << "action_schema_digest="
-         "kikijyeba.environment.action.target_weights.v1\n"
-      << "reward_contract_digest=reward_contract_1\n"
+         "kikijyeba.environment.action.target_node_weights.v1\n"
+      << "reward_contract_digest=kikijyeba.environment.reward."
+         "post_execution_ledger_log_growth_cost_drawdown.v1\n"
+      << "policy_input_schema_id=kikijyeba.environment.policy_input.v1\n"
+      << "action_adapter_id=target_node_weights_simplex.v1\n"
+      << "reward_contract_id=kikijyeba.environment.reward."
+         "post_execution_ledger_log_growth_cost_drawdown.v1\n"
       << "execution_profile_digest="
       << policy_parent_replay_environment.execution_profile_digest << "\n"
       << "training_schedule_mode=causal_walk_forward_training.v1\n"
@@ -2082,6 +2086,13 @@ int main() {
               "numeric_anchor_index" &&
           policy_training_fact.causal_schedule_no_future_snapshot_use_source ==
               "derived_from_artifact_fit_use_ledgers" &&
+          policy_training_fact.policy_input_schema_id ==
+              "kikijyeba.environment.policy_input.v1" &&
+          policy_training_fact.action_adapter_id ==
+              "target_node_weights_simplex.v1" &&
+          policy_training_fact.reward_contract_id ==
+              "kikijyeba.environment.reward.post_execution_ledger_log_growth_"
+              "cost_drawdown.v1" &&
           policy_training_fact.causal_schedule_readiness_eligible &&
           policy_training_fact.causal_schedule_no_future_snapshot_use &&
           !policy_training_fact.offline_full_window_research &&
@@ -2092,6 +2103,9 @@ int main() {
           policy_training_summary.training_range_digest_bound_count == 1 &&
           policy_training_summary.validation_range_digest_bound_count == 1 &&
           policy_training_summary.test_range_digest_bound_count == 1 &&
+          policy_training_summary.policy_input_schema_bound_count == 1 &&
+          policy_training_summary.action_adapter_bound_count == 1 &&
+          policy_training_summary.reward_contract_id_bound_count == 1 &&
           policy_training_summary.execution_profile_digest_bound_count == 1 &&
           policy_training_summary.causal_schedule_digest_bound_count == 1 &&
           policy_training_summary.causal_schedule_ready_count == 1 &&
@@ -3282,7 +3296,7 @@ int main() {
              "observer_confidence=0.81\n"
              "observer_data_quality=0.82\n"
              "observer_liquidity=0.83\n"
-             "forecast_digest=forecast_alias_digest\n"
+             "forecast_digest=forecast_canonical_digest\n"
              "forecast_lineage=forecast_eval_alias_digest\n"
              "feature_semantics_digest=feature_semantics_alias\n"
              "dock_binding_digest=dock_binding_alias\n"
@@ -3320,7 +3334,7 @@ int main() {
               1e-12 &&
           std::abs(alias_observer_beliefs.front().liquidity - 0.83) < 1e-12 &&
           alias_observer_beliefs.front().forecast_artifact_digest ==
-              "forecast_alias_digest" &&
+              "forecast_canonical_digest" &&
           alias_observer_beliefs.front().forecast_artifact_lineage ==
               "forecast_eval_alias_digest" &&
           alias_observer_beliefs.front().feature_semantics_fingerprint ==
@@ -3499,13 +3513,15 @@ int main() {
                 channel_mdn_fact.graph_order_fingerprint &&
             mdn_allocation_engine.source_cursor_token ==
                 channel_mdn_fact.source_cursor_token &&
-            mdn_allocation_engine.target_risky_node_weights ==
+            mdn_allocation_engine.target_node_weights ==
                 "BTC:0.40,ETH:0.25,SOL:0.10" &&
-            mdn_allocation_engine.reserve_node_id == "USD_CASH" &&
-            mdn_allocation_engine.reserve_node_source == "base_policy" &&
-            mdn_allocation_engine.base_policy_reserve_node_id == "USD_CASH" &&
-            mdn_allocation_engine.reserve_node_graph_bound &&
-            std::abs(mdn_allocation_engine.reserve_weight - 0.25) < 1e-12 &&
+            mdn_allocation_engine.accounting_numeraire_node_id == "USD_CASH" &&
+            mdn_allocation_engine.accounting_numeraire_node_source ==
+                "base_policy" &&
+            mdn_allocation_engine.base_policy_accounting_numeraire_node_id ==
+                "USD_CASH" &&
+            mdn_allocation_engine.accounting_numeraire_node_graph_bound &&
+            std::abs(mdn_allocation_engine.numeraire_weight - 0.25) < 1e-12 &&
             std::abs(mdn_allocation_engine.turnover - 0.12) < 1e-12 &&
             mdn_allocation_engine.objective_terms ==
                 "growth:0.70,cvar:0.20,cost:0.10" &&
@@ -3541,80 +3557,86 @@ int main() {
         "allocation engine facts bind deterministic allocation output "
         "diagnostics to observer belief and forecast lineage without becoming "
         "Lattice allocation or execution authority");
-  const auto allocation_alias_dir = root / "allocation_engine_aliases";
-  write_text(allocation_alias_dir / "allocation.engine.fact",
+  const auto allocation_canonical_dir = root / "allocation_engine_canonical";
+  write_text(allocation_canonical_dir / "allocation.engine.fact",
              "schema=kikijyeba.lattice.allocation_engine.v1\n"
-             "risky_node_weights=BTC:0.30,ETH:0.20\n"
-             "reserve_asset_node_id=USD_CASH\n"
-             "reserve_asset_source=base_policy\n"
-             "base_policy_reserve_asset_node_id=USD_CASH\n"
-             "reserve_asset_graph_bound=true\n"
-             "reserve_weight=0.50\n"
+             "target_node_weights=BTC:0.30,ETH:0.20\n"
+             "accounting_numeraire_node_id=USD_CASH\n"
+             "accounting_numeraire_node_source=base_policy\n"
+             "base_policy_accounting_numeraire_node_id=USD_CASH\n"
+             "accounting_numeraire_node_graph_bound=true\n"
+             "numeraire_weight=0.50\n"
              "allocation_turnover=0.05\n"
              "allocation_objective_terms=growth:0.60,cvar:0.30,cost:0.10\n"
              "allocation_cvar_loss=0.04\n"
              "estimated_transaction_cost=0.001\n"
-             "allocation_constraints=alias_constraints_ok\n"
-             "allocation_cap_diagnostics=alias_caps_ok\n"
+             "allocation_constraints=canonical_constraints_ok\n"
+             "allocation_cap_diagnostics=canonical_caps_ok\n"
              "growth_floor_status=met\n"
              "fallback_reason_contract=none\n"
              "derisk_reason_contract=none\n"
-             "observer_belief_digest=observer_alias_digest\n"
-             "forecast_digest=forecast_alias_digest\n"
-             "base_policy_fingerprint=base_policy_alias\n"
+             "observer_belief_digest=observer_canonical_digest\n"
+             "forecast_digest=forecast_canonical_digest\n"
+             "base_policy_fingerprint=base_policy_canonical\n"
              "deterministic_artifact=true\n"
              "visibility_only=true\n");
-  const auto alias_allocation_engines =
-      exposure::make_allocation_engine_facts_from_job_dir(allocation_alias_dir,
-                                                          channel_mdn_fact);
+  const auto canonical_allocation_engines =
+      exposure::make_allocation_engine_facts_from_job_dir(
+          allocation_canonical_dir, channel_mdn_fact);
   check(
-      alias_allocation_engines.size() == 1 &&
-          alias_allocation_engines.front().parent_exposure_fact_digest ==
+      canonical_allocation_engines.size() == 1 &&
+          canonical_allocation_engines.front().parent_exposure_fact_digest ==
               exposure::exposure_fact_digest(channel_mdn_fact) &&
-          alias_allocation_engines.front().protocol_id ==
+          canonical_allocation_engines.front().protocol_id ==
               channel_mdn_fact.protocol_id &&
-          alias_allocation_engines.front().source_cursor_token ==
+          canonical_allocation_engines.front().source_cursor_token ==
               channel_mdn_fact.source_cursor_token &&
-          alias_allocation_engines.front().target_risky_node_weights ==
+          canonical_allocation_engines.front().target_node_weights ==
               "BTC:0.30,ETH:0.20" &&
-          alias_allocation_engines.front().reserve_node_id == "USD_CASH" &&
-          alias_allocation_engines.front().reserve_node_source ==
-              "base_policy" &&
-          alias_allocation_engines.front().base_policy_reserve_node_id ==
+          canonical_allocation_engines.front().accounting_numeraire_node_id ==
               "USD_CASH" &&
-          alias_allocation_engines.front().reserve_node_graph_bound &&
-          std::abs(alias_allocation_engines.front().reserve_weight - 0.50) <
+          canonical_allocation_engines.front()
+                  .accounting_numeraire_node_source == "base_policy" &&
+          canonical_allocation_engines.front()
+                  .base_policy_accounting_numeraire_node_id == "USD_CASH" &&
+          canonical_allocation_engines.front()
+              .accounting_numeraire_node_graph_bound &&
+          std::abs(canonical_allocation_engines.front().numeraire_weight -
+                   0.50) < 1e-12 &&
+          std::abs(canonical_allocation_engines.front().turnover - 0.05) <
               1e-12 &&
-          std::abs(alias_allocation_engines.front().turnover - 0.05) < 1e-12 &&
-          alias_allocation_engines.front().objective_terms ==
+          canonical_allocation_engines.front().objective_terms ==
               "growth:0.60,cvar:0.30,cost:0.10" &&
-          std::abs(alias_allocation_engines.front().cvar_loss - 0.04) < 1e-12 &&
-          std::abs(alias_allocation_engines.front().transaction_cost_estimate -
-                   0.001) < 1e-12 &&
-          alias_allocation_engines.front().constraint_diagnostics ==
-              "alias_constraints_ok" &&
-          alias_allocation_engines.front().cap_diagnostics == "alias_caps_ok" &&
-          alias_allocation_engines.front().scenario_growth_floor_status ==
+          std::abs(canonical_allocation_engines.front().cvar_loss - 0.04) <
+              1e-12 &&
+          std::abs(
+              canonical_allocation_engines.front().transaction_cost_estimate -
+              0.001) < 1e-12 &&
+          canonical_allocation_engines.front().constraint_diagnostics ==
+              "canonical_constraints_ok" &&
+          canonical_allocation_engines.front().cap_diagnostics ==
+              "canonical_caps_ok" &&
+          canonical_allocation_engines.front().scenario_growth_floor_status ==
               "met" &&
-          alias_allocation_engines.front().fallback_reasons == "none" &&
-          alias_allocation_engines.front().derisk_reasons == "none" &&
-          alias_allocation_engines.front().observer_belief_fact_digest ==
-              "observer_alias_digest" &&
-          alias_allocation_engines.front().forecast_artifact_digest ==
-              "forecast_alias_digest" &&
-          alias_allocation_engines.front().base_policy_digest ==
-              "base_policy_alias" &&
-          alias_allocation_engines.front().deterministic_artifact &&
-          alias_allocation_engines.front().visibility_only &&
-          !alias_allocation_engines.front().allocation_authority &&
-          !alias_allocation_engines.front().execution_authority &&
-          !alias_allocation_engines.front().readiness_authority &&
-          !alias_allocation_engines.front().market_readiness_authority &&
-          !alias_allocation_engines.front().deployment_authority &&
+          canonical_allocation_engines.front().fallback_reasons == "none" &&
+          canonical_allocation_engines.front().derisk_reasons == "none" &&
+          canonical_allocation_engines.front().observer_belief_fact_digest ==
+              "observer_canonical_digest" &&
+          canonical_allocation_engines.front().forecast_artifact_digest ==
+              "forecast_canonical_digest" &&
+          canonical_allocation_engines.front().base_policy_digest ==
+              "base_policy_canonical" &&
+          canonical_allocation_engines.front().deterministic_artifact &&
+          canonical_allocation_engines.front().visibility_only &&
+          !canonical_allocation_engines.front().allocation_authority &&
+          !canonical_allocation_engines.front().execution_authority &&
+          !canonical_allocation_engines.front().readiness_authority &&
+          !canonical_allocation_engines.front().market_readiness_authority &&
+          !canonical_allocation_engines.front().deployment_authority &&
           exposure::allocation_engine_fact_issues(
-              alias_allocation_engines.front())
+              canonical_allocation_engines.front())
               .empty(),
-      "allocation engine scanner accepts declared writer aliases while keeping "
+      "allocation engine scanner accepts canonical writer fields while keeping "
       "allocation output audit-only and non-executing");
   check(
       scan_allocation_engine_summary.schema ==
@@ -3622,14 +3644,16 @@ int main() {
           scan_allocation_engine_summary.exposure_fact_count == 3 &&
           scan_allocation_engine_summary.allocation_engine_fact_count == 1 &&
           scan_allocation_engine_summary.parent_exposure_fact_count == 1 &&
-          scan_allocation_engine_summary.reserve_node_bound_count == 1 &&
           scan_allocation_engine_summary
-                  .reserve_node_source_base_policy_count == 1 &&
-          scan_allocation_engine_summary.base_policy_reserve_node_bound_count ==
-              1 &&
-          scan_allocation_engine_summary.reserve_node_base_policy_match_count ==
-              1 &&
-          scan_allocation_engine_summary.reserve_node_graph_bound_count == 1 &&
+                  .accounting_numeraire_node_bound_count == 1 &&
+          scan_allocation_engine_summary
+                  .accounting_numeraire_node_source_base_policy_count == 1 &&
+          scan_allocation_engine_summary
+                  .base_policy_accounting_numeraire_node_bound_count == 1 &&
+          scan_allocation_engine_summary
+                  .accounting_numeraire_node_base_policy_match_count == 1 &&
+          scan_allocation_engine_summary
+                  .accounting_numeraire_node_graph_bound_count == 1 &&
           scan_allocation_engine_summary.observer_belief_declared_count == 1 &&
           scan_allocation_engine_summary.observer_belief_bound_count == 0 &&
           scan_allocation_engine_summary.unresolved_observer_belief_count ==
@@ -3664,17 +3688,18 @@ int main() {
           scan_allocation_engine_summary.derisk_reason_none_count == 1 &&
           scan_allocation_engine_summary.derisk_reason_active_count == 0 &&
           scan_allocation_engine_summary.deterministic_artifact_count == 1 &&
-          scan_allocation_engine_summary.missing_reserve_node_count == 0 &&
-          scan_allocation_engine_summary.missing_reserve_node_source_count ==
-              0 &&
           scan_allocation_engine_summary
-                  .missing_base_policy_reserve_node_count == 0 &&
-          scan_allocation_engine_summary.reserve_node_source_mismatch_count ==
-              0 &&
+                  .missing_accounting_numeraire_node_count == 0 &&
           scan_allocation_engine_summary
-                  .reserve_node_base_policy_mismatch_count == 0 &&
-          scan_allocation_engine_summary.reserve_node_not_graph_bound_count ==
-              0 &&
+                  .missing_accounting_numeraire_node_source_count == 0 &&
+          scan_allocation_engine_summary
+                  .missing_base_policy_accounting_numeraire_node_count == 0 &&
+          scan_allocation_engine_summary
+                  .accounting_numeraire_node_source_mismatch_count == 0 &&
+          scan_allocation_engine_summary
+                  .accounting_numeraire_node_base_policy_mismatch_count == 0 &&
+          scan_allocation_engine_summary
+                  .accounting_numeraire_node_not_graph_bound_count == 0 &&
           scan_allocation_engine_summary.missing_observer_belief_count == 0 &&
           scan_allocation_engine_summary.missing_forecast_artifact_count == 0 &&
           scan_allocation_engine_summary.missing_base_policy_count == 0 &&
@@ -3683,9 +3708,9 @@ int main() {
                   .missing_scenario_growth_floor_status_count == 0 &&
           scan_allocation_engine_summary.allocation_diagnostic_warning_count ==
               0 &&
-          scan_allocation_engine_summary.reserve_weight.count == 1 &&
-          std::abs(scan_allocation_engine_summary.reserve_weight.mean - 0.25) <
-              1e-12 &&
+          scan_allocation_engine_summary.numeraire_weight.count == 1 &&
+          std::abs(scan_allocation_engine_summary.numeraire_weight.mean -
+                   0.25) < 1e-12 &&
           scan_allocation_engine_summary.turnover.count == 1 &&
           std::abs(scan_allocation_engine_summary.turnover.mean - 0.12) <
               1e-12 &&
@@ -3788,39 +3813,46 @@ int main() {
             !bad_allocation_engine_summary.issues.empty(),
         "allocation engine authority drift is reported as warnings, not as "
         "execution routing or market readiness");
-  auto bad_reserve_allocation_engine = mdn_allocation_engine;
-  bad_reserve_allocation_engine.reserve_node_source = "allocator_output";
-  bad_reserve_allocation_engine.base_policy_reserve_node_id = "EUR_CASH";
-  bad_reserve_allocation_engine.reserve_node_graph_bound = false;
-  const auto bad_reserve_allocation_summary =
+  auto bad_numeraire_allocation_engine = mdn_allocation_engine;
+  bad_numeraire_allocation_engine.accounting_numeraire_node_source =
+      "allocator_output";
+  bad_numeraire_allocation_engine.base_policy_accounting_numeraire_node_id =
+      "EUR_CASH";
+  bad_numeraire_allocation_engine.accounting_numeraire_node_graph_bound = false;
+  const auto bad_numeraire_allocation_summary =
       exposure::summarize_allocation_engines({channel_mdn_fact},
-                                             {bad_reserve_allocation_engine});
-  check(bad_reserve_allocation_summary.reserve_node_source_mismatch_count ==
+                                             {bad_numeraire_allocation_engine});
+  check(bad_numeraire_allocation_summary
+                    .accounting_numeraire_node_source_mismatch_count == 1 &&
+            bad_numeraire_allocation_summary
+                    .accounting_numeraire_node_base_policy_mismatch_count ==
                 1 &&
-            bad_reserve_allocation_summary
-                    .reserve_node_base_policy_mismatch_count == 1 &&
-            bad_reserve_allocation_summary.reserve_node_not_graph_bound_count ==
-                1 &&
-            std::find(bad_reserve_allocation_summary.issues.begin(),
-                      bad_reserve_allocation_summary.issues.end(),
-                      "channel_mdn_job:reserve_node_source_not_base_policy") !=
-                bad_reserve_allocation_summary.issues.end() &&
-            std::find(bad_reserve_allocation_summary.issues.begin(),
-                      bad_reserve_allocation_summary.issues.end(),
-                      "channel_mdn_job:reserve_node_base_policy_mismatch") !=
-                bad_reserve_allocation_summary.issues.end() &&
-            std::find(bad_reserve_allocation_summary.issues.begin(),
-                      bad_reserve_allocation_summary.issues.end(),
-                      "channel_mdn_job:reserve_node_not_graph_bound") !=
-                bad_reserve_allocation_summary.issues.end(),
-        "allocation summaries warn when the reserve node is not graph-bound "
+            bad_numeraire_allocation_summary
+                    .accounting_numeraire_node_not_graph_bound_count == 1 &&
+            std::find(bad_numeraire_allocation_summary.issues.begin(),
+                      bad_numeraire_allocation_summary.issues.end(),
+                      "channel_mdn_job:accounting_numeraire_node_source_not_"
+                      "base_policy") !=
+                bad_numeraire_allocation_summary.issues.end() &&
+            std::find(bad_numeraire_allocation_summary.issues.begin(),
+                      bad_numeraire_allocation_summary.issues.end(),
+                      "channel_mdn_job:accounting_numeraire_node_base_policy_"
+                      "mismatch") !=
+                bad_numeraire_allocation_summary.issues.end() &&
+            std::find(
+                bad_numeraire_allocation_summary.issues.begin(),
+                bad_numeraire_allocation_summary.issues.end(),
+                "channel_mdn_job:accounting_numeraire_node_not_graph_bound") !=
+                bad_numeraire_allocation_summary.issues.end(),
+        "allocation summaries warn when the accounting numeraire node is not "
+        "graph-bound "
         "BasePolicy evidence");
   auto malformed_allocation_engine = mdn_allocation_engine;
   malformed_allocation_engine.source_cursor_token.clear();
-  malformed_allocation_engine.reserve_node_id.clear();
-  malformed_allocation_engine.reserve_node_source.clear();
-  malformed_allocation_engine.base_policy_reserve_node_id.clear();
-  malformed_allocation_engine.reserve_node_graph_bound = false;
+  malformed_allocation_engine.accounting_numeraire_node_id.clear();
+  malformed_allocation_engine.accounting_numeraire_node_source.clear();
+  malformed_allocation_engine.base_policy_accounting_numeraire_node_id.clear();
+  malformed_allocation_engine.accounting_numeraire_node_graph_bound = false;
   malformed_allocation_engine.observer_belief_fact_digest.clear();
   malformed_allocation_engine.forecast_artifact_digest.clear();
   malformed_allocation_engine.base_policy_digest.clear();
@@ -3843,13 +3875,13 @@ int main() {
   check(contains_text(malformed_allocation_engine_issues,
                       "missing_source_cursor_token") &&
             contains_text(malformed_allocation_engine_issues,
-                          "missing_reserve_graph_node") &&
+                          "missing_accounting_numeraire_graph_node") &&
             contains_text(malformed_allocation_engine_issues,
-                          "missing_reserve_node_source") &&
+                          "missing_accounting_numeraire_node_source") &&
             contains_text(malformed_allocation_engine_issues,
-                          "missing_base_policy_reserve_node_id") &&
+                          "missing_base_policy_accounting_numeraire_node_id") &&
             contains_text(malformed_allocation_engine_issues,
-                          "reserve_node_not_graph_bound") &&
+                          "accounting_numeraire_node_not_graph_bound") &&
             contains_text(malformed_allocation_engine_issues,
                           "missing_observer_belief_fact_digest") &&
             contains_text(malformed_allocation_engine_issues,
@@ -3873,7 +3905,7 @@ int main() {
                           "only") &&
             malformed_allocation_engine_warnings.size() == 1 &&
             contains_text(malformed_allocation_engine_warnings,
-                          "missing_reserve_graph_node"),
+                          "missing_accounting_numeraire_graph_node"),
         "malformed allocation engine facts remain visible but warn for missing "
         "reserve, lineage, base-policy, objective, cost, and reason contracts");
   const auto scan_replay_environment_summary =
@@ -3927,11 +3959,9 @@ int main() {
           mdn_replay_environment.replay_environment_realization_key_policy ==
               "shared_key_per_frame" &&
           mdn_replay_environment.replay_environment_action_kind ==
-              "target_node_weights_with_base_reserve" &&
+              "target_node_weights" &&
           mdn_replay_environment.replay_environment_action_time_policy ==
               "decision_timestamp_after_knowledge_before_realization" &&
-          mdn_replay_environment.replay_environment_reserve_node_policy ==
-              "graph_node_from_base_policy" &&
           mdn_replay_environment
                   .replay_environment_graph_node_universe_policy ==
               "episode_spec_graph_node_ids" &&
@@ -3986,12 +4016,12 @@ int main() {
           mdn_replay_environment.projection_validation_step_count == 4 &&
           mdn_replay_environment.cajtucu_valid_trace_count == 4 &&
           mdn_replay_environment.cajtucu_invalid_trace_count == 0 &&
-          mdn_replay_environment.cajtucu_missing_direct_reserve_edge_count ==
-              0 &&
+          mdn_replay_environment.cajtucu_missing_direct_pair_count == 0 &&
+          mdn_replay_environment.cajtucu_numeraire_fallback_pair_count == 0 &&
           mdn_replay_environment.cajtucu_nontradable_edge_reject_count == 0 &&
           mdn_replay_environment.cajtucu_below_min_notional_reject_count == 0 &&
           mdn_replay_environment.cajtucu_above_max_notional_reject_count == 0 &&
-          mdn_replay_environment.cajtucu_insufficient_reserve_reject_count ==
+          mdn_replay_environment.cajtucu_insufficient_sell_units_reject_count ==
               0 &&
           mdn_replay_environment.cajtucu_insufficient_units_reject_count == 0 &&
           mdn_replay_environment.cajtucu_invalid_sell_price_count == 0 &&
@@ -4004,22 +4034,25 @@ int main() {
           std::abs(mdn_replay_environment.mean_total_reward - 1.5) < 1e-12 &&
           std::abs(mdn_replay_environment.mean_total_log_growth - 0.03) <
               1e-12 &&
-          std::abs(mdn_replay_environment.mean_final_equity_base - 103.0) <
+          std::abs(mdn_replay_environment.mean_final_equity_numeraire - 103.0) <
               1e-12 &&
           std::abs(mdn_replay_environment.mean_max_drawdown - 0.08) < 1e-12 &&
           std::abs(mdn_replay_environment.mean_total_turnover - 0.40) < 1e-12 &&
-          std::abs(mdn_replay_environment.mean_total_transaction_cost_base -
-                   0.015) < 1e-12 &&
-          std::abs(mdn_replay_environment.requested_notional_base - 10.0) <
+          std::abs(
+              mdn_replay_environment.mean_total_transaction_cost_numeraire -
+              0.015) < 1e-12 &&
+          std::abs(mdn_replay_environment.requested_notional_numeraire - 10.0) <
               1e-12 &&
-          std::abs(mdn_replay_environment.executed_notional_base - 9.8) <
+          std::abs(mdn_replay_environment.executed_notional_numeraire - 9.8) <
               1e-12 &&
-          std::abs(mdn_replay_environment.rejected_notional_base - 0.0) <
+          std::abs(mdn_replay_environment.rejected_notional_numeraire - 0.0) <
               1e-12 &&
           std::abs(mdn_replay_environment.fill_ratio - 0.98) < 1e-12 &&
-          std::abs(mdn_replay_environment.fee_cost_base - 0.006) < 1e-12 &&
-          std::abs(mdn_replay_environment.spread_cost_base - 0.005) < 1e-12 &&
-          std::abs(mdn_replay_environment.slippage_cost_base - 0.004) < 1e-12 &&
+          std::abs(mdn_replay_environment.fee_cost_numeraire - 0.006) < 1e-12 &&
+          std::abs(mdn_replay_environment.spread_cost_numeraire - 0.005) <
+              1e-12 &&
+          std::abs(mdn_replay_environment.slippage_cost_numeraire - 0.004) <
+              1e-12 &&
           std::abs(mdn_replay_environment.mean_target_weight_error_l1 - 0.02) <
               1e-12 &&
           std::abs(mdn_replay_environment.mean_target_weight_error_linf -
@@ -4109,8 +4142,6 @@ int main() {
           scan_replay_environment_summary
                   .replay_contract_action_time_policy_bound_count == 1 &&
           scan_replay_environment_summary
-                  .replay_contract_reserve_node_policy_bound_count == 1 &&
-          scan_replay_environment_summary
                   .replay_contract_graph_node_universe_policy_bound_count ==
               1 &&
           scan_replay_environment_summary
@@ -4173,6 +4204,8 @@ int main() {
           scan_replay_environment_summary.cajtucu_invalid_trace_count_total ==
               0 &&
           scan_replay_environment_summary
+                  .cajtucu_numeraire_fallback_pair_count_total == 0 &&
+          scan_replay_environment_summary
                   .cajtucu_synthetic_market_step_count_total == 0 &&
           scan_replay_environment_summary.requested_order_count_total == 4 &&
           scan_replay_environment_summary.executed_order_count_total == 4 &&
@@ -4232,39 +4265,45 @@ int main() {
           scan_replay_environment_summary.mean_total_log_growth.count == 1 &&
           std::abs(scan_replay_environment_summary.mean_total_log_growth.mean -
                    0.03) < 1e-12 &&
-          scan_replay_environment_summary.mean_final_equity_base.count == 1 &&
-          std::abs(scan_replay_environment_summary.mean_final_equity_base.mean -
-                   103.0) < 1e-12 &&
+          scan_replay_environment_summary.mean_final_equity_numeraire.count ==
+              1 &&
+          std::abs(
+              scan_replay_environment_summary.mean_final_equity_numeraire.mean -
+              103.0) < 1e-12 &&
           scan_replay_environment_summary.mean_max_drawdown.count == 1 &&
           std::abs(scan_replay_environment_summary.mean_max_drawdown.mean -
                    0.08) < 1e-12 &&
           scan_replay_environment_summary.mean_total_turnover.count == 1 &&
           std::abs(scan_replay_environment_summary.mean_total_turnover.mean -
                    0.40) < 1e-12 &&
-          scan_replay_environment_summary.mean_total_transaction_cost_base
+          scan_replay_environment_summary.mean_total_transaction_cost_numeraire
                   .count == 1 &&
           std::abs(scan_replay_environment_summary
-                       .mean_total_transaction_cost_base.mean -
+                       .mean_total_transaction_cost_numeraire.mean -
                    0.015) < 1e-12 &&
-          scan_replay_environment_summary.requested_notional_base.count == 1 &&
+          scan_replay_environment_summary.requested_notional_numeraire.count ==
+              1 &&
+          std::abs(scan_replay_environment_summary.requested_notional_numeraire
+                       .mean -
+                   10.0) < 1e-12 &&
+          scan_replay_environment_summary.executed_notional_numeraire.count ==
+              1 &&
           std::abs(
-              scan_replay_environment_summary.requested_notional_base.mean -
-              10.0) < 1e-12 &&
-          scan_replay_environment_summary.executed_notional_base.count == 1 &&
-          std::abs(scan_replay_environment_summary.executed_notional_base.mean -
-                   9.8) < 1e-12 &&
+              scan_replay_environment_summary.executed_notional_numeraire.mean -
+              9.8) < 1e-12 &&
           scan_replay_environment_summary.fill_ratio.count == 1 &&
           std::abs(scan_replay_environment_summary.fill_ratio.mean - 0.98) <
               1e-12 &&
-          scan_replay_environment_summary.fee_cost_base.count == 1 &&
-          std::abs(scan_replay_environment_summary.fee_cost_base.mean - 0.006) <
-              1e-12 &&
-          scan_replay_environment_summary.spread_cost_base.count == 1 &&
-          std::abs(scan_replay_environment_summary.spread_cost_base.mean -
+          scan_replay_environment_summary.fee_cost_numeraire.count == 1 &&
+          std::abs(scan_replay_environment_summary.fee_cost_numeraire.mean -
+                   0.006) < 1e-12 &&
+          scan_replay_environment_summary.spread_cost_numeraire.count == 1 &&
+          std::abs(scan_replay_environment_summary.spread_cost_numeraire.mean -
                    0.005) < 1e-12 &&
-          scan_replay_environment_summary.slippage_cost_base.count == 1 &&
-          std::abs(scan_replay_environment_summary.slippage_cost_base.mean -
-                   0.004) < 1e-12 &&
+          scan_replay_environment_summary.slippage_cost_numeraire.count == 1 &&
+          std::abs(
+              scan_replay_environment_summary.slippage_cost_numeraire.mean -
+              0.004) < 1e-12 &&
           scan_replay_environment_summary.mean_target_weight_error_l1.count ==
               1 &&
           std::abs(
@@ -4354,7 +4393,7 @@ int main() {
         "Cajtucu traces and synthetic execution markets");
   auto missing_cost_replay_environment = mdn_replay_environment;
   missing_cost_replay_environment.requested_order_count = 0;
-  missing_cost_replay_environment.mean_total_transaction_cost_base =
+  missing_cost_replay_environment.mean_total_transaction_cost_numeraire =
       std::numeric_limits<double>::quiet_NaN();
   missing_cost_replay_environment.fill_ratio =
       std::numeric_limits<double>::quiet_NaN();

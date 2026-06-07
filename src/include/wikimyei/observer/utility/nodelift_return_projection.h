@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <iterator>
 #include <vector>
 
 #include <torch/torch.h>
@@ -23,8 +24,8 @@ struct nodelift_return_projection_t {
   torch::Tensor projected_log_return_sigma{}; // [A,Kp]
   torch::Tensor active_mask{};                // [A], bool
 
-  torch::Tensor potential_samples{};           // [S,A+1], risky then base
-  torch::Tensor base_relative_log_return{};    // [S,A]
+  torch::Tensor potential_samples{};           // [S,M], target nodes plus reference if absent
+  torch::Tensor numeraire_relative_log_return{};    // [S,A]
   torch::Tensor arithmetic_return_scenarios{}; // [S,A]
 
   torch::Tensor expected_log_return{};        // [A]
@@ -77,18 +78,27 @@ variance_along_rows(const torch::Tensor &samples) {
               "out of range");
 
   std::vector<std::int64_t> projection_indices = asset_graph_indices;
-  projection_indices.push_back(projection_reference_graph_index);
+  auto reference_position_it =
+      std::find(projection_indices.begin(), projection_indices.end(),
+                projection_reference_graph_index);
+  if (reference_position_it == projection_indices.end()) {
+    projection_indices.push_back(projection_reference_graph_index);
+    reference_position_it = std::prev(projection_indices.end());
+  }
+  const auto reference_projection_position = static_cast<std::int64_t>(
+      reference_position_it - projection_indices.begin());
   const auto A = static_cast<std::int64_t>(asset_graph_indices.size());
   const auto M = static_cast<std::int64_t>(projection_indices.size());
   TORCH_CHECK(
-      M == A + 1,
+      M == A || M == A + 1,
       "[nodelift_return_projection] projection universe shape mismatch");
   TORCH_CHECK(empirical_correlation.defined() &&
                   empirical_correlation.dim() == 2 &&
                   empirical_correlation.size(0) == M &&
                   empirical_correlation.size(1) == M,
               "[nodelift_return_projection] empirical_correlation must be "
-              "[A+1,A+1] ordered as risky nodes then base");
+              "[M,M] ordered as target nodes plus projection reference when "
+              "absent from target nodes");
 
   auto asset_index = detail::index_tensor(
       asset_graph_indices, surface.log_weight.device(), "asset_graph_indices");
@@ -147,11 +157,27 @@ variance_along_rows(const torch::Tensor &samples) {
       options.coupling_options);
   auto asset_potential = coupled.samples.narrow(/*dim=*/1, 0, A);
   auto projection_reference_potential =
-      coupled.samples.select(/*dim=*/1, A).unsqueeze(1);
+      coupled.samples.select(/*dim=*/1, reference_projection_position)
+          .unsqueeze(1);
   auto log_return = asset_potential - projection_reference_potential;
   auto scenarios = torch::exp(log_return) - 1.0;
   scenarios = scenarios.masked_fill(active.logical_not().unsqueeze(0), 0.0);
   log_return = log_return.masked_fill(active.logical_not().unsqueeze(0), 0.0);
+
+  for (std::int64_t a = 0; a < A; ++a) {
+    if (asset_graph_indices[static_cast<std::size_t>(a)] !=
+        projection_reference_graph_index) {
+      continue;
+    }
+    using torch::indexing::Slice;
+    log_weight.index_put_({a, Slice()},
+                          -std::log(static_cast<double>(K * K)));
+    mu.index_put_({a, Slice()}, 0.0);
+    sigma.index_put_({a, Slice()}, 0.0);
+    log_return.index_put_({Slice(), a}, 0.0);
+    scenarios.index_put_({Slice(), a}, 0.0);
+    active.index_put_({a}, true);
+  }
 
   auto expected_log = log_return.mean(/*dim=*/0);
   auto expected_arithmetic = scenarios.mean(/*dim=*/0);
@@ -164,7 +190,7 @@ variance_along_rows(const torch::Tensor &samples) {
   result.projected_log_return_sigma = std::move(sigma);
   result.active_mask = std::move(active);
   result.potential_samples = std::move(coupled.samples);
-  result.base_relative_log_return = std::move(log_return);
+  result.numeraire_relative_log_return = std::move(log_return);
   result.arithmetic_return_scenarios = std::move(scenarios);
   result.expected_log_return = std::move(expected_log);
   result.expected_arithmetic_return = std::move(expected_arithmetic);

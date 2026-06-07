@@ -120,6 +120,11 @@ make doc
 The secure build wrapper uses `pdflatex` with shell escape disabled and writes
 the artifact to `doc/publish/cuwacunu-algorithm.pdf`.
 
+## Active Roadmap
+The short operator-facing roadmap lives in [`ROADMAP.md`](./ROADMAP.md). It is
+kept as a forward plan, not a history log; subsystem details live in the
+roadmaps under `src/include/`.
+
 ## HERO MCP Preflight (Codex)
 
 Build MCP binaries:

@@ -22,17 +22,16 @@ struct replay_environment_spec_t {
   std::string observation_time_law{"time_t_only"};
   std::string realization_reveal{"after_action_execution"};
   std::string realization_key_policy{"shared_key_per_frame"};
-  std::string action_kind{"target_node_weights_with_base_reserve"};
+  std::string action_kind{"target_node_weights"};
   std::string action_schema_id{
-      "kikijyeba.environment.action.target_weights.v1"};
+      "kikijyeba.environment.action.target_node_weights.v1"};
   std::string action_time_policy{
       "decision_timestamp_after_knowledge_before_realization"};
-  std::string reserve_node_policy{"graph_node_from_base_policy"};
   std::string graph_node_universe_policy{"episode_spec_graph_node_ids"};
   std::string reward_policy{
       "post_execution_ledger_log_growth_drawdown_cost_turnover_invalid"};
   std::string projection_validation{
-      "projected_log_return_vs_realized_asset_base_return"};
+      "projected_log_return_vs_realized_asset_numeraire_return"};
   std::string realized_return_truth{"direct_edge_realized_return_truth_v1"};
   std::string policy_surface{"policy_adapter"};
   std::string action_policy_identity{"policy_adapter_must_match_action"};
@@ -103,17 +102,15 @@ validate_replay_environment_spec(const replay_environment_spec_t &spec) {
         "[replay_environment_spec] V1 requires one shared realization key per "
         "replay frame");
   }
-  if (spec.action_kind != "target_node_weights_with_base_reserve" ||
-      spec.reserve_node_policy != "graph_node_from_base_policy") {
+  if (spec.action_kind != "target_node_weights") {
     throw std::runtime_error(
-        "[replay_environment_spec] action must target risky graph-node weights "
-        "plus a base reserve graph node");
+        "[replay_environment_spec] action must target graph-node weights");
   }
   if (spec.action_schema_id !=
-      "kikijyeba.environment.action.target_weights.v1") {
+      "kikijyeba.environment.action.target_node_weights.v1") {
     throw std::runtime_error(
         "[replay_environment_spec] ACTION_SCHEMA_ID must be "
-        "kikijyeba.environment.action.target_weights.v1");
+        "kikijyeba.environment.action.target_node_weights.v1");
   }
   if (spec.action_time_policy !=
       "decision_timestamp_after_knowledge_before_realization") {
@@ -133,7 +130,7 @@ validate_replay_environment_spec(const replay_environment_spec_t &spec) {
         "ledger update");
   }
   if (spec.projection_validation !=
-      "projected_log_return_vs_realized_asset_base_return") {
+      "projected_log_return_vs_realized_asset_numeraire_return") {
     throw std::runtime_error(
         "[replay_environment_spec] projection validation contract mismatch");
   }
@@ -228,7 +225,6 @@ decode_replay_environment_spec_from_dsl(const std::string &dsl_text) {
   spec.action_kind = kv::required(block, "ACTION_KIND");
   spec.action_schema_id = kv::required(block, "ACTION_SCHEMA_ID");
   spec.action_time_policy = kv::required(block, "ACTION_TIME_POLICY");
-  spec.reserve_node_policy = kv::required(block, "RESERVE_NODE_POLICY");
   spec.graph_node_universe_policy =
       kv::required(block, "GRAPH_NODE_UNIVERSE_POLICY");
   spec.reward_policy = kv::required(block, "REWARD_POLICY");

@@ -97,9 +97,8 @@ ARGS='{
   "requested_mode":"plan",
   "graph_order_fingerprint":"<graph_fingerprint>",
   "asset_universe_digest":"<asset_universe_digest>",
-  "base_reserve_node_id":"USDT",
-  "risky_node_ids":["BTC","ETH"],
-  "policy_set":["reserve","equal_weight","sdu"],
+  "target_node_ids":["USDT","BTC","ETH"],
+  "policy_set":["numeraire","equal_weight","sdu"],
   "max_steps":250,
   "max_parallel_jobs":4
 }'
@@ -297,10 +296,11 @@ trained_range_evidence_digest is present and strong
 validation_split_policy_digest is present and strong
 Runtime executable, evaluation config, MDN checkpoint, and representation
   checkpoint paths exist when path checks are enabled
-base_reserve_node_id is present
-risky_node_ids is non-empty
-base_reserve_node_id is not duplicated inside risky_node_ids
-risky_node_ids contains no duplicates
+accounting_numeraire_node_id is resolved from
+  [ACCOUNTING].accounting_numeraire_node_id, unless explicitly overridden
+target_node_ids is non-empty
+accounting_numeraire_node_id appears inside target_node_ids
+target_node_ids contains no duplicates
 ```
 
 The plan emits command templates for:
@@ -430,8 +430,9 @@ completed Runtime job directory with replay_artifacts_written=true
 replay_batch_index_path
 graph_order_fingerprint
 asset_universe_digest
-base_reserve_node_id
-risky_node_ids
+accounting_numeraire_node_id, resolved from global .config unless explicitly
+  overridden
+target_node_ids
 policy_set as a non-empty explicit policy list
 max_steps as a positive finite step cap
 max_parallel_jobs as a positive finite worker cap
@@ -451,18 +452,20 @@ only under Runtime Hero policy. `report_path`, when supplied, names the replay
 report target that Runtime will write; Marshal records it but does not treat it
 as proof.
 
-`asset_universe_digest` is the Marshal digest of the ordered reserve/risky-node
-action universe:
+`asset_universe_digest` is the Marshal digest of the ordered target-node action
+universe:
 
 ```text
 schema_version=kikijyeba.marshal.rollout_asset_universe.v1
-base_reserve_node_id=<reserve node>
-risky_node_ids=<comma-separated risky nodes in action order>
+accounting_numeraire_node_id=<accounting numeraire graph node>
+target_node_ids=<comma-separated graph nodes in action order>
 ```
 
 The graph fingerprint must match the completed Runtime job manifest. The asset
-universe digest must match the request's `base_reserve_node_id` and
-`risky_node_ids`; it is not inferred silently.
+universe digest must match the resolved `accounting_numeraire_node_id` and
+`target_node_ids`; the numeraire default comes from
+`[ACCOUNTING].accounting_numeraire_node_id` in `.config`, not from the selected
+Runtime wave or graph inference.
 
 Synthetic direct execution edges are forbidden for Marshal validation rollout.
 Research replay with synthetic execution surfaces belongs outside this
@@ -483,7 +486,6 @@ execution_backend_id=cajtucu.execution.paper.v1
 cost_model_id=linear_transaction_cost_rate.v1
 allow_synthetic_direct_edges=false by default
 allow_partial_fills=false
-allow_negative_base_reserve=false
 live_execution_allowed=false
 ```
 
@@ -650,9 +652,9 @@ Runtime job contract is finite and explicit.
 
 `rollout` is the deterministic Marshal for replaying already produced Runtime
 job evidence through the Kikijyeba environment and Cajtucu paper execution
-backend. It starts from a completed Runtime job directory, a policy set, a
-base-reserve graph node, risky graph nodes, finite replay limits, and an
-execution profile. In `requested_mode=plan` it returns a rollout plan. In
+backend. It starts from a completed Runtime job directory, a policy set, an
+accounting numeraire graph node, ordered target graph nodes, finite replay
+limits, and an execution profile. In `requested_mode=plan` it returns a rollout plan. In
 `requested_mode=execute` it delegates to
 `hero.runtime.run operation=replay requested_mode=execute` and records the
 handoff state and digests. It does not train, tune, inspect reports, produce a

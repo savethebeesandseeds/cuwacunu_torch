@@ -1,0 +1,8 @@
+<instruction> ::= "GRAPH_NODE_ALLOCATION_NET" [<whitespace>] "{" <line_end> {<assignment>} [<whitespace>] "}" [<whitespace>] ";" [<line_end>] ;
+<assignment>  ::= [<whitespace>] <key> [<whitespace>] "=" [<whitespace>] <value> [<whitespace>] ";" <line_end> ;
+<key>         ::= "VERSION" | "INPUT_NODE_FEATURE_DIM" | "INPUT_GLOBAL_FEATURE_DIM" | "NODE_ENCODER_HIDDEN_DIM" | "GLOBAL_ENCODER_HIDDEN_DIM" | "ALLOCATION_HEAD_HIDDEN_DIM" | "OUTPUT_HEAD" | "VALUE_HEAD" | "ACTION_ADAPTER" | "PPO_EXECUTION_ALLOWED" ;
+<value>       ::= <value_char> {<value_char>} ;
+<value_char>  ::= <letter> | <digit> | "_" | "." | "-" | "+" ;
+<line_end>    ::= [<whitespace>] <break_block> ;
+<break_block> ::= {<newline>} ;
+<whitespace>  ::= {<empty>} ;

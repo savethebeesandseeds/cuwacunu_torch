@@ -40,14 +40,14 @@ struct allocation_belief_builder_options_t {
   std::string graph_order_fingerprint{};
   GraphNodeAxisBinding graph_node_axis{};
   std::vector<node_id_t> graph_node_ids{};
-  std::vector<node_id_t> node_ids{};              // [A], risky assets
+  std::vector<node_id_t> node_ids{};              // [A], target nodes
   std::vector<std::int64_t> node_graph_indices{}; // [A]
   BasePolicy base_policy{};
   std::optional<std::int64_t> projection_reference_graph_index{};
 
   torch::Tensor channel_mask{}; // optional [B,G,C], bool
-  // Ordered as risky node_graph_indices followed by projection_reference.
-  torch::Tensor empirical_potential_correlation{}; // [A+1,A+1]
+  // Ordered as target node_graph_indices followed by projection_reference.
+  torch::Tensor empirical_potential_correlation{}; // [M,M] projection universe
   torch::Tensor tradable_mask{};                   // optional [A], bool
   torch::Tensor realized_variance{};               // optional [A]
   torch::Tensor data_quality_score{};              // optional [A]
@@ -170,7 +170,7 @@ build_single_anchor_allocation_belief(
       options.node_ids.size() == options.node_graph_indices.size(),
       "[allocation_belief_builder] node_ids/node_graph_indices mismatch");
   TORCH_CHECK(!options.node_ids.empty(),
-              "[allocation_belief_builder] risky node universe is empty");
+              "[allocation_belief_builder] target node universe is empty");
   const auto A = static_cast<std::int64_t>(options.node_ids.size());
   detail::require_base_policy(options.base_policy);
   const auto graph_axis = detail::effective_graph_node_axis_binding(
@@ -196,17 +196,28 @@ build_single_anchor_allocation_belief(
       "[allocation_belief_builder] projection_reference_graph_index does "
       "not match projection_reference_node_id");
   TORCH_CHECK(detail::find_graph_node_index(
-                  graph_axis.node_ids, options.base_policy.reserve_asset_id)
+                  graph_axis.node_ids,
+                  options.base_policy.accounting_numeraire_id)
                   .has_value(),
-              "[allocation_belief_builder] reserve_asset_id must appear in "
-              "graph_node_ids");
+              "[allocation_belief_builder] accounting_numeraire_id must "
+              "appear in graph_node_ids");
+  const bool target_nodes_include_projection_reference =
+      std::find(options.node_graph_indices.begin(),
+                options.node_graph_indices.end(),
+                *projection_reference_graph_index) !=
+      options.node_graph_indices.end();
+  const auto projection_universe_count =
+      A + (target_nodes_include_projection_reference ? 0 : 1);
   TORCH_CHECK(
       options.empirical_potential_correlation.defined() &&
           options.empirical_potential_correlation.dim() == 2 &&
-          options.empirical_potential_correlation.size(0) == A + 1 &&
-          options.empirical_potential_correlation.size(1) == A + 1,
+          options.empirical_potential_correlation.size(0) ==
+              projection_universe_count &&
+          options.empirical_potential_correlation.size(1) ==
+              projection_universe_count,
       "[allocation_belief_builder] empirical_potential_correlation must be "
-      "[A+1,A+1] ordered as risky nodes then projection reference");
+      "[M,M] ordered as target nodes plus projection reference when absent "
+      "from target nodes");
 
   auto consensus =
       compute_uniform_valid_channel_consensus(out, options.channel_mask);
@@ -346,7 +357,7 @@ build_single_anchor_allocation_belief(
   state.horizon = 1;
   state.marginal_unit = return_unit_t::log_return;
   state.scenario_unit = return_unit_t::arithmetic_return;
-  state.return_origin = return_origin_t::base_relative_nodelift_projection;
+  state.return_origin = return_origin_t::numeraire_relative_nodelift_projection;
   state.valid_mask = std::move(valid_mask);
   state.tradable_mask = std::move(tradable_mask);
   state.expected_log_return = std::move(expected_log);

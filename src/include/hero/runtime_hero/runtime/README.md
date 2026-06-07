@@ -181,9 +181,10 @@ artifacts/kikijyeba.environment.replay.v1/pulses/
 ```
 
 The top-level `runtime_replay_batches.index` records every pulse packet. CLI
-options may disable this sidecar writer or provide explicit replay base-reserve
-and risky-node lists when the graph cannot infer a unique reserve node. Replay
-artifact setup/write failures are recorded in `job.state` as
+options may disable this sidecar writer or provide explicit replay accounting
+numeraire and target-node lists when the graph cannot infer a unique
+graph-node action universe. Replay artifact setup/write failures are recorded in
+`job.state` as
 `replay_artifact_error`; they do not fail the MDN job. These artifacts are
 replay evidence for `kikijyeba.environment.replay.v1`; they do not change MDN
 inference outputs, optimizer steps, checkpoint behavior, or Lattice proof
@@ -211,8 +212,9 @@ requires positive `max_steps`, positive `max_parallel_jobs`, nonzero
 `policy_set_digest`, and rejects synthetic direct execution edges at the request
 boundary. Execute mode also gates the produced replay report: validation replay
 fails closed if the report is missing, has no completed episodes, lacks profile
-or policy-set identity, contains `cajtucu_synthetic_market_step_count > 0`, or
-contains `cajtucu_invalid_trace_count > 0`. The matching read path is named too:
+or policy-set identity, contains `cajtucu_synthetic_market_step_count > 0`,
+contains `cajtucu_numeraire_fallback_pair_count > 0`, or contains
+`cajtucu_invalid_trace_count > 0`. The matching read path is named too:
 `hero.runtime.inspect subject=artifact` can inspect `replay_batch_index`,
 `replay_experiment_index`, and `replay_experiment_report`, and
 `hero.runtime.inspect subject=job` summarizes those replay artifacts beside the
@@ -230,7 +232,8 @@ digest. The contract binds protocol/source identity,
 policy identity, architecture/training-config digests, disjoint
 train/validation/test range digests, normalization and replay-buffer ranges,
 environment/observation/action/reward/execution-profile digests, causal
-walk-forward schedule mode/schema/digest, selector/checkpoint lineage,
+walk-forward schedule mode/schema/digest, explicit `policy_input_schema_id`,
+`action_adapter_id`, and `reward_contract_id`, selector/checkpoint lineage,
 parent evidence digests, random seed, and finite episode/step/wall-clock
 bounds.
 Runtime rejects contracts where normalization or replay-buffer inputs are not

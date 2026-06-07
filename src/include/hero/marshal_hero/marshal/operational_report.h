@@ -849,9 +849,9 @@ replay_evidence_json(const job_summary_t &job) {
       << ",\"report_mean_total_log_growth\":"
       << json_number_or_null(
              get(job.replay_experiment_report, "mean_total_log_growth"))
-      << ",\"report_mean_final_equity_base\":"
+      << ",\"report_mean_final_equity_numeraire\":"
       << json_number_or_null(
-             get(job.replay_experiment_report, "mean_final_equity_base"))
+             get(job.replay_experiment_report, "mean_final_equity_numeraire"))
       << ",\"report_policy_summary_count\":"
       << json_number_or_null(
              get(job.replay_experiment_report, "policy_summary_count"))

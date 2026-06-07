@@ -442,7 +442,7 @@ parse_rollout_execution_profile(const std::string &raw) {
                    "allow_synthetic_direct_edges",
                    "synthetic_edge_research_reason",
                    "linear_transaction_cost_rate", "allow_partial_fills",
-                   "allow_negative_base_reserve", "equity_mismatch_tolerance",
+                   "equity_mismatch_tolerance",
                    "equity_mismatch_fail_tolerance", "live_execution_allowed"},
                   {}, "rollout execution_profile");
   out.execution_backend_id =
@@ -457,8 +457,6 @@ parse_rollout_execution_profile(const std::string &raw) {
       fields, "linear_transaction_cost_rate", out.linear_transaction_cost_rate);
   out.allow_partial_fills =
       optional_bool(fields, "allow_partial_fills", out.allow_partial_fills);
-  out.allow_negative_base_reserve = optional_bool(
-      fields, "allow_negative_base_reserve", out.allow_negative_base_reserve);
   out.equity_mismatch_tolerance = optional_double(
       fields, "equity_mismatch_tolerance", out.equity_mismatch_tolerance);
   out.equity_mismatch_fail_tolerance =
@@ -495,8 +493,8 @@ parse_rollout_request(const std::map<std::string, std::string> &fields) {
   out.graph_order_fingerprint =
       optional_string(fields, "graph_order_fingerprint");
   out.asset_universe_digest = optional_string(fields, "asset_universe_digest");
-  out.base_reserve_node_id = optional_string(fields, "base_reserve_node_id");
-  out.risky_node_ids = optional_string_array(fields, "risky_node_ids");
+  out.accounting_numeraire_node_id = optional_string(fields, "accounting_numeraire_node_id");
+  out.target_node_ids = optional_string_array(fields, "target_node_ids");
   out.policy_tokens = optional_string_array(fields, "policy_set");
   out.max_steps = optional_i64(fields, "max_steps", out.max_steps);
   out.max_parallel_jobs =
@@ -6108,8 +6106,8 @@ inspect_target_subject_json(const std::map<std::string, std::string> &args,
                                     "environment_assembly_id",
                                     "graph_order_fingerprint",
                                     "asset_universe_digest",
-                                    "base_reserve_node_id",
-                                    "risky_node_ids",
+                                    "accounting_numeraire_node_id",
+                                    "target_node_ids",
                                     "policy_set",
                                     "max_steps",
                                     "max_parallel_jobs",
@@ -6120,7 +6118,8 @@ inspect_target_subject_json(const std::map<std::string, std::string> &args,
                                     "require_replay_artifacts",
                                     "include_machine_payload"},
                                    {}, tool_name);
-      const auto request = tool_detail::parse_rollout_request(args);
+      const auto request = normalize_rollout_request_defaults(
+          tool_detail::parse_rollout_request(args));
       const auto plan = prepare_rollout_plan(request);
       const bool include_machine_payload =
           tool_detail::optional_bool(args, "include_machine_payload", false);

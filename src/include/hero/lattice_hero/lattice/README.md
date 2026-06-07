@@ -229,9 +229,10 @@ kikijyeba.lattice.observer_belief.v1
 
 kikijyeba.lattice.allocation_engine.v1
   Scanner-derived allocation-engine audit evidence from
-  lattice.allocation_engine.fact sidecars. These rows bind risky-node weights,
-  reserve graph node/source/BasePolicy match and weight, turnover, objective
-  terms, CVaR, transaction costs, constraints/caps, scenario floor status,
+  lattice.allocation_engine.fact sidecars. These rows bind target-node weights,
+  accounting numeraire graph node/source/BasePolicy match and numeraire weight,
+  turnover, objective terms, CVaR, transaction costs, constraints/caps,
+  scenario floor status,
   fallback/de-risk reasons, observer belief digest, forecast artifact digest,
   and BasePolicy digest to a parent exposure digest. They prove output shape
   and lineage for later narrow artifact-readiness claims only. Lattice does not
@@ -414,12 +415,12 @@ Common binding:
 
 - Producers: `lattice.allocation_engine.fact`, `allocation_engine.fact`,
   `runtime.allocation_engine.fact`, or `allocation.engine.fact`.
-- Required payload: reserve graph node, reserve node source, BasePolicy reserve
-  node, graph-bound reserve flag, observer-belief fact digest, forecast artifact
-  digest, BasePolicy digest, objective terms, CVaR loss, transaction-cost
-  estimate, constraint diagnostics, fallback reason contract, and de-risk reason
-  contract.
-- Visibility fields: risky-node weights, reserve weight, turnover, cap
+- Required payload: accounting numeraire graph node, accounting numeraire node
+  source, BasePolicy accounting numeraire node, graph-bound numeraire flag,
+  observer-belief fact digest, forecast artifact digest, BasePolicy digest,
+  objective terms, CVaR loss, transaction-cost estimate, constraint
+  diagnostics, fallback reason contract, and de-risk reason contract.
+- Visibility fields: target-node weights, numeraire weight, turnover, cap
   diagnostics, scenario growth-floor status, fallback reasons, and de-risk
   reasons.
 - Authority: deterministic audit evidence only. Lattice does not allocate,
@@ -750,14 +751,14 @@ Observer contract and lineage metrics emit `lineage_integrity`; confidence,
 data-quality, liquidity, and authority-boundary diagnostics emit
 `observer_belief_consistency`.
 `LATTICE_WARN KIND=allocation_engine` is the catalog-fact warning surface for
-scanner-derived allocation-engine audit facts. It can flag `reserve_weight`,
+scanner-derived allocation-engine audit facts. It can flag `numeraire_weight`,
 `turnover`, `cvar_loss`, `transaction_cost_estimate`,
 `deterministic_artifact`, `visibility_only`, `allocation_authority`,
 `execution_authority`, `market_readiness_authority`,
-`deployment_authority`, `reserve_node_bound`, `observer_belief_bound`,
+`deployment_authority`, `accounting_numeraire_node_bound`, `observer_belief_bound`,
 `forecast_artifact_bound`, `base_policy_bound`,
-`reserve_node_from_base_policy`, `reserve_node_base_policy_match`,
-`reserve_node_graph_bound`, `cap_diagnostics_bound`,
+`accounting_numeraire_node_from_base_policy`, `accounting_numeraire_node_base_policy_match`,
+`accounting_numeraire_node_graph_bound`, `cap_diagnostics_bound`,
 `scenario_growth_floor_status_bound`, `scenario_growth_floor_met`,
 `scenario_growth_floor_attention`, `fallback_declared`, `fallback_active`,
 `derisk_declared`, and `derisk_active`. These warnings are audit visibility

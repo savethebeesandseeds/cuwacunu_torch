@@ -15,8 +15,9 @@ and BNF path entries.
   - Deterministic observer contract that converts Channel MDN NodeLift
     potential distributions into NodeLift-aware allocation belief semantics.
   - V1 requires feature semantics from the Ujcamei kline registry/dock
-    coordinate space, base-relative NodeLift projection, arithmetic-return
-    scenarios, and a reserve asset supplied as a graph node by `BasePolicy`.
+    coordinate space, numeraire-relative NodeLift projection,
+    arithmetic-return scenarios, and an accounting numeraire supplied as a
+    graph node by `BasePolicy`.
   - The DSL must keep `PROJECTION_VALIDATION_REQUIRED = true` and
     `LIVE_CAPITAL_ALLOWED = false` until projected NodeLift returns have an
     empirical validation artifact.
@@ -28,10 +29,41 @@ and BNF path entries.
 - `wikimyei_policy_portfolio_spot_distributional_utility_dsl_path`
   - Deterministic portfolio policy contract for the first allocation method.
   - V1 consumes only post-projection `AllocationBelief`, is long-only and
-    spot-only, uses projected-gradient search over risky graph-node weights,
-    and assigns the residual reserve weight to the reserve graph node.
+    spot-only, uses projected-gradient search over unified graph-node target
+    weights, and requires the accounting numeraire to be included in that
+    target-node universe.
   - The policy DSL mirrors the observer safety flags:
     `PROJECTION_VALIDATION_REQUIRED = true` and `LIVE_CAPITAL_ALLOWED = false`.
+
+## Graph Node Allocation Policy
+
+- `wikimyei_policy_portfolio_graph_node_allocation_dsl_bnf_path`
+  - Grammar for `wikimyei.policy.portfolio.graph_node_allocation.dsl`.
+- `wikimyei_policy_portfolio_graph_node_allocation_dsl_path`
+  - Contract-only trainable policy surface for future graph-node allocation policies.
+  - V1 consumes `kikijyeba.environment.policy_input.v1` and emits
+    `kikijyeba.environment.action.target_node_weights.v1` through
+    `target_node_weights_simplex.v1`.
+  - The accounting numeraire remains an ordinary graph node inside the same
+    target-node weight vector; there is no separate cash output.
+  - `RAW_MDN_INPUT_ALLOWED = false`, `PPO_IMPLEMENTED = false`, and
+    `LIVE_CAPITAL_ALLOWED = false` are required.
+- `wikimyei_policy_portfolio_graph_node_allocation_net_bnf_path`
+  - Grammar for `wikimyei.policy.portfolio.graph_node_allocation.net`.
+- `wikimyei_policy_portfolio_graph_node_allocation_net_path`
+  - Architecture identity for the future graph-node allocation policy. V1 binds feature dimensions,
+    the compressed AllocationBelief distributional-summary input table,
+    the `node_weight_logits` output head, the reserved value head, and the
+    action adapter without enabling PPO.
+
+`src/config/.config` section: `[JKIMYEI]`
+
+- `wikimyei_policy_portfolio_graph_node_allocation_jkimyei_bnf_path`
+  - Grammar for the graph-node allocation policy contract-smoke `.jkimyei`.
+- `wikimyei_policy_portfolio_graph_node_allocation_jkimyei_path`
+  - Noop policy-training contract fixture. It requires
+    `TRAINING_SCHEDULE_MODE = causal_walk_forward_training.v1` and
+    `PPO_EXECUTION_ALLOWED = false`.
 
 These observer and policy assemblies are included in the graph-first
 `wikimyei_registry` and dock-binding report. Lattice can audit their identity

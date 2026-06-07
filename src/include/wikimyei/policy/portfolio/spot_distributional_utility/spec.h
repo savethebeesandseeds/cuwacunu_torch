@@ -18,14 +18,13 @@ struct spot_distributional_utility_spec_t {
   std::string objective{
       "scenario_log_growth_cvar_cost_concentration_uncertainty"};
   std::string scenario_unit{"arithmetic_return"};
-  std::string reserve_node_policy{"graph_node_from_base_policy"};
   std::int64_t iterations{160};
   double learning_rate{0.05};
   double cvar_alpha{0.95};
   double scenario_growth_floor{1.0e-6};
   bool long_only{true};
   bool spot_only{true};
-  bool require_reserve_node{true};
+  bool require_accounting_numeraire_node{true};
   bool projection_validation_required{true};
   bool live_capital_allowed{false};
 };
@@ -60,15 +59,11 @@ inline void validate_spot_distributional_utility_spec(
         "[spot_distributional_utility_spec] SCENARIO_UNIT must be "
         "arithmetic_return");
   }
-  if (spec.reserve_node_policy != "graph_node_from_base_policy") {
-    throw std::runtime_error(
-        "[spot_distributional_utility_spec] reserve node must come from the "
-        "belief BasePolicy");
-  }
-  if (!spec.long_only || !spec.spot_only || !spec.require_reserve_node) {
+  if (!spec.long_only || !spec.spot_only ||
+      !spec.require_accounting_numeraire_node) {
     throw std::runtime_error(
         "[spot_distributional_utility_spec] v1 is long-only, spot-only, and "
-        "requires a reserve graph node");
+        "requires an accounting numeraire graph node");
   }
   if (!spec.projection_validation_required) {
     throw std::runtime_error("[spot_distributional_utility_spec] "
@@ -99,7 +94,6 @@ decode_spot_distributional_utility_spec_from_dsl(const std::string &dsl_text) {
   spec.optimizer = kv::required(block, "OPTIMIZER");
   spec.objective = kv::required(block, "OBJECTIVE");
   spec.scenario_unit = kv::required(block, "SCENARIO_UNIT");
-  spec.reserve_node_policy = kv::required(block, "RESERVE_NODE_POLICY");
   spec.iterations = kv::parse_i64(kv::required(block, "ITERATIONS"));
   spec.learning_rate = kv::parse_double(kv::required(block, "LEARNING_RATE"));
   spec.cvar_alpha = kv::parse_double(kv::required(block, "CVAR_ALPHA"));
@@ -107,8 +101,8 @@ decode_spot_distributional_utility_spec_from_dsl(const std::string &dsl_text) {
       kv::parse_double(kv::required(block, "SCENARIO_GROWTH_FLOOR"));
   spec.long_only = kv::parse_bool(kv::required(block, "LONG_ONLY"));
   spec.spot_only = kv::parse_bool(kv::required(block, "SPOT_ONLY"));
-  spec.require_reserve_node =
-      kv::parse_bool(kv::required(block, "REQUIRE_RESERVE_NODE"));
+  spec.require_accounting_numeraire_node = kv::parse_bool(
+      kv::required(block, "REQUIRE_ACCOUNTING_NUMERAIRE_NODE"));
   spec.projection_validation_required =
       kv::parse_bool(kv::required(block, "PROJECTION_VALIDATION_REQUIRED"));
   spec.live_capital_allowed =

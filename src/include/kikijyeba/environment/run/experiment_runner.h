@@ -69,8 +69,8 @@ validate_episode_step_report_identity(const episode_report_t &episode_report) {
           "[experiment_runner] accepted anchor keys must be nonempty");
     }
   }
-  const auto risky_node_ids =
-      episode_runner_detail::split_tokens(episode_report.risky_node_ids);
+  const auto target_node_ids =
+      episode_runner_detail::split_tokens(episode_report.target_node_ids);
   const bool has_projection_evidence =
       !episode_report.realized_return_truth_id.empty() ||
       !episode_report.realized_return_projection_reference_node_id.empty() ||
@@ -85,18 +85,22 @@ validate_episode_step_report_identity(const episode_report_t &episode_report) {
             kDirectEdgeRealizedReturnTruthV1 ||
         detail::blank(
             episode_report.realized_return_projection_reference_node_id) ||
-        projection_edge_ids.size() != risky_node_ids.size() ||
-        projection_signs.size() != risky_node_ids.size()) {
+        projection_edge_ids.size() != target_node_ids.size() ||
+        projection_signs.size() != target_node_ids.size()) {
       throw std::runtime_error(
           "[experiment_runner] realized-return projection report evidence must "
-          "match risky node count");
+          "match target node count");
     }
     for (std::size_t i = 0; i < projection_edge_ids.size(); ++i) {
-      if (detail::blank(projection_edge_ids[i]) ||
-          projection_signs[i].rfind(risky_node_ids[i] + ":", 0) != 0) {
+      const bool is_reference_node =
+          target_node_ids[i] ==
+          episode_report.realized_return_projection_reference_node_id;
+      if ((!is_reference_node && detail::blank(projection_edge_ids[i])) ||
+          (is_reference_node && !detail::blank(projection_edge_ids[i])) ||
+          projection_signs[i].rfind(target_node_ids[i] + ":", 0) != 0) {
         throw std::runtime_error(
             "[experiment_runner] realized-return projection report evidence "
-            "must preserve risky node order");
+            "must preserve target node order");
       }
     }
   }
@@ -342,18 +346,19 @@ struct replay_policy_summary_t {
 
   double mean_total_reward{std::numeric_limits<double>::quiet_NaN()};
   double mean_total_log_growth{std::numeric_limits<double>::quiet_NaN()};
-  double mean_final_equity_base{std::numeric_limits<double>::quiet_NaN()};
+  double mean_final_equity_numeraire{std::numeric_limits<double>::quiet_NaN()};
   double mean_max_drawdown{std::numeric_limits<double>::quiet_NaN()};
   double mean_total_turnover{std::numeric_limits<double>::quiet_NaN()};
-  double mean_total_transaction_cost_base{
+  double mean_total_transaction_cost_numeraire{
       std::numeric_limits<double>::quiet_NaN()};
   std::uint64_t cajtucu_valid_trace_count{0};
   std::uint64_t cajtucu_invalid_trace_count{0};
-  std::uint64_t cajtucu_missing_direct_reserve_edge_count{0};
+  std::uint64_t cajtucu_missing_direct_pair_count{0};
+  std::uint64_t cajtucu_numeraire_fallback_pair_count{0};
   std::uint64_t cajtucu_nontradable_edge_reject_count{0};
   std::uint64_t cajtucu_below_min_notional_reject_count{0};
   std::uint64_t cajtucu_above_max_notional_reject_count{0};
-  std::uint64_t cajtucu_insufficient_reserve_reject_count{0};
+  std::uint64_t cajtucu_insufficient_sell_units_reject_count{0};
   std::uint64_t cajtucu_insufficient_units_reject_count{0};
   std::uint64_t cajtucu_invalid_sell_price_count{0};
   std::uint64_t cajtucu_large_equity_mismatch_count{0};
@@ -362,33 +367,33 @@ struct replay_policy_summary_t {
   std::uint64_t executed_order_count{0};
   std::uint64_t rejected_order_count{0};
   std::uint64_t partial_order_count{0};
-  double requested_notional_base{0.0};
-  double executed_notional_base{0.0};
-  double rejected_notional_base{0.0};
-  double partial_notional_base{0.0};
+  double requested_notional_numeraire{0.0};
+  double executed_notional_numeraire{0.0};
+  double rejected_notional_numeraire{0.0};
+  double partial_notional_numeraire{0.0};
   double fill_ratio{std::numeric_limits<double>::quiet_NaN()};
-  double fee_cost_base{0.0};
-  double spread_cost_base{0.0};
-  double slippage_cost_base{0.0};
+  double fee_cost_numeraire{0.0};
+  double spread_cost_numeraire{0.0};
+  double slippage_cost_numeraire{0.0};
   double cost_as_fraction_of_equity{std::numeric_limits<double>::quiet_NaN()};
   double cost_as_fraction_of_gross_return{
       std::numeric_limits<double>::quiet_NaN()};
   double mean_target_weight_error_l1{std::numeric_limits<double>::quiet_NaN()};
   double mean_target_weight_error_linf{
       std::numeric_limits<double>::quiet_NaN()};
-  double mean_post_execution_risky_weight_sum{
+  double mean_post_execution_target_weight_sum{
       std::numeric_limits<double>::quiet_NaN()};
-  double mean_post_execution_base_reserve_weight{
+  double mean_post_execution_numeraire_weight{
       std::numeric_limits<double>::quiet_NaN()};
-  std::uint64_t reserve_shortfall_count{0};
+  std::uint64_t numeraire_shortfall_count{0};
   double mean_ledger_before_equity{std::numeric_limits<double>::quiet_NaN()};
   double mean_ledger_after_execution_equity{
       std::numeric_limits<double>::quiet_NaN()};
   double mean_ledger_after_realization_equity{
       std::numeric_limits<double>::quiet_NaN()};
   double max_ledger_equity_reconciliation_error{0.0};
-  double base_reserve_units_before{std::numeric_limits<double>::quiet_NaN()};
-  double base_reserve_units_after{std::numeric_limits<double>::quiet_NaN()};
+  double numeraire_units_before{std::numeric_limits<double>::quiet_NaN()};
+  double numeraire_units_after{std::numeric_limits<double>::quiet_NaN()};
   std::uint64_t unit_nonnegativity_violation_count{0};
   double mean_projection_mae{std::numeric_limits<double>::quiet_NaN()};
   double mean_projection_rmse{std::numeric_limits<double>::quiet_NaN()};
@@ -439,10 +444,10 @@ struct replay_experiment_report_t {
         [](const episode_report_t &report) { return report.total_log_growth; });
   }
 
-  [[nodiscard]] double mean_final_equity_base() const {
+  [[nodiscard]] double mean_final_equity_numeraire() const {
     return experiment_runner_detail::mean_episode_metric(
         episode_reports, [](const episode_report_t &report) {
-          return report.final_equity_base;
+          return report.final_equity_numeraire;
         });
   }
 
@@ -458,10 +463,10 @@ struct replay_experiment_report_t {
         [](const episode_report_t &report) { return report.total_turnover; });
   }
 
-  [[nodiscard]] double mean_total_transaction_cost_base() const {
+  [[nodiscard]] double mean_total_transaction_cost_numeraire() const {
     return experiment_runner_detail::mean_episode_metric(
         episode_reports, [](const episode_report_t &report) {
-          return report.total_transaction_cost_base;
+          return report.total_transaction_cost_numeraire;
         });
   }
 
@@ -500,48 +505,58 @@ struct replay_experiment_report_t {
         });
   }
 
-  [[nodiscard]] double requested_notional_base() const {
-    return experiment_runner_detail::sum_episode_metric(
+  [[nodiscard]] std::uint64_t cajtucu_numeraire_fallback_pair_count() const {
+    return experiment_runner_detail::sum_episode_count(
         episode_reports, [](const episode_report_t &report) {
-          return report.requested_notional_base;
+          return report.cajtucu_numeraire_fallback_pair_count;
         });
   }
 
-  [[nodiscard]] double executed_notional_base() const {
+  [[nodiscard]] double requested_notional_numeraire() const {
     return experiment_runner_detail::sum_episode_metric(
         episode_reports, [](const episode_report_t &report) {
-          return report.executed_notional_base;
+          return report.requested_notional_numeraire;
         });
   }
 
-  [[nodiscard]] double rejected_notional_base() const {
+  [[nodiscard]] double executed_notional_numeraire() const {
     return experiment_runner_detail::sum_episode_metric(
         episode_reports, [](const episode_report_t &report) {
-          return report.rejected_notional_base;
+          return report.executed_notional_numeraire;
+        });
+  }
+
+  [[nodiscard]] double rejected_notional_numeraire() const {
+    return experiment_runner_detail::sum_episode_metric(
+        episode_reports, [](const episode_report_t &report) {
+          return report.rejected_notional_numeraire;
         });
   }
 
   [[nodiscard]] double fill_ratio() const {
-    const double requested = requested_notional_base();
-    return requested > 1.0e-12 ? executed_notional_base() / requested : 1.0;
+    const double requested = requested_notional_numeraire();
+    return requested > 1.0e-12 ? executed_notional_numeraire() / requested
+                               : 1.0;
   }
 
-  [[nodiscard]] double fee_cost_base() const {
-    return experiment_runner_detail::sum_episode_metric(
-        episode_reports,
-        [](const episode_report_t &report) { return report.fee_cost_base; });
-  }
-
-  [[nodiscard]] double spread_cost_base() const {
-    return experiment_runner_detail::sum_episode_metric(
-        episode_reports,
-        [](const episode_report_t &report) { return report.spread_cost_base; });
-  }
-
-  [[nodiscard]] double slippage_cost_base() const {
+  [[nodiscard]] double fee_cost_numeraire() const {
     return experiment_runner_detail::sum_episode_metric(
         episode_reports, [](const episode_report_t &report) {
-          return report.slippage_cost_base;
+          return report.fee_cost_numeraire;
+        });
+  }
+
+  [[nodiscard]] double spread_cost_numeraire() const {
+    return experiment_runner_detail::sum_episode_metric(
+        episode_reports, [](const episode_report_t &report) {
+          return report.spread_cost_numeraire;
+        });
+  }
+
+  [[nodiscard]] double slippage_cost_numeraire() const {
+    return experiment_runner_detail::sum_episode_metric(
+        episode_reports, [](const episode_report_t &report) {
+          return report.slippage_cost_numeraire;
         });
   }
 
@@ -771,15 +786,17 @@ inline void build_policy_summaries(
         reports, [](const episode_report_t &r) { return r.total_reward; });
     summary.mean_total_log_growth = mean_episode_metric(
         reports, [](const episode_report_t &r) { return r.total_log_growth; });
-    summary.mean_final_equity_base = mean_episode_metric(
-        reports, [](const episode_report_t &r) { return r.final_equity_base; });
+    summary.mean_final_equity_numeraire =
+        mean_episode_metric(reports, [](const episode_report_t &r) {
+          return r.final_equity_numeraire;
+        });
     summary.mean_max_drawdown = mean_episode_metric(
         reports, [](const episode_report_t &r) { return r.max_drawdown; });
     summary.mean_total_turnover = mean_episode_metric(
         reports, [](const episode_report_t &r) { return r.total_turnover; });
-    summary.mean_total_transaction_cost_base =
+    summary.mean_total_transaction_cost_numeraire =
         mean_episode_metric(reports, [](const episode_report_t &r) {
-          return r.total_transaction_cost_base;
+          return r.total_transaction_cost_numeraire;
         });
     summary.cajtucu_valid_trace_count =
         sum_episode_count(reports, [](const episode_report_t &r) {
@@ -789,9 +806,13 @@ inline void build_policy_summaries(
         sum_episode_count(reports, [](const episode_report_t &r) {
           return r.cajtucu_invalid_trace_count;
         });
-    summary.cajtucu_missing_direct_reserve_edge_count =
+    summary.cajtucu_missing_direct_pair_count =
         sum_episode_count(reports, [](const episode_report_t &r) {
-          return r.cajtucu_missing_direct_reserve_edge_count;
+          return r.cajtucu_missing_direct_pair_count;
+        });
+    summary.cajtucu_numeraire_fallback_pair_count =
+        sum_episode_count(reports, [](const episode_report_t &r) {
+          return r.cajtucu_numeraire_fallback_pair_count;
         });
     summary.cajtucu_nontradable_edge_reject_count =
         sum_episode_count(reports, [](const episode_report_t &r) {
@@ -805,9 +826,9 @@ inline void build_policy_summaries(
         sum_episode_count(reports, [](const episode_report_t &r) {
           return r.cajtucu_above_max_notional_reject_count;
         });
-    summary.cajtucu_insufficient_reserve_reject_count =
+    summary.cajtucu_insufficient_sell_units_reject_count =
         sum_episode_count(reports, [](const episode_report_t &r) {
-          return r.cajtucu_insufficient_reserve_reject_count;
+          return r.cajtucu_insufficient_sell_units_reject_count;
         });
     summary.cajtucu_insufficient_units_reject_count =
         sum_episode_count(reports, [](const episode_report_t &r) {
@@ -841,33 +862,37 @@ inline void build_policy_summaries(
         sum_episode_count(reports, [](const episode_report_t &r) {
           return r.partial_order_count;
         });
-    summary.requested_notional_base =
+    summary.requested_notional_numeraire =
         sum_episode_metric(reports, [](const episode_report_t &r) {
-          return r.requested_notional_base;
+          return r.requested_notional_numeraire;
         });
-    summary.executed_notional_base =
+    summary.executed_notional_numeraire =
         sum_episode_metric(reports, [](const episode_report_t &r) {
-          return r.executed_notional_base;
+          return r.executed_notional_numeraire;
         });
-    summary.rejected_notional_base =
+    summary.rejected_notional_numeraire =
         sum_episode_metric(reports, [](const episode_report_t &r) {
-          return r.rejected_notional_base;
+          return r.rejected_notional_numeraire;
         });
-    summary.partial_notional_base =
+    summary.partial_notional_numeraire =
         sum_episode_metric(reports, [](const episode_report_t &r) {
-          return r.partial_notional_base;
+          return r.partial_notional_numeraire;
         });
-    summary.fill_ratio =
-        summary.requested_notional_base > 1.0e-12
-            ? summary.executed_notional_base / summary.requested_notional_base
-            : 1.0;
-    summary.fee_cost_base = sum_episode_metric(
-        reports, [](const episode_report_t &r) { return r.fee_cost_base; });
-    summary.spread_cost_base = sum_episode_metric(
-        reports, [](const episode_report_t &r) { return r.spread_cost_base; });
-    summary.slippage_cost_base =
+    summary.fill_ratio = summary.requested_notional_numeraire > 1.0e-12
+                             ? summary.executed_notional_numeraire /
+                                   summary.requested_notional_numeraire
+                             : 1.0;
+    summary.fee_cost_numeraire =
         sum_episode_metric(reports, [](const episode_report_t &r) {
-          return r.slippage_cost_base;
+          return r.fee_cost_numeraire;
+        });
+    summary.spread_cost_numeraire =
+        sum_episode_metric(reports, [](const episode_report_t &r) {
+          return r.spread_cost_numeraire;
+        });
+    summary.slippage_cost_numeraire =
+        sum_episode_metric(reports, [](const episode_report_t &r) {
+          return r.slippage_cost_numeraire;
         });
     summary.cost_as_fraction_of_equity =
         mean_episode_metric(reports, [](const episode_report_t &r) {
@@ -885,17 +910,17 @@ inline void build_policy_summaries(
         mean_episode_metric(reports, [](const episode_report_t &r) {
           return r.mean_target_weight_error_linf;
         });
-    summary.mean_post_execution_risky_weight_sum =
+    summary.mean_post_execution_target_weight_sum =
         mean_episode_metric(reports, [](const episode_report_t &r) {
-          return r.mean_post_execution_risky_weight_sum;
+          return r.mean_post_execution_target_weight_sum;
         });
-    summary.mean_post_execution_base_reserve_weight =
+    summary.mean_post_execution_numeraire_weight =
         mean_episode_metric(reports, [](const episode_report_t &r) {
-          return r.mean_post_execution_base_reserve_weight;
+          return r.mean_post_execution_numeraire_weight;
         });
-    summary.reserve_shortfall_count =
+    summary.numeraire_shortfall_count =
         sum_episode_count(reports, [](const episode_report_t &r) {
-          return r.reserve_shortfall_count;
+          return r.numeraire_shortfall_count;
         });
     summary.mean_ledger_before_equity =
         mean_episode_metric(reports, [](const episode_report_t &r) {
@@ -913,13 +938,13 @@ inline void build_policy_summaries(
         max_episode_metric(reports, [](const episode_report_t &r) {
           return r.max_ledger_equity_reconciliation_error;
         });
-    summary.base_reserve_units_before =
+    summary.numeraire_units_before =
         mean_episode_metric(reports, [](const episode_report_t &r) {
-          return r.base_reserve_units_before;
+          return r.numeraire_units_before;
         });
-    summary.base_reserve_units_after =
+    summary.numeraire_units_after =
         mean_episode_metric(reports, [](const episode_report_t &r) {
-          return r.base_reserve_units_after;
+          return r.numeraire_units_after;
         });
     summary.unit_nonnegativity_violation_count =
         sum_episode_count(reports, [](const episode_report_t &r) {

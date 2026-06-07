@@ -8,7 +8,7 @@
 #include "wikimyei/observer/belief/types.h"
 #include "wikimyei/policy/portfolio/spot_distributional_utility/solver.h"
 #include "wikimyei/policy/portfolio/spot_distributional_utility/types.h"
-#include "wikimyei/policy/portfolio/spot_distributional_utility/utility/base_reserve_fallback.h"
+#include "wikimyei/policy/portfolio/spot_distributional_utility/utility/allocation_numeraire_fallback.h"
 #include "wikimyei/policy/portfolio/spot_distributional_utility/utility/belief_reporter.h"
 #include "wikimyei/policy/portfolio/spot_distributional_utility/utility/risk_gate.h"
 #include "wikimyei/policy/portfolio/spot_distributional_utility/utility/spot_rebalance_router.h"
@@ -45,8 +45,8 @@ namespace detail {
 inline void
 append_gate_diagnostics(TargetPortfolio &target,
                         const risk_gate::risk_gate_result_t &risk_gate) {
-  if (risk_gate.force_base_reserve_fallback) {
-    target.diagnostics.notes.push_back("risk_gate.force_base_reserve_fallback");
+  if (risk_gate.force_numeraire_fallback) {
+    target.diagnostics.notes.push_back("risk_gate.force_numeraire_fallback");
   } else {
     target.diagnostics.notes.push_back("risk_gate.allow_trading");
   }
@@ -64,7 +64,8 @@ make_unrouted_plan(const belief::AllocationBelief &belief_state,
                    std::string failure_reason) {
   execution::spot_rebalance_plan_t plan{};
   plan.timestamp_ms = belief_state.timestamp_ms;
-  plan.base_reserve_node_id = portfolio_state.reserve_node_id;
+  plan.accounting_numeraire_node_id =
+      portfolio_state.accounting_numeraire_node_id;
   plan.node_ids = belief_state.node_ids;
   plan.valid = false;
   plan.diagnostics.failures.push_back(std::move(failure_reason));
@@ -95,8 +96,8 @@ run(const belief::AllocationBelief &belief_state,
                                          options.risk_thresholds);
 
   try {
-    if (result.risk_gate.force_base_reserve_fallback) {
-      result.target = base_reserve_fallback::solve(
+    if (result.risk_gate.force_numeraire_fallback) {
+      result.target = allocation_numeraire_fallback::solve(
           belief_state, portfolio_state, constraints,
           result.risk_gate.fallback_mode);
     } else {

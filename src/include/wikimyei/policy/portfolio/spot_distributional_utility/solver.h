@@ -11,32 +11,64 @@
 #include "wikimyei/observer/utility/data_quality.h"
 #include "wikimyei/observer/utility/transaction_cost.h"
 #include "wikimyei/policy/portfolio/spot_distributional_utility/types.h"
-#include "wikimyei/policy/portfolio/spot_distributional_utility/utility/base_reserve_fallback.h"
+#include "wikimyei/policy/portfolio/spot_distributional_utility/utility/allocation_numeraire_fallback.h"
 
 namespace cuwacunu::wikimyei::policy::portfolio::spot_distributional_utility {
 
 struct solver_options_t {
   std::int64_t iterations{160};
   double learning_rate{0.05};
-  base_reserve_fallback::base_reserve_fallback_mode_t invalid_belief_mode{
-      base_reserve_fallback::base_reserve_fallback_mode_t::
-          turnover_limited_base_reserve};
+  allocation_numeraire_fallback::allocation_numeraire_fallback_mode_t
+      invalid_belief_mode{
+          allocation_numeraire_fallback::allocation_numeraire_fallback_mode_t::
+              turnover_limited_numeraire};
 };
 
 namespace detail {
 
+[[nodiscard]] inline std::int64_t accounting_numeraire_index_or_throw(
+    const std::vector<node_id_t> &node_ids,
+    const node_id_t &accounting_numeraire_node_id) {
+  const auto it =
+      std::find(node_ids.begin(), node_ids.end(), accounting_numeraire_node_id);
+  TORCH_CHECK(it != node_ids.end(),
+              "[spot_distributional_utility] accounting numeraire must be "
+              "present in node_ids");
+  return static_cast<std::int64_t>(it - node_ids.begin());
+}
+
+[[nodiscard]] inline torch::Tensor
+fill_residual_to_numeraire(const torch::Tensor &weights,
+                           double allocation_budget,
+                           std::int64_t accounting_numeraire_index) {
+  auto out = weights.to(torch::kFloat64).clone();
+  TORCH_CHECK(accounting_numeraire_index >= 0 &&
+                  accounting_numeraire_index < out.size(0),
+              "[spot_distributional_utility] accounting numeraire index out "
+              "of range");
+  const double sum = out.sum().item<double>();
+  const double residual = allocation_budget - sum;
+  if (std::abs(residual) <= 1.0e-12) {
+    return out;
+  }
+  out.index_put_({accounting_numeraire_index},
+                 out.index({accounting_numeraire_index}) + residual);
+  return out.clamp_min(0.0);
+}
+
 [[nodiscard]] inline torch::Tensor
 project_weights(const torch::Tensor &candidate, const torch::Tensor &current,
                 const torch::Tensor &min_weight,
-                const torch::Tensor &max_weight, double risky_budget,
-                double max_turnover_l1) {
+                const torch::Tensor &max_weight, double allocation_budget,
+                double max_turnover_l1,
+                std::int64_t accounting_numeraire_index = -1) {
   auto w = candidate.to(torch::kFloat64);
   w = torch::maximum(w, min_weight);
   w = torch::minimum(w, max_weight);
 
   const double sum = w.sum().item<double>();
-  if (sum > risky_budget && sum > 0.0) {
-    w = w * (risky_budget / sum);
+  if (sum > 0.0) {
+    w = w * (allocation_budget / sum);
     w = torch::maximum(w, min_weight);
     w = torch::minimum(w, max_weight);
   }
@@ -48,9 +80,13 @@ project_weights(const torch::Tensor &candidate, const torch::Tensor &current,
     w = torch::maximum(w, min_weight);
     w = torch::minimum(w, max_weight);
     const double post_sum = w.sum().item<double>();
-    if (post_sum > risky_budget && post_sum > 0.0) {
-      w = w * (risky_budget / post_sum);
+    if (post_sum > 0.0) {
+      w = w * (allocation_budget / post_sum);
     }
+  }
+  if (accounting_numeraire_index >= 0) {
+    w = fill_residual_to_numeraire(w, allocation_budget,
+                                   accounting_numeraire_index);
   }
   return w.detach();
 }
@@ -100,26 +136,27 @@ solve(const cuwacunu::wikimyei::observer::belief::AllocationBelief &belief,
   validate_portfolio_state(portfolio, A);
   validate_market_state(market, A);
   validate_portfolio_constraints(constraints, A);
-  if (portfolio.accounting_node_id !=
+  if (portfolio.accounting_numeraire_node_id !=
       belief.base_policy.accounting_numeraire_id) {
     throw std::runtime_error(
-        "[spot_distributional_utility] portfolio accounting_node_id must "
-        "match belief accounting_numeraire_id");
+        "[spot_distributional_utility] portfolio accounting_numeraire_node_id "
+        "must match belief accounting_numeraire_id");
   }
-  if (portfolio.reserve_node_id != belief.base_policy.reserve_asset_id) {
+  if (portfolio.node_ids != belief.node_ids) {
     throw std::runtime_error(
-        "[spot_distributional_utility] portfolio reserve_node_id must match "
-        "belief reserve_asset_id");
+        "[spot_distributional_utility] portfolio node_ids must match belief "
+        "node_ids");
   }
 
   const auto quality =
       cuwacunu::wikimyei::observer::check_allocation_belief(belief);
   if (!belief.valid || !quality.valid) {
-    auto guarded = base_reserve_fallback::solve(belief, portfolio, constraints,
-                                                options.invalid_belief_mode);
+    auto guarded = allocation_numeraire_fallback::solve(
+        belief, portfolio, constraints, options.invalid_belief_mode);
     guarded.valid = true;
     guarded.diagnostics.warnings.push_back(
-        "spot_distributional_utility delegated to base_reserve_fallback");
+        "spot_distributional_utility delegated to "
+        "allocation_numeraire_fallback");
     for (const auto &failure : quality.diagnostics.failures) {
       guarded.diagnostics.failures.push_back(failure);
     }
@@ -131,14 +168,15 @@ solve(const cuwacunu::wikimyei::observer::belief::AllocationBelief &belief,
   auto tensor_options =
       torch::TensorOptions().dtype(torch::kFloat64).device(device);
   auto current = portfolio.current_weights.to(tensor_options).clamp_min(0.0);
+  const auto accounting_numeraire_index =
+      detail::accounting_numeraire_index_or_throw(
+          belief.node_ids, belief.base_policy.accounting_numeraire_id);
   auto min_weight = constraints.min_weight.defined()
                         ? constraints.min_weight.to(tensor_options)
                         : torch::zeros({A}, tensor_options);
-  auto max_weight =
-      constraints.max_weight.defined()
-          ? constraints.max_weight.to(tensor_options)
-          : torch::full({A}, 1.0 - constraints.min_base_reserve_weight,
-                        tensor_options);
+  auto max_weight = constraints.max_weight.defined()
+                        ? constraints.max_weight.to(tensor_options)
+                        : torch::full({A}, 1.0, tensor_options);
   auto capacity = belief.capacity_weight_limit.defined()
                       ? belief.capacity_weight_limit.to(tensor_options)
                       : torch::full({A}, 1.0, tensor_options);
@@ -155,10 +193,10 @@ solve(const cuwacunu::wikimyei::observer::belief::AllocationBelief &belief,
   max_weight = torch::minimum(max_weight, capacity);
   max_weight = torch::minimum(max_weight, confidence * configured_max_weight);
   max_weight = max_weight.masked_fill(active.logical_not(), 0.0);
+  max_weight.index_put_({accounting_numeraire_index}, 1.0);
   min_weight = min_weight.masked_fill(active.logical_not(), 0.0);
   min_weight = torch::minimum(min_weight, max_weight);
-  const double risky_budget =
-      std::max(0.0, 1.0 - constraints.min_base_reserve_weight);
+  const double allocation_budget = 1.0;
 
   auto linear_cost = belief.linear_cost.defined()
                          ? belief.linear_cost.to(tensor_options).clamp_min(0.0)
@@ -186,8 +224,9 @@ solve(const cuwacunu::wikimyei::observer::belief::AllocationBelief &belief,
            constraints.lambda_uncertainty * uncertainty_penalty;
   };
 
-  auto w = detail::project_weights(current, current, min_weight, max_weight,
-                                   risky_budget, constraints.max_turnover_l1);
+  auto w = detail::project_weights(
+      current, current, min_weight, max_weight, allocation_budget,
+      constraints.max_turnover_l1, accounting_numeraire_index);
   for (std::int64_t i = 0; i < options.iterations; ++i) {
     w = w.detach();
     w.set_requires_grad(true);
@@ -197,15 +236,16 @@ solve(const cuwacunu::wikimyei::observer::belief::AllocationBelief &belief,
     {
       torch::NoGradGuard ng;
       w = detail::project_weights(w - options.learning_rate * grad, current,
-                                  min_weight, max_weight, risky_budget,
-                                  constraints.max_turnover_l1);
+                                  min_weight, max_weight, allocation_budget,
+                                  constraints.max_turnover_l1,
+                                  accounting_numeraire_index);
     }
   }
   w = w.detach();
   auto growth = 1.0 + scenarios.matmul(w);
   if (growth.min().item<double>() < constraints.scenario_growth_floor) {
-    auto guarded = base_reserve_fallback::solve(belief, portfolio, constraints,
-                                                options.invalid_belief_mode);
+    auto guarded = allocation_numeraire_fallback::solve(
+        belief, portfolio, constraints, options.invalid_belief_mode);
     guarded.diagnostics.failures.push_back(
         "scenario growth floor infeasible for optimized target");
     return guarded;
@@ -222,9 +262,7 @@ solve(const cuwacunu::wikimyei::observer::belief::AllocationBelief &belief,
   TargetPortfolio out{};
   out.timestamp_ms = belief.timestamp_ms;
   out.node_ids = belief.node_ids;
-  out.base_reserve_node_id = belief.base_policy.reserve_asset_id;
   out.target_weights = w.to(portfolio.current_weights.options());
-  out.target_base_reserve_weight = std::max(0.0, 1.0 - w.sum().item<double>());
   out.delta_weights = (w - current).to(portfolio.current_weights.options());
   out.expected_log_growth = log_growth.mean().item<double>();
   out.expected_arithmetic_return = expected_arithmetic.item<double>();

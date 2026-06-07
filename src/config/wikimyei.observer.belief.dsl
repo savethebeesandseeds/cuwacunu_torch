@@ -6,8 +6,8 @@
 
   This component consumes marginal future NodeLift potential distributions. It
   must not treat raw node potentials as asset returns. The return projection is
-  base-relative: phi_asset - phi_reference, where the reference/reserve asset is
-  a graph node supplied by BasePolicy.
+  numeraire-relative: phi_asset - phi_reference, where the accounting
+  numeraire is a graph node supplied by BasePolicy.
 */
 OBSERVER_BELIEF {
   VERSION = wikimyei.observer.belief.nodelift_allocation_belief.v1;
@@ -19,9 +19,9 @@ OBSERVER_BELIEF {
   BATCH_POLICY = single_anchor;
   CHANNEL_CONSENSUS = uniform_valid_channels;
   POTENTIAL_SEMANTICS = edge_log_return_lifted_potential;
-  RETURN_PROJECTION = base_relative_nodelift_projection;
+  RETURN_PROJECTION = numeraire_relative_nodelift_projection;
   SCENARIO_UNIT = arithmetic_return;
-  RESERVE_ASSET_POLICY = graph_node_from_base_policy;
+  ACCOUNTING_NUMERAIRE_POLICY = graph_node_from_base_policy;
   COVARIANCE_COUPLER = gaussian_copula_shrinkage;
   SCENARIO_COUNT = 1024;
   PROJECTION_VALIDATION_REQUIRED = true;

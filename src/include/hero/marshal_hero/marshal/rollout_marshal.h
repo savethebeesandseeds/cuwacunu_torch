@@ -33,8 +33,8 @@ inline constexpr const char *k_marshal_rollout_non_authority_statement =
     "executes, Kikijyeba produces trajectory evidence, Cajtucu simulates paper "
     "execution, and Lattice proves readiness only from durable evidence.";
 
-inline constexpr const char *k_rollout_policy_base_reserve =
-    "base_reserve_only.v1";
+inline constexpr const char *k_rollout_policy_numeraire_only =
+    "numeraire_only.v1";
 inline constexpr const char *k_rollout_policy_current_weight =
     "current_weight_no_trade.v1";
 inline constexpr const char *k_rollout_policy_equal_weight = "equal_weight.v1";
@@ -49,7 +49,6 @@ struct marshal_rollout_execution_profile_t {
   std::string synthetic_edge_research_reason{};
   double linear_transaction_cost_rate{0.0};
   bool allow_partial_fills{false};
-  bool allow_negative_base_reserve{false};
   double equity_mismatch_tolerance{1.0e-6};
   double equity_mismatch_fail_tolerance{0.01};
   bool live_execution_allowed{false};
@@ -74,8 +73,8 @@ struct marshal_rollout_request_t {
   std::string environment_assembly_id{"kikijyeba.environment.replay.v1"};
   std::string graph_order_fingerprint{};
   std::string asset_universe_digest{};
-  std::string base_reserve_node_id{};
-  std::vector<std::string> risky_node_ids{};
+  std::string accounting_numeraire_node_id{};
+  std::vector<std::string> target_node_ids{};
   std::vector<std::string> policy_tokens{};
 
   std::int64_t max_steps{0};
@@ -226,6 +225,44 @@ inline void append_double(std::ostringstream &out, const std::string &key,
   return std::string(text.substr(begin, end - begin));
 }
 
+[[nodiscard]] inline std::string
+read_accounting_numeraire_node_id_from_config(
+    const std::filesystem::path &config_path) {
+  std::ifstream input(config_path);
+  if (!input.is_open()) {
+    return {};
+  }
+  std::string current_section;
+  std::string line;
+  while (std::getline(input, line)) {
+    const auto comment = line.find('#');
+    if (comment != std::string::npos) {
+      line.resize(comment);
+    }
+    line = trim_ascii(line);
+    if (line.empty()) {
+      continue;
+    }
+    if (line.front() == '[' && line.back() == ']') {
+      current_section = trim_ascii(std::string_view(line).substr(
+          1U, line.size() - 2U));
+      continue;
+    }
+    if (current_section != "ACCOUNTING") {
+      continue;
+    }
+    const auto pos = line.find('=');
+    if (pos == std::string::npos) {
+      continue;
+    }
+    const auto key = trim_ascii(std::string_view(line).substr(0, pos));
+    if (key == "accounting_numeraire_node_id") {
+      return trim_ascii(std::string_view(line).substr(pos + 1U));
+    }
+  }
+  return {};
+}
+
 [[nodiscard]] inline std::map<std::string, std::string>
 read_kv_file(const std::filesystem::path &path) {
   std::map<std::string, std::string> out;
@@ -270,9 +307,9 @@ default_report_path(const marshal_rollout_request_t &request) {
 
 [[nodiscard]] inline std::string
 normalize_policy_token(const std::string &token) {
-  if (token == "reserve" || token == "base_reserve" ||
-      token == k_rollout_policy_base_reserve) {
-    return k_rollout_policy_base_reserve;
+  if (token == "numeraire" || token == "numeraire_only" ||
+      token == k_rollout_policy_numeraire_only) {
+    return k_rollout_policy_numeraire_only;
   }
   if (token == "current" || token == "current_weight" ||
       token == k_rollout_policy_current_weight) {
@@ -363,23 +400,23 @@ inline void append_json_double_field(std::ostringstream &out,
 } // namespace rollout_marshal_detail
 
 [[nodiscard]] inline std::string
-rollout_asset_universe_text(const std::string &base_reserve_node_id,
-                            const std::vector<std::string> &risky_node_ids) {
+rollout_asset_universe_text(const std::string &accounting_numeraire_node_id,
+                            const std::vector<std::string> &target_node_ids) {
   namespace detail = rollout_marshal_detail;
   std::ostringstream out;
   detail::append_kv(out, "schema_version",
                     k_marshal_rollout_asset_universe_schema_v1);
-  detail::append_kv(out, "base_reserve_node_id", base_reserve_node_id);
-  detail::append_kv(out, "risky_node_ids", detail::csv(risky_node_ids));
+  detail::append_kv(out, "accounting_numeraire_node_id", accounting_numeraire_node_id);
+  detail::append_kv(out, "target_node_ids", detail::csv(target_node_ids));
   return out.str();
 }
 
 [[nodiscard]] inline std::string
-rollout_asset_universe_digest(const std::string &base_reserve_node_id,
-                              const std::vector<std::string> &risky_node_ids) {
+rollout_asset_universe_digest(const std::string &accounting_numeraire_node_id,
+                              const std::vector<std::string> &target_node_ids) {
   return marshal_digest_for_text(
       k_marshal_rollout_asset_universe_schema_v1,
-      rollout_asset_universe_text(base_reserve_node_id, risky_node_ids));
+      rollout_asset_universe_text(accounting_numeraire_node_id, target_node_ids));
 }
 
 [[nodiscard]] inline std::string
@@ -413,8 +450,6 @@ rollout_policy_set_digest(const std::vector<std::string> &resolved_policy_ids) {
   detail::append_double(out, "linear_transaction_cost_rate",
                         profile.linear_transaction_cost_rate);
   detail::append_bool(out, "allow_partial_fills", profile.allow_partial_fills);
-  detail::append_bool(out, "allow_negative_base_reserve",
-                      profile.allow_negative_base_reserve);
   detail::append_double(out, "equity_mismatch_tolerance",
                         profile.equity_mismatch_tolerance);
   detail::append_double(out, "equity_mismatch_fail_tolerance",
@@ -455,8 +490,8 @@ canonical_rollout_request_text(const marshal_rollout_request_t &request) {
                     request.graph_order_fingerprint);
   detail::append_kv(out, "asset_universe_digest",
                     request.asset_universe_digest);
-  detail::append_kv(out, "base_reserve_node_id", request.base_reserve_node_id);
-  detail::append_kv(out, "risky_node_ids", detail::csv(request.risky_node_ids));
+  detail::append_kv(out, "accounting_numeraire_node_id", request.accounting_numeraire_node_id);
+  detail::append_kv(out, "target_node_ids", detail::csv(request.target_node_ids));
   detail::append_kv(out, "policy_tokens", detail::csv(request.policy_tokens));
   detail::append_i64(out, "max_steps", request.max_steps);
   detail::append_i64(out, "max_parallel_jobs", request.max_parallel_jobs);
@@ -479,6 +514,16 @@ canonical_rollout_request_text(const marshal_rollout_request_t &request) {
 rollout_request_digest(const marshal_rollout_request_t &request) {
   return marshal_digest_for_text(k_marshal_rollout_request_schema_v1,
                                  canonical_rollout_request_text(request));
+}
+
+[[nodiscard]] inline marshal_rollout_request_t
+normalize_rollout_request_defaults(marshal_rollout_request_t request) {
+  if (request.accounting_numeraire_node_id.empty()) {
+    request.accounting_numeraire_node_id =
+        rollout_marshal_detail::read_accounting_numeraire_node_id_from_config(
+            request.config_path);
+  }
+  return request;
 }
 
 [[nodiscard]] inline std::vector<std::string>
@@ -532,29 +577,34 @@ validate_rollout_request(const marshal_rollout_request_t &request) {
   if (request.asset_universe_digest.empty()) {
     refusals.emplace_back("missing_asset_universe_digest");
   }
-  if (request.base_reserve_node_id.empty()) {
-    refusals.emplace_back("missing_base_reserve_node_id");
+  if (request.accounting_numeraire_node_id.empty()) {
+    refusals.emplace_back("missing_config_accounting_numeraire_node_id");
   }
-  if (request.risky_node_ids.empty()) {
-    refusals.emplace_back("missing_risky_node_ids");
+  if (request.target_node_ids.empty()) {
+    refusals.emplace_back("missing_target_node_ids");
   }
 
+  bool contains_numeraire = false;
   std::unordered_set<std::string> seen_nodes;
-  for (const auto &node_id : request.risky_node_ids) {
+  for (const auto &node_id : request.target_node_ids) {
     if (node_id.empty()) {
-      refusals.emplace_back("empty_risky_node_id");
+      refusals.emplace_back("empty_target_node_id");
       continue;
     }
-    if (node_id == request.base_reserve_node_id) {
-      refusals.emplace_back("base_reserve_node_duplicated_in_risky_nodes");
+    if (node_id == request.accounting_numeraire_node_id) {
+      contains_numeraire = true;
     }
     if (!seen_nodes.insert(node_id).second) {
-      refusals.emplace_back("duplicate_risky_node_id");
+      refusals.emplace_back("duplicate_target_node_id");
     }
+  }
+  if (!request.accounting_numeraire_node_id.empty() &&
+      !contains_numeraire) {
+    refusals.emplace_back("accounting_numeraire_node_missing_from_target_nodes");
   }
 
   const auto computed_asset_universe_digest = rollout_asset_universe_digest(
-      request.base_reserve_node_id, request.risky_node_ids);
+      request.accounting_numeraire_node_id, request.target_node_ids);
   if (!request.asset_universe_digest.empty() &&
       request.asset_universe_digest != computed_asset_universe_digest) {
     refusals.emplace_back("asset_universe_digest_mismatch");
@@ -609,9 +659,6 @@ validate_rollout_request(const marshal_rollout_request_t &request) {
   if (profile.allow_synthetic_direct_edges) {
     refusals.emplace_back(
         "synthetic_direct_edges_forbidden_for_validation_rollout");
-  }
-  if (profile.allow_negative_base_reserve) {
-    refusals.emplace_back("negative_base_reserve_forbidden_v1");
   }
   if (profile.allow_partial_fills) {
     refusals.emplace_back("partial_fills_not_supported_by_runtime_replay_v1");
@@ -738,8 +785,9 @@ rollout_plan_digest(const marshal_rollout_plan_t &plan) {
 }
 
 [[nodiscard]] inline marshal_rollout_plan_t
-prepare_rollout_plan(const marshal_rollout_request_t &request) {
+prepare_rollout_plan(marshal_rollout_request_t request) {
   namespace detail = rollout_marshal_detail;
+  request = normalize_rollout_request_defaults(std::move(request));
   marshal_rollout_plan_t plan{};
   plan.request_digest = rollout_request_digest(request);
   plan.rollout_id = request.rollout_id;
@@ -774,10 +822,10 @@ prepare_rollout_plan(const marshal_rollout_request_t &request) {
             << detail::shell_quote(plan.experiment_id)
             << " --replay-report-path "
             << detail::shell_quote(plan.expected_report_path.string())
-            << " --replay-base-reserve-node "
-            << detail::shell_quote(request.base_reserve_node_id)
-            << " --replay-risky-nodes "
-            << detail::shell_quote(detail::csv(request.risky_node_ids));
+            << " --replay-accounting-numeraire-node "
+            << detail::shell_quote(request.accounting_numeraire_node_id)
+            << " --replay-target-nodes "
+            << detail::shell_quote(detail::csv(request.target_node_ids));
     if (request.max_steps > 0) {
       command << " --replay-max-steps " << request.max_steps;
     }
@@ -793,8 +841,8 @@ prepare_rollout_plan(const marshal_rollout_request_t &request) {
       command << " --replay-include-current-weight";
     }
     if (!detail::contains_policy(plan.resolved_policy_ids,
-                                 k_rollout_policy_base_reserve)) {
-      command << " --replay-no-base-reserve-policy";
+                                 k_rollout_policy_numeraire_only)) {
+      command << " --replay-no-numeraire-only-policy";
     }
     if (!detail::contains_policy(plan.resolved_policy_ids,
                                  k_rollout_policy_sdu)) {
@@ -845,8 +893,6 @@ prepare_rollout_plan(const marshal_rollout_request_t &request) {
                                    &first);
   detail::append_json_bool_field(out, "allow_partial_fills",
                                  profile.allow_partial_fills, &first);
-  detail::append_json_bool_field(out, "allow_negative_base_reserve",
-                                 profile.allow_negative_base_reserve, &first);
   detail::append_json_double_field(out, "equity_mismatch_tolerance",
                                    profile.equity_mismatch_tolerance, &first);
   detail::append_json_double_field(out, "equity_mismatch_fail_tolerance",
@@ -952,10 +998,10 @@ rollout_runtime_replay_args_json(const marshal_rollout_request_t &request,
                                    request.runtime_job_dir.string(), &first);
   detail::append_json_string_field(out, "config_path",
                                    request.config_path.string(), &first);
-  detail::append_json_string_field(out, "base_reserve_node_id",
-                                   request.base_reserve_node_id, &first);
-  detail::append_json_string_field(out, "risky_node_ids",
-                                   detail::csv(request.risky_node_ids), &first);
+  detail::append_json_string_field(out, "accounting_numeraire_node_id",
+                                   request.accounting_numeraire_node_id, &first);
+  detail::append_json_string_field(out, "target_node_ids",
+                                   detail::csv(request.target_node_ids), &first);
   detail::append_json_string_field(out, "experiment_id", plan.experiment_id,
                                    &first);
   detail::append_json_string_field(out, "report_path",
@@ -982,9 +1028,9 @@ rollout_runtime_replay_args_json(const marshal_rollout_request_t &request,
                               k_rollout_policy_current_weight),
       &first);
   detail::append_json_bool_field(
-      out, "include_base_reserve_policy",
+      out, "include_numeraire_only_policy",
       detail::contains_policy(plan.resolved_policy_ids,
-                              k_rollout_policy_base_reserve),
+                              k_rollout_policy_numeraire_only),
       &first);
   detail::append_json_bool_field(
       out, "include_spot_distributional_utility_policy",

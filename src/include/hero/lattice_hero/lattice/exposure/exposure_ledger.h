@@ -2312,12 +2312,12 @@ struct lattice_allocation_engine_fact_t {
   anchor_interval_t anchor_range{};
   anchor_interval_t completed_anchor_range{};
 
-  std::string target_risky_node_weights{};
-  std::string reserve_node_id{};
-  std::string reserve_node_source{};
-  std::string base_policy_reserve_node_id{};
-  bool reserve_node_graph_bound{false};
-  double reserve_weight{std::numeric_limits<double>::quiet_NaN()};
+  std::string target_node_weights{};
+  std::string accounting_numeraire_node_id{};
+  std::string accounting_numeraire_node_source{};
+  std::string base_policy_accounting_numeraire_node_id{};
+  bool accounting_numeraire_node_graph_bound{false};
+  double numeraire_weight{std::numeric_limits<double>::quiet_NaN()};
   double turnover{std::numeric_limits<double>::quiet_NaN()};
   std::string objective_terms{};
   double cvar_loss{std::numeric_limits<double>::quiet_NaN()};
@@ -2351,11 +2351,11 @@ struct allocation_engine_summary_t {
   std::int64_t exposure_fact_count{0};
   std::int64_t allocation_engine_fact_count{0};
   std::int64_t parent_exposure_fact_count{0};
-  std::int64_t reserve_node_bound_count{0};
-  std::int64_t reserve_node_source_base_policy_count{0};
-  std::int64_t base_policy_reserve_node_bound_count{0};
-  std::int64_t reserve_node_base_policy_match_count{0};
-  std::int64_t reserve_node_graph_bound_count{0};
+  std::int64_t accounting_numeraire_node_bound_count{0};
+  std::int64_t accounting_numeraire_node_source_base_policy_count{0};
+  std::int64_t base_policy_accounting_numeraire_node_bound_count{0};
+  std::int64_t accounting_numeraire_node_base_policy_match_count{0};
+  std::int64_t accounting_numeraire_node_graph_bound_count{0};
   std::int64_t observer_belief_declared_count{0};
   std::int64_t observer_belief_bound_count{0};
   std::int64_t unresolved_observer_belief_count{0};
@@ -2381,12 +2381,12 @@ struct allocation_engine_summary_t {
   std::int64_t derisk_reason_none_count{0};
   std::int64_t derisk_reason_active_count{0};
   std::int64_t deterministic_artifact_count{0};
-  std::int64_t missing_reserve_node_count{0};
-  std::int64_t missing_reserve_node_source_count{0};
-  std::int64_t missing_base_policy_reserve_node_count{0};
-  std::int64_t reserve_node_source_mismatch_count{0};
-  std::int64_t reserve_node_base_policy_mismatch_count{0};
-  std::int64_t reserve_node_not_graph_bound_count{0};
+  std::int64_t missing_accounting_numeraire_node_count{0};
+  std::int64_t missing_accounting_numeraire_node_source_count{0};
+  std::int64_t missing_base_policy_accounting_numeraire_node_count{0};
+  std::int64_t accounting_numeraire_node_source_mismatch_count{0};
+  std::int64_t accounting_numeraire_node_base_policy_mismatch_count{0};
+  std::int64_t accounting_numeraire_node_not_graph_bound_count{0};
   std::int64_t missing_observer_belief_count{0};
   std::int64_t missing_forecast_artifact_count{0};
   std::int64_t missing_base_policy_count{0};
@@ -2394,7 +2394,7 @@ struct allocation_engine_summary_t {
   std::int64_t missing_scenario_growth_floor_status_count{0};
   std::int64_t allocation_diagnostic_warning_count{0};
   std::int64_t warning_count{0};
-  source_analytics_metric_summary_t reserve_weight{};
+  source_analytics_metric_summary_t numeraire_weight{};
   source_analytics_metric_summary_t turnover{};
   source_analytics_metric_summary_t cvar_loss{};
   source_analytics_metric_summary_t transaction_cost_estimate{};
@@ -2462,7 +2462,6 @@ struct lattice_replay_environment_fact_t {
   std::string replay_environment_realization_key_policy{};
   std::string replay_environment_action_kind{};
   std::string replay_environment_action_time_policy{};
-  std::string replay_environment_reserve_node_policy{};
   std::string replay_environment_graph_node_universe_policy{};
   std::string replay_environment_reward_policy{};
   std::string replay_environment_projection_validation{};
@@ -2505,11 +2504,12 @@ struct lattice_replay_environment_fact_t {
   std::int64_t projection_validation_step_count{0};
   std::int64_t cajtucu_valid_trace_count{0};
   std::int64_t cajtucu_invalid_trace_count{0};
-  std::int64_t cajtucu_missing_direct_reserve_edge_count{0};
+  std::int64_t cajtucu_missing_direct_pair_count{0};
+  std::int64_t cajtucu_numeraire_fallback_pair_count{0};
   std::int64_t cajtucu_nontradable_edge_reject_count{0};
   std::int64_t cajtucu_below_min_notional_reject_count{0};
   std::int64_t cajtucu_above_max_notional_reject_count{0};
-  std::int64_t cajtucu_insufficient_reserve_reject_count{0};
+  std::int64_t cajtucu_insufficient_sell_units_reject_count{0};
   std::int64_t cajtucu_insufficient_units_reject_count{0};
   std::int64_t cajtucu_invalid_sell_price_count{0};
   std::int64_t cajtucu_large_equity_mismatch_count{0};
@@ -2520,21 +2520,21 @@ struct lattice_replay_environment_fact_t {
   std::int64_t partial_order_count{0};
   double mean_max_drawdown{std::numeric_limits<double>::quiet_NaN()};
   double mean_total_turnover{std::numeric_limits<double>::quiet_NaN()};
-  double mean_total_transaction_cost_base{
+  double mean_total_transaction_cost_numeraire{
       std::numeric_limits<double>::quiet_NaN()};
-  double requested_notional_base{std::numeric_limits<double>::quiet_NaN()};
-  double executed_notional_base{std::numeric_limits<double>::quiet_NaN()};
-  double rejected_notional_base{std::numeric_limits<double>::quiet_NaN()};
+  double requested_notional_numeraire{std::numeric_limits<double>::quiet_NaN()};
+  double executed_notional_numeraire{std::numeric_limits<double>::quiet_NaN()};
+  double rejected_notional_numeraire{std::numeric_limits<double>::quiet_NaN()};
   double fill_ratio{std::numeric_limits<double>::quiet_NaN()};
-  double fee_cost_base{std::numeric_limits<double>::quiet_NaN()};
-  double spread_cost_base{std::numeric_limits<double>::quiet_NaN()};
-  double slippage_cost_base{std::numeric_limits<double>::quiet_NaN()};
+  double fee_cost_numeraire{std::numeric_limits<double>::quiet_NaN()};
+  double spread_cost_numeraire{std::numeric_limits<double>::quiet_NaN()};
+  double slippage_cost_numeraire{std::numeric_limits<double>::quiet_NaN()};
   double mean_target_weight_error_l1{std::numeric_limits<double>::quiet_NaN()};
   double mean_target_weight_error_linf{
       std::numeric_limits<double>::quiet_NaN()};
   double mean_total_reward{std::numeric_limits<double>::quiet_NaN()};
   double mean_total_log_growth{std::numeric_limits<double>::quiet_NaN()};
-  double mean_final_equity_base{std::numeric_limits<double>::quiet_NaN()};
+  double mean_final_equity_numeraire{std::numeric_limits<double>::quiet_NaN()};
   double mean_projection_mae{std::numeric_limits<double>::quiet_NaN()};
   double mean_projection_signed_bias{std::numeric_limits<double>::quiet_NaN()};
   double mean_projection_directional_accuracy{
@@ -2593,7 +2593,6 @@ struct replay_environment_summary_t {
   std::int64_t replay_contract_realization_key_bound_count{0};
   std::int64_t replay_contract_action_kind_bound_count{0};
   std::int64_t replay_contract_action_time_policy_bound_count{0};
-  std::int64_t replay_contract_reserve_node_policy_bound_count{0};
   std::int64_t replay_contract_graph_node_universe_policy_bound_count{0};
   std::int64_t replay_contract_reward_policy_bound_count{0};
   std::int64_t replay_contract_projection_validation_bound_count{0};
@@ -2625,11 +2624,12 @@ struct replay_environment_summary_t {
   std::int64_t projection_validation_step_count_total{0};
   std::int64_t cajtucu_valid_trace_count_total{0};
   std::int64_t cajtucu_invalid_trace_count_total{0};
-  std::int64_t cajtucu_missing_direct_reserve_edge_count_total{0};
+  std::int64_t cajtucu_missing_direct_pair_count_total{0};
+  std::int64_t cajtucu_numeraire_fallback_pair_count_total{0};
   std::int64_t cajtucu_nontradable_edge_reject_count_total{0};
   std::int64_t cajtucu_below_min_notional_reject_count_total{0};
   std::int64_t cajtucu_above_max_notional_reject_count_total{0};
-  std::int64_t cajtucu_insufficient_reserve_reject_count_total{0};
+  std::int64_t cajtucu_insufficient_sell_units_reject_count_total{0};
   std::int64_t cajtucu_insufficient_units_reject_count_total{0};
   std::int64_t cajtucu_invalid_sell_price_count_total{0};
   std::int64_t cajtucu_large_equity_mismatch_count_total{0};
@@ -2670,17 +2670,17 @@ struct replay_environment_summary_t {
   std::int64_t completed_count_total{0};
   source_analytics_metric_summary_t mean_total_reward{};
   source_analytics_metric_summary_t mean_total_log_growth{};
-  source_analytics_metric_summary_t mean_final_equity_base{};
+  source_analytics_metric_summary_t mean_final_equity_numeraire{};
   source_analytics_metric_summary_t mean_max_drawdown{};
   source_analytics_metric_summary_t mean_total_turnover{};
-  source_analytics_metric_summary_t mean_total_transaction_cost_base{};
-  source_analytics_metric_summary_t requested_notional_base{};
-  source_analytics_metric_summary_t executed_notional_base{};
-  source_analytics_metric_summary_t rejected_notional_base{};
+  source_analytics_metric_summary_t mean_total_transaction_cost_numeraire{};
+  source_analytics_metric_summary_t requested_notional_numeraire{};
+  source_analytics_metric_summary_t executed_notional_numeraire{};
+  source_analytics_metric_summary_t rejected_notional_numeraire{};
   source_analytics_metric_summary_t fill_ratio{};
-  source_analytics_metric_summary_t fee_cost_base{};
-  source_analytics_metric_summary_t spread_cost_base{};
-  source_analytics_metric_summary_t slippage_cost_base{};
+  source_analytics_metric_summary_t fee_cost_numeraire{};
+  source_analytics_metric_summary_t spread_cost_numeraire{};
+  source_analytics_metric_summary_t slippage_cost_numeraire{};
   source_analytics_metric_summary_t mean_target_weight_error_l1{};
   source_analytics_metric_summary_t mean_target_weight_error_linf{};
   source_analytics_metric_summary_t mean_projection_mae{};
@@ -2736,6 +2736,9 @@ struct lattice_policy_training_fact_t {
   std::string observation_schema_digest{};
   std::string action_schema_digest{};
   std::string reward_contract_digest{};
+  std::string policy_input_schema_id{};
+  std::string action_adapter_id{};
+  std::string reward_contract_id{};
   std::string execution_profile_digest{};
   std::string training_schedule_mode{};
   std::string causal_schedule_schema_id{};
@@ -2811,6 +2814,9 @@ struct policy_training_summary_t {
   std::int64_t observation_schema_bound_count{0};
   std::int64_t action_schema_bound_count{0};
   std::int64_t reward_contract_bound_count{0};
+  std::int64_t policy_input_schema_bound_count{0};
+  std::int64_t action_adapter_bound_count{0};
+  std::int64_t reward_contract_id_bound_count{0};
   std::int64_t execution_profile_digest_bound_count{0};
   std::int64_t causal_schedule_digest_bound_count{0};
   std::int64_t causal_schedule_derived_source_count{0};
@@ -4971,6 +4977,11 @@ make_target_transform_facts_from_job_dir(
   fact.split_policy_fingerprint = parent.split_policy_fingerprint;
   fact.component_assembly_fingerprint = parent.component_assembly_fingerprint;
   fact.target_component_family_id = parent.target_component_family_id;
+  const auto target_component_family_id =
+      first_value({"target_component_family_id"});
+  if (!target_component_family_id.empty()) {
+    fact.target_component_family_id = target_component_family_id;
+  }
   fact.job_id = parent.job_id;
   fact.wave_id = parent.wave_id;
   fact.job_status = parent.job_status;
@@ -6870,12 +6881,14 @@ allocation_engine_fact_paths_for_job_dir(const std::filesystem::path &job_dir) {
 
 [[nodiscard]] inline bool allocation_engine_fact_has_payload(
     const lattice_allocation_engine_fact_t &fact) {
-  return !fact.target_risky_node_weights.empty() ||
-         !fact.reserve_node_id.empty() || std::isfinite(fact.reserve_weight) ||
-         !fact.reserve_node_source.empty() ||
-         !fact.base_policy_reserve_node_id.empty() ||
-         fact.reserve_node_graph_bound || std::isfinite(fact.turnover) ||
-         !fact.objective_terms.empty() || std::isfinite(fact.cvar_loss) ||
+  return !fact.target_node_weights.empty() ||
+         !fact.accounting_numeraire_node_id.empty() ||
+         std::isfinite(fact.numeraire_weight) ||
+         !fact.accounting_numeraire_node_source.empty() ||
+         !fact.base_policy_accounting_numeraire_node_id.empty() ||
+         fact.accounting_numeraire_node_graph_bound ||
+         std::isfinite(fact.turnover) || !fact.objective_terms.empty() ||
+         std::isfinite(fact.cvar_loss) ||
          std::isfinite(fact.transaction_cost_estimate) ||
          !fact.constraint_diagnostics.empty() ||
          !fact.cap_diagnostics.empty() ||
@@ -6937,19 +6950,16 @@ make_allocation_engine_facts_from_job_dir(
   fact.anchor_range = parent.anchor_range;
   fact.completed_anchor_range = parent.completed_anchor_range;
 
-  fact.target_risky_node_weights =
-      first_value({"target_risky_node_weights", "risky_node_weights"});
-  fact.reserve_node_id =
-      first_value({"reserve_node_id", "reserve_asset_node_id"});
-  fact.reserve_node_source =
-      first_value({"reserve_node_source", "reserve_asset_source"});
-  fact.base_policy_reserve_node_id = first_value(
-      {"base_policy_reserve_node_id", "base_policy_reserve_asset_node_id"});
-  fact.reserve_node_graph_bound = detail::parse_bool_fallback(
-      first_value({"reserve_node_graph_bound", "reserve_asset_graph_bound",
-                   "reserve_graph_node_bound"}),
-      false);
-  fact.reserve_weight = first_double({"reserve_weight"});
+  fact.target_node_weights = first_value({"target_node_weights"});
+  fact.accounting_numeraire_node_id =
+      first_value({"accounting_numeraire_node_id"});
+  fact.accounting_numeraire_node_source =
+      first_value({"accounting_numeraire_node_source"});
+  fact.base_policy_accounting_numeraire_node_id =
+      first_value({"base_policy_accounting_numeraire_node_id"});
+  fact.accounting_numeraire_node_graph_bound = detail::parse_bool_fallback(
+      first_value({"accounting_numeraire_node_graph_bound"}), false);
+  fact.numeraire_weight = first_double({"numeraire_weight"});
   fact.turnover = first_double({"turnover", "allocation_turnover"});
   fact.objective_terms =
       first_value({"objective_terms", "allocation_objective_terms"});
@@ -7032,14 +7042,17 @@ make_allocation_engine_facts_from_job_dir(
   out << "anchor_end=" << fact.anchor_range.end << "\n";
   out << "completed_anchor_begin=" << fact.completed_anchor_range.begin << "\n";
   out << "completed_anchor_end=" << fact.completed_anchor_range.end << "\n";
-  out << "target_risky_node_weights=" << fact.target_risky_node_weights << "\n";
-  out << "reserve_node_id=" << fact.reserve_node_id << "\n";
-  out << "reserve_node_source=" << fact.reserve_node_source << "\n";
-  out << "base_policy_reserve_node_id=" << fact.base_policy_reserve_node_id
+  out << "target_node_weights=" << fact.target_node_weights << "\n";
+  out << "accounting_numeraire_node_id=" << fact.accounting_numeraire_node_id
       << "\n";
-  out << "reserve_node_graph_bound="
-      << (fact.reserve_node_graph_bound ? "true" : "false") << "\n";
-  out << "reserve_weight=" << fact.reserve_weight << "\n";
+  out << "accounting_numeraire_node_source="
+      << fact.accounting_numeraire_node_source << "\n";
+  out << "base_policy_accounting_numeraire_node_id="
+      << fact.base_policy_accounting_numeraire_node_id << "\n";
+  out << "accounting_numeraire_node_graph_bound="
+      << (fact.accounting_numeraire_node_graph_bound ? "true" : "false")
+      << "\n";
+  out << "numeraire_weight=" << fact.numeraire_weight << "\n";
   out << "turnover=" << fact.turnover << "\n";
   out << "objective_terms=" << fact.objective_terms << "\n";
   out << "cvar_loss=" << fact.cvar_loss << "\n";
@@ -7106,24 +7119,25 @@ allocation_engine_fact_issues(const lattice_allocation_engine_fact_t &fact) {
   if (fact.source_cursor_token.empty()) {
     issues.emplace_back("missing_source_cursor_token");
   }
-  if (fact.reserve_node_id.empty()) {
-    issues.emplace_back("missing_reserve_graph_node");
+  if (fact.accounting_numeraire_node_id.empty()) {
+    issues.emplace_back("missing_accounting_numeraire_graph_node");
   }
-  if (fact.reserve_node_source.empty()) {
-    issues.emplace_back("missing_reserve_node_source");
-  } else if (fact.reserve_node_source != "base_policy") {
-    issues.emplace_back("reserve_node_source_not_base_policy");
+  if (fact.accounting_numeraire_node_source.empty()) {
+    issues.emplace_back("missing_accounting_numeraire_node_source");
+  } else if (fact.accounting_numeraire_node_source != "base_policy") {
+    issues.emplace_back("accounting_numeraire_node_source_not_base_policy");
   }
-  if (fact.base_policy_reserve_node_id.empty()) {
-    issues.emplace_back("missing_base_policy_reserve_node_id");
+  if (fact.base_policy_accounting_numeraire_node_id.empty()) {
+    issues.emplace_back("missing_base_policy_accounting_numeraire_node_id");
   }
-  if (!fact.reserve_node_id.empty() &&
-      !fact.base_policy_reserve_node_id.empty() &&
-      fact.reserve_node_id != fact.base_policy_reserve_node_id) {
-    issues.emplace_back("reserve_node_base_policy_mismatch");
+  if (!fact.accounting_numeraire_node_id.empty() &&
+      !fact.base_policy_accounting_numeraire_node_id.empty() &&
+      fact.accounting_numeraire_node_id !=
+          fact.base_policy_accounting_numeraire_node_id) {
+    issues.emplace_back("accounting_numeraire_node_base_policy_mismatch");
   }
-  if (!fact.reserve_node_graph_bound) {
-    issues.emplace_back("reserve_node_not_graph_bound");
+  if (!fact.accounting_numeraire_node_graph_bound) {
+    issues.emplace_back("accounting_numeraire_node_not_graph_bound");
   }
   if (fact.observer_belief_fact_digest.empty()) {
     issues.emplace_back("missing_observer_belief_fact_digest");
@@ -7318,7 +7332,7 @@ replay_environment_report_digest_for_text(const std::string &text) {
          fact.projection_validation_step_count > 0 ||
          std::isfinite(fact.mean_total_reward) ||
          std::isfinite(fact.mean_total_log_growth) ||
-         std::isfinite(fact.mean_final_equity_base) ||
+         std::isfinite(fact.mean_final_equity_numeraire) ||
          !fact.artifact_evidence || !fact.visibility_only ||
          fact.replay_executor || fact.allocation_authority ||
          fact.execution_authority || fact.readiness_authority ||
@@ -7462,8 +7476,6 @@ make_replay_environment_facts_from_job_dir(
       detail::map_get(experiment_report, "replay_environment_action_kind");
   fact.replay_environment_action_time_policy = detail::map_get(
       experiment_report, "replay_environment_action_time_policy");
-  fact.replay_environment_reserve_node_policy = detail::map_get(
-      experiment_report, "replay_environment_reserve_node_policy");
   fact.replay_environment_graph_node_universe_policy = detail::map_get(
       experiment_report, "replay_environment_graph_node_universe_policy");
   fact.replay_environment_reward_policy =
@@ -7551,16 +7563,18 @@ make_replay_environment_facts_from_job_dir(
       first_report_i64("cajtucu_valid_trace_count");
   fact.cajtucu_invalid_trace_count =
       first_report_i64("cajtucu_invalid_trace_count");
-  fact.cajtucu_missing_direct_reserve_edge_count =
-      first_report_i64("cajtucu_missing_direct_reserve_edge_count");
+  fact.cajtucu_missing_direct_pair_count =
+      first_report_i64("cajtucu_missing_direct_pair_count");
+  fact.cajtucu_numeraire_fallback_pair_count =
+      first_report_i64("cajtucu_numeraire_fallback_pair_count");
   fact.cajtucu_nontradable_edge_reject_count =
       first_report_i64("cajtucu_nontradable_edge_reject_count");
   fact.cajtucu_below_min_notional_reject_count =
       first_report_i64("cajtucu_below_min_notional_reject_count");
   fact.cajtucu_above_max_notional_reject_count =
       first_report_i64("cajtucu_above_max_notional_reject_count");
-  fact.cajtucu_insufficient_reserve_reject_count =
-      first_report_i64("cajtucu_insufficient_reserve_reject_count");
+  fact.cajtucu_insufficient_sell_units_reject_count =
+      first_report_i64("cajtucu_insufficient_sell_units_reject_count");
   fact.cajtucu_insufficient_units_reject_count =
       first_report_i64("cajtucu_insufficient_units_reject_count");
   fact.cajtucu_invalid_sell_price_count =
@@ -7631,8 +7645,8 @@ make_replay_environment_facts_from_job_dir(
   fact.mean_total_log_growth = detail::parse_double_fallback(
       detail::map_get(experiment_report, "mean_total_log_growth"),
       std::numeric_limits<double>::quiet_NaN());
-  fact.mean_final_equity_base = detail::parse_double_fallback(
-      detail::map_get(experiment_report, "mean_final_equity_base"),
+  fact.mean_final_equity_numeraire = detail::parse_double_fallback(
+      detail::map_get(experiment_report, "mean_final_equity_numeraire"),
       std::numeric_limits<double>::quiet_NaN());
   fact.mean_max_drawdown = detail::parse_double_fallback(
       detail::map_get(experiment_report, "mean_max_drawdown"),
@@ -7640,29 +7654,30 @@ make_replay_environment_facts_from_job_dir(
   fact.mean_total_turnover = detail::parse_double_fallback(
       detail::map_get(experiment_report, "mean_total_turnover"),
       std::numeric_limits<double>::quiet_NaN());
-  fact.mean_total_transaction_cost_base = detail::parse_double_fallback(
-      detail::map_get(experiment_report, "mean_total_transaction_cost_base"),
+  fact.mean_total_transaction_cost_numeraire = detail::parse_double_fallback(
+      detail::map_get(experiment_report,
+                      "mean_total_transaction_cost_numeraire"),
       std::numeric_limits<double>::quiet_NaN());
-  fact.requested_notional_base = detail::parse_double_fallback(
-      detail::map_get(experiment_report, "requested_notional_base"),
+  fact.requested_notional_numeraire = detail::parse_double_fallback(
+      detail::map_get(experiment_report, "requested_notional_numeraire"),
       std::numeric_limits<double>::quiet_NaN());
-  fact.executed_notional_base = detail::parse_double_fallback(
-      detail::map_get(experiment_report, "executed_notional_base"),
+  fact.executed_notional_numeraire = detail::parse_double_fallback(
+      detail::map_get(experiment_report, "executed_notional_numeraire"),
       std::numeric_limits<double>::quiet_NaN());
-  fact.rejected_notional_base = detail::parse_double_fallback(
-      detail::map_get(experiment_report, "rejected_notional_base"),
+  fact.rejected_notional_numeraire = detail::parse_double_fallback(
+      detail::map_get(experiment_report, "rejected_notional_numeraire"),
       std::numeric_limits<double>::quiet_NaN());
   fact.fill_ratio = detail::parse_double_fallback(
       detail::map_get(experiment_report, "fill_ratio"),
       std::numeric_limits<double>::quiet_NaN());
-  fact.fee_cost_base = detail::parse_double_fallback(
-      detail::map_get(experiment_report, "fee_cost_base"),
+  fact.fee_cost_numeraire = detail::parse_double_fallback(
+      detail::map_get(experiment_report, "fee_cost_numeraire"),
       std::numeric_limits<double>::quiet_NaN());
-  fact.spread_cost_base = detail::parse_double_fallback(
-      detail::map_get(experiment_report, "spread_cost_base"),
+  fact.spread_cost_numeraire = detail::parse_double_fallback(
+      detail::map_get(experiment_report, "spread_cost_numeraire"),
       std::numeric_limits<double>::quiet_NaN());
-  fact.slippage_cost_base = detail::parse_double_fallback(
-      detail::map_get(experiment_report, "slippage_cost_base"),
+  fact.slippage_cost_numeraire = detail::parse_double_fallback(
+      detail::map_get(experiment_report, "slippage_cost_numeraire"),
       std::numeric_limits<double>::quiet_NaN());
   fact.mean_target_weight_error_l1 = detail::parse_double_fallback(
       detail::map_get(experiment_report, "mean_target_weight_error_l1"),
@@ -7792,8 +7807,6 @@ make_replay_environment_facts_from_job_dir(
       << fact.replay_environment_action_kind << "\n";
   out << "replay_environment_action_time_policy="
       << fact.replay_environment_action_time_policy << "\n";
-  out << "replay_environment_reserve_node_policy="
-      << fact.replay_environment_reserve_node_policy << "\n";
   out << "replay_environment_graph_node_universe_policy="
       << fact.replay_environment_graph_node_universe_policy << "\n";
   out << "replay_environment_reward_policy="
@@ -7872,16 +7885,18 @@ make_replay_environment_facts_from_job_dir(
   out << "cajtucu_valid_trace_count=" << fact.cajtucu_valid_trace_count << "\n";
   out << "cajtucu_invalid_trace_count=" << fact.cajtucu_invalid_trace_count
       << "\n";
-  out << "cajtucu_missing_direct_reserve_edge_count="
-      << fact.cajtucu_missing_direct_reserve_edge_count << "\n";
+  out << "cajtucu_missing_direct_pair_count="
+      << fact.cajtucu_missing_direct_pair_count << "\n";
+  out << "cajtucu_numeraire_fallback_pair_count="
+      << fact.cajtucu_numeraire_fallback_pair_count << "\n";
   out << "cajtucu_nontradable_edge_reject_count="
       << fact.cajtucu_nontradable_edge_reject_count << "\n";
   out << "cajtucu_below_min_notional_reject_count="
       << fact.cajtucu_below_min_notional_reject_count << "\n";
   out << "cajtucu_above_max_notional_reject_count="
       << fact.cajtucu_above_max_notional_reject_count << "\n";
-  out << "cajtucu_insufficient_reserve_reject_count="
-      << fact.cajtucu_insufficient_reserve_reject_count << "\n";
+  out << "cajtucu_insufficient_sell_units_reject_count="
+      << fact.cajtucu_insufficient_sell_units_reject_count << "\n";
   out << "cajtucu_insufficient_units_reject_count="
       << fact.cajtucu_insufficient_units_reject_count << "\n";
   out << "cajtucu_invalid_sell_price_count="
@@ -7896,22 +7911,26 @@ make_replay_environment_facts_from_job_dir(
   out << "partial_order_count=" << fact.partial_order_count << "\n";
   out << "mean_max_drawdown=" << fact.mean_max_drawdown << "\n";
   out << "mean_total_turnover=" << fact.mean_total_turnover << "\n";
-  out << "mean_total_transaction_cost_base="
-      << fact.mean_total_transaction_cost_base << "\n";
-  out << "requested_notional_base=" << fact.requested_notional_base << "\n";
-  out << "executed_notional_base=" << fact.executed_notional_base << "\n";
-  out << "rejected_notional_base=" << fact.rejected_notional_base << "\n";
+  out << "mean_total_transaction_cost_numeraire="
+      << fact.mean_total_transaction_cost_numeraire << "\n";
+  out << "requested_notional_numeraire=" << fact.requested_notional_numeraire
+      << "\n";
+  out << "executed_notional_numeraire=" << fact.executed_notional_numeraire
+      << "\n";
+  out << "rejected_notional_numeraire=" << fact.rejected_notional_numeraire
+      << "\n";
   out << "fill_ratio=" << fact.fill_ratio << "\n";
-  out << "fee_cost_base=" << fact.fee_cost_base << "\n";
-  out << "spread_cost_base=" << fact.spread_cost_base << "\n";
-  out << "slippage_cost_base=" << fact.slippage_cost_base << "\n";
+  out << "fee_cost_numeraire=" << fact.fee_cost_numeraire << "\n";
+  out << "spread_cost_numeraire=" << fact.spread_cost_numeraire << "\n";
+  out << "slippage_cost_numeraire=" << fact.slippage_cost_numeraire << "\n";
   out << "mean_target_weight_error_l1=" << fact.mean_target_weight_error_l1
       << "\n";
   out << "mean_target_weight_error_linf=" << fact.mean_target_weight_error_linf
       << "\n";
   out << "mean_total_reward=" << fact.mean_total_reward << "\n";
   out << "mean_total_log_growth=" << fact.mean_total_log_growth << "\n";
-  out << "mean_final_equity_base=" << fact.mean_final_equity_base << "\n";
+  out << "mean_final_equity_numeraire=" << fact.mean_final_equity_numeraire
+      << "\n";
   out << "mean_projection_mae=" << fact.mean_projection_mae << "\n";
   out << "mean_projection_signed_bias=" << fact.mean_projection_signed_bias
       << "\n";
@@ -8080,19 +8099,13 @@ replay_environment_fact_issues(const lattice_replay_environment_fact_t &fact) {
     issues.emplace_back(
         "missing_or_unexpected_replay_environment_task_identity");
   }
-  if (fact.replay_environment_action_kind !=
-      "target_node_weights_with_base_reserve") {
+  if (fact.replay_environment_action_kind != "target_node_weights") {
     issues.emplace_back("missing_or_unexpected_replay_environment_action_kind");
   }
   if (fact.replay_environment_action_time_policy !=
       "decision_timestamp_after_knowledge_before_realization") {
     issues.emplace_back(
         "missing_or_unexpected_replay_environment_action_time_policy");
-  }
-  if (fact.replay_environment_reserve_node_policy !=
-      "graph_node_from_base_policy") {
-    issues.emplace_back(
-        "missing_or_unexpected_replay_environment_reserve_node_policy");
   }
   if (fact.replay_environment_graph_node_universe_policy !=
       "episode_spec_graph_node_ids") {
@@ -8105,7 +8118,7 @@ replay_environment_fact_issues(const lattice_replay_environment_fact_t &fact) {
         "missing_or_unexpected_replay_environment_reward_policy");
   }
   if (fact.replay_environment_projection_validation !=
-      "projected_log_return_vs_realized_asset_base_return") {
+      "projected_log_return_vs_realized_asset_numeraire_return") {
     issues.emplace_back(
         "missing_or_unexpected_replay_environment_projection_validation");
   }
@@ -8261,9 +8274,6 @@ replay_environment_fact_issues(const lattice_replay_environment_fact_t &fact) {
   if (fact.cajtucu_synthetic_market_step_count > 0) {
     issues.emplace_back("cajtucu_synthetic_market_used");
   }
-  if (fact.cajtucu_missing_direct_reserve_edge_count > 0) {
-    issues.emplace_back("cajtucu_missing_direct_reserve_edge");
-  }
   if (fact.cajtucu_nontradable_edge_reject_count > 0) {
     issues.emplace_back("cajtucu_nontradable_edge_reject");
   }
@@ -8282,26 +8292,29 @@ replay_environment_fact_issues(const lattice_replay_environment_fact_t &fact) {
           fact.requested_order_count) {
     issues.emplace_back("invalid_cajtucu_order_counts");
   }
-  if (!std::isfinite(fact.requested_notional_base) ||
-      !std::isfinite(fact.executed_notional_base) ||
-      !std::isfinite(fact.rejected_notional_base) ||
-      fact.requested_notional_base < 0.0 || fact.executed_notional_base < 0.0 ||
-      fact.rejected_notional_base < 0.0 ||
-      fact.executed_notional_base - fact.requested_notional_base > 1.0e-9 ||
-      fact.rejected_notional_base - fact.requested_notional_base > 1.0e-9) {
+  if (!std::isfinite(fact.requested_notional_numeraire) ||
+      !std::isfinite(fact.executed_notional_numeraire) ||
+      !std::isfinite(fact.rejected_notional_numeraire) ||
+      fact.requested_notional_numeraire < 0.0 ||
+      fact.executed_notional_numeraire < 0.0 ||
+      fact.rejected_notional_numeraire < 0.0 ||
+      fact.executed_notional_numeraire - fact.requested_notional_numeraire >
+          1.0e-9 ||
+      fact.rejected_notional_numeraire - fact.requested_notional_numeraire >
+          1.0e-9) {
     issues.emplace_back("invalid_cajtucu_notional_metrics");
   }
   if (!std::isfinite(fact.fill_ratio) || fact.fill_ratio < 0.0 ||
       fact.fill_ratio > 1.0) {
     issues.emplace_back("invalid_cajtucu_fill_ratio");
   }
-  if (!std::isfinite(fact.mean_total_transaction_cost_base) ||
-      !std::isfinite(fact.fee_cost_base) ||
-      !std::isfinite(fact.spread_cost_base) ||
-      !std::isfinite(fact.slippage_cost_base) ||
-      fact.mean_total_transaction_cost_base <= 0.0 ||
-      fact.fee_cost_base < 0.0 || fact.spread_cost_base < 0.0 ||
-      fact.slippage_cost_base < 0.0) {
+  if (!std::isfinite(fact.mean_total_transaction_cost_numeraire) ||
+      !std::isfinite(fact.fee_cost_numeraire) ||
+      !std::isfinite(fact.spread_cost_numeraire) ||
+      !std::isfinite(fact.slippage_cost_numeraire) ||
+      fact.mean_total_transaction_cost_numeraire <= 0.0 ||
+      fact.fee_cost_numeraire < 0.0 || fact.spread_cost_numeraire < 0.0 ||
+      fact.slippage_cost_numeraire < 0.0) {
     issues.emplace_back("missing_or_invalid_cajtucu_cost_metrics");
   }
   if (!std::isfinite(fact.mean_total_turnover) ||
@@ -8479,17 +8492,12 @@ inline void append_replay_environment_scan_warning(
         "shared_key_per_frame") {
       ++out.replay_contract_realization_key_bound_count;
     }
-    if (fact.replay_environment_action_kind ==
-        "target_node_weights_with_base_reserve") {
+    if (fact.replay_environment_action_kind == "target_node_weights") {
       ++out.replay_contract_action_kind_bound_count;
     }
     if (fact.replay_environment_action_time_policy ==
         "decision_timestamp_after_knowledge_before_realization") {
       ++out.replay_contract_action_time_policy_bound_count;
-    }
-    if (fact.replay_environment_reserve_node_policy ==
-        "graph_node_from_base_policy") {
-      ++out.replay_contract_reserve_node_policy_bound_count;
     }
     if (fact.replay_environment_graph_node_universe_policy ==
         "episode_spec_graph_node_ids") {
@@ -8500,7 +8508,7 @@ inline void append_replay_environment_scan_warning(
       ++out.replay_contract_reward_policy_bound_count;
     }
     if (fact.replay_environment_projection_validation ==
-        "projected_log_return_vs_realized_asset_base_return") {
+        "projected_log_return_vs_realized_asset_numeraire_return") {
       ++out.replay_contract_projection_validation_bound_count;
     }
     if (fact.replay_environment_initial_policy_kind ==
@@ -8606,16 +8614,18 @@ inline void append_replay_environment_scan_warning(
         fact.projection_validation_step_count;
     out.cajtucu_valid_trace_count_total += fact.cajtucu_valid_trace_count;
     out.cajtucu_invalid_trace_count_total += fact.cajtucu_invalid_trace_count;
-    out.cajtucu_missing_direct_reserve_edge_count_total +=
-        fact.cajtucu_missing_direct_reserve_edge_count;
+    out.cajtucu_missing_direct_pair_count_total +=
+        fact.cajtucu_missing_direct_pair_count;
+    out.cajtucu_numeraire_fallback_pair_count_total +=
+        fact.cajtucu_numeraire_fallback_pair_count;
     out.cajtucu_nontradable_edge_reject_count_total +=
         fact.cajtucu_nontradable_edge_reject_count;
     out.cajtucu_below_min_notional_reject_count_total +=
         fact.cajtucu_below_min_notional_reject_count;
     out.cajtucu_above_max_notional_reject_count_total +=
         fact.cajtucu_above_max_notional_reject_count;
-    out.cajtucu_insufficient_reserve_reject_count_total +=
-        fact.cajtucu_insufficient_reserve_reject_count;
+    out.cajtucu_insufficient_sell_units_reject_count_total +=
+        fact.cajtucu_insufficient_sell_units_reject_count;
     out.cajtucu_insufficient_units_reject_count_total +=
         fact.cajtucu_insufficient_units_reject_count;
     out.cajtucu_invalid_sell_price_count_total +=
@@ -8644,13 +8654,13 @@ inline void append_replay_environment_scan_warning(
     if (fact.cajtucu_synthetic_market_step_count > 0) {
       ++out.cajtucu_synthetic_market_fact_count;
     }
-    if (!std::isfinite(fact.mean_total_transaction_cost_base) ||
-        !std::isfinite(fact.fee_cost_base) ||
-        !std::isfinite(fact.spread_cost_base) ||
-        !std::isfinite(fact.slippage_cost_base) ||
-        fact.mean_total_transaction_cost_base <= 0.0 ||
-        fact.fee_cost_base < 0.0 || fact.spread_cost_base < 0.0 ||
-        fact.slippage_cost_base < 0.0) {
+    if (!std::isfinite(fact.mean_total_transaction_cost_numeraire) ||
+        !std::isfinite(fact.fee_cost_numeraire) ||
+        !std::isfinite(fact.spread_cost_numeraire) ||
+        !std::isfinite(fact.slippage_cost_numeraire) ||
+        fact.mean_total_transaction_cost_numeraire <= 0.0 ||
+        fact.fee_cost_numeraire < 0.0 || fact.spread_cost_numeraire < 0.0 ||
+        fact.slippage_cost_numeraire < 0.0) {
       ++out.missing_cajtucu_cost_metric_count;
     }
     if (fact.requested_order_count <= 0 || fact.executed_order_count < 0 ||
@@ -8659,14 +8669,16 @@ inline void append_replay_environment_scan_warning(
             fact.requested_order_count) {
       ++out.invalid_cajtucu_order_metric_count;
     }
-    if (!std::isfinite(fact.requested_notional_base) ||
-        !std::isfinite(fact.executed_notional_base) ||
-        !std::isfinite(fact.rejected_notional_base) ||
-        fact.requested_notional_base < 0.0 ||
-        fact.executed_notional_base < 0.0 ||
-        fact.rejected_notional_base < 0.0 ||
-        fact.executed_notional_base - fact.requested_notional_base > 1.0e-9 ||
-        fact.rejected_notional_base - fact.requested_notional_base > 1.0e-9) {
+    if (!std::isfinite(fact.requested_notional_numeraire) ||
+        !std::isfinite(fact.executed_notional_numeraire) ||
+        !std::isfinite(fact.rejected_notional_numeraire) ||
+        fact.requested_notional_numeraire < 0.0 ||
+        fact.executed_notional_numeraire < 0.0 ||
+        fact.rejected_notional_numeraire < 0.0 ||
+        fact.executed_notional_numeraire - fact.requested_notional_numeraire >
+            1.0e-9 ||
+        fact.rejected_notional_numeraire - fact.requested_notional_numeraire >
+            1.0e-9) {
       ++out.invalid_cajtucu_notional_metric_count;
     }
     if (!std::isfinite(fact.fill_ratio) || fact.fill_ratio < 0.0 ||
@@ -8704,28 +8716,28 @@ inline void append_replay_environment_scan_warning(
                                            fact.mean_total_reward);
     update_source_analytics_metric_summary(out.mean_total_log_growth,
                                            fact.mean_total_log_growth);
-    update_source_analytics_metric_summary(out.mean_final_equity_base,
-                                           fact.mean_final_equity_base);
+    update_source_analytics_metric_summary(out.mean_final_equity_numeraire,
+                                           fact.mean_final_equity_numeraire);
     update_source_analytics_metric_summary(out.mean_max_drawdown,
                                            fact.mean_max_drawdown);
     update_source_analytics_metric_summary(out.mean_total_turnover,
                                            fact.mean_total_turnover);
     update_source_analytics_metric_summary(
-        out.mean_total_transaction_cost_base,
-        fact.mean_total_transaction_cost_base);
-    update_source_analytics_metric_summary(out.requested_notional_base,
-                                           fact.requested_notional_base);
-    update_source_analytics_metric_summary(out.executed_notional_base,
-                                           fact.executed_notional_base);
-    update_source_analytics_metric_summary(out.rejected_notional_base,
-                                           fact.rejected_notional_base);
+        out.mean_total_transaction_cost_numeraire,
+        fact.mean_total_transaction_cost_numeraire);
+    update_source_analytics_metric_summary(out.requested_notional_numeraire,
+                                           fact.requested_notional_numeraire);
+    update_source_analytics_metric_summary(out.executed_notional_numeraire,
+                                           fact.executed_notional_numeraire);
+    update_source_analytics_metric_summary(out.rejected_notional_numeraire,
+                                           fact.rejected_notional_numeraire);
     update_source_analytics_metric_summary(out.fill_ratio, fact.fill_ratio);
-    update_source_analytics_metric_summary(out.fee_cost_base,
-                                           fact.fee_cost_base);
-    update_source_analytics_metric_summary(out.spread_cost_base,
-                                           fact.spread_cost_base);
-    update_source_analytics_metric_summary(out.slippage_cost_base,
-                                           fact.slippage_cost_base);
+    update_source_analytics_metric_summary(out.fee_cost_numeraire,
+                                           fact.fee_cost_numeraire);
+    update_source_analytics_metric_summary(out.spread_cost_numeraire,
+                                           fact.spread_cost_numeraire);
+    update_source_analytics_metric_summary(out.slippage_cost_numeraire,
+                                           fact.slippage_cost_numeraire);
     update_source_analytics_metric_summary(out.mean_target_weight_error_l1,
                                            fact.mean_target_weight_error_l1);
     update_source_analytics_metric_summary(out.mean_target_weight_error_linf,
@@ -8876,6 +8888,12 @@ make_policy_training_facts_from_job_dir(const std::filesystem::path &job_dir,
   fact.split_policy_fingerprint = parent.split_policy_fingerprint;
   fact.component_assembly_fingerprint = parent.component_assembly_fingerprint;
   fact.target_component_family_id = parent.target_component_family_id;
+  const auto policy_training_target_component_family_id =
+      first_value({"target_component_family_id"});
+  if (!policy_training_target_component_family_id.empty()) {
+    fact.target_component_family_id =
+        policy_training_target_component_family_id;
+  }
   fact.job_id = parent.job_id;
   fact.wave_id = parent.wave_id;
   fact.job_status = parent.job_status;
@@ -8902,6 +8920,9 @@ make_policy_training_facts_from_job_dir(const std::filesystem::path &job_dir,
       first_value({"observation_schema_digest", "policy_input_schema_digest"});
   fact.action_schema_digest = first_value({"action_schema_digest"});
   fact.reward_contract_digest = first_value({"reward_contract_digest"});
+  fact.policy_input_schema_id = first_value({"policy_input_schema_id"});
+  fact.action_adapter_id = first_value({"action_adapter_id"});
+  fact.reward_contract_id = first_value({"reward_contract_id"});
   fact.execution_profile_digest = first_value({"execution_profile_digest"});
   fact.training_schedule_mode = first_value({"training_schedule_mode"});
   fact.causal_schedule_schema_id = first_value({"causal_schedule_schema_id"});
@@ -9037,6 +9058,9 @@ make_policy_training_facts_from_job_dir(const std::filesystem::path &job_dir,
   out << "observation_schema_digest=" << fact.observation_schema_digest << "\n";
   out << "action_schema_digest=" << fact.action_schema_digest << "\n";
   out << "reward_contract_digest=" << fact.reward_contract_digest << "\n";
+  out << "policy_input_schema_id=" << fact.policy_input_schema_id << "\n";
+  out << "action_adapter_id=" << fact.action_adapter_id << "\n";
+  out << "reward_contract_id=" << fact.reward_contract_id << "\n";
   out << "execution_profile_digest=" << fact.execution_profile_digest << "\n";
   out << "training_schedule_mode=" << fact.training_schedule_mode << "\n";
   out << "causal_schedule_schema_id=" << fact.causal_schedule_schema_id << "\n";
@@ -9198,6 +9222,34 @@ policy_training_fact_issues(const lattice_policy_training_fact_t &fact) {
   }
   if (fact.reward_contract_digest.empty()) {
     issues.emplace_back("missing_reward_contract_digest");
+  }
+  if (fact.policy_input_schema_id.empty()) {
+    issues.emplace_back("missing_policy_input_schema_id");
+  }
+  if (fact.action_adapter_id.empty()) {
+    issues.emplace_back("missing_action_adapter_id");
+  }
+  if (fact.reward_contract_id.empty()) {
+    issues.emplace_back("missing_reward_contract_id");
+  }
+  if (!fact.policy_input_schema_id.empty() &&
+      fact.policy_input_schema_id != "kikijyeba.environment.policy_input.v1") {
+    issues.emplace_back("unsupported_policy_input_schema_id");
+  }
+  if (!fact.action_schema_digest.empty() &&
+      fact.action_schema_digest !=
+          "kikijyeba.environment.action.target_node_weights.v1") {
+    issues.emplace_back("unsupported_action_schema_digest");
+  }
+  if (!fact.action_adapter_id.empty() &&
+      fact.action_adapter_id != "target_node_weights_simplex.v1") {
+    issues.emplace_back("unsupported_action_adapter_id");
+  }
+  if (!fact.reward_contract_id.empty() &&
+      fact.reward_contract_id !=
+          "kikijyeba.environment.reward.post_execution_ledger_log_growth_cost_"
+          "drawdown.v1") {
+    issues.emplace_back("unsupported_reward_contract_id");
   }
   if (fact.execution_profile_digest.empty()) {
     issues.emplace_back("missing_execution_profile_digest");
@@ -9419,6 +9471,15 @@ append_policy_training_scan_warning(const lattice_policy_training_fact_t &fact,
     }
     if (!fact.reward_contract_digest.empty()) {
       ++out.reward_contract_bound_count;
+    }
+    if (!fact.policy_input_schema_id.empty()) {
+      ++out.policy_input_schema_bound_count;
+    }
+    if (!fact.action_adapter_id.empty()) {
+      ++out.action_adapter_bound_count;
+    }
+    if (!fact.reward_contract_id.empty()) {
+      ++out.reward_contract_id_bound_count;
     }
     if (!fact.execution_profile_digest.empty()) {
       ++out.execution_profile_digest_bound_count;
@@ -9656,35 +9717,36 @@ append_policy_training_scan_warning(const lattice_policy_training_fact_t &fact,
     if (!fact.parent_exposure_fact_digest.empty()) {
       parent_digests.insert(fact.parent_exposure_fact_digest);
     }
-    if (!fact.reserve_node_id.empty()) {
-      ++out.reserve_node_bound_count;
+    if (!fact.accounting_numeraire_node_id.empty()) {
+      ++out.accounting_numeraire_node_bound_count;
     } else {
-      ++out.missing_reserve_node_count;
+      ++out.missing_accounting_numeraire_node_count;
     }
-    if (fact.reserve_node_source.empty()) {
-      ++out.missing_reserve_node_source_count;
-    } else if (fact.reserve_node_source == "base_policy") {
-      ++out.reserve_node_source_base_policy_count;
+    if (fact.accounting_numeraire_node_source.empty()) {
+      ++out.missing_accounting_numeraire_node_source_count;
+    } else if (fact.accounting_numeraire_node_source == "base_policy") {
+      ++out.accounting_numeraire_node_source_base_policy_count;
     } else {
-      ++out.reserve_node_source_mismatch_count;
+      ++out.accounting_numeraire_node_source_mismatch_count;
     }
-    if (fact.base_policy_reserve_node_id.empty()) {
-      ++out.missing_base_policy_reserve_node_count;
+    if (fact.base_policy_accounting_numeraire_node_id.empty()) {
+      ++out.missing_base_policy_accounting_numeraire_node_count;
     } else {
-      ++out.base_policy_reserve_node_bound_count;
+      ++out.base_policy_accounting_numeraire_node_bound_count;
     }
-    if (!fact.reserve_node_id.empty() &&
-        !fact.base_policy_reserve_node_id.empty()) {
-      if (fact.reserve_node_id == fact.base_policy_reserve_node_id) {
-        ++out.reserve_node_base_policy_match_count;
+    if (!fact.accounting_numeraire_node_id.empty() &&
+        !fact.base_policy_accounting_numeraire_node_id.empty()) {
+      if (fact.accounting_numeraire_node_id ==
+          fact.base_policy_accounting_numeraire_node_id) {
+        ++out.accounting_numeraire_node_base_policy_match_count;
       } else {
-        ++out.reserve_node_base_policy_mismatch_count;
+        ++out.accounting_numeraire_node_base_policy_mismatch_count;
       }
     }
-    if (fact.reserve_node_graph_bound) {
-      ++out.reserve_node_graph_bound_count;
+    if (fact.accounting_numeraire_node_graph_bound) {
+      ++out.accounting_numeraire_node_graph_bound_count;
     } else {
-      ++out.reserve_node_not_graph_bound_count;
+      ++out.accounting_numeraire_node_not_graph_bound_count;
     }
     const lattice_observer_belief_fact_t *observer_belief_fact = nullptr;
     if (fact.observer_belief_fact_digest.empty()) {
@@ -9803,8 +9865,8 @@ append_policy_training_scan_warning(const lattice_policy_training_fact_t &fact,
     if (fact.deterministic_artifact) {
       ++out.deterministic_artifact_count;
     }
-    update_source_analytics_metric_summary(out.reserve_weight,
-                                           fact.reserve_weight);
+    update_source_analytics_metric_summary(out.numeraire_weight,
+                                           fact.numeraire_weight);
     update_source_analytics_metric_summary(out.turnover, fact.turnover);
     update_source_analytics_metric_summary(out.cvar_loss, fact.cvar_loss);
     update_source_analytics_metric_summary(out.transaction_cost_estimate,
@@ -15568,7 +15630,8 @@ make_runtime_index_cache_from_scan(const std::filesystem::path &runtime_root,
   for (const auto &fact : scan.ledger.allocation_engine_facts()) {
     add_row("allocation_engine",
             fact.parent_exposure_fact_digest + "|" + fact.job_id + "|" +
-                fact.reserve_node_id + "|" + fact.observer_belief_fact_digest,
+                fact.accounting_numeraire_node_id + "|" +
+                fact.observer_belief_fact_digest,
             allocation_engine_fact_digest(fact));
   }
   for (const auto &fact : scan.ledger.replay_environment_facts()) {

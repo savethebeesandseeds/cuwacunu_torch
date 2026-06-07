@@ -76,11 +76,11 @@ valid_rollout_request(const std::filesystem::path &root) {
   request.runtime_exec_path = runtime_exec;
   request.report_path = root / "reports/validation_costed_001.report";
   request.graph_order_fingerprint = graph_order_fingerprint;
-  request.base_reserve_node_id = "USDT";
-  request.risky_node_ids = {"BTC", "ETH"};
+  request.accounting_numeraire_node_id = "USDT";
+  request.target_node_ids = {"USDT", "BTC", "ETH"};
   request.asset_universe_digest = marshal::rollout_asset_universe_digest(
-      request.base_reserve_node_id, request.risky_node_ids);
-  request.policy_tokens = {"base_reserve", "current_weight", "equal_weight",
+      request.accounting_numeraire_node_id, request.target_node_ids);
+  request.policy_tokens = {"numeraire", "current_weight", "equal_weight",
                            "sdu"};
   request.max_steps = 250;
   request.max_parallel_jobs = 4;
@@ -142,11 +142,11 @@ void test_rollout_plan_accepts_completed_runtime_job() {
             std::string::npos,
         "rollout command should bind report path");
   check(plan.replay_command_template.find(
-            "--replay-base-reserve-node 'USDT'") != std::string::npos,
-        "rollout command should bind graph reserve node");
-  check(plan.replay_command_template.find("--replay-risky-nodes 'BTC,ETH'") !=
-            std::string::npos,
-        "rollout command should bind risky node universe");
+            "--replay-accounting-numeraire-node 'USDT'") != std::string::npos,
+        "rollout command should bind accounting numeraire node");
+  check(plan.replay_command_template.find(
+            "--replay-target-nodes 'USDT,BTC,ETH'") != std::string::npos,
+        "rollout command should bind target node universe");
   check(plan.replay_command_template.find("--replay-include-equal-weight") !=
             std::string::npos,
         "rollout command should include equal-weight policy");
@@ -204,6 +204,28 @@ void test_rollout_plan_accepts_completed_runtime_job() {
   check(plan_json.find("\"target_satisfaction_claimed\":false") !=
             std::string::npos,
         "rollout plan JSON should expose non-authority flags");
+}
+
+void test_rollout_plan_resolves_accounting_numeraire_from_config() {
+  const auto root = make_tmp_dir("accounting_config_default");
+  auto request = valid_rollout_request(root);
+  request.config_path = root / ".config";
+  request.accounting_numeraire_node_id.clear();
+  write_text(request.config_path, "[ACCOUNTING]\n"
+                                  "accounting_numeraire_node_id = USDT\n");
+
+  const auto plan = marshal::prepare_rollout_plan(request);
+  check(plan.accepted,
+        "rollout should resolve accounting numeraire from global .config");
+  check(plan.refusal_reasons.empty(),
+        "config-resolved accounting numeraire should avoid refusals");
+  check(plan.replay_command_template.find("--config '" +
+                                          request.config_path.string() + "'") !=
+            std::string::npos,
+        "rollout command should bind the config that supplied the numeraire");
+  check(plan.replay_command_template.find(
+            "--replay-accounting-numeraire-node 'USDT'") != std::string::npos,
+        "rollout command should bind resolved accounting numeraire node");
 }
 
 void test_rollout_requires_public_identity_fields() {
@@ -386,9 +408,9 @@ void test_rollout_tool_is_plan_only_without_lattice_callback() {
       "\"asset_universe_digest\":\"" +
       request.asset_universe_digest +
       "\","
-      "\"base_reserve_node_id\":\"USDT\","
-      "\"risky_node_ids\":[\"BTC\",\"ETH\"],"
-      "\"policy_set\":[\"base_reserve\",\"equal_weight\",\"sdu\"],"
+      "\"accounting_numeraire_node_id\":\"USDT\","
+      "\"target_node_ids\":[\"USDT\",\"BTC\",\"ETH\"],"
+      "\"policy_set\":[\"numeraire\",\"equal_weight\",\"sdu\"],"
       "\"max_steps\":250,"
       "\"max_parallel_jobs\":4,"
       "\"execution_profile\":{"
@@ -449,8 +471,8 @@ void test_rollout_tool_rejects_prepare_only_field() {
                            request.replay_batch_index_path.string() +
                            "\","
                            "\"requested_mode\":\"plan\","
-                           "\"base_reserve_node_id\":\"USDT\","
-                           "\"risky_node_ids\":[\"BTC\",\"ETH\"],"
+                           "\"accounting_numeraire_node_id\":\"USDT\","
+                           "\"target_node_ids\":[\"USDT\",\"BTC\",\"ETH\"],"
                            "\"prepare_only\":true"
                            "}";
 
@@ -490,8 +512,8 @@ void test_rollout_tool_rejects_unknown_execution_profile_field() {
                            "\"asset_universe_digest\":\"" +
                            request.asset_universe_digest +
                            "\","
-                           "\"base_reserve_node_id\":\"USDT\","
-                           "\"risky_node_ids\":[\"BTC\",\"ETH\"],"
+                           "\"accounting_numeraire_node_id\":\"USDT\","
+                           "\"target_node_ids\":[\"USDT\",\"BTC\",\"ETH\"],"
                            "\"execution_profile\":{\"unsupported\":true}"
                            "}";
 
@@ -519,9 +541,22 @@ void test_rollout_execute_calls_runtime_replay() {
                               policy_path.string() + "\n");
   write_text(fake_exec,
              "#!/bin/sh\n"
-             "printf 'replay_experiment_id=validation_costed_001\\n'\n"
-             "printf 'replay_completed_count=2\\n'\n"
-             "printf 'replay_report_path=%s\\n' \"" +
+             "mkdir -p '" +
+                 request.report_path.parent_path().string() +
+                 "'\n"
+                 "cat > '" +
+                 request.report_path.string() +
+                 "' <<'EOF'\n"
+                 "execution_profile_digest=fake_execution_profile_digest\n"
+                 "policy_set_digest=fake_policy_set_digest\n"
+                 "completed_count=2\n"
+                 "cajtucu_invalid_trace_count=0\n"
+                 "cajtucu_numeraire_fallback_pair_count=0\n"
+                 "cajtucu_synthetic_market_step_count=0\n"
+                 "EOF\n"
+                 "printf 'replay_experiment_id=validation_costed_001\\n'\n"
+                 "printf 'replay_completed_count=2\\n'\n"
+                 "printf 'replay_report_path=%s\\n' \"" +
                  request.report_path.string() + "\"\n");
   std::filesystem::permissions(fake_exec,
                                std::filesystem::perms::owner_exec |
@@ -594,8 +629,8 @@ void test_rollout_execute_calls_runtime_replay() {
       "\"asset_universe_digest\":\"" +
       request.asset_universe_digest +
       "\","
-      "\"base_reserve_node_id\":\"USDT\","
-      "\"risky_node_ids\":[\"BTC\",\"ETH\"],"
+      "\"accounting_numeraire_node_id\":\"USDT\","
+      "\"target_node_ids\":[\"USDT\",\"BTC\",\"ETH\"],"
       "\"policy_set\":[\"equal_weight\",\"sdu\"],"
       "\"max_steps\":250,"
       "\"max_parallel_jobs\":4,"
@@ -657,6 +692,7 @@ void test_prepare_rejects_rollout_intent() {
 
 int main() {
   test_rollout_plan_accepts_completed_runtime_job();
+  test_rollout_plan_resolves_accounting_numeraire_from_config();
   test_rollout_requires_public_identity_fields();
   test_rollout_validates_graph_and_asset_universe_identity();
   test_rollout_validates_typed_execution_profile();

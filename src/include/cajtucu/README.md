@@ -54,7 +54,7 @@ execution_trace_t
 ```
 
 The trace records the market source used by the paper backend. If Kikijyeba
-replay falls back to synthetic direct asset/reserve edges instead of a real
+replay falls back to synthetic direct node-pair edges instead of a real
 edge-market state, that fact is carried as trace evidence and a warning.
 Synthetic execution markets are rejected by default and must be explicitly
 enabled for research replay. When intent equity and mark-to-market ledger equity
@@ -62,6 +62,10 @@ differ, paper V1 records the
 mismatch and sizes order notionals from the marked ledger equity. A large
 equity mismatch produces an invalid trace without execution.
 
-Paper V1 executes sell orders before buy orders so a rebalance can free reserve
-before funding new positions. It rejects pathological sell pricing before any
-ledger mutation when spread plus slippage would make the sell price invalid.
+Paper V1 matches overweight nodes to underweight nodes and executes only direct
+node-pair conversions. It rejects pathological sell pricing before any ledger
+mutation when spread plus slippage would make the sell price invalid. Missing
+direct node-pair edges use an explicit policy: default paper V1 skips that pair
+with a warning and rejected fill evidence, strict validation can request an
+invalid trace, and an opt-in diagnostic mode can route through the accounting
+numeraire as two visible paper legs with two visible cost events.

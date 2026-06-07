@@ -38,7 +38,7 @@ enum class gauge_policy_t {
 };
 
 enum class return_origin_t {
-  base_relative_nodelift_projection,
+  numeraire_relative_nodelift_projection,
 };
 
 [[nodiscard]] inline const char *return_unit_name(return_unit_t unit) {
@@ -64,7 +64,6 @@ struct BeliefDiagnostics {
 struct BasePolicy {
   node_id_t accounting_numeraire_id{};
   node_id_t settlement_asset_id{};
-  node_id_t reserve_asset_id{};
   node_id_t projection_reference_node_id{};
 };
 
@@ -132,13 +131,13 @@ struct NodeLiftPotentialBelief {
 //
 // Shape convention:
 //   G = graph node count from upstream inference
-//   A = allocatable risky asset count
+//   A = allocatable target node count
 //   S = scenario count
 //
-// node_ids contains only risky allocatable assets. BasePolicy defines the
-// accounting numeraire, settlement asset, reserve asset, and NodeLift
-// projection reference. V1 normally binds all four to the same USD-like node,
-// but the fields stay separate because they are different contracts.
+// node_ids contains the complete policy target universe, including the
+// accounting numeraire when it is targetable. BasePolicy defines valuation and
+// projection-reference roles; those roles do not remove a node from the action
+// simplex.
 struct AllocationBelief {
   anchor_key_t anchor_key{};
   timestamp_ms_t timestamp_ms{0};
@@ -149,7 +148,7 @@ struct AllocationBelief {
   std::string source_feature_semantics_fingerprint{};
   std::vector<node_id_t> graph_node_ids{}; // [G]
 
-  std::vector<node_id_t> node_ids{};              // [A], risky assets only
+  std::vector<node_id_t> node_ids{};              // [A], target nodes
   std::vector<std::int64_t> node_graph_indices{}; // [A], node -> graph slot
 
   BasePolicy base_policy{};
@@ -160,7 +159,7 @@ struct AllocationBelief {
   return_unit_t marginal_unit{return_unit_t::log_return};
   return_unit_t scenario_unit{return_unit_t::arithmetic_return};
   return_origin_t return_origin{
-      return_origin_t::base_relative_nodelift_projection};
+      return_origin_t::numeraire_relative_nodelift_projection};
 
   torch::Tensor valid_mask{};    // [A], bool
   torch::Tensor tradable_mask{}; // [A], bool
@@ -225,7 +224,7 @@ struct CollatedAllocationBeliefBatch {
   return_unit_t marginal_unit{return_unit_t::log_return};
   return_unit_t scenario_unit{return_unit_t::arithmetic_return};
   return_origin_t return_origin{
-      return_origin_t::base_relative_nodelift_projection};
+      return_origin_t::numeraire_relative_nodelift_projection};
 
   torch::Tensor belief_valid{}; // [B], bool
 
@@ -340,7 +339,7 @@ effective_graph_node_axis_binding(const GraphNodeAxisBinding &binding,
 
 inline void require_base_policy(const BasePolicy &policy) {
   if (policy.accounting_numeraire_id.empty() ||
-      policy.settlement_asset_id.empty() || policy.reserve_asset_id.empty() ||
+      policy.settlement_asset_id.empty() ||
       policy.projection_reference_node_id.empty()) {
     throw std::runtime_error(
         "[AllocationBelief] BasePolicy fields are required");
@@ -434,8 +433,6 @@ require_batch_metadata_compatible(const AllocationBelief &expected,
           expected.base_policy.accounting_numeraire_id ||
       candidate.base_policy.settlement_asset_id !=
           expected.base_policy.settlement_asset_id ||
-      candidate.base_policy.reserve_asset_id !=
-          expected.base_policy.reserve_asset_id ||
       candidate.base_policy.projection_reference_node_id !=
           expected.base_policy.projection_reference_node_id ||
       candidate.projection_reference_graph_index !=
@@ -513,9 +510,9 @@ validate_allocation_belief_contract(const AllocationBelief &belief,
         "[AllocationBelief] V1 requires arithmetic-return scenarios");
   }
   if (belief.return_origin !=
-      return_origin_t::base_relative_nodelift_projection) {
+      return_origin_t::numeraire_relative_nodelift_projection) {
     throw std::runtime_error("[AllocationBelief] V1 requires "
-                             "base-relative NodeLift projection returns");
+                             "numeraire-relative NodeLift projection returns");
   }
   if (belief.source_feature_semantics_id.empty() ||
       belief.source_feature_semantics_fingerprint.empty()) {
@@ -531,10 +528,10 @@ validate_allocation_belief_contract(const AllocationBelief &belief,
     return detail::find_graph_node_index(graph_axis.node_ids, node_id)
         .has_value();
   };
-  if (!graph_contains(belief.base_policy.reserve_asset_id) ||
+  if (!graph_contains(belief.base_policy.accounting_numeraire_id) ||
       !graph_contains(belief.base_policy.projection_reference_node_id)) {
     throw std::runtime_error(
-        "[AllocationBelief] reserve/projection reference nodes must appear "
+        "[AllocationBelief] numeraire/projection reference nodes must appear "
         "in graph_node_ids");
   }
   if (belief.node_graph_indices.size() != belief.node_ids.size()) {
@@ -542,12 +539,6 @@ validate_allocation_belief_contract(const AllocationBelief &belief,
         "[AllocationBelief] node_graph_indices size must match node_ids");
   }
   for (std::size_t i = 0; i < belief.node_ids.size(); ++i) {
-    if (belief.node_ids[i] == belief.base_policy.reserve_asset_id ||
-        belief.node_ids[i] == belief.base_policy.projection_reference_node_id) {
-      throw std::runtime_error(
-          "[AllocationBelief] base/reserve node must not appear in risky "
-          "node_ids");
-    }
     const auto graph_index = belief.node_graph_indices[i];
     if (graph_index < 0 ||
         graph_index >= static_cast<std::int64_t>(graph_axis.node_ids.size())) {

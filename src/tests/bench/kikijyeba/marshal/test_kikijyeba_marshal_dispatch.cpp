@@ -2276,8 +2276,8 @@ void test_m9_marshal_tool_schema_compatibility() {
             "\"idempotency_key\",\"runtime_job_dir\","
             "\"replay_batch_index_path\",\"requested_mode\","
             "\"graph_order_fingerprint\",\"asset_universe_digest\","
-            "\"base_reserve_node_id\",\"risky_node_ids\",\"policy_set\","
-            "\"max_steps\"]") != std::string::npos,
+            "\"target_node_ids\",\"policy_set\",\"max_steps\"]") !=
+            std::string::npos,
         "rollout MCP schema should require bounded policy rollout fields");
   check(tools_list_json.find(
             "\"execution_profile\":{\"type\":\"object\",\"properties\"") !=
@@ -6271,7 +6271,7 @@ void test_operational_report_summarizes_training_state() {
              "completed_count=2\n"
              "mean_total_reward=0.015\n"
              "mean_total_log_growth=0.018\n"
-             "mean_final_equity_base=1.018\n"
+             "mean_final_equity_numeraire=1.018\n"
              "policy_summary_count=2\n"
              "episode_count=2\n"
              "episode_0_requested_anchor_index_begin=10\n"

@@ -17,7 +17,7 @@ namespace cuwacunu::kikijyeba::environment {
 struct baseline_policy_config_t {
   std::string policy_id{};
   std::vector<std::string> node_ids{};
-  std::string base_reserve_node_id{};
+  std::string accounting_numeraire_node_id{};
 };
 
 namespace baseline_policy_detail {
@@ -30,16 +30,11 @@ validate_baseline_policy_config(const baseline_policy_config_t &config) {
   if (config.node_ids.empty()) {
     throw std::runtime_error("[baseline_policy] node_ids are required");
   }
-  if (detail::blank(config.base_reserve_node_id)) {
-    throw std::runtime_error(
-        "[baseline_policy] base_reserve_node_id is required");
-  }
 }
 
 [[nodiscard]] inline action_t
 make_baseline_action(const baseline_policy_config_t &config,
                      torch::Tensor target_weights,
-                     double target_base_reserve_weight,
                      portfolio::timestamp_ms_t decision_timestamp_ms = 0) {
   validate_baseline_policy_config(config);
   action_t action{};
@@ -47,9 +42,7 @@ make_baseline_action(const baseline_policy_config_t &config,
   action.policy_kind = policy_kind_t::baseline;
   action.decision_timestamp_ms = decision_timestamp_ms;
   action.node_ids = config.node_ids;
-  action.base_reserve_node_id = config.base_reserve_node_id;
   action.target_weights = target_weights.to(torch::kFloat64).contiguous();
-  action.target_base_reserve_weight = target_base_reserve_weight;
   validate_action(action, config.node_ids);
   return action;
 }
@@ -70,9 +63,48 @@ current_weights_or_zero(const observation_t &observation, std::int64_t A) {
 
 } // namespace baseline_policy_detail
 
-class base_reserve_policy_t final : public policy_adapter_iface_t {
+class numeraire_only_policy_t final : public policy_adapter_iface_t {
 public:
-  explicit base_reserve_policy_t(baseline_policy_config_t config)
+  explicit numeraire_only_policy_t(baseline_policy_config_t config)
+      : config_(std::move(config)) {
+    baseline_policy_detail::validate_baseline_policy_config(config_);
+    if (detail::blank(config_.accounting_numeraire_node_id)) {
+      throw std::runtime_error(
+          "[numeraire_only_policy] accounting_numeraire_node_id is required");
+    }
+    if (!std::count(config_.node_ids.begin(), config_.node_ids.end(),
+                    config_.accounting_numeraire_node_id)) {
+      throw std::runtime_error(
+          "[numeraire_only_policy] accounting numeraire must be in node_ids");
+    }
+  }
+
+  [[nodiscard]] std::string policy_id() const override {
+    return config_.policy_id;
+  }
+
+  [[nodiscard]] policy_kind_t policy_kind() const override {
+    return policy_kind_t::baseline;
+  }
+
+  [[nodiscard]] action_t act(const observation_t &observation) override {
+    const auto A = static_cast<std::int64_t>(config_.node_ids.size());
+    auto weights = torch::zeros({A}, torch::TensorOptions().dtype(torch::kFloat64));
+    const auto it = std::find(config_.node_ids.begin(), config_.node_ids.end(),
+                              config_.accounting_numeraire_node_id);
+    weights.index_put_({static_cast<std::int64_t>(it - config_.node_ids.begin())},
+                       1.0);
+    return baseline_policy_detail::make_baseline_action(
+        config_, weights, observation.knowledge_timestamp_ms);
+  }
+
+private:
+  baseline_policy_config_t config_{};
+};
+
+class equal_weight_policy_t final : public policy_adapter_iface_t {
+public:
+  explicit equal_weight_policy_t(baseline_policy_config_t config)
       : config_(std::move(config)) {
     baseline_policy_detail::validate_baseline_policy_config(config_);
   }
@@ -87,63 +119,25 @@ public:
 
   [[nodiscard]] action_t act(const observation_t &observation) override {
     const auto A = static_cast<std::int64_t>(config_.node_ids.size());
-    return baseline_policy_detail::make_baseline_action(
-        config_,
-        torch::zeros({A}, torch::TensorOptions().dtype(torch::kFloat64)), 1.0,
-        observation.knowledge_timestamp_ms);
-  }
-
-private:
-  baseline_policy_config_t config_{};
-};
-
-class equal_weight_policy_t final : public policy_adapter_iface_t {
-public:
-  explicit equal_weight_policy_t(baseline_policy_config_t config,
-                                 double base_reserve_weight = 0.0)
-      : config_(std::move(config)), base_reserve_weight_(base_reserve_weight) {
-    baseline_policy_detail::validate_baseline_policy_config(config_);
-    if (!std::isfinite(base_reserve_weight_) || base_reserve_weight_ < 0.0 ||
-        base_reserve_weight_ > 1.0) {
-      throw std::runtime_error(
-          "[equal_weight_policy] base_reserve_weight must be in [0,1]");
-    }
-  }
-
-  [[nodiscard]] std::string policy_id() const override {
-    return config_.policy_id;
-  }
-
-  [[nodiscard]] policy_kind_t policy_kind() const override {
-    return policy_kind_t::baseline;
-  }
-
-  [[nodiscard]] action_t act(const observation_t &observation) override {
-    const auto A = static_cast<std::int64_t>(config_.node_ids.size());
-    const double risky_budget = 1.0 - base_reserve_weight_;
-    auto weights = torch::full({A}, risky_budget / static_cast<double>(A),
+    auto weights = torch::full({A}, 1.0 / static_cast<double>(A),
                                torch::TensorOptions().dtype(torch::kFloat64));
     return baseline_policy_detail::make_baseline_action(
-        config_, weights, base_reserve_weight_,
-        observation.knowledge_timestamp_ms);
+        config_, weights, observation.knowledge_timestamp_ms);
   }
 
 private:
   baseline_policy_config_t config_{};
-  double base_reserve_weight_{0.0};
 };
 
 class fixed_weight_policy_t final : public policy_adapter_iface_t {
 public:
   fixed_weight_policy_t(baseline_policy_config_t config,
-                        torch::Tensor target_weights,
-                        double target_base_reserve_weight)
+                        torch::Tensor target_weights)
       : config_(std::move(config)),
-        target_weights_(target_weights.to(torch::kFloat64).contiguous()),
-        target_base_reserve_weight_(target_base_reserve_weight) {
+        target_weights_(target_weights.to(torch::kFloat64).contiguous()) {
     baseline_policy_detail::validate_baseline_policy_config(config_);
     (void)baseline_policy_detail::make_baseline_action(
-        config_, target_weights_, target_base_reserve_weight_);
+        config_, target_weights_);
   }
 
   [[nodiscard]] std::string policy_id() const override {
@@ -156,14 +150,12 @@ public:
 
   [[nodiscard]] action_t act(const observation_t &observation) override {
     return baseline_policy_detail::make_baseline_action(
-        config_, target_weights_, target_base_reserve_weight_,
-        observation.knowledge_timestamp_ms);
+        config_, target_weights_, observation.knowledge_timestamp_ms);
   }
 
 private:
   baseline_policy_config_t config_{};
   torch::Tensor target_weights_{};
-  double target_base_reserve_weight_{1.0};
 };
 
 class current_weight_policy_t final : public policy_adapter_iface_t {
@@ -185,22 +177,15 @@ public:
     const auto A = static_cast<std::int64_t>(config_.node_ids.size());
     auto weights =
         baseline_policy_detail::current_weights_or_zero(observation, A);
-    double reserve = observation.portfolio_state.base_reserve_weight;
-    if (!std::isfinite(reserve) || reserve < 0.0) {
-      reserve = 1.0 - weights.sum().item<double>();
-    }
-    reserve = std::max(0.0, reserve);
-    const double total = weights.sum().item<double>() + reserve;
+    const double total = weights.sum().item<double>();
     if (total <= 0.0 || !std::isfinite(total)) {
-      weights =
-          torch::zeros({A}, torch::TensorOptions().dtype(torch::kFloat64));
-      reserve = 1.0;
+      weights = torch::full({A}, 1.0 / static_cast<double>(A),
+                            torch::TensorOptions().dtype(torch::kFloat64));
     } else if (std::abs(total - 1.0) > 1.0e-8) {
       weights = weights / total;
-      reserve = reserve / total;
     }
     return baseline_policy_detail::make_baseline_action(
-        config_, weights, reserve, observation.knowledge_timestamp_ms);
+        config_, weights, observation.knowledge_timestamp_ms);
   }
 
 private:

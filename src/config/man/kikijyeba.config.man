@@ -30,7 +30,8 @@ surfaces under `[HERO]`.
   - V1 is historical replay only. It uses an RL-compatible `reset/step` API,
     episode-parallel and step-sequential execution, Ujcamei/component-stream
     cursor ranges, time-t observations, post-action realization reveal,
-    target-node-weight actions with a base reserve graph node, decomposed
+    unified target-node-weight actions that include the accounting numeraire
+    graph node, decomposed
     post-execution reward, direct-edge realized-return truth,
     projection-validation evidence, and audit replay reports.
   - The replay environment is audit-only: it does not authorize allocation,

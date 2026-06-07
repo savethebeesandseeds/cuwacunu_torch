@@ -20,6 +20,7 @@
 
 #include <torch/torch.h>
 
+#include "hero/runtime_hero/runtime/job_layout.h"
 #include "kikijyeba/environment/output/experience_trace.h"
 #include "kikijyeba/environment/policy/allocation.h"
 #include "kikijyeba/environment/policy/baseline.h"
@@ -27,7 +28,6 @@
 #include "kikijyeba/environment/runtime/replay_source.h"
 #include "kikijyeba/protocol/config_bundle.h"
 #include "kikijyeba/protocol/config_provenance.h"
-#include "hero/runtime_hero/runtime/job_layout.h"
 #include "wikimyei/assembly.h"
 
 namespace cuwacunu::kikijyeba::environment {
@@ -43,19 +43,18 @@ struct runtime_job_replay_driver_options_t {
   std::string execution_profile_digest{};
   std::string policy_set_digest{};
 
-  std::string base_reserve_node_id{};
-  std::vector<std::string> risky_node_ids{};
+  std::string accounting_numeraire_node_id{};
+  std::vector<std::string> target_node_ids{};
 
-  double initial_equity_base{1.0};
-  double min_base_reserve_weight{0.0};
-  double max_risky_weight{1.0};
+  double initial_equity_numeraire{1.0};
+  double max_node_weight{1.0};
   double max_turnover_l1{1.0};
   double lambda_cvar{0.10};
   double lambda_concentration{0.01};
   double lambda_uncertainty{0.0};
   double lambda_turnover{0.0};
 
-  bool include_base_reserve_policy{true};
+  bool include_numeraire_only_policy{true};
   bool include_equal_weight_policy{false};
   bool include_current_weight_policy{false};
   bool include_spot_distributional_utility_policy{true};
@@ -202,16 +201,15 @@ inline void validate_driver_replay_environment_contract(
     const runtime_job_replay_driver_options_t &options) {
   if (A <= 0) {
     throw std::runtime_error(
-        "[runtime_job_replay_driver] risky asset count must be positive");
+        "[runtime_job_replay_driver] target node count must be positive");
   }
-  if (options.max_risky_weight < 0.0 || options.max_risky_weight > 1.0) {
+  if (options.max_node_weight < 0.0 || options.max_node_weight > 1.0) {
     throw std::runtime_error(
-        "[runtime_job_replay_driver] max_risky_weight must be in [0,1]");
+        "[runtime_job_replay_driver] max_node_weight must be in [0,1]");
   }
   portfolio::PortfolioConstraints constraints{};
-  constraints.min_base_reserve_weight = options.min_base_reserve_weight;
   constraints.max_weight =
-      torch::full({A}, options.max_risky_weight, torch::kFloat64);
+      torch::full({A}, options.max_node_weight, torch::kFloat64);
   constraints.min_weight = torch::zeros({A}, torch::kFloat64);
   constraints.max_turnover_l1 = options.max_turnover_l1;
   constraints.cvar_alpha = method_spec.cvar_alpha;
@@ -229,84 +227,83 @@ inline void validate_driver_replay_environment_contract(
     const graph::market_graph_t &market_graph,
     const runtime_job_replay_driver_options_t &options) {
   market_graph.validate();
-  const std::string base_reserve_node_id =
-      options.base_reserve_node_id.empty()
-          ? replay::infer_base_reserve_node_id(market_graph)
-          : options.base_reserve_node_id;
-  if (!replay::node_index_by_id(market_graph.node_ids, base_reserve_node_id)
+  if (options.accounting_numeraire_node_id.empty()) {
+    throw std::runtime_error(
+        "[runtime_job_replay_driver] accounting numeraire node is required; "
+        "set [ACCOUNTING].accounting_numeraire_node_id in .config or pass an "
+        "explicit replay accounting numeraire override");
+  }
+  const std::string accounting_numeraire_node_id =
+      options.accounting_numeraire_node_id;
+  if (!replay::node_index_by_id(market_graph.node_ids,
+                                accounting_numeraire_node_id)
            .has_value()) {
     throw std::runtime_error(
-        "[runtime_job_replay_driver] base reserve node must appear in graph");
+        "[runtime_job_replay_driver] accounting numeraire node must appear in "
+        "graph");
   }
 
-  auto risky_node_ids =
-      options.risky_node_ids.empty()
-          ? replay::default_risky_node_ids(market_graph, base_reserve_node_id)
-          : options.risky_node_ids;
-  for (const auto &node_id : risky_node_ids) {
-    if (node_id == base_reserve_node_id) {
-      throw std::runtime_error(
-          "[runtime_job_replay_driver] base reserve node must not be in risky "
-          "node_ids");
-    }
+  auto target_node_ids = options.target_node_ids.empty()
+                             ? replay::default_target_node_ids(market_graph)
+                             : options.target_node_ids;
+  for (const auto &node_id : target_node_ids) {
     if (!replay::node_index_by_id(market_graph.node_ids, node_id).has_value()) {
       throw std::runtime_error(
-          "[runtime_job_replay_driver] risky node is not present in graph: " +
+          "[runtime_job_replay_driver] target node is not present in graph: " +
           node_id);
     }
   }
 
-  const auto A = static_cast<std::int64_t>(risky_node_ids.size());
+  const auto A = static_cast<std::int64_t>(target_node_ids.size());
   episode_spec_t spec{};
   spec.protocol_id = contract.protocol_variant.protocol_id;
   spec.environment_run_id = options.environment_run_id;
   spec.graph_order_fingerprint =
       market_graph.computed_graph_order_fingerprint();
   spec.graph_node_ids = market_graph.node_ids;
-  spec.risky_node_ids = std::move(risky_node_ids);
-  spec.base_policy = {.accounting_numeraire_id = base_reserve_node_id,
-                      .settlement_asset_id = base_reserve_node_id,
-                      .reserve_asset_id = base_reserve_node_id,
-                      .projection_reference_node_id = base_reserve_node_id};
+  spec.target_node_ids = std::move(target_node_ids);
+  spec.base_policy = {.accounting_numeraire_id = accounting_numeraire_node_id,
+                      .settlement_asset_id = accounting_numeraire_node_id,
+                      .projection_reference_node_id =
+                          accounting_numeraire_node_id};
   spec.constraints =
       make_driver_constraints(A, contract.spot_distributional_utility, options);
-  spec.initial_equity_base = options.initial_equity_base;
+  spec.initial_equity_numeraire = options.initial_equity_numeraire;
   spec.require_projection_validation =
       options.world_options.require_projection_validation;
   return spec;
 }
 
 [[nodiscard]] inline replay_policy_factory_t
-make_driver_base_reserve_policy_factory() {
+make_driver_numeraire_only_policy_factory() {
   return {
-      .policy_id = "base_reserve_only.v1",
+      .policy_id = "numeraire_only.v1",
       .policy_kind = policy_kind_t::baseline,
       .make_policy =
           [](const replay::replay_episode_bundle_t &bundle) {
             baseline_policy_config_t config{};
-            config.policy_id = "base_reserve_only.v1";
-            config.node_ids = bundle.spec.risky_node_ids;
-            config.base_reserve_node_id =
-                bundle.spec.base_policy.reserve_asset_id;
-            return std::make_unique<base_reserve_policy_t>(std::move(config));
+            config.policy_id = "numeraire_only.v1";
+            config.node_ids = bundle.spec.target_node_ids;
+            config.accounting_numeraire_node_id =
+                bundle.spec.base_policy.accounting_numeraire_id;
+            return std::make_unique<numeraire_only_policy_t>(std::move(config));
           },
   };
 }
 
 [[nodiscard]] inline replay_policy_factory_t
-make_driver_equal_weight_policy_factory(double base_reserve_weight) {
+make_driver_equal_weight_policy_factory() {
   return {
       .policy_id = "equal_weight.v1",
       .policy_kind = policy_kind_t::baseline,
       .make_policy =
-          [base_reserve_weight](const replay::replay_episode_bundle_t &bundle) {
+          [](const replay::replay_episode_bundle_t &bundle) {
             baseline_policy_config_t config{};
             config.policy_id = "equal_weight.v1";
-            config.node_ids = bundle.spec.risky_node_ids;
-            config.base_reserve_node_id =
-                bundle.spec.base_policy.reserve_asset_id;
-            return std::make_unique<equal_weight_policy_t>(std::move(config),
-                                                           base_reserve_weight);
+            config.node_ids = bundle.spec.target_node_ids;
+            config.accounting_numeraire_node_id =
+                bundle.spec.base_policy.accounting_numeraire_id;
+            return std::make_unique<equal_weight_policy_t>(std::move(config));
           },
   };
 }
@@ -320,9 +317,9 @@ make_driver_current_weight_policy_factory() {
           [](const replay::replay_episode_bundle_t &bundle) {
             baseline_policy_config_t config{};
             config.policy_id = "current_weight_no_trade.v1";
-            config.node_ids = bundle.spec.risky_node_ids;
-            config.base_reserve_node_id =
-                bundle.spec.base_policy.reserve_asset_id;
+            config.node_ids = bundle.spec.target_node_ids;
+            config.accounting_numeraire_node_id =
+                bundle.spec.base_policy.accounting_numeraire_id;
             return std::make_unique<current_weight_policy_t>(std::move(config));
           },
   };
@@ -356,12 +353,11 @@ make_driver_policy_factories(
     const sdu::spot_distributional_utility_spec_t &method_spec,
     const runtime_job_replay_driver_options_t &options) {
   std::vector<replay_policy_factory_t> factories;
-  if (options.include_base_reserve_policy) {
-    factories.push_back(make_driver_base_reserve_policy_factory());
+  if (options.include_numeraire_only_policy) {
+    factories.push_back(make_driver_numeraire_only_policy_factory());
   }
   if (options.include_equal_weight_policy) {
-    factories.push_back(make_driver_equal_weight_policy_factory(
-        base_spec.constraints.min_base_reserve_weight));
+    factories.push_back(make_driver_equal_weight_policy_factory());
   }
   if (options.include_current_weight_policy) {
     factories.push_back(make_driver_current_weight_policy_factory());
@@ -488,8 +484,8 @@ summarize_replay_report_time_law(const replay_experiment_report_t &report) {
 
       const bool action_bound =
           step.action_schema_id == kTargetWeightsActionSchema &&
-          !step.target_risky_node_weights.empty() &&
-          !step.target_base_reserve_node_id.empty() &&
+          !step.target_node_weights.empty() &&
+          !step.accounting_numeraire_node_id.empty() &&
           step.action_decision_timestamp_ms >= step.knowledge_timestamp_ms &&
           step.action_decision_timestamp_ms <
               step.realization_available_after_timestamp_ms;
@@ -622,8 +618,6 @@ inline void write_replay_experiment_report(
            replay_spec.action_schema_id);
   write_kv(out, "replay_environment_action_time_policy",
            replay_spec.action_time_policy);
-  write_kv(out, "replay_environment_reserve_node_policy",
-           replay_spec.reserve_node_policy);
   write_kv(out, "replay_environment_graph_node_universe_policy",
            replay_spec.graph_node_universe_policy);
   write_kv(out, "replay_environment_reward_policy", replay_spec.reward_policy);
@@ -671,22 +665,25 @@ inline void write_replay_experiment_report(
   out << "failed_count=" << report.failures.size() << "\n";
   out << "mean_total_reward=" << report.mean_total_reward() << "\n";
   out << "mean_total_log_growth=" << report.mean_total_log_growth() << "\n";
-  out << "mean_final_equity_base=" << report.mean_final_equity_base() << "\n";
+  out << "mean_final_equity_numeraire=" << report.mean_final_equity_numeraire()
+      << "\n";
   out << "mean_max_drawdown=" << report.mean_max_drawdown() << "\n";
   out << "mean_total_turnover=" << report.mean_total_turnover() << "\n";
-  out << "mean_total_transaction_cost_base="
-      << report.mean_total_transaction_cost_base() << "\n";
+  out << "mean_total_transaction_cost_numeraire="
+      << report.mean_total_transaction_cost_numeraire() << "\n";
   out << "cajtucu_valid_trace_count=" << report.cajtucu_valid_trace_count()
       << "\n";
   out << "cajtucu_invalid_trace_count=" << report.cajtucu_invalid_trace_count()
       << "\n";
-  out << "cajtucu_missing_direct_reserve_edge_count="
+  out << "cajtucu_missing_direct_pair_count="
       << experiment_runner_detail::sum_episode_count(
              report.episode_reports,
              [](const episode_report_t &episode) {
-               return episode.cajtucu_missing_direct_reserve_edge_count;
+               return episode.cajtucu_missing_direct_pair_count;
              })
       << "\n";
+  out << "cajtucu_numeraire_fallback_pair_count="
+      << report.cajtucu_numeraire_fallback_pair_count() << "\n";
   out << "cajtucu_nontradable_edge_reject_count="
       << experiment_runner_detail::sum_episode_count(
              report.episode_reports,
@@ -708,11 +705,11 @@ inline void write_replay_experiment_report(
                return episode.cajtucu_above_max_notional_reject_count;
              })
       << "\n";
-  out << "cajtucu_insufficient_reserve_reject_count="
+  out << "cajtucu_insufficient_sell_units_reject_count="
       << experiment_runner_detail::sum_episode_count(
              report.episode_reports,
              [](const episode_report_t &episode) {
-               return episode.cajtucu_insufficient_reserve_reject_count;
+               return episode.cajtucu_insufficient_sell_units_reject_count;
              })
       << "\n";
   out << "cajtucu_insufficient_units_reject_count="
@@ -755,13 +752,16 @@ inline void write_replay_experiment_report(
   out << "rejected_order_count=" << report.cajtucu_rejected_order_count()
       << "\n";
   out << "partial_order_count=" << report.cajtucu_partial_order_count() << "\n";
-  out << "requested_notional_base=" << report.requested_notional_base() << "\n";
-  out << "executed_notional_base=" << report.executed_notional_base() << "\n";
-  out << "rejected_notional_base=" << report.rejected_notional_base() << "\n";
+  out << "requested_notional_numeraire="
+      << report.requested_notional_numeraire() << "\n";
+  out << "executed_notional_numeraire=" << report.executed_notional_numeraire()
+      << "\n";
+  out << "rejected_notional_numeraire=" << report.rejected_notional_numeraire()
+      << "\n";
   out << "fill_ratio=" << report.fill_ratio() << "\n";
-  out << "fee_cost_base=" << report.fee_cost_base() << "\n";
-  out << "spread_cost_base=" << report.spread_cost_base() << "\n";
-  out << "slippage_cost_base=" << report.slippage_cost_base() << "\n";
+  out << "fee_cost_numeraire=" << report.fee_cost_numeraire() << "\n";
+  out << "spread_cost_numeraire=" << report.spread_cost_numeraire() << "\n";
+  out << "slippage_cost_numeraire=" << report.slippage_cost_numeraire() << "\n";
   out << "mean_target_weight_error_l1=" << report.mean_target_weight_error_l1()
       << "\n";
   out << "mean_target_weight_error_linf="
@@ -830,29 +830,32 @@ inline void write_replay_experiment_report(
     out << prefix << "mean_total_reward=" << summary.mean_total_reward << "\n";
     out << prefix << "mean_total_log_growth=" << summary.mean_total_log_growth
         << "\n";
-    out << prefix << "mean_final_equity_base=" << summary.mean_final_equity_base
+    out << prefix
+        << "mean_final_equity_numeraire=" << summary.mean_final_equity_numeraire
         << "\n";
     out << prefix << "mean_max_drawdown=" << summary.mean_max_drawdown << "\n";
     out << prefix << "mean_total_turnover=" << summary.mean_total_turnover
         << "\n";
-    out << prefix << "mean_total_transaction_cost_base="
-        << summary.mean_total_transaction_cost_base << "\n";
+    out << prefix << "mean_total_transaction_cost_numeraire="
+        << summary.mean_total_transaction_cost_numeraire << "\n";
     out << prefix
         << "cajtucu_valid_trace_count=" << summary.cajtucu_valid_trace_count
         << "\n";
     out << prefix
         << "cajtucu_invalid_trace_count=" << summary.cajtucu_invalid_trace_count
         << "\n";
-    out << prefix << "cajtucu_missing_direct_reserve_edge_count="
-        << summary.cajtucu_missing_direct_reserve_edge_count << "\n";
+    out << prefix << "cajtucu_missing_direct_pair_count="
+        << summary.cajtucu_missing_direct_pair_count << "\n";
+    out << prefix << "cajtucu_numeraire_fallback_pair_count="
+        << summary.cajtucu_numeraire_fallback_pair_count << "\n";
     out << prefix << "cajtucu_nontradable_edge_reject_count="
         << summary.cajtucu_nontradable_edge_reject_count << "\n";
     out << prefix << "cajtucu_below_min_notional_reject_count="
         << summary.cajtucu_below_min_notional_reject_count << "\n";
     out << prefix << "cajtucu_above_max_notional_reject_count="
         << summary.cajtucu_above_max_notional_reject_count << "\n";
-    out << prefix << "cajtucu_insufficient_reserve_reject_count="
-        << summary.cajtucu_insufficient_reserve_reject_count << "\n";
+    out << prefix << "cajtucu_insufficient_sell_units_reject_count="
+        << summary.cajtucu_insufficient_sell_units_reject_count << "\n";
     out << prefix << "cajtucu_insufficient_units_reject_count="
         << summary.cajtucu_insufficient_units_reject_count << "\n";
     out << prefix << "cajtucu_invalid_sell_price_count="
@@ -869,19 +872,24 @@ inline void write_replay_experiment_report(
         << "\n";
     out << prefix << "partial_order_count=" << summary.partial_order_count
         << "\n";
+    out << prefix << "requested_notional_numeraire="
+        << summary.requested_notional_numeraire << "\n";
     out << prefix
-        << "requested_notional_base=" << summary.requested_notional_base
+        << "executed_notional_numeraire=" << summary.executed_notional_numeraire
         << "\n";
-    out << prefix << "executed_notional_base=" << summary.executed_notional_base
+    out << prefix
+        << "rejected_notional_numeraire=" << summary.rejected_notional_numeraire
         << "\n";
-    out << prefix << "rejected_notional_base=" << summary.rejected_notional_base
-        << "\n";
-    out << prefix << "partial_notional_base=" << summary.partial_notional_base
+    out << prefix
+        << "partial_notional_numeraire=" << summary.partial_notional_numeraire
         << "\n";
     out << prefix << "fill_ratio=" << summary.fill_ratio << "\n";
-    out << prefix << "fee_cost_base=" << summary.fee_cost_base << "\n";
-    out << prefix << "spread_cost_base=" << summary.spread_cost_base << "\n";
-    out << prefix << "slippage_cost_base=" << summary.slippage_cost_base
+    out << prefix << "fee_cost_numeraire=" << summary.fee_cost_numeraire
+        << "\n";
+    out << prefix << "spread_cost_numeraire=" << summary.spread_cost_numeraire
+        << "\n";
+    out << prefix
+        << "slippage_cost_numeraire=" << summary.slippage_cost_numeraire
         << "\n";
     out << prefix
         << "cost_as_fraction_of_equity=" << summary.cost_as_fraction_of_equity
@@ -893,12 +901,12 @@ inline void write_replay_experiment_report(
         << "\n";
     out << prefix << "mean_target_weight_error_linf="
         << summary.mean_target_weight_error_linf << "\n";
-    out << prefix << "mean_post_execution_risky_weight_sum="
-        << summary.mean_post_execution_risky_weight_sum << "\n";
-    out << prefix << "mean_post_execution_base_reserve_weight="
-        << summary.mean_post_execution_base_reserve_weight << "\n";
+    out << prefix << "mean_post_execution_target_weight_sum="
+        << summary.mean_post_execution_target_weight_sum << "\n";
+    out << prefix << "mean_post_execution_numeraire_weight="
+        << summary.mean_post_execution_numeraire_weight << "\n";
     out << prefix
-        << "reserve_shortfall_count=" << summary.reserve_shortfall_count
+        << "numeraire_shortfall_count=" << summary.numeraire_shortfall_count
         << "\n";
     out << prefix
         << "mean_ledger_before_equity=" << summary.mean_ledger_before_equity
@@ -909,11 +917,9 @@ inline void write_replay_experiment_report(
         << summary.mean_ledger_after_realization_equity << "\n";
     out << prefix << "max_ledger_equity_reconciliation_error="
         << summary.max_ledger_equity_reconciliation_error << "\n";
-    out << prefix
-        << "base_reserve_units_before=" << summary.base_reserve_units_before
+    out << prefix << "numeraire_units_before=" << summary.numeraire_units_before
         << "\n";
-    out << prefix
-        << "base_reserve_units_after=" << summary.base_reserve_units_after
+    out << prefix << "numeraire_units_after=" << summary.numeraire_units_after
         << "\n";
     out << prefix << "unit_nonnegativity_violation_count="
         << summary.unit_nonnegativity_violation_count << "\n";
@@ -961,9 +967,9 @@ inline void write_replay_experiment_report(
     write_kv(out, prefix + "graph_order_fingerprint",
              episode.graph_order_fingerprint);
     write_kv(out, prefix + "graph_node_ids", episode.graph_node_ids);
-    write_kv(out, prefix + "risky_node_ids", episode.risky_node_ids);
-    write_kv(out, prefix + "base_reserve_node_id",
-             episode.base_reserve_node_id);
+    write_kv(out, prefix + "target_node_ids", episode.target_node_ids);
+    write_kv(out, prefix + "accounting_numeraire_node_id",
+             episode.accounting_numeraire_node_id);
     out << prefix << "experiment_task_index=" << episode.experiment_task_index
         << "\n";
     out << prefix
@@ -1017,28 +1023,30 @@ inline void write_replay_experiment_report(
     out << prefix << "step_count=" << episode.step_reports.size() << "\n";
     out << prefix << "total_reward=" << episode.total_reward << "\n";
     out << prefix << "total_log_growth=" << episode.total_log_growth << "\n";
-    out << prefix << "final_equity_base=" << episode.final_equity_base << "\n";
+    out << prefix << "final_equity_numeraire=" << episode.final_equity_numeraire
+        << "\n";
     out << prefix << "max_drawdown=" << episode.max_drawdown << "\n";
     out << prefix << "total_turnover=" << episode.total_turnover << "\n";
-    out << prefix
-        << "total_transaction_cost_base=" << episode.total_transaction_cost_base
-        << "\n";
+    out << prefix << "total_transaction_cost_numeraire="
+        << episode.total_transaction_cost_numeraire << "\n";
     out << prefix
         << "cajtucu_valid_trace_count=" << episode.cajtucu_valid_trace_count
         << "\n";
     out << prefix
         << "cajtucu_invalid_trace_count=" << episode.cajtucu_invalid_trace_count
         << "\n";
-    out << prefix << "cajtucu_missing_direct_reserve_edge_count="
-        << episode.cajtucu_missing_direct_reserve_edge_count << "\n";
+    out << prefix << "cajtucu_missing_direct_pair_count="
+        << episode.cajtucu_missing_direct_pair_count << "\n";
+    out << prefix << "cajtucu_numeraire_fallback_pair_count="
+        << episode.cajtucu_numeraire_fallback_pair_count << "\n";
     out << prefix << "cajtucu_nontradable_edge_reject_count="
         << episode.cajtucu_nontradable_edge_reject_count << "\n";
     out << prefix << "cajtucu_below_min_notional_reject_count="
         << episode.cajtucu_below_min_notional_reject_count << "\n";
     out << prefix << "cajtucu_above_max_notional_reject_count="
         << episode.cajtucu_above_max_notional_reject_count << "\n";
-    out << prefix << "cajtucu_insufficient_reserve_reject_count="
-        << episode.cajtucu_insufficient_reserve_reject_count << "\n";
+    out << prefix << "cajtucu_insufficient_sell_units_reject_count="
+        << episode.cajtucu_insufficient_sell_units_reject_count << "\n";
     out << prefix << "cajtucu_insufficient_units_reject_count="
         << episode.cajtucu_insufficient_units_reject_count << "\n";
     out << prefix << "cajtucu_invalid_sell_price_count="
@@ -1055,19 +1063,24 @@ inline void write_replay_experiment_report(
         << "\n";
     out << prefix << "partial_order_count=" << episode.partial_order_count
         << "\n";
+    out << prefix << "requested_notional_numeraire="
+        << episode.requested_notional_numeraire << "\n";
     out << prefix
-        << "requested_notional_base=" << episode.requested_notional_base
+        << "executed_notional_numeraire=" << episode.executed_notional_numeraire
         << "\n";
-    out << prefix << "executed_notional_base=" << episode.executed_notional_base
+    out << prefix
+        << "rejected_notional_numeraire=" << episode.rejected_notional_numeraire
         << "\n";
-    out << prefix << "rejected_notional_base=" << episode.rejected_notional_base
-        << "\n";
-    out << prefix << "partial_notional_base=" << episode.partial_notional_base
+    out << prefix
+        << "partial_notional_numeraire=" << episode.partial_notional_numeraire
         << "\n";
     out << prefix << "fill_ratio=" << episode.fill_ratio << "\n";
-    out << prefix << "fee_cost_base=" << episode.fee_cost_base << "\n";
-    out << prefix << "spread_cost_base=" << episode.spread_cost_base << "\n";
-    out << prefix << "slippage_cost_base=" << episode.slippage_cost_base
+    out << prefix << "fee_cost_numeraire=" << episode.fee_cost_numeraire
+        << "\n";
+    out << prefix << "spread_cost_numeraire=" << episode.spread_cost_numeraire
+        << "\n";
+    out << prefix
+        << "slippage_cost_numeraire=" << episode.slippage_cost_numeraire
         << "\n";
     out << prefix
         << "cost_as_fraction_of_equity=" << episode.cost_as_fraction_of_equity
@@ -1079,12 +1092,12 @@ inline void write_replay_experiment_report(
         << "\n";
     out << prefix << "mean_target_weight_error_linf="
         << episode.mean_target_weight_error_linf << "\n";
-    out << prefix << "mean_post_execution_risky_weight_sum="
-        << episode.mean_post_execution_risky_weight_sum << "\n";
-    out << prefix << "mean_post_execution_base_reserve_weight="
-        << episode.mean_post_execution_base_reserve_weight << "\n";
+    out << prefix << "mean_post_execution_target_weight_sum="
+        << episode.mean_post_execution_target_weight_sum << "\n";
+    out << prefix << "mean_post_execution_numeraire_weight="
+        << episode.mean_post_execution_numeraire_weight << "\n";
     out << prefix
-        << "reserve_shortfall_count=" << episode.reserve_shortfall_count
+        << "numeraire_shortfall_count=" << episode.numeraire_shortfall_count
         << "\n";
     out << prefix
         << "mean_ledger_before_equity=" << episode.mean_ledger_before_equity
@@ -1095,20 +1108,18 @@ inline void write_replay_experiment_report(
         << episode.mean_ledger_after_realization_equity << "\n";
     out << prefix << "max_ledger_equity_reconciliation_error="
         << episode.max_ledger_equity_reconciliation_error << "\n";
-    out << prefix
-        << "base_reserve_units_before=" << episode.base_reserve_units_before
+    out << prefix << "numeraire_units_before=" << episode.numeraire_units_before
         << "\n";
-    out << prefix
-        << "base_reserve_units_after=" << episode.base_reserve_units_after
+    out << prefix << "numeraire_units_after=" << episode.numeraire_units_after
         << "\n";
     out << prefix << "unit_nonnegativity_violation_count="
         << episode.unit_nonnegativity_violation_count << "\n";
-    write_kv(out, prefix + "allocation_target_risky_node_weights",
-             episode.allocation_target_risky_node_weights);
-    write_kv(out, prefix + "allocation_reserve_node_id",
-             episode.allocation_reserve_node_id);
+    write_kv(out, prefix + "allocation_target_node_weights",
+             episode.allocation_target_node_weights);
+    write_kv(out, prefix + "allocation_numeraire_node_id",
+             episode.allocation_numeraire_node_id);
     out << prefix
-        << "allocation_reserve_weight=" << episode.allocation_reserve_weight
+        << "allocation_numeraire_weight=" << episode.allocation_numeraire_weight
         << "\n";
     out << prefix << "allocation_turnover=" << episode.allocation_turnover
         << "\n";
@@ -1239,15 +1250,25 @@ inline void write_replay_experiment_report(
       out << step_prefix
           << "accepted_cursor_offset=" << step.accepted_cursor_offset << "\n";
       write_kv(out, step_prefix + "action_schema_id", step.action_schema_id);
+      write_kv(out, step_prefix + "policy_input_schema_id",
+               step.policy_input_schema_id);
+      write_kv(out, step_prefix + "action_adapter_id", step.action_adapter_id);
+      write_kv(out, step_prefix + "reward_contract_id",
+               step.reward_contract_id);
+      write_kv(out, step_prefix + "policy_artifact_digest",
+               step.policy_artifact_digest);
+      write_kv(out, step_prefix + "policy_net_digest", step.policy_net_digest);
+      write_kv(out, step_prefix + "policy_dsl_digest", step.policy_dsl_digest);
+      write_kv(out, step_prefix + "policy_jkimyei_digest",
+               step.policy_jkimyei_digest);
       out << step_prefix << "action_decision_timestamp_ms="
           << step.action_decision_timestamp_ms << "\n";
-      write_kv(out, step_prefix + "target_risky_node_weights",
-               step.target_risky_node_weights);
-      write_kv(out, step_prefix + "target_base_reserve_node_id",
-               step.target_base_reserve_node_id);
+      write_kv(out, step_prefix + "target_node_weights",
+               step.target_node_weights);
+      write_kv(out, step_prefix + "accounting_numeraire_node_id",
+               step.accounting_numeraire_node_id);
       out << step_prefix
-          << "target_base_reserve_weight=" << step.target_base_reserve_weight
-          << "\n";
+          << "target_numeraire_weight=" << step.target_numeraire_weight << "\n";
       out << step_prefix
           << "portfolio_equity_before=" << step.portfolio_equity_before << "\n";
       out << step_prefix
@@ -1258,7 +1279,8 @@ inline void write_replay_experiment_report(
           << "realized_arithmetic_return=" << step.realized_arithmetic_return
           << "\n";
       out << step_prefix
-          << "transaction_cost_base=" << step.transaction_cost_base << "\n";
+          << "transaction_cost_numeraire=" << step.transaction_cost_numeraire
+          << "\n";
       out << step_prefix << "turnover=" << step.turnover << "\n";
       out << step_prefix
           << "invalid_action=" << (step.invalid_action ? "true" : "false")
@@ -1267,8 +1289,8 @@ inline void write_replay_experiment_report(
           << (step.risk_gate_evaluated ? "true" : "false") << "\n";
       out << step_prefix << "risk_gate_allow_trading="
           << (step.risk_gate_allow_trading ? "true" : "false") << "\n";
-      out << step_prefix << "risk_gate_force_base_reserve_fallback="
-          << (step.risk_gate_force_base_reserve_fallback ? "true" : "false")
+      out << step_prefix << "risk_gate_force_numeraire_fallback="
+          << (step.risk_gate_force_numeraire_fallback ? "true" : "false")
           << "\n";
       out << step_prefix
           << "risk_gate_reason_count=" << step.risk_gate_reason_count << "\n";
@@ -1292,13 +1314,13 @@ inline void write_replay_experiment_report(
           << step.rebalance_requested_turnover_weight << "\n";
       out << step_prefix << "rebalance_routed_turnover_weight="
           << step.rebalance_routed_turnover_weight << "\n";
-      out << step_prefix << "rebalance_estimated_transaction_cost_base="
-          << step.rebalance_estimated_transaction_cost_base << "\n";
+      out << step_prefix << "rebalance_estimated_transaction_cost_numeraire="
+          << step.rebalance_estimated_transaction_cost_numeraire << "\n";
       out << step_prefix << "fill_count=" << step.fill_count << "\n";
-      out << step_prefix
-          << "fill_gross_notional_base=" << step.fill_gross_notional_base
+      out << step_prefix << "fill_gross_notional_numeraire="
+          << step.fill_gross_notional_numeraire << "\n";
+      out << step_prefix << "fill_fee_numeraire=" << step.fill_fee_numeraire
           << "\n";
-      out << step_prefix << "fill_fee_base=" << step.fill_fee_base << "\n";
       out << step_prefix << "cajtucu_execution_trace_available="
           << (step.cajtucu_execution_trace_available ? "true" : "false")
           << "\n";
@@ -1313,8 +1335,8 @@ inline void write_replay_experiment_report(
           << (step.cajtucu_trace_valid ? "true" : "false") << "\n";
       out << step_prefix
           << "cajtucu_failure_count=" << step.cajtucu_failure_count << "\n";
-      out << step_prefix << "cajtucu_ledger_intent_equity_difference_base="
-          << step.cajtucu_ledger_intent_equity_difference_base << "\n";
+      out << step_prefix << "cajtucu_ledger_intent_equity_difference_numeraire="
+          << step.cajtucu_ledger_intent_equity_difference_numeraire << "\n";
       out << step_prefix << "cajtucu_ledger_intent_equity_mismatch="
           << (step.cajtucu_ledger_intent_equity_mismatch ? "true" : "false")
           << "\n";
@@ -1330,52 +1352,55 @@ inline void write_replay_experiment_report(
       out << step_prefix
           << "cajtucu_partial_fill_count=" << step.cajtucu_partial_fill_count
           << "\n";
-      out << step_prefix << "cajtucu_missing_direct_reserve_edge_count="
-          << step.cajtucu_missing_direct_reserve_edge_count << "\n";
+      out << step_prefix << "cajtucu_missing_direct_pair_count="
+          << step.cajtucu_missing_direct_pair_count << "\n";
+      out << step_prefix << "cajtucu_numeraire_fallback_pair_count="
+          << step.cajtucu_numeraire_fallback_pair_count << "\n";
       out << step_prefix << "cajtucu_nontradable_edge_reject_count="
           << step.cajtucu_nontradable_edge_reject_count << "\n";
       out << step_prefix << "cajtucu_below_min_notional_reject_count="
           << step.cajtucu_below_min_notional_reject_count << "\n";
       out << step_prefix << "cajtucu_above_max_notional_reject_count="
           << step.cajtucu_above_max_notional_reject_count << "\n";
-      out << step_prefix << "cajtucu_insufficient_reserve_reject_count="
-          << step.cajtucu_insufficient_reserve_reject_count << "\n";
+      out << step_prefix << "cajtucu_insufficient_sell_units_reject_count="
+          << step.cajtucu_insufficient_sell_units_reject_count << "\n";
       out << step_prefix << "cajtucu_insufficient_units_reject_count="
           << step.cajtucu_insufficient_units_reject_count << "\n";
       out << step_prefix << "cajtucu_invalid_sell_price_count="
           << step.cajtucu_invalid_sell_price_count << "\n";
       out << step_prefix << "cajtucu_large_equity_mismatch_count="
           << step.cajtucu_large_equity_mismatch_count << "\n";
-      out << step_prefix << "cajtucu_requested_notional_base="
-          << step.cajtucu_requested_notional_base << "\n";
-      out << step_prefix << "cajtucu_executed_notional_base="
-          << step.cajtucu_executed_notional_base << "\n";
-      out << step_prefix << "cajtucu_rejected_notional_base="
-          << step.cajtucu_rejected_notional_base << "\n";
-      out << step_prefix << "cajtucu_partial_notional_base="
-          << step.cajtucu_partial_notional_base << "\n";
+      out << step_prefix << "cajtucu_requested_notional_numeraire="
+          << step.cajtucu_requested_notional_numeraire << "\n";
+      out << step_prefix << "cajtucu_executed_notional_numeraire="
+          << step.cajtucu_executed_notional_numeraire << "\n";
+      out << step_prefix << "cajtucu_rejected_notional_numeraire="
+          << step.cajtucu_rejected_notional_numeraire << "\n";
+      out << step_prefix << "cajtucu_partial_notional_numeraire="
+          << step.cajtucu_partial_notional_numeraire << "\n";
       out << step_prefix << "cajtucu_fill_ratio=" << step.cajtucu_fill_ratio
           << "\n";
       out << step_prefix
-          << "cajtucu_total_fee_base=" << step.cajtucu_total_fee_base << "\n";
-      out << step_prefix << "cajtucu_total_spread_cost_base="
-          << step.cajtucu_total_spread_cost_base << "\n";
-      out << step_prefix
-          << "cajtucu_total_slippage_base=" << step.cajtucu_total_slippage_base
+          << "cajtucu_total_fee_numeraire=" << step.cajtucu_total_fee_numeraire
           << "\n";
-      out << step_prefix << "cajtucu_total_transaction_cost_base="
-          << step.cajtucu_total_transaction_cost_base << "\n";
+      out << step_prefix << "cajtucu_total_spread_cost_numeraire="
+          << step.cajtucu_total_spread_cost_numeraire << "\n";
+      out << step_prefix << "cajtucu_total_slippage_numeraire="
+          << step.cajtucu_total_slippage_numeraire << "\n";
+      out << step_prefix << "cajtucu_total_transaction_cost_numeraire="
+          << step.cajtucu_total_transaction_cost_numeraire << "\n";
       out << step_prefix
           << "target_weight_error_l1=" << step.target_weight_error_l1 << "\n";
       out << step_prefix
           << "target_weight_error_linf=" << step.target_weight_error_linf
           << "\n";
-      out << step_prefix << "post_execution_risky_weight_sum="
-          << step.post_execution_risky_weight_sum << "\n";
-      out << step_prefix << "post_execution_base_reserve_weight="
-          << step.post_execution_base_reserve_weight << "\n";
+      out << step_prefix << "post_execution_target_weight_sum="
+          << step.post_execution_target_weight_sum << "\n";
+      out << step_prefix << "post_execution_numeraire_weight="
+          << step.post_execution_numeraire_weight << "\n";
       out << step_prefix
-          << "reserve_shortfall_count=" << step.reserve_shortfall_count << "\n";
+          << "numeraire_shortfall_count=" << step.numeraire_shortfall_count
+          << "\n";
       out << step_prefix << "ledger_before_equity=" << step.ledger_before_equity
           << "\n";
       out << step_prefix << "ledger_after_execution_equity="
@@ -1385,11 +1410,9 @@ inline void write_replay_experiment_report(
       out << step_prefix << "ledger_equity_reconciliation_error="
           << step.ledger_equity_reconciliation_error << "\n";
       out << step_prefix
-          << "base_reserve_units_before=" << step.base_reserve_units_before
-          << "\n";
+          << "numeraire_units_before=" << step.numeraire_units_before << "\n";
       out << step_prefix
-          << "base_reserve_units_after=" << step.base_reserve_units_after
-          << "\n";
+          << "numeraire_units_after=" << step.numeraire_units_after << "\n";
       out << step_prefix << "unit_nonnegativity_violation_count="
           << step.unit_nonnegativity_violation_count << "\n";
       out << step_prefix << "reward_log_growth=" << step.reward_log_growth

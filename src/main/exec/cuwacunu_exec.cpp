@@ -11,9 +11,11 @@
 
 #include "hero/runtime_hero/runtime/job_runner.h"
 #include "kikijyeba/environment/runtime/experiment_driver.h"
+#include "kikijyeba/protocol/config_bundle.h"
 #include "ujcamei/source/registry/types/data.h"
 
 namespace env = cuwacunu::kikijyeba::environment;
+namespace protocol = cuwacunu::kikijyeba::protocol;
 namespace runtime = cuwacunu::hero::runtime;
 namespace types = cuwacunu::ujcamei::source::registry::types;
 
@@ -35,13 +37,12 @@ void print_usage(const char *argv0) {
             << "       [--input-representation-checkpoint PATH]\n"
             << "       [--input-mdn-checkpoint PATH]\n"
             << "       [--no-replay-artifacts]\n"
-            << "       [--replay-base-reserve-node NODE]\n"
-            << "       [--replay-risky-nodes CSV]\n"
+            << "       [--replay-accounting-numeraire-node NODE]\n"
+            << "       [--replay-target-nodes CSV]\n"
             << "       [--replay-experiment-id ID]\n"
             << "       [--replay-report-path PATH]\n"
-            << "       [--replay-initial-equity-base VALUE]\n"
-            << "       [--replay-min-base-reserve-weight VALUE]\n"
-            << "       [--replay-max-risky-weight VALUE]\n"
+            << "       [--replay-initial-equity-numeraire VALUE]\n"
+            << "       [--replay-max-node-weight VALUE]\n"
             << "       [--replay-max-turnover-l1 VALUE]\n"
             << "       [--replay-max-steps N]\n"
             << "       [--replay-max-parallel-jobs N]\n"
@@ -51,9 +52,13 @@ void print_usage(const char *argv0) {
             << "       [--replay-allow-synthetic-direct-edges]\n"
             << "       [--replay-include-equal-weight]\n"
             << "       [--replay-include-current-weight]\n"
-            << "       [--replay-no-base-reserve-policy]\n"
+            << "       [--replay-no-numeraire-only-policy]\n"
             << "       [--replay-no-sdu-policy]\n"
             << "default config: " << kDefaultConfigPath << "\n"
+            << "default accounting numeraire: "
+               "[ACCOUNTING].accounting_numeraire_node_id from .config "
+               "(override with --replay-accounting-numeraire-node for "
+               "debugging/recovery).\n"
             << "warning: direct non-dry-run or replay launches are for "
                "debugging/recovery. They do not prove Marshal validated "
                "Lattice advice, Runtime policy, active wave/replay bounds, "
@@ -131,8 +136,8 @@ void print_replay_result(
             << "\n";
   std::cout << "replay_mean_total_log_growth="
             << result.report.mean_total_log_growth() << "\n";
-  std::cout << "replay_mean_final_equity_base="
-            << result.report.mean_final_equity_base() << "\n";
+  std::cout << "replay_mean_final_equity_numeraire="
+            << result.report.mean_final_equity_numeraire() << "\n";
   if (!result.report_path.empty()) {
     std::cout << "replay_report_path=" << result.report_path.string() << "\n";
   }
@@ -210,27 +215,24 @@ int main(int argc, char **argv) {
             require_next_arg(argc, argv, &i, arg);
       } else if (arg == "--no-replay-artifacts") {
         options.write_replay_artifacts = false;
-      } else if (arg == "--replay-base-reserve-node") {
-        options.replay_base_reserve_node_id =
+      } else if (arg == "--replay-accounting-numeraire-node") {
+        options.replay_accounting_numeraire_node_id =
             require_next_arg(argc, argv, &i, arg);
-        replay_options.base_reserve_node_id =
-            options.replay_base_reserve_node_id;
-      } else if (arg == "--replay-risky-nodes") {
-        options.replay_risky_node_ids =
+        replay_options.accounting_numeraire_node_id =
+            options.replay_accounting_numeraire_node_id;
+      } else if (arg == "--replay-target-nodes") {
+        options.replay_target_node_ids =
             parse_csv_arg(require_next_arg(argc, argv, &i, arg));
-        replay_options.risky_node_ids = options.replay_risky_node_ids;
+        replay_options.target_node_ids = options.replay_target_node_ids;
       } else if (arg == "--replay-experiment-id") {
         replay_options.experiment_id = require_next_arg(argc, argv, &i, arg);
       } else if (arg == "--replay-report-path") {
         replay_options.report_path = require_next_arg(argc, argv, &i, arg);
-      } else if (arg == "--replay-initial-equity-base") {
-        replay_options.initial_equity_base =
+      } else if (arg == "--replay-initial-equity-numeraire") {
+        replay_options.initial_equity_numeraire =
             parse_double_arg(require_next_arg(argc, argv, &i, arg), arg);
-      } else if (arg == "--replay-min-base-reserve-weight") {
-        replay_options.min_base_reserve_weight =
-            parse_double_arg(require_next_arg(argc, argv, &i, arg), arg);
-      } else if (arg == "--replay-max-risky-weight") {
-        replay_options.max_risky_weight =
+      } else if (arg == "--replay-max-node-weight") {
+        replay_options.max_node_weight =
             parse_double_arg(require_next_arg(argc, argv, &i, arg), arg);
       } else if (arg == "--replay-max-turnover-l1") {
         replay_options.max_turnover_l1 =
@@ -257,8 +259,8 @@ int main(int argc, char **argv) {
         replay_options.include_equal_weight_policy = true;
       } else if (arg == "--replay-include-current-weight") {
         replay_options.include_current_weight_policy = true;
-      } else if (arg == "--replay-no-base-reserve-policy") {
-        replay_options.include_base_reserve_policy = false;
+      } else if (arg == "--replay-no-numeraire-only-policy") {
+        replay_options.include_numeraire_only_policy = false;
       } else if (arg == "--replay-no-sdu-policy") {
         replay_options.include_spot_distributional_utility_policy = false;
       } else {
@@ -267,6 +269,11 @@ int main(int argc, char **argv) {
     }
 
     if (replay_job_dir_mode) {
+      replay_options.accounting_numeraire_node_id =
+          protocol::resolve_accounting_numeraire_node_id(
+              replay_options.accounting_numeraire_node_id, config_path);
+      options.replay_accounting_numeraire_node_id =
+          replay_options.accounting_numeraire_node_id;
       if (!options.job_dir.empty()) {
         throw std::runtime_error(
             "[cuwacunu_exec] --job-dir writes a new Runtime job and cannot be "

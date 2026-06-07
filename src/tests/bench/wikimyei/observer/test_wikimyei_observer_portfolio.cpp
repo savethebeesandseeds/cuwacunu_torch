@@ -9,7 +9,7 @@
 #include "wikimyei/policy/portfolio/spot_distributional_utility/assembly.h"
 #include "wikimyei/policy/portfolio/spot_distributional_utility/decision_step.h"
 #include "wikimyei/policy/portfolio/spot_distributional_utility/solver.h"
-#include "wikimyei/policy/portfolio/spot_distributional_utility/utility/base_reserve_fallback.h"
+#include "wikimyei/policy/portfolio/spot_distributional_utility/utility/allocation_numeraire_fallback.h"
 #include "wikimyei/policy/portfolio/spot_distributional_utility/utility/belief_reporter.h"
 #include "wikimyei/policy/portfolio/spot_distributional_utility/utility/cvar_baseline.h"
 #include "wikimyei/policy/portfolio/spot_distributional_utility/utility/mean_variance_baseline.h"
@@ -363,7 +363,7 @@ void test_nodelift_projection_and_coupler() {
       surface, /*anchor_slot=*/0, std::vector<int64_t>{0, 1},
       /*projection_reference_graph_index=*/2, corr, options);
   check(projected.potential_samples.sizes() == torch::IntArrayRef({64, 3}),
-        "projection samples risky plus reference");
+        "projection samples target nodes plus reference context");
   check(projected.arithmetic_return_scenarios.sizes() ==
             torch::IntArrayRef({64, 2}),
         "projected return scenarios shape");
@@ -387,21 +387,22 @@ void test_allocation_belief_builder() {
   options.timestamp_ms = 2000;
   options.graph_order_fingerprint = "fixture_graph";
   options.graph_node_ids = {"BTC", "ETH", "USDT"};
-  options.node_ids = {"BTC", "ETH"};
-  options.node_graph_indices = {0, 1};
+  options.node_ids = {"BTC", "ETH", "USDT"};
+  options.node_graph_indices = {0, 1, 2};
   options.base_policy = {.accounting_numeraire_id = "USDT",
                          .settlement_asset_id = "USDT",
-                         .reserve_asset_id = "USDT",
                          .projection_reference_node_id = "USDT"};
   options.channel_mask = mask;
   options.empirical_potential_correlation =
       torch::tensor({{1.0, 0.20, 0.10}, {0.20, 1.0, 0.15}, {0.10, 0.15, 1.0}},
                     torch::TensorOptions().dtype(torch::kFloat64));
-  options.tradable_mask = torch::ones({2}, torch::kBool);
-  options.realized_variance = torch::tensor({0.02, 0.03}, torch::kFloat64);
-  options.linear_cost = torch::full({2}, 0.001, torch::kFloat64);
-  options.quadratic_impact = torch::zeros({2}, torch::kFloat64);
-  options.capacity_weight_limit = torch::full({2}, 0.40, torch::kFloat64);
+  options.tradable_mask = torch::ones({3}, torch::kBool);
+  options.realized_variance =
+      torch::tensor({0.02, 0.03, 0.0}, torch::kFloat64);
+  options.linear_cost = torch::full({3}, 0.001, torch::kFloat64);
+  options.quadratic_impact = torch::zeros({3}, torch::kFloat64);
+  options.capacity_weight_limit =
+      torch::tensor({0.40, 0.40, 1.0}, torch::kFloat64);
   options.projection_options.coupling_options.sample_count = 64;
   options.projection_options.coupling_options.quantile_bisection_steps = 24;
 
@@ -429,36 +430,37 @@ void test_allocation_belief_builder() {
             options.graph_node_ids,
         "builder graph node axis binds node ids");
   check(built.allocation_belief.scenarios.sizes() ==
-            torch::IntArrayRef({64, 2}),
+            torch::IntArrayRef({64, 3}),
         "builder scenario shape");
   check(built.scenario_bank.base_scenarios.sizes() ==
-            torch::IntArrayRef({64, 2}),
+            torch::IntArrayRef({64, 3}),
         "builder scenario bank base shape");
   check(built.scenario_bank.high_correlation_scenarios.sizes() ==
-            torch::IntArrayRef({64, 2}),
+            torch::IntArrayRef({64, 3}),
         "builder scenario bank high-correlation shape");
   check(built.scenario_bank.volatility_inflated_scenarios.sizes() ==
-            torch::IntArrayRef({64, 2}),
+            torch::IntArrayRef({64, 3}),
         "builder scenario bank volatility shape");
   check(built.scenario_bank.left_tail_shifted_scenarios.sizes() ==
-            torch::IntArrayRef({64, 2}),
+            torch::IntArrayRef({64, 3}),
         "builder scenario bank left-tail shape");
   check(built.scenario_bank.tail_thickened_scenarios.sizes() ==
-            torch::IntArrayRef({64, 2}),
+            torch::IntArrayRef({64, 3}),
         "builder scenario bank tail-thickened shape");
-  check(built.allocation_belief.confidence.sizes() == torch::IntArrayRef({2}),
+  check(built.allocation_belief.confidence.sizes() == torch::IntArrayRef({3}),
         "builder confidence shape");
   check((built.allocation_belief.confidence >= 0.0).all().item<bool>() &&
             (built.allocation_belief.confidence <= 1.0).all().item<bool>(),
         "builder confidence bounded");
-  check((built.allocation_belief.capacity_weight_limit <= 0.40 + 1e-12)
+  check((built.allocation_belief.capacity_weight_limit.index(
+             {torch::indexing::Slice(0, 2)}) <= 0.40 + 1e-12)
             .all()
             .item<bool>(),
-        "builder capacity override applied");
+        "builder target-node capacity override applied");
   check(built.allocation_belief.adverse_excursion_prob.sizes() ==
-            torch::IntArrayRef({2}),
+            torch::IntArrayRef({3}),
         "builder adverse excursion shape");
-  check(built.allocation_belief.var_down.sizes() == torch::IntArrayRef({2}),
+  check(built.allocation_belief.var_down.sizes() == torch::IntArrayRef({3}),
         "builder tail risk shape");
   close(built.allocation_belief.linear_cost.index({0}).item<double>(), 0.001,
         1e-12, "builder linear cost");
@@ -491,16 +493,16 @@ void test_allocation_belief_builder() {
             collated.anchor_keys[1] == "batch_anchor_1",
         "belief batch collate preserves anchor order");
   check(collated.expected_arithmetic_return.sizes() ==
-            torch::IntArrayRef({2, 2}),
+            torch::IntArrayRef({2, 3}),
         "belief batch collate expected return shape");
-  check(collated.scenarios.sizes() == torch::IntArrayRef({2, 32, 2}),
+  check(collated.scenarios.sizes() == torch::IntArrayRef({2, 32, 3}),
         "belief batch collate scenario shape");
-  check(collated.covariance.sizes() == torch::IntArrayRef({2, 2, 2}),
+  check(collated.covariance.sizes() == torch::IntArrayRef({2, 3, 3}),
         "belief batch collate covariance shape");
-  check(collated.confidence.sizes() == torch::IntArrayRef({2, 2}),
+  check(collated.confidence.sizes() == torch::IntArrayRef({2, 3}),
         "belief batch collate confidence shape");
   check(collated.node_ids == options.node_ids,
-        "belief batch collate preserves risky universe");
+        "belief batch collate preserves target-node universe");
   check(collated.base_policy.projection_reference_node_id == "USDT",
         "belief batch collate preserves projection reference node");
 
@@ -523,26 +525,26 @@ belief::AllocationBelief make_allocation_belief() {
   options.timestamp_ms = 1000;
   options.graph_order_fingerprint = "fixture_graph";
   options.graph_node_ids = {"BTC", "ETH", "USDT"};
-  options.node_ids = {"BTC", "ETH"};
-  options.node_graph_indices = {0, 1};
+  options.node_ids = {"BTC", "ETH", "USDT"};
+  options.node_graph_indices = {0, 1, 2};
   options.base_policy = {.accounting_numeraire_id = "USDT",
                          .settlement_asset_id = "USDT",
-                         .reserve_asset_id = "USDT",
                          .projection_reference_node_id = "USDT"};
   options.channel_mask = torch::ones({1, 3, 3}, torch::kBool);
   options.empirical_potential_correlation =
       torch::tensor({{1.0, 0.25, 0.10}, {0.25, 1.0, 0.15}, {0.10, 0.15, 1.0}},
                     torch::TensorOptions().dtype(torch::kFloat64));
-  options.tradable_mask = torch::ones({2}, torch::kBool);
-  options.linear_cost = torch::full({2}, 0.001, torch::kFloat64);
-  options.quadratic_impact = torch::zeros({2}, torch::kFloat64);
-  options.capacity_weight_limit = torch::full({2}, 0.50, torch::kFloat64);
+  options.tradable_mask = torch::ones({3}, torch::kBool);
+  options.linear_cost = torch::full({3}, 0.001, torch::kFloat64);
+  options.quadratic_impact = torch::zeros({3}, torch::kFloat64);
+  options.capacity_weight_limit =
+      torch::tensor({0.50, 0.50, 1.0}, torch::kFloat64);
   options.projection_options.coupling_options.sample_count = 64;
   options.projection_options.coupling_options.quantile_bisection_steps = 24;
   auto built = belief::build_single_anchor_allocation_belief(make_fixture_mdn(),
                                                              options);
   built.allocation_belief.confidence =
-      torch::tensor({0.80, 0.70}, torch::kFloat64);
+      torch::tensor({0.80, 0.70, 1.0}, torch::kFloat64);
   return built.allocation_belief;
 }
 
@@ -556,8 +558,8 @@ make_spot_edge_market_state() {
   market.edge_fee_rate = torch::full({2}, 0.001, torch::kFloat64);
   market.edge_spread_rate = torch::full({2}, 0.002, torch::kFloat64);
   market.edge_slippage_rate = torch::full({2}, 0.0005, torch::kFloat64);
-  market.min_notional_base = torch::full({2}, 10.0, torch::kFloat64);
-  market.max_notional_base = torch::full({2}, 10000.0, torch::kFloat64);
+  market.min_notional_numeraire = torch::full({2}, 10.0, torch::kFloat64);
+  market.max_notional_numeraire = torch::full({2}, 10000.0, torch::kFloat64);
   market.edge_tradable_mask = torch::ones({2}, torch::kBool);
   return market;
 }
@@ -575,20 +577,20 @@ persisted_fixture_t make_persisted_fixture() {
   options.timestamp_ms = 1000;
   options.graph_order_fingerprint = "fixture_graph";
   options.graph_node_ids = {"BTC", "ETH", "USDT"};
-  options.node_ids = {"BTC", "ETH"};
-  options.node_graph_indices = {0, 1};
+  options.node_ids = {"BTC", "ETH", "USDT"};
+  options.node_graph_indices = {0, 1, 2};
   options.base_policy = {.accounting_numeraire_id = "USDT",
                          .settlement_asset_id = "USDT",
-                         .reserve_asset_id = "USDT",
                          .projection_reference_node_id = "USDT"};
   options.channel_mask = torch::ones({1, 3, 3}, torch::kBool);
   options.empirical_potential_correlation =
       torch::tensor({{1.0, 0.25, 0.10}, {0.25, 1.0, 0.15}, {0.10, 0.15, 1.0}},
                     torch::TensorOptions().dtype(torch::kFloat64));
-  options.tradable_mask = torch::ones({2}, torch::kBool);
-  options.linear_cost = torch::full({2}, 0.001, torch::kFloat64);
-  options.quadratic_impact = torch::zeros({2}, torch::kFloat64);
-  options.capacity_weight_limit = torch::full({2}, 0.50, torch::kFloat64);
+  options.tradable_mask = torch::ones({3}, torch::kBool);
+  options.linear_cost = torch::full({3}, 0.001, torch::kFloat64);
+  options.quadratic_impact = torch::zeros({3}, torch::kFloat64);
+  options.capacity_weight_limit =
+      torch::tensor({0.50, 0.50, 1.0}, torch::kFloat64);
   options.projection_options.coupling_options.sample_count = 64;
   options.projection_options.coupling_options.quantile_bisection_steps = 24;
   auto built = belief::build_single_anchor_allocation_belief(make_fixture_mdn(),
@@ -646,12 +648,12 @@ void test_forecast_persistence_surprise_and_calibration() {
         "forecast artifact tail-thickened scenarios round-trip");
 
   auto realized_near = torch::tensor(
-      {0.02, 0.04}, torch::TensorOptions().dtype(torch::kFloat64));
+      {0.02, 0.04, 0.0}, torch::TensorOptions().dtype(torch::kFloat64));
   auto realized_far = torch::tensor(
-      {1.50, 1.50}, torch::TensorOptions().dtype(torch::kFloat64));
+      {1.50, 1.50, 0.0}, torch::TensorOptions().dtype(torch::kFloat64));
   auto near_surprise = observer::compute_from_artifact(loaded, realized_near);
   auto far_surprise = observer::compute_from_artifact(loaded, realized_far);
-  check(near_surprise.surprise.sizes() == torch::IntArrayRef({2}),
+  check(near_surprise.surprise.sizes() == torch::IntArrayRef({3}),
         "surprise shape");
   check((near_surprise.valid_mask).all().item<bool>(), "surprise valid mask");
   check(far_surprise.surprise.mean().item<double>() >
@@ -663,13 +665,13 @@ void test_forecast_persistence_surprise_and_calibration() {
 
   std::vector<observer::calibration_observation_t> observations;
   observations.push_back(observer::observe_from_artifact(
-      loaded, torch::tensor({0.02, 0.04}, torch::kFloat64)));
+      loaded, torch::tensor({0.02, 0.04, 0.0}, torch::kFloat64)));
   observations.push_back(observer::observe_from_artifact(
-      loaded, torch::tensor({0.01, 0.03}, torch::kFloat64)));
+      loaded, torch::tensor({0.01, 0.03, 0.0}, torch::kFloat64)));
   observations.push_back(observer::observe_from_artifact(
-      loaded, torch::tensor({-0.01, 0.02}, torch::kFloat64)));
+      loaded, torch::tensor({-0.01, 0.02, 0.0}, torch::kFloat64)));
   auto summary = observer::summarize_observations(observations);
-  check(summary.observation_count.sizes() == torch::IntArrayRef({2}),
+  check(summary.observation_count.sizes() == torch::IntArrayRef({3}),
         "calibration observation count shape");
   close(summary.observation_count.min().item<double>(), 3.0, 1e-12,
         "calibration all observations counted");
@@ -731,59 +733,62 @@ void test_belief_contract_and_portfolio_engine() {
 
   portfolio::PortfolioState portfolio_state{};
   portfolio_state.timestamp_ms = 1000;
-  portfolio_state.accounting_node_id = "USDT";
-  portfolio_state.reserve_node_id = "USDT";
+  portfolio_state.accounting_numeraire_node_id = "USDT";
+  portfolio_state.node_ids = state.node_ids;
   portfolio_state.current_weights = torch::tensor(
-      {0.10, 0.10}, torch::TensorOptions().dtype(torch::kFloat64));
-  portfolio_state.current_units = torch::ones({2}, torch::kFloat64);
-  portfolio_state.base_reserve_weight = 0.80;
-  portfolio::validate_portfolio_state(portfolio_state, 2);
+      {0.10, 0.10, 0.80}, torch::TensorOptions().dtype(torch::kFloat64));
+  portfolio_state.current_units =
+      torch::tensor({1.0, 1.0, 800.0}, torch::kFloat64);
+  portfolio_state.equity_value_numeraire = 1000.0;
+  portfolio::validate_portfolio_state(portfolio_state, 3);
 
   auto invalid_portfolio_state = portfolio_state;
   invalid_portfolio_state.current_weights = torch::tensor(
-      {0.30, 0.30}, torch::TensorOptions().dtype(torch::kFloat64));
+      {0.30, 0.30, 0.30}, torch::TensorOptions().dtype(torch::kFloat64));
   bool rejected_bad_portfolio_state = false;
   try {
-    portfolio::validate_portfolio_state(invalid_portfolio_state, 2);
+    portfolio::validate_portfolio_state(invalid_portfolio_state, 3);
   } catch (const std::exception &) {
     rejected_bad_portfolio_state = true;
   }
   check(rejected_bad_portfolio_state,
-        "portfolio state rejects weights plus base reserve above one");
+        "portfolio state rejects target weights that do not sum to one");
 
   portfolio::MarketState market{};
   market.timestamp_ms = 1000;
-  market.tradable_mask = torch::ones({2}, torch::kBool);
-  market.executable_mid = torch::tensor({100.0, 50.0}, torch::kFloat64);
-  market.fee_rate = torch::full({2}, 0.001, torch::kFloat64);
-  portfolio::validate_market_state(market, 2);
+  market.tradable_mask = torch::ones({3}, torch::kBool);
+  market.executable_mid = torch::tensor({100.0, 50.0, 1.0}, torch::kFloat64);
+  market.fee_rate = torch::full({3}, 0.001, torch::kFloat64);
+  portfolio::validate_market_state(market, 3);
 
   auto invalid_market = market;
-  invalid_market.fee_rate = torch::tensor({0.001, -0.001}, torch::kFloat64);
+  invalid_market.fee_rate =
+      torch::tensor({0.001, -0.001, 0.001}, torch::kFloat64);
   bool rejected_bad_market = false;
   try {
-    portfolio::validate_market_state(invalid_market, 2);
+    portfolio::validate_market_state(invalid_market, 3);
   } catch (const std::exception &) {
     rejected_bad_market = true;
   }
   check(rejected_bad_market, "market state rejects negative fee");
 
   portfolio::PortfolioConstraints constraints{};
-  constraints.min_base_reserve_weight = 0.20;
-  constraints.max_weight = torch::full({2}, 0.60, torch::kFloat64);
+  constraints.max_weight =
+      torch::tensor({0.60, 0.60, 1.0}, torch::kFloat64);
+  constraints.min_weight = torch::zeros({3}, torch::kFloat64);
   constraints.max_turnover_l1 = 0.50;
   constraints.lambda_cvar = 0.5;
   constraints.lambda_concentration = 0.01;
   constraints.lambda_uncertainty = 0.01;
   constraints.lambda_turnover = 0.001;
-  portfolio::validate_portfolio_constraints(constraints, 2);
+  portfolio::validate_portfolio_constraints(constraints, 3);
 
   auto invalid_constraints = constraints;
   invalid_constraints.min_weight = torch::tensor(
-      {0.50, 0.40}, torch::TensorOptions().dtype(torch::kFloat64));
+      {0.50, 0.40, 0.20}, torch::TensorOptions().dtype(torch::kFloat64));
   bool rejected_bad_constraints = false;
   try {
-    portfolio::validate_portfolio_constraints(invalid_constraints, 2);
+    portfolio::validate_portfolio_constraints(invalid_constraints, 3);
   } catch (const std::exception &) {
     rejected_bad_constraints = true;
   }
@@ -796,17 +801,14 @@ void test_belief_contract_and_portfolio_engine() {
   auto target = portfolio::spot_distributional_utility::solve(
       state, portfolio_state, market, constraints, solver_options);
   check(target.valid, "target portfolio valid");
-  portfolio::validate_target_portfolio(target, 2,
+  portfolio::validate_target_portfolio(target, 3,
                                        portfolio_state.current_weights);
-  check(target.target_weights.sizes() == torch::IntArrayRef({2}),
+  check(target.target_weights.sizes() == torch::IntArrayRef({3}),
         "target weights shape");
   check(target.target_weights.min().item<double>() >= -1e-10,
         "long-only target weights");
-  check(target.target_weights.sum().item<double>() <= 0.80 + 1e-8,
-        "base-reserve budget respected");
-  close(target.target_base_reserve_weight,
-        1.0 - target.target_weights.sum().item<double>(), 1e-10,
-        "base reserve is implicit");
+  close(target.target_weights.sum().item<double>(), 1.0, 1e-8,
+        "target weights use full graph-node budget");
 }
 
 void test_method_support_allocators() {
@@ -814,20 +816,22 @@ void test_method_support_allocators() {
 
   portfolio::PortfolioState portfolio_state{};
   portfolio_state.timestamp_ms = 1000;
-  portfolio_state.accounting_node_id = "USDT";
-  portfolio_state.reserve_node_id = "USDT";
+  portfolio_state.accounting_numeraire_node_id = "USDT";
+  portfolio_state.node_ids = state.node_ids;
   portfolio_state.current_weights = torch::tensor(
-      {0.05, 0.05}, torch::TensorOptions().dtype(torch::kFloat64));
-  portfolio_state.current_units = torch::ones({2}, torch::kFloat64);
-  portfolio_state.base_reserve_weight = 0.90;
+      {0.05, 0.05, 0.90}, torch::TensorOptions().dtype(torch::kFloat64));
+  portfolio_state.current_units =
+      torch::tensor({1.0, 1.0, 900.0}, torch::kFloat64);
+  portfolio_state.equity_value_numeraire = 1000.0;
 
   portfolio::MarketState market{};
   market.timestamp_ms = 1000;
-  market.tradable_mask = torch::ones({2}, torch::kBool);
+  market.tradable_mask = torch::ones({3}, torch::kBool);
 
   portfolio::PortfolioConstraints constraints{};
-  constraints.min_base_reserve_weight = 0.25;
-  constraints.max_weight = torch::full({2}, 0.40, torch::kFloat64);
+  constraints.max_weight =
+      torch::tensor({0.40, 0.40, 1.0}, torch::kFloat64);
+  constraints.min_weight = torch::zeros({3}, torch::kFloat64);
   constraints.max_turnover_l1 = 0.60;
   constraints.cvar_alpha = 0.90;
   constraints.lambda_cvar = 0.5;
@@ -841,11 +845,11 @@ void test_method_support_allocators() {
   auto mv = baseline::mean_variance::solve(state, portfolio_state, market,
                                            constraints, mv_options);
   check(mv.valid, "mean variance baseline valid");
-  portfolio::validate_target_portfolio(mv, 2, portfolio_state.current_weights);
-  check(mv.target_weights.sizes() == torch::IntArrayRef({2}),
+  portfolio::validate_target_portfolio(mv, 3, portfolio_state.current_weights);
+  check(mv.target_weights.sizes() == torch::IntArrayRef({3}),
         "mean variance target shape");
-  check(mv.target_weights.sum().item<double>() <= 0.75 + 1e-8,
-        "mean variance base-reserve budget");
+  close(mv.target_weights.sum().item<double>(), 1.0, 1e-8,
+        "mean variance target uses full graph-node budget");
 
   baseline::cvar::solver_options_t cvar_options{};
   cvar_options.iterations = 25;
@@ -853,21 +857,21 @@ void test_method_support_allocators() {
   auto cvar = baseline::cvar::solve(state, portfolio_state, market, constraints,
                                     cvar_options);
   check(cvar.valid, "CVaR allocator valid");
-  portfolio::validate_target_portfolio(cvar, 2,
+  portfolio::validate_target_portfolio(cvar, 3,
                                        portfolio_state.current_weights);
   check(cvar.cvar_loss >= 0.0, "CVaR allocator reports loss");
-  check(cvar.target_weights.sum().item<double>() <= 0.75 + 1e-8,
-        "CVaR allocator base-reserve budget");
+  close(cvar.target_weights.sum().item<double>(), 1.0, 1e-8,
+        "CVaR allocator target uses full graph-node budget");
 
   auto parity =
       fallback::risk_parity::solve(state, portfolio_state, market, constraints);
   check(parity.valid, "risk parity fallback valid");
-  portfolio::validate_target_portfolio(parity, 2,
+  portfolio::validate_target_portfolio(parity, 3,
                                        portfolio_state.current_weights);
   check(parity.target_weights.min().item<double>() >= -1e-10,
         "risk parity long only");
-  check(parity.target_weights.sum().item<double>() <= 0.75 + 1e-8,
-        "risk parity base-reserve budget");
+  close(parity.target_weights.sum().item<double>(), 1.0, 1e-8,
+        "risk parity target uses full graph-node budget");
 }
 
 void test_risk_gate() {
@@ -875,13 +879,13 @@ void test_risk_gate() {
 
   portfolio::PortfolioState portfolio_state{};
   portfolio_state.timestamp_ms = 1000;
-  portfolio_state.accounting_node_id = "USDT";
-  portfolio_state.reserve_node_id = "USDT";
+  portfolio_state.accounting_numeraire_node_id = "USDT";
+  portfolio_state.node_ids = state.node_ids;
   portfolio_state.current_weights = torch::tensor(
-      {0.10, 0.10}, torch::TensorOptions().dtype(torch::kFloat64));
-  portfolio_state.current_units = torch::ones({2}, torch::kFloat64);
-  portfolio_state.base_reserve_weight = 0.80;
-  portfolio_state.equity_value_base = 1000.0;
+      {0.10, 0.10, 0.80}, torch::TensorOptions().dtype(torch::kFloat64));
+  portfolio_state.current_units =
+      torch::tensor({1.0, 1.0, 800.0}, torch::kFloat64);
+  portfolio_state.equity_value_numeraire = 1000.0;
 
   risk::risk_gate::risk_gate_thresholds_t thresholds{};
   thresholds.min_mean_confidence = 0.10;
@@ -890,26 +894,26 @@ void test_risk_gate() {
   thresholds.max_mean_abs_correlation = 0.99;
   auto gate = risk::risk_gate::evaluate(state, portfolio_state, thresholds);
   check(gate.allow_trading, "risk gate allows healthy state");
-  check(!gate.force_base_reserve_fallback,
-        "risk gate healthy state no base reserve fallback");
+  check(!gate.force_numeraire_fallback,
+        "risk gate healthy state no numeraire fallback");
 
   auto low_confidence = state;
-  low_confidence.confidence = torch::zeros({2}, torch::kFloat64);
+  low_confidence.confidence = torch::zeros({3}, torch::kFloat64);
   auto blocked =
       risk::risk_gate::evaluate(low_confidence, portfolio_state, thresholds);
   check(!blocked.allow_trading, "risk gate blocks low confidence");
-  check(blocked.force_base_reserve_fallback,
-        "risk gate low confidence base reserve fallback");
+  check(blocked.force_numeraire_fallback,
+        "risk gate low confidence numeraire fallback");
   check(!blocked.reasons.empty(), "risk gate reports reason");
 
   portfolio::PortfolioConstraints constraints{};
   constraints.max_turnover_l1 = 0.10;
   auto guarded = risk::risk_gate::enforce(low_confidence, portfolio_state,
                                           constraints, thresholds);
-  check(guarded.valid, "risk gate base reserve fallback target valid");
-  check(guarded.target_weights.sum().item<double>() <
-            portfolio_state.current_weights.sum().item<double>(),
-        "risk gate de-risks toward base reserve");
+  check(guarded.valid, "risk gate numeraire fallback target valid");
+  check(guarded.target_weights.index({2}).item<double>() >
+            portfolio_state.current_weights.index({2}).item<double>(),
+        "risk gate de-risks toward the accounting numeraire node");
 }
 
 void test_spot_distributional_utility_decision_wrapper() {
@@ -917,21 +921,22 @@ void test_spot_distributional_utility_decision_wrapper() {
 
   portfolio::PortfolioState portfolio_state{};
   portfolio_state.timestamp_ms = 1000;
-  portfolio_state.accounting_node_id = "USDT";
-  portfolio_state.reserve_node_id = "USDT";
+  portfolio_state.accounting_numeraire_node_id = "USDT";
+  portfolio_state.node_ids = state.node_ids;
   portfolio_state.current_weights = torch::tensor(
-      {0.10, 0.10}, torch::TensorOptions().dtype(torch::kFloat64));
-  portfolio_state.current_units = torch::ones({2}, torch::kFloat64);
-  portfolio_state.base_reserve_weight = 0.80;
-  portfolio_state.equity_value_base = 1000.0;
+      {0.10, 0.10, 0.80}, torch::TensorOptions().dtype(torch::kFloat64));
+  portfolio_state.current_units =
+      torch::tensor({1.0, 1.0, 800.0}, torch::kFloat64);
+  portfolio_state.equity_value_numeraire = 1000.0;
 
   portfolio::MarketState market{};
   market.timestamp_ms = 1000;
-  market.tradable_mask = torch::ones({2}, torch::kBool);
+  market.tradable_mask = torch::ones({3}, torch::kBool);
 
   portfolio::PortfolioConstraints constraints{};
-  constraints.min_base_reserve_weight = 0.20;
-  constraints.max_weight = torch::full({2}, 0.60, torch::kFloat64);
+  constraints.max_weight =
+      torch::tensor({0.60, 0.60, 1.0}, torch::kFloat64);
+  constraints.min_weight = torch::zeros({3}, torch::kFloat64);
   constraints.max_turnover_l1 = 0.50;
   constraints.lambda_cvar = 0.5;
   constraints.lambda_concentration = 0.01;
@@ -949,8 +954,8 @@ void test_spot_distributional_utility_decision_wrapper() {
   auto result = decision_step::run(state, portfolio_state, market, constraints,
                                    edge_market, options);
   check(result.risk_gate.allow_trading, "decision step allows healthy belief");
-  check(!result.risk_gate.force_base_reserve_fallback,
-        "decision step healthy belief no base reserve fallback");
+  check(!result.risk_gate.force_numeraire_fallback,
+        "decision step healthy belief no numeraire fallback");
   check(result.target.valid, "decision step target valid");
   check(result.rebalance_plan.valid, "decision step rebalance valid");
   check(result.valid, "decision step result valid");
@@ -960,48 +965,50 @@ void test_spot_distributional_utility_decision_wrapper() {
         "decision step report includes rebalance plan");
 
   auto blocked_state = state;
-  blocked_state.confidence = torch::zeros({2}, torch::kFloat64);
+  blocked_state.confidence = torch::zeros({3}, torch::kFloat64);
   constraints.max_turnover_l1 = 0.10;
   auto blocked = decision_step::run(blocked_state, portfolio_state, market,
                                     constraints, edge_market, options);
   check(!blocked.risk_gate.allow_trading,
         "decision step blocks low-confidence belief");
-  check(blocked.risk_gate.force_base_reserve_fallback,
-        "decision step low-confidence belief uses base reserve fallback");
+  check(blocked.risk_gate.force_numeraire_fallback,
+        "decision step low-confidence belief uses numeraire fallback");
   check(blocked.target.valid,
-        "decision step base reserve fallback target valid");
+        "decision step numeraire fallback target valid");
   check(blocked.rebalance_plan.valid,
-        "decision step base reserve fallback rebalance valid");
+        "decision step numeraire fallback rebalance valid");
   check(blocked.target.target_weights.sum().item<double>() <
-            portfolio_state.current_weights.sum().item<double>(),
-        "decision step base reserve fallback de-risks");
-  check(!blocked.rebalance_plan.orders.empty(),
-        "decision step base reserve fallback routes de-risking orders");
+            1.0 + 1.0e-8,
+        "decision step numeraire fallback preserves graph-node budget");
+  check(blocked.target.target_weights.index({2}).item<double>() >
+            portfolio_state.current_weights.index({2}).item<double>(),
+        "decision step numeraire fallback increases numeraire weight");
+  check(blocked.rebalance_plan.requested_turnover_weight > 0.0,
+        "decision step numeraire fallback records de-risking turnover");
   check(blocked.report.text.find("target_valid=true") != std::string::npos,
-        "decision step base reserve fallback report target valid");
+        "decision step numeraire fallback report target valid");
 }
 
 void test_spot_rebalance_router() {
+  auto state = make_allocation_belief();
   portfolio::PortfolioState portfolio_state{};
   portfolio_state.timestamp_ms = 1000;
-  portfolio_state.accounting_node_id = "USDT";
-  portfolio_state.reserve_node_id = "USDT";
+  portfolio_state.accounting_numeraire_node_id = "USDT";
+  portfolio_state.node_ids = state.node_ids;
   portfolio_state.current_weights = torch::tensor(
-      {0.10, 0.10}, torch::TensorOptions().dtype(torch::kFloat64));
-  portfolio_state.current_units = torch::ones({2}, torch::kFloat64);
-  portfolio_state.base_reserve_weight = 0.80;
-  portfolio_state.equity_value_base = 1000.0;
+      {0.10, 0.10, 0.80}, torch::TensorOptions().dtype(torch::kFloat64));
+  portfolio_state.current_units =
+      torch::tensor({1.0, 1.0, 800.0}, torch::kFloat64);
+  portfolio_state.equity_value_numeraire = 1000.0;
 
   portfolio::TargetPortfolio target{};
   target.timestamp_ms = 1000;
-  target.node_ids = {"BTC", "ETH"};
-  target.base_reserve_node_id = "USDT";
+  target.node_ids = state.node_ids;
   target.target_weights = torch::tensor(
-      {0.25, 0.05}, torch::TensorOptions().dtype(torch::kFloat64));
-  target.target_base_reserve_weight = 0.70;
+      {0.25, 0.05, 0.70}, torch::TensorOptions().dtype(torch::kFloat64));
   target.delta_weights = torch::tensor(
-      {0.15, -0.05}, torch::TensorOptions().dtype(torch::kFloat64));
-  target.turnover = 0.20;
+      {0.15, -0.05, -0.10}, torch::TensorOptions().dtype(torch::kFloat64));
+  target.turnover = 0.30;
   target.valid = true;
 
   execution::spot_rebalance_router::spot_edge_market_state_t market{};
@@ -1012,8 +1019,8 @@ void test_spot_rebalance_router() {
   market.edge_fee_rate = torch::full({2}, 0.001, torch::kFloat64);
   market.edge_spread_rate = torch::full({2}, 0.002, torch::kFloat64);
   market.edge_slippage_rate = torch::full({2}, 0.0005, torch::kFloat64);
-  market.min_notional_base = torch::full({2}, 10.0, torch::kFloat64);
-  market.max_notional_base = torch::full({2}, 10000.0, torch::kFloat64);
+  market.min_notional_numeraire = torch::full({2}, 10.0, torch::kFloat64);
+  market.max_notional_numeraire = torch::full({2}, 10000.0, torch::kFloat64);
   market.edge_tradable_mask = torch::ones({2}, torch::kBool);
   execution::spot_rebalance_router::validate_spot_edge_market_state(market);
 
@@ -1030,9 +1037,9 @@ void test_spot_rebalance_router() {
   check(rejected_bad_edge_fee, "spot edge market rejects negative fee");
 
   auto bad_edge_notional_market = market;
-  bad_edge_notional_market.min_notional_base =
+  bad_edge_notional_market.min_notional_numeraire =
       torch::full({2}, 100.0, torch::kFloat64);
-  bad_edge_notional_market.max_notional_base =
+  bad_edge_notional_market.max_notional_numeraire =
       torch::full({2}, 10.0, torch::kFloat64);
   bool rejected_bad_edge_notional = false;
   try {
@@ -1059,32 +1066,31 @@ void test_spot_rebalance_router() {
   auto plan = execution::spot_rebalance_router::plan_rebalance(
       target, portfolio_state, market);
   check(plan.valid, "spot rebalance plan valid");
-  check(plan.orders.size() == 2, "spot rebalance routes two orders");
-  check(plan.orders[0].edge_id == "BTCUSDT", "BTC routes through real edge");
-  check(plan.orders[0].side ==
-            execution::spot_rebalance_router::order_side_t::buy_edge_base,
-        "BTC increase buys edge base");
-  check(plan.orders[1].side ==
-            execution::spot_rebalance_router::order_side_t::sell_edge_base,
-        "ETH decrease sells edge base");
-  close(plan.requested_notional_base, 200.0, 1e-9,
+  check(plan.orders.empty(),
+        "spot rebalance summary delegates concrete routing to Cajtucu");
+  close(plan.requested_turnover_weight, 0.30, 1e-9,
+        "spot rebalance requested turnover");
+  close(plan.routed_turnover_weight, 0.30, 1e-9,
+        "spot rebalance routed turnover");
+  close(plan.requested_notional_numeraire, 300.0, 1e-9,
         "spot rebalance requested notional");
-  close(plan.routed_notional_base, 200.0, 1e-9,
+  close(plan.routed_notional_numeraire, 300.0, 1e-9,
         "spot rebalance routed notional");
-  check(plan.estimated_transaction_cost_base > 0.0,
-        "spot rebalance estimates costs");
+  check(plan.estimated_transaction_cost_numeraire == 0.0,
+        "spot rebalance summary leaves execution costs to Cajtucu");
 
-  auto bad_base_reserve_target = target;
-  bad_base_reserve_target.target_base_reserve_weight = 0.60;
-  bool rejected_bad_target_base_reserve = false;
+  auto bad_budget_target = target;
+  bad_budget_target.target_weights = torch::tensor(
+      {0.25, 0.05, 0.60}, torch::TensorOptions().dtype(torch::kFloat64));
+  bool rejected_bad_target_budget = false;
   try {
     (void)execution::spot_rebalance_router::plan_rebalance(
-        bad_base_reserve_target, portfolio_state, market);
+        bad_budget_target, portfolio_state, market);
   } catch (const std::exception &) {
-    rejected_bad_target_base_reserve = true;
+    rejected_bad_target_budget = true;
   }
-  check(rejected_bad_target_base_reserve,
-        "spot rebalance rejects target base reserve mismatch");
+  check(rejected_bad_target_budget,
+        "spot rebalance rejects target budget mismatch");
 
   auto bad_delta_target = target;
   bad_delta_target.delta_weights = torch::tensor(
@@ -1105,21 +1111,22 @@ void test_spot_rebalance_router() {
   market.edge_fee_rate = torch::full({1}, 0.001, torch::kFloat64);
   market.edge_spread_rate = torch::full({1}, 0.002, torch::kFloat64);
   market.edge_slippage_rate = torch::full({1}, 0.0005, torch::kFloat64);
-  market.min_notional_base = torch::full({1}, 10.0, torch::kFloat64);
-  market.max_notional_base = torch::full({1}, 10000.0, torch::kFloat64);
+  market.min_notional_numeraire = torch::full({1}, 10.0, torch::kFloat64);
+  market.max_notional_numeraire = torch::full({1}, 10000.0, torch::kFloat64);
   market.edge_tradable_mask = torch::ones({1}, torch::kBool);
-  auto missing = execution::spot_rebalance_router::plan_rebalance(
+  auto missing_edge_summary = execution::spot_rebalance_router::plan_rebalance(
       target, portfolio_state, market);
-  check(!missing.valid, "missing direct edge invalidates material route");
-  check(!missing.skipped.empty() &&
-            missing.skipped.back().reason == "no_direct_market_edge",
-        "missing direct edge is reported");
+  check(missing_edge_summary.valid,
+        "spot rebalance summary does not perform route-support validation");
+  check(missing_edge_summary.orders.empty(),
+        "spot rebalance summary remains order-free without direct edges");
 }
 
 void test_portfolio_ledger_and_belief_reporter() {
   auto ledger = accounting::portfolio_ledger::make_ledger(
-      /*timestamp_ms=*/1000, "USDT", std::vector<std::string>{"BTC", "ETH"},
-      /*base_reserve_units=*/1000.0);
+      /*timestamp_ms=*/1000, "USDT",
+      std::vector<std::string>{"BTC", "ETH", "USDT"},
+      torch::tensor({0.0, 0.0, 1000.0}, torch::kFloat64));
 
   accounting::portfolio_ledger::executed_fill_t buy{};
   buy.timestamp_ms = 1001;
@@ -1127,11 +1134,12 @@ void test_portfolio_ledger_and_belief_reporter() {
   buy.edge_id = "BTCUSDT";
   buy.side = accounting::portfolio_ledger::fill_side_t::buy_asset;
   buy.quantity_asset = 0.01;
-  buy.gross_notional_base = 100.0;
-  buy.fee_base = 1.0;
+  buy.gross_notional_numeraire = 100.0;
+  buy.fee_numeraire = 1.0;
   accounting::portfolio_ledger::apply_fill(ledger, buy);
-  close(ledger.base_reserve_units, 899.0, 1e-12, "ledger buy base reserve");
-  close(ledger.average_cost_base.index({0}).item<double>(), 10100.0, 1e-9,
+  close(ledger.units.index({2}).item<double>(), 899.0, 1e-12,
+        "ledger buy debits numeraire node");
+  close(ledger.average_cost_numeraire.index({0}).item<double>(), 10100.0, 1e-9,
         "ledger average cost includes buy fee");
 
   accounting::portfolio_ledger::executed_fill_t sell{};
@@ -1140,33 +1148,33 @@ void test_portfolio_ledger_and_belief_reporter() {
   sell.edge_id = "BTCUSDT";
   sell.side = accounting::portfolio_ledger::fill_side_t::sell_asset;
   sell.quantity_asset = 0.005;
-  sell.gross_notional_base = 60.0;
-  sell.fee_base = 0.5;
+  sell.gross_notional_numeraire = 60.0;
+  sell.fee_numeraire = 0.5;
   accounting::portfolio_ledger::apply_fill(ledger, sell);
-  close(ledger.base_reserve_units, 958.5, 1e-12, "ledger sell base reserve");
-  close(ledger.realized_pnl_base.index({0}).item<double>(), 9.0, 1e-9,
+  close(ledger.units.index({2}).item<double>(), 958.5, 1e-12,
+        "ledger sell credits numeraire node");
+  close(ledger.realized_pnl_numeraire.index({0}).item<double>(), 9.0, 1e-9,
         "ledger realized pnl");
-  close(ledger.cumulative_fees_base, 1.5, 1e-12, "ledger cumulative fees");
+  close(ledger.cumulative_fees_numeraire, 1.5, 1e-12, "ledger cumulative fees");
 
   auto marked = accounting::portfolio_ledger::mark_to_market(
-      ledger, torch::tensor({12000.0, 1000.0}, torch::kFloat64),
+      ledger, torch::tensor({12000.0, 1000.0, 1.0}, torch::kFloat64),
       /*timestamp_ms=*/1003);
-  close(marked.equity_value_base, 1018.5, 1e-9, "ledger marked equity");
+  close(marked.equity_value_numeraire, 1018.5, 1e-9, "ledger marked equity");
   close(marked.current_units.index({0}).item<double>(), 0.005, 1e-12,
         "ledger marked units");
   check(marked.current_weights.index({0}).item<double>() > 0.0,
-        "ledger marked risky weight");
-  check(marked.base_reserve_weight < 1.0 && marked.base_reserve_weight > 0.0,
-        "ledger marked base reserve weight");
+        "ledger marked BTC weight");
+  check(marked.current_weights.index({2}).item<double>() < 1.0 &&
+            marked.current_weights.index({2}).item<double>() > 0.0,
+        "ledger marked numeraire node weight");
 
   auto state = make_allocation_belief();
   portfolio::TargetPortfolio target{};
   target.timestamp_ms = 1003;
   target.node_ids = state.node_ids;
-  target.base_reserve_node_id = state.base_policy.reserve_asset_id;
-  target.target_weights = torch::tensor({0.20, 0.10}, torch::kFloat64);
-  target.target_base_reserve_weight = 0.70;
-  target.delta_weights = torch::tensor({0.10, 0.0}, torch::kFloat64);
+  target.target_weights = torch::tensor({0.20, 0.10, 0.70}, torch::kFloat64);
+  target.delta_weights = torch::tensor({0.10, 0.0, -0.10}, torch::kFloat64);
   target.expected_log_growth = 0.01;
   target.expected_arithmetic_return = 0.012;
   target.cvar_loss = 0.03;
@@ -1176,13 +1184,13 @@ void test_portfolio_ledger_and_belief_reporter() {
 
   execution::spot_rebalance_router::spot_rebalance_plan_t plan{};
   plan.timestamp_ms = 1003;
-  plan.base_reserve_node_id = "USDT";
+  plan.accounting_numeraire_node_id = "USDT";
   plan.node_ids = state.node_ids;
   plan.requested_turnover_weight = 0.10;
   plan.routed_turnover_weight = 0.10;
-  plan.requested_notional_base = 100.0;
-  plan.routed_notional_base = 100.0;
-  plan.estimated_transaction_cost_base = 0.20;
+  plan.requested_notional_numeraire = 100.0;
+  plan.routed_notional_numeraire = 100.0;
+  plan.estimated_transaction_cost_numeraire = 0.20;
   plan.valid = true;
   plan.orders.push_back(
       {.node_id = "BTC",
@@ -1191,9 +1199,9 @@ void test_portfolio_ledger_and_belief_reporter() {
        .edge_quote_node_id = "USDT",
        .side = execution::spot_rebalance_router::order_side_t::buy_edge_base,
        .delta_weight = 0.10,
-       .requested_notional_base = 100.0,
-       .routed_notional_base = 100.0,
-       .estimated_cost_base = 0.20});
+       .requested_notional_numeraire = 100.0,
+       .routed_notional_numeraire = 100.0,
+       .estimated_cost_numeraire = 0.20});
 
   auto report =
       monitoring::belief_reporter::make_report({.belief_state = &state,

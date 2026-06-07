@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <stdexcept>
@@ -27,16 +28,15 @@ struct decision_diagnostics_t {
 
 struct PortfolioState {
   timestamp_ms_t timestamp_ms{0};
-  node_id_t accounting_node_id{};
-  node_id_t reserve_node_id{};
+  node_id_t accounting_numeraire_node_id{};
+  std::vector<node_id_t> node_ids{};
 
-  torch::Tensor current_weights{}; // [A], risky assets only
-  torch::Tensor current_units{};   // [A]
+  torch::Tensor current_weights{}; // [N], target graph nodes
+  torch::Tensor current_units{};   // [N]
 
-  double base_reserve_weight{1.0};
-  double equity_value_base{0.0};
+  double equity_value_numeraire{0.0};
 
-  torch::Tensor unrealized_pnl{}; // optional [A]
+  torch::Tensor unrealized_pnl{}; // optional [N]
   double drawdown{0.0};
 };
 
@@ -55,10 +55,8 @@ struct MarketState {
 };
 
 struct PortfolioConstraints {
-  double min_base_reserve_weight{0.0};
-
-  torch::Tensor max_weight{}; // [A]
-  torch::Tensor min_weight{}; // [A], usually zero
+  torch::Tensor max_weight{}; // [N]
+  torch::Tensor min_weight{}; // [N], usually zero
 
   double max_turnover_l1{1.0};
   double cvar_alpha{0.95};
@@ -75,12 +73,10 @@ struct TargetPortfolio {
   timestamp_ms_t timestamp_ms{0};
 
   std::vector<node_id_t> node_ids{}; // same order as AllocationBelief.node_ids
-  node_id_t base_reserve_node_id{};
 
-  torch::Tensor target_weights{}; // [A], risky assets only
-  double target_base_reserve_weight{1.0};
+  torch::Tensor target_weights{}; // [N], target graph nodes
 
-  torch::Tensor delta_weights{}; // [A]
+  torch::Tensor delta_weights{}; // [N]
 
   double expected_log_growth{0.0};
   double expected_arithmetic_return{0.0};
@@ -191,44 +187,41 @@ inline torch::Tensor vector_or_full(const torch::Tensor &tensor, std::int64_t A,
 } // namespace detail
 
 inline void validate_portfolio_state(const PortfolioState &state,
-                                     std::int64_t A) {
-  if (state.accounting_node_id.empty()) {
-    throw std::runtime_error("[PortfolioState] accounting_node_id is required");
+                                     std::int64_t N) {
+  if (state.accounting_numeraire_node_id.empty()) {
+    throw std::runtime_error(
+        "[PortfolioState] accounting_numeraire_node_id is required");
   }
-  if (state.reserve_node_id.empty()) {
-    throw std::runtime_error("[PortfolioState] reserve_node_id is required");
+  if (state.node_ids.size() != static_cast<std::size_t>(N)) {
+    throw std::runtime_error(
+        "[PortfolioState] node_ids size must match node count");
   }
-  if (state.accounting_node_id != state.reserve_node_id) {
-    throw std::runtime_error("[PortfolioState] V1 requires accounting_node_id "
-                             "and reserve_node_id to match");
+  detail::require_unique_node_ids(state.node_ids, "portfolio node_ids");
+  if (std::find(state.node_ids.begin(), state.node_ids.end(),
+                state.accounting_numeraire_node_id) == state.node_ids.end()) {
+    throw std::runtime_error(
+        "[PortfolioState] accounting numeraire must be one of node_ids");
   }
-  detail::require_nonnegative_vector(state.current_weights, A,
+  detail::require_nonnegative_vector(state.current_weights, N,
                                      "current_weights", true);
-  detail::require_nonnegative_vector(state.current_units, A, "current_units",
+  detail::require_nonnegative_vector(state.current_units, N, "current_units",
                                      false);
-  detail::require_finite_vector(state.unrealized_pnl, A, "unrealized_pnl",
+  detail::require_finite_vector(state.unrealized_pnl, N, "unrealized_pnl",
                                 false);
-  detail::require_finite_scalar(state.base_reserve_weight,
-                                "base_reserve_weight");
-  detail::require_finite_scalar(state.equity_value_base, "equity_value_base");
+  detail::require_finite_scalar(state.equity_value_numeraire,
+                                "equity_value_numeraire");
   detail::require_finite_scalar(state.drawdown, "drawdown");
-  if (state.base_reserve_weight < -1.0e-9 ||
-      state.base_reserve_weight > 1.0 + 1.0e-9) {
+  if (state.equity_value_numeraire < 0.0) {
     throw std::runtime_error(
-        "[PortfolioState] base_reserve_weight must be in [0,1]");
-  }
-  if (state.equity_value_base < 0.0) {
-    throw std::runtime_error(
-        "[PortfolioState] equity_value_base must be nonnegative");
+        "[PortfolioState] equity_value_numeraire must be nonnegative");
   }
   if (state.drawdown < 0.0) {
     throw std::runtime_error("[PortfolioState] drawdown must be nonnegative");
   }
-  const auto risky_weight_sum =
+  const auto weight_sum =
       state.current_weights.to(torch::kFloat64).sum().item<double>();
-  if (risky_weight_sum + state.base_reserve_weight > 1.0 + 1.0e-6) {
-    throw std::runtime_error(
-        "[PortfolioState] current weights plus base reserve exceed one");
+  if (std::abs(weight_sum - 1.0) > 1.0e-6) {
+    throw std::runtime_error("[PortfolioState] current weights must sum to one");
   }
 }
 
@@ -256,8 +249,6 @@ inline void validate_market_state(const MarketState &state, std::int64_t A) {
 inline void
 validate_portfolio_constraints(const PortfolioConstraints &constraints,
                                std::int64_t A) {
-  detail::require_finite_scalar(constraints.min_base_reserve_weight,
-                                "min_base_reserve_weight");
   detail::require_finite_scalar(constraints.max_turnover_l1, "max_turnover_l1");
   detail::require_finite_scalar(constraints.cvar_alpha, "cvar_alpha");
   detail::require_finite_scalar(constraints.lambda_cvar, "lambda_cvar");
@@ -268,11 +259,6 @@ validate_portfolio_constraints(const PortfolioConstraints &constraints,
   detail::require_finite_scalar(constraints.lambda_turnover, "lambda_turnover");
   detail::require_finite_scalar(constraints.scenario_growth_floor,
                                 "scenario_growth_floor");
-  if (constraints.min_base_reserve_weight < 0.0 ||
-      constraints.min_base_reserve_weight > 1.0) {
-    throw std::runtime_error(
-        "[PortfolioConstraints] min_base_reserve_weight must be in [0,1]");
-  }
   if (constraints.max_turnover_l1 < 0.0) {
     throw std::runtime_error(
         "[PortfolioConstraints] max_turnover_l1 must be nonnegative");
@@ -304,9 +290,9 @@ validate_portfolio_constraints(const PortfolioConstraints &constraints,
   if (constraints.min_weight.defined()) {
     const double min_sum =
         constraints.min_weight.to(torch::kFloat64).sum().item<double>();
-    if (min_sum > 1.0 - constraints.min_base_reserve_weight + 1.0e-9) {
+    if (min_sum > 1.0 + 1.0e-9) {
       throw std::runtime_error(
-          "[PortfolioConstraints] min_weight exceeds risky budget");
+          "[PortfolioConstraints] min_weight exceeds allocation budget");
     }
   }
 }
@@ -314,24 +300,13 @@ validate_portfolio_constraints(const PortfolioConstraints &constraints,
 inline void validate_target_portfolio(
     const TargetPortfolio &target, std::int64_t A,
     const torch::Tensor &current_weights = torch::Tensor(),
-    bool require_valid = true, double base_reserve_tolerance = 1.0e-8,
+    bool require_valid = true, double weight_sum_tolerance = 1.0e-8,
     double delta_tolerance = 1.0e-8) {
   if (target.node_ids.size() != static_cast<std::size_t>(A)) {
     throw std::runtime_error(
         "[TargetPortfolio] node_ids size must match asset count");
   }
   detail::require_unique_node_ids(target.node_ids, "target node_ids");
-  if (target.base_reserve_node_id.empty()) {
-    throw std::runtime_error(
-        "[TargetPortfolio] base_reserve_node_id is required");
-  }
-  for (const auto &node_id : target.node_ids) {
-    if (node_id == target.base_reserve_node_id) {
-      throw std::runtime_error(
-          "[TargetPortfolio] base_reserve_node_id must not be duplicated in "
-          "risky node_ids");
-    }
-  }
   if (require_valid && !target.valid) {
     throw std::runtime_error("[TargetPortfolio] target is invalid");
   }
@@ -339,8 +314,6 @@ inline void validate_target_portfolio(
                                      true);
   detail::require_finite_vector(target.delta_weights, A, "delta_weights",
                                 false);
-  detail::require_finite_scalar(target.target_base_reserve_weight,
-                                "target_base_reserve_weight");
   detail::require_finite_scalar(target.expected_log_growth,
                                 "expected_log_growth");
   detail::require_finite_scalar(target.expected_arithmetic_return,
@@ -349,11 +322,6 @@ inline void validate_target_portfolio(
   detail::require_finite_scalar(target.turnover, "turnover");
   detail::require_finite_scalar(target.estimated_transaction_cost,
                                 "estimated_transaction_cost");
-  if (target.target_base_reserve_weight < -base_reserve_tolerance ||
-      target.target_base_reserve_weight > 1.0 + base_reserve_tolerance) {
-    throw std::runtime_error(
-        "[TargetPortfolio] target_base_reserve_weight must be in [0,1]");
-  }
   if (target.turnover < -delta_tolerance) {
     throw std::runtime_error("[TargetPortfolio] turnover must be nonnegative");
   }
@@ -362,11 +330,9 @@ inline void validate_target_portfolio(
         "[TargetPortfolio] estimated_transaction_cost must be nonnegative");
   }
   const auto target_weights = target.target_weights.to(torch::kFloat64);
-  const double risky_sum = target_weights.sum().item<double>();
-  const double total_weight = risky_sum + target.target_base_reserve_weight;
-  if (std::abs(total_weight - 1.0) > base_reserve_tolerance) {
-    throw std::runtime_error(
-        "[TargetPortfolio] target weights plus base reserve must equal one");
+  const double total_weight = target_weights.sum().item<double>();
+  if (std::abs(total_weight - 1.0) > weight_sum_tolerance) {
+    throw std::runtime_error("[TargetPortfolio] target weights must sum to one");
   }
   if (current_weights.defined()) {
     detail::require_nonnegative_vector(current_weights, A, "current_weights",

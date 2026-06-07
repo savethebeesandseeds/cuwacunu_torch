@@ -72,7 +72,7 @@ familiar:
 | --- | --- | --- | --- |
 | Read-only health | `hero.config.status`, `hero.runtime.status`, `hero.lattice.status`, `hero.marshal.status` | Check policy paths, visible roots, active wave/advice state, and explicit non-authority flags. | No mutation, proof escalation, Runtime launch, or policy selection. |
 | Schema/help | `hero.config.inspect subject=schema`, `hero.runtime.inspect subject=schema`, `hero.lattice.inspect subject=schema`, `--list-tools`, `--list-tools-json`, `--help` | Inspect exact MCP arguments or operator runbooks. | Documentation/catalog surface only. |
-| Config inspection | `hero.config.inspect` | Read policy-controlled config values, files, path provenance, validation, diffs, backups, and config-bundle receipts by `subject`. | Does not execute Runtime or prove Lattice targets. |
+| Config inspection | `hero.config.inspect` | Read policy-controlled config values, files, path provenance, `validate_global_config`, diffs, backups, and config-bundle receipts by `subject`. | Does not execute Runtime or prove Lattice targets. |
 | Config mutation | `hero.config.apply` | Plan or execute in-memory policy/session config changes or file mutations by `operation`. | Config-scope only; use `requested_mode=plan` and expected digests for file writes/deletes. |
 | Runtime execution | `hero.runtime.run`, `hero.runtime.reset` | Preview or perform guarded Runtime wave/replay work, or plan/execute a guarded developer reset. | Runtime Hero is the executor. `reset` is a guarded developer reset surface. |
 | Runtime evidence | `hero.runtime.inspect` | Read active wave or durable Runtime job/replay artifacts by `subject`. | No target proof or config mutation. |
@@ -259,13 +259,16 @@ Agent workflow:
 1. `hero.config.status` checks policy health.
 2. `hero.config.inspect subject=map` finds global config path references and
    missing files.
-3. `hero.config.inspect subject=bundle` records the current config provenance
+3. `hero.config.inspect subject=validate_global_config` validates that the
+   active global `.config` can be read and that configured path entries resolve
+   to the expected file/directory surfaces.
+4. `hero.config.inspect subject=bundle` records the current config provenance
    receipt when runtime spawn evidence or target proof context needs an exact
    config link.
-4. `hero.config.inspect subject=resolve_path` preflights a target path before
+5. `hero.config.inspect subject=resolve_path` preflights a target path before
    read or mutation.
-5. `hero.config.inspect subject=file_read` returns file content plus `sha256`.
-6. `hero.config.apply operation=write requested_mode=plan` previews a write;
+6. `hero.config.inspect subject=file_read` returns file content plus `sha256`.
+7. `hero.config.apply operation=write requested_mode=plan` previews a write;
    `requested_mode=execute` writes with `expected_sha256` or
    `expected_current_sha256` when replacing an existing file.
 

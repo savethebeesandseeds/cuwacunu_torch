@@ -234,7 +234,7 @@
       horizon support, and identity-bound skill-versus-baseline diagnostics,
       observer belief visibility such as confidence/data quality/liquidity and
       lineage/authority flags, allocation-engine visibility such as turnover,
-      reserve binding, cost/risk diagnostics, and authority flags,
+      accounting numeraire binding, cost/risk diagnostics, and authority flags,
       weak/imbalanced MDN node support, low normalized support entropy, low
       aggregate Wilson lower-bound support, or VICReg representation-health
       metrics including optional geometry summaries such as effective-rank
@@ -1058,7 +1058,7 @@ LATTICE_POLICY_GATE {
   METRIC = risk_adjusted_growth_after_cost;
   METRIC_DEFINITION = replay_or_policy_declared_risk_adjusted_growth_after_cost;
   BASELINE = base_policy;
-  BASELINE_DEFINITION = base_policy_reserve_graph_node_reference;
+  BASELINE_DEFINITION = base_policy_accounting_numeraire_graph_node_reference;
   THRESHOLD = 0.0;
   UNCERTAINTY_POLICY = disabled;
   UNCERTAINTY_MODEL = disabled_until_replay_uncertainty_policy_exists;

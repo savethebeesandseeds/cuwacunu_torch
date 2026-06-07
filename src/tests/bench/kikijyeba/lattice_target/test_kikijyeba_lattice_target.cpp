@@ -589,7 +589,8 @@ exposure::lattice_exposure_ledger_t artifact_readiness_ledger(
     bool forecast_negative_skill = false,
     bool policy_training_future_snapshot_use = false,
     bool replay_missing_policy_summary = false,
-    bool replay_failed_attempts = false) {
+    bool replay_failed_attempts = false,
+    bool policy_training_component_is_policy = false) {
   exposure::lattice_exposure_fact_t parent{};
   parent.fact_type = "exposure";
   parent.contract_fingerprint = "contract_1";
@@ -824,14 +825,15 @@ exposure::lattice_exposure_ledger_t artifact_readiness_ledger(
   allocation.split_role = parent.split_role;
   allocation.anchor_range = parent.anchor_range;
   allocation.completed_anchor_range = parent.completed_anchor_range;
-  allocation.target_risky_node_weights = "BTC:0.40,ETH:0.25";
-  allocation.reserve_node_id = "USD_CASH";
-  allocation.reserve_node_source =
+  allocation.target_node_weights = "BTC:0.40,ETH:0.25";
+  allocation.accounting_numeraire_node_id = "USD_CASH";
+  allocation.accounting_numeraire_node_source =
       allocation_reserve_source_mismatch ? "allocator_output" : "base_policy";
-  allocation.base_policy_reserve_node_id =
+  allocation.base_policy_accounting_numeraire_node_id =
       allocation_reserve_base_policy_mismatch ? "EUR_CASH" : "USD_CASH";
-  allocation.reserve_node_graph_bound = !allocation_reserve_graph_unbound;
-  allocation.reserve_weight = 0.35;
+  allocation.accounting_numeraire_node_graph_bound =
+      !allocation_reserve_graph_unbound;
+  allocation.numeraire_weight = 0.35;
   allocation.turnover = 0.12;
   allocation.objective_terms = "growth:0.70,cvar:0.20,cost:0.10";
   allocation.cvar_loss = 0.08;
@@ -919,21 +921,17 @@ exposure::lattice_exposure_ledger_t artifact_readiness_ledger(
   replay.replay_environment_observation_time_law = "time_t_only";
   replay.replay_environment_realization_reveal = "after_action_execution";
   replay.replay_environment_realization_key_policy = "shared_key_per_frame";
-  replay.replay_environment_action_kind =
-      "target_node_weights_with_base_reserve";
+  replay.replay_environment_action_kind = "target_node_weights";
   replay.replay_environment_action_time_policy =
       (replay_contract_mismatch || replay_action_time_policy_mismatch)
           ? "decision_timestamp_unbound"
           : "decision_timestamp_after_knowledge_before_realization";
-  replay.replay_environment_reserve_node_policy =
-      replay_contract_mismatch ? "external_cash_bucket"
-                               : "graph_node_from_base_policy";
   replay.replay_environment_graph_node_universe_policy =
       "episode_spec_graph_node_ids";
   replay.replay_environment_reward_policy =
       "post_execution_ledger_log_growth_drawdown_cost_turnover_invalid";
   replay.replay_environment_projection_validation =
-      "projected_log_return_vs_realized_asset_base_return";
+      "projected_log_return_vs_realized_asset_numeraire_return";
   replay.replay_environment_policy_surface = "policy_adapter";
   replay.replay_environment_action_policy_identity =
       "policy_adapter_must_match_action";
@@ -988,11 +986,11 @@ exposure::lattice_exposure_ledger_t artifact_readiness_ledger(
   }
   replay.cajtucu_valid_trace_count = 4;
   replay.cajtucu_invalid_trace_count = 0;
-  replay.cajtucu_missing_direct_reserve_edge_count = 0;
+  replay.cajtucu_missing_direct_pair_count = 0;
   replay.cajtucu_nontradable_edge_reject_count = 0;
   replay.cajtucu_below_min_notional_reject_count = 0;
   replay.cajtucu_above_max_notional_reject_count = 0;
-  replay.cajtucu_insufficient_reserve_reject_count = 0;
+  replay.cajtucu_insufficient_sell_units_reject_count = 0;
   replay.cajtucu_insufficient_units_reject_count = 0;
   replay.cajtucu_invalid_sell_price_count = 0;
   replay.cajtucu_large_equity_mismatch_count = 0;
@@ -1003,17 +1001,17 @@ exposure::lattice_exposure_ledger_t artifact_readiness_ledger(
   replay.partial_order_count = 0;
   replay.mean_total_reward = 0.12;
   replay.mean_total_log_growth = 0.03;
-  replay.mean_final_equity_base = 103.0;
+  replay.mean_final_equity_numeraire = 103.0;
   replay.mean_max_drawdown = 0.08;
   replay.mean_total_turnover = 0.40;
-  replay.mean_total_transaction_cost_base = 0.015;
-  replay.requested_notional_base = 10.0;
-  replay.executed_notional_base = 9.8;
-  replay.rejected_notional_base = 0.0;
+  replay.mean_total_transaction_cost_numeraire = 0.015;
+  replay.requested_notional_numeraire = 10.0;
+  replay.executed_notional_numeraire = 9.8;
+  replay.rejected_notional_numeraire = 0.0;
   replay.fill_ratio = 0.98;
-  replay.fee_cost_base = 0.006;
-  replay.spread_cost_base = 0.005;
-  replay.slippage_cost_base = 0.004;
+  replay.fee_cost_numeraire = 0.006;
+  replay.spread_cost_numeraire = 0.005;
+  replay.slippage_cost_numeraire = 0.004;
   replay.mean_target_weight_error_l1 = 0.02;
   replay.mean_target_weight_error_linf = 0.01;
   if (!replay_missing_projection_metrics) {
@@ -1036,7 +1034,8 @@ exposure::lattice_exposure_ledger_t artifact_readiness_ledger(
   policy_training.component_assembly_fingerprint =
       parent.component_assembly_fingerprint;
   policy_training.target_component_family_id =
-      parent.target_component_family_id;
+      policy_training_component_is_policy ? "wikimyei.policy.trainable"
+                                          : parent.target_component_family_id;
   policy_training.job_id = parent.job_id;
   policy_training.wave_id = parent.wave_id;
   policy_training.job_status = parent.job_status;
@@ -1053,10 +1052,19 @@ exposure::lattice_exposure_ledger_t artifact_readiness_ledger(
   policy_training.validation_range_digest = "validation_range_digest_1";
   policy_training.test_range_digest = "test_range_digest_1";
   policy_training.environment_contract_id = "kikijyeba.environment.replay.v1";
-  policy_training.observation_schema_digest = "observation_schema_1";
+  policy_training.observation_schema_digest =
+      "kikijyeba.environment.policy_input.v1";
   policy_training.action_schema_digest =
-      "kikijyeba.environment.action.target_weights.v1";
-  policy_training.reward_contract_digest = "reward_contract_1";
+      "kikijyeba.environment.action.target_node_weights.v1";
+  policy_training.reward_contract_digest =
+      "kikijyeba.environment.reward.post_execution_ledger_log_growth_cost_"
+      "drawdown.v1";
+  policy_training.policy_input_schema_id =
+      "kikijyeba.environment.policy_input.v1";
+  policy_training.action_adapter_id = "target_node_weights_simplex.v1";
+  policy_training.reward_contract_id =
+      "kikijyeba.environment.reward.post_execution_ledger_log_growth_cost_"
+      "drawdown.v1";
   policy_training.execution_profile_digest = replay.execution_profile_digest;
   policy_training.training_schedule_mode = "causal_walk_forward_training.v1";
   policy_training.causal_schedule_schema_id =
@@ -1315,7 +1323,8 @@ LATTICE_TARGET {
                            "replay_or_policy_declared_risk_adjusted_"
                            "growth_after_cost" &&
                        gate.baseline_definition ==
-                           "base_policy_reserve_graph_node_reference" &&
+                           "base_policy_accounting_numeraire_graph_node_"
+                           "reference" &&
                        gate.uncertainty_model ==
                            "disabled_until_replay_uncertainty_policy_"
                            "exists" &&
@@ -2797,6 +2806,81 @@ LATTICE_TARGET {
       policy_training_eval.proof_certificate.artifacts.front(),
       "policy_training_artifact_ready");
 
+  const auto cross_component_policy_training_specs =
+      target::decode_lattice_targets_from_dsl(R"DSL(
+LATTICE_TARGET {
+  TARGET_ID = policy_training_artifact_ready;
+  TARGET_CLASS = artifact_readiness;
+  PROOF_KIND = policy_training_artifact_bound;
+  SUBJECT_FACT_FAMILY = policy_training;
+  SUBJECT_COMPONENT = wikimyei.policy.trainable;
+  PROTOCOL_ID = cwu_02v;
+  SOURCE_RANGE = anchor_index;
+  ANCHOR_INDEX_BEGIN = 0;
+  ANCHOR_INDEX_END = 10;
+  REQUIRE_CONTRACT_MATCH = true;
+};
+)DSL");
+  const auto cross_component_policy_training_ledger =
+      artifact_readiness_ledger(
+          /*observer_authority_drift=*/false,
+          /*forecast_authority_drift=*/false,
+          /*replay_authority_drift=*/false,
+          /*baseline_transform_digest_mismatch=*/false,
+          /*forecast_baseline_digest_mismatch=*/false,
+          /*forecast_selection_signal_digest_mismatch=*/false,
+          /*observer_forecast_lineage_mismatch=*/false,
+          /*allocation_observer_digest_mismatch=*/false,
+          /*allocation_forecast_artifact_mismatch=*/false,
+          /*allocation_reserve_source_mismatch=*/false,
+          /*allocation_reserve_base_policy_mismatch=*/false,
+          /*allocation_reserve_graph_unbound=*/false,
+          /*allocation_missing_reason_contract=*/false,
+          /*replay_contract_mismatch=*/false,
+          /*replay_incomplete_attempts=*/false,
+          /*replay_missing_projection_metrics=*/false,
+          /*forecast_missing_horizon_support=*/false,
+          /*replay_missing_time_law_steps=*/false,
+          /*replay_future_observation_violation=*/false,
+          /*replay_mixed_future_keys=*/false,
+          /*replay_missing_projection_step_evidence=*/false,
+          /*replay_expected_step_mismatch=*/false,
+          /*replay_action_time_policy_mismatch=*/false,
+          /*replay_source_order_policy_mismatch=*/false,
+          /*replay_parallelism_mismatch=*/false,
+          /*replay_world_mode_mismatch=*/false,
+          /*replay_schema_mismatch=*/false,
+          /*replay_runtime_run_id_missing=*/false,
+          /*replay_report_digest_mismatch=*/false,
+          /*transform_missing_support_surface=*/false,
+          /*baseline_missing_support=*/false,
+          /*forecast_missing_target_transform_binding=*/false,
+          /*forecast_missing_baseline_binding=*/false,
+          /*forecast_missing_evaluated_checkpoint_lineage=*/false,
+          /*forecast_model_state_mutation=*/false,
+          /*forecast_negative_skill=*/false,
+          /*policy_training_future_snapshot_use=*/false,
+          /*replay_missing_policy_summary=*/false,
+          /*replay_failed_attempts=*/false,
+          /*policy_training_component_is_policy=*/true);
+  target::lattice_target_evaluator_t cross_component_policy_training_evaluator(
+      cross_component_policy_training_specs,
+      artifact_eval_options(cross_component_policy_training_ledger));
+  const auto cross_component_policy_training_eval =
+      cross_component_policy_training_evaluator.evaluate(
+          "policy_training_artifact_ready");
+  check(cross_component_policy_training_eval.status ==
+                target::lattice_target_status_t::satisfied &&
+            cross_component_policy_training_eval.proof_certificate.artifacts
+                    .size() == 1 &&
+            cross_component_policy_training_eval.proof_certificate.artifacts
+                .front()
+                .lineage_bound,
+        "policy-training artifact readiness resolves MDN/replay parent "
+        "lineage while the subject policy fact is scoped to "
+        "wikimyei.policy.trainable: " +
+            describe_evaluation(cross_component_policy_training_eval));
+
   const auto bad_artifact_ledger =
       artifact_readiness_ledger(/*observer_authority_drift=*/true);
   target::lattice_target_evaluator_t bad_artifact_evaluator(
@@ -3383,32 +3467,35 @@ LATTICE_TARGET {
       artifact_specs, artifact_eval_options(bad_allocation_reserve_ledger));
   const auto bad_allocation_reserve_eval =
       bad_allocation_reserve_evaluator.evaluate("allocation_artifact_ready");
-  check(bad_allocation_reserve_eval.status !=
-                target::lattice_target_status_t::satisfied &&
-            has_reason_containing(bad_allocation_reserve_eval.reasons,
-                                  "reserve_node_source_not_base_policy") &&
-            has_reason_containing(bad_allocation_reserve_eval.reasons,
-                                  "reserve_node_base_policy_mismatch") &&
-            has_reason_containing(bad_allocation_reserve_eval.reasons,
-                                  "reserve_node_not_graph_bound") &&
-            bad_allocation_reserve_eval.proof_certificate.artifacts.size() ==
-                1 &&
-            !bad_allocation_reserve_eval.proof_certificate.artifacts.front()
-                 .lineage_bound &&
-            has_issue_containing(
-                bad_allocation_reserve_eval.proof_certificate.artifacts.front()
-                    .issues,
-                "reserve_node_source_not_base_policy") &&
-            has_issue_containing(
-                bad_allocation_reserve_eval.proof_certificate.artifacts.front()
-                    .issues,
-                "reserve_node_base_policy_mismatch") &&
-            has_issue_containing(
-                bad_allocation_reserve_eval.proof_certificate.artifacts.front()
-                    .issues,
-                "reserve_node_not_graph_bound"),
-        "allocation artifact readiness requires the reserve node to be "
-        "graph-bound BasePolicy evidence");
+  check(
+      bad_allocation_reserve_eval.status !=
+              target::lattice_target_status_t::satisfied &&
+          has_reason_containing(
+              bad_allocation_reserve_eval.reasons,
+              "accounting_numeraire_node_source_not_base_policy") &&
+          has_reason_containing(
+              bad_allocation_reserve_eval.reasons,
+              "accounting_numeraire_node_base_policy_mismatch") &&
+          has_reason_containing(bad_allocation_reserve_eval.reasons,
+                                "accounting_numeraire_node_not_graph_bound") &&
+          bad_allocation_reserve_eval.proof_certificate.artifacts.size() == 1 &&
+          !bad_allocation_reserve_eval.proof_certificate.artifacts.front()
+               .lineage_bound &&
+          has_issue_containing(
+              bad_allocation_reserve_eval.proof_certificate.artifacts.front()
+                  .issues,
+              "accounting_numeraire_node_source_not_base_policy") &&
+          has_issue_containing(
+              bad_allocation_reserve_eval.proof_certificate.artifacts.front()
+                  .issues,
+              "accounting_numeraire_node_base_policy_mismatch") &&
+          has_issue_containing(
+              bad_allocation_reserve_eval.proof_certificate.artifacts.front()
+                  .issues,
+              "accounting_numeraire_node_not_graph_bound"),
+      "allocation artifact readiness requires the accounting numeraire node to "
+      "be "
+      "graph-bound BasePolicy evidence");
 
   const auto bad_allocation_reason_contract_ledger = artifact_readiness_ledger(
       /*observer_authority_drift=*/false,

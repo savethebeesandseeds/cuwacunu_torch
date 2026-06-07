@@ -25,8 +25,8 @@ namespace cuwacunu::hero::lattice::target {
 inline constexpr const char *k_lattice_fact_identity_contract_schema_v1 =
     cuwacunu::hero::lattice::exposure::
         k_lattice_fact_identity_contract_schema_v1;
-inline constexpr const char *k_lattice_fact_identity_contract_id_v1 = cuwacunu::
-    hero::lattice::exposure::k_lattice_fact_identity_contract_id_v1;
+inline constexpr const char *k_lattice_fact_identity_contract_id_v1 =
+    cuwacunu::hero::lattice::exposure::k_lattice_fact_identity_contract_id_v1;
 
 enum class lattice_target_kind_t {
   not_applicable,
@@ -2362,7 +2362,8 @@ lattice_join_law_vocabulary() {
        "node id; distinct support rows add",
        "cross-component joins and synthetic backfill from MDN rows to VICReg "
        "readiness are forbidden",
-       "cache must preserve node identity, use, denominator, and parent "
+       "cache must paccounting numeraire node identity, use, denominator, and "
+       "parent "
        "exposure digest",
        true,
        true,
@@ -3937,8 +3938,7 @@ inline void require_representation_geometry_threshold_dimension(
 [[nodiscard]] inline lattice_representation_geometry_gate_review_summary_t
 summarize_representation_geometry_gate_review(
     const std::vector<
-        cuwacunu::hero::lattice::exposure::lattice_exposure_fact_t>
-        &facts) {
+        cuwacunu::hero::lattice::exposure::lattice_exposure_fact_t> &facts) {
   lattice_representation_geometry_gate_review_summary_t out{};
   const auto vocabulary = lattice_representation_geometry_vocabulary();
   out.metric_count = static_cast<std::int64_t>(vocabulary.size());
@@ -5134,7 +5134,8 @@ lattice_target_numeric_dimension_vocabulary() {
       {"LATTICE_WARN.allocation_engine.fraction_metrics", "ABOVE_OR_BELOW",
        "fraction", "closed_unit_interval", true, 0.0, true, 1.0, false,
        "metric_declared",
-       "allocation reserve weight, turnover, and cost thresholds are fractions "
+       "allocation numeraire weight, turnover, and cost thresholds are "
+       "fractions "
        "in [0,1]"},
       {"LATTICE_WARN.allocation_engine.non_negative_metrics", "ABOVE_OR_BELOW",
        "metric_specific", "non_negative_real", true, 0.0, false, 0.0, false,
@@ -8011,8 +8012,7 @@ struct lattice_target_proof_certificate_t {
     std::int64_t missing_anchors{0};
     bool require_mutated_component{true};
     bool passed{false};
-    cuwacunu::hero::lattice::exposure::exposure_load_summary_t
-        load_summary{};
+    cuwacunu::hero::lattice::exposure::exposure_load_summary_t load_summary{};
   };
 
   struct closure_proof_t {
@@ -8048,15 +8048,12 @@ struct lattice_target_proof_certificate_t {
       bool mutated_component{false};
       std::string split_name{};
       cuwacunu::hero::lattice::exposure::exposure_split_role_t split_role{
-          cuwacunu::hero::lattice::exposure::exposure_split_role_t::
-              unknown};
+          cuwacunu::hero::lattice::exposure::exposure_split_role_t::unknown};
       cuwacunu::hero::lattice::exposure::anchor_interval_t anchor_range{};
       cuwacunu::hero::lattice::exposure::anchor_interval_t
           completed_anchor_range{};
-      cuwacunu::hero::lattice::exposure::anchor_interval_t
-          observed_footprint{};
-      cuwacunu::hero::lattice::exposure::anchor_interval_t
-          target_footprint{};
+      cuwacunu::hero::lattice::exposure::anchor_interval_t observed_footprint{};
+      cuwacunu::hero::lattice::exposure::anchor_interval_t target_footprint{};
       std::string first_anchor_key{};
       std::string last_anchor_key{};
       std::string observed_source_key_begin{};
@@ -8118,8 +8115,7 @@ struct lattice_target_proof_certificate_t {
     std::vector<std::string> forbidden_uses{};
     bool require_mutated_component{true};
     bool overlap_found{false};
-    std::vector<
-        cuwacunu::hero::lattice::exposure::forbidden_exposure_overlap_t>
+    std::vector<cuwacunu::hero::lattice::exposure::forbidden_exposure_overlap_t>
         overlap_witnesses{};
     bool passed{true};
   };
@@ -8175,8 +8171,7 @@ struct lattice_target_evaluation_t {
     std::string threshold_direction{};
     std::string unit{};
     std::string split{};
-    cuwacunu::hero::lattice::exposure::anchor_interval_t
-        warning_anchor_range{};
+    cuwacunu::hero::lattice::exposure::anchor_interval_t warning_anchor_range{};
     std::string use{};
     std::string scope{};
     std::string effect{};
@@ -9216,8 +9211,8 @@ lattice_artifact_readiness_proof_templates() {
            "deterministic-output binding"},
           {"allocation_engine", "allocation_artifact_bound",
            "allocation artifact existence, observer-belief binding, forecast "
-           "lineage, reserve-node binding, objective/constraint diagnostics, "
-           "and fallback/de-risk reasons"},
+           "lineage, accounting-numeraire and graph-node binding, objective/"
+           "constraint diagnostics, and fallback/de-risk reasons"},
           {"replay_environment", "replay_environment_artifact_bound",
            "replay environment report existence, lineage, digest identity, "
            "bounded reset/step evidence, time-law cleanliness, projection "
@@ -9362,15 +9357,13 @@ normalize_lattice_subject_fact_family(const std::string &value,
     return {};
   }
   const auto parsed =
-      cuwacunu::hero::lattice::exposure::parse_lattice_fact_family(
-          trimmed);
+      cuwacunu::hero::lattice::exposure::parse_lattice_fact_family(trimmed);
   if (!parsed.has_value()) {
     throw std::runtime_error("[lattice_target] unsupported "
                              "SUBJECT_FACT_FAMILY " +
                              trimmed + " for " + target_id);
   }
-  return cuwacunu::hero::lattice::exposure::lattice_fact_family_name(
-      *parsed);
+  return cuwacunu::hero::lattice::exposure::lattice_fact_family_name(*parsed);
 }
 
 [[nodiscard]] inline std::vector<lattice_clause_field_t>
@@ -9483,8 +9476,7 @@ make_lattice_forbid_clause_from_guard(const std::string &target_id,
     if (i != 0) {
       uses << "|";
     }
-    uses << cuwacunu::hero::lattice::exposure::exposure_use_name(
-        guard.uses[i]);
+    uses << cuwacunu::hero::lattice::exposure::exposure_use_name(guard.uses[i]);
   }
   out.fields.push_back({"USES", uses.str()});
   out.fields.push_back({"EVIDENCE_SCOPE", "output_checkpoint_closure"});
@@ -10195,8 +10187,8 @@ decode_lattice_policy_gates_from_dsl(const std::string &dsl_text) {
   }
   const auto uses_raw = kv::optional(block, "USES", "");
   if (!kv::trim(uses_raw).empty()) {
-    out.uses = cuwacunu::hero::lattice::exposure::parse_exposure_use_list(
-        uses_raw);
+    out.uses =
+        cuwacunu::hero::lattice::exposure::parse_exposure_use_list(uses_raw);
   }
   const auto scope = kv::lowercase(
       kv::optional(block, "EVIDENCE_SCOPE",
@@ -10497,8 +10489,8 @@ inline void apply_lattice_requires_clause(
     const auto min_coverage = kv::parse_double(min_coverage_raw);
     require_fraction_dimension(min_coverage, "exposure_coverage CURSOR_EPOCHS",
                                spec.target_id);
-    if (use == cuwacunu::hero::lattice::exposure::exposure_use_t::
-                   observed_input) {
+    if (use ==
+        cuwacunu::hero::lattice::exposure::exposure_use_t::observed_input) {
       if (effect != "mutated_component") {
         throw std::runtime_error(
             "[lattice_target] observed_input exposure_coverage v0 requires "
@@ -10934,7 +10926,7 @@ validate_lattice_warning_dimensions(const lattice_warning_spec_t &warning,
     const auto field = uses_above ? "ABOVE" : "BELOW";
     const auto value = uses_above ? warning.above : warning.below;
     const std::set<std::string> fraction_metrics{
-        "reserve_weight",
+        "numeraire_weight",
         "turnover",
         "transaction_cost_estimate",
         "deterministic_artifact",
@@ -10943,10 +10935,10 @@ validate_lattice_warning_dimensions(const lattice_warning_spec_t &warning,
         "execution_authority",
         "market_readiness_authority",
         "deployment_authority",
-        "reserve_node_bound",
-        "reserve_node_from_base_policy",
-        "reserve_node_base_policy_match",
-        "reserve_node_graph_bound",
+        "accounting_numeraire_node_bound",
+        "accounting_numeraire_node_from_base_policy",
+        "accounting_numeraire_node_base_policy_match",
+        "accounting_numeraire_node_graph_bound",
         "observer_belief_bound",
         "forecast_artifact_bound",
         "base_policy_bound",
@@ -11353,7 +11345,7 @@ inline void apply_lattice_warn_clause(
     warning.use = exposure_use_t::evaluation_metric;
     warning.metric = kv::lowercase(kv::required(block, "METRIC"));
     const std::set<std::string> allowed_metrics{
-        "reserve_weight",
+        "numeraire_weight",
         "turnover",
         "cvar_loss",
         "transaction_cost_estimate",
@@ -11363,10 +11355,10 @@ inline void apply_lattice_warn_clause(
         "execution_authority",
         "market_readiness_authority",
         "deployment_authority",
-        "reserve_node_bound",
-        "reserve_node_from_base_policy",
-        "reserve_node_base_policy_match",
-        "reserve_node_graph_bound",
+        "accounting_numeraire_node_bound",
+        "accounting_numeraire_node_from_base_policy",
+        "accounting_numeraire_node_base_policy_match",
+        "accounting_numeraire_node_graph_bound",
         "observer_belief_bound",
         "forecast_artifact_bound",
         "base_policy_bound",
@@ -11954,8 +11946,7 @@ inline void append_interval_vector_text(
 inline void append_exposure_fact_vector_text(
     std::ostringstream &out, const std::string &name,
     const std::vector<
-        cuwacunu::hero::lattice::exposure::lattice_exposure_fact_t>
-        &facts) {
+        cuwacunu::hero::lattice::exposure::lattice_exposure_fact_t> &facts) {
   namespace exposure = cuwacunu::hero::lattice::exposure;
   out << name << ".count=" << facts.size() << "\n";
   for (std::size_t i = 0; i < facts.size(); ++i) {
@@ -11970,8 +11961,7 @@ inline void append_exposure_fact_vector_text(
 
 inline void append_load_summary_text(
     std::ostringstream &out, const std::string &prefix,
-    const cuwacunu::hero::lattice::exposure::exposure_load_summary_t
-        &summary) {
+    const cuwacunu::hero::lattice::exposure::exposure_load_summary_t &summary) {
   append_interval_text(out, prefix + ".target_range", summary.target_range);
   out << prefix << ".use="
       << cuwacunu::hero::lattice::exposure::exposure_use_name(summary.use)
@@ -12044,8 +12034,7 @@ inline void append_exposure_use_set_text(
 
 inline void append_source_key_window_audit_text(
     std::ostringstream &out, const std::string &prefix,
-    const cuwacunu::hero::lattice::exposure::source_key_window_audit_t
-        &audit) {
+    const cuwacunu::hero::lattice::exposure::source_key_window_audit_t &audit) {
   out << prefix << ".schema=" << audit.schema << "\n";
   out << prefix << ".available=" << (audit.available ? "true" : "false")
       << "\n";
@@ -12114,8 +12103,7 @@ inline void append_node_support_row_text(
 
 inline void append_node_support_summary_text(
     std::ostringstream &out, const std::string &prefix,
-    const cuwacunu::hero::lattice::exposure::node_support_summary_t
-        &summary) {
+    const cuwacunu::hero::lattice::exposure::node_support_summary_t &summary) {
   out << prefix << ".schema=" << summary.schema << "\n";
   out << prefix
       << ".target_component_family_id=" << summary.target_component_family_id
@@ -12633,8 +12621,8 @@ canonical_lattice_target_proof_certificate_text(
           append_string_vector_text(out, "uses", causal.uses);
           out << (causal.mutated_component ? "1" : "0") << "\n"
               << causal.split_name << "\n"
-              << cuwacunu::hero::lattice::exposure::
-                     exposure_split_role_name(causal.split_role)
+              << cuwacunu::hero::lattice::exposure::exposure_split_role_name(
+                     causal.split_role)
               << "\n";
           append_interval_text(out, "anchor_range", causal.anchor_range);
           append_interval_text(out, "completed_anchor_range",
@@ -12858,8 +12846,7 @@ canonical_lattice_target_proof_certificate_text(
         << "\n";
     out << prefix << ".split_name=" << witness.split_name << "\n";
     out << prefix << ".use="
-        << cuwacunu::hero::lattice::exposure::exposure_use_name(
-               witness.use)
+        << cuwacunu::hero::lattice::exposure::exposure_use_name(witness.use)
         << "\n";
     out << prefix << ".mutated_component="
         << (witness.mutated_component ? "true" : "false") << "\n";
@@ -12921,8 +12908,7 @@ certificate_names_concrete_split(const std::string &split_name) {
 }
 
 [[nodiscard]] inline bool interval_vectors_equal(
-    const std::vector<cuwacunu::hero::lattice::exposure::anchor_interval_t>
-        &a,
+    const std::vector<cuwacunu::hero::lattice::exposure::anchor_interval_t> &a,
     const std::vector<cuwacunu::hero::lattice::exposure::anchor_interval_t>
         &b) {
   if (a.size() != b.size()) {
@@ -13055,8 +13041,7 @@ certificate_source_footprint_for_causal_use(
 
 [[nodiscard]] inline bool certificate_source_key_window_audits_equal(
     const cuwacunu::hero::lattice::exposure::source_key_window_audit_t &a,
-    const cuwacunu::hero::lattice::exposure::source_key_window_audit_t
-        &b) {
+    const cuwacunu::hero::lattice::exposure::source_key_window_audit_t &b) {
   if (a.schema != b.schema || a.available != b.available ||
       a.precision != b.precision || a.complete != b.complete ||
       a.numeric != b.numeric ||

@@ -75,7 +75,7 @@ constexpr tool_descriptor_t kTools[] = {
      "the bounded pre-PPO noop_policy_training.v1 smoke trainer. "
      "operation=replay plans, dry-runs, or executes replay from a "
      "completed Runtime job.",
-     R"({"type":"object","required":["operation","requested_mode"],"properties":{"operation":{"type":"string","enum":["wave","replay"]},"requested_mode":{"type":"string","enum":["plan","dry_run","execute"]},"config_path":{"type":"string"},"job_id":{"type":"string"},"job_dir":{"type":"string"},"force_rebuild_cache":{"type":"boolean"},"confirm_execute":{"type":"boolean"},"timeout_seconds":{"type":"integer"},"wave_overlay":{"type":"object","properties":{"source_range":{"type":"string"},"anchor_index_begin":{"type":"string"},"anchor_index_end":{"type":"string"},"source_key_begin":{"type":"string"},"source_key_end":{"type":"string"}}},"runtime_handoff":{"type":"object","properties":{}},"marshal_expected_wave":{"type":"object","properties":{"target_component_family_id":{"type":"string"},"mode":{"type":"string"},"source_range":{"type":"string"},"source_order":{"type":"string"},"anchor_index_begin":{"type":"string"},"anchor_index_end":{"type":"string"},"source_key_begin":{"type":"string"},"source_key_end":{"type":"string"},"model_state_inputs":{"type":"object"}}},"base_reserve_node_id":{"type":"string"},"risky_node_ids":{"type":"string"},"experiment_id":{"type":"string"},"report_path":{"type":"string"},"initial_equity_base":{"type":"number"},"min_base_reserve_weight":{"type":"number"},"max_risky_weight":{"type":"number"},"max_turnover_l1":{"type":"number"},"max_steps":{"type":"integer"},"max_parallel_jobs":{"type":"integer"},"include_equal_weight":{"type":"boolean"},"include_current_weight":{"type":"boolean"},"include_base_reserve_policy":{"type":"boolean"},"include_spot_distributional_utility_policy":{"type":"boolean"},"allow_synthetic_direct_edges":{"type":"boolean"},"validation_rollout":{"type":"boolean"},"linear_transaction_cost_rate":{"type":"number"},"execution_profile_digest":{"type":"string"},"policy_set_digest":{"type":"string"},"protocol_id":{"type":"string"},"protocol_contract_fingerprint":{"type":"string"},"graph_order_fingerprint":{"type":"string"},"source_cursor_token":{"type":"string"},"split_policy_fingerprint":{"type":"string"},"component_assembly_fingerprint":{"type":"string"},"policy_id":{"type":"string"},"policy_kind":{"type":"string"},"policy_architecture_digest":{"type":"string"},"training_config_digest":{"type":"string"},"training_range_digest":{"type":"string"},"validation_range_digest":{"type":"string"},"test_range_digest":{"type":"string"},"environment_contract_id":{"type":"string"},"observation_schema_digest":{"type":"string"},"action_schema_digest":{"type":"string"},"reward_contract_digest":{"type":"string"},"training_schedule_mode":{"type":"string","enum":["causal_walk_forward_training.v1","offline_full_window_research","batch_final_refit_candidate"]},"causal_schedule_schema_id":{"type":"string"},"causal_schedule_digest":{"type":"string"},"causal_schedule_cursor_key_kind":{"type":"string","enum":["numeric_anchor_index","numeric_source_key","fixed_width_source_key","timestamp_ms"]},"causal_schedule_no_future_snapshot_use_source":{"type":"string"},"normalization_fit_range_digest":{"type":"string"},"replay_buffer_source_range_digest":{"type":"string"},"early_stopping_policy_digest":{"type":"string"},"hyperparameter_selection_policy_digest":{"type":"string"},"selector_split":{"type":"string","enum":["none","train","training","validation"]},"selector_policy_digest":{"type":"string"},"parent_checkpoint_digest":{"type":"string"},"parent_forecast_eval_fact_digest":{"type":"string"},"parent_observer_belief_fact_digest":{"type":"string"},"parent_allocation_engine_fact_digest":{"type":"string"},"parent_replay_environment_fact_digest":{"type":"string"},"final_refit_parent_selected_checkpoint_digest":{"type":"string"},"random_seed":{"type":"integer"},"max_episodes":{"type":"integer"},"max_wall_clock_seconds":{"type":"integer"},"causal_schedule_readiness_eligible":{"type":"boolean"},"causal_schedule_no_future_snapshot_use":{"type":"boolean"},"offline_full_window_research_allowed":{"type":"boolean"},"final_refit_uses_validation":{"type":"boolean"},"validation_no_longer_proof":{"type":"boolean"},"sealed_test_required":{"type":"boolean"},"live_execution_allowed":{"type":"boolean"}},"additionalProperties":false})"},
+     R"({"type":"object","required":["operation","requested_mode"],"properties":{"operation":{"type":"string","enum":["wave","replay"]},"requested_mode":{"type":"string","enum":["plan","dry_run","execute"]},"config_path":{"type":"string"},"job_id":{"type":"string"},"job_dir":{"type":"string"},"force_rebuild_cache":{"type":"boolean"},"confirm_execute":{"type":"boolean"},"timeout_seconds":{"type":"integer"},"wave_overlay":{"type":"object","properties":{"source_range":{"type":"string"},"anchor_index_begin":{"type":"string"},"anchor_index_end":{"type":"string"},"source_key_begin":{"type":"string"},"source_key_end":{"type":"string"}}},"runtime_handoff":{"type":"object","properties":{}},"marshal_expected_wave":{"type":"object","properties":{"target_component_family_id":{"type":"string"},"mode":{"type":"string"},"source_range":{"type":"string"},"source_order":{"type":"string"},"anchor_index_begin":{"type":"string"},"anchor_index_end":{"type":"string"},"source_key_begin":{"type":"string"},"source_key_end":{"type":"string"},"model_state_inputs":{"type":"object"}}},"accounting_numeraire_node_id":{"type":"string"},"target_node_ids":{"type":"string"},"experiment_id":{"type":"string"},"report_path":{"type":"string"},"initial_equity_numeraire":{"type":"number"},"max_node_weight":{"type":"number"},"max_turnover_l1":{"type":"number"},"max_steps":{"type":"integer"},"max_parallel_jobs":{"type":"integer"},"include_equal_weight":{"type":"boolean"},"include_current_weight":{"type":"boolean"},"include_numeraire_only_policy":{"type":"boolean"},"include_spot_distributional_utility_policy":{"type":"boolean"},"allow_synthetic_direct_edges":{"type":"boolean"},"validation_rollout":{"type":"boolean"},"linear_transaction_cost_rate":{"type":"number"},"execution_profile_digest":{"type":"string"},"policy_set_digest":{"type":"string"},"protocol_id":{"type":"string"},"protocol_contract_fingerprint":{"type":"string"},"graph_order_fingerprint":{"type":"string"},"source_cursor_token":{"type":"string"},"split_policy_fingerprint":{"type":"string"},"component_assembly_fingerprint":{"type":"string"},"policy_id":{"type":"string"},"policy_kind":{"type":"string"},"policy_architecture_digest":{"type":"string"},"training_config_digest":{"type":"string"},"training_range_digest":{"type":"string"},"validation_range_digest":{"type":"string"},"test_range_digest":{"type":"string"},"environment_contract_id":{"type":"string"},"observation_schema_digest":{"type":"string"},"action_schema_digest":{"type":"string"},"reward_contract_digest":{"type":"string"},"policy_input_schema_id":{"type":"string"},"action_adapter_id":{"type":"string"},"reward_contract_id":{"type":"string"},"training_schedule_mode":{"type":"string","enum":["causal_walk_forward_training.v1","offline_full_window_research","batch_final_refit_candidate"]},"causal_schedule_schema_id":{"type":"string"},"causal_schedule_digest":{"type":"string"},"causal_schedule_cursor_key_kind":{"type":"string","enum":["numeric_anchor_index","numeric_source_key","fixed_width_source_key","timestamp_ms"]},"causal_schedule_no_future_snapshot_use_source":{"type":"string"},"normalization_fit_range_digest":{"type":"string"},"replay_buffer_source_range_digest":{"type":"string"},"early_stopping_policy_digest":{"type":"string"},"hyperparameter_selection_policy_digest":{"type":"string"},"selector_split":{"type":"string","enum":["none","train","training","validation"]},"selector_policy_digest":{"type":"string"},"parent_checkpoint_digest":{"type":"string"},"parent_forecast_eval_fact_digest":{"type":"string"},"parent_observer_belief_fact_digest":{"type":"string"},"parent_allocation_engine_fact_digest":{"type":"string"},"parent_replay_environment_fact_digest":{"type":"string"},"final_refit_parent_selected_checkpoint_digest":{"type":"string"},"random_seed":{"type":"integer"},"max_episodes":{"type":"integer"},"max_wall_clock_seconds":{"type":"integer"},"causal_schedule_readiness_eligible":{"type":"boolean"},"causal_schedule_no_future_snapshot_use":{"type":"boolean"},"offline_full_window_research_allowed":{"type":"boolean"},"final_refit_uses_validation":{"type":"boolean"},"validation_no_longer_proof":{"type":"boolean"},"sealed_test_required":{"type":"boolean"},"live_execution_allowed":{"type":"boolean"}},"additionalProperties":false})"},
     {"hero.runtime.reset",
      "Guarded developer reset. requested_mode=plan previews the "
      "reset; "
@@ -2762,6 +2762,7 @@ validate_replay_report_for_validation_rollout(const fs::path &report_path,
   long long completed_count = 0;
   long long invalid_trace_count = 0;
   long long synthetic_step_count = 0;
+  long long numeraire_fallback_pair_count = 0;
   std::string field_error;
   if (!report_i64_field(report, "completed_count", &completed_count,
                         &field_error)) {
@@ -2775,7 +2776,9 @@ validate_replay_report_for_validation_rollout(const fs::path &report_path,
   if (!report_i64_field(report, "cajtucu_invalid_trace_count",
                         &invalid_trace_count, &field_error) ||
       !report_i64_field(report, "cajtucu_synthetic_market_step_count",
-                        &synthetic_step_count, &field_error)) {
+                        &synthetic_step_count, &field_error) ||
+      !report_i64_field(report, "cajtucu_numeraire_fallback_pair_count",
+                        &numeraire_fallback_pair_count, &field_error)) {
     *err = "E_RUNTIME_REPLAY_VALIDATION_REPORT_FIELD_INVALID: " + field_error;
     return false;
   }
@@ -2789,6 +2792,12 @@ validate_replay_report_for_validation_rollout(const fs::path &report_path,
     *err = "E_RUNTIME_REPLAY_VALIDATION_INVALID_CAJTUCU_TRACE: "
            "cajtucu_invalid_trace_count=" +
            std::to_string(invalid_trace_count);
+    return false;
+  }
+  if (numeraire_fallback_pair_count > 0) {
+    *err = "E_RUNTIME_REPLAY_VALIDATION_NUMERAIRE_FALLBACK_USED: "
+           "cajtucu_numeraire_fallback_pair_count=" +
+           std::to_string(numeraire_fallback_pair_count);
     return false;
   }
   return true;
@@ -2937,6 +2946,10 @@ validate_replay_report_for_validation_rollout(const fs::path &report_path,
       << json_quote(contract.action_schema_digest)
       << ",\"reward_contract_digest\":"
       << json_quote(contract.reward_contract_digest)
+      << ",\"policy_input_schema_id\":"
+      << json_quote(contract.policy_input_schema_id)
+      << ",\"action_adapter_id\":" << json_quote(contract.action_adapter_id)
+      << ",\"reward_contract_id\":" << json_quote(contract.reward_contract_id)
       << ",\"execution_profile_digest\":"
       << json_quote(contract.execution_profile_digest)
       << ",\"training_schedule_mode\":"
@@ -3255,6 +3268,8 @@ void append_assignment_bool(std::ostringstream &out, std::string_view key,
   std::ostringstream out;
   append_assignment(out, "schema", contract.artifact_schema_id);
   append_assignment(out, "fact_type", "policy_training");
+  append_assignment(out, "target_component_family_id",
+                    "wikimyei.policy.trainable");
   append_assignment(out, "policy_id", contract.policy_id);
   append_assignment(out, "policy_kind", contract.policy_kind);
   append_assignment(out, "policy_architecture_digest",
@@ -3273,6 +3288,10 @@ void append_assignment_bool(std::ostringstream &out, std::string_view key,
   append_assignment(out, "action_schema_digest", contract.action_schema_digest);
   append_assignment(out, "reward_contract_digest",
                     contract.reward_contract_digest);
+  append_assignment(out, "policy_input_schema_id",
+                    contract.policy_input_schema_id);
+  append_assignment(out, "action_adapter_id", contract.action_adapter_id);
+  append_assignment(out, "reward_contract_id", contract.reward_contract_id);
   append_assignment(out, "execution_profile_digest",
                     contract.execution_profile_digest);
   append_assignment(out, "training_schedule_mode",
@@ -3593,6 +3612,12 @@ unique_policy_training_attempt_leaf(std::string_view contract_digest) {
                                  &contract.action_schema_digest, err) ||
       !parse_required_string_arg(args, "reward_contract_digest",
                                  &contract.reward_contract_digest, err) ||
+      !parse_required_string_arg(args, "policy_input_schema_id",
+                                 &contract.policy_input_schema_id, err) ||
+      !parse_required_string_arg(args, "action_adapter_id",
+                                 &contract.action_adapter_id, err) ||
+      !parse_required_string_arg(args, "reward_contract_id",
+                                 &contract.reward_contract_id, err) ||
       !parse_required_string_arg(args, "execution_profile_digest",
                                  &contract.execution_profile_digest, err) ||
       !parse_required_string_arg_or_wave(
@@ -4608,16 +4633,31 @@ replay_dry_run_json(const std::vector<std::string> &argv,
   }
 
   std::string config_arg;
-  std::string base_reserve_node_id;
-  std::string risky_node_ids;
+  std::string accounting_numeraire_node_id;
+  std::string target_node_ids;
   std::string experiment_id;
   std::string report_path_arg;
   (void)extract_json_string_field(args, "config_path", &config_arg);
-  (void)extract_json_string_field(args, "base_reserve_node_id",
-                                  &base_reserve_node_id);
-  (void)extract_json_string_field(args, "risky_node_ids", &risky_node_ids);
+  (void)extract_json_string_field(args, "accounting_numeraire_node_id",
+                                  &accounting_numeraire_node_id);
+  (void)extract_json_string_field(args, "target_node_ids", &target_node_ids);
   (void)extract_json_string_field(args, "experiment_id", &experiment_id);
   (void)extract_json_string_field(args, "report_path", &report_path_arg);
+
+  const fs::path replay_config_path = effective_config_path(*ctx, config_arg);
+  accounting_numeraire_node_id = trim_ascii(accounting_numeraire_node_id);
+  if (accounting_numeraire_node_id.empty()) {
+    const auto configured_numeraire = read_ini_value(
+        replay_config_path, "ACCOUNTING", "accounting_numeraire_node_id");
+    if (!configured_numeraire.has_value() ||
+        trim_ascii(*configured_numeraire).empty()) {
+      *err = "E_RUNTIME_REPLAY_ACCOUNTING_NUMERAIRE_MISSING: missing "
+             "[ACCOUNTING].accounting_numeraire_node_id in " +
+             replay_config_path.string();
+      return false;
+    }
+    accounting_numeraire_node_id = trim_ascii(*configured_numeraire);
+  }
 
   fs::path report_path;
   if (!trim_ascii(report_path_arg).empty()) {
@@ -4646,9 +4686,9 @@ replay_dry_run_json(const std::vector<std::string> &argv,
                                &include_current_weight, err)) {
     return false;
   }
-  bool include_base_reserve_policy = true;
-  if (!parse_optional_bool_arg(args, "include_base_reserve_policy", true,
-                               &include_base_reserve_policy, err)) {
+  bool include_numeraire_only_policy = true;
+  if (!parse_optional_bool_arg(args, "include_numeraire_only_policy", true,
+                               &include_numeraire_only_policy, err)) {
     return false;
   }
   bool include_sdu_policy = true;
@@ -4745,19 +4785,15 @@ replay_dry_run_json(const std::vector<std::string> &argv,
   }
 
   std::vector<std::string> argv{exec_path.string()};
-  if (!trim_ascii(config_arg).empty()) {
-    argv.push_back("--config");
-    argv.push_back(effective_config_path(*ctx, config_arg).string());
-  }
+  argv.push_back("--config");
+  argv.push_back(replay_config_path.string());
   argv.push_back("--replay-from-job-dir");
   argv.push_back(job_dir.string());
-  if (!trim_ascii(base_reserve_node_id).empty()) {
-    argv.push_back("--replay-base-reserve-node");
-    argv.push_back(trim_ascii(base_reserve_node_id));
-  }
-  if (!trim_ascii(risky_node_ids).empty()) {
-    argv.push_back("--replay-risky-nodes");
-    argv.push_back(trim_ascii(risky_node_ids));
+  argv.push_back("--replay-accounting-numeraire-node");
+  argv.push_back(trim_ascii(accounting_numeraire_node_id));
+  if (!trim_ascii(target_node_ids).empty()) {
+    argv.push_back("--replay-target-nodes");
+    argv.push_back(trim_ascii(target_node_ids));
   }
   if (!trim_ascii(experiment_id).empty()) {
     argv.push_back("--replay-experiment-id");
@@ -4767,14 +4803,11 @@ replay_dry_run_json(const std::vector<std::string> &argv,
     argv.push_back("--replay-report-path");
     argv.push_back(report_path.string());
   }
-  if (!append_optional_double_cli_arg(args, "initial_equity_base",
-                                      "--replay-initial-equity-base", &argv,
-                                      err) ||
-      !append_optional_double_cli_arg(args, "min_base_reserve_weight",
-                                      "--replay-min-base-reserve-weight", &argv,
-                                      err) ||
-      !append_optional_double_cli_arg(
-          args, "max_risky_weight", "--replay-max-risky-weight", &argv, err) ||
+  if (!append_optional_double_cli_arg(args, "initial_equity_numeraire",
+                                      "--replay-initial-equity-numeraire",
+                                      &argv, err) ||
+      !append_optional_double_cli_arg(args, "max_node_weight",
+                                      "--replay-max-node-weight", &argv, err) ||
       !append_optional_double_cli_arg(args, "max_turnover_l1",
                                       "--replay-max-turnover-l1", &argv, err) ||
       !append_optional_int_cli_arg(args, "max_steps", "--replay-max-steps",
@@ -4789,8 +4822,8 @@ replay_dry_run_json(const std::vector<std::string> &argv,
   if (include_current_weight) {
     argv.push_back("--replay-include-current-weight");
   }
-  if (!include_base_reserve_policy) {
-    argv.push_back("--replay-no-base-reserve-policy");
+  if (!include_numeraire_only_policy) {
+    argv.push_back("--replay-no-numeraire-only-policy");
   }
   if (!include_sdu_policy) {
     argv.push_back("--replay-no-sdu-policy");
@@ -5256,19 +5289,18 @@ replay_dry_run_json(const std::vector<std::string> &argv,
                              "wave_overlay",
                              "runtime_handoff",
                              "marshal_expected_wave",
-                             "base_reserve_node_id",
-                             "risky_node_ids",
+                             "accounting_numeraire_node_id",
+                             "target_node_ids",
                              "experiment_id",
                              "report_path",
-                             "initial_equity_base",
-                             "min_base_reserve_weight",
-                             "max_risky_weight",
+                             "initial_equity_numeraire",
+                             "max_node_weight",
                              "max_turnover_l1",
                              "max_steps",
                              "max_parallel_jobs",
                              "include_equal_weight",
                              "include_current_weight",
-                             "include_base_reserve_policy",
+                             "include_numeraire_only_policy",
                              "include_spot_distributional_utility_policy",
                              "allow_synthetic_direct_edges",
                              "validation_rollout",
@@ -5292,6 +5324,9 @@ replay_dry_run_json(const std::vector<std::string> &argv,
                              "observation_schema_digest",
                              "action_schema_digest",
                              "reward_contract_digest",
+                             "policy_input_schema_id",
+                             "action_adapter_id",
+                             "reward_contract_id",
                              "training_schedule_mode",
                              "causal_schedule_schema_id",
                              "causal_schedule_digest",
@@ -5377,19 +5412,18 @@ replay_dry_run_json(const std::vector<std::string> &argv,
     for (const auto key : {"job_id",
                            "job_dir",
                            "config_path",
-                           "base_reserve_node_id",
-                           "risky_node_ids",
+                           "accounting_numeraire_node_id",
+                           "target_node_ids",
                            "experiment_id",
                            "report_path",
-                           "initial_equity_base",
-                           "min_base_reserve_weight",
-                           "max_risky_weight",
+                           "initial_equity_numeraire",
+                           "max_node_weight",
                            "max_turnover_l1",
                            "max_steps",
                            "max_parallel_jobs",
                            "include_equal_weight",
                            "include_current_weight",
-                           "include_base_reserve_policy",
+                           "include_numeraire_only_policy",
                            "include_spot_distributional_utility_policy",
                            "allow_synthetic_direct_edges",
                            "validation_rollout",

@@ -80,13 +80,15 @@ env::episode_spec_t make_episode_spec() {
   };
   spec.graph_order_fingerprint = "graph_fixture";
   spec.graph_node_ids = {"BTC", "ETH", "USDT"};
-  spec.risky_node_ids = {"BTC", "ETH"};
+  spec.target_node_ids = {"BTC", "ETH", "USDT"};
   spec.base_policy = {.accounting_numeraire_id = "USDT",
                       .settlement_asset_id = "USDT",
-                      .reserve_asset_id = "USDT",
                       .projection_reference_node_id = "USDT"};
-  spec.initial_equity_base = 1000.0;
-  spec.constraints.min_base_reserve_weight = 0.20;
+  spec.initial_equity_numeraire = 1000.0;
+  spec.constraints.max_weight =
+      torch::ones({3}, torch::TensorOptions().dtype(torch::kFloat64));
+  spec.constraints.min_weight =
+      torch::zeros({3}, torch::TensorOptions().dtype(torch::kFloat64));
   spec.world_mode = env::world_mode_t::historical_replay;
   spec.requested_wave.wave_id = "wave_fixture";
   spec.requested_wave.mode_text = "run";
@@ -105,11 +107,9 @@ make_action(env::portfolio::timestamp_ms_t decision_timestamp_ms = 0) {
   action.policy_id = "equal_weight_fixture";
   action.policy_kind = env::policy_kind_t::baseline;
   action.decision_timestamp_ms = decision_timestamp_ms;
-  action.node_ids = {"BTC", "ETH"};
-  action.base_reserve_node_id = "USDT";
+  action.node_ids = {"BTC", "ETH", "USDT"};
   action.target_weights = torch::tensor(
-      {0.25, 0.25}, torch::TensorOptions().dtype(torch::kFloat64));
-  action.target_base_reserve_weight = 0.50;
+      {0.25, 0.25, 0.50}, torch::TensorOptions().dtype(torch::kFloat64));
   return action;
 }
 
@@ -117,14 +117,13 @@ env::portfolio::PortfolioState make_portfolio_state(double equity,
                                                     double drawdown) {
   env::portfolio::PortfolioState state{};
   state.timestamp_ms = 1000;
-  state.accounting_node_id = "USDT";
-  state.reserve_node_id = "USDT";
+  state.accounting_numeraire_node_id = "USDT";
+  state.node_ids = {"BTC", "ETH", "USDT"};
   state.current_weights = torch::tensor(
-      {0.20, 0.20}, torch::TensorOptions().dtype(torch::kFloat64));
-  state.current_units =
-      torch::tensor({2.0, 4.0}, torch::TensorOptions().dtype(torch::kFloat64));
-  state.base_reserve_weight = 0.60;
-  state.equity_value_base = equity;
+      {0.20, 0.20, 0.60}, torch::TensorOptions().dtype(torch::kFloat64));
+  state.current_units = torch::tensor(
+      {2.0, 4.0, equity * 0.60}, torch::TensorOptions().dtype(torch::kFloat64));
+  state.equity_value_numeraire = equity;
   state.drawdown = drawdown;
   return state;
 }
@@ -170,9 +169,9 @@ env::observation_t make_observation(std::int64_t anchor_index, double equity) {
   observation.realization_available_after_timestamp_ms = 1001 + anchor_index;
   observation.portfolio_state = make_portfolio_state(equity, /*drawdown=*/0.0);
   observation.market_state.timestamp_ms = observation.timestamp_ms;
-  observation.market_state.tradable_mask = torch::ones({2}, torch::kBool);
+  observation.market_state.tradable_mask = torch::ones({3}, torch::kBool);
   observation.market_state.executable_mid = torch::tensor(
-      {100.0, 50.0}, torch::TensorOptions().dtype(torch::kFloat64));
+      {100.0, 50.0, 1.0}, torch::TensorOptions().dtype(torch::kFloat64));
   observation.edge_market_state = make_edge_market_state();
   return observation;
 }
@@ -183,14 +182,14 @@ public:
     spec_ = spec;
     step_index_ = 0;
     return make_observation(spec.accepted_range.anchor_index_begin,
-                            spec.initial_equity_base);
+                            spec.initial_equity_numeraire);
   }
 
   env::transition_t step(const env::action_t &action) override {
     env::validate_episode_action(action, spec_);
 
     const double equity_before =
-        step_index_ == 0 ? spec_.initial_equity_base : 1010.0;
+        step_index_ == 0 ? spec_.initial_equity_numeraire : 1010.0;
     const double equity_after = step_index_ == 0 ? 1010.0 : 1005.0;
 
     env::transition_t transition{};
@@ -204,7 +203,7 @@ public:
     transition.info.portfolio_after =
         make_portfolio_state(equity_after, step_index_ == 0 ? 0.0 : 0.01);
     transition.info.turnover = 0.10;
-    transition.info.transaction_cost_base = 0.50;
+    transition.info.transaction_cost_numeraire = 0.50;
     transition.info.realized_log_growth =
         std::log(equity_after / equity_before);
     transition.info.realized_arithmetic_return =
@@ -223,7 +222,8 @@ public:
     }
     transition.reward = env::compute_reward(
         equity_before, equity_after, transition.info.portfolio_after.drawdown,
-        transition.info.transaction_cost_base, transition.info.turnover, false);
+        transition.info.transaction_cost_numeraire, transition.info.turnover,
+        false);
     transition.next_observation = make_observation(
         spec_.accepted_range.anchor_index_begin + step_index_ + 1,
         equity_after);
@@ -269,7 +269,7 @@ class bad_reset_observation_world_t final : public env::world_iface_t {
 public:
   env::observation_t reset(const env::episode_spec_t &spec) override {
     auto observation = make_observation(spec.accepted_range.anchor_index_begin,
-                                        spec.initial_equity_base);
+                                        spec.initial_equity_numeraire);
     observation.anchor_key = "wrong_anchor";
     return observation;
   }
@@ -284,7 +284,7 @@ class bad_next_realization_observation_world_t final
 public:
   env::observation_t reset(const env::episode_spec_t &spec) override {
     auto observation = make_observation(spec.accepted_range.anchor_index_begin,
-                                        spec.initial_equity_base);
+                                        spec.initial_equity_numeraire);
     observation.next_realization_anchor_index =
         observation.observation_anchor_index + 2;
     return observation;
@@ -299,7 +299,7 @@ class bad_observation_timestamp_world_t final : public env::world_iface_t {
 public:
   env::observation_t reset(const env::episode_spec_t &spec) override {
     auto observation = make_observation(spec.accepted_range.anchor_index_begin,
-                                        spec.initial_equity_base);
+                                        spec.initial_equity_numeraire);
     observation.timestamp_ms = observation.knowledge_timestamp_ms + 1;
     return observation;
   }
@@ -313,9 +313,9 @@ class bad_observation_market_world_t final : public env::world_iface_t {
 public:
   env::observation_t reset(const env::episode_spec_t &spec) override {
     auto observation = make_observation(spec.accepted_range.anchor_index_begin,
-                                        spec.initial_equity_base);
+                                        spec.initial_equity_numeraire);
     observation.market_state.executable_mid = torch::tensor(
-        {-1.0, 50.0}, torch::TensorOptions().dtype(torch::kFloat64));
+        {-1.0, 50.0, 1.0}, torch::TensorOptions().dtype(torch::kFloat64));
     return observation;
   }
 
@@ -328,14 +328,14 @@ class bad_observation_edge_market_world_t final : public env::world_iface_t {
 public:
   env::observation_t reset(const env::episode_spec_t &spec) override {
     auto observation = make_observation(spec.accepted_range.anchor_index_begin,
-                                        spec.initial_equity_base);
-    graph::market_graph_t missing_reserve_graph{};
-    missing_reserve_graph.node_ids = {"BTC", "ETH", "USD"};
-    missing_reserve_graph.edge_ids = {"BTCUSD", "ETHUSD"};
-    missing_reserve_graph.base_index = {0, 1};
-    missing_reserve_graph.quote_index = {2, 2};
-    missing_reserve_graph.validate();
-    observation.edge_market_state.graph = std::move(missing_reserve_graph);
+                                        spec.initial_equity_numeraire);
+    graph::market_graph_t missing_numeraire_graph{};
+    missing_numeraire_graph.node_ids = {"BTC", "ETH", "USD"};
+    missing_numeraire_graph.edge_ids = {"BTCUSD", "ETHUSD"};
+    missing_numeraire_graph.base_index = {0, 1};
+    missing_numeraire_graph.quote_index = {2, 2};
+    missing_numeraire_graph.validate();
+    observation.edge_market_state.graph = std::move(missing_numeraire_graph);
     observation.edge_market_state.edge_mid_price = torch::tensor(
         {100.0, 50.0}, torch::TensorOptions().dtype(torch::kFloat64));
     return observation;
@@ -351,7 +351,7 @@ public:
   env::observation_t reset(const env::episode_spec_t &spec) override {
     spec_ = spec;
     return make_observation(spec.accepted_range.anchor_index_begin,
-                            spec.initial_equity_base);
+                            spec.initial_equity_numeraire);
   }
 
   env::transition_t step(const env::action_t &) override {
@@ -361,12 +361,12 @@ public:
         "anchor_" + std::to_string(spec_.accepted_range.anchor_index_begin);
     transition.info.anchor_index = spec_.accepted_range.anchor_index_begin;
     transition.info.portfolio_before =
-        make_portfolio_state(spec_.initial_equity_base, /*drawdown=*/0.0);
+        make_portfolio_state(spec_.initial_equity_numeraire, /*drawdown=*/0.0);
     transition.info.portfolio_after =
-        make_portfolio_state(spec_.initial_equity_base, /*drawdown=*/0.0);
+        make_portfolio_state(spec_.initial_equity_numeraire, /*drawdown=*/0.0);
     transition.info.realized_log_growth = 0.0;
     transition.info.realized_arithmetic_return = 0.0;
-    transition.info.transaction_cost_base = 0.0;
+    transition.info.transaction_cost_numeraire = 0.0;
     transition.info.turnover = 0.0;
     transition.info.projection_validation.available = true;
     transition.info.projection_validation.valid = true;
@@ -374,16 +374,16 @@ public:
     transition.info.rebalance_plan.timestamp_ms =
         1000 + spec_.accepted_range.anchor_index_begin;
     transition.info.rebalance_plan.valid = true;
-    transition.info.rebalance_plan.node_ids = {"BTC", "ETH"};
-    transition.info.rebalance_plan.base_reserve_node_id = "USDT";
+    transition.info.rebalance_plan.node_ids = {"BTC", "ETH", "USDT"};
+    transition.info.rebalance_plan.accounting_numeraire_node_id = "USDT";
     transition.info.rebalance_plan.requested_turnover_weight = 0.10;
     transition.info.rebalance_plan.routed_turnover_weight = 0.20;
-    transition.info.rebalance_plan.requested_notional_base = 100.0;
-    transition.info.rebalance_plan.routed_notional_base = 200.0;
-    transition.info.rebalance_plan.estimated_transaction_cost_base = 0.0;
+    transition.info.rebalance_plan.requested_notional_numeraire = 100.0;
+    transition.info.rebalance_plan.routed_notional_numeraire = 200.0;
+    transition.info.rebalance_plan.estimated_transaction_cost_numeraire = 0.0;
     transition.reward = env::compute_reward(
-        spec_.initial_equity_base, spec_.initial_equity_base,
-        /*drawdown=*/0.0, /*transaction_cost_base=*/0.0, /*turnover=*/0.0,
+        spec_.initial_equity_numeraire, spec_.initial_equity_numeraire,
+        /*drawdown=*/0.0, /*transaction_cost_numeraire=*/0.0, /*turnover=*/0.0,
         /*invalid_action=*/false);
     return transition;
   }
@@ -397,7 +397,7 @@ public:
   env::observation_t reset(const env::episode_spec_t &spec) override {
     spec_ = spec;
     return make_observation(spec.accepted_range.anchor_index_begin,
-                            spec.initial_equity_base);
+                            spec.initial_equity_numeraire);
   }
 
   env::transition_t step(const env::action_t &) override {
@@ -407,12 +407,12 @@ public:
         "anchor_" + std::to_string(spec_.accepted_range.anchor_index_begin);
     transition.info.anchor_index = spec_.accepted_range.anchor_index_begin;
     transition.info.portfolio_before =
-        make_portfolio_state(spec_.initial_equity_base, /*drawdown=*/0.0);
+        make_portfolio_state(spec_.initial_equity_numeraire, /*drawdown=*/0.0);
     transition.info.portfolio_after =
-        make_portfolio_state(spec_.initial_equity_base, /*drawdown=*/0.0);
+        make_portfolio_state(spec_.initial_equity_numeraire, /*drawdown=*/0.0);
     transition.info.realized_log_growth = 0.0;
     transition.info.realized_arithmetic_return = 0.0;
-    transition.info.transaction_cost_base = 0.0;
+    transition.info.transaction_cost_numeraire = 0.0;
     transition.info.turnover = 0.0;
     transition.info.projection_validation.available = true;
     transition.info.projection_validation.valid = true;
@@ -422,12 +422,12 @@ public:
         .edge_id = "BTCUSDT",
         .side = env::accounting::fill_side_t::buy_asset,
         .quantity_asset = 1.0,
-        .gross_notional_base = 100.0,
-        .fee_base = -1.0,
+        .gross_notional_numeraire = 100.0,
+        .fee_numeraire = -1.0,
     });
     transition.reward = env::compute_reward(
-        spec_.initial_equity_base, spec_.initial_equity_base,
-        /*drawdown=*/0.0, /*transaction_cost_base=*/0.0, /*turnover=*/0.0,
+        spec_.initial_equity_numeraire, spec_.initial_equity_numeraire,
+        /*drawdown=*/0.0, /*transaction_cost_numeraire=*/0.0, /*turnover=*/0.0,
         /*invalid_action=*/false);
     return transition;
   }
@@ -441,7 +441,7 @@ public:
   env::observation_t reset(const env::episode_spec_t &spec) override {
     spec_ = spec;
     return make_observation(spec.accepted_range.anchor_index_begin,
-                            spec.initial_equity_base);
+                            spec.initial_equity_numeraire);
   }
 
   env::transition_t step(const env::action_t &) override {
@@ -451,12 +451,12 @@ public:
         "anchor_" + std::to_string(spec_.accepted_range.anchor_index_begin);
     transition.info.anchor_index = spec_.accepted_range.anchor_index_begin;
     transition.info.portfolio_before =
-        make_portfolio_state(spec_.initial_equity_base, /*drawdown=*/0.0);
+        make_portfolio_state(spec_.initial_equity_numeraire, /*drawdown=*/0.0);
     transition.info.portfolio_after =
-        make_portfolio_state(spec_.initial_equity_base, /*drawdown=*/0.0);
+        make_portfolio_state(spec_.initial_equity_numeraire, /*drawdown=*/0.0);
     transition.info.realized_log_growth = 0.0;
     transition.info.realized_arithmetic_return = 0.0;
-    transition.info.transaction_cost_base = 0.0;
+    transition.info.transaction_cost_numeraire = 0.0;
     transition.info.turnover = 0.0;
     set_valid_projection(transition);
     transition.info.fills.push_back({
@@ -465,12 +465,12 @@ public:
         .edge_id = "BTCUSDT",
         .side = env::accounting::fill_side_t::buy_asset,
         .quantity_asset = 1.0,
-        .gross_notional_base = 100.0,
-        .fee_base = 0.0,
+        .gross_notional_numeraire = 100.0,
+        .fee_numeraire = 0.0,
     });
     transition.reward = env::compute_reward(
-        spec_.initial_equity_base, spec_.initial_equity_base,
-        /*drawdown=*/0.0, /*transaction_cost_base=*/0.0, /*turnover=*/0.0,
+        spec_.initial_equity_numeraire, spec_.initial_equity_numeraire,
+        /*drawdown=*/0.0, /*transaction_cost_numeraire=*/0.0, /*turnover=*/0.0,
         /*invalid_action=*/false);
     return transition;
   }
@@ -484,7 +484,7 @@ public:
   env::observation_t reset(const env::episode_spec_t &spec) override {
     spec_ = spec;
     return make_observation(spec.accepted_range.anchor_index_begin,
-                            spec.initial_equity_base);
+                            spec.initial_equity_numeraire);
   }
 
   env::transition_t step(const env::action_t &) override {
@@ -494,17 +494,17 @@ public:
         "anchor_" + std::to_string(spec_.accepted_range.anchor_index_begin);
     transition.info.anchor_index = spec_.accepted_range.anchor_index_begin;
     transition.info.portfolio_before =
-        make_portfolio_state(spec_.initial_equity_base, /*drawdown=*/0.0);
+        make_portfolio_state(spec_.initial_equity_numeraire, /*drawdown=*/0.0);
     transition.info.portfolio_after =
-        make_portfolio_state(spec_.initial_equity_base, /*drawdown=*/0.0);
+        make_portfolio_state(spec_.initial_equity_numeraire, /*drawdown=*/0.0);
     transition.info.realized_log_growth = 0.0;
     transition.info.realized_arithmetic_return = 0.0;
-    transition.info.transaction_cost_base = 0.0;
+    transition.info.transaction_cost_numeraire = 0.0;
     transition.info.turnover = 0.0;
     set_valid_projection(transition);
     transition.reward = env::compute_reward(
-        spec_.initial_equity_base, spec_.initial_equity_base,
-        /*drawdown=*/0.0, /*transaction_cost_base=*/0.0, /*turnover=*/0.0,
+        spec_.initial_equity_numeraire, spec_.initial_equity_numeraire,
+        /*drawdown=*/0.0, /*transaction_cost_numeraire=*/0.0, /*turnover=*/0.0,
         /*invalid_action=*/false);
     transition.reward.total = std::numeric_limits<double>::quiet_NaN();
     return transition;
@@ -519,12 +519,12 @@ public:
   env::observation_t reset(const env::episode_spec_t &spec) override {
     spec_ = spec;
     return make_observation(spec.accepted_range.anchor_index_begin,
-                            spec.initial_equity_base);
+                            spec.initial_equity_numeraire);
   }
 
   env::transition_t step(const env::action_t &) override {
-    const double equity_before = spec_.initial_equity_base;
-    const double equity_after = spec_.initial_equity_base * 1.01;
+    const double equity_before = spec_.initial_equity_numeraire;
+    const double equity_after = spec_.initial_equity_numeraire * 1.01;
     env::transition_t transition{};
     transition.done = true;
     transition.info.anchor_key =
@@ -538,12 +538,12 @@ public:
         std::log(equity_after / equity_before);
     transition.info.realized_arithmetic_return =
         (equity_after / equity_before) - 1.0;
-    transition.info.transaction_cost_base = 0.0;
+    transition.info.transaction_cost_numeraire = 0.0;
     transition.info.turnover = 0.0;
     set_valid_projection(transition);
     transition.reward = env::compute_reward(
         equity_before, equity_before,
-        /*drawdown=*/0.0, /*transaction_cost_base=*/0.0, /*turnover=*/0.0,
+        /*drawdown=*/0.0, /*transaction_cost_numeraire=*/0.0, /*turnover=*/0.0,
         /*invalid_action=*/false);
     return transition;
   }
@@ -557,12 +557,12 @@ public:
   env::observation_t reset(const env::episode_spec_t &spec) override {
     spec_ = spec;
     return make_observation(spec.accepted_range.anchor_index_begin,
-                            spec.initial_equity_base);
+                            spec.initial_equity_numeraire);
   }
 
   env::transition_t step(const env::action_t &) override {
-    const double equity_before = spec_.initial_equity_base;
-    const double equity_after = spec_.initial_equity_base * 1.01;
+    const double equity_before = spec_.initial_equity_numeraire;
+    const double equity_after = spec_.initial_equity_numeraire * 1.01;
     env::transition_t transition{};
     transition.done = true;
     transition.info.anchor_key =
@@ -574,12 +574,12 @@ public:
         make_portfolio_state(equity_after, /*drawdown=*/0.0);
     transition.info.realized_log_growth = 0.0;
     transition.info.realized_arithmetic_return = 0.0;
-    transition.info.transaction_cost_base = 0.0;
+    transition.info.transaction_cost_numeraire = 0.0;
     transition.info.turnover = 0.0;
     set_valid_projection(transition);
     transition.reward = env::compute_reward(
         equity_before, equity_after,
-        /*drawdown=*/0.0, /*transaction_cost_base=*/0.0, /*turnover=*/0.0,
+        /*drawdown=*/0.0, /*transaction_cost_numeraire=*/0.0, /*turnover=*/0.0,
         /*invalid_action=*/false);
     return transition;
   }
@@ -593,7 +593,7 @@ public:
   env::observation_t reset(const env::episode_spec_t &spec) override {
     spec_ = spec;
     return make_observation(spec.accepted_range.anchor_index_begin,
-                            spec.initial_equity_base);
+                            spec.initial_equity_numeraire);
   }
 
   env::transition_t step(const env::action_t &) override {
@@ -603,16 +603,16 @@ public:
         "anchor_" + std::to_string(spec_.accepted_range.anchor_index_begin);
     transition.info.anchor_index = spec_.accepted_range.anchor_index_begin;
     transition.info.portfolio_before =
-        make_portfolio_state(spec_.initial_equity_base, /*drawdown=*/0.0);
+        make_portfolio_state(spec_.initial_equity_numeraire, /*drawdown=*/0.0);
     transition.info.portfolio_after =
-        make_portfolio_state(spec_.initial_equity_base, /*drawdown=*/0.0);
+        make_portfolio_state(spec_.initial_equity_numeraire, /*drawdown=*/0.0);
     transition.info.realized_log_growth = 0.0;
     transition.info.realized_arithmetic_return = 0.0;
-    transition.info.transaction_cost_base = 0.0;
+    transition.info.transaction_cost_numeraire = 0.0;
     transition.info.turnover = 0.0;
     transition.reward = env::compute_reward(
-        spec_.initial_equity_base, spec_.initial_equity_base,
-        /*drawdown=*/0.0, /*transaction_cost_base=*/0.0, /*turnover=*/0.0,
+        spec_.initial_equity_numeraire, spec_.initial_equity_numeraire,
+        /*drawdown=*/0.0, /*transaction_cost_numeraire=*/0.0, /*turnover=*/0.0,
         /*invalid_action=*/false);
     return transition;
   }
@@ -626,7 +626,7 @@ public:
   env::observation_t reset(const env::episode_spec_t &spec) override {
     spec_ = spec;
     return make_observation(spec.accepted_range.anchor_index_begin,
-                            spec.initial_equity_base);
+                            spec.initial_equity_numeraire);
   }
 
   env::transition_t step(const env::action_t &) override {
@@ -636,17 +636,17 @@ public:
         "anchor_" + std::to_string(spec_.accepted_range.anchor_index_begin);
     transition.info.anchor_index = spec_.accepted_range.anchor_index_begin;
     transition.info.portfolio_before =
-        make_portfolio_state(spec_.initial_equity_base, /*drawdown=*/0.0);
+        make_portfolio_state(spec_.initial_equity_numeraire, /*drawdown=*/0.0);
     transition.info.portfolio_after =
-        make_portfolio_state(spec_.initial_equity_base, /*drawdown=*/0.0);
+        make_portfolio_state(spec_.initial_equity_numeraire, /*drawdown=*/0.0);
     transition.info.realized_log_growth = 0.0;
     transition.info.realized_arithmetic_return = 0.0;
-    transition.info.transaction_cost_base = 0.0;
+    transition.info.transaction_cost_numeraire = 0.0;
     transition.info.turnover = 0.0;
     set_valid_projection(transition);
     transition.reward = env::compute_reward(
-        spec_.initial_equity_base, spec_.initial_equity_base,
-        /*drawdown=*/0.0, /*transaction_cost_base=*/0.0, /*turnover=*/0.0,
+        spec_.initial_equity_numeraire, spec_.initial_equity_numeraire,
+        /*drawdown=*/0.0, /*transaction_cost_numeraire=*/0.0, /*turnover=*/0.0,
         /*invalid_action=*/false);
     return transition;
   }
@@ -660,7 +660,7 @@ public:
   env::observation_t reset(const env::episode_spec_t &spec) override {
     spec_ = spec;
     return make_observation(spec.accepted_range.anchor_index_begin,
-                            spec.initial_equity_base);
+                            spec.initial_equity_numeraire);
   }
 
   env::transition_t step(const env::action_t &) override {
@@ -670,12 +670,12 @@ public:
         "anchor_" + std::to_string(spec_.accepted_range.anchor_index_begin);
     transition.info.anchor_index = spec_.accepted_range.anchor_index_begin;
     transition.info.portfolio_before =
-        make_portfolio_state(spec_.initial_equity_base, /*drawdown=*/0.0);
+        make_portfolio_state(spec_.initial_equity_numeraire, /*drawdown=*/0.0);
     transition.info.portfolio_after =
-        make_portfolio_state(spec_.initial_equity_base, /*drawdown=*/0.0);
+        make_portfolio_state(spec_.initial_equity_numeraire, /*drawdown=*/0.0);
     transition.info.realized_log_growth = 0.0;
     transition.info.realized_arithmetic_return = 0.0;
-    transition.info.transaction_cost_base = 0.0;
+    transition.info.transaction_cost_numeraire = 0.0;
     transition.info.turnover = 0.0;
     transition.info.projection_validation.available = true;
     transition.info.projection_validation.valid = true;
@@ -686,8 +686,8 @@ public:
     transition.info.projection_validation.correlation = 0.0;
     transition.info.projection_validation.interval_coverage = 1.0;
     transition.reward = env::compute_reward(
-        spec_.initial_equity_base, spec_.initial_equity_base,
-        /*drawdown=*/0.0, /*transaction_cost_base=*/0.0, /*turnover=*/0.0,
+        spec_.initial_equity_numeraire, spec_.initial_equity_numeraire,
+        /*drawdown=*/0.0, /*transaction_cost_numeraire=*/0.0, /*turnover=*/0.0,
         /*invalid_action=*/false);
     return transition;
   }
@@ -701,7 +701,7 @@ public:
   env::observation_t reset(const env::episode_spec_t &spec) override {
     spec_ = spec;
     return make_observation(spec.accepted_range.anchor_index_begin,
-                            spec.initial_equity_base);
+                            spec.initial_equity_numeraire);
   }
 
   env::transition_t step(const env::action_t &) override {
@@ -711,18 +711,19 @@ public:
         "anchor_" + std::to_string(spec_.accepted_range.anchor_index_begin);
     transition.info.anchor_index = spec_.accepted_range.anchor_index_begin;
     transition.info.portfolio_before =
-        make_portfolio_state(spec_.initial_equity_base + 1.0,
+        make_portfolio_state(spec_.initial_equity_numeraire + 1.0,
                              /*drawdown=*/0.0);
     transition.info.portfolio_after =
-        make_portfolio_state(spec_.initial_equity_base + 1.0,
+        make_portfolio_state(spec_.initial_equity_numeraire + 1.0,
                              /*drawdown=*/0.0);
     transition.info.realized_log_growth = 0.0;
     transition.info.realized_arithmetic_return = 0.0;
-    transition.info.transaction_cost_base = 0.0;
+    transition.info.transaction_cost_numeraire = 0.0;
     transition.info.turnover = 0.0;
     transition.reward = env::compute_reward(
-        spec_.initial_equity_base + 1.0, spec_.initial_equity_base + 1.0,
-        /*drawdown=*/0.0, /*transaction_cost_base=*/0.0, /*turnover=*/0.0,
+        spec_.initial_equity_numeraire + 1.0,
+        spec_.initial_equity_numeraire + 1.0,
+        /*drawdown=*/0.0, /*transaction_cost_numeraire=*/0.0, /*turnover=*/0.0,
         /*invalid_action=*/false);
     return transition;
   }
@@ -771,10 +772,9 @@ void test_environment_contract() {
             replay_spec.observation_time_law == "time_t_only" &&
             replay_spec.source_order_policy == "sequential" &&
             replay_spec.realization_key_policy == "shared_key_per_frame" &&
-            replay_spec.action_kind ==
-                "target_node_weights_with_base_reserve" &&
+            replay_spec.action_kind == "target_node_weights" &&
             replay_spec.action_schema_id ==
-                "kikijyeba.environment.action.target_weights.v1" &&
+                "kikijyeba.environment.action.target_node_weights.v1" &&
             replay_spec.action_time_policy ==
                 "decision_timestamp_after_knowledge_before_realization" &&
             replay_spec.graph_node_universe_policy ==
@@ -836,13 +836,13 @@ void test_environment_contract() {
   bool rejected_bad_action_schema_dsl = false;
   auto bad_action_schema_dsl = replay_environment_dsl;
   const auto action_schema_pos = bad_action_schema_dsl.find(
-      "ACTION_SCHEMA_ID = kikijyeba.environment.action.target_weights.v1");
+      "ACTION_SCHEMA_ID = kikijyeba.environment.action.target_node_weights.v1");
   check(action_schema_pos != std::string::npos,
         "replay DSL fixture contains ACTION_SCHEMA_ID position");
   bad_action_schema_dsl.replace(
       action_schema_pos,
       std::string("ACTION_SCHEMA_ID = "
-                  "kikijyeba.environment.action.target_weights.v1")
+                  "kikijyeba.environment.action.target_node_weights.v1")
           .size(),
       "ACTION_SCHEMA_ID = fixture.unknown_action.v1");
   try {
@@ -928,16 +928,16 @@ void test_environment_contract() {
   check(rejected_split_base_policy,
         "environment V1 rejects split base-policy nodes");
 
-  auto missing_reserve_node_spec = spec;
-  missing_reserve_node_spec.graph_node_ids = {"BTC", "ETH"};
-  bool rejected_missing_reserve_node = false;
+  auto missing_numeraire_node_spec = spec;
+  missing_numeraire_node_spec.graph_node_ids = {"BTC", "ETH"};
+  bool rejected_missing_numeraire_node = false;
   try {
-    env::validate_episode_spec(missing_reserve_node_spec);
+    env::validate_episode_spec(missing_numeraire_node_spec);
   } catch (const std::exception &) {
-    rejected_missing_reserve_node = true;
+    rejected_missing_numeraire_node = true;
   }
-  check(rejected_missing_reserve_node,
-        "environment rejects base reserve outside graph_node_ids");
+  check(rejected_missing_numeraire_node,
+        "environment rejects base numeraire outside graph_node_ids");
 
   auto bad_cursor_spec = spec;
   bad_cursor_spec.accepted_range.cursor.anchor_index_end = 13;
@@ -977,14 +977,14 @@ void test_environment_contract() {
         "environment rejects accepted range outside requested range");
 
   const auto action = make_action();
-  env::validate_action(action, spec.risky_node_ids);
+  env::validate_action(action, spec.target_node_ids);
   env::validate_episode_action(action, spec);
 
   auto bad_action_schema = action;
   bad_action_schema.action_schema_id = "fixture.unknown_action.v1";
   bool rejected_bad_action_schema = false;
   try {
-    env::validate_action(bad_action_schema, spec.risky_node_ids);
+    env::validate_action(bad_action_schema, spec.target_node_ids);
   } catch (const std::exception &) {
     rejected_bad_action_schema = true;
   }
@@ -992,31 +992,32 @@ void test_environment_contract() {
         "environment rejects unexpected action schema ids");
 
   auto bad_action = action;
-  bad_action.target_base_reserve_weight = 0.40;
+  bad_action.target_weights = torch::tensor(
+      {0.40, 0.40, 0.40}, torch::TensorOptions().dtype(torch::kFloat64));
   bool rejected_bad_budget = false;
   try {
-    env::validate_action(bad_action, spec.risky_node_ids);
+    env::validate_action(bad_action, spec.target_node_ids);
   } catch (const std::exception &) {
     rejected_bad_budget = true;
   }
   check(rejected_bad_budget, "environment rejects action budget mismatch");
 
-  auto bad_reserve_action = action;
-  bad_reserve_action.base_reserve_node_id = "BUSD";
-  bool rejected_wrong_reserve = false;
+  auto bad_node_axis_action = action;
+  bad_node_axis_action.node_ids = {"BTC", "ETH", "BUSD"};
+  bool rejected_wrong_node_axis = false;
   try {
-    env::validate_episode_action(bad_reserve_action, spec);
+    env::validate_episode_action(bad_node_axis_action, spec);
   } catch (const std::exception &) {
-    rejected_wrong_reserve = true;
+    rejected_wrong_node_axis = true;
   }
-  check(rejected_wrong_reserve,
-        "environment rejects actions for the wrong episode reserve node");
+  check(rejected_wrong_node_axis,
+        "environment rejects actions for the wrong episode target node axis");
 
   auto bad_risk_evidence_action = action;
   bad_risk_evidence_action.risk_gate.reasons.push_back("fixture.reason");
   bool rejected_unflagged_risk_evidence = false;
   try {
-    env::validate_action(bad_risk_evidence_action, spec.risky_node_ids);
+    env::validate_action(bad_risk_evidence_action, spec.target_node_ids);
   } catch (const std::exception &) {
     rejected_unflagged_risk_evidence = true;
   }
@@ -1026,17 +1027,17 @@ void test_environment_contract() {
   auto invalid_rebalance_action = action;
   invalid_rebalance_action.rebalance_plan_available = true;
   invalid_rebalance_action.rebalance_plan_source = "fixture.invalid_plan";
-  invalid_rebalance_action.rebalance_plan.node_ids = {"BTC", "ETH"};
-  invalid_rebalance_action.rebalance_plan.base_reserve_node_id = "USDT";
+  invalid_rebalance_action.rebalance_plan.node_ids = {"BTC", "ETH", "USDT"};
+  invalid_rebalance_action.rebalance_plan.accounting_numeraire_node_id = "USDT";
   invalid_rebalance_action.rebalance_plan.requested_turnover_weight = 0.10;
   invalid_rebalance_action.rebalance_plan.routed_turnover_weight = 0.05;
-  invalid_rebalance_action.rebalance_plan.requested_notional_base = 100.0;
-  invalid_rebalance_action.rebalance_plan.routed_notional_base = 50.0;
-  invalid_rebalance_action.rebalance_plan.estimated_transaction_cost_base =
+  invalid_rebalance_action.rebalance_plan.requested_notional_numeraire = 100.0;
+  invalid_rebalance_action.rebalance_plan.routed_notional_numeraire = 50.0;
+  invalid_rebalance_action.rebalance_plan.estimated_transaction_cost_numeraire =
       0.25;
   bool rejected_invalid_rebalance_evidence = false;
   try {
-    env::validate_action(invalid_rebalance_action, spec.risky_node_ids);
+    env::validate_action(invalid_rebalance_action, spec.target_node_ids);
   } catch (const std::exception &) {
     rejected_invalid_rebalance_evidence = true;
   }
@@ -1048,18 +1049,22 @@ void test_environment_contract() {
   untimestamped_rebalance_action.rebalance_plan_source =
       "fixture.untimestamped_plan";
   untimestamped_rebalance_action.rebalance_plan.valid = true;
-  untimestamped_rebalance_action.rebalance_plan.node_ids = {"BTC", "ETH"};
-  untimestamped_rebalance_action.rebalance_plan.base_reserve_node_id = "USDT";
+  untimestamped_rebalance_action.rebalance_plan.node_ids = {"BTC", "ETH",
+                                                            "USDT"};
+  untimestamped_rebalance_action.rebalance_plan.accounting_numeraire_node_id =
+      "USDT";
   untimestamped_rebalance_action.rebalance_plan.requested_turnover_weight =
       0.10;
   untimestamped_rebalance_action.rebalance_plan.routed_turnover_weight = 0.05;
-  untimestamped_rebalance_action.rebalance_plan.requested_notional_base = 100.0;
-  untimestamped_rebalance_action.rebalance_plan.routed_notional_base = 50.0;
+  untimestamped_rebalance_action.rebalance_plan.requested_notional_numeraire =
+      100.0;
+  untimestamped_rebalance_action.rebalance_plan.routed_notional_numeraire =
+      50.0;
   untimestamped_rebalance_action.rebalance_plan
-      .estimated_transaction_cost_base = 0.25;
+      .estimated_transaction_cost_numeraire = 0.25;
   bool rejected_untimestamped_rebalance_evidence = false;
   try {
-    env::validate_action(untimestamped_rebalance_action, spec.risky_node_ids);
+    env::validate_action(untimestamped_rebalance_action, spec.target_node_ids);
   } catch (const std::exception &) {
     rejected_untimestamped_rebalance_evidence = true;
   }
@@ -1069,13 +1074,13 @@ void test_environment_contract() {
   auto bad_rebalance_action = action;
   bad_rebalance_action.rebalance_plan_available = true;
   bad_rebalance_action.rebalance_plan_source = "fixture.bad_plan";
-  bad_rebalance_action.rebalance_plan.node_ids = {"ETH", "BTC"};
-  bad_rebalance_action.rebalance_plan.base_reserve_node_id = "USDT";
+  bad_rebalance_action.rebalance_plan.node_ids = {"ETH", "BTC", "USDT"};
+  bad_rebalance_action.rebalance_plan.accounting_numeraire_node_id = "USDT";
   bad_rebalance_action.rebalance_plan.valid = true;
   bad_rebalance_action.rebalance_plan.timestamp_ms = 1;
   bool rejected_bad_rebalance_evidence = false;
   try {
-    env::validate_action(bad_rebalance_action, spec.risky_node_ids);
+    env::validate_action(bad_rebalance_action, spec.target_node_ids);
   } catch (const std::exception &) {
     rejected_bad_rebalance_evidence = true;
   }
@@ -1085,19 +1090,21 @@ void test_environment_contract() {
   auto bad_routed_rebalance_action = action;
   bad_routed_rebalance_action.rebalance_plan_available = true;
   bad_routed_rebalance_action.rebalance_plan_source = "fixture.bad_route";
-  bad_routed_rebalance_action.rebalance_plan.node_ids = {"BTC", "ETH"};
-  bad_routed_rebalance_action.rebalance_plan.base_reserve_node_id = "USDT";
+  bad_routed_rebalance_action.rebalance_plan.node_ids = {"BTC", "ETH", "USDT"};
+  bad_routed_rebalance_action.rebalance_plan.accounting_numeraire_node_id =
+      "USDT";
   bad_routed_rebalance_action.rebalance_plan.valid = true;
   bad_routed_rebalance_action.rebalance_plan.timestamp_ms = 1;
   bad_routed_rebalance_action.rebalance_plan.requested_turnover_weight = 0.10;
   bad_routed_rebalance_action.rebalance_plan.routed_turnover_weight = 0.20;
-  bad_routed_rebalance_action.rebalance_plan.requested_notional_base = 100.0;
-  bad_routed_rebalance_action.rebalance_plan.routed_notional_base = 200.0;
-  bad_routed_rebalance_action.rebalance_plan.estimated_transaction_cost_base =
-      0.0;
+  bad_routed_rebalance_action.rebalance_plan.requested_notional_numeraire =
+      100.0;
+  bad_routed_rebalance_action.rebalance_plan.routed_notional_numeraire = 200.0;
+  bad_routed_rebalance_action.rebalance_plan
+      .estimated_transaction_cost_numeraire = 0.0;
   bool rejected_routed_gt_requested = false;
   try {
-    env::validate_action(bad_routed_rebalance_action, spec.risky_node_ids);
+    env::validate_action(bad_routed_rebalance_action, spec.target_node_ids);
   } catch (const std::exception &) {
     rejected_routed_gt_requested = true;
   }
@@ -1107,39 +1114,41 @@ void test_environment_contract() {
   auto summary_rebalance_action = action;
   summary_rebalance_action.rebalance_plan_available = true;
   summary_rebalance_action.rebalance_plan_source = "fixture.summary_plan";
-  summary_rebalance_action.rebalance_plan.node_ids = {"BTC", "ETH"};
-  summary_rebalance_action.rebalance_plan.base_reserve_node_id = "USDT";
+  summary_rebalance_action.rebalance_plan.node_ids = {"BTC", "ETH", "USDT"};
+  summary_rebalance_action.rebalance_plan.accounting_numeraire_node_id = "USDT";
   summary_rebalance_action.rebalance_plan.valid = true;
   summary_rebalance_action.rebalance_plan.timestamp_ms = 1;
   summary_rebalance_action.rebalance_plan.requested_turnover_weight = 0.10;
   summary_rebalance_action.rebalance_plan.routed_turnover_weight = 0.05;
-  summary_rebalance_action.rebalance_plan.requested_notional_base = 100.0;
-  summary_rebalance_action.rebalance_plan.routed_notional_base = 50.0;
-  summary_rebalance_action.rebalance_plan.estimated_transaction_cost_base =
+  summary_rebalance_action.rebalance_plan.requested_notional_numeraire = 100.0;
+  summary_rebalance_action.rebalance_plan.routed_notional_numeraire = 50.0;
+  summary_rebalance_action.rebalance_plan.estimated_transaction_cost_numeraire =
       0.25;
-  env::validate_action(summary_rebalance_action, spec.risky_node_ids);
+  env::validate_action(summary_rebalance_action, spec.target_node_ids);
 
   auto bad_skipped_rebalance_action = action;
   bad_skipped_rebalance_action.rebalance_plan_available = true;
   bad_skipped_rebalance_action.rebalance_plan_source = "fixture.bad_skipped";
-  bad_skipped_rebalance_action.rebalance_plan.node_ids = {"BTC", "ETH"};
-  bad_skipped_rebalance_action.rebalance_plan.base_reserve_node_id = "USDT";
+  bad_skipped_rebalance_action.rebalance_plan.node_ids = {"BTC", "ETH", "USDT"};
+  bad_skipped_rebalance_action.rebalance_plan.accounting_numeraire_node_id =
+      "USDT";
   bad_skipped_rebalance_action.rebalance_plan.valid = true;
   bad_skipped_rebalance_action.rebalance_plan.timestamp_ms = 1;
   bad_skipped_rebalance_action.rebalance_plan.requested_turnover_weight = 0.10;
   bad_skipped_rebalance_action.rebalance_plan.routed_turnover_weight = 0.0;
-  bad_skipped_rebalance_action.rebalance_plan.requested_notional_base = 100.0;
-  bad_skipped_rebalance_action.rebalance_plan.routed_notional_base = 0.0;
-  bad_skipped_rebalance_action.rebalance_plan.estimated_transaction_cost_base =
-      0.0;
+  bad_skipped_rebalance_action.rebalance_plan.requested_notional_numeraire =
+      100.0;
+  bad_skipped_rebalance_action.rebalance_plan.routed_notional_numeraire = 0.0;
+  bad_skipped_rebalance_action.rebalance_plan
+      .estimated_transaction_cost_numeraire = 0.0;
   bad_skipped_rebalance_action.rebalance_plan.skipped.push_back({
       .node_id = "BTC",
       .delta_weight = 0.10,
-      .requested_notional_base = 100.0,
+      .requested_notional_numeraire = 100.0,
   });
   bool rejected_empty_skipped_reason = false;
   try {
-    env::validate_action(bad_skipped_rebalance_action, spec.risky_node_ids);
+    env::validate_action(bad_skipped_rebalance_action, spec.target_node_ids);
   } catch (const std::exception &) {
     rejected_empty_skipped_reason = true;
   }
@@ -1150,30 +1159,34 @@ void test_environment_contract() {
   bad_aggregate_rebalance_action.rebalance_plan_available = true;
   bad_aggregate_rebalance_action.rebalance_plan_source =
       "fixture.bad_aggregate";
-  bad_aggregate_rebalance_action.rebalance_plan.node_ids = {"BTC", "ETH"};
-  bad_aggregate_rebalance_action.rebalance_plan.base_reserve_node_id = "USDT";
+  bad_aggregate_rebalance_action.rebalance_plan.node_ids = {"BTC", "ETH",
+                                                            "USDT"};
+  bad_aggregate_rebalance_action.rebalance_plan.accounting_numeraire_node_id =
+      "USDT";
   bad_aggregate_rebalance_action.rebalance_plan.valid = true;
   bad_aggregate_rebalance_action.rebalance_plan.timestamp_ms = 1;
   bad_aggregate_rebalance_action.rebalance_plan.requested_turnover_weight =
       0.10;
   bad_aggregate_rebalance_action.rebalance_plan.routed_turnover_weight = 0.05;
-  bad_aggregate_rebalance_action.rebalance_plan.requested_notional_base = 100.0;
-  bad_aggregate_rebalance_action.rebalance_plan.routed_notional_base = 50.0;
+  bad_aggregate_rebalance_action.rebalance_plan.requested_notional_numeraire =
+      100.0;
+  bad_aggregate_rebalance_action.rebalance_plan.routed_notional_numeraire =
+      50.0;
   bad_aggregate_rebalance_action.rebalance_plan
-      .estimated_transaction_cost_base = 0.0;
+      .estimated_transaction_cost_numeraire = 0.0;
   bad_aggregate_rebalance_action.rebalance_plan.orders.push_back({
       .node_id = "BTC",
       .edge_id = "BTCUSDT",
       .edge_base_node_id = "BTC",
       .edge_quote_node_id = "USDT",
       .delta_weight = 0.05,
-      .requested_notional_base = 50.0,
-      .routed_notional_base = 50.0,
-      .estimated_cost_base = 0.0,
+      .requested_notional_numeraire = 50.0,
+      .routed_notional_numeraire = 50.0,
+      .estimated_cost_numeraire = 0.0,
   });
   bool rejected_bad_plan_aggregate = false;
   try {
-    env::validate_action(bad_aggregate_rebalance_action, spec.risky_node_ids);
+    env::validate_action(bad_aggregate_rebalance_action, spec.target_node_ids);
   } catch (const std::exception &) {
     rejected_bad_plan_aggregate = true;
   }
@@ -1184,17 +1197,17 @@ void test_environment_contract() {
   bad_report_action.decision_report_available = true;
   bool rejected_empty_decision_report = false;
   try {
-    env::validate_action(bad_report_action, spec.risky_node_ids);
+    env::validate_action(bad_report_action, spec.target_node_ids);
   } catch (const std::exception &) {
     rejected_empty_decision_report = true;
   }
   check(rejected_empty_decision_report,
         "environment rejects empty available decision reports");
 
-  auto reward = env::compute_reward(/*equity_before_base=*/100.0,
-                                    /*equity_after_base=*/110.0,
+  auto reward = env::compute_reward(/*equity_before_numeraire=*/100.0,
+                                    /*equity_after_numeraire=*/110.0,
                                     /*drawdown=*/0.05,
-                                    /*transaction_cost_base=*/1.0,
+                                    /*transaction_cost_numeraire=*/1.0,
                                     /*turnover=*/0.20,
                                     /*invalid_action=*/false,
                                     {.lambda_drawdown = 0.5,
@@ -1209,10 +1222,10 @@ void test_environment_contract() {
   bad_reward_options.lambda_transaction_cost = -1.0;
   bool rejected_negative_reward_penalty = false;
   try {
-    (void)env::compute_reward(/*equity_before_base=*/100.0,
-                              /*equity_after_base=*/110.0,
+    (void)env::compute_reward(/*equity_before_numeraire=*/100.0,
+                              /*equity_after_numeraire=*/110.0,
                               /*drawdown=*/0.0,
-                              /*transaction_cost_base=*/1.0,
+                              /*transaction_cost_numeraire=*/1.0,
                               /*turnover=*/0.0,
                               /*invalid_action=*/false, bad_reward_options);
   } catch (const std::exception &) {
@@ -1314,8 +1327,8 @@ void test_environment_contract() {
         "environment step report preserves accepted cursor identity");
   check(report.step_reports[1].accepted_cursor_offset == 1,
         "environment step report preserves accepted cursor offset");
-  check(report.step_reports[0].target_base_reserve_node_id == "USDT" &&
-            report.step_reports[0].target_risky_node_weights.find("BTC:") !=
+  check(report.step_reports[0].accounting_numeraire_node_id == "USDT" &&
+            report.step_reports[0].target_node_weights.find("BTC:") !=
                 std::string::npos,
         "environment step report preserves compact action target");
   check(std::isfinite(report.step_reports[0].reward_total),
@@ -1501,8 +1514,8 @@ void test_environment_contract() {
   check(report.environment_run_id == "environment_run_0",
         "environment report environment run id");
   check(report.graph_node_ids == "BTC,ETH,USDT" &&
-            report.risky_node_ids == "BTC,ETH" &&
-            report.base_reserve_node_id == "USDT",
+            report.target_node_ids == "BTC,ETH,USDT" &&
+            report.accounting_numeraire_node_id == "USDT",
         "environment report preserves graph-node universe evidence");
   check(report.accepted_cursor_wave_id == "wave_fixture" &&
             report.requested_anchor_index_begin == 10 &&
@@ -1530,16 +1543,17 @@ void test_environment_contract() {
   close(report.projection_directional_accuracy, 1.0, 1e-12,
         "environment averages projection direction");
   check(report.total_turnover > 0.0, "environment accumulates turnover");
-  check(report.total_transaction_cost_base > 0.0,
+  check(report.total_transaction_cost_numeraire > 0.0,
         "environment accumulates costs");
-  check(report.final_equity_base == 1005.0, "environment report final equity");
+  check(report.final_equity_numeraire == 1005.0,
+        "environment report final equity");
 }
 
 env::baseline_policy_config_t make_baseline_config(std::string policy_id) {
   return env::baseline_policy_config_t{
       .policy_id = std::move(policy_id),
-      .node_ids = {"BTC", "ETH"},
-      .base_reserve_node_id = "USDT",
+      .node_ids = {"BTC", "ETH", "USDT"},
+      .accounting_numeraire_node_id = "USDT",
   };
 }
 
@@ -1548,8 +1562,9 @@ make_baseline_config_for_bundle(std::string policy_id,
                                 const replay::replay_episode_bundle_t &bundle) {
   return env::baseline_policy_config_t{
       .policy_id = std::move(policy_id),
-      .node_ids = bundle.spec.risky_node_ids,
-      .base_reserve_node_id = bundle.spec.base_policy.reserve_asset_id,
+      .node_ids = bundle.spec.target_node_ids,
+      .accounting_numeraire_node_id =
+          bundle.spec.base_policy.accounting_numeraire_id,
   };
 }
 
@@ -1567,40 +1582,39 @@ make_environment_allocation_belief(std::string anchor_key,
   const auto semantics = env::observer::make_kline_feature_semantics();
   belief.source_feature_semantics_id = semantics.semantics_id;
   belief.source_feature_semantics_fingerprint = semantics.fingerprint;
-  belief.node_ids = {"BTC", "ETH"};
-  belief.node_graph_indices = {0, 1};
+  belief.node_ids = {"BTC", "ETH", "USDT"};
+  belief.node_graph_indices = {0, 1, 2};
   belief.base_policy = {.accounting_numeraire_id = "USDT",
                         .settlement_asset_id = "USDT",
-                        .reserve_asset_id = "USDT",
                         .projection_reference_node_id = "USDT"};
   belief.projection_reference_graph_index = 2;
-  belief.valid_mask = torch::ones({2}, torch::kBool);
-  belief.tradable_mask = torch::ones({2}, torch::kBool);
+  belief.valid_mask = torch::ones({3}, torch::kBool);
+  belief.tradable_mask = torch::ones({3}, torch::kBool);
   belief.expected_log_return = torch::tensor(
-      {0.015, 0.006}, torch::TensorOptions().dtype(torch::kFloat64));
+      {0.015, 0.006, 0.0}, torch::TensorOptions().dtype(torch::kFloat64));
   belief.expected_arithmetic_return = torch::tensor(
-      {0.016, 0.006}, torch::TensorOptions().dtype(torch::kFloat64));
+      {0.016, 0.006, 0.0}, torch::TensorOptions().dtype(torch::kFloat64));
   belief.marginal_variance = torch::tensor(
-      {0.0004, 0.0002}, torch::TensorOptions().dtype(torch::kFloat64));
+      {0.0004, 0.0002, 0.0}, torch::TensorOptions().dtype(torch::kFloat64));
   belief.marginal_volatility = belief.marginal_variance.sqrt();
   belief.scenarios =
-      torch::tensor({{0.020, 0.004},
-                     {0.015, 0.006},
-                     {-0.006, 0.001},
-                     {0.030, 0.010},
-                     {0.010, -0.002}},
+      torch::tensor({{0.020, 0.004, 0.0},
+                     {0.015, 0.006, 0.0},
+                     {-0.006, 0.001, 0.0},
+                     {0.030, 0.010, 0.0},
+                     {0.010, -0.002, 0.0}},
                     torch::TensorOptions().dtype(torch::kFloat64));
-  belief.covariance =
-      torch::tensor({{0.0004, 0.00004}, {0.00004, 0.0002}},
-                    torch::TensorOptions().dtype(torch::kFloat64));
+  belief.covariance = torch::tensor(
+      {{0.0004, 0.00004, 0.0}, {0.00004, 0.0002, 0.0}, {0.0, 0.0, 0.0}},
+      torch::TensorOptions().dtype(torch::kFloat64));
   belief.correlation =
-      torch::tensor({{1.0, 0.20}, {0.20, 1.0}},
+      torch::tensor({{1.0, 0.20, 0.0}, {0.20, 1.0, 0.0}, {0.0, 0.0, 1.0}},
                     torch::TensorOptions().dtype(torch::kFloat64));
-  belief.confidence = torch::tensor({0.90, 0.80}, torch::kFloat64);
-  belief.linear_cost = torch::full({2}, 0.0001, torch::kFloat64);
-  belief.quadratic_impact = torch::zeros({2}, torch::kFloat64);
-  belief.capacity_weight_limit = torch::full({2}, 0.60, torch::kFloat64);
-  belief.liquidity_score = torch::ones({2}, torch::kFloat64);
+  belief.confidence = torch::tensor({0.90, 0.80, 1.0}, torch::kFloat64);
+  belief.linear_cost = torch::full({3}, 0.0001, torch::kFloat64);
+  belief.quadratic_impact = torch::zeros({3}, torch::kFloat64);
+  belief.capacity_weight_limit = torch::full({3}, 0.60, torch::kFloat64);
+  belief.liquidity_score = torch::ones({3}, torch::kFloat64);
   belief.projection_validation_required = false;
   belief.projection_validated = false;
   belief.live_capital_allowed = false;
@@ -1660,30 +1674,30 @@ replay::replay_frame_t make_replay_frame(std::int64_t anchor_index,
 void test_baseline_policies() {
   const auto observation = make_observation(10, 1000.0);
 
-  env::base_reserve_policy_t reserve_only(
-      make_baseline_config("base_reserve_only"));
-  auto reserve_action = reserve_only.act(observation);
-  env::validate_action(reserve_action, {"BTC", "ETH"});
-  close(reserve_action.target_weights.sum().item<double>(), 0.0, 1e-12,
-        "base reserve policy holds no risky weight");
-  close(reserve_action.target_base_reserve_weight, 1.0, 1e-12,
-        "base reserve policy holds reserve node");
+  env::numeraire_only_policy_t numeraire_only(
+      make_baseline_config("numeraire_only"));
+  auto numeraire_action = numeraire_only.act(observation);
+  env::validate_action(numeraire_action, {"BTC", "ETH", "USDT"});
+  close(numeraire_action.target_weights.index({0}).item<double>(), 0.0, 1e-12,
+        "numeraire-only policy holds no BTC weight");
+  close(numeraire_action.target_weights.index({1}).item<double>(), 0.0, 1e-12,
+        "numeraire-only policy holds no ETH weight");
+  close(numeraire_action.target_weights.index({2}).item<double>(), 1.0, 1e-12,
+        "numeraire-only policy holds numeraire node");
 
-  env::equal_weight_policy_t equal_weight(make_baseline_config("equal_weight"),
-                                          0.20);
+  env::equal_weight_policy_t equal_weight(make_baseline_config("equal_weight"));
   auto equal_action = equal_weight.act(observation);
-  env::validate_action(equal_action, {"BTC", "ETH"});
-  close(equal_action.target_weights.index({0}).item<double>(), 0.40, 1e-12,
-        "equal weight policy first risky asset");
-  close(equal_action.target_weights.index({1}).item<double>(), 0.40, 1e-12,
-        "equal weight policy second risky asset");
-  close(equal_action.target_base_reserve_weight, 0.20, 1e-12,
-        "equal weight policy reserve weight");
+  env::validate_action(equal_action, {"BTC", "ETH", "USDT"});
+  close(equal_action.target_weights.index({0}).item<double>(), 1.0 / 3.0, 1e-12,
+        "equal weight policy first node");
+  close(equal_action.target_weights.index({1}).item<double>(), 1.0 / 3.0, 1e-12,
+        "equal weight policy second node");
+  close(equal_action.target_weights.index({2}).item<double>(), 1.0 / 3.0, 1e-12,
+        "equal weight policy numeraire node");
 
   env::fixed_weight_policy_t fixed_weight(
       make_baseline_config("fixed_weight"),
-      torch::tensor({0.10, 0.30}, torch::kFloat64),
-      /*target_base_reserve_weight=*/0.60);
+      torch::tensor({0.10, 0.30, 0.60}, torch::kFloat64));
   auto fixed_action = fixed_weight.act(observation);
   close(fixed_action.target_weights.index({1}).item<double>(), 0.30, 1e-12,
         "fixed weight policy preserves configured weights");
@@ -1691,13 +1705,13 @@ void test_baseline_policies() {
   env::current_weight_policy_t current_weight(
       make_baseline_config("current_weight"));
   auto current_action = current_weight.act(observation);
-  env::validate_action(current_action, {"BTC", "ETH"});
+  env::validate_action(current_action, {"BTC", "ETH", "USDT"});
   close(current_action.target_weights.index({0}).item<double>(), 0.20, 1e-12,
-        "current weight policy first risky asset");
+        "current weight policy first node");
   close(current_action.target_weights.index({1}).item<double>(), 0.20, 1e-12,
-        "current weight policy second risky asset");
-  close(current_action.target_base_reserve_weight, 0.60, 1e-12,
-        "current weight policy reserve weight");
+        "current weight policy second node");
+  close(current_action.target_weights.index({2}).item<double>(), 0.60, 1e-12,
+        "current weight policy numeraire node");
 }
 
 void test_spot_distributional_utility_policy_adapter() {
@@ -1705,9 +1719,9 @@ void test_spot_distributional_utility_policy_adapter() {
   spec.require_projection_validation = false;
   std::vector<replay::replay_frame_t> frames;
   frames.push_back(make_replay_frame(
-      10, torch::log(torch::tensor({1.04, 0.99}, torch::kFloat64))));
+      10, torch::log(torch::tensor({1.04, 0.99, 1.0}, torch::kFloat64))));
   frames.push_back(make_replay_frame(
-      11, torch::log(torch::tensor({0.98, 1.02}, torch::kFloat64))));
+      11, torch::log(torch::tensor({0.98, 1.02, 1.0}, torch::kFloat64))));
   for (auto &frame : frames) {
     frame.observation.allocation_belief = make_environment_allocation_belief(
         frame.observation.anchor_key, frame.observation.timestamp_ms);
@@ -1718,8 +1732,8 @@ void test_spot_distributional_utility_policy_adapter() {
   replay::replay_world_t world(frames, options);
 
   env::spot_distributional_utility_policy_config_t config{};
-  config.constraints.min_base_reserve_weight = 0.20;
-  config.constraints.max_weight = torch::full({2}, 0.60, torch::kFloat64);
+  config.constraints.max_weight = torch::full({3}, 0.60, torch::kFloat64);
+  config.constraints.min_weight = torch::zeros({3}, torch::kFloat64);
   config.constraints.max_turnover_l1 = 0.80;
   config.constraints.lambda_cvar = 0.10;
   config.constraints.lambda_concentration = 0.01;
@@ -1756,8 +1770,8 @@ void test_spot_distributional_utility_policy_adapter() {
             report.step_reports[0].cajtucu_execution_trace_available,
         "allocation replay step preserves decision-step evidence while "
         "executing through Cajtucu");
-  check(policy.last_target().base_reserve_node_id == "USDT",
-        "allocation policy target uses graph reserve node");
+  check(policy.last_target().node_ids == spec.target_node_ids,
+        "allocation policy target uses graph target nodes");
 }
 
 replay::replay_frame_t make_replay_frame(std::int64_t anchor_index,
@@ -1770,7 +1784,7 @@ replay::replay_frame_t make_replay_frame(std::int64_t anchor_index,
        frame.realized_log_return + 0.001},
       /*dim=*/0);
   frame.nodelift_residual_energy =
-      torch::full({2, 9}, 0.01, torch::TensorOptions().dtype(torch::kFloat64));
+      torch::full({3, 9}, 0.01, torch::TensorOptions().dtype(torch::kFloat64));
   return frame;
 }
 
@@ -1778,9 +1792,9 @@ void test_replay_world() {
   const auto spec = make_episode_spec();
   std::vector<replay::replay_frame_t> frames;
   frames.push_back(make_replay_frame(
-      10, torch::log(torch::tensor({1.04, 0.99}, torch::kFloat64))));
+      10, torch::log(torch::tensor({1.04, 0.99, 1.0}, torch::kFloat64))));
   frames.push_back(make_replay_frame(
-      11, torch::log(torch::tensor({0.98, 1.02}, torch::kFloat64))));
+      11, torch::log(torch::tensor({0.98, 1.02, 1.0}, torch::kFloat64))));
 
   replay::replay_world_options_t options{};
   options.linear_transaction_cost_rate = 0.001;
@@ -1848,8 +1862,8 @@ void test_replay_world() {
   check(!first.done, "replay first step not done");
   check(first.next_observation.anchor_key == "anchor_11",
         "replay first step advances anchor");
-  check(first.next_observation.portfolio_state.equity_value_base ==
-            first.info.portfolio_after.equity_value_base,
+  check(first.next_observation.portfolio_state.equity_value_numeraire ==
+            first.info.portfolio_after.equity_value_numeraire,
         "replay next observation carries updated portfolio state");
   check(first.info.projection_validation.available,
         "replay computes projection validation");
@@ -1857,7 +1871,7 @@ void test_replay_world() {
         "replay computes residual quality");
   check(first.info.rebalance_plan.valid, "replay creates rebalance plan");
   check(!first.info.fills.empty(), "replay creates simulated fills");
-  check(first.info.transaction_cost_base > 0.0,
+  check(first.info.transaction_cost_numeraire > 0.0,
         "replay computes transaction cost");
   check(first.info.cajtucu_execution_trace_available,
         "replay exposes Cajtucu execution trace");
@@ -1898,16 +1912,17 @@ void test_replay_world() {
   auto bad_policy_plan_action = make_action();
   bad_policy_plan_action.rebalance_plan_available = true;
   bad_policy_plan_action.rebalance_plan_source = "fixture.bad_turnover_plan";
-  bad_policy_plan_action.rebalance_plan.node_ids = {"BTC", "ETH"};
-  bad_policy_plan_action.rebalance_plan.base_reserve_node_id = "USDT";
+  bad_policy_plan_action.rebalance_plan.node_ids = {"BTC", "ETH", "USDT"};
+  bad_policy_plan_action.rebalance_plan.accounting_numeraire_node_id = "USDT";
   bad_policy_plan_action.rebalance_plan.timestamp_ms =
       frames[0].observation.knowledge_timestamp_ms;
   bad_policy_plan_action.rebalance_plan.valid = true;
   bad_policy_plan_action.rebalance_plan.requested_turnover_weight = 0.90;
   bad_policy_plan_action.rebalance_plan.routed_turnover_weight = 0.90;
-  bad_policy_plan_action.rebalance_plan.requested_notional_base = 900.0;
-  bad_policy_plan_action.rebalance_plan.routed_notional_base = 900.0;
-  bad_policy_plan_action.rebalance_plan.estimated_transaction_cost_base = 0.0;
+  bad_policy_plan_action.rebalance_plan.requested_notional_numeraire = 900.0;
+  bad_policy_plan_action.rebalance_plan.routed_notional_numeraire = 900.0;
+  bad_policy_plan_action.rebalance_plan.estimated_transaction_cost_numeraire =
+      0.0;
   replay::replay_world_t bad_policy_plan_world(frames, options);
   (void)bad_policy_plan_world.reset(spec);
   bool rejected_bad_policy_plan = false;
@@ -1924,17 +1939,20 @@ void test_replay_world() {
   untimestamped_policy_plan_action.rebalance_plan_available = true;
   untimestamped_policy_plan_action.rebalance_plan_source =
       "fixture.untimestamped_plan";
-  untimestamped_policy_plan_action.rebalance_plan.node_ids = {"BTC", "ETH"};
-  untimestamped_policy_plan_action.rebalance_plan.base_reserve_node_id = "USDT";
+  untimestamped_policy_plan_action.rebalance_plan.node_ids = {"BTC", "ETH",
+                                                              "USDT"};
+  untimestamped_policy_plan_action.rebalance_plan.accounting_numeraire_node_id =
+      "USDT";
   untimestamped_policy_plan_action.rebalance_plan.valid = true;
   untimestamped_policy_plan_action.rebalance_plan.requested_turnover_weight =
       0.10;
   untimestamped_policy_plan_action.rebalance_plan.routed_turnover_weight = 0.10;
-  untimestamped_policy_plan_action.rebalance_plan.requested_notional_base =
+  untimestamped_policy_plan_action.rebalance_plan.requested_notional_numeraire =
       100.0;
-  untimestamped_policy_plan_action.rebalance_plan.routed_notional_base = 100.0;
+  untimestamped_policy_plan_action.rebalance_plan.routed_notional_numeraire =
+      100.0;
   untimestamped_policy_plan_action.rebalance_plan
-      .estimated_transaction_cost_base = 0.0;
+      .estimated_transaction_cost_numeraire = 0.0;
   replay::replay_world_t untimestamped_policy_plan_world(frames, options);
   (void)untimestamped_policy_plan_world.reset(spec);
   bool rejected_untimestamped_policy_plan = false;
@@ -1957,31 +1975,40 @@ void test_replay_world() {
         "replay marks underfunded transaction costs as invalid action");
   check(high_cost.reward.invalid_action_penalty > 0.0,
         "replay returns invalid-action penalty instead of throwing");
-  check(high_cost.info.portfolio_after.base_reserve_weight >= 0.0,
-        "replay keeps reserve weight nonnegative after underfunded costs");
+  check(high_cost.info.portfolio_after.current_weights.index({2})
+                .item<double>() >= 0.0,
+        "replay keeps numeraire node weight nonnegative after underfunded "
+        "costs");
 
   replay::replay_world_t episode_world(frames, options);
   fixture_policy_t policy{};
   auto report = env::run_episode(episode_world, policy, spec);
   check(report.transition_count == 2, "replay episode runs all frames");
-  check(report.final_equity_base > 0.0, "replay final equity positive");
-  check(report.total_transaction_cost_base > 0.0,
+  check(report.final_equity_numeraire > 0.0, "replay final equity positive");
+  check(report.total_transaction_cost_numeraire > 0.0,
         "replay report accumulates transaction cost");
   check(report.projection_mae <= 0.001 + 1e-12,
         "replay report aggregates projection validation");
   check(std::isfinite(report.projection_rmse) &&
             std::isfinite(report.projection_correlation),
         "replay report aggregates projection RMSE and correlation");
-  check(report.step_reports[0].rebalance_plan_valid &&
-            report.step_reports[0].rebalance_plan_enforced &&
-            report.step_reports[0].execution_model ==
-                std::string(
-                    cuwacunu::cajtucu::execution::kCajtucuPaperBackendIdV1) &&
-            report.step_reports[0].cajtucu_execution_trace_available &&
-            report.step_reports[0].fill_count == 2 &&
-            report.step_reports[0].fill_gross_notional_base > 0.0 &&
-            report.step_reports[0].residual_quality_available,
-        "replay step report preserves execution and residual evidence");
+  check(report.step_reports[0].rebalance_plan_valid,
+        "replay step report preserves valid rebalance evidence");
+  check(report.step_reports[0].rebalance_plan_enforced,
+        "replay step report records enforced rebalance evidence");
+  check(report.step_reports[0].execution_model ==
+            std::string(cuwacunu::cajtucu::execution::kCajtucuPaperBackendIdV1),
+        "replay step report records Cajtucu execution model");
+  check(report.step_reports[0].cajtucu_execution_trace_available,
+        "replay step report exposes Cajtucu execution trace evidence");
+  check(report.step_reports[0].cajtucu_fill_count == 2,
+        "replay step report records direct-pair Cajtucu fills");
+  check(report.step_reports[0].fill_count == 4,
+        "replay step report records sell and buy accounting fill legs");
+  check(report.step_reports[0].fill_gross_notional_numeraire > 0.0,
+        "replay step report preserves execution notional evidence");
+  check(report.step_reports[0].residual_quality_available,
+        "replay step report preserves residual evidence");
   check(!report.step_reports[0].risk_gate_evaluated,
         "replay step report distinguishes unevaluated risk gate");
 
@@ -1997,17 +2024,18 @@ void test_replay_world() {
   check(rejected_bad_cursor_frame,
         "replay rejects frame outside accepted cursor evidence");
 
-  auto wrong_reserve_frames = frames;
-  wrong_reserve_frames[0].observation.portfolio_state.reserve_node_id = "USD";
-  replay::replay_world_t wrong_reserve_world(wrong_reserve_frames, options);
-  bool rejected_wrong_reserve_state = false;
+  auto wrong_numeraire_frames = frames;
+  wrong_numeraire_frames[0]
+      .observation.portfolio_state.accounting_numeraire_node_id = "USD";
+  replay::replay_world_t wrong_numeraire_world(wrong_numeraire_frames, options);
+  bool rejected_wrong_numeraire_state = false;
   try {
-    (void)wrong_reserve_world.reset(spec);
+    (void)wrong_numeraire_world.reset(spec);
   } catch (const std::exception &) {
-    rejected_wrong_reserve_state = true;
+    rejected_wrong_numeraire_state = true;
   }
-  check(rejected_wrong_reserve_state,
-        "replay rejects frame portfolio state with wrong reserve node");
+  check(rejected_wrong_numeraire_state,
+        "replay rejects portfolio state with wrong accounting numeraire");
 
   auto future_market_frames = frames;
   future_market_frames[0].observation.market_state.timestamp_ms =
@@ -2122,7 +2150,7 @@ void test_replay_world() {
     rejected_wrong_node_allocation_belief = true;
   }
   check(rejected_wrong_node_allocation_belief,
-        "replay rejects AllocationBelief with wrong risky node order");
+        "replay rejects AllocationBelief with wrong target-node order");
 
   auto future_nodelift_belief_frames = frames;
   env::belief::NodeLiftPotentialBelief future_nodelift_belief{};
@@ -2248,10 +2276,9 @@ env::episode_spec_t make_source_episode_spec(
   auto spec = make_episode_spec();
   spec.graph_order_fingerprint = graph.computed_graph_order_fingerprint();
   spec.graph_node_ids = graph.node_ids;
-  spec.risky_node_ids = {"BTC", "ETH"};
+  spec.target_node_ids = graph.node_ids;
   spec.base_policy = {.accounting_numeraire_id = "USDT",
                       .settlement_asset_id = "USDT",
-                      .reserve_asset_id = "USDT",
                       .projection_reference_node_id = "USDT"};
   const auto wave = make_source_wave();
   return replay::bind_episode_spec_to_graph_cursor(spec, wave, cursor);
@@ -2452,7 +2479,7 @@ make_source_forecast_artifact(const replay::replay_frame_t &frame,
   artifact.identity.base_policy = belief.base_policy;
   artifact.identity.projection_reference_graph_index =
       belief.projection_reference_graph_index.value_or(-1);
-  artifact.identity.return_origin = "base_relative_nodelift_projection";
+  artifact.identity.return_origin = "numeraire_relative_nodelift_projection";
 
   const auto A = static_cast<std::int64_t>(belief.node_ids.size());
   artifact.log_weight = torch::zeros({A, 1}, torch::kFloat64);
@@ -2510,9 +2537,9 @@ env::replay_policy_factory_t make_sdu_policy_factory() {
       .make_policy =
           [](const replay::replay_episode_bundle_t &) {
             env::spot_distributional_utility_policy_config_t config{};
-            config.constraints.min_base_reserve_weight = 0.20;
             config.constraints.max_weight =
-                torch::full({2}, 0.60, torch::kFloat64);
+                torch::full({3}, 0.60, torch::kFloat64);
+            config.constraints.min_weight = torch::zeros({3}, torch::kFloat64);
             config.constraints.max_turnover_l1 = 0.80;
             config.constraints.lambda_cvar = 0.10;
             config.constraints.lambda_concentration = 0.01;
@@ -2602,10 +2629,9 @@ void test_replay_source_graph_anchor_binding() {
   source_key_base_spec.graph_order_fingerprint =
       graph.computed_graph_order_fingerprint();
   source_key_base_spec.graph_node_ids = graph.node_ids;
-  source_key_base_spec.risky_node_ids = {"BTC", "ETH"};
+  source_key_base_spec.target_node_ids = graph.node_ids;
   source_key_base_spec.base_policy = {.accounting_numeraire_id = "USDT",
                                       .settlement_asset_id = "USDT",
-                                      .reserve_asset_id = "USDT",
                                       .projection_reference_node_id = "USDT"};
   source_key_base_spec.require_projection_validation = false;
   const auto source_key_spec = replay::bind_episode_spec_to_graph_cursor(
@@ -2804,8 +2830,9 @@ void test_replay_source_graph_anchor_binding() {
           source_key_base_spec, make_source_key_wave(), cursor, batch, graph,
           replay::replay_frame_build_options_t{}, options);
   auto source_key_world = replay::spawn_replay_world(source_key_bundle);
-  env::base_reserve_policy_t source_key_policy(
-      make_baseline_config_for_bundle("source_key_reserve", source_key_bundle));
+  env::numeraire_only_policy_t source_key_policy(
+      make_baseline_config_for_bundle("source_key_numeraire",
+                                      source_key_bundle));
   auto source_key_report = env::run_episode(
       *source_key_world, source_key_policy, source_key_bundle.spec);
   check(source_key_report.requested_anchor_index_begin == -1 &&
@@ -2868,6 +2895,8 @@ void test_replay_source_graph_anchor_binding() {
         "replay source projection forward sign");
   close(plan.signs.index({1}).item<double>(), -1.0, 1e-12,
         "replay source projection reverse sign");
+  close(plan.signs.index({2}).item<double>(), 0.0, 1e-12,
+        "replay source projection reference-node sign");
 
   replay::replay_world_options_t bundle_world_options{};
   bundle_world_options.require_projection_validation = false;
@@ -2885,7 +2914,8 @@ void test_replay_source_graph_anchor_binding() {
             bundle.spec.realized_return_projection.reference_node_id ==
                 "USDT" &&
             bundle.spec.realized_return_projection.edge_ids[0] == "BTCUSDT" &&
-            bundle.spec.realized_return_projection.edge_ids[1] == "USDTETH",
+            bundle.spec.realized_return_projection.edge_ids[1] == "USDTETH" &&
+            bundle.spec.realized_return_projection.edge_ids[2].empty(),
         "replay source bundle records realized-return truth and projection "
         "edges in EpisodeSpec");
   close(bundle.spec.realized_return_projection.signs.index({0}).item<double>(),
@@ -2894,6 +2924,9 @@ void test_replay_source_graph_anchor_binding() {
   close(bundle.spec.realized_return_projection.signs.index({1}).item<double>(),
         -1.0, 1e-12,
         "replay source bundle records reverse realized-return sign");
+  close(bundle.spec.realized_return_projection.signs.index({2}).item<double>(),
+        0.0, 1e-12,
+        "replay source bundle records reference-node realized-return sign");
 
   auto bad_projection_spec = bundle.spec;
   bad_projection_spec.realized_return_projection.edge_ids.pop_back();
@@ -3026,7 +3059,7 @@ void test_replay_source_graph_anchor_binding() {
           [incomplete_policy_constructed](
               const replay::replay_episode_bundle_t &task_bundle) {
             *incomplete_policy_constructed = true;
-            return std::make_unique<env::base_reserve_policy_t>(
+            return std::make_unique<env::numeraire_only_policy_t>(
                 make_baseline_config_for_bundle(
                     "incomplete_bundle_policy_fixture", task_bundle));
           },
@@ -3068,7 +3101,7 @@ void test_replay_source_graph_anchor_binding() {
 
   auto bad_projection_sign_bundle = bundle;
   bad_projection_sign_bundle.realized_return_projection.signs =
-      torch::tensor({0.0, -1.0}, torch::kFloat64);
+      torch::tensor({0.0, -1.0, 0.0}, torch::kFloat64);
   bool rejected_bad_projection_sign = false;
   try {
     replay::validate_replay_episode_bundle(bad_projection_sign_bundle);
@@ -3103,16 +3136,18 @@ void test_replay_source_graph_anchor_binding() {
 
   close(bundle.realized_return_projection.signs.index({1}).item<double>(), -1.0,
         1e-12, "replay source bundle carries reverse sign");
+  close(bundle.realized_return_projection.signs.index({2}).item<double>(), 0.0,
+        1e-12, "replay source bundle carries reference-node sign");
   auto spawned_world = replay::spawn_replay_world(bundle);
-  env::equal_weight_policy_t policy(make_baseline_config("equal_weight"), 0.50);
+  env::equal_weight_policy_t policy(make_baseline_config("equal_weight"));
   auto report = env::run_episode(*spawned_world, policy, bundle.spec);
   check(report.transition_count == 2,
         "replay source spawned world runs through episode");
   check(report.realized_return_truth_id ==
                 "direct_edge_realized_return_truth_v1" &&
             report.realized_return_projection_reference_node_id == "USDT" &&
-            report.realized_return_projection_edge_ids == "BTCUSDT,USDTETH" &&
-            report.realized_return_projection_signs == "BTC:1,ETH:-1",
+            report.realized_return_projection_edge_ids == "BTCUSDT,USDTETH," &&
+            report.realized_return_projection_signs == "BTC:1,ETH:-1,USDT:0",
         "replay report exposes realized-return truth and projection edge "
         "evidence");
 
@@ -3381,38 +3416,38 @@ void test_replay_source_graph_anchor_binding() {
   check(rejected_bad_edge_market,
         "replay artifact source rejects malformed edge market state");
 
-  auto missing_reserve_edge_artifacts =
+  auto missing_numeraire_edge_artifacts =
       make_source_observation_artifacts(bundle, graph);
-  graph::market_graph_t missing_reserve_graph{};
-  missing_reserve_graph.node_ids = {"BTC", "ETH", "USD"};
-  missing_reserve_graph.edge_ids = {"BTCUSD", "ETHUSD"};
-  missing_reserve_graph.base_index = {0, 1};
-  missing_reserve_graph.quote_index = {2, 2};
-  missing_reserve_graph.validate();
-  env::execution::spot_edge_market_state_t missing_reserve_market{};
-  missing_reserve_market.graph = std::move(missing_reserve_graph);
-  missing_reserve_market.edge_mid_price = torch::tensor(
+  graph::market_graph_t missing_numeraire_graph{};
+  missing_numeraire_graph.node_ids = {"BTC", "ETH", "USD"};
+  missing_numeraire_graph.edge_ids = {"BTCUSD", "ETHUSD"};
+  missing_numeraire_graph.base_index = {0, 1};
+  missing_numeraire_graph.quote_index = {2, 2};
+  missing_numeraire_graph.validate();
+  env::execution::spot_edge_market_state_t missing_numeraire_market{};
+  missing_numeraire_market.graph = std::move(missing_numeraire_graph);
+  missing_numeraire_market.edge_mid_price = torch::tensor(
       {100.0, 50.0}, torch::TensorOptions().dtype(torch::kFloat64));
-  env::execution::validate_spot_edge_market_state(missing_reserve_market);
-  missing_reserve_edge_artifacts[0].edge_market_state =
-      std::move(missing_reserve_market);
+  env::execution::validate_spot_edge_market_state(missing_numeraire_market);
+  missing_numeraire_edge_artifacts[0].edge_market_state =
+      std::move(missing_numeraire_market);
   replay::keyed_replay_observation_artifact_source_t
-      missing_reserve_edge_artifact_source(
-          "missing_reserve_edge_market_artifact_fixture",
-          missing_reserve_edge_artifacts);
-  auto missing_reserve_edge_enriched_bundle = bundle;
-  bool rejected_missing_reserve_edge_market = false;
+      missing_numeraire_edge_artifact_source(
+          "missing_numeraire_edge_market_artifact_fixture",
+          missing_numeraire_edge_artifacts);
+  auto missing_numeraire_edge_enriched_bundle = bundle;
+  bool rejected_missing_numeraire_edge_market = false;
   try {
     replay::enrich_replay_episode_bundle_with_artifacts(
-        missing_reserve_edge_enriched_bundle,
-        missing_reserve_edge_artifact_source,
+        missing_numeraire_edge_enriched_bundle,
+        missing_numeraire_edge_artifact_source,
         {.require_artifacts_per_frame = true});
   } catch (const std::exception &) {
-    rejected_missing_reserve_edge_market = true;
+    rejected_missing_numeraire_edge_market = true;
   }
-  check(
-      rejected_missing_reserve_edge_market,
-      "replay artifact source rejects edge market state without base reserve");
+  check(rejected_missing_numeraire_edge_market,
+        "replay artifact source rejects edge market state without base "
+        "numeraire");
 
   const auto bad_artifact_index_root =
       std::filesystem::temp_directory_path() /
@@ -3656,9 +3691,9 @@ void test_replay_source_graph_anchor_binding() {
 
   auto enriched_world = replay::spawn_replay_world(enriched_bundle);
   env::spot_distributional_utility_policy_config_t allocation_config{};
-  allocation_config.constraints.min_base_reserve_weight = 0.20;
   allocation_config.constraints.max_weight =
-      torch::full({2}, 0.60, torch::kFloat64);
+      torch::full({3}, 0.60, torch::kFloat64);
+  allocation_config.constraints.min_weight = torch::zeros({3}, torch::kFloat64);
   allocation_config.constraints.max_turnover_l1 = 0.80;
   allocation_config.constraints.lambda_cvar = 0.10;
   allocation_config.constraints.lambda_concentration = 0.01;
@@ -3676,12 +3711,12 @@ void test_replay_source_graph_anchor_binding() {
 
   std::vector<env::replay_policy_factory_t> policy_factories;
   policy_factories.push_back({
-      .policy_id = "base_reserve_only",
+      .policy_id = "numeraire_only",
       .policy_kind = env::policy_kind_t::baseline,
       .make_policy =
           [](const replay::replay_episode_bundle_t &bundle) {
-            return std::make_unique<env::base_reserve_policy_t>(
-                make_baseline_config_for_bundle("base_reserve_only", bundle));
+            return std::make_unique<env::numeraire_only_policy_t>(
+                make_baseline_config_for_bundle("numeraire_only", bundle));
           },
   });
   policy_factories.push_back({
@@ -3690,8 +3725,7 @@ void test_replay_source_graph_anchor_binding() {
       .make_policy =
           [](const replay::replay_episode_bundle_t &bundle) {
             return std::make_unique<env::equal_weight_policy_t>(
-                make_baseline_config_for_bundle("equal_weight", bundle),
-                /*base_reserve_weight=*/0.50);
+                make_baseline_config_for_bundle("equal_weight", bundle));
           },
   });
   env::replay_experiment_options_t experiment_options{};
@@ -3717,7 +3751,7 @@ void test_replay_source_graph_anchor_binding() {
         "experiment runner computes mean total reward");
   check(std::isfinite(experiment.mean_max_drawdown()) &&
             std::isfinite(experiment.mean_total_turnover()) &&
-            std::isfinite(experiment.mean_total_transaction_cost_base()),
+            std::isfinite(experiment.mean_total_transaction_cost_numeraire()),
         "experiment runner computes aggregate risk and cost means");
   check(std::isfinite(experiment.mean_projection_mae()),
         "experiment runner computes mean projection MAE");
@@ -3735,7 +3769,7 @@ void test_replay_source_graph_anchor_binding() {
             !experiment.episode_reports[0]
                  .per_node_model_skill_vs_zero_mae.empty(),
         "experiment runner computes per-node projection diagnostics");
-  check(experiment.episode_reports[0].policy_id == "base_reserve_only",
+  check(experiment.episode_reports[0].policy_id == "numeraire_only",
         "experiment runner preserves first policy id");
   check(experiment.episode_reports[1].policy_id == "equal_weight",
         "experiment runner preserves second policy id");
@@ -3751,7 +3785,7 @@ void test_replay_source_graph_anchor_binding() {
   check(experiment.policy_summaries[0].policy_summary_schema_id ==
             std::string(env::kReplayPolicyComparisonArtifactSchema),
         "experiment runner emits replay audit policy summary schema");
-  check(experiment.policy_summaries[0].policy_id == "base_reserve_only",
+  check(experiment.policy_summaries[0].policy_id == "numeraire_only",
         "experiment runner summary preserves first policy id");
   check(experiment.policy_summaries[0].attempted_count == 1,
         "experiment runner summary records first policy attempts");
@@ -3759,8 +3793,9 @@ void test_replay_source_graph_anchor_binding() {
         "experiment runner summary records first policy completions");
   check(experiment.policy_summaries[1].policy_id == "equal_weight",
         "experiment runner summary preserves second policy id");
-  check(std::isfinite(experiment.policy_summaries[1].mean_final_equity_base),
-        "experiment runner summary computes final equity mean");
+  check(
+      std::isfinite(experiment.policy_summaries[1].mean_final_equity_numeraire),
+      "experiment runner summary computes final equity mean");
   check(std::isfinite(experiment.policy_summaries[1].mean_projection_mae),
         "experiment runner summary computes projection MAE mean");
   check(std::isfinite(experiment.policy_summaries[1].mean_projection_rmse) &&
@@ -3803,6 +3838,41 @@ void test_replay_source_graph_anchor_binding() {
   check(experience_trace.episodes[0].transitions[0].execution_model ==
             experiment.episode_reports[0].step_reports[0].execution_model,
         "experience trace preserves execution model");
+  check(experience_trace.episodes[0]
+            .transitions[0]
+            .cajtucu_execution_trace_available,
+        "experience trace preserves Cajtucu trace availability");
+  check(experience_trace.episodes[0].transitions[0].cajtucu_trace_valid ==
+            experiment.episode_reports[0].step_reports[0].cajtucu_trace_valid,
+        "experience trace preserves Cajtucu trace validity");
+  check(experience_trace.episodes[0]
+                    .transitions[0]
+                    .cajtucu_missing_direct_pair_count ==
+                experiment.episode_reports[0]
+                    .step_reports[0]
+                    .cajtucu_missing_direct_pair_count &&
+            experience_trace.episodes[0]
+                    .transitions[0]
+                    .cajtucu_numeraire_fallback_pair_count ==
+                experiment.episode_reports[0]
+                    .step_reports[0]
+                    .cajtucu_numeraire_fallback_pair_count,
+        "experience trace preserves Cajtucu direct-pair feasibility counters");
+  close(experience_trace.episodes[0]
+            .transitions[0]
+            .cajtucu_total_transaction_cost_numeraire,
+        experiment.episode_reports[0]
+            .step_reports[0]
+            .cajtucu_total_transaction_cost_numeraire,
+        1e-12, "experience trace preserves Cajtucu transaction cost anatomy");
+  check(!experience_trace.policy_comparisons.empty() &&
+            experience_trace.policy_comparisons[0].cajtucu_valid_trace_count ==
+                experiment.policy_summaries[0].cajtucu_valid_trace_count &&
+            experience_trace.policy_comparisons[0]
+                    .cajtucu_numeraire_fallback_pair_count ==
+                experiment.policy_summaries[0]
+                    .cajtucu_numeraire_fallback_pair_count,
+        "experience trace preserves policy-level Cajtucu feasibility summary");
   check(experience_trace.episodes[0].transitions[0].reward_total ==
             experiment.episode_reports[0].step_reports[0].reward_total,
         "experience trace preserves decomposed reward total");
@@ -3826,6 +3896,18 @@ void test_replay_source_graph_anchor_binding() {
   check(experience_trace_text.find(
             "episode_0_transition_0_time_law_clean=true") != std::string::npos,
         "experience trace writer records time-law evidence");
+  check(
+      experience_trace_text.find(
+          "episode_0_transition_0_cajtucu_total_transaction_cost_numeraire=") !=
+              std::string::npos &&
+          experience_trace_text.find("episode_0_transition_0_cajtucu_numeraire_"
+                                     "fallback_pair_count=") !=
+              std::string::npos &&
+          experience_trace_text.find(
+              "policy_comparison_0_cajtucu_valid_trace_count=") !=
+              std::string::npos,
+      "experience trace writer records Cajtucu cost and feasibility "
+      "evidence");
   check(experience_trace_text.find("episode_0_transition_0_projection_rmse=") !=
                 std::string::npos &&
             experience_trace_text.find(
@@ -3850,6 +3932,24 @@ void test_replay_source_graph_anchor_binding() {
   close(loaded_experience_trace.episodes[0].transitions[0].reward_total,
         experience_trace.episodes[0].transitions[0].reward_total, 1e-12,
         "experience trace reader preserves reward total");
+  close(loaded_experience_trace.episodes[0]
+            .transitions[0]
+            .cajtucu_total_transaction_cost_numeraire,
+        experience_trace.episodes[0]
+            .transitions[0]
+            .cajtucu_total_transaction_cost_numeraire,
+        1e-12, "experience trace reader preserves Cajtucu transaction cost");
+  check(
+      loaded_experience_trace.episodes[0]
+                  .transitions[0]
+                  .cajtucu_numeraire_fallback_pair_count ==
+              experience_trace.episodes[0]
+                  .transitions[0]
+                  .cajtucu_numeraire_fallback_pair_count &&
+          loaded_experience_trace.policy_comparisons[0]
+                  .cajtucu_valid_trace_count ==
+              experience_trace.policy_comparisons[0].cajtucu_valid_trace_count,
+      "experience trace reader preserves Cajtucu feasibility counters");
   close(loaded_experience_trace.episodes[0].transitions[0].projection_rmse,
         experience_trace.episodes[0].transitions[0].projection_rmse, 1e-12,
         "experience trace reader preserves projection RMSE");
@@ -3903,7 +4003,7 @@ void test_replay_source_graph_anchor_binding() {
       .policy_kind = env::policy_kind_t::baseline,
       .make_policy =
           [](const replay::replay_episode_bundle_t &bundle) {
-            return std::make_unique<env::base_reserve_policy_t>(
+            return std::make_unique<env::numeraire_only_policy_t>(
                 make_baseline_config_for_bundle("actual_policy_fixture",
                                                 bundle));
           },
@@ -3930,7 +4030,7 @@ void test_replay_source_graph_anchor_binding() {
       .policy_kind = env::policy_kind_t::deterministic_allocator,
       .make_policy =
           [](const replay::replay_episode_bundle_t &bundle) {
-            return std::make_unique<env::base_reserve_policy_t>(
+            return std::make_unique<env::numeraire_only_policy_t>(
                 make_baseline_config_for_bundle("kind_drift_fixture", bundle));
           },
   });
@@ -4040,7 +4140,8 @@ void test_replay_source_graph_anchor_binding() {
                 "counts_match_evidence") != std::string::npos &&
             replay_report_text.find("replay_environment_action_schema_id="
                                     "kikijyeba.environment.action."
-                                    "target_weights.v1") != std::string::npos &&
+                                    "target_node_weights.v1") !=
+                std::string::npos &&
             replay_report_text.find(
                 "replay_environment_default_max_parallel_jobs=1") !=
                 std::string::npos &&
@@ -4064,15 +4165,17 @@ void test_replay_source_graph_anchor_binding() {
                 std::string::npos &&
             replay_report_text.find("cajtucu_invalid_trace_count=") !=
                 std::string::npos &&
-            replay_report_text.find("requested_notional_base=") !=
+            replay_report_text.find("requested_notional_numeraire=") !=
                 std::string::npos &&
-            replay_report_text.find("executed_notional_base=") !=
+            replay_report_text.find("executed_notional_numeraire=") !=
                 std::string::npos &&
-            replay_report_text.find("rejected_notional_base=") !=
+            replay_report_text.find("rejected_notional_numeraire=") !=
                 std::string::npos &&
-            replay_report_text.find("fee_cost_base=") != std::string::npos &&
-            replay_report_text.find("spread_cost_base=") != std::string::npos &&
-            replay_report_text.find("slippage_cost_base=") !=
+            replay_report_text.find("fee_cost_numeraire=") !=
+                std::string::npos &&
+            replay_report_text.find("spread_cost_numeraire=") !=
+                std::string::npos &&
+            replay_report_text.find("slippage_cost_numeraire=") !=
                 std::string::npos &&
             replay_report_text.find("mean_target_weight_error_l1=") !=
                 std::string::npos &&
@@ -4194,7 +4297,7 @@ void test_replay_source_graph_anchor_binding() {
   check(replay_report_text.find("mean_max_drawdown=") != std::string::npos &&
             replay_report_text.find("mean_total_turnover=") !=
                 std::string::npos &&
-            replay_report_text.find("mean_total_transaction_cost_base=") !=
+            replay_report_text.find("mean_total_transaction_cost_numeraire=") !=
                 std::string::npos,
         "replay experiment report writes aggregate risk and cost metrics");
   check(replay_report_text.find("mean_zero_return_baseline_mae=") !=
@@ -4753,7 +4856,8 @@ void test_replay_source_graph_anchor_binding() {
       replay_report_text.find("episode_0_step_count=2") != std::string::npos &&
           replay_report_text.find("episode_0_graph_node_ids=BTC,ETH,USDT") !=
               std::string::npos &&
-          replay_report_text.find("episode_0_base_reserve_node_id=USDT") !=
+          replay_report_text.find(
+              "episode_0_accounting_numeraire_node_id=USDT") !=
               std::string::npos &&
           replay_report_text.find("episode_0_requested_anchor_index_begin=") !=
               std::string::npos &&
@@ -4820,10 +4924,10 @@ void test_replay_source_graph_anchor_binding() {
           replay_report_text.find("episode_0_step_0_cajtucu_trace_valid=") !=
               std::string::npos &&
           replay_report_text.find(
-              "episode_0_step_0_cajtucu_requested_notional_base=") !=
+              "episode_0_step_0_cajtucu_requested_notional_numeraire=") !=
               std::string::npos &&
           replay_report_text.find(
-              "episode_0_step_0_cajtucu_total_transaction_cost_base=") !=
+              "episode_0_step_0_cajtucu_total_transaction_cost_numeraire=") !=
               std::string::npos &&
           replay_report_text.find("episode_0_step_0_target_weight_error_l1=") !=
               std::string::npos &&
@@ -4871,7 +4975,7 @@ void test_replay_source_graph_anchor_binding() {
         "source experiment records requested and resolved parallelism");
   check(source_experiment.completed_count == 2,
         "source experiment completes both baseline policies");
-  check(std::isfinite(source_experiment.mean_final_equity_base()),
+  check(std::isfinite(source_experiment.mean_final_equity_numeraire()),
         "source experiment computes mean final equity");
   check(source_experiment.policy_summaries.size() == 2,
         "source experiment emits policy summaries");
@@ -5004,16 +5108,17 @@ void test_replay_source_graph_anchor_binding() {
       replay::make_runtime_allocation_belief_builder_options(
           graph, env::belief::belief_observer_spec_t{},
           replay::runtime_allocation_belief_observer_options_t{
-              .base_reserve_node_id = "USDT",
-              .risky_node_ids = spec.risky_node_ids,
-              .require_direct_asset_base_edges = false,
+              .accounting_numeraire_node_id = "USDT",
+              .target_node_ids = spec.target_node_ids,
+              .require_direct_accounting_numeraire_valuation_edges = false,
               .default_linear_cost = 0.001,
               .default_capacity_weight_limit = 0.50,
           });
-  check(runtime_build_options.base_policy.reserve_asset_id == "USDT",
-        "runtime replay observer derives graph-node base reserve policy");
-  check(runtime_build_options.node_graph_indices == std::vector<int64_t>{0, 1},
-        "runtime replay observer maps risky nodes to graph indices");
+  check(runtime_build_options.base_policy.accounting_numeraire_id == "USDT",
+        "runtime replay observer derives graph-node accounting policy");
+  check(runtime_build_options.node_graph_indices ==
+            std::vector<int64_t>{0, 1, 2},
+        "runtime replay observer maps target nodes to graph indices");
   runtime_build_options.projection_options.coupling_options.sample_count = 32;
   runtime_build_options.projection_options.coupling_options
       .quantile_bisection_steps = 24;
@@ -5413,7 +5518,7 @@ void test_replay_source_graph_anchor_binding() {
         "runtime replay source rejects manifest graph mismatch");
 
   auto bad_spec = spec;
-  bad_spec.risky_node_ids = {"SOL"};
+  bad_spec.target_node_ids = {"SOL"};
   bool rejected_missing_direct_edge = false;
   try {
     (void)replay::realized_log_returns_from_graph_anchor_edge_batch(
@@ -5437,6 +5542,236 @@ void test_replay_source_graph_anchor_binding() {
         "replay source rejects graph fingerprint mismatch");
 }
 
+void test_trainable_policy_contract() {
+  auto observation = make_observation(10, 1000.0);
+
+  env::policy_input_builder_options_t input_options{};
+  input_options.graph_order_fingerprint = "graph_fixture";
+  input_options.execution_profile_digest = "cajtucu.paper.profile.fixture";
+  input_options.causal_schedule_digest = "causal_schedule.fixture";
+  input_options.snapshot_family_digest = "snapshot_family.fixture";
+  input_options.previous_target_weights = torch::tensor(
+      {0.10, 0.20, 0.70}, torch::TensorOptions().dtype(torch::kFloat64));
+
+  const auto input = env::make_policy_input(observation, input_options);
+  check(input.schema_id == env::kPolicyInputSchemaV1,
+        "policy input schema mismatch");
+  check(input.node_ids == std::vector<std::string>({"BTC", "ETH", "USDT"}),
+        "policy input node order mismatch");
+  check(input.graph_order_fingerprint == "graph_fixture",
+        "policy input graph fingerprint missing");
+  check(input.execution_profile_digest == "cajtucu.paper.profile.fixture",
+        "policy input execution profile digest missing");
+  check(input.accounting_numeraire_node_id == "USDT",
+        "policy input accounting numeraire missing");
+  check(input.causal_schedule_digest == "causal_schedule.fixture",
+        "policy input causal schedule digest missing");
+  check(input.snapshot_family_digest == "snapshot_family.fixture",
+        "policy input snapshot family digest missing");
+  check(input.node_features.dim() == 2 && input.node_features.size(0) == 3 &&
+            input.node_features.size(1) == env::kPolicyInputNodeFeatureDimV1,
+        "policy input node feature shape mismatch");
+  close(input.node_features.index({0, 7}).item<double>(), 0.0, 1.0e-12,
+        "policy input neutral expected-log-return fallback mismatch");
+  close(input.node_features.index({0, 15}).item<double>(), 1.0, 1.0e-12,
+        "policy input neutral confidence fallback mismatch");
+  check(input.global_features.dim() == 1 &&
+            input.global_features.size(0) ==
+                env::kPolicyInputGlobalFeatureDimV1,
+        "policy input global features must include numeraire context");
+  close(input.previous_target_weights.index({2}).item<double>(), 0.70, 1.0e-12,
+        "policy input previous target mismatch");
+  close(input.global_features.index({4}).item<double>(), 0.60, 1.0e-12,
+        "policy input current numeraire weight missing");
+  close(input.global_features.index({5}).item<double>(), 0.70, 1.0e-12,
+        "policy input previous numeraire weight missing");
+
+  auto belief_observation = observation;
+  belief_observation.allocation_belief = make_environment_allocation_belief(
+      belief_observation.anchor_key, belief_observation.knowledge_timestamp_ms);
+  auto &belief = *belief_observation.allocation_belief;
+  belief.var_down = torch::tensor(
+      {-0.020, -0.010, 0.0}, torch::TensorOptions().dtype(torch::kFloat64));
+  belief.cvar_down = torch::tensor(
+      {-0.030, -0.015, 0.0}, torch::TensorOptions().dtype(torch::kFloat64));
+  belief.adverse_excursion_prob = torch::tensor(
+      {0.20, 0.10, 0.0}, torch::TensorOptions().dtype(torch::kFloat64));
+  belief.volatility = torch::tensor(
+      {0.030, 0.020, 0.0}, torch::TensorOptions().dtype(torch::kFloat64));
+  belief.projection_validation_score = torch::tensor(
+      {0.91, 0.82, 1.0}, torch::TensorOptions().dtype(torch::kFloat64));
+  belief.residual_quality_score = torch::tensor(
+      {0.88, 0.77, 1.0}, torch::TensorOptions().dtype(torch::kFloat64));
+  belief.surprise = torch::tensor(
+      {0.12, 0.34, 0.0}, torch::TensorOptions().dtype(torch::kFloat64));
+  belief.calibration_score = torch::tensor(
+      {0.93, 0.84, 1.0}, torch::TensorOptions().dtype(torch::kFloat64));
+  belief.mixture_entropy = torch::tensor(
+      {0.40, 0.50, 0.0}, torch::TensorOptions().dtype(torch::kFloat64));
+  belief.component_disagreement = torch::tensor(
+      {0.030, 0.040, 0.0}, torch::TensorOptions().dtype(torch::kFloat64));
+  belief.channel_disagreement = torch::tensor(
+      {0.020, 0.050, 0.0}, torch::TensorOptions().dtype(torch::kFloat64));
+  env::belief::validate_allocation_belief_contract(belief);
+  const auto belief_input =
+      env::make_policy_input(belief_observation, input_options);
+  check(belief_input.node_features.size(1) == env::kPolicyInputNodeFeatureDimV1,
+        "belief-backed policy input node feature width mismatch");
+  close(belief_input.node_features.index({0, 2}).item<double>(), 0.10, 1.0e-12,
+        "policy input weight-delta feature mismatch");
+  close(belief_input.node_features.index({0, 7}).item<double>(), 0.015, 1.0e-12,
+        "policy input expected-log-return feature mismatch");
+  close(belief_input.node_features.index({0, 10}).item<double>(), 0.020,
+        1.0e-12, "policy input marginal-volatility feature mismatch");
+  close(belief_input.node_features.index({0, 12}).item<double>(), -0.030,
+        1.0e-12, "policy input CVaR-down feature mismatch");
+  close(belief_input.node_features.index({0, 15}).item<double>(), 0.90, 1.0e-12,
+        "policy input confidence feature mismatch");
+  close(belief_input.node_features.index({0, 17}).item<double>(), 0.0001,
+        1.0e-12, "policy input linear-cost feature mismatch");
+  close(belief_input.node_features.index({0, 19}).item<double>(), 0.60, 1.0e-12,
+        "policy input capacity feature mismatch");
+  close(belief_input.node_features.index({0, 20}).item<double>(), 0.91, 1.0e-12,
+        "policy input projection-validation feature mismatch");
+  close(belief_input.node_features.index({0, 23}).item<double>(), 0.93, 1.0e-12,
+        "policy input calibration feature mismatch");
+
+  auto missing_snapshot = input_options;
+  missing_snapshot.snapshot_family_digest = "";
+  bool rejected_missing_snapshot = false;
+  try {
+    (void)env::make_policy_input(observation, missing_snapshot);
+  } catch (const std::exception &) {
+    rejected_missing_snapshot = true;
+  }
+  check(rejected_missing_snapshot, "policy input requires snapshot identity");
+
+  auto missing_causal_schedule = input_options;
+  missing_causal_schedule.causal_schedule_digest = "";
+  bool rejected_missing_causal_schedule = false;
+  try {
+    (void)env::make_policy_input(observation, missing_causal_schedule);
+  } catch (const std::exception &) {
+    rejected_missing_causal_schedule = true;
+  }
+  check(rejected_missing_causal_schedule,
+        "policy input requires causal schedule identity");
+
+  auto missing_numeraire_observation = observation;
+  missing_numeraire_observation.portfolio_state.accounting_numeraire_node_id =
+      "";
+  bool rejected_missing_numeraire = false;
+  try {
+    (void)env::make_policy_input(missing_numeraire_observation, input_options);
+  } catch (const std::exception &) {
+    rejected_missing_numeraire = true;
+  }
+  check(rejected_missing_numeraire,
+        "policy input requires accounting numeraire identity");
+
+  auto bad_numeraire_options = input_options;
+  bad_numeraire_options.accounting_numeraire_node_id = "SOL";
+  bool rejected_unknown_numeraire = false;
+  try {
+    (void)env::make_policy_input(missing_numeraire_observation,
+                                 bad_numeraire_options);
+  } catch (const std::exception &) {
+    rejected_unknown_numeraire = true;
+  }
+  check(rejected_unknown_numeraire,
+        "policy input requires accounting numeraire in node universe");
+
+  auto mismatch_numeraire_options = input_options;
+  mismatch_numeraire_options.accounting_numeraire_node_id = "BTC";
+  bool rejected_numeraire_mismatch = false;
+  try {
+    (void)env::make_policy_input(observation, mismatch_numeraire_options);
+  } catch (const std::exception &) {
+    rejected_numeraire_mismatch = true;
+  }
+  check(rejected_numeraire_mismatch,
+        "policy input rejects numeraire option mismatch");
+
+  auto masked_input = input;
+  masked_input.tradable_mask = torch::tensor(
+      {true, false, true}, torch::TensorOptions().dtype(torch::kBool));
+  env::raw_policy_output_t raw{};
+  raw.node_weight_logits = torch::tensor(
+      {2.0, 10.0, 0.0}, torch::TensorOptions().dtype(torch::kFloat64));
+  env::target_node_weights_adapter_options_t adapter_options{};
+  adapter_options.policy_id = env::kGraphNodeAllocationPolicyId;
+  adapter_options.policy_artifact_digest = "policy_artifact.fixture";
+  adapter_options.policy_net_digest = "policy_net.fixture";
+  adapter_options.policy_dsl_digest = "policy_dsl.fixture";
+  adapter_options.policy_jkimyei_digest = "policy_jkimyei.fixture";
+  const auto action = env::adapt_raw_output_to_target_node_weights_action(
+      raw, masked_input, adapter_options);
+  env::validate_action(action, masked_input.node_ids);
+  check(action.policy_kind == env::policy_kind_t::reinforcement_learning,
+        "trainable policy action kind mismatch");
+  check(action.policy_input_schema_id == env::kPolicyInputSchemaV1,
+        "trainable policy input identity missing on action");
+  check(action.action_adapter_id == env::kTargetNodeWeightsSimplexAdapterV1,
+        "trainable policy action adapter missing on action");
+  check(action.reward_contract_id ==
+            env::kPostExecutionLedgerLogGrowthCostDrawdownRewardContractV1,
+        "trainable policy reward contract missing on action");
+  close(action.target_weights.sum().item<double>(), 1.0, 1.0e-12,
+        "trainable action weights must sum to one");
+  close(action.target_weights.index({1}).item<double>(), 0.0, 1.0e-12,
+        "masked node must receive zero weight");
+
+  auto no_executable_input = input;
+  no_executable_input.valid_mask =
+      torch::zeros({3}, torch::TensorOptions().dtype(torch::kBool));
+  bool rejected_no_executable_node = false;
+  try {
+    (void)env::adapt_raw_output_to_target_node_weights_action(
+        raw, no_executable_input, adapter_options);
+  } catch (const std::exception &) {
+    rejected_no_executable_node = true;
+  }
+  check(rejected_no_executable_node,
+        "target-node action adapter fails closed without executable nodes");
+
+  env::raw_policy_output_t bad_raw{};
+  bad_raw.node_weight_logits =
+      torch::tensor({0.0, std::numeric_limits<double>::quiet_NaN(), 0.0},
+                    torch::TensorOptions().dtype(torch::kFloat64));
+  bool rejected_nonfinite_logits = false;
+  try {
+    (void)env::adapt_raw_output_to_target_node_weights_action(bad_raw, input,
+                                                              adapter_options);
+  } catch (const std::exception &) {
+    rejected_nonfinite_logits = true;
+  }
+  check(rejected_nonfinite_logits,
+        "target-node action adapter rejects nonfinite logits");
+
+  env::fake_trainable_policy_config_t fake_config{};
+  fake_config.graph_order_fingerprint = "graph_fixture";
+  fake_config.execution_profile_digest = "cajtucu.paper.profile.fixture";
+  fake_config.accounting_numeraire_node_id = "USDT";
+  fake_config.causal_schedule_digest = "causal_schedule.fixture";
+  fake_config.snapshot_family_digest = "snapshot_family.fixture";
+  fake_config.logits = torch::tensor(
+      {0.0, 1.0, 2.0}, torch::TensorOptions().dtype(torch::kFloat64));
+  env::fake_trainable_policy_t fake_policy(fake_config);
+  const auto fake_action = fake_policy.act(observation);
+  env::validate_action(fake_action, observation.portfolio_state.node_ids);
+  check(fake_action.policy_artifact_digest ==
+            "fake_trainable_policy_fixture_digest",
+        "fake trainable policy action artifact digest missing");
+
+  fixture_world_t world{};
+  const auto spec = make_episode_spec();
+  const auto world_observation = world.reset(spec);
+  const auto world_action = fake_policy.act(world_observation);
+  const auto transition = world.step(world_action);
+  check(std::isfinite(transition.reward.total),
+        "fake trainable policy steps through world");
+}
+
 } // namespace
 
 int main() {
@@ -5444,6 +5779,7 @@ int main() {
     test_environment_contract();
     test_baseline_policies();
     test_spot_distributional_utility_policy_adapter();
+    test_trainable_policy_contract();
     test_replay_world();
     test_replay_source_graph_anchor_binding();
     std::cout << "kikijyeba environment contract tests passed\n";

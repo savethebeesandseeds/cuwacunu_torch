@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <iomanip>
@@ -133,10 +134,9 @@ make_report(const belief_report_inputs_t &inputs) {
     oss << "accounting_numeraire_id=" << b.base_policy.accounting_numeraire_id
         << "\n";
     oss << "settlement_asset_id=" << b.base_policy.settlement_asset_id << "\n";
-    oss << "reserve_asset_id=" << b.base_policy.reserve_asset_id << "\n";
     oss << "projection_reference_node_id="
         << b.base_policy.projection_reference_node_id << "\n";
-    oss << "risky_asset_count=" << b.node_ids.size() << "\n";
+    oss << "target_node_count=" << b.node_ids.size() << "\n";
     oss << "scenario_count=" << belief::scenario_count(b) << "\n";
     oss << "belief_valid=" << (b.valid ? "true" : "false") << "\n";
     oss << "belief_projection_validation_required="
@@ -168,12 +168,10 @@ make_report(const belief_report_inputs_t &inputs) {
   if (inputs.portfolio_state != nullptr) {
     const auto &p = *inputs.portfolio_state;
     oss << "portfolio_present=true\n";
-    oss << "portfolio_accounting_node_id=" << p.accounting_node_id << "\n";
-    oss << "portfolio_reserve_node_id=" << p.reserve_node_id << "\n";
-    detail::append_double(oss, "portfolio_base_reserve_weight",
-                          p.base_reserve_weight);
-    detail::append_double(oss, "portfolio_equity_value_base",
-                          p.equity_value_base);
+    oss << "portfolio_accounting_numeraire_node_id="
+        << p.accounting_numeraire_node_id << "\n";
+    detail::append_double(oss, "portfolio_equity_value_numeraire",
+                          p.equity_value_numeraire);
     detail::append_double(oss, "portfolio_drawdown", p.drawdown);
     detail::append_tensor_summary(oss, "portfolio_current_weights",
                                   p.current_weights);
@@ -187,10 +185,7 @@ make_report(const belief_report_inputs_t &inputs) {
     const auto &t = *inputs.target;
     oss << "target_present=true\n";
     oss << "target_valid=" << (t.valid ? "true" : "false") << "\n";
-    oss << "target_asset_count=" << t.node_ids.size() << "\n";
-    oss << "target_base_reserve_node_id=" << t.base_reserve_node_id << "\n";
-    detail::append_double(oss, "target_base_reserve_weight",
-                          t.target_base_reserve_weight);
+    oss << "target_node_count=" << t.node_ids.size() << "\n";
     detail::append_double(oss, "target_expected_log_growth",
                           t.expected_log_growth);
     detail::append_double(oss, "target_expected_arithmetic_return",
@@ -216,12 +211,13 @@ make_report(const belief_report_inputs_t &inputs) {
                           r.requested_turnover_weight);
     detail::append_double(oss, "rebalance_routed_turnover_weight",
                           r.routed_turnover_weight);
-    detail::append_double(oss, "rebalance_requested_notional_base",
-                          r.requested_notional_base);
-    detail::append_double(oss, "rebalance_routed_notional_base",
-                          r.routed_notional_base);
-    detail::append_double(oss, "rebalance_estimated_transaction_cost_base",
-                          r.estimated_transaction_cost_base);
+    detail::append_double(oss, "rebalance_requested_notional_numeraire",
+                          r.requested_notional_numeraire);
+    detail::append_double(oss, "rebalance_routed_notional_numeraire",
+                          r.routed_notional_numeraire);
+    detail::append_double(oss,
+                          "rebalance_estimated_transaction_cost_numeraire",
+                          r.estimated_transaction_cost_numeraire);
     detail::append_diagnostics(oss, "rebalance_diagnostics", r.diagnostics);
   } else {
     oss << "rebalance_present=false\n";
@@ -230,15 +226,24 @@ make_report(const belief_report_inputs_t &inputs) {
   if (inputs.ledger != nullptr) {
     const auto &l = *inputs.ledger;
     oss << "ledger_present=true\n";
-    oss << "ledger_base_reserve_node_id=" << l.base_reserve_node_id << "\n";
+    oss << "ledger_accounting_numeraire_node_id="
+        << l.accounting_numeraire_node_id << "\n";
     oss << "ledger_fill_count=" << l.fill_count << "\n";
-    detail::append_double(oss, "ledger_base_reserve_units",
-                          l.base_reserve_units);
-    detail::append_double(oss, "ledger_cumulative_fees_base",
-                          l.cumulative_fees_base);
+    const auto numeraire_it =
+        std::find(l.node_ids.begin(), l.node_ids.end(),
+                  l.accounting_numeraire_node_id);
+    if (numeraire_it != l.node_ids.end() && l.units.defined()) {
+      const auto numeraire_index =
+          static_cast<std::int64_t>(numeraire_it - l.node_ids.begin());
+      detail::append_double(
+          oss, "ledger_numeraire_node_units",
+          l.units.to(torch::kFloat64).index({numeraire_index}).item<double>());
+    }
+    detail::append_double(oss, "ledger_cumulative_fees_numeraire",
+                          l.cumulative_fees_numeraire);
     detail::append_tensor_summary(oss, "ledger_units", l.units);
     detail::append_tensor_summary(oss, "ledger_realized_pnl",
-                                  l.realized_pnl_base);
+                                  l.realized_pnl_numeraire);
   } else {
     oss << "ledger_present=false\n";
   }

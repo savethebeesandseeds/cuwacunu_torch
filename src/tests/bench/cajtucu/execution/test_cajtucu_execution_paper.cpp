@@ -4,9 +4,9 @@
 #include <cmath>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace exec = cuwacunu::cajtucu::execution;
-namespace graph = cuwacunu::kikijyeba::topology::graph;
 
 namespace {
 
@@ -24,104 +24,6 @@ void close(double actual, double expected, double tolerance,
   }
 }
 
-exec::market_execution_state_t market() {
-  exec::market_execution_state_t out{};
-  out.market_source_id = "fixture.edge_market_state";
-  out.timestamp_ms = 100;
-  out.graph.node_ids = {"BTC", "ETH", "USDT"};
-  out.graph.edge_ids = {"BTC/USDT", "ETH/USDT"};
-  out.graph.base_index = {0, 1};
-  out.graph.quote_index = {2, 2};
-  out.edge_mid_price = torch::tensor({100.0, 50.0}, torch::kFloat64);
-  out.edge_fee_rate = torch::tensor({0.001, 0.001}, torch::kFloat64);
-  out.edge_spread_rate = torch::tensor({0.002, 0.002}, torch::kFloat64);
-  out.edge_slippage_rate = torch::tensor({0.003, 0.003}, torch::kFloat64);
-  out.min_notional_base = torch::tensor({1.0, 1.0}, torch::kFloat64);
-  out.max_notional_base = torch::tensor({1000.0, 1000.0}, torch::kFloat64);
-  out.edge_tradable_mask = torch::tensor({true, true}, torch::kBool);
-  exec::validate_market_execution_state(out);
-  return out;
-}
-
-exec::market_execution_state_t reverse_market() {
-  exec::market_execution_state_t out{};
-  out.market_source_id = "fixture.reverse_edge_market_state";
-  out.timestamp_ms = 100;
-  out.graph.node_ids = {"USDT", "BTC", "ETH"};
-  out.graph.edge_ids = {"USDT/BTC", "USDT/ETH"};
-  out.graph.base_index = {0, 0};
-  out.graph.quote_index = {1, 2};
-  out.edge_mid_price = torch::tensor({0.01, 0.02}, torch::kFloat64);
-  out.edge_fee_rate = torch::tensor({0.001, 0.001}, torch::kFloat64);
-  out.edge_spread_rate = torch::tensor({0.002, 0.002}, torch::kFloat64);
-  out.edge_slippage_rate = torch::tensor({0.003, 0.003}, torch::kFloat64);
-  out.min_notional_base = torch::tensor({1.0, 1.0}, torch::kFloat64);
-  out.max_notional_base = torch::tensor({1000.0, 1000.0}, torch::kFloat64);
-  out.edge_tradable_mask = torch::tensor({true, true}, torch::kBool);
-  exec::validate_market_execution_state(out);
-  return out;
-}
-
-exec::market_execution_state_t market_without_eth_edge() {
-  exec::market_execution_state_t out{};
-  out.market_source_id = "fixture.missing_edge_market_state";
-  out.timestamp_ms = 100;
-  out.graph.node_ids = {"BTC", "ETH", "USDT"};
-  out.graph.edge_ids = {"BTC/USDT"};
-  out.graph.base_index = {0};
-  out.graph.quote_index = {2};
-  out.edge_mid_price = torch::tensor({100.0}, torch::kFloat64);
-  out.edge_fee_rate = torch::tensor({0.001}, torch::kFloat64);
-  out.edge_spread_rate = torch::tensor({0.002}, torch::kFloat64);
-  out.edge_slippage_rate = torch::tensor({0.003}, torch::kFloat64);
-  out.min_notional_base = torch::tensor({1.0}, torch::kFloat64);
-  out.max_notional_base = torch::tensor({1000.0}, torch::kFloat64);
-  out.edge_tradable_mask = torch::tensor({true}, torch::kBool);
-  exec::validate_market_execution_state(out);
-  return out;
-}
-
-exec::execution_ledger_t ledger(double base_reserve_units = 1000.0,
-                                torch::Tensor units = torch::Tensor()) {
-  exec::execution_ledger_t out{};
-  out.timestamp_ms = 100;
-  out.base_reserve_node_id = "USDT";
-  out.node_ids = {"BTC", "ETH"};
-  out.units = units.defined() ? units.to(torch::kFloat64)
-                              : torch::zeros({2}, torch::kFloat64);
-  out.weights = torch::zeros({2}, torch::kFloat64);
-  out.base_reserve_units = base_reserve_units;
-  out.base_reserve_weight = 1.0;
-  out.equity_value_base = base_reserve_units;
-  exec::validate_execution_ledger(out);
-  return out;
-}
-
-exec::execution_intent_t intent(torch::Tensor current_weights,
-                                torch::Tensor target_weights,
-                                double current_reserve, double target_reserve,
-                                double equity = 1000.0) {
-  exec::execution_intent_t out{};
-  out.intent_id = "intent_fixture";
-  out.action_id = "action_fixture";
-  out.policy_id = "policy_fixture";
-  out.method_id = "method_fixture";
-  out.runtime_run_id = "runtime_fixture";
-  out.environment_run_id = "environment_fixture";
-  out.episode_id = "episode_fixture";
-  out.anchor_key = "anchor_fixture";
-  out.timestamp_ms = 101;
-  out.node_ids = {"BTC", "ETH"};
-  out.base_reserve_node_id = "USDT";
-  out.current_weights = current_weights.to(torch::kFloat64);
-  out.target_weights = target_weights.to(torch::kFloat64);
-  out.current_base_reserve_weight = current_reserve;
-  out.target_base_reserve_weight = target_reserve;
-  out.equity_value_base = equity;
-  exec::validate_execution_intent(out);
-  return out;
-}
-
 bool contains_warning(const exec::execution_trace_t &trace,
                       const std::string &warning) {
   return std::find(trace.warnings.begin(), trace.warnings.end(), warning) !=
@@ -136,224 +38,327 @@ bool contains_failure_prefix(const exec::execution_trace_t &trace,
                      });
 }
 
-void test_buy_updates_ledger_and_trace() {
+bool contains_warning_prefix(const exec::execution_trace_t &trace,
+                             const std::string &prefix) {
+  return std::any_of(trace.warnings.begin(), trace.warnings.end(),
+                     [&](const std::string &warning) {
+                       return warning.rfind(prefix, 0) == 0;
+                     });
+}
+
+exec::market_execution_state_t direct_pair_market() {
+  exec::market_execution_state_t out{};
+  out.market_source_id = "fixture.direct_pair_market_state";
+  out.timestamp_ms = 100;
+  out.graph.node_ids = {"BTC", "ETH", "USDT"};
+  out.graph.edge_ids = {"BTC/USDT", "ETH/USDT", "ETH/BTC"};
+  out.graph.base_index = {0, 1, 1};
+  out.graph.quote_index = {2, 2, 0};
+  out.edge_mid_price = torch::tensor({100.0, 50.0, 0.5}, torch::kFloat64);
+  out.edge_fee_rate = torch::tensor({0.001, 0.001, 0.001}, torch::kFloat64);
+  out.edge_spread_rate = torch::tensor({0.002, 0.002, 0.002}, torch::kFloat64);
+  out.edge_slippage_rate =
+      torch::tensor({0.003, 0.003, 0.003}, torch::kFloat64);
+  out.min_notional_numeraire = torch::tensor({1.0, 1.0, 1.0}, torch::kFloat64);
+  out.max_notional_numeraire =
+      torch::tensor({1000.0, 1000.0, 1000.0}, torch::kFloat64);
+  out.edge_tradable_mask = torch::tensor({true, true, true}, torch::kBool);
+  exec::validate_market_execution_state(out);
+  return out;
+}
+
+exec::market_execution_state_t reverse_direct_pair_market() {
+  auto out = direct_pair_market();
+  out.market_source_id = "fixture.reverse_direct_pair_market_state";
+  out.graph.edge_ids = {"BTC/USDT", "ETH/USDT", "BTC/ETH"};
+  out.graph.base_index = {0, 1, 0};
+  out.graph.quote_index = {2, 2, 1};
+  out.edge_mid_price = torch::tensor({100.0, 50.0, 2.0}, torch::kFloat64);
+  exec::validate_market_execution_state(out);
+  return out;
+}
+
+exec::market_execution_state_t missing_pair_market() {
+  auto out = direct_pair_market();
+  out.market_source_id = "fixture.missing_pair_market_state";
+  out.graph.edge_ids = {"BTC/USDT", "ETH/USDT"};
+  out.graph.base_index = {0, 1};
+  out.graph.quote_index = {2, 2};
+  out.edge_mid_price = torch::tensor({100.0, 50.0}, torch::kFloat64);
+  out.edge_fee_rate = torch::tensor({0.001, 0.001}, torch::kFloat64);
+  out.edge_spread_rate = torch::tensor({0.002, 0.002}, torch::kFloat64);
+  out.edge_slippage_rate = torch::tensor({0.003, 0.003}, torch::kFloat64);
+  out.min_notional_numeraire = torch::tensor({1.0, 1.0}, torch::kFloat64);
+  out.max_notional_numeraire = torch::tensor({1000.0, 1000.0}, torch::kFloat64);
+  out.edge_tradable_mask = torch::tensor({true, true}, torch::kBool);
+  exec::validate_market_execution_state(out);
+  return out;
+}
+
+exec::execution_ledger_t make_ledger(
+    torch::Tensor units = torch::tensor({2.0, 12.0, 200.0}, torch::kFloat64)) {
+  exec::execution_ledger_t out{};
+  out.timestamp_ms = 100;
+  out.accounting_numeraire_node_id = "USDT";
+  out.node_ids = {"BTC", "ETH", "USDT"};
+  out.units = units.to(torch::kFloat64);
+  const auto prices = torch::tensor({100.0, 50.0, 1.0}, torch::kFloat64);
+  const auto values = out.units * prices;
+  out.equity_value_numeraire = values.sum().item<double>();
+  out.weights = values / out.equity_value_numeraire;
+  exec::validate_execution_ledger(out);
+  return out;
+}
+
+exec::execution_intent_t make_intent(torch::Tensor current_weights,
+                                     torch::Tensor target_weights,
+                                     double equity = 1000.0) {
+  exec::execution_intent_t out{};
+  out.intent_id = "intent_fixture";
+  out.action_id = "action_fixture";
+  out.policy_id = "policy_fixture";
+  out.method_id = "method_fixture";
+  out.runtime_run_id = "runtime_fixture";
+  out.environment_run_id = "environment_fixture";
+  out.episode_id = "episode_fixture";
+  out.anchor_key = "anchor_fixture";
+  out.timestamp_ms = 101;
+  out.node_ids = {"BTC", "ETH", "USDT"};
+  out.accounting_numeraire_node_id = "USDT";
+  out.current_weights = current_weights.to(torch::kFloat64);
+  out.target_weights = target_weights.to(torch::kFloat64);
+  out.current_units = torch::tensor({2.0, 12.0, 200.0}, torch::kFloat64);
+  out.equity_value_numeraire = equity;
+  exec::validate_execution_intent(out);
+  return out;
+}
+
+exec::execution_intent_t default_pair_rebalance_intent(double equity = 1000.0) {
+  return make_intent(torch::tensor({0.2, 0.6, 0.2}, torch::kFloat64),
+                     torch::tensor({0.6, 0.2, 0.2}, torch::kFloat64), equity);
+}
+
+void test_direct_pair_rebalance_executes_once_without_numeraire_route() {
   exec::paper_execution_backend_t backend{};
-  auto trace = backend.execute(
-      intent(torch::tensor({0.0, 0.0}, torch::kFloat64),
-             torch::tensor({0.5, 0.0}, torch::kFloat64), 1.0, 0.5),
-      market(), ledger());
+  auto trace = backend.execute(default_pair_rebalance_intent(),
+                               direct_pair_market(), make_ledger());
   exec::validate_execution_trace(trace);
-  check(trace.backend_id == std::string(exec::kCajtucuPaperBackendIdV1),
-        "paper backend id is stable");
+  check(trace.valid, "direct-pair rebalance should be valid");
   check(trace.orders.size() == 1 && trace.fills.size() == 1,
-        "buy creates one order and fill");
-  check(trace.rejected_fill_count == 0, "buy should not reject");
-  close(trace.routed_notional_base, 500.0, 1.0e-9, "buy routed notional");
-  close(trace.total_fee_base, 0.5, 1.0e-9, "buy fee");
-  close(trace.total_spread_cost_base, 0.5, 1.0e-9, "buy spread cost");
-  close(trace.total_slippage_base, 1.5, 1.0e-9, "buy slippage cost");
-  close(trace.total_transaction_cost_base, 2.5, 1.0e-9, "buy total cost");
-  close(trace.ledger_after.base_reserve_units, 499.5, 1.0e-9,
-        "buy reserve after fee");
-  check(trace.ledger_after.units.index({0}).item<double>() > 0.0,
-        "buy increases BTC units");
+        "direct-pair rebalance creates one order/result");
+  check(trace.orders[0].sell_node_id == "ETH" &&
+            trace.orders[0].buy_node_id == "BTC",
+        "rebalance sells ETH directly into BTC");
+  check(trace.orders[0].edge_id == "ETH/BTC",
+        "rebalance uses the direct ETH/BTC edge");
+  close(trace.requested_notional_numeraire, 400.0, 1.0e-9,
+        "direct-pair requested notional");
+  close(trace.routed_notional_numeraire, 400.0, 1.0e-9,
+        "direct-pair routed notional");
+  close(trace.total_fee_numeraire, 0.4, 1.0e-9, "direct-pair fee");
+  close(trace.total_spread_cost_numeraire, 0.4, 1.0e-9,
+        "direct-pair spread cost");
+  close(trace.total_slippage_numeraire, 1.2, 1.0e-9, "direct-pair slippage");
+  close(trace.total_transaction_cost_numeraire, 2.0, 1.0e-9,
+        "direct-pair total cost");
+  close(trace.fills[0].filled_sell_quantity, 8.0, 1.0e-9,
+        "direct-pair sells expected ETH units");
+  close(trace.fills[0].filled_buy_quantity, 3.98, 1.0e-9,
+        "direct-pair buys BTC net of fee/spread/slippage");
+  close(trace.ledger_after.units.index({0}).item<double>(), 5.98, 1.0e-9,
+        "direct-pair increases BTC units");
+  close(trace.ledger_after.units.index({1}).item<double>(), 4.0, 1.0e-9,
+        "direct-pair reduces ETH units");
+  close(trace.ledger_after.units.index({2}).item<double>(), 200.0, 1.0e-9,
+        "direct-pair leaves numeraire node units unchanged");
+  close(trace.ledger_after.equity_value_numeraire, 998.0, 1.0e-9,
+        "direct-pair equity reflects one execution cost");
 }
 
-void test_reverse_edge_orientation_prices_asset_in_reserve_units() {
+void test_reverse_direct_pair_orientation_prices_buy_per_sell() {
   exec::paper_execution_backend_t backend{};
-  const auto prices =
-      exec::asset_price_base_vector(reverse_market(), {"BTC", "ETH"}, "USDT");
-  close(prices.index({0}).item<double>(), 100.0, 1.0e-9,
-        "reverse BTC asset price");
-  close(prices.index({1}).item<double>(), 50.0, 1.0e-9,
-        "reverse ETH asset price");
-  auto trace = backend.execute(
-      intent(torch::tensor({0.0, 0.0}, torch::kFloat64),
-             torch::tensor({0.5, 0.0}, torch::kFloat64), 1.0, 0.5),
-      reverse_market(), ledger());
+  auto trace = backend.execute(default_pair_rebalance_intent(),
+                               reverse_direct_pair_market(), make_ledger());
   exec::validate_execution_trace(trace);
-  check(trace.orders.size() == 1, "reverse market creates one order");
-  close(trace.orders[0].fill_price_base, 100.4, 1.0e-9,
-        "reverse buy fill price uses inverted edge mid");
+  check(trace.valid, "reverse direct-pair rebalance should be valid");
+  check(trace.orders[0].edge_id == "BTC/ETH",
+        "rebalance may use the reverse direct pair edge");
+  close(trace.orders[0].fill_price_buy_per_sell, 1.0 / (2.0 * (1.0 + 0.004)),
+        1.0e-12, "reverse edge price is BTC per ETH after costs");
 }
 
-void test_sell_reduces_units() {
-  exec::paper_execution_backend_t backend{};
-  auto before = ledger(500.0, torch::tensor({5.0, 0.0}, torch::kFloat64));
-  before = exec::mark_to_market(before, market(), 100);
-  auto trace = backend.execute(
-      intent(torch::tensor({0.5, 0.0}, torch::kFloat64),
-             torch::tensor({0.25, 0.0}, torch::kFloat64), 0.5, 0.75),
-      market(), before);
+void test_missing_direct_pair_rejects_without_numeraire_fallback() {
+  exec::paper_execution_options_t options{};
+  options.missing_direct_pair_policy =
+      exec::missing_direct_pair_policy_t::invalid_trace;
+  exec::paper_execution_backend_t backend(options);
+  auto trace = backend.execute(default_pair_rebalance_intent(),
+                               missing_pair_market(), make_ledger());
   exec::validate_execution_trace(trace);
-  check(trace.orders.size() == 1 && trace.fills.size() == 1,
-        "sell creates one order and fill");
-  check(trace.fills[0].side == exec::order_side_t::sell_asset,
-        "sell fill side is sell_asset");
-  check(trace.ledger_after.units.index({0}).item<double>() <
-            before.units.index({0}).item<double>(),
-        "sell reduces BTC units");
-  check(trace.ledger_after.base_reserve_units > before.base_reserve_units,
-        "sell increases reserve units");
+  check(!trace.valid, "missing direct pair returns invalid trace");
+  check(trace.rejected_fill_count == 1, "missing direct pair rejects once");
+  check(trace.missing_direct_pair_count == 1,
+        "missing direct pair counter is recorded");
+  check(trace.fills[0].reject_reason == "missing_direct_pair",
+        "missing direct pair reject reason");
+  check(contains_failure_prefix(trace, "missing_direct_pair:ETH->BTC"),
+        "missing direct pair failure records route");
+  close(trace.ledger_after.units.index({0}).item<double>(), 2.0, 1.0e-9,
+        "missing pair preserves BTC units");
+  close(trace.ledger_after.units.index({1}).item<double>(), 12.0, 1.0e-9,
+        "missing pair preserves ETH units");
 }
 
-void test_sells_execute_before_buys_to_fund_rebalance() {
+void test_missing_direct_pair_warns_and_skips_by_default() {
   exec::paper_execution_backend_t backend{};
-  auto before = ledger(100.0, torch::tensor({10.0, 0.0}, torch::kFloat64));
-  before = exec::mark_to_market(before, market(), 100);
-  auto trace = backend.execute(
-      intent(torch::tensor({0.9, 0.0}, torch::kFloat64),
-             torch::tensor({0.2, 0.7}, torch::kFloat64), 0.1, 0.1, 1100.0),
-      market(), before);
+  auto trace = backend.execute(default_pair_rebalance_intent(),
+                               missing_pair_market(), make_ledger());
   exec::validate_execution_trace(trace);
-  check(trace.valid, "sells-before-buys rebalance remains valid");
-  check(trace.rejected_fill_count == 0,
-        "sell proceeds fund the later buy without rejection");
-  check(trace.orders.size() == 2, "rebalance emits sell and buy orders");
-  check(trace.orders[0].node_id == "BTC" &&
-            trace.orders[0].side == exec::order_side_t::sell_asset,
-        "first execution order sells BTC");
-  check(trace.orders[1].node_id == "ETH" &&
-            trace.orders[1].side == exec::order_side_t::buy_asset,
-        "second execution order buys ETH");
-  check(trace.ledger_after.base_reserve_units < before.base_reserve_units,
-        "rebalance spends reserve after sell-funded buy");
+  check(trace.valid, "default missing direct pair policy warns and skips");
+  check(trace.rejected_fill_count == 1, "skipped missing pair records reject");
+  check(trace.missing_direct_pair_count == 1,
+        "skipped missing pair counter is recorded");
+  check(trace.numeraire_fallback_pair_count == 0,
+        "default skip policy does not route through numeraire");
+  check(trace.fills[0].reject_reason == "missing_direct_pair_skipped",
+        "skipped missing pair reject reason");
+  check(trace.failures.empty(), "skipped missing pair does not fail trace");
+  close(trace.ledger_after.units.index({0}).item<double>(), 2.0, 1.0e-9,
+        "skipped missing pair preserves BTC units");
+  close(trace.ledger_after.units.index({1}).item<double>(), 12.0, 1.0e-9,
+        "skipped missing pair preserves ETH units");
 }
 
-void test_nontradable_edge_rejects_fill() {
+void test_missing_direct_pair_can_route_via_numeraire_when_enabled() {
+  exec::paper_execution_options_t options{};
+  options.missing_direct_pair_policy =
+      exec::missing_direct_pair_policy_t::route_via_accounting_numeraire_warn;
+  exec::paper_execution_backend_t backend(options);
+  auto trace = backend.execute(default_pair_rebalance_intent(),
+                               missing_pair_market(), make_ledger());
+  exec::validate_execution_trace(trace);
+  check(trace.valid, "numeraire fallback trace should remain valid");
+  check(trace.rejected_fill_count == 0, "numeraire fallback should not reject");
+  check(trace.missing_direct_pair_count == 1,
+        "numeraire fallback records the missing direct pair");
+  check(trace.numeraire_fallback_pair_count == 1,
+        "numeraire fallback counter is recorded");
+  check(trace.orders.size() == 2 && trace.fills.size() == 2,
+        "numeraire fallback executes two explicit legs");
+  check(trace.orders[0].sell_node_id == "ETH" &&
+            trace.orders[0].buy_node_id == "USDT" &&
+            trace.orders[0].edge_id == "ETH/USDT",
+        "numeraire fallback first leg sells ETH into USDT");
+  check(trace.orders[1].sell_node_id == "USDT" &&
+            trace.orders[1].buy_node_id == "BTC" &&
+            trace.orders[1].edge_id == "BTC/USDT",
+        "numeraire fallback second leg buys BTC from USDT");
+  check(contains_warning_prefix(
+            trace,
+            "missing_direct_pair_routed_via_accounting_numeraire:ETH->BTC"),
+        "numeraire fallback warning records original pair");
+  close(trace.requested_notional_numeraire, 798.0, 1.0e-9,
+        "numeraire fallback requested notional counts both legs");
+  close(trace.routed_notional_numeraire, 798.0, 1.0e-9,
+        "numeraire fallback routed notional counts both legs");
+  close(trace.total_fee_numeraire, 0.798, 1.0e-9,
+        "numeraire fallback pays two fee events");
+  close(trace.total_spread_cost_numeraire, 0.798, 1.0e-9,
+        "numeraire fallback pays two spread events");
+  close(trace.total_slippage_numeraire, 2.394, 1.0e-9,
+        "numeraire fallback pays two slippage events");
+  close(trace.total_transaction_cost_numeraire, 3.99, 1.0e-9,
+        "numeraire fallback records double-leg cost");
+  close(trace.ledger_after.units.index({0}).item<double>(), 5.96016342629482,
+        1.0e-9, "numeraire fallback increases BTC units");
+  close(trace.ledger_after.units.index({1}).item<double>(), 4.0, 1.0e-9,
+        "numeraire fallback reduces ETH units");
+  close(trace.ledger_after.units.index({2}).item<double>(), 200.0, 1.0e-9,
+        "numeraire fallback returns intermediate USDT balance");
+}
+
+void test_nontradable_direct_pair_rejects_fill() {
   exec::paper_execution_backend_t backend{};
-  auto m = market();
-  m.edge_tradable_mask = torch::tensor({false, true}, torch::kBool);
-  auto trace = backend.execute(
-      intent(torch::tensor({0.0, 0.0}, torch::kFloat64),
-             torch::tensor({0.5, 0.0}, torch::kFloat64), 1.0, 0.5),
-      m, ledger());
+  auto m = direct_pair_market();
+  m.edge_tradable_mask = torch::tensor({true, true, false}, torch::kBool);
+  auto trace =
+      backend.execute(default_pair_rebalance_intent(), m, make_ledger());
   exec::validate_execution_trace(trace);
   check(trace.rejected_fill_count == 1, "nontradable edge rejects fill");
   check(trace.fills[0].reject_reason == "edge_not_tradable",
         "nontradable reject reason");
 }
 
-void test_below_min_notional_rejects_fill() {
+void test_below_min_notional_rejects_pair_fill() {
   exec::paper_execution_backend_t backend{};
   auto trace = backend.execute(
-      intent(torch::tensor({0.0, 0.0}, torch::kFloat64),
-             torch::tensor({0.0005, 0.0}, torch::kFloat64), 1.0, 0.9995),
-      market(), ledger());
+      make_intent(torch::tensor({0.2, 0.6, 0.2}, torch::kFloat64),
+                  torch::tensor({0.2005, 0.5995, 0.2}, torch::kFloat64)),
+      direct_pair_market(), make_ledger());
   exec::validate_execution_trace(trace);
   check(trace.rejected_fill_count == 1, "below min notional rejects fill");
   check(trace.fills[0].reject_reason == "below_min_notional",
         "below min notional reject reason");
 }
 
-void test_above_max_notional_rejects_without_partial() {
-  exec::paper_execution_backend_t backend{};
-  auto m = market();
-  m.max_notional_base = torch::tensor({100.0, 1000.0}, torch::kFloat64);
-  auto trace = backend.execute(
-      intent(torch::tensor({0.0, 0.0}, torch::kFloat64),
-             torch::tensor({0.5, 0.0}, torch::kFloat64), 1.0, 0.5),
-      m, ledger());
-  exec::validate_execution_trace(trace);
-  check(trace.rejected_fill_count == 1, "above max rejects without partial");
-  check(trace.fills[0].reject_reason == "above_max_notional",
-        "above max reject reason");
-}
-
-void test_above_max_notional_partial_fill_when_enabled() {
+void test_above_max_notional_partial_pair_fill_when_enabled() {
   exec::paper_execution_options_t options{};
   options.allow_partial_fills = true;
   exec::paper_execution_backend_t backend(options);
-  auto m = market();
-  m.max_notional_base = torch::tensor({100.0, 1000.0}, torch::kFloat64);
-  auto trace = backend.execute(
-      intent(torch::tensor({0.0, 0.0}, torch::kFloat64),
-             torch::tensor({0.5, 0.0}, torch::kFloat64), 1.0, 0.5),
-      m, ledger());
+  auto m = direct_pair_market();
+  m.max_notional_numeraire =
+      torch::tensor({1000.0, 1000.0, 100.0}, torch::kFloat64);
+  auto trace =
+      backend.execute(default_pair_rebalance_intent(), m, make_ledger());
   exec::validate_execution_trace(trace);
   check(trace.rejected_fill_count == 0, "partial max cap should not reject");
   check(trace.partial_fill_count == 1, "partial max cap counts once");
   check(trace.fills[0].status == exec::fill_status_t::partially_filled,
         "partial max cap fill status");
-  close(trace.routed_notional_base, 100.0, 1.0e-9,
+  close(trace.routed_notional_numeraire, 100.0, 1.0e-9,
         "partial max cap routed notional");
 }
 
-void test_rejects_insufficient_reserve_without_partial() {
+void test_insufficient_sell_units_rejects_without_partial() {
   exec::paper_execution_backend_t backend{};
-  auto low_reserve_high_equity = ledger(
-      /*base_reserve_units=*/10.0, torch::tensor({9.9, 0.0}, torch::kFloat64));
-  auto trace = backend.execute(
-      intent(torch::tensor({0.0, 0.0}, torch::kFloat64),
-             torch::tensor({0.5, 0.0}, torch::kFloat64), 1.0, 0.5),
-      market(), low_reserve_high_equity);
+  auto thin_ledger =
+      make_ledger(torch::tensor({2.0, 1.0, 750.0}, torch::kFloat64));
+  auto trace = backend.execute(default_pair_rebalance_intent(),
+                               direct_pair_market(), thin_ledger);
   exec::validate_execution_trace(trace);
-  check(trace.rejected_fill_count == 1, "insufficient reserve rejects fill");
-  check(trace.fills[0].status == exec::fill_status_t::rejected,
-        "insufficient reserve fill status is rejected");
+  check(trace.rejected_fill_count == 1, "insufficient sell units rejects fill");
+  check(trace.fills[0].reject_reason == "insufficient_sell_units",
+        "insufficient sell units reject reason");
 }
 
-void test_insufficient_units_reject_sell_without_partial() {
-  exec::paper_execution_backend_t backend{};
-  auto before = ledger(0.0, torch::tensor({0.1, 0.0}, torch::kFloat64));
-  auto trace = backend.execute(
-      intent(torch::tensor({1.0, 0.0}, torch::kFloat64),
-             torch::tensor({0.0, 0.0}, torch::kFloat64), 0.0, 1.0, 10.0),
-      market(), before);
-  exec::validate_execution_trace(trace);
-  check(trace.rejected_fill_count == 1, "insufficient units rejects sell");
-  check(trace.fills[0].reject_reason == "insufficient_asset_units",
-        "insufficient units reject reason");
-}
-
-void test_insufficient_units_partial_sell_when_enabled() {
+void test_insufficient_sell_units_partial_when_enabled() {
   exec::paper_execution_options_t options{};
   options.allow_partial_fills = true;
   exec::paper_execution_backend_t backend(options);
-  auto before = ledger(0.0, torch::tensor({0.1, 0.0}, torch::kFloat64));
-  auto trace = backend.execute(
-      intent(torch::tensor({1.0, 0.0}, torch::kFloat64),
-             torch::tensor({0.0, 0.0}, torch::kFloat64), 0.0, 1.0, 10.0),
-      market(), before);
+  auto thin_ledger =
+      make_ledger(torch::tensor({2.0, 1.0, 750.0}, torch::kFloat64));
+  auto trace = backend.execute(default_pair_rebalance_intent(),
+                               direct_pair_market(), thin_ledger);
   exec::validate_execution_trace(trace);
   check(trace.rejected_fill_count == 0, "partial sell should not reject");
   check(trace.partial_fill_count == 1, "partial sell counts once");
-  check(trace.fills[0].status == exec::fill_status_t::partially_filled,
-        "partial sell fill status");
-  close(trace.ledger_after.units.index({0}).item<double>(), 0.0, 1.0e-9,
-        "partial sell liquidates available units");
+  close(trace.ledger_after.units.index({1}).item<double>(), 0.0, 1.0e-9,
+        "partial sell liquidates available sell node units");
 }
 
-void test_missing_direct_edge_fails_closed_before_execution() {
-  exec::paper_execution_backend_t backend{};
-  auto trace = backend.execute(
-      intent(torch::tensor({0.0, 0.0}, torch::kFloat64),
-             torch::tensor({0.0, 0.5}, torch::kFloat64), 1.0, 0.5),
-      market_without_eth_edge(), ledger());
-  exec::validate_execution_trace(trace);
-  check(!trace.valid, "missing direct edge returns invalid trace");
-  check(trace.rejected_fill_count == 1, "missing direct edge rejects fill");
-  check(trace.fills[0].reject_reason == "missing_direct_reserve_edge",
-        "missing direct edge reject reason");
-  check(contains_failure_prefix(trace, "missing_direct_reserve_edge:ETH"),
-        "missing direct edge failure is recorded");
-}
-
-void test_equity_mismatch_is_warned() {
+void test_equity_mismatch_is_warned_and_sizes_from_ledger() {
   exec::paper_execution_options_t options{};
   options.equity_mismatch_fail_tolerance = 0.20;
   exec::paper_execution_backend_t backend(options);
-  auto trace = backend.execute(
-      intent(torch::tensor({0.0, 0.0}, torch::kFloat64),
-             torch::tensor({0.5, 0.0}, torch::kFloat64), 1.0, 0.5, 900.0),
-      market(), ledger());
+  auto trace = backend.execute(default_pair_rebalance_intent(900.0),
+                               direct_pair_market(), make_ledger());
   exec::validate_execution_trace(trace);
   check(trace.ledger_intent_equity_mismatch, "equity mismatch flag is set");
-  close(trace.ledger_intent_equity_difference_base, 100.0, 1.0e-9,
+  close(trace.ledger_intent_equity_difference_numeraire, 100.0, 1.0e-9,
         "equity mismatch difference");
-  close(trace.requested_notional_base, 500.0, 1.0e-9,
+  close(trace.requested_notional_numeraire, 400.0, 1.0e-9,
         "equity mismatch sizes from ledger equity");
-  close(trace.routed_notional_base, 500.0, 1.0e-9,
+  close(trace.routed_notional_numeraire, 400.0, 1.0e-9,
         "equity mismatch routes from ledger equity");
   check(contains_warning(trace, "ledger_intent_equity_mismatch"),
         "equity mismatch warning is present");
@@ -361,10 +366,8 @@ void test_equity_mismatch_is_warned() {
 
 void test_large_equity_mismatch_fails_closed_before_execution() {
   exec::paper_execution_backend_t backend{};
-  auto trace = backend.execute(
-      intent(torch::tensor({0.0, 0.0}, torch::kFloat64),
-             torch::tensor({0.5, 0.0}, torch::kFloat64), 1.0, 0.5, 100.0),
-      market(), ledger());
+  auto trace = backend.execute(default_pair_rebalance_intent(100.0),
+                               direct_pair_market(), make_ledger());
   exec::validate_execution_trace(trace);
   check(!trace.valid, "large equity mismatch invalidates trace");
   check(trace.orders.empty() && trace.fills.empty(),
@@ -378,13 +381,13 @@ void test_synthetic_market_source_is_warned() {
   exec::paper_execution_options_t options{};
   options.allow_synthetic_direct_edges = true;
   exec::paper_execution_backend_t backend(options);
-  auto m = market();
+  auto m = direct_pair_market();
   m.market_source_id = "fixture.synthetic_direct_edges";
   m.synthetic_direct_edges = true;
   auto trace = backend.execute(
-      intent(torch::tensor({0.0, 0.0}, torch::kFloat64),
-             torch::tensor({0.0, 0.0}, torch::kFloat64), 1.0, 1.0),
-      m, ledger());
+      make_intent(torch::tensor({0.2, 0.6, 0.2}, torch::kFloat64),
+                  torch::tensor({0.2, 0.6, 0.2}, torch::kFloat64)),
+      m, make_ledger());
   exec::validate_execution_trace(trace);
   check(trace.market_source_id == "fixture.synthetic_direct_edges",
         "market source id is preserved");
@@ -395,13 +398,11 @@ void test_synthetic_market_source_is_warned() {
 
 void test_synthetic_market_source_can_be_rejected() {
   exec::paper_execution_backend_t backend{};
-  auto m = market();
+  auto m = direct_pair_market();
   m.market_source_id = "fixture.synthetic_direct_edges";
   m.synthetic_direct_edges = true;
-  auto trace = backend.execute(
-      intent(torch::tensor({0.0, 0.0}, torch::kFloat64),
-             torch::tensor({0.5, 0.0}, torch::kFloat64), 1.0, 0.5),
-      m, ledger());
+  auto trace =
+      backend.execute(default_pair_rebalance_intent(), m, make_ledger());
   exec::validate_execution_trace(trace);
   check(!trace.valid, "synthetic market can be rejected by option");
   check(trace.orders.empty() && trace.fills.empty(),
@@ -410,28 +411,24 @@ void test_synthetic_market_source_can_be_rejected() {
         "synthetic rejection failure is recorded");
 }
 
-void test_invalid_sell_price_rejects_before_ledger_mutation() {
+void test_invalid_pair_price_rejects_before_ledger_mutation() {
   exec::paper_execution_backend_t backend{};
-  auto m = market();
-  m.edge_spread_rate = torch::tensor({2.0, 0.002}, torch::kFloat64);
-  auto before = ledger(500.0, torch::tensor({5.0, 0.0}, torch::kFloat64));
-  before = exec::mark_to_market(before, market(), 100);
-  auto trace = backend.execute(
-      intent(torch::tensor({0.5, 0.0}, torch::kFloat64),
-             torch::tensor({0.0, 0.0}, torch::kFloat64), 0.5, 1.0),
-      m, before);
+  auto m = direct_pair_market();
+  m.edge_spread_rate = torch::tensor({0.002, 0.002, 2.0}, torch::kFloat64);
+  auto before = make_ledger();
+  auto trace = backend.execute(default_pair_rebalance_intent(), m, before);
   exec::validate_execution_trace(trace);
-  check(!trace.valid, "invalid sell price invalidates trace");
+  check(!trace.valid, "invalid pair price invalidates trace");
   check(trace.rejected_fill_count == 1,
-        "invalid sell price returns rejected result");
-  check(trace.fills[0].reject_reason ==
-            "invalid_sell_price_after_spread_slippage",
-        "invalid sell price reject reason");
+        "invalid pair price returns rejected result");
+  check(trace.fills[0].reject_reason == "invalid_direct_pair_fill_price",
+        "invalid pair price reject reason");
   close(trace.ledger_after.units.index({0}).item<double>(),
         before.units.index({0}).item<double>(), 1.0e-9,
-        "invalid sell price preserves units");
-  close(trace.ledger_after.base_reserve_units, before.base_reserve_units,
-        1.0e-9, "invalid sell price preserves reserve");
+        "invalid pair price preserves buy node units");
+  close(trace.ledger_after.units.index({1}).item<double>(),
+        before.units.index({1}).item<double>(), 1.0e-9,
+        "invalid pair price preserves sell node units");
 }
 
 void test_live_execution_flag_is_impossible_in_v1() {
@@ -450,23 +447,21 @@ void test_live_execution_flag_is_impossible_in_v1() {
 } // namespace
 
 int main() {
-  test_buy_updates_ledger_and_trace();
-  test_reverse_edge_orientation_prices_asset_in_reserve_units();
-  test_sell_reduces_units();
-  test_sells_execute_before_buys_to_fund_rebalance();
-  test_nontradable_edge_rejects_fill();
-  test_below_min_notional_rejects_fill();
-  test_above_max_notional_rejects_without_partial();
-  test_above_max_notional_partial_fill_when_enabled();
-  test_rejects_insufficient_reserve_without_partial();
-  test_insufficient_units_reject_sell_without_partial();
-  test_insufficient_units_partial_sell_when_enabled();
-  test_missing_direct_edge_fails_closed_before_execution();
-  test_equity_mismatch_is_warned();
+  test_direct_pair_rebalance_executes_once_without_numeraire_route();
+  test_reverse_direct_pair_orientation_prices_buy_per_sell();
+  test_missing_direct_pair_rejects_without_numeraire_fallback();
+  test_missing_direct_pair_warns_and_skips_by_default();
+  test_missing_direct_pair_can_route_via_numeraire_when_enabled();
+  test_nontradable_direct_pair_rejects_fill();
+  test_below_min_notional_rejects_pair_fill();
+  test_above_max_notional_partial_pair_fill_when_enabled();
+  test_insufficient_sell_units_rejects_without_partial();
+  test_insufficient_sell_units_partial_when_enabled();
+  test_equity_mismatch_is_warned_and_sizes_from_ledger();
   test_large_equity_mismatch_fails_closed_before_execution();
   test_synthetic_market_source_is_warned();
   test_synthetic_market_source_can_be_rejected();
-  test_invalid_sell_price_rejects_before_ledger_mutation();
+  test_invalid_pair_price_rejects_before_ledger_mutation();
   test_live_execution_flag_is_impossible_in_v1();
   return 0;
 }

@@ -41,11 +41,11 @@ struct job_runner_options_t {
   bool display_mdn_model{false};
   bool write_report{true};
   bool write_replay_artifacts{true};
-  bool replay_require_direct_asset_base_edges{true};
+  bool replay_require_direct_accounting_numeraire_valuation_edges{true};
   std::size_t batch_size{0};
   std::string job_id{};
-  std::string replay_base_reserve_node_id{};
-  std::vector<std::string> replay_risky_node_ids{};
+  std::string replay_accounting_numeraire_node_id{};
+  std::vector<std::string> replay_target_node_ids{};
   std::string runtime_handoff_id{};
   std::string runtime_handoff_digest{};
   std::string marshal_target_driver_run_id{};
@@ -470,7 +470,7 @@ inline void write_runtime_replay_observer_belief_fact_sidecar(
       ";feature_semantics_drift=" +
       std::string(feature_semantics_drift ? "true" : "false");
   fact.nodelift_return_projection =
-      "return_origin=base_relative_nodelift_projection;"
+      "return_origin=numeraire_relative_nodelift_projection;"
       "mean_expected_log_return=" +
       std::to_string(expected_log_return_count == 0
                          ? 0.0
@@ -905,11 +905,13 @@ private:
         try {
           replay::runtime_allocation_belief_observer_options_t
               observer_options{};
-          observer_options.base_reserve_node_id =
-              options_.replay_base_reserve_node_id;
-          observer_options.risky_node_ids = options_.replay_risky_node_ids;
-          observer_options.require_direct_asset_base_edges =
-              options_.replay_require_direct_asset_base_edges;
+          observer_options.accounting_numeraire_node_id = cuwacunu::kikijyeba::
+              protocol::resolve_accounting_numeraire_node_id(
+                  options_.replay_accounting_numeraire_node_id, config_path_);
+          observer_options.target_node_ids = options_.replay_target_node_ids;
+          observer_options.require_direct_accounting_numeraire_valuation_edges =
+              options_
+                  .replay_require_direct_accounting_numeraire_valuation_edges;
           auto belief_options =
               replay::make_runtime_allocation_belief_builder_options(
                   builder.market_graph(), builder.bundle().belief_observer,

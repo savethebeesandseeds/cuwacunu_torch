@@ -66,19 +66,38 @@ enum class fill_status_t {
   return "unknown";
 }
 
+enum class missing_direct_pair_policy_t {
+  invalid_trace,
+  skip_pair_warn,
+  route_via_accounting_numeraire_warn,
+};
+
+[[nodiscard]] inline const char *
+missing_direct_pair_policy_name(missing_direct_pair_policy_t policy) {
+  switch (policy) {
+  case missing_direct_pair_policy_t::invalid_trace:
+    return "invalid_trace";
+  case missing_direct_pair_policy_t::skip_pair_warn:
+    return "skip_pair_warn";
+  case missing_direct_pair_policy_t::route_via_accounting_numeraire_warn:
+    return "route_via_accounting_numeraire_warn";
+  }
+  return "unknown";
+}
+
 struct market_execution_state_t {
   std::string market_source_id{kCajtucuMarketSourceUnknown};
   bool synthetic_direct_edges{false};
   timestamp_ms_t timestamp_ms{0};
   graph::market_graph_t graph{};
 
-  torch::Tensor edge_mid_price{};     // [E], quote per edge base
-  torch::Tensor edge_fee_rate{};      // optional [E]
-  torch::Tensor edge_spread_rate{};   // optional [E]
-  torch::Tensor edge_slippage_rate{}; // optional [E]
-  torch::Tensor min_notional_base{};  // optional [E], reserve units
-  torch::Tensor max_notional_base{};  // optional [E], reserve units
-  torch::Tensor edge_tradable_mask{}; // optional [E], bool
+  torch::Tensor edge_mid_price{};         // [E], quote per edge base
+  torch::Tensor edge_fee_rate{};          // optional [E]
+  torch::Tensor edge_spread_rate{};       // optional [E]
+  torch::Tensor edge_slippage_rate{};     // optional [E]
+  torch::Tensor min_notional_numeraire{}; // optional [E]
+  torch::Tensor max_notional_numeraire{}; // optional [E]
+  torch::Tensor edge_tradable_mask{};     // optional [E], bool
 };
 
 struct execution_intent_t {
@@ -94,32 +113,32 @@ struct execution_intent_t {
   timestamp_ms_t timestamp_ms{0};
 
   std::vector<node_id_t> node_ids{};
-  node_id_t base_reserve_node_id{};
+  node_id_t accounting_numeraire_node_id{};
 
-  torch::Tensor current_weights{}; // [A]
-  torch::Tensor target_weights{};  // [A]
-  double current_base_reserve_weight{1.0};
-  double target_base_reserve_weight{1.0};
-  double equity_value_base{0.0};
+  torch::Tensor current_weights{}; // [M]
+  torch::Tensor target_weights{};  // [M]
+  torch::Tensor current_units{};   // [M]
+  double equity_value_numeraire{0.0};
 };
 
 struct execution_order_t {
   std::string order_id{};
-  node_id_t node_id{};
-  node_id_t settlement_node_id{};
+  node_id_t sell_node_id{};
+  node_id_t buy_node_id{};
   std::string edge_id{};
   node_id_t edge_base_node_id{};
   node_id_t edge_quote_node_id{};
-  order_side_t side{order_side_t::buy_asset};
 
-  double delta_weight{0.0};
-  double requested_notional_base{0.0};
-  double routed_notional_base{0.0};
-  double quantity_asset{0.0};
-  double fill_price_base{std::numeric_limits<double>::quiet_NaN()};
-  double fee_base{0.0};
-  double spread_cost_base{0.0};
-  double slippage_base{0.0};
+  double sell_delta_weight{0.0};
+  double buy_delta_weight{0.0};
+  double requested_notional_numeraire{0.0};
+  double routed_notional_numeraire{0.0};
+  double sell_quantity{0.0};
+  double buy_quantity{0.0};
+  double fill_price_buy_per_sell{std::numeric_limits<double>::quiet_NaN()};
+  double fee_numeraire{0.0};
+  double spread_cost_numeraire{0.0};
+  double slippage_numeraire{0.0};
 
   bool valid{true};
   std::string reject_reason{};
@@ -127,38 +146,37 @@ struct execution_order_t {
 
 struct paper_fill_t {
   std::string order_id{};
-  node_id_t node_id{};
+  node_id_t sell_node_id{};
+  node_id_t buy_node_id{};
   std::string edge_id{};
-  order_side_t side{order_side_t::buy_asset};
   fill_status_t status{fill_status_t::filled};
 
-  double requested_quantity_asset{0.0};
-  double filled_quantity_asset{0.0};
-  double gross_notional_base{0.0};
-  double fill_price_base{std::numeric_limits<double>::quiet_NaN()};
-  double fee_base{0.0};
-  double spread_cost_base{0.0};
-  double slippage_base{0.0};
+  double requested_sell_quantity{0.0};
+  double filled_sell_quantity{0.0};
+  double filled_buy_quantity{0.0};
+  double gross_notional_numeraire{0.0};
+  double fill_price_buy_per_sell{std::numeric_limits<double>::quiet_NaN()};
+  double fee_numeraire{0.0};
+  double spread_cost_numeraire{0.0};
+  double slippage_numeraire{0.0};
   std::string reject_reason{};
 };
 
 struct execution_ledger_t {
   std::string ledger_schema_id{kCajtucuExecutionLedgerSchemaV1};
   timestamp_ms_t timestamp_ms{0};
-  node_id_t base_reserve_node_id{};
+  node_id_t accounting_numeraire_node_id{};
   std::vector<node_id_t> node_ids{};
 
-  torch::Tensor units{};   // [A]
-  torch::Tensor weights{}; // [A], mark-to-market risky weights
+  torch::Tensor units{};   // [M]
+  torch::Tensor weights{}; // [M], mark-to-numeraire weights
 
-  double base_reserve_units{0.0};
-  double base_reserve_weight{1.0};
-  double equity_value_base{0.0};
+  double equity_value_numeraire{0.0};
 
-  double cumulative_fee_base{0.0};
-  double cumulative_spread_cost_base{0.0};
-  double cumulative_slippage_base{0.0};
-  double cumulative_turnover_base{0.0};
+  double cumulative_fee_numeraire{0.0};
+  double cumulative_spread_cost_numeraire{0.0};
+  double cumulative_slippage_numeraire{0.0};
+  double cumulative_turnover_numeraire{0.0};
   std::int64_t fill_count{0};
 };
 
@@ -174,19 +192,21 @@ struct execution_trace_t {
   execution_ledger_t ledger_before{};
   execution_ledger_t ledger_after{};
 
-  double requested_notional_base{0.0};
-  double routed_notional_base{0.0};
-  double total_fee_base{0.0};
-  double total_spread_cost_base{0.0};
-  double total_slippage_base{0.0};
-  double total_transaction_cost_base{0.0};
+  double requested_notional_numeraire{0.0};
+  double routed_notional_numeraire{0.0};
+  double total_fee_numeraire{0.0};
+  double total_spread_cost_numeraire{0.0};
+  double total_slippage_numeraire{0.0};
+  double total_transaction_cost_numeraire{0.0};
   double turnover_weight{0.0};
   std::string market_source_id{kCajtucuMarketSourceUnknown};
   bool synthetic_direct_edges{false};
-  double ledger_intent_equity_difference_base{0.0};
+  double ledger_intent_equity_difference_numeraire{0.0};
   bool ledger_intent_equity_mismatch{false};
   std::int64_t rejected_fill_count{0};
   std::int64_t partial_fill_count{0};
+  std::int64_t missing_direct_pair_count{0};
+  std::int64_t numeraire_fallback_pair_count{0};
 
   bool valid{true};
   std::vector<std::string> warnings{};
@@ -197,9 +217,10 @@ struct paper_execution_options_t {
   double min_delta_weight{1.0e-8};
   bool enforce_min_notional{true};
   bool allow_partial_fills{false};
-  bool allow_negative_base_reserve{false};
   bool allow_synthetic_direct_edges{false};
   bool live_execution_allowed{false};
+  missing_direct_pair_policy_t missing_direct_pair_policy{
+      missing_direct_pair_policy_t::skip_pair_warn};
   double equity_mismatch_tolerance{1.0e-6};
   double equity_mismatch_fail_tolerance{1.0e-2};
   double eps{1.0e-12};
@@ -315,23 +336,22 @@ bool_vector_or_true(const torch::Tensor &tensor, std::int64_t n,
 struct direct_edge_choice_t {
   bool found{false};
   graph::edge_index_t edge_index{-1};
-  bool asset_is_edge_base{false};
+  bool from_is_edge_base{false};
 };
 
 [[nodiscard]] inline direct_edge_choice_t
-find_direct_base_reserve_edge(const graph::market_graph_t &market_graph,
-                              const std::string &asset_node_id,
-                              const std::string &base_reserve_node_id) {
+find_direct_pair_edge(const graph::market_graph_t &market_graph,
+                      const std::string &from_node_id,
+                      const std::string &to_node_id) {
   direct_edge_choice_t fallback{};
   for (graph::edge_index_t e = 0; e < market_graph.num_edges(); ++e) {
     const auto edge = market_graph.directed_edge(e);
-    if (edge.base_node_id == asset_node_id &&
-        edge.quote_node_id == base_reserve_node_id) {
-      return {.found = true, .edge_index = e, .asset_is_edge_base = true};
+    if (edge.base_node_id == from_node_id && edge.quote_node_id == to_node_id) {
+      return {.found = true, .edge_index = e, .from_is_edge_base = true};
     }
-    if (!fallback.found && edge.base_node_id == base_reserve_node_id &&
-        edge.quote_node_id == asset_node_id) {
-      fallback = {.found = true, .edge_index = e, .asset_is_edge_base = false};
+    if (!fallback.found && edge.base_node_id == to_node_id &&
+        edge.quote_node_id == from_node_id) {
+      fallback = {.found = true, .edge_index = e, .from_is_edge_base = false};
     }
   }
   return fallback;
@@ -395,10 +415,10 @@ validate_market_execution_state(const market_execution_state_t &market) {
                                      "edge_spread_rate", false);
   detail::require_nonnegative_vector(market.edge_slippage_rate, E,
                                      "edge_slippage_rate", false);
-  detail::require_nonnegative_vector(market.min_notional_base, E,
-                                     "min_notional_base", false);
-  detail::require_nonnegative_vector(market.max_notional_base, E,
-                                     "max_notional_base", false);
+  detail::require_nonnegative_vector(market.min_notional_numeraire, E,
+                                     "min_notional_numeraire", false);
+  detail::require_nonnegative_vector(market.max_notional_numeraire, E,
+                                     "max_notional_numeraire", false);
   detail::require_bool_vector(market.edge_tradable_mask, E,
                               "edge_tradable_mask", false);
 }
@@ -409,41 +429,32 @@ inline void validate_execution_intent(const execution_intent_t &intent) {
         "[cajtucu.execution] unsupported execution intent schema");
   }
   if (intent.intent_id.empty() || intent.policy_id.empty() ||
-      intent.base_reserve_node_id.empty()) {
-    throw std::runtime_error(
-        "[cajtucu.execution] intent id, policy id, and reserve node required");
+      intent.accounting_numeraire_node_id.empty()) {
+    throw std::runtime_error("[cajtucu.execution] intent id, policy id, and "
+                             "numeraire node required");
   }
   detail::require_unique_node_ids(intent.node_ids, "intent node_id");
-  if (std::count(intent.node_ids.begin(), intent.node_ids.end(),
-                 intent.base_reserve_node_id) != 0) {
-    throw std::runtime_error(
-        "[cajtucu.execution] reserve node cannot appear in risky node_ids");
-  }
-  const auto A = static_cast<std::int64_t>(intent.node_ids.size());
-  detail::require_nonnegative_vector(intent.current_weights, A,
+  const auto M = static_cast<std::int64_t>(intent.node_ids.size());
+  detail::require_nonnegative_vector(intent.current_weights, M,
                                      "current_weights", true);
-  detail::require_nonnegative_vector(intent.target_weights, A, "target_weights",
+  detail::require_nonnegative_vector(intent.target_weights, M, "target_weights",
                                      true);
-  detail::require_finite(intent.current_base_reserve_weight,
-                         "current_base_reserve_weight");
-  detail::require_finite(intent.target_base_reserve_weight,
-                         "target_base_reserve_weight");
-  detail::require_finite(intent.equity_value_base, "equity_value_base");
-  if (intent.current_base_reserve_weight < -1.0e-9 ||
-      intent.target_base_reserve_weight < -1.0e-9 ||
-      intent.equity_value_base <= 0.0) {
+  detail::require_nonnegative_vector(intent.current_units, M, "current_units",
+                                     true);
+  detail::require_finite(intent.equity_value_numeraire,
+                         "equity_value_numeraire");
+  if (intent.equity_value_numeraire <= 0.0) {
     throw std::runtime_error(
-        "[cajtucu.execution] invalid reserve weight or equity");
+        "[cajtucu.execution] equity_value_numeraire must be positive");
   }
   const double current_sum =
-      intent.current_weights.to(torch::kFloat64).sum().item<double>() +
-      intent.current_base_reserve_weight;
+      intent.current_weights.to(torch::kFloat64).sum().item<double>();
   const double target_sum =
-      intent.target_weights.to(torch::kFloat64).sum().item<double>() +
-      intent.target_base_reserve_weight;
-  if (current_sum > 1.0 + 1.0e-6 || target_sum > 1.0 + 1.0e-6) {
+      intent.target_weights.to(torch::kFloat64).sum().item<double>();
+  if (std::abs(current_sum - 1.0) > 1.0e-6 ||
+      std::abs(target_sum - 1.0) > 1.0e-6) {
     throw std::runtime_error(
-        "[cajtucu.execution] risky weights plus reserve exceed one");
+        "[cajtucu.execution] current and target node weights must sum to one");
   }
 }
 
@@ -452,65 +463,66 @@ inline void validate_execution_ledger(const execution_ledger_t &ledger) {
     throw std::runtime_error(
         "[cajtucu.execution] unsupported execution ledger schema");
   }
-  if (ledger.base_reserve_node_id.empty()) {
+  if (ledger.accounting_numeraire_node_id.empty()) {
     throw std::runtime_error(
-        "[cajtucu.execution] ledger reserve node is required");
+        "[cajtucu.execution] ledger accounting numeraire node is required");
   }
   detail::require_unique_node_ids(ledger.node_ids, "ledger node_id");
-  if (std::count(ledger.node_ids.begin(), ledger.node_ids.end(),
-                 ledger.base_reserve_node_id) != 0) {
-    throw std::runtime_error(
-        "[cajtucu.execution] ledger reserve node cannot be risky node");
-  }
-  const auto A = static_cast<std::int64_t>(ledger.node_ids.size());
-  detail::require_nonnegative_vector(ledger.units, A, "ledger units", true);
-  detail::require_nonnegative_vector(ledger.weights, A, "ledger weights", true);
-  detail::require_nonnegative(ledger.base_reserve_units, "base_reserve_units");
-  detail::require_finite(ledger.base_reserve_weight, "base_reserve_weight");
-  detail::require_nonnegative(ledger.equity_value_base, "equity_value_base");
-  detail::require_nonnegative(ledger.cumulative_fee_base,
-                              "cumulative_fee_base");
-  detail::require_nonnegative(ledger.cumulative_spread_cost_base,
-                              "cumulative_spread_cost_base");
-  detail::require_nonnegative(ledger.cumulative_slippage_base,
-                              "cumulative_slippage_base");
-  detail::require_nonnegative(ledger.cumulative_turnover_base,
-                              "cumulative_turnover_base");
-  if (ledger.base_reserve_weight < -1.0e-9 ||
-      ledger.base_reserve_weight > 1.0 + 1.0e-9) {
-    throw std::runtime_error(
-        "[cajtucu.execution] ledger base reserve weight must be in [0,1]");
+  const auto M = static_cast<std::int64_t>(ledger.node_ids.size());
+  detail::require_nonnegative_vector(ledger.units, M, "ledger units", true);
+  detail::require_nonnegative_vector(ledger.weights, M, "ledger weights", true);
+  detail::require_nonnegative(ledger.equity_value_numeraire,
+                              "equity_value_numeraire");
+  detail::require_nonnegative(ledger.cumulative_fee_numeraire,
+                              "cumulative_fee_numeraire");
+  detail::require_nonnegative(ledger.cumulative_spread_cost_numeraire,
+                              "cumulative_spread_cost_numeraire");
+  detail::require_nonnegative(ledger.cumulative_slippage_numeraire,
+                              "cumulative_slippage_numeraire");
+  detail::require_nonnegative(ledger.cumulative_turnover_numeraire,
+                              "cumulative_turnover_numeraire");
+  if (ledger.equity_value_numeraire > 0.0) {
+    const double weight_sum =
+        ledger.weights.to(torch::kFloat64).sum().item<double>();
+    if (std::abs(weight_sum - 1.0) > 1.0e-6) {
+      throw std::runtime_error(
+          "[cajtucu.execution] ledger node weights must sum to one");
+    }
   }
 }
 
 [[nodiscard]] inline double
-asset_price_base(const market_execution_state_t &market,
-                 const std::string &asset_node_id,
-                 const std::string &base_reserve_node_id) {
+node_price_numeraire(const market_execution_state_t &market,
+                     const std::string &node_id,
+                     const std::string &accounting_numeraire_node_id) {
   validate_market_execution_state(market);
-  const auto choice = detail::find_direct_base_reserve_edge(
-      market.graph, asset_node_id, base_reserve_node_id);
+  if (node_id == accounting_numeraire_node_id) {
+    return 1.0;
+  }
+  const auto choice = detail::find_direct_pair_edge(
+      market.graph, node_id, accounting_numeraire_node_id);
   if (!choice.found) {
-    throw std::runtime_error("[cajtucu.execution] no direct reserve edge for " +
-                             asset_node_id);
+    throw std::runtime_error(
+        "[cajtucu.execution] no direct numeraire mark edge for " + node_id);
   }
   const double edge_mid = market.edge_mid_price.to(torch::kFloat64)
                               .index({choice.edge_index})
                               .item<double>();
-  if (choice.asset_is_edge_base) {
+  if (choice.from_is_edge_base) {
     return edge_mid;
   }
   return 1.0 / edge_mid;
 }
 
 [[nodiscard]] inline torch::Tensor
-asset_price_base_vector(const market_execution_state_t &market,
-                        const std::vector<node_id_t> &node_ids,
-                        const std::string &base_reserve_node_id) {
+node_price_numeraire_vector(const market_execution_state_t &market,
+                            const std::vector<node_id_t> &node_ids,
+                            const std::string &accounting_numeraire_node_id) {
   std::vector<double> prices;
   prices.reserve(node_ids.size());
   for (const auto &node_id : node_ids) {
-    prices.push_back(asset_price_base(market, node_id, base_reserve_node_id));
+    prices.push_back(
+        node_price_numeraire(market, node_id, accounting_numeraire_node_id));
   }
   return torch::tensor(prices, torch::TensorOptions().dtype(torch::kFloat64));
 }
@@ -520,20 +532,18 @@ mark_to_market(execution_ledger_t ledger,
                const market_execution_state_t &market,
                timestamp_ms_t timestamp_ms) {
   validate_execution_ledger(ledger);
-  auto prices = asset_price_base_vector(market, ledger.node_ids,
-                                        ledger.base_reserve_node_id);
+  auto prices = node_price_numeraire_vector(
+      market, ledger.node_ids, ledger.accounting_numeraire_node_id);
   auto units = ledger.units.to(torch::kFloat64);
   auto values = units * prices;
-  const double risky_value = values.sum().item<double>();
-  const double equity = ledger.base_reserve_units + risky_value;
+  const double equity = values.sum().item<double>();
   if (!std::isfinite(equity) || equity <= 0.0) {
     throw std::runtime_error(
-        "[cajtucu.execution] mark-to-market equity must be positive");
+        "[cajtucu.execution] mark-to-numeraire equity must be positive");
   }
   ledger.timestamp_ms = timestamp_ms;
   ledger.weights = values / equity;
-  ledger.base_reserve_weight = ledger.base_reserve_units / equity;
-  ledger.equity_value_base = equity;
+  ledger.equity_value_numeraire = equity;
   validate_execution_ledger(ledger);
   return ledger;
 }
@@ -550,32 +560,35 @@ inline void validate_execution_trace(const execution_trace_t &trace) {
   validate_execution_intent(trace.intent);
   validate_execution_ledger(trace.ledger_before);
   validate_execution_ledger(trace.ledger_after);
-  detail::require_nonnegative(trace.requested_notional_base,
-                              "requested_notional_base");
-  detail::require_nonnegative(trace.routed_notional_base,
-                              "routed_notional_base");
-  detail::require_nonnegative(trace.total_fee_base, "total_fee_base");
-  detail::require_nonnegative(trace.total_spread_cost_base,
-                              "total_spread_cost_base");
-  detail::require_nonnegative(trace.total_slippage_base, "total_slippage_base");
-  detail::require_nonnegative(trace.total_transaction_cost_base,
-                              "total_transaction_cost_base");
+  detail::require_nonnegative(trace.requested_notional_numeraire,
+                              "requested_notional_numeraire");
+  detail::require_nonnegative(trace.routed_notional_numeraire,
+                              "routed_notional_numeraire");
+  detail::require_nonnegative(trace.total_fee_numeraire, "total_fee_numeraire");
+  detail::require_nonnegative(trace.total_spread_cost_numeraire,
+                              "total_spread_cost_numeraire");
+  detail::require_nonnegative(trace.total_slippage_numeraire,
+                              "total_slippage_numeraire");
+  detail::require_nonnegative(trace.total_transaction_cost_numeraire,
+                              "total_transaction_cost_numeraire");
   detail::require_nonnegative(trace.turnover_weight, "turnover_weight");
-  detail::require_finite(trace.ledger_intent_equity_difference_base,
-                         "ledger_intent_equity_difference_base");
+  detail::require_finite(trace.ledger_intent_equity_difference_numeraire,
+                         "ledger_intent_equity_difference_numeraire");
   if (trace.market_source_id.empty()) {
     throw std::runtime_error(
         "[cajtucu.execution] trace market_source_id is required");
   }
   if (trace.ledger_intent_equity_mismatch &&
-      std::abs(trace.ledger_intent_equity_difference_base) <= 0.0) {
+      std::abs(trace.ledger_intent_equity_difference_numeraire) <= 0.0) {
     throw std::runtime_error(
         "[cajtucu.execution] equity mismatch flag requires nonzero "
         "difference");
   }
-  if (trace.rejected_fill_count < 0 || trace.partial_fill_count < 0) {
+  if (trace.rejected_fill_count < 0 || trace.partial_fill_count < 0 ||
+      trace.missing_direct_pair_count < 0 ||
+      trace.numeraire_fallback_pair_count < 0) {
     throw std::runtime_error(
-        "[cajtucu.execution] fill counters must be nonnegative");
+        "[cajtucu.execution] execution counters must be nonnegative");
   }
   if (trace.orders.size() != trace.fills.size()) {
     throw std::runtime_error(

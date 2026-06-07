@@ -70,23 +70,23 @@ helpers in the single `cuwacunu::wikimyei::observer` namespace. The observer
 treats the MDN output as marginal future NodeLift potentials, not direct asset
 returns. Valid channels are collapsed explicitly, the NodeLift potential-surface
 utility exposes the future price-coordinate potential mixture, and the NodeLift
-return-projection utility samples risky nodes plus the projection reference node
-before computing base-relative log returns:
+return-projection utility samples target nodes plus the projection reference node
+before computing numeraire-relative log returns:
 `phi_asset - phi_reference`. Only after that projection are values converted to
 arithmetic-return scenarios. The builder then emits both a
 `observer::belief::NodeLiftPotentialBelief` and a single-anchor
 `observer::belief::AllocationBelief`.
-`AllocationBelief::node_ids` contains only risky allocatable assets.
-`BasePolicy` separates the accounting numeraire, settlement asset, reserve
-asset, and NodeLift projection reference. V1 normally binds all four to the
-same USD-like node, but the contract keeps the meanings separate.
+`AllocationBelief::node_ids` carries the ordered target graph-node universe.
+`BasePolicy` separates the accounting numeraire, settlement asset, and NodeLift
+projection reference. V1 normally binds all three to the same USD-like node,
+but the contract keeps the meanings separate.
 `AllocationBelief` is marked projection-validation-required and live-capital
 disabled by default; the projected-return bridge is therefore explicit research
 state until empirical checks compare `phi_asset - phi_reference` against
-realized tradable base-denominated returns.
+realized tradable numeraire-denominated returns.
 `observer::belief::build_single_anchor_allocation_belief` composes the
-observer chain from `MdnOut`, graph metadata, risky-node mapping, a projection
-reference, and realized/shrunk potential correlation ordered as risky nodes
+observer chain from `MdnOut`, graph metadata, target-node mapping, a projection
+reference, and realized/shrunk potential correlation ordered as target nodes
 then the projection reference. Graph node identity is carried by
 `observer::belief::GraphNodeAxisBinding`: the dock says there is a graph-node
 axis, while the binding says which node id lives at each graph coordinate.
@@ -129,27 +129,28 @@ The first portfolio method is
 `policy::portfolio::spot_distributional_utility`, rooted on disk at
 `policy/portfolio/spot_distributional_utility/`. Its deterministic Wikimyei
 assembly consumes a post-projection `AllocationBelief` dock and produces an
-allocation target dock. The method is a long-only, base-reserve-aware, spot-only
+allocation target dock. The method is a long-only, graph-node-weight, spot-only
 V1 allocator over correlated arithmetic-return scenarios. It consumes
 `AllocationBelief`, `PortfolioState`, `MarketState`, and
 `PortfolioConstraints`, and falls back through
-`policy::portfolio::spot_distributional_utility::base_reserve_fallback` when
+`policy::portfolio::spot_distributional_utility::allocation_numeraire_fallback` when
 belief quality or scenario feasibility fails.
-`PortfolioState` names the V1 graph-node reserve explicitly with
-`accounting_node_id`, `reserve_node_id`, and `base_reserve_weight`; there is no
-separate non-graph cash bucket in the method contract.
+`PortfolioState` names the accounting numeraire graph node explicitly with
+`accounting_numeraire_node_id`; the node is part of the same `node_ids` and
+weight/unit tensors as every other target node.
 `policy::portfolio::spot_distributional_utility::decision_step` is the thin
 operational wrapper for that method: it evaluates method-local
 `risk::risk_gate`, selects either the main allocator or method-local
-`base_reserve_fallback`, routes the resulting target through method-local
+`allocation_numeraire_fallback`, routes the resulting target through method-local
 `execution::spot_rebalance_router`, and emits a monitoring report for the full
 decision step.
 Diagnostic and fallback allocators are now method-local support modules under
 `policy/portfolio/spot_distributional_utility/utility/`. They do not define
-additional policy methods; they share the same confidence, capacity, base-reserve,
-turnover, and tradability constraints as the main method. The utility folder also
+additional policy methods; they share the same confidence, capacity,
+accounting-numeraire, turnover, and tradability constraints as the main method.
+The utility folder also
 contains the method-local execution router, risk gate, ledger, reporter,
-base-reserve fallback, and solver helpers, so the method does not sprawl into
+numeraire fallback, and solver helpers, so the method does not sprawl into
 one-file support folders.
 
 Execution remains a separate phase inside the one method boundary. The V1
@@ -163,8 +164,8 @@ tradability masks, and max notionals below minimum notionals.
 
 Accounting, monitoring, and risk are also method-local support phases. The V1
 `spot_distributional_utility::accounting::portfolio_ledger` applies executed
-spot fills to risky units, base-reserve units, fees, realized PnL, unrealized
-PnL, and current weights.
+spot fills to graph-node units, numeraire-valued fees, realized PnL,
+unrealized PnL, and current weights.
 `spot_distributional_utility::monitoring::belief_reporter` emits deterministic
 decision reports that tie belief, portfolio state, target weights, rebalance
 intents, ledger state, surprise, and calibration into one inspectable text
@@ -172,15 +173,26 @@ artifact.
 `spot_distributional_utility::risk::risk_gate` evaluates belief validity, data
 quality, tradable coverage, confidence, liquidity, drawdown, surprise,
 calibration, and correlation shock thresholds before allocation/execution can
-proceed, and can route directly into `base_reserve_fallback`.
+proceed, and can route directly into `allocation_numeraire_fallback`.
 The observer data-quality utility is intentionally stricter than shape validation: it
 fails closed on non-finite tensors, invalid confidence/liquidity/capacity
 bounds, impossible arithmetic-return scenarios, non-PSD covariance, and invalid
 correlation matrices.
 Portfolio-side validators also fail closed before solver entry on invalid
-current risky/base-reserve weights, negative units, bad market
-prices/costs/notionals, and infeasible or negative constraints.
-`TargetPortfolio` validation enforces long-only risky weights, implicit
-base-reserve accounting, finite diagnostics scalars, and delta/turnover
-consistency against current weights before execution routing creates order
-intents.
+current graph-node weights, negative units, bad market prices/costs/notionals,
+and infeasible or negative constraints.
+`TargetPortfolio` validation enforces long-only graph-node weights, accounting
+numeraire membership, finite diagnostics scalars, and delta/turnover consistency
+against current weights before execution routing creates order intents.
+
+The pre-PPO trainable policy contract is
+`policy::portfolio::graph_node_allocation`. It is rooted on disk at
+`policy/portfolio/graph_node_allocation/` and backed by authored
+`wikimyei.policy.portfolio.graph_node_allocation.{dsl,net,jkimyei}` files.
+This assembly is trainable in identity only for now: its `.jkimyei` task is a
+noop contract smoke that requires the causal walk-forward schedule and keeps PPO
+execution disabled. The policy consumes `kikijyeba.environment.policy_input.v1`
+rather than raw MDN tensors or the full environment observation, and it produces
+raw `node_weight_logits[A]` that Kikijyeba adapts into one unified
+`target_node_weights[A]` action. The accounting numeraire remains an ordinary
+graph node in that action universe, not a separate cash output.

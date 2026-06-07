@@ -179,17 +179,15 @@ inline void validate_allocation_belief_for_frame(
         "mismatch");
   }
   if (options.require_allocation_belief_node_match &&
-      belief_state.node_ids != spec.risky_node_ids) {
+      belief_state.node_ids != spec.target_node_ids) {
     throw std::runtime_error(
-        "[replay_artifact_source] AllocationBelief risky node order mismatch");
+        "[replay_artifact_source] AllocationBelief target node order mismatch");
   }
   if (options.require_allocation_belief_base_policy_match &&
       (belief_state.base_policy.accounting_numeraire_id !=
            spec.base_policy.accounting_numeraire_id ||
        belief_state.base_policy.settlement_asset_id !=
            spec.base_policy.settlement_asset_id ||
-       belief_state.base_policy.reserve_asset_id !=
-           spec.base_policy.reserve_asset_id ||
        belief_state.base_policy.projection_reference_node_id !=
            spec.base_policy.projection_reference_node_id)) {
     throw std::runtime_error(
@@ -256,18 +254,12 @@ inline void validate_edge_market_state_for_frame(
   if (options.validate_edge_market_state) {
     execution::validate_spot_edge_market_state(market_state);
   }
-  for (const auto &node_id : spec.risky_node_ids) {
+  for (const auto &node_id : spec.target_node_ids) {
     if (!edge_market_graph_contains_node(market_state, node_id)) {
       throw std::runtime_error(
-          "[replay_artifact_source] edge market graph missing risky node: " +
+          "[replay_artifact_source] edge market graph missing target node: " +
           node_id);
     }
-  }
-  const auto &reserve_node_id = spec.base_policy.reserve_asset_id;
-  if (!edge_market_graph_contains_node(market_state, reserve_node_id)) {
-    throw std::runtime_error("[replay_artifact_source] edge market graph "
-                             "missing base reserve node: " +
-                             reserve_node_id);
   }
 }
 
@@ -776,7 +768,7 @@ inline void apply_replay_observation_artifacts(
   replay_artifact_detail::validate_artifact_time(artifacts, frame.observation,
                                                  options);
 
-  const auto A = static_cast<std::int64_t>(spec.risky_node_ids.size());
+  const auto A = static_cast<std::int64_t>(spec.target_node_ids.size());
   replay_artifact_detail::validate_projection_tensors(artifacts, A);
 
   if (artifacts.allocation_belief.has_value()) {

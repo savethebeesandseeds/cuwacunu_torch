@@ -1,6 +1,6 @@
 <instruction> ::= "OBSERVER_BELIEF" [<whitespace>] "{" <line_end> {<assignment>} [<whitespace>] "}" [<whitespace>] ";" [<line_end>] ;
 <assignment> ::= [<whitespace>] <key> [<whitespace>] "=" [<whitespace>] <value> [<whitespace>] ";" <line_end> ;
-<key> ::= "VERSION" | "COMPONENT_ASSEMBLY_ID" | "INPUT_MDN_ASSEMBLY_ID" | "FEATURE_SEMANTICS" | "FEATURE_SEMANTICS_SOURCE" | "GRAPH_NODE_AXIS_POLICY" | "BATCH_POLICY" | "CHANNEL_CONSENSUS" | "POTENTIAL_SEMANTICS" | "RETURN_PROJECTION" | "SCENARIO_UNIT" | "RESERVE_ASSET_POLICY" | "COVARIANCE_COUPLER" | "SCENARIO_COUNT" | "PROJECTION_VALIDATION_REQUIRED" | "LIVE_CAPITAL_ALLOWED" | "EPS" ;
+<key> ::= "VERSION" | "COMPONENT_ASSEMBLY_ID" | "INPUT_MDN_ASSEMBLY_ID" | "FEATURE_SEMANTICS" | "FEATURE_SEMANTICS_SOURCE" | "GRAPH_NODE_AXIS_POLICY" | "BATCH_POLICY" | "CHANNEL_CONSENSUS" | "POTENTIAL_SEMANTICS" | "RETURN_PROJECTION" | "SCENARIO_UNIT" | "ACCOUNTING_NUMERAIRE_POLICY" | "COVARIANCE_COUPLER" | "SCENARIO_COUNT" | "PROJECTION_VALIDATION_REQUIRED" | "LIVE_CAPITAL_ALLOWED" | "EPS" ;
 <value> ::= <value_char> {<value_char>} ;
 <value_char> ::= <letter> | <digit> | "_" | "." | "-" | "+" ;
 <line_end> ::= [<whitespace>] <break_block> ;

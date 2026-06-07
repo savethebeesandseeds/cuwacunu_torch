@@ -65,6 +65,17 @@ std::string describe_lattice_target_evaluation(
   return out;
 }
 
+std::string join_issue_tokens(const std::vector<std::string> &issues) {
+  std::string out;
+  for (std::size_t i = 0; i < issues.size(); ++i) {
+    if (i > 0) {
+      out += ",";
+    }
+    out += issues[i];
+  }
+  return out;
+}
+
 std::filesystem::path make_tmp_dir(const std::string &label) {
   static int counter = 0;
   auto dir = std::filesystem::temp_directory_path() /
@@ -140,14 +151,12 @@ make_runtime_fixture_market_graph() {
 env::episode_spec_t make_runtime_replay_base_spec() {
   env::episode_spec_t spec{};
   spec.graph_node_ids = {"BTC", "USDT", "ETH"};
-  spec.risky_node_ids = {"BTC", "ETH"};
+  spec.target_node_ids = {"USDT", "BTC", "ETH"};
   spec.base_policy = {.accounting_numeraire_id = "USDT",
                       .settlement_asset_id = "USDT",
-                      .reserve_asset_id = "USDT",
                       .projection_reference_node_id = "USDT"};
-  spec.initial_equity_base = 1000.0;
-  spec.constraints.min_base_reserve_weight = 0.20;
-  spec.constraints.max_weight = torch::full({2}, 0.60, torch::kFloat64);
+  spec.initial_equity_numeraire = 1000.0;
+  spec.constraints.max_weight = torch::full({3}, 0.60, torch::kFloat64);
   spec.constraints.max_turnover_l1 = 0.80;
   spec.constraints.lambda_cvar = 0.10;
   spec.constraints.lambda_concentration = 0.01;
@@ -170,18 +179,18 @@ env::replay_policy_factory_t make_runtime_replay_sdu_policy_factory() {
   };
 }
 
-env::replay_policy_factory_t make_runtime_replay_reserve_policy_factory() {
+env::replay_policy_factory_t make_runtime_replay_numeraire_policy_factory() {
   return {
-      .policy_id = "base_reserve_only.v1",
+      .policy_id = "numeraire_only.v1",
       .policy_kind = env::policy_kind_t::baseline,
       .make_policy =
           [](const replay::replay_episode_bundle_t &bundle) {
             env::baseline_policy_config_t config{};
-            config.policy_id = "base_reserve_only.v1";
-            config.node_ids = bundle.spec.risky_node_ids;
-            config.base_reserve_node_id =
-                bundle.spec.base_policy.reserve_asset_id;
-            return std::make_unique<env::base_reserve_policy_t>(
+            config.policy_id = "numeraire_only.v1";
+            config.node_ids = bundle.spec.target_node_ids;
+            config.accounting_numeraire_node_id =
+                bundle.spec.base_policy.accounting_numeraire_id;
+            return std::make_unique<env::numeraire_only_policy_t>(
                 std::move(config));
           },
   };
@@ -1853,8 +1862,8 @@ void test_strict_channel_baseline_runs_through_runtime() {
   eval_options.batch_size = 2;
   eval_options.job_dir = eval_job_dir;
   eval_options.force_rebuild_cache = true;
-  eval_options.replay_base_reserve_node_id = "USDT";
-  eval_options.replay_risky_node_ids = {"BTC", "ETH"};
+  eval_options.replay_accounting_numeraire_node_id = "USDT";
+  eval_options.replay_target_node_ids = {"USDT", "BTC", "ETH"};
   const auto eval_result = runtime::run_graph_first_job<Kline>(
       eval_fixture.config.string(), eval_options);
 
@@ -1947,34 +1956,53 @@ void test_strict_channel_baseline_runs_through_runtime() {
   runtime_replay_options.episode_options.max_steps = 8;
   auto runtime_replay_report = env::run_replay_experiment(
       "strict_channel_eval_runtime_replay_experiment", runtime_replay_source,
-      std::vector{make_runtime_replay_reserve_policy_factory(),
+      std::vector{make_runtime_replay_numeraire_policy_factory(),
                   make_runtime_replay_sdu_policy_factory()},
       runtime_replay_options);
   check(runtime_replay_report.completed_count == 2,
-        "strict baseline eval Runtime replay artifacts run reserve and SDU "
+        "strict baseline eval Runtime replay artifacts run numeraire and SDU "
         "policies");
   env::runtime_job_replay_driver_options_t replay_driver_options{};
   replay_driver_options.job_dir = eval_job_dir;
   replay_driver_options.config_path = eval_fixture.config.string();
   replay_driver_options.experiment_id =
       "strict_channel_eval_runtime_replay_driver";
-  replay_driver_options.base_reserve_node_id = "USDT";
-  replay_driver_options.risky_node_ids = {"BTC", "ETH"};
-  replay_driver_options.initial_equity_base = 1000.0;
-  replay_driver_options.min_base_reserve_weight = 0.20;
-  replay_driver_options.max_risky_weight = 0.60;
+  replay_driver_options.accounting_numeraire_node_id = "USDT";
+  replay_driver_options.target_node_ids = {"USDT", "BTC", "ETH"};
+  replay_driver_options.initial_equity_numeraire = 1000.0;
+  replay_driver_options.max_node_weight = 0.60;
   replay_driver_options.max_turnover_l1 = 0.80;
-  replay_driver_options.include_equal_weight_policy = false;
+  replay_driver_options.execution_profile_digest =
+      "cajtucu.paper.validation.profile.digest.fixture";
+  replay_driver_options.policy_set_digest =
+      "kikijyeba.replay.validation.policy_set.digest.fixture";
+  replay_driver_options.world_options.linear_transaction_cost_rate = 0.001;
+  replay_driver_options.include_equal_weight_policy = true;
   replay_driver_options.experiment_options.max_parallel_jobs = 1;
   replay_driver_options.experiment_options.episode_options.max_steps = 8;
   auto replay_driver_result =
       env::run_runtime_job_replay_experiment(replay_driver_options);
   check(replay_driver_result.replay_bundle_count == 1,
         "strict baseline replay driver sees one Runtime pulse bundle");
-  check(replay_driver_result.report.completed_count == 2,
-        "strict baseline replay driver runs reserve and SDU policies");
+  check(replay_driver_result.report.completed_count == 3,
+        "strict baseline replay driver runs numeraire, equal-weight, and SDU "
+        "policies");
+  check(
+      std::isfinite(replay_driver_result.report
+                        .mean_total_transaction_cost_numeraire()) &&
+          replay_driver_result.report.mean_total_transaction_cost_numeraire() >
+              0.0,
+      "strict baseline replay driver applies nonzero Cajtucu cost profile");
+  check(replay_driver_result.report.cajtucu_invalid_trace_count() == 0,
+        "strict baseline replay driver produces only valid Cajtucu traces");
+  check(replay_driver_result.report.cajtucu_numeraire_fallback_pair_count() ==
+            0,
+        "strict baseline replay driver does not route through accounting "
+        "numeraire fallback");
   check(std::filesystem::exists(replay_driver_result.report_path),
         "strict baseline replay driver writes experiment report");
+  check(std::filesystem::exists(replay_driver_result.experience_trace_path),
+        "strict baseline replay driver writes experience trace sidecar");
   check(std::filesystem::exists(replay_driver_result.experiment_index_path),
         "strict baseline replay driver writes experiment index");
   const auto replay_driver_report_text =
@@ -1984,19 +2012,75 @@ void test_strict_channel_baseline_runs_through_runtime() {
             "artifact.v1") != std::string::npos,
         "strict baseline replay driver report carries Cajtucu-ready "
         "experiment schema");
-  check(replay_driver_report_text.find("policy_summary_count=2") !=
+  check(replay_driver_report_text.find("policy_summary_count=3") !=
             std::string::npos,
-        "strict baseline replay driver report carries policy summaries");
-  check(replay_driver_report_text.find("time_law_expected_step_count=4") !=
+        "strict baseline replay driver report carries all validation policy "
+        "summaries");
+  check(replay_driver_report_text.find(
+            "execution_profile_digest=cajtucu.paper.validation.profile.digest."
+            "fixture") != std::string::npos &&
+            replay_driver_report_text.find(
+                "policy_set_digest=kikijyeba.replay.validation.policy_set."
+                "digest.fixture") != std::string::npos,
+        "strict baseline replay driver report binds validation profile and "
+        "policy-set digests");
+  check(replay_driver_report_text.find(
+            "top_level_metric_scope=mean_over_completed_episode_reports_"
+            "across_policies") != std::string::npos &&
+            replay_driver_report_text.find(
+                "policy_metric_scope=mean_over_completed_episode_reports_for_"
+                "policy") != std::string::npos,
+        "strict baseline replay driver report declares aggregate metric "
+        "scopes");
+  check(
+      replay_driver_report_text.find("cajtucu_valid_trace_count=") !=
+              std::string::npos &&
+          replay_driver_report_text.find("cajtucu_invalid_trace_count=0") !=
+              std::string::npos &&
+          replay_driver_report_text.find(
+              "cajtucu_numeraire_fallback_pair_count=0") != std::string::npos &&
+          replay_driver_report_text.find(
+              "cajtucu_missing_direct_pair_count=") != std::string::npos &&
+          replay_driver_report_text.find("requested_notional_numeraire=") !=
+              std::string::npos &&
+          replay_driver_report_text.find("executed_notional_numeraire=") !=
+              std::string::npos &&
+          replay_driver_report_text.find("fee_cost_numeraire=") !=
+              std::string::npos &&
+          replay_driver_report_text.find("spread_cost_numeraire=") !=
+              std::string::npos &&
+          replay_driver_report_text.find("slippage_cost_numeraire=") !=
+              std::string::npos &&
+          replay_driver_report_text.find("total_transaction_cost_numeraire=") !=
+              std::string::npos,
+      "strict baseline replay driver report carries validation-grade "
+      "Cajtucu cost and feasibility evidence");
+  const auto replay_driver_trace_text =
+      read_text(replay_driver_result.experience_trace_path);
+  check(replay_driver_trace_text.find(
+            "policy_comparison_0_cajtucu_valid_trace_count=") !=
+                std::string::npos &&
+            replay_driver_trace_text.find(
+                "episode_0_transition_0_cajtucu_execution_trace_available="
+                "true") != std::string::npos &&
+            replay_driver_trace_text.find(
+                "episode_0_transition_0_cajtucu_total_transaction_cost_"
+                "numeraire=") != std::string::npos &&
+            replay_driver_trace_text.find(
+                "episode_0_transition_0_cajtucu_numeraire_fallback_pair_count="
+                "0") != std::string::npos,
+        "strict baseline replay driver experience trace carries "
+        "per-transition Cajtucu validation evidence");
+  check(replay_driver_report_text.find("time_law_expected_step_count=6") !=
                 std::string::npos &&
             replay_driver_report_text.find(
-                "time_law_observation_step_count=4") != std::string::npos &&
-            replay_driver_report_text.find("time_law_action_step_count=4") !=
+                "time_law_observation_step_count=6") != std::string::npos &&
+            replay_driver_report_text.find("time_law_action_step_count=6") !=
                 std::string::npos &&
-            replay_driver_report_text.find("time_law_execution_step_count=4") !=
+            replay_driver_report_text.find("time_law_execution_step_count=6") !=
                 std::string::npos &&
             replay_driver_report_text.find(
-                "time_law_realization_after_action_count=4") !=
+                "time_law_realization_after_action_count=6") !=
                 std::string::npos &&
             replay_driver_report_text.find(
                 "time_law_future_observation_violation_count=0") !=
@@ -2004,7 +2088,7 @@ void test_strict_channel_baseline_runs_through_runtime() {
             replay_driver_report_text.find(
                 "mixed_future_realization_key_count=0") != std::string::npos &&
             replay_driver_report_text.find(
-                "projection_validation_step_count=4") != std::string::npos,
+                "projection_validation_step_count=6") != std::string::npos,
         "strict baseline replay driver report carries aggregate time-law and "
         "projection step evidence for parked replay environment audit");
   check(
@@ -2028,8 +2112,7 @@ void test_strict_channel_baseline_runs_through_runtime() {
       "strict baseline replay driver report carries source-key request and "
       "accepted cursor evidence");
   check(replay_driver_report_text.find(
-            "episode_1_allocation_target_risky_node_weights=") !=
-            std::string::npos,
+            "episode_1_allocation_target_node_weights=") != std::string::npos,
         "strict baseline replay driver report carries allocation target "
         "weights");
   check(replay_driver_report_text.find("episode_1_allocation_cvar_loss=") !=
@@ -2042,9 +2125,9 @@ void test_strict_channel_baseline_runs_through_runtime() {
   check(replay_driver_index[0].experiment_id ==
             "strict_channel_eval_runtime_replay_driver",
         "strict baseline replay driver index records experiment id");
-  check(replay_driver_index[0].policy_count == 2,
+  check(replay_driver_index[0].policy_count == 3,
         "strict baseline replay driver index records policy count");
-  check(replay_driver_index[0].completed_count == 2,
+  check(replay_driver_index[0].completed_count == 3,
         "strict baseline replay driver index records completed count");
   check(replay_driver_index[0].report_path == replay_driver_result.report_path,
         "strict baseline replay driver index records report path");
@@ -2130,8 +2213,10 @@ void test_strict_channel_baseline_runs_through_runtime() {
       "strict baseline replay driver leaves allocation-policy Lattice sidecar "
       "to the Lattice workstream");
 
-  const auto eval_scan =
-      exposure::scan_exposure_ledger_from_runtime_root(eval_job_dir);
+  exposure::exposure_scan_options_t eval_scan_options{};
+  eval_scan_options.derive_replay_environment_facts = true;
+  const auto eval_scan = exposure::scan_exposure_ledger_from_runtime_root(
+      eval_job_dir, {}, eval_scan_options);
   check(eval_scan.ledger.source_analytics_facts().size() == 1,
         "strict baseline eval scan sees Runtime-emitted source-analytics fact");
   check(eval_scan.ledger.target_transform_facts().size() == 1,
@@ -2143,6 +2228,9 @@ void test_strict_channel_baseline_runs_through_runtime() {
         "strict baseline eval scan sees forecast-eval fact");
   check(eval_scan.ledger.observer_belief_facts().size() == 1,
         "strict baseline eval scan sees observer-belief fact");
+  check(eval_scan.ledger.replay_environment_facts().size() == 1,
+        "strict baseline eval scan derives replay-environment fact from "
+        "Runtime replay artifacts");
   check(eval_scan.ledger.allocation_engine_facts().empty(),
         "strict baseline eval scan does not derive allocation-policy fact from "
         "replay output");
@@ -2213,6 +2301,168 @@ void test_strict_channel_baseline_runs_through_runtime() {
             .empty(),
         "strict baseline emitted observer-belief fact has forecast and "
         "scenario lineage");
+  const auto replay_environment_issues =
+      exposure::replay_environment_fact_issues(
+          eval_scan.ledger.replay_environment_facts().front());
+  check(replay_environment_issues.empty(),
+        "strict baseline emitted replay-environment fact has cost-aware "
+        "Cajtucu, time-law, projection, and source cursor evidence: " +
+            join_issue_tokens(replay_environment_issues));
+
+  const auto &eval_parent_exposure = eval_scan.ledger.facts().front();
+  const auto forecast_eval_digest =
+      exposure::forecast_eval_fact_digest(emitted_forecast_eval_fact);
+  const auto observer_belief_digest = exposure::observer_belief_fact_digest(
+      eval_scan.ledger.observer_belief_facts().front());
+  const auto replay_environment_digest =
+      exposure::replay_environment_fact_digest(
+          eval_scan.ledger.replay_environment_facts().front());
+
+  exposure::lattice_allocation_engine_fact_t allocation_fact{};
+  exposure::populate_artifact_fact_identity(allocation_fact,
+                                            eval_parent_exposure);
+  allocation_fact.target_node_weights = "BTC:0.25,ETH:0.25,USDT:0.50";
+  allocation_fact.accounting_numeraire_node_id = "USDT";
+  allocation_fact.accounting_numeraire_node_source = "base_policy";
+  allocation_fact.base_policy_accounting_numeraire_node_id = "USDT";
+  allocation_fact.accounting_numeraire_node_graph_bound = true;
+  allocation_fact.numeraire_weight = 0.50;
+  allocation_fact.turnover = 0.10;
+  allocation_fact.objective_terms =
+      "post_execution_log_growth:0.70,cost:0.20,drawdown:0.10";
+  allocation_fact.cvar_loss = 0.02;
+  allocation_fact.transaction_cost_estimate = 0.001;
+  allocation_fact.constraint_diagnostics = "contract_fixture_all_clear";
+  allocation_fact.cap_diagnostics = "contract_fixture_caps_clear";
+  allocation_fact.scenario_growth_floor_status = "not_applicable";
+  allocation_fact.fallback_reasons = "none";
+  allocation_fact.derisk_reasons = "none";
+  allocation_fact.observer_belief_fact_digest = observer_belief_digest;
+  allocation_fact.forecast_artifact_digest =
+      emitted_forecast_eval_fact.forecast_artifact_digest;
+  allocation_fact.base_policy_digest = "graph_node_allocation_base_policy";
+  exposure::write_allocation_engine_fact_sidecar(
+      eval_job_dir / "lattice.allocation_engine.fact", allocation_fact);
+
+  const auto allocation_scan = exposure::scan_exposure_ledger_from_runtime_root(
+      eval_job_dir, {}, eval_scan_options);
+  check(allocation_scan.ledger.allocation_engine_facts().size() == 1,
+        "strict baseline eval scan sees durable allocation-engine sidecar for "
+        "pre-PPO policy-training parent evidence");
+  const auto &emitted_allocation_fact =
+      allocation_scan.ledger.allocation_engine_facts().front();
+  const auto allocation_issues =
+      exposure::allocation_engine_fact_issues(emitted_allocation_fact);
+  check(allocation_issues.empty(),
+        "strict baseline allocation-engine sidecar has closed observer and "
+        "numeraire lineage: " +
+            join_issue_tokens(allocation_issues));
+  const auto allocation_engine_digest =
+      exposure::allocation_engine_fact_digest(emitted_allocation_fact);
+
+  exposure::lattice_policy_training_fact_t policy_training_fact{};
+  exposure::populate_artifact_fact_identity(policy_training_fact,
+                                            eval_parent_exposure);
+  policy_training_fact.target_component_family_id = "wikimyei.policy.trainable";
+  policy_training_fact.policy_id =
+      "wikimyei.policy.portfolio.graph_node_allocation.v1";
+  policy_training_fact.policy_kind = "noop_policy_training.v1";
+  policy_training_fact.policy_architecture_digest =
+      "graph_node_allocation_contract_fixture_arch";
+  policy_training_fact.training_config_digest =
+      "graph_node_allocation_contract_fixture_training_config";
+  policy_training_fact.training_range_digest = "range_train_digest";
+  policy_training_fact.validation_range_digest = "range_validation_digest";
+  policy_training_fact.test_range_digest = "range_test_digest";
+  policy_training_fact.environment_contract_id =
+      "kikijyeba.environment.replay.v1";
+  policy_training_fact.observation_schema_digest =
+      "kikijyeba.environment.policy_input.v1";
+  policy_training_fact.action_schema_digest =
+      "kikijyeba.environment.action.target_node_weights.v1";
+  policy_training_fact.reward_contract_digest =
+      "kikijyeba.environment.reward.post_execution_ledger_log_growth_cost_"
+      "drawdown.v1";
+  policy_training_fact.policy_input_schema_id =
+      "kikijyeba.environment.policy_input.v1";
+  policy_training_fact.action_adapter_id = "target_node_weights_simplex.v1";
+  policy_training_fact.reward_contract_id =
+      "kikijyeba.environment.reward.post_execution_ledger_log_growth_cost_"
+      "drawdown.v1";
+  policy_training_fact.execution_profile_digest =
+      eval_scan.ledger.replay_environment_facts()
+          .front()
+          .execution_profile_digest;
+  policy_training_fact.training_schedule_mode =
+      "causal_walk_forward_training.v1";
+  policy_training_fact.causal_schedule_schema_id =
+      "kikijyeba.runtime.policy_training_causal_schedule.v1";
+  policy_training_fact.causal_schedule_digest =
+      "causal_schedule_pre_ppo_rehearsal_digest";
+  policy_training_fact.causal_schedule_cursor_key_kind = "numeric_anchor_index";
+  policy_training_fact.causal_schedule_no_future_snapshot_use_source =
+      "derived_from_artifact_fit_use_ledgers";
+  policy_training_fact.normalization_fit_range_digest =
+      policy_training_fact.training_range_digest;
+  policy_training_fact.replay_buffer_source_range_digest =
+      policy_training_fact.training_range_digest;
+  policy_training_fact.early_stopping_policy_digest =
+      "early_stopping_validation_only_digest";
+  policy_training_fact.hyperparameter_selection_policy_digest =
+      "hyperparameter_selection_validation_only_digest";
+  policy_training_fact.selector_split = "validation";
+  policy_training_fact.selector_policy_digest =
+      "selector_policy_validation_only_digest";
+  policy_training_fact.parent_checkpoint_digest =
+      "noop_policy_training_parent_checkpoint_digest";
+  policy_training_fact.checkpoint_digest =
+      "noop_policy_training_checkpoint_digest";
+  policy_training_fact.parent_forecast_eval_fact_digest = forecast_eval_digest;
+  policy_training_fact.parent_observer_belief_fact_digest =
+      observer_belief_digest;
+  policy_training_fact.parent_allocation_engine_fact_digest =
+      allocation_engine_digest;
+  policy_training_fact.parent_replay_environment_fact_digest =
+      replay_environment_digest;
+  policy_training_fact.random_seed = 0;
+  policy_training_fact.random_seed_bound = true;
+  policy_training_fact.training_range_disjoint_validation = true;
+  policy_training_fact.training_range_disjoint_test = true;
+  policy_training_fact.validation_range_disjoint_test = true;
+  policy_training_fact.normalization_fit_training_only = true;
+  policy_training_fact.replay_buffer_training_only = true;
+  policy_training_fact.reward_baseline_training_only = true;
+  policy_training_fact.early_stopping_uses_validation_only = true;
+  policy_training_fact.hyperparameter_selection_uses_validation_only = true;
+  policy_training_fact.test_sealed_until_final_report = true;
+  policy_training_fact.test_first_access_after_selection = true;
+  policy_training_fact.runtime_job_kind_bound = true;
+  policy_training_fact.policy_checkpoint_written = true;
+  policy_training_fact.causal_schedule_readiness_eligible = true;
+  policy_training_fact.causal_schedule_no_future_snapshot_use = true;
+  policy_training_fact.offline_full_window_research = false;
+  const auto policy_training_canonical =
+      exposure::canonical_policy_training_fact_text(policy_training_fact);
+  write_text(eval_job_dir / "runtime.policy_training.fact",
+             policy_training_canonical + "fact_digest=" +
+                 exposure::policy_training_fact_digest(policy_training_fact) +
+                 "\n");
+
+  const auto pre_ppo_scan = exposure::scan_exposure_ledger_from_runtime_root(
+      eval_job_dir, {}, eval_scan_options);
+  check(pre_ppo_scan.ledger.policy_training_facts().size() == 1,
+        "strict baseline eval scan sees durable pre-PPO policy-training fact");
+  check(pre_ppo_scan.ledger.policy_training_facts()
+                .front()
+                .target_component_family_id == "wikimyei.policy.trainable",
+        "strict baseline policy-training fact preserves policy component "
+        "identity");
+  const auto policy_training_issues = exposure::policy_training_fact_issues(
+      pre_ppo_scan.ledger.policy_training_facts().front());
+  check(policy_training_issues.empty(),
+        "strict baseline policy-training fact has causal schedule, unified "
+        "action, post-execution reward, and parent evidence: " +
+            join_issue_tokens(policy_training_issues));
 
   const auto artifact_specs =
       target::decode_lattice_targets_from_dsl(std::string(R"DSL(
@@ -2268,9 +2518,35 @@ LATTICE_TARGET {
   REQUIRE_CONTRACT_MATCH = true;
 };
 
+LATTICE_TARGET {
+  TARGET_ID = emitted_replay_environment_artifact_ready;
+  TARGET_CLASS = artifact_readiness;
+  SUBJECT_FACT_FAMILY = replay_environment;
+  SUBJECT_COMPONENT = wikimyei.inference.expected_value.mdn;
+  PROTOCOL_ID = )DSL" + eval_result.manifest.protocol_id +
+                                              R"DSL(;
+  SOURCE_RANGE = anchor_index;
+  ANCHOR_INDEX_BEGIN = 1;
+  ANCHOR_INDEX_END = 3;
+  REQUIRE_CONTRACT_MATCH = true;
+};
+
+LATTICE_TARGET {
+  TARGET_ID = emitted_policy_training_artifact_ready;
+  TARGET_CLASS = artifact_readiness;
+  SUBJECT_FACT_FAMILY = policy_training;
+  SUBJECT_COMPONENT = wikimyei.policy.trainable;
+  PROTOCOL_ID = )DSL" + eval_result.manifest.protocol_id +
+                                              R"DSL(;
+  SOURCE_RANGE = anchor_index;
+  ANCHOR_INDEX_BEGIN = 1;
+  ANCHOR_INDEX_END = 3;
+  REQUIRE_CONTRACT_MATCH = true;
+};
+
 )DSL");
   target::lattice_target_evaluator_options_t artifact_options{};
-  artifact_options.exposure_ledger = &eval_scan.ledger;
+  artifact_options.exposure_ledger = &pre_ppo_scan.ledger;
   artifact_options.auto_build_exposure_ledger = false;
   artifact_options.active_identity.protocol_id =
       eval_result.manifest.protocol_id;
@@ -2292,6 +2568,10 @@ LATTICE_TARGET {
       artifact_evaluator.evaluate("emitted_forecast_eval_artifact_ready");
   const auto emitted_observer_eval =
       artifact_evaluator.evaluate("emitted_observer_belief_artifact_ready");
+  const auto emitted_replay_eval =
+      artifact_evaluator.evaluate("emitted_replay_environment_artifact_ready");
+  const auto emitted_policy_training_eval =
+      artifact_evaluator.evaluate("emitted_policy_training_artifact_ready");
   check(emitted_transform_eval.status ==
             target::lattice_target_status_t::satisfied,
         "strict baseline emitted target-transform fact satisfies artifact "
@@ -2312,6 +2592,16 @@ LATTICE_TARGET {
         "strict baseline emitted observer-belief fact satisfies artifact "
         "readiness: " +
             describe_lattice_target_evaluation(emitted_observer_eval));
+  check(emitted_replay_eval.status ==
+            target::lattice_target_status_t::satisfied,
+        "strict baseline emitted cost-aware replay report satisfies "
+        "replay-environment artifact readiness: " +
+            describe_lattice_target_evaluation(emitted_replay_eval));
+  check(emitted_policy_training_eval.status ==
+            target::lattice_target_status_t::satisfied,
+        "strict baseline emitted pre-PPO policy-training fact satisfies "
+        "artifact readiness against durable parent evidence: " +
+            describe_lattice_target_evaluation(emitted_policy_training_eval));
 }
 
 void test_invalid_wave_range_fails_before_launch() {

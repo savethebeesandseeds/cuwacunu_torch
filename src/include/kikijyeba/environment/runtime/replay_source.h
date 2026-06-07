@@ -17,10 +17,10 @@
 
 #include <torch/torch.h>
 
-#include "kikijyeba/environment/replay/bundle_source.h"
 #include "hero/runtime_hero/runtime/job_layout.h"
 #include "hero/runtime_hero/runtime/job_manifest.h"
 #include "hero/runtime_hero/runtime/wave_plan.h"
+#include "kikijyeba/environment/replay/bundle_source.h"
 #include "kikijyeba/topology/graph/graph.h"
 #include "wikimyei/inference/expected_value/mdn/stream/mdn_adapter.h"
 #include "wikimyei/observer/belief/builder.h"
@@ -278,9 +278,9 @@ struct runtime_replay_forecast_artifact_record_t {
 };
 
 struct runtime_allocation_belief_observer_options_t {
-  std::string base_reserve_node_id{};
-  std::vector<std::string> risky_node_ids{};
-  bool require_direct_asset_base_edges{true};
+  std::string accounting_numeraire_node_id{};
+  std::vector<std::string> target_node_ids{};
+  bool require_direct_accounting_numeraire_valuation_edges{true};
   bool use_identity_potential_correlation{true};
   double default_linear_cost{0.0};
   double default_quadratic_impact{0.0};
@@ -300,9 +300,9 @@ node_index_by_id(const std::vector<std::string> &node_ids,
   return std::nullopt;
 }
 
-[[nodiscard]] inline bool has_direct_asset_base_edge(
+[[nodiscard]] inline bool has_direct_node_pair_edge(
     const cuwacunu::kikijyeba::topology::graph::market_graph_t &graph,
-    const std::string &asset_node_id, const std::string &base_node_id) {
+    const std::string &lhs_node_id, const std::string &rhs_node_id) {
   for (std::size_t e = 0; e < graph.edge_ids.size(); ++e) {
     const auto base_index = graph.base_index[e];
     const auto quote_index = graph.quote_index[e];
@@ -311,56 +311,25 @@ node_index_by_id(const std::vector<std::string> &node_ids,
         static_cast<std::size_t>(quote_index) >= graph.node_ids.size()) {
       continue;
     }
-    if (graph.node_ids[static_cast<std::size_t>(base_index)] == asset_node_id &&
-        graph.node_ids[static_cast<std::size_t>(quote_index)] == base_node_id) {
+    const auto &base_node =
+        graph.node_ids[static_cast<std::size_t>(base_index)];
+    const auto &quote_node =
+        graph.node_ids[static_cast<std::size_t>(quote_index)];
+    if ((base_node == lhs_node_id && quote_node == rhs_node_id) ||
+        (base_node == rhs_node_id && quote_node == lhs_node_id)) {
       return true;
     }
   }
   return false;
 }
 
-[[nodiscard]] inline std::string infer_base_reserve_node_id(
+[[nodiscard]] inline std::vector<std::string> default_target_node_ids(
     const cuwacunu::kikijyeba::topology::graph::market_graph_t &graph) {
-  graph.validate();
-  std::vector<std::size_t> quote_counts(graph.node_ids.size(), 0);
-  for (std::size_t e = 0; e < graph.edge_ids.size(); ++e) {
-    ++quote_counts[static_cast<std::size_t>(graph.quote_index[e])];
-  }
-
-  std::optional<std::size_t> best;
-  bool tied{false};
-  for (std::size_t i = 0; i < quote_counts.size(); ++i) {
-    if (!best.has_value() || quote_counts[i] > quote_counts[*best]) {
-      best = i;
-      tied = false;
-    } else if (best.has_value() && quote_counts[i] == quote_counts[*best]) {
-      tied = true;
-    }
-  }
-  if (!best.has_value() || quote_counts[*best] == 0 || tied) {
+  if (graph.node_ids.empty()) {
     throw std::runtime_error(
-        "[replay_runtime_source] unable to infer a unique base reserve node "
-        "from graph quote endpoints; provide replay_base_reserve_node_id");
+        "[replay_runtime_source] graph node universe is empty");
   }
-  return graph.node_ids[*best];
-}
-
-[[nodiscard]] inline std::vector<std::string> default_risky_node_ids(
-    const cuwacunu::kikijyeba::topology::graph::market_graph_t &graph,
-    const std::string &base_reserve_node_id) {
-  std::vector<std::string> out;
-  out.reserve(graph.node_ids.size());
-  for (const auto &node_id : graph.node_ids) {
-    if (node_id != base_reserve_node_id) {
-      out.push_back(node_id);
-    }
-  }
-  if (out.empty()) {
-    throw std::runtime_error(
-        "[replay_runtime_source] risky node universe is empty after reserve "
-        "node removal");
-  }
-  return out;
+  return graph.node_ids;
 }
 
 [[nodiscard]] inline belief::allocation_belief_builder_options_t
@@ -370,42 +339,43 @@ make_runtime_allocation_belief_builder_options(
     runtime_allocation_belief_observer_options_t options = {}) {
   belief::validate_belief_observer_spec(spec);
   graph.validate();
-  const std::string base_reserve_node_id =
-      options.base_reserve_node_id.empty() ? infer_base_reserve_node_id(graph)
-                                           : options.base_reserve_node_id;
-  const auto base_index =
-      node_index_by_id(graph.node_ids, base_reserve_node_id);
-  if (!base_index.has_value()) {
+  if (options.accounting_numeraire_node_id.empty()) {
     throw std::runtime_error(
-        "[replay_runtime_source] base reserve node must appear in graph");
+        "[replay_runtime_source] accounting numeraire node is required; set "
+        "[ACCOUNTING].accounting_numeraire_node_id in .config or pass an "
+        "explicit replay accounting numeraire override");
+  }
+  const std::string accounting_numeraire_node_id =
+      options.accounting_numeraire_node_id;
+  const auto numeraire_index =
+      node_index_by_id(graph.node_ids, accounting_numeraire_node_id);
+  if (!numeraire_index.has_value()) {
+    throw std::runtime_error("[replay_runtime_source] accounting numeraire "
+                             "node must appear in graph");
   }
 
-  auto risky_node_ids =
-      options.risky_node_ids.empty()
-          ? default_risky_node_ids(graph, base_reserve_node_id)
-          : std::move(options.risky_node_ids);
-  std::vector<std::int64_t> risky_indices;
-  risky_indices.reserve(risky_node_ids.size());
-  for (const auto &node_id : risky_node_ids) {
-    if (node_id == base_reserve_node_id) {
-      throw std::runtime_error(
-          "[replay_runtime_source] base reserve node must not be duplicated in "
-          "risky_node_ids");
-    }
+  auto target_node_ids = options.target_node_ids.empty()
+                             ? default_target_node_ids(graph)
+                             : std::move(options.target_node_ids);
+  std::vector<std::int64_t> target_indices;
+  target_indices.reserve(target_node_ids.size());
+  for (const auto &node_id : target_node_ids) {
     const auto index = node_index_by_id(graph.node_ids, node_id);
     if (!index.has_value()) {
       throw std::runtime_error(
-          "[replay_runtime_source] risky node is not present in graph: " +
+          "[replay_runtime_source] target node is not present in graph: " +
           node_id);
     }
-    if (options.require_direct_asset_base_edges &&
-        !has_direct_asset_base_edge(graph, node_id, base_reserve_node_id)) {
+    if (options.require_direct_accounting_numeraire_valuation_edges &&
+        node_id != accounting_numeraire_node_id &&
+        !has_direct_node_pair_edge(graph, node_id,
+                                   accounting_numeraire_node_id)) {
       throw std::runtime_error(
           "[replay_runtime_source] V1 replay allocation requires a direct "
-          "asset/base edge for risky node: " +
-          node_id + " -> " + base_reserve_node_id);
+          "accounting-numeraire valuation edge for target node: " +
+          node_id + " / " + accounting_numeraire_node_id);
     }
-    risky_indices.push_back(static_cast<std::int64_t>(*index));
+    target_indices.push_back(static_cast<std::int64_t>(*index));
   }
 
   if (!options.use_identity_potential_correlation) {
@@ -414,7 +384,7 @@ make_runtime_allocation_belief_builder_options(
         "sources are not wired yet; V1 uses identity correlation unless an "
         "explicit builder option is supplied");
   }
-  const auto A = static_cast<std::int64_t>(risky_node_ids.size());
+  const auto A = static_cast<std::int64_t>(target_node_ids.size());
   auto tensor_options = torch::TensorOptions().dtype(torch::kFloat64);
 
   belief::allocation_belief_builder_options_t out{};
@@ -423,16 +393,22 @@ make_runtime_allocation_belief_builder_options(
   out.graph_node_axis = belief::make_graph_node_axis_binding(
       out.graph_order_fingerprint, graph.node_ids,
       "future_channel_node_distribution");
-  out.node_ids = std::move(risky_node_ids);
-  out.node_graph_indices = std::move(risky_indices);
+  out.node_ids = std::move(target_node_ids);
+  out.node_graph_indices = std::move(target_indices);
   out.base_policy = {
-      .accounting_numeraire_id = base_reserve_node_id,
-      .settlement_asset_id = base_reserve_node_id,
-      .reserve_asset_id = base_reserve_node_id,
-      .projection_reference_node_id = base_reserve_node_id,
+      .accounting_numeraire_id = accounting_numeraire_node_id,
+      .settlement_asset_id = accounting_numeraire_node_id,
+      .projection_reference_node_id = accounting_numeraire_node_id,
   };
-  out.projection_reference_graph_index = static_cast<std::int64_t>(*base_index);
-  out.empirical_potential_correlation = torch::eye(A + 1, tensor_options);
+  out.projection_reference_graph_index =
+      static_cast<std::int64_t>(*numeraire_index);
+  const bool target_nodes_include_projection_reference =
+      std::find(out.node_graph_indices.begin(), out.node_graph_indices.end(),
+                *numeraire_index) != out.node_graph_indices.end();
+  const auto projection_universe_count =
+      A + (target_nodes_include_projection_reference ? 0 : 1);
+  out.empirical_potential_correlation =
+      torch::eye(projection_universe_count, tensor_options);
   out.tradable_mask =
       torch::ones({A}, torch::TensorOptions().dtype(torch::kBool));
   out.data_quality_score =

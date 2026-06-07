@@ -30,8 +30,9 @@ src/config/kikijyeba.environment.replay.dsl
   Ujcamei/component-stream cursor identity separately.
 - Time law: observations contain only time-`t` knowledge; realization is
   revealed only after action and Cajtucu paper execution.
-- Action shape: target risky-node weights plus a base reserve graph node under
-  `kikijyeba.environment.action.target_weights.v1`.
+- Action shape: one target-weight vector over the ordered graph-node universe,
+  including the accounting numeraire node, under
+  `kikijyeba.environment.action.target_node_weights.v1`.
 - Reward: decomposed post-execution reward from log growth, drawdown,
   transaction cost, turnover, and invalid-action evidence.
 - Projection gate: replay can require projected log-return scenarios and
@@ -50,8 +51,10 @@ src/config/kikijyeba.environment.replay.dsl
   interface.
 - `environment.h` is the umbrella include for the environment contract.
 - `output/experience_trace.h` converts replay reports into environment
-  experience traces and provides a deterministic text write/read contract.
-- `policy/baseline.h` provides reserve-only, equal-weight, fixed-weight, and
+  experience traces and provides a deterministic text write/read contract. The
+  trace keeps transition-level Cajtucu cost, reject/partial, missing-pair,
+  numeraire-fallback, and target-tracking evidence for later audit.
+- `policy/baseline.h` provides numeraire-only, equal-weight, fixed-weight, and
   current-weight policies.
 - `policy/allocation.h` adapts the deterministic Wikimyei allocation method to
   the same target-weight action schema.
@@ -94,8 +97,8 @@ pi
     with `act(observation_t) -> action_t`.
 
 a_t
-    Action. In code this is `action_t`: target risky-node weights plus target
-    base-reserve graph-node weight.
+    Action. In code this is `action_t`: target weights over the ordered
+    graph-node action universe.
 
 r_{t+1}
     Reward. In code this is `reward_t`, computed after action, simulated
@@ -131,9 +134,28 @@ method_id
     example `wikimyei.policy.portfolio.spot_distributional_utility.v1`.
 ```
 
-For V1, `observation_t` is the policy input. A narrower `policy_input_t` may be
-introduced later if learned policies need a stricter view, but it is not part of
-the current contract.
+For deterministic V1 policies, `observation_t` can still be consumed directly.
+For trainable policies, `policy_input_t` is now the narrower contracted view:
+it binds causal observation identity, graph order, snapshot family, execution
+profile, accounting numeraire identity, causal schedule digest, reward
+contract, graph-node masks, current weights, previous target weights, and
+compact feature tensors. It does not expose future realizations, same-action
+`step_info_t`, or raw MDN tensors by default.
+
+The pre-PPO trainable output surface is also explicit:
+
+```text
+policy_input_t
+    -> raw node_weight_logits[A]
+    -> target_node_weights_simplex.v1
+    -> action_t target_node_weights[A]
+```
+
+`target_node_weights[A]` covers the ordered graph-node action universe. The
+accounting numeraire, when present, is just another graph node in the vector.
+There is no separate cash scalar output and no broker/order/fill output from
+the policy. Cajtucu handles paper execution after the environment receives the
+target-node action.
 
 ## Experience Driver And Output Boundary
 
@@ -210,7 +232,7 @@ cuwacunu_exec --replay-from-job-dir <job_dir>
 
 It consumes an already completed Runtime job directory and writes a replay
 experiment report/index. It is not a replacement for normal Runtime execution.
-Research replay may explicitly opt into synthetic direct asset/reserve execution
+Research replay may explicitly opt into synthetic direct node-pair execution
 markets with `--replay-allow-synthetic-direct-edges`; Cajtucu rejects those
 markets by default. Replay can also add a simple linear fee with
 `--replay-linear-transaction-cost-rate <value>`.

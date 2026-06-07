@@ -52,9 +52,9 @@ struct transition_record_t {
   world_mode_t world_mode{world_mode_t::historical_replay};
 
   std::string action_schema_id{};
-  std::string target_risky_node_weights{};
-  std::string target_base_reserve_node_id{};
-  double target_base_reserve_weight{std::numeric_limits<double>::quiet_NaN()};
+  std::string target_node_weights{};
+  std::string accounting_numeraire_node_id{};
+  double target_numeraire_weight{std::numeric_limits<double>::quiet_NaN()};
 
   std::string execution_model{};
   std::string rebalance_plan_source{};
@@ -62,14 +62,44 @@ struct transition_record_t {
   std::uint64_t rebalance_order_count{0};
   std::uint64_t rebalance_skipped_count{0};
   std::uint64_t fill_count{0};
-  double fill_gross_notional_base{0.0};
-  double fill_fee_base{0.0};
+  double fill_gross_notional_numeraire{0.0};
+  double fill_fee_numeraire{0.0};
+  bool cajtucu_execution_trace_available{false};
+  std::string cajtucu_backend_id{};
+  std::string cajtucu_trace_id{};
+  bool cajtucu_trace_valid{true};
+  std::uint64_t cajtucu_failure_count{0};
+  std::uint64_t cajtucu_order_count{0};
+  std::uint64_t cajtucu_executed_order_count{0};
+  std::uint64_t cajtucu_fill_count{0};
+  std::uint64_t cajtucu_rejected_fill_count{0};
+  std::uint64_t cajtucu_partial_fill_count{0};
+  std::uint64_t cajtucu_missing_direct_pair_count{0};
+  std::uint64_t cajtucu_numeraire_fallback_pair_count{0};
+  std::uint64_t cajtucu_nontradable_edge_reject_count{0};
+  std::uint64_t cajtucu_below_min_notional_reject_count{0};
+  std::uint64_t cajtucu_above_max_notional_reject_count{0};
+  std::uint64_t cajtucu_insufficient_sell_units_reject_count{0};
+  std::uint64_t cajtucu_insufficient_units_reject_count{0};
+  std::uint64_t cajtucu_invalid_sell_price_count{0};
+  std::uint64_t cajtucu_large_equity_mismatch_count{0};
+  double cajtucu_requested_notional_numeraire{0.0};
+  double cajtucu_executed_notional_numeraire{0.0};
+  double cajtucu_rejected_notional_numeraire{0.0};
+  double cajtucu_partial_notional_numeraire{0.0};
+  double cajtucu_fill_ratio{std::numeric_limits<double>::quiet_NaN()};
+  double cajtucu_total_fee_numeraire{0.0};
+  double cajtucu_total_spread_cost_numeraire{0.0};
+  double cajtucu_total_slippage_numeraire{0.0};
+  double cajtucu_total_transaction_cost_numeraire{0.0};
+  double target_weight_error_l1{std::numeric_limits<double>::quiet_NaN()};
+  double target_weight_error_linf{std::numeric_limits<double>::quiet_NaN()};
 
   double portfolio_equity_before{std::numeric_limits<double>::quiet_NaN()};
   double portfolio_equity_after{std::numeric_limits<double>::quiet_NaN()};
   double realized_log_growth{std::numeric_limits<double>::quiet_NaN()};
   double realized_arithmetic_return{std::numeric_limits<double>::quiet_NaN()};
-  double transaction_cost_base{std::numeric_limits<double>::quiet_NaN()};
+  double transaction_cost_numeraire{std::numeric_limits<double>::quiet_NaN()};
   double turnover{std::numeric_limits<double>::quiet_NaN()};
   bool invalid_action{false};
 
@@ -99,7 +129,7 @@ struct transition_record_t {
 
   bool risk_gate_evaluated{false};
   bool risk_gate_allow_trading{true};
-  bool risk_gate_force_base_reserve_fallback{false};
+  bool risk_gate_force_numeraire_fallback{false};
   std::uint64_t warning_count{0};
   std::uint64_t failure_count{0};
   std::string warnings{};
@@ -122,8 +152,8 @@ struct episode_trace_t {
 
   std::string graph_order_fingerprint{};
   std::string graph_node_ids{};
-  std::string risky_node_ids{};
-  std::string base_reserve_node_id{};
+  std::string target_node_ids{};
+  std::string accounting_numeraire_node_id{};
 
   std::int64_t accepted_anchor_index_begin{-1};
   std::int64_t accepted_anchor_index_end{-1};
@@ -136,10 +166,10 @@ struct episode_trace_t {
 
   double total_reward{0.0};
   double total_log_growth{0.0};
-  double final_equity_base{std::numeric_limits<double>::quiet_NaN()};
+  double final_equity_numeraire{std::numeric_limits<double>::quiet_NaN()};
   double max_drawdown{0.0};
   double total_turnover{0.0};
-  double total_transaction_cost_base{0.0};
+  double total_transaction_cost_numeraire{0.0};
 
   double projection_mae{std::numeric_limits<double>::quiet_NaN()};
   double projection_rmse{std::numeric_limits<double>::quiet_NaN()};
@@ -166,11 +196,26 @@ struct policy_comparison_record_t {
 
   double mean_total_reward{std::numeric_limits<double>::quiet_NaN()};
   double mean_total_log_growth{std::numeric_limits<double>::quiet_NaN()};
-  double mean_final_equity_base{std::numeric_limits<double>::quiet_NaN()};
+  double mean_final_equity_numeraire{std::numeric_limits<double>::quiet_NaN()};
   double mean_max_drawdown{std::numeric_limits<double>::quiet_NaN()};
   double mean_total_turnover{std::numeric_limits<double>::quiet_NaN()};
-  double mean_total_transaction_cost_base{
+  double mean_total_transaction_cost_numeraire{
       std::numeric_limits<double>::quiet_NaN()};
+  std::uint64_t cajtucu_valid_trace_count{0};
+  std::uint64_t cajtucu_invalid_trace_count{0};
+  std::uint64_t cajtucu_missing_direct_pair_count{0};
+  std::uint64_t cajtucu_numeraire_fallback_pair_count{0};
+  std::uint64_t cajtucu_rejected_fill_count{0};
+  std::uint64_t cajtucu_partial_fill_count{0};
+  std::uint64_t cajtucu_synthetic_market_step_count{0};
+  double requested_notional_numeraire{0.0};
+  double executed_notional_numeraire{0.0};
+  double rejected_notional_numeraire{0.0};
+  double partial_notional_numeraire{0.0};
+  double fill_ratio{std::numeric_limits<double>::quiet_NaN()};
+  double fee_cost_numeraire{0.0};
+  double spread_cost_numeraire{0.0};
+  double slippage_cost_numeraire{0.0};
   double mean_projection_mae{std::numeric_limits<double>::quiet_NaN()};
   double mean_projection_rmse{std::numeric_limits<double>::quiet_NaN()};
   double mean_projection_signed_bias{std::numeric_limits<double>::quiet_NaN()};
@@ -474,22 +519,67 @@ make_transition_record(const step_report_t &step) {
   out.policy_kind = step.policy_kind;
   out.world_mode = step.world_mode;
   out.action_schema_id = step.action_schema_id;
-  out.target_risky_node_weights = step.target_risky_node_weights;
-  out.target_base_reserve_node_id = step.target_base_reserve_node_id;
-  out.target_base_reserve_weight = step.target_base_reserve_weight;
+  out.target_node_weights = step.target_node_weights;
+  out.accounting_numeraire_node_id = step.accounting_numeraire_node_id;
+  out.target_numeraire_weight = step.target_numeraire_weight;
   out.execution_model = step.execution_model;
   out.rebalance_plan_source = step.rebalance_plan_source;
   out.rebalance_plan_enforced = step.rebalance_plan_enforced;
   out.rebalance_order_count = step.rebalance_order_count;
   out.rebalance_skipped_count = step.rebalance_skipped_count;
   out.fill_count = step.fill_count;
-  out.fill_gross_notional_base = step.fill_gross_notional_base;
-  out.fill_fee_base = step.fill_fee_base;
+  out.fill_gross_notional_numeraire = step.fill_gross_notional_numeraire;
+  out.fill_fee_numeraire = step.fill_fee_numeraire;
+  out.cajtucu_execution_trace_available =
+      step.cajtucu_execution_trace_available;
+  out.cajtucu_backend_id = step.cajtucu_backend_id;
+  out.cajtucu_trace_id = step.cajtucu_trace_id;
+  out.cajtucu_trace_valid = step.cajtucu_trace_valid;
+  out.cajtucu_failure_count = step.cajtucu_failure_count;
+  out.cajtucu_order_count = step.cajtucu_order_count;
+  out.cajtucu_executed_order_count = step.cajtucu_executed_order_count;
+  out.cajtucu_fill_count = step.cajtucu_fill_count;
+  out.cajtucu_rejected_fill_count = step.cajtucu_rejected_fill_count;
+  out.cajtucu_partial_fill_count = step.cajtucu_partial_fill_count;
+  out.cajtucu_missing_direct_pair_count =
+      step.cajtucu_missing_direct_pair_count;
+  out.cajtucu_numeraire_fallback_pair_count =
+      step.cajtucu_numeraire_fallback_pair_count;
+  out.cajtucu_nontradable_edge_reject_count =
+      step.cajtucu_nontradable_edge_reject_count;
+  out.cajtucu_below_min_notional_reject_count =
+      step.cajtucu_below_min_notional_reject_count;
+  out.cajtucu_above_max_notional_reject_count =
+      step.cajtucu_above_max_notional_reject_count;
+  out.cajtucu_insufficient_sell_units_reject_count =
+      step.cajtucu_insufficient_sell_units_reject_count;
+  out.cajtucu_insufficient_units_reject_count =
+      step.cajtucu_insufficient_units_reject_count;
+  out.cajtucu_invalid_sell_price_count = step.cajtucu_invalid_sell_price_count;
+  out.cajtucu_large_equity_mismatch_count =
+      step.cajtucu_large_equity_mismatch_count;
+  out.cajtucu_requested_notional_numeraire =
+      step.cajtucu_requested_notional_numeraire;
+  out.cajtucu_executed_notional_numeraire =
+      step.cajtucu_executed_notional_numeraire;
+  out.cajtucu_rejected_notional_numeraire =
+      step.cajtucu_rejected_notional_numeraire;
+  out.cajtucu_partial_notional_numeraire =
+      step.cajtucu_partial_notional_numeraire;
+  out.cajtucu_fill_ratio = step.cajtucu_fill_ratio;
+  out.cajtucu_total_fee_numeraire = step.cajtucu_total_fee_numeraire;
+  out.cajtucu_total_spread_cost_numeraire =
+      step.cajtucu_total_spread_cost_numeraire;
+  out.cajtucu_total_slippage_numeraire = step.cajtucu_total_slippage_numeraire;
+  out.cajtucu_total_transaction_cost_numeraire =
+      step.cajtucu_total_transaction_cost_numeraire;
+  out.target_weight_error_l1 = step.target_weight_error_l1;
+  out.target_weight_error_linf = step.target_weight_error_linf;
   out.portfolio_equity_before = step.portfolio_equity_before;
   out.portfolio_equity_after = step.portfolio_equity_after;
   out.realized_log_growth = step.realized_log_growth;
   out.realized_arithmetic_return = step.realized_arithmetic_return;
-  out.transaction_cost_base = step.transaction_cost_base;
+  out.transaction_cost_numeraire = step.transaction_cost_numeraire;
   out.turnover = step.turnover;
   out.invalid_action = step.invalid_action;
   out.reward_log_growth = step.reward_log_growth;
@@ -511,8 +601,8 @@ make_transition_record(const step_report_t &step) {
   out.residual_max_residual_energy = step.residual_max_residual_energy;
   out.risk_gate_evaluated = step.risk_gate_evaluated;
   out.risk_gate_allow_trading = step.risk_gate_allow_trading;
-  out.risk_gate_force_base_reserve_fallback =
-      step.risk_gate_force_base_reserve_fallback;
+  out.risk_gate_force_numeraire_fallback =
+      step.risk_gate_force_numeraire_fallback;
   out.warning_count = step.warning_count;
   out.failure_count = step.failure_count;
   out.warnings = step.warnings;
@@ -539,8 +629,16 @@ inline void validate_transition_record(const transition_record_t &record) {
   detail::require_finite(record.portfolio_equity_after,
                          "portfolio_equity_after");
   detail::require_finite(record.reward_total, "reward_total");
-  detail::require_finite(record.transaction_cost_base, "transaction_cost_base");
+  detail::require_finite(record.transaction_cost_numeraire,
+                         "transaction_cost_numeraire");
   detail::require_finite(record.turnover, "turnover");
+  if (record.cajtucu_execution_trace_available) {
+    detail::require_nonblank(record.cajtucu_backend_id, "cajtucu_backend_id");
+    detail::require_nonblank(record.cajtucu_trace_id, "cajtucu_trace_id");
+    detail::require_finite(record.cajtucu_total_transaction_cost_numeraire,
+                           "cajtucu_total_transaction_cost_numeraire");
+    detail::require_finite(record.cajtucu_fill_ratio, "cajtucu_fill_ratio");
+  }
 }
 
 [[nodiscard]] inline episode_trace_t
@@ -557,8 +655,8 @@ make_episode_trace(const episode_report_t &episode) {
   out.world_mode = episode.world_mode;
   out.graph_order_fingerprint = episode.graph_order_fingerprint;
   out.graph_node_ids = episode.graph_node_ids;
-  out.risky_node_ids = episode.risky_node_ids;
-  out.base_reserve_node_id = episode.base_reserve_node_id;
+  out.target_node_ids = episode.target_node_ids;
+  out.accounting_numeraire_node_id = episode.accounting_numeraire_node_id;
   out.accepted_anchor_index_begin = episode.accepted_anchor_index_begin;
   out.accepted_anchor_index_end = episode.accepted_anchor_index_end;
   out.accepted_anchor_keys = episode.accepted_anchor_keys;
@@ -571,10 +669,11 @@ make_episode_trace(const episode_report_t &episode) {
   }
   out.total_reward = episode.total_reward;
   out.total_log_growth = episode.total_log_growth;
-  out.final_equity_base = episode.final_equity_base;
+  out.final_equity_numeraire = episode.final_equity_numeraire;
   out.max_drawdown = episode.max_drawdown;
   out.total_turnover = episode.total_turnover;
-  out.total_transaction_cost_base = episode.total_transaction_cost_base;
+  out.total_transaction_cost_numeraire =
+      episode.total_transaction_cost_numeraire;
   out.projection_mae = episode.projection_mae;
   out.projection_rmse = episode.projection_rmse;
   out.projection_signed_bias = episode.projection_signed_bias;
@@ -594,7 +693,8 @@ inline void validate_episode_trace(const episode_trace_t &trace) {
                                "source episode artifact");
   detail::require_nonblank(trace.episode_id, "episode_id");
   detail::require_nonblank(trace.policy_id, "policy_id");
-  detail::require_nonblank(trace.base_reserve_node_id, "base_reserve_node_id");
+  detail::require_nonblank(trace.accounting_numeraire_node_id,
+                           "accounting_numeraire_node_id");
   if (trace.future_consumer != kFutureCajtucuConsumer) {
     throw std::runtime_error(
         "[experience_trace] episode trace future consumer mismatch");
@@ -614,7 +714,8 @@ inline void validate_episode_trace(const episode_trace_t &trace) {
   }
   detail::require_finite(trace.total_reward, "total_reward");
   detail::require_finite(trace.total_log_growth, "total_log_growth");
-  detail::require_finite(trace.final_equity_base, "final_equity_base");
+  detail::require_finite(trace.final_equity_numeraire,
+                         "final_equity_numeraire");
 }
 
 [[nodiscard]] inline policy_comparison_record_t
@@ -628,11 +729,29 @@ make_policy_comparison_record(const replay_policy_summary_t &summary) {
   out.failed_count = summary.failed_count;
   out.mean_total_reward = summary.mean_total_reward;
   out.mean_total_log_growth = summary.mean_total_log_growth;
-  out.mean_final_equity_base = summary.mean_final_equity_base;
+  out.mean_final_equity_numeraire = summary.mean_final_equity_numeraire;
   out.mean_max_drawdown = summary.mean_max_drawdown;
   out.mean_total_turnover = summary.mean_total_turnover;
-  out.mean_total_transaction_cost_base =
-      summary.mean_total_transaction_cost_base;
+  out.mean_total_transaction_cost_numeraire =
+      summary.mean_total_transaction_cost_numeraire;
+  out.cajtucu_valid_trace_count = summary.cajtucu_valid_trace_count;
+  out.cajtucu_invalid_trace_count = summary.cajtucu_invalid_trace_count;
+  out.cajtucu_missing_direct_pair_count =
+      summary.cajtucu_missing_direct_pair_count;
+  out.cajtucu_numeraire_fallback_pair_count =
+      summary.cajtucu_numeraire_fallback_pair_count;
+  out.cajtucu_rejected_fill_count = summary.rejected_order_count;
+  out.cajtucu_partial_fill_count = summary.partial_order_count;
+  out.cajtucu_synthetic_market_step_count =
+      summary.cajtucu_synthetic_market_step_count;
+  out.requested_notional_numeraire = summary.requested_notional_numeraire;
+  out.executed_notional_numeraire = summary.executed_notional_numeraire;
+  out.rejected_notional_numeraire = summary.rejected_notional_numeraire;
+  out.partial_notional_numeraire = summary.partial_notional_numeraire;
+  out.fill_ratio = summary.fill_ratio;
+  out.fee_cost_numeraire = summary.fee_cost_numeraire;
+  out.spread_cost_numeraire = summary.spread_cost_numeraire;
+  out.slippage_cost_numeraire = summary.slippage_cost_numeraire;
   out.mean_projection_mae = summary.mean_projection_mae;
   out.mean_projection_rmse = summary.mean_projection_rmse;
   out.mean_projection_signed_bias = summary.mean_projection_signed_bias;
@@ -660,6 +779,11 @@ validate_policy_comparison_record(const policy_comparison_record_t &record) {
   if (record.completed_count + record.failed_count > record.attempted_count) {
     throw std::runtime_error(
         "[experience_trace] policy comparison counts are inconsistent");
+  }
+  if (record.completed_count > 0) {
+    detail::require_finite(record.mean_total_transaction_cost_numeraire,
+                           "mean_total_transaction_cost_numeraire");
+    detail::require_finite(record.fill_ratio, "fill_ratio");
   }
 }
 
@@ -754,12 +878,12 @@ inline void write_transition_record(std::ostream &out,
                 policy_kind_name(record.policy_kind));
   write_text_kv(out, prefix + "world_mode", world_mode_name(record.world_mode));
   write_text_kv(out, prefix + "action_schema_id", record.action_schema_id);
-  write_text_kv(out, prefix + "target_risky_node_weights",
-                record.target_risky_node_weights);
-  write_text_kv(out, prefix + "target_base_reserve_node_id",
-                record.target_base_reserve_node_id);
-  write_double_kv(out, prefix + "target_base_reserve_weight",
-                  record.target_base_reserve_weight);
+  write_text_kv(out, prefix + "target_node_weights",
+                record.target_node_weights);
+  write_text_kv(out, prefix + "accounting_numeraire_node_id",
+                record.accounting_numeraire_node_id);
+  write_double_kv(out, prefix + "target_numeraire_weight",
+                  record.target_numeraire_weight);
   write_text_kv(out, prefix + "execution_model", record.execution_model);
   write_text_kv(out, prefix + "rebalance_plan_source",
                 record.rebalance_plan_source);
@@ -770,9 +894,69 @@ inline void write_transition_record(std::ostream &out,
   write_integral_kv(out, prefix + "rebalance_skipped_count",
                     record.rebalance_skipped_count);
   write_integral_kv(out, prefix + "fill_count", record.fill_count);
-  write_double_kv(out, prefix + "fill_gross_notional_base",
-                  record.fill_gross_notional_base);
-  write_double_kv(out, prefix + "fill_fee_base", record.fill_fee_base);
+  write_double_kv(out, prefix + "fill_gross_notional_numeraire",
+                  record.fill_gross_notional_numeraire);
+  write_double_kv(out, prefix + "fill_fee_numeraire",
+                  record.fill_fee_numeraire);
+  write_bool_kv(out, prefix + "cajtucu_execution_trace_available",
+                record.cajtucu_execution_trace_available);
+  write_text_kv(out, prefix + "cajtucu_backend_id", record.cajtucu_backend_id);
+  write_text_kv(out, prefix + "cajtucu_trace_id", record.cajtucu_trace_id);
+  write_bool_kv(out, prefix + "cajtucu_trace_valid",
+                record.cajtucu_trace_valid);
+  write_integral_kv(out, prefix + "cajtucu_failure_count",
+                    record.cajtucu_failure_count);
+  write_integral_kv(out, prefix + "cajtucu_order_count",
+                    record.cajtucu_order_count);
+  write_integral_kv(out, prefix + "cajtucu_executed_order_count",
+                    record.cajtucu_executed_order_count);
+  write_integral_kv(out, prefix + "cajtucu_fill_count",
+                    record.cajtucu_fill_count);
+  write_integral_kv(out, prefix + "cajtucu_rejected_fill_count",
+                    record.cajtucu_rejected_fill_count);
+  write_integral_kv(out, prefix + "cajtucu_partial_fill_count",
+                    record.cajtucu_partial_fill_count);
+  write_integral_kv(out, prefix + "cajtucu_missing_direct_pair_count",
+                    record.cajtucu_missing_direct_pair_count);
+  write_integral_kv(out, prefix + "cajtucu_numeraire_fallback_pair_count",
+                    record.cajtucu_numeraire_fallback_pair_count);
+  write_integral_kv(out, prefix + "cajtucu_nontradable_edge_reject_count",
+                    record.cajtucu_nontradable_edge_reject_count);
+  write_integral_kv(out, prefix + "cajtucu_below_min_notional_reject_count",
+                    record.cajtucu_below_min_notional_reject_count);
+  write_integral_kv(out, prefix + "cajtucu_above_max_notional_reject_count",
+                    record.cajtucu_above_max_notional_reject_count);
+  write_integral_kv(out,
+                    prefix + "cajtucu_insufficient_sell_units_reject_count",
+                    record.cajtucu_insufficient_sell_units_reject_count);
+  write_integral_kv(out, prefix + "cajtucu_insufficient_units_reject_count",
+                    record.cajtucu_insufficient_units_reject_count);
+  write_integral_kv(out, prefix + "cajtucu_invalid_sell_price_count",
+                    record.cajtucu_invalid_sell_price_count);
+  write_integral_kv(out, prefix + "cajtucu_large_equity_mismatch_count",
+                    record.cajtucu_large_equity_mismatch_count);
+  write_double_kv(out, prefix + "cajtucu_requested_notional_numeraire",
+                  record.cajtucu_requested_notional_numeraire);
+  write_double_kv(out, prefix + "cajtucu_executed_notional_numeraire",
+                  record.cajtucu_executed_notional_numeraire);
+  write_double_kv(out, prefix + "cajtucu_rejected_notional_numeraire",
+                  record.cajtucu_rejected_notional_numeraire);
+  write_double_kv(out, prefix + "cajtucu_partial_notional_numeraire",
+                  record.cajtucu_partial_notional_numeraire);
+  write_double_kv(out, prefix + "cajtucu_fill_ratio",
+                  record.cajtucu_fill_ratio);
+  write_double_kv(out, prefix + "cajtucu_total_fee_numeraire",
+                  record.cajtucu_total_fee_numeraire);
+  write_double_kv(out, prefix + "cajtucu_total_spread_cost_numeraire",
+                  record.cajtucu_total_spread_cost_numeraire);
+  write_double_kv(out, prefix + "cajtucu_total_slippage_numeraire",
+                  record.cajtucu_total_slippage_numeraire);
+  write_double_kv(out, prefix + "cajtucu_total_transaction_cost_numeraire",
+                  record.cajtucu_total_transaction_cost_numeraire);
+  write_double_kv(out, prefix + "target_weight_error_l1",
+                  record.target_weight_error_l1);
+  write_double_kv(out, prefix + "target_weight_error_linf",
+                  record.target_weight_error_linf);
   write_double_kv(out, prefix + "portfolio_equity_before",
                   record.portfolio_equity_before);
   write_double_kv(out, prefix + "portfolio_equity_after",
@@ -781,8 +965,8 @@ inline void write_transition_record(std::ostream &out,
                   record.realized_log_growth);
   write_double_kv(out, prefix + "realized_arithmetic_return",
                   record.realized_arithmetic_return);
-  write_double_kv(out, prefix + "transaction_cost_base",
-                  record.transaction_cost_base);
+  write_double_kv(out, prefix + "transaction_cost_numeraire",
+                  record.transaction_cost_numeraire);
   write_double_kv(out, prefix + "turnover", record.turnover);
   write_bool_kv(out, prefix + "invalid_action", record.invalid_action);
   write_double_kv(out, prefix + "reward_log_growth", record.reward_log_growth);
@@ -819,8 +1003,8 @@ inline void write_transition_record(std::ostream &out,
                 record.risk_gate_evaluated);
   write_bool_kv(out, prefix + "risk_gate_allow_trading",
                 record.risk_gate_allow_trading);
-  write_bool_kv(out, prefix + "risk_gate_force_base_reserve_fallback",
-                record.risk_gate_force_base_reserve_fallback);
+  write_bool_kv(out, prefix + "risk_gate_force_numeraire_fallback",
+                record.risk_gate_force_numeraire_fallback);
   write_integral_kv(out, prefix + "warning_count", record.warning_count);
   write_integral_kv(out, prefix + "failure_count", record.failure_count);
   write_text_kv(out, prefix + "warnings", record.warnings);
@@ -855,12 +1039,12 @@ read_transition_record(const kv_map_t &values, const std::string &prefix) {
   record.policy_kind = read_policy_kind(values, prefix + "policy_kind");
   record.world_mode = read_world_mode(values, prefix + "world_mode");
   record.action_schema_id = read_text(values, prefix + "action_schema_id");
-  record.target_risky_node_weights =
-      read_text(values, prefix + "target_risky_node_weights");
-  record.target_base_reserve_node_id =
-      read_text(values, prefix + "target_base_reserve_node_id");
-  record.target_base_reserve_weight =
-      read_double(values, prefix + "target_base_reserve_weight");
+  record.target_node_weights =
+      read_text(values, prefix + "target_node_weights");
+  record.accounting_numeraire_node_id =
+      read_text(values, prefix + "accounting_numeraire_node_id");
+  record.target_numeraire_weight =
+      read_double(values, prefix + "target_numeraire_weight");
   record.execution_model = read_text(values, prefix + "execution_model");
   record.rebalance_plan_source =
       read_text(values, prefix + "rebalance_plan_source");
@@ -871,9 +1055,66 @@ read_transition_record(const kv_map_t &values, const std::string &prefix) {
   record.rebalance_skipped_count =
       read_u64(values, prefix + "rebalance_skipped_count");
   record.fill_count = read_u64(values, prefix + "fill_count");
-  record.fill_gross_notional_base =
-      read_double(values, prefix + "fill_gross_notional_base");
-  record.fill_fee_base = read_double(values, prefix + "fill_fee_base");
+  record.fill_gross_notional_numeraire =
+      read_double(values, prefix + "fill_gross_notional_numeraire");
+  record.fill_fee_numeraire =
+      read_double(values, prefix + "fill_fee_numeraire");
+  record.cajtucu_execution_trace_available =
+      read_bool(values, prefix + "cajtucu_execution_trace_available");
+  record.cajtucu_backend_id = read_text(values, prefix + "cajtucu_backend_id");
+  record.cajtucu_trace_id = read_text(values, prefix + "cajtucu_trace_id");
+  record.cajtucu_trace_valid =
+      read_bool(values, prefix + "cajtucu_trace_valid");
+  record.cajtucu_failure_count =
+      read_u64(values, prefix + "cajtucu_failure_count");
+  record.cajtucu_order_count = read_u64(values, prefix + "cajtucu_order_count");
+  record.cajtucu_executed_order_count =
+      read_u64(values, prefix + "cajtucu_executed_order_count");
+  record.cajtucu_fill_count = read_u64(values, prefix + "cajtucu_fill_count");
+  record.cajtucu_rejected_fill_count =
+      read_u64(values, prefix + "cajtucu_rejected_fill_count");
+  record.cajtucu_partial_fill_count =
+      read_u64(values, prefix + "cajtucu_partial_fill_count");
+  record.cajtucu_missing_direct_pair_count =
+      read_u64(values, prefix + "cajtucu_missing_direct_pair_count");
+  record.cajtucu_numeraire_fallback_pair_count =
+      read_u64(values, prefix + "cajtucu_numeraire_fallback_pair_count");
+  record.cajtucu_nontradable_edge_reject_count =
+      read_u64(values, prefix + "cajtucu_nontradable_edge_reject_count");
+  record.cajtucu_below_min_notional_reject_count =
+      read_u64(values, prefix + "cajtucu_below_min_notional_reject_count");
+  record.cajtucu_above_max_notional_reject_count =
+      read_u64(values, prefix + "cajtucu_above_max_notional_reject_count");
+  record.cajtucu_insufficient_sell_units_reject_count =
+      read_u64(values, prefix + "cajtucu_insufficient_sell_units_reject_count");
+  record.cajtucu_insufficient_units_reject_count =
+      read_u64(values, prefix + "cajtucu_insufficient_units_reject_count");
+  record.cajtucu_invalid_sell_price_count =
+      read_u64(values, prefix + "cajtucu_invalid_sell_price_count");
+  record.cajtucu_large_equity_mismatch_count =
+      read_u64(values, prefix + "cajtucu_large_equity_mismatch_count");
+  record.cajtucu_requested_notional_numeraire =
+      read_double(values, prefix + "cajtucu_requested_notional_numeraire");
+  record.cajtucu_executed_notional_numeraire =
+      read_double(values, prefix + "cajtucu_executed_notional_numeraire");
+  record.cajtucu_rejected_notional_numeraire =
+      read_double(values, prefix + "cajtucu_rejected_notional_numeraire");
+  record.cajtucu_partial_notional_numeraire =
+      read_double(values, prefix + "cajtucu_partial_notional_numeraire");
+  record.cajtucu_fill_ratio =
+      read_double(values, prefix + "cajtucu_fill_ratio");
+  record.cajtucu_total_fee_numeraire =
+      read_double(values, prefix + "cajtucu_total_fee_numeraire");
+  record.cajtucu_total_spread_cost_numeraire =
+      read_double(values, prefix + "cajtucu_total_spread_cost_numeraire");
+  record.cajtucu_total_slippage_numeraire =
+      read_double(values, prefix + "cajtucu_total_slippage_numeraire");
+  record.cajtucu_total_transaction_cost_numeraire =
+      read_double(values, prefix + "cajtucu_total_transaction_cost_numeraire");
+  record.target_weight_error_l1 =
+      read_double(values, prefix + "target_weight_error_l1");
+  record.target_weight_error_linf =
+      read_double(values, prefix + "target_weight_error_linf");
   record.portfolio_equity_before =
       read_double(values, prefix + "portfolio_equity_before");
   record.portfolio_equity_after =
@@ -882,8 +1123,8 @@ read_transition_record(const kv_map_t &values, const std::string &prefix) {
       read_double(values, prefix + "realized_log_growth");
   record.realized_arithmetic_return =
       read_double(values, prefix + "realized_arithmetic_return");
-  record.transaction_cost_base =
-      read_double(values, prefix + "transaction_cost_base");
+  record.transaction_cost_numeraire =
+      read_double(values, prefix + "transaction_cost_numeraire");
   record.turnover = read_double(values, prefix + "turnover");
   record.invalid_action = read_bool(values, prefix + "invalid_action");
   record.reward_log_growth = read_double(values, prefix + "reward_log_growth");
@@ -920,8 +1161,8 @@ read_transition_record(const kv_map_t &values, const std::string &prefix) {
       read_bool(values, prefix + "risk_gate_evaluated");
   record.risk_gate_allow_trading =
       read_bool(values, prefix + "risk_gate_allow_trading");
-  record.risk_gate_force_base_reserve_fallback =
-      read_bool(values, prefix + "risk_gate_force_base_reserve_fallback");
+  record.risk_gate_force_numeraire_fallback =
+      read_bool(values, prefix + "risk_gate_force_numeraire_fallback");
   record.warning_count = read_u64(values, prefix + "warning_count");
   record.failure_count = read_u64(values, prefix + "failure_count");
   record.warnings = read_text(values, prefix + "warnings");
@@ -947,9 +1188,9 @@ inline void write_episode_trace(std::ostream &out, const std::string &prefix,
   write_text_kv(out, prefix + "graph_order_fingerprint",
                 trace.graph_order_fingerprint);
   write_text_kv(out, prefix + "graph_node_ids", trace.graph_node_ids);
-  write_text_kv(out, prefix + "risky_node_ids", trace.risky_node_ids);
-  write_text_kv(out, prefix + "base_reserve_node_id",
-                trace.base_reserve_node_id);
+  write_text_kv(out, prefix + "target_node_ids", trace.target_node_ids);
+  write_text_kv(out, prefix + "accounting_numeraire_node_id",
+                trace.accounting_numeraire_node_id);
   write_integral_kv(out, prefix + "accepted_anchor_index_begin",
                     trace.accepted_anchor_index_begin);
   write_integral_kv(out, prefix + "accepted_anchor_index_end",
@@ -963,11 +1204,12 @@ inline void write_episode_trace(std::ostream &out, const std::string &prefix,
   write_integral_kv(out, prefix + "transition_count", trace.transition_count);
   write_double_kv(out, prefix + "total_reward", trace.total_reward);
   write_double_kv(out, prefix + "total_log_growth", trace.total_log_growth);
-  write_double_kv(out, prefix + "final_equity_base", trace.final_equity_base);
+  write_double_kv(out, prefix + "final_equity_numeraire",
+                  trace.final_equity_numeraire);
   write_double_kv(out, prefix + "max_drawdown", trace.max_drawdown);
   write_double_kv(out, prefix + "total_turnover", trace.total_turnover);
-  write_double_kv(out, prefix + "total_transaction_cost_base",
-                  trace.total_transaction_cost_base);
+  write_double_kv(out, prefix + "total_transaction_cost_numeraire",
+                  trace.total_transaction_cost_numeraire);
   write_double_kv(out, prefix + "projection_mae", trace.projection_mae);
   write_double_kv(out, prefix + "projection_rmse", trace.projection_rmse);
   write_double_kv(out, prefix + "projection_signed_bias",
@@ -1005,9 +1247,9 @@ read_episode_trace(const kv_map_t &values, const std::string &prefix) {
   trace.graph_order_fingerprint =
       read_text(values, prefix + "graph_order_fingerprint");
   trace.graph_node_ids = read_text(values, prefix + "graph_node_ids");
-  trace.risky_node_ids = read_text(values, prefix + "risky_node_ids");
-  trace.base_reserve_node_id =
-      read_text(values, prefix + "base_reserve_node_id");
+  trace.target_node_ids = read_text(values, prefix + "target_node_ids");
+  trace.accounting_numeraire_node_id =
+      read_text(values, prefix + "accounting_numeraire_node_id");
   trace.accepted_anchor_index_begin =
       read_i64(values, prefix + "accepted_anchor_index_begin");
   trace.accepted_anchor_index_end =
@@ -1021,11 +1263,12 @@ read_episode_trace(const kv_map_t &values, const std::string &prefix) {
   trace.transition_count = read_u64(values, prefix + "transition_count");
   trace.total_reward = read_double(values, prefix + "total_reward");
   trace.total_log_growth = read_double(values, prefix + "total_log_growth");
-  trace.final_equity_base = read_double(values, prefix + "final_equity_base");
+  trace.final_equity_numeraire =
+      read_double(values, prefix + "final_equity_numeraire");
   trace.max_drawdown = read_double(values, prefix + "max_drawdown");
   trace.total_turnover = read_double(values, prefix + "total_turnover");
-  trace.total_transaction_cost_base =
-      read_double(values, prefix + "total_transaction_cost_base");
+  trace.total_transaction_cost_numeraire =
+      read_double(values, prefix + "total_transaction_cost_numeraire");
   trace.projection_mae = read_double(values, prefix + "projection_mae");
   trace.projection_rmse = read_double(values, prefix + "projection_rmse");
   trace.projection_signed_bias =
@@ -1062,13 +1305,42 @@ write_policy_comparison_record(std::ostream &out, const std::string &prefix,
   write_double_kv(out, prefix + "mean_total_reward", record.mean_total_reward);
   write_double_kv(out, prefix + "mean_total_log_growth",
                   record.mean_total_log_growth);
-  write_double_kv(out, prefix + "mean_final_equity_base",
-                  record.mean_final_equity_base);
+  write_double_kv(out, prefix + "mean_final_equity_numeraire",
+                  record.mean_final_equity_numeraire);
   write_double_kv(out, prefix + "mean_max_drawdown", record.mean_max_drawdown);
   write_double_kv(out, prefix + "mean_total_turnover",
                   record.mean_total_turnover);
-  write_double_kv(out, prefix + "mean_total_transaction_cost_base",
-                  record.mean_total_transaction_cost_base);
+  write_double_kv(out, prefix + "mean_total_transaction_cost_numeraire",
+                  record.mean_total_transaction_cost_numeraire);
+  write_integral_kv(out, prefix + "cajtucu_valid_trace_count",
+                    record.cajtucu_valid_trace_count);
+  write_integral_kv(out, prefix + "cajtucu_invalid_trace_count",
+                    record.cajtucu_invalid_trace_count);
+  write_integral_kv(out, prefix + "cajtucu_missing_direct_pair_count",
+                    record.cajtucu_missing_direct_pair_count);
+  write_integral_kv(out, prefix + "cajtucu_numeraire_fallback_pair_count",
+                    record.cajtucu_numeraire_fallback_pair_count);
+  write_integral_kv(out, prefix + "cajtucu_rejected_fill_count",
+                    record.cajtucu_rejected_fill_count);
+  write_integral_kv(out, prefix + "cajtucu_partial_fill_count",
+                    record.cajtucu_partial_fill_count);
+  write_integral_kv(out, prefix + "cajtucu_synthetic_market_step_count",
+                    record.cajtucu_synthetic_market_step_count);
+  write_double_kv(out, prefix + "requested_notional_numeraire",
+                  record.requested_notional_numeraire);
+  write_double_kv(out, prefix + "executed_notional_numeraire",
+                  record.executed_notional_numeraire);
+  write_double_kv(out, prefix + "rejected_notional_numeraire",
+                  record.rejected_notional_numeraire);
+  write_double_kv(out, prefix + "partial_notional_numeraire",
+                  record.partial_notional_numeraire);
+  write_double_kv(out, prefix + "fill_ratio", record.fill_ratio);
+  write_double_kv(out, prefix + "fee_cost_numeraire",
+                  record.fee_cost_numeraire);
+  write_double_kv(out, prefix + "spread_cost_numeraire",
+                  record.spread_cost_numeraire);
+  write_double_kv(out, prefix + "slippage_cost_numeraire",
+                  record.slippage_cost_numeraire);
   write_double_kv(out, prefix + "mean_projection_mae",
                   record.mean_projection_mae);
   write_double_kv(out, prefix + "mean_projection_rmse",
@@ -1099,13 +1371,42 @@ read_policy_comparison_record(const kv_map_t &values,
   record.mean_total_reward = read_double(values, prefix + "mean_total_reward");
   record.mean_total_log_growth =
       read_double(values, prefix + "mean_total_log_growth");
-  record.mean_final_equity_base =
-      read_double(values, prefix + "mean_final_equity_base");
+  record.mean_final_equity_numeraire =
+      read_double(values, prefix + "mean_final_equity_numeraire");
   record.mean_max_drawdown = read_double(values, prefix + "mean_max_drawdown");
   record.mean_total_turnover =
       read_double(values, prefix + "mean_total_turnover");
-  record.mean_total_transaction_cost_base =
-      read_double(values, prefix + "mean_total_transaction_cost_base");
+  record.mean_total_transaction_cost_numeraire =
+      read_double(values, prefix + "mean_total_transaction_cost_numeraire");
+  record.cajtucu_valid_trace_count =
+      read_u64(values, prefix + "cajtucu_valid_trace_count");
+  record.cajtucu_invalid_trace_count =
+      read_u64(values, prefix + "cajtucu_invalid_trace_count");
+  record.cajtucu_missing_direct_pair_count =
+      read_u64(values, prefix + "cajtucu_missing_direct_pair_count");
+  record.cajtucu_numeraire_fallback_pair_count =
+      read_u64(values, prefix + "cajtucu_numeraire_fallback_pair_count");
+  record.cajtucu_rejected_fill_count =
+      read_u64(values, prefix + "cajtucu_rejected_fill_count");
+  record.cajtucu_partial_fill_count =
+      read_u64(values, prefix + "cajtucu_partial_fill_count");
+  record.cajtucu_synthetic_market_step_count =
+      read_u64(values, prefix + "cajtucu_synthetic_market_step_count");
+  record.requested_notional_numeraire =
+      read_double(values, prefix + "requested_notional_numeraire");
+  record.executed_notional_numeraire =
+      read_double(values, prefix + "executed_notional_numeraire");
+  record.rejected_notional_numeraire =
+      read_double(values, prefix + "rejected_notional_numeraire");
+  record.partial_notional_numeraire =
+      read_double(values, prefix + "partial_notional_numeraire");
+  record.fill_ratio = read_double(values, prefix + "fill_ratio");
+  record.fee_cost_numeraire =
+      read_double(values, prefix + "fee_cost_numeraire");
+  record.spread_cost_numeraire =
+      read_double(values, prefix + "spread_cost_numeraire");
+  record.slippage_cost_numeraire =
+      read_double(values, prefix + "slippage_cost_numeraire");
   record.mean_projection_mae =
       read_double(values, prefix + "mean_projection_mae");
   record.mean_projection_rmse =

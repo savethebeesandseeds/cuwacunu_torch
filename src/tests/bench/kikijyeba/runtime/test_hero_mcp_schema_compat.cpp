@@ -288,6 +288,13 @@ void check_config_collapsed_surface(const fs::path &binary) {
   require_contains(value_output, "\"value\":\"STDIO\"",
                    "Config inspect subject=value should expose protocol_layer");
 
+  const std::string validate_output =
+      read_command_stdout(base + "--tool hero.config.inspect --args-json "
+                                 "'{\"subject\":\"validate_global_config\"}'");
+  require_contains(validate_output, "\"valid\":true",
+                   "Config inspect subject=validate_global_config should "
+                   "validate global config paths");
+
   const std::string plan_output = read_command_stdout(
       base + "--tool hero.config.apply --args-json "
              "'{\"operation\":\"set\",\"requested_mode\":\"plan\","
@@ -316,6 +323,17 @@ void check_config_collapsed_surface(const fs::path &binary) {
     throw std::runtime_error(
         "Config inspect should fail closed on unknown fields\n" +
         unknown_field.output);
+  }
+
+  const auto retired_validate_subject =
+      run_command_capture(base + "--tool hero.config.inspect --args-json "
+                                 "'{\"subject\":\"validate\"}'");
+  if (retired_validate_subject.status == 0 ||
+      retired_validate_subject.output.find(
+          "hero.config.inspect subject must be one of") == std::string::npos) {
+    throw std::runtime_error(
+        "retired Config inspect subject=validate should fail closed\n" +
+        retired_validate_subject.output);
   }
 }
 

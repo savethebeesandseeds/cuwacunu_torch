@@ -37,7 +37,7 @@ make_nodelift_allocation_belief_assembly(
   out.docks.push_back(wa::make_dock(
       "allocation_belief", wa::dock_direction_t::produces,
       wa::dock_role_t::output, wa::dock_domain_t::allocation_belief,
-      "portfolio.base_relative_nodelift_projection.v1", "AllocationBelief[S,A]",
+      "portfolio.numeraire_relative_nodelift_projection.v1", "AllocationBelief[S,A]",
       "[A]",
       /*required=*/true, /*target_side_only=*/false, {"S", "A"}));
   out.docks.push_back(wa::make_dock(
@@ -53,11 +53,12 @@ make_nodelift_allocation_belief_assembly(
   out.constraints.push_back(
       "graph-node axis identity is supplied by GraphNodeAxisBinding");
   out.constraints.push_back(
-      "portfolio returns require base-relative NodeLift projection");
+      "portfolio returns require numeraire-relative NodeLift projection");
   out.constraints.push_back(
-      "AllocationBelief node_ids are risky allocatable assets only");
+      "AllocationBelief node_ids are the portfolio target graph-node universe");
   out.constraints.push_back(
-      "projection reference and reserve asset must appear in graph_node_axis");
+      "accounting numeraire and projection reference must appear in "
+      "graph_node_axis");
   wa::validate_wikimyei_assembly(out);
   return out;
 }

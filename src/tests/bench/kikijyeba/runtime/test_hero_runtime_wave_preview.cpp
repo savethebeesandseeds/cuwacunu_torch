@@ -1,3 +1,4 @@
+#include "hero/lattice_hero/lattice/exposure/exposure_ledger.h"
 #include "hero/marshal_hero/marshal/digest.h"
 #include "hero/runtime_hero/hero_runtime_tools.h"
 #include "hero/runtime_hero/runtime/policy_training_causal_schedule.h"
@@ -18,6 +19,7 @@
 #include <unistd.h>
 
 namespace hero_runtime = cuwacunu::hero::runtime;
+namespace lattice_exposure = cuwacunu::hero::lattice::exposure;
 namespace wave_settings = cuwacunu::hero::runtime::settings;
 
 namespace {
@@ -921,7 +923,10 @@ void test_replay_operator_tool() {
   const auto fake_exec = dir / "fake_cuwacunu_exec.sh";
   std::filesystem::create_directories(replay_artifact_dir);
 
-  write_text(config_path, "[HERO]\n"
+  write_text(config_path, "[ACCOUNTING]\n"
+                          "accounting_numeraire_node_id = USDT\n"
+                          "\n"
+                          "[HERO]\n"
                           "runtime_hero_dsl_path = " +
                               policy_path.string() + "\n");
   write_text(job_dir / "job.manifest",
@@ -943,6 +948,7 @@ void test_replay_operator_tool() {
       "execution_profile_digest=profile_digest_fixture\n"
       "policy_set_digest=policy_set_digest_fixture\n"
       "cajtucu_invalid_trace_count=0\n"
+      "cajtucu_numeraire_fallback_pair_count=0\n"
       "cajtucu_synthetic_market_step_count=0\n";
   const std::string hero_replay_report_digest =
       replay_report_digest_for_text(hero_replay_report_text);
@@ -1014,8 +1020,8 @@ void test_replay_operator_tool() {
       "\"job_dir\":\"" +
       job_dir.string() +
       "\","
-      "\"base_reserve_node_id\":\"USDT\","
-      "\"risky_node_ids\":\"BTC,ETH\","
+      "\"accounting_numeraire_node_id\":\"USDT\","
+      "\"target_node_ids\":\"BTC,ETH\","
       "\"experiment_id\":\"hero_replay\","
       "\"max_steps\":8,"
       "\"include_equal_weight\":true,"
@@ -1034,10 +1040,10 @@ void test_replay_operator_tool() {
                    "replay dry-run should not execute process");
   require_contains(result, "\"--replay-from-job-dir\"",
                    "replay should target job-dir replay mode");
-  require_contains(result, "\"--replay-base-reserve-node\"",
-                   "replay should pass base reserve override");
-  require_contains(result, "\"--replay-risky-nodes\"",
-                   "replay should pass risky-node override");
+  require_contains(result, "\"--replay-accounting-numeraire-node\"",
+                   "replay should pass accounting numeraire override");
+  require_contains(result, "\"--replay-target-nodes\"",
+                   "replay should pass target-node override");
   require_contains(result, "\"--replay-max-steps\"",
                    "replay should pass max steps");
   require_contains(result, "\"--replay-include-equal-weight\"",
@@ -1060,8 +1066,8 @@ void test_replay_operator_tool() {
       "\"job_dir\":\"" +
       job_dir.string() +
       "\","
-      "\"base_reserve_node_id\":\"USDT\","
-      "\"risky_node_ids\":\"BTC,ETH\","
+      "\"accounting_numeraire_node_id\":\"USDT\","
+      "\"target_node_ids\":\"BTC,ETH\","
       "\"experiment_id\":\"hero_validation_replay\","
       "\"max_steps\":8,"
       "\"max_parallel_jobs\":2,"
@@ -1165,8 +1171,8 @@ void test_replay_operator_tool() {
       "\"job_dir\":\"" +
       job_dir.string() +
       "\","
-      "\"base_reserve_node_id\":\"USDT\","
-      "\"risky_node_ids\":\"BTC,ETH\","
+      "\"accounting_numeraire_node_id\":\"USDT\","
+      "\"target_node_ids\":\"BTC,ETH\","
       "\"experiment_id\":\"hero_replay\","
       "\"max_steps\":8}";
   result.clear();
@@ -1185,8 +1191,8 @@ void test_replay_operator_tool() {
       "\"job_dir\":\"" +
       job_dir.string() +
       "\","
-      "\"base_reserve_node_id\":\"USDT\","
-      "\"risky_node_ids\":\"BTC,ETH\","
+      "\"accounting_numeraire_node_id\":\"USDT\","
+      "\"target_node_ids\":\"BTC,ETH\","
       "\"experiment_id\":\"hero_validation_replay\","
       "\"max_steps\":8,"
       "\"max_parallel_jobs\":2,"
@@ -1226,6 +1232,7 @@ void test_replay_operator_tool() {
       "execution_profile_digest=profile_digest_fixture\n"
       "policy_set_digest=policy_set_digest_fixture\n"
       "cajtucu_invalid_trace_count=0\n"
+      "cajtucu_numeraire_fallback_pair_count=0\n"
       "cajtucu_synthetic_market_step_count=3\n",
       "E_RUNTIME_REPLAY_VALIDATION_SYNTHETIC_MARKET_USED",
       "validation replay should reject synthetic Cajtucu market evidence");
@@ -1237,9 +1244,23 @@ void test_replay_operator_tool() {
       "execution_profile_digest=profile_digest_fixture\n"
       "policy_set_digest=policy_set_digest_fixture\n"
       "cajtucu_invalid_trace_count=4\n"
+      "cajtucu_numeraire_fallback_pair_count=0\n"
       "cajtucu_synthetic_market_step_count=0\n",
       "E_RUNTIME_REPLAY_VALIDATION_INVALID_CAJTUCU_TRACE",
       "validation replay should reject invalid Cajtucu traces");
+  expect_validation_execute_rejection(
+      "schema=kikijyeba.environment.replay.cajtucu_ready_experiment_"
+      "artifact.v1\n"
+      "experiment_id=hero_replay\n"
+      "completed_count=2\n"
+      "execution_profile_digest=profile_digest_fixture\n"
+      "policy_set_digest=policy_set_digest_fixture\n"
+      "cajtucu_invalid_trace_count=0\n"
+      "cajtucu_numeraire_fallback_pair_count=1\n"
+      "cajtucu_synthetic_market_step_count=0\n",
+      "E_RUNTIME_REPLAY_VALIDATION_NUMERAIRE_FALLBACK_USED",
+      "validation replay should reject accounting numeraire fallback "
+      "execution evidence");
   write_text(replay_artifact_dir / "hero_replay.report",
              hero_replay_report_text);
 
@@ -1696,7 +1717,9 @@ void test_policy_training_causal_schedule_contract() {
       family.reward_baseline_snapshot_digest;
   block.artifact_use.cajtucu_execution_profile_digest =
       "execution_profile_digest_v1";
-  block.artifact_use.reward_contract_digest = "reward_contract_digest_v1";
+  block.artifact_use.reward_contract_digest =
+      "kikijyeba.environment.reward.post_execution_ledger_log_growth_cost_"
+      "drawdown.v1";
   block.artifact_use.no_future_snapshot_use = true;
   schedule.blocks.push_back(block);
 
@@ -1813,9 +1836,17 @@ std::string valid_policy_training_args(
          "\"validation_range_digest\":\"range_validation_digest\","
          "\"test_range_digest\":\"range_test_digest\","
          "\"environment_contract_id\":\"kikijyeba.environment.replay.v1\","
-         "\"observation_schema_digest\":\"observation_schema_digest_v1\","
-         "\"action_schema_digest\":\"action_schema_digest_v1\","
-         "\"reward_contract_digest\":\"reward_contract_digest_v1\","
+         "\"observation_schema_digest\":\"kikijyeba.environment.policy_input."
+         "v1\","
+         "\"action_schema_digest\":\"kikijyeba.environment.action."
+         "target_node_weights.v1\","
+         "\"reward_contract_digest\":\"kikijyeba.environment.reward."
+         "post_execution_ledger_log_growth_cost_drawdown.v1\","
+         "\"policy_input_schema_id\":\"kikijyeba.environment.policy_input."
+         "v1\","
+         "\"action_adapter_id\":\"target_node_weights_simplex.v1\","
+         "\"reward_contract_id\":\"kikijyeba.environment.reward."
+         "post_execution_ledger_log_growth_cost_drawdown.v1\","
          "\"execution_profile_digest\":\"execution_profile_digest_v1\",";
   if (include_wave_identity_fields) {
     out << "\"training_schedule_mode\":\"causal_walk_forward_training.v1\",";
@@ -1882,6 +1913,17 @@ void test_policy_training_contract_and_pre_ppo_execute() {
   require_contains(result,
                    "\"causal_schedule_digest\":\"causal_schedule_digest_v1\"",
                    "policy-training plan binds causal schedule digest");
+  require_contains(result,
+                   "\"policy_input_schema_id\":\"kikijyeba.environment."
+                   "policy_input.v1\"",
+                   "policy-training plan binds policy input schema");
+  require_contains(result,
+                   "\"action_adapter_id\":\"target_node_weights_simplex.v1\"",
+                   "policy-training plan binds action adapter");
+  require_contains(result,
+                   "\"reward_contract_id\":\"kikijyeba.environment.reward."
+                   "post_execution_ledger_log_growth_cost_drawdown.v1\"",
+                   "policy-training plan binds post-execution reward contract");
   require_contains(
       result, "\"causal_schedule_cursor_key_kind\":\"numeric_anchor_index\"",
       "policy-training plan binds causal cursor key ordering");
@@ -2018,6 +2060,44 @@ void test_policy_training_contract_and_pre_ppo_execute() {
       error,
       "missing required field: causal_schedule_no_future_snapshot_use_source",
       "missing causal schedule no-future source refusal should be stable");
+
+  std::string missing_policy_input_args = valid_policy_training_args("plan");
+  const std::string policy_input_field =
+      "\"policy_input_schema_id\":\"kikijyeba.environment.policy_input.v1\",";
+  const auto policy_input_pos =
+      missing_policy_input_args.find(policy_input_field);
+  check(policy_input_pos != std::string::npos,
+        "test fixture should contain policy input schema id");
+  missing_policy_input_args.erase(policy_input_pos, policy_input_field.size());
+  result.clear();
+  error.clear();
+  check(!hero_runtime::execute_tool_json("hero.runtime.run",
+                                         missing_policy_input_args, &ctx,
+                                         &result, &error),
+        "policy-training contract should reject missing policy input schema");
+  require_contains(error, "missing required field: policy_input_schema_id",
+                   "missing policy input schema refusal should be stable");
+
+  std::string old_action_schema_args = valid_policy_training_args("plan");
+  const std::string action_schema_field =
+      "\"action_schema_digest\":\"kikijyeba.environment.action."
+      "target_node_weights.v1\",";
+  const auto action_schema_pos =
+      old_action_schema_args.find(action_schema_field);
+  check(action_schema_pos != std::string::npos,
+        "test fixture should contain unified action schema");
+  old_action_schema_args.replace(
+      action_schema_pos, action_schema_field.size(),
+      "\"action_schema_digest\":\"kikijyeba.environment.action."
+      "target_weights.v1\",");
+  result.clear();
+  error.clear();
+  check(!hero_runtime::execute_tool_json(
+            "hero.runtime.run", old_action_schema_args, &ctx, &result, &error),
+        "policy-training contract should reject old target_weights action "
+        "schema");
+  require_contains(error, "unsupported_action_schema_digest",
+                   "old action schema refusal should be stable");
 
   std::string asserted_source_args = valid_policy_training_args("plan");
   const auto asserted_source_pos =
@@ -2165,6 +2245,36 @@ void test_policy_training_contract_and_pre_ppo_execute() {
   }
   check(policy_fact_found,
         "noop execute should write runtime.policy_training.fact");
+
+  const auto policy_training_scan =
+      lattice_exposure::scan_exposure_ledger_from_runtime_root(runtime_root);
+  check(policy_training_scan.ledger.policy_training_facts().size() == 1,
+        "Lattice exposure scan derives one policy-training fact from noop "
+        "Runtime job");
+  const auto &policy_training_fact =
+      policy_training_scan.ledger.policy_training_facts().front();
+  check(lattice_exposure::policy_training_fact_issues(policy_training_fact)
+            .empty(),
+        "noop Runtime policy-training fact is issue-clean for the declared "
+        "pre-PPO contract");
+  check(
+      policy_training_fact.policy_input_schema_id ==
+              "kikijyeba.environment.policy_input.v1" &&
+          policy_training_fact.target_component_family_id ==
+              "wikimyei.policy.trainable" &&
+          policy_training_fact.action_schema_digest ==
+              "kikijyeba.environment.action.target_node_weights.v1" &&
+          policy_training_fact.action_adapter_id ==
+              "target_node_weights_simplex.v1" &&
+          policy_training_fact.reward_contract_id ==
+              "kikijyeba.environment.reward."
+              "post_execution_ledger_log_growth_cost_drawdown.v1" &&
+          policy_training_fact.training_schedule_mode ==
+              "causal_walk_forward_training.v1" &&
+          policy_training_fact.causal_schedule_no_future_snapshot_use_source ==
+              "derived_from_artifact_fit_use_ledgers",
+      "noop Runtime policy-training fact binds policy input, unified action, "
+      "post-execution reward, and derived causal schedule identity");
   std::filesystem::remove_all(runtime_root);
 }
 

@@ -13,6 +13,16 @@
 
 namespace cuwacunu::hero::runtime {
 
+inline constexpr const char *k_policy_input_schema_v1 =
+    "kikijyeba.environment.policy_input.v1";
+inline constexpr const char *k_target_node_weights_action_schema_v1 =
+    "kikijyeba.environment.action.target_node_weights.v1";
+inline constexpr const char *k_target_node_weights_simplex_adapter_v1 =
+    "target_node_weights_simplex.v1";
+inline constexpr const char *k_post_execution_reward_contract_v1 =
+    "kikijyeba.environment.reward.post_execution_ledger_log_growth_cost_"
+    "drawdown.v1";
+
 struct policy_training_job_contract_t {
   std::string schema_version{
       "kikijyeba.runtime.policy_training_job_contract.v1"};
@@ -35,6 +45,9 @@ struct policy_training_job_contract_t {
   std::string observation_schema_digest{};
   std::string action_schema_digest{};
   std::string reward_contract_digest{};
+  std::string policy_input_schema_id{k_policy_input_schema_v1};
+  std::string action_adapter_id{k_target_node_weights_simplex_adapter_v1};
+  std::string reward_contract_id{k_post_execution_reward_contract_v1};
   std::string execution_profile_digest{};
   std::string training_schedule_mode{k_policy_training_schedule_mode_causal_v1};
   std::string causal_schedule_schema_id{
@@ -93,6 +106,9 @@ struct policy_training_job_contract_t {
     out << "observation_schema_digest=" << observation_schema_digest << "\n";
     out << "action_schema_digest=" << action_schema_digest << "\n";
     out << "reward_contract_digest=" << reward_contract_digest << "\n";
+    out << "policy_input_schema_id=" << policy_input_schema_id << "\n";
+    out << "action_adapter_id=" << action_adapter_id << "\n";
+    out << "reward_contract_id=" << reward_contract_id << "\n";
     out << "execution_profile_digest=" << execution_profile_digest << "\n";
     out << "training_schedule_mode=" << training_schedule_mode << "\n";
     out << "causal_schedule_schema_id=" << causal_schedule_schema_id << "\n";
@@ -182,8 +198,7 @@ validate_policy_training_job_contract(
   require_nonempty(contract.protocol_id, "protocol_id");
   require_nonempty(contract.protocol_contract_fingerprint,
                    "protocol_contract_fingerprint");
-  require_nonempty(contract.graph_order_fingerprint,
-                   "graph_order_fingerprint");
+  require_nonempty(contract.graph_order_fingerprint, "graph_order_fingerprint");
   require_nonempty(contract.source_cursor_token, "source_cursor_token");
   require_nonempty(contract.policy_id, "policy_id");
   require_nonempty(contract.policy_kind, "policy_kind");
@@ -198,6 +213,9 @@ validate_policy_training_job_contract(
                    "observation_schema_digest");
   require_nonempty(contract.action_schema_digest, "action_schema_digest");
   require_nonempty(contract.reward_contract_digest, "reward_contract_digest");
+  require_nonempty(contract.policy_input_schema_id, "policy_input_schema_id");
+  require_nonempty(contract.action_adapter_id, "action_adapter_id");
+  require_nonempty(contract.reward_contract_id, "reward_contract_id");
   require_nonempty(contract.execution_profile_digest,
                    "execution_profile_digest");
   require_nonempty(contract.training_schedule_mode, "training_schedule_mode");
@@ -251,6 +269,22 @@ validate_policy_training_job_contract(
       contract.replay_buffer_source_range_digest !=
           contract.training_range_digest) {
     issues.emplace_back("replay_buffer_source_range_not_training");
+  }
+  if (!contract.policy_input_schema_id.empty() &&
+      contract.policy_input_schema_id != k_policy_input_schema_v1) {
+    issues.emplace_back("unsupported_policy_input_schema_id");
+  }
+  if (!contract.action_schema_digest.empty() &&
+      contract.action_schema_digest != k_target_node_weights_action_schema_v1) {
+    issues.emplace_back("unsupported_action_schema_digest");
+  }
+  if (!contract.action_adapter_id.empty() &&
+      contract.action_adapter_id != k_target_node_weights_simplex_adapter_v1) {
+    issues.emplace_back("unsupported_action_adapter_id");
+  }
+  if (!contract.reward_contract_id.empty() &&
+      contract.reward_contract_id != k_post_execution_reward_contract_v1) {
+    issues.emplace_back("unsupported_reward_contract_id");
   }
   if (!policy_training_schedule_mode_supported(
           contract.training_schedule_mode)) {

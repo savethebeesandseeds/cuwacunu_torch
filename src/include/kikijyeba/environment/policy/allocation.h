@@ -98,10 +98,8 @@ public:
     action.policy_kind = policy_kind_t::deterministic_allocator;
     action.decision_timestamp_ms = observation.knowledge_timestamp_ms;
     action.node_ids = last_target_.node_ids;
-    action.base_reserve_node_id = last_target_.base_reserve_node_id;
     action.target_weights =
         last_target_.target_weights.to(torch::kFloat64).contiguous();
-    action.target_base_reserve_weight = last_target_.target_base_reserve_weight;
     action.expected_log_growth = last_target_.expected_log_growth;
     action.expected_arithmetic_return = last_target_.expected_arithmetic_return;
     action.cvar_loss = last_target_.cvar_loss;

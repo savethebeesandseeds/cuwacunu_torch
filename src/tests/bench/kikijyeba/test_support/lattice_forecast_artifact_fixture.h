@@ -228,12 +228,12 @@ inline void write_scanned_forecast_artifact_fixture(
 
   exposure::lattice_allocation_engine_fact_t allocation{};
   exposure::populate_artifact_fact_identity(allocation, parent);
-  allocation.target_risky_node_weights = "BTC:0.40,ETH:0.25";
-  allocation.reserve_node_id = "USD_CASH";
-  allocation.reserve_node_source = "base_policy";
-  allocation.base_policy_reserve_node_id = "USD_CASH";
-  allocation.reserve_node_graph_bound = true;
-  allocation.reserve_weight = 0.35;
+  allocation.target_node_weights = "BTC:0.40,ETH:0.25";
+  allocation.accounting_numeraire_node_id = "USD_CASH";
+  allocation.accounting_numeraire_node_source = "base_policy";
+  allocation.base_policy_accounting_numeraire_node_id = "USD_CASH";
+  allocation.accounting_numeraire_node_graph_bound = true;
+  allocation.numeraire_weight = 0.35;
   allocation.turnover = 0.12;
   allocation.objective_terms = "growth:0.70,cvar:0.20,cost:0.10";
   allocation.cvar_loss = 0.08;

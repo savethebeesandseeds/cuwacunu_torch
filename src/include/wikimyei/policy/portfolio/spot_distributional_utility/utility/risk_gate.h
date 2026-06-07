@@ -13,7 +13,7 @@
 #include "wikimyei/observer/belief/types.h"
 #include "wikimyei/observer/utility/data_quality.h"
 #include "wikimyei/policy/portfolio/spot_distributional_utility/types.h"
-#include "wikimyei/policy/portfolio/spot_distributional_utility/utility/base_reserve_fallback.h"
+#include "wikimyei/policy/portfolio/spot_distributional_utility/utility/allocation_numeraire_fallback.h"
 
 namespace cuwacunu::wikimyei::policy::portfolio::spot_distributional_utility::
     risk::risk_gate {
@@ -21,8 +21,8 @@ namespace cuwacunu::wikimyei::policy::portfolio::spot_distributional_utility::
 namespace belief = cuwacunu::wikimyei::observer::belief;
 namespace observer = cuwacunu::wikimyei::observer;
 namespace portfolio = cuwacunu::wikimyei::policy::portfolio;
-namespace base_reserve_fallback = cuwacunu::wikimyei::policy::portfolio::
-    spot_distributional_utility::base_reserve_fallback;
+namespace allocation_numeraire_fallback = cuwacunu::wikimyei::policy::portfolio::
+    spot_distributional_utility::allocation_numeraire_fallback;
 
 struct risk_gate_thresholds_t {
   double min_mean_confidence{0.05};
@@ -32,17 +32,17 @@ struct risk_gate_thresholds_t {
   double max_mean_surprise{std::numeric_limits<double>::infinity()};
   double min_mean_calibration_score{0.0};
   double max_mean_abs_correlation{0.999};
-  base_reserve_fallback::base_reserve_fallback_mode_t fallback_mode{
-      base_reserve_fallback::base_reserve_fallback_mode_t::
-          turnover_limited_base_reserve};
+  allocation_numeraire_fallback::allocation_numeraire_fallback_mode_t fallback_mode{
+      allocation_numeraire_fallback::allocation_numeraire_fallback_mode_t::
+          turnover_limited_numeraire};
 };
 
 struct risk_gate_result_t {
   bool allow_trading{true};
-  bool force_base_reserve_fallback{false};
-  base_reserve_fallback::base_reserve_fallback_mode_t fallback_mode{
-      base_reserve_fallback::base_reserve_fallback_mode_t::
-          turnover_limited_base_reserve};
+  bool force_numeraire_fallback{false};
+  allocation_numeraire_fallback::allocation_numeraire_fallback_mode_t fallback_mode{
+      allocation_numeraire_fallback::allocation_numeraire_fallback_mode_t::
+          turnover_limited_numeraire};
   std::vector<std::string> reasons{};
   std::vector<std::string> warnings{};
 };
@@ -88,7 +88,7 @@ mean_abs_offdiagonal_correlation(const torch::Tensor &correlation) {
 
 inline void trip(risk_gate_result_t &result, std::string reason) {
   result.allow_trading = false;
-  result.force_base_reserve_fallback = true;
+  result.force_numeraire_fallback = true;
   result.reasons.push_back(std::move(reason));
 }
 
@@ -114,13 +114,12 @@ evaluate(const belief::AllocationBelief &belief_state,
     detail::trip(result, std::string("portfolio_state_invalid: ") + ex.what());
     return result;
   }
-  if (portfolio_state.accounting_node_id !=
+  if (portfolio_state.accounting_numeraire_node_id !=
       belief_state.base_policy.accounting_numeraire_id) {
     detail::trip(result, "accounting_numeraire_mismatch");
   }
-  if (portfolio_state.reserve_node_id !=
-      belief_state.base_policy.reserve_asset_id) {
-    detail::trip(result, "reserve_asset_mismatch");
+  if (portfolio_state.node_ids != belief_state.node_ids) {
+    detail::trip(result, "portfolio_node_axis_mismatch");
   }
 
   const auto quality = observer::check_allocation_belief(belief_state);
@@ -190,16 +189,17 @@ enforce(const belief::AllocationBelief &belief_state,
         const portfolio::PortfolioConstraints &constraints,
         const risk_gate_thresholds_t &thresholds = {}) {
   auto gate = evaluate(belief_state, portfolio_state, thresholds);
-  if (!gate.force_base_reserve_fallback) {
+  if (!gate.force_numeraire_fallback) {
     portfolio::TargetPortfolio out{};
     out.timestamp_ms = belief_state.timestamp_ms;
     out.node_ids = belief_state.node_ids;
-    out.base_reserve_node_id = belief_state.base_policy.reserve_asset_id;
+    out.target_weights = portfolio_state.current_weights.clone();
+    out.delta_weights = torch::zeros_like(out.target_weights);
     out.valid = true;
     out.diagnostics.notes.push_back("risk_gate.allow_trading");
     return out;
   }
-  auto guarded = base_reserve_fallback::solve(belief_state, portfolio_state,
+  auto guarded = allocation_numeraire_fallback::solve(belief_state, portfolio_state,
                                               constraints, gate.fallback_mode);
   guarded.diagnostics.failures.insert(guarded.diagnostics.failures.end(),
                                       gate.reasons.begin(), gate.reasons.end());

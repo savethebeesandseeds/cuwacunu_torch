@@ -1,0 +1,8 @@
+<instruction> ::= "GRAPH_NODE_ALLOCATION" [<whitespace>] "{" <line_end> {<assignment>} [<whitespace>] "}" [<whitespace>] ";" [<line_end>] ;
+<assignment>  ::= [<whitespace>] <key> [<whitespace>] "=" [<whitespace>] <value> [<whitespace>] ";" <line_end> ;
+<key>         ::= "VERSION" | "COMPONENT_ASSEMBLY_ID" | "POLICY_KIND" | "POLICY_INPUT_SCHEMA" | "ACTION_ADAPTER" | "ACTION_SCHEMA" | "REWARD_CONTRACT" | "GRAPH_NODE_UNIVERSE_POLICY" | "SCENARIO_INPUT_POLICY" | "RAW_MDN_INPUT_ALLOWED" | "PPO_IMPLEMENTED" | "LIVE_CAPITAL_ALLOWED" ;
+<value>       ::= <value_char> {<value_char>} ;
+<value_char>  ::= <letter> | <digit> | "_" | "." | "-" | "+" ;
+<line_end>    ::= [<whitespace>] <break_block> ;
+<break_block> ::= {<newline>} ;
+<whitespace>  ::= {<empty>} ;

@@ -3344,12 +3344,12 @@ private:
     if (!fact.forecast_artifact_digest.empty() && !forecast_artifact_found) {
       issues.emplace_back("forecast_artifact_digest_not_found");
     }
-    const bool reserve_node_from_base_policy =
-        fact.reserve_node_source == "base_policy";
-    const bool reserve_node_matches_base_policy =
-        !fact.reserve_node_id.empty() &&
-        !fact.base_policy_reserve_node_id.empty() &&
-        fact.reserve_node_id == fact.base_policy_reserve_node_id;
+    const bool accounting_numeraire_node_from_base_policy =
+        fact.accounting_numeraire_node_source == "base_policy";
+    const bool accounting_numeraire_node_matches_base_policy =
+        !fact.accounting_numeraire_node_id.empty() &&
+        !fact.base_policy_accounting_numeraire_node_id.empty() &&
+        fact.accounting_numeraire_node_id == fact.base_policy_accounting_numeraire_node_id;
     const bool reason_contracts_declared =
         !fact.fallback_reasons.empty() && !fact.derisk_reasons.empty();
     const bool lineage_bound =
@@ -3359,8 +3359,8 @@ private:
             observer_belief_digests.end() &&
         !fact.forecast_artifact_digest.empty() && observer_digest_found &&
         observer_forecast_artifact_matches && forecast_artifact_found &&
-        !fact.base_policy_digest.empty() && reserve_node_from_base_policy &&
-        reserve_node_matches_base_policy && fact.reserve_node_graph_bound &&
+        !fact.base_policy_digest.empty() && accounting_numeraire_node_from_base_policy &&
+        accounting_numeraire_node_matches_base_policy && fact.accounting_numeraire_node_graph_bound &&
         reason_contracts_declared;
     return make_common_artifact_proof(
         spec, fact, "allocation_engine",
@@ -3404,8 +3404,8 @@ private:
         fact.episode_anchor_keys_bound_count >= fact.episode_count &&
         fact.projection_validation_step_count > 0 && trace_count_bound &&
         fact.cajtucu_synthetic_market_step_count == 0 &&
-        std::isfinite(fact.mean_total_transaction_cost_base) &&
-        fact.mean_total_transaction_cost_base > 0.0 &&
+        std::isfinite(fact.mean_total_transaction_cost_numeraire) &&
+        fact.mean_total_transaction_cost_numeraire > 0.0 &&
         std::isfinite(fact.fill_ratio) && fact.fill_ratio >= 0.0 &&
         fact.fill_ratio <= 1.0;
     return make_common_artifact_proof(
@@ -3596,9 +3596,19 @@ private:
     lattice_target_evidence_t selected_evidence{};
     lattice_target_evidence_t first_identity_evidence{};
     std::vector<std::string> first_identity_issues{};
+    auto parent_artifact_spec = spec;
+    if (spec.subject_fact_family == "policy_training") {
+      // Policy-training facts belong to wikimyei.policy.trainable, while their
+      // required forecast/observer/allocation/replay parents belong to the
+      // evidence-producing component families. Keep the subject component
+      // filter for the policy fact itself, but do not apply it to parent
+      // lineage digest lookup.
+      parent_artifact_spec.component.clear();
+    }
+
     std::set<std::string> target_transform_digests{};
     for (const auto &fact : ledger->target_transform_facts()) {
-      if (artifact_fact_matches_identity(spec, fact,
+      if (artifact_fact_matches_identity(parent_artifact_spec, fact,
                                          expected_split_policy_fingerprint)) {
         target_transform_digests.insert(
             exposure::target_transform_fact_digest(fact));
@@ -3606,7 +3616,7 @@ private:
     }
     std::set<std::string> forecast_baseline_digests{};
     for (const auto &fact : ledger->forecast_baseline_facts()) {
-      if (artifact_fact_matches_identity(spec, fact,
+      if (artifact_fact_matches_identity(parent_artifact_spec, fact,
                                          expected_split_policy_fingerprint)) {
         forecast_baseline_digests.insert(
             exposure::forecast_baseline_fact_digest(fact));
@@ -3614,7 +3624,7 @@ private:
     }
     std::set<std::string> selection_signal_digests{};
     for (const auto &fact : ledger->selection_signal_facts()) {
-      if (artifact_fact_matches_identity(spec, fact,
+      if (artifact_fact_matches_identity(parent_artifact_spec, fact,
                                          expected_split_policy_fingerprint)) {
         selection_signal_digests.insert(
             exposure::selection_signal_fact_digest(fact));
@@ -3625,7 +3635,7 @@ private:
     std::set<std::string> forecast_eval_digests{};
     std::set<std::string> forecast_artifact_digests{};
     for (const auto &fact : ledger->forecast_eval_facts()) {
-      if (artifact_fact_matches_identity(spec, fact,
+      if (artifact_fact_matches_identity(parent_artifact_spec, fact,
                                          expected_split_policy_fingerprint)) {
         const auto digest = exposure::forecast_eval_fact_digest(fact);
         forecast_eval_digests.insert(digest);
@@ -3640,7 +3650,7 @@ private:
     std::unordered_map<std::string, std::string>
         forecast_artifact_by_observer_digest{};
     for (const auto &fact : ledger->observer_belief_facts()) {
-      if (artifact_fact_matches_identity(spec, fact,
+      if (artifact_fact_matches_identity(parent_artifact_spec, fact,
                                          expected_split_policy_fingerprint)) {
         const auto digest = exposure::observer_belief_fact_digest(fact);
         observer_belief_digests.insert(digest);
@@ -3650,7 +3660,7 @@ private:
     }
     std::set<std::string> allocation_engine_digests{};
     for (const auto &fact : ledger->allocation_engine_facts()) {
-      if (artifact_fact_matches_identity(spec, fact,
+      if (artifact_fact_matches_identity(parent_artifact_spec, fact,
                                          expected_split_policy_fingerprint)) {
         allocation_engine_digests.insert(
             exposure::allocation_engine_fact_digest(fact));
@@ -3658,7 +3668,7 @@ private:
     }
     std::set<std::string> replay_environment_digests{};
     for (const auto &fact : ledger->replay_environment_facts()) {
-      if (artifact_fact_matches_identity(spec, fact,
+      if (artifact_fact_matches_identity(parent_artifact_spec, fact,
                                          expected_split_policy_fingerprint)) {
         replay_environment_digests.insert(
             exposure::replay_environment_fact_digest(fact));
@@ -5359,8 +5369,8 @@ private:
                                lattice_allocation_engine_fact_t &fact,
                            const std::string &metric) {
     namespace exposure = cuwacunu::hero::lattice::exposure;
-    if (metric == "reserve_weight") {
-      return fact.reserve_weight;
+    if (metric == "numeraire_weight") {
+      return fact.numeraire_weight;
     }
     if (metric == "turnover") {
       return fact.turnover;
@@ -5389,21 +5399,21 @@ private:
     if (metric == "deployment_authority") {
       return fact.deployment_authority ? 1.0 : 0.0;
     }
-    if (metric == "reserve_node_bound") {
-      return fact.reserve_node_id.empty() ? 0.0 : 1.0;
+    if (metric == "accounting_numeraire_node_bound") {
+      return fact.accounting_numeraire_node_id.empty() ? 0.0 : 1.0;
     }
-    if (metric == "reserve_node_from_base_policy") {
-      return fact.reserve_node_source == "base_policy" ? 1.0 : 0.0;
+    if (metric == "accounting_numeraire_node_from_base_policy") {
+      return fact.accounting_numeraire_node_source == "base_policy" ? 1.0 : 0.0;
     }
-    if (metric == "reserve_node_base_policy_match") {
-      return !fact.reserve_node_id.empty() &&
-                     !fact.base_policy_reserve_node_id.empty() &&
-                     fact.reserve_node_id == fact.base_policy_reserve_node_id
+    if (metric == "accounting_numeraire_node_base_policy_match") {
+      return !fact.accounting_numeraire_node_id.empty() &&
+                     !fact.base_policy_accounting_numeraire_node_id.empty() &&
+                     fact.accounting_numeraire_node_id == fact.base_policy_accounting_numeraire_node_id
                  ? 1.0
                  : 0.0;
     }
-    if (metric == "reserve_node_graph_bound") {
-      return fact.reserve_node_graph_bound ? 1.0 : 0.0;
+    if (metric == "accounting_numeraire_node_graph_bound") {
+      return fact.accounting_numeraire_node_graph_bound ? 1.0 : 0.0;
     }
     if (metric == "cap_diagnostics_bound") {
       return exposure::lattice_visibility_text_available(fact.cap_diagnostics)
@@ -5457,17 +5467,17 @@ private:
 
   [[nodiscard]] static std::string
   allocation_engine_unit(const std::string &metric) {
-    if (metric == "reserve_weight" || metric == "turnover" ||
+    if (metric == "numeraire_weight" || metric == "turnover" ||
         metric == "transaction_cost_estimate") {
       return "fraction";
     }
     if (metric == "deterministic_artifact" || metric == "visibility_only" ||
         metric == "allocation_authority" || metric == "execution_authority" ||
         metric == "market_readiness_authority" ||
-        metric == "deployment_authority" || metric == "reserve_node_bound" ||
-        metric == "reserve_node_from_base_policy" ||
-        metric == "reserve_node_base_policy_match" ||
-        metric == "reserve_node_graph_bound" ||
+        metric == "deployment_authority" || metric == "accounting_numeraire_node_bound" ||
+        metric == "accounting_numeraire_node_from_base_policy" ||
+        metric == "accounting_numeraire_node_base_policy_match" ||
+        metric == "accounting_numeraire_node_graph_bound" ||
         metric == "cap_diagnostics_bound" ||
         metric == "scenario_growth_floor_status_bound" ||
         metric == "scenario_growth_floor_met" ||
@@ -5486,7 +5496,7 @@ private:
 
   [[nodiscard]] static std::string
   allocation_engine_metric_family(const std::string &metric) {
-    if (metric == "reserve_weight" || metric == "turnover" ||
+    if (metric == "numeraire_weight" || metric == "turnover" ||
         metric == "cvar_loss" || metric == "transaction_cost_estimate") {
       return "allocation_diagnostics";
     }
@@ -5495,11 +5505,11 @@ private:
         metric == "deployment_authority") {
       return "allocation_authority_boundary";
     }
-    if (metric == "reserve_node_bound" || metric == "observer_belief_bound" ||
+    if (metric == "accounting_numeraire_node_bound" || metric == "observer_belief_bound" ||
         metric == "forecast_artifact_bound" || metric == "base_policy_bound" ||
-        metric == "reserve_node_from_base_policy" ||
-        metric == "reserve_node_base_policy_match" ||
-        metric == "reserve_node_graph_bound" ||
+        metric == "accounting_numeraire_node_from_base_policy" ||
+        metric == "accounting_numeraire_node_base_policy_match" ||
+        metric == "accounting_numeraire_node_graph_bound" ||
         metric == "cap_diagnostics_bound" ||
         metric == "scenario_growth_floor_status_bound" ||
         metric == "scenario_growth_floor_met" ||
@@ -5514,7 +5524,7 @@ private:
 
   [[nodiscard]] static std::string
   allocation_engine_uncertainty_method(const std::string &metric) {
-    if (metric == "reserve_weight" || metric == "turnover" ||
+    if (metric == "numeraire_weight" || metric == "turnover" ||
         metric == "cvar_loss" || metric == "transaction_cost_estimate") {
       return "none_point_estimate_only";
     }

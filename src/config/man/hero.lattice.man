@@ -812,13 +812,13 @@ AGENT RUNBOOK
 	    observer_belief facts. It remains observer visibility only: raw NodeLift
 	    potential is not tradable return evidence, and Lattice does not select
 	    allocations or decide market readiness.
-	    LATTICE_WARN KIND=allocation_engine may flag reserve_weight, turnover,
+	    LATTICE_WARN KIND=allocation_engine may flag numeraire_weight, turnover,
 	    cvar_loss, transaction_cost_estimate, deterministic_artifact,
 	    visibility_only, allocation_authority, execution_authority,
-	    market_readiness_authority, deployment_authority, reserve_node_bound,
+	    market_readiness_authority, deployment_authority, accounting_numeraire_node_bound,
 	    observer_belief_bound, forecast_artifact_bound, base_policy_bound,
-	    reserve_node_from_base_policy, reserve_node_base_policy_match,
-	    reserve_node_graph_bound, cap_diagnostics_bound,
+	    accounting_numeraire_node_from_base_policy, accounting_numeraire_node_base_policy_match,
+	    accounting_numeraire_node_graph_bound, cap_diagnostics_bound,
 	    scenario_growth_floor_status_bound, scenario_growth_floor_met,
 	    scenario_growth_floor_attention, fallback_declared, fallback_active,
 	    derisk_declared, or derisk_active from scanner-derived allocation_engine

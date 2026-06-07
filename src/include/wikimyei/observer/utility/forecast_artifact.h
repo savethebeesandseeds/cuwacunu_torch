@@ -39,7 +39,7 @@ struct forecast_artifact_identity_t {
 
   belief::BasePolicy base_policy{};
   std::int64_t projection_reference_graph_index{-1};
-  std::string return_origin{"base_relative_nodelift_projection"};
+  std::string return_origin{"numeraire_relative_nodelift_projection"};
 };
 
 struct marginal_forecast_artifact_t {
@@ -271,7 +271,7 @@ validate_forecast_artifact(const marginal_forecast_artifact_t &artifact,
   TORCH_CHECK(id.horizon == 1, "[forecast_artifact] V1 requires horizon=1");
   TORCH_CHECK(!id.anchor_key.empty(),
               "[forecast_artifact] anchor_key required");
-  TORCH_CHECK(id.return_origin == "base_relative_nodelift_projection",
+  TORCH_CHECK(id.return_origin == "numeraire_relative_nodelift_projection",
               "[forecast_artifact] unsupported return_origin");
   const auto graph_axis = belief::detail::effective_graph_node_axis_binding(
       id.graph_node_axis, id.graph_order_fingerprint, id.graph_node_ids,
@@ -281,7 +281,6 @@ validate_forecast_artifact(const marginal_forecast_artifact_t &artifact,
               "[forecast_artifact] source feature semantics required");
   TORCH_CHECK(!id.base_policy.accounting_numeraire_id.empty() &&
                   !id.base_policy.settlement_asset_id.empty() &&
-                  !id.base_policy.reserve_asset_id.empty() &&
                   !id.base_policy.projection_reference_node_id.empty(),
               "[forecast_artifact] BasePolicy fields required");
   TORCH_CHECK(id.node_graph_indices.size() == id.node_ids.size(),
@@ -290,11 +289,6 @@ validate_forecast_artifact(const marginal_forecast_artifact_t &artifact,
                   id.node_ids_fingerprint == node_ids_fingerprint(id.node_ids),
               "[forecast_artifact] node_ids_fingerprint mismatch");
   for (std::size_t i = 0; i < id.node_ids.size(); ++i) {
-    TORCH_CHECK(id.node_ids[i] != id.base_policy.reserve_asset_id &&
-                    id.node_ids[i] !=
-                        id.base_policy.projection_reference_node_id,
-                "[forecast_artifact] base/reserve node appears in risky "
-                "node_ids");
     TORCH_CHECK(id.node_graph_indices[i] >= 0 &&
                     id.node_graph_indices[i] <
                         static_cast<std::int64_t>(graph_axis.node_ids.size()),
@@ -366,9 +360,19 @@ validate_forecast_artifact(const marginal_forecast_artifact_t &artifact,
   TORCH_CHECK(torch::isfinite(artifact.sigma).all().item<bool>(),
               "[forecast_artifact] sigma contains non-finite values");
   auto active = artifact.active_mask.to(torch::kBool);
-  if (active.any().item<bool>()) {
-    TORCH_CHECK(artifact.sigma.index({active}).gt(0.0).all().item<bool>(),
-                "[forecast_artifact] active sigma must be positive");
+  auto active_non_reference = active.clone();
+  for (std::size_t i = 0; i < id.node_ids.size(); ++i) {
+    if (id.node_ids[i] == id.base_policy.projection_reference_node_id) {
+      active_non_reference.index_put_({static_cast<std::int64_t>(i)}, false);
+    }
+  }
+  if (active_non_reference.any().item<bool>()) {
+    TORCH_CHECK(artifact.sigma.index({active_non_reference})
+                    .gt(0.0)
+                    .all()
+                    .item<bool>(),
+                "[forecast_artifact] active non-reference sigma must be "
+                "positive");
   }
   if (active.any().item<bool>()) {
     auto weights = artifact.log_weight.exp().sum(/*dim=*/1);
@@ -421,7 +425,7 @@ make_from_allocation_belief_and_projection(
   artifact.identity.base_policy = allocation_belief.base_policy;
   artifact.identity.projection_reference_graph_index =
       allocation_belief.projection_reference_graph_index.value_or(-1);
-  artifact.identity.return_origin = "base_relative_nodelift_projection";
+  artifact.identity.return_origin = "numeraire_relative_nodelift_projection";
   artifact.identity.model_version = std::move(model_version);
   artifact.identity.target_coords_hash = std::move(target_coords_hash);
   artifact.identity.normalization_hash = std::move(normalization_hash);
@@ -511,8 +515,6 @@ inline void save_forecast_artifact(const marginal_forecast_artifact_t &artifact,
                        artifact.identity.base_policy.accounting_numeraire_id);
   detail::write_string(root, "meta/base_policy/settlement_asset_id_bytes",
                        artifact.identity.base_policy.settlement_asset_id);
-  detail::write_string(root, "meta/base_policy/reserve_asset_id_bytes",
-                       artifact.identity.base_policy.reserve_asset_id);
   detail::write_string(
       root, "meta/base_policy/projection_reference_node_id_bytes",
       artifact.identity.base_policy.projection_reference_node_id);
@@ -618,8 +620,6 @@ inline void save_forecast_artifact(const marginal_forecast_artifact_t &artifact,
                       &artifact.identity.base_policy.accounting_numeraire_id);
   detail::read_string(root, "meta/base_policy/settlement_asset_id_bytes",
                       &artifact.identity.base_policy.settlement_asset_id);
-  detail::read_string(root, "meta/base_policy/reserve_asset_id_bytes",
-                      &artifact.identity.base_policy.reserve_asset_id);
   detail::read_string(
       root, "meta/base_policy/projection_reference_node_id_bytes",
       &artifact.identity.base_policy.projection_reference_node_id);

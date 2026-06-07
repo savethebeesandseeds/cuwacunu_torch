@@ -53,7 +53,7 @@ inline constexpr const char *kReplayExperimentArtifactSchema =
 inline constexpr const char *kReplayPolicyComparisonArtifactSchema =
     "kikijyeba.environment.replay.policy_comparison_artifact.v1";
 inline constexpr const char *kTargetWeightsActionSchema =
-    "kikijyeba.environment.action.target_weights.v1";
+    "kikijyeba.environment.action.target_node_weights.v1";
 inline constexpr const char *kDirectEdgeRealizedReturnTruthV1 =
     "direct_edge_realized_return_truth_v1";
 
@@ -132,12 +132,12 @@ struct episode_spec_t {
 
   std::string graph_order_fingerprint{};
   std::vector<std::string> graph_node_ids{};
-  std::vector<std::string> risky_node_ids{};
+  std::vector<std::string> target_node_ids{};
   belief::BasePolicy base_policy{};
   realized_return_projection_spec_t realized_return_projection{};
   portfolio::PortfolioConstraints constraints{};
 
-  double initial_equity_base{1.0};
+  double initial_equity_numeraire{1.0};
   bool simulate_fees{true};
   bool simulate_spread{true};
   bool simulate_slippage{true};
@@ -168,10 +168,8 @@ struct action_t {
   policy_kind_t policy_kind{policy_kind_t::external};
   portfolio::timestamp_ms_t decision_timestamp_ms{0};
   std::vector<std::string> node_ids{};
-  portfolio::node_id_t base_reserve_node_id{};
 
-  torch::Tensor target_weights{}; // [A], risky assets only
-  double target_base_reserve_weight{1.0};
+  torch::Tensor target_weights{}; // [N], target graph nodes
   double expected_log_growth{std::numeric_limits<double>::quiet_NaN()};
   double expected_arithmetic_return{std::numeric_limits<double>::quiet_NaN()};
   double cvar_loss{std::numeric_limits<double>::quiet_NaN()};
@@ -189,6 +187,13 @@ struct action_t {
   monitoring::belief_decision_report_t decision_report{};
 
   std::string action_schema_id{kTargetWeightsActionSchema};
+  std::string policy_input_schema_id{};
+  std::string action_adapter_id{};
+  std::string reward_contract_id{};
+  std::string policy_artifact_digest{};
+  std::string policy_net_digest{};
+  std::string policy_dsl_digest{};
+  std::string policy_jkimyei_digest{};
 };
 
 struct reward_options_t {
@@ -249,7 +254,7 @@ struct step_info_t {
 
   double realized_log_growth{0.0};
   double realized_arithmetic_return{0.0};
-  double transaction_cost_base{0.0};
+  double transaction_cost_numeraire{0.0};
   double turnover{0.0};
   bool invalid_action{false};
 
@@ -297,21 +302,28 @@ struct step_report_t {
   std::int64_t accepted_cursor_offset{-1};
 
   std::string action_schema_id{};
-  std::string target_risky_node_weights{};
-  std::string target_base_reserve_node_id{};
-  double target_base_reserve_weight{std::numeric_limits<double>::quiet_NaN()};
+  std::string policy_input_schema_id{};
+  std::string action_adapter_id{};
+  std::string reward_contract_id{};
+  std::string policy_artifact_digest{};
+  std::string policy_net_digest{};
+  std::string policy_dsl_digest{};
+  std::string policy_jkimyei_digest{};
+  std::string target_node_weights{};
+  std::string accounting_numeraire_node_id{};
+  double target_numeraire_weight{std::numeric_limits<double>::quiet_NaN()};
 
   double portfolio_equity_before{std::numeric_limits<double>::quiet_NaN()};
   double portfolio_equity_after{std::numeric_limits<double>::quiet_NaN()};
   double realized_log_growth{std::numeric_limits<double>::quiet_NaN()};
   double realized_arithmetic_return{std::numeric_limits<double>::quiet_NaN()};
-  double transaction_cost_base{std::numeric_limits<double>::quiet_NaN()};
+  double transaction_cost_numeraire{std::numeric_limits<double>::quiet_NaN()};
   double turnover{std::numeric_limits<double>::quiet_NaN()};
   bool invalid_action{false};
 
   bool risk_gate_evaluated{false};
   bool risk_gate_allow_trading{true};
-  bool risk_gate_force_base_reserve_fallback{false};
+  bool risk_gate_force_numeraire_fallback{false};
   std::uint64_t risk_gate_reason_count{0};
   std::uint64_t risk_gate_warning_count{0};
   std::string risk_gate_reasons{};
@@ -327,12 +339,12 @@ struct step_report_t {
       std::numeric_limits<double>::quiet_NaN()};
   double rebalance_routed_turnover_weight{
       std::numeric_limits<double>::quiet_NaN()};
-  double rebalance_estimated_transaction_cost_base{
+  double rebalance_estimated_transaction_cost_numeraire{
       std::numeric_limits<double>::quiet_NaN()};
 
   std::uint64_t fill_count{0};
-  double fill_gross_notional_base{0.0};
-  double fill_fee_base{0.0};
+  double fill_gross_notional_numeraire{0.0};
+  double fill_fee_numeraire{0.0};
   bool cajtucu_execution_trace_available{false};
   std::string cajtucu_backend_id{};
   std::string cajtucu_trace_id{};
@@ -340,37 +352,38 @@ struct step_report_t {
   bool cajtucu_synthetic_direct_edges{false};
   bool cajtucu_trace_valid{true};
   std::uint64_t cajtucu_failure_count{0};
-  double cajtucu_ledger_intent_equity_difference_base{0.0};
+  double cajtucu_ledger_intent_equity_difference_numeraire{0.0};
   bool cajtucu_ledger_intent_equity_mismatch{false};
   std::uint64_t cajtucu_order_count{0};
   std::uint64_t cajtucu_executed_order_count{0};
   std::uint64_t cajtucu_fill_count{0};
   std::uint64_t cajtucu_rejected_fill_count{0};
   std::uint64_t cajtucu_partial_fill_count{0};
-  std::uint64_t cajtucu_missing_direct_reserve_edge_count{0};
+  std::uint64_t cajtucu_missing_direct_pair_count{0};
+  std::uint64_t cajtucu_numeraire_fallback_pair_count{0};
   std::uint64_t cajtucu_nontradable_edge_reject_count{0};
   std::uint64_t cajtucu_below_min_notional_reject_count{0};
   std::uint64_t cajtucu_above_max_notional_reject_count{0};
-  std::uint64_t cajtucu_insufficient_reserve_reject_count{0};
+  std::uint64_t cajtucu_insufficient_sell_units_reject_count{0};
   std::uint64_t cajtucu_insufficient_units_reject_count{0};
   std::uint64_t cajtucu_invalid_sell_price_count{0};
   std::uint64_t cajtucu_large_equity_mismatch_count{0};
-  double cajtucu_requested_notional_base{0.0};
-  double cajtucu_executed_notional_base{0.0};
-  double cajtucu_rejected_notional_base{0.0};
-  double cajtucu_partial_notional_base{0.0};
+  double cajtucu_requested_notional_numeraire{0.0};
+  double cajtucu_executed_notional_numeraire{0.0};
+  double cajtucu_rejected_notional_numeraire{0.0};
+  double cajtucu_partial_notional_numeraire{0.0};
   double cajtucu_fill_ratio{std::numeric_limits<double>::quiet_NaN()};
-  double cajtucu_total_fee_base{0.0};
-  double cajtucu_total_spread_cost_base{0.0};
-  double cajtucu_total_slippage_base{0.0};
-  double cajtucu_total_transaction_cost_base{0.0};
+  double cajtucu_total_fee_numeraire{0.0};
+  double cajtucu_total_spread_cost_numeraire{0.0};
+  double cajtucu_total_slippage_numeraire{0.0};
+  double cajtucu_total_transaction_cost_numeraire{0.0};
   double target_weight_error_l1{std::numeric_limits<double>::quiet_NaN()};
   double target_weight_error_linf{std::numeric_limits<double>::quiet_NaN()};
-  double post_execution_risky_weight_sum{
+  double post_execution_target_weight_sum{
       std::numeric_limits<double>::quiet_NaN()};
-  double post_execution_base_reserve_weight{
+  double post_execution_numeraire_weight{
       std::numeric_limits<double>::quiet_NaN()};
-  std::uint64_t reserve_shortfall_count{0};
+  std::uint64_t numeraire_shortfall_count{0};
   double ledger_before_equity{std::numeric_limits<double>::quiet_NaN()};
   double ledger_after_execution_equity{
       std::numeric_limits<double>::quiet_NaN()};
@@ -378,8 +391,8 @@ struct step_report_t {
       std::numeric_limits<double>::quiet_NaN()};
   double ledger_equity_reconciliation_error{
       std::numeric_limits<double>::quiet_NaN()};
-  double base_reserve_units_before{std::numeric_limits<double>::quiet_NaN()};
-  double base_reserve_units_after{std::numeric_limits<double>::quiet_NaN()};
+  double numeraire_units_before{std::numeric_limits<double>::quiet_NaN()};
+  double numeraire_units_after{std::numeric_limits<double>::quiet_NaN()};
   std::uint64_t unit_nonnegativity_violation_count{0};
 
   double reward_log_growth{std::numeric_limits<double>::quiet_NaN()};
@@ -436,8 +449,8 @@ struct episode_report_t {
   world_mode_t world_mode{world_mode_t::historical_replay};
   std::string graph_order_fingerprint{};
   std::string graph_node_ids{};
-  std::string risky_node_ids{};
-  std::string base_reserve_node_id{};
+  std::string target_node_ids{};
+  std::string accounting_numeraire_node_id{};
   std::int64_t experiment_task_index{-1};
   std::int64_t experiment_bundle_index{-1};
   std::int64_t experiment_policy_index{-1};
@@ -466,17 +479,18 @@ struct episode_report_t {
   std::vector<step_report_t> step_reports{};
   double total_reward{0.0};
   double total_log_growth{0.0};
-  double final_equity_base{std::numeric_limits<double>::quiet_NaN()};
+  double final_equity_numeraire{std::numeric_limits<double>::quiet_NaN()};
   double max_drawdown{0.0};
   double total_turnover{0.0};
-  double total_transaction_cost_base{0.0};
+  double total_transaction_cost_numeraire{0.0};
   std::uint64_t cajtucu_valid_trace_count{0};
   std::uint64_t cajtucu_invalid_trace_count{0};
-  std::uint64_t cajtucu_missing_direct_reserve_edge_count{0};
+  std::uint64_t cajtucu_missing_direct_pair_count{0};
+  std::uint64_t cajtucu_numeraire_fallback_pair_count{0};
   std::uint64_t cajtucu_nontradable_edge_reject_count{0};
   std::uint64_t cajtucu_below_min_notional_reject_count{0};
   std::uint64_t cajtucu_above_max_notional_reject_count{0};
-  std::uint64_t cajtucu_insufficient_reserve_reject_count{0};
+  std::uint64_t cajtucu_insufficient_sell_units_reject_count{0};
   std::uint64_t cajtucu_insufficient_units_reject_count{0};
   std::uint64_t cajtucu_invalid_sell_price_count{0};
   std::uint64_t cajtucu_large_equity_mismatch_count{0};
@@ -485,37 +499,37 @@ struct episode_report_t {
   std::uint64_t executed_order_count{0};
   std::uint64_t rejected_order_count{0};
   std::uint64_t partial_order_count{0};
-  double requested_notional_base{0.0};
-  double executed_notional_base{0.0};
-  double rejected_notional_base{0.0};
-  double partial_notional_base{0.0};
+  double requested_notional_numeraire{0.0};
+  double executed_notional_numeraire{0.0};
+  double rejected_notional_numeraire{0.0};
+  double partial_notional_numeraire{0.0};
   double fill_ratio{std::numeric_limits<double>::quiet_NaN()};
-  double fee_cost_base{0.0};
-  double spread_cost_base{0.0};
-  double slippage_cost_base{0.0};
+  double fee_cost_numeraire{0.0};
+  double spread_cost_numeraire{0.0};
+  double slippage_cost_numeraire{0.0};
   double cost_as_fraction_of_equity{std::numeric_limits<double>::quiet_NaN()};
   double cost_as_fraction_of_gross_return{
       std::numeric_limits<double>::quiet_NaN()};
   double mean_target_weight_error_l1{std::numeric_limits<double>::quiet_NaN()};
   double mean_target_weight_error_linf{
       std::numeric_limits<double>::quiet_NaN()};
-  double mean_post_execution_risky_weight_sum{
+  double mean_post_execution_target_weight_sum{
       std::numeric_limits<double>::quiet_NaN()};
-  double mean_post_execution_base_reserve_weight{
+  double mean_post_execution_numeraire_weight{
       std::numeric_limits<double>::quiet_NaN()};
-  std::uint64_t reserve_shortfall_count{0};
+  std::uint64_t numeraire_shortfall_count{0};
   double mean_ledger_before_equity{std::numeric_limits<double>::quiet_NaN()};
   double mean_ledger_after_execution_equity{
       std::numeric_limits<double>::quiet_NaN()};
   double mean_ledger_after_realization_equity{
       std::numeric_limits<double>::quiet_NaN()};
   double max_ledger_equity_reconciliation_error{0.0};
-  double base_reserve_units_before{std::numeric_limits<double>::quiet_NaN()};
-  double base_reserve_units_after{std::numeric_limits<double>::quiet_NaN()};
+  double numeraire_units_before{std::numeric_limits<double>::quiet_NaN()};
+  double numeraire_units_after{std::numeric_limits<double>::quiet_NaN()};
   std::uint64_t unit_nonnegativity_violation_count{0};
-  std::string allocation_target_risky_node_weights{};
-  std::string allocation_reserve_node_id{};
-  double allocation_reserve_weight{std::numeric_limits<double>::quiet_NaN()};
+  std::string allocation_target_node_weights{};
+  std::string allocation_numeraire_node_id{};
+  double allocation_numeraire_weight{std::numeric_limits<double>::quiet_NaN()};
   double allocation_turnover{std::numeric_limits<double>::quiet_NaN()};
   std::string allocation_objective_terms{};
   double allocation_cvar_loss{std::numeric_limits<double>::quiet_NaN()};
@@ -656,16 +670,15 @@ require_optional_size_match_i64(std::optional<std::int64_t> expected,
 
 inline void validate_v1_unified_base_policy(const belief::BasePolicy &policy) {
   if (policy.accounting_numeraire_id.empty() ||
-      policy.settlement_asset_id.empty() || policy.reserve_asset_id.empty() ||
+      policy.settlement_asset_id.empty() ||
       policy.projection_reference_node_id.empty()) {
     throw std::runtime_error("[environment] BasePolicy fields are required");
   }
-  if (policy.accounting_numeraire_id != policy.reserve_asset_id ||
-      policy.accounting_numeraire_id != policy.settlement_asset_id ||
+  if (policy.accounting_numeraire_id != policy.settlement_asset_id ||
       policy.accounting_numeraire_id != policy.projection_reference_node_id) {
     throw std::runtime_error(
-        "[environment] replay V1 requires accounting, settlement, reserve, "
-        "and projection reference to be the same graph node");
+        "[environment] replay V1 requires accounting, settlement, and "
+        "projection reference to be the same graph node");
   }
 }
 
@@ -767,7 +780,7 @@ inline void validate_accepted_range(const accepted_episode_range_t &range,
 
 inline void validate_realized_return_projection(
     const realized_return_projection_spec_t &projection,
-    const std::vector<std::string> &risky_node_ids,
+    const std::vector<std::string> &target_node_ids,
     const belief::BasePolicy &base_policy) {
   if (!has_realized_return_projection(projection)) {
     return;
@@ -782,23 +795,14 @@ inline void validate_realized_return_projection(
         "[environment] realized-return projection reference node must match "
         "BasePolicy projection reference");
   }
-  if (projection.edge_ids.size() != risky_node_ids.size()) {
+  if (projection.edge_ids.size() != target_node_ids.size()) {
     throw std::runtime_error(
-        "[environment] realized-return projection edge count must match risky "
+        "[environment] realized-return projection edge count must match target "
         "node count");
-  }
-  std::unordered_set<std::string> seen_edges;
-  seen_edges.reserve(projection.edge_ids.size());
-  for (const auto &edge_id : projection.edge_ids) {
-    if (blank(edge_id) || !seen_edges.insert(edge_id).second) {
-      throw std::runtime_error(
-          "[environment] realized-return projection edge ids must be unique "
-          "and nonempty");
-    }
   }
   if (!projection.signs.defined() || projection.signs.dim() != 1 ||
       projection.signs.size(0) !=
-          static_cast<std::int64_t>(risky_node_ids.size())) {
+          static_cast<std::int64_t>(target_node_ids.size())) {
     throw std::runtime_error(
         "[environment] realized-return projection signs must be [A]");
   }
@@ -809,11 +813,29 @@ inline void validate_realized_return_projection(
   TORCH_CHECK(torch::isfinite(signs).all().item<bool>(),
               "[environment] realized-return projection signs contain "
               "non-finite values");
+  std::unordered_set<std::string> seen_edges;
+  seen_edges.reserve(projection.edge_ids.size());
   for (std::int64_t i = 0; i < signs.size(0); ++i) {
+    const auto &node_id = target_node_ids[static_cast<std::size_t>(i)];
+    const auto &edge_id = projection.edge_ids[static_cast<std::size_t>(i)];
     const auto sign = signs.index({i}).item<double>();
+    if (node_id == projection.reference_node_id) {
+      if (!blank(edge_id) || sign != 0.0) {
+        throw std::runtime_error(
+            "[environment] realized-return projection reference node must use "
+            "empty edge id and zero sign");
+      }
+      continue;
+    }
+    if (blank(edge_id) || !seen_edges.insert(edge_id).second) {
+      throw std::runtime_error(
+          "[environment] realized-return projection non-reference edge ids "
+          "must be unique and nonempty");
+    }
     if (sign != 1.0 && sign != -1.0) {
       throw std::runtime_error(
-          "[environment] realized-return projection signs must be +/-1");
+          "[environment] realized-return projection non-reference signs must "
+          "be +/-1");
     }
   }
 }
@@ -847,42 +869,37 @@ inline void validate_episode_spec(const episode_spec_t &spec) {
           "[environment] graph_node_ids must be unique and nonempty");
     }
   }
-  if (spec.risky_node_ids.empty()) {
-    throw std::runtime_error("[environment] risky_node_ids is required");
+  if (spec.target_node_ids.empty()) {
+    throw std::runtime_error("[environment] target_node_ids is required");
   }
   std::unordered_set<std::string> seen_nodes;
-  for (const auto &node_id : spec.risky_node_ids) {
+  for (const auto &node_id : spec.target_node_ids) {
     if (detail::blank(node_id) || !seen_nodes.insert(node_id).second) {
       throw std::runtime_error(
-          "[environment] risky_node_ids must be unique and nonempty");
+          "[environment] target_node_ids must be unique and nonempty");
     }
     if (!graph_nodes.contains(node_id)) {
       throw std::runtime_error(
-          "[environment] risky_node_ids must be present in graph_node_ids");
+          "[environment] target_node_ids must be present in graph_node_ids");
     }
   }
   detail::validate_requested_range(spec.requested_range);
   detail::validate_requested_wave_binding(
       spec.requested_wave, spec.requested_range, spec.accepted_range.cursor);
   detail::validate_accepted_range(spec.accepted_range, spec.requested_range);
-  if (spec.initial_equity_base <= 0.0 ||
-      !std::isfinite(spec.initial_equity_base)) {
+  if (spec.initial_equity_numeraire <= 0.0 ||
+      !std::isfinite(spec.initial_equity_numeraire)) {
     throw std::runtime_error(
-        "[environment] initial_equity_base must be positive finite");
+        "[environment] initial_equity_numeraire must be positive finite");
   }
   detail::validate_v1_unified_base_policy(spec.base_policy);
-  if (!graph_nodes.contains(spec.base_policy.reserve_asset_id)) {
-    throw std::runtime_error(
-        "[environment] base reserve node must be present in graph_node_ids");
-  }
-  for (const auto &node_id : spec.risky_node_ids) {
-    if (node_id == spec.base_policy.reserve_asset_id) {
-      throw std::runtime_error(
-          "[environment] reserve asset must not appear in risky_node_ids");
-    }
+  if (!graph_nodes.contains(spec.base_policy.accounting_numeraire_id)) {
+    throw std::runtime_error("[environment] base policy accounting numeraire "
+                             "node must be present in "
+                             "graph_node_ids");
   }
   detail::validate_realized_return_projection(
-      spec.realized_return_projection, spec.risky_node_ids, spec.base_policy);
+      spec.realized_return_projection, spec.target_node_ids, spec.base_policy);
 }
 
 inline void validate_action(const action_t &action,
@@ -897,25 +914,27 @@ inline void validate_action(const action_t &action,
         "[environment] deterministic allocator action method_id is required");
   }
   if (action.action_schema_id != kTargetWeightsActionSchema) {
-    throw std::runtime_error("[environment] action_schema_id must be "
-                             "kikijyeba.environment.action.target_weights.v1");
+    throw std::runtime_error(
+        "[environment] action_schema_id must be "
+        "kikijyeba.environment.action.target_node_weights.v1");
+  }
+  if (action.policy_kind == policy_kind_t::reinforcement_learning) {
+    if (detail::blank(action.policy_input_schema_id) ||
+        detail::blank(action.action_adapter_id) ||
+        detail::blank(action.reward_contract_id) ||
+        detail::blank(action.policy_artifact_digest)) {
+      throw std::runtime_error(
+          "[environment] reinforcement learning actions must bind policy "
+          "input, action adapter, reward contract, and policy artifact "
+          "identity");
+    }
   }
   if (action.decision_timestamp_ms < 0) {
     throw std::runtime_error(
         "[environment] action decision_timestamp_ms must be nonnegative");
   }
-  if (detail::blank(action.base_reserve_node_id)) {
-    throw std::runtime_error(
-        "[environment] action base_reserve_node_id is required");
-  }
   if (action.node_ids != expected_node_ids) {
     throw std::runtime_error("[environment] action node_ids mismatch");
-  }
-  for (const auto &node_id : action.node_ids) {
-    if (node_id == action.base_reserve_node_id) {
-      throw std::runtime_error(
-          "[environment] action base_reserve_node_id must not be a risky node");
-    }
   }
   const auto A = static_cast<std::int64_t>(expected_node_ids.size());
   if (!action.target_weights.defined() || action.target_weights.dim() != 1 ||
@@ -928,20 +947,13 @@ inline void validate_action(const action_t &action,
     throw std::runtime_error(
         "[environment] action target_weights must be finite and nonnegative");
   }
-  detail::require_finite(action.target_base_reserve_weight,
-                         "target_base_reserve_weight");
-  if (action.target_base_reserve_weight < -budget_tolerance) {
-    throw std::runtime_error(
-        "[environment] action target_base_reserve_weight must be nonnegative");
-  }
-  const double total =
-      weights.sum().item<double>() + action.target_base_reserve_weight;
+  const double total = weights.sum().item<double>();
   if (std::abs(total - 1.0) > budget_tolerance) {
     throw std::runtime_error(
-        "[environment] action risky weights plus reserve weight must equal 1");
+        "[environment] action target node weights must equal 1");
   }
   if (!action.risk_gate_evaluated &&
-      (action.risk_gate.force_base_reserve_fallback ||
+      (action.risk_gate.force_numeraire_fallback ||
        !action.risk_gate.reasons.empty() ||
        !action.risk_gate.warnings.empty())) {
     throw std::runtime_error(
@@ -968,27 +980,23 @@ inline void validate_action(const action_t &action,
       throw std::runtime_error(
           "[environment] action rebalance plan node_ids mismatch");
     }
-    if (action.rebalance_plan.base_reserve_node_id !=
-        action.base_reserve_node_id) {
-      throw std::runtime_error(
-          "[environment] action rebalance plan reserve node mismatch");
-    }
     detail::require_finite(action.rebalance_plan.requested_turnover_weight,
                            "rebalance_plan.requested_turnover_weight");
     detail::require_finite(action.rebalance_plan.routed_turnover_weight,
                            "rebalance_plan.routed_turnover_weight");
-    detail::require_finite(action.rebalance_plan.requested_notional_base,
-                           "rebalance_plan.requested_notional_base");
-    detail::require_finite(action.rebalance_plan.routed_notional_base,
-                           "rebalance_plan.routed_notional_base");
+    detail::require_finite(action.rebalance_plan.requested_notional_numeraire,
+                           "rebalance_plan.requested_notional_numeraire");
+    detail::require_finite(action.rebalance_plan.routed_notional_numeraire,
+                           "rebalance_plan.routed_notional_numeraire");
     detail::require_finite(
-        action.rebalance_plan.estimated_transaction_cost_base,
-        "rebalance_plan.estimated_transaction_cost_base");
+        action.rebalance_plan.estimated_transaction_cost_numeraire,
+        "rebalance_plan.estimated_transaction_cost_numeraire");
     if (action.rebalance_plan.requested_turnover_weight < -budget_tolerance ||
         action.rebalance_plan.routed_turnover_weight < -budget_tolerance ||
-        action.rebalance_plan.requested_notional_base < -budget_tolerance ||
-        action.rebalance_plan.routed_notional_base < -budget_tolerance ||
-        action.rebalance_plan.estimated_transaction_cost_base <
+        action.rebalance_plan.requested_notional_numeraire <
+            -budget_tolerance ||
+        action.rebalance_plan.routed_notional_numeraire < -budget_tolerance ||
+        action.rebalance_plan.estimated_transaction_cost_numeraire <
             -budget_tolerance) {
       throw std::runtime_error(
           "[environment] action rebalance plan numeric fields must be "
@@ -997,8 +1005,9 @@ inline void validate_action(const action_t &action,
     if (action.rebalance_plan.routed_turnover_weight >
             action.rebalance_plan.requested_turnover_weight +
                 budget_tolerance ||
-        action.rebalance_plan.routed_notional_base >
-            action.rebalance_plan.requested_notional_base + budget_tolerance) {
+        action.rebalance_plan.routed_notional_numeraire >
+            action.rebalance_plan.requested_notional_numeraire +
+                budget_tolerance) {
       throw std::runtime_error(
           "[environment] action rebalance plan routed values must not exceed "
           "requested values");
@@ -1020,28 +1029,29 @@ inline void validate_action(const action_t &action,
       }
       detail::require_finite(order.delta_weight,
                              "rebalance_plan.order.delta_weight");
-      detail::require_finite(order.requested_notional_base,
-                             "rebalance_plan.order.requested_notional_base");
-      detail::require_finite(order.routed_notional_base,
-                             "rebalance_plan.order.routed_notional_base");
-      detail::require_finite(order.estimated_cost_base,
-                             "rebalance_plan.order.estimated_cost_base");
-      if (order.requested_notional_base < -budget_tolerance ||
-          order.routed_notional_base < -budget_tolerance ||
-          order.estimated_cost_base < -budget_tolerance) {
+      detail::require_finite(
+          order.requested_notional_numeraire,
+          "rebalance_plan.order.requested_notional_numeraire");
+      detail::require_finite(order.routed_notional_numeraire,
+                             "rebalance_plan.order.routed_notional_numeraire");
+      detail::require_finite(order.estimated_cost_numeraire,
+                             "rebalance_plan.order.estimated_cost_numeraire");
+      if (order.requested_notional_numeraire < -budget_tolerance ||
+          order.routed_notional_numeraire < -budget_tolerance ||
+          order.estimated_cost_numeraire < -budget_tolerance) {
         throw std::runtime_error(
             "[environment] action rebalance plan order notionals/cost must be "
             "nonnegative");
       }
-      if (order.routed_notional_base >
-          order.requested_notional_base + budget_tolerance) {
+      if (order.routed_notional_numeraire >
+          order.requested_notional_numeraire + budget_tolerance) {
         throw std::runtime_error(
             "[environment] action rebalance plan order routed notional must "
             "not exceed requested notional");
       }
-      order_requested_notional += order.requested_notional_base;
-      order_routed_notional += order.routed_notional_base;
-      order_estimated_cost += order.estimated_cost_base;
+      order_requested_notional += order.requested_notional_numeraire;
+      order_routed_notional += order.routed_notional_numeraire;
+      order_estimated_cost += order.estimated_cost_numeraire;
     }
     for (const auto &skipped : action.rebalance_plan.skipped) {
       if (!std::count(action.node_ids.begin(), action.node_ids.end(),
@@ -1051,9 +1061,10 @@ inline void validate_action(const action_t &action,
       }
       detail::require_finite(skipped.delta_weight,
                              "rebalance_plan.skipped.delta_weight");
-      detail::require_finite(skipped.requested_notional_base,
-                             "rebalance_plan.skipped.requested_notional_base");
-      if (skipped.requested_notional_base < -budget_tolerance) {
+      detail::require_finite(
+          skipped.requested_notional_numeraire,
+          "rebalance_plan.skipped.requested_notional_numeraire");
+      if (skipped.requested_notional_numeraire < -budget_tolerance) {
         throw std::runtime_error(
             "[environment] action rebalance plan skipped requested notional "
             "must be nonnegative");
@@ -1062,26 +1073,27 @@ inline void validate_action(const action_t &action,
         throw std::runtime_error(
             "[environment] action rebalance plan skipped reason is required");
       }
-      skipped_requested_notional += skipped.requested_notional_base;
+      skipped_requested_notional += skipped.requested_notional_numeraire;
     }
     const bool has_route_breakdown = !action.rebalance_plan.orders.empty() ||
                                      !action.rebalance_plan.skipped.empty();
     if (has_route_breakdown) {
-      if (!approx_equal(action.rebalance_plan.requested_notional_base,
+      if (!approx_equal(action.rebalance_plan.requested_notional_numeraire,
                         order_requested_notional +
                             skipped_requested_notional)) {
         throw std::runtime_error(
             "[environment] action rebalance plan requested notional does not "
             "match order plus skipped requested notional");
       }
-      if (!approx_equal(action.rebalance_plan.routed_notional_base,
+      if (!approx_equal(action.rebalance_plan.routed_notional_numeraire,
                         order_routed_notional)) {
         throw std::runtime_error(
             "[environment] action rebalance plan routed notional does not "
             "match order routed notional");
       }
-      if (!approx_equal(action.rebalance_plan.estimated_transaction_cost_base,
-                        order_estimated_cost)) {
+      if (!approx_equal(
+              action.rebalance_plan.estimated_transaction_cost_numeraire,
+              order_estimated_cost)) {
         throw std::runtime_error(
             "[environment] action rebalance plan estimated cost does not match "
             "order estimated cost");
@@ -1100,12 +1112,7 @@ inline void validate_action(const action_t &action,
 inline void validate_episode_action(const action_t &action,
                                     const episode_spec_t &spec,
                                     double budget_tolerance = 1.0e-8) {
-  validate_action(action, spec.risky_node_ids, budget_tolerance);
-  if (action.base_reserve_node_id != spec.base_policy.reserve_asset_id) {
-    throw std::runtime_error(
-        "[environment] action base_reserve_node_id must match EpisodeSpec "
-        "BasePolicy reserve asset");
-  }
+  validate_action(action, spec.target_node_ids, budget_tolerance);
 }
 
 [[nodiscard]] inline portfolio::timestamp_ms_t
@@ -1184,27 +1191,28 @@ inline void validate_transition_time_boundary(const observation_t &observation,
 }
 
 [[nodiscard]] inline reward_t
-compute_reward(double equity_before_base, double equity_after_base,
-               double drawdown, double transaction_cost_base, double turnover,
-               bool invalid_action,
+compute_reward(double equity_before_numeraire, double equity_after_numeraire,
+               double drawdown, double transaction_cost_numeraire,
+               double turnover, bool invalid_action,
                const reward_options_t &options = reward_options_t{}) {
   validate_reward_options(options);
-  detail::require_finite(equity_before_base, "equity_before_base");
-  detail::require_finite(equity_after_base, "equity_after_base");
+  detail::require_finite(equity_before_numeraire, "equity_before_numeraire");
+  detail::require_finite(equity_after_numeraire, "equity_after_numeraire");
   detail::require_finite(drawdown, "drawdown");
-  detail::require_finite(transaction_cost_base, "transaction_cost_base");
+  detail::require_finite(transaction_cost_numeraire,
+                         "transaction_cost_numeraire");
   detail::require_finite(turnover, "turnover");
-  if (equity_before_base <= 0.0 || equity_after_base <= 0.0) {
+  if (equity_before_numeraire <= 0.0 || equity_after_numeraire <= 0.0) {
     throw std::runtime_error("[environment] reward equity must be positive");
   }
 
   reward_t out{};
-  out.log_growth_reward = std::log((equity_after_base + options.eps) /
-                                   (equity_before_base + options.eps));
+  out.log_growth_reward = std::log((equity_after_numeraire + options.eps) /
+                                   (equity_before_numeraire + options.eps));
   out.drawdown_penalty = options.lambda_drawdown * std::max(0.0, drawdown);
   out.transaction_cost_penalty = options.lambda_transaction_cost *
-                                 std::max(0.0, transaction_cost_base) /
-                                 std::max(equity_before_base, options.eps);
+                                 std::max(0.0, transaction_cost_numeraire) /
+                                 std::max(equity_before_numeraire, options.eps);
   out.turnover_penalty = options.lambda_turnover * std::max(0.0, turnover);
   out.invalid_action_penalty =
       invalid_action ? options.invalid_action_penalty : 0.0;

@@ -1,0 +1,32 @@
+/*
+  wikimyei.policy.portfolio.graph_node_allocation.jkimyei
+  ===========================================================
+  Contract-smoke training policy for the future graph-node allocation policy.
+
+  V1 is intentionally noop: it validates causal policy-training schedule
+  identity and policy artifact shape, but it does not run PPO or write a
+  trainable checkpoint.
+*/
+TRAINING {
+  VERSION = wikimyei.policy.portfolio.graph_node_allocation.jkimyei.v1;
+  TRAINING_ID = graph_node_allocation_contract_smoke_v1;
+  TASK = policy_graph_node_allocation_contract_smoke;
+  COMPONENT_ASSEMBLY_ID = graph_node_allocation_v1;
+  OPTIMIZER = noop;
+  LEARNING_RATE = 0.0;
+  MAX_STEPS = 0;
+  BATCH_SIZE = 1;
+  GRAD_CLIP_NORM = 0.0;
+  CHECKPOINT_EVERY = 0;
+  REPORT_EVERY = 1;
+  VALIDATION_EVERY = 0;
+  SEED = 43;
+  FREEZE_REPRESENTATION = true;
+  INPUT_REPRESENTATION_CHECKPOINT = ;
+  INPUT_MDN_CHECKPOINT = ;
+  ALLOW_UNTRAINED_REPRESENTATION = false;
+  TRAINING_SCHEDULE_MODE = causal_walk_forward_training.v1;
+  REQUIRE_CAUSAL_SCHEDULE = true;
+  PPO_EXECUTION_ALLOWED = false;
+  CHECKPOINT_KIND = policy_contract_fixture;
+};

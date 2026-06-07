@@ -6,9 +6,13 @@
 - V1 is deterministic paper execution only.
 - It consumes an execution intent, market execution state, and execution ledger.
 - It emits paper orders/fills/rejects, a mutated ledger, and an execution trace.
-- It uses direct risky-asset/base-reserve graph edges only.
+- It uses direct graph-node pair edges only.
+- It consumes `kikijyeba.environment.action.target_node_weights.v1` action
+  intent through Kikijyeba replay.
+- It resolves reporting/accounting numeraire identity from the global
+  `[ACCOUNTING]` section, not from a separate execution reserve bucket.
 - It records market source identity in the trace.
-- It warns when replay used synthetic direct asset/reserve edges.
+- It warns when replay used synthetic direct node-pair edges.
 - It rejects synthetic direct-edge market sources by default; research replay
   must explicitly opt in when synthetic markets are needed.
 - It warns when intent equity and mark-to-market ledger equity disagree beyond
@@ -16,6 +20,12 @@
 - It fails closed with an invalid trace when equity mismatch exceeds the large
   mismatch threshold.
 - It executes sell orders before buy orders.
+- It treats missing direct node-pair edges through an explicit policy. The V1
+  default is `skip_pair_warn`, which records a warning and rejected fill
+  evidence without crashing the rollout. Strict validation can still request
+  `invalid_trace`. Diagnostic fallback can request
+  `route_via_accounting_numeraire_warn`, which emits two explicit paper legs
+  and therefore two explicit cost events.
 - It rejects invalid sell-price cost models before ledger mutation.
 - It exposes no broker credentials, network I/O, live broker API, or live
   capital authority.

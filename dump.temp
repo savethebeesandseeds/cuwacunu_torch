@@ -1,1167 +1,493 @@
-Causal Policy-Training Schedule Contract V1
-Review packet for colleague
-Date: 2026-06-04
+Marshal / Runtime / Cajtucu / Pre-PPO State Packet
+==================================================
 
-Context
--------
+Date: 2026-06-06
+Purpose:
+  Please review the current state after the latest cleanup pass and suggest the
+  safest next milestone before executable PPO work. We are trying to keep the
+  public Hero surfaces small, the policy/environment contract causal, and the
+  Cajtucu paper execution semantics honest under missing pairs and costs.
 
-We found a real future-within-training leakage problem before implementing PPO.
 
-The old policy-training contract was split-aware:
+1. Current Operative Model
+--------------------------
 
-  train_range_digest != validation_range_digest != test_range_digest
-  normalization_fit_range_digest == training_range_digest
-  replay_buffer_source_range_digest == training_range_digest
-  selector_split != test
+The system boundary we are preserving:
 
-That was necessary, but not sufficient.
+  Lattice:
+    reads durable evidence and proves explicit target claims.
 
-The deeper issue is that full-window upstream training can leak future
-information inside the training window itself:
+  Runtime:
+    executes waves, replay, and future policy-training jobs.
 
-  representation trained on full train window
-      -> MDN trained on same train window using representation that saw later
-         rows
-      -> observer/belief produced from that MDN
-      -> policy trained/evaluated on same apparent training window
+  Marshal:
+    coordinates/validates/delegates/records/explains bounded handoffs.
 
-This means an observation/action at time t may depend on artifacts fitted with
-data from times later than t, even though validation/test ranges are disjoint.
+  Config Hero:
+    policy-controlled config/file surface only.
 
-The corrected law is:
+  Kikijyeba:
+    environment/world loop, reset/step/reward/time law.
 
-  For any rollout/training block B_k, every artifact used to produce
-  observations, beliefs, actions, rewards, or policy-training trajectories
-  inside B_k must have been usable before B_k began.
+  Wikimyei:
+    representation, inference/belief, and policy/allocation logic.
 
-In contract terms:
+  Cajtucu:
+    paper execution mechanics, fills/rejects/partials, ledger mutation,
+    execution traces.
+
+Important non-authority rules:
+
+  - Marshal does not train.
+  - Marshal does not prove.
+  - Marshal does not select policies or winners.
+  - Cajtucu does not choose a portfolio.
+  - Accounting numeraire is a reporting/valuation unit, not a hidden route hub.
+  - PPO remains unimplemented until the policy/environment contract is stable.
+
+
+2. Latest Cleanup: Config Hero Subject Rename
+---------------------------------------------
+
+We renamed the vague Config Hero inspect subject:
+
+  old:
+    hero.config.inspect subject=validate
+
+  new:
+    hero.config.inspect subject=validate_global_config
+
+No alias was kept.
+
+Current meaning:
+
+  validate_global_config:
+    - read /cuwacunu/src/config/.config
+    - parse configured entries
+    - resolve configured paths
+    - check existence/type/readability
+    - report missing/broken references
+
+It does not mean semantic validation of all DSLs, Runtime execution readiness,
+Lattice target proof, or Cajtucu behavior.
+
+Files touched:
+
+  src/impl/hero/config_hero/hero_config_tools.cpp
+  src/main/hero/hero_config_mcp.cpp
+  src/main/hero/README.md
+  src/tests/bench/kikijyeba/runtime/test_hero_mcp_schema_compat.cpp
+
+Verified:
+
+  make -C src/main/hero -j12 build-config-hero
+  make -C src/tests/bench/kikijyeba/runtime -j12 run-test_hero_mcp_schema_compat
+  /cuwacunu/.build/hero/hero_config.mcp \
+    --global-config /cuwacunu/src/config/.config \
+    --tool hero.config.inspect \
+    --args-json '{"subject":"validate_global_config"}'
+
+  /cuwacunu/.build/hero/hero_config.mcp \
+    --global-config /cuwacunu/src/config/.config \
+    --tool hero.config.inspect \
+    --args-json '{"subject":"validate"}'
+
+The old subject fails closed.
+
+
+3. Latest Cleanup: Missing Direct Pair Policy in Cajtucu
+--------------------------------------------------------
+
+Concern:
+
+  A missing ETH/BTC pair should not crash the product or wait as a silent point
+  of failure. But we also do not want the accounting numeraire to become a
+  hidden route hub.
+
+Implemented compromise:
+
+  Cajtucu paper V1 now has an explicit missing-direct-pair policy:
+
+    enum class missing_direct_pair_policy_t {
+      invalid_trace,
+      skip_pair_warn,
+      route_via_accounting_numeraire_warn,
+    };
+
+Default:
+
+  skip_pair_warn
+
+Meaning:
+
+  - If the direct pair exists, Cajtucu uses it. No numeraire route.
+  - If the direct pair is missing, default behavior records a warning and a
+    rejected fill, keeps the trace valid, and does not mutate the ledger.
+  - Strict validation can select invalid_trace.
+  - Diagnostic/research fallback can select route_via_accounting_numeraire_warn.
+    That emits two explicit paper legs and charges two explicit cost events.
+
+Important:
+
+  route_via_accounting_numeraire_warn is not silent fallback. It is opt-in and
+  visible in trace warnings, orders, fills, counters, and costs.
+
+New/updated Cajtucu trace data:
+
+  missing_direct_pair_count
+  numeraire_fallback_pair_count
+  warnings:
+    missing_direct_pair_routed_via_accounting_numeraire:SELL->BUY
+
+Relevant files:
+
+  src/include/cajtucu/execution/types.h
+  src/include/cajtucu/execution/paper_backend.h
+  src/config/cajtucu.execution.paper.dsl
+  src/config/man/cajtucu.config.man
+  src/config/man/global.config.accounting.man
+  src/include/cajtucu/README.md
+  src/include/cajtucu/ROADMAP.md
+  src/tests/bench/cajtucu/execution/test_cajtucu_execution_paper.cpp
+
+Authored DSL now says:
+
+  MISSING_DIRECT_PAIR_POLICY = skip_pair_warn;
+
+Tests added/updated:
+
+  - direct ETH/BTC pair exists:
+      one direct ETH->BTC order
+      no numeraire route
+
+  - strict missing pair:
+      options.missing_direct_pair_policy = invalid_trace
+      invalid trace with failure evidence
+
+  - default missing pair:
+      warning + rejected fill
+      trace remains valid
+      no ledger mutation
+      no numeraire fallback
+
+  - opt-in numeraire fallback:
+      ETH->USDT then USDT->BTC
+      two orders/fills
+      two fee/spread/slippage events
+      numeraire_fallback_pair_count = 1
+
+Verified:
+
+  make -C src/tests/bench/cajtucu/execution -j12 run-test_cajtucu_execution_paper
+  make -C src/tests/bench/kikijyeba/environment -j12 run-test_kikijyeba_environment_contract
+  git diff --check
+
+
+4. Important Policy/Action Design State
+---------------------------------------
+
+We removed the separate reserve/cash output from the policy-facing action.
+
+Current doctrine:
+
+  policy output:
+    target_node_weights[A]
+
+  A:
+    ordered graph-node action universe
+
+  invariant:
+    sum(target_node_weights) = 1
+    target_node_weights_i >= 0
+    no hidden reserve bucket
+    no separate target_base_reserve_weight
+
+The accounting numeraire remains, but only as:
+
+  [ACCOUNTING].accounting_numeraire_node_id
+
+in:
+
+  src/config/.config
+
+Meaning:
+
+  - global reporting/valuation/reward unit
+  - ordinary graph node
+  - not a policy output dimension
+  - not an implicit execution route
+  - not a per-wave setting
+
+This was intentional because wave settings change while the accounting
+numeraire is needed to compare reports across multiple waves.
+
+
+5. Wikimyei Policy Surface
+--------------------------
+
+We created/renamed the pre-PPO trainable policy contract around:
+
+  wikimyei.policy.portfolio.graph_node_allocation.v1
+
+Preferred name:
+
+  graph_node_allocation
+
+Rejected name:
+
+  target_node_weights_actor
+
+Reason:
+
+  graph_node_allocation describes the system role without importing PPO/actor
+  language too early.
+
+Relevant files:
+
+  src/config/wikimyei.policy.portfolio.graph_node_allocation.dsl
+  src/config/wikimyei.policy.portfolio.graph_node_allocation.net
+  src/config/wikimyei.policy.portfolio.graph_node_allocation.jkimyei
+  src/config/grammar/wikimyei.policy.portfolio.graph_node_allocation.dsl.bnf
+  src/config/grammar/wikimyei.policy.portfolio.graph_node_allocation.net.bnf
+  src/config/grammar/wikimyei.policy.portfolio.graph_node_allocation.jkimyei.bnf
+  src/include/wikimyei/policy/portfolio/graph_node_allocation/
+
+Current PPO stance:
+
+  PPO_EXECUTION_ALLOWED = false
+  OPTIMIZER = noop
+  MAX_STEPS = 0
+  CHECKPOINT_KIND = policy_contract_fixture
+  TRAINING_SCHEDULE_MODE = causal_walk_forward_training.v1
+
+This is a contract smoke surface, not executable PPO.
+
+
+6. Policy Input / Output / Reward Discussion State
+--------------------------------------------------
+
+Current intended PPO-adjacent contract:
+
+  observation_t
+    -> policy_input_t
+    -> raw_policy_output_t.node_weight_logits[A]
+    -> target_node_weights_simplex.v1 adapter
+    -> action_t target_node_weights[A]
+    -> Cajtucu paper execution
+    -> post-execution ledger/reward/evidence
+
+Default output recommendation:
+
+  one logits vector over graph nodes
+
+Not recommended for V0:
+
+  separate exposure head + risky allocation head
+
+Reason:
+
+  The two-head design made sense when there was a hidden cash/reserve dimension.
+  With unified graph-node allocation, a separate exposure head risks recreating
+  hidden reserve semantics. If the policy wants lower volatility, it can learn
+  to allocate more weight to the low-volatility/numeraire-like graph node from
+  input features.
+
+Reward contract was renamed to include post-execution semantics:
+
+  kikijyeba.environment.reward.post_execution_ledger_log_growth_cost_drawdown.v1
+
+Reason:
+
+  Reward must be based on what actually happened after Cajtucu execution, not
+  on requested target weights.
+
+
+7. Anti-Leakage Floor Before PPO
+--------------------------------
+
+Accepted milestone:
+
+  causal_policy_training_schedule_contract.v1
+
+Core law:
+
+  For block B_k, every artifact used inside B_k must have been usable before
+  B_k began.
+
+Contract invariant:
 
   used_artifact.usable_from_key <= block_cursor_begin
 
-and:
+This catches future-within-training leakage, not only train/validation/test
+overlap.
 
-  artifacts fitted on B_k must not be used inside B_k.
-
-
-What We Implemented
--------------------
-
-1. Runtime causal schedule contract
------------------------------------
-
-New file:
-
-  src/include/kikijyeba/runtime/policy_training_causal_schedule.h
-
-New contract types:
-
-  artifact_fit_ledger_t
-  artifact_use_ledger_t
-  snapshot_family_t
-  causal_training_block_t
-  causal_policy_training_schedule_t
-
-Canonical schema:
-
-  kikijyeba.runtime.policy_training_causal_schedule.v1
-
-Supported schedule modes:
-
-  causal_walk_forward_training.v1
-      Readiness-grade path.
-
-  offline_full_window_research
-      Diagnostic/research only. Cannot satisfy readiness.
-
-  batch_final_refit_candidate
-      Final refit candidate. Must declare validation_no_longer_proof and
-      sealed_test_required. Cannot itself be the validation proof.
-
-Core validation:
-
-  - missing schedule id/range digests/mode is rejected
-  - missing cursor_key_kind is rejected
-  - opaque or unsupported cursor key ordering is rejected
-  - unsupported mode is rejected
-  - same-block snapshot use is rejected
-  - future snapshot use is rejected:
-
-      artifact.usable_from_key > block.block_cursor_begin
-
-  - every used snapshot digest must appear in the fit ledger
-  - no_future_snapshot_use is derived from artifact fit/use ledgers, not
-    trusted as a caller assertion
-  - normalization, calibration, covariance/coupler, replay-buffer, and
-    reward-baseline future-use are rejected
-  - target-label, reward, and trajectory availability cannot be later than
-    artifact.usable_from_key
-  - causal mode requires at least one training block
-  - offline_full_window_research with readiness_eligible=true is rejected
-  - batch_final_refit_candidate with readiness_eligible=true is rejected
-  - final refit must declare:
-
-      final_refit_uses_validation=true
-      validation_no_longer_proof=true
-      sealed_test_required=true
-
-
-2. Runtime policy-training job contract now requires schedule identity
-----------------------------------------------------------------------
-
-Updated file:
-
-  src/include/kikijyeba/runtime/policy_training_job_contract.h
-
-Added fields:
-
-  training_schedule_mode
-  causal_schedule_schema_id
-  causal_schedule_digest
-  causal_schedule_cursor_key_kind
-  causal_schedule_no_future_snapshot_use_source
-  causal_schedule_readiness_eligible
-  causal_schedule_no_future_snapshot_use
-  offline_full_window_research_allowed
-  final_refit_parent_selected_checkpoint_digest
-  final_refit_uses_validation
-  validation_no_longer_proof
-  sealed_test_required
-
-Runtime policy-training validation now requires:
-
-  training_schedule_mode is present
-  causal_schedule_schema_id is present and equals:
-
-    kikijyeba.runtime.policy_training_causal_schedule.v1
-
-  causal_schedule_digest is present
-  causal_schedule_cursor_key_kind is present and sortable:
-
-    numeric_anchor_index
-    numeric_source_key
-    fixed_width_source_key
-    timestamp_ms
-
-  causal_schedule_no_future_snapshot_use_source is present and equals:
-
-    derived_from_artifact_fit_use_ledgers
-
-  causal_schedule_no_future_snapshot_use=true for causal readiness
-  offline_full_window_research cannot satisfy readiness
-  causal mode cannot enable full-window research
-  batch_final_refit_candidate requires final_refit_parent_selected_checkpoint_digest
-  live execution remains forbidden
-
-
-3. Runtime Hero policy-training surface updated
------------------------------------------------
-
-Updated file:
-
-  src/impl/hero/runtime_hero/hero_runtime_tools.cpp
-
-Public tool:
-
-  hero.runtime.run operation=policy_training requested_mode=plan|dry_run
-
-Now accepts and validates:
-
-  training_schedule_mode
-  causal_schedule_schema_id
-  causal_schedule_digest
-  causal_schedule_readiness_eligible
-  causal_schedule_no_future_snapshot_use
-  offline_full_window_research_allowed
-  final_refit_uses_validation
-  validation_no_longer_proof
-  sealed_test_required
-
-Still refuses:
-
-  requested_mode=execute
-
-with:
-
-  E_RUNTIME_POLICY_TRAINING_EXECUTION_NOT_IMPLEMENTED
-
-Important behavior:
-
-  Old schedule-less policy-training handoffs now fail closed.
-
-  offline_full_window_research now fails as readiness evidence.
-
-
-4. Lattice policy-training fact evidence updated
-------------------------------------------------
-
-Updated file:
-
-  src/include/kikijyeba/lattice/exposure/exposure_ledger.h
-
-Policy-training fact now binds:
-
-  training_schedule_mode
-  causal_schedule_schema_id
-  causal_schedule_digest
-  causal_schedule_readiness_eligible
-  causal_schedule_no_future_snapshot_use
-  offline_full_window_research
-  final_refit_uses_validation
-  validation_no_longer_proof
-  sealed_test_required
-
-Canonical policy-training fact text and digest include these fields, so a
-schedule change changes the fact digest.
-
-New policy-training fact issues include:
-
-  missing_training_schedule_mode
-  missing_causal_schedule_schema_id
-  missing_causal_schedule_digest
-  unsupported_training_schedule_mode
-  unsupported_causal_schedule_schema_id
-  causal_schedule_not_readiness_eligible
-  causal_schedule_future_snapshot_use_not_proven
-  offline_full_window_research_not_readiness_eligible
-  batch_final_refit_not_policy_training_readiness
-  validation_refit_requires_sealed_test_disclaimer
-
-Policy-training summaries now count:
-
-  causal_schedule_digest_bound_count
-  causal_schedule_ready_count
-  no_future_snapshot_use_count
-  offline_full_window_research_count
-  final_refit_validation_disclaimer_count
-
-
-5. Lattice target proof updated
--------------------------------
-
-Updated file:
-
-  src/include/kikijyeba/lattice/target/lattice_target_evaluator.h
-
-The target:
-
-  policy_training_artifact_ready
-
-now requires the policy_training fact to prove:
-
-  training_schedule_mode == causal_walk_forward_training.v1
-  causal_schedule_schema_id present
-  causal_schedule_digest present
-  causal_schedule_readiness_eligible == true
-  causal_schedule_no_future_snapshot_use == true
-  offline_full_window_research == false
-
-This means the old split-only policy-training readiness path cannot pass.
-
-
-6. Documentation and roadmap alignment
---------------------------------------
-
-Updated files include:
-
-  ROADMAP.md
-  src/include/kikijyeba/runtime/README.md
-  src/main/hero/README.md
-  src/main/hero/hero_runtime_mcp.cpp
-  src/include/kikijyeba/lattice/ROADMAP.md
-  src/include/kikijyeba/environment/ROADMAP.md
-  src/include/kikijyeba/marshal/ROADMAP.md
-
-The roadmaps now state:
-
-  - PPO waits on causal_policy_training_schedule_contract.v1
-  - train/validation/test disjointness is necessary but not sufficient
-  - readiness-grade policy training requires causal walk-forward schedule
-    evidence
-  - offline_full_window_research is diagnostics-only
-  - batch_final_refit_candidate requires sealed-test discipline
-
-
-Operative Training Law
-----------------------
-
-The readiness-grade schedule is:
+Current accepted model:
 
   At block B_k start:
-      freeze SnapshotFamily_{k-1}
+    freeze SnapshotFamily_{k-1}
 
   During B_k:
-      observations use prior representation/MDN/observer snapshots
-      actions use prior policy snapshot
-      Cajtucu executes under the bound paper execution profile
-      reward uses the bound reward contract
-      trajectory evidence is recorded
+    observations use prior representation / MDN / observer snapshots
+    actions use prior policy snapshot
+    Cajtucu uses the bound execution profile
+    reward uses the bound reward contract
+    trajectory evidence is recorded
 
   After B_k closes:
-      representation, MDN, observer fitted components, normalization, and
-      policy may be updated to SnapshotFamily_k
+    representation, MDN, observer fitted components, normalization, and policy
+    may be updated
 
   At B_{k+1}:
-      SnapshotFamily_k may become usable
+    SnapshotFamily_k may become usable
 
-The contract allows block-close joint updates in V1. It does not require strict
-staggering across representation -> MDN -> policy generations, as long as the
-updated snapshots are not used inside the same block.
+Strict representation -> MDN -> policy staggering is deferred, not required
+for V1.
 
 
-What Is Removed From Readiness
-------------------------------
+8. Current Next-Milestone Candidates
+------------------------------------
 
-The leaky readiness method is no longer accepted:
+We need review guidance on what to do next before executable PPO.
 
-  full-window representation training
-  + full-window MDN training on same range
-  + full-window policy training/evaluation on same range
-  + calling that readiness evidence
+Candidate A:
 
-This is now classified as:
-
-  offline_full_window_research
-
-Allowed use:
-
-  diagnostics
-  debugging
-  ablations
-  non-readiness research reports
-
-Forbidden use:
-
-  policy_training_artifact_ready
-  policy-training readiness
-  rollout readiness
-  market readiness
-  PPO readiness claims
-
-
-Verification Run
-----------------
-
-Passed:
-
-  make -C src/main/hero -j12 build-runtime-hero
-
-  make -C src/tests/bench/kikijyeba/runtime -j12 \
-    run-test_hero_runtime_wave_preview
-
-  make -C src/tests/bench/kikijyeba/lattice_exposure -j12 \
-    run-test_kikijyeba_lattice_exposure
-
-  make -C src/tests/bench/kikijyeba/lattice_target -j12 \
-    run-test_kikijyeba_lattice_target
-
-  make -C src/tests/bench/kikijyeba/runtime -j12 \
-    run-test_hero_mcp_schema_compat
-
-  /cuwacunu/.build/hero/hero_runtime.mcp \
-    --global-config /cuwacunu/src/config/.config \
-    --list-tools-json
-
-  git diff --check
-
-Live Runtime smokes:
-
-  Positive policy-training plan with hardened causal schedule:
-      passed
-      returned contract_digest=e9289ca4a055cac4
-
-  Missing causal_schedule_digest:
-      failed closed with:
-      missing required field: causal_schedule_digest
-
-  Missing causal_schedule_no_future_snapshot_use_source:
-      failed closed with:
-      missing required field: causal_schedule_no_future_snapshot_use_source
-
-  causal_schedule_no_future_snapshot_use_source=asserted_by_caller:
-      failed closed with:
-      unsupported_no_future_snapshot_use_source
-
-  causal_schedule_cursor_key_kind=opaque_unsortable:
-      failed closed with:
-      opaque_or_unsupported_causal_schedule_cursor_key_kind
-
-  offline_full_window_research as readiness:
-      failed closed with:
-      offline_full_window_research_not_readiness_eligible
-      offline_full_window_research_requires_explicit_allow
-
-
-Tests Added / Updated
----------------------
-
-Runtime:
-
-  src/tests/bench/kikijyeba/runtime/test_hero_runtime_wave_preview.cpp
-
-Added:
-
-  test_policy_training_causal_schedule_contract
-
-This checks:
-
-  - valid causal walk-forward schedule
-  - ledger-derived no_future_snapshot_use; caller flag alone is not trusted
-  - opaque cursor key ordering rejected
-  - same-block snapshot use rejected
-  - future snapshot use rejected
-  - future normalization snapshot use rejected
-  - future calibration snapshot use rejected
-  - future covariance/coupler snapshot use rejected
-  - future replay-buffer snapshot use rejected
-  - future reward-baseline snapshot use rejected
-  - late target-label availability rejected
-  - late reward availability rejected
-  - late trajectory availability rejected
-  - offline_full_window_research rejected as readiness
-
-Updated:
-
-  valid_policy_training_args now includes causal schedule identity, typed cursor
-  key ordering, and derived no-future snapshot source.
-
-Negative Runtime handler checks now include:
-
-  - missing causal_schedule_digest
-  - offline_full_window_research as readiness
-
-Lattice exposure:
-
-  src/tests/bench/kikijyeba/lattice_exposure/test_kikijyeba_lattice_exposure.cpp
-
-Updated policy-training sidecar fixture with causal schedule fields.
-
-Added check that policy-training fact issues reject:
-
-  causal_schedule_future_snapshot_use_not_proven
-
-Lattice target:
-
-  src/tests/bench/kikijyeba/lattice_target/test_kikijyeba_lattice_target.cpp
-
-Updated policy_training_artifact_ready fixture to include causal schedule
-identity and no-future-snapshot evidence.
-
-
-Files Most Relevant For Review
-------------------------------
-
-Runtime contract:
-
-  src/include/kikijyeba/runtime/policy_training_causal_schedule.h
-  src/include/kikijyeba/runtime/policy_training_job_contract.h
-
-Runtime Hero surface:
-
-  src/impl/hero/runtime_hero/hero_runtime_tools.cpp
-  src/main/hero/hero_runtime_mcp.cpp
-
-Lattice proof/evidence:
-
-  src/include/kikijyeba/lattice/exposure/exposure_ledger.h
-  src/include/kikijyeba/lattice/target/lattice_target_evaluator.h
-
-Tests:
-
-  src/tests/bench/kikijyeba/runtime/test_hero_runtime_wave_preview.cpp
-  src/tests/bench/kikijyeba/lattice_exposure/test_kikijyeba_lattice_exposure.cpp
-  src/tests/bench/kikijyeba/lattice_target/test_kikijyeba_lattice_target.cpp
-
-Docs:
-
-  ROADMAP.md
-  src/include/kikijyeba/runtime/README.md
-  src/main/hero/README.md
-  src/include/kikijyeba/lattice/ROADMAP.md
-  src/include/kikijyeba/environment/ROADMAP.md
-  src/include/kikijyeba/marshal/ROADMAP.md
-
-
-Questions For Review
---------------------
-
-1. Is block-close joint update acceptable for V1?
-
-   Current rule:
-
-     update R_k/M_k/O_k/pi_k after B_k closes
-     use SnapshotFamily_k only from B_{k+1}
-
-   We did not require strict staggered generations in V1.
-
-2. Is `usable_from_key <= block_cursor_begin` the right primary invariant?
-
-   We also track:
-
-     fit_input_cutoff_key
-     fit_target_cutoff_key
-     normalization_cutoff_key
-     fit_cutoff_key
-     usable_from_key
-
-   The validator currently compares numeric keys numerically when possible,
-   otherwise lexicographically.
-
-3. Should Runtime policy-training allow `offline_full_window_research` in
-   plan/dry_run when explicitly marked non-readiness?
-
-   Current behavior:
-
-     If mode is offline_full_window_research and readiness_eligible remains
-     true, Runtime rejects.
-
-     It also requires explicit offline_full_window_research_allowed=true.
-
-   This keeps research possible but noisy. We should confirm whether this is
-   the right public boundary.
-
-4. Should batch_final_refit_candidate be allowed by Runtime plan/dry_run now?
-
-   Current behavior:
-
-     It cannot be readiness_eligible.
-     It must declare:
-
-       final_refit_uses_validation=true
-       validation_no_longer_proof=true
-       sealed_test_required=true
-
-5. Should Lattice add a separate target:
-
-     policy_training_causal_schedule_ready
-
-   or is it enough that:
-
-     policy_training_artifact_ready
-
-   now requires causal schedule evidence?
-
-6. Are there any current full-window training commands or Marshal handoff paths
-   that should be renamed to offline_full_window_research immediately?
-
-   The current implementation blocks readiness evidence, but executable PPO
-   does not exist yet. Before PPO arrives, we should make sure no operator path
-   implies full-window training is readiness-grade.
-
-
-Current Verdict
----------------
-
-The anti-leakage floor before PPO is now installed:
-
-  Runtime requires causal schedule identity for policy-training contracts.
-  Runtime requires typed cursor-key ordering.
-  Runtime rejects caller-asserted no-future snapshot source.
-  Lattice requires causal schedule evidence for policy_training_artifact_ready.
-  Lattice requires derived no-future snapshot source.
-  Schedule-less policy training fails.
-  Opaque cursor keys fail closed.
-  Same-block and future-use snapshots fail closed across the core artifact
-  categories, including normalizers, calibration, covariance/couplers,
-  replay buffers, and reward baselines.
-  Full-window research is quarantined from readiness.
-  PPO remains unimplemented and should be built only on this contract.
-
-This milestone should be considered complete unless review finds a semantic
-gap in the causal schedule model itself.
-
-
-2026-06-04 Cost-Aware Validation Rollout Reality Check
-======================================================
-
-We attempted the next end-to-end check:
-
-  run_cost_aware_validation_rollout_on_real_runtime_job.v1
-
-Selected completed Runtime job:
-
-  /cuwacunu/.runtime/cuwacunu_exec/components/wikimyei.inference.expected_value.mdn/spawns/hbe_a482bf811328ab7b/jobs/run/cwu_02v_channel_validation_eval_mdn_1800_2050.run.channel_inference_mdn.attempt_000000
-
-Runtime job facts:
-
-  status=completed
-  job_kind=channel_inference_mdn
-  replay_artifacts_written=true
-  graph_order_fingerprint=507df53170ffab6a
-  node_ids=BTC,USDT,ETH
-  edge_ids=BTCUSDT,ETHBTC,ETHUSDT
-
-Marshal rollout request:
-
-  rollout_id=cost_aware_validation_real_job_v1
-  requested_mode=plan, then execute
-  base_reserve_node_id=USDT
-  risky_node_ids=BTC,ETH
-  policy_set=base_reserve,current_weight,equal_weight,sdu
-  max_steps=128
-  max_parallel_jobs=4
-  cost_model_id=linear_transaction_cost_rate.v1
-  linear_transaction_cost_rate=0.001
-  allow_synthetic_direct_edges=false
-
-Plan result:
-
-  dispatch_state=prepared
-  accepted=true
-  execution_profile_digest=0c9d5d891455529b0a143065fa89cef99559cc72419c124b770971cc5cc7e56a
-  policy_set_digest=df9bb1ba591912b354c254770f1c35d8f52035403978760327b26a084389b007
-  no --replay-allow-synthetic-direct-edges flag was emitted
-  authority flags remained false
-
-Execute result:
-
-  dispatch_state=executed
-  report_path=/cuwacunu/.runtime/cuwacunu_exec/components/wikimyei.inference.expected_value.mdn/spawns/hbe_a482bf811328ab7b/jobs/run/cwu_02v_channel_validation_eval_mdn_1800_2050.run.channel_inference_mdn.attempt_000000/artifacts/cost_aware_validation_real_job_v1.replay.report
-
-Top-level report facts:
-
-  attempted_count=16
-  completed_count=16
-  failed_count=0
-  policy_summary_count=4
-  projection_validation_step_count=1000
-  time_law_future_observation_violation_count=0
-  mixed_future_realization_key_count=0
-  execution_profile_digest and policy_set_digest were present
-  projection metrics, portfolio metrics, execution metrics, and time-law
-  counters were separated in the report
-
-Important failure:
-
-  cajtucu_valid_trace_count=0
-  cajtucu_invalid_trace_count=1000
-  cajtucu_synthetic_market_step_count=1000
-  total_transaction_cost_base=0
-  requested_notional_base=0
-  executed_notional_base=0
-  rejected_notional_base=0
-
-Step traces showed:
-
-  cajtucu_market_source_id=kikijyeba.environment.replay.synthetic_node_market_state_direct_edges
-  cajtucu_synthetic_direct_edges=true
-  warnings=synthetic_direct_edges_market_source,cajtucu.paper.invalid_trace
-  failures=synthetic_direct_edges_disallowed
-
-Interpretation:
-
-  The public Marshal/Runtime validation-rollout contract is doing the right
-  thing at the request boundary: it requires nonzero cost, binds execution and
-  policy digests, rejects the synthetic-edge option, and emits no synthetic
-  CLI flag.
-
-  The existing replay artifacts are not yet validation-grade for Cajtucu paper
-  execution. They contain graph-anchor-edge batches and direct edge identities,
-  but they do not provide an explicit executable edge market state with
-  non-synthetic executable prices/fees/spread/slippage. Kikijyeba therefore
-  falls back to a synthetic node-market direct-edge surface. Cajtucu correctly
-  refuses that surface when synthetic edges are disallowed, but the experiment
-  runner still counts the episodes as completed with invalid Cajtucu traces.
-
-  This is a real artifact-readiness gap, not a Marshal naming issue.
-
-Digest note:
-
-  Runtime replay integrity reported:
-
-    report_digest_bound=true
-    declared_report_digest=a36cc457fef7f4fe
-    computed_report_digest=1b14f7d0beba1f6b
-    report_digest_match=false
-
-  This should be inspected. It may be an index/report digest timing issue or
-  a digest-algorithm mismatch, but it should not be ignored before Lattice
-  artifact-readiness proof.
-
-Recommended next finite goal:
-
-  replay_execution_market_artifact_ready.v1
-
-Objective:
-
-  Make validation-grade replay refuse or satisfy the Cajtucu execution-market
-  contract explicitly. A validation rollout must not silently complete with
-  synthetic execution markets or invalid traces.
+  pre_ppo_policy_contract_hardening.v1
 
 Scope:
 
-  1. Define required replay execution-market artifact fields:
+  - make policy_input_t richer and final enough for fake trainable policy tests
+  - add compressed distributional summaries from AllocationBelief
+  - keep raw MDN tensors forbidden by default
+  - ensure no-available-node behavior fails closed
+  - ensure reward contract is fully post-execution
+  - bind policy_input_schema_id, action_adapter_id, reward_contract_id,
+    execution_profile_digest, and causal_schedule_digest in reports/artifacts
+  - no PPO optimizer yet
 
-       edge_market_state present for every replay frame
-       market_source_id non-synthetic
-       graph_order_fingerprint bound
-       direct reserve edges present for all risky nodes
-       edge_mid_price positive and finite
-       edge_fee_rate / spread / slippage finite and nonnegative
-       tradable mask present or explicitly defaulted by policy
-       min/max notional policy explicit
+Candidate B:
 
-  2. Add validation-grade Runtime replay preflight or post-run gate:
+  cost_aware_paper_replay_rollout.v1
 
-       validation_rollout=true must fail closed if report contains:
+Scope:
 
-         cajtucu_synthetic_market_step_count > 0
-         cajtucu_invalid_trace_count > 0
-         missing execution_profile_digest
-         missing policy_set_digest
-         zero nonzero-cost evidence when turnover/orders exist
+  - run/prepare bounded historical replay rollouts from completed Runtime jobs
+  - require nonzero cost profile for validation rollout
+  - expose policy-wise reports separating:
+      projection metrics
+      portfolio metrics
+      execution feasibility
+      Cajtucu costs/rejects/partials
+      time-law counters
+  - make Cajtucu trace evidence Lattice-ready
 
-  3. Make the report distinguish:
+Candidate C:
 
-       completed_environment_episode_count
-       validation_eligible_episode_count
-       invalid_execution_episode_count
+  replay_environment_artifact_ready lattice target
 
-     so "environment replay completed" cannot be confused with
-     "validation rollout satisfied".
+Scope:
 
-  4. Fix or explain replay report digest binding:
+  - prove rollout reports are present, lineage-bound, time-law clean, and carry
+    Cajtucu trace counters
+  - do not prove policy quality or profitability
 
-       declared report digest in runtime_replay_experiments.index must match
-       the digest computed by the inspection path, or the two digest algorithms
-       must be named separately.
+Candidate D:
 
-  5. Add tests:
+  config/dsl semantic validation cleanup
 
-       validation rollout with synthetic fallback is refused or marked
-       validation_ineligible
+Scope:
 
-       validation rollout with invalid Cajtucu traces is refused or marked
-       validation_ineligible
+  - now that Config Hero has validate_global_config, define separate semantic
+    DSL validators if needed:
+      dsl_schema_check
+      config_bundle
+      policy_surface
+  - avoid pretending path-existence validation is full system validation
 
-       report/index digest check matches
 
-       research rollout can still opt into synthetic execution surfaces with
-       loud warnings and no readiness claim
+9. Questions For Review
+-----------------------
 
-Out of scope:
+1. Is `skip_pair_warn` the right Cajtucu default for missing direct pairs?
 
-  PPO
-  allocator tuning
-  paper-online
-  live broker adapters
-  fake relabeling of synthetic unit-price edges as real executable markets
+   It prevents a rollout from becoming invalid by default, while still making
+   the missing pair visible and not routing through the numeraire silently.
 
-Review question for colleague:
+2. Should `route_via_accounting_numeraire_warn` be allowed in validation
+   rollouts, or research/diagnostics only?
 
-  Should the next implementation prioritize producing real edge_market_state
-  artifacts from the Runtime job, or should we first add the validation-grade
-  fail-closed gate so synthetic/invalid Cajtucu traces cannot appear as
-  completed validation rollouts?
+   Current instinct:
+     research/diagnostics only unless explicitly approved.
 
-Follow-up implemented in this session:
+3. Should `numeraire_fallback_pair_count > 0` block
+   replay_environment_artifact_ready?
 
-  We implemented the fail-closed validation gate first.
+   Current instinct:
+     It should not necessarily block research evidence, but validation-ready
+     evidence should probably require zero fallback routes unless the target
+     explicitly permits fallback.
 
-  Runtime now validates the produced replay report when
-  validation_rollout=true. It rejects validation replay if:
+4. Is one logits vector over graph nodes still the right PPO V0 output?
 
-    replay report is missing or empty
-    completed_count <= 0
-    execution_profile_digest is missing
-    policy_set_digest is missing
-    cajtucu_synthetic_market_step_count > 0
-    cajtucu_invalid_trace_count > 0
+   Current instinct:
+     yes. No separate exposure head yet.
 
-  Focused Runtime test coverage was added for:
+5. Should the next implementation milestone be policy contract hardening or
+   cost-aware rollout evidence?
 
-    clean validation replay report accepted
-    synthetic Cajtucu market evidence rejected
-    invalid Cajtucu traces rejected
+   Current instinct:
+     The policy contract is now coherent enough for fake trainable policy
+     tests, but cost-aware replay will give us the best end-to-end evidence.
+     We need a recommendation on ordering.
 
-  Verified command:
+6. Should Config Hero add deeper subjects later:
 
-    make -C src/tests/bench/kikijyeba/runtime -j12 run-test_hero_runtime_wave_preview
+     validate_global_config
+     dsl_schema_check
+     config_bundle
+     policy_surface
 
-  Live real-job gate check:
+   Or should semantic validation remain owned by each subsystem?
 
-    rollout_id=cost_aware_validation_real_job_v1_gate_check
-    dispatch_state=blocked
-    next_safe_actions=inspect_runtime_replay_failure
-    runtime_replay.error_message=
-      E_RUNTIME_REPLAY_VALIDATION_SYNTHETIC_MARKET_USED:
-      cajtucu_synthetic_market_step_count=1000
 
-  This means the current real Runtime job still cannot satisfy
-  cost-aware validation rollout, but the system no longer allows that failure
-  to masquerade as an executed validation success.
+10. Current Verification Snapshot
+---------------------------------
 
-Remaining requirement for the original green validation rollout:
+Recent passing commands:
 
-  Produce or attach real, non-synthetic edge_market_state artifacts for replay
-  frames, then rerun the same Marshal rollout. Until that exists, the correct
-  result is the fail-closed Runtime/Marshal block above.
+  make -C src/main/hero -j12 build-config-hero
+  make -C src/tests/bench/kikijyeba/runtime -j12 run-test_hero_mcp_schema_compat
+  make -C src/tests/bench/cajtucu/execution -j12 run-test_cajtucu_execution_paper
+  make -C src/tests/bench/kikijyeba/environment -j12 run-test_kikijyeba_environment_contract
 
-Final follow-up implemented:
+  /cuwacunu/.build/hero/hero_config.mcp \
+    --global-config /cuwacunu/src/config/.config \
+    --list-tools-json
 
-  We added observed edge-market replay support so new Runtime replay artifacts
-  no longer need the synthetic direct-edge fallback for validation rollout.
+  /cuwacunu/.build/hero/hero_config.mcp \
+    --global-config /cuwacunu/src/config/.config \
+    --tool hero.config.inspect \
+    --args-json '{"subject":"validate_global_config"}'
 
-  Source/runtime propagation added:
+  git diff --check
 
-    wikimyei.expression.nodelift.srl.node_lifted_batch_t
-      carries edge_features and edge_mask from graph anchor source batches
 
-    wikimyei.representation.encoding.vicreg.channel_representation_batch_t
-      carries edge_features, edge_mask, and past_keys
+11. Requested Review Output
+---------------------------
 
-    kikijyeba.environment.runtime.replay_source
-      persists those tensors into graph_anchor_edge_batch replay artifacts
+Please review:
 
-    kikijyeba.environment.replay.source
-      derives a deterministic relative edge market state from observed close
-      log-return features in graph-edge order:
+  - the Cajtucu missing-pair policy split
+  - whether the numeraire fallback should be validation-forbidden
+  - whether `skip_pair_warn` should remain the paper V1 default
+  - the remaining pre-PPO ordering:
+      policy contract hardening vs cost-aware replay rollout
+  - whether Config Hero should grow semantic validators or stay as global
+    config/path/file provenance only
 
-        frame 0 edge_mid_price = 1.0
-        frame k edge_mid_price = exp(cumulative observed close log return)
+Please propose a finite Codex-compatible next goal with:
 
-      This is explicitly sourced from observed edge features and is different
-      from the old synthetic unit-price direct-edge fallback.
-
-  Runtime validation hardening added:
-
-    Runtime report gating now rejects validation_rollout=true if the produced
-    replay report has:
-
-      missing report
-      completed_count <= 0
-      missing execution_profile_digest
-      missing policy_set_digest
-      cajtucu_synthetic_market_step_count > 0
-      cajtucu_invalid_trace_count > 0
-
-    The old attempt_000000 replay remains a useful negative control: it fails
-    closed because it produces 1000 synthetic Cajtucu market steps.
-
-  Digest binding fix:
-
-    The replay experiment index writer and Runtime/Lattice inspection path were
-    using different digest domains for replay reports.
-
-    Fixed by aligning
-
-      kikijyeba.environment.runtime.experiment_driver::replay_report_digest
-
-    with the Lattice-compatible domain:
-
-      kikijyeba.lattice.exposure.v1
-      kikijyeba.environment.replay.report_digest.v1\n<report_text>
-
-    This matters because Lattice readiness already treats report/index digest
-    agreement as artifact integrity evidence.
-
-Final successful real-job validation rollout:
-
-  Fresh completed Runtime job:
-
-    job_id=
-      cwu_02v_channel_validation_eval_mdn_1800_2050.run.channel_inference_mdn.attempt_000003
-
-    runtime_job_dir=
-      /cuwacunu/.runtime/cuwacunu_exec/components/wikimyei.inference.expected_value.mdn/spawns/hbe_a482bf811328ab7b/jobs/run/cwu_02v_channel_validation_eval_mdn_1800_2050.run.channel_inference_mdn.attempt_000003
-
-    replay_batch_index_path=
-      /cuwacunu/.runtime/cuwacunu_exec/components/wikimyei.inference.expected_value.mdn/spawns/hbe_a482bf811328ab7b/jobs/run/cwu_02v_channel_validation_eval_mdn_1800_2050.run.channel_inference_mdn.attempt_000003/artifacts/kikijyeba.environment.replay.v1/runtime_replay_batches.index
-
-  Marshal rollout:
-
-    rollout_id=cost_aware_validation_real_job_v1_final
-    requested_mode=plan -> dispatch_state=prepared
-    requested_mode=execute -> dispatch_state=executed
-    runtime_replay.ok=true
-    runtime_replay.exit_code=0
-
-  Validation profile:
-
-    execution_backend_id=cajtucu.execution.paper.v1
-    cost_model_id=linear_transaction_cost_rate.v1
-    linear_transaction_cost_rate=0.001
-    allow_synthetic_direct_edges=false
-    allow_partial_fills=false
-    allow_negative_base_reserve=false
-    live_execution_allowed=false
-
-    execution_profile_digest=
-      0c9d5d891455529b0a143065fa89cef99559cc72419c124b770971cc5cc7e56a
-
-    policy_set_digest=
-      df9bb1ba591912b354c254770f1c35d8f52035403978760327b26a084389b007
-
-  Replay report:
-
-    report_path=
-      /cuwacunu/.runtime/cuwacunu_exec/components/wikimyei.inference.expected_value.mdn/spawns/hbe_a482bf811328ab7b/jobs/run/cwu_02v_channel_validation_eval_mdn_1800_2050.run.channel_inference_mdn.attempt_000003/artifacts/cost_aware_validation_real_job_v1_final.replay.report
-
-    replay_bundle_count=4
-    attempted_count=16
-    completed_count=16
-    failed_count=0
-    episode_count=16
-
-    projection_validation_step_count=1000
-    time_law_expected_step_count=1000
-    time_law_observation_step_count=1000
-    time_law_action_step_count=1000
-    time_law_execution_step_count=1000
-    time_law_realization_after_action_count=1000
-    time_law_future_observation_violation_count=0
-    mixed_future_realization_key_count=0
-
-    cajtucu_valid_trace_count=1000
-    cajtucu_invalid_trace_count=0
-    cajtucu_synthetic_market_step_count=0
-
-    requested_order_count=827
-    executed_order_count=577
-    rejected_order_count=250
-    partial_order_count=0
-    requested_notional_base=144.558
-    executed_notional_base=19.26
-    rejected_notional_base=125.298
-    fee_cost_base=0.01926
-    spread_cost_base=0
-    slippage_cost_base=0
-    mean_total_transaction_cost_base=0.00120375
-
-    policy_summary_count=4
-
-      policy_0=base_reserve_only.v1
-        completed_count=4
-        valid_traces=250
-        synthetic_steps=0
-        final_equity=1
-
-      policy_1=equal_weight.v1
-        completed_count=4
-        valid_traces=250
-        synthetic_steps=0
-        final_equity=1.02238
-        rejected_order_count=250
-        reserve_shortfall_count=250
-
-      policy_2=current_weight_no_trade.v1
-        completed_count=4
-        valid_traces=250
-        synthetic_steps=0
-        final_equity=1
-
-      policy_3=kikijyeba.environment.policy.spot_distributional_utility.v1
-        completed_count=4
-        valid_traces=250
-        synthetic_steps=0
-        final_equity=1.01328
-        requested_order_count=327
-        executed_order_count=327
-        rejected_order_count=0
-        fee_cost_base=0.0163079
-        mean_target_weight_error_l1=1.14292e-05
-
-  Report/index digest integrity:
-
-    runtime_replay_experiments.index entry_count=1
-    entry_0_report_digest=a6fcb2d3e17f0c53
-    Runtime Hero computed_report_digest=a6fcb2d3e17f0c53
-    report_digest_match=true
-
-Current interpretation:
-
-  run_cost_aware_validation_rollout_on_real_runtime_job.v1 now has a real
-  green path:
-
-    completed Runtime job
-      -> Marshal rollout plan
-      -> Runtime replay execute
-      -> Cajtucu paper execution with nonzero cost
-      -> zero synthetic-market steps
-      -> zero invalid traces
-      -> Lattice-ready report/index digest binding
-
-  Economic interpretation remains deliberately limited:
-
-    This proves the end-to-end machinery works under cost-aware paper replay.
-    It does not prove alpha, market readiness, PPO readiness, or allocator
-    optimality.
-
-===============================================================================
-Replay Environment Artifact Readiness V1 - Final Lattice Proof Checkpoint
-===============================================================================
-
-Date:
-  2026-06-04
-
-Review request:
-  Please review this as the completion checkpoint for:
-
-    replay_environment_artifact_ready.v1
-
-  The intended claim is narrow:
-
-    Lattice can now prove that a completed Runtime replay produced a durable,
-    Cajtucu-ready replay-environment artifact with clean lineage, bounded replay
-    accounting, nonzero paper execution costs, no synthetic execution markets,
-    clean time-law counters, projection coverage, policy summary coverage, and
-    non-authoritative proof boundaries.
-
-  The intended claim is not:
-
-    profitability, projection economic validity, policy quality, PPO readiness,
-    market readiness, paper-online readiness, or deployment readiness.
-
-Implementation summary:
-
-  Lattice:
-
-    - replay_environment facts are derived from durable Runtime replay reports
-      in the Hero scanner/evaluator paths.
-    - replay_environment_artifact_ready is evaluated as a non-dispatchable
-      artifact_readiness target.
-    - replay_environment_fact_issues now fails closed on missing policy summary
-      evidence, failed replay attempts, incomplete completed+failed accounting,
-      missing digest/profile/policy identity, invalid Cajtucu traces, synthetic
-      execution markets, missing order/cost/fill evidence, leakage counters, and
-      incomplete projection/time-law evidence.
-    - The selected proof fact is lineage-bound and does not give Lattice,
-      Marshal, Runtime, or Cajtucu extra authority.
-
-  Kikijyeba replay environment:
-
-    - replay reports now use:
-
-        schema=kikijyeba.environment.replay.cajtucu_ready_experiment_artifact.v1
-
-    - replay DSL/report identity now binds:
-
-        replay_environment_artifact_schema=cajtucu_ready_replay_artifacts
-        replay_environment_lattice_fact_family=replay_environment
-        replay_environment_lattice_target=replay_environment_artifact_ready
-
-  Tests:
-
-    - Lattice target tests cover valid replay-environment proof plus negative
-      cases for missing policy summary evidence and failed replay attempts.
-    - Lattice exposure tests parse and assert policy_summary_count and
-      failed_count.
-    - Environment contract tests assert the replay DSL/report Lattice binding.
-    - Runtime job-runner tests expect the Cajtucu-ready replay report schema.
-
-Final real Runtime job:
-
-  job_id:
-    cwu_02v_channel_validation_eval_mdn_1800_2050.run.channel_inference_mdn.attempt_000002
-
-  job_dir:
-    /cuwacunu/.runtime/cuwacunu_exec/components/wikimyei.inference.expected_value.mdn/spawns/wsn_3644b457377deea4/jobs/run/cwu_02v_channel_validation_eval_mdn_1800_2050.run.channel_inference_mdn.attempt_000002
-
-  replay_batch_index:
-    /cuwacunu/.runtime/cuwacunu_exec/components/wikimyei.inference.expected_value.mdn/spawns/wsn_3644b457377deea4/jobs/run/cwu_02v_channel_validation_eval_mdn_1800_2050.run.channel_inference_mdn.attempt_000002/artifacts/kikijyeba.environment.replay.v1/runtime_replay_batches.index
-
-Final cost-aware replay report:
-
-  experiment_id:
-    cost_aware_validation_real_job_v1_lattice_ready_final
-
-  report_path:
-    /cuwacunu/.runtime/cuwacunu_exec/components/wikimyei.inference.expected_value.mdn/spawns/wsn_3644b457377deea4/jobs/run/cwu_02v_channel_validation_eval_mdn_1800_2050.run.channel_inference_mdn.attempt_000002/artifacts/cost_aware_validation_real_job_v1_lattice_ready_final.replay.report
-
-  report_digest:
-    3cee86bbfaf228bb
-
-  execution_profile_digest:
-    0c9d5d891455529b0a143065fa89cef99559cc72419c124b770971cc5cc7e56a
-
-  policy_set_digest:
-    df9bb1ba591912b354c254770f1c35d8f52035403978760327b26a084389b007
-
-  key report counters:
-
-    attempted_count=16
-    completed_count=16
-    failed_count=0
-    episode_count=16
-    policy_summary_count=4
-
-    projection_validation_step_count=1000
-    time_law_expected_step_count=1000
-    time_law_future_observation_violation_count=0
-    mixed_future_realization_key_count=0
-
-    cajtucu_valid_trace_count=1000
-    cajtucu_invalid_trace_count=0
-    cajtucu_synthetic_market_step_count=0
-
-    requested_order_count=827
-    executed_order_count=577
-    rejected_order_count=250
-    partial_order_count=0
-    fill_ratio=0.133234
-
-    fee_cost_base=0.01926
-    spread_cost_base=0
-    slippage_cost_base=0
-    mean_total_transaction_cost_base=0.00120375
-
-Final live Lattice target evaluation:
-
-  command:
-
-    /cuwacunu/.build/hero/hero_lattice.mcp \
-      --global-config /cuwacunu/src/config/.config \
-      --tool hero.lattice.evaluate \
-      --args-json '{"operation":"target","target_id":"replay_environment_artifact_ready"}'
-
-  saved_output:
-    /tmp/replay_environment_artifact_ready_eval_final.json
-
-  result:
-
-    satisfied=true
-    blocking_deficit_count=0
-    proof_certificate_check.passed=true
-
-    selected_fact_digest=ea1dd72b9758ec12
-    selected_job_id=cwu_02v_channel_validation_eval_mdn_1800_2050.run.channel_inference_mdn.attempt_000002
-    selected_fact_passed=true
-    selected_fact_lineage_bound=true
-    selected_fact_issues=[]
-
-  Note:
-    The scanner still reports warnings for older stale replay_environment facts
-    left in Runtime history. This is expected audit context. The target proof
-    selected the clean final fact above and has no blocking deficits.
-
-Verification commands run:
-
-  Passed:
-
-    make -C src/tests/bench/kikijyeba/lattice_target -j12 run-test_kikijyeba_lattice_target
-    make -C src/tests/bench/kikijyeba/lattice_exposure -j12 run-test_kikijyeba_lattice_exposure
-    make -C src/tests/bench/kikijyeba/environment -j12 run-test_kikijyeba_environment_contract
-    make -C src/tests/bench/kikijyeba/runtime -j12 run-test_kikijyeba_job_runner
-    make -C src/main/hero -j12 build-lattice-hero
-    make -C src/main/exec -j12 build-cuwacunu-exec
-
-  Also passed:
-
-    live hero.lattice.evaluate replay_environment_artifact_ready
-
-Review questions:
-
-  1. Is this sufficient to accept replay_environment_artifact_ready.v1 as a
-     completed artifact-readiness target?
-
-  2. Are any required Lattice readiness fields still missing before PPO V0?
-
-  3. Should the older stale replay_environment warnings remain as useful audit
-     evidence, or should we eventually add a selector/filter mode for latest
-     clean replay-only proof scans?
-
-  4. Do you agree that the next roadmap item should stay focused on either:
-
-       policy_training_causal_schedule_ready
-
-     or the first PPO V0 policy-adapter contract, with no paper-online/live
-     expansion yet?
+  - objective
+  - in-scope items
+  - out-of-scope items
+  - acceptance criteria
+  - focused build/test commands

@@ -6,6 +6,7 @@
 #include "kikijyeba/environment/output/experience_trace.h"
 #include "kikijyeba/environment/policy/allocation.h"
 #include "kikijyeba/environment/policy/baseline.h"
+#include "kikijyeba/environment/policy/trainable.h"
 #include "kikijyeba/environment/replay/artifact_source.h"
 #include "kikijyeba/environment/replay/bundle_source.h"
 #include "kikijyeba/environment/replay/source.h"

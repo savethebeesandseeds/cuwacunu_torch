@@ -1,25 +1,26 @@
 # Active Roadmap
 
-This is the short operator-facing roadmap. Keep it finite. Do not use this
-file as a history log for completed Hero cleanup, Lattice recovery, Runtime
-replay plumbing, Marshal contract refactors, or Cajtucu paper-engine hardening.
+This is the short operator-facing roadmap. Keep it finite. Do not use this file
+as a history log for completed Hero cleanup, Lattice recovery, Runtime replay
+plumbing, Marshal contract refactors, Cajtucu paper-engine hardening, or
+policy-training anti-leakage work.
 
-Detailed subsystem records live in:
+Subsystem details live in:
 
 ```text
 src/include/kikijyeba/environment/ROADMAP.md
+src/include/cajtucu/ROADMAP.md
 src/include/hero/lattice_hero/lattice/ROADMAP.md
 src/include/hero/marshal_hero/marshal/ROADMAP.md
-src/include/cajtucu/ROADMAP.md
+src/include/hero/runtime_hero/runtime/README.md
 src/include/wikimyei/inference/expected_value/mdn/README.md
-.deprecated/src_legacy/MIGRATION_INVENTORY.md
 ```
 
 ## North Star
 
 ```text
 Runtime executes and writes durable evidence.
-Lattice proves target satisfaction from Runtime evidence.
+Lattice proves explicit target satisfaction from Runtime evidence.
 Marshal prepares bounded handoffs, delegates to Runtime, records, and explains.
 Kikijyeba Environment drives reset/step/reward/trajectory evidence.
 Wikimyei owns representation, belief, and policy/allocation math.
@@ -39,12 +40,9 @@ Cajtucu is not a policy, evaluator, readiness oracle, or live-capital authority.
 Tsodao is not an optimizer; it protects selected settings after evidence exists.
 ```
 
-## Stable Checkpoint
+## Current Stable Baseline
 
-Status: current base.
-
-The Hero public surfaces have been collapsed and tested enough to use as a
-stable checkpoint:
+Hero public surfaces are intentionally small:
 
 ```text
 Config Hero:
@@ -71,530 +69,440 @@ Marshal Hero:
   hero.marshal.inspect
 ```
 
-Do not reopen Hero cleanup as an umbrella goal. Future Hero changes must be
-finite, local, and tied to one tool family or one public contract.
-
-Current config-surface baseline:
+Stable pre-PPO contracts:
 
 ```text
-Runtime Hero uses one policy file:
-  src/config/hero.runtime.dsl
+cajtucu.execution.paper.v1
+  Paper execution, ledger mutation, rejects, partials, costs, and traces.
 
-Runtime profile selection order:
-  --profile
-  [HERO].runtime_hero_profile
-  runtime_profile in the policy file
+kikijyeba.environment.replay.v1
+  Historical reset/step/reward environment with Cajtucu paper execution.
 
-Checked-in profiles:
-  operator_default
-    confirmed non-live wave/train execution enabled
-    guarded developer reset available
-
-  long_train_operator
-    confirmed non-live wave/train execution enabled with longer timeout
-    developer reset disabled
-
-Runtime waves use one catalog:
-  src/config/hero.runtime.wave.dsl
-
-Wave selection order:
-  [HERO].runtime_wave_id
-  WAVE_SELECTION.ACTIVE_WAVE_ID in the catalog
-  the only WAVE_SETTINGS block in legacy single-block fixtures
-
-Checked-in wave ids include:
-  cwu_02v_channel_validation_eval_mdn_1800_2050
-  validation_eval_channel_mdn
-  train_core_vicreg
-  train_core_mtf_jepa_mae_vicreg
-  train_core_channel_mdn
-  policy_training_pre_ppo_noop
-
-Protocol identity binds:
-  GRAPH_TOPOLOGY
-  NODELIFT
-  REPRESENTATION
-  INFERENCE
-  OBSERVER
-  ALLOCATION_POLICY
-  REPRESENTATION_CONTRACT
-
-Policy parameter DSLs still own policy parameters.
-Marshal rollout still owns comparison policy sets and Cajtucu execution profile.
-Kikijyeba replay DSL still owns world/reset-step/time-law/reward contract.
-Hero Runtime/Marshal/Lattice headers live under `src/include/hero/*_hero`.
-Kikijyeba keeps protocol, topology, and replay environment contracts.
-```
-
-## Active Sequence
-
-### 1. Cost-Aware Paper Replay Rollout V1
-
-Goal:
-
-```text
-completed Runtime job
-  -> hero.marshal.rollout
-  -> Runtime replay
-  -> Kikijyeba replay environment
-  -> Cajtucu paper execution
-  -> trajectory/report artifacts
-  -> Lattice-readable evidence
-```
-
-Milestone name:
-
-```text
 cost_aware_paper_replay_rollout.v1
-```
+  Completed Runtime job -> Marshal rollout -> Runtime replay -> Kikijyeba
+  historical replay -> Cajtucu paper execution -> report and experience trace.
+  Validation rollouts bind nonzero execution costs, profile/policy digests,
+  bounded steps/parallelism, direct-pair feasibility counters, transaction-cost
+  anatomy, target tracking, ledger integrity, time-law counters, and explicit
+  non-authority flags.
 
-Acceptance:
-
-- Rollouts run over multiple validation windows from completed Runtime job
-  evidence.
-- Environment assembly is `kikijyeba.environment.replay.v1`.
-- Execution backend is `cajtucu.execution.paper.v1`.
-- Cajtucu paper execution costs are nonzero and profile-bound.
-- Execution profile digest is recorded in the rollout plan, Runtime replay
-  handoff, report, and Marshal receipt/summary.
-- Synthetic direct-edge markets are forbidden for validation rollouts; research
-  replay must opt in explicitly and mark validation satisfaction false.
-- Required policies include base reserve, current-weight/no-trade,
-  equal-weight, and deterministic Wikimyei SDU.
-- Baseline policies and deterministic Wikimyei policy share the same execution
-  profile, reward contract, source range, and accounting assumptions.
-- Reports separate projection metrics, portfolio metrics, and execution
-  feasibility metrics.
-- Reports include policy-wise final equity, total log growth, drawdown,
-  requested/executed/rejected turnover, transaction costs, target tracking
-  error, invalid trace count, rejects, partial fills, and synthetic-market step
-  count.
-- Reports include Cajtucu trace presence/validity counters and cost anatomy:
-  fee, spread, slippage, and total transaction cost.
-- Aggregate metrics declare scope: step, episode, policy, bundle, or experiment.
-- Time-law counters remain explicit and fail closed on leakage.
-- Marshal does not claim Lattice satisfaction, policy quality, training
-  authority, market readiness, or deployment readiness.
-
-### 2. Environment Lattice Targets
-
-Goal:
-
-```text
-Add policy-neutral Lattice evidence and narrow proof targets for replay
-environment health before any trainable policy is introduced.
-```
-
-The cost-aware rollout report is the evidence producer. The next milestone is
-to make Lattice read those durable Runtime/Kikijyeba/Cajtucu artifacts and
-prove only artifact readiness.
-
-Initial targets/facts should cover:
-
-- no future observation leakage
-- train/validation/test range separation
-- resolved cursor identity and accepted range identity
-- action schema identity
-- reward definition identity
-- Cajtucu execution trace validity
-- rollout completeness and boundedness
-- projection-validation coverage
-- policy identity and method identity
-
-The first target is now active as a non-dispatchable artifact proof:
-
-```text
 replay_environment_artifact_ready
+  Lattice artifact proof for replay report completeness, lineage, time law,
+  projection counters, and Cajtucu execution evidence.
+
+policy_training_artifact_ready
+  Lattice artifact proof for policy-training identity, range separation,
+  parent evidence, selector/test discipline, and causal schedule evidence.
+
+kikijyeba.runtime.policy_training_job_contract.v1
+  Runtime policy-training handoff contract with bounded no-op pre-PPO execute
+  smoke. PPO execution is still refused.
+
+causal_walk_forward_training.v1
+  Time-aware anti-leakage schedule. A snapshot used inside block B_k must have
+  usable_from_key <= B_k.block_cursor_begin.
 ```
 
-It proves artifact completeness, lineage, schema identity, report digest
-identity, source order, bounded parallelism, time-law cleanliness, and required
-projection and Cajtucu counters. It does not prove profitability, policy
-quality, projection economic validity, market readiness, or deployment
-readiness.
+Runtime handoffs can carry proof-clean checkpoint inputs as launch-time
+overrides. Operators should not copy `latest_satisfying` resolutions into static
+`.jkimyei` files.
 
-Implementation checkpoint:
+## Remaining Before PPO
+
+### 1. RL Policy Contract Design V1
+
+Milestone:
 
 ```text
-Goal: replay_environment_artifact_ready.v1
-
-Status:
-Implemented as a Lattice artifact-readiness target and fact proof path.
-
-Bound evidence:
-- replay report digest and runtime/environment/experiment identity
-- execution_profile_digest and policy_set_digest
-- time-law step counters and leakage counters
-- projection-validation counters
-- Cajtucu trace validity, reject, synthetic-market, order, notional, cost, and
-  target-tracking counters
-- authority denials
-
-Verified:
-- Lattice scanner/fact summary tests
-- Lattice target proof tests
-- environment replay contract tests
-- runtime job-runner replay report tests
-- Lattice Hero build
-- live hero.lattice.evaluate proves replay_environment_artifact_ready from a
-  completed Runtime job's cost-aware Cajtucu replay report
+rl_policy_contract_design.v1
 ```
-
-### 3. Policy Training Artifact Contract V1
 
 Goal:
 
 ```text
-Define the artifact and anti-leakage contract for trainable policies before
-implementing PPO.
+Define the trainable-policy game before PPO exists:
+
+  what a learned policy may observe
+  what raw policy output means
+  how raw output becomes a valid target-weight action
+  what reward contract the environment computes
+  how causality, artifact identity, and execution cost bind into the policy
+  contract
 ```
 
-Milestone name:
+This milestone should produce real contract types, builders, adapters, identity
+strings, and tests using fake trainable policies. It should not implement PPO.
+
+Current implementation checkpoint:
 
 ```text
-policy_training_artifact_contract.v1
+policy_input_t exists as kikijyeba.environment.policy_input.v1
+raw_policy_output_t emits node_weight_logits[A]
+target_node_weights_simplex.v1 adapts logits into target_node_weights[A]
+trainable_policy_adapter_iface_t exists with a fake trainable policy fixture
+wikimyei.policy.portfolio.graph_node_allocation.{dsl,net,jkimyei} exists
+policy_input_t binds accounting_numeraire_node_id and causal_schedule_digest
+Runtime/Lattice policy-training evidence binds policy_input_schema_id,
+  action_adapter_id, and reward_contract_id
+PPO execution remains disabled
 ```
 
-The policy artifact contract must bind:
+Canonical vocabulary:
 
 ```text
-policy_id
-policy_kind
-policy_architecture_digest
-training_config_digest
-training_range_digest
-validation_range_digest
-test_range_digest
-environment_contract_id
-observation_schema_digest
-action_schema_digest
-reward_contract_digest
-execution_profile_digest
-training_schedule_mode
-causal_schedule_schema_id
-causal_schedule_digest
-causal_schedule_cursor_key_kind
-causal_schedule_no_future_snapshot_use_source
-causal_schedule_no_future_snapshot_use
-normalization_fit_range_digest
-replay_buffer_source_range_digest
-early_stopping_policy_digest
-hyperparameter_selection_policy_digest
-random_seed
-parent_checkpoint_digest
-checkpoint_digest
-parent forecast/observer/allocation/environment evidence digests
+s_t
+  hidden world state: replay cursor, ledger internals, hidden future frames,
+  and environment bookkeeping
+
+o_t
+  observation_t: full time-t Kikijyeba observation
+
+p_t
+  NodeLiftPotentialBelief: lifted potential belief, not directly tradable
+
+b_t
+  AllocationBelief: post-projection, portfolio-ready belief
+
+x_t
+  policy_input_t: curated, versioned, causal view for trainable policies
+
+u_t
+  raw_policy_output_t: unconstrained neural output
+
+a_t
+  action_t: target graph-node weights over the allocation universe. The
+  accounting numeraire is one graph node with an accounting/valuation role, not
+  a separate cash symbol or policy-output scalar outside the graph.
+
+e_t
+  Cajtucu execution_trace_t: fills, rejects, partials, costs, and ledger
+  mutation
+
+r_{t+1}
+  reward_t: computed after execution and realization
+
+I_t
+  step_info_t/evidence: diagnostics, projection validation, costs, warnings,
+  and failures
 ```
 
-Hard rule:
+Expected control path:
 
 ```text
-Training may see only training ranges.
-Validation may compare or select under explicit selector policy.
-Test remains sealed until final report.
-
-For readiness-grade policy training, every representation, MDN,
-observer/belief, normalization, calibration, covariance/coupler, replay-buffer,
-reward-baseline, and policy snapshot used in a rollout block must have been
-usable before that block began. Train/validation/test disjointness is necessary,
-but not sufficient.
+observation_t
+  -> make_policy_input(observation_t)
+  -> policy_input_t
+  -> trainable policy / fake trainable policy
+  -> raw_policy_output_t
+  -> target_node_weights_simplex action adapter
+  -> action_t
+  -> Cajtucu paper execution
+  -> ledger-based reward
 ```
 
-No optimizer state, normalization, calibration, covariance/coupler, reward
-baseline, replay buffer, early-stop decision, or hyperparameter choice may be
-fit using future validation/test information. Target-label, reward, and
-trajectory availability must be no later than the artifact `usable_from_key`.
+Deliverables:
 
-Full-window same-range upstream training is quarantined as:
+- `policy_input_t` and schema id:
+
+  ```text
+  kikijyeba.environment.policy_input.v1
+  ```
+
+  The input should be a curated causal view, not raw `observation_t`. It should
+  include `AllocationBelief`-derived features, portfolio state, execution/cost
+  state, previous action/target context, masks, and artifact identity.
+
+- `policy_input_builder`:
+
+  ```text
+  observation_t -> policy_input_t
+  ```
+
+  The builder must enforce observation time law, graph identity, allocation-node
+  order, accounting-numeraire identity, snapshot/artifact identity, and no
+  access to current-action `step_info_t`.
+
+- `raw_policy_output_t`:
+
+  A minimal trainable-policy output representation for target-node-weight
+  policies. PPO V0 should start with one logit per target graph node:
+
+  ```text
+  node_weight_logits: [M]
+  ```
+
+  A two-head exposure/allocation adapter remains possible later, but it should
+  not hard-code special reserve treatment into the default contract. The model
+  receives risk/cost/liquidity features per node and should learn how much
+  weight to place on the accounting-numeraire node.
+
+- target-node-weight action adapter:
+
+  ```text
+  kikijyeba.environment.action_adapter.target_node_weights_simplex.v1
+  ```
+
+  The adapter converts raw neural output into a valid long-only spot target over
+  graph nodes. The reserve/settlement asset is included in the same target
+  vector as a graph node; it is not a separate policy-output scalar:
+
+  ```text
+  target_node_ids [M] include allocatable nodes and the accounting numeraire node
+  target_node_weights [M] >= 0
+  sum(target_node_weights) = 1
+  accounting_numeraire_node_id is metadata from graph/BasePolicy/global
+  accounting role binding
+  invalid/nontradable/executable masks are respected
+  action_schema_id = kikijyeba.environment.action.target_node_weights.v1
+  ```
+
+- `trainable_policy_adapter_iface_t`:
+
+  A trainable-policy wrapper compatible with the existing
+  `policy_adapter_iface_t::act(observation_t) -> action_t`, while making the
+  trainable path explicit:
+
+  ```text
+  observation_t -> policy_input_t -> raw_policy_output_t -> action_t
+  ```
+
+- named reward contract:
+
+  ```text
+  kikijyeba.environment.reward.post_execution_ledger_log_growth_cost_drawdown.v1
+  ```
+
+  The initial formula may match the existing decomposed reward, but the reward
+  identity must be bindable by Runtime and Lattice before PPO.
+
+- fake trainable policy tests:
+
+  Use deterministic fake/random-logit trainable policies to prove the contract
+  runs through Kikijyeba replay and Cajtucu paper execution without adding PPO.
+
+Recommended `policy_input_t` contents:
+
+- identity and causality:
+
+  ```text
+  policy_input_schema_id
+  environment_assembly_id
+  observation_anchor_key
+  observation_anchor_index
+  knowledge_timestamp_ms
+  graph_order_fingerprint
+  allocation_belief_digest or artifact identity
+  execution_profile_digest
+  reward_contract_id
+  causal_schedule_digest, when in policy-training context
+  snapshot_family_digest, when in policy-training context
+  ```
+
+- universe:
+
+  ```text
+  target_node_ids [M]
+  accounting_numeraire_node_id, as role metadata only
+  valid_mask [M]
+  tradable_mask [M]
+  executable_mask [M]
+  ```
+
+- per-node features:
+
+  ```text
+  expected_log_return
+  expected_arithmetic_return
+  volatility / marginal variance
+  downside metrics: VaR, CVaR, adverse excursion, downside probability
+  confidence
+  liquidity_score
+  capacity_weight_limit
+  linear_cost
+  quadratic_impact
+  projection_validation_score
+  residual_quality_score
+  surprise/calibration scores, only when causally available
+  current_weight
+  previous_target_weight
+  previous_action_delta
+  ```
+
+- global features:
+
+  ```text
+  current accounting-numeraire node weight
+  equity_value_numeraire
+  drawdown
+  total non-numeraire exposure
+  previous turnover
+  previous transaction cost
+  execution profile/cost summary
+  ```
+
+- optional risk/distribution blocks:
+
+  ```text
+  covariance [A,A]
+  correlation [A,A]
+  compact downside/scenario summaries
+  fixed-size scenario sketch
+  ```
+
+Default input stance:
 
 ```text
-offline_full_window_research
+PPO V0 should not consume raw MDN tensors by default.
+PPO V0 should use AllocationBelief-derived features plus compact
+distributional/risk summaries.
+Raw MDN or full NodeLiftPotentialBelief features require an explicit future
+policy_input schema revision.
 ```
 
-It can remain useful for diagnostics and ablations, but it cannot satisfy
-policy_training_artifact_ready, policy-training readiness, rollout readiness, or
-market-readiness claims.
+Discussion gates:
 
-Implementation checkpoint:
+At the end of this milestone, pause and decide:
+
+- Is `AllocationBelief` plus compact risk/downside summary enough for PPO V0,
+  or should the V0 input include full scenario-bank features?
+- Should NodeLiftPotentialBelief-derived mixture features enter V0 as optional
+  summaries, or wait for `policy_input.v2`?
+- Should invalid neural output always be projected into a valid action by the
+  adapter, or should some invalid outputs be passed through and penalized by the
+  environment?
+- Should `target_node_weights_simplex.v1` remain a pure masked-softmax adapter,
+  or should a later contract add explicit caps/projections before PPO V0?
+- Should rejected notional, partial unfilled notional, or target tracking error
+  be active reward penalties in V1, or report-only counters until after PPO
+  diagnostics?
+- Should reward normalization be an optimizer-local transform only, or become a
+  first-class policy-training artifact with its own identity immediately?
+- Should PPO V0 use a fixed risky universe per checkpoint only, or should the
+  contract prepare for variable-size graph policies now?
+
+Acceptance:
+
+- A fake trainable policy can consume `policy_input_t`, emit
+  `raw_policy_output_t`, adapt to `action_t`, and step through
+  `kikijyeba.environment.replay.v1` with Cajtucu paper execution.
+- `policy_input_t` contains no future realized returns and no current-action
+  `step_info_t`.
+- `policy_input_t` rejects missing or mismatched graph/order/accounting-numeraire
+  identity.
+- Nontradable or non-executable assets are masked before action adaptation.
+- Fully masked action universes fail closed; there is no hidden special reserve
+  fallback in the policy-output adapter.
+- Raw NaN or non-finite policy output fails closed.
+- Adapted target node weights are finite, long-only, and sum to one within
+  tolerance.
+- The trainable-policy surface has no separate cash output scalar.
+- Reward identity is present in reports/artifacts and maps to the current
+  ledger/post-realization reward computation.
+- Reward uses actual Cajtucu ledger/execution evidence, not requested target
+  fantasy.
+- Policy-training artifacts can bind `policy_input_schema_id`,
+  `action_adapter_id`, and `reward_contract_id`.
+- PPO remains unimplemented and explicitly refused.
+
+Out of scope:
+
+- PPO optimizer.
+- policy quality claims.
+- reward tuning against validation performance.
+- variable-universe neural architecture, unless explicitly accepted as a V0
+  design decision.
+- paper-online.
+- live execution.
+
+### 2. Pre-PPO Full Pipeline Rehearsal
+
+Milestone:
 
 ```text
-Goal: policy_training_artifact_contract.v1
-
-Status:
-Implemented at the Lattice artifact-readiness layer.
-
-Bound evidence:
-- policy identity, kind, architecture digest, config digest, random seed, parent
-  checkpoint digest, and produced checkpoint digest
-- training, validation, and test range digests
-- environment, observation, action, reward, and Cajtucu execution profile
-  identities
-- causal walk-forward schedule mode/schema/digest and no-future-snapshot-use
-  evidence derived from artifact fit/use ledgers
-- typed cursor-key ordering and rejected opaque cursor keys
-- normalization-fit range, replay-buffer source range, reward-baseline
-  isolation, label/reward/trajectory availability, early-stopping policy,
-  hyperparameter selector policy, and sealed test-access evidence
-- parent forecast-eval, observer-belief, allocation-engine, and replay-
-  environment fact digests
-- authority denials
-
-Verified:
-- Lattice exposure scanner/fact summary tests
-- Lattice target proof tests
-- active Lattice target policy_training_artifact_ready
+pre_ppo_full_pipeline_rehearsal.v1
 ```
-
-PPO or any trainable policy still must enter as a Runtime-owned job before
-Marshal can dispatch it. Runtime now has a narrow pre-PPO
-`noop_policy_training.v1` executable smoke path that writes policy-training
-artifacts and Lattice-readable facts without optimizing a policy. Marshal
-coordinates bounded handoffs, Runtime owns execution, and Lattice reads the
-artifacts.
-
-### 4. Runtime Policy-Training Job Contract V1
 
 Goal:
 
 ```text
-Define the bounded Runtime contract and pre-PPO smoke execution path for future
-policy_training artifacts without giving Marshal, Lattice, or the policy itself
-hidden execution or selection authority.
-```
-
-Milestone name:
-
-```text
-runtime_policy_training_job_contract.v1
-```
-
-The Runtime contract should define:
-
-- job kind and producer component family
-- training/validation/test range inputs and disjointness checks
-- environment contract id and replay batch identity
-- observation/action/reward/execution profile digests
-- causal walk-forward schedule mode/schema/digest
-- causal schedule cursor-key ordering and derived no-future-snapshot source
-- max episodes, workers, attempts, and wall-clock budget
-- resume ledger and idempotency identity
-- policy checkpoint artifact schema and digest rules
-- selector policy and sealed-test access rules
-- terminal stop condition and post-run Lattice target to recheck
-
-Implementation checkpoint:
-
-```text
-Status:
-Implemented as a Runtime contract plus pre-PPO no-op executable smoke surface.
-
-Runtime additions:
-- runtime_job_kind_t::policy_training
-- job manifest naming/chain helpers for policy_training
-- kikijyeba.runtime.policy_training_job_contract.v1
-- hero.runtime.run operation=wave requested_mode=plan|dry_run|execute with
-  policy-training contract fields
-- deterministic contract digest and contract packet
-- execute-mode support only for policy_kind=noop_policy_training.v1
-- execute-mode PPO refusal:
-  E_RUNTIME_POLICY_TRAINING_PPO_NOT_IMPLEMENTED
-- no-op checkpoint, policy_training.report, terminal Runtime facts, and
-  runtime.policy_training.fact
-
-Contract checks:
-- policy id/kind/architecture/config digests are required
-- protocol/source identity, graph fingerprint, selector policy digest, parent
-  checkpoint digest, parent evidence digests, and random seed are required
-- training, validation, and test range digests are required and must differ
-- normalization fit range must equal training range
-- replay buffer source range must equal training range
-- observation/action/reward/execution profile digests are required
-- training_schedule_mode must be causal_walk_forward_training.v1 for readiness
-- causal schedule schema/digest/cursor-key kind are required
-- causal_schedule_no_future_snapshot_use_source must be
-  derived_from_artifact_fit_use_ledgers
-- causal_schedule_no_future_snapshot_use must be true
-- offline_full_window_research cannot satisfy readiness
-- early-stopping and hyperparameter-selection policy digests are required
-- max episodes, max steps, max parallel jobs, and wall-clock bounds must be
-  positive
-- live execution is forbidden
-
-Verified:
-- Runtime Hero focused wave/rollout/policy-training handler test
-- Runtime MCP schema compatibility
-- live hero.runtime.run operation=wave policy-training positive plan smoke
-- live noop policy-training execute smoke
-- live PPO execute refusal smoke
-- live train/validation-overlap refusal smoke
-```
-
-No PPO optimizer exists yet. Runtime can validate the handoff contract and write
-a no-op pre-PPO checkpoint artifact for plumbing verification, but it does not
-optimize PPO, select policies, or claim Lattice target satisfaction. Marshal
-still cannot train. Lattice proves only artifact completeness and anti-leakage
-structure, not policy quality.
-
-### 5. Causal Policy-Training Schedule Contract V1
-
-Goal:
-
-```text
-Prevent future-within-training leakage before PPO or any other trainable policy
-can produce readiness evidence.
-```
-
-Milestone name:
-
-```text
-causal_policy_training_schedule_contract.v1
-```
-
-Operative law:
-
-```text
-At block B_k start:
-  use SnapshotFamily_{k-1}
-
-During B_k:
-  observations use prior representation/MDN/observer snapshots
-  actions use the prior policy snapshot
-  Cajtucu executes under the bound paper execution profile
-  rewards use the bound reward contract
-  trajectory evidence is recorded
-
-After B_k closes:
-  representation, MDN, observer fitted components, and policy may be updated
-  to SnapshotFamily_k
-
-At B_{k+1}:
-  SnapshotFamily_k may become usable
-```
-
-Required contract fields:
-
-```text
-artifact_fit_ledger:
-  artifact_digest
-  artifact_kind
-  fit_input_cutoff_key
-  fit_target_cutoff_key
-  normalization_cutoff_key
-  calibration_cutoff_key
-  covariance_fit_cutoff_key
-  replay_buffer_cutoff_key
-  fit_cutoff_key
-  target_label_available_from_key
-  reward_available_from_key
-  trajectory_usable_from_key
-  usable_from_key
-  embargo_policy_id
-  embargo_steps
-  training_block_id
-  parent_artifact_digests
-
-artifact_use_ledger:
-  block_id
-  block_cursor_begin
-  block_cursor_end
-  representation_snapshot_digest_used
-  mdn_snapshot_digest_used
-  observer_belief_snapshot_digest_used
-  policy_snapshot_digest_used
-  normalization_snapshot_digest_used
-  calibration_snapshot_digest_used
-  covariance_coupler_snapshot_digest_used
-  replay_buffer_snapshot_digest_used
-  reward_baseline_snapshot_digest_used
-  no_future_snapshot_use_source
+fresh workspace/build
+  -> train representation/MDN through Runtime waves
+  -> materialize proof-clean checkpoint handoffs
+  -> run fake trainable policy contract tests
+  -> run no-op policy-training contract smoke
+  -> run cost-aware paper replay rollout
+  -> prove replay and policy-training artifact readiness with Lattice
 ```
 
 Acceptance:
 
-- same-block snapshot use is rejected
-- snapshots with usable_from_key after block_cursor_begin are rejected
-- cursor keys require explicit ordering kind; opaque keys are rejected
-- no_future_snapshot_use is derived from artifact fit/use ledgers rather than
-  trusted as a caller assertion
-- normalization, calibration, covariance/coupler, replay-buffer, and
-  reward-baseline future-use are rejected
-- target-label, reward, and trajectory availability must be no later than the
-  artifact `usable_from_key`
-- schedule-less policy-training contracts are rejected
-- offline_full_window_research is allowed only as non-readiness diagnostic
-  evidence
-- batch_final_refit_candidate must declare validation_no_longer_proof and
-  sealed_test_required
-- Lattice policy_training_artifact_ready requires causal schedule identity and
-  no_future_snapshot_use
+- The run starts from a clean enough build/artifact state to expose hidden
+  dependency or stale-artifact assumptions. A `dev_nuke`-style cleanup may be
+  used if the operator chooses.
+- Runtime waves are launched through Runtime Hero, preferably via Marshal
+  handoff when a Lattice target is involved.
+- Direct `cuwacunu_exec` use remains allowed for debugging but emits a warning
+  that it bypasses Marshal/Lattice guardrails.
+- Representation and MDN training use launch-time checkpoint handoff overrides
+  where upstream proof-clean inputs are required.
+- `rl_policy_contract_design.v1` contracts are present and exercised by fake
+  trainable policy tests before any PPO optimizer exists.
+- Causal schedule evidence is present for policy-training artifacts.
+- `offline_full_window_research` does not satisfy readiness.
+- Lattice proves `replay_environment_artifact_ready` and
+  `policy_training_artifact_ready` from durable artifacts.
+- PPO remains unimplemented and explicitly refused.
 
-### 6. PPO V0
+The rehearsal is about system correctness and anti-leakage plumbing, not market
+performance.
 
-Goal:
+## Deferred Until After Pre-PPO Rehearsal
 
-```text
-Implement PPO as a policy inside the existing environment, not as a separate
-simulator or shortcut around Cajtucu/Runtime/Lattice.
-```
+### PPO V0
 
-PPO must consume the same policy input and emit the same action:
+PPO must enter as a policy inside the existing Runtime/Kikijyeba/Cajtucu
+contracts, not as a private simulator.
 
-```text
-observation_t or narrowed policy_input_t
-  -> action_t = target risky-node weights + graph-node reserve weight
-```
-
-Acceptance:
-
-- PPO training runs only on bounded historical training windows.
-- PPO training must use causal_walk_forward_training.v1 schedule evidence.
-- PPO rollout/evaluation uses Runtime replay and Cajtucu paper execution.
-- Baselines and PPO share the same reward and execution profile.
-- Lattice proves training/validation/test separation and policy artifact
-  lineage.
-- Marshal coordinates bounded handoffs but does not train, select, prove, or
-  tune policies by itself.
-
-### 7. Tsodao Settings Protection
-
-Goal:
+Required shape:
 
 ```text
-Introduce Tsodao after trainable-policy artifacts and selection evidence exist,
-so approved settings cannot drift silently.
+observation_t
+  -> policy_input_t
+  -> PPO policy adapter
+  -> raw_policy_output_t
+  -> target_node_weights_simplex action adapter
+  -> action_t = target graph-node weights, including the accounting-numeraire node
 ```
 
-Tsodao should protect:
+PPO acceptance will require:
 
-- approved environment profiles
-- approved Cajtucu execution profiles
-- approved reward definitions
-- approved policy-training configs
-- approved hyperparameters
-- approved selector/evaluation split policies
+- Runtime-owned training job kind.
+- `rl_policy_contract_design.v1` accepted.
+- `policy_input_schema_id`, `action_adapter_id`, and `reward_contract_id`
+  bound into policy-training artifacts.
+- `causal_walk_forward_training.v1` schedule evidence.
+- same reward/action/execution contracts as replay baselines.
+- Cajtucu paper execution for rollout/evaluation.
+- Lattice artifact proofs for range separation, parent evidence, checkpoint
+  lineage, and no-future snapshot use.
+- Marshal handoff only; Marshal does not train, select, prove, or tune.
+
+### Tsodao Settings Protection
+
+Tsodao should protect approved settings after evidence exists:
+
+- environment profiles
+- Cajtucu execution profiles
+- reward definitions
+- policy-training configs and hyperparameters
+- selector/evaluation split policies
 - promotion criteria and evidence digests
 
-Tsodao does not search for optimal settings. It records and protects settings
-that were selected by an explicit evidence process.
+Tsodao records and protects selected settings. It does not search for settings.
 
-For V1, Tsodao should protect final promoted settings and record candidate
-setting digests as lineage. It should not guard every experimental candidate.
+### Paper-Online Readiness Contract V1
 
-### 8. Paper-Online Readiness Contract V1
-
-Goal:
-
-```text
-Define what must be true before any online paper session starts.
-```
-
-Milestone name:
-
-```text
-paper_online_readiness_contract.v1
-```
-
-Required design points:
+Before online paper sessions, define:
 
 - market data staleness policy
 - persistent paper ledger recovery
@@ -603,16 +511,14 @@ Required design points:
 - session start/stop semantics
 - direct-edge universe validation
 - synthetic execution markets forbidden
-- Cajtucu paper execution profile locked by digest
+- locked Cajtucu execution profile digest
 - reward/report artifact path policy
 - operator abort/kill-switch semantics
 - clock and timestamp policy
 
 This is a readiness contract only. It does not run paper-online.
 
-### 9. Paper-Online
-
-Goal:
+### Paper-Online
 
 ```text
 live market stream
@@ -623,17 +529,10 @@ live market stream
   -> Runtime/Lattice/Marshal evidence
 ```
 
-No real capital. The same action, execution, ledger, reward, and evidence
-contracts from replay must be reused.
+No real capital. Replay contracts for action, execution, ledger, reward, and
+evidence must be reused.
 
-### 10. Live
-
-Goal:
-
-```text
-Only after replay, policy training, Tsodao settings protection, paper-online,
-and Lattice readiness proofs are mature.
-```
+### Live
 
 Live requires:
 
@@ -650,7 +549,8 @@ Live requires:
 Do not start these without a new finite goal:
 
 ```text
-PPO before policy-training anti-leakage contract
+PPO before rl_policy_contract_design.v1
+PPO before pre-PPO full pipeline rehearsal
 paper-online before replay evidence and Cajtucu traces are mature
 live broker APIs before paper-online
 allocator tuning against one validation window

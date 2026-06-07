@@ -131,39 +131,39 @@ template <typename KeyT>
   return descriptor->coord;
 }
 
-struct direct_base_edge_projection_t {
+struct direct_reference_edge_projection_t {
   edge_index_t graph_edge_index{-1};
   std::string edge_id{};
-  std::string risky_node_id{};
+  std::string node_id{};
   std::string reference_node_id{};
   double sign{0.0};
 };
 
-[[nodiscard]] inline direct_base_edge_projection_t
-resolve_direct_base_edge(const market_graph_t &graph,
-                         const std::string &risky_node_id,
-                         const std::string &reference_node_id) {
+[[nodiscard]] inline direct_reference_edge_projection_t
+resolve_direct_reference_edge(const market_graph_t &graph,
+                              const std::string &node_id,
+                              const std::string &reference_node_id) {
   graph.validate();
-  std::optional<direct_base_edge_projection_t> forward;
-  std::optional<direct_base_edge_projection_t> reverse;
+  std::optional<direct_reference_edge_projection_t> forward;
+  std::optional<direct_reference_edge_projection_t> reverse;
   for (edge_index_t e = 0; e < graph.num_edges(); ++e) {
     const auto edge = graph.directed_edge(e);
-    if (edge.base_node_id == risky_node_id &&
+    if (edge.base_node_id == node_id &&
         edge.quote_node_id == reference_node_id) {
-      forward = direct_base_edge_projection_t{
+      forward = direct_reference_edge_projection_t{
           .graph_edge_index = e,
           .edge_id = edge.edge_id,
-          .risky_node_id = risky_node_id,
+          .node_id = node_id,
           .reference_node_id = reference_node_id,
           .sign = 1.0,
       };
     }
     if (edge.base_node_id == reference_node_id &&
-        edge.quote_node_id == risky_node_id) {
-      reverse = direct_base_edge_projection_t{
+        edge.quote_node_id == node_id) {
+      reverse = direct_reference_edge_projection_t{
           .graph_edge_index = e,
           .edge_id = edge.edge_id,
-          .risky_node_id = risky_node_id,
+          .node_id = node_id,
           .reference_node_id = reference_node_id,
           .sign = -1.0,
       };
@@ -175,9 +175,9 @@ resolve_direct_base_edge(const market_graph_t &graph,
   if (reverse.has_value()) {
     return *reverse;
   }
-  throw std::runtime_error("[replay_source] missing direct edge for risky "
-                           "asset/reference pair: " +
-                           risky_node_id + "/" + reference_node_id);
+  throw std::runtime_error(
+      "[replay_source] missing direct edge for node/reference pair: " +
+      node_id + "/" + reference_node_id);
 }
 
 [[nodiscard]] inline std::unordered_map<std::string, std::int64_t>
@@ -213,11 +213,10 @@ make_batch_edge_index(const std::vector<std::string> &edge_ids) {
 }
 
 inline void require_v1_unified_base_policy(const belief::BasePolicy &policy) {
-  if (policy.accounting_numeraire_id != policy.reserve_asset_id ||
-      policy.accounting_numeraire_id != policy.settlement_asset_id ||
+  if (policy.accounting_numeraire_id != policy.settlement_asset_id ||
       policy.accounting_numeraire_id != policy.projection_reference_node_id) {
     throw std::runtime_error(
-        "[replay_source] V1 requires accounting, settlement, reserve, and "
+        "[replay_source] V1 requires accounting, settlement, and "
         "projection reference nodes to be the same graph node");
   }
 }
@@ -411,10 +410,10 @@ inline void validate_replay_frame_build_options(
 
 struct direct_edge_projection_plan_t {
   std::string truth_id{kDirectEdgeRealizedReturnTruthV1};
-  std::vector<std::string> risky_node_ids{};
+  std::vector<std::string> target_node_ids{};
   std::string reference_node_id{};
-  std::vector<std::string> edge_ids{};
-  torch::Tensor signs{}; // [A], +1 for asset/reference, -1 for reference/asset
+  std::vector<std::string> edge_ids{}; // empty for the reference node itself
+  torch::Tensor signs{}; // [N], +1 node/reference, -1 reference/node, 0 self
 };
 
 struct replay_episode_bundle_t {
@@ -444,14 +443,19 @@ make_direct_edge_projection_plan(
   }
 
   direct_edge_projection_plan_t out{};
-  out.risky_node_ids = spec.risky_node_ids;
+  out.target_node_ids = spec.target_node_ids;
   out.reference_node_id = spec.base_policy.projection_reference_node_id;
-  out.edge_ids.reserve(spec.risky_node_ids.size());
+  out.edge_ids.reserve(spec.target_node_ids.size());
   std::vector<double> signs;
-  signs.reserve(spec.risky_node_ids.size());
-  for (const auto &risky_node_id : spec.risky_node_ids) {
-    const auto projection = replay_source_detail::resolve_direct_base_edge(
-        graph, risky_node_id, spec.base_policy.projection_reference_node_id);
+  signs.reserve(spec.target_node_ids.size());
+  for (const auto &node_id : spec.target_node_ids) {
+    if (node_id == spec.base_policy.projection_reference_node_id) {
+      out.edge_ids.emplace_back();
+      signs.push_back(0.0);
+      continue;
+    }
+    const auto projection = replay_source_detail::resolve_direct_reference_edge(
+        graph, node_id, spec.base_policy.projection_reference_node_id);
     out.edge_ids.push_back(projection.edge_id);
     signs.push_back(projection.sign);
   }
@@ -498,9 +502,9 @@ validate_replay_episode_bundle(const replay_episode_bundle_t &bundle) {
       detail::validate_frame_sequence(bundle.frames[i], bundle.frames[i + 1]);
     }
   }
-  const auto A = bundle.spec.risky_node_ids.size();
-  if (bundle.realized_return_projection.risky_node_ids !=
-      bundle.spec.risky_node_ids) {
+  const auto A = bundle.spec.target_node_ids.size();
+  if (bundle.realized_return_projection.target_node_ids !=
+      bundle.spec.target_node_ids) {
     throw std::runtime_error(
         "[replay_source] replay episode bundle projection node mismatch");
   }
@@ -521,10 +525,17 @@ validate_replay_episode_bundle(const replay_episode_bundle_t &bundle) {
   std::unordered_map<std::string, bool> seen_projection_edges;
   seen_projection_edges.reserve(
       bundle.realized_return_projection.edge_ids.size());
-  for (const auto &edge_id : bundle.realized_return_projection.edge_ids) {
+  for (std::size_t i = 0; i < bundle.realized_return_projection.edge_ids.size();
+       ++i) {
+    const auto &edge_id = bundle.realized_return_projection.edge_ids[i];
+    const auto &node_id = bundle.spec.target_node_ids[i];
     if (edge_id.empty()) {
-      throw std::runtime_error(
-          "[replay_source] replay episode bundle projection edge_id is empty");
+      if (node_id == bundle.spec.base_policy.projection_reference_node_id) {
+        continue;
+      }
+      throw std::runtime_error("[replay_source] replay episode bundle "
+                               "projection edge_id is empty for non-reference "
+                               "node");
     }
     const auto [_, inserted] = seen_projection_edges.emplace(edge_id, true);
     if (!inserted) {
@@ -545,10 +556,19 @@ validate_replay_episode_bundle(const replay_episode_bundle_t &bundle) {
                              "signs are non-finite");
   }
   for (std::int64_t a = 0; a < signs.size(0); ++a) {
+    const auto &node_id = bundle.spec.target_node_ids[static_cast<std::size_t>(a)];
     const auto sign = signs.index({a}).item<double>();
+    if (node_id == bundle.spec.base_policy.projection_reference_node_id) {
+      if (sign != 0.0) {
+        throw std::runtime_error(
+            "[replay_source] replay episode bundle reference projection sign "
+            "must be zero");
+      }
+      continue;
+    }
     if (sign != 1.0 && sign != -1.0) {
       throw std::runtime_error("[replay_source] replay episode bundle "
-                               "projection signs must be +/-1");
+                               "non-reference projection signs must be +/-1");
     }
   }
 }
@@ -698,32 +718,47 @@ template <typename KeyT>
 
   const auto batch_edge_index =
       replay_source_detail::make_batch_edge_index(batch.edge_ids);
-  std::vector<replay_source_detail::direct_base_edge_projection_t> projections;
+  std::vector<
+      std::optional<replay_source_detail::direct_reference_edge_projection_t>>
+      projections;
   std::vector<std::int64_t> batch_edge_indices;
-  projections.reserve(spec.risky_node_ids.size());
-  batch_edge_indices.reserve(spec.risky_node_ids.size());
-  for (const auto &risky_node_id : spec.risky_node_ids) {
-    auto projection = replay_source_detail::resolve_direct_base_edge(
-        graph, risky_node_id, spec.base_policy.projection_reference_node_id);
+  std::vector<std::int64_t> direct_batch_edges;
+  projections.reserve(spec.target_node_ids.size());
+  batch_edge_indices.reserve(spec.target_node_ids.size());
+  for (const auto &node_id : spec.target_node_ids) {
+    if (node_id == spec.base_policy.projection_reference_node_id) {
+      projections.push_back(std::nullopt);
+      batch_edge_indices.push_back(-1);
+      continue;
+    }
+    auto projection = replay_source_detail::resolve_direct_reference_edge(
+        graph, node_id, spec.base_policy.projection_reference_node_id);
     const auto batch_edge = replay_source_detail::require_batch_edge_index(
         batch_edge_index, projection.edge_id);
     projections.push_back(std::move(projection));
     batch_edge_indices.push_back(batch_edge);
+    direct_batch_edges.push_back(batch_edge);
   }
-  (void)replay_source_detail::shared_realization_keys_for_direct_edges(
-      batch, batch_edge_indices, options.future_horizon_index,
-      options.realization_channel_index);
+  if (!direct_batch_edges.empty()) {
+    (void)replay_source_detail::shared_realization_keys_for_direct_edges(
+        batch, direct_batch_edges, options.future_horizon_index,
+        options.realization_channel_index);
+  }
 
   const auto future_features =
       batch.future_features.to(torch::kCPU).to(torch::kFloat64).contiguous();
   const auto future_mask =
       batch.future_mask.to(torch::kCPU).to(torch::kBool).contiguous();
-  const auto A = static_cast<std::int64_t>(spec.risky_node_ids.size());
-  auto out =
-      torch::zeros({B, A}, torch::TensorOptions().dtype(torch::kFloat64));
+  const auto A = static_cast<std::int64_t>(spec.target_node_ids.size());
+  auto out = torch::zeros(std::vector<std::int64_t>{B, A},
+                          torch::TensorOptions().dtype(torch::kFloat64));
   for (std::int64_t b = 0; b < B; ++b) {
     for (std::int64_t a = 0; a < A; ++a) {
       const auto edge_index = batch_edge_indices[static_cast<std::size_t>(a)];
+      if (edge_index < 0) {
+        out.index_put_({b, a}, 0.0);
+        continue;
+      }
       double sum = 0.0;
       std::int64_t count = 0;
       const std::int64_t channel_begin =
@@ -761,8 +796,9 @@ template <typename KeyT>
         throw std::runtime_error(
             "[replay_source] no active future close channels for direct edge");
       }
-      out.index_put_({b, a}, projections[static_cast<std::size_t>(a)].sign *
-                                 (sum / static_cast<double>(count)));
+      out.index_put_({b, a},
+                     projections[static_cast<std::size_t>(a)]->sign *
+                         (sum / static_cast<double>(count)));
     }
   }
   return out;
@@ -906,10 +942,13 @@ make_replay_frames_from_graph_anchor_edge_batch(
   const auto batch_edge_index =
       replay_source_detail::make_batch_edge_index(batch.edge_ids);
   std::vector<std::int64_t> direct_batch_edges;
-  direct_batch_edges.reserve(spec.risky_node_ids.size());
-  for (const auto &risky_node_id : spec.risky_node_ids) {
-    auto projection = replay_source_detail::resolve_direct_base_edge(
-        graph, risky_node_id, spec.base_policy.projection_reference_node_id);
+  direct_batch_edges.reserve(spec.target_node_ids.size());
+  for (const auto &node_id : spec.target_node_ids) {
+    if (node_id == spec.base_policy.projection_reference_node_id) {
+      continue;
+    }
+    auto projection = replay_source_detail::resolve_direct_reference_edge(
+        graph, node_id, spec.base_policy.projection_reference_node_id);
     direct_batch_edges.push_back(replay_source_detail::require_batch_edge_index(
         batch_edge_index, projection.edge_id));
   }
@@ -936,18 +975,30 @@ make_replay_frames_from_graph_anchor_edge_batch(
     observation.realization_available_after_timestamp_ms =
         replay_source_detail::to_i64_checked(realization_key);
     observation.portfolio_state.timestamp_ms = observation.timestamp_ms;
-    observation.portfolio_state.accounting_node_id =
+    observation.portfolio_state.accounting_numeraire_node_id =
         spec.base_policy.accounting_numeraire_id;
-    observation.portfolio_state.reserve_node_id =
-        spec.base_policy.reserve_asset_id;
+    observation.portfolio_state.node_ids = spec.target_node_ids;
+    const auto target_count =
+        static_cast<std::int64_t>(spec.target_node_ids.size());
     observation.portfolio_state.current_weights =
-        torch::zeros({static_cast<std::int64_t>(spec.risky_node_ids.size())},
-                     torch::TensorOptions().dtype(torch::kFloat64));
+        torch::zeros({target_count}, torch::TensorOptions().dtype(torch::kFloat64));
     observation.portfolio_state.current_units =
-        torch::zeros({static_cast<std::int64_t>(spec.risky_node_ids.size())},
-                     torch::TensorOptions().dtype(torch::kFloat64));
-    observation.portfolio_state.base_reserve_weight = 1.0;
-    observation.portfolio_state.equity_value_base = spec.initial_equity_base;
+        torch::zeros({target_count}, torch::TensorOptions().dtype(torch::kFloat64));
+    const auto numeraire_it =
+        std::find(spec.target_node_ids.begin(), spec.target_node_ids.end(),
+                  spec.base_policy.accounting_numeraire_id);
+    if (numeraire_it == spec.target_node_ids.end()) {
+      throw std::runtime_error(
+          "[replay_source] accounting numeraire must be in target_node_ids");
+    }
+    const auto numeraire_index = static_cast<std::int64_t>(
+        std::distance(spec.target_node_ids.begin(), numeraire_it));
+    observation.portfolio_state.current_weights.index_put_({numeraire_index},
+                                                           1.0);
+    observation.portfolio_state.current_units.index_put_(
+        {numeraire_index}, spec.initial_equity_numeraire);
+    observation.portfolio_state.equity_value_numeraire =
+        spec.initial_equity_numeraire;
     observation.market_state.timestamp_ms = observation.timestamp_ms;
     observation.edge_market_state =
         edge_market_states[static_cast<std::size_t>(b)];

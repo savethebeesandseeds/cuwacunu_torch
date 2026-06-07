@@ -1,9 +1,9 @@
 #include "hero/lattice_hero/hero_lattice_tools.h"
 
 #include "hero/lattice_hero/hero_lattice.h"
-#include "hero/mcp_schema_compat.h"
 #include "hero/lattice_hero/lattice/exposure/exposure_ledger.h"
 #include "hero/lattice_hero/lattice/target/lattice_target_evaluator.h"
+#include "hero/mcp_schema_compat.h"
 #include "hero/runtime_hero/runtime/job_layout.h"
 #include "wikimyei/assembly.h"
 #include "wikimyei/representation/encoding/mtf_jepa_mae_vicreg/assembly.h"
@@ -1116,8 +1116,7 @@ exposure_uses_json(const std::vector<exposure::exposure_use_t> &uses) {
 
 [[nodiscard]] std::string warning_scope_previews_json(
     const target::lattice_target_spec_t &spec,
-    const std::optional<
-        cuwacunu::hero::lattice::split::lattice_split_policy_t>
+    const std::optional<cuwacunu::hero::lattice::split::lattice_split_policy_t>
         &split_policy) {
   namespace detail = target::lattice_target_eval_detail;
 
@@ -2923,9 +2922,8 @@ causal_exposure_json(const target::lattice_target_proof_certificate_t::
       << ",\"mutated_component\":" << bool_json(exposure.mutated_component)
       << ",\"split_name\":" << json_quote(exposure.split_name)
       << ",\"split_role\":"
-      << json_quote(
-             cuwacunu::hero::lattice::exposure::exposure_split_role_name(
-                 exposure.split_role))
+      << json_quote(cuwacunu::hero::lattice::exposure::exposure_split_role_name(
+             exposure.split_role))
       << ",\"anchor_range\":" << interval_json(exposure.anchor_range)
       << ",\"completed_anchor_range\":"
       << interval_json(exposure.completed_anchor_range)
@@ -7567,15 +7565,16 @@ forecast_eval_summary_json(const exposure::forecast_eval_summary_t &summary) {
       << ",\"anchor_range\":" << interval_json(fact.anchor_range)
       << ",\"completed_anchor_range\":"
       << interval_json(fact.completed_anchor_range)
-      << ",\"target_risky_node_weights\":"
-      << json_quote(fact.target_risky_node_weights)
-      << ",\"reserve_node_id\":" << json_quote(fact.reserve_node_id)
-      << ",\"reserve_node_source\":" << json_quote(fact.reserve_node_source)
-      << ",\"base_policy_reserve_node_id\":"
-      << json_quote(fact.base_policy_reserve_node_id)
-      << ",\"reserve_node_graph_bound\":"
-      << bool_json(fact.reserve_node_graph_bound)
-      << ",\"reserve_weight\":" << double_json(fact.reserve_weight)
+      << ",\"target_node_weights\":" << json_quote(fact.target_node_weights)
+      << ",\"accounting_numeraire_node_id\":"
+      << json_quote(fact.accounting_numeraire_node_id)
+      << ",\"accounting_numeraire_node_source\":"
+      << json_quote(fact.accounting_numeraire_node_source)
+      << ",\"base_policy_accounting_numeraire_node_id\":"
+      << json_quote(fact.base_policy_accounting_numeraire_node_id)
+      << ",\"accounting_numeraire_node_graph_bound\":"
+      << bool_json(fact.accounting_numeraire_node_graph_bound)
+      << ",\"numeraire_weight\":" << double_json(fact.numeraire_weight)
       << ",\"turnover\":" << double_json(fact.turnover)
       << ",\"objective_terms\":" << json_quote(fact.objective_terms)
       << ",\"cvar_loss\":" << double_json(fact.cvar_loss)
@@ -7640,15 +7639,16 @@ forecast_eval_summary_json(const exposure::forecast_eval_summary_t &summary) {
       << summary.allocation_engine_fact_count
       << ",\"parent_exposure_fact_count\":"
       << summary.parent_exposure_fact_count
-      << ",\"reserve_node_bound_count\":" << summary.reserve_node_bound_count
-      << ",\"reserve_node_source_base_policy_count\":"
-      << summary.reserve_node_source_base_policy_count
-      << ",\"base_policy_reserve_node_bound_count\":"
-      << summary.base_policy_reserve_node_bound_count
-      << ",\"reserve_node_base_policy_match_count\":"
-      << summary.reserve_node_base_policy_match_count
-      << ",\"reserve_node_graph_bound_count\":"
-      << summary.reserve_node_graph_bound_count
+      << ",\"accounting_numeraire_node_bound_count\":"
+      << summary.accounting_numeraire_node_bound_count
+      << ",\"accounting_numeraire_node_source_base_policy_count\":"
+      << summary.accounting_numeraire_node_source_base_policy_count
+      << ",\"base_policy_accounting_numeraire_node_bound_count\":"
+      << summary.base_policy_accounting_numeraire_node_bound_count
+      << ",\"accounting_numeraire_node_base_policy_match_count\":"
+      << summary.accounting_numeraire_node_base_policy_match_count
+      << ",\"accounting_numeraire_node_graph_bound_count\":"
+      << summary.accounting_numeraire_node_graph_bound_count
       << ",\"observer_belief_declared_count\":"
       << summary.observer_belief_declared_count
       << ",\"observer_belief_bound_count\":"
@@ -7696,18 +7696,18 @@ forecast_eval_summary_json(const exposure::forecast_eval_summary_t &summary) {
       << summary.derisk_reason_active_count
       << ",\"deterministic_artifact_count\":"
       << summary.deterministic_artifact_count
-      << ",\"missing_reserve_node_count\":"
-      << summary.missing_reserve_node_count
-      << ",\"missing_reserve_node_source_count\":"
-      << summary.missing_reserve_node_source_count
-      << ",\"missing_base_policy_reserve_node_count\":"
-      << summary.missing_base_policy_reserve_node_count
-      << ",\"reserve_node_source_mismatch_count\":"
-      << summary.reserve_node_source_mismatch_count
-      << ",\"reserve_node_base_policy_mismatch_count\":"
-      << summary.reserve_node_base_policy_mismatch_count
-      << ",\"reserve_node_not_graph_bound_count\":"
-      << summary.reserve_node_not_graph_bound_count
+      << ",\"missing_accounting_numeraire_node_count\":"
+      << summary.missing_accounting_numeraire_node_count
+      << ",\"missing_accounting_numeraire_node_source_count\":"
+      << summary.missing_accounting_numeraire_node_source_count
+      << ",\"missing_base_policy_accounting_numeraire_node_count\":"
+      << summary.missing_base_policy_accounting_numeraire_node_count
+      << ",\"accounting_numeraire_node_source_mismatch_count\":"
+      << summary.accounting_numeraire_node_source_mismatch_count
+      << ",\"accounting_numeraire_node_base_policy_mismatch_count\":"
+      << summary.accounting_numeraire_node_base_policy_mismatch_count
+      << ",\"accounting_numeraire_node_not_graph_bound_count\":"
+      << summary.accounting_numeraire_node_not_graph_bound_count
       << ",\"missing_observer_belief_count\":"
       << summary.missing_observer_belief_count
       << ",\"missing_forecast_artifact_count\":"
@@ -7720,8 +7720,8 @@ forecast_eval_summary_json(const exposure::forecast_eval_summary_t &summary) {
       << ",\"allocation_diagnostic_warning_count\":"
       << summary.allocation_diagnostic_warning_count
       << ",\"warning_count\":" << summary.warning_count
-      << ",\"reserve_weight\":"
-      << source_analytics_metric_summary_json(summary.reserve_weight)
+      << ",\"numeraire_weight\":"
+      << source_analytics_metric_summary_json(summary.numeraire_weight)
       << ",\"turnover\":"
       << source_analytics_metric_summary_json(summary.turnover)
       << ",\"cvar_loss\":"
@@ -7825,8 +7825,6 @@ forecast_eval_summary_json(const exposure::forecast_eval_summary_t &summary) {
       << json_quote(fact.replay_environment_action_kind)
       << ",\"replay_environment_action_time_policy\":"
       << json_quote(fact.replay_environment_action_time_policy)
-      << ",\"replay_environment_reserve_node_policy\":"
-      << json_quote(fact.replay_environment_reserve_node_policy)
       << ",\"replay_environment_graph_node_universe_policy\":"
       << json_quote(fact.replay_environment_graph_node_universe_policy)
       << ",\"replay_environment_reward_policy\":"
@@ -7898,16 +7896,18 @@ forecast_eval_summary_json(const exposure::forecast_eval_summary_t &summary) {
       << fact.projection_validation_step_count
       << ",\"cajtucu_valid_trace_count\":" << fact.cajtucu_valid_trace_count
       << ",\"cajtucu_invalid_trace_count\":" << fact.cajtucu_invalid_trace_count
-      << ",\"cajtucu_missing_direct_reserve_edge_count\":"
-      << fact.cajtucu_missing_direct_reserve_edge_count
+      << ",\"cajtucu_missing_direct_pair_count\":"
+      << fact.cajtucu_missing_direct_pair_count
+      << ",\"cajtucu_numeraire_fallback_pair_count\":"
+      << fact.cajtucu_numeraire_fallback_pair_count
       << ",\"cajtucu_nontradable_edge_reject_count\":"
       << fact.cajtucu_nontradable_edge_reject_count
       << ",\"cajtucu_below_min_notional_reject_count\":"
       << fact.cajtucu_below_min_notional_reject_count
       << ",\"cajtucu_above_max_notional_reject_count\":"
       << fact.cajtucu_above_max_notional_reject_count
-      << ",\"cajtucu_insufficient_reserve_reject_count\":"
-      << fact.cajtucu_insufficient_reserve_reject_count
+      << ",\"cajtucu_insufficient_sell_units_reject_count\":"
+      << fact.cajtucu_insufficient_sell_units_reject_count
       << ",\"cajtucu_insufficient_units_reject_count\":"
       << fact.cajtucu_insufficient_units_reject_count
       << ",\"cajtucu_invalid_sell_price_count\":"
@@ -7923,22 +7923,24 @@ forecast_eval_summary_json(const exposure::forecast_eval_summary_t &summary) {
       << ",\"mean_total_reward\":" << double_json(fact.mean_total_reward)
       << ",\"mean_total_log_growth\":"
       << double_json(fact.mean_total_log_growth)
-      << ",\"mean_final_equity_base\":"
-      << double_json(fact.mean_final_equity_base)
+      << ",\"mean_final_equity_numeraire\":"
+      << double_json(fact.mean_final_equity_numeraire)
       << ",\"mean_max_drawdown\":" << double_json(fact.mean_max_drawdown)
       << ",\"mean_total_turnover\":" << double_json(fact.mean_total_turnover)
-      << ",\"mean_total_transaction_cost_base\":"
-      << double_json(fact.mean_total_transaction_cost_base)
-      << ",\"requested_notional_base\":"
-      << double_json(fact.requested_notional_base)
-      << ",\"executed_notional_base\":"
-      << double_json(fact.executed_notional_base)
-      << ",\"rejected_notional_base\":"
-      << double_json(fact.rejected_notional_base)
+      << ",\"mean_total_transaction_cost_numeraire\":"
+      << double_json(fact.mean_total_transaction_cost_numeraire)
+      << ",\"requested_notional_numeraire\":"
+      << double_json(fact.requested_notional_numeraire)
+      << ",\"executed_notional_numeraire\":"
+      << double_json(fact.executed_notional_numeraire)
+      << ",\"rejected_notional_numeraire\":"
+      << double_json(fact.rejected_notional_numeraire)
       << ",\"fill_ratio\":" << double_json(fact.fill_ratio)
-      << ",\"fee_cost_base\":" << double_json(fact.fee_cost_base)
-      << ",\"spread_cost_base\":" << double_json(fact.spread_cost_base)
-      << ",\"slippage_cost_base\":" << double_json(fact.slippage_cost_base)
+      << ",\"fee_cost_numeraire\":" << double_json(fact.fee_cost_numeraire)
+      << ",\"spread_cost_numeraire\":"
+      << double_json(fact.spread_cost_numeraire)
+      << ",\"slippage_cost_numeraire\":"
+      << double_json(fact.slippage_cost_numeraire)
       << ",\"mean_target_weight_error_l1\":"
       << double_json(fact.mean_target_weight_error_l1)
       << ",\"mean_target_weight_error_linf\":"
@@ -8055,8 +8057,6 @@ forecast_eval_summary_json(const exposure::forecast_eval_summary_t &summary) {
       << summary.replay_contract_action_kind_bound_count
       << ",\"replay_contract_action_time_policy_bound_count\":"
       << summary.replay_contract_action_time_policy_bound_count
-      << ",\"replay_contract_reserve_node_policy_bound_count\":"
-      << summary.replay_contract_reserve_node_policy_bound_count
       << ",\"replay_contract_graph_node_universe_policy_bound_count\":"
       << summary.replay_contract_graph_node_universe_policy_bound_count
       << ",\"replay_contract_reward_policy_bound_count\":"
@@ -8119,16 +8119,18 @@ forecast_eval_summary_json(const exposure::forecast_eval_summary_t &summary) {
       << summary.cajtucu_valid_trace_count_total
       << ",\"cajtucu_invalid_trace_count_total\":"
       << summary.cajtucu_invalid_trace_count_total
-      << ",\"cajtucu_missing_direct_reserve_edge_count_total\":"
-      << summary.cajtucu_missing_direct_reserve_edge_count_total
+      << ",\"cajtucu_missing_direct_pair_count_total\":"
+      << summary.cajtucu_missing_direct_pair_count_total
+      << ",\"cajtucu_numeraire_fallback_pair_count_total\":"
+      << summary.cajtucu_numeraire_fallback_pair_count_total
       << ",\"cajtucu_nontradable_edge_reject_count_total\":"
       << summary.cajtucu_nontradable_edge_reject_count_total
       << ",\"cajtucu_below_min_notional_reject_count_total\":"
       << summary.cajtucu_below_min_notional_reject_count_total
       << ",\"cajtucu_above_max_notional_reject_count_total\":"
       << summary.cajtucu_above_max_notional_reject_count_total
-      << ",\"cajtucu_insufficient_reserve_reject_count_total\":"
-      << summary.cajtucu_insufficient_reserve_reject_count_total
+      << ",\"cajtucu_insufficient_sell_units_reject_count_total\":"
+      << summary.cajtucu_insufficient_sell_units_reject_count_total
       << ",\"cajtucu_insufficient_units_reject_count_total\":"
       << summary.cajtucu_insufficient_units_reject_count_total
       << ",\"cajtucu_invalid_sell_price_count_total\":"
@@ -8199,29 +8201,33 @@ forecast_eval_summary_json(const exposure::forecast_eval_summary_t &summary) {
       << source_analytics_metric_summary_json(summary.mean_total_reward)
       << ",\"mean_total_log_growth\":"
       << source_analytics_metric_summary_json(summary.mean_total_log_growth)
-      << ",\"mean_final_equity_base\":"
-      << source_analytics_metric_summary_json(summary.mean_final_equity_base)
+      << ",\"mean_final_equity_numeraire\":"
+      << source_analytics_metric_summary_json(
+             summary.mean_final_equity_numeraire)
       << ",\"mean_max_drawdown\":"
       << source_analytics_metric_summary_json(summary.mean_max_drawdown)
       << ",\"mean_total_turnover\":"
       << source_analytics_metric_summary_json(summary.mean_total_turnover)
-      << ",\"mean_total_transaction_cost_base\":"
+      << ",\"mean_total_transaction_cost_numeraire\":"
       << source_analytics_metric_summary_json(
-             summary.mean_total_transaction_cost_base)
-      << ",\"requested_notional_base\":"
-      << source_analytics_metric_summary_json(summary.requested_notional_base)
-      << ",\"executed_notional_base\":"
-      << source_analytics_metric_summary_json(summary.executed_notional_base)
-      << ",\"rejected_notional_base\":"
-      << source_analytics_metric_summary_json(summary.rejected_notional_base)
+             summary.mean_total_transaction_cost_numeraire)
+      << ",\"requested_notional_numeraire\":"
+      << source_analytics_metric_summary_json(
+             summary.requested_notional_numeraire)
+      << ",\"executed_notional_numeraire\":"
+      << source_analytics_metric_summary_json(
+             summary.executed_notional_numeraire)
+      << ",\"rejected_notional_numeraire\":"
+      << source_analytics_metric_summary_json(
+             summary.rejected_notional_numeraire)
       << ",\"fill_ratio\":"
       << source_analytics_metric_summary_json(summary.fill_ratio)
-      << ",\"fee_cost_base\":"
-      << source_analytics_metric_summary_json(summary.fee_cost_base)
-      << ",\"spread_cost_base\":"
-      << source_analytics_metric_summary_json(summary.spread_cost_base)
-      << ",\"slippage_cost_base\":"
-      << source_analytics_metric_summary_json(summary.slippage_cost_base)
+      << ",\"fee_cost_numeraire\":"
+      << source_analytics_metric_summary_json(summary.fee_cost_numeraire)
+      << ",\"spread_cost_numeraire\":"
+      << source_analytics_metric_summary_json(summary.spread_cost_numeraire)
+      << ",\"slippage_cost_numeraire\":"
+      << source_analytics_metric_summary_json(summary.slippage_cost_numeraire)
       << ",\"mean_target_weight_error_l1\":"
       << source_analytics_metric_summary_json(
              summary.mean_target_weight_error_l1)
@@ -9227,8 +9233,13 @@ fact_identity_support_fields(const std::string &family) {
     return {"confidence", "data_quality", "liquidity"};
   }
   if (family == "allocation_engine") {
-    return {"reserve_node_id",        "reserve_weight",   "turnover",
-            "constraint_diagnostics", "fallback_reasons", "derisk_reasons"};
+    return {"accounting_numeraire_node_id",
+            "numeraire_weight",
+            "target_node_weights",
+            "turnover",
+            "constraint_diagnostics",
+            "fallback_reasons",
+            "derisk_reasons"};
   }
   if (family == "replay_environment") {
     return {"episode_requested_range", "episode_anchor_interval",

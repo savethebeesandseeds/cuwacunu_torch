@@ -46,9 +46,10 @@ constexpr tool_descriptor_t kTools[] = {
      "state.",
      R"({"type":"object","properties":{},"additionalProperties":false})"},
     {"hero.config.inspect",
-     "Read-only inspection: route Config schema, policy values, validation, "
-     "path provenance, backups, and managed file reads through subject.",
-     R"({"type":"object","properties":{"subject":{"type":"string","enum":["schema","show","value","validate","map","bundle","resolve_path","diff","backups","file_list","file_read"]},"key":{"type":"string"},"path":{"type":"string"},"config_path":{"type":"string"},"include_content":{"type":"boolean"},"include_machine_payload":{"type":"boolean"},"include_sha256":{"type":"boolean"},"for_write":{"type":"boolean"},"recursive":{"type":"boolean"},"limit":{"type":"integer"}},"required":["subject"],"additionalProperties":false})"},
+     "Read-only inspection: route Config schema, policy values, global config "
+     "validation, path provenance, backups, and managed file reads through "
+     "subject.",
+     R"({"type":"object","properties":{"subject":{"type":"string","enum":["schema","show","value","validate_global_config","map","bundle","resolve_path","diff","backups","file_list","file_read"]},"key":{"type":"string"},"path":{"type":"string"},"config_path":{"type":"string"},"include_content":{"type":"boolean"},"include_machine_payload":{"type":"boolean"},"include_sha256":{"type":"boolean"},"for_write":{"type":"boolean"},"recursive":{"type":"boolean"},"limit":{"type":"integer"}},"required":["subject"],"additionalProperties":false})"},
     {"hero.config.apply",
      "Config mutation: plan or execute policy/file changes through operation. "
      "Only this Config Hero tool mutates.",
@@ -1957,8 +1958,8 @@ build_global_config_map_json(const hero_config_store_t &store,
 validate_inspect_fields(const std::string &subject,
                         const std::vector<json_field_t> &fields,
                         std::string *err) {
-  if (subject == "schema" || subject == "show" || subject == "validate" ||
-      subject == "backups") {
+  if (subject == "schema" || subject == "show" ||
+      subject == "validate_global_config" || subject == "backups") {
     return validate_allowed_fields(fields,
                                    {"subject", "include_machine_payload"}, err);
   }
@@ -2000,8 +2001,8 @@ validate_inspect_fields(const std::string &subject,
   }
   if (err) {
     *err = "hero.config.inspect subject must be one of schema, show, value, "
-           "validate, map, bundle, resolve_path, diff, backups, file_list, "
-           "file_read";
+           "validate_global_config, map, bundle, resolve_path, diff, backups, "
+           "file_list, file_read";
   }
   return false;
 }
@@ -2040,7 +2041,7 @@ validate_inspect_fields(const std::string &subject,
     const std::string subargs = object_with_fields(fields, {{"key", "key"}});
     return handle_get(subargs, store, out, err);
   }
-  if (subject == "validate") {
+  if (subject == "validate_global_config") {
     return handle_validate("{}", store, out, err);
   }
   if (subject == "map") {

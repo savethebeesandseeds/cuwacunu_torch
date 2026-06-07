@@ -63,6 +63,12 @@ hero.lattice.compare
 
 ## Active Milestone: Cost-Aware Rollout Handoff
 
+Milestone:
+
+```text
+cost_aware_paper_replay_rollout.v1
+```
+
 Goal:
 
 ```text
@@ -70,31 +76,16 @@ Make hero.marshal.rollout the repeatable operator path for bounded cost-aware
 replay evidence.
 ```
 
-Milestone name:
-
-```text
-cost_aware_paper_replay_rollout.v1
-```
-
 Acceptance:
 
 - `rollout requested_mode=plan` returns a bounded replay plan with no Runtime
   execution.
 - `rollout requested_mode=execute` delegates to Runtime replay.
-- Request binds:
-  - rollout id
-  - rollout attempt id
-  - idempotency key
-  - completed Runtime job dir
-  - replay batch index path
-  - graph order fingerprint
-  - asset universe digest
-  - base reserve node
-  - risky node set
-  - non-empty policy set
-  - positive max steps
-  - finite parallelism
-  - Cajtucu paper execution profile digest
+- Request binds rollout id, attempt id, idempotency key, completed Runtime job
+  dir, replay batch index path, graph order fingerprint, asset universe digest,
+  accounting numeraire node, ordered target-node universe, non-empty policy set,
+  positive max steps, finite parallelism, and Cajtucu paper execution profile
+  digest.
 - Execution profile digest appears in the rollout plan, Runtime replay handoff,
   report, and Marshal inspection/summary.
 - Validation rollouts require nonzero execution costs.
@@ -103,7 +94,7 @@ Acceptance:
 - Synthetic execution markets are rejected in validation rollout. Research
   replay must opt in explicitly with a reason and mark validation satisfaction
   false.
-- Required policy set includes base reserve, current-weight/no-trade,
+- Required policy set includes numeraire-only, current-weight/no-trade,
   equal-weight, and deterministic Wikimyei SDU.
 - Runtime reports separate projection quality, portfolio outcome, execution
   feasibility, cost, target-tracking, and time-law metrics.
@@ -121,45 +112,38 @@ paper-online scheduler
 live execution path
 ```
 
-## Next Milestone: Environment Evidence Inspection
+## Active Milestone: Pre-PPO Rehearsal Coordination
 
-Goal:
+Milestone:
 
 ```text
-Add read-only Marshal inspection panels for replay_environment evidence once
-Lattice exposes the fact family.
+pre_ppo_full_pipeline_rehearsal.v1
 ```
 
-Marshal may inspect:
+Marshal role:
 
-- replay run identity
-- episode counts
-- time-law counters
-- projection-validation counters
-- Cajtucu execution trace counters
-- execution profile digest and policy set digest
-- requested/executed/rejected turnover
-- target tracking error
-- fee, spread, slippage, and total transaction cost
-- report digest/lineage evidence
-- policy set identity
-- reward definition identity
+- Prepare or delegate bounded Runtime waves where a Lattice target supplies
+  dispatch advice.
+- Preserve proof-clean checkpoint inputs as Runtime handoff fields, not static
+  config edits.
+- Coordinate cost-aware rollout through `hero.marshal.rollout`.
+- Inspect Lattice/Runtime evidence after the run.
+- Refuse to train PPO or select winning checkpoints.
 
-Marshal must not:
+Acceptance:
 
-- dispatch from non-dispatchable environment artifact targets
-- judge reward quality
-- choose policies
-- tune PPO
-- rank checkpoints
-- claim market readiness
+- The rehearsal can be followed by operators using Marshal/Runtime/Lattice Hero
+  tools without manual checkpoint copying into `.jkimyei` profiles.
+- Direct `cuwacunu_exec` remains an explicit debug path with warning, not the
+  recommended proof-clean path.
+- Marshal packets continue to expose authority denials and `next_safe_actions`.
 
 ## Future Milestone: Policy Training Handoff
 
-Status: Lattice artifact-readiness target exists and Runtime has a causal
-policy-training contract plus a narrow `noop_policy_training.v1` pre-PPO smoke
-execute path. PPO execution handoff remains blocked until Runtime implements a
-dedicated trainable-policy runner.
+Current prerequisite: Lattice artifact-readiness target exists and Runtime has a
+causal policy-training contract plus a narrow `noop_policy_training.v1` pre-PPO
+smoke execute path. PPO execution handoff remains blocked until Runtime
+implements a dedicated trainable-policy runner.
 
 Potential public path:
 
@@ -170,39 +154,21 @@ hero.marshal.prepare
 
 Today this target is non-dispatchable artifact evidence. Marshal may inspect it
 and report missing/complete artifact evidence, but it must not train or create a
-policy-training job.
+PPO job.
 
-Implemented prerequisite:
+Trainable policy handoff may become dispatchable only if Lattice target advice
+points to a bounded executable Runtime policy-training job with:
 
-```text
-runtime_policy_training_job_contract.v1
-```
-
-The target may become dispatchable only if Lattice target advice points to a
-bounded executable Runtime policy-training job with:
-
-```text
-max episodes
-max workers
-max attempts
-wall-clock budget
-source ranges
-training/validation/test split policy
-causal_walk_forward_training.v1 schedule digest
-typed cursor-key ordering
-derived no_future_snapshot_use evidence
-reward definition digest
-execution profile digest
-resume ledger identity
-policy artifact output contract
-post-run Lattice target to recheck
-```
-
-Trainable policy handoff must execute through Runtime first. Marshal may prepare
-the handoff only after Runtime owns the training runner and the request binds
-causal schedule identity, typed cursor-key ordering, and ledger-derived
-no-future snapshot evidence. `offline_full_window_research` remains diagnostic
-evidence only and must not be dispatched as policy-training readiness.
+- max episodes, workers, attempts, and wall-clock budget
+- source ranges and split policy
+- causal walk-forward schedule digest
+- typed cursor-key ordering
+- ledger-derived no-future snapshot evidence
+- reward definition digest
+- execution profile digest
+- resume ledger identity
+- policy artifact output contract
+- post-run Lattice target to recheck
 
 Marshal may coordinate the handoff. It must not train, select, tune, or accept
 the policy.

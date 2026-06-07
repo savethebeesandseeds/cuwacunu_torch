@@ -22,7 +22,7 @@ make_spot_distributional_utility_assembly(
   out.docks.push_back(wa::make_dock(
       "allocation_belief", wa::dock_direction_t::consumes,
       wa::dock_role_t::conditioning, wa::dock_domain_t::allocation_belief,
-      "portfolio.base_relative_nodelift_projection.v1", "AllocationBelief[S,A]",
+      "portfolio.numeraire_relative_nodelift_projection.v1", "AllocationBelief[S,A]",
       "[A]",
       /*required=*/true, /*target_side_only=*/false, {"S", "A"}));
   out.docks.push_back(wa::make_dock(
@@ -43,9 +43,9 @@ make_spot_distributional_utility_assembly(
   out.constraints.push_back(
       "consumes only post-projection AllocationBelief, not raw NodeLift "
       "potentials");
-  out.constraints.push_back("long-only risky weights");
+  out.constraints.push_back("long-only target-node weights");
   out.constraints.push_back(
-      "base reserve weight is assigned to an explicit graph node supplied by "
+      "accounting numeraire weight is assigned to an explicit graph node supplied by "
       "the belief BasePolicy");
   out.constraints.push_back("spot-only allocation; execution is a separate "
                             "policy method boundary");

@@ -20,9 +20,9 @@ struct belief_observer_spec_t {
   std::string batch_policy{"single_anchor"};
   std::string channel_consensus{"uniform_valid_channels"};
   std::string potential_semantics{"edge_log_return_lifted_potential"};
-  std::string return_projection{"base_relative_nodelift_projection"};
+  std::string return_projection{"numeraire_relative_nodelift_projection"};
   std::string scenario_unit{"arithmetic_return"};
-  std::string reserve_asset_policy{"graph_node_from_base_policy"};
+  std::string accounting_numeraire_policy{"graph_node_from_base_policy"};
   std::string covariance_coupler{"gaussian_copula_shrinkage"};
   std::int64_t scenario_count{1024};
   bool projection_validation_required{true};
@@ -63,16 +63,16 @@ inline void validate_belief_observer_spec(const belief_observer_spec_t &spec) {
                              "uniform_valid_channels");
   }
   if (spec.potential_semantics != "edge_log_return_lifted_potential" ||
-      spec.return_projection != "base_relative_nodelift_projection" ||
+      spec.return_projection != "numeraire_relative_nodelift_projection" ||
       spec.scenario_unit != "arithmetic_return") {
     throw std::runtime_error(
         "[belief_observer_spec] v1 requires NodeLift potential projection into "
-        "base-relative arithmetic-return scenarios");
+        "numeraire-relative arithmetic-return scenarios");
   }
-  if (spec.reserve_asset_policy != "graph_node_from_base_policy") {
+  if (spec.accounting_numeraire_policy != "graph_node_from_base_policy") {
     throw std::runtime_error(
-        "[belief_observer_spec] reserve asset must be a graph node supplied by "
-        "BasePolicy");
+        "[belief_observer_spec] accounting numeraire must be a graph node "
+        "supplied by BasePolicy");
   }
   if (spec.covariance_coupler != "gaussian_copula_shrinkage") {
     throw std::runtime_error(
@@ -114,7 +114,8 @@ decode_belief_observer_spec_from_dsl(const std::string &dsl_text) {
   spec.potential_semantics = kv::required(block, "POTENTIAL_SEMANTICS");
   spec.return_projection = kv::required(block, "RETURN_PROJECTION");
   spec.scenario_unit = kv::required(block, "SCENARIO_UNIT");
-  spec.reserve_asset_policy = kv::required(block, "RESERVE_ASSET_POLICY");
+  spec.accounting_numeraire_policy =
+      kv::required(block, "ACCOUNTING_NUMERAIRE_POLICY");
   spec.covariance_coupler = kv::required(block, "COVARIANCE_COUPLER");
   spec.scenario_count = kv::parse_i64(kv::required(block, "SCENARIO_COUNT"));
   spec.projection_validation_required =

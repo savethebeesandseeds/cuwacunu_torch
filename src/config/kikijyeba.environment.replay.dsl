@@ -20,13 +20,12 @@ REPLAY_ENVIRONMENT {
   OBSERVATION_TIME_LAW = time_t_only;
   REALIZATION_REVEAL = after_action_execution;
   REALIZATION_KEY_POLICY = shared_key_per_frame;
-  ACTION_KIND = target_node_weights_with_base_reserve;
-  ACTION_SCHEMA_ID = kikijyeba.environment.action.target_weights.v1;
+  ACTION_KIND = target_node_weights;
+  ACTION_SCHEMA_ID = kikijyeba.environment.action.target_node_weights.v1;
   ACTION_TIME_POLICY = decision_timestamp_after_knowledge_before_realization;
-  RESERVE_NODE_POLICY = graph_node_from_base_policy;
   GRAPH_NODE_UNIVERSE_POLICY = episode_spec_graph_node_ids;
   REWARD_POLICY = post_execution_ledger_log_growth_drawdown_cost_turnover_invalid;
-  PROJECTION_VALIDATION = projected_log_return_vs_realized_asset_base_return;
+  PROJECTION_VALIDATION = projected_log_return_vs_realized_asset_numeraire_return;
   REALIZED_RETURN_TRUTH = direct_edge_realized_return_truth_v1;
   POLICY_SURFACE = policy_adapter;
   ACTION_POLICY_IDENTITY = policy_adapter_must_match_action;

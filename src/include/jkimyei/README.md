@@ -40,6 +40,10 @@ Authored training configs are split by worker surface:
   policy.
 - `wikimyei.inference.expected_value.mdn.jkimyei` owns channel-context
   ExpectedValue inference training policy.
+- `wikimyei.policy.portfolio.graph_node_allocation.jkimyei` owns the
+  pre-PPO policy contract smoke. It is intentionally `OPTIMIZER = noop`,
+  requires `causal_walk_forward_training.v1`, and must keep
+  `PPO_EXECUTION_ALLOWED = false`.
 - The older generic `jkimyei.*` name is not used by the fresh
   graph-first path.
 - Runtime `.lls` emission is wave-owned. `.jkimyei` files describe training policy,
