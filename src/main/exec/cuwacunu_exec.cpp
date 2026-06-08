@@ -52,6 +52,13 @@ void print_usage(const char *argv0) {
             << "       [--replay-allow-synthetic-direct-edges]\n"
             << "       [--replay-include-equal-weight]\n"
             << "       [--replay-include-current-weight]\n"
+            << "       [--replay-include-graph-node-allocation-policy]\n"
+            << "       [--replay-on-policy-sample]\n"
+            << "       [--replay-action-distribution-id ID]\n"
+            << "       [--replay-policy-artifact-digest DIGEST]\n"
+            << "       [--replay-policy-checkpoint-path PATH]\n"
+            << "       [--replay-causal-schedule-digest DIGEST]\n"
+            << "       [--replay-snapshot-family-digest DIGEST]\n"
             << "       [--replay-no-numeraire-only-policy]\n"
             << "       [--replay-no-sdu-policy]\n"
             << "default config: " << kDefaultConfigPath << "\n"
@@ -259,6 +266,26 @@ int main(int argc, char **argv) {
         replay_options.include_equal_weight_policy = true;
       } else if (arg == "--replay-include-current-weight") {
         replay_options.include_current_weight_policy = true;
+      } else if (arg == "--replay-include-graph-node-allocation-policy") {
+        replay_options.include_graph_node_allocation_policy = true;
+      } else if (arg == "--replay-on-policy-sample") {
+        replay_options.experiment_options.episode_options.policy_action_mode =
+            env::episode_policy_action_mode_t::on_policy_sample;
+      } else if (arg == "--replay-action-distribution-id") {
+        replay_options.graph_node_allocation_action_distribution_id =
+            require_next_arg(argc, argv, &i, arg);
+      } else if (arg == "--replay-policy-artifact-digest") {
+        replay_options.graph_node_allocation_policy_artifact_digest =
+            require_next_arg(argc, argv, &i, arg);
+      } else if (arg == "--replay-policy-checkpoint-path") {
+        replay_options.graph_node_allocation_policy_checkpoint_path =
+            require_next_arg(argc, argv, &i, arg);
+      } else if (arg == "--replay-causal-schedule-digest") {
+        replay_options.causal_schedule_digest =
+            require_next_arg(argc, argv, &i, arg);
+      } else if (arg == "--replay-snapshot-family-digest") {
+        replay_options.snapshot_family_digest =
+            require_next_arg(argc, argv, &i, arg);
       } else if (arg == "--replay-no-numeraire-only-policy") {
         replay_options.include_numeraire_only_policy = false;
       } else if (arg == "--replay-no-sdu-policy") {

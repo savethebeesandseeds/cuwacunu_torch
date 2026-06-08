@@ -241,14 +241,24 @@ AGENT RUNBOOK
     families and issue codes. fact_lineage additionally exposes selected
     runtime-index relation/key/digest rows as audit-only lineage witnesses;
     cache rows are never used for target satisfaction. fact_preview returns
-    concrete rows for one family by digest, digest prefix, or fact index, plus
-    matching lineage rows. Preview rows are audit-only,
+    concrete rows for one family by fact_digest, fact_digest_prefix, or
+    fact_index, plus matching lineage rows. fact_digest_prefix must resolve to
+    exactly one full fact digest in the selected family; zero-match and
+    ambiguous prefixes fail closed. The generic digest/digest_prefix/index
+    selectors are reserved for subject=index mode=query and are rejected by
+    subject=facts mode=preview.
+    Preview rows include display-only fact_ref and fact_digest_prefix helpers
+    derived from the full fact_digest. These short refs are operator handles,
+    not proof identity or accepted authority inputs. Preview rows are audit-only,
     facts_used_for_target_satisfaction=false, and checkpoint_selected=false.
     Each preview row also includes identity_envelope, a normalized typed
     Lattice catalog projection of the shared fact_identity_contract. Hero only
     serializes this projection. It includes family, digest, active identity,
     row-index ranges, parent digests, support counters when present, and
-    no-proof/no-dispatch/no-selection authority flags.
+    no-proof/no-dispatch/no-selection authority flags. Target evaluation and
+    checkpoint closure display JSON may also include certificate_ref,
+    checkpoint_ref, and root_checkpoint_ref next to their full digest fields;
+    these refs are not proof inputs.
     Artifact-readiness proof rows also expose fact_preview_hint, and blocked
     artifact plan_basis rows aggregate fact_preview_hints so operators can jump
     from a failed proof to the concrete catalog row. These hints are

@@ -457,7 +457,7 @@ canonical_runtime_handoff_text(const marshal_runtime_dry_run_request_t &request,
   detail::append_kv(out, "target_id", request.target_id);
   detail::append_kv(out, "base_config_path",
                     detail::normalize_path_text(request.config_path));
-  detail::append_kv(out, "base_config_hash",
+  detail::append_kv(out, "base_config_digest",
                     detail::file_content_digest_or_empty(
                         std::filesystem::path(request.config_path),
                         "kikijyeba.runtime.handoff.base_config_file.v1"));
@@ -481,7 +481,7 @@ canonical_runtime_handoff_text(const marshal_runtime_dry_run_request_t &request,
   detail::append_kv(out, "runtime_policy_path",
                     detail::normalize_path_text(policy_path.string()));
   detail::append_kv(
-      out, "runtime_policy_hash",
+      out, "runtime_policy_digest",
       detail::file_content_digest_or_empty(
           policy_path, "kikijyeba.runtime.handoff.runtime_policy_file.v1"));
   detail::append_kv(out, "dry_run", detail::bool_text(dry_run));
@@ -508,12 +508,12 @@ runtime_handoff_object_json(const marshal_runtime_dry_run_request_t &request,
   const std::string handoff_id = "runtime_handoff_" + handoff_digest;
   const std::string base_config_path =
       detail::normalize_path_text(request.config_path);
-  const std::string base_config_hash = detail::file_content_digest_or_empty(
+  const std::string base_config_digest = detail::file_content_digest_or_empty(
       std::filesystem::path(request.config_path),
       "kikijyeba.runtime.handoff.base_config_file.v1");
   const std::string runtime_policy_path =
       detail::normalize_path_text(policy_path.string());
-  const std::string runtime_policy_hash = detail::file_content_digest_or_empty(
+  const std::string runtime_policy_digest = detail::file_content_digest_or_empty(
       policy_path, "kikijyeba.runtime.handoff.runtime_policy_file.v1");
   const auto unresolved = detail::unresolved_model_state_symbols(request);
 
@@ -529,7 +529,7 @@ runtime_handoff_object_json(const marshal_runtime_dry_run_request_t &request,
         << detail::json_quote(request.target_driver_run_id);
   }
   out << ",\"base_config\":{\"path\":" << detail::json_quote(base_config_path)
-      << ",\"hash\":" << detail::json_quote(base_config_hash) << "}"
+      << ",\"digest\":" << detail::json_quote(base_config_digest) << "}"
       << ",\"wave\":{";
   bool first_wave = true;
   detail::append_json_string_field(out, "target_component_family_id",
@@ -565,12 +565,12 @@ runtime_handoff_object_json(const marshal_runtime_dry_run_request_t &request,
   detail::append_json_string_map(out, request.model_state_inputs);
   out << "},\"checkpoint_inputs\":";
   detail::append_json_string_map(out, request.model_state_inputs);
-  out << ",\"checkpoint_artifact_hashes\":{}"
+  out << ",\"checkpoint_artifact_digests\":{}"
       << ",\"lattice_certificate_refs\":";
   detail::append_json_string_map(out, request.lattice_certificate_refs);
   out << ",\"runtime_policy\":{\"path\":"
       << detail::json_quote(runtime_policy_path)
-      << ",\"hash\":" << detail::json_quote(runtime_policy_hash) << "}"
+      << ",\"digest\":" << detail::json_quote(runtime_policy_digest) << "}"
       << ",\"intent\":{\"dry_run\":" << (dry_run ? "true" : "false")
       << ",\"confirm_execute\":" << (confirm_execute ? "true" : "false")
       << ",\"force_rebuild_cache\":"

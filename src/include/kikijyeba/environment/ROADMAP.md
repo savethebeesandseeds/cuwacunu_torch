@@ -65,10 +65,18 @@ Acceptance:
 - A fresh end-to-end rehearsal can train upstream models, run no-op
   policy-training artifact smoke, and run cost-aware replay without introducing
   a second execution physics.
+- Runtime PPO V0 can run a bounded evidence rehearsal from completed replay
+  artifacts through the on-policy replay collection path, emit PPO
+  rollout/update/checkpoint artifacts, and produce a Lattice-readable
+  `runtime.policy_training.fact` without making policy-quality claims.
 - Causal policy-training schedule evidence remains separate from environment
   trajectory evidence but both bind the same environment/action/reward/execution
   contracts.
-- No PPO optimizer is implemented in this milestone.
+- Runtime/Lattice must satisfy `ppo_policy_artifact_contract.v1` before any
+  larger PPO training or policy-quality discussion: actor/critic checkpoint
+  identity, PPO config, rollout collection evidence, update-report evidence,
+  validation rollout evidence, parent artifact lineage, and causal schedule
+  identity must be bound without making policy-quality claims.
 
 ## Future Environment Work
 

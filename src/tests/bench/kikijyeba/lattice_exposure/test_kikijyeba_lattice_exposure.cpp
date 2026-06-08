@@ -1970,8 +1970,6 @@ int main() {
       parked_environment_scan.ledger.forecast_eval_facts().front();
   const auto &policy_parent_observer_belief =
       parked_environment_scan.ledger.observer_belief_facts().front();
-  const auto &policy_parent_allocation_engine =
-      parked_environment_scan.ledger.allocation_engine_facts().front();
   const auto &policy_parent_replay_environment =
       parked_environment_scan.ledger.replay_environment_facts().front();
   std::ostringstream policy_training_sidecar;
@@ -1992,10 +1990,50 @@ int main() {
          "post_execution_ledger_log_growth_cost_drawdown.v1\n"
       << "policy_input_schema_id=kikijyeba.environment.policy_input.v1\n"
       << "action_adapter_id=target_node_weights_simplex.v1\n"
+      << "action_distribution_id=masked_dirichlet_simplex.v1\n"
       << "reward_contract_id=kikijyeba.environment.reward."
          "post_execution_ledger_log_growth_cost_drawdown.v1\n"
       << "execution_profile_digest="
       << policy_parent_replay_environment.execution_profile_digest << "\n"
+      << "ppo_policy_artifact_contract_id="
+         "kikijyeba.runtime.ppo_policy_artifact_contract.v1\n"
+      << "policy_family_id="
+         "wikimyei.policy.portfolio.graph_node_allocation\n"
+      << "policy_checkpoint_schema_id="
+         "wikimyei.policy.portfolio.graph_node_allocation.ppo_checkpoint.v1\n"
+      << "policy_input_feature_manifest_digest="
+         "policy_input_manifest_digest_1\n"
+      << "action_distribution_config_digest="
+         "action_distribution_config_digest_1\n"
+      << "snapshot_family_digest=snapshot_family_digest_1\n"
+      << "actor_architecture_digest=actor_architecture_digest_1\n"
+      << "critic_architecture_digest=critic_architecture_digest_1\n"
+      << "input_policy_checkpoint_path=/tmp/"
+         "ppo_v0_actor.collection.checkpoint\n"
+      << "input_policy_checkpoint_digest=input_actor_checkpoint_digest_1\n"
+      << "actor_checkpoint_digest=actor_checkpoint_digest_1\n"
+      << "critic_checkpoint_digest=critic_checkpoint_digest_1\n"
+      << "optimizer_state_digest=optimizer_state_digest_1\n"
+      << "ppo_config_digest=ppo_config_digest_1\n"
+      << "advantage_estimator_id=gae.v1\n"
+      << "advantage_normalization_policy=per_rollout_standardize_v1\n"
+      << "rollout_collection_schema_id="
+         "kikijyeba.runtime.ppo_rollout_collection.v1\n"
+      << "rollout_collection_digest=rollout_collection_digest_1\n"
+      << "ppo_update_report_schema_id="
+         "kikijyeba.runtime.ppo_update_report.v1\n"
+      << "ppo_update_report_digest=ppo_update_report_digest_1\n"
+      << "validation_rollout_report_digest="
+         "validation_rollout_report_digest_1\n"
+      << "ppo_gamma=0.99\n"
+      << "ppo_gae_lambda=0.95\n"
+      << "ppo_clip_epsilon=0.2\n"
+      << "ppo_target_kl=0.02\n"
+      << "ppo_entropy_coeff=0.01\n"
+      << "ppo_value_loss_coeff=0.5\n"
+      << "ppo_max_grad_norm=0.5\n"
+      << "ppo_minibatch_size=32\n"
+      << "ppo_epochs_per_rollout=4\n"
       << "training_schedule_mode=causal_walk_forward_training.v1\n"
       << "causal_schedule_schema_id="
          "kikijyeba.runtime.policy_training_causal_schedule.v1\n"
@@ -2018,14 +2056,8 @@ int main() {
       << "parent_observer_belief_fact_digest="
       << exposure::observer_belief_fact_digest(policy_parent_observer_belief)
       << "\n"
-      << "parent_allocation_engine_fact_digest="
-      << exposure::allocation_engine_fact_digest(
-             policy_parent_allocation_engine)
-      << "\n"
-      << "parent_replay_environment_fact_digest="
-      << exposure::replay_environment_fact_digest(
-             policy_parent_replay_environment)
-      << "\n"
+      << "parent_replay_environment_report_digest="
+      << policy_parent_replay_environment.experiment_report_digest << "\n"
       << "random_seed=0\n"
       << "training_range_disjoint_validation=true\n"
       << "training_range_disjoint_test=true\n"
@@ -2090,6 +2122,32 @@ int main() {
               "kikijyeba.environment.policy_input.v1" &&
           policy_training_fact.action_adapter_id ==
               "target_node_weights_simplex.v1" &&
+          policy_training_fact.action_distribution_id ==
+              "masked_dirichlet_simplex.v1" &&
+          policy_training_fact.ppo_policy_artifact_contract_id ==
+              "kikijyeba.runtime.ppo_policy_artifact_contract.v1" &&
+          policy_training_fact.policy_family_id ==
+              "wikimyei.policy.portfolio.graph_node_allocation" &&
+          policy_training_fact.actor_architecture_digest ==
+              "actor_architecture_digest_1" &&
+          policy_training_fact.critic_architecture_digest ==
+              "critic_architecture_digest_1" &&
+          policy_training_fact.input_policy_checkpoint_digest ==
+              "input_actor_checkpoint_digest_1" &&
+          policy_training_fact.ppo_config_digest == "ppo_config_digest_1" &&
+          policy_training_fact.rollout_collection_digest ==
+              "rollout_collection_digest_1" &&
+          policy_training_fact.ppo_update_report_digest ==
+              "ppo_update_report_digest_1" &&
+          policy_training_fact.ppo_gamma_bound &&
+          policy_training_fact.ppo_gae_lambda_bound &&
+          policy_training_fact.ppo_clip_epsilon_bound &&
+          policy_training_fact.ppo_target_kl_bound &&
+          policy_training_fact.ppo_entropy_coeff_bound &&
+          policy_training_fact.ppo_value_loss_coeff_bound &&
+          policy_training_fact.ppo_max_grad_norm_bound &&
+          policy_training_fact.ppo_minibatch_size_bound &&
+          policy_training_fact.ppo_epochs_per_rollout_bound &&
           policy_training_fact.reward_contract_id ==
               "kikijyeba.environment.reward.post_execution_ledger_log_growth_"
               "cost_drawdown.v1" &&
@@ -2105,6 +2163,19 @@ int main() {
           policy_training_summary.test_range_digest_bound_count == 1 &&
           policy_training_summary.policy_input_schema_bound_count == 1 &&
           policy_training_summary.action_adapter_bound_count == 1 &&
+          policy_training_summary.action_distribution_bound_count == 1 &&
+          policy_training_summary.ppo_policy_artifact_contract_bound_count ==
+              1 &&
+          policy_training_summary.actor_architecture_bound_count == 1 &&
+          policy_training_summary.critic_architecture_bound_count == 1 &&
+          policy_training_summary.input_policy_checkpoint_bound_count == 1 &&
+          policy_training_summary.actor_checkpoint_bound_count == 1 &&
+          policy_training_summary.critic_checkpoint_bound_count == 1 &&
+          policy_training_summary.optimizer_state_bound_count == 1 &&
+          policy_training_summary.ppo_config_bound_count == 1 &&
+          policy_training_summary.rollout_collection_bound_count == 1 &&
+          policy_training_summary.ppo_update_report_bound_count == 1 &&
+          policy_training_summary.ppo_hyperparameter_bound_count == 1 &&
           policy_training_summary.reward_contract_id_bound_count == 1 &&
           policy_training_summary.execution_profile_digest_bound_count == 1 &&
           policy_training_summary.causal_schedule_digest_bound_count == 1 &&
@@ -2117,8 +2188,8 @@ int main() {
           policy_training_summary.forecast_eval_bound_count == 1 &&
           policy_training_summary.observer_belief_declared_count == 1 &&
           policy_training_summary.observer_belief_bound_count == 1 &&
-          policy_training_summary.allocation_engine_declared_count == 1 &&
-          policy_training_summary.allocation_engine_bound_count == 1 &&
+          policy_training_summary.allocation_engine_declared_count == 0 &&
+          policy_training_summary.allocation_engine_bound_count == 0 &&
           policy_training_summary.replay_environment_declared_count == 1 &&
           policy_training_summary.replay_environment_bound_count == 1 &&
           policy_training_summary.disjoint_range_contract_count == 1 &&
@@ -2159,6 +2230,21 @@ int main() {
                       "unsupported_no_future_snapshot_use_source"),
         "policy-training facts reject caller-asserted no-future snapshot "
         "source");
+
+  auto policy_training_missing_ppo_update = policy_training_fact;
+  policy_training_missing_ppo_update.ppo_update_report_digest.clear();
+  check(contains_text(exposure::policy_training_fact_issues(
+                          policy_training_missing_ppo_update),
+                      "missing_ppo_update_report_digest"),
+        "PPO policy-training facts require update-report evidence");
+
+  auto policy_training_missing_input_checkpoint = policy_training_fact;
+  policy_training_missing_input_checkpoint.input_policy_checkpoint_digest
+      .clear();
+  check(contains_text(exposure::policy_training_fact_issues(
+                          policy_training_missing_input_checkpoint),
+                      "missing_input_policy_checkpoint_digest"),
+        "PPO policy-training facts require collection checkpoint evidence");
 
   auto policy_training_opaque_cursor = policy_training_fact;
   policy_training_opaque_cursor.causal_schedule_cursor_key_kind =

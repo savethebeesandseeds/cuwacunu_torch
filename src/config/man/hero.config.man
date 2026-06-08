@@ -15,7 +15,7 @@ key = config_root
 scope = Config Hero policy
 type = path
 default = /cuwacunu/src/config
-nuance = Relative paths passed to hero.config.list/read/write/delete resolve here.
+nuance = Relative paths passed to hero.config.inspect file_* subjects and hero.config.apply write/delete operations resolve here.
 
 [FIELD managed_roots]
 key = managed_roots
@@ -29,14 +29,14 @@ key = allow_read
 scope = Config Hero policy
 type = bool
 default = true
-nuance = Gates hero.config.list and hero.config.read.
+nuance = Gates read-only hero.config.inspect subjects over managed files.
 
 [FIELD allow_write]
 key = allow_write
 scope = Config Hero policy
 type = bool
 default = false
-nuance = Gates hero.config.write, hero.config.delete, hero.config.save, and hero.config.rollback.
+nuance = Gates mutating hero.config.apply operations: save, rollback, write, and delete.
 
 [FIELD write_roots]
 key = write_roots
@@ -90,20 +90,22 @@ nuance = File deletion requires expected_sha256 so agents do not delete stale ta
 
 [TOOLS]
 hero.config.status = policy and global-config health summary
-hero.config.schema = policy key registry
-hero.config.show = loaded policy entries
-hero.config.get = one policy value
-hero.config.set = in-memory policy edit
-hero.config.validate = policy validation plus global config path existence checks
-hero.config.map = global config path-reference map with existence and optional sha256
-hero.config.capture_bundle = exact config bundle provenance receipt with file list, canonical paths, content digests, stable config_bundle_id, and per-capture config_receipt_id
-hero.config.resolve = resolve one path and report read/write policy gates
-hero.config.diff = pending policy save preview
-hero.config.save = persist policy after write policy checks
-hero.config.reload = reload policy from disk
-hero.config.backups = list policy backups
-hero.config.rollback = restore policy backup after write policy checks
-hero.config.list = list managed config files
-hero.config.read = read one managed config file with sha256
-hero.config.write = whole-file create or replace after write policy checks; dry_run supported; existing targets require expected_sha256 by default
-hero.config.delete = delete one managed config file after write policy checks; dry_run supported; expected_sha256 required by default
+hero.config.inspect = read-only inspection by subject=schema|show|value|validate_global_config|map|bundle|resolve_path|diff|backups|file_list|file_read
+hero.config.inspect subject=schema = policy key registry
+hero.config.inspect subject=show = loaded policy entries
+hero.config.inspect subject=value = one policy value selected by key
+hero.config.inspect subject=validate_global_config = policy validation plus global config path existence/type checks
+hero.config.inspect subject=map = global config path-reference map with existence and optional sha256
+hero.config.inspect subject=bundle = exact config bundle provenance receipt with file list, canonical paths, content digests, stable config_bundle_id, and per-capture config_receipt_id
+hero.config.inspect subject=resolve_path = resolve one path and report read/write policy gates
+hero.config.inspect subject=diff = pending policy save preview
+hero.config.inspect subject=backups = list policy backups
+hero.config.inspect subject=file_list = list managed config files
+hero.config.inspect subject=file_read = read one managed config file with optional content and sha256
+hero.config.apply = mutate Config Hero policy or managed files by operation=set|save|reload|rollback|write|delete with requested_mode=plan|execute
+hero.config.apply operation=set = in-memory policy edit
+hero.config.apply operation=save = persist policy after write policy checks
+hero.config.apply operation=reload = reload policy from disk
+hero.config.apply operation=rollback = restore policy backup after write policy checks
+hero.config.apply operation=write = whole-file create or replace after write policy checks; plan mode previews and existing targets require expected_sha256 or expected_current_sha256 by default
+hero.config.apply operation=delete = delete one managed config file after write policy checks; plan mode previews and expected_sha256 is required by default

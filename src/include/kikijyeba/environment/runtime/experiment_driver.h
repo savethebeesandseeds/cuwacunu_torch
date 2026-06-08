@@ -24,6 +24,7 @@
 #include "kikijyeba/environment/output/experience_trace.h"
 #include "kikijyeba/environment/policy/allocation.h"
 #include "kikijyeba/environment/policy/baseline.h"
+#include "kikijyeba/environment/policy/trainable.h"
 #include "kikijyeba/environment/run/experiment_runner.h"
 #include "kikijyeba/environment/runtime/replay_source.h"
 #include "kikijyeba/protocol/config_bundle.h"
@@ -58,6 +59,14 @@ struct runtime_job_replay_driver_options_t {
   bool include_equal_weight_policy{false};
   bool include_current_weight_policy{false};
   bool include_spot_distributional_utility_policy{true};
+  bool include_graph_node_allocation_policy{false};
+  std::string graph_node_allocation_action_distribution_id{
+      kMaskedDirichletSimplexDistributionV1};
+  std::string graph_node_allocation_policy_artifact_digest{
+      "runtime_graph_node_allocation_fixture_digest"};
+  std::filesystem::path graph_node_allocation_policy_checkpoint_path{};
+  std::string causal_schedule_digest{};
+  std::string snapshot_family_digest{};
 
   replay_experiment_options_t experiment_options{};
   replay::replay_frame_build_options_t frame_options{
@@ -156,6 +165,105 @@ replay_report_digest_for_text(const std::string &text) {
 [[nodiscard]] inline std::string
 replay_report_digest_for_path(const std::filesystem::path &path) {
   return replay_report_digest_for_text(read_text_file_or_throw(path));
+}
+
+[[nodiscard]] inline std::vector<double>
+parse_double_csv(const std::string &text, const std::string &field_name) {
+  std::vector<double> out;
+  std::stringstream stream(text);
+  std::string token;
+  while (std::getline(stream, token, ',')) {
+    token = runtime_layout::trim_ascii(token);
+    if (token.empty()) {
+      continue;
+    }
+    try {
+      out.push_back(std::stod(token));
+    } catch (const std::exception &) {
+      throw std::runtime_error(
+          "[runtime_job_replay_driver] invalid double in " + field_name + ": " +
+          token);
+    }
+  }
+  return out;
+}
+
+[[nodiscard]] inline torch::Tensor
+tensor_from_double_csv(const std::string &text, const std::string &field_name) {
+  const auto values = parse_double_csv(text, field_name);
+  if (values.empty()) {
+    return {};
+  }
+  return torch::tensor(values, torch::TensorOptions().dtype(torch::kFloat64));
+}
+
+inline void load_graph_node_allocation_checkpoint_into_config(
+    const std::filesystem::path &checkpoint_path,
+    graph_node_allocation_torch_policy_config_t *config) {
+  if (checkpoint_path.empty()) {
+    return;
+  }
+  if (config == nullptr) {
+    throw std::runtime_error(
+        "[runtime_job_replay_driver] graph-node checkpoint config is null");
+  }
+  const auto kv = runtime_layout::parse_kv_file(checkpoint_path);
+  const std::string checkpoint_part =
+      runtime_layout::map_get(kv, "checkpoint_part");
+  if (checkpoint_part != "actor") {
+    throw std::runtime_error(
+        "[runtime_job_replay_driver] graph-node policy checkpoint must be an "
+        "actor checkpoint");
+  }
+  const std::string checkpoint_distribution =
+      runtime_layout::map_get(kv, "action_distribution_id");
+  if (!checkpoint_distribution.empty()) {
+    if (!action_distribution_id_supported(checkpoint_distribution)) {
+      throw std::runtime_error(
+          "[runtime_job_replay_driver] graph-node policy checkpoint action "
+          "distribution is unsupported");
+    }
+    if (!config->action_distribution_id.empty() &&
+        config->action_distribution_id != checkpoint_distribution) {
+      throw std::runtime_error(
+          "[runtime_job_replay_driver] graph-node policy checkpoint action "
+          "distribution does not match replay request");
+    }
+    config->action_distribution_id = checkpoint_distribution;
+  }
+  const std::string logits = runtime_layout::map_get(kv, "node_weight_logits");
+  const std::string logit_bias =
+      runtime_layout::map_get(kv, "node_weight_logit_bias");
+  if (!logit_bias.empty()) {
+    config->node_weight_logit_bias =
+        tensor_from_double_csv(logit_bias, "node_weight_logit_bias");
+  } else if (!logits.empty()) {
+    config->node_weight_logit_bias =
+        tensor_from_double_csv(logits, "node_weight_logits");
+  } else if (runtime_layout::map_get(kv, "node_weight_logit_bias_mode") ==
+                 "zero" ||
+             runtime_layout::map_get(kv, "node_weight_logits_mode") == "zero") {
+    config->node_weight_logit_bias = torch::Tensor{};
+  }
+  const std::string params =
+      runtime_layout::map_get(kv, "action_distribution_params");
+  if (!params.empty()) {
+    config->action_distribution_params =
+        tensor_from_double_csv(params, "action_distribution_params");
+    config->action_distribution_params_bound = true;
+  }
+  const std::string value_estimate =
+      runtime_layout::map_get(kv, "value_estimate");
+  if (!value_estimate.empty()) {
+    try {
+      config->value_estimate_bias = std::stod(value_estimate);
+    } catch (const std::exception &) {
+      throw std::runtime_error(
+          "[runtime_job_replay_driver] invalid value_estimate in graph-node "
+          "policy checkpoint");
+    }
+  }
+  config->policy_checkpoint_path = checkpoint_path.string();
 }
 
 [[nodiscard]] inline std::string resolve_driver_config_path(
@@ -347,6 +455,46 @@ make_driver_spot_distributional_utility_policy_factory(
   };
 }
 
+[[nodiscard]] inline replay_policy_factory_t
+make_driver_graph_node_allocation_policy_factory(
+    const runtime_job_replay_driver_options_t &options) {
+  if (!action_distribution_id_supported(
+          options.graph_node_allocation_action_distribution_id)) {
+    throw std::runtime_error(
+        "[runtime_job_replay_driver] unsupported graph-node allocation action "
+        "distribution");
+  }
+  return {
+      .policy_id = kGraphNodeAllocationPolicyId,
+      .policy_kind = policy_kind_t::reinforcement_learning,
+      .make_policy =
+          [driver_options =
+               options](const replay::replay_episode_bundle_t &bundle) {
+            graph_node_allocation_torch_policy_config_t config{};
+            config.policy_id = kGraphNodeAllocationPolicyId;
+            config.policy_artifact_digest =
+                driver_options.graph_node_allocation_policy_artifact_digest;
+            config.action_distribution_id =
+                driver_options.graph_node_allocation_action_distribution_id;
+            config.graph_order_fingerprint =
+                bundle.spec.graph_order_fingerprint;
+            config.execution_profile_digest =
+                driver_options.execution_profile_digest;
+            config.accounting_numeraire_node_id =
+                bundle.spec.base_policy.accounting_numeraire_id;
+            config.causal_schedule_digest =
+                driver_options.causal_schedule_digest;
+            config.snapshot_family_digest =
+                driver_options.snapshot_family_digest;
+            load_graph_node_allocation_checkpoint_into_config(
+                driver_options.graph_node_allocation_policy_checkpoint_path,
+                &config);
+            return std::make_unique<graph_node_allocation_torch_policy_t>(
+                std::move(config));
+          },
+  };
+}
+
 [[nodiscard]] inline std::vector<replay_policy_factory_t>
 make_driver_policy_factories(
     const episode_spec_t &base_spec,
@@ -365,6 +513,10 @@ make_driver_policy_factories(
   if (options.include_spot_distributional_utility_policy) {
     factories.push_back(make_driver_spot_distributional_utility_policy_factory(
         base_spec.constraints, method_spec));
+  }
+  if (options.include_graph_node_allocation_policy) {
+    factories.push_back(
+        make_driver_graph_node_allocation_policy_factory(options));
   }
   if (factories.empty()) {
     throw std::runtime_error(
@@ -963,6 +1115,7 @@ inline void write_replay_experiment_report(
     write_kv(out, prefix + "method_id", episode.method_id);
     write_kv(out, prefix + "policy_kind",
              policy_kind_name(episode.policy_kind));
+    write_kv(out, prefix + "policy_action_mode", episode.policy_action_mode);
     write_kv(out, prefix + "world_mode", world_mode_name(episode.world_mode));
     write_kv(out, prefix + "graph_order_fingerprint",
              episode.graph_order_fingerprint);
@@ -1215,6 +1368,8 @@ inline void write_replay_experiment_report(
       write_kv(out, step_prefix + "method_id", step.method_id);
       write_kv(out, step_prefix + "policy_kind",
                policy_kind_name(step.policy_kind));
+      write_kv(out, step_prefix + "policy_action_mode",
+               step.policy_action_mode);
       write_kv(out, step_prefix + "world_mode",
                world_mode_name(step.world_mode));
       write_kv(out, step_prefix + "anchor_key", step.anchor_key);
@@ -1253,6 +1408,20 @@ inline void write_replay_experiment_report(
       write_kv(out, step_prefix + "policy_input_schema_id",
                step.policy_input_schema_id);
       write_kv(out, step_prefix + "action_adapter_id", step.action_adapter_id);
+      write_kv(out, step_prefix + "action_distribution_id",
+               step.action_distribution_id);
+      write_kv(out, step_prefix + "policy_input_digest",
+               step.policy_input_digest);
+      write_kv(out, step_prefix + "active_node_indices",
+               step.active_node_indices);
+      out << step_prefix << "active_count=" << step.active_count << "\n";
+      out << step_prefix << "old_log_prob=" << step.old_log_prob << "\n";
+      out << step_prefix << "old_entropy=" << step.old_entropy << "\n";
+      out << step_prefix << "old_value_estimate=" << step.old_value_estimate
+          << "\n";
+      out << step_prefix << "action_distribution_evidence_bound="
+          << (step.action_distribution_evidence_bound ? "true" : "false")
+          << "\n";
       write_kv(out, step_prefix + "reward_contract_id",
                step.reward_contract_id);
       write_kv(out, step_prefix + "policy_artifact_digest",

@@ -53,6 +53,7 @@ struct marshal_lattice_target_status_t {
   std::vector<std::string> artifact_fact_families{};
   std::size_t artifact_fact_preview_hint_count{0};
   std::vector<std::string> artifact_fact_preview_families{};
+  std::vector<std::string> artifact_fact_preview_refs{};
   std::vector<std::string> artifact_fact_preview_digests{};
   std::vector<std::string> artifact_fact_preview_tools{};
   std::vector<std::string> artifact_fact_preview_marshal_tools{};
@@ -591,8 +592,9 @@ discover_jobs(const marshal_operational_report_options_t &options) {
       if (explicit_path.is_absolute()) {
         job_dir = explicit_path;
       } else {
-        const auto found = cuwacunu::hero::runtime::job_layout::
-            find_runtime_job_dir_by_id(options.runtime_root, job_id);
+        const auto found =
+            cuwacunu::hero::runtime::job_layout::find_runtime_job_dir_by_id(
+                options.runtime_root, job_id);
         if (!found.has_value()) {
           continue;
         }
@@ -1256,7 +1258,8 @@ inline void append_artifact_boundary_context_json(
 }
 
 [[nodiscard]] inline std::string target_statuses_json(
-    const std::vector<marshal_lattice_target_status_t> &statuses) {
+    const std::vector<marshal_lattice_target_status_t> &statuses,
+    bool include_machine_payload = false) {
   std::ostringstream out;
   out << "{";
   for (std::size_t i = 0; i < statuses.size(); ++i) {
@@ -1304,8 +1307,17 @@ inline void append_artifact_boundary_context_json(
         << statuses[i].artifact_fact_preview_hint_count
         << ",\"artifact_fact_preview_families\":"
         << json_string_array(statuses[i].artifact_fact_preview_families)
-        << ",\"artifact_fact_preview_digests\":"
-        << json_string_array(statuses[i].artifact_fact_preview_digests)
+        << ",\"artifact_fact_preview_refs\":"
+        << json_string_array(statuses[i].artifact_fact_preview_refs)
+        << ",\"artifact_fact_preview_digest_count\":"
+        << statuses[i].artifact_fact_preview_digests.size();
+    if (include_machine_payload) {
+      out << ",\"artifact_fact_preview_digests\":"
+          << json_string_array(statuses[i].artifact_fact_preview_digests);
+    } else {
+      out << ",\"artifact_fact_preview_digests_require_machine_payload\":true";
+    }
+    out
         << ",\"artifact_fact_preview_tools\":"
         << json_string_array(statuses[i].artifact_fact_preview_tools)
         << ",\"artifact_fact_preview_marshal_tools\":"
@@ -1403,7 +1415,8 @@ target_next_safe_action(const marshal_lattice_target_status_t &status) {
 }
 
 [[nodiscard]] inline std::string target_blockers_json(
-    const std::vector<marshal_lattice_target_status_t> &statuses) {
+    const std::vector<marshal_lattice_target_status_t> &statuses,
+    bool include_machine_payload = false) {
   std::ostringstream out;
   out << "[";
   for (std::size_t i = 0; i < statuses.size(); ++i) {
@@ -1454,8 +1467,17 @@ target_next_safe_action(const marshal_lattice_target_status_t &status) {
         << statuses[i].artifact_fact_preview_hint_count
         << ",\"artifact_fact_preview_families\":"
         << json_string_array(statuses[i].artifact_fact_preview_families)
-        << ",\"artifact_fact_preview_digests\":"
-        << json_string_array(statuses[i].artifact_fact_preview_digests)
+        << ",\"artifact_fact_preview_refs\":"
+        << json_string_array(statuses[i].artifact_fact_preview_refs)
+        << ",\"artifact_fact_preview_digest_count\":"
+        << statuses[i].artifact_fact_preview_digests.size();
+    if (include_machine_payload) {
+      out << ",\"artifact_fact_preview_digests\":"
+          << json_string_array(statuses[i].artifact_fact_preview_digests);
+    } else {
+      out << ",\"artifact_fact_preview_digests_require_machine_payload\":true";
+    }
+    out
         << ",\"artifact_fact_preview_tools\":"
         << json_string_array(statuses[i].artifact_fact_preview_tools)
         << ",\"artifact_fact_preview_marshal_tools\":"
@@ -1916,7 +1938,7 @@ default_marshal_operational_report_target_ids() {
         << operational_report_detail::checkpoint_rows_json(jobs, false);
     out << ",\"target_statuses\":"
         << operational_report_detail::target_statuses_json(
-               options.target_statuses);
+               options.target_statuses, true);
     out << ",\"metrics\":" << operational_report_detail::metrics_json(jobs)
         << "}";
   }

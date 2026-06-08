@@ -5,6 +5,7 @@
 #include "hero/lattice_hero/lattice/target/lattice_target_evaluator.h"
 #include "hero/mcp_schema_compat.h"
 #include "hero/runtime_hero/runtime/job_layout.h"
+#include "hero/short_ref.h"
 #include "wikimyei/assembly.h"
 #include "wikimyei/representation/encoding/mtf_jepa_mae_vicreg/assembly.h"
 
@@ -29,6 +30,7 @@ namespace cuwacunu::hero::lattice {
 namespace {
 
 namespace fs = std::filesystem;
+namespace display = cuwacunu::hero::display;
 namespace exposure = cuwacunu::hero::lattice::exposure;
 namespace target = cuwacunu::hero::lattice::target;
 
@@ -77,7 +79,7 @@ constexpr tool_descriptor_t kTools[] = {
      "subject=index with mode=status|query inspects the audit index; "
      "subject=derived answers one derived query; subject=checkpoint "
      "inspects checkpoint closure.",
-     R"({"type":"object","properties":{"subject":{"type":"string","enum":["schema","targets","target","exposure","fact_families","facts","index","derived","checkpoint"]},"mode":{"type":"string","enum":["scan","summary","lineage","preview","status","query","explain","closure"]},"target_id":{"type":"string"},"target_ids":{"type":"array","items":{"type":"string"}},"config_path":{"type":"string"},"runtime_root":{"type":"string"},"family":{"type":"string"},"limit":{"type":"integer"},"include_facts":{"type":"boolean"},"digest":{"type":"string"},"fact_digest":{"type":"string"},"digest_prefix":{"type":"string"},"fact_index":{"type":"integer"},"index":{"type":"integer"},"index_path":{"type":"string"},"validation_strength":{"type":"string"},"relation":{"type":"string"},"key":{"type":"string"},"key_contains":{"type":"string"},"compare_live_scan":{"type":"boolean"},"allow_unproven_cache":{"type":"boolean"},"checkpoint_path":{"type":"string"},"checkpoint_id":{"type":"string"},"checkpoint_file_digest":{"type":"string"},"ancestor_checkpoint_path":{"type":"string"},"ancestor_checkpoint_id":{"type":"string"},"protocol_id":{"type":"string"},"protocol_contract_fingerprint":{"type":"string"},"graph_order_fingerprint":{"type":"string"},"source_cursor_token":{"type":"string"},"vicreg_assembly_fingerprint":{"type":"string"},"mtf_jepa_mae_vicreg_assembly_fingerprint":{"type":"string"},"mdn_assembly_fingerprint":{"type":"string"}},"required":["subject"],"additionalProperties":false})"},
+     R"({"type":"object","properties":{"subject":{"type":"string","enum":["schema","targets","target","exposure","fact_families","facts","index","derived","checkpoint"]},"mode":{"type":"string","enum":["scan","summary","lineage","preview","status","query","explain","closure"]},"target_id":{"type":"string"},"target_ids":{"type":"array","items":{"type":"string"}},"config_path":{"type":"string"},"runtime_root":{"type":"string"},"family":{"type":"string"},"limit":{"type":"integer"},"include_facts":{"type":"boolean"},"digest":{"type":"string"},"fact_digest":{"type":"string"},"digest_prefix":{"type":"string"},"fact_digest_prefix":{"type":"string"},"fact_index":{"type":"integer"},"index":{"type":"integer"},"index_path":{"type":"string"},"validation_strength":{"type":"string"},"relation":{"type":"string"},"key":{"type":"string"},"key_contains":{"type":"string"},"compare_live_scan":{"type":"boolean"},"allow_unproven_cache":{"type":"boolean"},"checkpoint_path":{"type":"string"},"checkpoint_id":{"type":"string"},"checkpoint_file_digest":{"type":"string"},"ancestor_checkpoint_path":{"type":"string"},"ancestor_checkpoint_id":{"type":"string"},"protocol_id":{"type":"string"},"protocol_contract_fingerprint":{"type":"string"},"graph_order_fingerprint":{"type":"string"},"source_cursor_token":{"type":"string"},"vicreg_assembly_fingerprint":{"type":"string"},"mtf_jepa_mae_vicreg_assembly_fingerprint":{"type":"string"},"mdn_assembly_fingerprint":{"type":"string"}},"required":["subject"],"additionalProperties":false})"},
     {"hero.lattice.evaluate",
      "Read-only Lattice target evaluation. operation=target evaluates one "
      "target; operation=targets evaluates several targets with one scan; "
@@ -2674,6 +2676,9 @@ node_support_summary_json(const exposure::node_support_summary_t &summary) {
       << ",\"mode\":\"preview\""
       << ",\"marshal_tool\":\"hero.marshal.inspect\""
       << ",\"fact_family\":" << json_quote(family)
+      << ",\"fact_ref\":" << json_quote(display::fact_ref(family, digest))
+      << ",\"fact_digest_prefix\":"
+      << json_quote(display::digest_prefix(digest))
       << ",\"fact_digest\":" << json_quote(digest) << ",\"lattice_args\":";
   if (available) {
     out << "{\"subject\":\"facts\",\"mode\":\"preview\",\"family\":"
@@ -2714,7 +2719,10 @@ node_support_summary_json(const exposure::node_support_summary_t &summary) {
       << ",\"tool\":" << json_quote(hint.tool) << ",\"subject\":\"facts\""
       << ",\"mode\":\"preview\""
       << ",\"marshal_tool\":" << json_quote(hint.marshal_tool)
-      << ",\"fact_family\":" << json_quote(hint.fact_family)
+      << ",\"fact_family\":" << json_quote(hint.fact_family) << ",\"fact_ref\":"
+      << json_quote(display::fact_ref(hint.fact_family, hint.fact_digest))
+      << ",\"fact_digest_prefix\":"
+      << json_quote(display::digest_prefix(hint.fact_digest))
       << ",\"fact_digest\":" << json_quote(hint.fact_digest)
       << ",\"lattice_args\":{\"subject\":\"facts\",\"mode\":\"preview\","
          "\"family\":"
@@ -2758,7 +2766,10 @@ node_support_summary_json(const exposure::node_support_summary_t &summary) {
       << ",\"proof_template_claim\":" << json_quote(proof.proof_template_claim)
       << ",\"fact_family\":" << json_quote(proof.fact_family)
       << ",\"fact_schema\":" << json_quote(proof.fact_schema)
-      << ",\"fact_type\":" << json_quote(proof.fact_type)
+      << ",\"fact_type\":" << json_quote(proof.fact_type) << ",\"fact_ref\":"
+      << json_quote(display::fact_ref(proof.fact_family, proof.fact_digest))
+      << ",\"fact_digest_prefix\":"
+      << json_quote(display::digest_prefix(proof.fact_digest))
       << ",\"fact_digest\":" << json_quote(proof.fact_digest)
       << ",\"fact_preview_hint\":" << artifact_fact_preview_hint_json(proof)
       << ",\"fact_identity_contract_schema\":"
@@ -2971,7 +2982,8 @@ causal_exposure_json(const target::lattice_target_proof_certificate_t::
       << json_quote(preview.checkpoint_path.lexically_normal().string())
       << ",\"checkpoint_id\":" << json_quote(preview.checkpoint_id)
       << ",\"checkpoint_file_digest\":"
-      << json_quote(preview.checkpoint_file_digest)
+      << json_quote(preview.checkpoint_file_digest) << ",\"checkpoint_ref\":"
+      << json_quote(display::checkpoint_ref(preview.checkpoint_file_digest))
       << ",\"component\":" << json_quote(preview.component)
       << ",\"component_assembly_fingerprint\":"
       << json_quote(preview.component_assembly_fingerprint)
@@ -3010,6 +3022,8 @@ causal_exposure_json(const target::lattice_target_proof_certificate_t::
       << ",\"root_checkpoint_id\":" << json_quote(proof.root_checkpoint_id)
       << ",\"root_checkpoint_file_digest\":"
       << json_quote(proof.root_checkpoint_file_digest)
+      << ",\"root_checkpoint_ref\":"
+      << json_quote(display::checkpoint_ref(proof.root_checkpoint_file_digest))
       << ",\"identity_mismatches\":"
       << string_array_json(proof.identity_mismatches)
       << ",\"unresolved_input_checkpoints\":"
@@ -5099,7 +5113,8 @@ mdn_distribution_calibration_diagnostic_summary_json() {
 [[nodiscard]] std::string proof_certificate_json(
     const target::lattice_target_proof_certificate_t &proof) {
   std::ostringstream out;
-  out << "{\"schema\":" << json_quote(proof.schema)
+  out << "{\"schema\":" << json_quote(proof.schema) << ",\"certificate_ref\":"
+      << json_quote(display::certificate_ref(proof.certificate_digest))
       << ",\"certificate_digest\":" << json_quote(proof.certificate_digest)
       << ",\"target_id\":" << json_quote(proof.target_id)
       << ",\"target_spec_fingerprint\":"
@@ -8334,6 +8349,8 @@ forecast_eval_summary_json(const exposure::forecast_eval_summary_t &summary) {
       << json_quote(fact.parent_allocation_engine_fact_digest)
       << ",\"parent_replay_environment_fact_digest\":"
       << json_quote(fact.parent_replay_environment_fact_digest)
+      << ",\"parent_replay_environment_report_digest\":"
+      << json_quote(fact.parent_replay_environment_report_digest)
       << ",\"random_seed\":" << fact.random_seed
       << ",\"random_seed_bound\":" << bool_json(fact.random_seed_bound)
       << ",\"training_range_disjoint_validation\":"
@@ -8429,8 +8446,39 @@ forecast_eval_summary_json(const exposure::forecast_eval_summary_t &summary) {
       << ",\"action_schema_bound_count\":" << summary.action_schema_bound_count
       << ",\"reward_contract_bound_count\":"
       << summary.reward_contract_bound_count
+      << ",\"policy_input_schema_bound_count\":"
+      << summary.policy_input_schema_bound_count
+      << ",\"action_adapter_bound_count\":"
+      << summary.action_adapter_bound_count
+      << ",\"action_distribution_bound_count\":"
+      << summary.action_distribution_bound_count
+      << ",\"reward_contract_id_bound_count\":"
+      << summary.reward_contract_id_bound_count
       << ",\"execution_profile_digest_bound_count\":"
       << summary.execution_profile_digest_bound_count
+      << ",\"ppo_policy_artifact_contract_bound_count\":"
+      << summary.ppo_policy_artifact_contract_bound_count
+      << ",\"ppo_policy_family_bound_count\":"
+      << summary.ppo_policy_family_bound_count
+      << ",\"actor_architecture_bound_count\":"
+      << summary.actor_architecture_bound_count
+      << ",\"critic_architecture_bound_count\":"
+      << summary.critic_architecture_bound_count
+      << ",\"input_policy_checkpoint_bound_count\":"
+      << summary.input_policy_checkpoint_bound_count
+      << ",\"actor_checkpoint_bound_count\":"
+      << summary.actor_checkpoint_bound_count
+      << ",\"critic_checkpoint_bound_count\":"
+      << summary.critic_checkpoint_bound_count
+      << ",\"optimizer_state_bound_count\":"
+      << summary.optimizer_state_bound_count
+      << ",\"ppo_config_bound_count\":" << summary.ppo_config_bound_count
+      << ",\"rollout_collection_bound_count\":"
+      << summary.rollout_collection_bound_count
+      << ",\"ppo_update_report_bound_count\":"
+      << summary.ppo_update_report_bound_count
+      << ",\"ppo_hyperparameter_bound_count\":"
+      << summary.ppo_hyperparameter_bound_count
       << ",\"normalization_fit_range_bound_count\":"
       << summary.normalization_fit_range_bound_count
       << ",\"replay_buffer_source_range_bound_count\":"
@@ -9747,19 +9795,28 @@ fact_family_facts_json(const exposure::lattice_exposure_ledger_t &ledger,
 
 struct fact_preview_filter_t {
   std::string digest{};
-  std::string digest_prefix{};
+  std::string fact_digest_prefix{};
+  std::string resolved_prefix_digest{};
   std::optional<std::size_t> fact_index{};
   std::size_t limit{64};
 };
 
+[[nodiscard]] const std::string &
+fact_preview_effective_digest_filter(const fact_preview_filter_t &filter) {
+  return !filter.resolved_prefix_digest.empty() ? filter.resolved_prefix_digest
+                                                : filter.digest;
+}
+
 [[nodiscard]] bool
 fact_preview_digest_matches(const std::string &digest,
                             const fact_preview_filter_t &filter) {
-  if (!filter.digest.empty() && digest != filter.digest) {
+  const auto &effective_digest = fact_preview_effective_digest_filter(filter);
+  if (!effective_digest.empty() && digest != effective_digest) {
     return false;
   }
-  if (!filter.digest_prefix.empty() &&
-      !digest.starts_with(filter.digest_prefix)) {
+  if (filter.resolved_prefix_digest.empty() &&
+      !filter.fact_digest_prefix.empty() &&
+      !digest.starts_with(filter.fact_digest_prefix)) {
     return false;
   }
   return true;
@@ -9807,7 +9864,10 @@ template <typename Fact, typename DigestFn, typename JsonFn>
     }
     first = false;
     ++returned;
-    out << "{\"fact_index\":" << i << ",\"digest\":" << json_quote(digest)
+    out << "{\"fact_index\":" << i << ",\"fact_digest\":" << json_quote(digest)
+        << ",\"fact_digest_prefix\":"
+        << json_quote(display::digest_prefix(digest))
+        << ",\"fact_ref\":" << json_quote(display::fact_ref(family, digest))
         << ",\"identity_envelope\":"
         << fact_preview_identity_envelope_json(facts[i], family, digest)
         << ",\"fact\":" << json_fn(facts[i]) << "}";
@@ -9822,10 +9882,91 @@ template <typename Fact, typename DigestFn, typename JsonFn>
   return out.str();
 }
 
+struct fact_digest_prefix_resolution_t {
+  std::size_t match_count{0};
+  std::string digest{};
+};
+
+template <typename Fact, typename DigestFn>
+[[nodiscard]] fact_digest_prefix_resolution_t
+resolve_fact_digest_prefix(const std::vector<Fact> &facts,
+                           const std::string &prefix, DigestFn digest_fn) {
+  fact_digest_prefix_resolution_t out{};
+  if (prefix.empty()) {
+    return out;
+  }
+  for (const auto &fact : facts) {
+    const std::string digest = digest_fn(fact);
+    if (digest.starts_with(prefix)) {
+      ++out.match_count;
+      if (out.match_count == 1) {
+        out.digest = digest;
+      } else {
+        out.digest.clear();
+      }
+    }
+  }
+  return out;
+}
+
 [[nodiscard]] std::string checkpoint_fact_digest_for_preview(
     const exposure::lattice_checkpoint_fact_t &fact) {
   return exposure::exposure_digest_for_text(
       exposure::canonical_checkpoint_fact_text(fact));
+}
+
+[[nodiscard]] fact_digest_prefix_resolution_t fact_family_digest_prefix_resolve(
+    const exposure::lattice_exposure_ledger_t &ledger,
+    exposure::lattice_fact_family_t family, const std::string &prefix) {
+  if (prefix.empty()) {
+    return {};
+  }
+  switch (family) {
+  case exposure::lattice_fact_family_t::exposure:
+    return resolve_fact_digest_prefix(ledger.facts(), prefix,
+                                      exposure::exposure_fact_digest);
+  case exposure::lattice_fact_family_t::node_exposure:
+    return resolve_fact_digest_prefix(ledger.node_facts(), prefix,
+                                      exposure::node_exposure_index_row_digest);
+  case exposure::lattice_fact_family_t::checkpoint:
+    return resolve_fact_digest_prefix(ledger.checkpoint_facts(), prefix,
+                                      checkpoint_fact_digest_for_preview);
+  case exposure::lattice_fact_family_t::source_receipt:
+    return resolve_fact_digest_prefix(ledger.source_receipt_facts(), prefix,
+                                      exposure::source_receipt_fact_digest);
+  case exposure::lattice_fact_family_t::source_analytics:
+    return resolve_fact_digest_prefix(ledger.source_analytics_facts(), prefix,
+                                      exposure::source_analytics_fact_digest);
+  case exposure::lattice_fact_family_t::target_transform:
+    return resolve_fact_digest_prefix(ledger.target_transform_facts(), prefix,
+                                      exposure::target_transform_fact_digest);
+  case exposure::lattice_fact_family_t::forecast_baseline:
+    return resolve_fact_digest_prefix(ledger.forecast_baseline_facts(), prefix,
+                                      exposure::forecast_baseline_fact_digest);
+  case exposure::lattice_fact_family_t::forecast_eval:
+    return resolve_fact_digest_prefix(ledger.forecast_eval_facts(), prefix,
+                                      exposure::forecast_eval_fact_digest);
+  case exposure::lattice_fact_family_t::observer_belief:
+    return resolve_fact_digest_prefix(ledger.observer_belief_facts(), prefix,
+                                      exposure::observer_belief_fact_digest);
+  case exposure::lattice_fact_family_t::allocation_engine:
+    return resolve_fact_digest_prefix(ledger.allocation_engine_facts(), prefix,
+                                      exposure::allocation_engine_fact_digest);
+  case exposure::lattice_fact_family_t::replay_environment:
+    return resolve_fact_digest_prefix(ledger.replay_environment_facts(), prefix,
+                                      exposure::replay_environment_fact_digest);
+  case exposure::lattice_fact_family_t::policy_training:
+    return resolve_fact_digest_prefix(ledger.policy_training_facts(), prefix,
+                                      exposure::policy_training_fact_digest);
+  case exposure::lattice_fact_family_t::selection_signal:
+    return resolve_fact_digest_prefix(ledger.selection_signal_facts(), prefix,
+                                      exposure::selection_signal_fact_digest);
+  case exposure::lattice_fact_family_t::representation_support:
+    return resolve_fact_digest_prefix(
+        ledger.representation_support_facts(), prefix,
+        exposure::representation_support_fact_digest);
+  }
+  throw std::runtime_error("[lattice_hero] unknown fact family");
 }
 
 [[nodiscard]] std::string
@@ -11475,6 +11616,12 @@ build_target_evaluator(const std::string &args, lattice_context_t *ctx,
        << ",\"checkpoint_id\":" << json_quote(closure.root_checkpoint_id)
        << ",\"checkpoint_file_digest\":"
        << json_quote(closure.root_checkpoint_file_digest)
+       << ",\"checkpoint_ref\":"
+       << json_quote(
+              display::checkpoint_ref(closure.root_checkpoint_file_digest))
+       << ",\"certificate_ref\":"
+       << json_quote(display::certificate_ref(
+              eval.proof_certificate.certificate_digest))
        << ",\"certificate_digest\":"
        << json_quote(eval.proof_certificate.certificate_digest)
        << ",\"proof_certificate_check_passed\":"
@@ -11972,28 +12119,40 @@ build_target_evaluator(const std::string &args, lattice_context_t *ctx,
 
   fact_preview_filter_t filter{};
   filter.limit = static_cast<std::size_t>(limit);
-  if (!parse_optional_string_arg(args, "digest", "", &filter.digest, err)) {
+  if (extract_json_raw_field(args, "digest", nullptr)) {
+    if (err) {
+      *err =
+          "hero.lattice.inspect subject=facts mode=preview uses fact_digest; "
+          "digest is reserved for subject=index queries";
+    }
     return false;
   }
-  std::string fact_digest;
-  if (!parse_optional_string_arg(args, "fact_digest", "", &fact_digest, err)) {
+  if (extract_json_raw_field(args, "digest_prefix", nullptr)) {
+    if (err) {
+      *err = "hero.lattice.inspect subject=facts mode=preview uses "
+             "fact_digest_prefix; digest_prefix is reserved for subject=index "
+             "queries";
+    }
     return false;
   }
-  if (filter.digest.empty()) {
-    filter.digest = fact_digest;
+  if (extract_json_raw_field(args, "index", nullptr)) {
+    if (err) {
+      *err = "hero.lattice.inspect subject=facts mode=preview uses fact_index; "
+             "index is reserved for subject=index queries";
+    }
+    return false;
   }
-  if (!parse_optional_string_arg(args, "digest_prefix", "",
-                                 &filter.digest_prefix, err)) {
+  if (!parse_optional_string_arg(args, "fact_digest", "", &filter.digest,
+                                 err)) {
+    return false;
+  }
+  if (!parse_optional_string_arg(args, "fact_digest_prefix", "",
+                                 &filter.fact_digest_prefix, err)) {
     return false;
   }
   int fact_index = -1;
   if (!parse_optional_int_arg(args, "fact_index", -1, &fact_index, err)) {
     return false;
-  }
-  if (fact_index < 0) {
-    if (!parse_optional_int_arg(args, "index", -1, &fact_index, err)) {
-      return false;
-    }
   }
   if (fact_index < -1) {
     if (err) {
@@ -12006,6 +12165,37 @@ build_target_evaluator(const std::string &args, lattice_context_t *ctx,
   }
 
   const auto scan = session_scan_for_runtime_root(runtime_root);
+  if (!filter.fact_digest_prefix.empty()) {
+    const auto prefix_resolution = fact_family_digest_prefix_resolve(
+        scan.ledger, *family, filter.fact_digest_prefix);
+    if (prefix_resolution.match_count == 0) {
+      if (err) {
+        *err = std::string(
+                   "E_LATTICE_FACT_REF_NOT_FOUND: fact_digest_prefix matched "
+                   "zero facts in family ") +
+               exposure::lattice_fact_family_name(*family);
+      }
+      return false;
+    }
+    if (prefix_resolution.match_count > 1) {
+      if (err) {
+        *err = "E_LATTICE_FACT_REF_AMBIGUOUS: fact_digest_prefix matched " +
+               std::to_string(prefix_resolution.match_count) +
+               " facts in family " +
+               exposure::lattice_fact_family_name(*family);
+      }
+      return false;
+    }
+    if (!filter.digest.empty() && filter.digest != prefix_resolution.digest) {
+      if (err) {
+        *err = "E_LATTICE_FACT_REF_NOT_FOUND: fact_digest and "
+               "fact_digest_prefix resolve to different facts in family " +
+               std::string(exposure::lattice_fact_family_name(*family));
+      }
+      return false;
+    }
+    filter.resolved_prefix_digest = prefix_resolution.digest;
+  }
   const auto catalog_family_summary =
       exposure::summarize_lattice_fact_family(scan.ledger, *family);
   const auto fact_integrity_summary =
@@ -12052,9 +12242,12 @@ build_target_evaluator(const std::string &args, lattice_context_t *ctx,
        << ",\"cache_rows_used_for_target_satisfaction\":false"
        << ",\"checkpoint_selected\":false"
        << ",\"model_selector\":false"
-       << ",\"digest_filter\":" << json_quote(filter.digest)
-       << ",\"digest_prefix_filter\":" << json_quote(filter.digest_prefix)
-       << ",\"fact_index_filter\":";
+       << ",\"short_ref_scheme\":\"kikijyeba.hero.short_ref.v1\""
+       << ",\"display_digest_prefix_length\":"
+       << display::kDefaultDigestDisplayPrefixLength
+       << ",\"fact_digest_filter\":" << json_quote(filter.digest)
+       << ",\"fact_digest_prefix_filter\":"
+       << json_quote(filter.fact_digest_prefix) << ",\"fact_index_filter\":";
   if (filter.fact_index.has_value()) {
     json << *filter.fact_index;
   } else {
@@ -12473,6 +12666,12 @@ evidence_comparison_participation(
       << json_quote(eval.proof_certificate.closure.root_checkpoint_id)
       << ",\"checkpoint_file_digest\":"
       << json_quote(eval.proof_certificate.closure.root_checkpoint_file_digest)
+      << ",\"checkpoint_ref\":"
+      << json_quote(display::checkpoint_ref(
+             eval.proof_certificate.closure.root_checkpoint_file_digest))
+      << ",\"certificate_ref\":"
+      << json_quote(display::certificate_ref(
+             eval.proof_certificate.certificate_digest))
       << ",\"certificate_digest\":"
       << json_quote(eval.proof_certificate.certificate_digest)
       << ",\"proof_certificate_check\":"
@@ -12962,6 +13161,9 @@ target_satisfied_witness_json(const target::lattice_target_evaluation_t &eval) {
       << json_quote(eval.proof_certificate.target_spec_fingerprint)
       << ",\"split_policy_fingerprint\":"
       << json_quote(eval.proof_certificate.split_policy_fingerprint)
+      << ",\"certificate_ref\":"
+      << json_quote(display::certificate_ref(
+             eval.proof_certificate.certificate_digest))
       << ",\"certificate_digest\":"
       << json_quote(eval.proof_certificate.certificate_digest)
       << ",\"proof_certificate_check_passed\":"
@@ -13351,7 +13553,9 @@ find_checkpoint_fact_for_path(
            << ",\"checkpoint_path\":" << json_quote(checkpoint_path.string())
            << ",\"checkpoint_id\":" << json_quote(checkpoint_id)
            << ",\"checkpoint_file_digest\":"
-           << json_quote(checkpoint_file_digest) << ",\"known\":true"
+           << json_quote(checkpoint_file_digest) << ",\"checkpoint_ref\":"
+           << json_quote(display::checkpoint_ref(checkpoint_file_digest))
+           << ",\"known\":true"
            << ",\"value\":" << bool_json(value)
            << ",\"fail_closed\":" << bool_json(value)
            << ",\"unsafe_or_incomplete_join_failed_closed\":"
@@ -13411,6 +13615,8 @@ find_checkpoint_fact_for_path(
          << ",\"checkpoint_path\":" << json_quote(checkpoint_path.string())
          << ",\"checkpoint_id\":" << json_quote(checkpoint_id)
          << ",\"checkpoint_file_digest\":" << json_quote(checkpoint_file_digest)
+         << ",\"checkpoint_ref\":"
+         << json_quote(display::checkpoint_ref(checkpoint_file_digest))
          << ",\"ancestor_checkpoint_path\":"
          << json_quote(ancestor_checkpoint_path.string())
          << ",\"ancestor_checkpoint_id\":" << json_quote(ancestor_checkpoint_id)
@@ -13518,6 +13724,8 @@ find_checkpoint_fact_for_path(
        << ",\"checkpoint_path\":" << json_quote(checkpoint_path.string())
        << ",\"checkpoint_id\":" << json_quote(checkpoint_id)
        << ",\"checkpoint_file_digest\":" << json_quote(checkpoint_file_digest)
+       << ",\"checkpoint_ref\":"
+       << json_quote(display::checkpoint_ref(checkpoint_file_digest))
        << ",\"complete\":" << bool_json(closure.complete())
        << ",\"fact_count\":" << closure.facts.size()
        << ",\"resolution_authority\":"
@@ -13525,6 +13733,9 @@ find_checkpoint_fact_for_path(
        << ",\"root_checkpoint_id\":" << json_quote(closure.root_checkpoint_id)
        << ",\"root_checkpoint_file_digest\":"
        << json_quote(closure.root_checkpoint_file_digest)
+       << ",\"root_checkpoint_ref\":"
+       << json_quote(
+              display::checkpoint_ref(closure.root_checkpoint_file_digest))
        << ",\"identity_mismatches\":"
        << string_array_json(closure.identity_mismatches)
        << ",\"returned_fact_count\":"

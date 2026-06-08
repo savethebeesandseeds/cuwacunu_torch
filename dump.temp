@@ -1,493 +1,771 @@
-Marshal / Runtime / Cajtucu / Pre-PPO State Packet
-==================================================
+Review packet for our colleague: policy network architecture review before PPO expansion
+=====================================================================================
 
-Date: 2026-06-06
-Purpose:
-  Please review the current state after the latest cleanup pass and suggest the
-  safest next milestone before executable PPO work. We are trying to keep the
-  public Hero surfaces small, the policy/environment contract causal, and the
-  Cajtucu paper execution semantics honest under missing pairs and costs.
+Date/context:
+  2026-06-07
 
+Request:
+  Please review the learned policy network architecture with special care.
+  We are not asking for a generic PPO plan. We need architectural judgment on
+  the policy network surface that sits downstream of the current representation,
+  MDN, and observer stack.
 
-1. Current Operative Model
---------------------------
+Critical clarification:
+  PPO does not replace representation / MDN / observer.
+  PPO lives downstream of AllocationBelief.
+  PPO learns allocation behavior, not raw forecasting physics.
 
-The system boundary we are preserving:
+The intended stack remains:
 
-  Lattice:
-    reads durable evidence and proves explicit target claims.
+  market/source data
+    -> representation / encoder
+    -> MDN / forecast distribution
+    -> observer / AllocationBelief
+    -> policy_input_t
+    -> wikimyei.policy.portfolio.graph_node_allocation policy network
+    -> stochastic simplex target_node_weights[A]
+    -> Kikijyeba environment action_t
+    -> Cajtucu paper execution
+    -> post-execution ledger reward
+    -> Runtime evidence
+    -> Lattice artifact proof
 
-  Runtime:
-    executes waves, replay, and future policy-training jobs.
+Please do not interpret "no raw MDN input" as "remove MDN." It only means:
+  do not expose raw MDN tensors such as log_pi / mu / sigma directly to PPO by
+  default. MDN information reaches the policy through AllocationBelief-derived
+  summaries: expected return, variance, volatility, VaR/CVaR, downside
+  probability, confidence, calibration, surprise, entropy/disagreement,
+  projection validation, liquidity, cost, and capacity.
 
-  Marshal:
-    coordinates/validates/delegates/records/explains bounded handoffs.
+Where the project now stands
+----------------------------
 
-  Config Hero:
-    policy-controlled config/file surface only.
+The current root roadmap says the PPO V0 evidence path is implemented as
+evidence-only machinery:
 
-  Kikijyeba:
-    environment/world loop, reset/step/reward/time law.
+  - stochastic policy surface exists
+  - Runtime PPO V0 execution path exists
+  - cost-aware validation exists
+  - policy quality comparison report exists
+  - Lattice artifact-readiness proof is wired
+  - no policy-quality, market-readiness, deployment, paper-online, or live
+    execution claim is made
 
-  Wikimyei:
-    representation, inference/belief, and policy/allocation logic.
+The next planned milestone is:
 
-  Cajtucu:
-    paper execution mechanics, fills/rejects/partials, ledger mutation,
-    execution traces.
+  policy_network_architecture_review.v1
 
-Important non-authority rules:
+Goal:
+  Review the learned graph-node allocation network architecture before
+  expanding PPO beyond the current V0 evidence path.
 
-  - Marshal does not train.
-  - Marshal does not prove.
-  - Marshal does not select policies or winners.
-  - Cajtucu does not choose a portfolio.
-  - Accounting numeraire is a reporting/valuation unit, not a hidden route hub.
-  - PPO remains unimplemented until the policy/environment contract is stable.
+The roadmap acceptance for this review says:
 
+  - explicitly confirm learned policy consumes AllocationBelief-derived
+    policy_input_t, not raw MDN tensors
+  - produce a named V0 network contract for
+    wikimyei.policy.portfolio.graph_node_allocation
+  - separate actor-visible tensors from evidence-only identity fields
+  - ensure actor/critic architecture can emit all distribution and value
+    evidence required by PPO without private simulator shortcuts
+  - list future architecture candidates as deferred V1/V2 research, not mixed
+    into PPO V0 by accident
+  - make no policy-quality, market-readiness, paper-online, or live-execution
+    claim
 
-2. Latest Cleanup: Config Hero Subject Rename
----------------------------------------------
-
-We renamed the vague Config Hero inspect subject:
-
-  old:
-    hero.config.inspect subject=validate
-
-  new:
-    hero.config.inspect subject=validate_global_config
-
-No alias was kept.
-
-Current meaning:
-
-  validate_global_config:
-    - read /cuwacunu/src/config/.config
-    - parse configured entries
-    - resolve configured paths
-    - check existence/type/readability
-    - report missing/broken references
-
-It does not mean semantic validation of all DSLs, Runtime execution readiness,
-Lattice target proof, or Cajtucu behavior.
-
-Files touched:
-
-  src/impl/hero/config_hero/hero_config_tools.cpp
-  src/main/hero/hero_config_mcp.cpp
-  src/main/hero/README.md
-  src/tests/bench/kikijyeba/runtime/test_hero_mcp_schema_compat.cpp
-
-Verified:
-
-  make -C src/main/hero -j12 build-config-hero
-  make -C src/tests/bench/kikijyeba/runtime -j12 run-test_hero_mcp_schema_compat
-  /cuwacunu/.build/hero/hero_config.mcp \
-    --global-config /cuwacunu/src/config/.config \
-    --tool hero.config.inspect \
-    --args-json '{"subject":"validate_global_config"}'
-
-  /cuwacunu/.build/hero/hero_config.mcp \
-    --global-config /cuwacunu/src/config/.config \
-    --tool hero.config.inspect \
-    --args-json '{"subject":"validate"}'
-
-The old subject fails closed.
-
-
-3. Latest Cleanup: Missing Direct Pair Policy in Cajtucu
+Important changes since the last broad policy discussion
 --------------------------------------------------------
 
-Concern:
+1. No separate reserve/cash output remains.
 
-  A missing ETH/BTC pair should not crash the product or wait as a silent point
-  of failure. But we also do not want the accounting numeraire to become a
-  hidden route hub.
+   The action is one unified target weight vector:
 
-Implemented compromise:
+     target_node_weights[A]
 
-  Cajtucu paper V1 now has an explicit missing-direct-pair policy:
+   A is the ordered graph-node action universe. The accounting numeraire is an
+   ordinary graph node inside that vector. There is no target_base_reserve_weight
+   and no hidden cash scalar.
 
-    enum class missing_direct_pair_policy_t {
-      invalid_trace,
-      skip_pair_warn,
-      route_via_accounting_numeraire_warn,
-    };
+2. The accounting numeraire is a global accounting/reporting node, not a route
+   hub and not a special policy output.
 
-Default:
+   It is used for valuation/reward/reporting. Cajtucu execution should use
+   direct node-pair execution when the pair exists. Missing direct pairs are not
+   silently routed through the numeraire by default.
 
-  skip_pair_warn
+3. PPO-facing output is graph-node allocation.
 
-Meaning:
+   Current output path:
 
-  - If the direct pair exists, Cajtucu uses it. No numeraire route.
-  - If the direct pair is missing, default behavior records a warning and a
-    rejected fill, keeps the trace valid, and does not mutate the ledger.
-  - Strict validation can select invalid_trace.
-  - Diagnostic/research fallback can select route_via_accounting_numeraire_warn.
-    That emits two explicit paper legs and charges two explicit cost events.
+     policy_input_t
+       -> raw node_weight_logits[A]
+       -> masked_dirichlet_simplex.v1 or masked_logistic_normal_simplex.v1
+       -> target_node_weights_simplex.v1
+       -> action_t.target_weights[A]
 
-Important:
+4. The default action distribution is currently:
 
-  route_via_accounting_numeraire_warn is not silent fallback. It is opt-in and
-  visible in trace warnings, orders, fills, counters, and costs.
+     masked_dirichlet_simplex.v1
 
-New/updated Cajtucu trace data:
+   logistic-normal is supported as a candidate:
 
-  missing_direct_pair_count
-  numeraire_fallback_pair_count
-  warnings:
-    missing_direct_pair_routed_via_accounting_numeraire:SELL->BUY
+     masked_logistic_normal_simplex.v1
 
-Relevant files:
+   Our current intuition is:
+     - Dirichlet is safer as first default because log_prob/entropy evidence is
+       simpler.
+     - Logistic-normal is the stronger endpoint candidate because it can model
+       correlated allocation moves more naturally.
 
-  src/include/cajtucu/execution/types.h
-  src/include/cajtucu/execution/paper_backend.h
-  src/config/cajtucu.execution.paper.dsl
-  src/config/man/cajtucu.config.man
-  src/config/man/global.config.accounting.man
-  src/include/cajtucu/README.md
-  src/include/cajtucu/ROADMAP.md
-  src/tests/bench/cajtucu/execution/test_cajtucu_execution_paper.cpp
+5. Raw timestamp/index are not actor-visible tensor features.
 
-Authored DSL now says:
+   observation_anchor_index and knowledge_timestamp_ms remain in policy_input_t
+   as identity/evidence. They should not be given to the actor as raw lookup
+   handles. Optional time_context_block.v1 could exist later, but it should use
+   transformed/cyclical/staleness features and be disabled by default.
 
-  MISSING_DIRECT_PAIR_POLICY = skip_pair_warn;
+6. Runtime PPO V0 currently writes evidence and bounded update artifacts.
 
-Tests added/updated:
+   It writes rollout collection, PPO update report, actor/critic checkpoints,
+   optimizer state, validation rollout report, and policy quality comparison
+   report. It does not claim policy quality. The current update path is bounded
+   V0/evidence machinery and should be reviewed before becoming the serious
+   policy network path.
 
-  - direct ETH/BTC pair exists:
-      one direct ETH->BTC order
-      no numeraire route
+7. Lattice policy_training_artifact_ready has been closed for PPO adapter
+   lineage.
 
-  - strict missing pair:
-      options.missing_direct_pair_policy = invalid_trace
-      invalid trace with failure evidence
+   PPO adapter facts bind forecast-eval and observer-belief parents plus replay
+   lineage through a replay-environment fact digest or replay report digest.
+   Allocation-engine parent facts are required only for policy kinds that
+   declare that parent. Lattice proves artifact integrity/lineage, not policy
+   quality.
 
-  - default missing pair:
-      warning + rejected fill
-      trace remains valid
-      no ledger mutation
-      no numeraire fallback
+8. Digest/operator cleanup has started.
 
-  - opt-in numeraire fallback:
-      ETH->USDT then USDT->BTC
-      two orders/fills
-      two fee/spread/slippage events
-      numeraire_fallback_pair_count = 1
+   Lattice/Marshal fact preview now uses:
 
-Verified:
+     fact_digest
+     fact_digest_prefix
+     fact_index
 
-  make -C src/tests/bench/cajtucu/execution -j12 run-test_cajtucu_execution_paper
-  make -C src/tests/bench/kikijyeba/environment -j12 run-test_kikijyeba_environment_contract
-  git diff --check
+   Prefix lookup fails closed if zero or ambiguous. This is separate from the
+   policy architecture review, but it matters because future policy artifacts
+   will be inspected through these surfaces.
 
+Relevant files
+--------------
 
-4. Important Policy/Action Design State
----------------------------------------
+Roadmap / review context:
+  ROADMAP.md
+    - "PPO V0 Evidence Path"
+    - "Policy Network Architecture Review"
+    - "Digest / Hash / ID Surface Cleanup"
 
-We removed the separate reserve/cash output from the policy-facing action.
-
-Current doctrine:
-
-  policy output:
-    target_node_weights[A]
-
-  A:
-    ordered graph-node action universe
-
-  invariant:
-    sum(target_node_weights) = 1
-    target_node_weights_i >= 0
-    no hidden reserve bucket
-    no separate target_base_reserve_weight
-
-The accounting numeraire remains, but only as:
-
-  [ACCOUNTING].accounting_numeraire_node_id
-
-in:
-
-  src/config/.config
-
-Meaning:
-
-  - global reporting/valuation/reward unit
-  - ordinary graph node
-  - not a policy output dimension
-  - not an implicit execution route
-  - not a per-wave setting
-
-This was intentional because wave settings change while the accounting
-numeraire is needed to compare reports across multiple waves.
-
-
-5. Wikimyei Policy Surface
---------------------------
-
-We created/renamed the pre-PPO trainable policy contract around:
-
-  wikimyei.policy.portfolio.graph_node_allocation.v1
-
-Preferred name:
-
-  graph_node_allocation
-
-Rejected name:
-
-  target_node_weights_actor
-
-Reason:
-
-  graph_node_allocation describes the system role without importing PPO/actor
-  language too early.
-
-Relevant files:
-
+Authored policy config:
   src/config/wikimyei.policy.portfolio.graph_node_allocation.dsl
   src/config/wikimyei.policy.portfolio.graph_node_allocation.net
   src/config/wikimyei.policy.portfolio.graph_node_allocation.jkimyei
-  src/config/grammar/wikimyei.policy.portfolio.graph_node_allocation.dsl.bnf
-  src/config/grammar/wikimyei.policy.portfolio.graph_node_allocation.net.bnf
-  src/config/grammar/wikimyei.policy.portfolio.graph_node_allocation.jkimyei.bnf
-  src/include/wikimyei/policy/portfolio/graph_node_allocation/
 
-Current PPO stance:
+Wikimyei policy identity:
+  src/include/wikimyei/policy/portfolio/graph_node_allocation/spec.h
+  src/include/wikimyei/policy/portfolio/graph_node_allocation/assembly.h
+  src/include/wikimyei/README.md
 
-  PPO_EXECUTION_ALLOWED = false
-  OPTIMIZER = noop
-  MAX_STEPS = 0
-  CHECKPOINT_KIND = policy_contract_fixture
-  TRAINING_SCHEDULE_MODE = causal_walk_forward_training.v1
+Kikijyeba environment/trainable policy contract:
+  src/include/kikijyeba/environment/control/types.h
+  src/include/kikijyeba/environment/control/interfaces.h
+  src/include/kikijyeba/environment/policy/trainable.h
+  src/include/kikijyeba/environment/README.md
 
-This is a contract smoke surface, not executable PPO.
+Runtime PPO evidence path:
+  src/include/hero/runtime_hero/runtime/policy_training_job_contract.h
+  src/impl/hero/runtime_hero/hero_runtime_tools.cpp
+  src/include/hero/runtime_hero/runtime/README.md
 
+Lattice/Marshal proof/inspect surfaces:
+  src/include/hero/lattice_hero/lattice/README.md
+  src/include/hero/marshal_hero/marshal/README.md
+  CLEANUP_DIGEST.md
 
-6. Policy Input / Output / Reward Discussion State
---------------------------------------------------
-
-Current intended PPO-adjacent contract:
-
-  observation_t
-    -> policy_input_t
-    -> raw_policy_output_t.node_weight_logits[A]
-    -> target_node_weights_simplex.v1 adapter
-    -> action_t target_node_weights[A]
-    -> Cajtucu paper execution
-    -> post-execution ledger/reward/evidence
-
-Default output recommendation:
-
-  one logits vector over graph nodes
-
-Not recommended for V0:
-
-  separate exposure head + risky allocation head
-
-Reason:
-
-  The two-head design made sense when there was a hidden cash/reserve dimension.
-  With unified graph-node allocation, a separate exposure head risks recreating
-  hidden reserve semantics. If the policy wants lower volatility, it can learn
-  to allocate more weight to the low-volatility/numeraire-like graph node from
-  input features.
-
-Reward contract was renamed to include post-execution semantics:
-
-  kikijyeba.environment.reward.post_execution_ledger_log_growth_cost_drawdown.v1
-
-Reason:
-
-  Reward must be based on what actually happened after Cajtucu execution, not
-  on requested target weights.
-
-
-7. Anti-Leakage Floor Before PPO
+Current authored policy surfaces
 --------------------------------
 
-Accepted milestone:
+Current DSL:
 
-  causal_policy_training_schedule_contract.v1
+  GRAPH_NODE_ALLOCATION {
+    VERSION = wikimyei.policy.portfolio.graph_node_allocation.v1;
+    COMPONENT_ASSEMBLY_ID = graph_node_allocation_v1;
+    POLICY_KIND = trainable_graph_node_allocation;
+    POLICY_INPUT_SCHEMA = kikijyeba.environment.policy_input.v1;
+    ACTION_ADAPTER = target_node_weights_simplex.v1;
+    ACTION_DISTRIBUTION = masked_dirichlet_simplex.v1;
+    ACTION_SCHEMA = kikijyeba.environment.action.target_node_weights.v1;
+    REWARD_CONTRACT = kikijyeba.environment.reward.post_execution_ledger_log_growth_cost_drawdown.v1;
+    GRAPH_NODE_UNIVERSE_POLICY = fixed_ordered_target_node_universe;
+    SCENARIO_INPUT_POLICY = allocation_belief_distributional_summaries_v1;
+    RAW_MDN_INPUT_ALLOWED = false;
+    PPO_IMPLEMENTED = true;
+    LIVE_CAPITAL_ALLOWED = false;
+  };
 
-Core law:
+Current NET:
 
-  For block B_k, every artifact used inside B_k must have been usable before
-  B_k began.
+  GRAPH_NODE_ALLOCATION_NET {
+    VERSION = wikimyei.policy.portfolio.graph_node_allocation.net.v1;
+    INPUT_NODE_FEATURE_DIM = 27;
+    INPUT_GLOBAL_FEATURE_DIM = 6;
+    NODE_ENCODER_HIDDEN_DIM = 64;
+    GLOBAL_ENCODER_HIDDEN_DIM = 32;
+    ALLOCATION_HEAD_HIDDEN_DIM = 128;
+    OUTPUT_HEAD = node_weight_logits;
+    VALUE_HEAD = state_value;
+    ACTION_ADAPTER = target_node_weights_simplex.v1;
+    ACTION_DISTRIBUTION = masked_dirichlet_simplex.v1;
+    PPO_EXECUTION_ALLOWED = true;
+  };
 
-Contract invariant:
+Current JKIMYEI:
 
-  used_artifact.usable_from_key <= block_cursor_begin
+  TRAINING {
+    VERSION = wikimyei.policy.portfolio.graph_node_allocation.jkimyei.v1;
+    TRAINING_ID = graph_node_allocation_ppo_v0;
+    TASK = policy_graph_node_allocation_ppo_v0;
+    COMPONENT_ASSEMBLY_ID = graph_node_allocation_v1;
+    ACTION_DISTRIBUTION = masked_dirichlet_simplex.v1;
+    OPTIMIZER = ppo_clip;
+    LEARNING_RATE = 0.0003;
+    MAX_STEPS = 64;
+    BATCH_SIZE = 32;
+    GRAD_CLIP_NORM = 0.5;
+    CHECKPOINT_EVERY = 1;
+    REPORT_EVERY = 1;
+    VALIDATION_EVERY = 0;
+    SEED = 43;
+    FREEZE_REPRESENTATION = true;
+    INPUT_REPRESENTATION_CHECKPOINT = ;
+    INPUT_MDN_CHECKPOINT = ;
+    ALLOW_UNTRAINED_REPRESENTATION = false;
+    TRAINING_SCHEDULE_MODE = causal_walk_forward_training.v1;
+    REQUIRE_CAUSAL_SCHEDULE = true;
+    PPO_EXECUTION_ALLOWED = true;
+    CHECKPOINT_KIND = ppo_v0_policy_adapter;
+  };
 
-This catches future-within-training leakage, not only train/validation/test
-overlap.
+Current C++ policy/network contract
+-----------------------------------
 
-Current accepted model:
+From graph_node_allocation/spec.h:
 
-  At block B_k start:
-    freeze SnapshotFamily_{k-1}
+  graph_node_allocation_spec_t:
+    version_token = wikimyei.policy.portfolio.graph_node_allocation.v1
+    policy_input_schema = kikijyeba.environment.policy_input.v1
+    action_adapter = target_node_weights_simplex.v1
+    action_distribution = masked_dirichlet_simplex.v1
+    action_schema = kikijyeba.environment.action.target_node_weights.v1
+    reward_contract = post_execution_ledger_log_growth_cost_drawdown.v1
+    graph_node_universe_policy = fixed_ordered_target_node_universe
+    scenario_input_policy = allocation_belief_distributional_summaries_v1
+    raw_mdn_input_allowed = false
+    ppo_implemented = true
+    live_capital_allowed = false
 
-  During B_k:
-    observations use prior representation / MDN / observer snapshots
-    actions use prior policy snapshot
-    Cajtucu uses the bound execution profile
-    reward uses the bound reward contract
-    trajectory evidence is recorded
+  graph_node_allocation_net_spec_t:
+    input_node_feature_dim = 27
+    input_global_feature_dim = 6
+    node_encoder_hidden_dim = 64
+    global_encoder_hidden_dim = 32
+    allocation_head_hidden_dim = 128
+    output_head = node_weight_logits
+    value_head = state_value
+    action_distribution = masked_dirichlet_simplex.v1
 
-  After B_k closes:
-    representation, MDN, observer fitted components, normalization, and policy
-    may be updated
+Supported action distributions:
 
-  At B_{k+1}:
-    SnapshotFamily_k may become usable
+  masked_dirichlet_simplex.v1
+  masked_logistic_normal_simplex.v1
 
-Strict representation -> MDN -> policy staggering is deferred, not required
-for V1.
+From graph_node_allocation/assembly.h:
 
+  The assembly consumes:
+    policy_input
+    schema: kikijyeba.environment.policy_input.v1
+    shape: PolicyInput[A,F]
 
-8. Current Next-Milestone Candidates
-------------------------------------
+  It produces:
+    target_node_weights
+    schema: kikijyeba.environment.action.target_node_weights.v1
+    shape: TargetNodeWeights[A]
 
-We need review guidance on what to do next before executable PPO.
+  Key constraints:
+    - consumes curated policy_input_t, not raw observation_t or raw MDN tensors
+    - emits one unified target-node weight vector
+    - accounting numeraire is not a separate reserve output
+    - checkpoints must bind a named simplex action distribution before PPO
+    - training must bind causal_walk_forward_training.v1
+    - live capital remains forbidden
 
-Candidate A:
+Current policy_input_t surface
+------------------------------
 
-  pre_ppo_policy_contract_hardening.v1
+From kikijyeba/environment/policy/trainable.h:
 
-Scope:
+  policy_input_t identity/evidence fields:
+    schema_id
+    environment_assembly_id
+    observation_anchor_key
+    observation_anchor_index
+    knowledge_timestamp_ms
+    graph_order_fingerprint
+    allocation_belief_digest
+    execution_profile_digest
+    reward_contract_id
+    accounting_numeraire_node_id
+    causal_schedule_digest
+    snapshot_family_digest
 
-  - make policy_input_t richer and final enough for fake trainable policy tests
-  - add compressed distributional summaries from AllocationBelief
-  - keep raw MDN tensors forbidden by default
-  - ensure no-available-node behavior fails closed
-  - ensure reward contract is fully post-execution
-  - bind policy_input_schema_id, action_adapter_id, reward_contract_id,
-    execution_profile_digest, and causal_schedule_digest in reports/artifacts
-  - no PPO optimizer yet
+  actor tensors:
+    node_ids[A]
+    valid_mask[A]
+    tradable_mask[A]
+    executable_mask[A]
+    current_weights[A]
+    previous_target_weights[A]
+    node_features[A,27]
+    global_features[6]
 
-Candidate B:
+Important:
+  observation_anchor_index and knowledge_timestamp_ms are identity/evidence
+  fields. They are not in global_features.
 
-  cost_aware_paper_replay_rollout.v1
+Node features [A,27], in current order:
 
-Scope:
+  0  current_weight
+  1  previous_target_weight
+  2  current_weight - previous_target_weight
+  3  log(executable_mid)
+  4  valid_mask
+  5  tradable_mask
+  6  executable_mask
+  7  expected_log_return
+  8  expected_arithmetic_return
+  9  marginal_variance
+  10 marginal_volatility
+  11 var_down
+  12 cvar_down
+  13 adverse_excursion_probability
+  14 volatility
+  15 confidence
+  16 liquidity_score
+  17 linear_cost
+  18 quadratic_impact
+  19 capacity_weight_limit
+  20 projection_validation_score
+  21 residual_quality_score
+  22 surprise
+  23 calibration_score
+  24 mixture_entropy
+  25 component_disagreement
+  26 channel_disagreement
 
-  - run/prepare bounded historical replay rollouts from completed Runtime jobs
-  - require nonzero cost profile for validation rollout
-  - expose policy-wise reports separating:
-      projection metrics
-      portfolio metrics
-      execution feasibility
-      Cajtucu costs/rejects/partials
-      time-law counters
-  - make Cajtucu trace evidence Lattice-ready
+Global features [6], current order:
 
-Candidate C:
+  0 equity_value_numeraire
+  1 drawdown
+  2 current_weight_sum
+  3 previous_target_weight_sum
+  4 current_accounting_numeraire_weight
+  5 previous_accounting_numeraire_weight
 
-  replay_environment_artifact_ready lattice target
+Potential concern:
+  Some global features may need transformation/normalization before a serious
+  actor network. In particular, raw equity magnitude may be a scale issue. We
+  need review on whether the `.net`/feature manifest should specify transforms,
+  normalization policy, and named feature blocks rather than only dimensions.
 
-Scope:
+Current raw policy output and action distribution
+-------------------------------------------------
 
-  - prove rollout reports are present, lineage-bound, time-law clean, and carry
-    Cajtucu trace counters
-  - do not prove policy quality or profitability
+raw_policy_output_t:
 
-Candidate D:
+  schema_id =
+    kikijyeba.environment.raw_policy_output.target_node_weights_logits.v1
+  action_adapter_id = target_node_weights_simplex.v1
+  action_distribution_id = masked_dirichlet_simplex.v1
+  node_weight_logits[A]
+  action_distribution_params
+  value_estimate
 
-  config/dsl semantic validation cleanup
+action_distribution_iface_t:
 
-Scope:
+  distribution_id()
+  sample(raw, input, adapter_options, distribution_options)
+  deterministic_action(raw, input, adapter_options, distribution_options)
+  log_prob(raw, input, action, evidence, distribution_options)
+  entropy(raw, input, evidence, distribution_options)
+  approximate_kl(old_record, new_record)
 
-  - now that Config Hero has validate_global_config, define separate semantic
-    DSL validators if needed:
-      dsl_schema_check
-      config_bundle
-      policy_surface
-  - avoid pretending path-existence validation is full system validation
+Current distributions:
 
+  masked_dirichlet_simplex_distribution_t
+    - active nodes = valid & tradable & executable
+    - K=0 fails closed
+    - K=1 deterministic weight 1, log_prob 0, entropy 0
+    - K>1 softmax logits -> mean, concentration -> alpha, sample Dirichlet
+    - inactive nodes exactly zero
+    - evidence includes alpha_active, mean_active, total_concentration,
+      sampled_active_weights, log_prob, entropy, value_estimate
 
-9. Questions For Review
------------------------
+  masked_logistic_normal_simplex_distribution_t
+    - supported as candidate
+    - uses active additive log-ratio coordinates
+    - has latent-normal entropy semantics
+    - should be treated as endpoint candidate pending math/evidence review
 
-1. Is `skip_pair_warn` the right Cajtucu default for missing direct pairs?
+Current action_t fields relevant to PPO evidence
+------------------------------------------------
 
-   It prevents a rollout from becoming invalid by default, while still making
-   the missing pair visible and not routing through the numeraire silently.
+From kikijyeba/environment/control/types.h:
 
-2. Should `route_via_accounting_numeraire_warn` be allowed in validation
-   rollouts, or research/diagnostics only?
+  action_t:
+    policy_id
+    method_id
+    policy_kind
+    decision_timestamp_ms
+    node_ids
+    target_weights[A]
 
-   Current instinct:
-     research/diagnostics only unless explicitly approved.
+    action_schema_id = kikijyeba.environment.action.target_node_weights.v1
+    policy_input_schema_id
+    action_adapter_id
+    action_distribution_id
+    policy_input_digest
+    active_node_indices
+    active_count
+    old_log_prob
+    old_entropy
+    old_value_estimate
+    action_distribution_evidence_bound
+    reward_contract_id
+    policy_artifact_digest
+    policy_net_digest
+    policy_dsl_digest
+    policy_jkimyei_digest
 
-3. Should `numeraire_fallback_pair_count > 0` block
-   replay_environment_artifact_ready?
+The action still remains a target portfolio, not an order/fill/route.
 
-   Current instinct:
-     It should not necessarily block research evidence, but validation-ready
-     evidence should probably require zero fallback routes unless the target
-     explicitly permits fallback.
+Current Runtime PPO evidence contract
+-------------------------------------
 
-4. Is one logits vector over graph nodes still the right PPO V0 output?
+Runtime policy_training_job_contract_t now binds:
 
-   Current instinct:
-     yes. No separate exposure head yet.
+  policy_input_schema_id
+  action_adapter_id
+  action_distribution_id
+  reward_contract_id
+  execution_profile_digest
+  ppo_policy_artifact_contract_id
+  policy_family_id
+  policy_checkpoint_schema_id
+  policy_input_feature_manifest_digest
+  action_distribution_config_digest
+  snapshot_family_digest
+  actor_architecture_digest
+  critic_architecture_digest
+  actor_checkpoint_digest
+  critic_checkpoint_digest
+  optimizer_state_digest
+  ppo_config_digest
+  advantage_estimator_id
+  advantage_normalization_policy
+  rollout_collection_schema_id
+  rollout_collection_digest
+  ppo_update_report_schema_id
+  ppo_update_report_digest
+  validation_rollout_report_digest
+  policy_quality_report_digest
+  PPO hyperparameters:
+    gamma
+    gae_lambda
+    clip_epsilon
+    target_kl
+    entropy_coeff
+    value_loss_coeff
+    max_grad_norm
+    minibatch_size
+    epochs_per_rollout
 
-5. Should the next implementation milestone be policy contract hardening or
-   cost-aware rollout evidence?
+Validation requires causal schedule identity:
 
-   Current instinct:
-     The policy contract is now coherent enough for fake trainable policy
-     tests, but cost-aware replay will give us the best end-to-end evidence.
-     We need a recommendation on ordering.
+  causal_walk_forward_training.v1
+  causal_schedule_digest
+  causal_schedule_cursor_key_kind
+  causal_schedule_no_future_snapshot_use_source
+  normalization_fit_range_digest
+  replay_buffer_source_range_digest
 
-6. Should Config Hero add deeper subjects later:
+Runtime currently supports bounded PPO V0 evidence and writes bounded
+node-logit/value checkpoint artifacts. The current path is intentionally small
+and evidence-heavy. It is not yet a mature network architecture claim.
 
-     validate_global_config
-     dsl_schema_check
-     config_bundle
-     policy_surface
+Important conceptual boundary
+-----------------------------
 
-   Or should semantic validation remain owned by each subsystem?
+Hard constraints:
 
+  - long-only target_node_weights[A]
+  - sum target weights = 1
+  - invalid/tradable/executable masks
+  - no hidden cash/reserve output
+  - no raw MDN tensors by default
+  - causal schedule required
+  - no future snapshot use
+  - post-execution reward only
+  - no live capital
 
-10. Current Verification Snapshot
----------------------------------
+Learned behavior:
 
-Recent passing commands:
+  - how much to allocate to each graph node
+  - whether to remain close to current weights because turnover/cost is high
+  - whether to allocate to the accounting-numeraire-like node because belief
+    says it is safer
+  - concentration/diversification preferences, unless later made hard caps
 
-  make -C src/main/hero -j12 build-config-hero
-  make -C src/tests/bench/kikijyeba/runtime -j12 run-test_hero_mcp_schema_compat
-  make -C src/tests/bench/cajtucu/execution -j12 run-test_cajtucu_execution_paper
-  make -C src/tests/bench/kikijyeba/environment -j12 run-test_kikijyeba_environment_contract
+The policy should not output:
 
-  /cuwacunu/.build/hero/hero_config.mcp \
-    --global-config /cuwacunu/src/config/.config \
-    --list-tools-json
+  - orders
+  - routes
+  - fills
+  - broker instructions
+  - ledger mutations
+  - a separate cash scalar
+  - raw target deltas as the main V0 action
 
-  /cuwacunu/.build/hero/hero_config.mcp \
-    --global-config /cuwacunu/src/config/.config \
-    --tool hero.config.inspect \
-    --args-json '{"subject":"validate_global_config"}'
+What we need from this review
+-----------------------------
 
-  git diff --check
+Please focus on the network architecture, not just the PPO formula.
 
+Main questions:
 
-11. Requested Review Output
+1. Is the current `.net` surface too thin?
+
+   Current `.net` only declares:
+     INPUT_NODE_FEATURE_DIM = 27
+     INPUT_GLOBAL_FEATURE_DIM = 6
+     NODE_ENCODER_HIDDEN_DIM = 64
+     GLOBAL_ENCODER_HIDDEN_DIM = 32
+     ALLOCATION_HEAD_HIDDEN_DIM = 128
+     OUTPUT_HEAD = node_weight_logits
+     VALUE_HEAD = state_value
+     ACTION_DISTRIBUTION = masked_dirichlet_simplex.v1
+
+   Should V0 explicitly declare:
+     NODE_ENCODER_LAYERS
+     GLOBAL_ENCODER_LAYERS
+     POOLING = masked_mean_max or attention_pool
+     FUSION_HIDDEN_DIM
+     FUSION_LAYERS
+     ACTIVATION
+     NORMALIZATION = layer_norm?
+     DROPOUT
+     SHARE_ENCODER
+     SEPARATE_ACTOR_CRITIC_HEADS
+     POLICY_HEAD_HIDDEN_DIM instead of ALLOCATION_HEAD_HIDDEN_DIM?
+
+2. Should V0 be fixed ordered node MLP, shared node encoder + pooling, or set
+   architecture?
+
+   Our current likely V0 shape is:
+
+     per-node shared MLP over node_features[A,27]
+     global MLP over global_features[6]
+     mask-aware pooling over node embeddings
+     fusion of per-node, pooled, and global embeddings
+     actor per-node logits
+     critic scalar state_value
+
+   Is that enough for the first serious PPO V0, or should we introduce
+   attention/set pooling immediately?
+
+3. Should the actor and critic share early encoders?
+
+   Current intuition:
+     shared early encoders are acceptable for V0
+     separate actor/critic heads are needed
+     critic should not receive privileged future state
+
+   Do you agree?
+
+4. Are the current actor-visible features safe and sufficient?
+
+   We removed raw timestamp/index from actor tensor features.
+
+   Questions:
+     - Is raw equity_value_numeraire safe, or should it be log/transformed?
+     - Should current_weight_sum and previous_target_weight_sum remain, given
+       the simplex should sum to one?
+     - Should is_accounting_numeraire_node be a per-node feature? It currently
+       appears only indirectly through current/previous numeraire global
+       weights and accounting_numeraire_node_id identity.
+     - Should min_notional/max_notional/dust features enter V0?
+     - Should previous transaction cost/turnover be global actor-visible?
+
+5. Should the 27 node features be frozen into a named feature manifest?
+
+   We currently bind policy_input_feature_manifest_digest in Runtime, but the
+   `.net` only records dimensions. Should we add a concrete manifest file or DSL
+   listing the feature names/order/transform/range policy?
+
+6. Do we need a compact cross-node risk block before serious PPO?
+
+   Current input has rich per-node belief features but no explicit covariance
+   matrix or factor block in the actor tensor.
+
+   Candidate V0 additions:
+     mean_pairwise_correlation
+     max_pairwise_correlation
+     top_k_correlation_eigenvalues
+     top_k_covariance_eigenvalues
+     current_portfolio_volatility_estimate
+     current_portfolio_cvar_estimate
+     beta_to_first_risk_factor[A]
+     marginal_risk_contribution[A]
+
+   Should these be added before PPO expansion, or deferred until after the
+   first policy run?
+
+7. Dirichlet default or logistic-normal default?
+
+   Current default:
+     masked_dirichlet_simplex.v1
+
+   Current candidate:
+     masked_logistic_normal_simplex.v1
+
+   Our instinct:
+     Dirichlet first for auditability and clean log_prob/entropy.
+     Logistic-normal later for richer correlated allocation moves.
+
+   Do you agree, or is the expressivity cost of Dirichlet high enough that V0
+   should use logistic-normal from the start?
+
+8. Does the current action_distribution_params surface need more structure?
+
+   Currently it is distribution-specific and mostly scalar:
+     Dirichlet total concentration
+     logistic-normal log_std
+
+   Should `.net` explicitly declare concentration/log_std heads?
+
+9. Is the current bounded Runtime update path acceptable as an evidence V0, or
+   should the next goal introduce a real Torch module for the policy network?
+
+   Current Runtime writes bounded node-logit/value checkpoint artifacts and
+   evidence. It is useful for proving the loop, but it is not yet a mature
+   trainable network architecture.
+
+   Please advise what should be the ideal endpoint and what minimal V0 network
+   we should implement next.
+
+10. What should Lattice inspect for network architecture without judging policy
+    quality?
+
+    Candidate fields:
+      actor_architecture_digest
+      critic_architecture_digest
+      policy_input_feature_manifest_digest
+      action_distribution_config_digest
+      actor_checkpoint_digest
+      critic_checkpoint_digest
+      optimizer_state_digest
+      ppo_config_digest
+      rollout_collection_digest
+      ppo_update_report_digest
+
+    Should Lattice also inspect feature transform manifests, normalization
+    manifests, pooling/encoder/head topology, or distribution-head topology?
+
+11. What is the ideal endpoint architecture family?
+
+    Current candidate progression:
+
+      V0:
+        shared node encoder + global encoder + mask-aware pooling
+        separate actor/critic heads
+        fixed ordered graph-node universe
+        masked Dirichlet default
+
+      V1:
+        Set Transformer or attention over nodes
+
+      V2:
+        graph topology encoder over direct tradable pair graph
+
+      V3:
+        temporal memory over causal policy_input_t sequences
+
+      V4:
+        auxiliary/risk heads or distributional critic
+
+    Please critique this progression.
+
+Requested output from you
+-------------------------
+
+Please produce a review response that answers:
+
+  1. What should the ideal learned policy network endpoint be?
+  2. What should the next bounded architecture milestone be before PPO expansion?
+  3. Is the current `.net` too small, and exactly what should be added/removed?
+  4. Which features should be actor-visible versus evidence-only?
+  5. Should we freeze a feature manifest now?
+  6. Should we add compact cross-node risk features now?
+  7. Dirichlet default or logistic-normal default for the first serious PPO run?
+  8. Should the current Runtime bounded update remain just evidence V0, with a
+     real Torch policy module as the next milestone?
+  9. What should Lattice prove about the network artifacts without claiming
+     policy quality?
+
+Please be especially careful not to propose bypassing or replacing:
+
+  representation / encoder
+  MDN / forecast distribution
+  observer / AllocationBelief
+  Cajtucu execution
+  causal_walk_forward_training.v1
+  Lattice evidence-only proof boundary
+
+Recent focused verification
 ---------------------------
 
-Please review:
+The recent operator/roadmap cleanup and fact-inspect digest selector changes
+were verified with:
 
-  - the Cajtucu missing-pair policy split
-  - whether the numeraire fallback should be validation-forbidden
-  - whether `skip_pair_warn` should remain the paper V1 default
-  - the remaining pre-PPO ordering:
-      policy contract hardening vs cost-aware replay rollout
-  - whether Config Hero should grow semantic validators or stay as global
-    config/path/file provenance only
+  make -C src/main/hero -j12 build-lattice-hero
+  make -C src/main/hero -j12 build-marshal-hero
+  make -C src/tests/bench/kikijyeba/runtime -j12 run-test_hero_mcp_schema_compat
+  make -C src/tests/bench/kikijyeba/marshal -j12 run-test_kikijyeba_marshal_dispatch
+  git diff --check
 
-Please propose a finite Codex-compatible next goal with:
+Direct Lattice MCP schema check confirms fact_digest_prefix is advertised.
 
-  - objective
-  - in-scope items
-  - out-of-scope items
-  - acceptance criteria
-  - focused build/test commands
+Final framing
+-------------
+
+The project already has:
+
+  - causal anti-leakage law
+  - unified graph-node target action
+  - post-execution reward
+  - Cajtucu paper execution evidence
+  - Runtime PPO V0 evidence path
+  - Lattice artifact-readiness proof
+
+The missing piece is a reviewed, named learned policy network architecture.
+
+The policy should receive belief, not raw prophecy.
+The action should remain a graph-node portfolio.
+The distribution must explain its sample.
+The reward must come after execution.
+The evidence must survive Lattice.

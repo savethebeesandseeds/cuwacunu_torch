@@ -49,9 +49,20 @@ struct transition_record_t {
   std::string policy_id{};
   std::string method_id{};
   policy_kind_t policy_kind{policy_kind_t::external};
+  std::string policy_action_mode{};
   world_mode_t world_mode{world_mode_t::historical_replay};
 
   std::string action_schema_id{};
+  std::string policy_input_schema_id{};
+  std::string action_adapter_id{};
+  std::string action_distribution_id{};
+  std::string policy_input_digest{};
+  std::string active_node_indices{};
+  std::int64_t active_count{0};
+  double old_log_prob{std::numeric_limits<double>::quiet_NaN()};
+  double old_entropy{std::numeric_limits<double>::quiet_NaN()};
+  double old_value_estimate{std::numeric_limits<double>::quiet_NaN()};
+  bool action_distribution_evidence_bound{false};
   std::string target_node_weights{};
   std::string accounting_numeraire_node_id{};
   double target_numeraire_weight{std::numeric_limits<double>::quiet_NaN()};
@@ -517,8 +528,20 @@ make_transition_record(const step_report_t &step) {
   out.policy_id = step.policy_id;
   out.method_id = step.method_id;
   out.policy_kind = step.policy_kind;
+  out.policy_action_mode = step.policy_action_mode;
   out.world_mode = step.world_mode;
   out.action_schema_id = step.action_schema_id;
+  out.policy_input_schema_id = step.policy_input_schema_id;
+  out.action_adapter_id = step.action_adapter_id;
+  out.action_distribution_id = step.action_distribution_id;
+  out.policy_input_digest = step.policy_input_digest;
+  out.active_node_indices = step.active_node_indices;
+  out.active_count = step.active_count;
+  out.old_log_prob = step.old_log_prob;
+  out.old_entropy = step.old_entropy;
+  out.old_value_estimate = step.old_value_estimate;
+  out.action_distribution_evidence_bound =
+      step.action_distribution_evidence_bound;
   out.target_node_weights = step.target_node_weights;
   out.accounting_numeraire_node_id = step.accounting_numeraire_node_id;
   out.target_numeraire_weight = step.target_numeraire_weight;
@@ -876,8 +899,25 @@ inline void write_transition_record(std::ostream &out,
   write_text_kv(out, prefix + "method_id", record.method_id);
   write_text_kv(out, prefix + "policy_kind",
                 policy_kind_name(record.policy_kind));
+  write_text_kv(out, prefix + "policy_action_mode", record.policy_action_mode);
   write_text_kv(out, prefix + "world_mode", world_mode_name(record.world_mode));
   write_text_kv(out, prefix + "action_schema_id", record.action_schema_id);
+  write_text_kv(out, prefix + "policy_input_schema_id",
+                record.policy_input_schema_id);
+  write_text_kv(out, prefix + "action_adapter_id", record.action_adapter_id);
+  write_text_kv(out, prefix + "action_distribution_id",
+                record.action_distribution_id);
+  write_text_kv(out, prefix + "policy_input_digest",
+                record.policy_input_digest);
+  write_text_kv(out, prefix + "active_node_indices",
+                record.active_node_indices);
+  write_integral_kv(out, prefix + "active_count", record.active_count);
+  write_double_kv(out, prefix + "old_log_prob", record.old_log_prob);
+  write_double_kv(out, prefix + "old_entropy", record.old_entropy);
+  write_double_kv(out, prefix + "old_value_estimate",
+                  record.old_value_estimate);
+  write_bool_kv(out, prefix + "action_distribution_evidence_bound",
+                record.action_distribution_evidence_bound);
   write_text_kv(out, prefix + "target_node_weights",
                 record.target_node_weights);
   write_text_kv(out, prefix + "accounting_numeraire_node_id",

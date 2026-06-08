@@ -185,14 +185,21 @@ and infeasible or negative constraints.
 numeraire membership, finite diagnostics scalars, and delta/turnover consistency
 against current weights before execution routing creates order intents.
 
-The pre-PPO trainable policy contract is
+The bounded PPO V0 trainable policy contract is
 `policy::portfolio::graph_node_allocation`. It is rooted on disk at
 `policy/portfolio/graph_node_allocation/` and backed by authored
-`wikimyei.policy.portfolio.graph_node_allocation.{dsl,net,jkimyei}` files.
-This assembly is trainable in identity only for now: its `.jkimyei` task is a
-noop contract smoke that requires the causal walk-forward schedule and keeps PPO
-execution disabled. The policy consumes `kikijyeba.environment.policy_input.v1`
-rather than raw MDN tensors or the full environment observation, and it produces
-raw `node_weight_logits[A]` that Kikijyeba adapts into one unified
+`wikimyei.policy.portfolio.graph_node_allocation.{dsl,net,features.dsl,jkimyei}`
+files.
+This assembly consumes `kikijyeba.environment.policy_input.v1` rather than raw
+MDN tensors or the full environment observation. Its feature manifest freezes
+the actor-visible node/global/risk feature names, including the ordinary
+accounting-numeraire node flag and compact cross-node risk block. The net
+contract names shared node/global/risk encoders, mask-aware pooling, separate
+policy/value heads, raw `node_weight_logits[A]`, and the `state_value` critic
+head for PPO update evidence. The V0 Torch module lives at
+`policy/portfolio/graph_node_allocation/torch_policy_module.h` and consumes the
+manifest-bound `node_features[A,28]`, `global_features[6]`, and
+`risk_features[10]` tensors. Kikijyeba adapts policy output into one unified
 `target_node_weights[A]` action. The accounting numeraire remains an ordinary
-graph node in that action universe, not a separate cash output.
+graph node in that action universe, not a separate cash output. Runtime owns PPO
+execution and keeps it replay/paper-only.

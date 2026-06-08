@@ -74,7 +74,11 @@ It does not prove:
 checkpoint identity, training/validation/test range separation, causal schedule
 identity, ledger-derived no-future snapshot use, typed cursor-key ordering,
 normalization/replay-buffer/reward-baseline isolation, selector/test discipline,
-parent evidence binding, and authority denials.
+parent evidence binding, optional `policy_quality_report.v1` digest binding,
+and authority denials. A bound policy-quality report is comparison evidence
+only; Lattice may prove its presence and lineage as part of the policy-training
+artifact record, but it does not treat the report as selection, ranking,
+profitability, market-readiness, deployment, or live-capital proof.
 
 It does not prove:
 
@@ -99,6 +103,12 @@ Lattice role:
   report.
 - Prove `policy_training_artifact_ready` from a fresh no-op policy-training
   artifact.
+- Prove `policy_training_artifact_ready` from a Runtime-generated PPO V0
+  `runtime.policy_training.fact` whose forecast-eval and observer-belief parent
+  fact digests are relation-bound and whose replay lineage resolves through a
+  replay-environment fact digest or replay report digest. Allocation-engine
+  parent facts are required only for policy kinds that declare that parent,
+  while the subject fact remains scoped to `wikimyei.policy.trainable`.
 - Confirm no proof path accepts schedule-less policy-training evidence.
 - Confirm `offline_full_window_research` remains non-readiness evidence.
 - Confirm direct Runtime/exec debug paths do not become proof authority.
@@ -106,6 +116,10 @@ Lattice role:
 Acceptance:
 
 - All proofs are derived from durable artifacts, not caller assertions.
+- Policy-training parent lineage may cross component families: the policy fact
+  can be `wikimyei.policy.trainable` while its evidence parents remain MDN,
+  observer/allocation, and replay artifacts, provided protocol, contract, graph,
+  cursor, split, parent exposure, and digest identity are shared.
 - `causal_schedule_no_future_snapshot_use` is derived from artifact fit/use
   ledgers.
 - Opaque cursor keys fail closed unless a sortable ordering kind or resolved

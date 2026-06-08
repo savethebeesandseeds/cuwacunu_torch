@@ -60,7 +60,7 @@ channel-context MDN targets.
 
 `wikimyei.observer.belief.dsl`,
 `wikimyei.policy.portfolio.spot_distributional_utility.dsl`, and
-`wikimyei.policy.portfolio.graph_node_allocation.{dsl,net,jkimyei}` extend the
+`wikimyei.policy.portfolio.graph_node_allocation.{dsl,net,features.dsl,jkimyei}` extend the
 graph-first contract after inference. The belief observer is deterministic: it
 consumes MDN future NodeLift-potential distributions, resolves feature meaning
 through the dock/kline registry, and declares that portfolio returns must be
@@ -71,19 +71,47 @@ is one of those graph nodes, resolved from
 `[ACCOUNTING].accounting_numeraire_node_id` into `BasePolicy`, not an external
 cash bucket, a separate policy output, or a routing hub.
 
-The graph-node allocation policy config is the pre-PPO trainable policy contract. Its DSL
+The graph-node allocation policy config is the bounded PPO V0 trainable policy
+contract. Its DSL
 binds `kikijyeba.environment.policy_input.v1`,
 `target_node_weights_simplex.v1`,
+`masked_dirichlet_simplex.v1`,
 `kikijyeba.environment.action.target_node_weights.v1`, and
 `kikijyeba.environment.reward.post_execution_ledger_log_growth_cost_drawdown.v1`; its `.net`
-binds the V1 feature dimensions and `node_weight_logits` output head. V1 policy
+binds the V1 feature manifest, shared node/global/risk encoder shape,
+mask-aware pooling, separate policy/value heads, `node_weight_logits` output
+head, and default action distribution. The `.features.dsl` freezes actor-visible
+node/global/risk feature names and evidence-only identity fields. V1 policy
 input exposes compressed `AllocationBelief` distributional summaries, portfolio
-weights, execution/cost state, and masks; it does not expose raw MDN tensors or
-the full scenario bank by default. Its
-`.jkimyei` is a noop contract-smoke task that requires
-`causal_walk_forward_training.v1` while keeping `PPO_EXECUTION_ALLOWED = false`.
-Raw MDN tensors are not exposed to the policy by default. PPO implementation,
-checkpoint selection, and optimizer execution remain outside this contract.
+weights, execution/cost state, masks, an accounting-numeraire node flag, and a
+compact cross-node risk block;
+raw observation anchor indexes and raw knowledge timestamps remain evidence
+identity fields and are not actor-visible global features. It does not expose
+raw MDN tensors or the full scenario bank by default. Its
+`.jkimyei` is `policy_graph_node_allocation_ppo_v0`, uses `OPTIMIZER =
+ppo_clip`, requires `causal_walk_forward_training.v1`, and keeps live capital
+forbidden. Runtime supports the guarded `policy_kind=ppo_policy_adapter.v1`
+trainer that writes actor/critic/optimizer, rollout/update, validation, and
+Lattice-readable fact artifacts without policy-quality or market-readiness
+authority. Without `report_path` or `replay_job_dir`, that Runtime path uses an
+explicit smoke fallback; with `report_path`, it ingests an existing Kikijyeba
+replay report into PPO rollout evidence; with `replay_job_dir`, Runtime
+dispatches fresh on-policy replay collection through `cuwacunu_exec` and passes
+an explicit actor checkpoint artifact into the graph-node allocation policy
+forward path. Replay samples label whether policy-distribution log-probability
+evidence was present. Replay reports produced by the trainable policy bridge
+now carry old policy-input/action-distribution evidence on each step; older
+reports remain explicitly labeled as missing that evidence. With
+`replay_job_dir`, Runtime can
+dispatch `cuwacunu_exec --replay-from-job-dir` with graph-node allocation and
+`on_policy_sample`, then ingest the generated report as
+`collection_source=kikijyeba_on_policy_replay`. Runtime now writes bounded
+post-update actor/critic checkpoints with learned graph-node logits and a value
+estimate derived from PPO V0 rollout evidence. PPO policy-training requests must
+bind actor/critic architecture and checkpoint digests, optimizer state, PPO
+config, rollout collection evidence, PPO update-report evidence, validation
+rollout evidence, and PPO hyperparameters before they can satisfy
+policy-training artifact readiness.
 
 The observer and deterministic policy DSLs currently require projection
 validation and explicitly disable live capital; this keeps
@@ -299,20 +327,24 @@ time-law cleanliness, projection coverage, execution trace/cost evidence, and
 authority denials.
 
 Fresh Config Hero is intentionally a small policy-controlled config file
-surface. It lists, reads, writes, and deletes managed config files under
-configured roots; it does not own domain-specific DSL validation. Validation for
-Ujcamei, Kikijyeba, Wikimyei, and Jkimyei remains with those domain modules.
-`hero.config.capture_bundle` is a read-only provenance tool over the same
-global config: it records every `_path`/`_filename` entry with canonical path,
-content digest, stable `config_bundle_id`, and per-capture
+surface. Its public tools are `hero.config.status`, `hero.config.inspect`, and
+`hero.config.apply`. It can inspect, read, plan writes/deletes, and execute
+guarded writes/deletes for managed config files under configured roots; it does
+not own domain-specific DSL validation. Validation for Ujcamei, Kikijyeba,
+Wikimyei, and Jkimyei remains with those domain modules.
+`hero.config.inspect subject=bundle` is the read-only provenance tool over the
+same global config: it records every `_path`/`_filename` entry with canonical
+path, content digest, stable `config_bundle_id`, and per-capture
 `config_receipt_id`.
 
-Agent-facing Config Hero tools should prefer `hero.config.map` for global path
-discovery, `hero.config.capture_bundle` when runtime spawn evidence needs a
-config receipt, and `hero.config.resolve` for path preflight before reading or
-mutating. Reads return `sha256`; replacements and deletions require
-`expected_sha256` by default, and both mutating file tools support
-`dry_run=true`.
+Agent-facing Config Hero calls should prefer `hero.config.inspect subject=map`
+for global path discovery, `hero.config.inspect subject=bundle` when runtime
+spawn evidence needs a config receipt, and
+`hero.config.inspect subject=resolve_path` for path preflight before reading or
+mutating. Reads use `hero.config.inspect subject=file_read` and can return
+`sha256`; replacements and deletions go through `hero.config.apply
+operation=write|delete requested_mode=plan|execute` and require
+`expected_sha256` or `expected_current_sha256` by default for existing targets.
 
 Runtime Hero is the agent-facing control and inspection surface for
 `/cuwacunu/.build/exec/cuwacunu_exec`. It decodes the active wave, performs

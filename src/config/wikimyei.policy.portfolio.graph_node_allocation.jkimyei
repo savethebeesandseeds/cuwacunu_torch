@@ -1,23 +1,24 @@
 /*
   wikimyei.policy.portfolio.graph_node_allocation.jkimyei
   ===========================================================
-  Contract-smoke training policy for the future graph-node allocation policy.
+  Bounded PPO V0 training policy for graph-node allocation.
 
-  V1 is intentionally noop: it validates causal policy-training schedule
-  identity and policy artifact shape, but it does not run PPO or write a
-  trainable checkpoint.
+  V1 requires causal walk-forward schedule identity and delegates executable
+  replay/paper collection and PPO update evidence to Runtime Hero. It does not
+  authorize live capital.
 */
 TRAINING {
   VERSION = wikimyei.policy.portfolio.graph_node_allocation.jkimyei.v1;
-  TRAINING_ID = graph_node_allocation_contract_smoke_v1;
-  TASK = policy_graph_node_allocation_contract_smoke;
+  TRAINING_ID = graph_node_allocation_ppo_v0;
+  TASK = policy_graph_node_allocation_ppo_v0;
   COMPONENT_ASSEMBLY_ID = graph_node_allocation_v1;
-  OPTIMIZER = noop;
-  LEARNING_RATE = 0.0;
-  MAX_STEPS = 0;
-  BATCH_SIZE = 1;
-  GRAD_CLIP_NORM = 0.0;
-  CHECKPOINT_EVERY = 0;
+  ACTION_DISTRIBUTION = masked_dirichlet_simplex.v1;
+  OPTIMIZER = ppo_clip;
+  LEARNING_RATE = 0.0003;
+  MAX_STEPS = 64;
+  BATCH_SIZE = 32;
+  GRAD_CLIP_NORM = 0.5;
+  CHECKPOINT_EVERY = 1;
   REPORT_EVERY = 1;
   VALIDATION_EVERY = 0;
   SEED = 43;
@@ -27,6 +28,6 @@ TRAINING {
   ALLOW_UNTRAINED_REPRESENTATION = false;
   TRAINING_SCHEDULE_MODE = causal_walk_forward_training.v1;
   REQUIRE_CAUSAL_SCHEDULE = true;
-  PPO_EXECUTION_ALLOWED = false;
-  CHECKPOINT_KIND = policy_contract_fixture;
+  PPO_EXECUTION_ALLOWED = true;
+  CHECKPOINT_KIND = ppo_v0_policy_adapter;
 };

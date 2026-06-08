@@ -89,6 +89,9 @@ struct channel_graph_first_protocol_contract_t {
   std::string wikimyei_policy_portfolio_graph_node_allocation_dsl_path{};
   std::string wikimyei_policy_portfolio_graph_node_allocation_net_bnf_path{};
   std::string wikimyei_policy_portfolio_graph_node_allocation_net_path{};
+  std::string
+      wikimyei_policy_portfolio_graph_node_allocation_features_bnf_path{};
+  std::string wikimyei_policy_portfolio_graph_node_allocation_features_path{};
   std::string wikimyei_representation_vicreg_jkimyei_bnf_path{};
   std::string wikimyei_representation_vicreg_jkimyei_path{};
   std::string wikimyei_representation_mtf_jepa_mae_vicreg_jkimyei_bnf_path{};
@@ -124,6 +127,9 @@ struct channel_graph_first_protocol_contract_t {
       graph_node_allocation_spec_t graph_node_allocation{};
   cuwacunu::wikimyei::policy::portfolio::graph_node_allocation::
       graph_node_allocation_net_spec_t graph_node_allocation_net{};
+  cuwacunu::wikimyei::policy::portfolio::graph_node_allocation::
+      graph_node_allocation_feature_manifest_spec_t
+          graph_node_allocation_features{};
   cuwacunu::wikimyei::assembly::wikimyei_assembly_t nodelift_assembly{};
   cuwacunu::wikimyei::assembly::wikimyei_assembly_t vicreg_assembly{};
   cuwacunu::wikimyei::assembly::wikimyei_assembly_t
@@ -309,6 +315,16 @@ inline void append_i64_list(std::ostringstream &out,
   }
 }
 
+inline void append_string_list(std::ostringstream &out,
+                               const std::vector<std::string> &values) {
+  for (std::size_t i = 0; i < values.size(); ++i) {
+    if (i != 0) {
+      out << ",";
+    }
+    out << values.at(i);
+  }
+}
+
 [[nodiscard]] inline const char *channel_input_route_name(
     cuwacunu::wikimyei::representation::encoding::vicreg::vicreg_input_route_t
         route) {
@@ -393,8 +409,8 @@ training_task_name(cuwacunu::jkimyei::training::training_task_t task) {
     return "vicreg_representation";
   case training::training_task_t::mtf_jepa_mae_vicreg_representation:
     return "mtf_jepa_mae_vicreg_representation";
-  case training::training_task_t::policy_graph_node_allocation_contract_smoke:
-    return "policy_graph_node_allocation_contract_smoke";
+  case training::training_task_t::policy_graph_node_allocation_ppo_v0:
+    return "policy_graph_node_allocation_ppo_v0";
   }
   return "unknown";
 }
@@ -405,8 +421,8 @@ optimizer_name(cuwacunu::jkimyei::training::training_optimizer_t optimizer) {
   switch (optimizer) {
   case training::training_optimizer_t::adam:
     return "adam";
-  case training::training_optimizer_t::noop:
-    return "noop";
+  case training::training_optimizer_t::ppo_clip:
+    return "ppo_clip";
   }
   return "unknown";
 }
@@ -759,6 +775,8 @@ canonical_channel_graph_first_protocol_contract_text(
       << contract.graph_node_allocation.policy_input_schema << "\n";
   out << "graph_node_allocation_action_adapter="
       << contract.graph_node_allocation.action_adapter << "\n";
+  out << "graph_node_allocation_action_distribution="
+      << contract.graph_node_allocation.action_distribution << "\n";
   out << "graph_node_allocation_action_schema="
       << contract.graph_node_allocation.action_schema << "\n";
   out << "graph_node_allocation_reward_contract="
@@ -775,24 +793,112 @@ canonical_channel_graph_first_protocol_contract_text(
       << contract.graph_node_allocation.live_capital_allowed << "\n";
   out << "graph_node_allocation_net_version="
       << contract.graph_node_allocation_net.version_token << "\n";
+  out << "graph_node_allocation_net_policy_input_schema="
+      << contract.graph_node_allocation_net.policy_input_schema << "\n";
+  out << "graph_node_allocation_net_policy_input_feature_manifest="
+      << contract.graph_node_allocation_net.policy_input_feature_manifest
+      << "\n";
   out << "graph_node_allocation_net_input_node_feature_dim="
       << contract.graph_node_allocation_net.input_node_feature_dim << "\n";
   out << "graph_node_allocation_net_input_global_feature_dim="
       << contract.graph_node_allocation_net.input_global_feature_dim << "\n";
+  out << "graph_node_allocation_net_input_risk_feature_dim="
+      << contract.graph_node_allocation_net.input_risk_feature_dim << "\n";
+  out << "graph_node_allocation_net_node_encoder_layers="
+      << contract.graph_node_allocation_net.node_encoder_layers << "\n";
   out << "graph_node_allocation_net_node_encoder_hidden_dim="
       << contract.graph_node_allocation_net.node_encoder_hidden_dim << "\n";
+  out << "graph_node_allocation_net_global_encoder_layers="
+      << contract.graph_node_allocation_net.global_encoder_layers << "\n";
   out << "graph_node_allocation_net_global_encoder_hidden_dim="
       << contract.graph_node_allocation_net.global_encoder_hidden_dim << "\n";
-  out << "graph_node_allocation_net_allocation_head_hidden_dim="
-      << contract.graph_node_allocation_net.allocation_head_hidden_dim << "\n";
+  out << "graph_node_allocation_net_risk_encoder_layers="
+      << contract.graph_node_allocation_net.risk_encoder_layers << "\n";
+  out << "graph_node_allocation_net_risk_encoder_hidden_dim="
+      << contract.graph_node_allocation_net.risk_encoder_hidden_dim << "\n";
+  out << "graph_node_allocation_net_pooling="
+      << contract.graph_node_allocation_net.pooling << "\n";
+  out << "graph_node_allocation_net_fusion_hidden_dim="
+      << contract.graph_node_allocation_net.fusion_hidden_dim << "\n";
+  out << "graph_node_allocation_net_fusion_layers="
+      << contract.graph_node_allocation_net.fusion_layers << "\n";
+  out << "graph_node_allocation_net_activation="
+      << contract.graph_node_allocation_net.activation << "\n";
+  out << "graph_node_allocation_net_normalization="
+      << contract.graph_node_allocation_net.normalization << "\n";
+  out << "graph_node_allocation_net_dropout="
+      << contract.graph_node_allocation_net.dropout << "\n";
+  out << "graph_node_allocation_net_share_encoder="
+      << contract.graph_node_allocation_net.share_encoder << "\n";
+  out << "graph_node_allocation_net_separate_actor_critic_heads="
+      << contract.graph_node_allocation_net.separate_actor_critic_heads << "\n";
+  out << "graph_node_allocation_net_policy_head_hidden_dim="
+      << contract.graph_node_allocation_net.policy_head_hidden_dim << "\n";
+  out << "graph_node_allocation_net_value_head_hidden_dim="
+      << contract.graph_node_allocation_net.value_head_hidden_dim << "\n";
   out << "graph_node_allocation_net_output_head="
       << contract.graph_node_allocation_net.output_head << "\n";
   out << "graph_node_allocation_net_value_head="
       << contract.graph_node_allocation_net.value_head << "\n";
   out << "graph_node_allocation_net_action_adapter="
       << contract.graph_node_allocation_net.action_adapter << "\n";
+  out << "graph_node_allocation_net_action_distribution="
+      << contract.graph_node_allocation_net.action_distribution << "\n";
+  out << "graph_node_allocation_net_dirichlet_concentration_head="
+      << contract.graph_node_allocation_net.dirichlet_concentration_head
+      << "\n";
+  out << "graph_node_allocation_net_dirichlet_alpha_floor="
+      << contract.graph_node_allocation_net.dirichlet_alpha_floor << "\n";
+  out << "graph_node_allocation_net_dirichlet_total_concentration_min="
+      << contract.graph_node_allocation_net.dirichlet_total_concentration_min
+      << "\n";
+  out << "graph_node_allocation_net_dirichlet_total_concentration_max="
+      << contract.graph_node_allocation_net.dirichlet_total_concentration_max
+      << "\n";
+  out << "graph_node_allocation_net_logistic_normal_candidate="
+      << contract.graph_node_allocation_net.logistic_normal_candidate << "\n";
+  out << "graph_node_allocation_net_logistic_normal_std_head="
+      << contract.graph_node_allocation_net.logistic_normal_std_head << "\n";
+  out << "graph_node_allocation_net_logistic_normal_log_std_min="
+      << contract.graph_node_allocation_net.logistic_normal_log_std_min << "\n";
+  out << "graph_node_allocation_net_logistic_normal_log_std_max="
+      << contract.graph_node_allocation_net.logistic_normal_log_std_max << "\n";
+  out << "graph_node_allocation_net_logistic_normal_coordinate_policy="
+      << contract.graph_node_allocation_net.logistic_normal_coordinate_policy
+      << "\n";
+  out << "graph_node_allocation_net_logistic_normal_entropy_kind="
+      << contract.graph_node_allocation_net.logistic_normal_entropy_kind
+      << "\n";
   out << "graph_node_allocation_net_ppo_execution_allowed="
       << contract.graph_node_allocation_net.ppo_execution_allowed << "\n";
+  out << "graph_node_allocation_features_version="
+      << contract.graph_node_allocation_features.version_token << "\n";
+  out << "graph_node_allocation_features_node_feature_dim="
+      << contract.graph_node_allocation_features.node_feature_dim << "\n";
+  out << "graph_node_allocation_features_node_feature_names=";
+  config_bundle_detail::append_string_list(
+      out, contract.graph_node_allocation_features.node_feature_names);
+  out << "\n";
+  out << "graph_node_allocation_features_global_feature_dim="
+      << contract.graph_node_allocation_features.global_feature_dim << "\n";
+  out << "graph_node_allocation_features_global_feature_names=";
+  config_bundle_detail::append_string_list(
+      out, contract.graph_node_allocation_features.global_feature_names);
+  out << "\n";
+  out << "graph_node_allocation_features_risk_feature_block="
+      << contract.graph_node_allocation_features.risk_feature_block << "\n";
+  out << "graph_node_allocation_features_risk_feature_dim="
+      << contract.graph_node_allocation_features.risk_feature_dim << "\n";
+  out << "graph_node_allocation_features_risk_feature_names=";
+  config_bundle_detail::append_string_list(
+      out, contract.graph_node_allocation_features.risk_feature_names);
+  out << "\n";
+  out << "graph_node_allocation_features_raw_mdn_input_allowed="
+      << contract.graph_node_allocation_features.raw_mdn_input_allowed << "\n";
+  out << "graph_node_allocation_features_full_scenario_bank_input_allowed="
+      << contract.graph_node_allocation_features
+             .full_scenario_bank_input_allowed
+      << "\n";
   out << "replay_environment_version="
       << contract.replay_environment.version_token << "\n";
   out << "replay_environment_component_assembly_id="
@@ -981,6 +1087,28 @@ inline void validate_channel_graph_first_protocol_contract(
       bundle.graph_node_allocation);
   graph_allocation_policy::validate_graph_node_allocation_net_spec(
       bundle.graph_node_allocation_net);
+  graph_allocation_policy::validate_graph_node_allocation_feature_manifest_spec(
+      bundle.graph_node_allocation_features);
+  if (bundle.graph_node_allocation.action_distribution !=
+      bundle.graph_node_allocation_net.action_distribution) {
+    throw std::runtime_error(
+        "[channel_graph_first_config] graph-node allocation action "
+        "distribution mismatch");
+  }
+  if (bundle.graph_node_allocation_net.policy_input_feature_manifest !=
+      bundle.graph_node_allocation_features.version_token) {
+    throw std::runtime_error("[channel_graph_first_config] graph-node "
+                             "allocation net feature manifest mismatch");
+  }
+  if (bundle.graph_node_allocation_net.input_node_feature_dim !=
+          bundle.graph_node_allocation_features.node_feature_dim ||
+      bundle.graph_node_allocation_net.input_global_feature_dim !=
+          bundle.graph_node_allocation_features.global_feature_dim ||
+      bundle.graph_node_allocation_net.input_risk_feature_dim !=
+          bundle.graph_node_allocation_features.risk_feature_dim) {
+    throw std::runtime_error("[channel_graph_first_config] graph-node "
+                             "allocation net/feature dimensions mismatch");
+  }
   replay_env::validate_replay_environment_spec(bundle.replay_environment);
   if (bundle.nodelift_assembly.component_assembly_id !=
           bundle.nodelift.component_assembly_id ||
@@ -1200,11 +1328,10 @@ inline void validate_channel_graph_first_protocol_contract(
         "not match Channel MDN component id");
   }
   if (bundle.graph_node_allocation_training.task !=
-      training::training_task_t::policy_graph_node_allocation_contract_smoke) {
+      training::training_task_t::policy_graph_node_allocation_ppo_v0) {
     throw std::runtime_error(
         "[channel_graph_first_config] graph-node allocation policy training "
-        "spec must use "
-        "policy_graph_node_allocation_contract_smoke task");
+        "spec must use policy_graph_node_allocation_ppo_v0 task");
   }
   if (bundle.graph_node_allocation_training.component_assembly_id !=
       bundle.graph_node_allocation.component_assembly_id) {
@@ -1502,6 +1629,17 @@ load_channel_graph_first_protocol_contract_from_config(
           cfg, "wikimyei_policy_portfolio_graph_node_allocation_net_path",
           "/cuwacunu/src/config/"
           "wikimyei.policy.portfolio.graph_node_allocation.net");
+  out.wikimyei_policy_portfolio_graph_node_allocation_features_bnf_path =
+      graph_first_config_detail::optional_config_value(
+          cfg,
+          "wikimyei_policy_portfolio_graph_node_allocation_features_bnf_path",
+          "/cuwacunu/src/config/grammar/"
+          "wikimyei.policy.portfolio.graph_node_allocation.features.dsl.bnf");
+  out.wikimyei_policy_portfolio_graph_node_allocation_features_path =
+      graph_first_config_detail::optional_config_value(
+          cfg, "wikimyei_policy_portfolio_graph_node_allocation_features_path",
+          "/cuwacunu/src/config/"
+          "wikimyei.policy.portfolio.graph_node_allocation.features.dsl");
   out.wikimyei_representation_vicreg_jkimyei_bnf_path =
       graph_first_config_detail::required_config_value(
           cfg, "wikimyei_representation_vicreg_jkimyei_bnf_path", config_path);
@@ -1585,6 +1723,8 @@ load_channel_graph_first_protocol_contract_from_config(
   (void)graph_first_config_detail::read_text_file_or_throw(
       out.wikimyei_policy_portfolio_graph_node_allocation_net_bnf_path);
   (void)graph_first_config_detail::read_text_file_or_throw(
+      out.wikimyei_policy_portfolio_graph_node_allocation_features_bnf_path);
+  (void)graph_first_config_detail::read_text_file_or_throw(
       out.wikimyei_representation_vicreg_jkimyei_bnf_path);
   (void)graph_first_config_detail::read_text_file_or_throw(
       out.wikimyei_representation_mtf_jepa_mae_vicreg_jkimyei_bnf_path);
@@ -1649,6 +1789,10 @@ load_channel_graph_first_protocol_contract_from_config(
       graph_node_allocation::decode_graph_node_allocation_net_spec_from_dsl(
           graph_first_config_detail::read_text_file_or_throw(
               out.wikimyei_policy_portfolio_graph_node_allocation_net_path));
+  out.graph_node_allocation_features = cuwacunu::wikimyei::policy::portfolio::
+      graph_node_allocation::decode_graph_node_allocation_feature_manifest_from_dsl(
+          graph_first_config_detail::read_text_file_or_throw(
+              out.wikimyei_policy_portfolio_graph_node_allocation_features_path));
   out.nodelift_assembly =
       cuwacunu::wikimyei::expression::nodelift::srl::make_nodelift_srl_assembly(
           out.nodelift);

@@ -15,10 +15,28 @@
 
 namespace cuwacunu::kikijyeba::environment {
 
+enum class episode_policy_action_mode_t {
+  deterministic_act,
+  on_policy_sample,
+};
+
+[[nodiscard]] inline const char *
+episode_policy_action_mode_name(episode_policy_action_mode_t mode) {
+  switch (mode) {
+  case episode_policy_action_mode_t::deterministic_act:
+    return "deterministic_act";
+  case episode_policy_action_mode_t::on_policy_sample:
+    return "on_policy_sample";
+  }
+  return "unknown";
+}
+
 struct episode_runner_options_t {
   std::uint64_t max_steps{0}; // 0 means derive from EpisodeSpec range.
   bool validate_policy_actions{true};
   bool require_full_accepted_range{true};
+  episode_policy_action_mode_t policy_action_mode{
+      episode_policy_action_mode_t::deterministic_act};
   reward_options_t reward_options{};
 };
 
@@ -1076,7 +1094,8 @@ inline void record_allocation_evidence(episode_report_t &report,
 [[nodiscard]] inline step_report_t
 make_step_report(std::uint64_t step_index, const observation_t &observation,
                  const action_t &action, const transition_t &transition,
-                 const episode_spec_t &spec) {
+                 const episode_spec_t &spec,
+                 std::string_view policy_action_mode) {
   step_report_t out{};
   out.step_index = step_index;
   out.episode_id = spec.episode_id;
@@ -1086,6 +1105,7 @@ make_step_report(std::uint64_t step_index, const observation_t &observation,
   out.policy_id = action.policy_id;
   out.method_id = action.method_id;
   out.policy_kind = action.policy_kind;
+  out.policy_action_mode = std::string(policy_action_mode);
   out.world_mode = spec.world_mode;
   out.action_decision_timestamp_ms =
       resolve_action_decision_timestamp(action, observation);
@@ -1112,6 +1132,15 @@ make_step_report(std::uint64_t step_index, const observation_t &observation,
   out.action_schema_id = action.action_schema_id;
   out.policy_input_schema_id = action.policy_input_schema_id;
   out.action_adapter_id = action.action_adapter_id;
+  out.action_distribution_id = action.action_distribution_id;
+  out.policy_input_digest = action.policy_input_digest;
+  out.active_node_indices = action.active_node_indices;
+  out.active_count = action.active_count;
+  out.old_log_prob = action.old_log_prob;
+  out.old_entropy = action.old_entropy;
+  out.old_value_estimate = action.old_value_estimate;
+  out.action_distribution_evidence_bound =
+      action.action_distribution_evidence_bound;
   out.reward_contract_id = action.reward_contract_id;
   out.policy_artifact_digest = action.policy_artifact_digest;
   out.policy_net_digest = action.policy_net_digest;
@@ -1363,6 +1392,8 @@ run_episode(world_iface_t &world, policy_adapter_iface_t &policy,
   report.environment_run_id = spec.environment_run_id;
   report.policy_id = policy.policy_id();
   report.policy_kind = policy.policy_kind();
+  report.policy_action_mode =
+      episode_policy_action_mode_name(options.policy_action_mode);
   report.world_mode = spec.world_mode;
   report.graph_order_fingerprint = spec.graph_order_fingerprint;
   report.graph_node_ids =
@@ -1446,7 +1477,10 @@ run_episode(world_iface_t &world, policy_adapter_iface_t &policy,
 
   bool done = false;
   while (!done && report.transition_count < max_steps) {
-    auto action = policy.act(observation);
+    auto action = options.policy_action_mode ==
+                          episode_policy_action_mode_t::on_policy_sample
+                      ? policy.collect_action(observation)
+                      : policy.act(observation);
     episode_runner_detail::validate_policy_action_identity(action, policy);
     if (options.validate_policy_actions) {
       validate_episode_action(action, spec);
@@ -1463,7 +1497,8 @@ run_episode(world_iface_t &world, policy_adapter_iface_t &policy,
     }
     ++report.transition_count;
     auto step_report = episode_runner_detail::make_step_report(
-        report.transition_count - 1, observation, action, transition, spec);
+        report.transition_count - 1, observation, action, transition, spec,
+        report.policy_action_mode);
     if (step_report.cajtucu_execution_trace_available) {
       report.cajtucu_valid_trace_count +=
           step_report.cajtucu_trace_valid ? 1U : 0U;

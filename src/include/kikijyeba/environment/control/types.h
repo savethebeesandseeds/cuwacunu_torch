@@ -189,6 +189,14 @@ struct action_t {
   std::string action_schema_id{kTargetWeightsActionSchema};
   std::string policy_input_schema_id{};
   std::string action_adapter_id{};
+  std::string action_distribution_id{};
+  std::string policy_input_digest{};
+  std::string active_node_indices{};
+  std::int64_t active_count{0};
+  double old_log_prob{std::numeric_limits<double>::quiet_NaN()};
+  double old_entropy{std::numeric_limits<double>::quiet_NaN()};
+  double old_value_estimate{std::numeric_limits<double>::quiet_NaN()};
+  bool action_distribution_evidence_bound{false};
   std::string reward_contract_id{};
   std::string policy_artifact_digest{};
   std::string policy_net_digest{};
@@ -283,6 +291,7 @@ struct step_report_t {
   std::string policy_id{};
   std::string method_id{};
   policy_kind_t policy_kind{policy_kind_t::external};
+  std::string policy_action_mode{};
   world_mode_t world_mode{world_mode_t::historical_replay};
   portfolio::timestamp_ms_t action_decision_timestamp_ms{0};
   std::string anchor_key{};
@@ -304,6 +313,14 @@ struct step_report_t {
   std::string action_schema_id{};
   std::string policy_input_schema_id{};
   std::string action_adapter_id{};
+  std::string action_distribution_id{};
+  std::string policy_input_digest{};
+  std::string active_node_indices{};
+  std::int64_t active_count{0};
+  double old_log_prob{std::numeric_limits<double>::quiet_NaN()};
+  double old_entropy{std::numeric_limits<double>::quiet_NaN()};
+  double old_value_estimate{std::numeric_limits<double>::quiet_NaN()};
+  bool action_distribution_evidence_bound{false};
   std::string reward_contract_id{};
   std::string policy_artifact_digest{};
   std::string policy_net_digest{};
@@ -446,6 +463,7 @@ struct episode_report_t {
   std::string policy_id{};
   std::string method_id{};
   policy_kind_t policy_kind{policy_kind_t::external};
+  std::string policy_action_mode{};
   world_mode_t world_mode{world_mode_t::historical_replay};
   std::string graph_order_fingerprint{};
   std::string graph_node_ids{};

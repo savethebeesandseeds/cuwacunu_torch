@@ -693,23 +693,28 @@ families, and issue codes. This keeps unresolved transform, baseline,
 selection-signal, observer, and forecast artifact lineage visible before an
 artifact proof failure is interpreted as a generic target problem.
 Fact panels include a compact `lineage_panel` by default. It relays
-`hero.lattice.inspect subject=facts mode=lineage` row counts, selected relations, lineage rows, and
-explicit non-authority flags such as
+`hero.lattice.inspect subject=facts mode=lineage` row counts, selected
+relations, and explicit non-authority flags such as
 `cache_rows_used_for_target_satisfaction=false`; operators may pass
-`include_lineage=false` only to suppress that audit view.
+`include_lineage=false` only to suppress that audit view. Raw
+relation/key/digest rows stay in `machine_payload` when
+`include_machine_payload=true`.
 Fact panels include `preview_panel` only when requested with `mode=preview`,
 `include_preview`, `fact_digest`, `fact_digest_prefix`, or `fact_index`. The
-preview relays `hero.lattice.inspect subject=facts mode=preview` rows and keeps
+preview relays `hero.lattice.inspect subject=facts mode=preview` rows using the
+same canonical selectors; `fact_digest_prefix` must resolve uniquely in the
+selected family before Lattice returns a preview. The panel keeps
 `preview_rows_are_audit_only=true`,
 `facts_used_for_target_satisfaction=false`, `checkpoint_selected=false`, and
-`model_selector=false`. The relayed rows include Lattice's normalized
-`identity_envelope`, so Marshal clients can inspect a fact's family, digest,
-active identity, parent digests, support counters, and audit-only authority
-flags without parsing each family payload.
+`model_selector=false`. The operator panel summarizes display-only handles as
+`preview_fact_refs`; full fact rows, `fact_digest` fields, parent digest arrays,
+lineage rows, and Lattice `identity_envelope` payloads stay in
+`machine_payload` when `include_machine_payload=true`.
 Target panels also summarize Lattice artifact `fact_preview_hint` entries as
-`artifact_fact_preview_*` fields. Marshal relays the family, digest, Lattice
-tool, and Marshal tool as navigation metadata only; it still does not prove,
-select, or dispatch from those hints.
+`artifact_fact_preview_*` fields, including `artifact_fact_preview_refs`. Marshal
+relays refs, family, digest count, Lattice tool, and Marshal tool as navigation
+metadata only; full preview digests stay in machine payload. Marshal still does
+not prove, select, or dispatch from those hints.
 They also relay the fact catalog's artifact-readiness boundary metadata:
 proofable family count, proof kind, proof-template claim, promotion-blocked
 family count, promotion-blocked reason, and warning-summary-only families.
@@ -1002,8 +1007,8 @@ Hero to decode the active wave and
 compares target, mode, source range, and anchor bounds against the derived
 request, including concrete `PLAN_INPUT_*` model-state inputs. The Runtime Hero
 run schema accepts a canonical `runtime_handoff` object. The object carries
-handoff schema/id/digest, creator/timestamp, target id, base config path/hash,
-concrete wave fields, concrete checkpoint inputs, Runtime policy path/hash,
+handoff schema/id/digest, creator/timestamp, target id, base config path/digest,
+concrete wave fields, concrete checkpoint inputs, Runtime policy path/digest,
 dry-run or execute intent, and an `unresolved_symbols` list. Runtime rejects
 non-empty `unresolved_symbols`, symbolic `latest_satisfying:*` inputs,
 mismatched intent, and mismatched active-wave fields before launching

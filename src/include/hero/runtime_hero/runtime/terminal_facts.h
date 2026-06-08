@@ -267,7 +267,7 @@ inline void put_common(std::map<std::string, std::string> *fields,
                        const std::string &schema_version,
                        const job_manifest_t &manifest, const job_state_t &state,
                        const std::filesystem::path &report_path,
-                       const std::string &source_report_hash) {
+                       const std::string &source_report_digest) {
   put(fields, "fact_type", fact_type);
   put(fields, "schema_version", schema_version);
   put(fields, "producer", "runtime");
@@ -299,14 +299,14 @@ inline void put_common(std::map<std::string, std::string> *fields,
       manifest.target_component_family_id.empty()
           ? state.target_component_family_id
           : manifest.target_component_family_id);
-  put(fields, "config_bundle_hash", manifest.config_bundle_id);
-  put(fields, "runtime_policy_hash", "");
+  put(fields, "config_bundle_id", manifest.config_bundle_id);
+  put(fields, "runtime_policy_digest", "");
   put(fields, "runtime_handoff_id", manifest.runtime_handoff_id);
   put(fields, "runtime_handoff_digest", manifest.runtime_handoff_digest);
   put(fields, "marshal_target_driver_run_id",
       manifest.marshal_target_driver_run_id);
   put(fields, "source_report_path", report_path.string());
-  put(fields, "source_report_hash", source_report_hash);
+  put(fields, "source_report_digest", source_report_digest);
   put(fields, "created_at", current_utc_timestamp());
 }
 
@@ -336,17 +336,18 @@ inline void write_fact_file(const std::filesystem::path &path,
     const job_manifest_t &manifest, const job_state_t &state,
     const std::map<std::string, std::string> &report,
     const std::filesystem::path &report_path,
-    const std::string &source_report_hash, const std::string &grad_clip_norm) {
+    const std::string &source_report_digest,
+    const std::string &grad_clip_norm) {
   std::map<std::string, std::string> fields;
   put_common(&fields, "runtime.result.fact", "1", manifest, state, report_path,
-             source_report_hash);
+             source_report_digest);
   const auto final_loss = first_non_empty(
       {map_get(report, "last_loss"), to_text_value(state.last_loss)});
   put(&fields, "fact_id",
       runtime_fact_digest_for_text(
           "runtime.result.fact.id",
           (manifest.job_id.empty() ? state.job_id : manifest.job_id) + "|" +
-              state.status + "|" + source_report_hash + "|" + final_loss));
+              state.status + "|" + source_report_digest + "|" + final_loss));
   put(&fields, "status", state.status);
   put(&fields, "error_message", state.error_message);
   put(&fields, "optimizer_steps", to_text_value(state.optimizer_steps));
@@ -398,10 +399,10 @@ make_checkpoint_io_fact_fields(const job_manifest_t &manifest,
                                const job_state_t &state,
                                const std::map<std::string, std::string> &report,
                                const std::filesystem::path &report_path,
-                               const std::string &source_report_hash) {
+                               const std::string &source_report_digest) {
   std::map<std::string, std::string> fields;
   put_common(&fields, "runtime.checkpoint_io.fact", "1", manifest, state,
-             report_path, source_report_hash);
+             report_path, source_report_digest);
   put(&fields, "fact_id",
       runtime_fact_digest_for_text(
           "runtime.checkpoint_io.fact.id",
@@ -413,7 +414,7 @@ make_checkpoint_io_fact_fields(const job_manifest_t &manifest,
   put(&fields, "checkpoint_path", state.checkpoint_path);
   put(&fields, "checkpoint_write_count",
       to_text_value(state.checkpoint_write_count));
-  put(&fields, "checkpoint_artifact_hash",
+  put(&fields, "checkpoint_artifact_digest",
       map_get(report, "checkpoint_digest_reported"));
   put(&fields, "checkpoint_path_reported",
       first_non_empty({map_get(report, "checkpoint_path_reported"),
@@ -447,15 +448,16 @@ make_checkpoint_io_fact_fields(const job_manifest_t &manifest,
     const job_manifest_t &manifest, const job_state_t &state,
     const std::map<std::string, std::string> &report,
     const std::filesystem::path &report_path,
-    const std::string &source_report_hash, const std::string &grad_clip_norm) {
+    const std::string &source_report_digest,
+    const std::string &grad_clip_norm) {
   std::map<std::string, std::string> fields;
   put_common(&fields, "runtime.health_measurement.fact", "1", manifest, state,
-             report_path, source_report_hash);
+             report_path, source_report_digest);
   put(&fields, "fact_id",
       runtime_fact_digest_for_text(
           "runtime.health_measurement.fact.id",
           (manifest.job_id.empty() ? state.job_id : manifest.job_id) + "|" +
-              state.status + "|" + source_report_hash));
+              state.status + "|" + source_report_digest));
   put(&fields, "finite_parameter_check",
       map_get(report, "finite_parameter_check"));
   put(&fields, "nonfinite_output_count",
@@ -508,10 +510,10 @@ inline void write_terminal_fact_sidecars(const std::filesystem::path &job_dir,
                                  ? std::string{}
                                  : detail::read_text_file_or_empty(report_path);
     const auto report = detail::parse_assignment_text(report_text);
-    const auto source_report_hash = report_text.empty()
-                                        ? std::string{}
-                                        : detail::runtime_fact_digest_for_text(
-                                              "source_report", report_text);
+    const auto source_report_digest =
+        report_text.empty() ? std::string{}
+                            : detail::runtime_fact_digest_for_text(
+                                  "source_report", report_text);
     const auto grad_clip_norm =
         detail::grad_clip_norm_for_job(manifest, report);
 
@@ -519,7 +521,7 @@ inline void write_terminal_fact_sidecars(const std::filesystem::path &job_dir,
     detail::write_fact_file(
         result_path,
         detail::make_result_fact_fields(manifest, *state, report, report_path,
-                                        source_report_hash, grad_clip_norm));
+                                        source_report_digest, grad_clip_norm));
     state->runtime_result_fact_written = true;
     state->runtime_result_fact_path = result_path.string();
 
@@ -527,7 +529,7 @@ inline void write_terminal_fact_sidecars(const std::filesystem::path &job_dir,
     detail::write_fact_file(
         checkpoint_io_path,
         detail::make_checkpoint_io_fact_fields(
-            manifest, *state, report, report_path, source_report_hash));
+            manifest, *state, report, report_path, source_report_digest));
     state->runtime_checkpoint_io_fact_written = true;
     state->runtime_checkpoint_io_fact_path = checkpoint_io_path.string();
 
@@ -535,7 +537,7 @@ inline void write_terminal_fact_sidecars(const std::filesystem::path &job_dir,
     detail::write_fact_file(
         health_path,
         detail::make_health_fact_fields(manifest, *state, report, report_path,
-                                        source_report_hash, grad_clip_norm));
+                                        source_report_digest, grad_clip_norm));
     state->runtime_health_measurement_fact_written = true;
     state->runtime_health_measurement_fact_path = health_path.string();
     state->runtime_terminal_fact_error.clear();

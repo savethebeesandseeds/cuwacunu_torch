@@ -44,26 +44,46 @@ and BNF path entries.
   - V1 consumes `kikijyeba.environment.policy_input.v1` and emits
     `kikijyeba.environment.action.target_node_weights.v1` through
     `target_node_weights_simplex.v1`.
+  - `ACTION_DISTRIBUTION = masked_dirichlet_simplex.v1` is the default
+    pre-PPO stochastic action law. `masked_logistic_normal_simplex.v1` is
+    accepted as a contract candidate, but is not the default.
   - The accounting numeraire remains an ordinary graph node inside the same
     target-node weight vector; there is no separate cash output.
-  - `RAW_MDN_INPUT_ALLOWED = false`, `PPO_IMPLEMENTED = false`, and
-    `LIVE_CAPITAL_ALLOWED = false` are required.
+  - `RAW_MDN_INPUT_ALLOWED = false`, `PPO_IMPLEMENTED = true`, and
+    `LIVE_CAPITAL_ALLOWED = false` are required. PPO V0 is Runtime-owned and
+    replay/paper-only.
+  - Runtime `ppo_policy_artifact_contract.v1` gates executable PPO-shaped
+    policy facts. It requires actor/critic checkpoint and architecture
+    digests, optimizer state, PPO config, rollout collection, PPO update
+    report, validation rollout report, GAE identity, and PPO hyperparameters.
 - `wikimyei_policy_portfolio_graph_node_allocation_net_bnf_path`
   - Grammar for `wikimyei.policy.portfolio.graph_node_allocation.net`.
 - `wikimyei_policy_portfolio_graph_node_allocation_net_path`
-  - Architecture identity for the future graph-node allocation policy. V1 binds feature dimensions,
-    the compressed AllocationBelief distributional-summary input table,
-    the `node_weight_logits` output head, the reserved value head, and the
-    action adapter without enabling PPO.
+  - Architecture identity for the bounded PPO V0 graph-node allocation policy.
+    V1 binds the feature manifest, node/global/risk encoder shape,
+    mask-aware pooling, `node_weight_logits` policy head, `state_value` critic
+    head, Dirichlet default distribution config, logistic-normal candidate
+    config, and the action adapter/distribution. Raw timestamp and anchor
+    identity stay outside the actor-visible global feature tensor.
+- `wikimyei_policy_portfolio_graph_node_allocation_features_bnf_path`
+  - Grammar for
+    `wikimyei.policy.portfolio.graph_node_allocation.features.dsl`.
+- `wikimyei_policy_portfolio_graph_node_allocation_features_path`
+  - Actor-feature manifest for the graph-node allocation policy. It freezes
+    the 28 node features, 6 global features, and 10 compact cross-node risk
+    features used by `kikijyeba.environment.policy_input.v1`, while declaring
+    raw MDN tensors and the full scenario bank forbidden for V1.
 
 `src/config/.config` section: `[JKIMYEI]`
 
 - `wikimyei_policy_portfolio_graph_node_allocation_jkimyei_bnf_path`
-  - Grammar for the graph-node allocation policy contract-smoke `.jkimyei`.
+  - Grammar for the graph-node allocation PPO V0 `.jkimyei`.
 - `wikimyei_policy_portfolio_graph_node_allocation_jkimyei_path`
-  - Noop policy-training contract fixture. It requires
-    `TRAINING_SCHEDULE_MODE = causal_walk_forward_training.v1` and
-    `PPO_EXECUTION_ALLOWED = false`.
+  - Bounded PPO V0 policy-training profile. It requires
+    `TASK = policy_graph_node_allocation_ppo_v0`, `OPTIMIZER = ppo_clip`,
+    `TRAINING_SCHEDULE_MODE = causal_walk_forward_training.v1`, and
+    `PPO_EXECUTION_ALLOWED = true`; live capital remains forbidden by the
+    policy DSL and Runtime authority.
 
 These observer and policy assemblies are included in the graph-first
 `wikimyei_registry` and dock-binding report. Lattice can audit their identity

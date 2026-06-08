@@ -287,6 +287,8 @@ void test_channel_specs_decode_and_validate() {
       paths.at("wikimyei_policy_portfolio_graph_node_allocation_dsl_bnf_path"));
   const auto graph_node_allocation_net_bnf = read_text(
       paths.at("wikimyei_policy_portfolio_graph_node_allocation_net_bnf_path"));
+  const auto graph_node_allocation_features_bnf = read_text(paths.at(
+      "wikimyei_policy_portfolio_graph_node_allocation_features_bnf_path"));
   const auto replay_environment_bnf =
       read_text(paths.at("kikijyeba_environment_replay_dsl_bnf_path"));
   const auto channel_mdn_jkimyei_bnf = read_text(
@@ -335,9 +337,26 @@ void test_channel_specs_decode_and_validate() {
           std::string::npos ||
       graph_node_allocation_dsl_bnf.find("ACTION_ADAPTER") ==
           std::string::npos ||
+      graph_node_allocation_dsl_bnf.find("ACTION_DISTRIBUTION") ==
+          std::string::npos ||
       graph_node_allocation_net_bnf.find("GRAPH_NODE_ALLOCATION_NET") ==
           std::string::npos ||
+      graph_node_allocation_net_bnf.find("ACTION_DISTRIBUTION") ==
+          std::string::npos ||
+      graph_node_allocation_net_bnf.find("POLICY_INPUT_FEATURE_MANIFEST") ==
+          std::string::npos ||
+      graph_node_allocation_net_bnf.find("NODE_ENCODER_LAYERS") ==
+          std::string::npos ||
+      graph_node_allocation_net_bnf.find("POOLING") == std::string::npos ||
+      graph_node_allocation_net_bnf.find("POLICY_HEAD_HIDDEN_DIM") ==
+          std::string::npos ||
       graph_node_allocation_net_bnf.find("OUTPUT_HEAD") == std::string::npos ||
+      graph_node_allocation_features_bnf.find(
+          "GRAPH_NODE_ALLOCATION_FEATURES") == std::string::npos ||
+      graph_node_allocation_features_bnf.find("NODE_FEATURE_NAMES") ==
+          std::string::npos ||
+      graph_node_allocation_features_bnf.find("RISK_FEATURE_NAMES") ==
+          std::string::npos ||
       replay_environment_bnf.find("REPLAY_ENVIRONMENT") == std::string::npos ||
       replay_environment_bnf.find("OBSERVATION_TIME_LAW") ==
           std::string::npos ||
@@ -375,6 +394,8 @@ void test_channel_specs_decode_and_validate() {
       paths.at("wikimyei_policy_portfolio_graph_node_allocation_dsl_path"));
   const auto graph_node_allocation_net_text = read_text(
       paths.at("wikimyei_policy_portfolio_graph_node_allocation_net_path"));
+  const auto graph_node_allocation_features_text = read_text(paths.at(
+      "wikimyei_policy_portfolio_graph_node_allocation_features_path"));
   const auto replay_environment_dsl_text =
       read_text(paths.at("kikijyeba_environment_replay_dsl_path"));
   const auto representation_spec = vicreg::decode_vicreg_spec_from_split_dsl(
@@ -396,6 +417,9 @@ void test_channel_specs_decode_and_validate() {
   const auto allocation_net_spec =
       graph_allocation::decode_graph_node_allocation_net_spec_from_dsl(
           graph_node_allocation_net_text);
+  const auto allocation_feature_manifest =
+      graph_allocation::decode_graph_node_allocation_feature_manifest_from_dsl(
+          graph_node_allocation_features_text);
   const auto replay_environment_spec =
       environment::decode_replay_environment_spec_from_dsl(
           replay_environment_dsl_text);
@@ -454,6 +478,7 @@ void test_channel_specs_decode_and_validate() {
       allocation_spec.policy_input_schema !=
           "kikijyeba.environment.policy_input.v1" ||
       allocation_spec.action_adapter != "target_node_weights_simplex.v1" ||
+      allocation_spec.action_distribution != "masked_dirichlet_simplex.v1" ||
       allocation_spec.action_schema !=
           "kikijyeba.environment.action.target_node_weights.v1" ||
       allocation_spec.reward_contract !=
@@ -462,16 +487,63 @@ void test_channel_specs_decode_and_validate() {
       allocation_spec.scenario_input_policy !=
           "allocation_belief_distributional_summaries_v1" ||
       allocation_spec.raw_mdn_input_allowed ||
-      allocation_spec.ppo_implemented || allocation_spec.live_capital_allowed) {
+      !allocation_spec.ppo_implemented ||
+      allocation_spec.live_capital_allowed) {
     throw std::runtime_error("graph-node allocation policy spec mismatch");
   }
-  if (allocation_net_spec.input_node_feature_dim != 27 ||
-      allocation_net_spec.input_global_feature_dim != 8 ||
+  if (allocation_net_spec.policy_input_feature_manifest !=
+          allocation_feature_manifest.version_token ||
+      allocation_net_spec.input_node_feature_dim != 28 ||
+      allocation_net_spec.input_global_feature_dim != 6 ||
+      allocation_net_spec.input_risk_feature_dim != 10 ||
+      allocation_net_spec.node_encoder_layers != 2 ||
+      allocation_net_spec.node_encoder_hidden_dim != 128 ||
+      allocation_net_spec.global_encoder_layers != 2 ||
+      allocation_net_spec.global_encoder_hidden_dim != 64 ||
+      allocation_net_spec.risk_encoder_layers != 1 ||
+      allocation_net_spec.risk_encoder_hidden_dim != 64 ||
+      allocation_net_spec.pooling != "masked_mean_max" ||
+      allocation_net_spec.fusion_hidden_dim != 128 ||
+      allocation_net_spec.fusion_layers != 2 ||
+      allocation_net_spec.activation != "silu" ||
+      allocation_net_spec.normalization != "layer_norm" ||
+      allocation_net_spec.dropout != 0.0 ||
+      !allocation_net_spec.share_encoder ||
+      !allocation_net_spec.separate_actor_critic_heads ||
+      allocation_net_spec.policy_head_hidden_dim != 128 ||
+      allocation_net_spec.value_head_hidden_dim != 128 ||
       allocation_net_spec.output_head != "node_weight_logits" ||
-      allocation_net_spec.value_head != "reserved_for_ppo" ||
+      allocation_net_spec.value_head != "state_value" ||
       allocation_net_spec.action_adapter != "target_node_weights_simplex.v1" ||
-      allocation_net_spec.ppo_execution_allowed) {
+      allocation_net_spec.action_distribution !=
+          "masked_dirichlet_simplex.v1" ||
+      allocation_net_spec.dirichlet_concentration_head !=
+          "scalar_total_concentration" ||
+      allocation_net_spec.logistic_normal_candidate !=
+          "masked_logistic_normal_simplex.v1" ||
+      !allocation_net_spec.ppo_execution_allowed) {
     throw std::runtime_error("graph-node allocation policy net spec mismatch");
+  }
+  const auto expected_node_features =
+      graph_allocation::expected_node_feature_names_v1();
+  const auto expected_global_features =
+      graph_allocation::expected_global_feature_names_v1();
+  const auto expected_risk_features =
+      graph_allocation::expected_risk_feature_names_v1();
+  if (allocation_feature_manifest.node_feature_dim != 28 ||
+      allocation_feature_manifest.node_feature_names !=
+          expected_node_features ||
+      allocation_feature_manifest.global_feature_dim != 6 ||
+      allocation_feature_manifest.global_feature_names !=
+          expected_global_features ||
+      allocation_feature_manifest.risk_feature_block !=
+          "compact_cross_node_risk_block.v1" ||
+      allocation_feature_manifest.risk_feature_dim != 10 ||
+      allocation_feature_manifest.risk_feature_names !=
+          expected_risk_features ||
+      allocation_feature_manifest.raw_mdn_input_allowed ||
+      allocation_feature_manifest.full_scenario_bank_input_allowed) {
+    throw std::runtime_error("graph-node allocation feature manifest mismatch");
   }
   if (replay_environment_spec.component_assembly_id !=
           "replay_environment_v1" ||
@@ -544,16 +616,16 @@ void test_channel_specs_decode_and_validate() {
     throw std::runtime_error("MDN training spec mismatch");
   }
   if (allocation_training.task !=
-          training::training_task_t::
-              policy_graph_node_allocation_contract_smoke ||
+          training::training_task_t::policy_graph_node_allocation_ppo_v0 ||
       allocation_training.component_assembly_id !=
           allocation_spec.component_assembly_id ||
-      allocation_training.optimizer != training::training_optimizer_t::noop ||
+      allocation_training.optimizer !=
+          training::training_optimizer_t::ppo_clip ||
       allocation_training.training_schedule_mode !=
           "causal_walk_forward_training.v1" ||
       !allocation_training.require_causal_schedule ||
-      allocation_training.ppo_execution_allowed ||
-      allocation_training.checkpoint_kind != "policy_contract_fixture") {
+      !allocation_training.ppo_execution_allowed ||
+      allocation_training.checkpoint_kind != "ppo_v0_policy_adapter") {
     throw std::runtime_error(
         "graph-node allocation policy training spec mismatch");
   }
@@ -583,6 +655,9 @@ void test_channel_specs_decode_and_validate() {
           .empty() ||
       channel_bundle
           .wikimyei_policy_portfolio_graph_node_allocation_net_bnf_path
+          .empty() ||
+      channel_bundle
+          .wikimyei_policy_portfolio_graph_node_allocation_features_bnf_path
           .empty() ||
       channel_bundle.kikijyeba_environment_replay_dsl_bnf_path.empty() ||
       channel_bundle.wikimyei_representation_vicreg_jkimyei_bnf_path.empty() ||
@@ -622,6 +697,10 @@ void test_channel_specs_decode_and_validate() {
           allocation_spec.component_assembly_id ||
       channel_bundle.graph_node_allocation_net.output_head !=
           allocation_net_spec.output_head ||
+      channel_bundle.graph_node_allocation_features.version_token !=
+          allocation_feature_manifest.version_token ||
+      channel_bundle.graph_node_allocation_features.node_feature_names !=
+          allocation_feature_manifest.node_feature_names ||
       channel_bundle.replay_environment.component_assembly_id !=
           replay_environment_spec.component_assembly_id ||
       !channel_bundle.replay_environment.require_projection_validation) {
@@ -975,39 +1054,129 @@ void test_invalid_specs_fail_fast() {
       "policy projection validation required");
 
   auto bad_allocation = graph_allocation::graph_node_allocation_spec_t{};
-  bad_allocation.ppo_implemented = true;
+  bad_allocation.action_distribution = "unsupported_distribution.v1";
   expect_throw(
       [&] {
         graph_allocation::validate_graph_node_allocation_spec(bad_allocation);
       },
-      "graph-node allocation PPO disabled");
+      "unsupported ACTION_DISTRIBUTION");
+
+  bad_allocation = graph_allocation::graph_node_allocation_spec_t{};
+  bad_allocation.ppo_implemented = false;
+  expect_throw(
+      [&] {
+        graph_allocation::validate_graph_node_allocation_spec(bad_allocation);
+      },
+      "graph-node allocation requires PPO V0");
 
   auto bad_allocation_net =
       graph_allocation::graph_node_allocation_net_spec_t{};
-  bad_allocation_net.ppo_execution_allowed = true;
+  bad_allocation_net.action_distribution = "unsupported_distribution.v1";
   expect_throw(
       [&] {
         graph_allocation::validate_graph_node_allocation_net_spec(
             bad_allocation_net);
       },
-      "graph-node allocation net PPO disabled");
+      "ACTION_DISTRIBUTION mismatch");
+
+  bad_allocation_net = graph_allocation::graph_node_allocation_net_spec_t{};
+  bad_allocation_net.ppo_execution_allowed = false;
+  expect_throw(
+      [&] {
+        graph_allocation::validate_graph_node_allocation_net_spec(
+            bad_allocation_net);
+      },
+      "graph-node allocation net requires PPO V0");
+
+  bad_allocation_net = graph_allocation::graph_node_allocation_net_spec_t{};
+  bad_allocation_net.policy_head_hidden_dim = 0;
+  expect_throw(
+      [&] {
+        graph_allocation::validate_graph_node_allocation_net_spec(
+            bad_allocation_net);
+      },
+      "policy head dimension");
+
+  bad_allocation_net = graph_allocation::graph_node_allocation_net_spec_t{};
+  bad_allocation_net.dirichlet_concentration_head = "implicit_fixed_scalar";
+  expect_throw(
+      [&] {
+        graph_allocation::validate_graph_node_allocation_net_spec(
+            bad_allocation_net);
+      },
+      "Dirichlet concentration head");
+
+  auto bad_feature_manifest =
+      graph_allocation::graph_node_allocation_feature_manifest_spec_t{};
+  bad_feature_manifest.node_feature_names =
+      graph_allocation::expected_node_feature_names_v1();
+  bad_feature_manifest.node_feature_names.pop_back();
+  bad_feature_manifest.node_feature_transforms = std::vector<std::string>(
+      bad_feature_manifest.node_feature_names.size(), "identity");
+  bad_feature_manifest.global_feature_names =
+      graph_allocation::expected_global_feature_names_v1();
+  bad_feature_manifest.global_feature_transforms = std::vector<std::string>(
+      bad_feature_manifest.global_feature_names.size(), "identity");
+  bad_feature_manifest.risk_feature_names =
+      graph_allocation::expected_risk_feature_names_v1();
+  bad_feature_manifest.risk_feature_transforms = std::vector<std::string>(
+      bad_feature_manifest.risk_feature_names.size(), "identity");
+  bad_feature_manifest.evidence_only_fields = {"observation_anchor_index",
+                                               "knowledge_timestamp_ms",
+                                               "policy_input_digest"};
+  expect_throw(
+      [&] {
+        graph_allocation::validate_graph_node_allocation_feature_manifest_spec(
+            bad_feature_manifest);
+      },
+      "feature manifest node order");
+
+  bad_feature_manifest =
+      graph_allocation::graph_node_allocation_feature_manifest_spec_t{};
+  bad_feature_manifest.node_feature_names =
+      graph_allocation::expected_node_feature_names_v1();
+  bad_feature_manifest.node_feature_transforms = std::vector<std::string>(
+      bad_feature_manifest.node_feature_names.size(), "identity");
+  bad_feature_manifest.global_feature_names =
+      graph_allocation::expected_global_feature_names_v1();
+  bad_feature_manifest.global_feature_transforms = std::vector<std::string>(
+      bad_feature_manifest.global_feature_names.size(), "identity");
+  bad_feature_manifest.risk_feature_names =
+      graph_allocation::expected_risk_feature_names_v1();
+  bad_feature_manifest.risk_feature_transforms = std::vector<std::string>(
+      bad_feature_manifest.risk_feature_names.size(), "identity");
+  bad_feature_manifest.evidence_only_fields = {"observation_anchor_index",
+                                               "knowledge_timestamp_ms",
+                                               "policy_input_digest"};
+  bad_feature_manifest.raw_mdn_input_allowed = true;
+  expect_throw(
+      [&] {
+        graph_allocation::validate_graph_node_allocation_feature_manifest_spec(
+            bad_feature_manifest);
+      },
+      "raw MDN feature manifest");
 
   auto bad_policy_training = training::training_run_spec_t{};
   bad_policy_training.version_token =
       "wikimyei.policy.portfolio.graph_node_allocation.jkimyei.v1";
-  bad_policy_training.training_id = "policy_contract";
+  bad_policy_training.training_id = "policy_ppo";
   bad_policy_training.task =
-      training::training_task_t::policy_graph_node_allocation_contract_smoke;
+      training::training_task_t::policy_graph_node_allocation_ppo_v0;
   bad_policy_training.component_assembly_id = "graph_node_allocation_v1";
   bad_policy_training.optimizer = training::training_optimizer_t::adam;
-  bad_policy_training.batch_size = 1;
+  bad_policy_training.learning_rate = 0.0003;
+  bad_policy_training.max_steps = 1;
+  bad_policy_training.batch_size = 32;
+  bad_policy_training.grad_clip_norm = 0.5;
+  bad_policy_training.checkpoint_every = 1;
   bad_policy_training.training_schedule_mode =
       "causal_walk_forward_training.v1";
   bad_policy_training.require_causal_schedule = true;
-  bad_policy_training.checkpoint_kind = "policy_contract_fixture";
+  bad_policy_training.ppo_execution_allowed = true;
+  bad_policy_training.checkpoint_kind = "ppo_v0_policy_adapter";
   expect_throw(
       [&] { training::validate_training_run_spec(bad_policy_training); },
-      "policy contract smoke rejects adam");
+      "graph-node PPO V0 rejects adam");
 }
 
 void test_cross_reference_failures() {

@@ -1527,10 +1527,10 @@ void test_strict_channel_baseline_runs_through_runtime() {
   check(representation_result_fact.find(
             "representation_effective_rank_fraction=") != std::string::npos,
         "strict baseline representation result fact carries geometry summary");
-  check(representation_result_fact.find("source_report_hash=") !=
+  check(representation_result_fact.find("source_report_digest=") !=
             std::string::npos,
         "strict baseline representation result fact carries source report "
-        "hash");
+        "digest");
   const auto representation_report =
       read_text(representation_result.delegated_report_path);
   check(representation_report.find("checkpoint_format="
@@ -2386,6 +2386,7 @@ void test_strict_channel_baseline_runs_through_runtime() {
   policy_training_fact.policy_input_schema_id =
       "kikijyeba.environment.policy_input.v1";
   policy_training_fact.action_adapter_id = "target_node_weights_simplex.v1";
+  policy_training_fact.action_distribution_id = "masked_dirichlet_simplex.v1";
   policy_training_fact.reward_contract_id =
       "kikijyeba.environment.reward.post_execution_ledger_log_growth_cost_"
       "drawdown.v1";

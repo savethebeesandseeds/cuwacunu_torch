@@ -129,9 +129,10 @@ when Lattice returned certificate material. `subject=protocol` has report and
 strict identity modes; report mode is observed-only and strict mode requires
 explicit expected identity. `subject=spawn` and `subject=component` group
 Runtime evidence only. Detailed job rows, checkpoint rows, target-status maps,
-performance panels, checkpoint-lineage details, and metrics are returned only
-with `include_machine_payload=true`. It is read-only and does not prepare or
-execute a wave.
+performance panels, checkpoint-lineage details, fact preview rows, fact lineage
+rows, identity-envelope payloads, and metrics are returned only with
+`include_machine_payload=true`. It is read-only and does not prepare or execute
+a wave.
 
 For operator-facing target pursuit, use
 `hero.marshal.prepare`. It accepts one canonical `target_id`, plus an explicit
@@ -197,12 +198,21 @@ audit-only, and target-kind, Runtime-wave, Marshal reachability, and policy-gate
 authority false. `hero.lattice.inspect subject=facts mode=lineage` adds
 selected runtime-index relation/key/digest rows as audit-only lineage witnesses;
 those rows do not satisfy targets or create Marshal reachability.
-`hero.lattice.inspect subject=facts mode=preview` returns concrete rows plus matching lineage rows
-with `facts_used_for_target_satisfaction=false` and `checkpoint_selected=false`.
-Those preview rows now include `identity_envelope`, a normalized typed Lattice
-catalog projection of the common fact identity contract. Hero serializes that
-projection with active identity, row-index ranges, parent digests, support
-counters when present, and no proof/dispatch/selection authority.
+`hero.lattice.inspect subject=facts mode=preview` returns concrete rows plus
+matching lineage rows selected by `fact_digest`, `fact_digest_prefix`, or
+`fact_index`. Prefix selection must resolve to exactly one full fact digest in
+the selected family. Preview rows keep
+`facts_used_for_target_satisfaction=false` and `checkpoint_selected=false`.
+Those preview rows include display-only `fact_ref` and `fact_digest_prefix`
+helpers next to the full `fact_digest`; short refs are operator handles only.
+They also include `identity_envelope`, a normalized typed Lattice catalog
+projection of the common fact identity contract. Hero serializes that projection
+with active identity, row-index ranges, parent digests, support counters when
+present, and no
+proof/dispatch/selection authority. Target evaluation and checkpoint closure
+display JSON may also include `certificate_ref`, `checkpoint_ref`, and
+`root_checkpoint_ref` next to their full digest fields; refs are not proof
+authority.
 Marshal fact panels now include that compact lineage view by default, with
 `include_lineage=false` available only to suppress the audit panel; callers can
 request `include_preview=true` with a fact family and optional digest/index for
@@ -332,18 +342,64 @@ Runtime agent workflow:
    `kikijyeba.runtime.policy_training_job_contract.v1` packet and digest binding
    protocol/source identity, policy identity, train/validation/test range
    digests, normalization and replay-buffer isolation,
-   environment/action/reward/execution-profile identity, causal walk-forward
-   schedule identity, typed cursor-key ordering, ledger-derived
-   no-future-snapshot source, selector/checkpoint lineage, parent evidence
-   digests, random seed, and finite bounds. Schedule-less policy training,
+   environment/action/action-distribution/reward/execution-profile identity,
+   causal walk-forward schedule identity, typed cursor-key ordering,
+   ledger-derived no-future-snapshot source, selector/checkpoint lineage,
+   parent evidence digests, random seed, and finite bounds. PPO-shaped policy
+   contracts also bind the artifact contract id, graph-node allocation policy
+   family, actor/critic architecture and checkpoint digests, optimizer-state
+   digest, PPO config digest, rollout-collection digest, PPO update-report
+   digest, validation rollout-report digest, GAE/advantage-normalization
+   identity, and PPO hyperparameters. Schedule-less policy training,
    caller-asserted no-future-snapshot claims, opaque cursor keys, late
    target-label/reward/trajectory availability, and
    `offline_full_window_research` cannot satisfy readiness-grade contracts.
-   In this mode, `requested_mode=execute` is available only for
-   `policy_kind=noop_policy_training.v1` under Runtime execute/train policy. It
-   writes a no-op checkpoint, `policy_training.report`, terminal Runtime facts,
-   and `runtime.policy_training.fact` for Lattice inspection. PPO remains
-   explicitly refused, and Runtime does not claim Lattice target satisfaction.
+   In this mode, `requested_mode=execute` is available for
+   `policy_kind=noop_policy_training.v1` and the bounded
+   `policy_kind=ppo_policy_adapter.v1` trainer under Runtime execute/train
+   policy. The noop path writes a no-op checkpoint, `policy_training.report`,
+   terminal Runtime facts, and `runtime.policy_training.fact` for Lattice
+   inspection. The PPO V0 path writes actor/critic checkpoints, optimizer state,
+   rollout/update/validation reports, terminal Runtime facts, and a
+   Lattice-readable `runtime.policy_training.fact`. With no `report_path`, the
+   rollout collection uses an explicit smoke fallback; with `report_path`, it
+   ingests an existing Kikijyeba replay report into PPO rollout samples and
+   records whether policy-distribution log-probability evidence was bound.
+   Replay reports produced by trainable policies now carry old-policy
+   action-distribution evidence on each step; replay-backed PPO training fails
+   closed if that evidence is missing. With `replay_job_dir`,
+   Runtime dispatches `cuwacunu_exec --replay-from-job-dir` with
+   graph-node allocation in `on_policy_sample` mode, passes an explicit actor
+   checkpoint artifact into policy forward, and ingests the generated training
+   collection report as `collection_source=kikijyeba_on_policy_replay`. After
+   the bounded PPO V0 update writes the post-update actor checkpoint, Runtime
+   dispatches a second deterministic cost-aware replay from the same completed
+   replay job and writes
+   `kikijyeba.runtime.ppo_cost_aware_validation_rollout.v1`. That artifact
+   binds the post-update checkpoint digest, policy input/action/action-
+   distribution/reward identities, execution profile digest, causal schedule
+   digest, snapshot family digest, raw validation replay report digest,
+   after-cost equity/log-growth/drawdown metrics when available, Cajtucu cost
+   anatomy, rejects/partials, missing-pair and numeraire-fallback counters,
+   target tracking, reward summaries, and trace evidence. Runtime also writes
+   `kikijyeba.runtime.policy_quality_report.v1` from a separate raw comparison
+   replay so the PPO validation artifact remains PPO-only. The comparison
+   replay uses the post-update graph-node allocation checkpoint and the required
+   numeraire-only, current-weight no-trade, equal-weight, and SDU baselines
+   under identical replay/cost/reward/execution/causal assumptions, records
+   policy-wise after-cost metrics plus PPO-minus-baseline deltas, and denies
+   policy selection, ranking, quality, market-readiness, deployment, live
+   capital, and Lattice selector authority. The generated
+   `runtime.policy_training.fact` binds the quality report digest and can
+   satisfy `policy_training_artifact_ready` when its forecast-eval and
+   observer-belief parent fact digests are present and replay-environment
+   lineage resolves through either a replay fact digest or a replay report
+   digest. Allocation-engine parent evidence is required only for policy kinds
+   that declare that parent; PPO adapter facts bind replay lineage through the
+   replay report path. This is an artifact proof, not policy selection or
+   policy-quality proof.
+   Runtime still does not claim Lattice target satisfaction, policy quality,
+   market readiness, deployment readiness, or live-capital authority.
 8. `hero.runtime.reset requested_mode=plan|execute` previews and, when
    explicitly enabled, clears the runtime artifact root for developer reset
    workflows.

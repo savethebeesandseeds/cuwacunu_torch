@@ -1,21 +1,48 @@
 /*
   wikimyei.policy.portfolio.graph_node_allocation.net
   =======================================================
-  Architecture identity for the future trainable graph-node allocation policy.
+  Architecture identity for the bounded PPO V0 graph-node allocation policy.
 
-  This file does not enable PPO. It only fixes the input/output shape and head
-  identities so Runtime and Lattice can bind policy artifacts before a concrete
-  optimizer exists.
+  Runtime owns PPO execution. This file fixes the input/output shape, actor
+  head, value head, and action distribution identity that policy artifacts must
+  bind.
 */
 GRAPH_NODE_ALLOCATION_NET {
   VERSION = wikimyei.policy.portfolio.graph_node_allocation.net.v1;
-  INPUT_NODE_FEATURE_DIM = 27;
-  INPUT_GLOBAL_FEATURE_DIM = 8;
-  NODE_ENCODER_HIDDEN_DIM = 64;
-  GLOBAL_ENCODER_HIDDEN_DIM = 32;
-  ALLOCATION_HEAD_HIDDEN_DIM = 128;
+  POLICY_INPUT_SCHEMA = kikijyeba.environment.policy_input.v1;
+  POLICY_INPUT_FEATURE_MANIFEST = wikimyei.policy.portfolio.graph_node_allocation.features.v1;
+  INPUT_NODE_FEATURE_DIM = 28;
+  INPUT_GLOBAL_FEATURE_DIM = 6;
+  INPUT_RISK_FEATURE_DIM = 10;
+  NODE_ENCODER_LAYERS = 2;
+  NODE_ENCODER_HIDDEN_DIM = 128;
+  GLOBAL_ENCODER_LAYERS = 2;
+  GLOBAL_ENCODER_HIDDEN_DIM = 64;
+  RISK_ENCODER_LAYERS = 1;
+  RISK_ENCODER_HIDDEN_DIM = 64;
+  POOLING = masked_mean_max;
+  FUSION_HIDDEN_DIM = 128;
+  FUSION_LAYERS = 2;
+  ACTIVATION = silu;
+  NORMALIZATION = layer_norm;
+  DROPOUT = 0.0;
+  SHARE_ENCODER = true;
+  SEPARATE_ACTOR_CRITIC_HEADS = true;
+  POLICY_HEAD_HIDDEN_DIM = 128;
+  VALUE_HEAD_HIDDEN_DIM = 128;
   OUTPUT_HEAD = node_weight_logits;
-  VALUE_HEAD = reserved_for_ppo;
+  VALUE_HEAD = state_value;
   ACTION_ADAPTER = target_node_weights_simplex.v1;
-  PPO_EXECUTION_ALLOWED = false;
+  ACTION_DISTRIBUTION = masked_dirichlet_simplex.v1;
+  DIRICHLET_CONCENTRATION_HEAD = scalar_total_concentration;
+  DIRICHLET_ALPHA_FLOOR = 0.0001;
+  DIRICHLET_TOTAL_CONCENTRATION_MIN = 0.25;
+  DIRICHLET_TOTAL_CONCENTRATION_MAX = 256.0;
+  LOGISTIC_NORMAL_CANDIDATE = masked_logistic_normal_simplex.v1;
+  LOGISTIC_NORMAL_STD_HEAD = scalar_log_std;
+  LOGISTIC_NORMAL_LOG_STD_MIN = -5.0;
+  LOGISTIC_NORMAL_LOG_STD_MAX = 1.0;
+  LOGISTIC_NORMAL_COORDINATE_POLICY = active_additive_log_ratio;
+  LOGISTIC_NORMAL_ENTROPY_KIND = latent_normal_entropy;
+  PPO_EXECUTION_ALLOWED = true;
 };

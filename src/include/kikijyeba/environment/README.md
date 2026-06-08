@@ -96,6 +96,13 @@ pi
     Policy. In code this is anything implementing `policy_adapter_iface_t`,
     with `act(observation_t) -> action_t`.
 
+x_t
+    Policy input. In code this is `policy_input_t`: evidence-only identity
+    plus actor-visible node/global/risk feature blocks derived from
+    `AllocationBelief`, portfolio state, masks, execution/cost state, and
+    compact cross-node risk summaries. Raw anchor indexes, raw timestamps,
+    digests, and schema IDs remain evidence identity, not actor features.
+
 a_t
     Action. In code this is `action_t`: target weights over the ordered
     graph-node action universe.
@@ -142,11 +149,13 @@ contract, graph-node masks, current weights, previous target weights, and
 compact feature tensors. It does not expose future realizations, same-action
 `step_info_t`, or raw MDN tensors by default.
 
-The pre-PPO trainable output surface is also explicit:
+The bounded PPO V0 trainable output surface is also explicit:
 
 ```text
 policy_input_t
-    -> raw node_weight_logits[A]
+    -> graph_node_allocation Torch module
+    -> raw node_weight_logits[A] + state_value + distribution params
+    -> masked_dirichlet_simplex.v1 or masked_logistic_normal_simplex.v1
     -> target_node_weights_simplex.v1
     -> action_t target_node_weights[A]
 ```
@@ -155,7 +164,18 @@ policy_input_t
 accounting numeraire, when present, is just another graph node in the vector.
 There is no separate cash scalar output and no broker/order/fill output from
 the policy. Cajtucu handles paper execution after the environment receives the
-target-node action.
+target-node action. Raw observation anchor indexes and raw knowledge timestamps
+remain policy-input identity evidence, not actor-visible tensor features.
+`fake_trainable_policy_t` remains a local contract fixture; Runtime replay uses
+the module-backed graph-node allocation policy path.
+
+PPO V0 is Runtime-owned and replay/paper-only. PPO-shaped policy-training
+requests must bind the graph-node allocation policy family, actor/critic
+architecture and checkpoint digests, optimizer state, PPO config,
+action-distribution config, rollout collection evidence, PPO
+update-report evidence, validation rollout evidence, GAE/advantage
+normalization identity, and PPO hyperparameters before Runtime will accept even
+a plan/dry-run contract.
 
 ## Experience Driver And Output Boundary
 
@@ -163,7 +183,17 @@ target-node action.
 driver layer. They run one sequential world loop per episode and compare policy
 adapters under the same observation/action/reward/evidence grammar. Experiments
 may parallelize episode, bundle, or policy tasks, but a single episode remains
-step-sequential because each ledger state depends on the previous transition.
+step-sequential. Trainable policy actions carry PPO collection evidence through
+this layer: `policy_input_digest`, `action_distribution_id`, active-node
+identity, old log probability, entropy, value estimate, and an
+evidence-bound flag are copied from `action_t` into `step_report_t` and replay
+report text. This lets Runtime consume replay reports produced by the trainable
+policy bridge without inventing missing policy-distribution evidence. The
+default runner mode still calls deterministic `act()`; explicit
+`on_policy_sample` collection calls the policy's collection hook so trainable
+policies can sample from their action distribution while baselines keep their
+deterministic behavior. Episodes stay step-sequential because each ledger state
+depends on the previous transition.
 
 Use `historical_replay_environment` for the current Ujcamei-backed world. Do
 not call it `experience replay`: reserve `experience_buffer` or

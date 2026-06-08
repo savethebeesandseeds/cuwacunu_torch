@@ -5575,16 +5575,33 @@ void test_trainable_policy_contract() {
         "policy input neutral expected-log-return fallback mismatch");
   close(input.node_features.index({0, 15}).item<double>(), 1.0, 1.0e-12,
         "policy input neutral confidence fallback mismatch");
+  close(input.node_features.index({0, 27}).item<double>(), 0.0, 1.0e-12,
+        "policy input non-numeraire node flag mismatch");
+  close(input.node_features.index({2, 27}).item<double>(), 1.0, 1.0e-12,
+        "policy input accounting-numeraire node flag mismatch");
   check(input.global_features.dim() == 1 &&
             input.global_features.size(0) ==
                 env::kPolicyInputGlobalFeatureDimV1,
         "policy input global features must include numeraire context");
+  close(input.global_features.index({0}).item<double>(), std::log(1000.0),
+        1.0e-12, "policy input log-equity feature mismatch");
   close(input.previous_target_weights.index({2}).item<double>(), 0.70, 1.0e-12,
         "policy input previous target mismatch");
   close(input.global_features.index({4}).item<double>(), 0.60, 1.0e-12,
         "policy input current numeraire weight missing");
   close(input.global_features.index({5}).item<double>(), 0.70, 1.0e-12,
         "policy input previous numeraire weight missing");
+  for (std::int64_t i = 0; i < input.global_features.size(0); ++i) {
+    const double value = input.global_features.index({i}).item<double>();
+    check(value != static_cast<double>(observation.observation_anchor_index) &&
+              value != static_cast<double>(observation.knowledge_timestamp_ms),
+          "raw time identity must not be actor-visible global feature");
+  }
+  check(input.risk_features.dim() == 1 &&
+            input.risk_features.size(0) == env::kPolicyInputRiskFeatureDimV1,
+        "policy input risk feature shape mismatch");
+  close(input.risk_features.abs().sum().item<double>(), 0.0, 1.0e-12,
+        "policy input risk fallback must be zero without belief");
 
   auto belief_observation = observation;
   belief_observation.allocation_belief = make_environment_allocation_belief(
@@ -5635,6 +5652,23 @@ void test_trainable_policy_contract() {
         "policy input projection-validation feature mismatch");
   close(belief_input.node_features.index({0, 23}).item<double>(), 0.93, 1.0e-12,
         "policy input calibration feature mismatch");
+  close(belief_input.node_features.index({2, 27}).item<double>(), 1.0, 1.0e-12,
+        "belief input accounting-numeraire node flag mismatch");
+  close(belief_input.risk_features.index({0}).item<double>(), 0.20 / 3.0,
+        1.0e-12, "policy input mean correlation risk feature mismatch");
+  close(belief_input.risk_features.index({1}).item<double>(), 0.20, 1.0e-12,
+        "policy input max correlation risk feature mismatch");
+  close(belief_input.risk_features.index({2}).item<double>(), 1.20, 1.0e-10,
+        "policy input top correlation eigenvalue mismatch");
+  close(belief_input.risk_features.index({8}).item<double>(),
+        std::sqrt(0.0000272), 1.0e-12,
+        "policy input portfolio volatility risk feature mismatch");
+  close(belief_input.risk_features.index({9}).item<double>(), -0.009, 1.0e-12,
+        "policy input portfolio CVaR risk feature mismatch");
+  for (std::int64_t i = 0; i < belief_input.risk_features.size(0); ++i) {
+    check(std::isfinite(belief_input.risk_features.index({i}).item<double>()),
+          "policy input risk features must be finite");
+  }
 
   auto missing_snapshot = input_options;
   missing_snapshot.snapshot_family_digest = "";
@@ -5721,6 +5755,82 @@ void test_trainable_policy_contract() {
   close(action.target_weights.index({1}).item<double>(), 0.0, 1.0e-12,
         "masked node must receive zero weight");
 
+  env::action_distribution_options_t distribution_options{};
+  distribution_options.random_seed_bound = true;
+  distribution_options.random_seed = 17;
+  auto dirichlet_raw = raw;
+  dirichlet_raw.action_distribution_id =
+      env::kMaskedDirichletSimplexDistributionV1;
+  dirichlet_raw.action_distribution_params =
+      torch::tensor({2.0}, torch::TensorOptions().dtype(torch::kFloat64));
+  const auto &dirichlet = env::action_distribution_for_id(
+      env::kMaskedDirichletSimplexDistributionV1);
+  const auto dirichlet_sample = dirichlet.sample(
+      dirichlet_raw, masked_input, adapter_options, distribution_options);
+  env::validate_action(dirichlet_sample.action, masked_input.node_ids);
+  check(dirichlet_sample.evidence.active_count == 2,
+        "Dirichlet distribution evidence records active sub-simplex size");
+  close(dirichlet_sample.action.target_weights.index({1}).item<double>(), 0.0,
+        1.0e-12, "Dirichlet masks inactive graph nodes");
+  close(dirichlet_sample.action.target_weights.sum().item<double>(), 1.0,
+        1.0e-12, "Dirichlet action weights sum to one");
+  check(std::isfinite(dirichlet_sample.evidence.log_prob) &&
+            std::isfinite(dirichlet_sample.evidence.entropy),
+        "Dirichlet evidence stores finite log-probability and entropy");
+  close(dirichlet.log_prob(dirichlet_raw, masked_input, dirichlet_sample.action,
+                           dirichlet_sample.evidence, distribution_options),
+        dirichlet_sample.evidence.log_prob, 1.0e-10,
+        "Dirichlet old log-probability recomputes on sampled action");
+  close(dirichlet.entropy(dirichlet_raw, masked_input,
+                          dirichlet_sample.evidence, distribution_options),
+        dirichlet_sample.evidence.entropy, 1.0e-10,
+        "Dirichlet entropy recomputes from evidence");
+  env::action_distribution_record_t old_dirichlet_record{};
+  old_dirichlet_record.action_distribution_id =
+      env::kMaskedDirichletSimplexDistributionV1;
+  old_dirichlet_record.evidence = dirichlet_sample.evidence;
+  close(dirichlet.approximate_kl(old_dirichlet_record, old_dirichlet_record),
+        0.0, 1.0e-12, "Dirichlet approximate KL is zero for identical records");
+
+  auto one_active_input = input;
+  one_active_input.valid_mask = torch::tensor(
+      {false, false, true}, torch::TensorOptions().dtype(torch::kBool));
+  const auto one_active_sample = dirichlet.sample(
+      dirichlet_raw, one_active_input, adapter_options, distribution_options);
+  close(one_active_sample.action.target_weights.index({2}).item<double>(), 1.0,
+        1.0e-12, "single-node Dirichlet sub-simplex is deterministic");
+  close(one_active_sample.evidence.log_prob, 0.0, 1.0e-12,
+        "single-node Dirichlet log-probability is zero");
+  close(one_active_sample.evidence.entropy, 0.0, 1.0e-12,
+        "single-node Dirichlet entropy is zero");
+
+  auto logistic_raw = raw;
+  logistic_raw.action_distribution_id =
+      env::kMaskedLogisticNormalSimplexDistributionV1;
+  logistic_raw.action_distribution_params =
+      torch::tensor({-1.0}, torch::TensorOptions().dtype(torch::kFloat64));
+  auto logistic_options = distribution_options;
+  logistic_options.standard_normal_noise =
+      torch::zeros({1}, torch::TensorOptions().dtype(torch::kFloat64));
+  const auto &logistic = env::action_distribution_for_id(
+      env::kMaskedLogisticNormalSimplexDistributionV1);
+  const auto logistic_sample = logistic.sample(
+      logistic_raw, masked_input, adapter_options, logistic_options);
+  env::validate_action(logistic_sample.action, masked_input.node_ids);
+  check(logistic_sample.evidence.active_count == 2 &&
+            logistic_sample.evidence.reference_node_index == 2 &&
+            logistic_sample.evidence.entropy_kind == "latent_normal_entropy",
+        "logistic-normal evidence records active coordinates and entropy kind");
+  close(logistic_sample.action.target_weights.index({1}).item<double>(), 0.0,
+        1.0e-12, "logistic-normal masks inactive graph nodes");
+  check(std::isfinite(logistic_sample.evidence.log_prob) &&
+            std::isfinite(logistic_sample.evidence.entropy),
+        "logistic-normal evidence stores finite log-probability and entropy");
+  close(logistic.log_prob(logistic_raw, masked_input, logistic_sample.action,
+                          logistic_sample.evidence, logistic_options),
+        logistic_sample.evidence.log_prob, 1.0e-10,
+        "logistic-normal old log-probability recomputes on sampled action");
+
   auto no_executable_input = input;
   no_executable_input.valid_mask =
       torch::zeros({3}, torch::TensorOptions().dtype(torch::kBool));
@@ -5733,6 +5843,15 @@ void test_trainable_policy_contract() {
   }
   check(rejected_no_executable_node,
         "target-node action adapter fails closed without executable nodes");
+  bool rejected_distribution_no_executable_node = false;
+  try {
+    (void)dirichlet.sample(dirichlet_raw, no_executable_input, adapter_options,
+                           distribution_options);
+  } catch (const std::exception &) {
+    rejected_distribution_no_executable_node = true;
+  }
+  check(rejected_distribution_no_executable_node,
+        "action distribution fails closed without executable nodes");
 
   env::raw_policy_output_t bad_raw{};
   bad_raw.node_weight_logits =
@@ -5762,6 +5881,107 @@ void test_trainable_policy_contract() {
   check(fake_action.policy_artifact_digest ==
             "fake_trainable_policy_fixture_digest",
         "fake trainable policy action artifact digest missing");
+  check(fake_action.action_distribution_id ==
+            env::kMaskedDirichletSimplexDistributionV1,
+        "fake trainable policy action records action distribution id");
+  check(fake_action.action_distribution_evidence_bound,
+        "fake trainable policy action binds distribution evidence");
+  check(!fake_action.policy_input_digest.empty(),
+        "fake trainable policy action records policy input digest");
+  check(fake_action.active_count == 3,
+        "fake trainable policy action records active count");
+  check(std::isfinite(fake_action.old_log_prob) &&
+            std::isfinite(fake_action.old_entropy) &&
+            std::isfinite(fake_action.old_value_estimate),
+        "fake trainable policy action records PPO collection scalars");
+  auto fake_distribution_options = distribution_options;
+  fake_distribution_options.random_seed = 23;
+  const auto fake_sample =
+      fake_policy.sample_action(observation, fake_distribution_options);
+  env::validate_action(fake_sample.action,
+                       observation.portfolio_state.node_ids);
+  check(fake_sample.evidence.action_distribution_id ==
+            env::kMaskedDirichletSimplexDistributionV1,
+        "fake trainable policy sample records action distribution id");
+  check(fake_sample.evidence.active_count == 3,
+        "fake trainable policy sample records active node count");
+  check(std::isfinite(fake_sample.evidence.log_prob) &&
+            std::isfinite(fake_sample.evidence.entropy) &&
+            std::isfinite(fake_sample.evidence.value_estimate),
+        "fake trainable policy sample records PPO evidence scalars");
+  close(fake_sample.action.target_weights.sum().item<double>(), 1.0, 1.0e-12,
+        "fake trainable policy sampled action weights sum to one");
+  const auto fake_deterministic =
+      fake_policy.deterministic_action_sample(observation);
+  env::validate_action(fake_deterministic.action,
+                       observation.portfolio_state.node_ids);
+  close(fake_deterministic.evidence.log_prob,
+        env::action_distribution_for_id(
+            env::kMaskedDirichletSimplexDistributionV1)
+            .log_prob(fake_policy.forward(fake_policy.make_input(observation)),
+                      fake_policy.make_input(observation),
+                      fake_deterministic.action, fake_deterministic.evidence,
+                      env::action_distribution_options_t{}),
+        1.0e-10,
+        "fake trainable deterministic action stores recomputable "
+        "log-probability");
+
+  env::graph_node_allocation_torch_policy_config_t module_config{};
+  module_config.policy_artifact_digest =
+      "graph_node_allocation_torch_policy_module_v0.fixture";
+  module_config.graph_order_fingerprint = "graph_fixture";
+  module_config.execution_profile_digest = "cajtucu.paper.profile.fixture";
+  module_config.accounting_numeraire_node_id = "USDT";
+  module_config.causal_schedule_digest = "causal_schedule.fixture";
+  module_config.snapshot_family_digest = "snapshot_family.fixture";
+  module_config.module_seed = 41;
+  env::graph_node_allocation_torch_policy_t module_policy(module_config);
+  const auto module_input = module_policy.make_input(observation);
+  const auto module_raw = module_policy.forward(module_input);
+  check(module_raw.node_weight_logits.defined() &&
+            module_raw.node_weight_logits.dim() == 1 &&
+            module_raw.node_weight_logits.size(0) == 3,
+        "graph-node Torch policy module emits node logits [A]");
+  check(module_raw.action_distribution_params.defined() &&
+            module_raw.action_distribution_params.numel() == 1,
+        "graph-node Torch policy module emits distribution parameter scalar");
+  check(std::isfinite(module_raw.value_estimate),
+        "graph-node Torch policy module emits finite state value");
+  const auto module_action = module_policy.act(observation);
+  env::validate_action(module_action, observation.portfolio_state.node_ids);
+  check(module_action.policy_artifact_digest ==
+            "graph_node_allocation_torch_policy_module_v0.fixture",
+        "graph-node Torch policy action binds module artifact digest");
+  check(module_action.action_distribution_evidence_bound,
+        "graph-node Torch policy action binds distribution evidence");
+
+  auto masked_module_input = module_input;
+  masked_module_input.executable_mask = torch::tensor(
+      {true, false, true}, torch::TensorOptions().dtype(torch::kBool));
+  const auto masked_module_raw = module_policy.forward(masked_module_input);
+  const auto masked_module_sample =
+      env::action_distribution_for_id(
+          env::kMaskedDirichletSimplexDistributionV1)
+          .deterministic_action(masked_module_raw, masked_module_input,
+                                adapter_options,
+                                env::action_distribution_options_t{});
+  close(masked_module_sample.action.target_weights.index({1}).item<double>(),
+        0.0, 1.0e-12,
+        "graph-node Torch policy module respects executable mask through "
+        "distribution");
+
+  auto biased_module_config = module_config;
+  biased_module_config.node_weight_logit_bias = torch::tensor(
+      {0.0, 4.0, 0.0}, torch::TensorOptions().dtype(torch::kFloat64));
+  env::graph_node_allocation_torch_policy_t biased_module_policy(
+      biased_module_config);
+  const auto biased_module_raw = biased_module_policy.forward(module_input);
+  close((biased_module_raw.node_weight_logits - module_raw.node_weight_logits)
+            .index({1})
+            .item<double>(),
+        4.0, 1.0e-10,
+        "graph-node Torch policy checkpoint logit bias is applied to module "
+        "output");
 
   fixture_world_t world{};
   const auto spec = make_episode_spec();
@@ -5770,6 +5990,47 @@ void test_trainable_policy_contract() {
   const auto transition = world.step(world_action);
   check(std::isfinite(transition.reward.total),
         "fake trainable policy steps through world");
+  fixture_world_t episode_world{};
+  auto trainable_episode = env::run_episode(episode_world, fake_policy, spec);
+  check(!trainable_episode.step_reports.empty(),
+        "fake trainable policy episode writes step reports");
+  check(trainable_episode.policy_action_mode == "deterministic_act",
+        "default trainable episode records deterministic action mode");
+  const auto &trainable_step = trainable_episode.step_reports.front();
+  check(trainable_step.policy_action_mode == "deterministic_act",
+        "default trainable step records deterministic action mode");
+  check(trainable_step.action_distribution_evidence_bound,
+        "trainable episode step carries distribution evidence");
+  check(trainable_step.action_distribution_id ==
+            env::kMaskedDirichletSimplexDistributionV1,
+        "trainable episode step carries action distribution id");
+  check(!trainable_step.policy_input_digest.empty(),
+        "trainable episode step carries policy input digest");
+  check(trainable_step.active_count == 3,
+        "trainable episode step carries active node count");
+  check(std::isfinite(trainable_step.old_log_prob) &&
+            std::isfinite(trainable_step.old_entropy) &&
+            std::isfinite(trainable_step.old_value_estimate),
+        "trainable episode step carries PPO old policy evidence");
+  fixture_world_t sampled_episode_world{};
+  env::episode_runner_options_t sampled_options{};
+  sampled_options.policy_action_mode =
+      env::episode_policy_action_mode_t::on_policy_sample;
+  auto sampled_episode = env::run_episode(sampled_episode_world, fake_policy,
+                                          spec, sampled_options);
+  check(!sampled_episode.step_reports.empty(),
+        "fake trainable sampled episode writes step reports");
+  check(sampled_episode.policy_action_mode == "on_policy_sample",
+        "sampled trainable episode records on-policy action mode");
+  const auto &sampled_step = sampled_episode.step_reports.front();
+  check(sampled_step.policy_action_mode == "on_policy_sample",
+        "sampled trainable step records on-policy action mode");
+  check(sampled_step.action_distribution_evidence_bound,
+        "sampled trainable step carries distribution evidence");
+  check(std::isfinite(sampled_step.old_log_prob) &&
+            std::isfinite(sampled_step.old_entropy) &&
+            std::isfinite(sampled_step.old_value_estimate),
+        "sampled trainable step carries PPO old policy evidence");
 }
 
 } // namespace

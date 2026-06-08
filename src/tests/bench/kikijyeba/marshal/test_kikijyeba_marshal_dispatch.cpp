@@ -9,6 +9,7 @@
 #include "hero/marshal_hero/marshal/status.h"
 #include "hero/marshal_hero/marshal/tool_handler.h"
 #include "hero/marshal_hero/marshal/tool_schema.h"
+#include "hero/short_ref.h"
 #include "tests/bench/kikijyeba/test_support/lattice_forecast_artifact_fixture.h"
 
 #include <array>
@@ -961,6 +962,20 @@ void test_m2_dry_run_preview_success() {
         "runtime_handoff should bind the lattice target id");
   check(handoff_args.find("\"base_config\":") != std::string::npos,
         "runtime_handoff should include base config identity");
+  check(handoff_args.find("\"base_config\":{\"path\":") != std::string::npos,
+        "runtime_handoff should include base config path");
+  check(handoff_args.find("\"runtime_policy\":{\"path\":") !=
+            std::string::npos,
+        "runtime_handoff should include runtime policy path");
+  check(handoff_args.find("\"hash\":") == std::string::npos,
+        "runtime_handoff should not use generic hash identity fields");
+  check(handoff_args.find("\"checkpoint_artifact_digests\":{}") !=
+            std::string::npos,
+        "runtime_handoff should use canonical checkpoint artifact digest map");
+  check(handoff_args.find("\"checkpoint_artifact_hashes\"") ==
+            std::string::npos,
+        "runtime_handoff should not emit the retired checkpoint artifact hash "
+        "map");
   check(handoff_args.find("\"runtime_policy\":") != std::string::npos,
         "runtime_handoff should include runtime policy identity");
   check(
@@ -1185,7 +1200,9 @@ void test_m2_runtime_hero_live_dry_run_handoff() {
   const auto handoff = marshal::call_runtime_hero_dry_run(decision, options);
 
   check(handoff.attempted, "Runtime Hero handoff should be attempted");
-  check(handoff.tool_call_ok, "Runtime Hero tool call should succeed");
+  check(handoff.tool_call_ok,
+        "Runtime Hero tool call should succeed: error=" +
+            handoff.error_message + " result=" + handoff.tool_result_json);
   check(handoff.runtime_dry_run_ok,
         "Runtime Hero dry-run structured result should be ok");
   check(handoff.ok, "Runtime Hero dry-run handoff should succeed");
@@ -2680,6 +2697,11 @@ bool fake_lattice_artifact_evidence_callback(const std::string &tool_name,
       relation = "selection_signal";
     }
     if (out_tool_result_json) {
+      const std::string fact_digest = relation + "_fact";
+      const std::string fact_digest_prefix =
+          cuwacunu::hero::display::digest_prefix(fact_digest);
+      const std::string fact_ref =
+          cuwacunu::hero::display::fact_ref(relation, fact_digest);
       std::ostringstream structured;
       structured
           << "{\"schema\":\"kikijyeba.lattice.fact_preview.v1\""
@@ -2697,8 +2719,10 @@ bool fake_lattice_artifact_evidence_callback(const std::string &tool_name,
           << ",\"cache_rows_used_for_target_satisfaction\":false"
           << ",\"checkpoint_selected\":false"
           << ",\"model_selector\":false"
-          << ",\"digest_filter\":\"\""
-          << ",\"digest_prefix_filter\":\"\""
+          << ",\"short_ref_scheme\":\"kikijyeba.hero.short_ref.v1\""
+          << ",\"display_digest_prefix_length\":12"
+          << ",\"fact_digest_filter\":\"\""
+          << ",\"fact_digest_prefix_filter\":\"\""
           << ",\"fact_index_filter\":0"
           << ",\"family_fact_count\":1"
           << ",\"matching_fact_count\":1"
@@ -2713,17 +2737,18 @@ bool fake_lattice_artifact_evidence_callback(const std::string &tool_name,
           << ",\"lineage_rows\":[{\"relation\":"
           << marshal::detail::json_quote(relation)
           << ",\"key\":\"parent_digest|artifact_job|artifact\","
-          << "\"digest\":" << marshal::detail::json_quote(relation + "_fact")
-          << "}]"
-          << ",\"facts\":[{\"fact_index\":0,\"digest\":"
-          << marshal::detail::json_quote(relation + "_fact")
+          << "\"digest\":" << marshal::detail::json_quote(fact_digest) << "}]"
+          << ",\"facts\":[{\"fact_index\":0,\"fact_digest\":"
+          << marshal::detail::json_quote(fact_digest)
+          << ",\"fact_digest_prefix\":"
+          << marshal::detail::json_quote(fact_digest_prefix)
+          << ",\"fact_ref\":" << marshal::detail::json_quote(fact_ref)
           << ",\"identity_envelope\":{\"schema\":\"kikijyeba.lattice."
              "fact_identity_envelope.v1\","
           << "\"fact_identity_contract_schema\":\"kikijyeba.lattice."
              "fact_identity_contract.v1\","
           << "\"fact_family\":" << marshal::detail::json_quote(relation)
-          << ",\"fact_digest\":"
-          << marshal::detail::json_quote(relation + "_fact")
+          << ",\"fact_digest\":" << marshal::detail::json_quote(fact_digest)
           << ",\"protocol_id\":\"cwu_02v\","
           << "\"source_cursor_token\":\"cursor_1\","
           << "\"parent_exposure_fact_digests\":[\"parent_digest\"],"
@@ -2829,7 +2854,7 @@ bool fake_lattice_operational_report_blocker_callback(
   }
   if (out_tool_result_json) {
     *out_tool_result_json =
-        R"({"content":[{"type":"text","text":"hero.lattice.evaluate operation=targets executed"}],"structuredContent":{"read_only":true,"evaluations":[{"target_id":"vicreg_train_core_ready","status":"satisfied","proof_certificate_check":{"passed":true,"issues":[]}},{"target_id":"channel_mdn_train_core_ready","status":"satisfied","proof_certificate_check":{"passed":false,"issues":["closure_unresolved"]}},{"target_id":"channel_mdn_validation_eval_ready","status":"metric_failed","proof_certificate_check":{"passed":true,"issues":[]},"plan_basis":{"deficit_keys":["coverage:evaluation_metric"],"primary_deficit_key":"coverage:evaluation_metric"},"warnings":[{"warning_id":"validation_eval_missing","severity":"watch","source":"lattice"}]},{"target_id":"forecast_eval_artifact_ready","status":"blocked","target_class":"artifact_readiness","kind":"not_applicable","target_kind_applicable":false,"target_kind_effective":"none","proof_kind":"forecast_eval_artifact_bound","subject_fact_family":"forecast_eval","proof_certificate_check":{"passed":false,"issues":["artifact[0] quality authority present","artifact[0] authority drift present","artifact[0] lineage unbound"]},"deficits":[{"kind":"artifact","dimension":"forecast_eval_authority","key":"artifact:forecast_eval_authority","status":"forbidden"},{"kind":"artifact","dimension":"forecast_eval_lineage","key":"artifact:forecast_eval_lineage","status":"missing"},{"kind":"artifact","dimension":"forecast_eval_issue_forecast_eval_must_remain_artifact_evidence_only","key":"artifact:forecast_eval_issue_forecast_eval_must_remain_artifact_evidence_only","status":"forbidden"},{"kind":"artifact","dimension":"forecast_eval_issue_baseline_fact_digest_not_found","key":"artifact:forecast_eval_issue_baseline_fact_digest_not_found","status":"missing","related_fact_integrity_issue_codes":["mdn:baseline_fact_digest_not_found"]}],"plan_basis":{"primary_deficit_key":"artifact:forecast_eval_authority","deficit_keys":["artifact:forecast_eval_authority","artifact:forecast_eval_lineage","artifact:forecast_eval_issue_forecast_eval_must_remain_artifact_evidence_only","artifact:forecast_eval_issue_baseline_fact_digest_not_found"]},"proof_certificate":{"artifacts":[{"proof_kind":"forecast_eval_artifact_bound","proof_template_bound":true,"proof_template_claim":"forecast evaluation artifact existence, checkpoint lineage, target-transform binding, baseline binding, selection-signal audit binding, and support counts","fact_family":"forecast_eval","fact_digest":"forecast_eval_fact","identity_match":true,"artifact_evidence":true,"deterministic_artifact":true,"visibility_only":true,"authority_clean":false,"quality_authority":true,"lineage_bound":false,"passed":false,"issues":["forecast_eval_must_remain_artifact_evidence_only","baseline_fact_digest_not_found"]}]}}]},"isError":false})";
+        R"({"content":[{"type":"text","text":"hero.lattice.evaluate operation=targets executed"}],"structuredContent":{"read_only":true,"evaluations":[{"target_id":"vicreg_train_core_ready","status":"satisfied","proof_certificate_check":{"passed":true,"issues":[]}},{"target_id":"channel_mdn_train_core_ready","status":"satisfied","proof_certificate_check":{"passed":false,"issues":["closure_unresolved"]}},{"target_id":"channel_mdn_validation_eval_ready","status":"metric_failed","proof_certificate_check":{"passed":true,"issues":[]},"plan_basis":{"deficit_keys":["coverage:evaluation_metric"],"primary_deficit_key":"coverage:evaluation_metric"},"warnings":[{"warning_id":"validation_eval_missing","severity":"watch","source":"lattice"}]},{"target_id":"forecast_eval_artifact_ready","status":"blocked","target_class":"artifact_readiness","kind":"not_applicable","target_kind_applicable":false,"target_kind_effective":"none","proof_kind":"forecast_eval_artifact_bound","subject_fact_family":"forecast_eval","proof_certificate_check":{"passed":false,"issues":["artifact[0] quality authority present","artifact[0] authority drift present","artifact[0] lineage unbound"]},"deficits":[{"kind":"artifact","dimension":"forecast_eval_authority","key":"artifact:forecast_eval_authority","status":"forbidden"},{"kind":"artifact","dimension":"forecast_eval_lineage","key":"artifact:forecast_eval_lineage","status":"missing"},{"kind":"artifact","dimension":"forecast_eval_issue_forecast_eval_must_remain_artifact_evidence_only","key":"artifact:forecast_eval_issue_forecast_eval_must_remain_artifact_evidence_only","status":"forbidden"},{"kind":"artifact","dimension":"forecast_eval_issue_baseline_fact_digest_not_found","key":"artifact:forecast_eval_issue_baseline_fact_digest_not_found","status":"missing","related_fact_integrity_issue_codes":["mdn:baseline_fact_digest_not_found"]}],"plan_basis":{"primary_deficit_key":"artifact:forecast_eval_authority","deficit_keys":["artifact:forecast_eval_authority","artifact:forecast_eval_lineage","artifact:forecast_eval_issue_forecast_eval_must_remain_artifact_evidence_only","artifact:forecast_eval_issue_baseline_fact_digest_not_found"]},"proof_certificate":{"artifacts":[{"proof_kind":"forecast_eval_artifact_bound","proof_template_bound":true,"proof_template_claim":"forecast evaluation artifact existence, checkpoint lineage, target-transform binding, baseline binding, selection-signal audit binding, and support counts","fact_family":"forecast_eval","fact_digest":"forecast_eval_fact","fact_preview_hint":{"available":true,"fact_family":"forecast_eval","fact_digest":"forecast_eval_fact","tool":"hero.lattice.inspect","marshal_tool":"hero.marshal.inspect"},"identity_match":true,"artifact_evidence":true,"deterministic_artifact":true,"visibility_only":true,"authority_clean":false,"quality_authority":true,"lineage_bound":false,"passed":false,"issues":["forecast_eval_must_remain_artifact_evidence_only","baseline_fact_digest_not_found"]}]}}]},"isError":false})";
     inject_fake_artifact_boundary_denials(out_tool_result_json);
     inject_fake_policy_gate_reservations(out_tool_result_json);
   }
@@ -5260,10 +5285,14 @@ void test_artifact_evidence_panel_and_prepare_boundary() {
                 std::string::npos &&
             result.find("\"selected_relations\":[\"forecast_eval\"]") !=
                 std::string::npos &&
-            result.find("\"lineage_rows\":[{\"relation\":\"forecast_eval\"") !=
-                std::string::npos,
-        "fact panel should relay Lattice fact_lineage as an audit-only lineage "
-        "panel");
+            result.find("\"lineage_rows_included\":false") !=
+                std::string::npos &&
+            result.find("\"machine_payload_included\":true") !=
+                std::string::npos &&
+            result.find("\\\"lineage_rows\\\":[{\\\"relation\\\":"
+                        "\\\"forecast_eval\\\"") != std::string::npos,
+        "fact panel should summarize Lattice fact_lineage and keep raw rows in "
+        "the explicit machine payload");
   check(result.find("\"fact_integrity_summary\":{") != std::string::npos &&
             result.find("\"relation_declared_count\":3") != std::string::npos &&
             result.find("\"relation_bound_count\":0") != std::string::npos &&
@@ -5435,25 +5464,28 @@ void test_artifact_evidence_panel_and_prepare_boundary() {
           result.find("\"fact_index_filter\":0") != std::string::npos &&
           result.find("\"matching_fact_count\":1") != std::string::npos &&
           result.find("\"returned_fact_count\":1") != std::string::npos &&
-          result.find("\"identity_envelope\":{\"schema\":\"kikijyeba.lattice."
-                      "fact_identity_envelope.v1\"") != std::string::npos &&
-          result.find("\"fact_identity_contract_schema\":\"kikijyeba.lattice."
-                      "fact_identity_contract.v1\"") != std::string::npos &&
-          result.find("\"fact_family\":\"forecast_eval\"") !=
+          result.find("\"facts_included\":false") != std::string::npos &&
+          result.find("\"fact_rows_require_machine_payload\":true") !=
               std::string::npos &&
-          result.find("\"parent_exposure_fact_digests\":[\"parent_digest\"]") !=
+          result.find("\"preview_fact_refs\":[\"fev_forecast_eva\"]") !=
               std::string::npos &&
-          result.find("\"support_count\":42") != std::string::npos &&
-          result.find("\"facts_used_for_target_satisfaction\":false") !=
+          result.find("\\\"identity_envelope\\\":{\\\"schema\\\":"
+                      "\\\"kikijyeba.lattice.fact_identity_envelope.v1\\\"") !=
               std::string::npos &&
-          result.find("\"forecast_artifact_digest\":\"forecast_artifact_1\"") !=
+          result.find("\\\"fact_ref\\\":\\\"fev_forecast_eva\\\"") !=
+              std::string::npos &&
+          result.find("\\\"parent_exposure_fact_digests\\\":[\\\"parent_"
+                      "digest\\\"]") != std::string::npos &&
+          result.find("\\\"forecast_artifact_digest\\\":\\\"forecast_"
+                      "artifact_1\\\"") !=
               std::string::npos &&
           result.find("\"preview_lattice_args\":\"{\\\"subject\\\":"
                       "\\\"facts\\\",\\\"mode\\\":\\\"preview\\\","
                       "\\\"runtime_root\\\":\\\"/tmp/marshal_artifact/"
                       "runtime\\\",\\\"family\\\":\\\"forecast_eval\\\","
                       "\\\"fact_index\\\":0}\"") != std::string::npos,
-      "fact preview panel should relay concrete facts without authority");
+      "fact preview panel should summarize refs and keep concrete facts in the "
+      "explicit machine payload");
 
   g_fake_lattice_fact_summary_count = 0;
   g_fake_lattice_fact_lineage_count = 0;
@@ -5481,9 +5513,9 @@ void test_artifact_evidence_panel_and_prepare_boundary() {
                     "\\\"facts\\\",\\\"mode\\\":\\\"preview\\\","
                     "\\\"runtime_root\\\":\\\"/tmp/marshal_artifact/"
                     "runtime\\\",\\\"family\\\":\\\"forecast_eval\\\","
-                    "\\\"digest_prefix\\\":\\\"forecast\\\"}\"") !=
+                    "\\\"fact_digest_prefix\\\":\\\"forecast\\\"}\"") !=
             std::string::npos,
-        "Marshal should translate fact_digest_prefix to Lattice digest_prefix");
+        "Marshal should pass fact_digest_prefix through to Lattice");
 
   g_fake_lattice_fact_summary_count = 0;
   g_fake_lattice_fact_lineage_count = 0;
@@ -5840,6 +5872,12 @@ void test_artifact_evidence_panel_with_real_lattice_response() {
           result.find(
               "\"artifact_fact_preview_families\":[\"forecast_eval\"]") !=
               std::string::npos &&
+          result.find("\"artifact_fact_preview_refs\":[\"fev_") !=
+              std::string::npos &&
+          result.find("\"artifact_fact_preview_digest_count\":1") !=
+              std::string::npos &&
+          result.find("\"artifact_fact_preview_digests_require_machine_payload\":"
+                      "true") != std::string::npos &&
           result.find("\"artifact_fact_preview_tools\":[\"hero.lattice."
                       "inspect\"]") != std::string::npos &&
           result.find("\"artifact_fact_preview_marshal_tools\":[\"hero."
@@ -5938,10 +5976,14 @@ void test_artifact_evidence_panel_with_real_lattice_response() {
             result.find("\"selected_relations\":[\"forecast_eval\"]") !=
                 std::string::npos &&
             result.find("\"matching_row_count\":1") != std::string::npos &&
-            result.find("\"lineage_rows\":[{\"relation\":\"forecast_eval\"") !=
+            result.find("\"lineage_rows_included\":false") !=
+                std::string::npos &&
+            result.find("\"machine_payload_included\":false") !=
+                std::string::npos &&
+            result.find("\"lineage_rows\":[{\"relation\":\"forecast_eval\"") ==
                 std::string::npos,
-        "real Lattice fact panel should relay fact_lineage rows without target "
-        "authority");
+        "real Lattice fact panel should keep fact_lineage rows out of the "
+        "default operator payload");
   check(result.find("\"artifact_readiness_proofable_families\":["
                     "\"forecast_eval\"]") != std::string::npos &&
             result.find("\"artifact_readiness_proof_kinds\":[\"forecast_eval_"
@@ -6508,6 +6550,14 @@ void test_operational_report_quotes_target_blockers() {
               std::string::npos &&
           result.find("\"artifact_fact_families\":[\"forecast_eval\"]") !=
               std::string::npos &&
+          result.find("\"artifact_fact_preview_refs\":[\"fev_forecast_eva\"]") !=
+              std::string::npos &&
+          result.find("\"artifact_fact_preview_digest_count\":1") !=
+              std::string::npos &&
+          result.find("\"artifact_fact_preview_digests_require_machine_payload\":"
+                      "true") != std::string::npos &&
+          result.find("\"artifact_fact_preview_digests\":[") ==
+              std::string::npos &&
           result.find("\"artifact_proof_kinds\":[\"forecast_eval_artifact_"
                       "bound\"]") != std::string::npos &&
           result.find("forecast evaluation artifact existence, checkpoint "
@@ -6597,6 +6647,19 @@ void test_operational_report_quotes_target_blockers() {
   check(result.find("\"next_safe_action\":\"inspect_lattice_certificate_"
                     "failure\"") != std::string::npos,
         "proof check failures should be routed to certificate inspection");
+
+  const std::string machine_args =
+      args.substr(0, args.size() - 1U) + ",\"include_machine_payload\":true}";
+  result.clear();
+  error.clear();
+  check(marshal::execute_marshal_tool_json("hero.marshal.inspect",
+                                           machine_args, &result, &error),
+        "inspect subject=run should expose full artifact digest details when "
+        "machine payload is requested");
+  check(result.find("\"machine_payload\":{") != std::string::npos &&
+            result.find("\"artifact_fact_preview_digests\":[\"forecast_eval_"
+                        "fact\"]") != std::string::npos,
+        "machine payload should retain full artifact preview digests");
 
   marshal::set_marshal_lattice_tool_callback(nullptr);
   std::filesystem::remove_all(root);

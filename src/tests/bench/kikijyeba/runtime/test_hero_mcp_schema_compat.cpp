@@ -130,6 +130,21 @@ void skip_ws(const std::string &s, std::size_t *idx) {
   throw std::runtime_error("unterminated JSON object");
 }
 
+[[nodiscard]] std::string first_json_string_field(const std::string &json,
+                                                  const std::string &field) {
+  const std::string key = "\"" + field + "\"";
+  const std::size_t key_pos = json.find(key);
+  if (key_pos == std::string::npos) {
+    throw std::runtime_error("missing JSON field: " + field);
+  }
+  std::size_t value_pos = json.find(':', key_pos + key.size());
+  if (value_pos == std::string::npos) {
+    throw std::runtime_error("missing JSON field separator: " + field);
+  }
+  ++value_pos;
+  return parse_json_string_at(json, &value_pos);
+}
+
 [[nodiscard]] std::vector<tool_schema_t>
 extract_tool_schemas(const std::string &catalog_json) {
   std::vector<tool_schema_t> out;
@@ -159,6 +174,88 @@ extract_tool_schemas(const std::string &catalog_json) {
 
 void require_contains(const std::string &output, const std::string &needle,
                       const std::string &message);
+
+void append_ambiguous_forecast_eval_prefix_fixture(
+    const fs::path &runtime_root, const std::string &required_prefix) {
+  if (required_prefix.empty()) {
+    throw std::runtime_error("ambiguous prefix fixture requires a prefix");
+  }
+  auto options = lattice_fixture::validation_holdout_forecast_artifact_options(
+      /*forecast_baseline_digest_mismatch=*/false);
+  options.job_id = "artifact_job_prefix_collision";
+  options.wave_id = "artifact_wave_prefix_collision";
+
+  const fs::path job_dir = runtime_root / options.job_id;
+  fs::create_directories(job_dir);
+  lattice_fixture::write_fixture_text(job_dir / "job.manifest", "");
+
+  exposure::lattice_exposure_fact_t parent_seed{};
+  parent_seed.fact_type = "exposure";
+  parent_seed.contract_fingerprint = options.contract_fingerprint;
+  parent_seed.protocol_id = options.protocol_id;
+  parent_seed.graph_order_fingerprint = options.graph_order_fingerprint;
+  parent_seed.source_cursor_token = options.source_cursor_token;
+  parent_seed.component_assembly_fingerprint =
+      options.component_assembly_fingerprint;
+  parent_seed.target_component_family_id = options.target_component_family_id;
+  parent_seed.job_id = options.job_id;
+  parent_seed.wave_id = options.wave_id;
+  parent_seed.wave_action = options.wave_action;
+  parent_seed.job_status = options.job_status;
+  lattice_fixture::apply_split_identity(parent_seed, options);
+  parent_seed.completed_anchor_range = parent_seed.anchor_range;
+
+  const auto exposure_sidecar =
+      exposure::exposure_fact_path_for_job_dir(job_dir);
+  exposure::write_exposure_fact_sidecar(exposure_sidecar, parent_seed);
+  const auto parent =
+      exposure::make_exposure_fact_from_sidecar_file(exposure_sidecar, job_dir);
+
+  exposure::lattice_forecast_eval_fact_t forecast{};
+  exposure::populate_artifact_fact_identity(forecast, parent);
+  forecast.target_feature_ids = {"ev_close", "ev_return"};
+  forecast.horizon = 3;
+  forecast.support_count = 42;
+  forecast.valid_count = 40;
+  forecast.missing_count = 2;
+  forecast.weakest_support_rows = 8;
+  forecast.mean_nll = 1.10;
+  forecast.mean_nll_per_horizon = {1.10};
+  forecast.valid_target_count_per_horizon = {40};
+  forecast.ev_mae = 0.16;
+  forecast.ev_rmse = 0.24;
+  forecast.signed_error = -0.02;
+  forecast.directional_accuracy = 0.62;
+  forecast.calibration_coverage = 0.91;
+  forecast.pit_summary = "uniform-ish";
+  forecast.sigma_scale_sanity = "ok";
+  forecast.support_by_node = "BTC:20,ETH:20";
+  forecast.support_by_channel = "close:40";
+  forecast.support_by_target_feature = "ev_close:40,ev_return:40";
+  forecast.support_by_horizon = "h3:40";
+  forecast.evaluated_representation_checkpoint_digest = "rep_checkpoint_2";
+  forecast.evaluated_mdn_checkpoint_digest = "mdn_checkpoint_2";
+  forecast.target_transform_fact_digest = "target_transform_2";
+  forecast.baseline_fact_digests = {"baseline_2"};
+  forecast.selection_signal_fact_digests = {"selection_2"};
+
+  bool matched = false;
+  for (int attempt = 0; attempt < 4096; ++attempt) {
+    forecast.forecast_artifact_digest =
+        "forecast_artifact_prefix_collision_" + std::to_string(attempt);
+    if (exposure::forecast_eval_fact_digest(forecast).starts_with(
+            required_prefix)) {
+      matched = true;
+      break;
+    }
+  }
+  if (!matched) {
+    throw std::runtime_error(
+        "failed to synthesize ambiguous forecast_eval digest prefix");
+  }
+  exposure::write_forecast_eval_fact_sidecar(
+      job_dir / "lattice.forecast_eval.fact", forecast);
+}
 
 void check_catalog(const std::string &label, const fs::path &binary,
                    bool require_lattice_checkpoint_closure) {
@@ -192,6 +289,12 @@ void check_catalog(const std::string &label, const fs::path &binary,
         saw_lattice_status = true;
       } else if (tool.name == "hero.lattice.inspect") {
         saw_lattice_inspect = true;
+        if (tool.input_schema.find(
+                "\"fact_digest_prefix\":{\"type\":\"string\"}") ==
+            std::string::npos) {
+          throw std::runtime_error(
+              "Lattice inspect schema should advertise fact_digest_prefix");
+        }
       } else if (tool.name == "hero.lattice.evaluate") {
         saw_lattice_evaluate = true;
       } else if (tool.name == "hero.lattice.compare") {
@@ -883,6 +986,9 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
   require_contains(checkpoint_closure,
                    "\"automatic_checkpoint_selection\":false",
                    "checkpoint_closure must not auto-select checkpoints");
+  require_contains(checkpoint_closure, "\"checkpoint_ref\":\"ckpt_missing_dige",
+                   "checkpoint_closure should expose a display checkpoint ref "
+                   "next to the full digest");
   require_contains(checkpoint_closure, "\"complete\":false",
                    "missing checkpoint identity should fail closed");
 
@@ -1763,6 +1869,12 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
                    "fact_preview must not select checkpoints");
   require_contains(fact_preview, "\"model_selector\":false",
                    "fact_preview must not rank models");
+  require_contains(fact_preview,
+                   "\"short_ref_scheme\":\"kikijyeba.hero.short_ref.v1\"",
+                   "fact_preview should declare the short-ref display scheme");
+  require_contains(fact_preview, "\"display_digest_prefix_length\":12",
+                   "fact_preview should declare the display digest prefix "
+                   "length");
   require_contains(fact_preview, "\"fact_index_filter\":0",
                    "fact_preview should expose the selected fact index");
   require_contains(fact_preview, "\"matching_fact_count\":1",
@@ -1773,8 +1885,8 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
                    "fact_preview should relay matching runtime-index lineage");
   require_contains(fact_preview, "\"returned_lineage_row_count\":1",
                    "fact_preview should return matching runtime-index lineage");
-  require_contains(fact_preview, "\"fact_index\":0,\"digest\":\"",
-                   "fact_preview rows should carry digest and index");
+  require_contains(fact_preview, "\"fact_index\":0,\"fact_digest\":\"",
+                   "fact_preview rows should carry fact digest and index");
   require_contains(fact_preview,
                    "\"identity_envelope\":{\"schema\":\"kikijyeba.lattice."
                    "fact_identity_envelope.v1\"",
@@ -1802,6 +1914,120 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
   require_contains(fact_preview,
                    "\"forecast_artifact_digest\":\"forecast_artifact_1\"",
                    "fact_preview should include the concrete forecast fact");
+
+  const std::string selected_fact_digest =
+      first_json_string_field(fact_preview, "fact_digest");
+  const std::string selected_fact_digest_prefix =
+      selected_fact_digest.substr(0, 12);
+  const std::string selected_fact_ref = "fev_" + selected_fact_digest_prefix;
+  require_contains(fact_preview,
+                   "\"fact_digest_prefix\":\"" + selected_fact_digest_prefix +
+                       "\",\"fact_ref\":\"" + selected_fact_ref + "\"",
+                   "fact_preview rows should include display short refs next "
+                   "to full digests");
+  const std::string exact_digest_preview = read_command_stdout(
+      base +
+      "--tool hero.lattice.inspect "
+      "--args-json "
+      "'{\"subject\":\"facts\",\"mode\":\"preview\",\"runtime_root\":\"" +
+      scanned_runtime_root.string() +
+      "\",\"family\":\"forecast_eval\",\"fact_digest\":\"" +
+      selected_fact_digest + "\",\"limit\":1}'");
+  require_contains(exact_digest_preview,
+                   "\"fact_digest_filter\":\"" + selected_fact_digest + "\"",
+                   "fact_preview should expose the exact fact_digest filter");
+  require_contains(exact_digest_preview, "\"matching_fact_count\":1",
+                   "fact_preview should find exact fact_digest matches");
+  require_contains(exact_digest_preview,
+                   "\"fact_index\":0,\"fact_digest\":\"" +
+                       selected_fact_digest + "\"",
+                   "fact_preview should return the exact digest-selected row");
+  require_contains(exact_digest_preview,
+                   "\"fact_ref\":\"" + selected_fact_ref + "\"",
+                   "exact fact_digest preview should keep the display ref");
+
+  const std::string unique_prefix_preview = read_command_stdout(
+      base +
+      "--tool hero.lattice.inspect "
+      "--args-json "
+      "'{\"subject\":\"facts\",\"mode\":\"preview\",\"runtime_root\":\"" +
+      scanned_runtime_root.string() +
+      "\",\"family\":\"forecast_eval\",\"fact_digest_prefix\":\"" +
+      selected_fact_digest_prefix + "\",\"limit\":1}'");
+  require_contains(unique_prefix_preview,
+                   "\"fact_digest_prefix_filter\":\"" +
+                       selected_fact_digest_prefix + "\"",
+                   "fact_preview should expose the canonical prefix filter");
+  require_contains(unique_prefix_preview, "\"matching_fact_count\":1",
+                   "fact_preview should accept a unique fact_digest_prefix");
+  require_contains(unique_prefix_preview,
+                   "\"fact_index\":0,\"fact_digest\":\"" +
+                       selected_fact_digest + "\"",
+                   "unique fact_digest_prefix should resolve to the full "
+                   "digest-selected row");
+  require_contains(unique_prefix_preview,
+                   "\"fact_ref\":\"" + selected_fact_ref + "\"",
+                   "unique fact_digest_prefix preview should keep the display "
+                   "ref");
+
+  for (const auto &legacy_selector :
+       std::vector<std::pair<std::string, std::string>>{
+           {"digest", "fact_digest"},
+           {"digest_prefix", "fact_digest_prefix"},
+           {"index", "fact_index"},
+       }) {
+    const auto legacy_preview = run_command_capture(
+        base +
+        "--tool hero.lattice.inspect "
+        "--args-json "
+        "'{\"subject\":\"facts\",\"mode\":\"preview\",\"runtime_root\":\"" +
+        scanned_runtime_root.string() + "\",\"family\":\"forecast_eval\",\"" +
+        legacy_selector.first + "\":\"x\"}'");
+    if (legacy_preview.status == 0 ||
+        legacy_preview.output.find(legacy_selector.second) ==
+            std::string::npos) {
+      throw std::runtime_error("fact preview should reject legacy " +
+                               legacy_selector.first + " in favor of " +
+                               legacy_selector.second);
+    }
+  }
+
+  const auto missing_prefix_preview = run_command_capture(
+      base +
+      "--tool hero.lattice.inspect "
+      "--args-json "
+      "'{\"subject\":\"facts\",\"mode\":\"preview\",\"runtime_root\":\"" +
+      scanned_runtime_root.string() +
+      "\",\"family\":\"forecast_eval\",\"fact_digest_prefix\":\"not_found\"}'");
+  if (missing_prefix_preview.status == 0 ||
+      missing_prefix_preview.output.find("E_LATTICE_FACT_REF_NOT_FOUND") ==
+          std::string::npos) {
+    throw std::runtime_error(
+        "fact preview should fail closed when fact_digest_prefix matches no "
+        "facts");
+  }
+
+  const fs::path ambiguous_runtime_root =
+      "/tmp/hero_mcp_schema_compat/lattice_ambiguous_prefix";
+  lattice_fixture::write_scanned_forecast_artifact_fixture(
+      ambiguous_runtime_root, /*forecast_baseline_digest_mismatch=*/false);
+  append_ambiguous_forecast_eval_prefix_fixture(
+      ambiguous_runtime_root, selected_fact_digest.substr(0, 1));
+  const auto ambiguous_prefix_preview = run_command_capture(
+      base +
+      "--tool hero.lattice.inspect "
+      "--args-json "
+      "'{\"subject\":\"facts\",\"mode\":\"preview\",\"runtime_root\":\"" +
+      ambiguous_runtime_root.string() +
+      "\",\"family\":\"forecast_eval\",\"fact_digest_prefix\":\"" +
+      selected_fact_digest.substr(0, 1) + "\"}'");
+  if (ambiguous_prefix_preview.status == 0 ||
+      ambiguous_prefix_preview.output.find("E_LATTICE_FACT_REF_AMBIGUOUS") ==
+          std::string::npos) {
+    throw std::runtime_error(
+        "fact preview should fail closed when fact_digest_prefix is "
+        "ambiguous");
+  }
 
   const std::string scanned_baseline_evaluation =
       read_command_stdout(base +
@@ -2092,6 +2318,12 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
   require_contains(scanned_artifact_evaluation, "\"proof_template_bound\":true",
                    "scanned artifact proof should bind an explicit proof "
                    "template");
+  require_contains(scanned_artifact_evaluation, "\"certificate_ref\":\"cert_",
+                   "scanned artifact proof should expose a display certificate "
+                   "ref");
+  require_contains(scanned_artifact_evaluation, "\"root_checkpoint_ref\":\"",
+                   "scanned artifact proof should expose the checkpoint ref "
+                   "display field");
   require_contains(scanned_artifact_evaluation,
                    "\"fact_schema\":\"kikijyeba.lattice.forecast_eval.v1\"",
                    "scanned artifact proof should bind the fact schema");
@@ -2311,9 +2543,15 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
                    "preview");
   require_contains(scanned_bad_baseline,
                    "\"marshal_tool\":\"hero.marshal.inspect\","
-                   "\"fact_family\":\"forecast_eval\",\"fact_digest\":\"",
+                   "\"fact_family\":\"forecast_eval\",\"fact_ref\":\"fev_",
                    "scanned bad-baseline artifact preview hint should include "
-                   "family and digest");
+                   "family and display ref");
+  require_contains(scanned_bad_baseline, "\"fact_digest_prefix\":\"",
+                   "scanned bad-baseline artifact preview hint should include "
+                   "the display digest prefix");
+  require_contains(scanned_bad_baseline, "\"fact_digest\":\"",
+                   "scanned bad-baseline artifact preview hint should retain "
+                   "the full digest");
   require_contains(scanned_bad_baseline,
                    "\"facts_used_for_target_satisfaction\":false,"
                    "\"checkpoint_selected\":false,\"model_selector\":false",

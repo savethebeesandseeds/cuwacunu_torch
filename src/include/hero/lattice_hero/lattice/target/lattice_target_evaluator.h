@@ -20,8 +20,8 @@
 
 #include "hero/lattice_hero/lattice/split/split_policy.h"
 #include "hero/lattice_hero/lattice/target/lattice_target.h"
-#include "kikijyeba/protocol/config_provenance.h"
 #include "hero/runtime_hero/runtime/job_layout.h"
+#include "kikijyeba/protocol/config_provenance.h"
 #include "piaabo/parse/simple_kv_block.h"
 
 namespace cuwacunu::hero::lattice::target {
@@ -255,8 +255,7 @@ report_leaf_for_target_kind(lattice_target_kind_t kind) {
 }
 
 [[nodiscard]] inline std::string active_split_policy_fingerprint(
-    const std::optional<
-        cuwacunu::hero::lattice::split::lattice_split_policy_t>
+    const std::optional<cuwacunu::hero::lattice::split::lattice_split_policy_t>
         &split_policy) {
   if (!split_policy.has_value()) {
     return {};
@@ -281,8 +280,7 @@ make_suggested_wave(const lattice_target_spec_t &spec) {
 
 [[nodiscard]] inline lattice_target_spec_t resolve_split_references(
     lattice_target_spec_t spec,
-    const std::optional<
-        cuwacunu::hero::lattice::split::lattice_split_policy_t>
+    const std::optional<cuwacunu::hero::lattice::split::lattice_split_policy_t>
         &split_policy) {
   const bool has_warning_split =
       std::any_of(spec.warning_specs.begin(), spec.warning_specs.end(),
@@ -438,11 +436,9 @@ warning_anchor_interval(const lattice_target_spec_t &spec,
 [[nodiscard]] inline cuwacunu::hero::lattice::exposure::anchor_interval_t
 expanded_forbidden_exposure_interval(
     const lattice_target_spec_t &spec,
-    const cuwacunu::hero::lattice::split::lattice_split_policy_t
-        &split_policy,
+    const cuwacunu::hero::lattice::split::lattice_split_policy_t &split_policy,
     const std::vector<
-        cuwacunu::hero::lattice::exposure::lattice_exposure_fact_t>
-        &facts) {
+        cuwacunu::hero::lattice::exposure::lattice_exposure_fact_t> &facts) {
   namespace exposure = cuwacunu::hero::lattice::exposure;
   auto out = forbidden_exposure_interval(spec);
   if (out.empty() || spec.forbid_split.empty()) {
@@ -681,6 +677,7 @@ make_evidence_from_candidate(const job_candidate_t &candidate,
   out.checkpoint_digest_reported =
       first_non_empty({map_get(checkpoint_io, "checkpoint_digest_reported"),
                        map_get(report, "checkpoint_digest_reported"),
+                       map_get(checkpoint_io, "checkpoint_artifact_digest"),
                        map_get(checkpoint_io, "checkpoint_artifact_hash")});
   out.checkpoint_file_exists =
       !out.checkpoint_path.empty() && fs::exists(out.checkpoint_path);
@@ -971,8 +968,7 @@ strict_channel_semantic_contract_mismatch(
 
 [[nodiscard]] inline std::optional<std::string>
 strict_channel_representation_health_mismatch(
-    const cuwacunu::hero::lattice::exposure::lattice_exposure_fact_t
-        &fact) {
+    const cuwacunu::hero::lattice::exposure::lattice_exposure_fact_t &fact) {
   const auto check_finite = [](const char *field_name,
                                double value) -> std::optional<std::string> {
     if (std::isfinite(value)) {
@@ -1101,8 +1097,7 @@ strict_channel_representation_health_mismatch(
 
 [[nodiscard]] inline std::optional<std::string>
 strict_mtf_representation_health_mismatch(
-    const cuwacunu::hero::lattice::exposure::lattice_exposure_fact_t
-        &fact) {
+    const cuwacunu::hero::lattice::exposure::lattice_exposure_fact_t &fact) {
   const auto check_finite = [](const char *field_name,
                                double value) -> std::optional<std::string> {
     if (std::isfinite(value)) {
@@ -1223,8 +1218,7 @@ strict_mtf_report_schema_mismatch(const lattice_target_evidence_t &evidence) {
 
 [[nodiscard]] inline std::optional<std::string>
 strict_channel_mdn_health_mismatch(
-    const cuwacunu::hero::lattice::exposure::lattice_exposure_fact_t
-        &fact) {
+    const cuwacunu::hero::lattice::exposure::lattice_exposure_fact_t &fact) {
   const auto check_positive_finite =
       [](const char *field_name, double value) -> std::optional<std::string> {
     if (!std::isfinite(value)) {
@@ -1351,8 +1345,7 @@ filter_facts_for_active_identity(
     const lattice_target_spec_t &spec,
     const std::string &expected_component_fingerprint,
     const std::string &expected_split_policy_fingerprint = {}) {
-  std::vector<cuwacunu::hero::lattice::exposure::lattice_exposure_fact_t>
-      out;
+  std::vector<cuwacunu::hero::lattice::exposure::lattice_exposure_fact_t> out;
   for (const auto &fact : facts) {
     if (fact_matches_active_identity(fact, active_identity, spec,
                                      expected_component_fingerprint,
@@ -1449,8 +1442,7 @@ make_proof_context(const lattice_target_spec_t &spec,
   std::vector<std::string> out;
   out.reserve(uses.size());
   for (const auto use : uses) {
-    out.push_back(
-        cuwacunu::hero::lattice::exposure::exposure_use_name(use));
+    out.push_back(cuwacunu::hero::lattice::exposure::exposure_use_name(use));
   }
   return out;
 }
@@ -1887,8 +1879,8 @@ private:
   }
 
   [[nodiscard]] static bool contains_interval(
-      const std::vector<
-          cuwacunu::hero::lattice::exposure::anchor_interval_t> &intervals,
+      const std::vector<cuwacunu::hero::lattice::exposure::anchor_interval_t>
+          &intervals,
       cuwacunu::hero::lattice::exposure::anchor_interval_t interval) {
     return std::any_of(intervals.begin(), intervals.end(),
                        [&](const auto &existing) {
@@ -3044,8 +3036,9 @@ private:
     if (const auto family =
             cuwacunu::hero::lattice::exposure::parse_lattice_fact_family(
                 fact_family)) {
-      if (const auto descriptor = cuwacunu::hero::lattice::exposure::
-              lattice_fact_family_descriptor(*family)) {
+      if (const auto descriptor =
+              cuwacunu::hero::lattice::exposure::lattice_fact_family_descriptor(
+                  *family)) {
         proof.fact_identity_contract_bound =
             descriptor->fact_schema == proof.fact_schema;
       }
@@ -3139,8 +3132,8 @@ private:
   [[nodiscard]] lattice_target_proof_certificate_t::artifact_proof_t
   make_target_transform_artifact_proof(
       const lattice_target_spec_t &spec,
-      const cuwacunu::hero::lattice::exposure::
-          lattice_target_transform_fact_t &fact,
+      const cuwacunu::hero::lattice::exposure::lattice_target_transform_fact_t
+          &fact,
       bool identity_match) const {
     namespace exposure = cuwacunu::hero::lattice::exposure;
     auto issues = exposure::target_transform_fact_issues(fact);
@@ -3169,8 +3162,8 @@ private:
   [[nodiscard]] lattice_target_proof_certificate_t::artifact_proof_t
   make_forecast_baseline_artifact_proof(
       const lattice_target_spec_t &spec,
-      const cuwacunu::hero::lattice::exposure::
-          lattice_forecast_baseline_fact_t &fact,
+      const cuwacunu::hero::lattice::exposure::lattice_forecast_baseline_fact_t
+          &fact,
       bool identity_match,
       const std::set<std::string> &target_transform_digests) const {
     namespace exposure = cuwacunu::hero::lattice::exposure;
@@ -3266,8 +3259,8 @@ private:
   [[nodiscard]] lattice_target_proof_certificate_t::artifact_proof_t
   make_observer_belief_artifact_proof(
       const lattice_target_spec_t &spec,
-      const cuwacunu::hero::lattice::exposure::
-          lattice_observer_belief_fact_t &fact,
+      const cuwacunu::hero::lattice::exposure::lattice_observer_belief_fact_t
+          &fact,
       bool identity_match,
       const std::unordered_map<std::string, std::string>
           &forecast_artifact_by_eval_digest) const {
@@ -3311,8 +3304,8 @@ private:
   [[nodiscard]] lattice_target_proof_certificate_t::artifact_proof_t
   make_allocation_engine_artifact_proof(
       const lattice_target_spec_t &spec,
-      const cuwacunu::hero::lattice::exposure::
-          lattice_allocation_engine_fact_t &fact,
+      const cuwacunu::hero::lattice::exposure::lattice_allocation_engine_fact_t
+          &fact,
       bool identity_match, const std::set<std::string> &observer_belief_digests,
       const std::unordered_map<std::string, std::string>
           &forecast_artifact_by_observer_digest,
@@ -3349,7 +3342,8 @@ private:
     const bool accounting_numeraire_node_matches_base_policy =
         !fact.accounting_numeraire_node_id.empty() &&
         !fact.base_policy_accounting_numeraire_node_id.empty() &&
-        fact.accounting_numeraire_node_id == fact.base_policy_accounting_numeraire_node_id;
+        fact.accounting_numeraire_node_id ==
+            fact.base_policy_accounting_numeraire_node_id;
     const bool reason_contracts_declared =
         !fact.fallback_reasons.empty() && !fact.derisk_reasons.empty();
     const bool lineage_bound =
@@ -3359,9 +3353,10 @@ private:
             observer_belief_digests.end() &&
         !fact.forecast_artifact_digest.empty() && observer_digest_found &&
         observer_forecast_artifact_matches && forecast_artifact_found &&
-        !fact.base_policy_digest.empty() && accounting_numeraire_node_from_base_policy &&
-        accounting_numeraire_node_matches_base_policy && fact.accounting_numeraire_node_graph_bound &&
-        reason_contracts_declared;
+        !fact.base_policy_digest.empty() &&
+        accounting_numeraire_node_from_base_policy &&
+        accounting_numeraire_node_matches_base_policy &&
+        fact.accounting_numeraire_node_graph_bound && reason_contracts_declared;
     return make_common_artifact_proof(
         spec, fact, "allocation_engine",
         exposure::allocation_engine_fact_digest(fact), identity_match,
@@ -3372,8 +3367,8 @@ private:
   [[nodiscard]] lattice_target_proof_certificate_t::artifact_proof_t
   make_replay_environment_artifact_proof(
       const lattice_target_spec_t &spec,
-      const cuwacunu::hero::lattice::exposure::
-          lattice_replay_environment_fact_t &fact,
+      const cuwacunu::hero::lattice::exposure::lattice_replay_environment_fact_t
+          &fact,
       bool identity_match) const {
     namespace exposure = cuwacunu::hero::lattice::exposure;
     auto issues = exposure::replay_environment_fact_issues(fact);
@@ -3418,12 +3413,13 @@ private:
   [[nodiscard]] lattice_target_proof_certificate_t::artifact_proof_t
   make_policy_training_artifact_proof(
       const lattice_target_spec_t &spec,
-      const cuwacunu::hero::lattice::exposure::
-          lattice_policy_training_fact_t &fact,
+      const cuwacunu::hero::lattice::exposure::lattice_policy_training_fact_t
+          &fact,
       bool identity_match, const std::set<std::string> &forecast_eval_digests,
       const std::set<std::string> &observer_belief_digests,
       const std::set<std::string> &allocation_engine_digests,
-      const std::set<std::string> &replay_environment_digests) const {
+      const std::set<std::string> &replay_environment_digests,
+      const std::set<std::string> &replay_environment_report_digests) const {
     namespace exposure = cuwacunu::hero::lattice::exposure;
     auto issues = exposure::policy_training_fact_issues(fact);
     const auto digest_missing = [&](const std::string &digest,
@@ -3438,14 +3434,31 @@ private:
                        observer_belief_digests)) {
       issues.emplace_back("parent_observer_belief_fact_digest_not_found");
     }
-    if (digest_missing(fact.parent_allocation_engine_fact_digest,
+    const bool allocation_parent_required =
+        exposure::policy_training_fact_requires_allocation_engine_parent(fact);
+    if (allocation_parent_required &&
+        digest_missing(fact.parent_allocation_engine_fact_digest,
                        allocation_engine_digests)) {
       issues.emplace_back("parent_allocation_engine_fact_digest_not_found");
     }
-    if (digest_missing(fact.parent_replay_environment_fact_digest,
-                       replay_environment_digests)) {
-      issues.emplace_back("parent_replay_environment_fact_digest_not_found");
+    const bool replay_parent_bound =
+        (!fact.parent_replay_environment_fact_digest.empty() &&
+         replay_environment_digests.find(
+             fact.parent_replay_environment_fact_digest) !=
+             replay_environment_digests.end()) ||
+        (!fact.parent_replay_environment_report_digest.empty() &&
+         replay_environment_report_digests.find(
+             fact.parent_replay_environment_report_digest) !=
+             replay_environment_report_digests.end());
+    if (!replay_parent_bound) {
+      issues.emplace_back("parent_replay_environment_lineage_digest_not_found");
     }
+    const bool allocation_parent_bound =
+        !allocation_parent_required ||
+        (!fact.parent_allocation_engine_fact_digest.empty() &&
+         allocation_engine_digests.find(
+             fact.parent_allocation_engine_fact_digest) !=
+             allocation_engine_digests.end());
     const bool parent_lineage_bound =
         !fact.parent_forecast_eval_fact_digest.empty() &&
         forecast_eval_digests.find(fact.parent_forecast_eval_fact_digest) !=
@@ -3453,14 +3466,7 @@ private:
         !fact.parent_observer_belief_fact_digest.empty() &&
         observer_belief_digests.find(fact.parent_observer_belief_fact_digest) !=
             observer_belief_digests.end() &&
-        !fact.parent_allocation_engine_fact_digest.empty() &&
-        allocation_engine_digests.find(
-            fact.parent_allocation_engine_fact_digest) !=
-            allocation_engine_digests.end() &&
-        !fact.parent_replay_environment_fact_digest.empty() &&
-        replay_environment_digests.find(
-            fact.parent_replay_environment_fact_digest) !=
-            replay_environment_digests.end();
+        allocation_parent_bound && replay_parent_bound;
     const bool anti_leakage_bound =
         fact.training_range_disjoint_validation &&
         fact.training_range_disjoint_test &&
@@ -3478,6 +3484,39 @@ private:
         fact.hyperparameter_selection_uses_validation_only &&
         fact.test_sealed_until_final_report &&
         fact.test_first_access_after_selection;
+    const bool ppo_contract_bound =
+        !exposure::policy_training_fact_requires_ppo_artifact_contract(fact) ||
+        (fact.ppo_policy_artifact_contract_id ==
+             "kikijyeba.runtime.ppo_policy_artifact_contract.v1" &&
+         fact.policy_family_id ==
+             "wikimyei.policy.portfolio.graph_node_allocation" &&
+         fact.policy_checkpoint_schema_id ==
+             "wikimyei.policy.portfolio.graph_node_allocation."
+             "ppo_checkpoint.v1" &&
+         !fact.policy_input_feature_manifest_digest.empty() &&
+         !fact.action_distribution_config_digest.empty() &&
+         !fact.snapshot_family_digest.empty() &&
+         !fact.actor_architecture_digest.empty() &&
+         !fact.critic_architecture_digest.empty() &&
+         !fact.input_policy_checkpoint_digest.empty() &&
+         !fact.actor_checkpoint_digest.empty() &&
+         !fact.critic_checkpoint_digest.empty() &&
+         !fact.optimizer_state_digest.empty() &&
+         !fact.ppo_config_digest.empty() &&
+         fact.advantage_estimator_id == "gae.v1" &&
+         !fact.advantage_normalization_policy.empty() &&
+         fact.rollout_collection_schema_id ==
+             "kikijyeba.runtime.ppo_rollout_collection.v1" &&
+         !fact.rollout_collection_digest.empty() &&
+         fact.ppo_update_report_schema_id ==
+             "kikijyeba.runtime.ppo_update_report.v1" &&
+         !fact.ppo_update_report_digest.empty() &&
+         !fact.validation_rollout_report_digest.empty() &&
+         fact.ppo_gamma_bound && fact.ppo_gae_lambda_bound &&
+         fact.ppo_clip_epsilon_bound && fact.ppo_target_kl_bound &&
+         fact.ppo_entropy_coeff_bound && fact.ppo_value_loss_coeff_bound &&
+         fact.ppo_max_grad_norm_bound && fact.ppo_minibatch_size_bound &&
+         fact.ppo_epochs_per_rollout_bound);
     const bool contract_bound =
         !fact.policy_id.empty() && !fact.policy_kind.empty() &&
         !fact.policy_architecture_digest.empty() &&
@@ -3489,6 +3528,10 @@ private:
         !fact.observation_schema_digest.empty() &&
         !fact.action_schema_digest.empty() &&
         !fact.reward_contract_digest.empty() &&
+        !fact.policy_input_schema_id.empty() &&
+        !fact.action_adapter_id.empty() &&
+        !fact.action_distribution_id.empty() &&
+        !fact.reward_contract_id.empty() &&
         !fact.execution_profile_digest.empty() &&
         !fact.training_schedule_mode.empty() &&
         !fact.causal_schedule_schema_id.empty() &&
@@ -3502,7 +3545,7 @@ private:
         !fact.selector_split.empty() && !fact.selector_policy_digest.empty() &&
         fact.random_seed_bound && !fact.parent_checkpoint_digest.empty() &&
         !fact.checkpoint_digest.empty() && fact.runtime_job_kind_bound &&
-        fact.policy_checkpoint_written;
+        fact.policy_checkpoint_written && ppo_contract_bound;
     const bool lineage_bound = !fact.parent_exposure_fact_digest.empty() &&
                                contract_bound && parent_lineage_bound &&
                                anti_leakage_bound;
@@ -3667,11 +3710,16 @@ private:
       }
     }
     std::set<std::string> replay_environment_digests{};
+    std::set<std::string> replay_environment_report_digests{};
     for (const auto &fact : ledger->replay_environment_facts()) {
       if (artifact_fact_matches_identity(parent_artifact_spec, fact,
                                          expected_split_policy_fingerprint)) {
         replay_environment_digests.insert(
             exposure::replay_environment_fact_digest(fact));
+        if (!fact.experiment_report_digest.empty()) {
+          replay_environment_report_digests.insert(
+              fact.experiment_report_digest);
+        }
       }
     }
     const auto remember_identity_proof = [&](const auto &fact,
@@ -3806,7 +3854,7 @@ private:
         auto proof = make_policy_training_artifact_proof(
             spec, fact, identity_match, forecast_eval_digests,
             observer_belief_digests, allocation_engine_digests,
-            replay_environment_digests);
+            replay_environment_digests, replay_environment_report_digests);
         if (identity_match) {
           remember_identity_proof(fact, proof);
         }
@@ -4590,8 +4638,7 @@ private:
   }
 
   [[nodiscard]] static std::optional<double> representation_health_metric(
-      const cuwacunu::hero::lattice::exposure::lattice_exposure_fact_t
-          &fact,
+      const cuwacunu::hero::lattice::exposure::lattice_exposure_fact_t &fact,
       const std::string &metric) {
     if (!fact.representation_health_available) {
       return std::nullopt;
@@ -4773,8 +4820,7 @@ private:
   }
 
   [[nodiscard]] static std::optional<double> runtime_health_metric(
-      const cuwacunu::hero::lattice::exposure::lattice_exposure_fact_t
-          &fact,
+      const cuwacunu::hero::lattice::exposure::lattice_exposure_fact_t &fact,
       const std::string &metric) {
     const bool has_runtime_health_surface =
         fact.runtime_result_fact_available ||
@@ -4890,10 +4936,10 @@ private:
            metric == "mdn_checkpoint_loaded";
   }
 
-  [[nodiscard]] static std::optional<double>
-  source_analytics_metric(const cuwacunu::hero::lattice::exposure::
-                              lattice_source_analytics_fact_t &fact,
-                          const std::string &metric) {
+  [[nodiscard]] static std::optional<double> source_analytics_metric(
+      const cuwacunu::hero::lattice::exposure::lattice_source_analytics_fact_t
+          &fact,
+      const std::string &metric) {
     if (metric == "entropy") {
       return fact.entropy;
     }
@@ -5023,8 +5069,9 @@ private:
   [[nodiscard]] static std::optional<double> forecast_eval_baseline_metric(
       const cuwacunu::hero::lattice::exposure::lattice_forecast_eval_fact_t
           &fact,
-      const std::vector<cuwacunu::hero::lattice::exposure::
-                            lattice_forecast_baseline_fact_t> &baseline_facts,
+      const std::vector<
+          cuwacunu::hero::lattice::exposure::lattice_forecast_baseline_fact_t>
+          &baseline_facts,
       const std::string &metric) {
     namespace exposure = cuwacunu::hero::lattice::exposure;
     for (const auto &digest : fact.baseline_fact_digests) {
@@ -5136,10 +5183,10 @@ private:
     return "none_point_estimate_only";
   }
 
-  [[nodiscard]] static std::optional<double>
-  forecast_baseline_metric(const cuwacunu::hero::lattice::exposure::
-                               lattice_forecast_baseline_fact_t &fact,
-                           const std::string &metric) {
+  [[nodiscard]] static std::optional<double> forecast_baseline_metric(
+      const cuwacunu::hero::lattice::exposure::lattice_forecast_baseline_fact_t
+          &fact,
+      const std::string &metric) {
     if (metric == "baseline_mean_nll") {
       return fact.baseline_mean_nll;
     }
@@ -5237,10 +5284,10 @@ private:
     return "none_point_estimate_only";
   }
 
-  [[nodiscard]] static std::optional<double>
-  observer_belief_metric(const cuwacunu::hero::lattice::exposure::
-                             lattice_observer_belief_fact_t &fact,
-                         const std::string &metric) {
+  [[nodiscard]] static std::optional<double> observer_belief_metric(
+      const cuwacunu::hero::lattice::exposure::lattice_observer_belief_fact_t
+          &fact,
+      const std::string &metric) {
     namespace exposure = cuwacunu::hero::lattice::exposure;
     if (metric == "confidence") {
       return fact.confidence;
@@ -5364,10 +5411,10 @@ private:
     return "boolean_identity";
   }
 
-  [[nodiscard]] static std::optional<double>
-  allocation_engine_metric(const cuwacunu::hero::lattice::exposure::
-                               lattice_allocation_engine_fact_t &fact,
-                           const std::string &metric) {
+  [[nodiscard]] static std::optional<double> allocation_engine_metric(
+      const cuwacunu::hero::lattice::exposure::lattice_allocation_engine_fact_t
+          &fact,
+      const std::string &metric) {
     namespace exposure = cuwacunu::hero::lattice::exposure;
     if (metric == "numeraire_weight") {
       return fact.numeraire_weight;
@@ -5408,7 +5455,8 @@ private:
     if (metric == "accounting_numeraire_node_base_policy_match") {
       return !fact.accounting_numeraire_node_id.empty() &&
                      !fact.base_policy_accounting_numeraire_node_id.empty() &&
-                     fact.accounting_numeraire_node_id == fact.base_policy_accounting_numeraire_node_id
+                     fact.accounting_numeraire_node_id ==
+                         fact.base_policy_accounting_numeraire_node_id
                  ? 1.0
                  : 0.0;
     }
@@ -5474,7 +5522,8 @@ private:
     if (metric == "deterministic_artifact" || metric == "visibility_only" ||
         metric == "allocation_authority" || metric == "execution_authority" ||
         metric == "market_readiness_authority" ||
-        metric == "deployment_authority" || metric == "accounting_numeraire_node_bound" ||
+        metric == "deployment_authority" ||
+        metric == "accounting_numeraire_node_bound" ||
         metric == "accounting_numeraire_node_from_base_policy" ||
         metric == "accounting_numeraire_node_base_policy_match" ||
         metric == "accounting_numeraire_node_graph_bound" ||
@@ -5505,7 +5554,8 @@ private:
         metric == "deployment_authority") {
       return "allocation_authority_boundary";
     }
-    if (metric == "accounting_numeraire_node_bound" || metric == "observer_belief_bound" ||
+    if (metric == "accounting_numeraire_node_bound" ||
+        metric == "observer_belief_bound" ||
         metric == "forecast_artifact_bound" || metric == "base_policy_bound" ||
         metric == "accounting_numeraire_node_from_base_policy" ||
         metric == "accounting_numeraire_node_base_policy_match" ||
@@ -5626,8 +5676,7 @@ private:
   }
 
   [[nodiscard]] static std::optional<double> mdn_distribution_metric(
-      const cuwacunu::hero::lattice::exposure::lattice_exposure_fact_t
-          &fact,
+      const cuwacunu::hero::lattice::exposure::lattice_exposure_fact_t &fact,
       const std::string &metric) {
     if (fact.target_component_family_id !=
             "wikimyei.inference.expected_value.mdn" &&
@@ -5749,8 +5798,7 @@ private:
 
   [[nodiscard]] static bool warning_fact_overlaps_anchor_range(
       const lattice_target_spec_t &spec, const lattice_warning_spec_t &warning,
-      const cuwacunu::hero::lattice::exposure::lattice_exposure_fact_t
-          &fact,
+      const cuwacunu::hero::lattice::exposure::lattice_exposure_fact_t &fact,
       cuwacunu::hero::lattice::exposure::exposure_use_t use) {
     namespace detail = lattice_target_eval_detail;
     namespace exposure = cuwacunu::hero::lattice::exposure;
@@ -5779,20 +5827,20 @@ private:
       const std::vector<
           cuwacunu::hero::lattice::exposure::lattice_node_exposure_fact_t>
           &node_facts,
-      const std::vector<cuwacunu::hero::lattice::exposure::
-                            lattice_source_analytics_fact_t>
+      const std::vector<
+          cuwacunu::hero::lattice::exposure::lattice_source_analytics_fact_t>
           &source_analytics_facts,
-      const std::vector<cuwacunu::hero::lattice::exposure::
-                            lattice_forecast_baseline_fact_t>
+      const std::vector<
+          cuwacunu::hero::lattice::exposure::lattice_forecast_baseline_fact_t>
           &forecast_baseline_facts,
       const std::vector<
           cuwacunu::hero::lattice::exposure::lattice_forecast_eval_fact_t>
           &forecast_eval_facts,
-      const std::vector<cuwacunu::hero::lattice::exposure::
-                            lattice_observer_belief_fact_t>
+      const std::vector<
+          cuwacunu::hero::lattice::exposure::lattice_observer_belief_fact_t>
           &observer_belief_facts,
-      const std::vector<cuwacunu::hero::lattice::exposure::
-                            lattice_allocation_engine_fact_t>
+      const std::vector<
+          cuwacunu::hero::lattice::exposure::lattice_allocation_engine_fact_t>
           &allocation_engine_facts,
       const std::vector<
           cuwacunu::hero::lattice::exposure::node_support_summary_t>
@@ -7865,14 +7913,14 @@ resolve_lattice_target_config_paths(
     const std::filesystem::path &config_path = "/cuwacunu/src/config/.config") {
   const auto cfg = lattice_target_eval_detail::parse_assignment_text(
       lattice_target_eval_detail::read_text_file_or_throw(config_path));
-  const auto splits_bnf = lattice_target_eval_detail::map_get(
-      cfg, "lattice_splits_dsl_bnf_path");
-  const auto splits_dsl = lattice_target_eval_detail::map_get(
-      cfg, "lattice_splits_dsl_path");
-  const auto bnf = lattice_target_eval_detail::map_get(
-      cfg, "lattice_targets_dsl_bnf_path");
-  const auto dsl = lattice_target_eval_detail::map_get(
-      cfg, "lattice_targets_dsl_path");
+  const auto splits_bnf =
+      lattice_target_eval_detail::map_get(cfg, "lattice_splits_dsl_bnf_path");
+  const auto splits_dsl =
+      lattice_target_eval_detail::map_get(cfg, "lattice_splits_dsl_path");
+  const auto bnf =
+      lattice_target_eval_detail::map_get(cfg, "lattice_targets_dsl_bnf_path");
+  const auto dsl =
+      lattice_target_eval_detail::map_get(cfg, "lattice_targets_dsl_path");
   if (bnf.empty() || dsl.empty()) {
     throw std::runtime_error(
         "[lattice_target] missing lattice_targets_dsl_* path in " +
@@ -7906,8 +7954,8 @@ load_lattice_split_policy_from_config_if_available(
     (void)lattice_target_eval_detail::read_text_file_or_throw(
         paths.splits_dsl_bnf_path);
   }
-  return cuwacunu::hero::lattice::split::
-      load_lattice_split_policy_from_file(paths.splits_dsl_path);
+  return cuwacunu::hero::lattice::split::load_lattice_split_policy_from_file(
+      paths.splits_dsl_path);
 }
 
 [[nodiscard]] inline std::vector<lattice_target_spec_t>

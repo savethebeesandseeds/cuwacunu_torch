@@ -1062,10 +1062,58 @@ exposure::lattice_exposure_ledger_t artifact_readiness_ledger(
   policy_training.policy_input_schema_id =
       "kikijyeba.environment.policy_input.v1";
   policy_training.action_adapter_id = "target_node_weights_simplex.v1";
+  policy_training.action_distribution_id = "masked_dirichlet_simplex.v1";
   policy_training.reward_contract_id =
       "kikijyeba.environment.reward.post_execution_ledger_log_growth_cost_"
       "drawdown.v1";
   policy_training.execution_profile_digest = replay.execution_profile_digest;
+  policy_training.ppo_policy_artifact_contract_id =
+      "kikijyeba.runtime.ppo_policy_artifact_contract.v1";
+  policy_training.policy_family_id =
+      "wikimyei.policy.portfolio.graph_node_allocation";
+  policy_training.policy_checkpoint_schema_id =
+      "wikimyei.policy.portfolio.graph_node_allocation.ppo_checkpoint.v1";
+  policy_training.policy_input_feature_manifest_digest =
+      "policy_input_manifest_digest_1";
+  policy_training.action_distribution_config_digest =
+      "action_distribution_config_digest_1";
+  policy_training.snapshot_family_digest = "snapshot_family_digest_1";
+  policy_training.actor_architecture_digest = "actor_architecture_digest_1";
+  policy_training.critic_architecture_digest = "critic_architecture_digest_1";
+  policy_training.input_policy_checkpoint_digest =
+      "input_actor_checkpoint_digest_1";
+  policy_training.actor_checkpoint_digest = "actor_checkpoint_digest_1";
+  policy_training.critic_checkpoint_digest = "critic_checkpoint_digest_1";
+  policy_training.optimizer_state_digest = "optimizer_state_digest_1";
+  policy_training.ppo_config_digest = "ppo_config_digest_1";
+  policy_training.advantage_estimator_id = "gae.v1";
+  policy_training.advantage_normalization_policy = "per_rollout_standardize_v1";
+  policy_training.rollout_collection_schema_id =
+      "kikijyeba.runtime.ppo_rollout_collection.v1";
+  policy_training.rollout_collection_digest = "rollout_collection_digest_1";
+  policy_training.ppo_update_report_schema_id =
+      "kikijyeba.runtime.ppo_update_report.v1";
+  policy_training.ppo_update_report_digest = "ppo_update_report_digest_1";
+  policy_training.validation_rollout_report_digest =
+      "validation_rollout_report_digest_1";
+  policy_training.ppo_gamma = 0.99;
+  policy_training.ppo_gae_lambda = 0.95;
+  policy_training.ppo_clip_epsilon = 0.2;
+  policy_training.ppo_target_kl = 0.02;
+  policy_training.ppo_entropy_coeff = 0.01;
+  policy_training.ppo_value_loss_coeff = 0.5;
+  policy_training.ppo_max_grad_norm = 0.5;
+  policy_training.ppo_gamma_bound = true;
+  policy_training.ppo_gae_lambda_bound = true;
+  policy_training.ppo_clip_epsilon_bound = true;
+  policy_training.ppo_target_kl_bound = true;
+  policy_training.ppo_entropy_coeff_bound = true;
+  policy_training.ppo_value_loss_coeff_bound = true;
+  policy_training.ppo_max_grad_norm_bound = true;
+  policy_training.ppo_minibatch_size = 32;
+  policy_training.ppo_epochs_per_rollout = 4;
+  policy_training.ppo_minibatch_size_bound = true;
+  policy_training.ppo_epochs_per_rollout_bound = true;
   policy_training.training_schedule_mode = "causal_walk_forward_training.v1";
   policy_training.causal_schedule_schema_id =
       "kikijyeba.runtime.policy_training_causal_schedule.v1";
@@ -1086,8 +1134,10 @@ exposure::lattice_exposure_ledger_t artifact_readiness_ledger(
   policy_training.checkpoint_digest = "ppo_checkpoint_1";
   policy_training.parent_forecast_eval_fact_digest = forecast_digest;
   policy_training.parent_observer_belief_fact_digest = observer_digest;
-  policy_training.parent_allocation_engine_fact_digest = allocation_digest;
-  policy_training.parent_replay_environment_fact_digest = replay_digest;
+  (void)allocation_digest;
+  (void)replay_digest;
+  policy_training.parent_replay_environment_report_digest =
+      replay.experiment_report_digest;
   policy_training.random_seed = 0;
   policy_training.random_seed_bound = true;
   policy_training.training_range_disjoint_validation = true;
@@ -2781,9 +2831,9 @@ LATTICE_TARGET {
           policy_training_eval.fact_integrity_summary.inspected_family_count ==
               1 &&
           policy_training_eval.fact_integrity_summary.relation_declared_count ==
-              4 &&
+              3 &&
           policy_training_eval.fact_integrity_summary.relation_bound_count ==
-              4 &&
+              3 &&
           policy_training_eval.fact_integrity_summary
               .relation_integrity_clean &&
           policy_training_eval.proof_certificate.artifacts.size() == 1 &&
@@ -2821,48 +2871,47 @@ LATTICE_TARGET {
   REQUIRE_CONTRACT_MATCH = true;
 };
 )DSL");
-  const auto cross_component_policy_training_ledger =
-      artifact_readiness_ledger(
-          /*observer_authority_drift=*/false,
-          /*forecast_authority_drift=*/false,
-          /*replay_authority_drift=*/false,
-          /*baseline_transform_digest_mismatch=*/false,
-          /*forecast_baseline_digest_mismatch=*/false,
-          /*forecast_selection_signal_digest_mismatch=*/false,
-          /*observer_forecast_lineage_mismatch=*/false,
-          /*allocation_observer_digest_mismatch=*/false,
-          /*allocation_forecast_artifact_mismatch=*/false,
-          /*allocation_reserve_source_mismatch=*/false,
-          /*allocation_reserve_base_policy_mismatch=*/false,
-          /*allocation_reserve_graph_unbound=*/false,
-          /*allocation_missing_reason_contract=*/false,
-          /*replay_contract_mismatch=*/false,
-          /*replay_incomplete_attempts=*/false,
-          /*replay_missing_projection_metrics=*/false,
-          /*forecast_missing_horizon_support=*/false,
-          /*replay_missing_time_law_steps=*/false,
-          /*replay_future_observation_violation=*/false,
-          /*replay_mixed_future_keys=*/false,
-          /*replay_missing_projection_step_evidence=*/false,
-          /*replay_expected_step_mismatch=*/false,
-          /*replay_action_time_policy_mismatch=*/false,
-          /*replay_source_order_policy_mismatch=*/false,
-          /*replay_parallelism_mismatch=*/false,
-          /*replay_world_mode_mismatch=*/false,
-          /*replay_schema_mismatch=*/false,
-          /*replay_runtime_run_id_missing=*/false,
-          /*replay_report_digest_mismatch=*/false,
-          /*transform_missing_support_surface=*/false,
-          /*baseline_missing_support=*/false,
-          /*forecast_missing_target_transform_binding=*/false,
-          /*forecast_missing_baseline_binding=*/false,
-          /*forecast_missing_evaluated_checkpoint_lineage=*/false,
-          /*forecast_model_state_mutation=*/false,
-          /*forecast_negative_skill=*/false,
-          /*policy_training_future_snapshot_use=*/false,
-          /*replay_missing_policy_summary=*/false,
-          /*replay_failed_attempts=*/false,
-          /*policy_training_component_is_policy=*/true);
+  const auto cross_component_policy_training_ledger = artifact_readiness_ledger(
+      /*observer_authority_drift=*/false,
+      /*forecast_authority_drift=*/false,
+      /*replay_authority_drift=*/false,
+      /*baseline_transform_digest_mismatch=*/false,
+      /*forecast_baseline_digest_mismatch=*/false,
+      /*forecast_selection_signal_digest_mismatch=*/false,
+      /*observer_forecast_lineage_mismatch=*/false,
+      /*allocation_observer_digest_mismatch=*/false,
+      /*allocation_forecast_artifact_mismatch=*/false,
+      /*allocation_reserve_source_mismatch=*/false,
+      /*allocation_reserve_base_policy_mismatch=*/false,
+      /*allocation_reserve_graph_unbound=*/false,
+      /*allocation_missing_reason_contract=*/false,
+      /*replay_contract_mismatch=*/false,
+      /*replay_incomplete_attempts=*/false,
+      /*replay_missing_projection_metrics=*/false,
+      /*forecast_missing_horizon_support=*/false,
+      /*replay_missing_time_law_steps=*/false,
+      /*replay_future_observation_violation=*/false,
+      /*replay_mixed_future_keys=*/false,
+      /*replay_missing_projection_step_evidence=*/false,
+      /*replay_expected_step_mismatch=*/false,
+      /*replay_action_time_policy_mismatch=*/false,
+      /*replay_source_order_policy_mismatch=*/false,
+      /*replay_parallelism_mismatch=*/false,
+      /*replay_world_mode_mismatch=*/false,
+      /*replay_schema_mismatch=*/false,
+      /*replay_runtime_run_id_missing=*/false,
+      /*replay_report_digest_mismatch=*/false,
+      /*transform_missing_support_surface=*/false,
+      /*baseline_missing_support=*/false,
+      /*forecast_missing_target_transform_binding=*/false,
+      /*forecast_missing_baseline_binding=*/false,
+      /*forecast_missing_evaluated_checkpoint_lineage=*/false,
+      /*forecast_model_state_mutation=*/false,
+      /*forecast_negative_skill=*/false,
+      /*policy_training_future_snapshot_use=*/false,
+      /*replay_missing_policy_summary=*/false,
+      /*replay_failed_attempts=*/false,
+      /*policy_training_component_is_policy=*/true);
   target::lattice_target_evaluator_t cross_component_policy_training_evaluator(
       cross_component_policy_training_specs,
       artifact_eval_options(cross_component_policy_training_ledger));

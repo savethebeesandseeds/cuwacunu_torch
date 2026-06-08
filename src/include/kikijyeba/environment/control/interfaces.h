@@ -22,6 +22,10 @@ public:
   [[nodiscard]] virtual std::string policy_id() const = 0;
   [[nodiscard]] virtual policy_kind_t policy_kind() const = 0;
   [[nodiscard]] virtual action_t act(const observation_t &observation) = 0;
+  [[nodiscard]] virtual action_t
+  collect_action(const observation_t &observation) {
+    return act(observation);
+  }
 };
 
 } // namespace cuwacunu::kikijyeba::environment

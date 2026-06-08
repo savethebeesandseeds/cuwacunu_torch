@@ -21,7 +21,6 @@
 #include <utility>
 #include <vector>
 
-#include "hero/runtime_hero/hero_runtime_tools.h"
 #include "hero/marshal_hero/marshal/codex_assist.h"
 #include "hero/marshal_hero/marshal/dispatch_receipt.h"
 #include "hero/marshal_hero/marshal/operational_report.h"
@@ -30,6 +29,8 @@
 #include "hero/marshal_hero/marshal/status.h"
 #include "hero/marshal_hero/marshal/target_driver.h"
 #include "hero/marshal_hero/marshal/tool_schema.h"
+#include "hero/runtime_hero/hero_runtime_tools.h"
+#include "hero/short_ref.h"
 
 namespace cuwacunu::hero::marshal {
 
@@ -437,14 +438,13 @@ optional_string_map(const std::map<std::string, std::string> &fields,
 parse_rollout_execution_profile(const std::string &raw) {
   marshal_rollout_execution_profile_t out{};
   const auto fields = object_fields(raw);
-  validate_fields(fields,
-                  {"execution_backend_id", "cost_model_id",
-                   "allow_synthetic_direct_edges",
-                   "synthetic_edge_research_reason",
-                   "linear_transaction_cost_rate", "allow_partial_fills",
-                   "equity_mismatch_tolerance",
-                   "equity_mismatch_fail_tolerance", "live_execution_allowed"},
-                  {}, "rollout execution_profile");
+  validate_fields(
+      fields,
+      {"execution_backend_id", "cost_model_id", "allow_synthetic_direct_edges",
+       "synthetic_edge_research_reason", "linear_transaction_cost_rate",
+       "allow_partial_fills", "equity_mismatch_tolerance",
+       "equity_mismatch_fail_tolerance", "live_execution_allowed"},
+      {}, "rollout execution_profile");
   out.execution_backend_id =
       optional_string(fields, "execution_backend_id", out.execution_backend_id);
   out.cost_model_id =
@@ -493,7 +493,8 @@ parse_rollout_request(const std::map<std::string, std::string> &fields) {
   out.graph_order_fingerprint =
       optional_string(fields, "graph_order_fingerprint");
   out.asset_universe_digest = optional_string(fields, "asset_universe_digest");
-  out.accounting_numeraire_node_id = optional_string(fields, "accounting_numeraire_node_id");
+  out.accounting_numeraire_node_id =
+      optional_string(fields, "accounting_numeraire_node_id");
   out.target_node_ids = optional_string_array(fields, "target_node_ids");
   out.policy_tokens = optional_string_array(fields, "policy_set");
   out.max_steps = optional_i64(fields, "max_steps", out.max_steps);
@@ -3297,6 +3298,7 @@ struct artifact_panel_summary_t {
   std::vector<std::string> related_fact_integrity_issue_codes{};
   std::size_t fact_preview_hint_count{0};
   std::vector<std::string> fact_preview_families{};
+  std::vector<std::string> fact_preview_refs{};
   std::vector<std::string> fact_preview_digests{};
   std::vector<std::string> fact_preview_tools{};
   std::vector<std::string> fact_preview_marshal_tools{};
@@ -3575,10 +3577,17 @@ inline void collect_artifact_boundary_flag(
               const auto hint = object_fields(*hint_raw);
               if (optional_bool(hint, "available", false)) {
                 ++summary.fact_preview_hint_count;
+                const auto fact_family = optional_string(hint, "fact_family");
+                const auto fact_digest = optional_string(hint, "fact_digest");
+                const auto fact_ref =
+                    first_non_empty({optional_string(hint, "fact_ref"),
+                                     cuwacunu::hero::display::fact_ref(
+                                         fact_family, fact_digest)});
                 append_unique_string(&summary.fact_preview_families,
-                                     optional_string(hint, "fact_family"));
+                                     fact_family);
+                append_unique_string(&summary.fact_preview_refs, fact_ref);
                 append_unique_string(&summary.fact_preview_digests,
-                                     optional_string(hint, "fact_digest"));
+                                     fact_digest);
                 append_unique_string(&summary.fact_preview_tools,
                                      optional_string(hint, "tool"));
                 append_unique_string(&summary.fact_preview_marshal_tools,
@@ -3809,7 +3818,7 @@ inline void collect_artifact_boundary_flag(
     if (has_field) {
       out << ",";
     }
-    out << "\"digest_prefix\":" << detail::json_quote(digest_prefix);
+    out << "\"fact_digest_prefix\":" << detail::json_quote(digest_prefix);
     has_field = true;
   }
   for (const auto &key : {"fact_index", "limit"}) {
@@ -3935,6 +3944,7 @@ parse_lattice_evaluate_targets_statuses(const std::string &tool_result_json) {
     row.artifact_fact_preview_hint_count =
         artifact_summary.fact_preview_hint_count;
     row.artifact_fact_preview_families = artifact_summary.fact_preview_families;
+    row.artifact_fact_preview_refs = artifact_summary.fact_preview_refs;
     row.artifact_fact_preview_digests = artifact_summary.fact_preview_digests;
     row.artifact_fact_preview_tools = artifact_summary.fact_preview_tools;
     row.artifact_fact_preview_marshal_tools =
@@ -4677,8 +4687,11 @@ prepare_target_audit_panel_json(const prepare_target_step_result_t &step,
       << artifact_summary.fact_preview_hint_count
       << ",\"artifact_fact_preview_families\":"
       << string_array_json(artifact_summary.fact_preview_families)
-      << ",\"artifact_fact_preview_digests\":"
-      << string_array_json(artifact_summary.fact_preview_digests)
+      << ",\"artifact_fact_preview_refs\":"
+      << string_array_json(artifact_summary.fact_preview_refs)
+      << ",\"artifact_fact_preview_digest_count\":"
+      << artifact_summary.fact_preview_digests.size()
+      << ",\"artifact_fact_preview_digests_require_machine_payload\":true"
       << ",\"artifact_fact_preview_tools\":"
       << string_array_json(artifact_summary.fact_preview_tools)
       << ",\"artifact_fact_preview_marshal_tools\":"
@@ -4810,7 +4823,8 @@ lineage_bool_json(const std::map<std::string, std::string> &fields,
 }
 
 [[nodiscard]] inline std::string
-summarize_fact_lineage_panel_json(const std::string &lattice_result) {
+summarize_fact_lineage_panel_json(const std::string &lattice_result,
+                                  bool include_machine_payload) {
   const auto structured = structured_content_json(lattice_result);
   const auto fields = object_fields(structured);
   const auto fact_integrity_summary =
@@ -4855,23 +4869,45 @@ summarize_fact_lineage_panel_json(const std::string &lattice_result) {
       << ",\"returned_row_count\":"
       << optional_i64(fields, "returned_row_count", 0)
       << ",\"truncated\":" << lineage_bool_json(fields, "truncated", false)
-      << ",\"lineage_row_set_digest\":"
-      << detail::json_quote(optional_string(fields, "lineage_row_set_digest"))
+      << ",\"lineage_row_set_digest_requires_machine_payload\":true"
+      << ",\"lineage_rows_included\":false"
+      << ",\"machine_payload_included\":"
+      << (include_machine_payload ? "true" : "false")
       << ",\"relation_counts\":"
       << lineage_array_or_empty(fields, "relation_counts")
-      << ",\"lineage_rows\":" << lineage_array_or_empty(fields, "lineage_rows")
       << ",\"fact_integrity_summary\":"
       << (fact_integrity_summary.has_value() ? *fact_integrity_summary : "null")
       << "}";
   return out.str();
 }
 
+[[nodiscard]] inline std::vector<std::string>
+fact_preview_row_refs(const std::map<std::string, std::string> &fields) {
+  std::vector<std::string> refs;
+  const auto facts_raw = optional_raw(fields, "facts");
+  if (!facts_raw.has_value()) {
+    return refs;
+  }
+  const auto family = optional_string(fields, "family");
+  for (const auto &row_raw : array_values(*facts_raw)) {
+    const auto row = object_fields(row_raw);
+    const auto digest = optional_string(row, "fact_digest");
+    append_unique_string(
+        &refs,
+        first_non_empty({optional_string(row, "fact_ref"),
+                         cuwacunu::hero::display::fact_ref(family, digest)}));
+  }
+  return refs;
+}
+
 [[nodiscard]] inline std::string
-summarize_fact_preview_panel_json(const std::string &lattice_result) {
+summarize_fact_preview_panel_json(const std::string &lattice_result,
+                                  bool include_machine_payload) {
   const auto structured = structured_content_json(lattice_result);
   const auto fields = object_fields(structured);
   const auto fact_integrity_summary =
       optional_non_null_raw(fields, "fact_integrity_summary");
+  const auto preview_fact_refs = fact_preview_row_refs(fields);
   std::ostringstream out;
   out << "{\"source_tool\":\"hero.lattice.inspect\""
       << ",\"source_subject\":\"facts\",\"source_mode\":\"preview\""
@@ -4906,10 +4942,11 @@ summarize_fact_preview_panel_json(const std::string &lattice_result) {
       << ",\"cache_rows_used_for_target_satisfaction\":"
       << lineage_bool_json(fields, "cache_rows_used_for_target_satisfaction",
                            false)
-      << ",\"digest_filter\":"
-      << detail::json_quote(optional_string(fields, "digest_filter"))
-      << ",\"digest_prefix_filter\":"
-      << detail::json_quote(optional_string(fields, "digest_prefix_filter"))
+      << ",\"fact_digest_filter\":"
+      << detail::json_quote(optional_string(fields, "fact_digest_filter"))
+      << ",\"fact_digest_prefix_filter\":"
+      << detail::json_quote(
+             optional_string(fields, "fact_digest_prefix_filter"))
       << ",\"fact_index_filter\":"
       << optional_raw(fields, "fact_index_filter").value_or("null")
       << ",\"family_fact_count\":"
@@ -4923,12 +4960,15 @@ summarize_fact_preview_panel_json(const std::string &lattice_result) {
       << optional_i64(fields, "matching_lineage_row_count", 0)
       << ",\"returned_lineage_row_count\":"
       << optional_i64(fields, "returned_lineage_row_count", 0)
-      << ",\"lineage_row_set_digest\":"
-      << detail::json_quote(optional_string(fields, "lineage_row_set_digest"))
+      << ",\"lineage_row_set_digest_requires_machine_payload\":true"
+      << ",\"lineage_rows_included\":false"
+      << ",\"facts_included\":false"
+      << ",\"machine_payload_included\":"
+      << (include_machine_payload ? "true" : "false")
       << ",\"relation_counts\":"
       << lineage_array_or_empty(fields, "relation_counts")
-      << ",\"lineage_rows\":" << lineage_array_or_empty(fields, "lineage_rows")
-      << ",\"facts\":" << lineage_array_or_empty(fields, "facts")
+      << ",\"preview_fact_refs\":" << string_array_json(preview_fact_refs)
+      << ",\"fact_rows_require_machine_payload\":true"
       << ",\"fact_integrity_summary\":"
       << (fact_integrity_summary.has_value() ? *fact_integrity_summary : "null")
       << "}";
@@ -4942,7 +4982,7 @@ summarize_fact_preview_panel_json(const std::string &lattice_result) {
     std::string *lineage_lattice_args_out,
     std::string *lineage_lattice_result_out,
     std::string *preview_lattice_args_out,
-    std::string *preview_lattice_result_out) {
+    std::string *preview_lattice_result_out, bool include_machine_payload) {
   const std::string family = optional_string(args, "fact_family_id");
   const std::string mode = optional_string(args, "mode", "summary");
   const bool include_facts = optional_bool(args, "include_facts", false);
@@ -4998,7 +5038,8 @@ summarize_fact_preview_panel_json(const std::string &lattice_result) {
     if (lineage_lattice_result_out != nullptr) {
       *lineage_lattice_result_out = lineage_lattice_result;
     }
-    lineage_panel = summarize_fact_lineage_panel_json(lineage_lattice_result);
+    lineage_panel = summarize_fact_lineage_panel_json(lineage_lattice_result,
+                                                      include_machine_payload);
   }
 
   std::string preview_panel = "null";
@@ -5021,7 +5062,8 @@ summarize_fact_preview_panel_json(const std::string &lattice_result) {
     if (preview_lattice_result_out != nullptr) {
       *preview_lattice_result_out = preview_lattice_result;
     }
-    preview_panel = summarize_fact_preview_panel_json(preview_lattice_result);
+    preview_panel = summarize_fact_preview_panel_json(preview_lattice_result,
+                                                      include_machine_payload);
   }
 
   const auto structured = structured_content_json(lattice_result);
@@ -5121,7 +5163,8 @@ inspect_facts_subject_json(const std::map<std::string, std::string> &args,
                                args, callback, &fact_lattice_tool,
                                &fact_lattice_args, &fact_lattice_result,
                                &lineage_lattice_args, &lineage_lattice_result,
-                               &preview_lattice_args, &preview_lattice_result)
+                               &preview_lattice_args, &preview_lattice_result,
+                               include_machine_payload)
                          : "null";
 
   std::string headline = "Lattice facts inspection is ready.";

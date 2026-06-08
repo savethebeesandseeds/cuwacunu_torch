@@ -440,14 +440,24 @@ reachability, and policy-gate authority false.
 relation digests from resolved, identity-compatible bindings. It reports bound,
 unresolved, identity-mismatch, and digest-mismatch relation counts, affected
 families, integrity flags, and issue codes for transform, baseline,
-selection-signal, forecast, observer, and allocation lineage. `inspect subject=facts mode=lineage`
-adds selected relation/key/digest rows from the rebuildable runtime index as
-audit-only witnesses; those cache rows are not target-proof authority and are
-never used for Marshal dispatch or target satisfaction. `inspect subject=facts mode=preview` returns
-concrete fact rows for one family by digest, digest prefix, or fact index, plus
-matching lineage rows; preview rows are audit-only and explicitly report
-`facts_used_for_target_satisfaction=false`. Each preview row also carries a
-normalized `identity_envelope` next to the concrete family payload. Lattice
+selection-signal, forecast, observer, allocation, and policy-training lineage.
+Policy-training parent lineage can cross component families: a
+`wikimyei.policy.trainable` subject fact may bind MDN, observer/allocation, and
+replay parent facts when the shared runtime/protocol/graph/cursor/split identity
+and declared digests match. `inspect subject=facts mode=lineage` adds selected
+relation/key/digest rows from the rebuildable runtime index as audit-only
+witnesses; those cache rows are not target-proof authority and are never used
+for Marshal dispatch or target satisfaction. `inspect subject=facts
+mode=preview` returns concrete fact rows for one family by `fact_digest`,
+`fact_digest_prefix`, or `fact_index`, plus matching lineage rows. Prefix
+lookup fails closed unless the prefix resolves to exactly one full fact digest
+in the selected family; the generic `digest`, `digest_prefix`, and `index` names
+remain reserved for `subject=index mode=query`. Preview rows are audit-only and
+explicitly report `facts_used_for_target_satisfaction=false`. Each preview row
+also carries display-only `fact_ref` and `fact_digest_prefix` helpers next to
+the full `fact_digest`; those refs are operator handles, not proof identity or
+accepted authority inputs. Each row also carries a normalized `identity_envelope`
+next to the concrete family payload. Lattice
 projects that envelope through the typed catalog API
 `lattice_fact_identity_envelope_t` /
 `make_lattice_fact_identity_envelope`; Hero only serializes the projection. The
@@ -461,6 +471,9 @@ artifact facts, and blocked artifact plan-basis JSON aggregates those hints in
 `fact_preview_hints`. These hints name `hero.lattice.inspect subject=facts mode=preview` and
 `hero.marshal.inspect` arguments for inspection only; they do
 not alter proof certificates, target status, checkpoint selection, or dispatch.
+Target evaluation and checkpoint closure display JSON may also include
+`certificate_ref`, `checkpoint_ref`, and `root_checkpoint_ref` next to the
+corresponding full digest fields; these refs are operator handles only.
 
 Narrow catalog proofs use `TARGET_CLASS = artifact_readiness`, `PROOF_KIND`,
 and `SUBJECT_FACT_FAMILY` instead of adding roadmap evidence to `TARGET_KIND`.

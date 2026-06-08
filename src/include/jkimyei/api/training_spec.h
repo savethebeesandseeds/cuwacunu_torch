@@ -13,12 +13,12 @@ enum class training_task_t {
   mdn_expected_value_inference,
   vicreg_representation,
   mtf_jepa_mae_vicreg_representation,
-  policy_graph_node_allocation_contract_smoke,
+  policy_graph_node_allocation_ppo_v0,
 };
 
 enum class training_optimizer_t {
   adam,
-  noop,
+  ppo_clip,
 };
 
 struct training_run_spec_t {
@@ -62,8 +62,8 @@ namespace kv = cuwacunu::piaabo::parse::simple_kv;
       value == "mtf_jvmae_representation") {
     return training_task_t::mtf_jepa_mae_vicreg_representation;
   }
-  if (value == "policy_graph_node_allocation_contract_smoke") {
-    return training_task_t::policy_graph_node_allocation_contract_smoke;
+  if (value == "policy_graph_node_allocation_ppo_v0") {
+    return training_task_t::policy_graph_node_allocation_ppo_v0;
   }
   throw std::runtime_error("[training_spec] invalid TASK: " + value);
 }
@@ -73,8 +73,8 @@ namespace kv = cuwacunu::piaabo::parse::simple_kv;
   if (value == "adam") {
     return training_optimizer_t::adam;
   }
-  if (value == "noop") {
-    return training_optimizer_t::noop;
+  if (value == "ppo_clip") {
+    return training_optimizer_t::ppo_clip;
   }
   throw std::runtime_error("[training_spec] invalid OPTIMIZER: " + value);
 }
@@ -87,7 +87,7 @@ namespace kv = cuwacunu::piaabo::parse::simple_kv;
     return "wikimyei.representation.vicreg.jkimyei.v1";
   case training_task_t::mtf_jepa_mae_vicreg_representation:
     return "wikimyei.representation.mtf_jepa_mae_vicreg.jkimyei.v1";
-  case training_task_t::policy_graph_node_allocation_contract_smoke:
+  case training_task_t::policy_graph_node_allocation_ppo_v0:
     return "wikimyei.policy.portfolio.graph_node_allocation.jkimyei.v1";
   }
   throw std::runtime_error("[training_spec] unknown training task");
@@ -109,23 +109,18 @@ inline void validate_training_run_spec(const training_run_spec_t &spec) {
     throw std::runtime_error(
         "[training_spec] component_assembly_id is required");
   }
-  const bool is_policy_contract_smoke =
-      spec.task == training_task_t::policy_graph_node_allocation_contract_smoke;
-  if (!is_policy_contract_smoke &&
-      spec.optimizer != training_optimizer_t::adam) {
+  const bool is_policy_ppo_v0 =
+      spec.task == training_task_t::policy_graph_node_allocation_ppo_v0;
+  if (!is_policy_ppo_v0 && spec.optimizer != training_optimizer_t::adam) {
     throw std::runtime_error("[training_spec] v1 supports adam only for "
                              "trainable representation/inference tasks");
   }
-  if (is_policy_contract_smoke &&
-      spec.optimizer != training_optimizer_t::noop) {
-    throw std::runtime_error("[training_spec] policy contract smoke uses "
-                             "OPTIMIZER = noop until PPO is implemented");
+  if (is_policy_ppo_v0 && spec.optimizer != training_optimizer_t::ppo_clip) {
+    throw std::runtime_error(
+        "[training_spec] graph-node PPO V0 requires OPTIMIZER = ppo_clip");
   }
-  if (!is_policy_contract_smoke && spec.learning_rate <= 0.0) {
+  if (spec.learning_rate <= 0.0) {
     throw std::runtime_error("[training_spec] learning_rate must be > 0");
-  }
-  if (is_policy_contract_smoke && spec.learning_rate < 0.0) {
-    throw std::runtime_error("[training_spec] noop learning_rate must be >= 0");
   }
   if (spec.max_steps < 0 || spec.batch_size <= 0 || spec.grad_clip_norm < 0.0 ||
       spec.checkpoint_every < 0 || spec.report_every <= 0 ||
@@ -160,34 +155,32 @@ inline void validate_training_run_spec(const training_run_spec_t &spec) {
         "INPUT_REPRESENTATION_CHECKPOINT, INPUT_MDN_CHECKPOINT, or "
         "ALLOW_UNTRAINED_REPRESENTATION");
   }
-  if (is_policy_contract_smoke) {
-    if (spec.max_steps != 0 || spec.learning_rate != 0.0 ||
-        spec.checkpoint_every != 0) {
+  if (is_policy_ppo_v0) {
+    if (spec.max_steps <= 0 || spec.checkpoint_every <= 0) {
       throw std::runtime_error(
-          "[training_spec] policy contract smoke is contract-only; use "
-          "MAX_STEPS = 0, LEARNING_RATE = 0.0, CHECKPOINT_EVERY = 0");
+          "[training_spec] graph-node PPO V0 requires positive MAX_STEPS and "
+          "CHECKPOINT_EVERY");
     }
     if (spec.training_schedule_mode != "causal_walk_forward_training.v1" ||
         !spec.require_causal_schedule) {
       throw std::runtime_error(
-          "[training_spec] policy contract smoke requires causal schedule "
+          "[training_spec] graph-node PPO V0 requires causal schedule "
           "identity");
     }
-    if (spec.ppo_execution_allowed) {
-      throw std::runtime_error(
-          "[training_spec] PPO execution is not implemented for policy "
-          "contract smoke");
+    if (!spec.ppo_execution_allowed) {
+      throw std::runtime_error("[training_spec] graph-node PPO V0 requires "
+                               "PPO_EXECUTION_ALLOWED = true");
     }
-    if (spec.checkpoint_kind != "policy_contract_fixture") {
+    if (spec.checkpoint_kind != "ppo_v0_policy_adapter") {
       throw std::runtime_error(
-          "[training_spec] policy contract smoke checkpoint kind mismatch");
+          "[training_spec] graph-node PPO V0 checkpoint kind mismatch");
     }
     if (!spec.input_representation_checkpoint_path.empty() ||
         !spec.input_mdn_checkpoint_path.empty() ||
         spec.allow_untrained_representation || !spec.freeze_representation) {
       throw std::runtime_error(
-          "[training_spec] policy contract smoke does not own upstream model "
-          "checkpoint inputs");
+          "[training_spec] graph-node PPO V0 consumes AllocationBelief through "
+          "policy_input_t and does not own upstream model checkpoint inputs");
     }
   }
 }

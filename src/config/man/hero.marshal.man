@@ -39,20 +39,27 @@ BOUNDARY
   summarize relation integrity from
   Lattice payload summaries: declared, bound, unresolved, identity-mismatch,
   and digest-mismatch counts plus affected families and issue codes. They also
-  include a compact fact_lineage audit panel by default, relaying selected
-  runtime-index relation/key/digest rows with
+  include a compact fact_lineage audit panel by default, summarizing selected
+  runtime-index relation counts with
   cache_rows_used_for_target_satisfaction=false; include_lineage=false only
-  suppresses that audit view. When include_preview, digest, fact_digest,
-  digest_prefix, fact_index, or index is supplied, the panel may relay a
-  current Lattice inspect fact preview as preview_panel. Preview rows are
+  suppresses that audit view. Raw relation/key/digest rows stay in
+  machine_payload when include_machine_payload=true. The preview selectors are
+  include_preview, fact_digest, fact_digest_prefix, and fact_index. Retired
+  digest, digest_prefix, and index aliases are rejected on the Marshal facts
+  surface. The panel may summarize a current Lattice inspect fact preview as
+  preview_panel.
+  Preview rows are
   audit-only:
   facts_used_for_target_satisfaction=false, checkpoint_selected=false, and
-  model_selector=false. The relayed facts include identity_envelope so clients
-  can inspect normalized fact identity, parent lineage, support counters, and
-  authority flags without family-specific parsing. Target panels also relay
+  model_selector=false. The preview_panel exposes display-only
+  preview_fact_refs for operator display and keeps concrete fact rows,
+  identity_envelope payloads, parent digest arrays, and lineage rows in
+  machine_payload when include_machine_payload=true. Target panels also summarize
   Lattice artifact
-  fact_preview_hint entries as artifact_fact_preview_* fields so operators can
-  inspect the failed proof's concrete fact row without giving Marshal proof,
+  fact_preview_hint entries as artifact_fact_preview_* fields, including
+  artifact_fact_preview_refs and a digest count, so operators can
+  inspect the failed proof's concrete fact row through machine payload when
+  requested without giving Marshal proof,
   selection, or dispatch authority. Run-level target blockers preserve the same
   artifact proof summary instead of collapsing it into a generic certificate
   failure. Fact panels also relay the

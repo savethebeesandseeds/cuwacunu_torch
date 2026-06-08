@@ -2,9 +2,13 @@
 #pragma once
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <cstdint>
 #include <iterator>
 #include <limits>
+#include <random>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <unordered_set>
@@ -14,6 +18,8 @@
 #include <torch/torch.h>
 
 #include "kikijyeba/environment/control/interfaces.h"
+#include "wikimyei/assembly.h"
+#include "wikimyei/policy/portfolio/graph_node_allocation/torch_policy_module.h"
 
 namespace cuwacunu::kikijyeba::environment {
 
@@ -21,14 +27,25 @@ inline constexpr const char *kPolicyInputSchemaV1 =
     "kikijyeba.environment.policy_input.v1";
 inline constexpr const char *kTargetNodeWeightsSimplexAdapterV1 =
     "target_node_weights_simplex.v1";
+inline constexpr const char *kMaskedDirichletSimplexDistributionV1 =
+    "masked_dirichlet_simplex.v1";
+inline constexpr const char *kMaskedLogisticNormalSimplexDistributionV1 =
+    "masked_logistic_normal_simplex.v1";
 inline constexpr const char
     *kPostExecutionLedgerLogGrowthCostDrawdownRewardContractV1 =
         "kikijyeba.environment.reward.post_execution_ledger_log_growth_cost_"
         "drawdown.v1";
 inline constexpr const char *kGraphNodeAllocationPolicyId =
     "wikimyei.policy.portfolio.graph_node_allocation.v1";
-inline constexpr std::int64_t kPolicyInputNodeFeatureDimV1 = 27;
-inline constexpr std::int64_t kPolicyInputGlobalFeatureDimV1 = 8;
+inline constexpr std::int64_t kPolicyInputNodeFeatureDimV1 = 28;
+inline constexpr std::int64_t kPolicyInputGlobalFeatureDimV1 = 6;
+inline constexpr std::int64_t kPolicyInputRiskFeatureDimV1 = 10;
+
+[[nodiscard]] inline bool
+action_distribution_id_supported(const std::string &distribution_id) {
+  return distribution_id == kMaskedDirichletSimplexDistributionV1 ||
+         distribution_id == kMaskedLogisticNormalSimplexDistributionV1;
+}
 
 struct policy_input_t {
   std::string schema_id{kPolicyInputSchemaV1};
@@ -53,6 +70,7 @@ struct policy_input_t {
   torch::Tensor previous_target_weights{}; // [A], float64
   torch::Tensor node_features{};           // [A,F]
   torch::Tensor global_features{};         // [G]
+  torch::Tensor risk_features{};           // [R]
 };
 
 struct policy_input_builder_options_t {
@@ -71,7 +89,9 @@ struct raw_policy_output_t {
   std::string schema_id{
       "kikijyeba.environment.raw_policy_output.target_node_weights_logits.v1"};
   std::string action_adapter_id{kTargetNodeWeightsSimplexAdapterV1};
-  torch::Tensor node_weight_logits{}; // [A]
+  std::string action_distribution_id{kMaskedDirichletSimplexDistributionV1};
+  torch::Tensor node_weight_logits{};         // [A]
+  torch::Tensor action_distribution_params{}; // distribution-specific scalar.
   double value_estimate{std::numeric_limits<double>::quiet_NaN()};
 };
 
@@ -85,7 +105,146 @@ struct target_node_weights_adapter_options_t {
   portfolio::timestamp_ms_t decision_timestamp_ms{0};
 };
 
+struct action_distribution_options_t {
+  double dirichlet_alpha_floor{1.0e-4};
+  double dirichlet_total_concentration{16.0};
+  double dirichlet_total_concentration_min{0.25};
+  double dirichlet_total_concentration_max{256.0};
+  double logistic_normal_log_std{-1.0};
+  double logistic_normal_log_std_min{-5.0};
+  double logistic_normal_log_std_max{1.0};
+  std::uint64_t random_seed{0};
+  bool random_seed_bound{false};
+  torch::Tensor standard_normal_noise{}; // [K-1], optional test fixture.
+};
+
+struct action_distribution_evidence_t {
+  std::string action_distribution_id{};
+  std::string entropy_kind{};
+  std::vector<std::int64_t> active_node_indices{};
+  std::int64_t active_count{0};
+  std::int64_t reference_node_index{-1};
+  torch::Tensor target_node_weights{};
+  torch::Tensor sampled_active_weights{};
+  torch::Tensor alpha_active{};
+  torch::Tensor mean_active{};
+  torch::Tensor mu_z{};
+  torch::Tensor std_z{};
+  torch::Tensor latent_z_sample{};
+  double total_concentration{std::numeric_limits<double>::quiet_NaN()};
+  double log_prob{std::numeric_limits<double>::quiet_NaN()};
+  double entropy{std::numeric_limits<double>::quiet_NaN()};
+  double value_estimate{std::numeric_limits<double>::quiet_NaN()};
+};
+
+struct action_distribution_record_t {
+  std::string action_distribution_id{};
+  action_distribution_evidence_t evidence{};
+};
+
+struct action_sample_t {
+  action_t action{};
+  action_distribution_evidence_t evidence{};
+};
+
 namespace trainable_policy_detail {
+
+inline void mix_i64(std::uint64_t &hash, std::int64_t value) {
+  cuwacunu::wikimyei::assembly::assembly_detail::mix_hash_string(
+      hash, std::to_string(value));
+}
+
+inline void mix_double(std::uint64_t &hash, double value) {
+  std::ostringstream out;
+  out.precision(17);
+  out << value;
+  cuwacunu::wikimyei::assembly::assembly_detail::mix_hash_string(hash,
+                                                                 out.str());
+}
+
+inline void mix_tensor_summary(std::uint64_t &hash, const torch::Tensor &tensor,
+                               std::string_view label) {
+  using cuwacunu::wikimyei::assembly::assembly_detail::mix_hash_string;
+  mix_hash_string(hash, label);
+  if (!tensor.defined()) {
+    mix_hash_string(hash, "undefined");
+    return;
+  }
+  mix_hash_string(hash, std::to_string(tensor.dim()));
+  for (const auto size : tensor.sizes()) {
+    mix_hash_string(hash, std::to_string(size));
+  }
+  const auto flat = tensor.to(torch::kFloat64).contiguous().view({-1});
+  const auto *data = flat.data_ptr<double>();
+  const auto count = flat.numel();
+  for (std::int64_t i = 0; i < count; ++i) {
+    mix_double(hash, data[i]);
+  }
+}
+
+[[nodiscard]] inline std::string
+policy_input_digest(const policy_input_t &input) {
+  using cuwacunu::wikimyei::assembly::assembly_detail::hash_hex;
+  using cuwacunu::wikimyei::assembly::assembly_detail::kFnvOffsetBasis;
+  using cuwacunu::wikimyei::assembly::assembly_detail::mix_hash_string;
+  std::uint64_t hash = kFnvOffsetBasis;
+  mix_hash_string(hash, "kikijyeba.environment.policy_input.digest.v1");
+  mix_hash_string(hash, input.schema_id);
+  mix_hash_string(hash, input.environment_assembly_id);
+  mix_hash_string(hash, input.observation_anchor_key);
+  mix_i64(hash, input.observation_anchor_index);
+  mix_i64(hash, input.knowledge_timestamp_ms);
+  mix_hash_string(hash, input.graph_order_fingerprint);
+  mix_hash_string(hash, input.allocation_belief_digest);
+  mix_hash_string(hash, input.execution_profile_digest);
+  mix_hash_string(hash, input.reward_contract_id);
+  mix_hash_string(hash, input.accounting_numeraire_node_id);
+  mix_hash_string(hash, input.causal_schedule_digest);
+  mix_hash_string(hash, input.snapshot_family_digest);
+  for (const auto &node_id : input.node_ids) {
+    mix_hash_string(hash, node_id);
+  }
+  mix_tensor_summary(hash, input.valid_mask, "valid_mask");
+  mix_tensor_summary(hash, input.tradable_mask, "tradable_mask");
+  mix_tensor_summary(hash, input.executable_mask, "executable_mask");
+  mix_tensor_summary(hash, input.current_weights, "current_weights");
+  mix_tensor_summary(hash, input.previous_target_weights,
+                     "previous_target_weights");
+  mix_tensor_summary(hash, input.node_features, "node_features");
+  mix_tensor_summary(hash, input.global_features, "global_features");
+  mix_tensor_summary(hash, input.risk_features, "risk_features");
+  return hash_hex(hash);
+}
+
+[[nodiscard]] inline std::string
+format_active_node_indices(const std::vector<std::int64_t> &indices) {
+  std::ostringstream out;
+  for (std::size_t i = 0; i < indices.size(); ++i) {
+    if (i != 0) {
+      out << ",";
+    }
+    out << indices[i];
+  }
+  return out.str();
+}
+
+inline void bind_action_distribution_evidence(
+    action_t &action, const policy_input_t &input,
+    const action_distribution_evidence_t &evidence) {
+  action.action_distribution_id = evidence.action_distribution_id;
+  action.policy_input_digest = policy_input_digest(input);
+  action.active_node_indices =
+      format_active_node_indices(evidence.active_node_indices);
+  action.active_count = evidence.active_count;
+  action.old_log_prob = evidence.log_prob;
+  action.old_entropy = evidence.entropy;
+  action.old_value_estimate = evidence.value_estimate;
+  action.action_distribution_evidence_bound =
+      !action.action_distribution_id.empty() &&
+      !action.policy_input_digest.empty() && evidence.active_count > 0 &&
+      std::isfinite(evidence.log_prob) && std::isfinite(evidence.entropy) &&
+      std::isfinite(evidence.value_estimate);
+}
 
 [[nodiscard]] inline bool tensor_is_bool_vector(const torch::Tensor &tensor,
                                                 std::int64_t size) {
@@ -164,6 +323,88 @@ require_node_index(const std::vector<std::string> &node_ids,
   return static_cast<std::int64_t>(std::distance(node_ids.begin(), it));
 }
 
+[[nodiscard]] inline torch::Tensor matrix_or_default(torch::Tensor matrix,
+                                                     std::int64_t A,
+                                                     double diag_value,
+                                                     const char *name) {
+  if (!matrix.defined() || matrix.numel() == 0) {
+    return torch::eye(A, torch::TensorOptions().dtype(torch::kFloat64)) *
+           diag_value;
+  }
+  matrix = matrix.to(torch::kFloat64).contiguous();
+  if (matrix.dim() != 2 || matrix.size(0) != A || matrix.size(1) != A ||
+      !torch::isfinite(matrix).all().item<bool>()) {
+    throw std::runtime_error(std::string("[policy_input] ") + name +
+                             " must be finite [A,A]");
+  }
+  return matrix;
+}
+
+[[nodiscard]] inline std::array<double, 3>
+top3_symmetric_eigenvalues(const torch::Tensor &matrix) {
+  auto eig = torch::linalg_eigvalsh(matrix.to(torch::kFloat64)).contiguous();
+  eig = std::get<0>(eig.sort(/*dim=*/0, /*descending=*/true));
+  std::array<double, 3> out{0.0, 0.0, 0.0};
+  const auto count = std::min<std::int64_t>(3, eig.numel());
+  for (std::int64_t i = 0; i < count; ++i) {
+    const double value = eig.index({i}).item<double>();
+    out[static_cast<std::size_t>(i)] = std::isfinite(value) ? value : 0.0;
+  }
+  return out;
+}
+
+[[nodiscard]] inline torch::Tensor
+compact_risk_features_or_zero(const belief::AllocationBelief *belief_state,
+                              const torch::Tensor &current_weights,
+                              std::int64_t A) {
+  if (belief_state == nullptr) {
+    return torch::zeros({kPolicyInputRiskFeatureDimV1},
+                        torch::TensorOptions().dtype(torch::kFloat64));
+  }
+  const auto correlation =
+      matrix_or_default(belief_state->correlation, A, 1.0, "correlation");
+  const auto covariance =
+      matrix_or_default(belief_state->covariance, A, 0.0, "covariance");
+
+  double corr_sum = 0.0;
+  double corr_max = 0.0;
+  std::int64_t corr_count = 0;
+  for (std::int64_t i = 0; i < A; ++i) {
+    for (std::int64_t j = i + 1; j < A; ++j) {
+      const double value = correlation.index({i, j}).item<double>();
+      corr_sum += value;
+      corr_max = (corr_count == 0) ? value : std::max(corr_max, value);
+      ++corr_count;
+    }
+  }
+  const double mean_corr =
+      corr_count > 0 ? corr_sum / static_cast<double>(corr_count) : 0.0;
+  if (corr_count == 0) {
+    corr_max = 0.0;
+  }
+
+  const auto corr_eigs = top3_symmetric_eigenvalues(correlation);
+  const auto cov_eigs = top3_symmetric_eigenvalues(covariance);
+  const auto weights64 = current_weights.to(torch::kFloat64).view({1, A});
+  double variance = torch::matmul(torch::matmul(weights64, covariance),
+                                  weights64.transpose(0, 1))
+                        .item<double>();
+  if (!std::isfinite(variance) || variance < 0.0) {
+    variance = 0.0;
+  }
+  const double portfolio_volatility = std::sqrt(variance);
+  const auto cvar_down =
+      vector_or_default(belief_state->cvar_down, A, 0.0, "cvar_down");
+  const double portfolio_cvar =
+      (current_weights.to(torch::kFloat64) * cvar_down).sum().item<double>();
+
+  return torch::tensor({mean_corr, corr_max, corr_eigs[0], corr_eigs[1],
+                        corr_eigs[2], cov_eigs[0], cov_eigs[1], cov_eigs[2],
+                        portfolio_volatility,
+                        std::isfinite(portfolio_cvar) ? portfolio_cvar : 0.0},
+                       torch::TensorOptions().dtype(torch::kFloat64));
+}
+
 } // namespace trainable_policy_detail
 
 inline void validate_policy_input(const policy_input_t &input) {
@@ -228,6 +469,13 @@ inline void validate_policy_input(const policy_input_t &input) {
            .item<bool>()) {
     throw std::runtime_error(
         "[policy_input] global_features must be finite [G]");
+  }
+  if (!input.risk_features.defined() || input.risk_features.dim() != 1 ||
+      input.risk_features.size(0) != kPolicyInputRiskFeatureDimV1 ||
+      !torch::isfinite(input.risk_features.to(torch::kFloat64))
+           .all()
+           .item<bool>()) {
+    throw std::runtime_error("[policy_input] risk_features must be finite [R]");
   }
 }
 
@@ -433,6 +681,9 @@ make_policy_input(const observation_t &observation,
                 belief_state->channel_disagreement, A, 0.0,
                 "channel_disagreement")
           : torch::zeros({A}, torch::TensorOptions().dtype(torch::kFloat64));
+  auto is_accounting_numeraire =
+      torch::zeros({A}, torch::TensorOptions().dtype(torch::kFloat64));
+  is_accounting_numeraire.index_put_({numeraire_index}, 1.0);
   const auto tradable_float = out.tradable_mask.to(torch::kFloat64);
   const auto executable_float = out.executable_mask.to(torch::kFloat64);
   out.node_features =
@@ -463,7 +714,8 @@ make_policy_input(const observation_t &observation,
                     calibration_score,
                     mixture_entropy,
                     component_disagreement,
-                    channel_disagreement},
+                    channel_disagreement,
+                    is_accounting_numeraire},
                    1)
           .contiguous();
 
@@ -485,12 +737,13 @@ make_policy_input(const observation_t &observation,
       out.previous_target_weights.to(torch::kFloat64)
           .index({numeraire_index})
           .item<double>();
+  const double log_equity = std::log(std::max(equity, 1.0e-12));
   out.global_features =
-      torch::tensor({equity, drawdown, current_sum, previous_sum,
-                     current_numeraire_weight, previous_numeraire_weight,
-                     static_cast<double>(observation.observation_anchor_index),
-                     static_cast<double>(observation.knowledge_timestamp_ms)},
+      torch::tensor({log_equity, drawdown, current_sum, previous_sum,
+                     current_numeraire_weight, previous_numeraire_weight},
                     torch::TensorOptions().dtype(torch::kFloat64));
+  out.risk_features = trainable_policy_detail::compact_risk_features_or_zero(
+      belief_state, out.current_weights, A);
   validate_policy_input(out);
   return out;
 }
@@ -500,6 +753,10 @@ inline void validate_raw_policy_output(const raw_policy_output_t &raw,
   if (raw.action_adapter_id != kTargetNodeWeightsSimplexAdapterV1) {
     throw std::runtime_error("[raw_policy_output] unsupported action adapter");
   }
+  if (!action_distribution_id_supported(raw.action_distribution_id)) {
+    throw std::runtime_error(
+        "[raw_policy_output] unsupported action distribution");
+  }
   if (!raw.node_weight_logits.defined() || raw.node_weight_logits.dim() != 1 ||
       raw.node_weight_logits.size(0) != A ||
       !torch::isfinite(raw.node_weight_logits.to(torch::kFloat64))
@@ -508,51 +765,122 @@ inline void validate_raw_policy_output(const raw_policy_output_t &raw,
     throw std::runtime_error(
         "[raw_policy_output] node_weight_logits must be finite [A]");
   }
+  if (raw.action_distribution_params.defined() &&
+      raw.action_distribution_params.numel() > 0 &&
+      !torch::isfinite(raw.action_distribution_params.to(torch::kFloat64))
+           .all()
+           .item<bool>()) {
+    throw std::runtime_error(
+        "[raw_policy_output] action_distribution_params must be finite");
+  }
 }
 
-[[nodiscard]] inline action_t adapt_raw_output_to_target_node_weights_action(
-    const raw_policy_output_t &raw, const policy_input_t &input,
-    const target_node_weights_adapter_options_t &options) {
-  validate_policy_input(input);
+namespace action_distribution_detail {
+
+inline constexpr double kPi = 3.141592653589793238462643383279502884;
+
+[[nodiscard]] inline double clamp_finite(double value, double lo, double hi,
+                                         const char *name) {
+  if (!std::isfinite(value)) {
+    throw std::runtime_error(std::string("[action_distribution] ") + name +
+                             " must be finite");
+  }
+  return std::max(lo, std::min(hi, value));
+}
+
+[[nodiscard]] inline double softplus(double value) {
+  if (value > 20.0) {
+    return value;
+  }
+  if (value < -20.0) {
+    return std::exp(value);
+  }
+  return std::log1p(std::exp(value));
+}
+
+[[nodiscard]] inline std::vector<std::int64_t>
+active_indices_from_input(const policy_input_t &input) {
+  const auto mask =
+      (input.valid_mask & input.tradable_mask & input.executable_mask)
+          .contiguous();
   const auto A = static_cast<std::int64_t>(input.node_ids.size());
-  validate_raw_policy_output(raw, A);
+  std::vector<std::int64_t> active;
+  active.reserve(static_cast<std::size_t>(A));
+  for (std::int64_t i = 0; i < A; ++i) {
+    if (mask.index({i}).item<bool>()) {
+      active.push_back(i);
+    }
+  }
+  return active;
+}
+
+[[nodiscard]] inline torch::Tensor
+masked_softmax_active(const torch::Tensor &logits,
+                      const std::vector<std::int64_t> &active) {
+  if (active.empty()) {
+    throw std::runtime_error(
+        "[action_distribution] no executable graph node is available");
+  }
+  std::vector<double> values(active.size(), 0.0);
+  double max_logit = -std::numeric_limits<double>::infinity();
+  for (std::size_t offset = 0; offset < active.size(); ++offset) {
+    const double logit = logits.index({active[offset]}).item<double>();
+    values[offset] = logit;
+    max_logit = std::max(max_logit, logit);
+  }
+  double denom = 0.0;
+  for (double &value : values) {
+    value = std::exp(value - max_logit);
+    denom += value;
+  }
+  if (!(denom > 0.0) || !std::isfinite(denom)) {
+    throw std::runtime_error(
+        "[action_distribution] softmax denominator is invalid");
+  }
+  for (double &value : values) {
+    value /= denom;
+  }
+  return torch::tensor(values, torch::TensorOptions().dtype(torch::kFloat64));
+}
+
+[[nodiscard]] inline torch::Tensor
+scatter_active_weights(std::int64_t A, const std::vector<std::int64_t> &active,
+                       const torch::Tensor &active_weights) {
+  auto weights =
+      torch::zeros({A}, torch::TensorOptions().dtype(torch::kFloat64));
+  const auto active64 = active_weights.to(torch::kFloat64).contiguous();
+  if (active64.dim() != 1 ||
+      active64.size(0) != static_cast<std::int64_t>(active.size()) ||
+      !torch::isfinite(active64).all().item<bool>()) {
+    throw std::runtime_error(
+        "[action_distribution] active weights must be finite [K]");
+  }
+  for (std::size_t offset = 0; offset < active.size(); ++offset) {
+    weights.index_put_({active[offset]},
+                       active64.index({static_cast<std::int64_t>(offset)}));
+  }
+  return weights.contiguous();
+}
+
+[[nodiscard]] inline action_t make_action_from_target_node_weights(
+    const policy_input_t &input, const torch::Tensor &target_node_weights,
+    const target_node_weights_adapter_options_t &options) {
   if (detail::blank(options.policy_id) || detail::blank(options.method_id) ||
       detail::blank(options.policy_artifact_digest)) {
     throw std::runtime_error(
         "[target_node_weights_adapter] policy id, method id, and artifact "
         "digest are required");
   }
-
-  const auto logits = raw.node_weight_logits.to(torch::kFloat64).contiguous();
-  const auto mask =
-      (input.valid_mask & input.tradable_mask & input.executable_mask)
-          .contiguous();
-  if (!mask.any().item<bool>()) {
+  auto weights = target_node_weights.to(torch::kFloat64).contiguous();
+  const auto A = static_cast<std::int64_t>(input.node_ids.size());
+  if (!weights.defined() || weights.dim() != 1 || weights.size(0) != A ||
+      !torch::isfinite(weights).all().item<bool>()) {
     throw std::runtime_error(
-        "[target_node_weights_adapter] no executable graph node is available");
+        "[target_node_weights_adapter] target weights must be finite [A]");
   }
-  double max_logit = -std::numeric_limits<double>::infinity();
-  for (std::int64_t i = 0; i < A; ++i) {
-    if (mask.index({i}).item<bool>()) {
-      max_logit = std::max(max_logit, logits.index({i}).item<double>());
-    }
-  }
-  std::vector<double> weights(static_cast<std::size_t>(A), 0.0);
-  double denom = 0.0;
-  for (std::int64_t i = 0; i < A; ++i) {
-    if (!mask.index({i}).item<bool>()) {
-      continue;
-    }
-    const double value = std::exp(logits.index({i}).item<double>() - max_logit);
-    weights[static_cast<std::size_t>(i)] = value;
-    denom += value;
-  }
-  if (!(denom > 0.0) || !std::isfinite(denom)) {
+  if ((weights < -1.0e-10).any().item<bool>()) {
     throw std::runtime_error(
-        "[target_node_weights_adapter] softmax denominator is invalid");
-  }
-  for (auto &weight : weights) {
-    weight /= denom;
+        "[target_node_weights_adapter] target weights must be nonnegative");
   }
 
   action_t action{};
@@ -563,8 +891,7 @@ inline void validate_raw_policy_output(const raw_policy_output_t &raw,
                                      ? options.decision_timestamp_ms
                                      : input.knowledge_timestamp_ms;
   action.node_ids = input.node_ids;
-  action.target_weights =
-      torch::tensor(weights, torch::TensorOptions().dtype(torch::kFloat64));
+  action.target_weights = weights;
   action.policy_input_schema_id = input.schema_id;
   action.action_adapter_id = kTargetNodeWeightsSimplexAdapterV1;
   action.reward_contract_id = input.reward_contract_id;
@@ -576,18 +903,639 @@ inline void validate_raw_policy_output(const raw_policy_output_t &raw,
   return action;
 }
 
+[[nodiscard]] inline double
+distribution_param_scalar_or_default(const raw_policy_output_t &raw,
+                                     double default_value) {
+  if (!raw.action_distribution_params.defined() ||
+      raw.action_distribution_params.numel() == 0) {
+    return default_value;
+  }
+  return raw.action_distribution_params.to(torch::kFloat64)
+      .reshape({-1})
+      .index({0})
+      .item<double>();
+}
+
+[[nodiscard]] inline double
+dirichlet_total_concentration(const raw_policy_output_t &raw,
+                              const action_distribution_options_t &options) {
+  if (!raw.action_distribution_params.defined() ||
+      raw.action_distribution_params.numel() == 0) {
+    return clamp_finite(options.dirichlet_total_concentration,
+                        options.dirichlet_total_concentration_min,
+                        options.dirichlet_total_concentration_max,
+                        "dirichlet_total_concentration");
+  }
+  const double raw_value = distribution_param_scalar_or_default(raw, 0.0);
+  const double concentration =
+      options.dirichlet_total_concentration_min + softplus(raw_value);
+  return clamp_finite(concentration, options.dirichlet_total_concentration_min,
+                      options.dirichlet_total_concentration_max,
+                      "dirichlet_total_concentration");
+}
+
+[[nodiscard]] inline double
+logistic_normal_std(const raw_policy_output_t &raw,
+                    const action_distribution_options_t &options) {
+  const double raw_log_std = distribution_param_scalar_or_default(
+      raw, options.logistic_normal_log_std);
+  const double log_std = clamp_finite(
+      raw_log_std, options.logistic_normal_log_std_min,
+      options.logistic_normal_log_std_max, "logistic_normal_log_std");
+  return std::exp(log_std);
+}
+
+[[nodiscard]] inline double
+dirichlet_log_prob(const torch::Tensor &alpha_active,
+                   const torch::Tensor &active_weights) {
+  const auto alpha = alpha_active.to(torch::kFloat64).contiguous();
+  const auto weights = active_weights.to(torch::kFloat64).contiguous();
+  if (alpha.dim() != 1 || weights.dim() != 1 ||
+      alpha.size(0) != weights.size(0) || alpha.size(0) <= 0 ||
+      !torch::isfinite(alpha).all().item<bool>() ||
+      !torch::isfinite(weights).all().item<bool>() ||
+      (alpha <= 0.0).any().item<bool>() ||
+      (weights <= 0.0).any().item<bool>()) {
+    throw std::runtime_error(
+        "[action_distribution] invalid Dirichlet log_prob tensors");
+  }
+  const double alpha_sum = alpha.sum().item<double>();
+  double out = std::lgamma(alpha_sum);
+  for (std::int64_t i = 0; i < alpha.size(0); ++i) {
+    const double a = alpha.index({i}).item<double>();
+    const double w = weights.index({i}).item<double>();
+    out -= std::lgamma(a);
+    out += (a - 1.0) * std::log(w);
+  }
+  return out;
+}
+
+[[nodiscard]] inline double
+dirichlet_entropy(const torch::Tensor &alpha_active) {
+  const auto alpha = alpha_active.to(torch::kFloat64).contiguous();
+  if (alpha.dim() != 1 || alpha.size(0) <= 0 ||
+      !torch::isfinite(alpha).all().item<bool>() ||
+      (alpha <= 0.0).any().item<bool>()) {
+    throw std::runtime_error(
+        "[action_distribution] invalid Dirichlet entropy tensor");
+  }
+  const double alpha_sum = alpha.sum().item<double>();
+  double log_beta = -std::lgamma(alpha_sum);
+  for (std::int64_t i = 0; i < alpha.size(0); ++i) {
+    log_beta += std::lgamma(alpha.index({i}).item<double>());
+  }
+  const double digamma_sum =
+      torch::digamma(torch::tensor(alpha_sum, torch::TensorOptions().dtype(
+                                                  torch::kFloat64)))
+          .item<double>();
+  double out =
+      log_beta + (alpha_sum - static_cast<double>(alpha.size(0))) * digamma_sum;
+  const auto digamma_alpha = torch::digamma(alpha);
+  for (std::int64_t i = 0; i < alpha.size(0); ++i) {
+    out -= (alpha.index({i}).item<double>() - 1.0) *
+           digamma_alpha.index({i}).item<double>();
+  }
+  return out;
+}
+
+[[nodiscard]] inline torch::Tensor
+sample_dirichlet_active(const torch::Tensor &alpha_active,
+                        const action_distribution_options_t &options) {
+  const auto alpha = alpha_active.to(torch::kFloat64).contiguous();
+  std::mt19937_64 rng(options.random_seed_bound ? options.random_seed
+                                                : std::random_device{}());
+  std::vector<double> draws(static_cast<std::size_t>(alpha.size(0)), 0.0);
+  double total = 0.0;
+  for (std::int64_t i = 0; i < alpha.size(0); ++i) {
+    std::gamma_distribution<double> gamma(alpha.index({i}).item<double>(), 1.0);
+    double value = gamma(rng);
+    if (!std::isfinite(value) || value < 0.0) {
+      value = 0.0;
+    }
+    draws[static_cast<std::size_t>(i)] = value;
+    total += value;
+  }
+  if (!(total > 0.0) || !std::isfinite(total)) {
+    return alpha / alpha.sum();
+  }
+  for (double &draw : draws) {
+    draw /= total;
+  }
+  return torch::tensor(draws, torch::TensorOptions().dtype(torch::kFloat64));
+}
+
+[[nodiscard]] inline double normal_diag_log_prob(const torch::Tensor &z,
+                                                 const torch::Tensor &mu,
+                                                 const torch::Tensor &std) {
+  const auto z64 = z.to(torch::kFloat64).contiguous();
+  const auto mu64 = mu.to(torch::kFloat64).contiguous();
+  const auto std64 = std.to(torch::kFloat64).contiguous();
+  if (z64.dim() != 1 || mu64.dim() != 1 || std64.dim() != 1 ||
+      z64.size(0) != mu64.size(0) || z64.size(0) != std64.size(0) ||
+      !torch::isfinite(z64).all().item<bool>() ||
+      !torch::isfinite(mu64).all().item<bool>() ||
+      !torch::isfinite(std64).all().item<bool>() ||
+      (std64 <= 0.0).any().item<bool>()) {
+    throw std::runtime_error(
+        "[action_distribution] invalid diagonal normal tensors");
+  }
+  double out = 0.0;
+  for (std::int64_t i = 0; i < z64.size(0); ++i) {
+    const double s = std64.index({i}).item<double>();
+    const double centered =
+        (z64.index({i}).item<double>() - mu64.index({i}).item<double>()) / s;
+    out += -0.5 * centered * centered - std::log(s) - 0.5 * std::log(2.0 * kPi);
+  }
+  return out;
+}
+
+[[nodiscard]] inline double
+logistic_normal_log_prob(const torch::Tensor &active_weights,
+                         const torch::Tensor &mu_z,
+                         const torch::Tensor &std_z) {
+  const auto weights = active_weights.to(torch::kFloat64).contiguous();
+  if (weights.dim() != 1 || weights.size(0) < 2 ||
+      !torch::isfinite(weights).all().item<bool>() ||
+      (weights <= 0.0).any().item<bool>()) {
+    throw std::runtime_error(
+        "[action_distribution] logistic-normal weights must be positive [K]");
+  }
+  const std::int64_t K = weights.size(0);
+  const double ref_weight = weights.index({K - 1}).item<double>();
+  std::vector<double> z_values(static_cast<std::size_t>(K - 1), 0.0);
+  double log_jacobian = 0.0;
+  for (std::int64_t i = 0; i < K; ++i) {
+    const double w = weights.index({i}).item<double>();
+    log_jacobian -= std::log(w);
+    if (i + 1 < K) {
+      z_values[static_cast<std::size_t>(i)] = std::log(w / ref_weight);
+    }
+  }
+  const auto z =
+      torch::tensor(z_values, torch::TensorOptions().dtype(torch::kFloat64));
+  return normal_diag_log_prob(z, mu_z, std_z) + log_jacobian;
+}
+
+[[nodiscard]] inline double latent_normal_entropy(const torch::Tensor &std_z) {
+  const auto std64 = std_z.to(torch::kFloat64).contiguous();
+  if (std64.dim() != 1 || std64.size(0) <= 0 ||
+      !torch::isfinite(std64).all().item<bool>() ||
+      (std64 <= 0.0).any().item<bool>()) {
+    throw std::runtime_error("[action_distribution] invalid latent std tensor");
+  }
+  double out = 0.0;
+  for (std::int64_t i = 0; i < std64.size(0); ++i) {
+    const double s = std64.index({i}).item<double>();
+    out += 0.5 * (1.0 + std::log(2.0 * kPi)) + std::log(s);
+  }
+  return out;
+}
+
+[[nodiscard]] inline torch::Tensor
+standard_normal_noise(std::int64_t dim,
+                      const action_distribution_options_t &options) {
+  if (dim <= 0) {
+    return torch::empty({0}, torch::TensorOptions().dtype(torch::kFloat64));
+  }
+  if (options.standard_normal_noise.defined()) {
+    const auto noise = options.standard_normal_noise.to(torch::kFloat64)
+                           .reshape({-1})
+                           .contiguous();
+    if (noise.size(0) != dim || !torch::isfinite(noise).all().item<bool>()) {
+      throw std::runtime_error(
+          "[action_distribution] standard_normal_noise must be finite [K-1]");
+    }
+    return noise;
+  }
+  std::mt19937_64 rng(options.random_seed_bound ? options.random_seed
+                                                : std::random_device{}());
+  std::normal_distribution<double> normal(0.0, 1.0);
+  std::vector<double> values(static_cast<std::size_t>(dim), 0.0);
+  for (double &value : values) {
+    value = normal(rng);
+  }
+  return torch::tensor(values, torch::TensorOptions().dtype(torch::kFloat64));
+}
+
+} // namespace action_distribution_detail
+
+class action_distribution_iface_t {
+public:
+  virtual ~action_distribution_iface_t() = default;
+  [[nodiscard]] virtual std::string distribution_id() const = 0;
+  [[nodiscard]] virtual action_sample_t
+  sample(const raw_policy_output_t &raw, const policy_input_t &input,
+         const target_node_weights_adapter_options_t &adapter_options,
+         const action_distribution_options_t &distribution_options) const = 0;
+  [[nodiscard]] virtual action_sample_t deterministic_action(
+      const raw_policy_output_t &raw, const policy_input_t &input,
+      const target_node_weights_adapter_options_t &adapter_options,
+      const action_distribution_options_t &distribution_options) const = 0;
+  [[nodiscard]] virtual double
+  log_prob(const raw_policy_output_t &raw, const policy_input_t &input,
+           const action_t &action,
+           const action_distribution_evidence_t &evidence,
+           const action_distribution_options_t &distribution_options) const = 0;
+  [[nodiscard]] virtual double
+  entropy(const raw_policy_output_t &raw, const policy_input_t &input,
+          const action_distribution_evidence_t &evidence,
+          const action_distribution_options_t &distribution_options) const = 0;
+  [[nodiscard]] virtual double
+  approximate_kl(const action_distribution_record_t &old_record,
+                 const action_distribution_record_t &new_record) const {
+    if (old_record.action_distribution_id != distribution_id() ||
+        new_record.action_distribution_id != distribution_id()) {
+      throw std::runtime_error(
+          "[action_distribution] KL records use a different distribution");
+    }
+    if (!std::isfinite(old_record.evidence.log_prob) ||
+        !std::isfinite(new_record.evidence.log_prob)) {
+      throw std::runtime_error(
+          "[action_distribution] KL records require finite log_prob");
+    }
+    return old_record.evidence.log_prob - new_record.evidence.log_prob;
+  }
+};
+
+class masked_dirichlet_simplex_distribution_t final
+    : public action_distribution_iface_t {
+public:
+  [[nodiscard]] std::string distribution_id() const override {
+    return kMaskedDirichletSimplexDistributionV1;
+  }
+
+  [[nodiscard]] action_sample_t
+  sample(const raw_policy_output_t &raw, const policy_input_t &input,
+         const target_node_weights_adapter_options_t &adapter_options,
+         const action_distribution_options_t &distribution_options)
+      const override {
+    return make(raw, input, adapter_options, distribution_options,
+                /*deterministic=*/false);
+  }
+
+  [[nodiscard]] action_sample_t deterministic_action(
+      const raw_policy_output_t &raw, const policy_input_t &input,
+      const target_node_weights_adapter_options_t &adapter_options,
+      const action_distribution_options_t &distribution_options)
+      const override {
+    return make(raw, input, adapter_options, distribution_options,
+                /*deterministic=*/true);
+  }
+
+  [[nodiscard]] double
+  log_prob(const raw_policy_output_t &raw, const policy_input_t &input,
+           const action_t &action, const action_distribution_evidence_t &,
+           const action_distribution_options_t &distribution_options)
+      const override {
+    validate_policy_input(input);
+    const auto A = static_cast<std::int64_t>(input.node_ids.size());
+    validate_raw_policy_output(raw, A);
+    if (raw.action_distribution_id != distribution_id()) {
+      throw std::runtime_error(
+          "[action_distribution] raw output distribution mismatch");
+    }
+    const auto active =
+        action_distribution_detail::active_indices_from_input(input);
+    if (active.empty()) {
+      throw std::runtime_error(
+          "[action_distribution] no executable graph node is available");
+    }
+    if (active.size() == 1) {
+      return 0.0;
+    }
+    const auto logits = raw.node_weight_logits.to(torch::kFloat64).contiguous();
+    const auto mean =
+        action_distribution_detail::masked_softmax_active(logits, active);
+    const double concentration =
+        action_distribution_detail::dirichlet_total_concentration(
+            raw, distribution_options);
+    const auto alpha =
+        mean * concentration + distribution_options.dirichlet_alpha_floor;
+    std::vector<double> active_weights;
+    active_weights.reserve(active.size());
+    const auto weights = action.target_weights.to(torch::kFloat64).contiguous();
+    for (const auto index : active) {
+      active_weights.push_back(weights.index({index}).item<double>());
+    }
+    return action_distribution_detail::dirichlet_log_prob(
+        alpha, torch::tensor(active_weights,
+                             torch::TensorOptions().dtype(torch::kFloat64)));
+  }
+
+  [[nodiscard]] double
+  entropy(const raw_policy_output_t &, const policy_input_t &,
+          const action_distribution_evidence_t &evidence,
+          const action_distribution_options_t &) const override {
+    if (evidence.active_count <= 1) {
+      return 0.0;
+    }
+    return action_distribution_detail::dirichlet_entropy(evidence.alpha_active);
+  }
+
+private:
+  [[nodiscard]] action_sample_t
+  make(const raw_policy_output_t &raw, const policy_input_t &input,
+       const target_node_weights_adapter_options_t &adapter_options,
+       const action_distribution_options_t &distribution_options,
+       bool deterministic) const {
+    validate_policy_input(input);
+    const auto A = static_cast<std::int64_t>(input.node_ids.size());
+    validate_raw_policy_output(raw, A);
+    if (raw.action_distribution_id != distribution_id()) {
+      throw std::runtime_error(
+          "[action_distribution] raw output distribution mismatch");
+    }
+    const auto active =
+        action_distribution_detail::active_indices_from_input(input);
+    if (active.empty()) {
+      throw std::runtime_error(
+          "[action_distribution] no executable graph node is available");
+    }
+
+    action_distribution_evidence_t evidence{};
+    evidence.action_distribution_id = distribution_id();
+    evidence.active_node_indices = active;
+    evidence.active_count = static_cast<std::int64_t>(active.size());
+    evidence.value_estimate = raw.value_estimate;
+
+    torch::Tensor active_weights;
+    if (active.size() == 1) {
+      active_weights =
+          torch::ones({1}, torch::TensorOptions().dtype(torch::kFloat64));
+      evidence.mean_active = active_weights;
+      evidence.alpha_active = active_weights;
+      evidence.total_concentration = 1.0;
+      evidence.log_prob = 0.0;
+      evidence.entropy = 0.0;
+    } else {
+      const auto logits =
+          raw.node_weight_logits.to(torch::kFloat64).contiguous();
+      evidence.mean_active =
+          action_distribution_detail::masked_softmax_active(logits, active);
+      evidence.total_concentration =
+          action_distribution_detail::dirichlet_total_concentration(
+              raw, distribution_options);
+      evidence.alpha_active =
+          evidence.mean_active * evidence.total_concentration +
+          distribution_options.dirichlet_alpha_floor;
+      active_weights =
+          deterministic ? evidence.alpha_active / evidence.alpha_active.sum()
+                        : action_distribution_detail::sample_dirichlet_active(
+                              evidence.alpha_active, distribution_options);
+      evidence.log_prob = action_distribution_detail::dirichlet_log_prob(
+          evidence.alpha_active, active_weights);
+      evidence.entropy =
+          action_distribution_detail::dirichlet_entropy(evidence.alpha_active);
+    }
+    evidence.sampled_active_weights = active_weights.contiguous();
+    evidence.target_node_weights =
+        action_distribution_detail::scatter_active_weights(A, active,
+                                                           active_weights);
+    action_sample_t out{};
+    out.action =
+        action_distribution_detail::make_action_from_target_node_weights(
+            input, evidence.target_node_weights, adapter_options);
+    trainable_policy_detail::bind_action_distribution_evidence(out.action,
+                                                               input, evidence);
+    out.evidence = std::move(evidence);
+    return out;
+  }
+};
+
+class masked_logistic_normal_simplex_distribution_t final
+    : public action_distribution_iface_t {
+public:
+  [[nodiscard]] std::string distribution_id() const override {
+    return kMaskedLogisticNormalSimplexDistributionV1;
+  }
+
+  [[nodiscard]] action_sample_t
+  sample(const raw_policy_output_t &raw, const policy_input_t &input,
+         const target_node_weights_adapter_options_t &adapter_options,
+         const action_distribution_options_t &distribution_options)
+      const override {
+    return make(raw, input, adapter_options, distribution_options,
+                /*deterministic=*/false);
+  }
+
+  [[nodiscard]] action_sample_t deterministic_action(
+      const raw_policy_output_t &raw, const policy_input_t &input,
+      const target_node_weights_adapter_options_t &adapter_options,
+      const action_distribution_options_t &distribution_options)
+      const override {
+    return make(raw, input, adapter_options, distribution_options,
+                /*deterministic=*/true);
+  }
+
+  [[nodiscard]] double
+  log_prob(const raw_policy_output_t &raw, const policy_input_t &input,
+           const action_t &action, const action_distribution_evidence_t &,
+           const action_distribution_options_t &distribution_options)
+      const override {
+    validate_policy_input(input);
+    const auto A = static_cast<std::int64_t>(input.node_ids.size());
+    validate_raw_policy_output(raw, A);
+    if (raw.action_distribution_id != distribution_id()) {
+      throw std::runtime_error(
+          "[action_distribution] raw output distribution mismatch");
+    }
+    const auto active =
+        action_distribution_detail::active_indices_from_input(input);
+    if (active.empty()) {
+      throw std::runtime_error(
+          "[action_distribution] no executable graph node is available");
+    }
+    if (active.size() == 1) {
+      return 0.0;
+    }
+    const auto params = logistic_params(raw, active, distribution_options);
+    std::vector<double> active_weights;
+    active_weights.reserve(active.size());
+    const auto weights = action.target_weights.to(torch::kFloat64).contiguous();
+    for (const auto index : active) {
+      active_weights.push_back(weights.index({index}).item<double>());
+    }
+    return action_distribution_detail::logistic_normal_log_prob(
+        torch::tensor(active_weights,
+                      torch::TensorOptions().dtype(torch::kFloat64)),
+        params.first, params.second);
+  }
+
+  [[nodiscard]] double
+  entropy(const raw_policy_output_t &, const policy_input_t &,
+          const action_distribution_evidence_t &evidence,
+          const action_distribution_options_t &) const override {
+    if (evidence.active_count <= 1) {
+      return 0.0;
+    }
+    return action_distribution_detail::latent_normal_entropy(evidence.std_z);
+  }
+
+private:
+  [[nodiscard]] std::pair<torch::Tensor, torch::Tensor> logistic_params(
+      const raw_policy_output_t &raw, const std::vector<std::int64_t> &active,
+      const action_distribution_options_t &distribution_options) const {
+    const auto logits = raw.node_weight_logits.to(torch::kFloat64).contiguous();
+    const auto K = static_cast<std::int64_t>(active.size());
+    const double ref_logit = logits.index({active.back()}).item<double>();
+    std::vector<double> mu_values(static_cast<std::size_t>(K - 1), 0.0);
+    for (std::int64_t offset = 0; offset + 1 < K; ++offset) {
+      mu_values[static_cast<std::size_t>(offset)] =
+          logits.index({active[static_cast<std::size_t>(offset)]})
+              .item<double>() -
+          ref_logit;
+    }
+    const double std_value = action_distribution_detail::logistic_normal_std(
+        raw, distribution_options);
+    return {
+        torch::tensor(mu_values, torch::TensorOptions().dtype(torch::kFloat64)),
+        torch::full({K - 1}, std_value,
+                    torch::TensorOptions().dtype(torch::kFloat64))};
+  }
+
+  [[nodiscard]] action_sample_t
+  make(const raw_policy_output_t &raw, const policy_input_t &input,
+       const target_node_weights_adapter_options_t &adapter_options,
+       const action_distribution_options_t &distribution_options,
+       bool deterministic) const {
+    validate_policy_input(input);
+    const auto A = static_cast<std::int64_t>(input.node_ids.size());
+    validate_raw_policy_output(raw, A);
+    if (raw.action_distribution_id != distribution_id()) {
+      throw std::runtime_error(
+          "[action_distribution] raw output distribution mismatch");
+    }
+    const auto active =
+        action_distribution_detail::active_indices_from_input(input);
+    if (active.empty()) {
+      throw std::runtime_error(
+          "[action_distribution] no executable graph node is available");
+    }
+
+    action_distribution_evidence_t evidence{};
+    evidence.action_distribution_id = distribution_id();
+    evidence.entropy_kind = "latent_normal_entropy";
+    evidence.active_node_indices = active;
+    evidence.active_count = static_cast<std::int64_t>(active.size());
+    evidence.reference_node_index = active.back();
+    evidence.value_estimate = raw.value_estimate;
+
+    torch::Tensor active_weights;
+    if (active.size() == 1) {
+      active_weights =
+          torch::ones({1}, torch::TensorOptions().dtype(torch::kFloat64));
+      evidence.log_prob = 0.0;
+      evidence.entropy = 0.0;
+    } else {
+      const auto params = logistic_params(raw, active, distribution_options);
+      evidence.mu_z = params.first;
+      evidence.std_z = params.second;
+      evidence.latent_z_sample =
+          deterministic
+              ? evidence.mu_z
+              : evidence.mu_z +
+                    evidence.std_z *
+                        action_distribution_detail::standard_normal_noise(
+                            evidence.mu_z.size(0), distribution_options);
+      std::vector<double> softmax_values(
+          static_cast<std::size_t>(evidence.active_count), 0.0);
+      double max_value = 0.0;
+      for (std::int64_t offset = 0; offset + 1 < evidence.active_count;
+           ++offset) {
+        const double value =
+            evidence.latent_z_sample.index({offset}).item<double>();
+        softmax_values[static_cast<std::size_t>(offset)] = value;
+        max_value = std::max(max_value, value);
+      }
+      double denom = std::exp(-max_value);
+      for (std::int64_t offset = 0; offset + 1 < evidence.active_count;
+           ++offset) {
+        const double value =
+            std::exp(evidence.latent_z_sample.index({offset}).item<double>() -
+                     max_value);
+        softmax_values[static_cast<std::size_t>(offset)] = value;
+        denom += value;
+      }
+      softmax_values.back() = std::exp(-max_value);
+      if (!(denom > 0.0) || !std::isfinite(denom)) {
+        throw std::runtime_error(
+            "[action_distribution] logistic-normal softmax denominator is "
+            "invalid");
+      }
+      for (double &value : softmax_values) {
+        value /= denom;
+      }
+      active_weights = torch::tensor(
+          softmax_values, torch::TensorOptions().dtype(torch::kFloat64));
+      evidence.log_prob = action_distribution_detail::logistic_normal_log_prob(
+          active_weights, evidence.mu_z, evidence.std_z);
+      evidence.entropy =
+          action_distribution_detail::latent_normal_entropy(evidence.std_z);
+    }
+    evidence.sampled_active_weights = active_weights.contiguous();
+    evidence.target_node_weights =
+        action_distribution_detail::scatter_active_weights(A, active,
+                                                           active_weights);
+    action_sample_t out{};
+    out.action =
+        action_distribution_detail::make_action_from_target_node_weights(
+            input, evidence.target_node_weights, adapter_options);
+    trainable_policy_detail::bind_action_distribution_evidence(out.action,
+                                                               input, evidence);
+    out.evidence = std::move(evidence);
+    return out;
+  }
+};
+
+[[nodiscard]] inline const action_distribution_iface_t &
+action_distribution_for_id(const std::string &distribution_id) {
+  static const masked_dirichlet_simplex_distribution_t dirichlet{};
+  static const masked_logistic_normal_simplex_distribution_t logistic_normal{};
+  if (distribution_id == kMaskedDirichletSimplexDistributionV1) {
+    return dirichlet;
+  }
+  if (distribution_id == kMaskedLogisticNormalSimplexDistributionV1) {
+    return logistic_normal;
+  }
+  throw std::runtime_error("[action_distribution] unsupported distribution id");
+}
+
+[[nodiscard]] inline action_t adapt_raw_output_to_target_node_weights_action(
+    const raw_policy_output_t &raw, const policy_input_t &input,
+    const target_node_weights_adapter_options_t &options) {
+  validate_policy_input(input);
+  const auto A = static_cast<std::int64_t>(input.node_ids.size());
+  validate_raw_policy_output(raw, A);
+  const auto logits = raw.node_weight_logits.to(torch::kFloat64).contiguous();
+  const auto active =
+      action_distribution_detail::active_indices_from_input(input);
+  if (active.empty()) {
+    throw std::runtime_error(
+        "[target_node_weights_adapter] no executable graph node is available");
+  }
+  const auto active_weights =
+      action_distribution_detail::masked_softmax_active(logits, active);
+  const auto weights = action_distribution_detail::scatter_active_weights(
+      A, active, active_weights);
+  return action_distribution_detail::make_action_from_target_node_weights(
+      input, weights, options);
+}
+
 class trainable_policy_adapter_iface_t : public policy_adapter_iface_t {
 public:
   [[nodiscard]] virtual std::string policy_artifact_digest() const = 0;
   [[nodiscard]] virtual std::string policy_input_schema_id() const = 0;
   [[nodiscard]] virtual std::string action_adapter_id() const = 0;
+  [[nodiscard]] virtual std::string action_distribution_id() const = 0;
   [[nodiscard]] virtual std::string reward_contract_id() const = 0;
   [[nodiscard]] virtual policy_input_t
   make_input(const observation_t &observation) const = 0;
   [[nodiscard]] virtual raw_policy_output_t
   forward(const policy_input_t &input) = 0;
 
-  [[nodiscard]] action_t act(const observation_t &observation) override {
+  [[nodiscard]] action_sample_t sample_action(
+      const observation_t &observation,
+      const action_distribution_options_t &distribution_options = {}) {
     auto input = make_input(observation);
     auto raw = forward(input);
     target_node_weights_adapter_options_t options{};
@@ -595,19 +1543,192 @@ public:
     options.method_id = action_adapter_id();
     options.policy_artifact_digest = policy_artifact_digest();
     options.decision_timestamp_ms = input.knowledge_timestamp_ms;
-    return adapt_raw_output_to_target_node_weights_action(raw, input, options);
+    return action_distribution_for_id(raw.action_distribution_id)
+        .sample(raw, input, options, distribution_options);
+  }
+
+  [[nodiscard]] action_sample_t deterministic_action_sample(
+      const observation_t &observation,
+      const action_distribution_options_t &distribution_options = {}) {
+    auto input = make_input(observation);
+    auto raw = forward(input);
+    target_node_weights_adapter_options_t options{};
+    options.policy_id = policy_id();
+    options.method_id = action_adapter_id();
+    options.policy_artifact_digest = policy_artifact_digest();
+    options.decision_timestamp_ms = input.knowledge_timestamp_ms;
+    return action_distribution_for_id(raw.action_distribution_id)
+        .deterministic_action(raw, input, options, distribution_options);
+  }
+
+  [[nodiscard]] action_t act(const observation_t &observation) override {
+    return deterministic_action_sample(observation).action;
+  }
+
+  [[nodiscard]] action_t
+  collect_action(const observation_t &observation) override {
+    return sample_action(observation).action;
   }
 };
 
-struct fake_trainable_policy_config_t {
+struct graph_node_allocation_torch_policy_config_t {
   std::string policy_id{kGraphNodeAllocationPolicyId};
-  std::string policy_artifact_digest{"fake_trainable_policy_fixture_digest"};
+  std::string policy_artifact_digest{
+      "graph_node_allocation_torch_policy_module_v0_digest"};
+  std::string action_distribution_id{kMaskedDirichletSimplexDistributionV1};
   std::string graph_order_fingerprint{};
   std::string execution_profile_digest{"cajtucu.paper.fixture.digest"};
   std::string accounting_numeraire_node_id{};
   std::string causal_schedule_digest{};
   std::string snapshot_family_digest{"snapshot_family.fixture.digest"};
+  std::string policy_checkpoint_path{};
+  cuwacunu::wikimyei::policy::portfolio::graph_node_allocation::
+      graph_node_allocation_net_spec_t net_spec{};
+  std::uint64_t module_seed{17};
+  torch::Tensor node_weight_logit_bias{};
+  torch::Tensor action_distribution_params{};
+  bool action_distribution_params_bound{false};
+  double value_estimate_bias{0.0};
+  torch::Tensor previous_target_weights{};
+};
+
+class graph_node_allocation_torch_policy_t final
+    : public trainable_policy_adapter_iface_t {
+public:
+  explicit graph_node_allocation_torch_policy_t(
+      graph_node_allocation_torch_policy_config_t config)
+      : config_(std::move(config)) {
+    if (detail::blank(config_.policy_id) ||
+        detail::blank(config_.policy_artifact_digest)) {
+      throw std::runtime_error(
+          "[graph_node_allocation_torch_policy] policy id and artifact digest "
+          "are required");
+    }
+    if (!action_distribution_id_supported(config_.action_distribution_id)) {
+      throw std::runtime_error(
+          "[graph_node_allocation_torch_policy] unsupported action "
+          "distribution");
+    }
+    torch::manual_seed(static_cast<std::int64_t>(config_.module_seed));
+    module_ = cuwacunu::wikimyei::policy::portfolio::graph_node_allocation::
+        GraphNodeAllocationTorchPolicyModule(
+            cuwacunu::wikimyei::policy::portfolio::graph_node_allocation::
+                make_graph_node_allocation_torch_policy_options(
+                    config_.net_spec));
+    module_->eval();
+  }
+
+  [[nodiscard]] std::string policy_id() const override {
+    return config_.policy_id;
+  }
+
+  [[nodiscard]] policy_kind_t policy_kind() const override {
+    return policy_kind_t::reinforcement_learning;
+  }
+
+  [[nodiscard]] std::string policy_artifact_digest() const override {
+    return config_.policy_artifact_digest;
+  }
+
+  [[nodiscard]] std::string policy_input_schema_id() const override {
+    return kPolicyInputSchemaV1;
+  }
+
+  [[nodiscard]] std::string action_adapter_id() const override {
+    return kTargetNodeWeightsSimplexAdapterV1;
+  }
+
+  [[nodiscard]] std::string action_distribution_id() const override {
+    return config_.action_distribution_id;
+  }
+
+  [[nodiscard]] std::string reward_contract_id() const override {
+    return kPostExecutionLedgerLogGrowthCostDrawdownRewardContractV1;
+  }
+
+  [[nodiscard]] policy_input_t
+  make_input(const observation_t &observation) const override {
+    policy_input_builder_options_t options{};
+    options.graph_order_fingerprint = config_.graph_order_fingerprint;
+    options.execution_profile_digest = config_.execution_profile_digest;
+    options.accounting_numeraire_node_id = config_.accounting_numeraire_node_id;
+    options.causal_schedule_digest = config_.causal_schedule_digest;
+    options.reward_contract_id = reward_contract_id();
+    options.snapshot_family_digest = config_.snapshot_family_digest;
+    options.previous_target_weights = config_.previous_target_weights;
+    return make_policy_input(observation, options);
+  }
+
+  [[nodiscard]] raw_policy_output_t
+  forward(const policy_input_t &input) override {
+    validate_policy_input(input);
+    const auto A = static_cast<std::int64_t>(input.node_ids.size());
+    const auto active_mask =
+        (input.valid_mask & input.tradable_mask & input.executable_mask)
+            .contiguous();
+    const auto module_out =
+        module_->forward(input.node_features, input.global_features,
+                         input.risk_features, active_mask);
+
+    raw_policy_output_t out{};
+    out.action_distribution_id = action_distribution_id();
+    out.node_weight_logits =
+        module_out.node_weight_logits.to(torch::kFloat64).contiguous();
+    if (config_.node_weight_logit_bias.defined()) {
+      const auto bias =
+          config_.node_weight_logit_bias.to(torch::kFloat64).contiguous();
+      if (bias.dim() != 1 || bias.size(0) != A ||
+          !torch::isfinite(bias).all().item<bool>()) {
+        throw std::runtime_error(
+            "[graph_node_allocation_torch_policy] checkpoint logit bias must "
+            "be finite [A]");
+      }
+      out.node_weight_logits = (out.node_weight_logits + bias).contiguous();
+    }
+
+    if (config_.action_distribution_params_bound) {
+      out.action_distribution_params =
+          config_.action_distribution_params.to(torch::kFloat64).contiguous();
+    } else {
+      out.action_distribution_params =
+          module_out.action_distribution_params.to(torch::kFloat64)
+              .contiguous();
+    }
+    const auto value =
+        module_out.state_value.to(torch::kFloat64).reshape({-1}).index({0});
+    out.value_estimate = value.item<double>() + config_.value_estimate_bias;
+    validate_raw_policy_output(out, A);
+    return out;
+  }
+
+  [[nodiscard]] std::string module_contract_id() const {
+    return cuwacunu::wikimyei::policy::portfolio::graph_node_allocation::
+        k_graph_node_allocation_torch_policy_module_v0;
+  }
+
+  [[nodiscard]] std::string architecture_digest() const {
+    return module_->architecture_digest();
+  }
+
+private:
+  graph_node_allocation_torch_policy_config_t config_{};
+  cuwacunu::wikimyei::policy::portfolio::graph_node_allocation::
+      GraphNodeAllocationTorchPolicyModule module_{nullptr};
+};
+
+struct fake_trainable_policy_config_t {
+  std::string policy_id{kGraphNodeAllocationPolicyId};
+  std::string policy_artifact_digest{"fake_trainable_policy_fixture_digest"};
+  std::string action_distribution_id{kMaskedDirichletSimplexDistributionV1};
+  std::string graph_order_fingerprint{};
+  std::string execution_profile_digest{"cajtucu.paper.fixture.digest"};
+  std::string accounting_numeraire_node_id{};
+  std::string causal_schedule_digest{};
+  std::string snapshot_family_digest{"snapshot_family.fixture.digest"};
+  std::string policy_checkpoint_path{};
   torch::Tensor logits{};
+  torch::Tensor action_distribution_params{};
+  double value_estimate{0.0};
   torch::Tensor previous_target_weights{};
 };
 
@@ -642,6 +1763,10 @@ public:
     return kTargetNodeWeightsSimplexAdapterV1;
   }
 
+  [[nodiscard]] std::string action_distribution_id() const override {
+    return config_.action_distribution_id;
+  }
+
   [[nodiscard]] std::string reward_contract_id() const override {
     return kPostExecutionLedgerLogGrowthCostDrawdownRewardContractV1;
   }
@@ -670,6 +1795,12 @@ public:
           torch::zeros({static_cast<std::int64_t>(input.node_ids.size())},
                        torch::TensorOptions().dtype(torch::kFloat64));
     }
+    if (config_.action_distribution_params.defined()) {
+      out.action_distribution_params =
+          config_.action_distribution_params.to(torch::kFloat64).contiguous();
+    }
+    out.action_distribution_id = action_distribution_id();
+    out.value_estimate = config_.value_estimate;
     return out;
   }
 

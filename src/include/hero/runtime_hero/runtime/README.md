@@ -100,8 +100,8 @@ configuration entry and before pipeline materialization.
 
 `hero.runtime.run operation=wave` accepts a Marshal `runtime_handoff` object for
 concrete operator handoffs. The object binds schema/id/digest, target id, base
-config, concrete wave fields, concrete checkpoint inputs, Runtime policy
-identity, and dry-run/execute intent. Runtime rejects non-empty
+config path/digest, concrete wave fields, concrete checkpoint inputs, Runtime
+policy path/digest identity, and dry-run/execute intent. Runtime rejects non-empty
 unresolved-symbol lists and symbolic model-state selectors such as
 `latest_satisfying:*` before launching `cuwacunu_exec`. When a handoff is
 accepted, Runtime passes the handoff id and digest into the job runner so
@@ -149,6 +149,12 @@ measurements from `job.manifest`, `job.state`, and the component report. They
 are Runtime evidence, not Lattice proof authority; Lattice still proves by
 reading Runtime artifacts, and Marshal uses these facts as the preferred
 operator-report surface with raw reports as fallback.
+Runtime terminal facts use explicit digest/id names on operator-visible fields:
+`source_report_digest`, `config_bundle_id`, `runtime_policy_digest`, and
+`checkpoint_artifact_digest`. Runtime still accepts historical Marshal handoff
+objects that use `base_config.hash` or `runtime_policy.hash`, and Lattice
+readers still recognize historical `checkpoint_artifact_hash` sidecars when
+older Runtime jobs are inspected.
 The Runtime-emitted `lattice.source_analytics.fact` is deliberately narrow:
 it binds source cursor, graph order, split/window, parent exposure digest,
 anchor acceptance fraction, missingness fraction, duplicate-anchor count, and a
@@ -220,8 +226,8 @@ contains `cajtucu_numeraire_fallback_pair_count > 0`, or contains
 `hero.runtime.inspect subject=job` summarizes those replay artifacts beside the
 regular Runtime manifest/state/report summaries.
 
-Policy-training is represented as a Runtime wave contract and now has a narrow
-pre-PPO executable smoke path. `hero.runtime.run operation=wave
+Policy-training is represented as a Runtime wave contract and now has bounded
+no-op and PPO V0 evidence paths. `hero.runtime.run operation=wave
 requested_mode=plan|dry_run|execute` with policy-training contract fields
 validates a bounded trainable-policy handoff. The selected `WAVE_SETTINGS`
 block may bind `POLICY_ID`, `POLICY_KIND`, `TRAINING_SCHEDULE_MODE`, and
@@ -233,9 +239,15 @@ policy identity, architecture/training-config digests, disjoint
 train/validation/test range digests, normalization and replay-buffer ranges,
 environment/observation/action/reward/execution-profile digests, causal
 walk-forward schedule mode/schema/digest, explicit `policy_input_schema_id`,
-`action_adapter_id`, and `reward_contract_id`, selector/checkpoint lineage,
-parent evidence digests, random seed, and finite episode/step/wall-clock
-bounds.
+`action_adapter_id`, `action_distribution_id`, and `reward_contract_id`,
+selector/checkpoint lineage, parent evidence digests, random seed, and finite
+episode/step/wall-clock bounds. PPO-shaped policy kinds additionally bind
+`ppo_policy_artifact_contract_id`, graph-node allocation policy family,
+policy checkpoint schema, policy-input feature manifest, action-distribution
+config, snapshot family, actor/critic architecture and checkpoint digests,
+optimizer state, PPO config, GAE/advantage-normalization policy, rollout
+collection evidence, PPO update-report evidence, validation rollout evidence,
+and PPO hyperparameters.
 Runtime rejects contracts where normalization or replay-buffer inputs are not
 training-bound, where train/validation/test ranges overlap by digest, where the
 causal schedule does not bind a typed cursor-key ordering and ledger-derived
@@ -243,14 +255,67 @@ causal schedule does not bind a typed cursor-key ordering and ledger-derived
 availability extends beyond artifact `usable_from_key`, where
 `offline_full_window_research` is presented as readiness evidence, or where live
 execution is requested.
-In this mode, `requested_mode=execute` is allowed only under Runtime
-execute/train policy for
-`policy_kind=noop_policy_training.v1`. That smoke path writes a Runtime job
-directory, `policy_training.contract`, `policy_training.report`, a deterministic
-no-op checkpoint, terminal Runtime facts, and `runtime.policy_training.fact` for
-Lattice inspection. It records `optimizer_steps=0`, `ppo_implemented=false`,
-and no live-capital authority. PPO remains explicitly refused until a dedicated
-Runtime PPO trainer is implemented on top of this causal contract.
+In this mode, `requested_mode=execute` is allowed under Runtime execute/train
+policy for `policy_kind=noop_policy_training.v1` and for the bounded
+`policy_kind=ppo_policy_adapter.v1` trainer. The noop path writes a
+Runtime job directory, `policy_training.contract`, `policy_training.report`, a
+deterministic no-op checkpoint, terminal Runtime facts, and
+`runtime.policy_training.fact` for Lattice inspection. The PPO V0 path writes
+actor/critic checkpoints, optimizer state, rollout/update/validation reports,
+`policy_training.report`, terminal Runtime facts, and a Lattice-readable
+`runtime.policy_training.fact`. With no `report_path`, it uses an explicit
+smoke fallback and declares `replay_backed_step_count=0`. With `report_path`,
+it ingests an existing Kikijyeba replay report into PPO rollout samples,
+including anchors, target weights, reward components, Cajtucu trace ids, costs,
+rejects, partials, missing-pair counters, and source labels. If the replay
+report was produced by the trainable policy bridge, Runtime can also bind the
+old-policy action-distribution evidence carried on the step report:
+`policy_input_digest`, `action_distribution_id`, active nodes, old log
+probability, entropy, and value estimate. Replay-backed PPO training now fails
+closed when that evidence is missing; only the explicit smoke fallback may run
+without replay-backed probability evidence. With
+`replay_job_dir`, Runtime dispatches `cuwacunu_exec --replay-from-job-dir` using
+the `graph_node_allocation` trainable policy and `on_policy_sample` collection,
+passes an explicit actor checkpoint artifact to the replay policy, and then
+ingests the generated replay report with
+`collection_source=kikijyeba_on_policy_replay`. Runtime records the collection
+checkpoint path/digest and writes separate post-update actor/critic checkpoints.
+The actor checkpoint binds the graph-node allocation Torch module contract and
+stores bounded module-head logit/value deltas from PPO V0 rollout evidence.
+Runtime then dispatches a second deterministic replay from the same completed
+replay job using the post-update actor checkpoint and a nonzero
+transaction-cost rate, writing
+`kikijyeba.runtime.ppo_cost_aware_validation_rollout.v1` as the validation
+artifact. That report binds policy/action/reward/execution/causal identities,
+the raw validation replay report digest, final equity/log-growth/drawdown
+metrics when available, fee/spread/slippage costs, turnover, rejects/partials,
+missing-pair counters, numeraire-fallback counters, target-tracking error, and
+Cajtucu trace evidence. Runtime then writes
+`kikijyeba.runtime.policy_quality_report.v1` from a separate raw comparison
+replay report. That comparison replay keeps PPO validation PPO-only while
+running the post-update graph-node allocation checkpoint and required baselines
+(`numeraire_only.v1`, `current_weight_no_trade.v1`, `equal_weight.v1`, and
+`kikijyeba.environment.policy.spot_distributional_utility.v1`) under identical
+replay source, target universe, reward, execution profile, causal schedule,
+snapshot family, accounting numeraire, and transaction-cost assumptions. The
+quality report records policy-wise after-cost metrics, execution-feasibility
+counters, target-tracking/projection metrics, and PPO-minus-baseline deltas, but
+it declares `policy_selected=false`, `comparison_ranked=false`,
+`winner_declared=false`, `policy_quality_claimed=false`, and
+`lattice_policy_selector=false`. Its digest is bound into the generated
+`runtime.policy_training.fact`; it remains comparison evidence, not policy
+selection or market-readiness authority. The generated fact is now exercised
+against concrete forecast-eval and observer-belief parent fact digests plus
+replay-environment lineage. PPO adapter facts may bind that replay lineage
+through `parent_replay_environment_report_digest`; allocation-engine parent
+fact digests are required only for policy kinds that declare that parent.
+Lattice can satisfy `policy_training_artifact_ready` from that generated
+evidence without granting policy-quality, selection, market-readiness,
+deployment, or live-capital authority.
+Runtime execution results may report the bounded trainer role; the
+Lattice-readable artifact fact remains evidence-only and carries no
+live-capital, policy-quality, market-readiness, deployment, or target-proof
+authority.
 
 The readiness-grade schedule is `causal_walk_forward_training.v1`: each rollout
 block must use a snapshot family whose artifacts declare `usable_from_key <=

@@ -39,8 +39,8 @@ make_graph_node_allocation_assembly(
       "trainable_policy_diagnostics_t", {},
       /*required=*/false, /*target_side_only=*/false, {}));
 
-  out.constraints.push_back("contract-only trainable allocation surface; PPO "
-                            "execution is not implemented");
+  out.constraints.push_back(
+      "bounded PPO V0 trainable allocation surface; Runtime owns execution");
   out.constraints.push_back(
       "consumes curated policy_input_t, not raw observation_t or raw MDN "
       "tensors");
@@ -54,8 +54,13 @@ make_graph_node_allocation_assembly(
       "target_node_weights_simplex.v1 adapter constrains neural logits to a "
       "long-only simplex action");
   out.constraints.push_back(
+      "trainable checkpoints must bind a named simplex action distribution "
+      "before PPO execution");
+  out.constraints.push_back(
       "training must bind causal_walk_forward_training.v1 before executable "
       "policy learning");
+  out.constraints.push_back(
+      "live capital remains forbidden for graph-node allocation PPO V0");
   wa::validate_wikimyei_assembly(out);
   return out;
 }
