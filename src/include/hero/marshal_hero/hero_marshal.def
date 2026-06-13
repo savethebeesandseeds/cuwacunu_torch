@@ -17,12 +17,12 @@ HERO_MARSHAL_TOOL(
     R"({"type":"object","properties":{},"additionalProperties":false})")
 
 HERO_MARSHAL_TOOL(
-    "hero.marshal.prepare.train.one_step",
-    "Prepare one finite train-target movement for one dispatchable Lattice "
-    "target. This is the single-step target-movement path; replay uses "
-    "rollout, artifact-readiness routes to inspect, and policy-training is "
-    "reserved until a concrete Runtime contract exists. Target-specific "
-    "payload fields live in args_path.",
+    "hero.marshal.prepare.train",
+    "Prepare train-target movement for one dispatchable Lattice target using "
+    "a Marshal prepare profile. Replay uses rollout, artifact-readiness "
+    "routes to inspect, and policy-training is reserved until a concrete "
+    "Runtime contract exists. Marshal derives Lattice/Runtime evidence at "
+    "call time.",
     R"({
       "type": "object",
       "properties": {
@@ -33,11 +33,11 @@ HERO_MARSHAL_TOOL(
           "type": "string",
           "enum": ["plan", "dry_run", "execute"]
         },
-        "args_path": {
+        "profile": {
           "type": "string"
         },
-        "args_digest": {
-          "type": "string"
+        "include_machine_payload": {
+          "type": "boolean"
         }
       },
       "required": ["target_id", "mode"],
@@ -45,9 +45,11 @@ HERO_MARSHAL_TOOL(
     })")
 
 HERO_MARSHAL_TOOL(
-    "hero.marshal.prepare.train.budgeted",
-    "Prepare bounded train-target movement for one dispatchable Lattice "
-    "target using an explicit driver policy from args_path.",
+    "hero.marshal.prepare.evaluate",
+    "Prepare evaluate-target movement for one dispatchable Lattice target "
+    "using a Marshal prepare profile. Replay uses rollout and "
+    "artifact-readiness routes to inspect. Marshal derives Lattice/Runtime "
+    "evidence at call time.",
     R"({
       "type": "object",
       "properties": {
@@ -58,63 +60,11 @@ HERO_MARSHAL_TOOL(
           "type": "string",
           "enum": ["plan", "dry_run", "execute"]
         },
-        "args_path": {
+        "profile": {
           "type": "string"
         },
-        "args_digest": {
-          "type": "string"
-        }
-      },
-      "required": ["target_id", "mode"],
-      "additionalProperties": false
-    })")
-
-HERO_MARSHAL_TOOL(
-    "hero.marshal.prepare.evaluate.one_step",
-    "Prepare one finite evaluate-target movement for one dispatchable Lattice "
-    "target. This is the single-step target-movement path; replay uses "
-    "rollout and artifact-readiness routes to inspect. Target-specific "
-    "payload fields live in args_path.",
-    R"({
-      "type": "object",
-      "properties": {
-        "target_id": {
-          "type": "string"
-        },
-        "mode": {
-          "type": "string",
-          "enum": ["plan", "dry_run", "execute"]
-        },
-        "args_path": {
-          "type": "string"
-        },
-        "args_digest": {
-          "type": "string"
-        }
-      },
-      "required": ["target_id", "mode"],
-      "additionalProperties": false
-    })")
-
-HERO_MARSHAL_TOOL(
-    "hero.marshal.prepare.evaluate.budgeted",
-    "Prepare bounded evaluate-target movement for one dispatchable Lattice "
-    "target using an explicit driver policy from args_path.",
-    R"({
-      "type": "object",
-      "properties": {
-        "target_id": {
-          "type": "string"
-        },
-        "mode": {
-          "type": "string",
-          "enum": ["plan", "dry_run", "execute"]
-        },
-        "args_path": {
-          "type": "string"
-        },
-        "args_digest": {
-          "type": "string"
+        "include_machine_payload": {
+          "type": "boolean"
         }
       },
       "required": ["target_id", "mode"],
@@ -124,23 +74,32 @@ HERO_MARSHAL_TOOL(
 HERO_MARSHAL_TOOL(
     "hero.marshal.rollout",
     "Prepare or execute a bounded Kikijyeba historical replay rollout from a "
-    "completed Runtime job: policy set plus Cajtucu paper execution profile "
-    "becomes Runtime replay trajectory evidence. Accounting numeraire defaults "
-    "from [ACCOUNTING].accounting_numeraire_node_id in .config. Runtime "
-    "executes and writes reports; Marshal records the handoff. Rollout packet "
-    "fields live in args_path.",
+    "completed Runtime job using a Marshal rollout profile. Runtime executes "
+    "and writes reports; Marshal records the handoff.",
     R"({
       "type": "object",
-      "required": ["mode", "args_path"],
+      "required": ["mode", "runtime_job_dir", "rollout_id", "rollout_attempt_id", "target_node_ids"],
       "properties": {
         "mode": {
           "type": "string",
           "enum": ["plan", "execute"]
         },
-        "args_path": {
+        "runtime_job_dir": {
           "type": "string"
         },
-        "args_digest": {
+        "rollout_id": {
+          "type": "string"
+        },
+        "rollout_attempt_id": {
+          "type": "string"
+        },
+        "target_node_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "profile": {
           "type": "string"
         },
         "include_machine_payload": {
@@ -183,7 +142,7 @@ HERO_MARSHAL_TOOL(
 HERO_MARSHAL_TOOL(
     "hero.marshal.inspect.protocol.strict",
     "Read-only strict protocol identity inspection over Runtime evidence.",
-    R"({"type":"object","required":["protocol_contract_fingerprint","graph_order_fingerprint","source_cursor_token","vicreg_assembly_fingerprint","mdn_assembly_fingerprint"],"properties":{"runtime_root":{"type":"string"},"config_path":{"type":"string"},"job_id":{"type":"string"},"job_ids":{"type":"array","items":{"type":"string"}},"include_machine_payload":{"type":"boolean"},"protocol_contract_fingerprint":{"type":"string"},"graph_order_fingerprint":{"type":"string"},"source_cursor_token":{"type":"string"},"vicreg_assembly_fingerprint":{"type":"string"},"mdn_assembly_fingerprint":{"type":"string"}},"additionalProperties":false})")
+    R"({"type":"object","required":["expected_identity"],"properties":{"runtime_root":{"type":"string"},"config_path":{"type":"string"},"job_id":{"type":"string"},"job_ids":{"type":"array","items":{"type":"string"}},"include_machine_payload":{"type":"boolean"},"expected_identity":{"type":"object","required":["protocol_contract_fingerprint","graph_order_fingerprint","source_cursor_token","vicreg_assembly_fingerprint","mdn_assembly_fingerprint"],"properties":{"protocol_contract_fingerprint":{"type":"string"},"graph_order_fingerprint":{"type":"string"},"source_cursor_token":{"type":"string"},"vicreg_assembly_fingerprint":{"type":"string"},"mdn_assembly_fingerprint":{"type":"string"}},"additionalProperties":false}},"additionalProperties":false})")
 
 HERO_MARSHAL_TOOL(
     "hero.marshal.inspect.spawn.by_id",

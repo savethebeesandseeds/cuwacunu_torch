@@ -1254,8 +1254,8 @@ void check_catalog(const std::string &label, const fs::path &binary,
     if (tool.name == "hero.runtime.run") {
       saw_runtime_run = true;
       for (const auto retired_field :
-           {"\"config_path\"", "\"runtime_handoff\"", "\"contract_path\"",
-            "\"contract_digest\"", "\"execution_request_path\"",
+           {"\"args_path\"", "\"args_digest\"", "\"config_path\"",
+            "\"runtime_handoff\"", "\"execution_request_path\"",
             "\"execution_request_digest\"", "\"policy_id\"", "\"policy_kind\"",
             "\"job_dir\"", "\"wave_overlay\"", "\"marshal_expected_wave\"",
             "\"timeout_seconds\"", "\"confirm_execute\""}) {
@@ -1266,10 +1266,12 @@ void check_catalog(const std::string &label, const fs::path &binary,
         }
       }
       for (const auto retained_field :
-           {"\"mode\"", "\"args_path\"", "\"args_digest\""}) {
+           {"\"mode\"", "\"runtime_handoff_path\"",
+            "\"runtime_handoff_digest\"", "\"contract_path\"",
+            "\"contract_digest\""}) {
         if (tool.input_schema.find(retained_field) == std::string::npos) {
           throw std::runtime_error(
-              "Runtime run schema is missing retained locator field: " +
+              "Runtime run schema is missing retained artifact field: " +
               std::string(retained_field));
         }
       }
@@ -1281,18 +1283,18 @@ void check_catalog(const std::string &label, const fs::path &binary,
     if (tool.name == "hero.runtime.reset") {
       saw_runtime_reset = true;
       for (const auto retained_field :
-           {"\"mode\"", "\"args_path\"", "\"args_digest\""}) {
+           {"\"mode\"", "\"runtime_root\"", "\"backup\""}) {
         if (tool.input_schema.find(retained_field) == std::string::npos) {
           throw std::runtime_error(
-              "Runtime reset schema is missing retained request field: " +
+              "Runtime reset schema is missing direct field: " +
               std::string(retained_field));
         }
       }
       for (const auto retired_field :
-           {"\"runtime_root\"", "\"backup\"", "\"confirm_dev_nuke\""}) {
+           {"\"args_path\"", "\"args_digest\"", "\"confirm_dev_nuke\""}) {
         if (tool.input_schema.find(retired_field) != std::string::npos) {
           throw std::runtime_error(
-              "Runtime reset schema still exposes payload field: " +
+              "Runtime reset schema still exposes retired field: " +
               std::string(retired_field));
         }
       }
@@ -1351,37 +1353,43 @@ void check_catalog(const std::string &label, const fs::path &binary,
         saw_environment_certify_paper_online_readiness = true;
       }
       for (const auto retired_field :
-           {"\"config_path\"", "\"job_id\"", "\"job_dir\"",
-            "\"policy_training_job_dir\"",
-            "\"tsodao_settings_protection_job_dir\"",
-            "\"policy_acceptance_job_dir\"", "\"confirm_issue\"",
-            "\"acceptance_id\"", "\"primary_metric_value\"",
-            "\"policy_acceptance_decision\"", "\"readiness_id\"",
-            "\"paper_online_profile_digest\"", "\"kill_switch_bound\"",
-            "\"subject\""}) {
+           {"\"config_path\"", "\"job_id\"", "\"job_dir\"", "\"args_path\"",
+            "\"args_digest\"", "\"confirm_issue\"", "\"primary_metric_value\"",
+            "\"policy_acceptance_decision\"", "\"paper_online_profile_digest\"",
+            "\"kill_switch_bound\"", "\"subject\""}) {
         if (tool.input_schema.find(retired_field) != std::string::npos) {
           throw std::runtime_error("Environment certify schema still exposes "
                                    "retired payload field: " +
                                    std::string(retired_field));
         }
       }
-      for (const auto retained_field :
-           {"\"mode\"", "\"args_path\"", "\"args_digest\""}) {
+      std::vector<std::string> retained_fields{"\"mode\"",
+                                               "\"certification_evidence\"",
+                                               "\"expected_preview_digest\""};
+      if (tool.name == "hero.environment.certify.policy_acceptance") {
+        retained_fields.push_back("\"policy_training_job_dir\"");
+        retained_fields.push_back("\"tsodao_settings_protection_job_dir\"");
+        retained_fields.push_back("\"acceptance_id\"");
+      } else if (tool.name ==
+                 "hero.environment.certify.paper_online_readiness") {
+        retained_fields.push_back("\"policy_acceptance_job_dir\"");
+        retained_fields.push_back("\"readiness_id\"");
+      }
+      for (const auto &retained_field : retained_fields) {
         if (tool.input_schema.find(retained_field) == std::string::npos) {
           throw std::runtime_error(
-              "Environment certify schema is missing retained request field: " +
-              std::string(retained_field));
+              "Environment certify schema is missing direct field: " +
+              retained_field);
         }
       }
     }
     if (tool.name == "hero.environment.rollout") {
       saw_environment_rollout = true;
-      for (const auto retired_field : {"\"rollout_id\"",
-                                       "\"rollout_attempt_id\"",
+      for (const auto retired_field : {"\"args_path\"",
+                                       "\"args_digest\"",
                                        "\"idempotency_key\"",
                                        "\"experiment_id\"",
                                        "\"config_path\"",
-                                       "\"runtime_job_dir\"",
                                        "\"replay_batch_index_path\"",
                                        "\"runtime_exec_path\"",
                                        "\"report_path\"",
@@ -1390,7 +1398,6 @@ void check_catalog(const std::string &label, const fs::path &binary,
                                        "\"graph_order_fingerprint\"",
                                        "\"asset_universe_digest\"",
                                        "\"accounting_numeraire_node_id\"",
-                                       "\"target_node_ids\"",
                                        "\"policy_set\"",
                                        "\"max_steps\"",
                                        "\"max_parallel_jobs\"",
@@ -1406,7 +1413,8 @@ void check_catalog(const std::string &label, const fs::path &binary,
         }
       }
       for (const auto retained_field :
-           {"\"mode\"", "\"args_path\"", "\"args_digest\"",
+           {"\"mode\"", "\"runtime_job_dir\"", "\"rollout_id\"",
+            "\"rollout_attempt_id\"", "\"target_node_ids\"",
             "\"include_machine_payload\""}) {
         if (tool.input_schema.find(retained_field) == std::string::npos) {
           throw std::runtime_error(
@@ -1429,17 +1437,16 @@ void check_catalog(const std::string &label, const fs::path &binary,
     }
     if (tool.name.rfind("hero.marshal.prepare.", 0) == 0) {
       ++marshal_prepare_tool_count;
-      const bool split_prepare_name =
-          tool.name == "hero.marshal.prepare.train.one_step" ||
-          tool.name == "hero.marshal.prepare.train.budgeted" ||
-          tool.name == "hero.marshal.prepare.evaluate.one_step" ||
-          tool.name == "hero.marshal.prepare.evaluate.budgeted";
-      if (!split_prepare_name) {
-        throw std::runtime_error("unexpected Marshal prepare split tool: " +
+      const bool prepare_facade_name =
+          tool.name == "hero.marshal.prepare.train" ||
+          tool.name == "hero.marshal.prepare.evaluate";
+      if (!prepare_facade_name) {
+        throw std::runtime_error("unexpected Marshal prepare facade tool: " +
                                  tool.name);
       }
       for (const auto retained_field :
-           {"\"target_id\"", "\"mode\"", "\"args_path\"", "\"args_digest\""}) {
+           {"\"target_id\"", "\"mode\"", "\"profile\"",
+            "\"include_machine_payload\""}) {
         if (tool.input_schema.find(retained_field) == std::string::npos) {
           throw std::runtime_error(
               "Marshal prepare schema is missing retained request field: " +
@@ -1463,7 +1470,8 @@ void check_catalog(const std::string &label, const fs::path &binary,
                                        "\"mdn_assembly_fingerprint\"",
                                        "\"materialize_plan_inputs\"",
                                        "\"include_runtime_dry_run\"",
-                                       "\"include_machine_payload\"",
+                                       "\"args_path\"",
+                                       "\"args_digest\"",
                                        "\"runtime_policy\"",
                                        "\"runtime_wave\"",
                                        "\"timeout_seconds\"",
@@ -1478,12 +1486,11 @@ void check_catalog(const std::string &label, const fs::path &binary,
     }
     if (tool.name == "hero.marshal.rollout") {
       saw_marshal_rollout = true;
-      for (const auto retired_field : {"\"rollout_id\"",
-                                       "\"rollout_attempt_id\"",
+      for (const auto retired_field : {"\"args_path\"",
+                                       "\"args_digest\"",
                                        "\"idempotency_key\"",
                                        "\"experiment_id\"",
                                        "\"config_path\"",
-                                       "\"runtime_job_dir\"",
                                        "\"replay_batch_index_path\"",
                                        "\"runtime_exec_path\"",
                                        "\"report_path\"",
@@ -1492,7 +1499,6 @@ void check_catalog(const std::string &label, const fs::path &binary,
                                        "\"graph_order_fingerprint\"",
                                        "\"asset_universe_digest\"",
                                        "\"accounting_numeraire_node_id\"",
-                                       "\"target_node_ids\"",
                                        "\"policy_set\"",
                                        "\"max_steps\"",
                                        "\"max_parallel_jobs\"",
@@ -1508,7 +1514,8 @@ void check_catalog(const std::string &label, const fs::path &binary,
         }
       }
       for (const auto retained_field :
-           {"\"mode\"", "\"args_path\"", "\"args_digest\"",
+           {"\"mode\"", "\"runtime_job_dir\"", "\"rollout_id\"",
+            "\"rollout_attempt_id\"", "\"target_node_ids\"", "\"profile\"",
             "\"include_machine_payload\""}) {
         if (tool.input_schema.find(retained_field) == std::string::npos) {
           throw std::runtime_error(
@@ -1563,7 +1570,7 @@ void check_catalog(const std::string &label, const fs::path &binary,
              {"job_id", "job_ids", "target_ids",
               "protocol_contract_fingerprint", "graph_order_fingerprint",
               "source_cursor_token", "vicreg_assembly_fingerprint",
-              "mdn_assembly_fingerprint"}) {
+              "mdn_assembly_fingerprint", "expected_identity"}) {
           marshal_reject_property(field);
         }
       } else {
@@ -1581,7 +1588,7 @@ void check_catalog(const std::string &label, const fs::path &binary,
         for (const auto field :
              {"protocol_contract_fingerprint", "graph_order_fingerprint",
               "source_cursor_token", "vicreg_assembly_fingerprint",
-              "mdn_assembly_fingerprint"}) {
+              "mdn_assembly_fingerprint", "expected_identity"}) {
           marshal_reject_property(field);
         }
       }
@@ -1626,7 +1633,8 @@ void check_catalog(const std::string &label, const fs::path &binary,
                                "graph_order_fingerprint",
                                "source_cursor_token",
                                "vicreg_assembly_fingerprint",
-                               "mdn_assembly_fingerprint"}) {
+                               "mdn_assembly_fingerprint",
+                               "expected_identity"}) {
         marshal_reject_property(field);
       }
     }
@@ -1640,16 +1648,12 @@ void check_catalog(const std::string &label, const fs::path &binary,
       marshal_require_property("include_machine_payload");
       marshal_reject_property("identity_mode");
       if (tool.name == "hero.marshal.inspect.protocol.strict") {
-        marshal_require_property("protocol_contract_fingerprint");
-        marshal_require_property("graph_order_fingerprint");
-        marshal_require_property("source_cursor_token");
-        marshal_require_property("vicreg_assembly_fingerprint");
-        marshal_require_property("mdn_assembly_fingerprint");
+        marshal_require_property("expected_identity");
       } else if (tool.name == "hero.marshal.inspect.protocol.report") {
         for (const auto field :
              {"protocol_contract_fingerprint", "graph_order_fingerprint",
               "source_cursor_token", "vicreg_assembly_fingerprint",
-              "mdn_assembly_fingerprint"}) {
+              "mdn_assembly_fingerprint", "expected_identity"}) {
           marshal_reject_property(field);
         }
       } else {
@@ -1731,7 +1735,8 @@ void check_catalog(const std::string &label, const fs::path &binary,
                                "graph_order_fingerprint",
                                "source_cursor_token",
                                "vicreg_assembly_fingerprint",
-                               "mdn_assembly_fingerprint"}) {
+                               "mdn_assembly_fingerprint",
+                               "expected_identity"}) {
         marshal_reject_property(field);
       }
     }
@@ -1766,7 +1771,8 @@ void check_catalog(const std::string &label, const fs::path &binary,
                                "graph_order_fingerprint",
                                "source_cursor_token",
                                "vicreg_assembly_fingerprint",
-                               "mdn_assembly_fingerprint"}) {
+                               "mdn_assembly_fingerprint",
+                               "expected_identity"}) {
         marshal_reject_property(field);
       }
     }
@@ -1831,7 +1837,7 @@ void check_catalog(const std::string &label, const fs::path &binary,
             "component_spawn_label", "component_spawn_fingerprint",
             "protocol_contract_fingerprint", "graph_order_fingerprint",
             "source_cursor_token", "vicreg_assembly_fingerprint",
-            "mdn_assembly_fingerprint"}) {
+            "mdn_assembly_fingerprint", "expected_identity"}) {
         marshal_reject_property(field);
       }
     }
@@ -1922,8 +1928,8 @@ void check_catalog(const std::string &label, const fs::path &binary,
                              "evaluate subtools, and compare");
   }
   if (label == "Marshal" &&
-      (tools.size() != 25U || !saw_marshal_status ||
-       marshal_prepare_tool_count != 4 || !saw_marshal_rollout ||
+      (tools.size() != 23U || !saw_marshal_status ||
+       marshal_prepare_tool_count != 2 || !saw_marshal_rollout ||
        marshal_inspect_tool_count != 19 ||
        marshal_inspect_run_tool_count != 4 || !saw_marshal_inspect_target ||
        !saw_marshal_inspect_protocol ||
@@ -1933,7 +1939,7 @@ void check_catalog(const std::string &label, const fs::path &binary,
        marshal_inspect_facts_tool_count != 6)) {
     throw std::runtime_error(
         "Marshal catalog must expose exactly hero.marshal.status, "
-        "four hero.marshal.prepare.* tools, hero.marshal.rollout, and "
+        "two hero.marshal.prepare.* tools, hero.marshal.rollout, and "
         "nineteen hero.marshal.inspect.* tools");
   }
 }
@@ -2117,22 +2123,6 @@ void check_config_collapsed_surface(const fs::path &binary) {
 void check_runtime_collapsed_surface(const fs::path &binary) {
   const std::string base =
       binary.string() + " --global-config /cuwacunu/src/config/.config ";
-  const fs::path request_dir =
-      fs::temp_directory_path() / "hero_mcp_schema_compat" / "runtime_requests";
-  fs::create_directories(request_dir);
-  int request_index = 0;
-  const auto write_request = [&](const std::string &name,
-                                 const std::string &text) {
-    const fs::path path =
-        request_dir / (std::to_string(++request_index) + "_" + name + ".kv");
-    std::ofstream out(path, std::ios::trunc);
-    if (!out) {
-      throw std::runtime_error("failed to write Runtime request: " +
-                               path.string());
-    }
-    out << text;
-    return path;
-  };
 
   const std::string schema_output = read_command_stdout(
       base + "--tool hero.runtime.inspect.schema --args-json '{}'");
@@ -2191,22 +2181,24 @@ void check_runtime_collapsed_surface(const fs::path &binary) {
   require_contains(reset_plan_output, "\"dry_run\":true",
                    "Runtime reset mode=plan should preview reset");
 
+  const auto reset_retired_args =
+      run_command_capture(base + "--tool hero.runtime.reset --args-json "
+                                 "'{\"mode\":\"plan\","
+                                 "\"args_path\":\"/tmp/reset.kv\"}'");
+  if (reset_retired_args.status == 0 ||
+      reset_retired_args.output.find("unknown field: args_path") ==
+          std::string::npos) {
+    throw std::runtime_error(
+        "Runtime reset should reject retired args_path field\n" +
+        reset_retired_args.output);
+  }
+
   const std::string run_preview_output =
       read_command_stdout(base + "--tool hero.runtime.run --args-json "
                                  "'{\"mode\":\"dry_run\"}'");
   require_contains(run_preview_output, "\"argv\":[",
                    "Runtime run dry_run should still be accepted without "
                    "a request file");
-
-  const fs::path run_request = write_request(
-      "run_config_path", "config_path=/cuwacunu/src/config/.config\n");
-  const std::string run_request_output =
-      read_command_stdout(base +
-                          "--tool hero.runtime.run --args-json "
-                          "'{\"mode\":\"dry_run\",\"args_path\":\"" +
-                          run_request.string() + "\"}'");
-  require_contains(run_request_output, "\"argv\":[",
-                   "Runtime run should accept args_path payloads");
 
   const auto unknown_old_tool =
       run_command_capture(base + "--tool hero.runtime.schema --args-json '{}'");
@@ -2227,6 +2219,30 @@ void check_runtime_collapsed_surface(const fs::path &binary) {
     throw std::runtime_error(
         "Runtime run should reject retired top-level dry_run field\n" +
         old_dry_run_field.output);
+  }
+
+  const auto old_args_path_field =
+      run_command_capture(base + "--tool hero.runtime.run --args-json "
+                                 "'{\"mode\":\"dry_run\","
+                                 "\"args_path\":\"/tmp/runtime-run.kv\"}'");
+  if (old_args_path_field.status == 0 ||
+      old_args_path_field.output.find("unknown field: args_path") ==
+          std::string::npos) {
+    throw std::runtime_error(
+        "Runtime run should reject retired args_path field\n" +
+        old_args_path_field.output);
+  }
+
+  const auto old_args_digest_field =
+      run_command_capture(base + "--tool hero.runtime.run --args-json "
+                                 "'{\"mode\":\"dry_run\","
+                                 "\"args_digest\":\"digest\"}'");
+  if (old_args_digest_field.status == 0 ||
+      old_args_digest_field.output.find("unknown field: args_digest") ==
+          std::string::npos) {
+    throw std::runtime_error(
+        "Runtime run should reject retired args_digest field\n" +
+        old_args_digest_field.output);
   }
 
   const auto old_config_path_field = run_command_capture(
@@ -2254,62 +2270,29 @@ void check_runtime_collapsed_surface(const fs::path &binary) {
         old_execution_request_field.output);
   }
 
-  const fs::path duplicate_run_request = write_request(
-      "run_duplicate",
-      "config_path=/cuwacunu/src/config/.config\nconfig_path=/tmp/x\n");
-  const auto duplicate_run =
-      run_command_capture(base +
-                          "--tool hero.runtime.run --args-json "
-                          "'{\"mode\":\"dry_run\",\"args_path\":\"" +
-                          duplicate_run_request.string() + "\"}'");
-  if (duplicate_run.status == 0 ||
-      duplicate_run.output.find(
-          "E_RUNTIME_RUN_REQUEST_DUPLICATE_FIELD: config_path") ==
+  const auto handoff_digest_without_path =
+      run_command_capture(base + "--tool hero.runtime.run --args-json "
+                                 "'{\"mode\":\"dry_run\","
+                                 "\"runtime_handoff_digest\":\"digest\"}'");
+  if (handoff_digest_without_path.status == 0 ||
+      handoff_digest_without_path.output.find(
+          "runtime_handoff_digest requires runtime_handoff_path") ==
           std::string::npos) {
     throw std::runtime_error(
-        "Runtime run request should reject duplicate fields\n" +
-        duplicate_run.output);
+        "Runtime run should reject runtime_handoff_digest without path\n" +
+        handoff_digest_without_path.output);
   }
 
-  const fs::path public_run_request = write_request(
-      "run_public", "subject=wave\nconfig_path=/cuwacunu/src/config/.config\n");
-  const auto public_run =
-      run_command_capture(base +
-                          "--tool hero.runtime.run --args-json "
-                          "'{\"mode\":\"dry_run\",\"args_path\":\"" +
-                          public_run_request.string() + "\"}'");
-  if (public_run.status == 0 ||
-      public_run.output.find("E_RUNTIME_RUN_REQUEST_PUBLIC_FIELD: subject") ==
-          std::string::npos) {
+  const auto contract_digest_without_path =
+      run_command_capture(base + "--tool hero.runtime.run --args-json "
+                                 "'{\"mode\":\"dry_run\","
+                                 "\"contract_digest\":\"digest\"}'");
+  if (contract_digest_without_path.status == 0 ||
+      contract_digest_without_path.output.find(
+          "contract_digest requires contract_path") == std::string::npos) {
     throw std::runtime_error(
-        "Runtime run request should reject public fields\n" +
-        public_run.output);
-  }
-
-  const auto run_digest_mismatch = run_command_capture(
-      base +
-      "--tool hero.runtime.run --args-json "
-      "'{\"mode\":\"dry_run\",\"args_path\":\"" +
-      run_request.string() + "\",\"args_digest\":\"wrong\"}'");
-  if (run_digest_mismatch.status == 0 ||
-      run_digest_mismatch.output.find(
-          "E_RUNTIME_RUN_REQUEST_DIGEST_MISMATCH") == std::string::npos) {
-    throw std::runtime_error(
-        "Runtime run should reject request digest mismatch\n" +
-        run_digest_mismatch.output);
-  }
-
-  const auto execute_without_digest =
-      run_command_capture(base +
-                          "--tool hero.runtime.run --args-json "
-                          "'{\"mode\":\"execute\",\"args_path\":\"" +
-                          run_request.string() + "\"}'");
-  if (execute_without_digest.status == 0 ||
-      execute_without_digest.output.find(
-          "E_RUNTIME_RUN_REQUEST_DIGEST_REQUIRED") == std::string::npos) {
-    throw std::runtime_error(
-        "Runtime run execute with request file should require digest\n" +
-        execute_without_digest.output);
+        "Runtime run should reject contract_digest without path\n" +
+        contract_digest_without_path.output);
   }
 
   const auto run_retired_subject =
@@ -2333,6 +2316,17 @@ void check_runtime_collapsed_surface(const fs::path &binary) {
     throw std::runtime_error(
         "Runtime split tool hero.runtime.run_wave should fail as unknown\n" +
         split_run_wave_tool.output);
+  }
+
+  const auto replay_delegate_as_tool =
+      run_command_capture(base + "--tool hero.runtime.replay --args-json "
+                                 "'{\"mode\":\"dry_run\"}'");
+  if (replay_delegate_as_tool.status == 0 ||
+      replay_delegate_as_tool.output.find(
+          "unknown tool: hero.runtime.replay") == std::string::npos) {
+    throw std::runtime_error(
+        "Runtime replay delegate should not be reachable as a tool\n" +
+        replay_delegate_as_tool.output);
   }
 }
 
@@ -2439,7 +2433,9 @@ void check_environment_inspect_derouted_surface(const fs::path &binary) {
   const auto certify_retired_subject = run_command_capture(
       base + "--tool hero.environment.certify.policy_acceptance --args-json "
              "'{\"subject\":\"policy_acceptance\",\"mode\":\"check\","
-             "\"args_path\":\"/tmp/nope.kv\"}'");
+             "\"policy_training_job_dir\":\"/tmp/x\","
+             "\"acceptance_id\":\"policy_acceptance_fixture_v1\","
+             "\"certification_evidence\":{}}'");
   if (certify_retired_subject.status == 0 ||
       certify_retired_subject.output.find("unknown field: subject") ==
           std::string::npos) {
@@ -2447,6 +2443,37 @@ void check_environment_inspect_derouted_surface(const fs::path &binary) {
         "Environment certify.policy_acceptance should reject retired subject "
         "field\n" +
         certify_retired_subject.output);
+  }
+
+  const auto certify_retired_args_path = run_command_capture(
+      base + "--tool hero.environment.certify.policy_acceptance --args-json "
+             "'{\"mode\":\"check\",\"policy_training_job_dir\":\"/tmp/x\","
+             "\"acceptance_id\":\"policy_acceptance_fixture_v1\","
+             "\"certification_evidence\":{},"
+             "\"args_path\":\"/tmp/nope.kv\"}'");
+  if (certify_retired_args_path.status == 0 ||
+      certify_retired_args_path.output.find("unknown field: args_path") ==
+          std::string::npos) {
+    throw std::runtime_error(
+        "Environment certify.policy_acceptance should reject retired "
+        "args_path field\n" +
+        certify_retired_args_path.output);
+  }
+
+  const auto certify_retired_args_digest = run_command_capture(
+      base + "--tool hero.environment.certify.paper_online_readiness "
+             "--args-json "
+             "'{\"mode\":\"check\",\"policy_acceptance_job_dir\":\"/tmp/x\","
+             "\"readiness_id\":\"paper_online_readiness_fixture_v1\","
+             "\"certification_evidence\":{},"
+             "\"args_digest\":\"digest\"}'");
+  if (certify_retired_args_digest.status == 0 ||
+      certify_retired_args_digest.output.find("unknown field: args_digest") ==
+          std::string::npos) {
+    throw std::runtime_error(
+        "Environment certify.paper_online_readiness should reject retired "
+        "args_digest field\n" +
+        certify_retired_args_digest.output);
   }
 }
 

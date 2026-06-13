@@ -696,26 +696,9 @@ prepare_evaluation_plan(const marshal_evaluation_request_t &request) {
     const marshal_evaluation_request_t &request,
     const marshal_evaluation_plan_t &plan) {
   namespace detail = evaluation_marshal_detail;
-  std::ostringstream request_text;
-  detail::append_kv(request_text, "source_range", "anchor_index");
-  detail::append_i64(request_text, "anchor_index_begin",
-                     request.validation_range.anchor_index_begin);
-  detail::append_i64(request_text, "anchor_index_end",
-                     request.validation_range.anchor_index_end);
-  detail::append_bool(request_text, "force_rebuild_cache",
-                      request.force_rebuild_cache);
-  const std::string execution_request_text = request_text.str();
-  const std::string execution_request_digest = marshal_digest_for_text(
-      "kikijyeba.runtime.policy_training_execution_request.v1",
-      execution_request_text);
-  const std::filesystem::path execution_request_dir =
+  const std::filesystem::path handoff_dir =
       std::filesystem::temp_directory_path() / "cuwacunu_hero_runtime_requests";
-  std::filesystem::create_directories(execution_request_dir);
-  const std::filesystem::path execution_request_path =
-      execution_request_dir /
-      ("evaluation_" + execution_request_digest + ".kv");
-  std::ofstream request_out(execution_request_path, std::ios::trunc);
-  request_out << execution_request_text;
+  std::filesystem::create_directories(handoff_dir);
 
   std::ostringstream handoff_json;
   handoff_json << "{";
@@ -749,34 +732,18 @@ prepare_evaluation_plan(const marshal_evaluation_request_t &request) {
   const std::string handoff_digest = marshal_digest_for_text(
       "kikijyeba.runtime.run_request.runtime_handoff_file.v1", handoff_text);
   const std::filesystem::path handoff_path =
-      execution_request_dir /
-      ("evaluation_handoff_" + handoff_digest + ".json");
+      handoff_dir / ("evaluation_handoff_" + handoff_digest + ".json");
   std::ofstream handoff_out(handoff_path, std::ios::trunc);
   handoff_out << handoff_text;
-
-  std::ostringstream run_request_text;
-  run_request_text << "config_path=" << request.evaluation_config_path.string()
-                   << "\n"
-                   << "execution_request_path="
-                   << execution_request_path.string() << "\n"
-                   << "execution_request_digest=" << execution_request_digest
-                   << "\n"
-                   << "runtime_handoff_path=" << handoff_path.string() << "\n"
-                   << "runtime_handoff_digest=" << handoff_digest << "\n";
-  const std::string args_digest = marshal_digest_for_text(
-      "kikijyeba.runtime.run_request.wave.v1", run_request_text.str());
-  const std::filesystem::path args_path =
-      execution_request_dir / ("evaluation_run_" + args_digest + ".kv");
-  std::ofstream run_request_out(args_path, std::ios::trunc);
-  run_request_out << run_request_text.str();
 
   std::ostringstream args;
   args << "{";
   bool first = true;
   detail::append_json_string_field(args, "mode", "dry_run", &first);
-  detail::append_json_string_field(args, "args_path", args_path.string(),
-                                   &first);
-  detail::append_json_string_field(args, "args_digest", args_digest, &first);
+  detail::append_json_string_field(args, "runtime_handoff_path",
+                                   handoff_path.string(), &first);
+  detail::append_json_string_field(args, "runtime_handoff_digest",
+                                   handoff_digest, &first);
   args << "}";
   return args.str();
 }

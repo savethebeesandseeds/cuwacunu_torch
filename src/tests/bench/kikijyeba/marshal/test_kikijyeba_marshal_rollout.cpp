@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
+#include <map>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -87,6 +88,19 @@ std::string csv(const std::vector<std::string> &values) {
   return out.str();
 }
 
+std::string json_string_array(const std::vector<std::string> &values) {
+  std::ostringstream out;
+  out << "[";
+  for (std::size_t i = 0; i < values.size(); ++i) {
+    if (i != 0U) {
+      out << ",";
+    }
+    out << json_quote(values[i]);
+  }
+  out << "]";
+  return out.str();
+}
+
 std::string
 rollout_request_text(const marshal::marshal_rollout_request_t &request) {
   std::ostringstream out;
@@ -133,31 +147,97 @@ rollout_request_text(const marshal::marshal_rollout_request_t &request) {
   return out.str();
 }
 
-std::string args_digest(const std::string &request_text) {
-  return marshal::marshal_digest_for_text(
-      marshal::tool_detail::k_rollout_request_file_digest_domain_v1,
-      request_text);
+std::string double_text(const double value) {
+  std::ostringstream out;
+  out << value;
+  return out.str();
 }
 
-std::string compact_rollout_args(const std::string &requested_mode,
-                                 const std::filesystem::path &root,
-                                 const std::string &request_text,
-                                 bool include_digest = true,
-                                 bool include_machine_payload = false) {
-  const auto request_path =
-      root / ("rollout_request_" + requested_mode + ".kv");
-  write_text(request_path, request_text);
+std::map<std::string, std::string>
+rollout_profile_fields(const marshal::marshal_rollout_request_t &request) {
+  return {
+      {"policy_set", csv(request.policy_tokens)},
+      {"max_steps", std::to_string(request.max_steps)},
+      {"max_parallel_jobs", std::to_string(request.max_parallel_jobs)},
+      {"runtime_exec_path", request.runtime_exec_path.string()},
+      {"timeout_seconds", std::to_string(request.timeout_seconds)},
+      {"execution_backend_id", request.execution_profile.execution_backend_id},
+      {"cost_model_id", request.execution_profile.cost_model_id},
+      {"allow_synthetic_direct_edges",
+       request.execution_profile.allow_synthetic_direct_edges ? "true"
+                                                              : "false"},
+      {"synthetic_edge_research_reason",
+       request.execution_profile.synthetic_edge_research_reason},
+      {"linear_transaction_cost_rate",
+       double_text(request.execution_profile.linear_transaction_cost_rate)},
+      {"allow_partial_fills",
+       request.execution_profile.allow_partial_fills ? "true" : "false"},
+      {"equity_mismatch_tolerance",
+       double_text(request.execution_profile.equity_mismatch_tolerance)},
+      {"equity_mismatch_fail_tolerance",
+       double_text(request.execution_profile.equity_mismatch_fail_tolerance)},
+      {"live_execution_allowed",
+       request.execution_profile.live_execution_allowed ? "true" : "false"},
+  };
+}
+
+marshal::marshal_context_t
+rollout_test_context(const std::filesystem::path &root,
+                     const marshal::marshal_rollout_request_t &request,
+                     const std::string &profile_id = "test_rollout_profile") {
+  const auto config_path =
+      request.config_path.empty() ? root / ".config" : request.config_path;
+  if (!std::filesystem::exists(config_path)) {
+    write_text(config_path, "[ACCOUNTING]\n"
+                            "accounting_numeraire_node_id = USDT\n");
+  }
+
+  marshal::marshal_context_t ctx{};
+  ctx.global_config_path = config_path;
+  ctx.policy_path = "/cuwacunu/src/config/hero.marshal.dsl";
+  ctx.policy.policy_path = ctx.policy_path;
+  ctx.policy.global_config_path = ctx.global_config_path;
+  ctx.policy.values["protocol_layer"] =
+      std::string(marshal::kProtocolLayerStdio);
+  ctx.policy.values["prepare_profile"] = "single_wave_operator";
+  ctx.policy.values["rollout_profile"] = profile_id;
+  ctx.policy.prepare_profile_id = "single_wave_operator";
+  ctx.policy.rollout_profile_id = profile_id;
+  ctx.policy.rollout_profile_fields[profile_id] =
+      rollout_profile_fields(request);
+  return ctx;
+}
+
+std::string
+direct_rollout_args(const std::string &requested_mode,
+                    const marshal::marshal_rollout_request_t &request,
+                    bool include_machine_payload = false,
+                    const std::string &profile_id = "test_rollout_profile") {
   std::ostringstream out;
   out << "{\"mode\":" << json_quote(requested_mode)
-      << ",\"args_path\":" << json_quote(request_path.string());
-  if (include_digest) {
-    out << ",\"args_digest\":" << json_quote(args_digest(request_text));
+      << ",\"runtime_job_dir\":" << json_quote(request.runtime_job_dir.string())
+      << ",\"rollout_id\":" << json_quote(request.rollout_id)
+      << ",\"rollout_attempt_id\":" << json_quote(request.rollout_attempt_id)
+      << ",\"target_node_ids\":" << json_string_array(request.target_node_ids);
+  if (!profile_id.empty()) {
+    out << ",\"profile\":" << json_quote(profile_id);
   }
   if (include_machine_payload) {
     out << ",\"include_machine_payload\":true";
   }
   out << "}";
   return out.str();
+}
+
+std::string with_extra_json_field(std::string object_json,
+                                  const std::string &field_json) {
+  check(!object_json.empty() && object_json.back() == '}',
+        "test JSON object must end with }");
+  object_json.pop_back();
+  object_json += ",";
+  object_json += field_json;
+  object_json += "}";
+  return object_json;
 }
 
 bool has_refusal(const std::vector<std::string> &refusals,
@@ -495,15 +575,15 @@ void test_rollout_rejects_missing_replay_artifacts() {
 void test_rollout_tool_is_plan_only_without_lattice_callback() {
   const auto root = make_tmp_dir("tool");
   const auto request = valid_rollout_request(root);
+  auto ctx = rollout_test_context(root, request);
   marshal::set_marshal_lattice_tool_callback(nullptr);
 
-  const std::string args =
-      compact_rollout_args("plan", root, rollout_request_text(request));
+  const std::string args = direct_rollout_args("plan", request);
 
   std::string result;
   std::string error;
   check(marshal::execute_marshal_tool_json("hero.marshal.rollout", args,
-                                           &result, &error),
+                                           &result, &error, &ctx),
         "rollout tool should not require Lattice callback: " + error);
   check(result.find("\"tool\":\"hero.marshal.rollout\"") != std::string::npos,
         "rollout response should identify rollout tool");
@@ -534,18 +614,14 @@ void test_rollout_tool_is_plan_only_without_lattice_callback() {
 void test_rollout_tool_rejects_prepare_only_field() {
   const auto root = make_tmp_dir("prepare_only");
   const auto request = valid_rollout_request(root);
-  const std::string request_text = rollout_request_text(request);
-  const auto request_path = root / "rollout_request_prepare_only.kv";
-  write_text(request_path, request_text);
-  const std::string args = "{\"mode\":\"plan\","
-                           "\"args_path\":" +
-                           json_quote(request_path.string()) +
-                           ",\"prepare_only\":true}";
+  auto ctx = rollout_test_context(root, request);
+  const std::string args = with_extra_json_field(
+      direct_rollout_args("plan", request), "\"prepare_only\":true");
 
   std::string result;
   std::string error;
   check(!marshal::execute_marshal_tool_json("hero.marshal.rollout", args,
-                                            &result, &error),
+                                            &result, &error, &ctx),
         "rollout tool should reject legacy prepare_only field");
   check(error.find("hero.marshal.rollout unknown field: prepare_only") !=
             std::string::npos,
@@ -553,19 +629,20 @@ void test_rollout_tool_rejects_prepare_only_field() {
 }
 
 void test_rollout_request_rejects_removed_packet_fields() {
-  const auto root = make_tmp_dir("removed_packet_fields");
   for (const auto removed_field :
        {"environment_mode", "environment_assembly_id",
         "require_existing_runtime_job_dir", "require_completed_runtime_job",
         "require_replay_artifacts", "include_machine_payload"}) {
     const std::string request_text =
         std::string(removed_field) + " = removed\n";
-    const std::string args = compact_rollout_args("plan", root, request_text);
 
-    std::string result;
     std::string error;
-    check(!marshal::execute_marshal_tool_json("hero.marshal.rollout", args,
-                                              &result, &error),
+    try {
+      (void)marshal::tool_detail::parse_rollout_request_text(request_text);
+    } catch (const std::exception &ex) {
+      error = ex.what();
+    }
+    check(!error.empty(),
           "rollout request should reject removed packet fields");
     check(error.find("E_ROLLOUT_REQUEST_UNKNOWN_FIELD: " +
                      std::string(removed_field)) != std::string::npos,
@@ -576,36 +653,43 @@ void test_rollout_request_rejects_removed_packet_fields() {
 void test_rollout_tool_rejects_unknown_execution_profile_field() {
   const auto root = make_tmp_dir("unknown_profile_field");
   const auto request = valid_rollout_request(root);
-  std::string request_text = rollout_request_text(request);
-  const auto profile_pos = request_text.find("execution_profile = ");
-  check(profile_pos != std::string::npos,
-        "test request should contain execution_profile");
-  request_text.resize(profile_pos);
-  request_text += "execution_profile = {\"unsupported\":true}\n";
-  const std::string args = compact_rollout_args("plan", root, request_text);
+  auto ctx = rollout_test_context(root, request, "bad_rollout_profile");
+  ctx.policy.rollout_profile_fields["bad_rollout_profile"]["unsupported"] =
+      "true";
+  const std::string args =
+      direct_rollout_args("plan", request, false, "bad_rollout_profile");
 
   std::string result;
   std::string error;
   check(!marshal::execute_marshal_tool_json("hero.marshal.rollout", args,
-                                            &result, &error),
-        "rollout tool should reject unknown execution_profile fields");
-  check(error.find("rollout execution_profile unknown field: unsupported") !=
-            std::string::npos,
-        "unknown execution_profile field rejection should be explicit");
+                                            &result, &error, &ctx),
+        "rollout tool should reject unknown rollout profile fields");
+  check(error.find("MARSHAL_ROLLOUT_PROFILE bad_rollout_profile unknown field: "
+                   "unsupported") != std::string::npos,
+        "unknown rollout profile field rejection should be explicit");
 }
 
 void test_rollout_execute_calls_runtime_replay() {
   const auto root = make_tmp_dir("execute");
   auto request = valid_rollout_request(root);
   const auto config_path = root / ".config";
-  const auto policy_path = root / "hero.runtime.dsl";
+  const auto runtime_policy_path = root / "hero.runtime.dsl";
+  const auto environment_policy_path = root / "hero.environment.dsl";
   const auto fake_exec = root / "fake_cuwacunu_exec.sh";
   request.config_path = config_path;
   request.runtime_exec_path = fake_exec;
+  request.report_path = request.runtime_job_dir / "artifacts" /
+                        (request.rollout_id + ".replay.report");
 
   write_text(config_path, "[HERO]\n"
                           "runtime_hero_dsl_path = " +
-                              policy_path.string() + "\n");
+                              runtime_policy_path.string() +
+                              "\n"
+                              "environment_hero_dsl_path = " +
+                              environment_policy_path.string() +
+                              "\n"
+                              "[ACCOUNTING]\n"
+                              "accounting_numeraire_node_id = USDT\n");
   write_text(fake_exec,
              "#!/bin/sh\n"
              "mkdir -p '" +
@@ -629,55 +713,112 @@ void test_rollout_execute_calls_runtime_replay() {
                                std::filesystem::perms::owner_exec |
                                    std::filesystem::perms::owner_read |
                                    std::filesystem::perms::owner_write);
-  write_text(policy_path, "protocol_layer[STDIO|HTTPS/SSE]:enum = STDIO\n"
-                          "runtime_exec_path:path = " +
-                              fake_exec.string() +
-                              "\n"
-                              "default_config_path:path = " +
-                              config_path.string() +
-                              "\n"
-                              "runtime_root:path = " +
-                              root.string() +
-                              "\n"
-                              "allowed_job_roots:path_list = " +
-                              root.string() +
-                              ",/tmp\n"
-                              "default_dry_run:bool = true\n"
-                              "allow_execute:bool = false\n"
-                              "allow_train_execute:bool = false\n"
-                              "allow_force_rebuild_cache:bool = false\n"
-                              "allow_dev_nuke:bool = false\n"
-                              "dev_nuke_backup_enabled:bool = false\n"
-                              "dev_nuke_backup_root:path = " +
-                              (root / "backups").string() +
-                              "\n"
-                              "allowed_dev_nuke_roots:path_list = " +
-                              root.string() +
-                              "\n"
-                              "max_capture_bytes:int = 4096\n"
-                              "max_runtime_seconds:int = 5\n");
+  write_text(runtime_policy_path,
+             "protocol_layer[STDIO|HTTPS/SSE]:enum = STDIO\n"
+             "runtime_exec_path:path = " +
+                 fake_exec.string() +
+                 "\n"
+                 "default_config_path:path = " +
+                 config_path.string() +
+                 "\n"
+                 "runtime_root:path = " +
+                 root.string() +
+                 "\n"
+                 "allowed_job_roots:path_list = " +
+                 root.string() +
+                 ",/tmp\n"
+                 "default_dry_run:bool = true\n"
+                 "allow_execute:bool = false\n"
+                 "allow_train_execute:bool = false\n"
+                 "allow_force_rebuild_cache:bool = false\n"
+                 "allow_dev_nuke:bool = false\n"
+                 "dev_nuke_backup_enabled:bool = false\n"
+                 "dev_nuke_backup_root:path = " +
+                 (root / "backups").string() +
+                 "\n"
+                 "allowed_dev_nuke_roots:path_list = " +
+                 root.string() +
+                 "\n"
+                 "max_capture_bytes:int = 4096\n"
+                 "max_runtime_seconds:int = 5\n");
+  write_text(environment_policy_path,
+             "protocol_layer[STDIO|HTTPS/SSE]:enum = STDIO\n"
+             "environment_profile:enum = operator_default\n"
+             "default_config_path:path = " +
+                 config_path.string() +
+                 "\n"
+                 "runtime_root:path = " +
+                 root.string() +
+                 "\n"
+                 "allowed_job_roots:path_list = " +
+                 root.string() +
+                 ",/tmp\n"
+                 "allow_certify_issue:bool = true\n"
+                 "allow_rollout_replay:bool = true\n"
+                 "max_capture_bytes:int = 4096\n"
+                 "max_runtime_seconds:int = 5\n"
+                 "rollout_policy_set:string = equal_weight,sdu\n"
+                 "rollout_max_steps:int = 250\n"
+                 "rollout_max_parallel_jobs:int = 4\n"
+                 "rollout_runtime_exec_path:path = " +
+                 fake_exec.string() +
+                 "\n"
+                 "rollout_execution_backend_id:string = "
+                 "cajtucu.execution.paper.v1\n"
+                 "rollout_cost_model_id:string = "
+                 "linear_transaction_cost_rate.v1\n"
+                 "rollout_allow_synthetic_direct_edges:bool = false\n"
+                 "rollout_synthetic_edge_research_reason:string =\n"
+                 "rollout_linear_transaction_cost_rate:number = 0.001\n"
+                 "rollout_allow_partial_fills:bool = false\n"
+                 "rollout_equity_mismatch_tolerance:number = 0.000001\n"
+                 "rollout_equity_mismatch_fail_tolerance:number = 0.01\n"
+                 "rollout_live_execution_allowed:bool = false\n"
+                 "\n"
+                 "ENVIRONMENT_PROFILE operator_default {\n"
+                 "  allow_rollout_replay:bool = true\n"
+                 "  max_runtime_seconds:int = 5\n"
+                 "  rollout_policy_set:string = equal_weight,sdu\n"
+                 "  rollout_max_steps:int = 250\n"
+                 "  rollout_max_parallel_jobs:int = 4\n"
+                 "  rollout_runtime_exec_path:path = " +
+                 fake_exec.string() +
+                 "\n"
+                 "  rollout_execution_backend_id:string = "
+                 "cajtucu.execution.paper.v1\n"
+                 "  rollout_cost_model_id:string = "
+                 "linear_transaction_cost_rate.v1\n"
+                 "  rollout_allow_synthetic_direct_edges:bool = false\n"
+                 "  rollout_synthetic_edge_research_reason:string =\n"
+                 "  rollout_linear_transaction_cost_rate:number = 0.001\n"
+                 "  rollout_allow_partial_fills:bool = false\n"
+                 "  rollout_equity_mismatch_tolerance:number = 0.000001\n"
+                 "  rollout_equity_mismatch_fail_tolerance:number = 0.01\n"
+                 "  rollout_live_execution_allowed:bool = false\n"
+                 "}\n");
 
   marshal::set_marshal_lattice_tool_callback(nullptr);
   request.policy_tokens = {"equal_weight", "sdu"};
   request.timeout_seconds = 5;
-  const std::string args = compact_rollout_args(
-      "execute", root, rollout_request_text(request), true, true);
+  auto ctx = rollout_test_context(root, request);
+  const std::string args = direct_rollout_args("execute", request, true);
 
   std::string result;
   std::string error;
-  check(marshal::execute_marshal_tool_json("hero.marshal.rollout", args,
-                                           &result, &error),
-        "rollout execute should call Runtime replay: " + error);
+  const bool execute_ok = marshal::execute_marshal_tool_json(
+      "hero.marshal.rollout", args, &result, &error, &ctx);
+  check(execute_ok, "rollout execute should call Runtime replay: " + error +
+                        "\nresult=" + result);
   check(result.find("\"dispatch_state\":\"executed\"") != std::string::npos,
         "execute rollout should report executed dispatch state: " + result);
   check(result.find("\"runtime_replay\":{\"attempted\":true") !=
             std::string::npos,
         "execute rollout should attempt Runtime replay");
-  check(result.find("\"tool_name\":\"hero.runtime.replay\"") !=
-            std::string::npos,
-        "execute rollout should name internal Runtime replay tool");
-  check(result.find("\"tool_result_error\":false") != std::string::npos,
-        "execute rollout Runtime result should not be an error");
+  check(result.find("\"runtime_executor_id\":\"hero.runtime.replay_executor."
+                    "v1\"") != std::string::npos,
+        "execute rollout should name internal Runtime replay executor");
+  check(result.find("\"executor_result_error\":false") != std::string::npos,
+        "execute rollout Runtime executor result should not be an error");
   check(result.find("replay_completed_count") != std::string::npos,
         "execute rollout should expose Runtime replay stdout evidence");
   const auto rollout_plan = marshal::prepare_rollout_plan(request);
@@ -685,22 +826,13 @@ void test_rollout_execute_calls_runtime_replay() {
       marshal::rollout_runtime_replay_args_json(request, rollout_plan, false);
   check(runtime_replay_args.find("\"execution_request_path\"") ==
             std::string::npos,
-        "rollout Runtime args should not expose execution_request_path at top "
-        "level");
-  const auto runtime_arg_fields =
-      marshal::tool_detail::object_fields(runtime_replay_args);
-  const auto runtime_args_path = marshal::tool_detail::parse_string_raw(
-      runtime_arg_fields.at("args_path"), "args_path");
-  const auto run_request_text = read_text(runtime_args_path);
-  check(run_request_text.find("execution_request_path=") != std::string::npos,
-        "rollout Runtime args_path should pass replay payload through "
-        "execution request");
-  check(runtime_replay_args.find("\"job_dir\"") == std::string::npos,
-        "rollout Runtime args should not expose replay job_dir at top level");
-  const auto runtime_request_text =
-      marshal::rollout_runtime_replay_execution_request_text(request,
-                                                             rollout_plan);
-  check(runtime_request_text.find("validation_rollout=true") !=
+        "rollout Runtime replay args should not expose execution_request_path");
+  check(runtime_replay_args.find("\"args_path\"") == std::string::npos &&
+            runtime_replay_args.find("\"args_digest\"") == std::string::npos,
+        "rollout Runtime replay args should not use request-file envelope");
+  check(runtime_replay_args.find("\"job_dir\"") != std::string::npos,
+        "rollout Runtime replay args should pass replay job_dir directly");
+  check(runtime_replay_args.find("\"validation_rollout\":true") !=
             std::string::npos,
         "execute rollout should mark Runtime replay as validation-grade");
   check(result.find("--replay-allow-synthetic-direct-edges") ==
@@ -716,29 +848,18 @@ void test_rollout_execute_calls_runtime_replay() {
 
 void test_prepare_rejects_rollout_intent() {
   marshal::set_marshal_lattice_tool_callback(nullptr);
-  const std::string request = "intent = rollout\n";
-  const auto request_path =
-      std::filesystem::temp_directory_path() /
-      ("cuwacunu_marshal_prepare_rollout_intent_" +
-       std::to_string(static_cast<long long>(::getpid())) + ".kv");
-  write_text(request_path, request);
-  const std::string args =
-      "{"
-      "\"target_id\":\"kikijyeba.environment.replay.v1\","
-      "\"mode\":\"plan\","
-      "\"args_path\":" +
-      json_quote(request_path.string()) + ",\"args_digest\":" +
-      json_quote(marshal::marshal_digest_for_text(
-          "kikijyeba.marshal.prepare_request.v1", request)) +
-      "}";
+  const std::string args = "{"
+                           "\"target_id\":\"kikijyeba.environment.replay.v1\","
+                           "\"mode\":\"plan\","
+                           "\"intent\":\"rollout\""
+                           "}";
   std::string result;
   std::string error;
-  check(!marshal::execute_marshal_tool_json(
-            "hero.marshal.prepare.train.one_step", args, &result, &error),
-        "split prepare should reject legacy rollout intent field");
-  check(error.find("E_MARSHAL_PREPARE_REQUEST_UNKNOWN_FIELD: intent") !=
-            std::string::npos,
-        "split prepare should not accept retired intent routing");
+  check(!marshal::execute_marshal_tool_json("hero.marshal.prepare.train", args,
+                                            &result, &error),
+        "prepare facade should reject legacy rollout intent field");
+  check(error.find("unknown field: intent") != std::string::npos,
+        "prepare facade should not accept retired intent routing");
 }
 
 } // namespace

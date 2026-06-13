@@ -108,10 +108,8 @@ void print_help(const char *argv0) {
       << " --global-config /cuwacunu/src/config/.config --tool "
          "hero.marshal.status --args-json '{}'\n"
       << "\n"
-      << "  hero.marshal.prepare.train.one_step\n"
-      << "  hero.marshal.prepare.train.budgeted\n"
-      << "  hero.marshal.prepare.evaluate.one_step\n"
-      << "  hero.marshal.prepare.evaluate.budgeted\n"
+      << "  hero.marshal.prepare.train\n"
+      << "  hero.marshal.prepare.evaluate\n"
       << "    Purpose: prepare a bounded Runtime handoff for one Lattice "
          "target.\n"
       << "    Use when: a dispatchable target, normally train/evaluate "
@@ -121,8 +119,10 @@ void print_help(const char *argv0) {
       << "      targets route to inspect. Replay uses hero.marshal.rollout.\n"
       << "      Policy-training is reserved until it has a concrete Runtime "
          "job\n"
-      << "      contract. Choose train/evaluate and one_step/budgeted in the "
-         "tool name.\n"
+      << "      contract. Choose train/evaluate in the tool name; the "
+         "single-wave\n"
+      << "      or bounded driver behavior comes from the selected Marshal "
+         "profile.\n"
       << "    Core model:\n"
       << "      Lattice target/advice -> Marshal validation -> Runtime dry-run "
          "or\n"
@@ -131,26 +131,21 @@ void print_help(const char *argv0) {
       << "    Key args:\n"
       << "      target_id                 required target identity\n"
       << "      mode                       plan, dry_run, or execute\n"
-      << "      args_path       optional KV file with target packet "
-         "fields\n"
-      << "      args_digest     optional in plan, required for "
-         "dry_run/execute\n"
-      << "    Request-file fields:\n"
-      << "      config_path, runtime_root, driver_policy, resume_ledger,\n"
-      << "      source_lattice_timestamp, recommendation_attempt_count,\n"
-      << "      context, identity fingerprints, materialize_plan_inputs,\n"
-      << "      include_machine_payload, runtime_policy, runtime_wave, and "
-         "timeout_seconds.\n"
-      << "      intent and drive_mode are encoded in the split tool name.\n"
+      << "      profile                   optional Marshal prepare profile\n"
+      << "      include_machine_payload   optional response verbosity flag\n"
+      << "    Marshal derives Lattice/Runtime evidence at call time. Driver "
+         "limits,\n"
+      << "      materialization behavior, validation context, and timeout live "
+         "in\n"
+      << "      hero.marshal.dsl MARSHAL_PREPARE_PROFILE blocks.\n"
       << "    Returns: target-driver packet, dispatchability/refusal reasons,\n"
       << "      optional Runtime dry-run handoff, and next safe actions.\n"
       << "    Example:\n"
       << "      " << argv0
       << " --global-config /cuwacunu/src/config/.config --tool "
-         "hero.marshal.prepare.train.one_step --args-json "
+         "hero.marshal.prepare.train --args-json "
          "'{\"target_id\":\"channel_mdn_train_core_ready\","
-         "\"mode\":\"plan\","
-         "\"args_path\":\"/tmp/hero_marshal_prepare.kv\"}'\n"
+         "\"mode\":\"plan\"}'\n"
       << "\n"
       << "  hero.marshal.rollout\n"
       << "    Purpose: prepare or execute a bounded historical replay rollout "
@@ -168,18 +163,19 @@ void print_help(const char *argv0) {
       << "      paper execution profile -> Runtime replay report/evidence.\n"
       << "    Key args:\n"
       << "      mode                       plan or execute\n"
-      << "      args_path       KV file with rollout packet fields\n"
-      << "      args_digest     optional in plan, required in "
-         "execute\n"
+      << "      runtime_job_dir            completed Runtime job directory\n"
+      << "      rollout_id                 rollout identity\n"
+      << "      rollout_attempt_id         attempt identity and idempotency "
+         "key\n"
+      << "      target_node_ids            ordered target graph nodes\n"
+      << "      profile                    optional Marshal rollout profile\n"
       << "      include_machine_payload   optional response verbosity flag\n"
-      << "    Request-file fields:\n"
-      << "      rollout_id, rollout_attempt_id, idempotency_key, "
-         "runtime_job_dir,\n"
-      << "      replay_batch_index_path, graph_order_fingerprint, "
-         "asset_universe_digest,\n"
-      << "      target_node_ids, policy_set, max_steps, max_parallel_jobs,\n"
-      << "      execution_profile, runtime/config paths, report_path, and "
-         "timeout_seconds.\n"
+      << "    Profile/derived fields:\n"
+      << "      policy_set, max_steps, max_parallel_jobs, runtime_exec_path,\n"
+      << "      timeout_seconds, and Cajtucu execution profile come from the\n"
+      << "      Marshal rollout profile. Replay index and graph fingerprint "
+         "are\n"
+      << "      read from the Runtime job; asset-universe digest is derived.\n"
       << "    Returns: rollout plan in plan mode; in execute, Runtime replay "
          "handoff\n"
       << "      result digests and dispatch state. Runtime reports are written "
@@ -189,7 +185,10 @@ void print_help(const char *argv0) {
       << "      " << argv0
       << " --global-config /cuwacunu/src/config/.config --tool "
          "hero.marshal.rollout --args-json "
-         "'{\"mode\":\"plan\",\"args_path\":\"/tmp/hero_rollout.kv\"}'\n"
+         "'{\"mode\":\"plan\",\"runtime_job_dir\":\"/tmp/runtime_job\","
+         "\"rollout_id\":\"holdout_rollout_v1\","
+         "\"rollout_attempt_id\":\"holdout_rollout_v1_attempt_001\","
+         "\"target_node_ids\":[\"USDT\",\"BTC\",\"ETH\"]}'\n"
       << "\n"
       << "  hero.marshal.inspect.run.latest_chain\n"
       << "  hero.marshal.inspect.run.training_state\n"
@@ -319,11 +318,23 @@ int main(int argc, char **argv) {
     return 0;
   }
 
+  cuwacunu::hero::marshal::marshal_context_t ctx{};
+  ctx.global_config_path = g_global_config_path;
+  ctx.policy_path = cuwacunu::hero::marshal::resolve_marshal_hero_dsl_path(
+      g_global_config_path);
+  std::string policy_error;
+  if (!cuwacunu::hero::marshal::load_marshal_policy(
+          ctx.policy_path, ctx.global_config_path, &ctx.policy,
+          &policy_error)) {
+    std::cerr << "failed to load Marshal Hero policy: " << policy_error << "\n";
+    return 1;
+  }
+
   if (direct_tool_mode) {
     std::string result;
     std::string error;
     const bool ok = cuwacunu::hero::marshal::execute_tool_json(
-        direct_tool_name, direct_tool_args_json, &result, &error);
+        direct_tool_name, direct_tool_args_json, &ctx, &result, &error);
     if (!result.empty()) {
       std::cout << result << "\n";
     }
@@ -340,6 +351,6 @@ int main(int argc, char **argv) {
     return 2;
   }
 
-  cuwacunu::hero::marshal::run_jsonrpc_stdio_loop();
+  cuwacunu::hero::marshal::run_jsonrpc_stdio_loop(&ctx);
   return 0;
 }

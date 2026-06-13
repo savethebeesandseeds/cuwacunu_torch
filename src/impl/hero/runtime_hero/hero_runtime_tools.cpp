@@ -82,18 +82,20 @@ constexpr tool_descriptor_t kTools[] = {
     {"hero.runtime.run",
      "Runtime wave execution with mode=dry_run|execute. Policy component "
      "waves use the contract-backed graph_node_allocation driver inside "
-     "this same surface; wave-specific payload lives in args_path. Execute "
-     "supports the bounded "
+     "this same surface; wave launch evidence is bound by an optional "
+     "runtime_handoff_path artifact, and policy-training execution is bound by "
+     "an optional contract_path artifact. Execute supports the bounded "
      "noop_policy_training.v1 smoke trainer and the PPO V0 "
      "ppo_policy_adapter.v1 trainer. Operators should use "
      "hero.environment.rollout for replay admission.",
-     R"({"type":"object","required":["mode"],"properties":{"mode":{"type":"string","enum":["dry_run","execute"]},"args_path":{"type":"string"},"args_digest":{"type":"string"}},"additionalProperties":false})"},
+     R"({"type":"object","required":["mode"],"properties":{"mode":{"type":"string","enum":["dry_run","execute"]},"runtime_handoff_path":{"type":"string"},"runtime_handoff_digest":{"type":"string"},"contract_path":{"type":"string"},"contract_digest":{"type":"string"}},"additionalProperties":false})"},
     {"hero.runtime.reset",
      "Guarded developer reset. mode=plan previews the "
      "reset; "
      "mode=execute clears allowed Runtime roots only "
-     "with a digest-pinned args_path request and policy permission.",
-     R"({"type":"object","required":["mode"],"properties":{"mode":{"type":"string","enum":["plan","execute"]},"args_path":{"type":"string"},"args_digest":{"type":"string"}},"additionalProperties":false})"},
+     "with policy permission. runtime_root and backup are direct optional "
+     "arguments.",
+     R"({"type":"object","required":["mode"],"properties":{"mode":{"type":"string","enum":["plan","execute"]},"runtime_root":{"type":"string"},"backup":{"type":"boolean"}},"additionalProperties":false})"},
 };
 
 [[nodiscard]] bool tool_is_read_only(std::string_view name) {
@@ -1347,354 +1349,22 @@ append_kv_json_fields(const std::unordered_map<std::string, std::string> &map,
   return true;
 }
 
-[[nodiscard]] bool load_optional_execution_request(
-    const std::string &args, std::unordered_map<std::string, std::string> *out,
-    std::string *err) {
-  if (out != nullptr) {
-    out->clear();
-  }
-  if (!extract_json_raw_field(args, "execution_request_path", nullptr)) {
-    if (extract_json_raw_field(args, "execution_request_digest", nullptr)) {
-      *err = "execution_request_digest requires execution_request_path";
-      return false;
-    }
-    return true;
-  }
-
-  fs::path execution_request_path;
-  std::string execution_request_text;
-  if (!read_required_text_file_arg(args, "execution_request_path",
-                                   &execution_request_path,
-                                   &execution_request_text, err)) {
-    return false;
-  }
-  const std::string execution_request_digest =
-      cuwacunu::hero::marshal::marshal_digest_for_text(
-          "kikijyeba.runtime.policy_training_execution_request.v1",
-          execution_request_text);
-  if (!check_optional_string_digest_arg(
-          args, "execution_request_digest", execution_request_digest,
-          "E_RUNTIME_EXECUTION_REQUEST_DIGEST_MISMATCH", err)) {
-    return false;
-  }
-
-  auto parsed = parse_assignment_text(execution_request_text, false);
-  if (parsed.count("confirm_execute") != 0 ||
-      parsed.count("timeout_seconds") != 0) {
-    *err = "execution request must not contain confirm_execute or "
-           "timeout_seconds";
-    return false;
-  }
-  if (out != nullptr) {
-    *out = std::move(parsed);
-  }
-  return true;
+[[nodiscard]] std::string runtime_handoff_file_digest(
+    const std::string &handoff_text) {
+  return cuwacunu::hero::marshal::marshal_digest_for_text(
+      "kikijyeba.runtime.run_request.runtime_handoff_file.v1", handoff_text);
 }
 
-struct runtime_run_request_file_t {
-  std::unordered_map<std::string, std::string> fields{};
-  fs::path path{};
-  std::string digest_domain{};
-  std::string digest{};
-  bool digest_supplied = false;
-  bool present = false;
-};
-
-struct runtime_reset_request_file_t {
-  std::unordered_map<std::string, std::string> fields{};
-  fs::path path{};
-  std::string digest_domain{};
-  std::string digest{};
-  bool digest_supplied = false;
-  bool present = false;
-};
-
-[[nodiscard]] bool runtime_run_request_public_field(std::string_view key) {
-  return key == "subject" || key == "mode" || key == "operation" ||
-         key == "requested_mode" || key == "args_path" || key == "args_digest";
-}
-
-[[nodiscard]] bool runtime_run_request_allowed_field(std::string_view key) {
-  return key == "config_path" || key == "contract_path" ||
-         key == "contract_digest" || key == "execution_request_path" ||
-         key == "execution_request_digest" || key == "runtime_handoff_path" ||
-         key == "runtime_handoff_digest";
-}
-
-[[nodiscard]] std::string
-runtime_run_request_digest_domain(std::string_view operation) {
-  return "kikijyeba.runtime.run_request." + std::string(operation) + ".v1";
-}
-
-[[nodiscard]] bool runtime_reset_request_public_field(std::string_view key) {
-  return key == "mode" || key == "requested_mode" || key == "args_path" ||
-         key == "args_digest";
-}
-
-[[nodiscard]] bool runtime_reset_request_allowed_field(std::string_view key) {
-  return key == "runtime_root" || key == "backup";
-}
-
-[[nodiscard]] std::string runtime_reset_request_digest_domain() {
-  return "kikijyeba.runtime.reset_request.v1";
-}
-
-[[nodiscard]] bool parse_runtime_run_request_text(
-    std::string_view text, std::unordered_map<std::string, std::string> *out,
-    std::string *err) {
-  if (out == nullptr) {
-    *err = "run request output map is null";
-    return false;
-  }
-  out->clear();
-  std::istringstream lines{std::string(text)};
-  std::string line;
-  std::size_t line_no = 0;
-  while (std::getline(lines, line)) {
-    ++line_no;
-    line = trim_ascii(strip_ini_comment(line));
-    if (line.empty()) {
-      continue;
-    }
-    if (line == "}" || line == "};" || line.find('{') != std::string::npos ||
-        (line.front() == '[' && line.back() == ']')) {
-      *err = "E_RUNTIME_RUN_REQUEST_PARSE: line " + std::to_string(line_no) +
-             " is not a key=value assignment";
-      return false;
-    }
-    const std::size_t eq = line.find('=');
-    if (eq == std::string::npos) {
-      *err = "E_RUNTIME_RUN_REQUEST_PARSE: line " + std::to_string(line_no) +
-             " is missing '='";
-      return false;
-    }
-    std::string key = trim_ascii(line.substr(0, eq));
-    const std::size_t domain = key.find_first_of("[:");
-    if (domain != std::string::npos) {
-      key = trim_ascii(key.substr(0, domain));
-    }
-    std::string value = trim_ascii(line.substr(eq + 1));
-    if (!value.empty() && value.back() == ';') {
-      value.pop_back();
-      value = trim_ascii(value);
-    }
-    if (key.empty()) {
-      *err = "E_RUNTIME_RUN_REQUEST_PARSE: line " + std::to_string(line_no) +
-             " has empty key";
-      return false;
-    }
-    if (runtime_run_request_public_field(key)) {
-      *err = "E_RUNTIME_RUN_REQUEST_PUBLIC_FIELD: " + key;
-      return false;
-    }
-    if (!runtime_run_request_allowed_field(key)) {
-      *err = "E_RUNTIME_RUN_REQUEST_UNKNOWN_FIELD: " + key;
-      return false;
-    }
-    if (out->find(key) != out->end()) {
-      *err = "E_RUNTIME_RUN_REQUEST_DUPLICATE_FIELD: " + key;
-      return false;
-    }
-    out->emplace(std::move(key), std::move(value));
-  }
-  return true;
-}
-
-[[nodiscard]] bool parse_runtime_reset_request_text(
-    std::string_view text, std::unordered_map<std::string, std::string> *out,
-    std::string *err) {
-  if (out == nullptr) {
-    *err = "reset request output map is null";
-    return false;
-  }
-  out->clear();
-  std::istringstream lines{std::string(text)};
-  std::string line;
-  std::size_t line_no = 0;
-  while (std::getline(lines, line)) {
-    ++line_no;
-    line = trim_ascii(strip_ini_comment(line));
-    if (line.empty()) {
-      continue;
-    }
-    if (line == "}" || line == "};" || line.find('{') != std::string::npos ||
-        (line.front() == '[' && line.back() == ']')) {
-      *err = "E_RUNTIME_RESET_REQUEST_PARSE: line " + std::to_string(line_no) +
-             " is not a key=value assignment";
-      return false;
-    }
-    const std::size_t eq = line.find('=');
-    if (eq == std::string::npos) {
-      *err = "E_RUNTIME_RESET_REQUEST_PARSE: line " + std::to_string(line_no) +
-             " is missing '='";
-      return false;
-    }
-    std::string key = trim_ascii(line.substr(0, eq));
-    const std::size_t domain = key.find_first_of("[:");
-    if (domain != std::string::npos) {
-      key = trim_ascii(key.substr(0, domain));
-    }
-    std::string value = trim_ascii(line.substr(eq + 1));
-    if (!value.empty() && value.back() == ';') {
-      value.pop_back();
-      value = trim_ascii(value);
-    }
-    if (key.empty()) {
-      *err = "E_RUNTIME_RESET_REQUEST_PARSE: line " + std::to_string(line_no) +
-             " has empty key";
-      return false;
-    }
-    if (runtime_reset_request_public_field(key)) {
-      *err = "E_RUNTIME_RESET_REQUEST_PUBLIC_FIELD: " + key;
-      return false;
-    }
-    if (key == "confirm_dev_nuke") {
-      *err = "E_RUNTIME_RESET_REQUEST_RETIRED_FIELD: confirm_dev_nuke";
-      return false;
-    }
-    if (!runtime_reset_request_allowed_field(key)) {
-      *err = "E_RUNTIME_RESET_REQUEST_UNKNOWN_FIELD: " + key;
-      return false;
-    }
-    if (out->find(key) != out->end()) {
-      *err = "E_RUNTIME_RESET_REQUEST_DUPLICATE_FIELD: " + key;
-      return false;
-    }
-    out->emplace(std::move(key), std::move(value));
-  }
-  return true;
-}
-
-[[nodiscard]] bool load_optional_run_request(const std::string &args,
-                                             std::string_view operation,
-                                             std::string_view requested_mode,
-                                             runtime_run_request_file_t *out,
-                                             std::string *err) {
-  if (out == nullptr) {
-    *err = "run request packet output is null";
-    return false;
-  }
-  runtime_run_request_file_t packet{};
-  packet.present = extract_json_raw_field(args, "args_path", nullptr);
-  packet.digest_supplied = extract_json_raw_field(args, "args_digest", nullptr);
-  if (!packet.present) {
-    if (packet.digest_supplied) {
-      *err = "args_digest requires args_path";
-      return false;
-    }
-    *out = std::move(packet);
-    return true;
-  }
-
-  std::string request_text;
-  if (!read_required_text_file_arg(args, "args_path", &packet.path,
-                                   &request_text, err)) {
-    return false;
-  }
-  packet.digest_domain = runtime_run_request_digest_domain(operation);
-  packet.digest = cuwacunu::hero::marshal::marshal_digest_for_text(
-      packet.digest_domain, request_text);
-  if (requested_mode == "execute" && !packet.digest_supplied) {
-    *err = "E_RUNTIME_RUN_REQUEST_DIGEST_REQUIRED: args_digest is "
-           "required when mode=execute and args_path is set";
-    return false;
-  }
-  if (packet.digest_supplied) {
-    std::string supplied;
-    if (!extract_json_string_field(args, "args_digest", &supplied)) {
-      *err = "args_digest must be string";
-      return false;
-    }
-    supplied = trim_ascii(supplied);
-    if (supplied.empty()) {
-      *err = "args_digest must be non-empty when supplied";
-      return false;
-    }
-    if (supplied != packet.digest) {
-      *err = "E_RUNTIME_RUN_REQUEST_DIGEST_MISMATCH: expected " + supplied +
-             " actual " + packet.digest;
-      return false;
-    }
-  }
-  if (!parse_runtime_run_request_text(request_text, &packet.fields, err)) {
-    return false;
-  }
-  *out = std::move(packet);
-  return true;
-}
-
-[[nodiscard]] bool load_optional_reset_request(
+[[nodiscard]] bool read_optional_runtime_handoff_artifact(
     const std::string &args, std::string_view requested_mode,
-    runtime_reset_request_file_t *out, std::string *err) {
-  if (out == nullptr) {
-    *err = "reset request packet output is null";
-    return false;
-  }
-  runtime_reset_request_file_t packet{};
-  packet.present = extract_json_raw_field(args, "args_path", nullptr);
-  packet.digest_supplied = extract_json_raw_field(args, "args_digest", nullptr);
-  if (!packet.present) {
-    if (packet.digest_supplied) {
-      *err = "args_digest requires args_path";
-      return false;
-    }
-    if (requested_mode == "execute") {
-      *err = "E_RUNTIME_RESET_REQUEST_REQUIRED: args_path is required when "
-             "mode=execute";
-      return false;
-    }
-    *out = std::move(packet);
-    return true;
-  }
-
-  std::string request_text;
-  if (!read_required_text_file_arg(args, "args_path", &packet.path,
-                                   &request_text, err)) {
-    return false;
-  }
-  packet.digest_domain = runtime_reset_request_digest_domain();
-  packet.digest = cuwacunu::hero::marshal::marshal_digest_for_text(
-      packet.digest_domain, request_text);
-  if (requested_mode == "execute" && !packet.digest_supplied) {
-    *err = "E_RUNTIME_RESET_REQUEST_DIGEST_REQUIRED: args_digest is required "
-           "when mode=execute";
-    return false;
-  }
-  if (packet.digest_supplied) {
-    std::string supplied;
-    if (!extract_json_string_field(args, "args_digest", &supplied)) {
-      *err = "args_digest must be string";
-      return false;
-    }
-    supplied = trim_ascii(supplied);
-    if (supplied.empty()) {
-      *err = "args_digest must be non-empty when supplied";
-      return false;
-    }
-    if (supplied != packet.digest) {
-      *err = "E_RUNTIME_RESET_REQUEST_DIGEST_MISMATCH: expected " + supplied +
-             " actual " + packet.digest;
-      return false;
-    }
-  }
-  if (!parse_runtime_reset_request_text(request_text, &packet.fields, err)) {
-    return false;
-  }
-  *out = std::move(packet);
-  return true;
-}
-
-[[nodiscard]] bool read_runtime_handoff_for_run_request(
-    const std::unordered_map<std::string, std::string> &request,
     std::string *handoff_json, std::string *err) {
-  std::string handoff_path_raw;
+  if (handoff_json != nullptr) {
+    handoff_json->clear();
+  }
   const bool has_handoff_path =
-      kv_get_trimmed(request, "runtime_handoff_path", &handoff_path_raw) &&
-      !handoff_path_raw.empty();
-  std::string supplied_digest;
+      extract_json_raw_field(args, "runtime_handoff_path", nullptr);
   const bool has_handoff_digest =
-      kv_get_trimmed(request, "runtime_handoff_digest", &supplied_digest) &&
-      !supplied_digest.empty();
+      extract_json_raw_field(args, "runtime_handoff_digest", nullptr);
   if (!has_handoff_path) {
     if (has_handoff_digest) {
       *err = "runtime_handoff_digest requires runtime_handoff_path";
@@ -1702,68 +1372,145 @@ runtime_run_request_digest_domain(std::string_view operation) {
     }
     return true;
   }
-  fs::path handoff_path = normalize_path(fs::path(handoff_path_raw));
-  std::string read_error;
-  std::string text;
-  if (!read_text_file(handoff_path, &text, &read_error)) {
-    *err = "failed to read runtime_handoff_path: " + read_error;
+
+  fs::path handoff_path;
+  std::string handoff_text;
+  if (!read_required_text_file_arg(args, "runtime_handoff_path",
+                                   &handoff_path, &handoff_text, err)) {
     return false;
   }
-  const std::string actual_digest =
-      cuwacunu::hero::marshal::marshal_digest_for_text(
-          "kikijyeba.runtime.run_request.runtime_handoff_file.v1", text);
-  if (has_handoff_digest && supplied_digest != actual_digest) {
-    *err = "E_RUNTIME_RUN_REQUEST_HANDOFF_DIGEST_MISMATCH: expected " +
-           supplied_digest + " actual " + actual_digest;
+  const std::string actual_digest = runtime_handoff_file_digest(handoff_text);
+  if (requested_mode == "execute" && !has_handoff_digest) {
+    *err = "E_RUNTIME_HANDOFF_DIGEST_REQUIRED: runtime_handoff_digest is "
+           "required when mode=execute and runtime_handoff_path is set";
     return false;
   }
+  if (has_handoff_digest) {
+    std::string supplied;
+    if (!extract_json_string_field(args, "runtime_handoff_digest", &supplied)) {
+      *err = "runtime_handoff_digest must be string";
+      return false;
+    }
+    supplied = trim_ascii(supplied);
+    if (supplied.empty()) {
+      *err = "runtime_handoff_digest must be non-empty when supplied";
+      return false;
+    }
+    if (supplied != actual_digest) {
+      *err = "E_RUNTIME_HANDOFF_DIGEST_MISMATCH: expected " + supplied +
+             " actual " + actual_digest;
+      return false;
+    }
+  }
+
   std::vector<json_field_t> handoff_fields;
-  if (!parse_json_object_fields(text, &handoff_fields, err)) {
+  if (!parse_json_object_fields(handoff_text, &handoff_fields, err)) {
     if (err != nullptr) {
-      *err = "E_RUNTIME_RUN_REQUEST_HANDOFF_INVALID: " + *err;
+      *err = "E_RUNTIME_HANDOFF_INVALID: " + *err;
     }
     return false;
   }
   if (handoff_json != nullptr) {
-    *handoff_json = trim_ascii(text);
+    *handoff_json = trim_ascii(handoff_text);
   }
   return true;
 }
 
-[[nodiscard]] bool materialize_runtime_run_args(const std::string &public_args,
-                                                std::string_view operation,
-                                                std::string_view requested_mode,
-                                                std::string *out,
-                                                std::string *err) {
-  runtime_run_request_file_t request{};
-  if (!load_optional_run_request(public_args, operation, requested_mode,
-                                 &request, err)) {
+[[nodiscard]] bool append_handoff_wave_overlay(
+    const std::string &handoff_json, std::ostringstream &out, bool *first,
+    std::string *err) {
+  std::string wave_raw;
+  if (!extract_json_raw_field(handoff_json, "wave", &wave_raw)) {
+    if (err) {
+      *err = "E_RUNTIME_HANDOFF_INVALID: wave is required";
+    }
+    return false;
+  }
+
+  std::ostringstream overlay;
+  overlay << "{";
+  bool overlay_first = true;
+  for (const auto key :
+       {"source_range", "anchor_index_begin", "anchor_index_end",
+        "source_key_begin", "source_key_end"}) {
+    std::string value;
+    if (extract_json_string_field(wave_raw, key, &value) &&
+        !trim_ascii(value).empty()) {
+      append_string_json_field(overlay, key, value, &overlay_first);
+    }
+  }
+  overlay << "}";
+  if (!overlay_first) {
+    append_raw_json_field(out, "wave_overlay", overlay.str(), first);
+  }
+  return true;
+}
+
+[[nodiscard]] bool append_handoff_derived_run_fields(
+    const std::string &handoff_json, std::ostringstream &out, bool *first,
+    std::string *err) {
+  std::string base_config_raw;
+  if (!extract_json_raw_field(handoff_json, "base_config", &base_config_raw)) {
+    if (err) {
+      *err = "E_RUNTIME_HANDOFF_INVALID: base_config is required";
+    }
+    return false;
+  }
+  std::string base_config_path;
+  if (!extract_json_string_field(base_config_raw, "path", &base_config_path) ||
+      trim_ascii(base_config_path).empty()) {
+    if (err) {
+      *err = "E_RUNTIME_HANDOFF_INVALID: base_config.path is required";
+    }
+    return false;
+  }
+
+  std::string intent_raw;
+  if (!extract_json_raw_field(handoff_json, "intent", &intent_raw)) {
+    if (err) {
+      *err = "E_RUNTIME_HANDOFF_INVALID: intent is required";
+    }
+    return false;
+  }
+  bool force_rebuild_cache = false;
+  if (!extract_json_bool_field(intent_raw, "force_rebuild_cache",
+                               &force_rebuild_cache)) {
+    if (err) {
+      *err = "E_RUNTIME_HANDOFF_INVALID: intent.force_rebuild_cache is "
+             "required";
+    }
+    return false;
+  }
+
+  append_string_json_field(out, "config_path", base_config_path, first);
+  append_bool_json_field(out, "force_rebuild_cache", force_rebuild_cache,
+                         first);
+  if (!append_handoff_wave_overlay(handoff_json, out, first, err)) {
+    return false;
+  }
+  append_raw_json_field(out, "runtime_handoff", handoff_json, first);
+  return true;
+}
+
+[[nodiscard]] bool materialize_runtime_run_args(
+    const std::string &public_args, std::string_view requested_mode,
+    std::string *out, std::string *err) {
+  std::string handoff_json;
+  if (!read_optional_runtime_handoff_artifact(public_args, requested_mode,
+                                              &handoff_json, err)) {
     return false;
   }
   std::ostringstream resolved;
   resolved << "{";
   bool first = true;
-  append_string_json_field(resolved, "operation", operation, &first);
   append_string_json_field(resolved, "requested_mode", requested_mode, &first);
-  if (request.present) {
-    if (!append_kv_json_fields(
-            request.fields,
-            {{"config_path", kv_json_field_kind_t::string_value},
-             {"contract_path", kv_json_field_kind_t::string_value},
-             {"contract_digest", kv_json_field_kind_t::string_value},
-             {"execution_request_path", kv_json_field_kind_t::string_value},
-             {"execution_request_digest", kv_json_field_kind_t::string_value}},
-            resolved, &first, err)) {
-      return false;
-    }
-    std::string handoff_json;
-    if (!read_runtime_handoff_for_run_request(request.fields, &handoff_json,
-                                              err)) {
-      return false;
-    }
-    if (!handoff_json.empty()) {
-      append_raw_json_field(resolved, "runtime_handoff", handoff_json, &first);
-    }
+  append_optional_raw_json_field(public_args, resolved, "contract_path",
+                                 &first);
+  append_optional_raw_json_field(public_args, resolved, "contract_digest",
+                                 &first);
+  if (!handoff_json.empty() &&
+      !append_handoff_derived_run_fields(handoff_json, resolved, &first, err)) {
+    return false;
   }
   resolved << "}";
   if (out != nullptr) {
@@ -1854,6 +1601,16 @@ validate_kv_fields(const std::unordered_map<std::string, std::string> &map,
   kv_set_string(map, "schema_version", &parsed.schema_version);
   kv_set_string(map, "artifact_schema_id", &parsed.artifact_schema_id);
   kv_set_string(map, "runtime_job_kind", &parsed.runtime_job_kind);
+  kv_set_string(map, "job_id", &parsed.job_id);
+  kv_set_string(map, "job_dir", &parsed.job_dir);
+  kv_set_string(map, "report_path", &parsed.report_path);
+  kv_set_string(map, "replay_job_dir", &parsed.replay_job_dir);
+  kv_set_string(map, "config_path", &parsed.config_path);
+  kv_set_string(map, "accounting_numeraire_node_id",
+                &parsed.accounting_numeraire_node_id);
+  kv_set_string(map, "target_node_ids", &parsed.target_node_ids);
+  kv_set_string(map, "experiment_id", &parsed.experiment_id);
+  kv_set_string(map, "policy_set_digest", &parsed.policy_set_digest);
   kv_set_string(map, "protocol_id", &parsed.protocol_id);
   kv_set_string(map, "protocol_contract_fingerprint",
                 &parsed.protocol_contract_fingerprint);
@@ -1992,6 +1749,20 @@ validate_kv_fields(const std::unordered_map<std::string, std::string> &map,
                      err) ||
       !kv_set_bool(map, "ppo_max_grad_norm_bound",
                    &parsed.ppo_max_grad_norm_bound, err) ||
+      !kv_set_double(map, "linear_transaction_cost_rate",
+                     &parsed.linear_transaction_cost_rate, err) ||
+      !kv_set_bool(map, "linear_transaction_cost_rate_bound",
+                   &parsed.linear_transaction_cost_rate_bound, err) ||
+      !kv_set_double(map, "initial_equity_numeraire",
+                     &parsed.initial_equity_numeraire, err) ||
+      !kv_set_bool(map, "initial_equity_numeraire_bound",
+                   &parsed.initial_equity_numeraire_bound, err) ||
+      !kv_set_double(map, "max_node_weight", &parsed.max_node_weight, err) ||
+      !kv_set_bool(map, "max_node_weight_bound",
+                   &parsed.max_node_weight_bound, err) ||
+      !kv_set_double(map, "max_turnover_l1", &parsed.max_turnover_l1, err) ||
+      !kv_set_bool(map, "max_turnover_l1_bound",
+                   &parsed.max_turnover_l1_bound, err) ||
       !kv_set_int64(map, "ppo_minibatch_size", &parsed.ppo_minibatch_size,
                     err) ||
       !kv_set_bool(map, "ppo_minibatch_size_bound",
@@ -4006,6 +3777,17 @@ validate_replay_report_for_validation_rollout(const fs::path &report_path,
   out << "{\"schema_version\":" << json_quote(contract.schema_version)
       << ",\"artifact_schema_id\":" << json_quote(contract.artifact_schema_id)
       << ",\"runtime_job_kind\":" << json_quote(contract.runtime_job_kind)
+      << ",\"job_id\":" << json_quote(contract.job_id)
+      << ",\"job_dir\":" << json_quote(contract.job_dir)
+      << ",\"report_path\":" << json_quote(contract.report_path)
+      << ",\"replay_job_dir\":" << json_quote(contract.replay_job_dir)
+      << ",\"config_path\":" << json_quote(contract.config_path)
+      << ",\"accounting_numeraire_node_id\":"
+      << json_quote(contract.accounting_numeraire_node_id)
+      << ",\"target_node_ids\":" << json_quote(contract.target_node_ids)
+      << ",\"experiment_id\":" << json_quote(contract.experiment_id)
+      << ",\"policy_set_digest\":"
+      << json_quote(contract.policy_set_digest)
       << ",\"protocol_id\":" << json_quote(contract.protocol_id)
       << ",\"protocol_contract_fingerprint\":"
       << json_quote(contract.protocol_contract_fingerprint)
@@ -4121,6 +3903,20 @@ validate_replay_report_for_validation_rollout(const fs::path &report_path,
       << ",\"ppo_max_grad_norm\":" << contract.ppo_max_grad_norm
       << ",\"ppo_max_grad_norm_bound\":"
       << bool_json(contract.ppo_max_grad_norm_bound)
+      << ",\"linear_transaction_cost_rate\":"
+      << contract.linear_transaction_cost_rate
+      << ",\"linear_transaction_cost_rate_bound\":"
+      << bool_json(contract.linear_transaction_cost_rate_bound)
+      << ",\"initial_equity_numeraire\":"
+      << contract.initial_equity_numeraire
+      << ",\"initial_equity_numeraire_bound\":"
+      << bool_json(contract.initial_equity_numeraire_bound)
+      << ",\"max_node_weight\":" << contract.max_node_weight
+      << ",\"max_node_weight_bound\":"
+      << bool_json(contract.max_node_weight_bound)
+      << ",\"max_turnover_l1\":" << contract.max_turnover_l1
+      << ",\"max_turnover_l1_bound\":"
+      << bool_json(contract.max_turnover_l1_bound)
       << ",\"ppo_minibatch_size\":" << contract.ppo_minibatch_size
       << ",\"ppo_minibatch_size_bound\":"
       << bool_json(contract.ppo_minibatch_size_bound)
@@ -11129,6 +10925,60 @@ replay_dry_run_json(const std::vector<std::string> &argv,
   return append_kv_json_fields(request, fields, out, first, err);
 }
 
+[[nodiscard]] std::string policy_training_contract_execution_args_json(
+    const cuwacunu::hero::runtime::policy_training_job_contract_t &contract) {
+  std::ostringstream out;
+  out << "{";
+  bool first = true;
+  const auto append_string = [&](std::string_view key,
+                                 const std::string &value) {
+    if (!trim_ascii(value).empty()) {
+      append_string_json_field(out, key, value, &first);
+    }
+  };
+  const auto append_double = [&](std::string_view key, double value) {
+    std::ostringstream value_out;
+    value_out << value;
+    append_raw_json_field(out, key, value_out.str(), &first);
+  };
+  const auto append_int = [&](std::string_view key, std::int64_t value) {
+    append_raw_json_field(out, key, std::to_string(value), &first);
+  };
+
+  append_string("job_id", contract.job_id);
+  append_string("job_dir", contract.job_dir);
+  append_string("report_path", contract.report_path);
+  append_string("replay_job_dir", contract.replay_job_dir);
+  append_string("config_path", contract.config_path);
+  append_string("accounting_numeraire_node_id",
+                contract.accounting_numeraire_node_id);
+  append_string("target_node_ids", contract.target_node_ids);
+  append_string("experiment_id", contract.experiment_id);
+  append_string("policy_set_digest", contract.policy_set_digest);
+  if (contract.linear_transaction_cost_rate_bound) {
+    append_double("linear_transaction_cost_rate",
+                  contract.linear_transaction_cost_rate);
+  }
+  if (contract.initial_equity_numeraire_bound) {
+    append_double("initial_equity_numeraire",
+                  contract.initial_equity_numeraire);
+  }
+  if (contract.max_node_weight_bound) {
+    append_double("max_node_weight", contract.max_node_weight);
+  }
+  if (contract.max_turnover_l1_bound) {
+    append_double("max_turnover_l1", contract.max_turnover_l1);
+  }
+  if (contract.max_steps > 0) {
+    append_int("max_steps", contract.max_steps);
+  }
+  if (contract.max_parallel_jobs > 0) {
+    append_int("max_parallel_jobs", contract.max_parallel_jobs);
+  }
+  out << "}";
+  return out.str();
+}
+
 [[nodiscard]] bool handle_run_policy_training(const std::string &args,
                                               runtime_context_t *ctx,
                                               std::string *out,
@@ -11141,8 +10991,7 @@ replay_dry_run_json(const std::vector<std::string> &argv,
   std::vector<json_field_t> fields;
   if (!validate_tool_fields(args,
                             {"requested_mode", "contract_path",
-                             "contract_digest", "execution_request_path",
-                             "execution_request_digest"},
+                             "contract_digest"},
                             &fields, err)) {
     return false;
   }
@@ -11182,64 +11031,9 @@ replay_dry_run_json(const std::vector<std::string> &argv,
     return false;
   }
 
-  std::unordered_map<std::string, std::string> execution_request;
-  if (extract_json_raw_field(args, "execution_request_path", nullptr)) {
-    fs::path execution_request_path;
-    std::string execution_request_text;
-    if (!read_required_text_file_arg(args, "execution_request_path",
-                                     &execution_request_path,
-                                     &execution_request_text, err)) {
-      return false;
-    }
-    const std::string execution_request_digest =
-        cuwacunu::hero::marshal::marshal_digest_for_text(
-            "kikijyeba.runtime.policy_training_execution_request.v1",
-            execution_request_text);
-    if (!check_optional_string_digest_arg(
-            args, "execution_request_digest", execution_request_digest,
-            "E_RUNTIME_POLICY_TRAINING_EXECUTION_REQUEST_DIGEST_MISMATCH",
-            err)) {
-      return false;
-    }
-    execution_request = parse_assignment_text(execution_request_text, false);
-    if (execution_request.count("confirm_execute") != 0 ||
-        execution_request.count("timeout_seconds") != 0) {
-      *err = "execution request must not contain confirm_execute or "
-             "timeout_seconds";
-      return false;
-    }
-  } else if (extract_json_raw_field(args, "execution_request_digest",
-                                    nullptr)) {
-    *err = "execution_request_digest requires execution_request_path";
-    return false;
-  }
-
-  std::ostringstream execution_args;
-  execution_args << "{";
-  bool first = true;
-  if (!append_kv_json_fields(
-          execution_request,
-          {{"job_id", kv_json_field_kind_t::string_value},
-           {"job_dir", kv_json_field_kind_t::string_value},
-           {"report_path", kv_json_field_kind_t::string_value},
-           {"replay_job_dir", kv_json_field_kind_t::string_value},
-           {"config_path", kv_json_field_kind_t::string_value},
-           {"accounting_numeraire_node_id", kv_json_field_kind_t::string_value},
-           {"target_node_ids", kv_json_field_kind_t::string_value},
-           {"experiment_id", kv_json_field_kind_t::string_value},
-           {"policy_set_digest", kv_json_field_kind_t::string_value},
-           {"linear_transaction_cost_rate", kv_json_field_kind_t::number_value},
-           {"initial_equity_numeraire", kv_json_field_kind_t::number_value},
-           {"max_node_weight", kv_json_field_kind_t::number_value},
-           {"max_turnover_l1", kv_json_field_kind_t::number_value},
-           {"max_steps", kv_json_field_kind_t::int_value},
-           {"max_parallel_jobs", kv_json_field_kind_t::int_value}},
-          execution_args, &first, err)) {
-    return false;
-  }
-  execution_args << "}";
-  return handle_policy_training_contract_object(contract, execution_args.str(),
-                                                requested_mode, ctx, out, err);
+  return handle_policy_training_contract_object(
+      contract, policy_training_contract_execution_args_json(contract),
+      requested_mode, ctx, out, err);
 }
 
 [[nodiscard]] bool handle_runtime_wave_run_materialized(
@@ -11248,49 +11042,14 @@ replay_dry_run_json(const std::vector<std::string> &argv,
   if (extract_json_raw_field(run_args, "contract_path", nullptr)) {
     return handle_run_policy_training(
         object_with_selected_fields(
-            run_args, {"requested_mode", "contract_path", "contract_digest",
-                       "execution_request_path", "execution_request_digest"}),
+            run_args, {"requested_mode", "contract_path", "contract_digest"}),
         ctx, out, err);
-  }
-
-  std::unordered_map<std::string, std::string> execution_request;
-  if (!load_optional_execution_request(run_args, &execution_request, err)) {
-    return false;
-  }
-  const bool request_policy_training_contract =
-      policy_training_wave_requested(execution_request);
-  if (request_policy_training_contract) {
-    std::ostringstream contract_args;
-    contract_args << "{";
-    bool contract_first = true;
-    append_string_json_field(contract_args, "requested_mode", requested_mode,
-                             &contract_first);
-    (void)append_top_or_kv_string_field(run_args, execution_request,
-                                        "config_path", contract_args,
-                                        &contract_first);
-    if (!append_policy_training_request_json_fields(
-            execution_request, contract_args, &contract_first, err)) {
-      return false;
-    }
-    contract_args << "}";
-    return handle_policy_training_contract(contract_args.str(), requested_mode,
-                                           ctx, out, err);
-  }
-  if (!validate_kv_fields(execution_request,
-                          {"config_path", "job_dir", "force_rebuild_cache",
-                           "source_range", "anchor_index_begin",
-                           "anchor_index_end", "source_key_begin",
-                           "source_key_end"},
-                          err)) {
-    return false;
   }
 
   std::optional<wave_info_t> selected_wave;
   if (ctx != nullptr) {
     std::string config_arg;
-    if (!extract_json_string_field(run_args, "config_path", &config_arg)) {
-      (void)kv_get_trimmed(execution_request, "config_path", &config_arg);
-    }
+    (void)extract_json_string_field(run_args, "config_path", &config_arg);
     selected_wave =
         load_wave_info(*ctx, effective_config_path(*ctx, config_arg));
   }
@@ -11361,17 +11120,10 @@ replay_dry_run_json(const std::vector<std::string> &argv,
   std::ostringstream forwarded;
   forwarded << "{";
   bool first = true;
-  (void)append_top_or_kv_string_field(run_args, execution_request,
-                                      "config_path", forwarded, &first);
-  if (!append_kv_json_fields(
-          execution_request,
-          {{"job_dir", kv_json_field_kind_t::string_value},
-           {"force_rebuild_cache", kv_json_field_kind_t::bool_value}},
-          forwarded, &first, err) ||
-      !append_wave_overlay_from_request(execution_request, forwarded, &first,
-                                        err)) {
-    return false;
-  }
+  append_optional_raw_json_field(run_args, forwarded, "config_path", &first);
+  append_optional_raw_json_field(run_args, forwarded, "force_rebuild_cache",
+                                 &first);
+  append_optional_raw_json_field(run_args, forwarded, "wave_overlay", &first);
   append_optional_raw_json_field(run_args, forwarded, "runtime_handoff",
                                  &first);
   append_bool_json_field(forwarded, "dry_run", requested_mode == "dry_run",
@@ -11380,94 +11132,14 @@ replay_dry_run_json(const std::vector<std::string> &argv,
   return execute_runtime(forwarded.str(), ctx, false, out, err);
 }
 
-[[nodiscard]] bool handle_runtime_replay_run_materialized(
-    const std::string &run_args, std::string_view requested_mode,
-    runtime_context_t *ctx, std::string *out, std::string *err) {
-  std::unordered_map<std::string, std::string> execution_request;
-  if (!load_optional_execution_request(run_args, &execution_request, err)) {
-    return false;
-  }
-  if (!validate_kv_fields(execution_request,
-                          {"job_id",
-                           "job_dir",
-                           "config_path",
-                           "accounting_numeraire_node_id",
-                           "target_node_ids",
-                           "experiment_id",
-                           "report_path",
-                           "initial_equity_numeraire",
-                           "max_node_weight",
-                           "max_turnover_l1",
-                           "max_steps",
-                           "max_parallel_jobs",
-                           "include_equal_weight",
-                           "include_current_weight",
-                           "include_graph_node_allocation_policy",
-                           "on_policy_sample",
-                           "include_numeraire_only_policy",
-                           "include_spot_distributional_utility_policy",
-                           "allow_synthetic_direct_edges",
-                           "validation_rollout",
-                           "linear_transaction_cost_rate",
-                           "execution_profile_digest",
-                           "policy_set_digest",
-                           "policy_artifact_digest",
-                           "action_distribution_id",
-                           "causal_schedule_digest",
-                           "snapshot_family_digest"},
-                          err)) {
-    return false;
-  }
-
-  std::ostringstream forwarded;
-  forwarded << "{";
-  bool first = true;
-  (void)append_top_or_kv_string_field(run_args, execution_request,
-                                      "config_path", forwarded, &first);
-  if (!append_kv_json_fields(
-          execution_request,
-          {{"job_id", kv_json_field_kind_t::string_value},
-           {"job_dir", kv_json_field_kind_t::string_value},
-           {"accounting_numeraire_node_id", kv_json_field_kind_t::string_value},
-           {"target_node_ids", kv_json_field_kind_t::string_value},
-           {"experiment_id", kv_json_field_kind_t::string_value},
-           {"report_path", kv_json_field_kind_t::string_value},
-           {"initial_equity_numeraire", kv_json_field_kind_t::number_value},
-           {"max_node_weight", kv_json_field_kind_t::number_value},
-           {"max_turnover_l1", kv_json_field_kind_t::number_value},
-           {"max_steps", kv_json_field_kind_t::int_value},
-           {"max_parallel_jobs", kv_json_field_kind_t::int_value},
-           {"include_equal_weight", kv_json_field_kind_t::bool_value},
-           {"include_current_weight", kv_json_field_kind_t::bool_value},
-           {"include_graph_node_allocation_policy",
-            kv_json_field_kind_t::bool_value},
-           {"on_policy_sample", kv_json_field_kind_t::bool_value},
-           {"include_numeraire_only_policy", kv_json_field_kind_t::bool_value},
-           {"include_spot_distributional_utility_policy",
-            kv_json_field_kind_t::bool_value},
-           {"allow_synthetic_direct_edges", kv_json_field_kind_t::bool_value},
-           {"validation_rollout", kv_json_field_kind_t::bool_value},
-           {"linear_transaction_cost_rate", kv_json_field_kind_t::number_value},
-           {"execution_profile_digest", kv_json_field_kind_t::string_value},
-           {"policy_set_digest", kv_json_field_kind_t::string_value},
-           {"policy_artifact_digest", kv_json_field_kind_t::string_value},
-           {"action_distribution_id", kv_json_field_kind_t::string_value},
-           {"causal_schedule_digest", kv_json_field_kind_t::string_value},
-           {"snapshot_family_digest", kv_json_field_kind_t::string_value}},
-          forwarded, &first, err)) {
-    return false;
-  }
-  append_bool_json_field(forwarded, "dry_run", requested_mode != "execute",
-                         &first);
-  forwarded << "}";
-  return handle_replay(forwarded.str(), ctx, out, err);
-}
-
 [[nodiscard]] bool handle_run(const std::string &args, runtime_context_t *ctx,
                               std::string *out, std::string *err) {
   std::vector<json_field_t> fields;
-  if (!validate_tool_fields(args, {"mode", "args_path", "args_digest"}, &fields,
-                            err)) {
+  if (!validate_tool_fields(
+          args,
+          {"mode", "runtime_handoff_path", "runtime_handoff_digest",
+           "contract_path", "contract_digest"},
+          &fields, err)) {
     return false;
   }
   std::string requested_mode;
@@ -11479,9 +11151,21 @@ replay_dry_run_json(const std::vector<std::string> &argv,
     *err = "mode must be dry_run or execute";
     return false;
   }
+  const bool has_handoff_path =
+      extract_json_raw_field(args, "runtime_handoff_path", nullptr);
+  const bool has_contract_path =
+      extract_json_raw_field(args, "contract_path", nullptr);
+  if (has_handoff_path && has_contract_path) {
+    *err = "runtime_handoff_path and contract_path are mutually exclusive";
+    return false;
+  }
+  if (!has_contract_path &&
+      extract_json_raw_field(args, "contract_digest", nullptr)) {
+    *err = "contract_digest requires contract_path";
+    return false;
+  }
   std::string run_args;
-  if (!materialize_runtime_run_args(args, "wave", requested_mode, &run_args,
-                                    err)) {
+  if (!materialize_runtime_run_args(args, requested_mode, &run_args, err)) {
     return false;
   }
   return handle_runtime_wave_run_materialized(run_args, requested_mode, ctx,
@@ -11492,8 +11176,36 @@ replay_dry_run_json(const std::vector<std::string> &argv,
                                           runtime_context_t *ctx,
                                           std::string *out, std::string *err) {
   std::vector<json_field_t> fields;
-  if (!validate_tool_fields(args, {"mode", "args_path", "args_digest"}, &fields,
-                            err)) {
+  if (!validate_tool_fields(args,
+                            {"mode",
+                             "job_id",
+                             "job_dir",
+                             "config_path",
+                             "accounting_numeraire_node_id",
+                             "target_node_ids",
+                             "experiment_id",
+                             "report_path",
+                             "initial_equity_numeraire",
+                             "max_node_weight",
+                             "max_turnover_l1",
+                             "max_steps",
+                             "max_parallel_jobs",
+                             "include_equal_weight",
+                             "include_current_weight",
+                             "include_graph_node_allocation_policy",
+                             "on_policy_sample",
+                             "include_numeraire_only_policy",
+                             "include_spot_distributional_utility_policy",
+                             "allow_synthetic_direct_edges",
+                             "validation_rollout",
+                             "linear_transaction_cost_rate",
+                             "execution_profile_digest",
+                             "policy_set_digest",
+                             "policy_artifact_digest",
+                             "action_distribution_id",
+                             "causal_schedule_digest",
+                             "snapshot_family_digest"},
+                            &fields, err)) {
     return false;
   }
   std::string requested_mode;
@@ -11505,19 +11217,49 @@ replay_dry_run_json(const std::vector<std::string> &argv,
     *err = "mode must be dry_run or execute";
     return false;
   }
-  std::string run_args;
-  if (!materialize_runtime_run_args(args, "replay", requested_mode, &run_args,
-                                    err)) {
-    return false;
+
+  std::ostringstream forwarded;
+  forwarded << "{";
+  bool first = true;
+  for (const auto key : {"config_path",
+                         "job_id",
+                         "job_dir",
+                         "accounting_numeraire_node_id",
+                         "target_node_ids",
+                         "experiment_id",
+                         "report_path",
+                         "initial_equity_numeraire",
+                         "max_node_weight",
+                         "max_turnover_l1",
+                         "max_steps",
+                         "max_parallel_jobs",
+                         "include_equal_weight",
+                         "include_current_weight",
+                         "include_graph_node_allocation_policy",
+                         "on_policy_sample",
+                         "include_numeraire_only_policy",
+                         "include_spot_distributional_utility_policy",
+                         "allow_synthetic_direct_edges",
+                         "validation_rollout",
+                         "linear_transaction_cost_rate",
+                         "execution_profile_digest",
+                         "policy_set_digest",
+                         "policy_artifact_digest",
+                         "action_distribution_id",
+                         "causal_schedule_digest",
+                         "snapshot_family_digest"}) {
+    append_optional_raw_json_field(args, forwarded, key, &first);
   }
-  return handle_runtime_replay_run_materialized(run_args, requested_mode, ctx,
-                                                out, err);
+  append_bool_json_field(forwarded, "dry_run", requested_mode != "execute",
+                         &first);
+  forwarded << "}";
+  return handle_replay(forwarded.str(), ctx, out, err);
 }
 
 [[nodiscard]] bool handle_reset(const std::string &args, runtime_context_t *ctx,
                                 std::string *out, std::string *err) {
   std::vector<json_field_t> fields;
-  if (!validate_tool_fields(args, {"mode", "args_path", "args_digest"}, &fields,
+  if (!validate_tool_fields(args, {"mode", "runtime_root", "backup"}, &fields,
                             err)) {
     return false;
   }
@@ -11530,21 +11272,11 @@ replay_dry_run_json(const std::vector<std::string> &argv,
     *err = "mode must be plan or execute";
     return false;
   }
-  runtime_reset_request_file_t reset_request{};
-  if (!load_optional_reset_request(args, requested_mode, &reset_request, err)) {
-    return false;
-  }
   std::ostringstream forwarded;
   forwarded << "{";
   bool first = true;
-  if (reset_request.present &&
-      !append_kv_json_fields(
-          reset_request.fields,
-          {{"runtime_root", kv_json_field_kind_t::string_value},
-           {"backup", kv_json_field_kind_t::bool_value}},
-          forwarded, &first, err)) {
-    return false;
-  }
+  append_optional_raw_json_field(args, forwarded, "runtime_root", &first);
+  append_optional_raw_json_field(args, forwarded, "backup", &first);
   append_bool_json_field(forwarded, "dry_run", requested_mode == "plan",
                          &first);
   forwarded << "}";
@@ -11578,9 +11310,6 @@ using handler_fn = bool (*)(const std::string &, runtime_context_t *,
   }
   if (name == "hero.runtime.run") {
     return handle_run;
-  }
-  if (name == "hero.runtime.replay") {
-    return handle_replay_internal;
   }
   if (name == "hero.runtime.reset") {
     return handle_reset;
@@ -11762,6 +11491,65 @@ bool execute_tool_json(const std::string &tool_name, std::string arguments_json,
   return true;
 }
 
+bool execute_replay_delegate_json(std::string arguments_json,
+                                  runtime_context_t *ctx,
+                                  std::string *out_executor_result_json,
+                                  std::string *out_error_message) {
+  if (out_executor_result_json) {
+    out_executor_result_json->clear();
+  }
+  if (out_error_message) {
+    out_error_message->clear();
+  }
+  if (!ctx) {
+    if (out_error_message) {
+      *out_error_message = "Runtime Hero context pointer is null";
+    }
+    if (out_executor_result_json) {
+      *out_executor_result_json =
+          make_error_result("Runtime Hero context pointer is null", -32603);
+    }
+    return false;
+  }
+  arguments_json = trim_ascii(arguments_json);
+  if (arguments_json.empty()) {
+    arguments_json = "{}";
+  }
+  if (arguments_json.front() != '{') {
+    if (out_error_message) {
+      *out_error_message = "--args-json must be a JSON object";
+    }
+    if (out_executor_result_json) {
+      *out_executor_result_json =
+          make_error_result("--args-json must be a JSON object", -32602);
+    }
+    return false;
+  }
+
+  std::string structured;
+  std::string err;
+  const bool ok =
+      handle_replay_internal(arguments_json, ctx, &structured, &err);
+  if (!ok) {
+    if (err.empty()) {
+      err = "E_RUNTIME_REPLAY_DELEGATE_FAILED_WITHOUT_DIAGNOSTIC";
+    }
+    if (out_error_message) {
+      *out_error_message = err;
+    }
+    if (out_executor_result_json) {
+      const int code = err.find("E_RUNTIME_") == 0 ? kPolicyErrorCode : -32602;
+      *out_executor_result_json = make_error_result(err, code);
+    }
+    return false;
+  }
+  if (out_executor_result_json) {
+    *out_executor_result_json =
+        make_tool_result("hero.runtime.replay_executor.v1", structured);
+  }
+  return true;
+}
+
 std::string build_tools_list_result_json() {
   std::ostringstream out;
   out << "{\"tools\":[";
@@ -11801,7 +11589,8 @@ void run_jsonrpc_stdio_loop(runtime_context_t *ctx) {
       continue;
     }
     const auto send = [&](std::string response) {
-      mcp_stdio::write_response(std::cout, response);
+      mcp_stdio::write_response(std::cout, response,
+                                message.content_length_framed);
     };
     std::string id_raw = "null";
     (void)extract_json_raw_field(line, "id", &id_raw);
@@ -11817,11 +11606,21 @@ void run_jsonrpc_stdio_loop(runtime_context_t *ctx) {
     }
     if (method == "initialize") {
       std::string protocol = "2024-11-05";
-      (void)extract_json_string_field(line, "protocolVersion", &protocol);
+      std::string params;
+      if (extract_json_raw_field(line, "params", &params)) {
+        (void)extract_json_string_field(params, "protocolVersion", &protocol);
+      } else {
+        (void)extract_json_string_field(line, "protocolVersion", &protocol);
+      }
       send(std::string("{\"jsonrpc\":\"2.0\",\"id\":") + id_raw +
            ",\"result\":{\"protocolVersion\":" + json_quote(protocol) +
            ",\"capabilities\":{\"tools\":{}},\"serverInfo\":{\"name\":"
-           "\"hero_runtime\",\"version\":\"2\"}}}");
+           "\"hero_runtime\",\"version\":\"2\"},\"instructions\":\"\"}}");
+      continue;
+    }
+    if (method == "ping") {
+      send(std::string("{\"jsonrpc\":\"2.0\",\"id\":") + id_raw +
+           ",\"result\":{}}");
       continue;
     }
     if (method == "tools/list") {

@@ -129,31 +129,34 @@ artifact readiness. Runtime folds those policy-source and environment bindings
 into a `policy_operator_surface_digest`, which is the policy-training
 component-spawn identity used by Runtime layout and Lattice exposure.
 Policy acceptance remains a separate post-training Environment evidence
-sidecar: `hero.environment.certify.policy_acceptance args_path=...` reads an
-explicit certification request file, an
-existing `runtime.policy_training.fact`, plus an existing
+sidecar: `hero.environment.certify.policy_acceptance` takes direct
+`policy_training_job_dir`, `acceptance_id`, and `certification_evidence`
+arguments, reads an existing `runtime.policy_training.fact`, plus an existing
 `lattice.tsodao_settings_protection.fact`, derives their fact digests from
 parsed sidecars, requires the named
 `policy_acceptance_governance_thresholds_v0.v1` acceptance-policy digest,
 validates the assembled acceptance fact, and writes
-`lattice.policy_acceptance.fact` only when issue mode includes a matching
-`args_digest`. That
+`lattice.policy_acceptance.fact` only when issue mode includes an
+`expected_preview_digest` matching the canonical preview returned by check mode.
+That
 sidecar is for Lattice `policy_acceptance_contract_ready`; it is not a policy
 selector, quality judge, market-readiness claim, deployment approval, or live
 authority.
 Paper-online readiness remains another explicit Environment evidence sidecar:
-`hero.environment.certify.paper_online_readiness args_path=...` reads an
-explicit certification request file and an
-existing `lattice.policy_acceptance.fact`, derives the accepted policy identity
-from the parsed sidecar, requires session lifecycle, clock/staleness,
+`hero.environment.certify.paper_online_readiness` takes direct
+`policy_acceptance_job_dir`, `readiness_id`, and `certification_evidence`
+arguments, reads an existing `lattice.policy_acceptance.fact`, derives the
+accepted policy identity from the parsed sidecar, requires session lifecycle,
+clock/staleness,
 idempotency, duplicate-protection, durable paper-ledger recovery, direct-edge
 universe, locked Cajtucu execution-profile, reward/report artifact,
 operator-abort, and kill-switch policies, and writes
 `lattice.paper_online_readiness.fact` only when
-issue mode includes a matching `args_digest`. That sidecar is for Lattice
-`paper_online_readiness_contract_ready`; it does not start a paper-online
-session, select a policy, approve deployment, route through a broker, or
-authorize live capital.
+issue mode includes an `expected_preview_digest` matching the canonical preview
+returned by check mode. That sidecar is for Lattice
+`paper_online_readiness_contract_ready`; it does not start a paper-online session,
+select a policy, approve deployment, route through a broker, or authorize live
+capital.
 
 The observer and deterministic policy DSLs currently require projection
 validation and explicitly disable live capital; this keeps
@@ -303,9 +306,8 @@ same file and select the active block with `[HERO].runtime_wave_id`. The
 checked-in `WAVE_SELECTION.ACTIVE_WAVE_ID` is only a fallback for direct file
 decoding. Cursor ranges live in `ujcamei.source.cursor.dsl`; cursor ids
 intentionally avoid protocol names because source availability is independent of
-the active protocol. Runtime execution requests may still adjust the effective
-launch range through an `execution_request_path` entry inside
-`hero.runtime.run` `args_path`, or the equivalent
+the active protocol. Runtime execution may still adjust the effective
+launch range through Runtime handoff wave fields, or the equivalent
 `cuwacunu_exec --source-range ...` flags, without mutating the wave or cursor
 catalog. Effective ranges are not protocol identity.
 
@@ -322,7 +324,10 @@ readiness prerequisite sidecars; `hero.environment.inspect.schema` reads the
 Environment policy schema and `hero.environment.inspect.job` reads job-local
 sidecars with direct job selectors;
 `hero.environment.rollout` validates or replays bounded historical replay
-rollouts while delegating low-level replay execution to Runtime.
+rollouts while delegating low-level replay execution to Runtime. Its public
+request names the completed Runtime job and rollout identity directly; rollout
+policy set, finite limits, runtime executable, timeout, and Cajtucu execution
+profile come from the active `ENVIRONMENT_PROFILE`.
 
 Lattice Hero starts from:
 
@@ -339,12 +344,13 @@ Marshal Hero starts from:
 - `src/include/hero/marshal_hero/hero_marshal.h`
 - `src/include/hero/marshal_hero/hero_marshal_tools.h`
 
-`src/config/hero.marshal.dsl` is intentionally minimal. It exists for Hero
-policy-path symmetry and MCP harness consistency; it does not give Marshal
-independent execution, scheduling, proof, model-selection, checkpoint-selection,
-or config-editing authority. Marshal exposes a small deterministic coordination
-surface over Lattice target state and Runtime policy/wave evidence, while
-Runtime remains the executor and Lattice remains the proof authority.
+`src/config/hero.marshal.dsl` is intentionally minimal. It selects the Marshal
+protocol layer and defines prepare profiles for bounded target pursuit; it does
+not give Marshal independent execution, scheduling, proof, model-selection,
+checkpoint-selection, or config-editing authority. Marshal exposes a small
+deterministic coordination surface over Lattice target state and Runtime
+policy/wave evidence, while Runtime remains the executor and Lattice remains the
+proof authority.
 `hero.marshal.inspect.facts` is the read-only path for Lattice
 artifact-readiness targets and fact-family summaries. It can relay current
 Lattice inspect panels
@@ -418,8 +424,7 @@ and return `sha256`; replacements and deletions go through
 and require `expected_sha256` by default for
 existing targets.
 Config inspect tools expose their small selectors directly. Config apply tools
-also expose their operation-specific arguments directly; there is no Config
-Apply `mode`, `args_path`, or `args_digest`.
+also expose their operation-specific arguments directly.
 
 Runtime Hero is the agent-facing control and inspection surface for
 `/cuwacunu/.build/exec/cuwacunu_exec`. It decodes the active wave, performs
@@ -443,8 +448,8 @@ check unless resume support is implemented.
 Developer runtime reset is owned by Runtime Hero as `hero.runtime.reset`, not by
 Config Hero. `mode=plan` reports the exact runtime-root entries it
 would clear. `mode=execute` requires `allow_dev_nuke=true` plus a
-digest-pinned `args_path` reset request, where per-call selectors such as
-`runtime_root` and `backup` live. Checked-in policies allow clearing
+direct optional `runtime_root` selector and `backup` override when needed.
+Checked-in policies allow clearing
 `/cuwacunu/.runtime` but keep backup snapshots disabled by default so a reset
 does not leave legacy backup folders under the disposable runtime tree.
 Operators can explicitly enable backups to the configured `/tmp` backup root.

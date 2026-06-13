@@ -65,15 +65,106 @@ key = max_runtime_seconds
 scope = Environment Hero policy
 type = int
 default = 600
-nuance = Default timeout used for delegated Runtime replay when a rollout request omits timeout_seconds.
+nuance = Timeout used for delegated Runtime replay.
+
+[FIELD rollout_policy_set]
+key = rollout_policy_set
+scope = Environment Hero policy/profile
+type = string
+default = numeraire,current_weight,equal_weight,sdu
+nuance = Comma-separated rollout policy tokens used by hero.environment.rollout.
+
+[FIELD rollout_max_steps]
+key = rollout_max_steps
+scope = Environment Hero policy/profile
+type = int
+default = 250
+nuance = Positive finite step cap used by hero.environment.rollout.
+
+[FIELD rollout_max_parallel_jobs]
+key = rollout_max_parallel_jobs
+scope = Environment Hero policy/profile
+type = int
+default = 4
+nuance = Positive finite worker cap used by hero.environment.rollout.
+
+[FIELD rollout_runtime_exec_path]
+key = rollout_runtime_exec_path
+scope = Environment Hero policy/profile
+type = path
+default = /cuwacunu/.build/exec/cuwacunu_exec
+nuance = Runtime executable used when hero.environment.rollout mode=replay delegates low-level replay.
+
+[FIELD rollout_execution_backend_id]
+key = rollout_execution_backend_id
+scope = Environment Hero policy/profile
+type = string
+default = cajtucu.execution.paper.v1
+nuance = Execution backend identity bound into Environment rollout plans.
+
+[FIELD rollout_cost_model_id]
+key = rollout_cost_model_id
+scope = Environment Hero policy/profile
+type = string
+default = linear_transaction_cost_rate.v1
+nuance = Cost model identity bound into Environment rollout plans.
+
+[FIELD rollout_allow_synthetic_direct_edges]
+key = rollout_allow_synthetic_direct_edges
+scope = Environment Hero policy/profile
+type = bool
+default = false
+nuance = Controls whether Environment rollout replay may use synthetic direct execution markets.
+
+[FIELD rollout_synthetic_edge_research_reason]
+key = rollout_synthetic_edge_research_reason
+scope = Environment Hero policy/profile
+type = string
+default =
+nuance = Research reason paired with synthetic direct execution markets when enabled.
+
+[FIELD rollout_linear_transaction_cost_rate]
+key = rollout_linear_transaction_cost_rate
+scope = Environment Hero policy/profile
+type = number
+default = 0.001
+nuance = Linear transaction cost rate bound into Environment rollout replay.
+
+[FIELD rollout_allow_partial_fills]
+key = rollout_allow_partial_fills
+scope = Environment Hero policy/profile
+type = bool
+default = false
+nuance = Controls whether Environment rollout replay may request partial-fill modeling.
+
+[FIELD rollout_equity_mismatch_tolerance]
+key = rollout_equity_mismatch_tolerance
+scope = Environment Hero policy/profile
+type = number
+default = 0.000001
+nuance = Warning tolerance for Environment rollout equity mismatch checks.
+
+[FIELD rollout_equity_mismatch_fail_tolerance]
+key = rollout_equity_mismatch_fail_tolerance
+scope = Environment Hero policy/profile
+type = number
+default = 0.01
+nuance = Failure tolerance for Environment rollout equity mismatch checks.
+
+[FIELD rollout_live_execution_allowed]
+key = rollout_live_execution_allowed
+scope = Environment Hero policy/profile
+type = bool
+default = false
+nuance = Environment rollout replay must not authorize live capital by default.
 
 [TOOLS]
 hero.environment.status = read-only policy/authority summary.
 hero.environment.inspect.schema = read Environment policy schema.
 hero.environment.inspect.job job_dir=... [include_text=...] [max_bytes=...] = inspect job-local policy_acceptance, paper_online_readiness, tsodao_settings_protection, and replay sidecars with direct selectors.
-hero.environment.certify.policy_acceptance mode=check|issue args_path=... = assemble, validate, and optionally issue lattice.policy_acceptance.fact from an explicit request file plus existing policy-training and Tsodao settings-protection evidence. Environment derives canonical policy-acceptance governance v0 fields; they are not request-file arguments.
-hero.environment.certify.paper_online_readiness mode=check|issue args_path=... = assemble, validate, and optionally issue lattice.paper_online_readiness.fact from an explicit request file plus existing policy-acceptance evidence. Environment derives fixed paper-online contract/default policy ids; they are not request-file arguments.
-hero.environment.rollout mode=validate|replay args_path=... [args_digest=...] [include_machine_payload=...] = validate or replay bounded historical replay rollout evidence from an explicit request file. Replay requires args_digest and delegates low-level replay execution to the non-catalog Runtime replay executor.
+hero.environment.certify.policy_acceptance mode=check|issue policy_training_job_dir=... acceptance_id=... certification_evidence={...} [expected_preview_digest=...] = assemble, validate, and optionally issue lattice.policy_acceptance.fact from direct certification evidence plus existing policy-training and Tsodao settings-protection evidence. check mode returns the canonical preview digest; issue mode requires expected_preview_digest to match that preview before writing. Environment derives canonical policy-acceptance governance v0 fields; they are not tool arguments.
+hero.environment.certify.paper_online_readiness mode=check|issue policy_acceptance_job_dir=... readiness_id=... certification_evidence={...} [expected_preview_digest=...] = assemble, validate, and optionally issue lattice.paper_online_readiness.fact from direct certification evidence plus existing policy-acceptance evidence. check mode returns the canonical preview digest; issue mode requires expected_preview_digest to match that preview before writing. Environment derives fixed paper-online contract/default policy ids; they are not tool arguments.
+hero.environment.rollout mode=validate|replay runtime_job_dir=... rollout_id=... rollout_attempt_id=... target_node_ids=[...] [include_machine_payload=...] = validate or replay bounded historical replay rollout evidence from a completed Runtime job. Environment derives replay index, graph fingerprint, idempotency key, experiment id, asset-universe digest, and execution controls from job evidence, global config, and the active Environment profile before delegating low-level replay execution to the non-catalog Runtime replay executor.
 
 [BOUNDARY]
 boundary = Environment owns execution-environment admission and rollout evidence. Runtime remains the low-level executor. Lattice remains proof authority. Marshal remains the high-level operator orchestrator.

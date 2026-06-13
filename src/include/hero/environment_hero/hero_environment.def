@@ -32,20 +32,30 @@ HERO_ENVIRONMENT_TOOL(
     "Check and optionally issue policy-acceptance prerequisite evidence. "
     "Writes lattice.policy_acceptance.fact from completed policy-training and "
     "Tsodao settings-protection evidence. mode=check validates without "
-    "writing; issue writes the sidecar after validation and request digest "
+    "writing; issue writes the sidecar after validation and preview digest "
     "binding.",
     R"({
       "type": "object",
-      "required": ["mode", "args_path"],
+      "required": ["mode", "policy_training_job_dir", "acceptance_id",
+                   "certification_evidence"],
       "properties": {
         "mode": {
           "type": "string",
           "enum": ["check", "issue"]
         },
-        "args_path": {
+        "policy_training_job_dir": {
           "type": "string"
         },
-        "args_digest": {
+        "tsodao_settings_protection_job_dir": {
+          "type": "string"
+        },
+        "acceptance_id": {
+          "type": "string"
+        },
+        "certification_evidence": {
+          "type": "object"
+        },
+        "expected_preview_digest": {
           "type": "string"
         }
       },
@@ -57,19 +67,26 @@ HERO_ENVIRONMENT_TOOL(
     "Check and optionally issue paper-online-readiness prerequisite evidence. "
     "Writes lattice.paper_online_readiness.fact from accepted policy evidence. "
     "mode=check validates without writing; issue writes the sidecar after "
-    "validation and request digest binding.",
+    "validation and preview digest binding.",
     R"({
       "type": "object",
-      "required": ["mode", "args_path"],
+      "required": ["mode", "policy_acceptance_job_dir", "readiness_id",
+                   "certification_evidence"],
       "properties": {
         "mode": {
           "type": "string",
           "enum": ["check", "issue"]
         },
-        "args_path": {
+        "policy_acceptance_job_dir": {
           "type": "string"
         },
-        "args_digest": {
+        "readiness_id": {
+          "type": "string"
+        },
+        "certification_evidence": {
+          "type": "object"
+        },
+        "expected_preview_digest": {
           "type": "string"
         }
       },
@@ -80,21 +97,31 @@ HERO_ENVIRONMENT_TOOL(
     "hero.environment.rollout",
     "Validate or replay a bounded historical replay rollout as environment "
     "evidence. Environment owns the rollout surface and delegates low-level "
-    "Runtime replay execution. Rollout packet fields live in "
-    "args_path.",
+    "Runtime replay execution. Rollout controls come from the active "
+    "Environment profile.",
     R"({
       "type": "object",
-      "required": ["mode", "args_path"],
+      "required": ["mode", "runtime_job_dir", "rollout_id",
+                   "rollout_attempt_id", "target_node_ids"],
       "properties": {
         "mode": {
           "type": "string",
           "enum": ["validate", "replay"]
         },
-        "args_path": {
+        "runtime_job_dir": {
           "type": "string"
         },
-        "args_digest": {
+        "rollout_id": {
           "type": "string"
+        },
+        "rollout_attempt_id": {
+          "type": "string"
+        },
+        "target_node_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         },
         "include_machine_payload": {
           "type": "boolean"

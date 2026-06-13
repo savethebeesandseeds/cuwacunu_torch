@@ -12,13 +12,15 @@ KEYS
   protocol_layer
     Allowed: STDIO, HTTPS/SSE.
     Current runtime supports STDIO only. HTTPS/SSE fails fast.
+  prepare_profile
+    Default Marshal prepare profile id. Public prepare calls may override it with
+    the optional profile argument. Profiles are declared with
+    MARSHAL_PREPARE_PROFILE blocks in this file.
 
 TOOLS
   hero.marshal.status
-  hero.marshal.prepare.train.one_step
-  hero.marshal.prepare.train.budgeted
-  hero.marshal.prepare.evaluate.one_step
-  hero.marshal.prepare.evaluate.budgeted
+  hero.marshal.prepare.train
+  hero.marshal.prepare.evaluate
   hero.marshal.rollout
   hero.marshal.inspect.run.latest_chain
   hero.marshal.inspect.run.training_state
@@ -41,16 +43,17 @@ TOOLS
   hero.marshal.inspect.facts.preview.by_index
 
 PREPARE_ARGUMENTS
-  hero.marshal.prepare.train.one_step, hero.marshal.prepare.train.budgeted,
-  hero.marshal.prepare.evaluate.one_step, and
-  hero.marshal.prepare.evaluate.budgeted public arguments are target_id, mode,
-  args_path, and args_digest. Target-pursuit packet fields such as
-  Runtime/config roots, driver_policy, resume_ledger, Lattice source timestamp,
-  recommendation attempt count, identity fingerprints, context, plan-input
-  materialization flags, machine payload flag, Runtime policy/wave snapshots,
-  and timeout belong in the prepare request file. intent and drive_mode are
-  encoded in the split tool name and are not request-file arguments. Digest is
-  optional for mode=plan and required for mode=dry_run or mode=execute.
+  hero.marshal.prepare.train and hero.marshal.prepare.evaluate public arguments
+  are target_id, mode, optional profile, and optional include_machine_payload.
+  Target-pursuit driver controls such as drive_mode, max_waves, wall-clock
+  budget, Runtime execution gates, warning stop rules, plan-input
+  materialization, timeout, and Lattice/Runtime validation context belong in a
+  MARSHAL_PREPARE_PROFILE block in hero.marshal.dsl. Marshal derives current
+  Lattice advice, Runtime policy, active Runtime wave, source timestamps,
+  recommendation attempt counts, identity fingerprints, and concrete handoff
+  inputs at call time. Prepare does not accept args_path, args_digest,
+  driver_policy, context, resume_ledger, runtime_policy, or runtime_wave as
+  public arguments.
 
 INSPECT_ARGUMENTS
   hero.marshal.inspect.* tools expose direct selectors on the concrete tool.
@@ -63,20 +66,20 @@ INSPECT_ARGUMENTS
   Selectors such as runtime_root, config_path, job_id/job_ids,
   target_id/target_ids, baseline_job_id, candidate_job_id, fact_family_id,
   preview selectors, component/spawn selectors, include_machine_payload, and
-  strict protocol expected-identity fingerprints belong on the relevant split
-  tool, not in an inspect request file. Component-spawn selectors are split by
+  strict protocol expected_identity belong on the relevant split tool, not in
+  an inspect request file. Component-spawn selectors are split by
   locator: component_spawn_id, component_spawn_label,
   component_spawn_registry_id, component_spawn_fingerprint, or job_id. Run,
   spawn, and fact modes are encoded in the tool name.
 
 ROLLOUT_ARGUMENTS
-  hero.marshal.rollout public arguments are mode,
-  args_path, args_digest, and include_machine_payload.
-  Rollout packet fields such
-  as rollout identity, Runtime job paths, replay index, policy set, target
-  nodes, finite limits, and execution profile belong in the rollout request
-  file. Digest is
-  required for mode=execute.
+  hero.marshal.rollout public arguments are mode, runtime_job_dir, rollout_id,
+  rollout_attempt_id, target_node_ids, profile, and include_machine_payload.
+  The rollout profile supplies policy_set, finite limits, runtime_exec_path,
+  timeout_seconds, and the Cajtucu execution profile. Marshal reads replay
+  index and graph fingerprint from the completed Runtime job, derives
+  idempotency_key, experiment_id, and asset_universe_digest, and materializes
+  the digest-bound Environment rollout packet internally for mode=execute.
 
 BOUNDARY
   This policy file is intentionally minimal. It exists for Hero policy-path

@@ -662,50 +662,6 @@ runtime_handoff_object_json(const marshal_runtime_dry_run_request_t &request,
   return out.str();
 }
 
-[[nodiscard]] inline std::string runtime_wave_execution_request_text(
-    const marshal_runtime_dry_run_request_t &request) {
-  std::ostringstream out;
-  const auto append = [&out](const std::string &key, const std::string &value) {
-    if (!value.empty()) {
-      out << key << "=" << value << "\n";
-    }
-  };
-  append("source_range", request.source_range);
-  if (request.anchor_index_begin.has_value()) {
-    append("anchor_index_begin", std::to_string(*request.anchor_index_begin));
-  }
-  if (request.anchor_index_end.has_value()) {
-    append("anchor_index_end", std::to_string(*request.anchor_index_end));
-  }
-  if (request.source_key_begin.has_value()) {
-    append("source_key_begin", std::to_string(*request.source_key_begin));
-  }
-  if (request.source_key_end.has_value()) {
-    append("source_key_end", std::to_string(*request.source_key_end));
-  }
-  append("force_rebuild_cache", request.force_rebuild_cache ? "true" : "false");
-  return out.str();
-}
-
-[[nodiscard]] inline std::filesystem::path
-materialize_runtime_wave_execution_request(
-    const marshal_runtime_dry_run_request_t &request,
-    std::string *request_digest) {
-  const std::string text = runtime_wave_execution_request_text(request);
-  const std::string digest = marshal_digest_for_text(
-      "kikijyeba.runtime.policy_training_execution_request.v1", text);
-  if (request_digest != nullptr) {
-    *request_digest = digest;
-  }
-  const std::filesystem::path dir =
-      std::filesystem::temp_directory_path() / "cuwacunu_hero_runtime_requests";
-  std::filesystem::create_directories(dir);
-  const std::filesystem::path path = dir / ("wave_" + digest + ".kv");
-  std::ofstream out(path, std::ios::trunc);
-  out << text;
-  return path;
-}
-
 [[nodiscard]] inline std::filesystem::path materialize_runtime_handoff_object(
     const marshal_runtime_dry_run_request_t &request, bool dry_run,
     const std::filesystem::path &policy_path, std::string *file_digest) {
@@ -725,48 +681,18 @@ materialize_runtime_wave_execution_request(
   return path;
 }
 
-[[nodiscard]] inline std::filesystem::path materialize_runtime_run_request(
-    const marshal_runtime_dry_run_request_t &request, bool dry_run,
-    const std::filesystem::path &policy_path, std::string *request_digest) {
-  std::string execution_request_digest;
-  const std::filesystem::path execution_request_path =
-      materialize_runtime_wave_execution_request(request,
-                                                 &execution_request_digest);
-  std::string handoff_file_digest;
-  const std::filesystem::path handoff_path = materialize_runtime_handoff_object(
-      request, dry_run, policy_path, &handoff_file_digest);
-
-  std::ostringstream text;
-  text << "config_path=" << request.config_path << "\n"
-       << "execution_request_path=" << execution_request_path.string() << "\n"
-       << "execution_request_digest=" << execution_request_digest << "\n"
-       << "runtime_handoff_path=" << handoff_path.string() << "\n"
-       << "runtime_handoff_digest=" << handoff_file_digest << "\n";
-  const std::string digest = marshal_digest_for_text(
-      "kikijyeba.runtime.run_request.wave.v1", text.str());
-  if (request_digest != nullptr) {
-    *request_digest = digest;
-  }
-  const std::filesystem::path dir =
-      std::filesystem::temp_directory_path() / "cuwacunu_hero_runtime_requests";
-  std::filesystem::create_directories(dir);
-  const std::filesystem::path path = dir / ("run_" + digest + ".kv");
-  std::ofstream out(path, std::ios::trunc);
-  out << text.str();
-  return path;
-}
-
 [[nodiscard]] inline std::string
 runtime_hero_execute_args_json(const marshal_runtime_dry_run_request_t &request,
                                bool dry_run = true,
                                const std::filesystem::path &policy_path = {}) {
-  std::string args_digest;
-  const std::filesystem::path args_path = materialize_runtime_run_request(
-      request, dry_run, policy_path, &args_digest);
+  std::string handoff_digest;
+  const std::filesystem::path handoff_path = materialize_runtime_handoff_object(
+      request, dry_run, policy_path, &handoff_digest);
   std::ostringstream out;
   out << "{\"mode\":" << detail::json_quote(dry_run ? "dry_run" : "execute");
-  out << ",\"args_path\":" << detail::json_quote(args_path.string())
-      << ",\"args_digest\":" << detail::json_quote(args_digest);
+  out << ",\"runtime_handoff_path\":"
+      << detail::json_quote(handoff_path.string())
+      << ",\"runtime_handoff_digest\":" << detail::json_quote(handoff_digest);
   out << "}";
   return out.str();
 }

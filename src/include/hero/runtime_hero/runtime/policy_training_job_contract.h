@@ -54,6 +54,15 @@ struct policy_training_job_contract_t {
       "kikijyeba.runtime.policy_training_job_contract.v1"};
   std::string artifact_schema_id{"kikijyeba.lattice.policy_training.v1"};
   std::string runtime_job_kind{"policy_training"};
+  std::string job_id{};
+  std::string job_dir{};
+  std::string report_path{};
+  std::string replay_job_dir{};
+  std::string config_path{};
+  std::string accounting_numeraire_node_id{};
+  std::string target_node_ids{};
+  std::string experiment_id{};
+  std::string policy_set_digest{};
   std::string protocol_id{"cwu_02v"};
   std::string protocol_contract_fingerprint{};
   std::string graph_order_fingerprint{};
@@ -118,6 +127,10 @@ struct policy_training_job_contract_t {
   double ppo_entropy_coeff{0.0};
   double ppo_value_loss_coeff{0.0};
   double ppo_max_grad_norm{0.0};
+  double linear_transaction_cost_rate{0.0};
+  double initial_equity_numeraire{0.0};
+  double max_node_weight{0.0};
+  double max_turnover_l1{0.0};
   bool ppo_gamma_bound{false};
   bool ppo_gae_lambda_bound{false};
   bool ppo_clip_epsilon_bound{false};
@@ -125,6 +138,10 @@ struct policy_training_job_contract_t {
   bool ppo_entropy_coeff_bound{false};
   bool ppo_value_loss_coeff_bound{false};
   bool ppo_max_grad_norm_bound{false};
+  bool linear_transaction_cost_rate_bound{false};
+  bool initial_equity_numeraire_bound{false};
+  bool max_node_weight_bound{false};
+  bool max_turnover_l1_bound{false};
   std::int64_t ppo_minibatch_size{0};
   std::int64_t ppo_epochs_per_rollout{0};
   bool ppo_minibatch_size_bound{false};
@@ -168,6 +185,16 @@ struct policy_training_job_contract_t {
     out << "schema_version=" << schema_version << "\n";
     out << "artifact_schema_id=" << artifact_schema_id << "\n";
     out << "runtime_job_kind=" << runtime_job_kind << "\n";
+    out << "job_id=" << job_id << "\n";
+    out << "job_dir=" << job_dir << "\n";
+    out << "report_path=" << report_path << "\n";
+    out << "replay_job_dir=" << replay_job_dir << "\n";
+    out << "config_path=" << config_path << "\n";
+    out << "accounting_numeraire_node_id=" << accounting_numeraire_node_id
+        << "\n";
+    out << "target_node_ids=" << target_node_ids << "\n";
+    out << "experiment_id=" << experiment_id << "\n";
+    out << "policy_set_digest=" << policy_set_digest << "\n";
     out << "protocol_id=" << protocol_id << "\n";
     out << "protocol_contract_fingerprint=" << protocol_contract_fingerprint
         << "\n";
@@ -260,6 +287,19 @@ struct policy_training_job_contract_t {
     out << "ppo_max_grad_norm=" << ppo_max_grad_norm << "\n";
     out << "ppo_max_grad_norm_bound="
         << (ppo_max_grad_norm_bound ? "true" : "false") << "\n";
+    out << "linear_transaction_cost_rate=" << linear_transaction_cost_rate
+        << "\n";
+    out << "linear_transaction_cost_rate_bound="
+        << (linear_transaction_cost_rate_bound ? "true" : "false") << "\n";
+    out << "initial_equity_numeraire=" << initial_equity_numeraire << "\n";
+    out << "initial_equity_numeraire_bound="
+        << (initial_equity_numeraire_bound ? "true" : "false") << "\n";
+    out << "max_node_weight=" << max_node_weight << "\n";
+    out << "max_node_weight_bound="
+        << (max_node_weight_bound ? "true" : "false") << "\n";
+    out << "max_turnover_l1=" << max_turnover_l1 << "\n";
+    out << "max_turnover_l1_bound="
+        << (max_turnover_l1_bound ? "true" : "false") << "\n";
     out << "ppo_minibatch_size=" << ppo_minibatch_size << "\n";
     out << "ppo_minibatch_size_bound="
         << (ppo_minibatch_size_bound ? "true" : "false") << "\n";

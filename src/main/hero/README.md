@@ -84,7 +84,7 @@ familiar:
 | Schema/help | `hero.config.inspect.schema`, `hero.runtime.inspect.schema`, `hero.environment.inspect.schema`, `hero.lattice.inspect.schema`, `--list-tools`, `--list-tools-json`, `--help` | Inspect exact MCP arguments or operator runbooks. | Documentation/catalog surface only. |
 | Config inspection | `hero.config.inspect.*` | Read policy-controlled config values, files, path provenance, global-config validation, diffs, backups, and config-bundle receipts through concrete inspect tools with direct arguments. | Does not execute Runtime or prove Lattice targets. |
 | Config mutation | `hero.config.apply.*` | Execute in-memory policy/session config changes or file mutations through concrete apply tools with built-in preflight. | Config-scope only; public args are direct; file writes/deletes still use expected digests. |
-| Runtime execution | `hero.runtime.run`, `hero.runtime.reset` | Preview or perform guarded Runtime component-wave work, including contract-backed policy component waves, or plan/execute a guarded developer reset. | Runtime Hero is the low-level executor. `hero.runtime.run` is the canonical wave execution surface; wave locators such as contract, handoff, and execution request paths live in `args_path`. |
+| Runtime execution | `hero.runtime.run`, `hero.runtime.reset` | Preview or perform guarded Runtime component-wave work, including contract-backed policy component waves, or plan/execute a guarded developer reset. | Runtime Hero is the low-level executor. `hero.runtime.run` is the canonical wave execution surface; wave launch evidence lives in `runtime_handoff_path`, and policy-training execution lives in `contract_path`. |
 | Environment admission | `hero.environment.certify.*`, `hero.environment.rollout`, `hero.environment.inspect.*` | Check/issue policy-acceptance and paper-online readiness prerequisite evidence, inspect job-local Environment sidecars, and validate/replay bounded historical replay rollouts. Environment job inspect selectors are direct arguments on `hero.environment.inspect.job`. | Environment owns execution-environment admission and rollout evidence. It may delegate low-level replay execution to Runtime; Lattice still proves evidence and Marshal still coordinates. |
 | Runtime evidence | `hero.runtime.inspect.*` | Read active wave or durable Runtime job/replay artifacts through concrete inspect tools with direct selectors. | No target proof or config mutation. |
 | Lattice proof/evidence | `hero.lattice.*` | Scan evidence, explain/evaluate targets, inspect fact/catalog/checkpoint lineage, compare proof vectors. | Read-only. Lattice proves; it does not execute or select deployments. Lattice inspect and evaluate use concrete tools with direct selectors; compare keeps request-file selectors. |
@@ -105,15 +105,13 @@ Shortest routing rules:
 6. Need an actual Runtime action: use Runtime Hero directly or a Marshal
    handoff that delegates to Runtime Hero.
 
-Marshal Hero has a minimal policy DSL for symmetry only. Its preferred
-operator-facing surface is small:
+Marshal Hero has a minimal policy DSL for protocol selection and prepare
+profiles. Its preferred operator-facing surface is small:
 
 ```text
 hero.marshal.status
-hero.marshal.prepare.train.one_step
-hero.marshal.prepare.train.budgeted
-hero.marshal.prepare.evaluate.one_step
-hero.marshal.prepare.evaluate.budgeted
+hero.marshal.prepare.train
+hero.marshal.prepare.evaluate
 hero.marshal.rollout
 hero.marshal.inspect.run.latest_chain
 hero.marshal.inspect.run.training_state
@@ -163,8 +161,8 @@ metric, checkpoint, warning, and proof-context deltas without choosing a winner.
 `hero.marshal.inspect.target` quotes `hero.lattice.evaluate.deficit` status and
 only points at certificate inspection when Lattice returned certificate
 material. `hero.marshal.inspect.protocol.report` is observed-only;
-`hero.marshal.inspect.protocol.strict` requires explicit expected
-identity. `hero.marshal.inspect.spawn.*` and
+`hero.marshal.inspect.protocol.strict` requires an explicit
+`expected_identity` object. `hero.marshal.inspect.spawn.*` and
 `hero.marshal.inspect.component` group Runtime evidence only. Detailed job rows,
 checkpoint rows, target-status maps, performance panels, checkpoint-lineage
 details, fact preview rows, fact lineage rows, identity-envelope payloads, and
@@ -172,17 +170,15 @@ metrics are returned only with `include_machine_payload=true` on the concrete
 inspect call. It is read-only and does not prepare or execute a wave.
 
 For operator-facing target pursuit, use the concrete
-`hero.marshal.prepare.*` tool for the target intent and driver shape:
+`hero.marshal.prepare.*` tool for the target intent:
 
 ```text
-hero.marshal.prepare.train.one_step
-hero.marshal.prepare.train.budgeted
-hero.marshal.prepare.evaluate.one_step
-hero.marshal.prepare.evaluate.budgeted
+hero.marshal.prepare.train
+hero.marshal.prepare.evaluate
 ```
 
-Each accepts one canonical `target_id`, plus an explicit `mode`, and optional
-`args_path` / `args_digest`:
+Each accepts one canonical `target_id`, an explicit `mode`, an optional
+`profile`, and optional `include_machine_payload`:
 
 ```text
 plan
@@ -190,13 +186,12 @@ dry_run
 execute
 ```
 
-`one_step` is the compact single-move packet. `budgeted` is a finite target
-driver controlled by `driver_policy.max_waves`, optional wall-clock budget,
-Runtime policy, and the existing Marshal execution gate. Those driver-specific
-fields belong in the prepare request file, while `intent` and `drive_mode` are
-encoded by the split tool name.
-`args_digest` is optional for `plan` and required for
-`dry_run`/`execute`. Both modes expose
+The selected `MARSHAL_PREPARE_PROFILE` in `hero.marshal.dsl` chooses the driver
+shape and controls: `drive_mode`, wave budget, wall-clock budget, Runtime
+execution gates, warning stops, timeout, plan-input materialization, and
+validation context. The default `single_wave_operator` profile returns the
+compact single-move packet; `bounded_operator` is the finite target driver.
+Both modes expose
 `operator_summary`, `stop_reason`, `wave_panel`, `runtime_panel`,
 `lattice_panel`, and `audit_panel` before detailed machine fields. Marshal
 queries the
@@ -388,9 +383,10 @@ Runtime agent workflow:
    rollout admission and delegates low-level Runtime replay execution against
    an already completed Runtime job that has
    `artifacts/kikijyeba.environment.replay.v1/runtime_replay_batches.index`.
-   `hero.environment.rollout` and `hero.marshal.rollout` keep only
-   `mode`, `args_path`, `args_digest`, and `include_machine_payload`
-   public; rollout packet fields live in the request file.
+   `hero.environment.rollout` and `hero.marshal.rollout` expose the small
+   coordination request directly; policy set, finite limits, runtime exec path,
+   timeout, and Cajtucu execution profile come from their active rollout
+   profiles.
    Runtime then delegates to `cuwacunu_exec --replay-from-job-dir`, writes replay reports and
    `runtime_replay_experiments.index`, and does not launch a new wave or mutate
    model checkpoints. Replay arguments can bind Cajtucu paper execution profile
@@ -412,7 +408,7 @@ Runtime agent workflow:
    authority.
 7. `hero.runtime.run mode=dry_run` on a
    policy-component wave reports the contract-backed policy-training packet.
-   The same `hero.runtime.run` surface with `contract_path` inside `args_path`
+   The same `hero.runtime.run` surface with direct `contract_path`
    validates a persisted causal policy component job contract.
    The selected `WAVE_SETTINGS` block may bind `POLICY_ID`,
    `POLICY_KIND`, `TRAINING_SCHEDULE_MODE`, and `LIVE_EXECUTION_ALLOWED`; the
@@ -490,11 +486,13 @@ Runtime agent workflow:
    This is an artifact proof, not policy selection or policy-quality proof.
    Runtime still does not claim Lattice target satisfaction, policy quality,
    market readiness, deployment readiness, or live-capital authority.
-8. `hero.environment.certify.policy_acceptance mode=check|issue args_path=...`
-   emits a Lattice
-   policy-acceptance sidecar from an explicit certification request file plus
-   existing policy-training and Tsodao settings-protection evidence. In issue
-   mode, `args_digest` is required and must bind the request file.
+8. `hero.environment.certify.policy_acceptance mode=check|issue
+   policy_training_job_dir=... acceptance_id=...
+   certification_evidence={...}` emits a Lattice
+   policy-acceptance sidecar from direct certification evidence plus existing
+   policy-training and Tsodao settings-protection evidence. In issue mode,
+   `expected_preview_digest` is required and must match the canonical preview
+   digest returned by check mode.
    Environment derives the parent fact digests from parsed sidecars, requires
    the named `policy_acceptance_governance_thresholds_v0.v1` acceptance-policy
    digest, derives the canonical governance-v0 metric, baseline, split,
@@ -506,10 +504,12 @@ Runtime agent workflow:
    policy, judge quality, prove readiness, approve deployment, or authorize
    live capital.
 9. `hero.environment.certify.paper_online_readiness mode=check|issue
-   args_path=...` emits a pre-execution
-   Lattice paper-online readiness sidecar from an explicit certification
-   request file plus existing policy-acceptance evidence. In issue mode,
-   `args_digest` is required and must bind the request file.
+   policy_acceptance_job_dir=... readiness_id=...
+   certification_evidence={...}` emits a pre-execution
+   Lattice paper-online readiness sidecar from direct certification evidence
+   plus existing policy-acceptance evidence. In issue mode,
+   `expected_preview_digest` is required and must match the canonical preview
+   digest returned by check mode.
    Environment
    derives accepted policy identity from parsed sidecars, binds session
    lifecycle, clock/staleness, idempotency, duplicate protection, persistent
@@ -533,17 +533,17 @@ than a wave executor and is normally reached through `hero.environment.rollout`:
 it requires the job to be completed, inside an allowed job root, and to have the
 replay batch index; it also honors Runtime execute policy.
 
-Marshal handoffs should use `runtime_handoff_path` inside
-`hero.runtime.run` `args_path`. Runtime validates the object against the
+Marshal handoffs should use direct `runtime_handoff_path` on
+`hero.runtime.run`. Runtime validates the object against the
 effective wave and policy, rejects unresolved
 `latest_satisfying:*` model-state selectors, and only then launches
 `cuwacunu_exec`. Accepted
 `PLAN_INPUT_REPRESENTATION_CHECKPOINT` and `PLAN_INPUT_MDN_CHECKPOINT` values are
 passed as launch-time checkpoint overrides, so readiness-grade operator launches
 do not need to copy materialized checkpoint paths into static `.jkimyei` files.
-Concrete source ranges should be supplied through `execution_request_path`
-inside `args_path`, rather than baked into reusable wave profiles or
-exposed as top-level Runtime tool arguments. Checked-in reusable wave profiles
+Concrete source ranges should be supplied through the Runtime handoff wave
+fields, rather than baked into reusable wave profiles or exposed as top-level
+Runtime tool arguments. Checked-in reusable wave profiles
 are selected from the single `hero.runtime.wave.dsl` catalog with
 `[HERO].runtime_wave_id`.
 Accepted handoff id/digest values are passed into the Runtime job and echoed in
@@ -554,7 +554,8 @@ exposures when that evidence participates in checkpoint lineage.
 The checked-in Runtime policy is intentionally profile-scoped for Codex/MCP
 safety. The default `operator_default` profile permits digest-bound non-live
 wave/train execution, while developer reset is available only through the
-guarded `hero.runtime.reset` path with a digest-pinned reset request. Use
+guarded `hero.runtime.reset` path with direct `runtime_root`/`backup`
+selectors. Use
 `runtime_hero_profile = long_train_operator` in an operator-local `.config`, or
 pass `--profile long_train_operator`, for longer intentional training runs; it
 keeps execute/train enabled, leaves Runtime process timeout unlimited by
@@ -572,9 +573,8 @@ claims; prefer
 reports.
 
 `hero.runtime.reset mode=plan` is a dry-run preview. Non-dry-run reset
-is denied unless `allow_dev_nuke=true` and `args_path` plus `args_digest` bind
-the exact reset request file. Per-call selectors such as `runtime_root` and
-`backup` belong in that request file.
+is denied unless `allow_dev_nuke=true`; optional `runtime_root` and `backup`
+arguments are direct tool fields.
 The checked-in policies allow the disposable `/cuwacunu/.runtime` tree to be
 selected for reset, but keep `dev_nuke_backup_enabled=false` so reset does not
 create new backup clutter under `.runtime`. Operators can explicitly enable
@@ -1331,7 +1331,8 @@ wave.
 When the active runtime root is empty, graph-anchor targets cannot infer active
 identity from evidence. Run a Runtime Hero dry-run first to produce
 identity-bearing manifests, or use `hero.marshal.inspect.protocol.strict` when
-the task is to compare observed Runtime identity against explicit expectations.
+the task is to compare observed Runtime identity against one explicit
+`expected_identity` tuple.
 Lattice Hero may suggest a wave, but Runtime Hero remains the only executor.
 
 Agent invariants:

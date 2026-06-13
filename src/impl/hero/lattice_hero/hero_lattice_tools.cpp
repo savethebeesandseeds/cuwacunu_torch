@@ -16098,7 +16098,8 @@ void run_jsonrpc_stdio_loop(lattice_context_t *ctx) {
       continue;
     }
     const auto send = [&](std::string response) {
-      mcp_stdio::write_response(std::cout, response);
+      mcp_stdio::write_response(std::cout, response,
+                                message.content_length_framed);
     };
     std::string id_raw = "null";
     (void)extract_json_raw_field(line, "id", &id_raw);
@@ -16114,11 +16115,21 @@ void run_jsonrpc_stdio_loop(lattice_context_t *ctx) {
     }
     if (method == "initialize") {
       std::string protocol = "2024-11-05";
-      (void)extract_json_string_field(line, "protocolVersion", &protocol);
+      std::string params;
+      if (extract_json_raw_field(line, "params", &params)) {
+        (void)extract_json_string_field(params, "protocolVersion", &protocol);
+      } else {
+        (void)extract_json_string_field(line, "protocolVersion", &protocol);
+      }
       send(std::string("{\"jsonrpc\":\"2.0\",\"id\":") + id_raw +
            ",\"result\":{\"protocolVersion\":" + json_quote(protocol) +
            ",\"capabilities\":{\"tools\":{}},\"serverInfo\":{\"name\":"
-           "\"hero_lattice\",\"version\":\"0\"}}}");
+           "\"hero_lattice\",\"version\":\"0\"},\"instructions\":\"\"}}");
+      continue;
+    }
+    if (method == "ping") {
+      send(std::string("{\"jsonrpc\":\"2.0\",\"id\":") + id_raw +
+           ",\"result\":{}}");
       continue;
     }
     if (method == "tools/list") {

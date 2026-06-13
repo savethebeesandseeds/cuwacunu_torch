@@ -37,6 +37,11 @@ load_runtime_policy(const std::filesystem::path &policy_path,
                                      std::string *out_tool_result_json,
                                      std::string *out_error_message);
 
+[[nodiscard]] bool
+execute_replay_delegate_json(std::string arguments_json, runtime_context_t *ctx,
+                             std::string *out_executor_result_json,
+                             std::string *out_error_message);
+
 [[nodiscard]] inline bool
 tool_result_is_error(std::string_view tool_result_json) {
   return tool_result_json.find("\"isError\":true") != std::string_view::npos ||

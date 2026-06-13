@@ -168,9 +168,9 @@ void test_evaluation_plan_accepts_out_of_sample_request() {
         "runtime execute args digest should be strong hex");
   check(marshal::marshal_digest_is_strong_hex(handoff.handoff_digest),
         "runtime handoff digest should be strong hex");
-  check(handoff.runtime_execute_args_json.find("\"subject\":\"wave\"") !=
+  check(handoff.runtime_execute_args_json.find("\"subject\"") ==
             std::string::npos,
-        "runtime handoff args should target wave subject");
+        "runtime handoff args should not expose retired subject");
   check(handoff.runtime_execute_args_json.find("\"mode\":\"dry_run\"") !=
             std::string::npos,
         "runtime handoff args should force mode=dry_run");
@@ -183,19 +183,21 @@ void test_evaluation_plan_accepts_out_of_sample_request() {
   check(handoff.runtime_execute_args_json.find("\"marshal_expected_wave\"") ==
             std::string::npos,
         "runtime handoff args should not expose retired marshal_expected_wave");
-  check(handoff.runtime_execute_args_json.find("\"args_path\"") !=
+  check(handoff.runtime_execute_args_json.find("\"args_path\"") ==
             std::string::npos,
-        "runtime handoff args should carry launch data through args_path");
-  const std::string run_request_text =
-      read_text(json_string_field(handoff.runtime_execute_args_json,
-                                  "args_path"));
-  check(run_request_text.find("execution_request_path=") != std::string::npos,
-        "runtime handoff request should carry launch range through an "
-        "execution request");
-  check(run_request_text.find("runtime_handoff_path=") != std::string::npos,
-        "runtime handoff request should include handoff file path");
+        "runtime handoff args should not expose retired args_path");
+  check(handoff.runtime_execute_args_json.find("\"args_digest\"") ==
+            std::string::npos,
+        "runtime handoff args should not expose retired args_digest");
+  check(handoff.runtime_execute_args_json.find("\"runtime_handoff_path\"") !=
+            std::string::npos,
+        "runtime handoff args should carry the handoff path directly");
+  check(handoff.runtime_execute_args_json.find("\"runtime_handoff_digest\"") !=
+            std::string::npos,
+        "runtime handoff args should carry the handoff digest directly");
   const std::string runtime_handoff_text =
-      read_text(assignment_value(run_request_text, "runtime_handoff_path"));
+      read_text(json_string_field(handoff.runtime_execute_args_json,
+                                  "runtime_handoff_path"));
   check(runtime_handoff_text.find(request.evaluation_id) != std::string::npos,
         "runtime handoff file should bind evaluation id");
   check(runtime_handoff_text.find("runtime_replay_command_template") !=

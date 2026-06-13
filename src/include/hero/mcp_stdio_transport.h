@@ -13,6 +13,7 @@ namespace cuwacunu::hero::mcp_stdio {
 
 struct message_t {
   std::string json;
+  bool content_length_framed = true;
 };
 
 [[nodiscard]] inline std::string trim_ascii(std::string_view in) {
@@ -79,6 +80,11 @@ struct message_t {
 
     std::size_t content_length = 0;
     if (!parse_content_length_header(trimmed, &content_length)) {
+      if (trimmed.front() == '{' || trimmed.front() == '[') {
+        out->json = trimmed;
+        out->content_length_framed = false;
+        return true;
+      }
       return false;
     }
 
@@ -99,12 +105,32 @@ struct message_t {
       return false;
     }
     out->json = std::move(body);
+    out->content_length_framed = true;
     return true;
   }
   return false;
 }
 
-inline void write_response(std::ostream &out, std::string_view json) {
+[[nodiscard]] inline std::string json_line(std::string_view json) {
+  std::string out;
+  out.reserve(json.size());
+  for (const char c : json) {
+    if (c == '\r' || c == '\n') {
+      out.push_back(' ');
+    } else {
+      out.push_back(c);
+    }
+  }
+  return out;
+}
+
+inline void write_response(std::ostream &out, std::string_view json,
+                           bool content_length_framed = true) {
+  if (!content_length_framed) {
+    out << json_line(json) << '\n';
+    out.flush();
+    return;
+  }
   out << "Content-Length: " << json.size() << "\r\n\r\n" << json;
   out.flush();
 }

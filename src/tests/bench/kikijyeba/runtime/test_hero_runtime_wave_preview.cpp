@@ -4,6 +4,7 @@
 #include "hero/marshal_hero/marshal/digest.h"
 #include "hero/runtime_hero/hero_runtime_tools.h"
 #include "hero/runtime_hero/runtime/policy_training_causal_schedule.h"
+#include "hero/runtime_hero/runtime/policy_training_job_contract.h"
 #include "hero/runtime_hero/runtime/wave_settings.h"
 #include "wikimyei/assembly.h"
 
@@ -12,6 +13,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <map>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -81,19 +83,63 @@ std::string read_text(const std::filesystem::path &path) {
   return buffer.str();
 }
 
-std::string certify_request_digest_domain(std::string_view subject) {
-  if (subject == "policy_acceptance") {
-    return "kikijyeba.environment.certify_request.policy_acceptance.v1";
+std::string json_quote_test(std::string_view value) {
+  std::ostringstream out;
+  out << '"';
+  for (const char c : value) {
+    switch (c) {
+    case '"':
+      out << "\\\"";
+      break;
+    case '\\':
+      out << "\\\\";
+      break;
+    case '\b':
+      out << "\\b";
+      break;
+    case '\f':
+      out << "\\f";
+      break;
+    case '\n':
+      out << "\\n";
+      break;
+    case '\r':
+      out << "\\r";
+      break;
+    case '\t':
+      out << "\\t";
+      break;
+    default:
+      out << c;
+      break;
+    }
   }
-  if (subject == "paper_online_readiness") {
-    return "kikijyeba.environment.certify_request.paper_online_readiness.v1";
-  }
-  throw std::runtime_error("unknown certify request subject");
+  out << '"';
+  return out.str();
 }
 
-std::string args_digest(std::string_view subject, const std::string &text) {
-  return cuwacunu::hero::marshal::marshal_digest_for_text(
-      certify_request_digest_domain(subject), text);
+std::string trim_ascii_test(std::string_view text) {
+  std::size_t begin = 0;
+  while (begin < text.size() &&
+         std::isspace(static_cast<unsigned char>(text[begin])) != 0) {
+    ++begin;
+  }
+  std::size_t end = text.size();
+  while (end > begin &&
+         std::isspace(static_cast<unsigned char>(text[end - 1U])) != 0) {
+    --end;
+  }
+  return std::string(text.substr(begin, end - begin));
+}
+
+std::string certify_preview_digest_domain(std::string_view subject) {
+  if (subject == "policy_acceptance") {
+    return "kikijyeba.environment.certify_preview.policy_acceptance.v1";
+  }
+  if (subject == "paper_online_readiness") {
+    return "kikijyeba.environment.certify_preview.paper_online_readiness.v1";
+  }
+  throw std::runtime_error("unknown certify preview subject");
 }
 
 std::string certify_tool_name(std::string_view subject) {
@@ -106,14 +152,99 @@ std::string certify_tool_name(std::string_view subject) {
   throw std::runtime_error("unknown certify tool subject");
 }
 
+bool certify_direct_field(std::string_view subject, const std::string &key) {
+  if (subject == "policy_acceptance") {
+    return key == "policy_training_job_dir" ||
+           key == "tsodao_settings_protection_job_dir" ||
+           key == "acceptance_id";
+  }
+  if (subject == "paper_online_readiness") {
+    return key == "policy_acceptance_job_dir" || key == "readiness_id";
+  }
+  throw std::runtime_error("unknown certify subject");
+}
+
+bool certify_string_field(std::string_view subject, const std::string &key) {
+  if (certify_direct_field(subject, key)) {
+    return true;
+  }
+  if (subject == "policy_acceptance") {
+    return key == "accepted_policy_training_proof_certificate_digest" ||
+           key == "tsodao_settings_protection_proof_certificate_digest";
+  }
+  if (subject == "paper_online_readiness") {
+    return key == "policy_acceptance_proof_certificate_digest" ||
+           key == "paper_online_profile_digest" ||
+           key == "direct_edge_universe_digest";
+  }
+  throw std::runtime_error("unknown certify subject");
+}
+
+std::map<std::string, std::string>
+parse_certify_assignment_fields(const std::string &text) {
+  std::map<std::string, std::string> fields;
+  std::istringstream lines(text);
+  std::string line;
+  while (std::getline(lines, line)) {
+    line = trim_ascii_test(line);
+    if (line.empty()) {
+      continue;
+    }
+    const auto eq = line.find('=');
+    check(eq != std::string::npos,
+          "test certification assignment is missing '='");
+    std::string key = trim_ascii_test(std::string_view(line).substr(0, eq));
+    std::string value = trim_ascii_test(std::string_view(line).substr(eq + 1));
+    if (!value.empty() && value.back() == ';') {
+      value.pop_back();
+      value = trim_ascii_test(value);
+    }
+    check(!key.empty(), "test certification assignment has empty key");
+    check(fields.emplace(std::move(key), std::move(value)).second,
+          "test certification assignment has duplicate key");
+  }
+  return fields;
+}
+
+std::string certify_json_value(std::string_view subject, const std::string &key,
+                               const std::string &value) {
+  if (certify_string_field(subject, key)) {
+    if (!value.empty() && value.front() == '"') {
+      return value;
+    }
+    return json_quote_test(value);
+  }
+  return value;
+}
+
 std::string certify_args(std::string_view subject, std::string_view mode,
-                         const std::filesystem::path &request_path,
-                         const std::string &request_text, bool include_digest) {
+                         const std::string &assignment_text,
+                         bool include_expected_preview_digest,
+                         const std::string &expected_preview_digest = "") {
+  const auto fields = parse_certify_assignment_fields(assignment_text);
   std::ostringstream args;
-  args << "{\"mode\":\"" << mode << "\",\"args_path\":\""
-       << request_path.string() << "\"";
-  if (include_digest) {
-    args << ",\"args_digest\":\"" << args_digest(subject, request_text) << "\"";
+  args << "{\"mode\":\"" << mode << "\"";
+  for (const auto &[key, value] : fields) {
+    if (certify_direct_field(subject, key)) {
+      args << ",\"" << key << "\":" << certify_json_value(subject, key, value);
+    }
+  }
+  args << ",\"certification_evidence\":{";
+  bool first = true;
+  for (const auto &[key, value] : fields) {
+    if (certify_direct_field(subject, key)) {
+      continue;
+    }
+    if (!first) {
+      args << ",";
+    }
+    first = false;
+    args << "\"" << key << "\":" << certify_json_value(subject, key, value);
+  }
+  args << "}";
+  if (include_expected_preview_digest) {
+    args << ",\"expected_preview_digest\":"
+         << json_quote_test(expected_preview_digest);
   }
   args << "}";
   return args.str();
@@ -288,11 +419,9 @@ std::string unquote_json_string_raw(const std::string &raw) {
 }
 
 bool runtime_run_top_level_field(const std::string &key) {
-  return key == "mode" || key == "args_path" || key == "args_digest";
-}
-
-bool runtime_reset_top_level_field(const std::string &key) {
-  return key == "mode" || key == "args_path" || key == "args_digest";
+  return key == "mode" || key == "runtime_handoff_path" ||
+         key == "runtime_handoff_digest" || key == "contract_path" ||
+         key == "contract_digest";
 }
 
 std::string request_assignment_value(const std::string &raw) {
@@ -302,17 +431,141 @@ std::string request_assignment_value(const std::string &raw) {
   return raw;
 }
 
+bool runtime_run_args_request_replay(const std::string &args);
+
+bool runtime_run_non_contract_fixture_field(const std::string &key) {
+  return key == "subject" || key == "mode" || key == "config_path" ||
+         key == "runtime_handoff" || key == "runtime_handoff_path" ||
+         key == "runtime_handoff_digest" || key == "contract_path" ||
+         key == "contract_digest" || key == "wave_overlay" ||
+         key == "marshal_expected_wave";
+}
+
+bool runtime_run_policy_training_fixture_field(const std::string &key) {
+  return !runtime_run_non_contract_fixture_field(key);
+}
+
+void set_default_contract_field(std::map<std::string, std::string> *fields,
+                                const std::string &key,
+                                const std::string &value) {
+  if (fields != nullptr && fields->find(key) == fields->end()) {
+    fields->emplace(key, value);
+  }
+}
+
+std::string materialize_policy_training_contract_text(
+    const std::vector<json_field_t> &fields) {
+  std::map<std::string, std::string> contract_fields;
+  for (const auto &field : fields) {
+    if (runtime_run_policy_training_fixture_field(field.key)) {
+      contract_fields[field.key] = request_assignment_value(field.raw);
+    }
+  }
+
+  bool config_path_bound = false;
+  for (const auto &field : fields) {
+    if (field.key == "config_path" &&
+        !request_assignment_value(field.raw).empty()) {
+      config_path_bound = true;
+      break;
+    }
+  }
+  if (config_path_bound) {
+    set_default_contract_field(
+        &contract_fields, "policy_id",
+        "wikimyei.policy.portfolio.graph_node_allocation.noop_pre_ppo");
+    set_default_contract_field(&contract_fields, "policy_kind",
+                               "noop_policy_training.v1");
+    set_default_contract_field(&contract_fields, "training_schedule_mode",
+                               "causal_walk_forward_training.v1");
+    set_default_contract_field(&contract_fields, "live_execution_allowed",
+                               "false");
+  }
+  set_default_contract_field(
+      &contract_fields, "action_schema_digest",
+      hero_runtime::k_target_node_weights_action_schema_v1);
+  set_default_contract_field(&contract_fields, "policy_input_schema_id",
+                             hero_runtime::k_policy_input_schema_v1);
+  set_default_contract_field(
+      &contract_fields, "action_adapter_id",
+      hero_runtime::k_target_node_weights_simplex_adapter_v1);
+  set_default_contract_field(&contract_fields, "reward_contract_id",
+                             hero_runtime::k_post_execution_reward_contract_v1);
+  set_default_contract_field(
+      &contract_fields, "causal_schedule_schema_id",
+      hero_runtime::k_policy_training_causal_schedule_schema_v1);
+  set_default_contract_field(
+      &contract_fields, "causal_schedule_no_future_snapshot_use_source",
+      hero_runtime::k_policy_training_schedule_no_future_snapshot_source_v1);
+
+  const auto policy_kind_it = contract_fields.find("policy_kind");
+  const bool ppo_contract =
+      policy_kind_it != contract_fields.end() &&
+      (policy_kind_it->second.find("ppo") != std::string::npos ||
+       policy_kind_it->second.find("PPO") != std::string::npos);
+
+  if (ppo_contract) {
+    set_default_contract_field(&contract_fields,
+                               "ppo_policy_artifact_contract_id",
+                               hero_runtime::k_ppo_policy_artifact_contract_v1);
+    set_default_contract_field(
+        &contract_fields, "policy_family_id",
+        hero_runtime::k_graph_node_allocation_policy_family_v1);
+    set_default_contract_field(&contract_fields, "policy_checkpoint_schema_id",
+                               hero_runtime::k_ppo_policy_checkpoint_schema_v1);
+    set_default_contract_field(&contract_fields, "optimizer_state_schema_id",
+                               "kikijyeba.runtime.ppo_optimizer_state.v1");
+    set_default_contract_field(&contract_fields, "device_policy",
+                               "require_cuda");
+    set_default_contract_field(&contract_fields, "cuda_device_index", "0");
+    set_default_contract_field(&contract_fields, "cuda_device_index_bound",
+                               "true");
+    set_default_contract_field(&contract_fields, "advantage_estimator_id",
+                               hero_runtime::k_gae_advantage_estimator_v1);
+    set_default_contract_field(
+        &contract_fields, "rollout_collection_schema_id",
+        hero_runtime::k_ppo_rollout_collection_schema_v1);
+    set_default_contract_field(&contract_fields, "ppo_update_report_schema_id",
+                               hero_runtime::k_ppo_update_report_schema_v1);
+    for (const auto &[value_key, bound_key] :
+         {std::pair{"ppo_gamma", "ppo_gamma_bound"},
+          std::pair{"ppo_gae_lambda", "ppo_gae_lambda_bound"},
+          std::pair{"ppo_clip_epsilon", "ppo_clip_epsilon_bound"},
+          std::pair{"ppo_target_kl", "ppo_target_kl_bound"},
+          std::pair{"ppo_entropy_coeff", "ppo_entropy_coeff_bound"},
+          std::pair{"ppo_value_loss_coeff", "ppo_value_loss_coeff_bound"},
+          std::pair{"ppo_max_grad_norm", "ppo_max_grad_norm_bound"},
+          std::pair{"linear_transaction_cost_rate",
+                    "linear_transaction_cost_rate_bound"},
+          std::pair{"initial_equity_numeraire",
+                    "initial_equity_numeraire_bound"},
+          std::pair{"max_node_weight", "max_node_weight_bound"},
+          std::pair{"max_turnover_l1", "max_turnover_l1_bound"},
+          std::pair{"ppo_minibatch_size", "ppo_minibatch_size_bound"},
+          std::pair{"ppo_epochs_per_rollout",
+                    "ppo_epochs_per_rollout_bound"}}) {
+      if (contract_fields.find(value_key) != contract_fields.end()) {
+        set_default_contract_field(&contract_fields, bound_key, "true");
+      }
+    }
+  }
+  if (contract_fields.find("random_seed") != contract_fields.end()) {
+    set_default_contract_field(&contract_fields, "random_seed_bound", "true");
+  }
+
+  std::ostringstream text;
+  for (const auto &[key, value] : contract_fields) {
+    text << key << "=" << value << "\n";
+  }
+  return text.str();
+}
+
 std::string materialize_runtime_run_args(const std::string &args) {
   const auto fields = parse_json_object_fields(args);
   std::ostringstream top;
-  std::ostringstream run_request;
-  std::ostringstream execution_request;
   top << "{";
   bool top_first = true;
-  bool wrote_run_request = false;
-  bool wrote_execution_request = false;
-  bool has_run_request_path = false;
-  std::string operation = "wave";
+  bool wrote_contract = false;
   const auto append_top_raw = [&](const std::string &key,
                                   const std::string &raw) {
     if (!top_first) {
@@ -321,36 +574,17 @@ std::string materialize_runtime_run_args(const std::string &args) {
     top << "\"" << key << "\":" << raw;
     top_first = false;
   };
-  const auto append_run_request = [&](const std::string &key,
-                                      const std::string &value) {
-    run_request << key << "=" << value << "\n";
-    wrote_run_request = true;
-  };
-  const auto append_execution_request = [&](const std::string &key,
-                                            const std::string &value) {
-    execution_request << key << "=" << value << "\n";
-    wrote_execution_request = true;
-  };
 
   for (const auto &field : fields) {
     if (field.key == "subject") {
-      if (!field.raw.empty() && field.raw.front() == '"') {
-        operation = unquote_json_string_raw(field.raw);
-      }
       continue;
     }
     if (runtime_run_top_level_field(field.key)) {
-      if (field.key == "args_path") {
-        has_run_request_path = true;
-      }
       append_top_raw(field.key, field.raw);
       continue;
     }
-    if (field.key == "config_path" || field.key == "contract_path" ||
-        field.key == "contract_digest" ||
-        field.key == "execution_request_path" ||
-        field.key == "execution_request_digest") {
-      append_run_request(field.key, request_assignment_value(field.raw));
+    if (runtime_run_args_request_replay(args)) {
+      append_top_raw(field.key, field.raw);
       continue;
     }
     if (field.key == "runtime_handoff") {
@@ -361,64 +595,44 @@ std::string materialize_runtime_run_args(const std::string &args) {
           cuwacunu::hero::marshal::marshal_digest_for_text(
               "kikijyeba.runtime.run_request.runtime_handoff_file.v1",
               field.raw);
-      append_run_request("runtime_handoff_path", handoff_path.string());
-      append_run_request("runtime_handoff_digest", handoff_digest);
-      continue;
-    }
-    if (field.key == "wave_overlay") {
-      for (const auto &overlay_field : parse_json_object_fields(field.raw)) {
-        append_execution_request(overlay_field.key,
-                                 request_assignment_value(overlay_field.raw));
-      }
+      append_top_raw("runtime_handoff_path",
+                     "\"" + handoff_path.string() + "\"");
+      append_top_raw("runtime_handoff_digest", "\"" + handoff_digest + "\"");
       continue;
     }
     if (field.key == "marshal_expected_wave") {
       throw std::runtime_error("marshal_expected_wave is retired");
     }
-    append_execution_request(field.key, request_assignment_value(field.raw));
+    if (runtime_run_policy_training_fixture_field(field.key)) {
+      wrote_contract = true;
+    }
   }
 
-  if (wrote_execution_request) {
-    const auto request_dir = make_tmp_dir("execution_request");
-    const auto request_path = request_dir / "request.kv";
-    write_text(request_path, execution_request.str());
-    const std::string request_digest =
-        cuwacunu::hero::marshal::marshal_digest_for_text(
-            "kikijyeba.runtime.policy_training_execution_request.v1",
-            execution_request.str());
-    append_run_request("execution_request_path", request_path.string());
-    append_run_request("execution_request_digest", request_digest);
-  }
-  if (wrote_run_request) {
-    check(!has_run_request_path,
-          "test fixture must not mix inline payload with args_path");
-    const auto request_dir = make_tmp_dir("run_request");
-    const auto request_path = request_dir / "request.kv";
-    write_text(request_path, run_request.str());
-    const std::string request_digest =
-        cuwacunu::hero::marshal::marshal_digest_for_text(
-            "kikijyeba.runtime.run_request." + operation + ".v1",
-            run_request.str());
-    append_top_raw("args_path", "\"" + request_path.string() + "\"");
-    append_top_raw("args_digest", "\"" + request_digest + "\"");
+  if (wrote_contract) {
+    const std::string contract_text =
+        materialize_policy_training_contract_text(fields);
+    const auto contract_dir = make_tmp_dir("policy_training_contract_request");
+    const auto contract_path = contract_dir / "policy_training.contract";
+    write_text(contract_path, contract_text);
+    append_top_raw("contract_path", "\"" + contract_path.string() + "\"");
   }
   top << "}";
   return top.str();
 }
 
-std::string runtime_run_tool_name_for_args(const std::string &args) {
+bool runtime_run_args_request_replay(const std::string &args) {
   const auto fields = parse_json_object_fields(args);
   for (const auto &field : fields) {
     if (field.key == "subject" && !field.raw.empty() &&
         field.raw.front() == '"') {
       const std::string subject = unquote_json_string_raw(field.raw);
       if (subject == "replay") {
-        return "hero.runtime.replay";
+        return true;
       }
       break;
     }
   }
-  return "hero.runtime.run";
+  return false;
 }
 
 std::string materialize_runtime_inspect_args(const std::string &args) {
@@ -468,68 +682,15 @@ std::string runtime_inspect_tool_name(const std::string &args) {
   return "hero.runtime.inspect.schema";
 }
 
-std::string materialize_runtime_reset_args(const std::string &args) {
-  const auto fields = parse_json_object_fields(args);
-  std::ostringstream top;
-  std::ostringstream request;
-  top << "{";
-  bool top_first = true;
-  bool wrote_request = false;
-  bool has_reset_request_path = false;
-  std::string requested_mode = "plan";
-  const auto append_top_raw = [&](const std::string &key,
-                                  const std::string &raw) {
-    if (!top_first) {
-      top << ",";
-    }
-    top << "\"" << key << "\":" << raw;
-    top_first = false;
-  };
-  const auto append_request = [&](const std::string &key,
-                                  const std::string &value) {
-    request << key << "=" << value << "\n";
-    wrote_request = true;
-  };
-
-  for (const auto &field : fields) {
-    if (runtime_reset_top_level_field(field.key)) {
-      if (field.key == "mode" && !field.raw.empty() &&
-          field.raw.front() == '"') {
-        requested_mode = unquote_json_string_raw(field.raw);
-      }
-      if (field.key == "args_path") {
-        has_reset_request_path = true;
-      }
-      append_top_raw(field.key, field.raw);
-      continue;
-    }
-    append_request(field.key, request_assignment_value(field.raw));
-  }
-
-  if (wrote_request) {
-    check(!has_reset_request_path,
-          "test fixture must not mix inline reset payload with args_path");
-    const auto request_dir = make_tmp_dir("reset_request");
-    const auto request_path = request_dir / "request.kv";
-    const std::string request_text = request.str();
-    write_text(request_path, request_text);
-    const std::string request_digest =
-        cuwacunu::hero::marshal::marshal_digest_for_text(
-            "kikijyeba.runtime.reset_request.v1", request_text);
-    append_top_raw("args_path", "\"" + request_path.string() + "\"");
-    if (requested_mode == "execute") {
-      append_top_raw("args_digest", "\"" + request_digest + "\"");
-    }
-  }
-  top << "}";
-  return top.str();
-}
-
 bool execute_runtime_run_json(const std::string &args,
                               hero_runtime::runtime_context_t *ctx,
                               std::string *result, std::string *error) {
-  return hero_runtime::execute_tool_json(runtime_run_tool_name_for_args(args),
-                                         materialize_runtime_run_args(args),
+  const std::string materialized_args = materialize_runtime_run_args(args);
+  if (runtime_run_args_request_replay(args)) {
+    return hero_runtime::execute_replay_delegate_json(materialized_args, ctx,
+                                                      result, error);
+  }
+  return hero_runtime::execute_tool_json("hero.runtime.run", materialized_args,
                                          ctx, result, error);
 }
 
@@ -544,9 +705,8 @@ bool execute_runtime_inspect_json(const std::string &args,
 bool execute_runtime_reset_json(const std::string &args,
                                 hero_runtime::runtime_context_t *ctx,
                                 std::string *result, std::string *error) {
-  return hero_runtime::execute_tool_json("hero.runtime.reset",
-                                         materialize_runtime_reset_args(args),
-                                         ctx, result, error);
+  return hero_runtime::execute_tool_json("hero.runtime.reset", args, ctx,
+                                         result, error);
 }
 
 std::string digest_file_for_handoff(const std::filesystem::path &path,
@@ -1778,17 +1938,55 @@ void test_execute_wave_overlay() {
                                           &error),
         "failed to load runtime policy: " + error);
 
-  const std::string args =
-      "{\"subject\":\"wave\",\"mode\":\"dry_run\","
-      "\"config_path\":\"" +
-      config_path.string() +
-      "\","
-      "\"wave_overlay\":{\"source_range\":\"anchor_index\","
-      "\"anchor_index_begin\":\"1\",\"anchor_index_end\":\"3\"}}";
+  const std::string config_digest = digest_file_for_handoff(
+      config_path, "kikijyeba.runtime.handoff.base_config_file.v1");
+  const std::string policy_digest = digest_file_for_handoff(
+      policy_path, "kikijyeba.runtime.handoff.runtime_policy_file.v1");
+  const auto handoff_args = [&](const std::string &digest,
+                                const std::string &source_range) {
+    return "{\"subject\":\"wave\",\"mode\":\"dry_run\","
+           "\"runtime_handoff\":{"
+           "\"handoff_schema_version\":\"1\","
+           "\"handoff_id\":\"runtime_handoff_" +
+           digest +
+           "\","
+           "\"handoff_digest\":\"" +
+           digest +
+           "\","
+           "\"created_by\":\"marshal\","
+           "\"created_at\":\"2026-06-05T00:00:00Z\","
+           "\"target_id\":\"overlay_test\","
+           "\"base_config\":{\"path\":\"" +
+           config_path.string() + "\",\"digest\":\"" + config_digest +
+           "\"},"
+           "\"wave\":{"
+           "\"target_component_family_id\":\"wikimyei.inference.expected_"
+           "value.mdn\","
+           "\"mode\":\"run|debug\","
+           "\"source_range\":\"" +
+           source_range +
+           "\","
+           "\"anchor_index_begin\":\"1\","
+           "\"anchor_index_end\":\"3\","
+           "\"model_state_inputs\":{}},"
+           "\"checkpoint_inputs\":{},"
+           "\"checkpoint_artifact_digests\":{},"
+           "\"lattice_certificate_refs\":{},"
+           "\"runtime_policy\":{\"path\":\"" +
+           policy_path.string() + "\",\"digest\":\"" + policy_digest +
+           "\"},"
+           "\"intent\":{\"dry_run\":true,"
+           "\"force_rebuild_cache\":false},"
+           "\"unresolved_symbols\":[]}}";
+  };
+  const std::string args = handoff_args("overlay_valid", "anchor_index");
+  const std::string materialized_overlay_args =
+      materialize_runtime_run_args(args);
   std::string result;
   error.clear();
   check(execute_runtime_run_json(args, &ctx, &result, &error),
-        "wave-overlay execute failed: " + error);
+        "wave-overlay execute failed: " + error + " result=" + result +
+            " args=" + materialized_overlay_args);
   check(!hero_runtime::tool_result_is_error(result),
         "wave-overlay execute returned error: " + result);
   require_contains(result, "\"--source-range\"",
@@ -1802,13 +2000,7 @@ void test_execute_wave_overlay() {
                    "wave overlay should pass anchor end flag");
   require_contains(result, "\"3\"", "wave overlay should pass anchor end");
 
-  const std::string invalid_args =
-      "{\"subject\":\"wave\",\"mode\":\"dry_run\","
-      "\"config_path\":\"" +
-      config_path.string() +
-      "\","
-      "\"wave_overlay\":{\"source_range\":\"all\","
-      "\"anchor_index_begin\":\"1\",\"anchor_index_end\":\"3\"}}";
+  const std::string invalid_args = handoff_args("overlay_invalid", "all");
   result.clear();
   error.clear();
   check(!execute_runtime_run_json(invalid_args, &ctx, &result, &error),
@@ -3092,84 +3284,8 @@ void test_policy_training_contract_and_pre_ppo_execute() {
   error.clear();
   check(!execute_runtime_run_json(scheduleless_args, &ctx, &result, &error),
         "policy-training contract should reject missing causal schedule");
-  require_contains(error, "missing required field: causal_schedule_digest",
+  require_contains(error, "missing_causal_schedule_digest",
                    "missing causal schedule refusal should be stable");
-
-  const auto with_retired_policy_training_field =
-      [](std::string args, const std::string &field_json) {
-        check(!args.empty() && args.back() == '}',
-              "policy-training fixture should be a JSON object");
-        args.insert(args.size() - 1, "," + field_json);
-        return args;
-      };
-  const auto expect_retired_policy_training_request_field =
-      [&](const std::string &field_name, const std::string &field_json) {
-        std::string args = with_retired_policy_training_field(
-            valid_policy_training_args("dry_run"), field_json);
-        result.clear();
-        error.clear();
-        check(!execute_runtime_run_json(args, &ctx, &result, &error),
-              "policy-training request should reject retired field " +
-                  field_name);
-        require_contains(error,
-                         "execution request unknown field: " + field_name,
-                         "retired " + field_name +
-                             " request-field refusal should be stable");
-      };
-  expect_retired_policy_training_request_field(
-      "environment_contract_id",
-      "\"environment_contract_id\":\"kikijyeba.environment.replay.v1\"");
-  expect_retired_policy_training_request_field(
-      "action_schema_digest",
-      "\"action_schema_digest\":\"kikijyeba.environment.action."
-      "target_node_weights.v1\"");
-  expect_retired_policy_training_request_field(
-      "policy_input_schema_id",
-      "\"policy_input_schema_id\":\"kikijyeba.environment.policy_input.v1\"");
-  expect_retired_policy_training_request_field(
-      "action_adapter_id",
-      "\"action_adapter_id\":\"target_node_weights_simplex.v1\"");
-  expect_retired_policy_training_request_field(
-      "reward_contract_id",
-      "\"reward_contract_id\":\"kikijyeba.environment.reward."
-      "post_execution_ledger_log_growth_cost_drawdown.v1\"");
-  expect_retired_policy_training_request_field(
-      "ppo_policy_artifact_contract_id",
-      "\"ppo_policy_artifact_contract_id\":\"kikijyeba.runtime."
-      "ppo_policy_artifact_contract.v1\"");
-  expect_retired_policy_training_request_field(
-      "policy_family_id", "\"policy_family_id\":\"wikimyei.policy.portfolio."
-                          "graph_node_allocation\"");
-  expect_retired_policy_training_request_field(
-      "policy_checkpoint_schema_id",
-      "\"policy_checkpoint_schema_id\":\"wikimyei.policy.portfolio."
-      "graph_node_allocation.ppo_checkpoint.v1\"");
-  expect_retired_policy_training_request_field(
-      "optimizer_state_schema_id",
-      "\"optimizer_state_schema_id\":\"kikijyeba.runtime."
-      "ppo_optimizer_state.v1\"");
-  expect_retired_policy_training_request_field(
-      "device_policy", "\"device_policy\":\"require_cuda\"");
-  expect_retired_policy_training_request_field("cuda_device_index",
-                                               "\"cuda_device_index\":0");
-  expect_retired_policy_training_request_field(
-      "advantage_estimator_id", "\"advantage_estimator_id\":\"gae.v1\"");
-  expect_retired_policy_training_request_field(
-      "rollout_collection_schema_id",
-      "\"rollout_collection_schema_id\":\"kikijyeba.runtime."
-      "ppo_rollout_collection.v1\"");
-  expect_retired_policy_training_request_field(
-      "ppo_update_report_schema_id",
-      "\"ppo_update_report_schema_id\":\"kikijyeba.runtime."
-      "ppo_update_report.v1\"");
-  expect_retired_policy_training_request_field(
-      "causal_schedule_schema_id",
-      "\"causal_schedule_schema_id\":\"kikijyeba.runtime.policy_training_"
-      "causal_schedule.v1\"");
-  expect_retired_policy_training_request_field(
-      "causal_schedule_no_future_snapshot_use_source",
-      "\"causal_schedule_no_future_snapshot_use_source\":\"derived_from_"
-      "artifact_fit_use_ledgers\"");
 
   std::string bad_distribution_args = valid_policy_training_args("dry_run");
   const std::string action_distribution_field =
@@ -5072,12 +5188,30 @@ LATTICE_TARGET {
       << "promotion_criteria_satisfied = true\n"
       << "policy_acceptance_decision = true\n";
   const std::string acceptance_request_text = acceptance_request.str();
-  const auto acceptance_request_path =
-      ppo_policy_training_job_dir / "policy_acceptance.certify_request";
-  write_text(acceptance_request_path, acceptance_request_text);
+  const std::string acceptance_check_for_digest_args = certify_args(
+      "policy_acceptance", "check", acceptance_request_text, false);
+  result.clear();
+  error.clear();
+  check(hero_environment::execute_tool_json(
+            certify_tool_name("policy_acceptance"),
+            acceptance_check_for_digest_args, &environment_ctx, &result,
+            &error),
+        "Environment policy-acceptance check failed before issue: " + error);
+  require_contains(result,
+                   "\"preview_digest_domain\":\"" +
+                       certify_preview_digest_domain("policy_acceptance") +
+                       "\"",
+                   "Environment reports policy acceptance preview digest "
+                   "domain");
+  require_contains(result, "\"policy_acceptance_contract_ready\":true",
+                   "Environment prevalidates acceptance fact before issue");
+  require_contains(result, "\"policy_acceptance_fact_written\":false",
+                   "Environment check does not write acceptance sidecar");
+  const std::string acceptance_preview_digest =
+      json_string_field(result, "preview_digest");
   const std::string acceptance_args =
-      certify_args("policy_acceptance", "issue", acceptance_request_path,
-                   acceptance_request_text, true);
+      certify_args("policy_acceptance", "issue", acceptance_request_text, true,
+                   acceptance_preview_digest);
   result.clear();
   error.clear();
   const bool acceptance_emit_ok = hero_environment::execute_tool_json(
@@ -5099,18 +5233,16 @@ LATTICE_TARGET {
   require_contains(result, "\"subject\":\"policy_acceptance\"",
                    "Environment reports policy acceptance subject");
   require_contains(result,
-                   "\"args_digest_domain\":\"" +
-                       certify_request_digest_domain("policy_acceptance") +
+                   "\"preview_digest_domain\":\"" +
+                       certify_preview_digest_domain("policy_acceptance") +
                        "\"",
-                   "Environment reports policy acceptance request digest "
+                   "Environment reports policy acceptance preview digest "
                    "domain");
-  require_contains(
-      result,
-      "\"args_digest\":\"" +
-          args_digest("policy_acceptance", acceptance_request_text) + "\"",
-      "Environment reports policy acceptance request digest");
-  require_contains(result, "\"args_digest_verified\":true",
-                   "Environment confirms issue request digest binding");
+  require_contains(result,
+                   "\"preview_digest\":\"" + acceptance_preview_digest + "\"",
+                   "Environment reports policy acceptance preview digest");
+  require_contains(result, "\"expected_preview_digest_verified\":true",
+                   "Environment confirms issue preview digest binding");
   require_contains(result, "\"policy_acceptance_contract_ready\":true",
                    "Environment prevalidates emitted acceptance fact");
   require_contains(result,
@@ -5148,55 +5280,53 @@ LATTICE_TARGET {
   error.clear();
   check(!hero_environment::execute_tool_json(
             certify_tool_name("policy_acceptance"),
-            certify_args("policy_acceptance", "issue", acceptance_request_path,
-                         acceptance_request_text, false),
+            certify_args("policy_acceptance", "issue", acceptance_request_text,
+                         false),
             &environment_ctx, &result, &error),
-        "Environment issue mode should require args_digest");
-  require_contains(error, "E_ENVIRONMENT_CERTIFY_REQUEST_DIGEST_REQUIRED",
-                   "issue mode without request digest is refused");
+        "Environment issue mode should require expected_preview_digest");
+  require_contains(error, "E_ENVIRONMENT_CERTIFY_PREVIEW_DIGEST_REQUIRED",
+                   "issue mode without preview digest is refused");
 
   result.clear();
   error.clear();
   check(!hero_environment::execute_tool_json(
             certify_tool_name("policy_acceptance"),
-            "{\"mode\":\"issue\",\"args_path\":\"" +
-                acceptance_request_path.string() +
-                "\",\"args_digest\":\"mutated_digest\"}",
+            certify_args("policy_acceptance", "issue", acceptance_request_text,
+                         true, "mutated_digest"),
             &environment_ctx, &result, &error),
-        "Environment issue mode should reject mismatched request digest");
-  require_contains(error, "E_ENVIRONMENT_CERTIFY_REQUEST_DIGEST_MISMATCH",
+        "Environment issue mode should reject mismatched preview digest");
+  require_contains(error, "E_ENVIRONMENT_CERTIFY_PREVIEW_DIGEST_MISMATCH",
                    "digest mismatch refusal is explicit");
 
-  const auto duplicate_acceptance_request_path =
-      ppo_policy_training_job_dir /
-      "policy_acceptance_duplicate.certify_request";
-  write_text(duplicate_acceptance_request_path,
-             "acceptance_id = one\nacceptance_id = two\n");
   result.clear();
   error.clear();
   check(!hero_environment::execute_tool_json(
             certify_tool_name("policy_acceptance"),
-            certify_args("policy_acceptance", "check",
-                         duplicate_acceptance_request_path,
-                         read_text(duplicate_acceptance_request_path), false),
+            "{\"mode\":\"check\",\"policy_training_job_dir\":\"" +
+                ppo_policy_training_job_dir.string() +
+                "\",\"acceptance_id\":\"policy_acceptance_fixture_v1\","
+                "\"certification_evidence\":{\"primary_metric_passed\":true,"
+                "\"primary_metric_passed\":false}}",
             &environment_ctx, &result, &error),
-        "Environment certify request should reject duplicate keys");
-  require_contains(error, "E_ENVIRONMENT_CERTIFY_REQUEST_DUPLICATE_FIELD",
-                   "duplicate request key refusal is explicit");
+        "Environment certification evidence should reject duplicate keys");
+  require_contains(error, "E_ENVIRONMENT_CERTIFY_EVIDENCE_DUPLICATE_FIELD",
+                   "duplicate evidence key refusal is explicit");
 
   result.clear();
   error.clear();
   check(!hero_environment::execute_tool_json(
             certify_tool_name("policy_acceptance"),
-            "{\"mode\":\"check\",\"args_path\":\"" +
-                acceptance_request_path.string() +
-                "\",\"acceptance_id\":\"legacy_top_level\"}",
+            "{\"mode\":\"check\",\"policy_training_job_dir\":\"" +
+                ppo_policy_training_job_dir.string() +
+                "\",\"acceptance_id\":\"policy_acceptance_fixture_v1\","
+                "\"certification_evidence\":{},\"args_path\":\"/tmp/"
+                "legacy.kv\"}",
             &environment_ctx, &result, &error),
-        "Environment certify should reject retired top-level payload fields");
+        "Environment certify should reject retired args_path field");
   require_contains(error,
                    "hero.environment.certify.policy_acceptance unknown field: "
-                   "acceptance_id",
-                   "old top-level certification payload is rejected");
+                   "args_path",
+                   "old file-backed certification field is rejected");
 
   result = acceptance_emit_result;
   const auto policy_acceptance_fact_path = std::filesystem::path(
@@ -5335,13 +5465,31 @@ LATTICE_TARGET {
       << "kill_switch_bound = true\n";
   const std::string paper_online_readiness_request_text =
       paper_online_readiness_request.str();
-  const auto paper_online_readiness_request_path =
-      ppo_policy_training_job_dir / "paper_online_readiness.certify_request";
-  write_text(paper_online_readiness_request_path,
-             paper_online_readiness_request_text);
+  const std::string paper_online_check_for_digest_args =
+      certify_args("paper_online_readiness", "check",
+                   paper_online_readiness_request_text, false);
+  result.clear();
+  error.clear();
+  check(hero_environment::execute_tool_json(
+            certify_tool_name("paper_online_readiness"),
+            paper_online_check_for_digest_args, &environment_ctx, &result,
+            &error),
+        "Environment paper-online readiness check failed before issue: " +
+            error);
+  require_contains(
+      result,
+      "\"preview_digest_domain\":\"" +
+          certify_preview_digest_domain("paper_online_readiness") + "\"",
+      "Environment reports paper-online readiness preview digest domain");
+  require_contains(result, "\"paper_online_readiness_contract_ready\":true",
+                   "Environment prevalidates readiness fact before issue");
+  require_contains(result, "\"paper_online_readiness_fact_written\":false",
+                   "Environment check does not write readiness sidecar");
+  const std::string paper_online_preview_digest =
+      json_string_field(result, "preview_digest");
   const std::string paper_online_readiness_args = certify_args(
-      "paper_online_readiness", "issue", paper_online_readiness_request_path,
-      paper_online_readiness_request_text, true);
+      "paper_online_readiness", "issue", paper_online_readiness_request_text,
+      true, paper_online_preview_digest);
   result.clear();
   error.clear();
   const bool readiness_emit_ok = hero_environment::execute_tool_json(
@@ -5364,17 +5512,14 @@ LATTICE_TARGET {
                    "Environment reports paper-online readiness subject");
   require_contains(
       result,
-      "\"args_digest_domain\":\"" +
-          certify_request_digest_domain("paper_online_readiness") + "\"",
-      "Environment reports paper-online readiness request digest domain");
+      "\"preview_digest_domain\":\"" +
+          certify_preview_digest_domain("paper_online_readiness") + "\"",
+      "Environment reports paper-online readiness preview digest domain");
   require_contains(result,
-                   "\"args_digest\":\"" +
-                       args_digest("paper_online_readiness",
-                                   paper_online_readiness_request_text) +
-                       "\"",
-                   "Environment reports paper-online readiness request digest");
-  require_contains(result, "\"args_digest_verified\":true",
-                   "Environment confirms readiness issue request digest "
+                   "\"preview_digest\":\"" + paper_online_preview_digest + "\"",
+                   "Environment reports paper-online readiness preview digest");
+  require_contains(result, "\"expected_preview_digest_verified\":true",
+                   "Environment confirms readiness issue preview digest "
                    "binding");
   require_contains(result, "\"paper_online_readiness_contract_ready\":true",
                    "Environment prevalidates emitted paper-online readiness "
@@ -5394,14 +5539,8 @@ LATTICE_TARGET {
   std::string paper_online_retired_default_request_text =
       paper_online_readiness_request_text +
       "missing_direct_pair_policy = skip_pair_warn\n";
-  const auto paper_online_retired_default_request_path =
-      ppo_policy_training_job_dir /
-      "paper_online_readiness_retired_default.certify_request";
-  write_text(paper_online_retired_default_request_path,
-             paper_online_retired_default_request_text);
   const std::string paper_online_retired_default_args =
       certify_args("paper_online_readiness", "check",
-                   paper_online_retired_default_request_path,
                    paper_online_retired_default_request_text, false);
   result.clear();
   error.clear();
@@ -5410,7 +5549,7 @@ LATTICE_TARGET {
             paper_online_retired_default_args, &environment_ctx, &result,
             &error),
         "Environment certify should reject retired paper-online defaults");
-  require_contains(error, "E_ENVIRONMENT_CERTIFY_REQUEST_UNKNOWN_FIELD",
+  require_contains(error, "E_ENVIRONMENT_CERTIFY_EVIDENCE_UNKNOWN_FIELD",
                    "retired paper-online default refusal is explicit");
   require_contains(error, "missing_direct_pair_policy",
                    "retired paper-online default names the old key");
@@ -5418,14 +5557,8 @@ LATTICE_TARGET {
   std::string paper_online_retired_policy_request_text =
       paper_online_readiness_request_text +
       "market_data_staleness_policy_id = max_receive_age_before_action.v1\n";
-  const auto paper_online_retired_policy_request_path =
-      ppo_policy_training_job_dir /
-      "paper_online_readiness_retired_policy.certify_request";
-  write_text(paper_online_retired_policy_request_path,
-             paper_online_retired_policy_request_text);
   const std::string paper_online_retired_policy_args =
       certify_args("paper_online_readiness", "check",
-                   paper_online_retired_policy_request_path,
                    paper_online_retired_policy_request_text, false);
   result.clear();
   error.clear();
@@ -5434,7 +5567,7 @@ LATTICE_TARGET {
             paper_online_retired_policy_args, &environment_ctx, &result,
             &error),
         "Environment certify should reject retired paper-online policy ids");
-  require_contains(error, "E_ENVIRONMENT_CERTIFY_REQUEST_UNKNOWN_FIELD",
+  require_contains(error, "E_ENVIRONMENT_CERTIFY_EVIDENCE_UNKNOWN_FIELD",
                    "retired paper-online policy-id refusal is explicit");
   require_contains(error, "market_data_staleness_policy_id",
                    "retired paper-online policy-id names the old key");
@@ -5545,12 +5678,8 @@ LATTICE_TARGET {
   std::string acceptance_check_request_text = acceptance_request_text;
   replace_all(acceptance_check_request_text, "primary_metric_passed = true",
               "primary_metric_passed = false");
-  const auto acceptance_check_request_path =
-      ppo_policy_training_job_dir / "policy_acceptance_check.certify_request";
-  write_text(acceptance_check_request_path, acceptance_check_request_text);
-  const std::string acceptance_check_args =
-      certify_args("policy_acceptance", "check", acceptance_check_request_path,
-                   acceptance_check_request_text, false);
+  const std::string acceptance_check_args = certify_args(
+      "policy_acceptance", "check", acceptance_check_request_text, false);
   result.clear();
   error.clear();
   check(hero_environment::execute_tool_json(
@@ -5569,14 +5698,9 @@ LATTICE_TARGET {
   std::string acceptance_retired_governance_request_text =
       acceptance_request_text + "acceptance_policy_digest = "
                                 "mutated_policy_acceptance_governance_digest\n";
-  const auto acceptance_retired_governance_request_path =
-      ppo_policy_training_job_dir /
-      "policy_acceptance_retired_governance.certify_request";
-  write_text(acceptance_retired_governance_request_path,
-             acceptance_retired_governance_request_text);
-  const std::string acceptance_retired_governance_args = certify_args(
-      "policy_acceptance", "check", acceptance_retired_governance_request_path,
-      acceptance_retired_governance_request_text, false);
+  const std::string acceptance_retired_governance_args =
+      certify_args("policy_acceptance", "check",
+                   acceptance_retired_governance_request_text, false);
   result.clear();
   error.clear();
   check(!hero_environment::execute_tool_json(
@@ -5584,7 +5708,7 @@ LATTICE_TARGET {
             acceptance_retired_governance_args, &environment_ctx, &result,
             &error),
         "Environment certify should reject retired governance request fields");
-  require_contains(error, "E_ENVIRONMENT_CERTIFY_REQUEST_UNKNOWN_FIELD",
+  require_contains(error, "E_ENVIRONMENT_CERTIFY_EVIDENCE_UNKNOWN_FIELD",
                    "retired governance request field refusal is explicit");
   require_contains(error, "acceptance_policy_digest",
                    "retired governance request field names the old key");

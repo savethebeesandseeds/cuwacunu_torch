@@ -311,6 +311,50 @@ call_runtime_tool(const std::filesystem::path &global_config_path,
                    tool_name, arguments_json, timeout_seconds, capture_cap);
 }
 
+[[nodiscard]] inline tool_call_result_t call_runtime_replay_delegate(
+    const std::filesystem::path &global_config_path,
+    const std::filesystem::path &policy_path, const std::string &arguments_json,
+    int timeout_seconds = 600, std::size_t capture_cap = 1048576) {
+  tool_call_result_t out{};
+  out.attempted = true;
+  const auto mcp_path = default_runtime_mcp_path();
+  if (::access(mcp_path.c_str(), X_OK) != 0) {
+    out.error_message = "MCP binary is not executable: " + mcp_path.string();
+    return out;
+  }
+  std::vector<std::string> argv{mcp_path.string()};
+  if (!global_config_path.empty()) {
+    argv.push_back("--global-config");
+    argv.push_back(global_config_path.string());
+  }
+  if (!policy_path.empty()) {
+    argv.push_back("--config");
+    argv.push_back(policy_path.string());
+  }
+  argv.push_back("--runtime-replay-delegate");
+  argv.push_back("--args-json");
+  argv.push_back(arguments_json.empty() ? "{}" : arguments_json);
+  out.process = run_process(argv, timeout_seconds, capture_cap);
+  out.result_json = trim_ascii(out.process.stdout_text);
+  out.process_ok = out.process.exit_code == 0 && !out.process.timed_out &&
+                   !out.process.signaled && !out.result_json.empty();
+  out.error_message = trim_ascii(out.process.stderr_text);
+  if (out.error_message.empty()) {
+    if (out.process.timed_out) {
+      out.error_message = "Runtime replay delegate timed out";
+    } else if (out.process.signaled) {
+      out.error_message = "Runtime replay delegate signaled: " +
+                          std::to_string(out.process.signal_number);
+    } else if (out.process.exit_code != 0) {
+      out.error_message = "Runtime replay delegate exited with code " +
+                          std::to_string(out.process.exit_code);
+    } else if (out.result_json.empty()) {
+      out.error_message = "Runtime replay delegate produced empty stdout";
+    }
+  }
+  return out;
+}
+
 [[nodiscard]] inline tool_call_result_t call_environment_tool(
     const std::filesystem::path &global_config_path,
     const std::filesystem::path &policy_path, const std::string &tool_name,

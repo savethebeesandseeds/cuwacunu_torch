@@ -131,16 +131,16 @@ Runtime PPO execution packets also include display-only refs such as
 `ppo_update_report_ref` beside the full digest fields. These refs are operator
 handles only; full digests remain the machine identity used by Lattice.
 
-`hero.runtime.run` accepts a `runtime_handoff_path` entry inside
-`args_path` for concrete operator handoffs. The handoff object binds
-schema/id/digest, target id, base config path/digest, concrete wave fields,
-concrete checkpoint inputs, Runtime policy path/digest identity, and
+`hero.runtime.run` accepts `runtime_handoff_path` plus
+`runtime_handoff_digest` for concrete operator handoffs. The handoff object
+binds schema/id/digest, target id, base config path/digest, concrete wave
+fields, concrete checkpoint inputs, Runtime policy path/digest identity, and
 dry-run/execute intent. Runtime rejects non-empty unresolved-symbol lists and
-symbolic model-state selectors such as
-`latest_satisfying:*` before launching `cuwacunu_exec`. When a handoff is
-accepted, Runtime passes the handoff id and digest into the job runner so
-`job.manifest`, `runtime.result.fact`, and the derived lattice exposure sidecar
-can echo the same identity. Runtime also passes accepted
+symbolic model-state selectors such as `latest_satisfying:*` before launching
+`cuwacunu_exec`. When a handoff is accepted, Runtime passes the handoff id and
+digest into the job runner so `job.manifest`, `runtime.result.fact`, and the
+derived lattice exposure sidecar can echo the same identity. Runtime also passes
+accepted
 `PLAN_INPUT_REPRESENTATION_CHECKPOINT` and `PLAN_INPUT_MDN_CHECKPOINT` values as
 launch-time checkpoint overrides to `cuwacunu_exec`; readiness-grade handoffs do
 not require copying those materialized paths back into static `.jkimyei` files.
@@ -151,12 +151,12 @@ with `[HERO].runtime_wave_id`; the file-level `WAVE_SELECTION` is only the
 checked-in fallback. Profiles should keep protocol/target/mode/cursor/source
 order intent stable. Cursor definitions live in `ujcamei.source.cursor.dsl` and
 intentionally avoid protocol names because the source cursor catalog is data
-identity, not protocol identity. Concrete launch range overrides are supplied
-through an `execution_request_path` entry inside `hero.runtime.run`
-`args_path`, or directly to `cuwacunu_exec` with `--source-range`,
-`--anchor-index-begin/end`, or `--source-key-begin/end`. Runtime applies the
-request overlay in memory, validates the effective wave, and records the
-resolved range in the manifest/state sidecars without editing the profile.
+identity, not protocol identity. Concrete launch range overrides belong in the
+runtime handoff artifact, or may be supplied directly to `cuwacunu_exec` with
+`--source-range`, `--anchor-index-begin/end`, or `--source-key-begin/end` for
+developer recovery. Runtime applies the handoff overlay in memory, validates the
+effective wave, and records the resolved range in the manifest/state sidecars
+without editing the profile.
 
 Direct `cuwacunu_exec` use remains possible for developer recovery and narrow
 debugging, but it is not the preferred operator path. Non-dry-run launches
@@ -243,10 +243,9 @@ does not change Runtime's MDN execution semantics. The executable surface is
 `cuwacunu_exec --replay-from-job-dir <job_dir>`, which consumes an already
 completed job directory instead of launching a new graph-first wave. Runtime
 Hero exposes the same low-level path through a non-catalog Runtime replay
-executor. Replay fields are supplied through an `execution_request_path` entry
-inside `args_path`. Operators should prefer
-`hero.environment.rollout`, which validates rollout admission and delegates back
-to Runtime when replay is allowed. Runtime checks the job is completed and has
+executor. Operators should prefer `hero.environment.rollout`, which carries the
+direct rollout selectors, validates rollout admission, and delegates back to
+Runtime when replay is allowed. Runtime checks the job is completed and has
 replay batch evidence, then delegates to the executable with the requested
 replay policy options and Cajtucu paper profile hints such as
 `allow_synthetic_direct_edges` and `linear_transaction_cost_rate`. When the
@@ -274,9 +273,8 @@ Policy is represented as a first-class component wave for
 `wikimyei.policy.portfolio.graph_node_allocation`, with a specialized
 contract-backed Runtime driver. `hero.runtime.run mode=dry_run` reports the
 required policy-training packet for an active policy component wave; the same
-`hero.runtime.run` surface with `contract_path` and optional
-`execution_request_path` entries inside `args_path` runs the persisted
-contract. The selected `WAVE_SETTINGS`
+`hero.runtime.run` surface with `contract_path` and optional `contract_digest`
+runs the persisted contract. The selected `WAVE_SETTINGS`
 block may bind
 `POLICY_ID`, `POLICY_KIND`, `TRAINING_SCHEDULE_MODE`, and
 `LIVE_EXECUTION_ALLOWED`; the contract still supplies causal schedule evidence,
@@ -384,14 +382,15 @@ live-capital, policy-quality, market-readiness, deployment, or target-proof
 authority.
 
 Policy acceptance sidecar emission is Environment-owned and evidence-only:
-`hero.environment.certify.policy_acceptance mode=check|issue args_path=...`
-loads an explicit
-certification request file, an existing policy-training job directory, plus an
-existing Tsodao settings-protection sidecar, assembles a
+`hero.environment.certify.policy_acceptance mode=check|issue` takes direct
+`policy_training_job_dir`, optional `tsodao_settings_protection_job_dir`,
+`acceptance_id`, and `certification_evidence` arguments, loads the existing
+policy-training and Tsodao settings-protection sidecars, assembles a
 `kikijyeba.lattice.policy_acceptance.v1` fact, validates it with the same
 Lattice exposure validators used by proof readers, and writes
 `lattice.policy_acceptance.fact` under the policy-training job directory only in
-issue mode after `args_digest` binds the request file. The
+issue mode after `expected_preview_digest` matches the canonical preview digest
+returned by check mode. The
 acceptance policy digest must identify the named
 `policy_acceptance_governance_thresholds_v0.v1` contract, which fixes the V0
 mandatory baselines, after-cost metric identity, zero-delta threshold,
@@ -409,17 +408,18 @@ capital. It only emits the sidecar that Lattice may later prove with
 
 Paper-online readiness sidecar emission is also Environment-owned and
 evidence-only: `hero.environment.certify.paper_online_readiness
-mode=check|issue args_path=...` loads an explicit
-certification request file and an existing policy-acceptance sidecar, derives
-the accepted policy/checkpoint/reward/execution/accounting identity from parsed
-evidence, and assembles
+mode=check|issue` takes direct `policy_acceptance_job_dir`, `readiness_id`, and
+`certification_evidence` arguments, loads an existing policy-acceptance sidecar,
+derives the accepted policy/checkpoint/reward/execution/accounting identity from
+parsed evidence, and assembles
 `kikijyeba.lattice.paper_online_readiness.v1`. The fact must bind market-data
 staleness, clock/timestamp, session lifecycle, durable paper-ledger recovery,
 idempotency, duplicate-action/execution protection, direct-edge universe,
 synthetic-market forbiddance, locked Cajtucu execution profile, reward/report
 artifact path, operator-abort, and kill-switch policies. Issue writes
 `lattice.paper_online_readiness.fact` only when the assembled contract is clean
-and `args_digest` binds the request file, and refuses to overwrite
+and `expected_preview_digest` matches the canonical preview digest, and refuses
+to overwrite
 an existing sidecar. This operation does not start a
 paper-online session, execute broker orders, claim market/deployment readiness,
 or authorize live capital; it only emits evidence for

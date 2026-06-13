@@ -36,6 +36,8 @@ void print_help(const char *argv0) {
          "--global-config, then /cuwacunu/src/config/hero.runtime.dsl\n"
       << "  default profile: --profile, then [HERO].runtime_hero_profile, "
          "then runtime_profile in the policy file\n"
+      << "  internal: --runtime-replay-delegate --args-json <json> runs the "
+         "non-catalog replay executor used by Environment rollout\n"
       << "\n"
       << "Authority groups:\n"
       << "  Read-only Runtime visibility:\n"
@@ -50,17 +52,18 @@ void print_help(const char *argv0) {
          "[job_id=...|job_dir=...] [artifact=...] [max_bytes=...]\n"
       << "    hero.runtime.inspect.artifact.path path=... [max_bytes=...]\n"
       << "  Runtime execution/delegation:\n"
-      << "    hero.runtime.run mode=dry_run|execute [args_path=...] "
-         "[args_digest=...]\n"
-      << "      wave-specific locators live in args_path; execute "
-         "requires args_digest when a request file is supplied.\n"
+      << "    hero.runtime.run mode=dry_run|execute "
+         "[runtime_handoff_path=...] [runtime_handoff_digest=...] "
+         "[contract_path=...] [contract_digest=...]\n"
+      << "      wave launch evidence lives in a Runtime handoff artifact; "
+         "policy-training execution lives in a contract artifact.\n"
       << "      Replay is admitted through hero.environment.rollout, which "
          "delegates to a non-catalog Runtime replay executor.\n"
       << "  Guarded developer reset:\n"
       << "    hero.runtime.reset mode=plan|execute "
-         "[args_path=...] [args_digest=...]\n"
-      << "      runtime_root and backup live in args_path; execute requires "
-         "args_digest.\n"
+         "[runtime_root=...] [backup=...]\n"
+      << "      execution is policy-gated by allow_dev_nuke and "
+         "allowed_dev_nuke_roots.\n"
       << "  Boundary:\n"
       << "    Runtime Hero executes allowed waves/replay, can run the "
          "pre-PPO\n"
@@ -87,6 +90,7 @@ int main(int argc, char **argv) {
   bool list_tools = false;
   bool list_tools_json = false;
   bool direct_tool_mode = false;
+  bool replay_delegate_mode = false;
   bool direct_tool_args_overridden = false;
   std::string direct_tool_name;
   std::string direct_tool_args_json = "{}";
@@ -111,6 +115,10 @@ int main(int argc, char **argv) {
       direct_tool_mode = true;
       continue;
     }
+    if (arg == "--runtime-replay-delegate") {
+      replay_delegate_mode = true;
+      continue;
+    }
     if (arg == "--args-json" && i + 1 < argc) {
       direct_tool_args_json = argv[++i];
       direct_tool_args_overridden = true;
@@ -133,16 +141,23 @@ int main(int argc, char **argv) {
     return 2;
   }
 
-  if (direct_tool_args_overridden && !direct_tool_mode) {
-    std::cerr << "--args-json requires --tool\n";
+  if (direct_tool_args_overridden && !direct_tool_mode &&
+      !replay_delegate_mode) {
+    std::cerr << "--args-json requires --tool or --runtime-replay-delegate\n";
+    return 2;
+  }
+  if (direct_tool_mode && replay_delegate_mode) {
+    std::cerr << "--tool cannot be combined with --runtime-replay-delegate\n";
     return 2;
   }
   if (list_tools && list_tools_json) {
     std::cerr << "--list-tools and --list-tools-json are mutually exclusive\n";
     return 2;
   }
-  if ((list_tools || list_tools_json) && direct_tool_mode) {
-    std::cerr << "--list-tools cannot be combined with --tool\n";
+  if ((list_tools || list_tools_json) &&
+      (direct_tool_mode || replay_delegate_mode)) {
+    std::cerr
+        << "--list-tools cannot be combined with --tool or replay delegate\n";
     return 2;
   }
 
@@ -187,6 +202,23 @@ int main(int argc, char **argv) {
     if (!ok || cuwacunu::hero::runtime::tool_result_is_error(result)) {
       if (!tool_error.empty()) {
         std::cerr << "tool execution failed: " << tool_error << "\n";
+      }
+      return 1;
+    }
+    return 0;
+  }
+
+  if (replay_delegate_mode) {
+    std::string result;
+    std::string delegate_error;
+    const bool ok = cuwacunu::hero::runtime::execute_replay_delegate_json(
+        direct_tool_args_json, &ctx, &result, &delegate_error);
+    if (!result.empty()) {
+      std::cout << result << "\n";
+    }
+    if (!ok || cuwacunu::hero::runtime::tool_result_is_error(result)) {
+      if (!delegate_error.empty()) {
+        std::cerr << "replay delegate failed: " << delegate_error << "\n";
       }
       return 1;
     }

@@ -660,14 +660,6 @@ struct rollout_request_field_t {
   rollout_request_value_kind_t kind;
 };
 
-struct rollout_request_file_t {
-  std::map<std::string, std::string> fields{};
-  std::filesystem::path path{};
-  std::string digest_domain{k_rollout_request_file_digest_domain_v1};
-  std::string digest{};
-  bool digest_supplied{false};
-};
-
 constexpr rollout_request_field_t kRolloutRequestFields[] = {
     {"rollout_id", rollout_request_value_kind_t::string_value},
     {"rollout_attempt_id", rollout_request_value_kind_t::string_value},
@@ -821,59 +813,6 @@ parse_rollout_request_text(std::string_view text) {
 rollout_request_file_digest(std::string_view request_text) {
   return marshal_digest_for_text(k_rollout_request_file_digest_domain_v1,
                                  std::string(request_text));
-}
-
-[[nodiscard]] inline std::string read_required_rollout_request_file(
-    const std::map<std::string, std::string> &args,
-    std::filesystem::path *path_out) {
-  const std::string raw_path = trim_ascii(optional_string(args, "args_path"));
-  if (raw_path.empty()) {
-    throw std::runtime_error("args_path must be a non-empty string");
-  }
-  const auto path = normalize_request_path(std::filesystem::path(raw_path));
-  std::ifstream input(path, std::ios::binary);
-  if (!input.is_open()) {
-    throw std::runtime_error("failed to read args_path: " + path.string());
-  }
-  std::ostringstream buffer;
-  buffer << input.rdbuf();
-  if (path_out != nullptr) {
-    *path_out = path;
-  }
-  return buffer.str();
-}
-
-[[nodiscard]] inline rollout_request_file_t
-load_rollout_request_arguments(const std::map<std::string, std::string> &args,
-                               bool require_digest,
-                               std::string_view digest_required_error,
-                               std::string_view digest_mismatch_error) {
-  rollout_request_file_t packet{};
-  const std::string request_text =
-      read_required_rollout_request_file(args, &packet.path);
-  packet.digest = rollout_request_file_digest(request_text);
-  packet.digest_supplied = optional_raw(args, "args_digest").has_value();
-  if (require_digest && !packet.digest_supplied) {
-    throw std::runtime_error(std::string(digest_required_error) +
-                             ": args_digest is required");
-  }
-  if (const auto supplied_raw = optional_raw(args, "args_digest")) {
-    const std::string supplied =
-        trim_ascii(parse_string_raw(*supplied_raw, "args_digest"));
-    if (supplied.empty()) {
-      throw std::runtime_error("args_digest must be non-empty when supplied");
-    }
-    if (supplied != packet.digest) {
-      throw std::runtime_error(std::string(digest_mismatch_error) +
-                               ": expected " + supplied + " actual " +
-                               packet.digest);
-    }
-  }
-  packet.fields = parse_rollout_request_text(request_text);
-  if (const auto mode_raw = optional_raw(args, "mode")) {
-    packet.fields.emplace("requested_mode", *mode_raw);
-  }
-  return packet;
 }
 
 [[nodiscard]] inline marshal_dispatch_mode_t
@@ -1290,307 +1229,23 @@ parse_runtime_wave(const std::string &raw) {
   return out;
 }
 
-inline constexpr const char *k_prepare_request_file_digest_domain_v1 =
-    "kikijyeba.marshal.prepare_request.v1";
-
-enum class prepare_request_value_kind_t {
-  string_value,
-  bool_value,
-  integer_value,
-  object_value,
-};
-
-struct prepare_request_field_t {
-  const char *key;
-  prepare_request_value_kind_t kind;
-};
-
-struct prepare_request_file_t {
-  std::map<std::string, std::string> fields{};
-  std::filesystem::path path{};
-  std::string digest_domain{k_prepare_request_file_digest_domain_v1};
-  std::string digest{};
-  bool digest_supplied{false};
-};
-
-constexpr prepare_request_field_t kPrepareRequestFields[] = {
-    {"config_path", prepare_request_value_kind_t::string_value},
-    {"runtime_root", prepare_request_value_kind_t::string_value},
-    {"driver_policy", prepare_request_value_kind_t::object_value},
-    {"resume_ledger", prepare_request_value_kind_t::object_value},
-    {"source_lattice_timestamp", prepare_request_value_kind_t::string_value},
-    {"recommendation_attempt_count",
-     prepare_request_value_kind_t::integer_value},
-    {"context", prepare_request_value_kind_t::object_value},
-    {"protocol_contract_fingerprint",
-     prepare_request_value_kind_t::string_value},
-    {"graph_order_fingerprint", prepare_request_value_kind_t::string_value},
-    {"source_cursor_token", prepare_request_value_kind_t::string_value},
-    {"vicreg_assembly_fingerprint", prepare_request_value_kind_t::string_value},
-    {"mdn_assembly_fingerprint", prepare_request_value_kind_t::string_value},
-    {"materialize_plan_inputs", prepare_request_value_kind_t::bool_value},
-    {"include_machine_payload", prepare_request_value_kind_t::bool_value},
-    {"runtime_policy", prepare_request_value_kind_t::object_value},
-    {"runtime_wave", prepare_request_value_kind_t::object_value},
-    {"timeout_seconds", prepare_request_value_kind_t::integer_value},
-};
-
-[[nodiscard]] inline const prepare_request_field_t *
-find_prepare_request_field(std::string_view key) {
-  for (const auto &field : kPrepareRequestFields) {
-    if (key == std::string_view(field.key)) {
-      return &field;
-    }
-  }
-  return nullptr;
-}
-
-[[nodiscard]] inline bool prepare_request_public_field(std::string_view key) {
-  return key == "target_id" || key == "mode" || key == "requested_mode" ||
-         key == "args_path" || key == "args_digest";
-}
-
-struct split_prepare_tool_route_t {
+struct prepare_tool_route_t {
   std::string intent{};
-  marshal_target_drive_mode_t drive_mode{marshal_target_drive_mode_t::unknown};
 };
 
-[[nodiscard]] inline std::optional<split_prepare_tool_route_t>
-split_prepare_tool_route(std::string_view tool_name) {
+[[nodiscard]] inline std::optional<prepare_tool_route_t>
+prepare_tool_route(std::string_view tool_name) {
   constexpr std::string_view prefix = "hero.marshal.prepare.";
   if (tool_name.rfind(prefix, 0) != 0) {
     return std::nullopt;
   }
   const std::string suffix(tool_name.substr(prefix.size()));
-  split_prepare_tool_route_t route{};
-  if (suffix.rfind("train.", 0) == 0) {
-    route.intent = "train";
-  } else if (suffix.rfind("evaluate.", 0) == 0) {
-    route.intent = "evaluate";
-  } else {
+  if (suffix != "train" && suffix != "evaluate") {
     return std::nullopt;
   }
-  const std::string drive = suffix.substr(route.intent.size() + 1);
-  route.drive_mode = parse_drive_mode_text(drive);
-  if (route.drive_mode == marshal_target_drive_mode_t::unknown) {
-    return std::nullopt;
-  }
+  prepare_tool_route_t route{};
+  route.intent = suffix;
   return route;
-}
-
-inline void validate_prepare_request_object_value(std::string_view key,
-                                                  const std::string &value) {
-  if (value.empty() || value.front() != '{') {
-    throw std::runtime_error(std::string(key) + " must be a JSON object");
-  }
-  if (key == "driver_policy") {
-    (void)parse_driver_policy(value);
-  } else if (key == "resume_ledger") {
-    (void)parse_target_driver_resume_state(value);
-  } else if (key == "context") {
-    (void)parse_context(value);
-  } else if (key == "runtime_policy") {
-    (void)parse_runtime_policy(value);
-  } else if (key == "runtime_wave") {
-    (void)parse_runtime_wave(value);
-  } else {
-    (void)object_fields(value);
-  }
-}
-
-[[nodiscard]] inline bool
-normalize_prepare_request_value(const prepare_request_field_t &field,
-                                std::string_view raw_value,
-                                std::string *out_json_raw, std::string *err) {
-  const std::string value = trim_ascii(raw_value);
-  switch (field.kind) {
-  case prepare_request_value_kind_t::string_value:
-    if (!value.empty() && value.front() == '"') {
-      try {
-        *out_json_raw = detail::json_quote(parse_string_raw(value, field.key));
-      } catch (const std::exception &ex) {
-        *err = ex.what();
-        return false;
-      }
-    } else {
-      *out_json_raw = detail::json_quote(value);
-    }
-    return true;
-  case prepare_request_value_kind_t::bool_value: {
-    bool parsed = false;
-    if (!parse_bool_text(value, &parsed)) {
-      *err = std::string(field.key) + " must be boolean";
-      return false;
-    }
-    *out_json_raw = parsed ? "true" : "false";
-    return true;
-  }
-  case prepare_request_value_kind_t::integer_value: {
-    std::int64_t parsed = 0;
-    if (!parse_i64_full(value, &parsed)) {
-      *err = std::string(field.key) + " must be integer";
-      return false;
-    }
-    *out_json_raw = std::to_string(parsed);
-    return true;
-  }
-  case prepare_request_value_kind_t::object_value:
-    try {
-      validate_prepare_request_object_value(field.key, value);
-      *out_json_raw = value;
-    } catch (const std::exception &ex) {
-      *err = ex.what();
-      return false;
-    }
-    return true;
-  }
-  *err = std::string(field.key) + " has unsupported prepare request type";
-  return false;
-}
-
-[[nodiscard]] inline std::map<std::string, std::string>
-parse_prepare_request_text(std::string_view text) {
-  std::map<std::string, std::string> out;
-  std::istringstream lines{std::string(text)};
-  std::string line;
-  std::size_t line_no = 0;
-  while (std::getline(lines, line)) {
-    ++line_no;
-    line = trim_ascii(strip_assignment_comment(std::move(line)));
-    if (line.empty()) {
-      continue;
-    }
-    if (line == "}" || line == "};" ||
-        (line.front() == '[' && line.back() == ']')) {
-      throw std::runtime_error("E_MARSHAL_PREPARE_REQUEST_PARSE: line " +
-                               std::to_string(line_no) +
-                               " is not a key=value assignment");
-    }
-    const auto eq = line.find('=');
-    if (eq == std::string::npos) {
-      throw std::runtime_error("E_MARSHAL_PREPARE_REQUEST_PARSE: line " +
-                               std::to_string(line_no) + " is missing '='");
-    }
-    std::string key = normalize_assignment_key(
-        std::string(std::string_view(line).substr(0, eq)));
-    std::string value = trim_ascii(std::string_view(line).substr(eq + 1U));
-    if (!value.empty() && value.back() == ';') {
-      value.pop_back();
-      value = trim_ascii(value);
-    }
-    if (key.empty()) {
-      throw std::runtime_error("E_MARSHAL_PREPARE_REQUEST_PARSE: line " +
-                               std::to_string(line_no) + " has empty key");
-    }
-    if (prepare_request_public_field(key)) {
-      throw std::runtime_error("E_MARSHAL_PREPARE_REQUEST_PUBLIC_FIELD: " +
-                               key);
-    }
-    if (out.find(key) != out.end()) {
-      throw std::runtime_error("E_MARSHAL_PREPARE_REQUEST_DUPLICATE_FIELD: " +
-                               key);
-    }
-    const auto *field = find_prepare_request_field(key);
-    if (field == nullptr) {
-      throw std::runtime_error("E_MARSHAL_PREPARE_REQUEST_UNKNOWN_FIELD: " +
-                               key);
-    }
-    std::string json_raw;
-    std::string error;
-    if (!normalize_prepare_request_value(*field, value, &json_raw, &error)) {
-      throw std::runtime_error(error);
-    }
-    out.emplace(std::move(key), std::move(json_raw));
-  }
-  return out;
-}
-
-[[nodiscard]] inline std::string
-prepare_request_file_digest(std::string_view request_text) {
-  return marshal_digest_for_text(k_prepare_request_file_digest_domain_v1,
-                                 std::string(request_text));
-}
-
-[[nodiscard]] inline std::string read_required_prepare_request_file(
-    const std::map<std::string, std::string> &args,
-    std::filesystem::path *path_out) {
-  const std::string raw_path = trim_ascii(optional_string(args, "args_path"));
-  if (raw_path.empty()) {
-    throw std::runtime_error("args_path must be a non-empty string");
-  }
-  const auto path = normalize_request_path(std::filesystem::path(raw_path));
-  std::ifstream input(path, std::ios::binary);
-  if (!input.is_open()) {
-    throw std::runtime_error("failed to read args_path: " + path.string());
-  }
-  std::ostringstream buffer;
-  buffer << input.rdbuf();
-  if (path_out != nullptr) {
-    *path_out = path;
-  }
-  return buffer.str();
-}
-
-[[nodiscard]] inline prepare_request_file_t
-load_prepare_request_arguments(const std::map<std::string, std::string> &args,
-                               bool require_digest) {
-  prepare_request_file_t packet{};
-  if (const auto target_id = optional_raw(args, "target_id")) {
-    packet.fields.emplace("target_id", *target_id);
-  }
-  if (const auto requested_mode = optional_raw(args, "mode")) {
-    packet.fields.emplace("requested_mode", *requested_mode);
-  }
-
-  if (!optional_raw(args, "args_path").has_value()) {
-    if (optional_raw(args, "args_digest").has_value()) {
-      throw std::runtime_error("args_digest requires args_path");
-    }
-    if (require_digest) {
-      throw std::runtime_error("E_MARSHAL_PREPARE_REQUEST_DIGEST_REQUIRED: "
-                               "args_digest is required");
-    }
-    return packet;
-  }
-
-  const std::string request_text =
-      read_required_prepare_request_file(args, &packet.path);
-  packet.digest = prepare_request_file_digest(request_text);
-  packet.digest_supplied = optional_raw(args, "args_digest").has_value();
-  if (require_digest && !packet.digest_supplied) {
-    throw std::runtime_error("E_MARSHAL_PREPARE_REQUEST_DIGEST_REQUIRED: "
-                             "args_digest is required");
-  }
-  if (const auto supplied_raw = optional_raw(args, "args_digest")) {
-    const std::string supplied =
-        trim_ascii(parse_string_raw(*supplied_raw, "args_digest"));
-    if (supplied.empty()) {
-      throw std::runtime_error("args_digest must be non-empty when supplied");
-    }
-    if (supplied != packet.digest) {
-      throw std::runtime_error(
-          "E_MARSHAL_PREPARE_REQUEST_DIGEST_MISMATCH: expected " + supplied +
-          " actual " + packet.digest);
-    }
-  }
-
-  auto request_fields = parse_prepare_request_text(request_text);
-  for (auto &[key, value] : request_fields) {
-    packet.fields.emplace(std::move(key), std::move(value));
-  }
-  return packet;
-}
-
-[[nodiscard]] inline std::string
-prepare_request_file_json_fields(const prepare_request_file_t &packet) {
-  std::ostringstream out;
-  out << ",\"args_path\":"
-      << detail::json_quote(packet.path.empty() ? "" : packet.path.string())
-      << ",\"args_digest_domain\":" << detail::json_quote(packet.digest_domain)
-      << ",\"args_digest\":" << detail::json_quote(packet.digest)
-      << ",\"args_digest_verified\":"
-      << (packet.digest_supplied ? "true" : "false");
-  return out.str();
 }
 
 [[nodiscard]] inline marshal_prior_dry_run_evidence_t
@@ -2492,40 +2147,13 @@ runtime_handoff_identity_from_arguments(const std::string &arguments_json) {
     std::optional<std::string> handoff_raw =
         optional_raw(fields, "runtime_handoff");
     if (!handoff_raw.has_value()) {
-      const std::string args_path =
-          trim_ascii(optional_string(fields, "args_path"));
-      if (!args_path.empty()) {
-        std::ifstream run_request(args_path, std::ios::binary);
-        std::ostringstream run_request_text;
-        run_request_text << run_request.rdbuf();
-        std::istringstream lines{run_request_text.str()};
-        std::string line;
-        std::string handoff_path;
-        while (std::getline(lines, line)) {
-          line = trim_ascii(strip_assignment_comment(std::move(line)));
-          if (line.empty()) {
-            continue;
-          }
-          const auto eq = line.find('=');
-          if (eq == std::string::npos) {
-            continue;
-          }
-          std::string key = trim_ascii(line.substr(0, eq));
-          const auto domain = key.find_first_of("[:");
-          if (domain != std::string::npos) {
-            key = trim_ascii(key.substr(0, domain));
-          }
-          if (key == "runtime_handoff_path") {
-            handoff_path = trim_ascii(line.substr(eq + 1));
-            break;
-          }
-        }
-        if (!handoff_path.empty()) {
-          std::ifstream handoff_file(handoff_path, std::ios::binary);
-          std::ostringstream handoff_text;
-          handoff_text << handoff_file.rdbuf();
-          handoff_raw = handoff_text.str();
-        }
+      const std::string handoff_path =
+          trim_ascii(optional_string(fields, "runtime_handoff_path"));
+      if (!handoff_path.empty()) {
+        std::ifstream handoff_file(handoff_path, std::ios::binary);
+        std::ostringstream handoff_text;
+        handoff_text << handoff_file.rdbuf();
+        handoff_raw = handoff_text.str();
       }
     }
     if (handoff_raw.has_value()) {
@@ -4843,8 +4471,8 @@ struct prepare_target_step_result_t {
     marshal_lattice_tool_callback_t callback, std::int64_t max_waves,
     std::int64_t recommendation_attempt_count,
     marshal_dispatch_mode_t requested_mode, bool include_runtime_dry_run,
-    bool include_machine_payload,
-    const std::string &target_driver_run_id = {}) {
+    bool include_machine_payload, const std::string &target_driver_run_id = {},
+    const marshal_dispatch_validation_context_t &profile_context = {}) {
   prepare_target_step_result_t step{};
   step.include_runtime_dry_run = include_runtime_dry_run;
   step.include_machine_payload = include_machine_payload;
@@ -4918,6 +4546,17 @@ struct prepare_target_step_result_t {
     }
   }
 
+  step.context = profile_context;
+  if (step.context.active_config_path.empty()) {
+    step.context.active_config_path = step.advice.config_path;
+  }
+  if (step.context.active_runtime_root.empty()) {
+    step.context.active_runtime_root = step.advice.runtime_root;
+  }
+  if (step.context.allowed_model_state_roots.empty() &&
+      !step.advice.runtime_root.empty()) {
+    step.context.allowed_model_state_roots.push_back(step.advice.runtime_root);
+  }
   if (const auto raw = optional_raw(args, "context")) {
     step.context = parse_context(*raw);
   }
@@ -5223,8 +4862,8 @@ prepare_target_audit_panel_json(const prepare_target_step_result_t &step,
 [[nodiscard]] inline std::string prepare_target_operator_packet_json(
     const prepare_target_step_result_t &step,
     const marshal_target_driver_ledger_t *ledger = nullptr,
-    const prepare_request_file_t *prepare_request_file = nullptr,
-    std::string_view tool_name = "hero.marshal.prepare.train.one_step") {
+    std::string_view tool_name = "hero.marshal.prepare.train",
+    std::string_view profile_id = {}) {
   std::ostringstream structured;
   structured << "{\"ok\":true"
              << ",\"tool\":" << detail::json_quote(std::string(tool_name))
@@ -5232,8 +4871,8 @@ prepare_target_audit_panel_json(const prepare_target_step_result_t &step,
                     "kikijyeba.marshal.prepare.v2.5b", {step.next_action})
              << "," << marshal_prepare_non_proof_contract_json()
              << ",\"target_id\":" << detail::json_quote(step.advice.target_id);
-  if (prepare_request_file != nullptr) {
-    structured << prepare_request_file_json_fields(*prepare_request_file);
+  if (!profile_id.empty()) {
+    structured << ",\"profile\":" << detail::json_quote(profile_id);
   }
   structured
       << ",\"target_status\":" << detail::json_quote(step.advice.target_status)
@@ -5275,12 +4914,8 @@ prepare_target_audit_panel_json(const prepare_target_step_result_t &step,
   } else {
     structured << "\"target_id\":" << detail::json_quote(step.advice.target_id)
                << ",\"mode\":\"dry_run\"";
-    if (prepare_request_file != nullptr &&
-        !prepare_request_file->path.empty()) {
-      structured << ",\"args_path\":"
-                 << detail::json_quote(prepare_request_file->path.string())
-                 << ",\"args_digest\":"
-                 << detail::json_quote(prepare_request_file->digest);
+    if (!profile_id.empty()) {
+      structured << ",\"profile\":" << detail::json_quote(profile_id);
     }
     structured << "}}";
   }
@@ -6155,6 +5790,32 @@ inline void append_protocol_issue(std::vector<std::string> *issues,
   }
 }
 
+[[nodiscard]] inline std::map<std::string, std::string>
+parse_expected_protocol_identity(
+    const std::map<std::string, std::string> &args) {
+  const auto raw = optional_raw(args, "expected_identity");
+  if (!raw.has_value()) {
+    throw std::runtime_error("hero.marshal.inspect.protocol.strict requires "
+                             "expected_identity");
+  }
+  auto fields = object_fields(*raw);
+  validate_fields(fields,
+                  {"protocol_contract_fingerprint", "graph_order_fingerprint",
+                   "source_cursor_token", "vicreg_assembly_fingerprint",
+                   "mdn_assembly_fingerprint"},
+                  {"protocol_contract_fingerprint", "graph_order_fingerprint",
+                   "source_cursor_token", "vicreg_assembly_fingerprint",
+                   "mdn_assembly_fingerprint"},
+                  "expected_identity");
+  return fields;
+}
+
+[[nodiscard]] inline std::string expected_protocol_identity_value(
+    const std::map<std::string, std::string> &expected,
+    const std::string &key) {
+  return expected.empty() ? std::string{} : optional_string(expected, key);
+}
+
 [[nodiscard]] inline std::string
 inspect_protocol_subject_json(const std::map<std::string, std::string> &args,
                               bool include_machine_payload) {
@@ -6165,29 +5826,9 @@ inspect_protocol_subject_json(const std::map<std::string, std::string> &args,
         "report or strict");
   }
   const bool strict_identity = identity_mode == "strict";
-  if (strict_identity) {
-    std::vector<std::string> missing_expected;
-    for (const auto &key :
-         {"protocol_contract_fingerprint", "graph_order_fingerprint",
-          "source_cursor_token", "vicreg_assembly_fingerprint",
-          "mdn_assembly_fingerprint"}) {
-      if (optional_string(args, key).empty()) {
-        missing_expected.push_back(key);
-      }
-    }
-    if (!missing_expected.empty()) {
-      std::ostringstream missing;
-      for (std::size_t idx = 0; idx < missing_expected.size(); ++idx) {
-        if (idx != 0U) {
-          missing << ",";
-        }
-        missing << missing_expected[idx];
-      }
-      throw std::runtime_error("hero.marshal.inspect.protocol.strict "
-                               "requires expected identity fields: " +
-                               missing.str());
-    }
-  }
+  const std::map<std::string, std::string> expected_identity =
+      strict_identity ? parse_expected_protocol_identity(args)
+                      : std::map<std::string, std::string>{};
   const auto jobs = discover_all_inspect_jobs(args);
   const auto protocol =
       unique_job_values(jobs, {"protocol_contract_fingerprint"});
@@ -6197,18 +5838,25 @@ inspect_protocol_subject_json(const std::map<std::string, std::string> &args,
   const auto mdn = unique_job_values(jobs, {"mdn_assembly_fingerprint"});
   std::vector<std::string> issues;
   append_protocol_issue(&issues, "protocol_contract_fingerprint",
-                        optional_string(args, "protocol_contract_fingerprint"),
+                        expected_protocol_identity_value(
+                            expected_identity, "protocol_contract_fingerprint"),
                         protocol);
   append_protocol_issue(&issues, "graph_order_fingerprint",
-                        optional_string(args, "graph_order_fingerprint"),
+                        expected_protocol_identity_value(
+                            expected_identity, "graph_order_fingerprint"),
                         graph);
   append_protocol_issue(&issues, "source_cursor_token",
-                        optional_string(args, "source_cursor_token"), cursor);
+                        expected_protocol_identity_value(expected_identity,
+                                                         "source_cursor_token"),
+                        cursor);
   append_protocol_issue(&issues, "vicreg_assembly_fingerprint",
-                        optional_string(args, "vicreg_assembly_fingerprint"),
+                        expected_protocol_identity_value(
+                            expected_identity, "vicreg_assembly_fingerprint"),
                         vicreg);
   append_protocol_issue(&issues, "mdn_assembly_fingerprint",
-                        optional_string(args, "mdn_assembly_fingerprint"), mdn);
+                        expected_protocol_identity_value(
+                            expected_identity, "mdn_assembly_fingerprint"),
+                        mdn);
   const std::string expectation_policy =
       strict_identity ? "strict_expected_identity" : "observed_ok_report";
   const bool identity_verified = strict_identity && issues.empty();
@@ -6217,24 +5865,32 @@ inspect_protocol_subject_json(const std::map<std::string, std::string> &args,
   identity << "{"
            << protocol_field_json(
                   "protocol_contract_fingerprint",
-                  optional_string(args, "protocol_contract_fingerprint"),
+                  expected_protocol_identity_value(
+                      expected_identity, "protocol_contract_fingerprint"),
                   protocol)
            << ","
            << protocol_field_json(
                   "graph_order_fingerprint",
-                  optional_string(args, "graph_order_fingerprint"), graph)
+                  expected_protocol_identity_value(expected_identity,
+                                                   "graph_order_fingerprint"),
+                  graph)
            << ","
            << protocol_field_json("source_cursor_token",
-                                  optional_string(args, "source_cursor_token"),
+                                  expected_protocol_identity_value(
+                                      expected_identity, "source_cursor_token"),
                                   cursor)
            << ","
            << protocol_field_json(
                   "vicreg_assembly_fingerprint",
-                  optional_string(args, "vicreg_assembly_fingerprint"), vicreg)
+                  expected_protocol_identity_value(
+                      expected_identity, "vicreg_assembly_fingerprint"),
+                  vicreg)
            << ","
            << protocol_field_json(
                   "mdn_assembly_fingerprint",
-                  optional_string(args, "mdn_assembly_fingerprint"), mdn)
+                  expected_protocol_identity_value(expected_identity,
+                                                   "mdn_assembly_fingerprint"),
+                  mdn)
            << "}";
 
   std::ostringstream out;
@@ -6710,11 +6366,747 @@ inspect_target_subject_json(const std::map<std::string, std::string> &args,
   return out.str();
 }
 
+[[nodiscard]] inline bool valid_marshal_profile_id(std::string_view raw) {
+  if (raw.empty()) {
+    return false;
+  }
+  for (const unsigned char c : raw) {
+    if (std::isalnum(c) == 0 && c != '_' && c != '-' && c != '.') {
+      return false;
+    }
+  }
+  return true;
+}
+
+[[nodiscard]] inline std::map<std::string, std::string>
+parse_assignment_block_text(std::string_view text, const std::string &label) {
+  std::map<std::string, std::string> out;
+  std::istringstream lines{std::string(text)};
+  std::string line;
+  std::size_t line_no = 0;
+  while (std::getline(lines, line)) {
+    ++line_no;
+    line = trim_ascii(strip_assignment_comment(std::move(line)));
+    if (line.empty()) {
+      continue;
+    }
+    const auto eq = line.find('=');
+    if (eq == std::string::npos) {
+      throw std::runtime_error(label + " line " + std::to_string(line_no) +
+                               " is missing '='");
+    }
+    std::string key = normalize_assignment_key(
+        std::string(std::string_view(line).substr(0, eq)));
+    std::string value = trim_ascii(std::string_view(line).substr(eq + 1U));
+    if (!value.empty() && value.back() == ';') {
+      value.pop_back();
+      value = trim_ascii(value);
+    }
+    if (key.empty()) {
+      throw std::runtime_error(label + " line " + std::to_string(line_no) +
+                               " has empty key");
+    }
+    if (out.find(key) != out.end()) {
+      throw std::runtime_error(label + " duplicate field: " + key);
+    }
+    out.emplace(std::move(key), std::move(value));
+  }
+  return out;
+}
+
+struct parsed_marshal_policy_text_t {
+  std::map<std::string, std::string> base{};
+  std::map<std::string, std::map<std::string, std::string>> prepare_profiles{};
+  std::map<std::string, std::map<std::string, std::string>> rollout_profiles{};
+};
+
+[[nodiscard]] inline bool
+parse_marshal_policy_text(std::string_view text,
+                          parsed_marshal_policy_text_t *out,
+                          std::string *error) {
+  if (out == nullptr) {
+    if (error != nullptr) {
+      *error = "marshal policy output pointer is null";
+    }
+    return false;
+  }
+  try {
+    parsed_marshal_policy_text_t parsed{};
+    std::istringstream lines{std::string(text)};
+    std::string line;
+    std::size_t line_no = 0;
+    enum class active_block_kind_t { none, prepare_profile, rollout_profile };
+    active_block_kind_t active_block_kind = active_block_kind_t::none;
+    std::string active_profile_id;
+    std::ostringstream active_profile_text;
+
+    while (std::getline(lines, line)) {
+      ++line_no;
+      line = trim_ascii(strip_assignment_comment(std::move(line)));
+      if (line.empty()) {
+        continue;
+      }
+      if (active_block_kind == active_block_kind_t::none) {
+        constexpr std::string_view kPreparePrefix = "MARSHAL_PREPARE_PROFILE";
+        constexpr std::string_view kRolloutPrefix = "MARSHAL_ROLLOUT_PROFILE";
+        const bool is_prepare = line.rfind(std::string(kPreparePrefix), 0) == 0;
+        const bool is_rollout = line.rfind(std::string(kRolloutPrefix), 0) == 0;
+        if (is_prepare || is_rollout) {
+          const auto prefix = is_prepare ? kPreparePrefix : kRolloutPrefix;
+          const std::string label = is_prepare ? "MARSHAL_PREPARE_PROFILE"
+                                               : "MARSHAL_ROLLOUT_PROFILE";
+          std::string rest =
+              trim_ascii(std::string_view(line).substr(prefix.size()));
+          if (rest.empty() || rest.back() != '{') {
+            throw std::runtime_error(label + " line " +
+                                     std::to_string(line_no) +
+                                     " must end with '{'");
+          }
+          rest.pop_back();
+          active_profile_id = trim_ascii(rest);
+          if (!valid_marshal_profile_id(active_profile_id)) {
+            throw std::runtime_error("invalid " + label +
+                                     " id: " + active_profile_id);
+          }
+          auto &profiles =
+              is_prepare ? parsed.prepare_profiles : parsed.rollout_profiles;
+          if (profiles.find(active_profile_id) != profiles.end()) {
+            throw std::runtime_error("duplicate " + label +
+                                     " id: " + active_profile_id);
+          }
+          active_profile_text.str(std::string{});
+          active_profile_text.clear();
+          active_block_kind = is_prepare ? active_block_kind_t::prepare_profile
+                                         : active_block_kind_t::rollout_profile;
+          continue;
+        }
+        const auto assignment =
+            parse_assignment_block_text(line, "marshal policy");
+        for (const auto &[key, value] : assignment) {
+          parsed.base[key] = value;
+        }
+        continue;
+      }
+
+      if (line == "}" || line == "};") {
+        const bool is_prepare =
+            active_block_kind == active_block_kind_t::prepare_profile;
+        auto &profiles =
+            is_prepare ? parsed.prepare_profiles : parsed.rollout_profiles;
+        const std::string label = is_prepare ? "MARSHAL_PREPARE_PROFILE "
+                                             : "MARSHAL_ROLLOUT_PROFILE ";
+        profiles.emplace(active_profile_id, parse_assignment_block_text(
+                                                active_profile_text.str(),
+                                                label + active_profile_id));
+        active_profile_id.clear();
+        active_profile_text.str(std::string{});
+        active_profile_text.clear();
+        active_block_kind = active_block_kind_t::none;
+        continue;
+      }
+      active_profile_text << line << '\n';
+    }
+    if (active_block_kind != active_block_kind_t::none) {
+      const std::string label =
+          active_block_kind == active_block_kind_t::prepare_profile
+              ? "MARSHAL_PREPARE_PROFILE"
+              : "MARSHAL_ROLLOUT_PROFILE";
+      throw std::runtime_error("unterminated " + label +
+                               " block: " + active_profile_id);
+    }
+    *out = std::move(parsed);
+    return true;
+  } catch (const std::exception &ex) {
+    if (error != nullptr) {
+      *error = ex.what();
+    }
+    return false;
+  }
+}
+
+[[nodiscard]] inline bool read_text_file(const std::filesystem::path &path,
+                                         std::string *out, std::string *error) {
+  std::ifstream input(path, std::ios::binary);
+  if (!input.is_open()) {
+    if (error != nullptr) {
+      *error = "failed to read file: " + path.string();
+    }
+    return false;
+  }
+  std::ostringstream buffer;
+  buffer << input.rdbuf();
+  if (out != nullptr) {
+    *out = buffer.str();
+  }
+  return true;
+}
+
+struct resolved_marshal_prepare_profile_t {
+  std::string profile_id{"single_wave_operator"};
+  marshal_target_drive_mode_t drive_mode{marshal_target_drive_mode_t::one_step};
+  marshal_target_driver_policy_t driver_policy{};
+  marshal_dispatch_validation_context_t validation_context{};
+  bool materialize_plan_inputs{true};
+  int timeout_seconds{600};
+};
+
+inline void require_known_prepare_profile_fields(
+    const std::map<std::string, std::string> &fields,
+    const std::string &profile_id) {
+  static const std::set<std::string> kAllowed = {
+      "drive_mode",
+      "max_waves",
+      "max_wall_clock_seconds",
+      "allow_execute",
+      "allow_train_execute",
+      "require_runtime_job_completion",
+      "require_post_wave_lattice_satisfied_check",
+      "stop_on_warning_severity",
+      "stop_on_lattice_warning",
+      "stop_on_runtime_warning",
+      "no_progress_window",
+      "materialize_plan_inputs",
+      "timeout_seconds",
+      "supported_wave_targets",
+      "supported_source_ranges",
+      "allowed_lattice_tools",
+      "allowed_model_state_roots",
+      "max_advice_age_seconds",
+      "allowed_clock_skew_seconds",
+      "require_signed_lattice_advice",
+      "trusted_lattice_advice_key_id",
+      "trusted_lattice_advice_verification_key",
+  };
+  for (const auto &[key, _] : fields) {
+    if (kAllowed.find(key) == kAllowed.end()) {
+      throw std::runtime_error("MARSHAL_PREPARE_PROFILE " + profile_id +
+                               " unknown field: " + key);
+    }
+  }
+}
+
+[[nodiscard]] inline std::int64_t
+profile_i64(const std::map<std::string, std::string> &fields,
+            const std::string &key, std::int64_t fallback) {
+  const auto found = fields.find(key);
+  if (found == fields.end()) {
+    return fallback;
+  }
+  std::int64_t value = 0;
+  if (!parse_i64_full(found->second, &value)) {
+    throw std::runtime_error(key + " must be integer");
+  }
+  return value;
+}
+
+[[nodiscard]] inline bool
+profile_bool(const std::map<std::string, std::string> &fields,
+             const std::string &key, bool fallback) {
+  const auto found = fields.find(key);
+  if (found == fields.end()) {
+    return fallback;
+  }
+  bool value = false;
+  if (!parse_bool_text(found->second, &value)) {
+    throw std::runtime_error(key + " must be boolean");
+  }
+  return value;
+}
+
+[[nodiscard]] inline double
+profile_double(const std::map<std::string, std::string> &fields,
+               const std::string &key, double fallback) {
+  const auto found = fields.find(key);
+  if (found == fields.end()) {
+    return fallback;
+  }
+  const std::string value_text = trim_ascii(found->second);
+  std::size_t consumed = 0;
+  double value = 0.0;
+  try {
+    value = std::stod(value_text, &consumed);
+  } catch (const std::exception &) {
+    throw std::runtime_error(key + " must be number");
+  }
+  if (consumed != value_text.size()) {
+    throw std::runtime_error(key + " must be number");
+  }
+  return value;
+}
+
+[[nodiscard]] inline std::string
+profile_string(const std::map<std::string, std::string> &fields,
+               const std::string &key, const std::string &fallback = {}) {
+  const auto found = fields.find(key);
+  return found == fields.end() ? fallback : trim_ascii(found->second);
+}
+
+inline void insert_profile_string_set(std::set<std::string> *out,
+                                      std::string_view raw) {
+  if (out == nullptr) {
+    return;
+  }
+  for (auto value : split_assignment_string_list(raw)) {
+    if (!value.empty()) {
+      out->insert(std::move(value));
+    }
+  }
+}
+
+[[nodiscard]] inline std::vector<std::string>
+profile_string_vector(const std::map<std::string, std::string> &fields,
+                      const std::string &key) {
+  const auto found = fields.find(key);
+  if (found == fields.end()) {
+    return {};
+  }
+  return split_assignment_string_list(found->second);
+}
+
+struct resolved_marshal_rollout_profile_t {
+  std::string profile_id{"replay_validation_default"};
+  std::vector<std::string> policy_tokens{};
+  std::int64_t max_steps{250};
+  std::int64_t max_parallel_jobs{4};
+  std::filesystem::path runtime_exec_path{
+      "/cuwacunu/.build/exec/cuwacunu_exec"};
+  int timeout_seconds{600};
+  marshal_rollout_execution_profile_t execution_profile{};
+};
+
+inline void require_known_rollout_profile_fields(
+    const std::map<std::string, std::string> &fields,
+    const std::string &profile_id) {
+  static const std::set<std::string> kAllowed = {
+      "policy_set",
+      "max_steps",
+      "max_parallel_jobs",
+      "runtime_exec_path",
+      "timeout_seconds",
+      "execution_backend_id",
+      "cost_model_id",
+      "allow_synthetic_direct_edges",
+      "synthetic_edge_research_reason",
+      "linear_transaction_cost_rate",
+      "allow_partial_fills",
+      "equity_mismatch_tolerance",
+      "equity_mismatch_fail_tolerance",
+      "live_execution_allowed",
+  };
+  for (const auto &[key, _] : fields) {
+    if (kAllowed.find(key) == kAllowed.end()) {
+      throw std::runtime_error("MARSHAL_ROLLOUT_PROFILE " + profile_id +
+                               " unknown field: " + key);
+    }
+  }
+}
+
+[[nodiscard]] inline resolved_marshal_rollout_profile_t
+resolve_rollout_profile_from_fields(
+    const std::string &profile_id,
+    const std::map<std::string, std::string> &fields) {
+  require_known_rollout_profile_fields(fields, profile_id);
+  resolved_marshal_rollout_profile_t out{};
+  out.profile_id = profile_id;
+  out.policy_tokens =
+      split_assignment_string_list(profile_string(fields, "policy_set"));
+  out.max_steps = profile_i64(fields, "max_steps", out.max_steps);
+  out.max_parallel_jobs =
+      profile_i64(fields, "max_parallel_jobs", out.max_parallel_jobs);
+  out.runtime_exec_path = std::filesystem::path(profile_string(
+      fields, "runtime_exec_path", out.runtime_exec_path.string()));
+  out.timeout_seconds =
+      static_cast<int>(profile_i64(fields, "timeout_seconds", 600));
+  out.execution_profile.execution_backend_id =
+      profile_string(fields, "execution_backend_id",
+                     out.execution_profile.execution_backend_id);
+  out.execution_profile.cost_model_id = profile_string(
+      fields, "cost_model_id", out.execution_profile.cost_model_id);
+  out.execution_profile.allow_synthetic_direct_edges =
+      profile_bool(fields, "allow_synthetic_direct_edges",
+                   out.execution_profile.allow_synthetic_direct_edges);
+  out.execution_profile.synthetic_edge_research_reason =
+      profile_string(fields, "synthetic_edge_research_reason");
+  out.execution_profile.linear_transaction_cost_rate =
+      profile_double(fields, "linear_transaction_cost_rate",
+                     out.execution_profile.linear_transaction_cost_rate);
+  out.execution_profile.allow_partial_fills = profile_bool(
+      fields, "allow_partial_fills", out.execution_profile.allow_partial_fills);
+  out.execution_profile.equity_mismatch_tolerance =
+      profile_double(fields, "equity_mismatch_tolerance",
+                     out.execution_profile.equity_mismatch_tolerance);
+  out.execution_profile.equity_mismatch_fail_tolerance =
+      profile_double(fields, "equity_mismatch_fail_tolerance",
+                     out.execution_profile.equity_mismatch_fail_tolerance);
+  out.execution_profile.live_execution_allowed =
+      profile_bool(fields, "live_execution_allowed",
+                   out.execution_profile.live_execution_allowed);
+
+  if (out.policy_tokens.empty()) {
+    throw std::runtime_error("rollout profile policy_set must be non-empty");
+  }
+  if (out.max_steps <= 0) {
+    throw std::runtime_error("rollout profile max_steps must be positive");
+  }
+  if (out.max_parallel_jobs <= 0) {
+    throw std::runtime_error(
+        "rollout profile max_parallel_jobs must be positive");
+  }
+  if (out.timeout_seconds <= 0) {
+    throw std::runtime_error(
+        "rollout profile timeout_seconds must be positive");
+  }
+  if (out.runtime_exec_path.empty()) {
+    throw std::runtime_error("rollout profile runtime_exec_path must be set");
+  }
+  return out;
+}
+
+[[nodiscard]] inline resolved_marshal_prepare_profile_t
+resolve_prepare_profile_from_fields(
+    const std::string &profile_id,
+    const std::map<std::string, std::string> &fields) {
+  require_known_prepare_profile_fields(fields, profile_id);
+  resolved_marshal_prepare_profile_t out{};
+  out.profile_id = profile_id;
+  out.driver_policy.max_waves =
+      profile_i64(fields, "max_waves", out.driver_policy.max_waves);
+  out.driver_policy.max_wall_clock_seconds =
+      profile_i64(fields, "max_wall_clock_seconds",
+                  out.driver_policy.max_wall_clock_seconds);
+  out.driver_policy.allow_execute =
+      profile_bool(fields, "allow_execute", out.driver_policy.allow_execute);
+  out.driver_policy.allow_train_execute = profile_bool(
+      fields, "allow_train_execute", out.driver_policy.allow_train_execute);
+  out.driver_policy.require_runtime_job_completion =
+      profile_bool(fields, "require_runtime_job_completion",
+                   out.driver_policy.require_runtime_job_completion);
+  out.driver_policy.require_post_wave_lattice_satisfied_check =
+      profile_bool(fields, "require_post_wave_lattice_satisfied_check",
+                   out.driver_policy.require_post_wave_lattice_satisfied_check);
+  out.driver_policy.stop_on_warning_severity =
+      profile_string(fields, "stop_on_warning_severity",
+                     out.driver_policy.stop_on_warning_severity);
+  out.driver_policy.stop_on_lattice_warning =
+      profile_bool(fields, "stop_on_lattice_warning",
+                   out.driver_policy.stop_on_lattice_warning);
+  out.driver_policy.stop_on_runtime_warning =
+      profile_bool(fields, "stop_on_runtime_warning",
+                   out.driver_policy.stop_on_runtime_warning);
+  out.driver_policy.no_progress_window = profile_i64(
+      fields, "no_progress_window", out.driver_policy.no_progress_window);
+  const auto drive_mode_text =
+      profile_string(fields, "drive_mode",
+                     out.driver_policy.max_waves > 1 ? "budgeted" : "one_step");
+  out.drive_mode = parse_drive_mode_text(drive_mode_text);
+  if (out.drive_mode == marshal_target_drive_mode_t::unknown) {
+    throw std::runtime_error(
+        "prepare profile drive_mode must be one_step or budgeted");
+  }
+
+  out.materialize_plan_inputs =
+      profile_bool(fields, "materialize_plan_inputs", true);
+  out.timeout_seconds =
+      static_cast<int>(profile_i64(fields, "timeout_seconds", 600));
+
+  insert_profile_string_set(&out.validation_context.supported_wave_targets,
+                            profile_string(fields, "supported_wave_targets"));
+  insert_profile_string_set(&out.validation_context.supported_source_ranges,
+                            profile_string(fields, "supported_source_ranges"));
+  insert_profile_string_set(&out.validation_context.allowed_lattice_tools,
+                            profile_string(fields, "allowed_lattice_tools",
+                                           "hero.lattice.evaluate.deficit"));
+  out.validation_context.allowed_model_state_roots =
+      profile_string_vector(fields, "allowed_model_state_roots");
+  out.validation_context.max_advice_age_seconds =
+      profile_i64(fields, "max_advice_age_seconds",
+                  out.validation_context.max_advice_age_seconds);
+  out.validation_context.allowed_clock_skew_seconds =
+      profile_i64(fields, "allowed_clock_skew_seconds",
+                  out.validation_context.allowed_clock_skew_seconds);
+  out.validation_context.require_signed_lattice_advice =
+      profile_bool(fields, "require_signed_lattice_advice",
+                   out.validation_context.require_signed_lattice_advice);
+  out.validation_context.trusted_lattice_advice_key_id =
+      profile_string(fields, "trusted_lattice_advice_key_id");
+  out.validation_context.trusted_lattice_advice_verification_key =
+      profile_string(fields, "trusted_lattice_advice_verification_key");
+  out.validation_context.allow_execute = out.driver_policy.allow_execute;
+  out.validation_context.allow_execute_mode = out.driver_policy.allow_execute;
+
+  if (out.driver_policy.max_waves <= 0) {
+    throw std::runtime_error("prepare profile max_waves must be positive");
+  }
+  if (out.driver_policy.no_progress_window <= 0) {
+    throw std::runtime_error(
+        "prepare profile no_progress_window must be positive");
+  }
+  if (out.drive_mode == marshal_target_drive_mode_t::budgeted &&
+      out.driver_policy.max_wall_clock_seconds <= 0) {
+    throw std::runtime_error(
+        "bounded prepare profile requires max_wall_clock_seconds");
+  }
+  if (out.timeout_seconds <= 0) {
+    throw std::runtime_error(
+        "prepare profile timeout_seconds must be positive");
+  }
+  return out;
+}
+
+[[nodiscard]] inline std::string rollout_request_execution_profile_json(
+    const marshal_rollout_execution_profile_t &profile) {
+  namespace detail = rollout_marshal_detail;
+  std::ostringstream out;
+  out << "{";
+  bool first = true;
+  detail::append_json_string_field(out, "execution_backend_id",
+                                   profile.execution_backend_id, &first);
+  detail::append_json_string_field(out, "cost_model_id", profile.cost_model_id,
+                                   &first);
+  detail::append_json_bool_field(out, "allow_synthetic_direct_edges",
+                                 profile.allow_synthetic_direct_edges, &first);
+  detail::append_json_string_field(out, "synthetic_edge_research_reason",
+                                   profile.synthetic_edge_research_reason,
+                                   &first);
+  detail::append_json_double_field(out, "linear_transaction_cost_rate",
+                                   profile.linear_transaction_cost_rate,
+                                   &first);
+  detail::append_json_bool_field(out, "allow_partial_fills",
+                                 profile.allow_partial_fills, &first);
+  detail::append_json_double_field(out, "equity_mismatch_tolerance",
+                                   profile.equity_mismatch_tolerance, &first);
+  detail::append_json_double_field(out, "equity_mismatch_fail_tolerance",
+                                   profile.equity_mismatch_fail_tolerance,
+                                   &first);
+  detail::append_json_bool_field(out, "live_execution_allowed",
+                                 profile.live_execution_allowed, &first);
+  out << "}";
+  return out.str();
+}
+
+[[nodiscard]] inline std::string
+rollout_request_packet_text(const marshal_rollout_request_t &request) {
+  namespace rollout_detail = rollout_marshal_detail;
+  std::ostringstream out;
+  rollout_detail::append_kv(out, "rollout_id", request.rollout_id);
+  rollout_detail::append_kv(out, "rollout_attempt_id",
+                            request.rollout_attempt_id);
+  rollout_detail::append_kv(out, "idempotency_key", request.idempotency_key);
+  rollout_detail::append_kv(out, "experiment_id", request.experiment_id);
+  rollout_detail::append_kv(out, "config_path", request.config_path.string());
+  rollout_detail::append_kv(out, "runtime_job_dir",
+                            request.runtime_job_dir.string());
+  rollout_detail::append_kv(out, "replay_batch_index_path",
+                            request.replay_batch_index_path.string());
+  rollout_detail::append_kv(out, "runtime_exec_path",
+                            request.runtime_exec_path.string());
+  rollout_detail::append_kv(out, "report_path", request.report_path.string());
+  rollout_detail::append_kv(out, "graph_order_fingerprint",
+                            request.graph_order_fingerprint);
+  rollout_detail::append_kv(out, "asset_universe_digest",
+                            request.asset_universe_digest);
+  rollout_detail::append_kv(out, "accounting_numeraire_node_id",
+                            request.accounting_numeraire_node_id);
+  rollout_detail::append_kv(out, "target_node_ids",
+                            rollout_detail::csv(request.target_node_ids));
+  rollout_detail::append_kv(out, "policy_set",
+                            rollout_detail::csv(request.policy_tokens));
+  rollout_detail::append_i64(out, "max_steps", request.max_steps);
+  rollout_detail::append_i64(out, "max_parallel_jobs",
+                             request.max_parallel_jobs);
+  rollout_detail::append_i64(out, "timeout_seconds", request.timeout_seconds);
+  out << "execution_profile = "
+      << rollout_request_execution_profile_json(request.execution_profile)
+      << "\n";
+  return out.str();
+}
+
+[[nodiscard]] inline marshal_rollout_request_t rollout_request_from_direct_args(
+    const std::map<std::string, std::string> &args,
+    const marshal_policy_t &policy,
+    const resolved_marshal_rollout_profile_t &profile,
+    const std::string &requested_mode) {
+  marshal_rollout_request_t request{};
+  request.requested_mode = requested_mode;
+  request.config_path =
+      policy.global_config_path.empty()
+          ? std::filesystem::path("/cuwacunu/src/config/.config")
+          : policy.global_config_path;
+  request.runtime_job_dir =
+      std::filesystem::path(optional_string(args, "runtime_job_dir"));
+  request.rollout_id = optional_string(args, "rollout_id");
+  request.rollout_attempt_id = optional_string(args, "rollout_attempt_id");
+  request.idempotency_key = request.rollout_attempt_id;
+  request.experiment_id = request.rollout_id;
+  request.target_node_ids = optional_string_array(args, "target_node_ids");
+  request.policy_tokens = profile.policy_tokens;
+  request.max_steps = profile.max_steps;
+  request.max_parallel_jobs = profile.max_parallel_jobs;
+  request.timeout_seconds = profile.timeout_seconds;
+  request.runtime_exec_path = profile.runtime_exec_path;
+  request.execution_profile = profile.execution_profile;
+
+  const auto job_state = rollout_marshal_detail::read_kv_file(
+      request.runtime_job_dir / "job.state");
+  const auto state_batch = job_state.find("replay_batch_index_path");
+  if (state_batch != job_state.end() &&
+      !trim_ascii(state_batch->second).empty()) {
+    request.replay_batch_index_path = state_batch->second;
+  } else if (!request.runtime_job_dir.empty()) {
+    request.replay_batch_index_path = request.runtime_job_dir / "artifacts" /
+                                      "kikijyeba.environment.replay.v1" /
+                                      "runtime_replay_batches.index";
+  }
+
+  const auto job_manifest = rollout_marshal_detail::read_kv_file(
+      request.runtime_job_dir / "job.manifest");
+  const auto manifest_graph = job_manifest.find("graph_order_fingerprint");
+  if (manifest_graph != job_manifest.end()) {
+    request.graph_order_fingerprint = manifest_graph->second;
+  }
+
+  request = normalize_rollout_request_defaults(std::move(request));
+  if (!request.accounting_numeraire_node_id.empty() &&
+      !request.target_node_ids.empty()) {
+    request.asset_universe_digest = rollout_asset_universe_digest(
+        request.accounting_numeraire_node_id, request.target_node_ids);
+  }
+  return request;
+}
+
 } // namespace tool_detail
+
+[[nodiscard]] inline std::filesystem::path
+resolve_marshal_hero_dsl_path(const std::filesystem::path &global_config_path) {
+  std::ifstream in(global_config_path);
+  if (!in.is_open()) {
+    return "/cuwacunu/src/config/hero.marshal.dsl";
+  }
+  std::string section;
+  std::string line;
+  while (std::getline(in, line)) {
+    line = detail::strip_ini_comment(line);
+    if (line.empty()) {
+      continue;
+    }
+    if (line.front() == '[' && line.back() == ']') {
+      section = tool_detail::trim_ascii(
+          std::string_view(line).substr(1, line.size() - 2U));
+      continue;
+    }
+    if (section != "HERO") {
+      continue;
+    }
+    const auto eq = line.find('=');
+    if (eq == std::string::npos) {
+      continue;
+    }
+    const std::string key =
+        tool_detail::trim_ascii(std::string_view(line).substr(0, eq));
+    if (key != "marshal_hero_dsl_path") {
+      continue;
+    }
+    const std::string value =
+        tool_detail::trim_ascii(std::string_view(line).substr(eq + 1U));
+    if (!value.empty()) {
+      return detail::resolve_policy_path_against_config(global_config_path,
+                                                        value);
+    }
+  }
+  return "/cuwacunu/src/config/hero.marshal.dsl";
+}
+
+[[nodiscard]] inline const std::string &
+marshal_policy_get(const marshal_policy_t &policy, const std::string &key) {
+  static const std::string kEmpty;
+  const auto found = policy.values.find(key);
+  return found == policy.values.end() ? kEmpty : found->second;
+}
+
+[[nodiscard]] inline bool
+load_marshal_policy(const std::filesystem::path &policy_path,
+                    const std::filesystem::path &global_config,
+                    marshal_policy_t *out, std::string *error) {
+  if (out == nullptr) {
+    if (error != nullptr) {
+      *error = "marshal policy output pointer is null";
+    }
+    return false;
+  }
+  marshal_policy_t policy{};
+  policy.policy_path = policy_path;
+  policy.global_config_path = global_config;
+  policy.values["protocol_layer"] = std::string(kProtocolLayerStdio);
+  policy.values["prepare_profile"] = "single_wave_operator";
+  policy.values["rollout_profile"] = "replay_validation_default";
+
+  std::string text;
+  if (!tool_detail::read_text_file(policy_path, &text, error)) {
+    policy.from_template = true;
+    text = std::string(kMarshalPolicyTemplateText);
+  }
+
+  tool_detail::parsed_marshal_policy_text_t parsed{};
+  if (!tool_detail::parse_marshal_policy_text(text, &parsed, error)) {
+    return false;
+  }
+  for (auto &[key, value] : parsed.base) {
+    policy.values[std::move(key)] = std::move(value);
+  }
+  policy.prepare_profile_fields = std::move(parsed.prepare_profiles);
+  policy.rollout_profile_fields = std::move(parsed.rollout_profiles);
+  policy.prepare_profile_id =
+      tool_detail::trim_ascii(marshal_policy_get(policy, "prepare_profile"));
+  if (policy.prepare_profile_id.empty()) {
+    policy.prepare_profile_id = "single_wave_operator";
+  }
+  if (!tool_detail::valid_marshal_profile_id(policy.prepare_profile_id)) {
+    if (error != nullptr) {
+      *error = "invalid prepare_profile id: " + policy.prepare_profile_id;
+    }
+    return false;
+  }
+  if (policy.prepare_profile_fields.find(policy.prepare_profile_id) ==
+      policy.prepare_profile_fields.end()) {
+    if (error != nullptr) {
+      *error = "unknown prepare_profile `" + policy.prepare_profile_id +
+               "` in policy file: " + policy_path.string();
+    }
+    return false;
+  }
+  policy.rollout_profile_id =
+      tool_detail::trim_ascii(marshal_policy_get(policy, "rollout_profile"));
+  if (policy.rollout_profile_id.empty()) {
+    policy.rollout_profile_id = "replay_validation_default";
+  }
+  if (!tool_detail::valid_marshal_profile_id(policy.rollout_profile_id)) {
+    if (error != nullptr) {
+      *error = "invalid rollout_profile id: " + policy.rollout_profile_id;
+    }
+    return false;
+  }
+  if (policy.rollout_profile_fields.find(policy.rollout_profile_id) ==
+      policy.rollout_profile_fields.end()) {
+    if (error != nullptr) {
+      *error = "unknown rollout_profile `" + policy.rollout_profile_id +
+               "` in policy file: " + policy_path.string();
+    }
+    return false;
+  }
+  if (marshal_policy_get(policy, "protocol_layer") != kProtocolLayerStdio) {
+    if (error != nullptr) {
+      *error = std::string(kProtocolLayerHttpsSseFailFastMessage);
+    }
+    return false;
+  }
+  *out = std::move(policy);
+  return true;
+}
 
 [[nodiscard]] inline bool execute_marshal_tool_json(
     const std::string &tool_name, std::string arguments_json,
-    std::string *out_tool_result_json, std::string *out_error_message) {
+    std::string *out_tool_result_json, std::string *out_error_message,
+    marshal_context_t *ctx = nullptr) {
   if (out_tool_result_json) {
     out_tool_result_json->clear();
   }
@@ -6736,8 +7128,7 @@ inspect_target_subject_json(const std::map<std::string, std::string> &args,
     std::optional<std::string> split_protocol_identity_mode;
     std::optional<std::string> split_spawn_mode;
     std::optional<std::string> split_fact_preview_selector;
-    const auto split_prepare_route =
-        tool_detail::split_prepare_tool_route(tool_name);
+    const auto prepare_route = tool_detail::prepare_tool_route(tool_name);
     if (tool_name.rfind(inspect_prefix, 0) == 0) {
       const std::string candidate = tool_name.substr(inspect_prefix.size());
       if (candidate == "target" || candidate == "component") {
@@ -7006,11 +7397,7 @@ inspect_target_subject_json(const std::map<std::string, std::string> &args,
                                              "_tool_name"};
         if (tool_detail::optional_string(inspect_args, "identity_mode",
                                          "report") == "strict") {
-          allowed_fields.insert("protocol_contract_fingerprint");
-          allowed_fields.insert("graph_order_fingerprint");
-          allowed_fields.insert("source_cursor_token");
-          allowed_fields.insert("vicreg_assembly_fingerprint");
-          allowed_fields.insert("mdn_assembly_fingerprint");
+          allowed_fields.insert("expected_identity");
         }
         tool_detail::validate_fields(inspect_args, allowed_fields, {"subject"},
                                      tool_name);
@@ -7054,20 +7441,54 @@ inspect_target_subject_json(const std::map<std::string, std::string> &args,
             "spawn, component, or facts");
       }
     } else if (tool_name == "hero.marshal.rollout") {
-      tool_detail::validate_fields(
-          args, {"mode", "args_path", "args_digest", "include_machine_payload"},
-          {"mode", "args_path"}, tool_name);
+      tool_detail::validate_fields(args,
+                                   {"mode", "runtime_job_dir", "rollout_id",
+                                    "rollout_attempt_id", "target_node_ids",
+                                    "profile", "include_machine_payload"},
+                                   {"mode", "runtime_job_dir", "rollout_id",
+                                    "rollout_attempt_id", "target_node_ids"},
+                                   tool_name);
       const std::string requested_mode =
           tool_detail::optional_string(args, "mode");
       if (requested_mode != "plan" && requested_mode != "execute") {
         throw std::runtime_error("mode must be plan or execute");
       }
-      const auto request_file = tool_detail::load_rollout_request_arguments(
-          args, requested_mode == "execute",
-          "E_MARSHAL_ROLLOUT_REQUEST_DIGEST_REQUIRED",
-          "E_MARSHAL_ROLLOUT_REQUEST_DIGEST_MISMATCH");
-      const auto request = normalize_rollout_request_defaults(
-          tool_detail::parse_rollout_request(request_file.fields));
+      marshal_policy_t fallback_policy{};
+      fallback_policy.policy_path = "/cuwacunu/src/config/hero.marshal.dsl";
+      fallback_policy.global_config_path = "/cuwacunu/src/config/.config";
+      fallback_policy.values["protocol_layer"] =
+          std::string(kProtocolLayerStdio);
+      fallback_policy.values["prepare_profile"] = "single_wave_operator";
+      fallback_policy.values["rollout_profile"] = "replay_validation_default";
+      std::string fallback_error;
+      if (ctx == nullptr) {
+        (void)load_marshal_policy(fallback_policy.policy_path,
+                                  fallback_policy.global_config_path,
+                                  &fallback_policy, &fallback_error);
+      }
+      const marshal_policy_t &policy =
+          ctx != nullptr ? ctx->policy : fallback_policy;
+      const std::string profile_id = tool_detail::first_non_empty(
+          {tool_detail::optional_string(args, "profile"),
+           policy.rollout_profile_id,
+           std::string{"replay_validation_default"}});
+      if (!tool_detail::valid_marshal_profile_id(profile_id)) {
+        throw std::runtime_error("invalid rollout profile id: " + profile_id);
+      }
+      const auto profile_it = policy.rollout_profile_fields.find(profile_id);
+      if (profile_it == policy.rollout_profile_fields.end()) {
+        throw std::runtime_error("unknown rollout profile: " + profile_id);
+      }
+      const auto rollout_profile =
+          tool_detail::resolve_rollout_profile_from_fields(profile_id,
+                                                           profile_it->second);
+      const auto request = tool_detail::rollout_request_from_direct_args(
+          args, policy, rollout_profile, requested_mode);
+      const std::string environment_request_digest_domain =
+          tool_detail::k_rollout_request_file_digest_domain_v1;
+      const std::string environment_request_digest =
+          tool_detail::rollout_request_file_digest(
+              tool_detail::rollout_request_packet_text(request));
       const auto plan = prepare_rollout_plan(request);
       const bool include_machine_payload =
           tool_detail::optional_bool(args, "include_machine_payload", false);
@@ -7085,9 +7506,9 @@ inspect_target_subject_json(const std::map<std::string, std::string> &args,
       std::string environment_error_message{};
       bool runtime_replay_attempted = false;
       bool runtime_replay_ok = false;
-      bool runtime_tool_call_ok = false;
-      bool runtime_tool_result_error = false;
-      std::string runtime_tool_name = "hero.runtime.replay";
+      bool runtime_executor_call_ok = false;
+      bool runtime_executor_result_error = false;
+      std::string runtime_executor_id = "hero.runtime.replay_executor.v1";
       std::string runtime_args_json{};
       std::string runtime_args_digest{};
       std::string runtime_result_json{};
@@ -7099,10 +7520,14 @@ inspect_target_subject_json(const std::map<std::string, std::string> &args,
         std::map<std::string, std::string> environment_args;
         environment_args["mode"] =
             request.requested_mode == "execute" ? "\"replay\"" : "\"validate\"";
-        environment_args["args_path"] =
-            detail::json_quote(request_file.path.string());
-        environment_args["args_digest"] =
-            detail::json_quote(request_file.digest);
+        environment_args["runtime_job_dir"] =
+            detail::json_quote(request.runtime_job_dir.string());
+        environment_args["rollout_id"] = detail::json_quote(request.rollout_id);
+        environment_args["rollout_attempt_id"] =
+            detail::json_quote(request.rollout_attempt_id);
+        environment_args["target_node_ids"] =
+            tool_detail::marshal_inspect_string_array_literal_json(
+                request.target_node_ids);
         if (include_machine_payload) {
           environment_args["include_machine_payload"] = "true";
         }
@@ -7138,24 +7563,24 @@ inspect_target_subject_json(const std::map<std::string, std::string> &args,
                 tool_detail::object_fields(runtime_replay_json);
             runtime_replay_attempted =
                 tool_detail::optional_bool(replay_fields, "attempted", false);
-            runtime_tool_name = tool_detail::optional_string(
-                replay_fields, "tool_name", runtime_tool_name);
+            runtime_executor_id = tool_detail::optional_string(
+                replay_fields, "runtime_executor_id", runtime_executor_id);
             runtime_replay_ok =
                 tool_detail::optional_bool(replay_fields, "ok", false);
-            runtime_tool_call_ok = tool_detail::optional_bool(
-                replay_fields, "tool_call_ok", false);
-            runtime_tool_result_error = tool_detail::optional_bool(
-                replay_fields, "tool_result_error", false);
-            runtime_args_digest =
-                tool_detail::optional_string(replay_fields, "arguments_digest");
+            runtime_executor_call_ok = tool_detail::optional_bool(
+                replay_fields, "executor_call_ok", false);
+            runtime_executor_result_error = tool_detail::optional_bool(
+                replay_fields, "executor_result_error", false);
+            runtime_args_digest = tool_detail::optional_string(
+                replay_fields, "executor_arguments_digest");
             runtime_result_digest = tool_detail::optional_string(
-                replay_fields, "tool_result_digest");
+                replay_fields, "executor_result_digest");
             runtime_error_message =
                 tool_detail::optional_string(replay_fields, "error_message");
-            runtime_args_json =
-                tool_detail::optional_string(replay_fields, "arguments_json");
-            runtime_result_json =
-                tool_detail::optional_string(replay_fields, "tool_result_json");
+            runtime_args_json = tool_detail::optional_string(
+                replay_fields, "executor_arguments_json");
+            runtime_result_json = tool_detail::optional_string(
+                replay_fields, "executor_result_json");
           }
         }
       }
@@ -7181,14 +7606,13 @@ inspect_target_subject_json(const std::map<std::string, std::string> &args,
                         "kikijyeba.marshal.rollout.v2.5b", next_actions)
                  << ",\"requested_mode\":"
                  << detail::json_quote(request.requested_mode)
-                 << ",\"args_path\":"
-                 << detail::json_quote(request_file.path.string())
-                 << ",\"args_digest_domain\":"
-                 << detail::json_quote(request_file.digest_domain)
-                 << ",\"args_digest\":"
-                 << detail::json_quote(request_file.digest)
-                 << ",\"args_digest_verified\":"
-                 << (request_file.digest_supplied ? "true" : "false")
+                 << ",\"profile\":" << detail::json_quote(profile_id)
+                 << ",\"request_digest\":"
+                 << detail::json_quote(plan.request_digest)
+                 << ",\"environment_request_digest_domain\":"
+                 << detail::json_quote(environment_request_digest_domain)
+                 << ",\"environment_request_digest\":"
+                 << detail::json_quote(environment_request_digest)
                  << ",\"dispatch_state\":" << detail::json_quote(dispatch_state)
                  << ",\"idempotency\":{\"scope\":\"request_digest_binding\","
                     "\"durable_duplicate_handoff_ledger\":false,"
@@ -7222,30 +7646,31 @@ inspect_target_subject_json(const std::map<std::string, std::string> &args,
       } else {
         structured << "{\"attempted\":"
                    << (runtime_replay_attempted ? "true" : "false")
-                   << ",\"tool_name\":" << detail::json_quote(runtime_tool_name)
+                   << ",\"runtime_executor_id\":"
+                   << detail::json_quote(runtime_executor_id)
                    << ",\"ok\":" << (runtime_replay_ok ? "true" : "false")
-                   << ",\"tool_call_ok\":"
-                   << (runtime_tool_call_ok ? "true" : "false")
-                   << ",\"tool_result_error\":"
-                   << (runtime_tool_result_error ? "true" : "false")
-                   << ",\"arguments_digest\":"
+                   << ",\"executor_call_ok\":"
+                   << (runtime_executor_call_ok ? "true" : "false")
+                   << ",\"executor_result_error\":"
+                   << (runtime_executor_result_error ? "true" : "false")
+                   << ",\"executor_arguments_digest\":"
                    << detail::json_quote(runtime_args_digest)
-                   << ",\"tool_result_digest\":"
+                   << ",\"executor_result_digest\":"
                    << detail::json_quote(runtime_result_digest)
                    << ",\"error_message\":"
                    << detail::json_quote(runtime_error_message);
         if (include_machine_payload) {
-          structured << ",\"arguments_json\":"
+          structured << ",\"executor_arguments_json\":"
                      << detail::json_quote(runtime_args_json)
-                     << ",\"tool_result_json\":"
+                     << ",\"executor_result_json\":"
                      << detail::json_quote(runtime_result_json);
         }
         structured << "}";
       }
       structured << "}";
-    } else if (split_prepare_route.has_value()) {
+    } else if (prepare_route.has_value()) {
       tool_detail::validate_fields(
-          args, {"target_id", "mode", "args_path", "args_digest"},
+          args, {"target_id", "mode", "profile", "include_machine_payload"},
           {"target_id", "mode"}, tool_name);
       if (tool_detail::optional_string(args, "target_id").empty()) {
         throw std::runtime_error(tool_name + " requires target_id");
@@ -7253,63 +7678,60 @@ inspect_target_subject_json(const std::map<std::string, std::string> &args,
       const auto requested_mode = tool_detail::parse_mode_text(
           tool_detail::optional_string(args, "mode"));
       if (requested_mode == marshal_dispatch_mode_t::unknown) {
-        throw std::runtime_error(
-            tool_name + " mode must be plan, dry_run, or execute");
+        throw std::runtime_error(tool_name +
+                                 " mode must be plan, dry_run, or execute");
       }
-      const auto prepare_request_file =
-          tool_detail::load_prepare_request_arguments(
-              args, requested_mode != marshal_dispatch_mode_t::plan);
-      const auto &prepare_args = prepare_request_file.fields;
-      const auto drive_mode = split_prepare_route->drive_mode;
+
+      marshal_policy_t fallback_policy{};
+      fallback_policy.policy_path = "/cuwacunu/src/config/hero.marshal.dsl";
+      fallback_policy.global_config_path = "/cuwacunu/src/config/.config";
+      fallback_policy.values["protocol_layer"] =
+          std::string(kProtocolLayerStdio);
+      fallback_policy.values["prepare_profile"] = "single_wave_operator";
+      std::string fallback_error;
+      if (ctx == nullptr) {
+        (void)load_marshal_policy(fallback_policy.policy_path,
+                                  fallback_policy.global_config_path,
+                                  &fallback_policy, &fallback_error);
+      }
+      const marshal_policy_t &policy =
+          ctx != nullptr ? ctx->policy : fallback_policy;
+      const std::string profile_id = tool_detail::first_non_empty(
+          {tool_detail::optional_string(args, "profile"),
+           policy.prepare_profile_id, std::string{"single_wave_operator"}});
+      if (!tool_detail::valid_marshal_profile_id(profile_id)) {
+        throw std::runtime_error("invalid prepare profile id: " + profile_id);
+      }
+      const auto profile_it = policy.prepare_profile_fields.find(profile_id);
+      if (profile_it == policy.prepare_profile_fields.end()) {
+        throw std::runtime_error("unknown prepare profile: " + profile_id);
+      }
+      const auto prepare_profile =
+          tool_detail::resolve_prepare_profile_from_fields(profile_id,
+                                                           profile_it->second);
+      const auto &driver_policy = prepare_profile.driver_policy;
+      const auto drive_mode = prepare_profile.drive_mode;
+
+      std::map<std::string, std::string> prepare_args;
+      prepare_args.emplace("target_id",
+                           *tool_detail::optional_raw(args, "target_id"));
+      prepare_args.emplace("requested_mode",
+                           *tool_detail::optional_raw(args, "mode"));
+      prepare_args.emplace("materialize_plan_inputs",
+                           prepare_profile.materialize_plan_inputs ? "true"
+                                                                   : "false");
+      prepare_args.emplace(
+          "include_machine_payload",
+          tool_detail::optional_bool(args, "include_machine_payload", false)
+              ? "true"
+              : "false");
+      prepare_args.emplace("timeout_seconds",
+                           std::to_string(prepare_profile.timeout_seconds));
       auto callback = marshal_lattice_tool_callback_slot();
       if (callback == nullptr) {
         throw std::runtime_error(
             "Marshal target dispatch preparation requires a Lattice Hero "
             "callback");
-      }
-      marshal_target_driver_policy_t driver_policy{};
-      const auto driver_policy_raw =
-          tool_detail::optional_raw(prepare_args, "driver_policy");
-      bool driver_policy_has_max_waves = false;
-      if (driver_policy_raw.has_value()) {
-        const auto policy_fields =
-            tool_detail::object_fields(*driver_policy_raw);
-        driver_policy_has_max_waves =
-            policy_fields.find("max_waves") != policy_fields.end();
-        driver_policy = tool_detail::parse_driver_policy(*driver_policy_raw);
-      } else {
-        driver_policy.max_waves = 1;
-      }
-      if (drive_mode == marshal_target_drive_mode_t::budgeted &&
-          !driver_policy_raw.has_value()) {
-        throw std::runtime_error(
-            "budgeted drive_mode requires explicit driver_policy");
-      }
-      if (drive_mode == marshal_target_drive_mode_t::budgeted &&
-          !driver_policy_has_max_waves) {
-        throw std::runtime_error(
-            "budgeted drive_mode requires driver_policy.max_waves");
-      }
-      if (drive_mode == marshal_target_drive_mode_t::one_step) {
-        driver_policy.max_waves = 1;
-      }
-      if (driver_policy.max_waves <= 0) {
-        throw std::runtime_error("driver_policy.max_waves must be positive");
-      }
-      if (driver_policy.no_progress_window <= 0) {
-        throw std::runtime_error(
-            "driver_policy.no_progress_window must be positive");
-      }
-      if (drive_mode == marshal_target_drive_mode_t::budgeted &&
-          driver_policy.max_wall_clock_seconds <= 0) {
-        throw std::runtime_error("budgeted drive_mode requires "
-                                 "driver_policy.max_wall_clock_seconds");
-      }
-
-      tool_detail::target_driver_resume_state_t resume{};
-      if (const auto raw =
-              tool_detail::optional_raw(prepare_args, "resume_ledger")) {
-        resume = tool_detail::parse_target_driver_resume_state(*raw);
       }
 
       const bool include_machine_payload = tool_detail::optional_bool(
@@ -7327,152 +7749,6 @@ inspect_target_subject_json(const std::map<std::string, std::string> &args,
       ledger.ledger_created_at_utc = tool_detail::current_utc_timestamp();
       ledger.ledger_nonce = tool_detail::generated_target_driver_ledger_nonce();
       bool prepare_result_ready = false;
-      if (resume.present) {
-        ledger.target_driver_run_id = resume.target_driver_run_id;
-        ledger.target_driver_run_key = resume.target_driver_run_key;
-        ledger.ledger_created_at_utc = resume.ledger_created_at_utc;
-        ledger.ledger_nonce = resume.ledger_nonce;
-        ledger.resumed_from_run_id = resume.target_driver_run_id;
-        ledger.resumed_iteration_count = resume.iteration_count;
-        ledger.runtime_handoff_attempt_count =
-            resume.runtime_handoff_attempt_count;
-        ledger.execution_attempt_count = resume.execution_attempt_count;
-        ledger.last_target_deficit_digest = resume.last_target_deficit_digest;
-        ledger.last_suggested_wave_digest = resume.last_suggested_wave_digest;
-        ledger.last_progress_signature = resume.last_progress_signature;
-        ledger.last_runtime_job_id = resume.last_runtime_job_id;
-        ledger.last_runtime_job_state_digest =
-            resume.last_runtime_job_state_digest;
-        ledger.last_runtime_job_manifest_digest =
-            resume.last_runtime_job_manifest_digest;
-        ledger.last_runtime_terminal_fact_digest =
-            resume.last_runtime_terminal_fact_digest;
-        ledger.last_runtime_checkpoint_io_fact_digest =
-            resume.last_runtime_checkpoint_io_fact_digest;
-        ledger.last_runtime_handoff_id = resume.last_runtime_handoff_id;
-        ledger.last_runtime_handoff_digest = resume.last_runtime_handoff_digest;
-        ledger.last_runtime_policy_digest = resume.last_runtime_policy_digest;
-        if (resume.target_id != ledger.target_id ||
-            (!resume.driver_policy_digest.empty() &&
-             resume.driver_policy_digest != ledger.driver_policy_digest) ||
-            (!resume.drive_mode.empty() &&
-             resume.drive_mode != to_string(drive_mode)) ||
-            (!resume.requested_mode.empty() &&
-             resume.requested_mode != to_string(requested_mode))) {
-          ledger.terminal_state = "blocked_stale_resume";
-          ledger.terminal_reason =
-              "resume_ledger target, mode, requested_mode, or driver_policy "
-              "does not match this request";
-          finalize_target_driver_run_id(&ledger);
-          structured << "{\"ok\":true,\"tool\":"
-                     << detail::json_quote(tool_name)
-                     << tool_detail::marshal_operator_envelope_supplement_json(
-                            "kikijyeba.marshal.prepare.v2.5b",
-                            {"inspect_blocker"})
-                     << ","
-                     << tool_detail::marshal_prepare_non_proof_contract_json()
-                     << ",\"target_id\":"
-                     << detail::json_quote(ledger.target_id)
-                     << tool_detail::prepare_request_file_json_fields(
-                            prepare_request_file)
-                     << ",\"dispatch_state\":\"blocked\""
-                     << ",\"blocker_bucket\":\"stale_resume\""
-                     << ",\"drive_mode\":"
-                     << detail::json_quote(to_string(ledger.drive_mode))
-                     << ",\"driver_terminal_state\":"
-                     << detail::json_quote(ledger.terminal_state)
-                     << ",\"driver_terminal_reason\":"
-                     << detail::json_quote(ledger.terminal_reason)
-                     << ",\"target_driver\":"
-                     << tool_detail::target_driver_ledger_json(ledger) << "}";
-          prepare_result_ready = true;
-        } else if (resume.ledger_digest.empty()) {
-          ledger.terminal_state = "blocked_stale_resume";
-          ledger.terminal_reason = "resume_ledger is missing ledger_digest";
-          finalize_target_driver_run_id(&ledger);
-          structured << "{\"ok\":true,\"tool\":"
-                     << detail::json_quote(tool_name)
-                     << tool_detail::marshal_operator_envelope_supplement_json(
-                            "kikijyeba.marshal.prepare.v2.5b",
-                            {"inspect_blocker"})
-                     << ","
-                     << tool_detail::marshal_prepare_non_proof_contract_json()
-                     << ",\"target_id\":"
-                     << detail::json_quote(ledger.target_id)
-                     << tool_detail::prepare_request_file_json_fields(
-                            prepare_request_file)
-                     << ",\"dispatch_state\":\"blocked\""
-                     << ",\"blocker_bucket\":\"stale_resume\""
-                     << ",\"drive_mode\":"
-                     << detail::json_quote(to_string(ledger.drive_mode))
-                     << ",\"driver_terminal_state\":"
-                     << detail::json_quote(ledger.terminal_state)
-                     << ",\"driver_terminal_reason\":"
-                     << detail::json_quote(ledger.terminal_reason)
-                     << ",\"target_driver\":"
-                     << tool_detail::target_driver_ledger_json(ledger) << "}";
-          prepare_result_ready = true;
-        } else if (resume.execution_attempt_count > 0 &&
-                   (resume.last_runtime_job_id.empty() ||
-                    resume.last_runtime_job_manifest_digest.empty() ||
-                    resume.last_runtime_terminal_fact_digest.empty() ||
-                    resume.last_runtime_handoff_digest.empty())) {
-          ledger.terminal_state = "blocked_stale_resume";
-          ledger.terminal_reason =
-              "resume_ledger with execution history is missing Runtime "
-              "terminal evidence, job manifest, or handoff identity";
-          finalize_target_driver_run_id(&ledger);
-          structured << "{\"ok\":true,\"tool\":"
-                     << detail::json_quote(tool_name)
-                     << tool_detail::marshal_operator_envelope_supplement_json(
-                            "kikijyeba.marshal.prepare.v2.5b",
-                            {"inspect_blocker"})
-                     << ","
-                     << tool_detail::marshal_prepare_non_proof_contract_json()
-                     << ",\"target_id\":"
-                     << detail::json_quote(ledger.target_id)
-                     << tool_detail::prepare_request_file_json_fields(
-                            prepare_request_file)
-                     << ",\"dispatch_state\":\"blocked\""
-                     << ",\"blocker_bucket\":\"stale_resume\""
-                     << ",\"drive_mode\":"
-                     << detail::json_quote(to_string(ledger.drive_mode))
-                     << ",\"driver_terminal_state\":"
-                     << detail::json_quote(ledger.terminal_state)
-                     << ",\"driver_terminal_reason\":"
-                     << detail::json_quote(ledger.terminal_reason)
-                     << ",\"target_driver\":"
-                     << tool_detail::target_driver_ledger_json(ledger) << "}";
-          prepare_result_ready = true;
-        } else if (resume.terminal_state == "reached") {
-          ledger.terminal_state = "reached";
-          ledger.terminal_reason =
-              "resume_ledger already records the target as reached";
-          finalize_target_driver_run_id(&ledger);
-          structured << "{\"ok\":true,\"tool\":"
-                     << detail::json_quote(tool_name)
-                     << tool_detail::marshal_operator_envelope_supplement_json(
-                            "kikijyeba.marshal.prepare.v2.5b",
-                            {"inspect_lattice_certificate"})
-                     << ","
-                     << tool_detail::marshal_prepare_non_proof_contract_json()
-                     << ",\"target_id\":"
-                     << detail::json_quote(ledger.target_id)
-                     << tool_detail::prepare_request_file_json_fields(
-                            prepare_request_file)
-                     << ",\"dispatch_state\":\"already_satisfied\""
-                     << ",\"blocker_bucket\":\"none\""
-                     << ",\"drive_mode\":"
-                     << detail::json_quote(to_string(ledger.drive_mode))
-                     << ",\"driver_terminal_state\":"
-                     << detail::json_quote(ledger.terminal_state)
-                     << ",\"driver_terminal_reason\":"
-                     << detail::json_quote(ledger.terminal_reason)
-                     << ",\"target_driver\":"
-                     << tool_detail::target_driver_ledger_json(ledger) << "}";
-          prepare_result_ready = true;
-        }
-      }
 
       finalize_target_driver_run_id(&ledger);
 
@@ -7580,7 +7856,7 @@ inspect_target_subject_json(const std::map<std::string, std::string> &args,
               tool_detail::optional_i64(prepare_args,
                                         "recommendation_attempt_count", 0),
               requested_mode, include_runtime_dry_run, include_machine_payload,
-              ledger.target_driver_run_id);
+              ledger.target_driver_run_id, prepare_profile.validation_context);
           auto iteration = make_iteration(last_step);
           if (last_step.state == "already_satisfied") {
             ledger.terminal_state = "reached";
@@ -7634,7 +7910,8 @@ inspect_target_subject_json(const std::map<std::string, std::string> &args,
             last_step = tool_detail::run_prepare_target_step(
                 prepare_args, callback, driver_policy.max_waves, attempt,
                 step_requested_mode, step_include_runtime_dry_run,
-                include_machine_payload, ledger.target_driver_run_id);
+                include_machine_payload, ledger.target_driver_run_id,
+                prepare_profile.validation_context);
             auto iteration = make_iteration(last_step);
 
             if (last_step.state == "already_satisfied" ||
@@ -7837,9 +8114,7 @@ inspect_target_subject_json(const std::map<std::string, std::string> &args,
             }
 
             marshal_runtime_hero_handoff_options_t options{};
-            options.timeout_seconds =
-                static_cast<int>(tool_detail::optional_i64(
-                    prepare_args, "timeout_seconds", 600));
+            options.timeout_seconds = prepare_profile.timeout_seconds;
             const auto handoff = call_runtime_hero_execution(gate, options);
             iteration.execution_attempted = true;
             iteration.execution_accepted = handoff.ok;
@@ -7971,7 +8246,8 @@ inspect_target_subject_json(const std::map<std::string, std::string> &args,
               auto post_step = tool_detail::run_prepare_target_step(
                   prepare_args, callback, driver_policy.max_waves, attempt + 1,
                   marshal_dispatch_mode_t::dry_run, false,
-                  include_machine_payload, ledger.target_driver_run_id);
+                  include_machine_payload, ledger.target_driver_run_id,
+                  prepare_profile.validation_context);
               iteration.post_run_lattice_evaluation_digest =
                   marshal_digest_for_text(
                       "kikijyeba.marshal.post_wave_lattice_evaluation.v1",
@@ -8002,7 +8278,7 @@ inspect_target_subject_json(const std::map<std::string, std::string> &args,
 
         finalize_target_driver_run_id(&ledger);
         structured << tool_detail::prepare_target_operator_packet_json(
-            last_step, &ledger, &prepare_request_file, tool_name);
+            last_step, &ledger, tool_name, profile_id);
       }
     } else if (tool_name == "hero.marshal.status") {
       tool_detail::validate_fields(args, {}, {}, tool_name);
@@ -8065,7 +8341,7 @@ inspect_target_subject_json(const std::map<std::string, std::string> &args,
   return out.str();
 }
 
-inline void run_marshal_jsonrpc_stdio_loop() {
+inline void run_marshal_jsonrpc_stdio_loop(marshal_context_t *ctx = nullptr) {
   mcp_stdio::message_t message;
   while (mcp_stdio::read_message(std::cin, &message)) {
     std::string line = tool_detail::trim_ascii(message.json);
@@ -8073,7 +8349,8 @@ inline void run_marshal_jsonrpc_stdio_loop() {
       continue;
     }
     const auto send = [&](std::string response) {
-      mcp_stdio::write_response(std::cout, response);
+      mcp_stdio::write_response(std::cout, response,
+                                message.content_length_framed);
     };
     std::string id_raw = "null";
     try {
@@ -8081,8 +8358,12 @@ inline void run_marshal_jsonrpc_stdio_loop() {
       if (const auto id = tool_detail::optional_raw(request, "id")) {
         id_raw = *id;
       }
+      const auto method_raw = tool_detail::optional_raw(request, "method");
+      if (!method_raw.has_value()) {
+        continue;
+      }
       const std::string method =
-          tool_detail::optional_string(request, "method");
+          tool_detail::parse_string_raw(*method_raw, "method");
       if (method == "notifications/initialized") {
         continue;
       }
@@ -8090,10 +8371,29 @@ inline void run_marshal_jsonrpc_stdio_loop() {
         break;
       }
       if (method == "initialize") {
+        std::string protocol = "2024-11-05";
+        if (const auto params_raw =
+                tool_detail::optional_raw(request, "params")) {
+          const auto params = tool_detail::object_fields(*params_raw);
+          if (const auto raw =
+                  tool_detail::optional_raw(params, "protocolVersion")) {
+            protocol = tool_detail::parse_string_raw(*raw, "protocolVersion");
+          }
+        } else if (const auto raw =
+                       tool_detail::optional_raw(request, "protocolVersion")) {
+          protocol = tool_detail::parse_string_raw(*raw, "protocolVersion");
+        }
+        send(
+            std::string("{\"jsonrpc\":\"2.0\",\"id\":") + id_raw +
+            ",\"result\":{\"protocolVersion\":" + detail::json_quote(protocol) +
+            ","
+            "\"capabilities\":{\"tools\":{}},\"serverInfo\":{\"name\":"
+            "\"hero-marshal\",\"version\":\"0.1\"},\"instructions\":\"\"}}");
+        continue;
+      }
+      if (method == "ping") {
         send(std::string("{\"jsonrpc\":\"2.0\",\"id\":") + id_raw +
-             ",\"result\":{\"protocolVersion\":\"2024-11-05\","
-             "\"capabilities\":{\"tools\":{}},\"serverInfo\":{\"name\":"
-             "\"hero-marshal\",\"version\":\"0.1\"}}}");
+             ",\"result\":{}}");
         continue;
       }
       if (method == "tools/list") {
@@ -8127,7 +8427,7 @@ inline void run_marshal_jsonrpc_stdio_loop() {
             tool_detail::optional_raw(params, "arguments").value_or("{}");
         std::string result;
         std::string error;
-        (void)execute_marshal_tool_json(name, arguments, &result, &error);
+        (void)execute_marshal_tool_json(name, arguments, &result, &error, ctx);
         send(std::string("{\"jsonrpc\":\"2.0\",\"id\":") + id_raw +
              ",\"result\":" + result + "}");
         continue;

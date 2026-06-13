@@ -18,6 +18,7 @@
 #include <fstream>
 #include <map>
 #include <optional>
+#include <set>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -268,14 +269,13 @@ std::string assignment_value(const std::string &text, const std::string &key) {
 
 std::string
 runtime_run_request_text_from_args(const std::string &arguments_json) {
-  return read_text(json_string_field(arguments_json, "args_path"));
+  return arguments_json;
 }
 
 std::string runtime_handoff_text_from_args(const std::string &arguments_json) {
-  const std::string run_request_text =
-      runtime_run_request_text_from_args(arguments_json);
-  return read_text(std::filesystem::path(
-      assignment_value(run_request_text, "runtime_handoff_path")));
+  return read_text(
+      std::filesystem::path(json_string_field(arguments_json,
+                                             "runtime_handoff_path")));
 }
 
 std::string direct_marshal_inspect_args(const std::string &legacy_args_json,
@@ -393,30 +393,50 @@ std::string marshal_prepare_request_digest(const std::string &request_text) {
 
 bool marshal_prepare_public_arg(const std::string &key) {
   return key == "target_id" || key == "mode" || key == "requested_mode" ||
-         key == "args_path" || key == "args_digest" || key == "intent" ||
-         key == "drive_mode";
+         key == "profile" || key == "include_machine_payload" ||
+         key == "intent" || key == "drive_mode";
+}
+
+bool marshal_prepare_legacy_helper_arg(const std::string &key) {
+  static const std::set<std::string> kAllowed = {
+      "target_id",
+      "mode",
+      "requested_mode",
+      "profile",
+      "include_machine_payload",
+      "intent",
+      "drive_mode",
+      "config_path",
+      "runtime_root",
+      "driver_policy",
+      "source_lattice_timestamp",
+      "recommendation_attempt_count",
+      "context",
+      "protocol_contract_fingerprint",
+      "graph_order_fingerprint",
+      "source_cursor_token",
+      "vicreg_assembly_fingerprint",
+      "mdn_assembly_fingerprint",
+      "materialize_plan_inputs",
+      "runtime_policy",
+      "runtime_wave",
+      "timeout_seconds",
+  };
+  return kAllowed.find(key) != kAllowed.end();
 }
 
 bool marshal_prepare_tool_name(const std::map<std::string, std::string> &fields,
                                std::string *tool_name, std::string *error) {
   const std::string intent =
       marshal::tool_detail::optional_string(fields, "intent", "train");
-  const std::string drive_mode =
-      marshal::tool_detail::optional_string(fields, "drive_mode", "one_step");
   if (intent != "train" && intent != "evaluate") {
     if (error != nullptr) {
-      *error = "unsupported split prepare intent: " + intent;
-    }
-    return false;
-  }
-  if (drive_mode != "one_step" && drive_mode != "budgeted") {
-    if (error != nullptr) {
-      *error = "unsupported split prepare drive_mode: " + drive_mode;
+      *error = "unsupported prepare intent: " + intent;
     }
     return false;
   }
   if (tool_name != nullptr) {
-    *tool_name = "hero.marshal.prepare." + intent + "." + drive_mode;
+    *tool_name = "hero.marshal.prepare." + intent;
   }
   return true;
 }
@@ -431,7 +451,6 @@ std::string marshal_prepare_request_value_text(const std::string &key,
 }
 
 std::string compact_marshal_prepare_args(const std::string &legacy_args_json) {
-  static int counter = 0;
   const auto fields = marshal::tool_detail::object_fields(legacy_args_json);
   const std::string target_id =
       marshal::tool_detail::optional_string(fields, "target_id");
@@ -448,37 +467,119 @@ std::string compact_marshal_prepare_args(const std::string &legacy_args_json) {
     request_text << key << " = " << marshal_prepare_request_value_text(key, raw)
                  << "\n";
   }
-  const std::string request = request_text.str();
-  const bool needs_request_file = !request.empty() || requested_mode != "plan";
+  (void)request_text;
 
   std::ostringstream out;
   out << "{\"target_id\":" << marshal::detail::json_quote(target_id)
       << ",\"mode\":" << marshal::detail::json_quote(requested_mode);
-  if (needs_request_file) {
-    const auto request_path =
-        std::filesystem::temp_directory_path() /
-        ("cuwacunu_marshal_prepare_request_" +
-         std::to_string(static_cast<long long>(::getpid())) + "_" +
-         std::to_string(counter++) + ".kv");
-    write_text(request_path, request);
-    out << ",\"args_path\":"
-        << marshal::detail::json_quote(request_path.string())
-        << ",\"args_digest\":"
-        << marshal::detail::json_quote(marshal_prepare_request_digest(request));
+  if (const auto include = marshal::tool_detail::optional_raw(
+          fields, "include_machine_payload")) {
+    out << ",\"include_machine_payload\":" << *include;
+  }
+  if (const auto profile = marshal::tool_detail::optional_raw(fields, "profile")) {
+    out << ",\"profile\":" << *profile;
   }
   out << "}";
   return out.str();
 }
 
+std::filesystem::path write_prepare_runtime_files(
+    bool allow_execute, bool allow_train, std::filesystem::path runtime_exec_path);
+
+std::string marshal_prepare_profile_value_text(const std::string &key,
+                                               const std::string &raw) {
+  if (key == "stop_on_warning_severity" && !raw.empty() && raw.front() == '"') {
+    return marshal::tool_detail::parse_string_raw(raw, key);
+  }
+  return raw;
+}
+
+marshal::marshal_context_t
+marshal_prepare_context_from_legacy_args(const std::string &legacy_args_json,
+                                         const std::string &profile_id) {
+  const auto fields = marshal::tool_detail::object_fields(legacy_args_json);
+  const auto config_path = std::filesystem::path("/tmp/marshal_prepare/.config");
+  if (!std::filesystem::exists(config_path)) {
+    (void)write_prepare_runtime_files(false, false, {});
+  }
+
+  marshal::marshal_context_t ctx{};
+  ctx.global_config_path = "/cuwacunu/src/config/.config";
+  ctx.policy_path = "/cuwacunu/src/config/hero.marshal.dsl";
+  std::string error;
+  check(marshal::load_marshal_policy(ctx.policy_path, ctx.global_config_path,
+                                     &ctx.policy, &error),
+        "failed to load Marshal policy for prepare test: " + error);
+
+  std::map<std::string, std::string> profile_fields;
+  if (const auto raw_policy =
+          marshal::tool_detail::optional_raw(fields, "driver_policy")) {
+    const auto policy_fields = marshal::tool_detail::object_fields(*raw_policy);
+    for (const auto &[key, raw] : policy_fields) {
+      profile_fields[key] = marshal_prepare_profile_value_text(key, raw);
+    }
+  } else if (marshal::tool_detail::optional_string(fields, "drive_mode",
+                                                   "one_step") == "budgeted") {
+    profile_fields["max_waves"] = "3";
+    profile_fields["max_wall_clock_seconds"] = "5";
+    profile_fields["no_progress_window"] = "1";
+  } else {
+    profile_fields["max_waves"] = "1";
+  }
+  profile_fields["drive_mode"] = marshal::tool_detail::optional_string(
+      fields, "drive_mode",
+      profile_fields["max_waves"] == "1" ? "one_step" : "budgeted");
+  if (const auto materialize =
+          marshal::tool_detail::optional_raw(fields, "materialize_plan_inputs")) {
+    profile_fields["materialize_plan_inputs"] = *materialize;
+  }
+  if (const auto timeout =
+          marshal::tool_detail::optional_raw(fields, "timeout_seconds")) {
+    profile_fields["timeout_seconds"] = *timeout;
+  }
+  profile_fields.try_emplace("materialize_plan_inputs", "true");
+  profile_fields.try_emplace("timeout_seconds", "600");
+  profile_fields.try_emplace("supported_wave_targets",
+                             "wikimyei.inference.expected_value.mdn");
+  profile_fields.try_emplace("supported_source_ranges", "anchor_index");
+  profile_fields.try_emplace("allowed_model_state_roots",
+                             "/tmp/marshal_prepare/runtime");
+  ctx.policy.prepare_profile_fields[profile_id] = std::move(profile_fields);
+  ctx.policy.prepare_profile_id = profile_id;
+  ctx.policy.values["prepare_profile"] = profile_id;
+  return ctx;
+}
+
 bool execute_marshal_prepare_json(const std::string &legacy_args_json,
                                   std::string *result, std::string *error) {
+  static int counter = 0;
   const auto fields = marshal::tool_detail::object_fields(legacy_args_json);
+  for (const auto &[key, _] : fields) {
+    if (!marshal_prepare_legacy_helper_arg(key)) {
+      if (error != nullptr) {
+        *error = "hero.marshal.prepare unknown field: " + key;
+      }
+      return false;
+    }
+  }
   std::string tool_name;
   if (!marshal_prepare_tool_name(fields, &tool_name, error)) {
     return false;
   }
+  const std::string profile_id =
+      marshal::tool_detail::optional_string(
+          fields, "profile",
+          "test_prepare_profile_" + std::to_string(counter++));
+  auto compact_args = compact_marshal_prepare_args(legacy_args_json);
+  if (compact_args.find("\"profile\"") == std::string::npos) {
+    compact_args.insert(compact_args.size() - 1,
+                        ",\"profile\":" +
+                            marshal::detail::json_quote(profile_id));
+  }
+  auto ctx = marshal_prepare_context_from_legacy_args(legacy_args_json,
+                                                     profile_id);
   return marshal::execute_marshal_tool_json(
-      tool_name, compact_marshal_prepare_args(legacy_args_json), result, error);
+      tool_name, compact_args, result, error, &ctx);
 }
 
 std::string read_command_stdout(const std::string &command) {
@@ -1360,26 +1461,17 @@ void test_m2_dry_run_preview_success() {
   check(handoff_args.find("\"runtime_handoff\":") == std::string::npos,
         "Runtime handoff should not expose the runtime_handoff object as a "
         "top-level tool argument");
-  check(handoff_args.find("\"args_path\":") != std::string::npos,
-        "Runtime handoff should pass Runtime locators through args_path");
-  check(handoff_args.find("\"args_digest\":") != std::string::npos,
-        "Runtime handoff should pin the generated run request");
-  const auto run_request_text =
-      read_text(json_string_field(handoff_args, "args_path"));
-  check(run_request_text.find("execution_request_path=") != std::string::npos,
-        "Runtime run request should carry the execution request path");
-  check(run_request_text.find("runtime_handoff_path=") != std::string::npos,
-        "Runtime run request should carry the handoff object path");
-  const auto runtime_handoff_json = read_text(std::filesystem::path(
-      assignment_value(run_request_text, "runtime_handoff_path")));
-  const auto handoff_request_text =
-      marshal::runtime_wave_execution_request_text(decision.runtime_request);
-  check(handoff_request_text.find("source_range=") != std::string::npos,
-        "Runtime execution request should carry the source-range field");
-  check(handoff_request_text.find("anchor_index_begin=") != std::string::npos,
-        "Runtime execution request should carry the anchor-begin field");
-  check(handoff_request_text.find("anchor_index_end=") != std::string::npos,
-        "Runtime execution request should carry the anchor-end field");
+  check(handoff_args.find("\"args_path\":") == std::string::npos,
+        "Runtime handoff should not expose retired args_path");
+  check(handoff_args.find("\"args_digest\":") == std::string::npos,
+        "Runtime handoff should not expose retired args_digest");
+  check(handoff_args.find("\"runtime_handoff_path\":") != std::string::npos,
+        "Runtime handoff should pass the handoff object path directly");
+  check(handoff_args.find("\"runtime_handoff_digest\":") != std::string::npos,
+        "Runtime handoff should pin the handoff object directly");
+  const auto runtime_handoff_json =
+      read_text(std::filesystem::path(json_string_field(
+          handoff_args, "runtime_handoff_path")));
   check(runtime_handoff_json.find("\"anchor_index_begin\":\"1800\"") !=
             std::string::npos,
         "runtime_handoff should bind the advised anchor begin");
@@ -2518,17 +2610,14 @@ void test_m9_marshal_tool_schema_compatibility() {
         "Marshal direct CLI and MCP surfaces should expose same primitives");
   const auto names = marshal::marshal_tool_names();
   check(!names.empty(), "Marshal tool catalog should not be empty");
-  check(names.size() == 25,
-        "Marshal tool catalog should expose exactly twenty-five "
+  check(names.size() == 23,
+        "Marshal tool catalog should expose exactly twenty-three "
         "operator-facing tools");
   check(std::find(names.begin(), names.end(), "hero.marshal.status") !=
             names.end(),
         "Marshal tool catalog should expose status");
   for (const auto &prepare_name :
-       {"hero.marshal.prepare.train.one_step",
-        "hero.marshal.prepare.train.budgeted",
-        "hero.marshal.prepare.evaluate.one_step",
-        "hero.marshal.prepare.evaluate.budgeted"}) {
+       {"hero.marshal.prepare.train", "hero.marshal.prepare.evaluate"}) {
     check(std::find(names.begin(), names.end(), prepare_name) != names.end(),
           std::string("Marshal tool catalog should expose ") + prepare_name);
   }
@@ -2565,11 +2654,21 @@ void test_m9_marshal_tool_schema_compatibility() {
   check(std::find(names.begin(), names.end(), "hero.marshal.prepare") ==
             names.end(),
         "Marshal tool catalog should not expose broad prepare router");
+  for (const auto &retired_prepare_name :
+       {"hero.marshal.prepare.train.one_step",
+        "hero.marshal.prepare.train.budgeted",
+        "hero.marshal.prepare.evaluate.one_step",
+        "hero.marshal.prepare.evaluate.budgeted"}) {
+    check(std::find(names.begin(), names.end(), retired_prepare_name) ==
+              names.end(),
+          std::string("Marshal tool catalog should not expose ") +
+              retired_prepare_name);
+  }
   const auto tools_list_json = marshal::build_marshal_tools_list_result_json();
   const auto prepare_tool_begin =
-      tools_list_json.find("\"name\":\"hero.marshal.prepare.train.one_step\"");
+      tools_list_json.find("\"name\":\"hero.marshal.prepare.train\"");
   check(prepare_tool_begin != std::string::npos,
-        "Marshal tool list should include split prepare tool entry");
+        "Marshal tool list should include prepare facade tool entry");
   const auto rollout_tool_begin =
       tools_list_json.find("\"name\":\"hero.marshal.rollout\"");
   check(rollout_tool_begin != std::string::npos,
@@ -2629,11 +2728,13 @@ void test_m9_marshal_tool_schema_compatibility() {
           "hero.marshal.inspect.facts.preview.by_index"}) {
       reject_fragment_property(inspect_name, identity_field);
     }
-    require_fragment_property("hero.marshal.inspect.protocol.strict",
-                              identity_field);
     reject_fragment_property("hero.marshal.inspect.protocol.report",
                              identity_field);
   }
+  require_fragment_property("hero.marshal.inspect.protocol.strict",
+                            "expected_identity");
+  reject_fragment_property("hero.marshal.inspect.protocol.report",
+                           "expected_identity");
   for (const auto retired_field : {"subject", "args_path", "args_digest"}) {
     check(inspect_tools_json.find("\"" + std::string(retired_field) + "\":") ==
               std::string::npos,
@@ -2732,11 +2833,14 @@ void test_m9_marshal_tool_schema_compatibility() {
         "prepare MCP schema should not advertise legacy lattice_target alias");
   check(prepare_tool_json.find("\"target_id\"") != std::string::npos &&
             prepare_tool_json.find("\"mode\"") != std::string::npos &&
-            prepare_tool_json.find("\"args_path\"") != std::string::npos &&
-            prepare_tool_json.find("\"args_digest\"") != std::string::npos,
-        "prepare MCP schema should advertise compact request-file fields");
+            prepare_tool_json.find("\"profile\"") != std::string::npos &&
+            prepare_tool_json.find("\"include_machine_payload\"") !=
+                std::string::npos,
+        "prepare MCP schema should advertise compact facade fields");
   for (const auto retired_field : {"drive_mode",
                                    "intent",
+                                   "args_path",
+                                   "args_digest",
                                    "config_path",
                                    "runtime_root",
                                    "driver_policy",
@@ -2750,9 +2854,9 @@ void test_m9_marshal_tool_schema_compatibility() {
                                    "source_cursor_token",
                                    "vicreg_assembly_fingerprint",
                                    "mdn_assembly_fingerprint",
+                                   "expected_identity",
                                    "materialize_plan_inputs",
                                    "include_runtime_dry_run",
-                                   "include_machine_payload",
                                    "runtime_policy",
                                    "runtime_wave",
                                    "timeout_seconds",
@@ -2765,17 +2869,22 @@ void test_m9_marshal_tool_schema_compatibility() {
   check(rollout_tool_json.find("\"mode\"") != std::string::npos &&
             rollout_tool_json.find("\"plan\"") != std::string::npos &&
             rollout_tool_json.find("\"execute\"") != std::string::npos &&
-            rollout_tool_json.find("\"args_path\"") != std::string::npos &&
-            rollout_tool_json.find("\"args_digest\"") != std::string::npos &&
+            rollout_tool_json.find("\"runtime_job_dir\"") !=
+                std::string::npos &&
+            rollout_tool_json.find("\"rollout_id\"") != std::string::npos &&
+            rollout_tool_json.find("\"rollout_attempt_id\"") !=
+                std::string::npos &&
+            rollout_tool_json.find("\"target_node_ids\"") !=
+                std::string::npos &&
+            rollout_tool_json.find("\"profile\"") != std::string::npos &&
             rollout_tool_json.find("\"include_machine_payload\"") !=
                 std::string::npos,
-        "rollout MCP schema should advertise compact request-file fields");
-  for (const auto retired_field : {"rollout_id",
-                                   "rollout_attempt_id",
+        "rollout MCP schema should advertise direct rollout selectors");
+  for (const auto retired_field : {"args_path",
+                                   "args_digest",
                                    "idempotency_key",
                                    "experiment_id",
                                    "config_path",
-                                   "runtime_job_dir",
                                    "replay_batch_index_path",
                                    "runtime_exec_path",
                                    "report_path",
@@ -2784,7 +2893,6 @@ void test_m9_marshal_tool_schema_compatibility() {
                                    "graph_order_fingerprint",
                                    "asset_universe_digest",
                                    "accounting_numeraire_node_id",
-                                   "target_node_ids",
                                    "policy_set",
                                    "max_steps",
                                    "max_parallel_jobs",
@@ -2800,7 +2908,7 @@ void test_m9_marshal_tool_schema_compatibility() {
   check(tools_list_json.find("\"prepare_only\"") == std::string::npos,
         "rollout MCP schema should not advertise legacy prepare_only");
   check(prepare_tool_json.find("\"drive_mode\"") == std::string::npos,
-        "prepare MCP schema should keep drive_mode inside args_path");
+        "prepare MCP schema should keep drive_mode in Marshal profile policy");
   for (const auto &hidden_name :
        {"hero.marshal.summarize_training_state", "hero.marshal.compare_runs",
         "hero.marshal.lookup_target_advice",
@@ -2827,92 +2935,50 @@ void test_m9_marshal_tool_schema_compatibility() {
         "retired broad prepare should fail as unknown");
   result.clear();
   error.clear();
-  const auto prepare_duplicate_path =
-      std::filesystem::temp_directory_path() /
-      ("cuwacunu_marshal_prepare_duplicate_request_" +
-       std::to_string(static_cast<long long>(::getpid())) + ".kv");
-  const std::string prepare_duplicate_request = "context = {}\n"
-                                                "context = {}\n";
-  write_text(prepare_duplicate_path, prepare_duplicate_request);
-  check(!marshal::execute_marshal_tool_json(
-            "hero.marshal.prepare.train.one_step",
-            std::string("{\"target_id\":\"channel_mdn_validation_eval_ready\","
-                        "\"mode\":\"plan\","
-                        "\"args_path\":") +
-                marshal::detail::json_quote(prepare_duplicate_path.string()) +
-                ",\"args_digest\":" +
-                marshal::detail::json_quote(
-                    marshal_prepare_request_digest(prepare_duplicate_request)) +
-                "}",
-            &result, &error),
-        "prepare request file should reject duplicate fields");
-  check(error.find("E_MARSHAL_PREPARE_REQUEST_DUPLICATE_FIELD: context") !=
-            std::string::npos,
-        "duplicate prepare request field should fail explicitly");
-  result.clear();
-  error.clear();
-  for (const auto &removed_field : {"intent", "drive_mode",
-                                    "include_runtime_dry_run", "max_waves",
-                                    "ledger_created_at_utc", "ledger_nonce"}) {
-    const auto prepare_removed_field_path =
-        std::filesystem::temp_directory_path() /
-        ("cuwacunu_marshal_prepare_removed_field_request_" +
-         std::string(removed_field) + "_" +
-         std::to_string(static_cast<long long>(::getpid())) + ".kv");
-    const std::string prepare_removed_field_request =
-        std::string(removed_field) + " = removed\n";
-    write_text(prepare_removed_field_path, prepare_removed_field_request);
-    check(
-        !marshal::execute_marshal_tool_json(
-            "hero.marshal.prepare.train.one_step",
-            std::string("{\"target_id\":\"channel_mdn_validation_eval_ready\","
-                        "\"mode\":\"plan\","
-                        "\"args_path\":") +
-                marshal::detail::json_quote(
-                    prepare_removed_field_path.string()) +
-                ",\"args_digest\":" +
-                marshal::detail::json_quote(marshal_prepare_request_digest(
-                    prepare_removed_field_request)) +
-                "}",
-            &result, &error),
-        "prepare request file should reject removed no-op fields");
-    check(error.find("E_MARSHAL_PREPARE_REQUEST_UNKNOWN_FIELD: " +
-                     std::string(removed_field)) != std::string::npos,
-          "removed prepare request field should fail explicitly");
+  for (const auto &retired_prepare_name :
+       {"hero.marshal.prepare.train.one_step",
+        "hero.marshal.prepare.train.budgeted",
+        "hero.marshal.prepare.evaluate.one_step",
+        "hero.marshal.prepare.evaluate.budgeted"}) {
+    check(!marshal::execute_marshal_tool_json(
+              retired_prepare_name,
+              R"({"target_id":"channel_mdn_validation_eval_ready","mode":"plan"})",
+              &result, &error),
+          std::string("retired split prepare should fail: ") +
+              retired_prepare_name);
+    check(error.find("unknown tool") != std::string::npos,
+          std::string("retired split prepare should be unknown: ") +
+              retired_prepare_name);
     result.clear();
     error.clear();
   }
-  const auto prepare_digest_path =
-      std::filesystem::temp_directory_path() /
-      ("cuwacunu_marshal_prepare_digest_request_" +
-       std::to_string(static_cast<long long>(::getpid())) + ".kv");
-  const std::string prepare_digest_request = "context = {}\n";
-  write_text(prepare_digest_path, prepare_digest_request);
+  for (const auto &removed_field :
+       {"args_path", "args_digest", "driver_policy", "context",
+        "runtime_policy", "runtime_wave", "drive_mode", "intent",
+        "materialize_plan_inputs", "timeout_seconds"}) {
+    check(!marshal::execute_marshal_tool_json(
+              "hero.marshal.prepare.train",
+              std::string("{\"target_id\":\"channel_mdn_validation_eval_ready\","
+                          "\"mode\":\"plan\",\"") +
+                  removed_field + "\":\"removed\"}",
+              &result, &error),
+          std::string("prepare facade should reject retired field: ") +
+              removed_field);
+    check(error.find(std::string("unknown field: ") + removed_field) !=
+              std::string::npos,
+          std::string("retired prepare field should fail explicitly: ") +
+              removed_field);
+    result.clear();
+    error.clear();
+  }
   check(!marshal::execute_marshal_tool_json(
-            "hero.marshal.prepare.train.one_step",
-            std::string("{\"target_id\":\"channel_mdn_validation_eval_ready\","
-                        "\"mode\":\"dry_run\","
-                        "\"args_path\":") +
-                marshal::detail::json_quote(prepare_digest_path.string()) + "}",
+            "hero.marshal.prepare.train",
+            R"({"target_id":"channel_mdn_validation_eval_ready","mode":"plan","profile":"missing_profile"})",
             &result, &error),
-        "non-plan prepare should require request digest");
-  check(error.find("E_MARSHAL_PREPARE_REQUEST_DIGEST_REQUIRED") !=
+        "prepare facade should reject unknown profiles before Lattice work");
+  check(error.find("unknown prepare profile: missing_profile") !=
             std::string::npos,
-        "missing prepare digest should fail explicitly");
-  result.clear();
-  error.clear();
-  check(!marshal::execute_marshal_tool_json(
-            "hero.marshal.prepare.train.one_step",
-            std::string("{\"target_id\":\"channel_mdn_validation_eval_ready\","
-                        "\"mode\":\"dry_run\","
-                        "\"args_path\":") +
-                marshal::detail::json_quote(prepare_digest_path.string()) +
-                ",\"args_digest\":\"sha256:not_the_digest\"}",
-            &result, &error),
-        "prepare should reject mismatched request digest");
-  check(error.find("E_MARSHAL_PREPARE_REQUEST_DIGEST_MISMATCH") !=
-            std::string::npos,
-        "mismatched prepare digest should fail explicitly");
+        "unknown prepare profile should fail explicitly");
   result.clear();
   error.clear();
   check(!marshal::execute_marshal_tool_json("hero.marshal.evaluate_run", "{}",
@@ -4047,8 +4113,7 @@ void test_prepare_rejects_legacy_alias_and_retired_route_fields() {
   const std::string alias_args =
       "{\"lattice_target\":\"channel_mdn_validation_eval_ready\"}";
   check(!marshal::execute_marshal_tool_json(
-            "hero.marshal.prepare.train.one_step", alias_args, &result,
-            &error),
+            "hero.marshal.prepare.train", alias_args, &result, &error),
         "prepare should reject legacy lattice_target alias");
   check(error.find("unknown field: lattice_target") != std::string::npos,
         "lattice_target rejection should be explicit");
@@ -4059,9 +4124,8 @@ void test_prepare_rejects_legacy_alias_and_retired_route_fields() {
   result.clear();
   error.clear();
   check(!marshal::execute_marshal_tool_json(
-            "hero.marshal.prepare.train.one_step", retired_route_args, &result,
-            &error),
-        "split prepare should reject retired top-level route fields");
+            "hero.marshal.prepare.train", retired_route_args, &result, &error),
+        "prepare facade should reject retired top-level route fields");
   check(error.find("unknown field: intent") != std::string::npos,
         "retired top-level intent rejection should be explicit");
 }
@@ -4077,9 +4141,9 @@ void test_prepare_wraps_target_dispatch() {
   check(execute_marshal_prepare_json(prepare_args_json(true, false), &result,
                                      &error),
         "prepare should produce the target-first operator packet");
-  check(result.find("\"tool\":\"hero.marshal.prepare.train.one_step\"") !=
+  check(result.find("\"tool\":\"hero.marshal.prepare.train\"") !=
             std::string::npos,
-        "prepare should identify the split Marshal tool");
+        "prepare should identify the Marshal prepare facade tool");
   check(result.find("\"operator_summary\":{") != std::string::npos &&
             result.find("\"stop_reason\":{") != std::string::npos &&
             result.find("\"wave_panel\":{") != std::string::npos &&
@@ -4091,8 +4155,8 @@ void test_prepare_wraps_target_dispatch() {
             std::string::npos,
         "prepare should reuse the target-dispatch readiness logic");
   check(result.find("\"next_command\":{\"tool\":\"hero.marshal.prepare."
-                    "train.one_step\"") != std::string::npos,
-        "prepare should keep follow-up commands on the split surface");
+                    "train\"") != std::string::npos,
+        "prepare should keep follow-up commands on the prepare facade");
   check(result.find("\"checkpoint_inputs_match\":true") != std::string::npos,
         "prepare should still check Runtime checkpoint inputs");
   check(g_fake_lattice_resolve_count == 2,
@@ -4220,47 +4284,53 @@ void test_m15_budgeted_prepare_target_dry_run_driver() {
   std::filesystem::remove_all(root);
 }
 
-void test_m16_5_budgeted_prepare_target_requires_explicit_policy() {
-  g_fake_lattice_resolve_count = 0;
-  g_fake_lattice_resolve_concrete = true;
-  g_fake_lattice_resolve_fault.clear();
-  g_fake_lattice_prepare_warning = false;
-  marshal::set_marshal_lattice_tool_callback(fake_lattice_prepare_callback);
+void test_m16_5_prepare_profile_validation() {
+  marshal::set_marshal_lattice_tool_callback(nullptr);
+  marshal::marshal_context_t ctx{};
+  ctx.global_config_path = "/cuwacunu/src/config/.config";
+  ctx.policy_path = "/cuwacunu/src/config/hero.marshal.dsl";
+  std::string policy_error;
+  check(marshal::load_marshal_policy(ctx.policy_path, ctx.global_config_path,
+                                     &ctx.policy, &policy_error),
+        "failed to load Marshal policy for profile validation: " +
+            policy_error);
 
-  const std::string missing_policy_args =
-      "{\"target_id\":\"channel_mdn_validation_eval_ready\","
-      "\"drive_mode\":\"budgeted\","
-      "\"requested_mode\":\"dry_run\","
-      "\"source_lattice_timestamp\":\"2026-05-24T00:00:00Z\"}";
   std::string result;
   std::string error;
-  check(!execute_marshal_prepare_json(missing_policy_args, &result, &error),
-        "budgeted prepare should reject missing driver_policy");
-  check(error.find("requires explicit driver_policy") != std::string::npos,
-        "missing driver_policy error should be explicit");
 
-  const std::string missing_max_waves_args =
-      "{\"target_id\":\"channel_mdn_validation_eval_ready\","
-      "\"drive_mode\":\"budgeted\","
-      "\"requested_mode\":\"dry_run\","
-      "\"source_lattice_timestamp\":\"2026-05-24T00:00:00Z\","
-      "\"driver_policy\":{\"no_progress_window\":1}}";
-  check(!execute_marshal_prepare_json(missing_max_waves_args, &result, &error),
-        "budgeted prepare should reject missing max_waves");
-  check(error.find("requires driver_policy.max_waves") != std::string::npos,
-        "missing max_waves error should be explicit");
-
-  const std::string missing_wall_clock_args =
-      "{\"target_id\":\"channel_mdn_validation_eval_ready\","
-      "\"drive_mode\":\"budgeted\","
-      "\"requested_mode\":\"dry_run\","
-      "\"source_lattice_timestamp\":\"2026-05-24T00:00:00Z\","
-      "\"driver_policy\":{\"max_waves\":1,\"no_progress_window\":1}}";
-  check(!execute_marshal_prepare_json(missing_wall_clock_args, &result, &error),
-        "budgeted prepare should reject missing max_wall_clock_seconds");
-  check(error.find("requires driver_policy.max_wall_clock_seconds") !=
+  check(!marshal::execute_marshal_tool_json(
+            "hero.marshal.prepare.train",
+            R"({"target_id":"channel_mdn_validation_eval_ready","mode":"plan","profile":"missing_profile"})",
+            &result, &error, &ctx),
+        "prepare should reject unknown profile ids");
+  check(error.find("unknown prepare profile: missing_profile") !=
             std::string::npos,
-        "missing max_wall_clock_seconds error should be explicit");
+        "unknown profile error should be explicit");
+
+  result.clear();
+  error.clear();
+  ctx.policy.prepare_profile_fields["bad_zero_waves"] = {
+      {"max_waves", "0"}, {"max_wall_clock_seconds", "5"}};
+  check(!marshal::execute_marshal_tool_json(
+            "hero.marshal.prepare.train",
+            R"({"target_id":"channel_mdn_validation_eval_ready","mode":"plan","profile":"bad_zero_waves"})",
+            &result, &error, &ctx),
+        "prepare should reject invalid profile wave counts");
+  check(error.find("max_waves must be positive") != std::string::npos,
+        "invalid max_waves error should be explicit");
+
+  result.clear();
+  error.clear();
+  ctx.policy.prepare_profile_fields["bad_bounded"] = {
+      {"max_waves", "2"}, {"no_progress_window", "1"}};
+  check(!marshal::execute_marshal_tool_json(
+            "hero.marshal.prepare.train",
+            R"({"target_id":"channel_mdn_validation_eval_ready","mode":"plan","profile":"bad_bounded"})",
+            &result, &error, &ctx),
+        "prepare should reject bounded profiles without a wall-clock limit");
+  check(error.find("bounded prepare profile requires max_wall_clock_seconds") !=
+            std::string::npos,
+        "missing max_wall_clock_seconds profile error should be explicit");
 
   marshal::set_marshal_lattice_tool_callback(nullptr);
 }
@@ -5195,220 +5265,22 @@ void test_m22_target_driver_replay_audit_tamper_and_compact() {
         "compact target-driver ledger without compaction note should fail");
 }
 
-void test_m16_target_driver_resume_guards_policy_and_identity() {
+void test_m16_prepare_rejects_public_resume_ledger() {
   g_fake_lattice_resolve_count = 0;
-  g_fake_lattice_resolve_concrete = true;
-  g_fake_lattice_resolve_fault.clear();
-  g_fake_lattice_prepare_warning = false;
-  marshal::set_marshal_lattice_tool_callback(fake_lattice_prepare_callback);
-
-  marshal::marshal_target_driver_policy_t policy{};
-  policy.max_waves = 2;
-  policy.max_wall_clock_seconds = 5;
-  policy.no_progress_window = 1;
-  const auto policy_digest = marshal::target_driver_policy_digest(policy);
-  const std::string resume =
-      "{\"schema_version\":\"kikijyeba.marshal.target_driver_ledger.v1\","
-      "\"target_driver_run_id\":\"previous_driver\","
-      "\"target_id\":\"different_target\","
-      "\"drive_mode\":\"budgeted\","
-      "\"requested_mode\":\"dry_run\","
-      "\"driver_policy_digest\":" +
-      marshal::detail::json_quote(policy_digest) +
-      ",\"iteration_count\":1,"
-      "\"runtime_handoff_attempt_count\":1,"
-      "\"execution_attempt_count\":0,"
-      "\"last_target_deficit_digest\":\"old_deficit\","
-      "\"last_suggested_wave_digest\":\"old_wave\","
-      "\"last_progress_signature\":\"old_progress\","
-      "\"terminal_state\":\"\"}";
   const std::string args =
       "{\"target_id\":\"channel_mdn_validation_eval_ready\","
-      "\"drive_mode\":\"budgeted\","
-      "\"requested_mode\":\"dry_run\","
-      "\"source_lattice_timestamp\":\"2026-05-24T00:00:00Z\","
-      "\"driver_policy\":{\"max_waves\":2,\"max_wall_clock_seconds\":5,"
-      "\"no_progress_window\":1},"
-      "\"resume_ledger\":" +
-      resume + "}";
+      "\"mode\":\"dry_run\","
+      "\"resume_ledger\":{\"target_driver_run_id\":\"previous_driver\"}}";
 
   std::string result;
   std::string error;
-  check(execute_marshal_prepare_json(args, &result, &error),
-        "stale resume ledger should produce a bounded Marshal packet");
-  check(result.find("\"driver_terminal_state\":\"blocked_stale_resume\"") !=
-            std::string::npos,
-        "resume with different target should fail closed");
-  check(result.find("\"resumed_from_run_id\":\"previous_driver\"") !=
-            std::string::npos,
-        "resume ledger should preserve the previous run id for audit");
+  check(!marshal::execute_marshal_tool_json("hero.marshal.prepare.train", args,
+                                           &result, &error),
+        "prepare facade should reject public resume_ledger");
+  check(error.find("unknown field: resume_ledger") != std::string::npos,
+        "retired resume_ledger field should fail explicitly");
   check(g_fake_lattice_resolve_count == 0,
-        "stale resume must block before new Lattice resolution or Runtime "
-        "handoff");
-
-  marshal::set_marshal_lattice_tool_callback(nullptr);
-}
-
-void test_m16_target_driver_resume_does_not_repeat_reached_run() {
-  g_fake_lattice_resolve_count = 0;
-  g_fake_lattice_resolve_concrete = true;
-  g_fake_lattice_resolve_fault.clear();
-  g_fake_lattice_prepare_warning = false;
-  marshal::set_marshal_lattice_tool_callback(fake_lattice_prepare_callback);
-
-  marshal::marshal_target_driver_policy_t policy{};
-  policy.max_waves = 2;
-  policy.max_wall_clock_seconds = 5;
-  policy.no_progress_window = 1;
-  const auto policy_digest = marshal::target_driver_policy_digest(policy);
-  const std::string resume =
-      "{\"schema_version\":\"kikijyeba.marshal.target_driver_ledger.v1\","
-      "\"target_driver_run_id\":\"previous_driver\","
-      "\"target_id\":\"channel_mdn_validation_eval_ready\","
-      "\"drive_mode\":\"budgeted\","
-      "\"requested_mode\":\"dry_run\","
-      "\"driver_policy_digest\":" +
-      marshal::detail::json_quote(policy_digest) +
-      ",\"iteration_count\":1,"
-      "\"runtime_handoff_attempt_count\":1,"
-      "\"execution_attempt_count\":0,"
-      "\"last_target_deficit_digest\":\"old_deficit\","
-      "\"last_suggested_wave_digest\":\"old_wave\","
-      "\"last_progress_signature\":\"old_progress\","
-      "\"ledger_digest\":\"previous_ledger_digest\","
-      "\"terminal_state\":\"reached\"}";
-  const std::string args =
-      "{\"target_id\":\"channel_mdn_validation_eval_ready\","
-      "\"drive_mode\":\"budgeted\","
-      "\"requested_mode\":\"dry_run\","
-      "\"source_lattice_timestamp\":\"2026-05-24T00:00:00Z\","
-      "\"driver_policy\":{\"max_waves\":2,\"max_wall_clock_seconds\":5,"
-      "\"no_progress_window\":1},"
-      "\"resume_ledger\":" +
-      resume + "}";
-
-  std::string result;
-  std::string error;
-  check(execute_marshal_prepare_json(args, &result, &error),
-        "reached resume ledger should return a bounded Marshal packet");
-  check(result.find("\"driver_terminal_state\":\"reached\"") !=
-            std::string::npos,
-        "reached resume should preserve reached terminal state");
-  check(result.find("already records the target as reached") !=
-            std::string::npos,
-        "reached resume should explain why no new handoff occurred");
-  check(g_fake_lattice_resolve_count == 0,
-        "reached resume must not call Lattice or repeat Runtime handoff");
-
-  marshal::set_marshal_lattice_tool_callback(nullptr);
-}
-
-void test_m16_5_target_driver_resume_requires_ledger_digest() {
-  g_fake_lattice_resolve_count = 0;
-  g_fake_lattice_resolve_concrete = true;
-  g_fake_lattice_resolve_fault.clear();
-  g_fake_lattice_prepare_warning = false;
-  marshal::set_marshal_lattice_tool_callback(fake_lattice_prepare_callback);
-
-  marshal::marshal_target_driver_policy_t policy{};
-  policy.max_waves = 2;
-  policy.max_wall_clock_seconds = 5;
-  policy.no_progress_window = 1;
-  const auto policy_digest = marshal::target_driver_policy_digest(policy);
-  const std::string resume =
-      "{\"schema_version\":\"kikijyeba.marshal.target_driver_ledger.v1\","
-      "\"target_driver_run_id\":\"previous_driver\","
-      "\"target_id\":\"channel_mdn_validation_eval_ready\","
-      "\"drive_mode\":\"budgeted\","
-      "\"requested_mode\":\"dry_run\","
-      "\"driver_policy_digest\":" +
-      marshal::detail::json_quote(policy_digest) +
-      ",\"iteration_count\":1,"
-      "\"runtime_handoff_attempt_count\":1,"
-      "\"execution_attempt_count\":0,"
-      "\"last_target_deficit_digest\":\"old_deficit\","
-      "\"last_suggested_wave_digest\":\"old_wave\","
-      "\"last_progress_signature\":\"old_progress\","
-      "\"terminal_state\":\"\"}";
-  const std::string args =
-      "{\"target_id\":\"channel_mdn_validation_eval_ready\","
-      "\"drive_mode\":\"budgeted\","
-      "\"requested_mode\":\"dry_run\","
-      "\"source_lattice_timestamp\":\"2026-05-24T00:00:00Z\","
-      "\"driver_policy\":{\"max_waves\":2,\"max_wall_clock_seconds\":5,"
-      "\"no_progress_window\":1},"
-      "\"resume_ledger\":" +
-      resume + "}";
-
-  std::string result;
-  std::string error;
-  check(execute_marshal_prepare_json(args, &result, &error),
-        "resume ledger without ledger_digest should fail closed");
-  check(result.find("\"driver_terminal_state\":\"blocked_stale_resume\"") !=
-            std::string::npos,
-        "missing ledger_digest should be treated as stale resume evidence");
-  check(result.find("missing ledger_digest") != std::string::npos,
-        "missing ledger_digest blocker should be explicit");
-  check(g_fake_lattice_resolve_count == 0,
-        "missing ledger_digest must block before Lattice or Runtime calls");
-
-  marshal::set_marshal_lattice_tool_callback(nullptr);
-}
-
-void test_m16_5_target_driver_resume_requires_terminal_identity_after_execute() {
-  g_fake_lattice_resolve_count = 0;
-  g_fake_lattice_resolve_concrete = true;
-  g_fake_lattice_resolve_fault.clear();
-  g_fake_lattice_prepare_warning = false;
-  marshal::set_marshal_lattice_tool_callback(fake_lattice_prepare_callback);
-
-  marshal::marshal_target_driver_policy_t policy{};
-  policy.max_waves = 2;
-  policy.max_wall_clock_seconds = 5;
-  policy.no_progress_window = 1;
-  const auto policy_digest = marshal::target_driver_policy_digest(policy);
-  const std::string resume =
-      "{\"schema_version\":\"kikijyeba.marshal.target_driver_ledger.v1\","
-      "\"target_driver_run_id\":\"previous_driver\","
-      "\"target_id\":\"channel_mdn_validation_eval_ready\","
-      "\"drive_mode\":\"budgeted\","
-      "\"requested_mode\":\"dry_run\","
-      "\"driver_policy_digest\":" +
-      marshal::detail::json_quote(policy_digest) +
-      ",\"iteration_count\":1,"
-      "\"runtime_handoff_attempt_count\":1,"
-      "\"execution_attempt_count\":1,"
-      "\"last_target_deficit_digest\":\"old_deficit\","
-      "\"last_suggested_wave_digest\":\"old_wave\","
-      "\"last_progress_signature\":\"old_progress\","
-      "\"ledger_digest\":\"previous_ledger_digest\","
-      "\"terminal_state\":\"\"}";
-  const std::string args =
-      "{\"target_id\":\"channel_mdn_validation_eval_ready\","
-      "\"drive_mode\":\"budgeted\","
-      "\"requested_mode\":\"dry_run\","
-      "\"source_lattice_timestamp\":\"2026-05-24T00:00:00Z\","
-      "\"driver_policy\":{\"max_waves\":2,\"max_wall_clock_seconds\":5,"
-      "\"no_progress_window\":1},"
-      "\"resume_ledger\":" +
-      resume + "}";
-
-  std::string result;
-  std::string error;
-  check(execute_marshal_prepare_json(args, &result, &error),
-        "resume ledger with execution history should require terminal Runtime "
-        "identity");
-  check(result.find("\"driver_terminal_state\":\"blocked_stale_resume\"") !=
-            std::string::npos,
-        "execution history without terminal evidence identity should fail "
-        "closed");
-  check(result.find("terminal evidence, job manifest, or handoff identity") !=
-            std::string::npos,
-        "resume terminal evidence blocker should be explicit");
-  check(g_fake_lattice_resolve_count == 0,
-        "stale execution resume must block before Lattice or Runtime calls");
-
-  marshal::set_marshal_lattice_tool_callback(nullptr);
+        "retired resume_ledger must fail before Lattice work");
 }
 
 void test_m9_marshal_tool_handlers_validate_arguments() {
@@ -5445,9 +5317,9 @@ void test_m9_marshal_tool_handlers_validate_arguments() {
   check(lattice_evaluate_request_text_from_args(g_fake_lattice_arguments_json)
                 .find("\"target_id\":\"lookup_target\"") != std::string::npos,
         "prepare should pass target_id to Lattice request");
-  check(result.find("\"tool\":\"hero.marshal.prepare.train.one_step\"") !=
+  check(result.find("\"tool\":\"hero.marshal.prepare.train\"") !=
             std::string::npos,
-        "prepare should return the split public operator packet");
+        "prepare should return the public prepare facade packet");
   check(result.find("\"schema_version\":\"kikijyeba.marshal.prepare."
                     "v2.5b\"") != std::string::npos &&
             result.find("\"next_safe_actions\":[") != std::string::npos &&
@@ -5468,7 +5340,7 @@ void test_m9_marshal_tool_handlers_validate_arguments() {
       ",\"target_text\":\"dispatch whatever target seems useful\"}";
   check(!execute_marshal_prepare_json(free_text_lookup_args, &result, &error),
         "prepare must reject free-form target text");
-  check(error.find("E_MARSHAL_PREPARE_REQUEST_UNKNOWN_FIELD: target_text") !=
+  check(error.find("unknown field: target_text") !=
             std::string::npos,
         "prepare should expose unknown-field rejection for "
         "target_text");
@@ -6232,7 +6104,7 @@ void test_artifact_evidence_panel_and_prepare_boundary() {
       !execute_marshal_prepare_json(fact_family_prepare_args, &result, &error),
       "prepare must reject fact_family arguments instead of "
       "treating fact evidence as reachable work");
-  check(error.find("E_MARSHAL_PREPARE_REQUEST_UNKNOWN_FIELD: fact_family") !=
+  check(error.find("unknown field: fact_family") !=
             std::string::npos,
         "prepare should expose unknown-field rejection for "
         "fact_family");
@@ -7351,11 +7223,11 @@ void test_inspect_deterministic_subjects() {
       "\"runtime_root\":" +
       marshal::detail::json_quote(runtime_root.string()) +
       ",\"config_path\":" + marshal::detail::json_quote(config_path.string()) +
-      ",\"protocol_contract_fingerprint\":\"pc\","
+      ",\"expected_identity\":{\"protocol_contract_fingerprint\":\"pc\","
       "\"graph_order_fingerprint\":\"go\","
       "\"source_cursor_token\":\"cursor\","
       "\"vicreg_assembly_fingerprint\":\"vic\","
-      "\"mdn_assembly_fingerprint\":\"mdn\"}";
+      "\"mdn_assembly_fingerprint\":\"mdn\"}}";
   result.clear();
   error.clear();
   check(execute_marshal_inspect_json(protocol_strict_args, &result, &error),
@@ -7395,7 +7267,7 @@ void test_inspect_deterministic_subjects() {
                 marshal::detail::json_quote(runtime_root.string()) + "}",
             &result, &error),
         "strict protocol mode should require explicit expected identity");
-  check(error.find("protocol.strict requires expected identity fields") !=
+  check(error.find("protocol.strict requires expected_identity") !=
             std::string::npos,
         "strict protocol missing expectations should fail clearly");
 
@@ -7404,11 +7276,11 @@ void test_inspect_deterministic_subjects() {
       "root\":" +
       marshal::detail::json_quote(runtime_root.string()) +
       ",\"config_path\":" + marshal::detail::json_quote(config_path.string()) +
-      ",\"protocol_contract_fingerprint\":\"wrong\","
+      ",\"expected_identity\":{\"protocol_contract_fingerprint\":\"wrong\","
       "\"graph_order_fingerprint\":\"go\","
       "\"source_cursor_token\":\"cursor\","
       "\"vicreg_assembly_fingerprint\":\"vic\","
-      "\"mdn_assembly_fingerprint\":\"mdn\"}";
+      "\"mdn_assembly_fingerprint\":\"mdn\"}}";
   result.clear();
   error.clear();
   check(execute_marshal_inspect_json(protocol_mismatch_args, &result, &error),
@@ -7521,6 +7393,14 @@ void test_inspect_deterministic_subjects() {
   check(error.find("hero.marshal.inspect.protocol.report unknown field: "
                    "spawn_id") != std::string::npos,
         "protocol subject spawn-only field rejection should be explicit");
+  check(!execute_marshal_inspect_json(
+            R"({"subject":"protocol","identity_mode":"strict","protocol_contract_fingerprint":"pc"})",
+            &result, &error),
+        "protocol strict should reject retired top-level expected identity "
+        "fields");
+  check(error.find("hero.marshal.inspect.protocol.strict unknown field: "
+                   "protocol_contract_fingerprint") != std::string::npos,
+        "protocol strict retired identity rejection should be explicit");
   check(
       !execute_marshal_inspect_json(
           R"({"subject":"spawn","target_id":"lookup_target","component_spawn_id":"mdn"})",
@@ -7970,7 +7850,7 @@ int main() {
   test_prepare_wraps_target_dispatch();
   test_prepare_target_rejects_untrusted_resolution();
   test_m15_budgeted_prepare_target_dry_run_driver();
-  test_m16_5_budgeted_prepare_target_requires_explicit_policy();
+  test_m16_5_prepare_profile_validation();
   test_m15_budgeted_prepare_target_no_progress_window();
   test_m16_5_execute_requires_runtime_terminal_evidence();
   test_m16_5_execute_binds_runtime_terminal_evidence();
@@ -7989,10 +7869,7 @@ int main() {
   test_m22_target_driver_run_id_is_stable_and_not_ledger_digest();
   test_m22_target_driver_run_key_groups_but_run_id_is_invocation_unique();
   test_m22_target_driver_replay_audit_tamper_and_compact();
-  test_m16_target_driver_resume_guards_policy_and_identity();
-  test_m16_target_driver_resume_does_not_repeat_reached_run();
-  test_m16_5_target_driver_resume_requires_ledger_digest();
-  test_m16_5_target_driver_resume_requires_terminal_identity_after_execute();
+  test_m16_prepare_rejects_public_resume_ledger();
   test_m9_marshal_tool_handlers_validate_arguments();
   test_artifact_evidence_panel_and_prepare_boundary();
   test_artifact_prepare_warning_policy_remains_inspection_only();
