@@ -1,0 +1,81 @@
+MAN_ID = hero.environment
+TARGET_DSL = src/config/hero.environment.dsl
+PRIMARY_VALIDATORS = src/include/hero/environment_hero/hero_environment.h
+
+[FIELD protocol_layer]
+key = protocol_layer
+scope = Environment Hero policy
+type = enum
+default = STDIO
+allowed = STDIO,HTTPS/SSE
+nuance = STDIO is implemented; HTTPS/SSE is reserved and must fail fast.
+
+[FIELD environment_profile]
+key = environment_profile
+scope = Environment Hero policy
+type = enum
+default = operator_default
+allowed = operator_default
+nuance = Selects a named ENVIRONMENT_PROFILE block from the same Environment policy file. Selection order is CLI --profile, [HERO].environment_hero_profile, then this field.
+
+[FIELD default_config_path]
+key = default_config_path
+scope = Environment Hero policy
+type = path
+default = /cuwacunu/src/config/.config
+nuance = Default config used when delegated Runtime replay work does not provide config_path.
+
+[FIELD runtime_root]
+key = runtime_root
+scope = Environment Hero policy
+type = path
+default = /cuwacunu/.runtime/cuwacunu_exec
+nuance = Job evidence root inspected by Environment admission checks.
+
+[FIELD allowed_job_roots]
+key = allowed_job_roots
+scope = Environment Hero policy
+type = path_list
+default = /cuwacunu/.runtime/cuwacunu_exec,/tmp
+nuance = Certification sidecar writes and job-local evidence reads must stay under these roots.
+
+[FIELD allow_certify_issue]
+key = allow_certify_issue
+scope = Environment Hero policy
+type = bool
+default = true
+nuance = Allows hero.environment.certify.policy_acceptance and hero.environment.certify.paper_online_readiness mode=issue to write validated prerequisite Lattice sidecars.
+
+[FIELD allow_rollout_replay]
+key = allow_rollout_replay
+scope = Environment Hero policy
+type = bool
+default = true
+nuance = Allows hero.environment.rollout mode=replay to delegate low-level replay execution to Runtime.
+
+[FIELD max_capture_bytes]
+key = max_capture_bytes
+scope = Environment Hero policy
+type = int
+default = 65536
+nuance = Maximum delegated Runtime result payload retained inline.
+
+[FIELD max_runtime_seconds]
+key = max_runtime_seconds
+scope = Environment Hero policy
+type = int
+default = 600
+nuance = Default timeout used for delegated Runtime replay when a rollout request omits timeout_seconds.
+
+[TOOLS]
+hero.environment.status = read-only policy/authority summary.
+hero.environment.inspect.schema = read Environment policy schema.
+hero.environment.inspect.job job_dir=... [include_text=...] [max_bytes=...] = inspect job-local policy_acceptance, paper_online_readiness, tsodao_settings_protection, and replay sidecars with direct selectors.
+hero.environment.certify.policy_acceptance mode=check|issue args_path=... = assemble, validate, and optionally issue lattice.policy_acceptance.fact from an explicit request file plus existing policy-training and Tsodao settings-protection evidence. Environment derives canonical policy-acceptance governance v0 fields; they are not request-file arguments.
+hero.environment.certify.paper_online_readiness mode=check|issue args_path=... = assemble, validate, and optionally issue lattice.paper_online_readiness.fact from an explicit request file plus existing policy-acceptance evidence. Environment derives fixed paper-online contract/default policy ids; they are not request-file arguments.
+hero.environment.rollout mode=validate|replay args_path=... [args_digest=...] [include_machine_payload=...] = validate or replay bounded historical replay rollout evidence from an explicit request file. Replay requires args_digest and delegates low-level replay execution to the non-catalog Runtime replay executor.
+
+[BOUNDARY]
+boundary = Environment owns execution-environment admission and rollout evidence. Runtime remains the low-level executor. Lattice remains proof authority. Marshal remains the high-level operator orchestrator.
+boundary nuance = Environment certification sidecars do not select policies, judge policy quality, prove Lattice targets, approve deployment, execute broker orders, or authorize live capital.
+boundary nuance = Portfolio policy surface normalization is intentionally pending; this surface keeps policy.portfolio evidence as a rollout/admission concern until the portfolio component surface is standardized.

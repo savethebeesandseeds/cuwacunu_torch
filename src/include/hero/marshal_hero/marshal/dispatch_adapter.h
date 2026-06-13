@@ -49,7 +49,6 @@ struct marshal_runtime_dry_run_request_t {
   std::string config_path{};
   std::string runtime_root{};
   bool dry_run{true};
-  bool confirm_execute{false};
   bool force_rebuild_cache{false};
   std::string wave_target{};
   std::string wave_mode{};
@@ -107,8 +106,6 @@ inline void add_derivation(marshal_dispatch_decision_t &decision,
   detail::append_kv(out, "runtime_root",
                     detail::normalize_path_text(request.runtime_root));
   detail::append_kv(out, "dry_run", detail::bool_text(request.dry_run));
-  detail::append_kv(out, "confirm_execute",
-                    detail::bool_text(request.confirm_execute));
   detail::append_kv(out, "force_rebuild_cache",
                     detail::bool_text(request.force_rebuild_cache));
   detail::append_kv(out, "wave_target", request.wave_target);
@@ -145,7 +142,6 @@ runtime_execution_request_from_preview(
     const marshal_runtime_dry_run_request_t &request) {
   auto execution = request;
   execution.dry_run = false;
-  execution.confirm_execute = true;
   return execution;
 }
 
@@ -260,7 +256,6 @@ build_runtime_dry_run_dispatch_preview(
   decision.runtime_request.config_path = advice.config_path;
   decision.runtime_request.runtime_root = advice.runtime_root;
   decision.runtime_request.dry_run = true;
-  decision.runtime_request.confirm_execute = false;
   decision.runtime_request.force_rebuild_cache = false;
   decision.runtime_request.wave_target = advice.suggested_wave.target;
   decision.runtime_request.wave_mode = advice.suggested_wave.mode;
@@ -283,8 +278,6 @@ build_runtime_dry_run_dispatch_preview(
   add_derivation(decision, "config_path", "advice.config_path");
   add_derivation(decision, "runtime_root", "advice.runtime_root");
   add_derivation(decision, "dry_run", "Marshal M2 forced dry_run=true");
-  add_derivation(decision, "confirm_execute",
-                 "Marshal M2 forced confirm_execute=false");
   add_derivation(decision, "force_rebuild_cache",
                  "Marshal M2 default force_rebuild_cache=false");
   add_derivation(decision, "wave_target", "advice.suggested_wave.target");

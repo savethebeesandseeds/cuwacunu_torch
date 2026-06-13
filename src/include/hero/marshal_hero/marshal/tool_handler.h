@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <ctime>
 #include <filesystem>
+#include <fstream>
 #include <initializer_list>
 #include <iostream>
 #include <map>
@@ -29,7 +30,8 @@
 #include "hero/marshal_hero/marshal/status.h"
 #include "hero/marshal_hero/marshal/target_driver.h"
 #include "hero/marshal_hero/marshal/tool_schema.h"
-#include "hero/runtime_hero/hero_runtime_tools.h"
+#include "hero/mcp_cli_client.h"
+#include "hero/mcp_stdio_transport.h"
 #include "hero/short_ref.h"
 
 namespace cuwacunu::hero::marshal {
@@ -419,6 +421,144 @@ optional_string_array(const std::map<std::string, std::string> &fields,
   return out;
 }
 
+[[nodiscard]] inline std::string normalize_assignment_key(std::string left) {
+  left = trim_ascii(left);
+  const auto colon = left.find(':');
+  const auto bracket = left.find('[');
+  std::size_t end = std::string::npos;
+  if (colon != std::string::npos) {
+    end = colon;
+  }
+  if (bracket != std::string::npos) {
+    end = end == std::string::npos ? bracket : std::min(end, bracket);
+  }
+  if (end != std::string::npos) {
+    left.resize(end);
+  }
+  return trim_ascii(left);
+}
+
+[[nodiscard]] inline std::string strip_assignment_comment(std::string line) {
+  bool in_string = false;
+  bool escaped = false;
+  for (std::size_t i = 0; i < line.size(); ++i) {
+    const char c = line[i];
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (in_string && c == '\\') {
+      escaped = true;
+      continue;
+    }
+    if (c == '"') {
+      in_string = !in_string;
+      continue;
+    }
+    if (!in_string && c == '#') {
+      line.resize(i);
+      break;
+    }
+  }
+  return line;
+}
+
+[[nodiscard]] inline bool parse_bool_text(std::string_view raw, bool *out) {
+  std::string value = trim_ascii(raw);
+  std::transform(
+      value.begin(), value.end(), value.begin(),
+      [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+  if (value == "true" || value == "1" || value == "yes" || value == "on") {
+    if (out != nullptr) {
+      *out = true;
+    }
+    return true;
+  }
+  if (value == "false" || value == "0" || value == "no" || value == "off") {
+    if (out != nullptr) {
+      *out = false;
+    }
+    return true;
+  }
+  return false;
+}
+
+[[nodiscard]] inline bool parse_i64_full(std::string_view raw,
+                                         std::int64_t *out) {
+  const std::string value = trim_ascii(raw);
+  if (value.empty()) {
+    return false;
+  }
+  try {
+    std::size_t parsed_count = 0;
+    const std::int64_t parsed = std::stoll(value, &parsed_count, 10);
+    if (parsed_count != value.size()) {
+      return false;
+    }
+    if (out != nullptr) {
+      *out = parsed;
+    }
+    return true;
+  } catch (const std::exception &) {
+    return false;
+  }
+}
+
+[[nodiscard]] inline std::vector<std::string>
+split_assignment_string_list(std::string_view raw) {
+  std::vector<std::string> out;
+  std::string item;
+  std::istringstream input{std::string(raw)};
+  while (std::getline(input, item, ',')) {
+    item = trim_ascii(item);
+    if (!item.empty()) {
+      out.push_back(std::move(item));
+    }
+  }
+  return out;
+}
+
+[[nodiscard]] inline std::string marshal_inspect_string_array_literal_json(
+    const std::vector<std::string> &values) {
+  std::ostringstream out;
+  out << "[";
+  for (std::size_t i = 0; i < values.size(); ++i) {
+    if (i != 0U) {
+      out << ",";
+    }
+    out << detail::json_quote(values[i]);
+  }
+  out << "]";
+  return out.str();
+}
+
+[[nodiscard]] inline std::string
+marshal_inspect_string_array_json(std::string_view raw, std::string_view key) {
+  const std::string value = trim_ascii(raw);
+  std::vector<std::string> values;
+  if (!value.empty() && value.front() == '[') {
+    for (const auto &raw_value : array_values(value)) {
+      values.push_back(parse_string_raw(raw_value, std::string(key) + "[]"));
+    }
+  } else {
+    values = split_assignment_string_list(value);
+  }
+  return marshal_inspect_string_array_literal_json(values);
+}
+
+[[nodiscard]] inline std::filesystem::path
+normalize_request_path(std::filesystem::path path) {
+  std::error_code ec;
+  if (path.is_relative()) {
+    path = std::filesystem::absolute(path, ec);
+    if (ec) {
+      path = std::filesystem::current_path() / path;
+    }
+  }
+  const auto canonical = std::filesystem::weakly_canonical(path, ec);
+  return ec ? path.lexically_normal() : canonical;
+}
+
 [[nodiscard]] inline std::map<std::string, std::string>
 optional_string_map(const std::map<std::string, std::string> &fields,
                     const std::string &key) {
@@ -486,10 +626,6 @@ parse_rollout_request(const std::map<std::string, std::string> &fields) {
       std::filesystem::path(optional_string(fields, "report_path"));
   out.requested_mode =
       optional_string(fields, "requested_mode", out.requested_mode);
-  out.environment_mode =
-      optional_string(fields, "environment_mode", out.environment_mode);
-  out.environment_assembly_id = optional_string(
-      fields, "environment_assembly_id", out.environment_assembly_id);
   out.graph_order_fingerprint =
       optional_string(fields, "graph_order_fingerprint");
   out.asset_universe_digest = optional_string(fields, "asset_universe_digest");
@@ -505,15 +641,239 @@ parse_rollout_request(const std::map<std::string, std::string> &fields) {
   if (const auto profile = optional_raw(fields, "execution_profile")) {
     out.execution_profile = parse_rollout_execution_profile(*profile);
   }
-  out.require_existing_runtime_job_dir =
-      optional_bool(fields, "require_existing_runtime_job_dir",
-                    out.require_existing_runtime_job_dir);
-  out.require_completed_runtime_job =
-      optional_bool(fields, "require_completed_runtime_job",
-                    out.require_completed_runtime_job);
-  out.require_replay_artifacts = optional_bool(
-      fields, "require_replay_artifacts", out.require_replay_artifacts);
   return out;
+}
+
+inline constexpr const char *k_rollout_request_file_digest_domain_v1 =
+    "kikijyeba.environment.rollout_request.v1";
+
+enum class rollout_request_value_kind_t {
+  string_value,
+  bool_value,
+  integer_value,
+  string_array_value,
+  object_value,
+};
+
+struct rollout_request_field_t {
+  const char *key;
+  rollout_request_value_kind_t kind;
+};
+
+struct rollout_request_file_t {
+  std::map<std::string, std::string> fields{};
+  std::filesystem::path path{};
+  std::string digest_domain{k_rollout_request_file_digest_domain_v1};
+  std::string digest{};
+  bool digest_supplied{false};
+};
+
+constexpr rollout_request_field_t kRolloutRequestFields[] = {
+    {"rollout_id", rollout_request_value_kind_t::string_value},
+    {"rollout_attempt_id", rollout_request_value_kind_t::string_value},
+    {"idempotency_key", rollout_request_value_kind_t::string_value},
+    {"experiment_id", rollout_request_value_kind_t::string_value},
+    {"config_path", rollout_request_value_kind_t::string_value},
+    {"runtime_job_dir", rollout_request_value_kind_t::string_value},
+    {"replay_batch_index_path", rollout_request_value_kind_t::string_value},
+    {"runtime_exec_path", rollout_request_value_kind_t::string_value},
+    {"report_path", rollout_request_value_kind_t::string_value},
+    {"graph_order_fingerprint", rollout_request_value_kind_t::string_value},
+    {"asset_universe_digest", rollout_request_value_kind_t::string_value},
+    {"accounting_numeraire_node_id",
+     rollout_request_value_kind_t::string_value},
+    {"target_node_ids", rollout_request_value_kind_t::string_array_value},
+    {"policy_set", rollout_request_value_kind_t::string_array_value},
+    {"max_steps", rollout_request_value_kind_t::integer_value},
+    {"max_parallel_jobs", rollout_request_value_kind_t::integer_value},
+    {"execution_profile", rollout_request_value_kind_t::object_value},
+    {"timeout_seconds", rollout_request_value_kind_t::integer_value},
+};
+
+[[nodiscard]] inline const rollout_request_field_t *
+find_rollout_request_field(std::string_view key) {
+  for (const auto &field : kRolloutRequestFields) {
+    if (key == std::string_view(field.key)) {
+      return &field;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] inline bool
+normalize_rollout_request_value(const rollout_request_field_t &field,
+                                std::string_view raw_value,
+                                std::string *out_json_raw, std::string *err) {
+  const std::string value = trim_ascii(raw_value);
+  switch (field.kind) {
+  case rollout_request_value_kind_t::string_value:
+    if (!value.empty() && value.front() == '"') {
+      try {
+        *out_json_raw = detail::json_quote(parse_string_raw(value, field.key));
+      } catch (const std::exception &ex) {
+        *err = ex.what();
+        return false;
+      }
+    } else {
+      *out_json_raw = detail::json_quote(value);
+    }
+    return true;
+  case rollout_request_value_kind_t::bool_value: {
+    bool parsed = false;
+    if (!parse_bool_text(value, &parsed)) {
+      *err = std::string(field.key) + " must be boolean";
+      return false;
+    }
+    *out_json_raw = parsed ? "true" : "false";
+    return true;
+  }
+  case rollout_request_value_kind_t::integer_value: {
+    std::int64_t parsed = 0;
+    if (!parse_i64_full(value, &parsed)) {
+      *err = std::string(field.key) + " must be integer";
+      return false;
+    }
+    *out_json_raw = std::to_string(parsed);
+    return true;
+  }
+  case rollout_request_value_kind_t::string_array_value:
+    try {
+      *out_json_raw = marshal_inspect_string_array_json(value, field.key);
+    } catch (const std::exception &ex) {
+      *err = ex.what();
+      return false;
+    }
+    return true;
+  case rollout_request_value_kind_t::object_value:
+    try {
+      if (value.empty() || value.front() != '{') {
+        *err = std::string(field.key) + " must be a JSON object";
+        return false;
+      }
+      (void)parse_rollout_execution_profile(value);
+      *out_json_raw = value;
+    } catch (const std::exception &ex) {
+      *err = ex.what();
+      return false;
+    }
+    return true;
+  }
+  *err = std::string(field.key) + " has unsupported rollout request type";
+  return false;
+}
+
+[[nodiscard]] inline std::map<std::string, std::string>
+parse_rollout_request_text(std::string_view text) {
+  std::map<std::string, std::string> out;
+  std::istringstream lines{std::string(text)};
+  std::string line;
+  std::size_t line_no = 0;
+  while (std::getline(lines, line)) {
+    ++line_no;
+    line = trim_ascii(strip_assignment_comment(std::move(line)));
+    if (line.empty()) {
+      continue;
+    }
+    if (line == "}" || line == "};" ||
+        (line.front() == '[' && line.back() == ']')) {
+      throw std::runtime_error("E_ROLLOUT_REQUEST_PARSE: line " +
+                               std::to_string(line_no) +
+                               " is not a key=value assignment");
+    }
+    const auto eq = line.find('=');
+    if (eq == std::string::npos) {
+      throw std::runtime_error("E_ROLLOUT_REQUEST_PARSE: line " +
+                               std::to_string(line_no) + " is missing '='");
+    }
+    std::string key = normalize_assignment_key(
+        std::string(std::string_view(line).substr(0, eq)));
+    std::string value = trim_ascii(std::string_view(line).substr(eq + 1U));
+    if (!value.empty() && value.back() == ';') {
+      value.pop_back();
+      value = trim_ascii(value);
+    }
+    if (key.empty()) {
+      throw std::runtime_error("E_ROLLOUT_REQUEST_PARSE: line " +
+                               std::to_string(line_no) + " has empty key");
+    }
+    if (key == "mode" || key == "requested_mode" || key == "args_path" ||
+        key == "args_digest") {
+      throw std::runtime_error("E_ROLLOUT_REQUEST_PUBLIC_FIELD: " + key);
+    }
+    if (out.find(key) != out.end()) {
+      throw std::runtime_error("E_ROLLOUT_REQUEST_DUPLICATE_FIELD: " + key);
+    }
+    const auto *field = find_rollout_request_field(key);
+    if (field == nullptr) {
+      throw std::runtime_error("E_ROLLOUT_REQUEST_UNKNOWN_FIELD: " + key);
+    }
+    std::string json_raw;
+    std::string error;
+    if (!normalize_rollout_request_value(*field, value, &json_raw, &error)) {
+      throw std::runtime_error(error);
+    }
+    out.emplace(std::move(key), std::move(json_raw));
+  }
+  return out;
+}
+
+[[nodiscard]] inline std::string
+rollout_request_file_digest(std::string_view request_text) {
+  return marshal_digest_for_text(k_rollout_request_file_digest_domain_v1,
+                                 std::string(request_text));
+}
+
+[[nodiscard]] inline std::string read_required_rollout_request_file(
+    const std::map<std::string, std::string> &args,
+    std::filesystem::path *path_out) {
+  const std::string raw_path = trim_ascii(optional_string(args, "args_path"));
+  if (raw_path.empty()) {
+    throw std::runtime_error("args_path must be a non-empty string");
+  }
+  const auto path = normalize_request_path(std::filesystem::path(raw_path));
+  std::ifstream input(path, std::ios::binary);
+  if (!input.is_open()) {
+    throw std::runtime_error("failed to read args_path: " + path.string());
+  }
+  std::ostringstream buffer;
+  buffer << input.rdbuf();
+  if (path_out != nullptr) {
+    *path_out = path;
+  }
+  return buffer.str();
+}
+
+[[nodiscard]] inline rollout_request_file_t
+load_rollout_request_arguments(const std::map<std::string, std::string> &args,
+                               bool require_digest,
+                               std::string_view digest_required_error,
+                               std::string_view digest_mismatch_error) {
+  rollout_request_file_t packet{};
+  const std::string request_text =
+      read_required_rollout_request_file(args, &packet.path);
+  packet.digest = rollout_request_file_digest(request_text);
+  packet.digest_supplied = optional_raw(args, "args_digest").has_value();
+  if (require_digest && !packet.digest_supplied) {
+    throw std::runtime_error(std::string(digest_required_error) +
+                             ": args_digest is required");
+  }
+  if (const auto supplied_raw = optional_raw(args, "args_digest")) {
+    const std::string supplied =
+        trim_ascii(parse_string_raw(*supplied_raw, "args_digest"));
+    if (supplied.empty()) {
+      throw std::runtime_error("args_digest must be non-empty when supplied");
+    }
+    if (supplied != packet.digest) {
+      throw std::runtime_error(std::string(digest_mismatch_error) +
+                               ": expected " + supplied + " actual " +
+                               packet.digest);
+    }
+  }
+  packet.fields = parse_rollout_request_text(request_text);
+  if (const auto mode_raw = optional_raw(args, "mode")) {
+    packet.fields.emplace("requested_mode", *mode_raw);
+  }
+  return packet;
 }
 
 [[nodiscard]] inline marshal_dispatch_mode_t
@@ -928,6 +1288,309 @@ parse_runtime_wave(const std::string &raw) {
   out.train_target = optional_bool(fields, "train_target", false);
   out.model_state_inputs = optional_string_map(fields, "model_state_inputs");
   return out;
+}
+
+inline constexpr const char *k_prepare_request_file_digest_domain_v1 =
+    "kikijyeba.marshal.prepare_request.v1";
+
+enum class prepare_request_value_kind_t {
+  string_value,
+  bool_value,
+  integer_value,
+  object_value,
+};
+
+struct prepare_request_field_t {
+  const char *key;
+  prepare_request_value_kind_t kind;
+};
+
+struct prepare_request_file_t {
+  std::map<std::string, std::string> fields{};
+  std::filesystem::path path{};
+  std::string digest_domain{k_prepare_request_file_digest_domain_v1};
+  std::string digest{};
+  bool digest_supplied{false};
+};
+
+constexpr prepare_request_field_t kPrepareRequestFields[] = {
+    {"config_path", prepare_request_value_kind_t::string_value},
+    {"runtime_root", prepare_request_value_kind_t::string_value},
+    {"driver_policy", prepare_request_value_kind_t::object_value},
+    {"resume_ledger", prepare_request_value_kind_t::object_value},
+    {"source_lattice_timestamp", prepare_request_value_kind_t::string_value},
+    {"recommendation_attempt_count",
+     prepare_request_value_kind_t::integer_value},
+    {"context", prepare_request_value_kind_t::object_value},
+    {"protocol_contract_fingerprint",
+     prepare_request_value_kind_t::string_value},
+    {"graph_order_fingerprint", prepare_request_value_kind_t::string_value},
+    {"source_cursor_token", prepare_request_value_kind_t::string_value},
+    {"vicreg_assembly_fingerprint", prepare_request_value_kind_t::string_value},
+    {"mdn_assembly_fingerprint", prepare_request_value_kind_t::string_value},
+    {"materialize_plan_inputs", prepare_request_value_kind_t::bool_value},
+    {"include_machine_payload", prepare_request_value_kind_t::bool_value},
+    {"runtime_policy", prepare_request_value_kind_t::object_value},
+    {"runtime_wave", prepare_request_value_kind_t::object_value},
+    {"timeout_seconds", prepare_request_value_kind_t::integer_value},
+};
+
+[[nodiscard]] inline const prepare_request_field_t *
+find_prepare_request_field(std::string_view key) {
+  for (const auto &field : kPrepareRequestFields) {
+    if (key == std::string_view(field.key)) {
+      return &field;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] inline bool prepare_request_public_field(std::string_view key) {
+  return key == "target_id" || key == "mode" || key == "requested_mode" ||
+         key == "args_path" || key == "args_digest";
+}
+
+struct split_prepare_tool_route_t {
+  std::string intent{};
+  marshal_target_drive_mode_t drive_mode{marshal_target_drive_mode_t::unknown};
+};
+
+[[nodiscard]] inline std::optional<split_prepare_tool_route_t>
+split_prepare_tool_route(std::string_view tool_name) {
+  constexpr std::string_view prefix = "hero.marshal.prepare.";
+  if (tool_name.rfind(prefix, 0) != 0) {
+    return std::nullopt;
+  }
+  const std::string suffix(tool_name.substr(prefix.size()));
+  split_prepare_tool_route_t route{};
+  if (suffix.rfind("train.", 0) == 0) {
+    route.intent = "train";
+  } else if (suffix.rfind("evaluate.", 0) == 0) {
+    route.intent = "evaluate";
+  } else {
+    return std::nullopt;
+  }
+  const std::string drive = suffix.substr(route.intent.size() + 1);
+  route.drive_mode = parse_drive_mode_text(drive);
+  if (route.drive_mode == marshal_target_drive_mode_t::unknown) {
+    return std::nullopt;
+  }
+  return route;
+}
+
+inline void validate_prepare_request_object_value(std::string_view key,
+                                                  const std::string &value) {
+  if (value.empty() || value.front() != '{') {
+    throw std::runtime_error(std::string(key) + " must be a JSON object");
+  }
+  if (key == "driver_policy") {
+    (void)parse_driver_policy(value);
+  } else if (key == "resume_ledger") {
+    (void)parse_target_driver_resume_state(value);
+  } else if (key == "context") {
+    (void)parse_context(value);
+  } else if (key == "runtime_policy") {
+    (void)parse_runtime_policy(value);
+  } else if (key == "runtime_wave") {
+    (void)parse_runtime_wave(value);
+  } else {
+    (void)object_fields(value);
+  }
+}
+
+[[nodiscard]] inline bool
+normalize_prepare_request_value(const prepare_request_field_t &field,
+                                std::string_view raw_value,
+                                std::string *out_json_raw, std::string *err) {
+  const std::string value = trim_ascii(raw_value);
+  switch (field.kind) {
+  case prepare_request_value_kind_t::string_value:
+    if (!value.empty() && value.front() == '"') {
+      try {
+        *out_json_raw = detail::json_quote(parse_string_raw(value, field.key));
+      } catch (const std::exception &ex) {
+        *err = ex.what();
+        return false;
+      }
+    } else {
+      *out_json_raw = detail::json_quote(value);
+    }
+    return true;
+  case prepare_request_value_kind_t::bool_value: {
+    bool parsed = false;
+    if (!parse_bool_text(value, &parsed)) {
+      *err = std::string(field.key) + " must be boolean";
+      return false;
+    }
+    *out_json_raw = parsed ? "true" : "false";
+    return true;
+  }
+  case prepare_request_value_kind_t::integer_value: {
+    std::int64_t parsed = 0;
+    if (!parse_i64_full(value, &parsed)) {
+      *err = std::string(field.key) + " must be integer";
+      return false;
+    }
+    *out_json_raw = std::to_string(parsed);
+    return true;
+  }
+  case prepare_request_value_kind_t::object_value:
+    try {
+      validate_prepare_request_object_value(field.key, value);
+      *out_json_raw = value;
+    } catch (const std::exception &ex) {
+      *err = ex.what();
+      return false;
+    }
+    return true;
+  }
+  *err = std::string(field.key) + " has unsupported prepare request type";
+  return false;
+}
+
+[[nodiscard]] inline std::map<std::string, std::string>
+parse_prepare_request_text(std::string_view text) {
+  std::map<std::string, std::string> out;
+  std::istringstream lines{std::string(text)};
+  std::string line;
+  std::size_t line_no = 0;
+  while (std::getline(lines, line)) {
+    ++line_no;
+    line = trim_ascii(strip_assignment_comment(std::move(line)));
+    if (line.empty()) {
+      continue;
+    }
+    if (line == "}" || line == "};" ||
+        (line.front() == '[' && line.back() == ']')) {
+      throw std::runtime_error("E_MARSHAL_PREPARE_REQUEST_PARSE: line " +
+                               std::to_string(line_no) +
+                               " is not a key=value assignment");
+    }
+    const auto eq = line.find('=');
+    if (eq == std::string::npos) {
+      throw std::runtime_error("E_MARSHAL_PREPARE_REQUEST_PARSE: line " +
+                               std::to_string(line_no) + " is missing '='");
+    }
+    std::string key = normalize_assignment_key(
+        std::string(std::string_view(line).substr(0, eq)));
+    std::string value = trim_ascii(std::string_view(line).substr(eq + 1U));
+    if (!value.empty() && value.back() == ';') {
+      value.pop_back();
+      value = trim_ascii(value);
+    }
+    if (key.empty()) {
+      throw std::runtime_error("E_MARSHAL_PREPARE_REQUEST_PARSE: line " +
+                               std::to_string(line_no) + " has empty key");
+    }
+    if (prepare_request_public_field(key)) {
+      throw std::runtime_error("E_MARSHAL_PREPARE_REQUEST_PUBLIC_FIELD: " +
+                               key);
+    }
+    if (out.find(key) != out.end()) {
+      throw std::runtime_error("E_MARSHAL_PREPARE_REQUEST_DUPLICATE_FIELD: " +
+                               key);
+    }
+    const auto *field = find_prepare_request_field(key);
+    if (field == nullptr) {
+      throw std::runtime_error("E_MARSHAL_PREPARE_REQUEST_UNKNOWN_FIELD: " +
+                               key);
+    }
+    std::string json_raw;
+    std::string error;
+    if (!normalize_prepare_request_value(*field, value, &json_raw, &error)) {
+      throw std::runtime_error(error);
+    }
+    out.emplace(std::move(key), std::move(json_raw));
+  }
+  return out;
+}
+
+[[nodiscard]] inline std::string
+prepare_request_file_digest(std::string_view request_text) {
+  return marshal_digest_for_text(k_prepare_request_file_digest_domain_v1,
+                                 std::string(request_text));
+}
+
+[[nodiscard]] inline std::string read_required_prepare_request_file(
+    const std::map<std::string, std::string> &args,
+    std::filesystem::path *path_out) {
+  const std::string raw_path = trim_ascii(optional_string(args, "args_path"));
+  if (raw_path.empty()) {
+    throw std::runtime_error("args_path must be a non-empty string");
+  }
+  const auto path = normalize_request_path(std::filesystem::path(raw_path));
+  std::ifstream input(path, std::ios::binary);
+  if (!input.is_open()) {
+    throw std::runtime_error("failed to read args_path: " + path.string());
+  }
+  std::ostringstream buffer;
+  buffer << input.rdbuf();
+  if (path_out != nullptr) {
+    *path_out = path;
+  }
+  return buffer.str();
+}
+
+[[nodiscard]] inline prepare_request_file_t
+load_prepare_request_arguments(const std::map<std::string, std::string> &args,
+                               bool require_digest) {
+  prepare_request_file_t packet{};
+  if (const auto target_id = optional_raw(args, "target_id")) {
+    packet.fields.emplace("target_id", *target_id);
+  }
+  if (const auto requested_mode = optional_raw(args, "mode")) {
+    packet.fields.emplace("requested_mode", *requested_mode);
+  }
+
+  if (!optional_raw(args, "args_path").has_value()) {
+    if (optional_raw(args, "args_digest").has_value()) {
+      throw std::runtime_error("args_digest requires args_path");
+    }
+    if (require_digest) {
+      throw std::runtime_error("E_MARSHAL_PREPARE_REQUEST_DIGEST_REQUIRED: "
+                               "args_digest is required");
+    }
+    return packet;
+  }
+
+  const std::string request_text =
+      read_required_prepare_request_file(args, &packet.path);
+  packet.digest = prepare_request_file_digest(request_text);
+  packet.digest_supplied = optional_raw(args, "args_digest").has_value();
+  if (require_digest && !packet.digest_supplied) {
+    throw std::runtime_error("E_MARSHAL_PREPARE_REQUEST_DIGEST_REQUIRED: "
+                             "args_digest is required");
+  }
+  if (const auto supplied_raw = optional_raw(args, "args_digest")) {
+    const std::string supplied =
+        trim_ascii(parse_string_raw(*supplied_raw, "args_digest"));
+    if (supplied.empty()) {
+      throw std::runtime_error("args_digest must be non-empty when supplied");
+    }
+    if (supplied != packet.digest) {
+      throw std::runtime_error(
+          "E_MARSHAL_PREPARE_REQUEST_DIGEST_MISMATCH: expected " + supplied +
+          " actual " + packet.digest);
+    }
+  }
+
+  auto request_fields = parse_prepare_request_text(request_text);
+  for (auto &[key, value] : request_fields) {
+    packet.fields.emplace(std::move(key), std::move(value));
+  }
+  return packet;
+}
+
+[[nodiscard]] inline std::string
+prepare_request_file_json_fields(const prepare_request_file_t &packet) {
+  std::ostringstream out;
+  out << ",\"args_path\":"
+      << detail::json_quote(packet.path.empty() ? "" : packet.path.string())
+      << ",\"args_digest_domain\":" << detail::json_quote(packet.digest_domain)
+      << ",\"args_digest\":" << detail::json_quote(packet.digest)
+      << ",\"args_digest_verified\":"
+      << (packet.digest_supplied ? "true" : "false");
+  return out.str();
 }
 
 [[nodiscard]] inline marshal_prior_dry_run_evidence_t
@@ -1381,6 +2044,22 @@ tool_result_has_error_marker(const std::string &tool_result_json) {
   return false;
 }
 
+[[nodiscard]] inline std::string
+raw_object_json(const std::map<std::string, std::string> &fields) {
+  std::ostringstream out;
+  out << "{";
+  bool first = true;
+  for (const auto &[key, raw] : fields) {
+    if (!first) {
+      out << ",";
+    }
+    first = false;
+    out << detail::json_quote(key) << ":" << raw;
+  }
+  out << "}";
+  return out.str();
+}
+
 [[nodiscard]] inline std::string lowercase_ascii(std::string_view value) {
   std::string out;
   out.reserve(value.size());
@@ -1810,8 +2489,47 @@ runtime_handoff_identity_from_arguments(const std::string &arguments_json) {
   runtime_handoff_identity_t out{};
   try {
     const auto fields = object_fields(arguments_json);
-    if (const auto raw = optional_raw(fields, "runtime_handoff")) {
-      const auto handoff = object_fields(*raw);
+    std::optional<std::string> handoff_raw =
+        optional_raw(fields, "runtime_handoff");
+    if (!handoff_raw.has_value()) {
+      const std::string args_path =
+          trim_ascii(optional_string(fields, "args_path"));
+      if (!args_path.empty()) {
+        std::ifstream run_request(args_path, std::ios::binary);
+        std::ostringstream run_request_text;
+        run_request_text << run_request.rdbuf();
+        std::istringstream lines{run_request_text.str()};
+        std::string line;
+        std::string handoff_path;
+        while (std::getline(lines, line)) {
+          line = trim_ascii(strip_assignment_comment(std::move(line)));
+          if (line.empty()) {
+            continue;
+          }
+          const auto eq = line.find('=');
+          if (eq == std::string::npos) {
+            continue;
+          }
+          std::string key = trim_ascii(line.substr(0, eq));
+          const auto domain = key.find_first_of("[:");
+          if (domain != std::string::npos) {
+            key = trim_ascii(key.substr(0, domain));
+          }
+          if (key == "runtime_handoff_path") {
+            handoff_path = trim_ascii(line.substr(eq + 1));
+            break;
+          }
+        }
+        if (!handoff_path.empty()) {
+          std::ifstream handoff_file(handoff_path, std::ios::binary);
+          std::ostringstream handoff_text;
+          handoff_text << handoff_file.rdbuf();
+          handoff_raw = handoff_text.str();
+        }
+      }
+    }
+    if (handoff_raw.has_value()) {
+      const auto handoff = object_fields(*handoff_raw);
       out.handoff_id = optional_string(handoff, "handoff_id");
       out.handoff_digest = optional_string(handoff, "handoff_digest");
       out.target_driver_run_id =
@@ -2118,7 +2836,7 @@ materialize_advice_from_lattice_plan_result(
     }
   }
   std::sort(out.required_plan_inputs.begin(), out.required_plan_inputs.end());
-  out.source_lattice_tool = "hero.lattice.evaluate";
+  out.source_lattice_tool = "hero.lattice.evaluate.deficit";
   out.source_lattice_timestamp = source_lattice_timestamp.empty()
                                      ? current_utc_timestamp()
                                      : source_lattice_timestamp;
@@ -2675,25 +3393,25 @@ append_optional_lattice_arg(std::ostringstream &out, bool *has_field,
                             const std::map<std::string, std::string> &args,
                             const std::string &key);
 
+inline void append_optional_lattice_request_field(
+    std::ostringstream &request, const std::map<std::string, std::string> &args,
+    const std::string &key);
+
+[[nodiscard]] inline std::string
+lattice_evaluate_request_arguments_json(const std::string &operation,
+                                        const std::string &request_text);
+
 [[nodiscard]] inline std::string
 lattice_latest_satisfying_checkpoint_arguments_json(
     const std::map<std::string, std::string> &args,
     const std::string &symbolic_hint) {
-  std::ostringstream out;
-  bool has_field = false;
-  out << "{";
-  out << "\"operation\":\"latest_satisfying_checkpoint\"";
-  has_field = true;
-  out << ",";
-  out << "\"symbolic_hint\":" << detail::json_quote(symbolic_hint);
-  for (const auto &key :
-       {"config_path", "runtime_root", "protocol_contract_fingerprint",
-        "graph_order_fingerprint", "source_cursor_token",
-        "vicreg_assembly_fingerprint", "mdn_assembly_fingerprint"}) {
-    append_optional_lattice_arg(out, &has_field, args, key);
+  std::ostringstream request;
+  request << "symbolic_hint=" << symbolic_hint << "\n";
+  for (const auto &key : {"config_path", "runtime_root"}) {
+    append_optional_lattice_request_field(request, args, key);
   }
-  out << "}";
-  return out.str();
+  return lattice_evaluate_request_arguments_json("latest_satisfying_checkpoint",
+                                                 request.str());
 }
 
 inline void refresh_advice_digests(marshal_dispatch_advice_t *advice,
@@ -2735,8 +3453,9 @@ materialize_plan_inputs(const std::map<std::string, std::string> &args,
         lattice_latest_satisfying_checkpoint_arguments_json(args, value);
     if (callback == nullptr) {
       row.status = "resolver_unavailable";
-    } else if (callback("hero.lattice.evaluate", resolver_args,
-                        &resolver_result, &resolver_error) &&
+    } else if (callback(
+                   "hero.lattice.evaluate.latest_satisfying_checkpoint.hint",
+                   resolver_args, &resolver_result, &resolver_error) &&
                !tool_result_has_error_marker(resolver_result)) {
       try {
         const auto structured = structured_content_json(resolver_result);
@@ -2881,26 +3600,19 @@ load_live_runtime_snapshots(const std::map<std::string, std::string> &args,
                             const marshal_dispatch_advice_t &advice,
                             marshal_runtime_policy_snapshot_t *policy,
                             marshal_runtime_wave_snapshot_t *wave) {
-  cuwacunu::hero::runtime::runtime_context_t ctx{};
-  ctx.global_config_path = std::filesystem::path(
+  const std::filesystem::path global_config_path(
       first_non_empty({optional_string(args, "config_path"), advice.config_path,
                        std::string{"/cuwacunu/src/config/.config"}}));
-  ctx.policy_path = cuwacunu::hero::runtime::resolve_runtime_hero_dsl_path(
-      ctx.global_config_path);
-  std::string error;
-  if (!cuwacunu::hero::runtime::load_runtime_policy(
-          ctx.policy_path, ctx.global_config_path, &ctx.policy, &error)) {
-    *policy = marshal_runtime_policy_snapshot_t{};
-    policy->runtime_hero_available = false;
-    *wave = marshal_runtime_wave_snapshot_t{};
-    return;
-  }
+  const std::filesystem::path runtime_policy_path =
+      cuwacunu::hero::marshal::detail::runtime_policy_path_from_global_config(
+          global_config_path);
 
   std::string status_result;
-  std::string status_error;
-  if (cuwacunu::hero::runtime::execute_tool_json(
-          "hero.runtime.status", "{}", &ctx, &status_result, &status_error) &&
-      status_result.find("\"isError\":true") == std::string::npos) {
+  const auto status_call = cuwacunu::hero::mcp_cli::call_runtime_tool(
+      global_config_path, runtime_policy_path, "hero.runtime.status", "{}");
+  status_result = status_call.result_json;
+  if (status_call.process_ok &&
+      !cuwacunu::hero::mcp_cli::tool_result_is_error(status_result)) {
     *policy = parse_runtime_status_policy_snapshot(status_result);
   } else {
     *policy = marshal_runtime_policy_snapshot_t{};
@@ -2908,15 +3620,17 @@ load_live_runtime_snapshots(const std::map<std::string, std::string> &args,
   }
 
   std::string wave_result;
-  std::string wave_error;
   const std::string wave_args =
-      "{\"subject\":\"wave\",\"config_path\":" +
+      "{\"config_path\":" +
       detail::json_quote(first_non_empty(
           {optional_string(args, "config_path"), advice.config_path})) +
       "}";
-  if (cuwacunu::hero::runtime::execute_tool_json(
-          "hero.runtime.inspect", wave_args, &ctx, &wave_result, &wave_error) &&
-      wave_result.find("\"isError\":true") == std::string::npos) {
+  const auto wave_call = cuwacunu::hero::mcp_cli::call_runtime_tool(
+      global_config_path, runtime_policy_path, "hero.runtime.inspect.wave",
+      wave_args);
+  wave_result = wave_call.result_json;
+  if (wave_call.process_ok &&
+      !cuwacunu::hero::mcp_cli::tool_result_is_error(wave_result)) {
     *wave = parse_runtime_wave_tool_result(wave_result);
   } else {
     *wave = marshal_runtime_wave_snapshot_t{};
@@ -3180,7 +3894,7 @@ operator_explanation(const std::string &bucket,
   if (bucket == "non_dispatchable_artifact_readiness") {
     return "This target is an artifact-readiness proof over Lattice facts, not "
            "a dispatchable Runtime wave. Marshal will not try to prepare it; "
-           "use hero.marshal.inspect.";
+           "use hero.marshal.inspect.target.";
   }
   if (bucket == "runtime_dry_run_refused") {
     return "The target packet passed Marshal preparation, but the explicit "
@@ -3228,40 +3942,76 @@ append_optional_lattice_arg(std::ostringstream &out, bool *has_field,
   *has_field = true;
 }
 
-[[nodiscard]] inline std::string lattice_target_deficit_arguments_json(
-    const std::map<std::string, std::string> &args) {
+inline void append_optional_lattice_request_field(
+    std::ostringstream &request, const std::map<std::string, std::string> &args,
+    const std::string &key) {
+  const auto value = optional_string(args, key);
+  if (!value.empty()) {
+    request << key << "=" << value << "\n";
+  }
+}
+
+[[nodiscard]] inline std::string
+lattice_evaluate_request_arguments_json(const std::string &operation,
+                                        const std::string &request_text) {
   std::ostringstream out;
-  bool has_field = false;
   out << "{";
-  out << "\"operation\":\"deficit\"";
-  has_field = true;
-  for (const auto &key :
-       {"target_id", "config_path", "runtime_root",
-        "protocol_contract_fingerprint", "graph_order_fingerprint",
-        "source_cursor_token", "vicreg_assembly_fingerprint",
-        "mdn_assembly_fingerprint"}) {
-    append_optional_lattice_arg(out, &has_field, args, key);
+  bool has_field = false;
+  std::istringstream input(request_text);
+  std::string line;
+  while (std::getline(input, line)) {
+    line = trim_ascii(strip_assignment_comment(std::move(line)));
+    if (line.empty()) {
+      continue;
+    }
+    const auto eq = line.find('=');
+    if (eq == std::string::npos) {
+      throw std::runtime_error("bad Lattice evaluate request line: " + line);
+    }
+    const std::string key = normalize_assignment_key(line.substr(0, eq));
+    const std::string value =
+        trim_ascii(std::string_view(line).substr(eq + 1U));
+    if (has_field) {
+      out << ",";
+    }
+    out << detail::json_quote(key) << ":";
+    if (operation == "targets" && key == "target_ids") {
+      out << "[";
+      const auto ids = split_assignment_string_list(value);
+      for (std::size_t i = 0; i < ids.size(); ++i) {
+        if (i != 0U) {
+          out << ",";
+        }
+        out << detail::json_quote(ids[i]);
+      }
+      out << "]";
+    } else if (key == "limit") {
+      out << value;
+    } else {
+      out << detail::json_quote(value);
+    }
+    has_field = true;
   }
   out << "}";
   return out.str();
 }
 
+[[nodiscard]] inline std::string lattice_target_deficit_arguments_json(
+    const std::map<std::string, std::string> &args) {
+  std::ostringstream request;
+  for (const auto &key : {"target_id", "config_path", "runtime_root"}) {
+    append_optional_lattice_request_field(request, args, key);
+  }
+  return lattice_evaluate_request_arguments_json("deficit", request.str());
+}
+
 [[nodiscard]] inline std::string lattice_evaluate_target_arguments_json(
     const std::map<std::string, std::string> &args) {
-  std::ostringstream out;
-  bool has_field = false;
-  out << "{";
-  out << "\"operation\":\"target\"";
-  has_field = true;
-  for (const auto &key :
-       {"target_id", "config_path", "runtime_root",
-        "protocol_contract_fingerprint", "graph_order_fingerprint",
-        "source_cursor_token", "vicreg_assembly_fingerprint",
-        "mdn_assembly_fingerprint"}) {
-    append_optional_lattice_arg(out, &has_field, args, key);
+  std::ostringstream request;
+  for (const auto &key : {"target_id", "config_path", "runtime_root"}) {
+    append_optional_lattice_request_field(request, args, key);
   }
-  out << "}";
-  return out.str();
+  return lattice_evaluate_request_arguments_json("target", request.str());
 }
 
 inline void append_unique_string(std::vector<std::string> *values,
@@ -3727,38 +4477,34 @@ inline void collect_artifact_boundary_flag(
 [[nodiscard]] inline std::string lattice_fact_panel_arguments_json(
     const std::map<std::string, std::string> &args, bool scan_facts) {
   std::ostringstream out;
-  bool has_field = false;
   out << "{";
-  out << "\"subject\":\"facts\",\"mode\":"
-      << detail::json_quote(scan_facts ? "scan" : "summary");
-  has_field = true;
-  for (const auto &key : {"runtime_root"}) {
-    append_optional_lattice_arg(out, &has_field, args, key);
+  bool has_any = false;
+  const std::string runtime_root = optional_string(args, "runtime_root");
+  if (!runtime_root.empty()) {
+    out << "\"runtime_root\":" << detail::json_quote(runtime_root);
+    has_any = true;
   }
   const std::string family = optional_string(args, "fact_family_id");
   if (!family.empty()) {
-    if (has_field) {
+    if (has_any) {
       out << ",";
     }
     out << "\"family\":" << detail::json_quote(family);
-    has_field = true;
+    has_any = true;
   }
   if (scan_facts) {
     if (const auto raw_limit = optional_raw(args, "limit")) {
-      (void)raw_limit;
-      if (has_field) {
+      if (has_any) {
         out << ",";
       }
-      out << "\"limit\":" << optional_i64(args, "limit", 64);
-      has_field = true;
+      out << "\"limit\":" << *raw_limit;
+      has_any = true;
     }
-    const auto include_facts =
-        optional_bool(args, "include_facts", true) ? "true" : "false";
-    if (has_field) {
+    if (has_any) {
       out << ",";
     }
-    out << "\"include_facts\":" << include_facts;
-    has_field = true;
+    out << "\"include_facts\":"
+        << (optional_bool(args, "include_facts", true) ? "true" : "false");
   }
   out << "}";
   return out.str();
@@ -3767,28 +4513,26 @@ inline void collect_artifact_boundary_flag(
 [[nodiscard]] inline std::string lattice_fact_lineage_arguments_json(
     const std::map<std::string, std::string> &args) {
   std::ostringstream out;
-  bool has_field = false;
   out << "{";
-  out << "\"subject\":\"facts\",\"mode\":\"lineage\"";
-  has_field = true;
-  for (const auto &key : {"runtime_root"}) {
-    append_optional_lattice_arg(out, &has_field, args, key);
+  bool has_any = false;
+  const std::string runtime_root = optional_string(args, "runtime_root");
+  if (!runtime_root.empty()) {
+    out << "\"runtime_root\":" << detail::json_quote(runtime_root);
+    has_any = true;
   }
   const std::string family = optional_string(args, "fact_family_id");
   if (!family.empty()) {
-    if (has_field) {
+    if (has_any) {
       out << ",";
     }
     out << "\"family\":" << detail::json_quote(family);
-    has_field = true;
+    has_any = true;
   }
   if (const auto raw_limit = optional_raw(args, "limit")) {
-    (void)raw_limit;
-    if (has_field) {
+    if (has_any) {
       out << ",";
     }
-    out << "\"limit\":" << optional_i64(args, "limit", 64);
-    has_field = true;
+    out << "\"limit\":" << *raw_limit;
   }
   out << "}";
   return out.str();
@@ -3797,37 +4541,44 @@ inline void collect_artifact_boundary_flag(
 [[nodiscard]] inline std::string lattice_fact_preview_arguments_json(
     const std::map<std::string, std::string> &args) {
   std::ostringstream out;
-  bool has_field = false;
   out << "{";
-  out << "\"subject\":\"facts\",\"mode\":\"preview\"";
-  has_field = true;
-  for (const auto &key : {"runtime_root"}) {
-    append_optional_lattice_arg(out, &has_field, args, key);
+  bool has_any = false;
+  const std::string runtime_root = optional_string(args, "runtime_root");
+  if (!runtime_root.empty()) {
+    out << "\"runtime_root\":" << detail::json_quote(runtime_root);
+    has_any = true;
   }
   const std::string family = optional_string(args, "fact_family_id");
   if (!family.empty()) {
-    if (has_field) {
+    if (has_any) {
       out << ",";
     }
     out << "\"family\":" << detail::json_quote(family);
-    has_field = true;
+    has_any = true;
   }
-  append_optional_lattice_arg(out, &has_field, args, "fact_digest");
+  const std::string digest = optional_string(args, "fact_digest");
+  if (!digest.empty()) {
+    if (has_any) {
+      out << ",";
+    }
+    out << "\"fact_digest\":" << detail::json_quote(digest);
+    has_any = true;
+  }
   const std::string digest_prefix = optional_string(args, "fact_digest_prefix");
   if (!digest_prefix.empty()) {
-    if (has_field) {
+    if (has_any) {
       out << ",";
     }
     out << "\"fact_digest_prefix\":" << detail::json_quote(digest_prefix);
-    has_field = true;
+    has_any = true;
   }
   for (const auto &key : {"fact_index", "limit"}) {
     if (const auto raw = optional_raw(args, key)) {
-      if (has_field) {
+      if (has_any) {
         out << ",";
       }
       out << detail::json_quote(key) << ":" << *raw;
-      has_field = true;
+      has_any = true;
     }
   }
   out << "}";
@@ -3839,21 +4590,18 @@ inline void collect_artifact_boundary_flag(
     const std::vector<std::string> &target_ids,
     const std::filesystem::path &runtime_root,
     const std::filesystem::path &config_path) {
-  std::ostringstream out;
-  out << "{\"operation\":\"targets\",\"target_ids\":"
-      << string_array_json(target_ids)
-      << ",\"runtime_root\":" << detail::json_quote(runtime_root.string())
-      << ",\"config_path\":" << detail::json_quote(config_path.string());
-  bool has_field = true;
-  (void)has_field;
-  for (const auto &key :
-       {"protocol_contract_fingerprint", "graph_order_fingerprint",
-        "source_cursor_token", "vicreg_assembly_fingerprint",
-        "mdn_assembly_fingerprint"}) {
-    append_optional_lattice_arg(out, &has_field, args, key);
+  std::ostringstream request;
+  request << "target_ids=";
+  for (std::size_t i = 0; i < target_ids.size(); ++i) {
+    if (i != 0U) {
+      request << ",";
+    }
+    request << target_ids[i];
   }
-  out << "}";
-  return out.str();
+  request << "\n";
+  request << "runtime_root=" << runtime_root.string() << "\n";
+  request << "config_path=" << config_path.string() << "\n";
+  return lattice_evaluate_request_arguments_json("targets", request.str());
 }
 
 inline void append_unique_text(std::vector<std::string> *out,
@@ -4103,8 +4851,8 @@ struct prepare_target_step_result_t {
 
   std::string lattice_error;
   const std::string lattice_args = lattice_target_deficit_arguments_json(args);
-  if (!callback("hero.lattice.evaluate", lattice_args, &step.lattice_result,
-                &lattice_error)) {
+  if (!callback("hero.lattice.evaluate.deficit", lattice_args,
+                &step.lattice_result, &lattice_error)) {
     throw std::runtime_error("Lattice Hero target_deficit failed: " +
                              lattice_error);
   }
@@ -4409,7 +5157,7 @@ prepare_target_lattice_panel_json(const prepare_target_step_result_t &step) {
       summarize_lattice_policy_gate_reservations_from_tool_result(
           step.lattice_result);
   std::ostringstream out;
-  out << "{\"source_tool\":\"hero.lattice.evaluate\""
+  out << "{\"source_tool\":\"hero.lattice.evaluate.deficit\""
       << ",\"source_operation\":\"deficit\""
       << ",\"target_id\":" << detail::json_quote(step.advice.target_id)
       << ",\"target_status\":" << detail::json_quote(step.advice.target_status)
@@ -4425,8 +5173,8 @@ prepare_target_lattice_panel_json(const prepare_target_step_result_t &step) {
       << (step.decision.advice_validation.dispatchable ? "true" : "false")
       << ",\"dispatch_validation_applied\":"
       << (step.artifact_readiness_target ? "false" : "true")
-      << ",\"inspect_tool\":" << detail::json_quote("hero.marshal.inspect")
-      << ",\"plan_ready\":"
+      << ",\"inspect_tool\":"
+      << detail::json_quote("hero.marshal.inspect.target") << ",\"plan_ready\":"
       << (step.advice.plan_basis.available ? "true" : "false")
       << ",\"primary_deficit_key\":"
       << detail::json_quote(step.advice.plan_basis.primary_deficit_key)
@@ -4474,15 +5222,20 @@ prepare_target_audit_panel_json(const prepare_target_step_result_t &step,
 
 [[nodiscard]] inline std::string prepare_target_operator_packet_json(
     const prepare_target_step_result_t &step,
-    const marshal_target_driver_ledger_t *ledger = nullptr) {
+    const marshal_target_driver_ledger_t *ledger = nullptr,
+    const prepare_request_file_t *prepare_request_file = nullptr,
+    std::string_view tool_name = "hero.marshal.prepare.train.one_step") {
   std::ostringstream structured;
+  structured << "{\"ok\":true"
+             << ",\"tool\":" << detail::json_quote(std::string(tool_name))
+             << marshal_operator_envelope_supplement_json(
+                    "kikijyeba.marshal.prepare.v2.5b", {step.next_action})
+             << "," << marshal_prepare_non_proof_contract_json()
+             << ",\"target_id\":" << detail::json_quote(step.advice.target_id);
+  if (prepare_request_file != nullptr) {
+    structured << prepare_request_file_json_fields(*prepare_request_file);
+  }
   structured
-      << "{\"ok\":true"
-      << ",\"tool\":" << detail::json_quote("hero.marshal.prepare")
-      << marshal_operator_envelope_supplement_json(
-             "kikijyeba.marshal.prepare.v2.5b", {step.next_action})
-      << "," << marshal_prepare_non_proof_contract_json()
-      << ",\"target_id\":" << detail::json_quote(step.advice.target_id)
       << ",\"target_status\":" << detail::json_quote(step.advice.target_status)
       << ",\"target_class\":" << detail::json_quote(step.target_class)
       << ",\"kind\":" << detail::json_quote(step.kind)
@@ -4513,17 +5266,23 @@ prepare_target_audit_panel_json(const prepare_target_step_result_t &step,
                                  step.model_state_inputs)
       << ",\"next_command\":{\"tool\":"
       << detail::json_quote(step.artifact_readiness_target
-                                ? "hero.marshal.inspect"
-                                : "hero.marshal.prepare")
-      << ",\"args\":{\"target_id\":"
-      << detail::json_quote(step.advice.target_id);
+                                ? "hero.marshal.inspect.target"
+                                : std::string(tool_name))
+      << ",\"args\":{";
   if (step.artifact_readiness_target) {
-    structured << ",\"include_machine_payload\":false}}";
+    structured << "\"target_id\":" << detail::json_quote(step.advice.target_id)
+               << "}}";
   } else {
-    structured << ",\"requested_mode\":\"dry_run\""
-               << ",\"include_runtime_dry_run\":"
-               << (step.next_action == "dry_run" ? "true" : "false")
-               << ",\"materialize_plan_inputs\":true}}";
+    structured << "\"target_id\":" << detail::json_quote(step.advice.target_id)
+               << ",\"mode\":\"dry_run\"";
+    if (prepare_request_file != nullptr &&
+        !prepare_request_file->path.empty()) {
+      structured << ",\"args_path\":"
+                 << detail::json_quote(prepare_request_file->path.string())
+                 << ",\"args_digest\":"
+                 << detail::json_quote(prepare_request_file->digest);
+    }
+    structured << "}}";
   }
   structured << ",\"audit\":{\"receipt_id\":"
              << detail::json_quote(step.prepare_digest)
@@ -4548,7 +5307,7 @@ prepare_target_audit_panel_json(const prepare_target_step_result_t &step,
   }
   if (step.include_machine_payload) {
     structured << ",\"machine_payload\":{\"source_lattice_tool\":"
-               << detail::json_quote("hero.lattice.evaluate")
+               << detail::json_quote("hero.lattice.evaluate.deficit")
                << ",\"lattice_plan_result\":"
                << detail::json_quote(step.lattice_result)
                << ",\"original_advice\":" << advice_json(step.original_advice)
@@ -4595,7 +5354,7 @@ prepare_target_audit_panel_json(const prepare_target_step_result_t &step,
   const std::string lattice_args = lattice_evaluate_target_arguments_json(args);
   std::string lattice_result;
   std::string lattice_error;
-  if (!callback("hero.lattice.evaluate", lattice_args, &lattice_result,
+  if (!callback("hero.lattice.evaluate.target", lattice_args, &lattice_result,
                 &lattice_error)) {
     throw std::runtime_error("Lattice Hero evaluate_target failed: " +
                              lattice_error);
@@ -4645,7 +5404,7 @@ prepare_target_audit_panel_json(const prepare_target_step_result_t &step,
   }
 
   std::ostringstream out;
-  out << "{\"source_tool\":\"hero.lattice.evaluate\""
+  out << "{\"source_tool\":\"hero.lattice.evaluate.target\""
       << ",\"source_operation\":\"target\""
       << ",\"target_id\":" << detail::json_quote(target_id)
       << ",\"status\":" << detail::json_quote(status)
@@ -4830,8 +5589,8 @@ summarize_fact_lineage_panel_json(const std::string &lattice_result,
   const auto fact_integrity_summary =
       optional_non_null_raw(fields, "fact_integrity_summary");
   std::ostringstream out;
-  out << "{\"source_tool\":\"hero.lattice.inspect\""
-      << ",\"source_subject\":\"facts\",\"source_mode\":\"lineage\""
+  out << "{\"source_tool\":\"hero.lattice.inspect.facts.lineage\""
+      << ",\"source_subject\":\"facts\",\"source_view\":\"lineage\""
       << ",\"schema\":" << detail::json_quote(optional_string(fields, "schema"))
       << ",\"read_only\":" << lineage_bool_json(fields, "read_only", true)
       << ",\"target_proof\":"
@@ -4872,8 +5631,7 @@ summarize_fact_lineage_panel_json(const std::string &lattice_result,
       << ",\"lineage_row_set_digest_requires_machine_payload\":true"
       << ",\"lineage_rows_included\":false"
       << ",\"machine_payload_included\":"
-      << (include_machine_payload ? "true" : "false")
-      << ",\"relation_counts\":"
+      << (include_machine_payload ? "true" : "false") << ",\"relation_counts\":"
       << lineage_array_or_empty(fields, "relation_counts")
       << ",\"fact_integrity_summary\":"
       << (fact_integrity_summary.has_value() ? *fact_integrity_summary : "null")
@@ -4901,7 +5659,8 @@ fact_preview_row_refs(const std::map<std::string, std::string> &fields) {
 }
 
 [[nodiscard]] inline std::string
-summarize_fact_preview_panel_json(const std::string &lattice_result,
+summarize_fact_preview_panel_json(const std::string &source_tool,
+                                  const std::string &lattice_result,
                                   bool include_machine_payload) {
   const auto structured = structured_content_json(lattice_result);
   const auto fields = object_fields(structured);
@@ -4909,8 +5668,8 @@ summarize_fact_preview_panel_json(const std::string &lattice_result,
       optional_non_null_raw(fields, "fact_integrity_summary");
   const auto preview_fact_refs = fact_preview_row_refs(fields);
   std::ostringstream out;
-  out << "{\"source_tool\":\"hero.lattice.inspect\""
-      << ",\"source_subject\":\"facts\",\"source_mode\":\"preview\""
+  out << "{\"source_tool\":" << detail::json_quote(source_tool)
+      << ",\"source_subject\":\"facts\",\"source_view\":\"preview\""
       << ",\"schema\":" << detail::json_quote(optional_string(fields, "schema"))
       << ",\"family\":" << detail::json_quote(optional_string(fields, "family"))
       << ",\"relation\":"
@@ -4964,8 +5723,7 @@ summarize_fact_preview_panel_json(const std::string &lattice_result,
       << ",\"lineage_rows_included\":false"
       << ",\"facts_included\":false"
       << ",\"machine_payload_included\":"
-      << (include_machine_payload ? "true" : "false")
-      << ",\"relation_counts\":"
+      << (include_machine_payload ? "true" : "false") << ",\"relation_counts\":"
       << lineage_array_or_empty(fields, "relation_counts")
       << ",\"preview_fact_refs\":" << string_array_json(preview_fact_refs)
       << ",\"fact_rows_require_machine_payload\":true"
@@ -4995,8 +5753,9 @@ summarize_fact_preview_panel_json(const std::string &lattice_result,
   if (include_preview && family.empty()) {
     throw std::runtime_error("fact preview requires fact_family_id");
   }
-  const std::string lattice_tool =
-      include_facts ? "hero.lattice.inspect" : "hero.lattice.inspect";
+  const std::string lattice_tool = include_facts
+                                       ? "hero.lattice.inspect.facts.scan"
+                                       : "hero.lattice.inspect.facts.summary";
   const std::string lattice_args =
       lattice_fact_panel_arguments_json(args, include_facts);
   std::string lattice_result;
@@ -5023,7 +5782,7 @@ summarize_fact_preview_panel_json(const std::string &lattice_result,
     const std::string lineage_lattice_args =
         lattice_fact_lineage_arguments_json(args);
     std::string lineage_lattice_result;
-    if (!callback("hero.lattice.inspect", lineage_lattice_args,
+    if (!callback("hero.lattice.inspect.facts.lineage", lineage_lattice_args,
                   &lineage_lattice_result, &lattice_error)) {
       throw std::runtime_error("Lattice Hero fact lineage panel failed: " +
                                lattice_error);
@@ -5046,8 +5805,17 @@ summarize_fact_preview_panel_json(const std::string &lattice_result,
   if (include_preview) {
     const std::string preview_lattice_args =
         lattice_fact_preview_arguments_json(args);
+    std::string preview_lattice_tool = "hero.lattice.inspect.facts.preview";
+    if (!optional_string(args, "fact_digest").empty()) {
+      preview_lattice_tool = "hero.lattice.inspect.facts.preview.by_digest";
+    } else if (!optional_string(args, "fact_digest_prefix").empty()) {
+      preview_lattice_tool =
+          "hero.lattice.inspect.facts.preview.by_digest_prefix";
+    } else if (args.find("fact_index") != args.end()) {
+      preview_lattice_tool = "hero.lattice.inspect.facts.preview.by_index";
+    }
     std::string preview_lattice_result;
-    if (!callback("hero.lattice.inspect", preview_lattice_args,
+    if (!callback(preview_lattice_tool, preview_lattice_args,
                   &preview_lattice_result, &lattice_error)) {
       throw std::runtime_error("Lattice Hero fact preview panel failed: " +
                                lattice_error);
@@ -5062,8 +5830,8 @@ summarize_fact_preview_panel_json(const std::string &lattice_result,
     if (preview_lattice_result_out != nullptr) {
       *preview_lattice_result_out = preview_lattice_result;
     }
-    preview_panel = summarize_fact_preview_panel_json(preview_lattice_result,
-                                                      include_machine_payload);
+    preview_panel = summarize_fact_preview_panel_json(
+        preview_lattice_tool, preview_lattice_result, include_machine_payload);
   }
 
   const auto structured = structured_content_json(lattice_result);
@@ -5132,13 +5900,17 @@ summarize_fact_preview_panel_json(const std::string &lattice_result,
   return out.str();
 }
 
+[[nodiscard]] inline std::string marshal_inspect_result_tool(
+    const std::map<std::string, std::string> &args,
+    std::string_view fallback = "hero.marshal.inspect.run.latest_chain");
+
 [[nodiscard]] inline std::string
 inspect_facts_subject_json(const std::map<std::string, std::string> &args,
                            marshal_lattice_tool_callback_t callback,
                            bool include_machine_payload) {
   if (callback == nullptr) {
     throw std::runtime_error(
-        "Marshal inspect subject=facts requires a Lattice Hero callback");
+        "hero.marshal.inspect.facts.* requires a Lattice Hero callback");
   }
   const std::string target_id = optional_string(args, "target_id");
   const std::string family = optional_string(args, "fact_family_id");
@@ -5159,13 +5931,13 @@ inspect_facts_subject_json(const std::map<std::string, std::string> &args,
   const std::string target_panel = inspect_target_evidence_panel_json(
       args, callback, &target_lattice_args, &target_lattice_result);
   const std::string fact_panel =
-      include_fact_panel ? inspect_fact_evidence_panel_json(
-                               args, callback, &fact_lattice_tool,
-                               &fact_lattice_args, &fact_lattice_result,
-                               &lineage_lattice_args, &lineage_lattice_result,
-                               &preview_lattice_args, &preview_lattice_result,
-                               include_machine_payload)
-                         : "null";
+      include_fact_panel
+          ? inspect_fact_evidence_panel_json(
+                args, callback, &fact_lattice_tool, &fact_lattice_args,
+                &fact_lattice_result, &lineage_lattice_args,
+                &lineage_lattice_result, &preview_lattice_args,
+                &preview_lattice_result, include_machine_payload)
+          : "null";
 
   std::string headline = "Lattice facts inspection is ready.";
   if (!target_id.empty() && !family.empty()) {
@@ -5179,7 +5951,7 @@ inspect_facts_subject_json(const std::map<std::string, std::string> &args,
   std::ostringstream out;
   out << "{\"ok\":true"
       << ",\"schema\":\"kikijyeba.marshal.evidence_panel.v1\""
-      << ",\"tool\":" << detail::json_quote("hero.marshal.inspect")
+      << ",\"tool\":" << detail::json_quote(marshal_inspect_result_tool(args))
       << marshal_operator_envelope_fields_json(
              "kikijyeba.marshal.inspect.v2.5a", "read_only", {"inspect"})
       << ",\"target_id\":" << detail::json_quote(target_id)
@@ -5223,6 +5995,24 @@ make_tool_result(const std::string &tool_name, const std::string &structured) {
   return "{\"content\":[{\"type\":\"text\",\"text\":" +
          detail::json_quote(tool_name + " executed") +
          "}],\"structuredContent\":" + structured + ",\"isError\":false}";
+}
+
+[[nodiscard]] inline std::string
+marshal_inspect_result_tool(const std::map<std::string, std::string> &args,
+                            std::string_view fallback) {
+  std::string default_tool(fallback);
+  const std::string subject = optional_string(args, "subject");
+  if (subject == "run") {
+    const std::string mode = optional_string(args, "mode", "latest_chain");
+    default_tool = "hero.marshal.inspect.run." + mode;
+  } else if (subject == "facts") {
+    const std::string mode = optional_string(args, "mode", "summary");
+    default_tool = "hero.marshal.inspect.facts." + mode;
+  } else if (subject == "target" || subject == "protocol" ||
+             subject == "spawn" || subject == "component") {
+    default_tool = "hero.marshal.inspect." + subject;
+  }
+  return optional_string(args, "_tool_name", default_tool);
 }
 
 [[nodiscard]] inline std::string make_error_result(const std::string &message) {
@@ -5371,7 +6161,7 @@ inspect_protocol_subject_json(const std::map<std::string, std::string> &args,
   const auto identity_mode = optional_string(args, "identity_mode", "report");
   if (identity_mode != "report" && identity_mode != "strict") {
     throw std::runtime_error(
-        "hero.marshal.inspect subject=protocol identity_mode must be "
+        "hero.marshal.inspect.protocol.* identity_mode must be "
         "report or strict");
   }
   const bool strict_identity = identity_mode == "strict";
@@ -5393,10 +6183,9 @@ inspect_protocol_subject_json(const std::map<std::string, std::string> &args,
         }
         missing << missing_expected[idx];
       }
-      throw std::runtime_error(
-          "hero.marshal.inspect subject=protocol identity_mode=strict "
-          "requires expected identity fields: " +
-          missing.str());
+      throw std::runtime_error("hero.marshal.inspect.protocol.strict "
+                               "requires expected identity fields: " +
+                               missing.str());
     }
   }
   const auto jobs = discover_all_inspect_jobs(args);
@@ -5449,7 +6238,8 @@ inspect_protocol_subject_json(const std::map<std::string, std::string> &args,
            << "}";
 
   std::ostringstream out;
-  out << "{\"ok\":true,\"tool\":" << detail::json_quote("hero.marshal.inspect")
+  out << "{\"ok\":true,\"tool\":"
+      << detail::json_quote(marshal_inspect_result_tool(args))
       << ",\"subject\":\"protocol\""
       << marshal_operator_envelope_fields_json(
              "kikijyeba.marshal.inspect.v2.5a", "read_only",
@@ -5508,8 +6298,7 @@ inspect_protocol_subject_json(const std::map<std::string, std::string> &args,
 job_matches_spawn_query(const operational_report_detail::job_summary_t &job,
                         const std::map<std::string, std::string> &args) {
   const std::string requested_spawn =
-      first_non_empty({optional_string(args, "spawn_id"),
-                       optional_string(args, "component_spawn_id")});
+      optional_string(args, "component_spawn_id");
   if (!requested_spawn.empty() &&
       job_first_value(job, {"component_spawn_id"}) != requested_spawn) {
     return false;
@@ -5539,13 +6328,23 @@ job_matches_component_query(const operational_report_detail::job_summary_t &job,
 inspect_spawn_subject_json(const std::map<std::string, std::string> &args,
                            bool include_machine_payload) {
   const std::string requested_spawn =
-      first_non_empty({optional_string(args, "spawn_id"),
-                       optional_string(args, "component_spawn_id")});
-  if (requested_spawn.empty() &&
-      optional_string(args, "component_spawn_fingerprint").empty()) {
+      optional_string(args, "component_spawn_id");
+  const std::string requested_registry =
+      optional_string(args, "component_spawn_registry_id");
+  const std::string requested_label =
+      optional_string(args, "component_spawn_label");
+  const std::string requested_fingerprint =
+      optional_string(args, "component_spawn_fingerprint");
+  const std::string requested_job_id = optional_string(args, "job_id");
+  const bool requested_job_ids =
+      !optional_string_array(args, "job_ids").empty();
+  if (requested_spawn.empty() && requested_registry.empty() &&
+      requested_label.empty() && requested_fingerprint.empty() &&
+      requested_job_id.empty() && !requested_job_ids) {
     throw std::runtime_error(
-        "hero.marshal.inspect subject=spawn requires spawn_id, "
-        "component_spawn_id, or component_spawn_fingerprint");
+        "hero.marshal.inspect.spawn.* requires component_spawn_id, "
+        "component_spawn_registry_id, component_spawn_label, "
+        "component_spawn_fingerprint, or job_id");
   }
   const auto all_jobs = discover_all_inspect_jobs(args);
   std::vector<operational_report_detail::job_summary_t> jobs;
@@ -5556,7 +6355,8 @@ inspect_spawn_subject_json(const std::map<std::string, std::string> &args,
   }
   const bool found = !jobs.empty();
   std::ostringstream out;
-  out << "{\"ok\":true,\"tool\":" << detail::json_quote("hero.marshal.inspect")
+  out << "{\"ok\":true,\"tool\":"
+      << detail::json_quote(marshal_inspect_result_tool(args))
       << ",\"subject\":\"spawn\""
       << marshal_operator_envelope_fields_json(
              "kikijyeba.marshal.inspect.v2.5a", "read_only",
@@ -5584,11 +6384,14 @@ inspect_spawn_subject_json(const std::map<std::string, std::string> &args,
       << detail::json_quote(found ? "inspect_spawn_runtime_evidence"
                                   : "inspect_spawn_identity_or_runtime_root")
       << "}"
-      << ",\"spawn_panel\":{\"query\":{\"spawn_id\":"
+      << ",\"spawn_panel\":{\"query\":{\"component_spawn_id\":"
       << detail::json_quote(requested_spawn)
+      << ",\"job_id\":" << detail::json_quote(requested_job_id)
+      << ",\"component_spawn_registry_id\":"
+      << detail::json_quote(requested_registry)
+      << ",\"component_spawn_label\":" << detail::json_quote(requested_label)
       << ",\"component_spawn_fingerprint\":"
-      << detail::json_quote(
-             optional_string(args, "component_spawn_fingerprint"))
+      << detail::json_quote(requested_fingerprint)
       << "},\"match_count\":" << jobs.size()
       << ",\"query_match_count\":" << jobs.size()
       << ",\"evidence_scope\":\"runtime_jobs_only\""
@@ -5600,6 +6403,9 @@ inspect_spawn_subject_json(const std::map<std::string, std::string> &args,
       << ",\"spawn_fingerprints\":"
       << string_array_json(
              unique_job_values(jobs, {"component_spawn_fingerprint"}))
+      << ",\"component_operator_surface_digests\":"
+      << string_array_json(
+             unique_job_values(jobs, {"component_operator_surface_digest"}))
       << ",\"jobs\":" << operational_report_detail::chain_summary_json(jobs)
       << "}"
       << ",\"runtime_panel\":"
@@ -5622,7 +6428,7 @@ inspect_component_subject_json(const std::map<std::string, std::string> &args,
   const std::string component_family_id =
       optional_string(args, "component_family_id");
   if (component_family_id.empty()) {
-    throw std::runtime_error("hero.marshal.inspect subject=component requires "
+    throw std::runtime_error("hero.marshal.inspect.component requires "
                              "component_family_id");
   }
   const auto all_jobs = discover_all_inspect_jobs(args);
@@ -5634,7 +6440,8 @@ inspect_component_subject_json(const std::map<std::string, std::string> &args,
   }
   const bool found = !jobs.empty();
   std::ostringstream out;
-  out << "{\"ok\":true,\"tool\":" << detail::json_quote("hero.marshal.inspect")
+  out << "{\"ok\":true,\"tool\":"
+      << detail::json_quote(marshal_inspect_result_tool(args))
       << ",\"subject\":\"component\""
       << marshal_operator_envelope_fields_json(
              "kikijyeba.marshal.inspect.v2.5a", "read_only",
@@ -5675,6 +6482,9 @@ inspect_component_subject_json(const std::map<std::string, std::string> &args,
       << ",\"spawn_fingerprints\":"
       << string_array_json(
              unique_job_values(jobs, {"component_spawn_fingerprint"}))
+      << ",\"component_operator_surface_digests\":"
+      << string_array_json(
+             unique_job_values(jobs, {"component_operator_surface_digest"}))
       << ",\"wave_actions\":"
       << string_array_json(unique_job_values(jobs, {"wave_action"}))
       << ",\"jobs\":" << operational_report_detail::chain_summary_json(jobs)
@@ -5700,22 +6510,21 @@ inspect_target_subject_json(const std::map<std::string, std::string> &args,
                             bool include_machine_payload) {
   const auto target_id = optional_string(args, "target_id");
   if (target_id.empty()) {
-    throw std::runtime_error(
-        "hero.marshal.inspect subject=target requires target_id");
+    throw std::runtime_error("hero.marshal.inspect.target requires target_id");
   }
   if (callback == nullptr) {
     throw std::runtime_error(
-        "hero.marshal.inspect subject=target requires a Lattice Hero "
+        "hero.marshal.inspect.target requires a Lattice Hero "
         "callback");
   }
   const auto lattice_args = lattice_target_deficit_arguments_json(args);
   std::string lattice_result;
   std::string lattice_error;
-  if (!callback("hero.lattice.evaluate", lattice_args, &lattice_result,
+  if (!callback("hero.lattice.evaluate.deficit", lattice_args, &lattice_result,
                 &lattice_error) ||
       tool_result_has_error_marker(lattice_result)) {
     throw std::runtime_error(lattice_error.empty()
-                                 ? "hero.lattice.evaluate operation=deficit "
+                                 ? "hero.lattice.evaluate.deficit "
                                    "failed"
                                  : lattice_error);
   }
@@ -5787,7 +6596,8 @@ inspect_target_subject_json(const std::map<std::string, std::string> &args,
                                        : "inspect_lattice_status")
           : (plan_ready ? "prepare" : "ask_lattice_to_recheck_target");
   std::ostringstream out;
-  out << "{\"ok\":true,\"tool\":" << detail::json_quote("hero.marshal.inspect")
+  out << "{\"ok\":true,\"tool\":"
+      << detail::json_quote(marshal_inspect_result_tool(args))
       << ",\"subject\":\"target\""
       << marshal_operator_envelope_fields_json(
              "kikijyeba.marshal.inspect.v2.5a", "read_only", {next_action})
@@ -5811,7 +6621,7 @@ inspect_target_subject_json(const std::map<std::string, std::string> &args,
       << ",\"proof_kind\":" << detail::json_quote(proof_kind)
       << ",\"subject_fact_family\":" << detail::json_quote(subject_fact_family)
       << ",\"target_status_source\":"
-      << detail::json_quote("hero.lattice.evaluate")
+      << detail::json_quote("hero.lattice.evaluate.deficit")
       << ",\"proof_authority\":\"lattice\""
       << ",\"certificate_status\":" << detail::json_quote(certificate_status)
       << ",\"next_safe_action\":" << detail::json_quote(next_action)
@@ -5844,10 +6654,10 @@ inspect_target_subject_json(const std::map<std::string, std::string> &args,
       << detail::json_quote(target_kind_effective)
       << ",\"proof_kind\":" << detail::json_quote(proof_kind)
       << ",\"subject_fact_family\":" << detail::json_quote(subject_fact_family)
-      << ",\"source\":\"hero.lattice.evaluate\""
+      << ",\"source\":\"hero.lattice.evaluate.deficit\""
       << ",\"source_operation\":\"deficit\""
       << ",\"target_status_source\":"
-      << detail::json_quote("hero.lattice.evaluate")
+      << detail::json_quote("hero.lattice.evaluate.deficit")
       << ",\"proof_authority\":\"lattice\""
       << ",\"certificate_status\":" << detail::json_quote(certificate_status)
       << ",\"certificate_ref\":" << detail::json_quote(certificate_ref)
@@ -5866,7 +6676,7 @@ inspect_target_subject_json(const std::map<std::string, std::string> &args,
       << ",\"deployment_decision\":false";
   append_policy_gate_reservation_panel_json(out, policy_gate_panel);
   out << ",\"target_satisfaction_claimed_by_marshal\":false}"
-      << ",\"lattice_panel\":{\"source\":\"hero.lattice.evaluate\""
+      << ",\"lattice_panel\":{\"source\":\"hero.lattice.evaluate.deficit\""
       << ",\"source_operation\":\"deficit\""
       << ",\"target_id\":" << detail::json_quote(target_id)
       << ",\"status\":" << detail::json_quote(status)
@@ -5879,7 +6689,7 @@ inspect_target_subject_json(const std::map<std::string, std::string> &args,
       << ",\"proof_kind\":" << detail::json_quote(proof_kind)
       << ",\"subject_fact_family\":" << detail::json_quote(subject_fact_family)
       << ",\"target_status_source\":"
-      << detail::json_quote("hero.lattice.evaluate")
+      << detail::json_quote("hero.lattice.evaluate.deficit")
       << ",\"proof_authority\":\"lattice\""
       << ",\"certificate_status\":" << detail::json_quote(certificate_status)
       << ",\"certificate_ref\":" << detail::json_quote(certificate_ref)
@@ -5920,97 +6730,184 @@ inspect_target_subject_json(const std::map<std::string, std::string> &args,
     auto args = tool_detail::object_fields(arguments_json);
     std::ostringstream structured;
 
-    if (tool_name == "hero.marshal.inspect") {
-      tool_detail::validate_fields(args,
-                                   {"subject",
-                                    "mode",
-                                    "identity_mode",
-                                    "runtime_root",
-                                    "config_path",
-                                    "target_id",
-                                    "job_id",
-                                    "job_ids",
-                                    "target_ids",
-                                    "baseline_job_id",
-                                    "candidate_job_id",
-                                    "component_family_id",
-                                    "spawn_id",
-                                    "component_spawn_id",
-                                    "component_spawn_registry_id",
-                                    "component_spawn_label",
-                                    "component_spawn_fingerprint",
-                                    "fact_family_id",
-                                    "limit",
-                                    "include_facts",
-                                    "include_lineage",
-                                    "include_preview",
-                                    "fact_digest",
-                                    "fact_digest_prefix",
-                                    "fact_index",
-                                    "include_machine_payload",
-                                    "protocol_contract_fingerprint",
-                                    "graph_order_fingerprint",
-                                    "source_cursor_token",
-                                    "vicreg_assembly_fingerprint",
-                                    "mdn_assembly_fingerprint"},
-                                   {"subject"}, tool_name);
-      const std::string subject = tool_detail::optional_string(args, "subject");
-      const bool include_machine_payload =
-          tool_detail::optional_bool(args, "include_machine_payload", false);
+    const std::string inspect_prefix = "hero.marshal.inspect.";
+    std::optional<std::string> split_inspect_subject;
+    std::optional<std::string> split_inspect_mode;
+    std::optional<std::string> split_protocol_identity_mode;
+    std::optional<std::string> split_spawn_mode;
+    std::optional<std::string> split_fact_preview_selector;
+    const auto split_prepare_route =
+        tool_detail::split_prepare_tool_route(tool_name);
+    if (tool_name.rfind(inspect_prefix, 0) == 0) {
+      const std::string candidate = tool_name.substr(inspect_prefix.size());
+      if (candidate == "target" || candidate == "component") {
+        split_inspect_subject = candidate;
+      } else if (candidate.rfind("spawn.", 0) == 0) {
+        const std::string mode = candidate.substr(std::string("spawn.").size());
+        if (mode == "by_id" || mode == "by_label" || mode == "by_registry" ||
+            mode == "by_fingerprint" || mode == "by_job") {
+          split_inspect_subject = "spawn";
+          split_spawn_mode = mode;
+        }
+      } else if (candidate.rfind("protocol.", 0) == 0) {
+        const std::string identity_mode =
+            candidate.substr(std::string("protocol.").size());
+        if (identity_mode == "report" || identity_mode == "strict") {
+          split_inspect_subject = "protocol";
+          split_protocol_identity_mode = identity_mode;
+        }
+      } else if (candidate.rfind("run.", 0) == 0) {
+        const std::string mode = candidate.substr(std::string("run.").size());
+        if (mode == "latest_chain" || mode == "training_state" ||
+            mode == "single_job" || mode == "compare") {
+          split_inspect_subject = "run";
+          split_inspect_mode = mode;
+        }
+      } else if (candidate.rfind("facts.", 0) == 0) {
+        const std::string mode = candidate.substr(std::string("facts.").size());
+        if (mode == "summary" || mode == "lineage" || mode == "preview") {
+          split_inspect_subject = "facts";
+          split_inspect_mode = mode;
+        } else if (mode.rfind("preview.", 0) == 0) {
+          const std::string selector =
+              mode.substr(std::string("preview.").size());
+          if (selector == "by_digest" || selector == "by_digest_prefix" ||
+              selector == "by_index") {
+            split_inspect_subject = "facts";
+            split_inspect_mode = "preview";
+            split_fact_preview_selector = selector;
+          }
+        }
+      }
+    }
+
+    if (split_inspect_subject.has_value()) {
+      for (const auto &retired_field :
+           {"subject", "args_path", "args_digest"}) {
+        if (args.find(retired_field) != args.end()) {
+          throw std::runtime_error(tool_name +
+                                   " unknown field: " + retired_field);
+        }
+      }
+      if (split_inspect_mode.has_value() && args.find("mode") != args.end()) {
+        throw std::runtime_error(tool_name + " unknown field: mode");
+      }
+      if (split_protocol_identity_mode.has_value() &&
+          args.find("identity_mode") != args.end()) {
+        throw std::runtime_error(tool_name + " unknown field: identity_mode");
+      }
+      auto inspect_args = args;
+      inspect_args.emplace("subject",
+                           detail::json_quote(*split_inspect_subject));
+      if (split_inspect_mode.has_value()) {
+        inspect_args.emplace("mode", detail::json_quote(*split_inspect_mode));
+      }
+      if (split_protocol_identity_mode.has_value()) {
+        inspect_args.emplace("identity_mode",
+                             detail::json_quote(*split_protocol_identity_mode));
+      }
+      if (split_fact_preview_selector.has_value()) {
+        inspect_args.emplace("_fact_preview_selector",
+                             detail::json_quote(*split_fact_preview_selector));
+      }
+      inspect_args.emplace("_tool_name", detail::json_quote(tool_name));
+      const std::string subject = *split_inspect_subject;
+      const bool include_machine_payload = tool_detail::optional_bool(
+          inspect_args, "include_machine_payload", false);
       if (subject == "facts") {
-        tool_detail::validate_fields(
-            args,
-            {"subject", "mode", "target_id", "fact_family_id", "config_path",
-             "runtime_root", "protocol_contract_fingerprint",
-             "graph_order_fingerprint", "source_cursor_token",
-             "vicreg_assembly_fingerprint", "mdn_assembly_fingerprint", "limit",
-             "include_facts", "include_lineage", "include_preview",
-             "fact_digest", "fact_digest_prefix", "fact_index",
-             "include_machine_payload"},
-            {"subject"}, "hero.marshal.inspect facts");
         const std::string mode =
-            tool_detail::optional_string(args, "mode", "summary");
+            tool_detail::optional_string(inspect_args, "mode", "summary");
+        std::set<std::string> allowed_fields{
+            "subject",     "mode",
+            "target_id",   "fact_family_id",
+            "config_path", "runtime_root",
+            "limit",       "include_machine_payload",
+            "_tool_name"};
+        if (mode == "summary") {
+          allowed_fields.insert("include_facts");
+          allowed_fields.insert("include_lineage");
+        } else if (mode == "preview") {
+          allowed_fields.insert("include_lineage");
+          if (split_fact_preview_selector == "by_digest") {
+            allowed_fields.insert("fact_digest");
+          } else if (split_fact_preview_selector == "by_digest_prefix") {
+            allowed_fields.insert("fact_digest_prefix");
+          } else if (split_fact_preview_selector == "by_index") {
+            allowed_fields.insert("fact_index");
+          }
+          if (split_fact_preview_selector.has_value()) {
+            allowed_fields.insert("_fact_preview_selector");
+          }
+        }
+        tool_detail::validate_fields(inspect_args, allowed_fields, {"subject"},
+                                     tool_name);
         if (mode != "summary" && mode != "lineage" && mode != "preview") {
           throw std::runtime_error(
-              "hero.marshal.inspect subject=facts mode must be summary, "
+              "hero.marshal.inspect.facts.* suffix must be summary, "
               "lineage, or preview");
         }
+        if (split_fact_preview_selector == "by_digest" &&
+            tool_detail::optional_string(inspect_args, "fact_digest").empty()) {
+          throw std::runtime_error(tool_name + " requires fact_digest");
+        }
+        if (split_fact_preview_selector == "by_digest_prefix" &&
+            tool_detail::optional_string(inspect_args, "fact_digest_prefix")
+                .empty()) {
+          throw std::runtime_error(tool_name + " requires fact_digest_prefix");
+        }
+        if (split_fact_preview_selector == "by_index" &&
+            inspect_args.find("fact_index") == inspect_args.end()) {
+          throw std::runtime_error(tool_name + " requires fact_index");
+        }
         structured << tool_detail::inspect_facts_subject_json(
-            args, marshal_lattice_tool_callback_slot(),
+            inspect_args, marshal_lattice_tool_callback_slot(),
             include_machine_payload);
       } else if (subject == "run") {
-        tool_detail::validate_fields(
-            args,
-            {"subject", "mode", "runtime_root", "config_path", "job_id",
-             "job_ids", "target_ids", "baseline_job_id", "candidate_job_id",
-             "include_machine_payload", "protocol_contract_fingerprint",
-             "graph_order_fingerprint", "source_cursor_token",
-             "vicreg_assembly_fingerprint", "mdn_assembly_fingerprint"},
-            {"subject"}, "hero.marshal.inspect subject=run");
         const std::string mode =
-            tool_detail::optional_string(args, "mode", "latest_chain");
+            tool_detail::optional_string(inspect_args, "mode", "latest_chain");
+        std::set<std::string> allowed_fields{"subject",
+                                             "mode",
+                                             "runtime_root",
+                                             "config_path",
+                                             "include_machine_payload",
+                                             "_tool_name"};
+        if (mode == "compare") {
+          allowed_fields.insert("baseline_job_id");
+          allowed_fields.insert("candidate_job_id");
+        } else {
+          allowed_fields.insert("target_ids");
+          if (mode == "single_job") {
+            allowed_fields.insert("job_id");
+          } else {
+            allowed_fields.insert("job_ids");
+          }
+        }
+        tool_detail::validate_fields(inspect_args, allowed_fields, {"subject"},
+                                     tool_name);
         if (mode == "compare") {
           marshal_run_compare_options_t options{};
-          options.runtime_root =
-              std::filesystem::path(tool_detail::optional_string(
-                  args, "runtime_root", "/cuwacunu/.runtime/cuwacunu_exec"));
+          options.runtime_root = std::filesystem::path(
+              tool_detail::optional_string(inspect_args, "runtime_root",
+                                           "/cuwacunu/.runtime/cuwacunu_exec"));
           options.config_path =
               std::filesystem::path(tool_detail::optional_string(
-                  args, "config_path", "/cuwacunu/src/config/.config"));
+                  inspect_args, "config_path", "/cuwacunu/src/config/.config"));
           options.baseline_job_id =
-              tool_detail::optional_string(args, "baseline_job_id");
+              tool_detail::optional_string(inspect_args, "baseline_job_id");
           options.candidate_job_id =
-              tool_detail::optional_string(args, "candidate_job_id");
+              tool_detail::optional_string(inspect_args, "candidate_job_id");
           if (options.baseline_job_id.empty() ||
               options.candidate_job_id.empty()) {
             throw std::runtime_error(
-                "hero.marshal.inspect subject=run mode=compare requires "
+                "hero.marshal.inspect.run.compare requires "
                 "baseline_job_id and candidate_job_id");
           }
           options.include_machine_payload = tool_detail::optional_bool(
-              args, "include_machine_payload", false);
+              inspect_args, "include_machine_payload", false);
           structured << "{\"ok\":true,\"tool\":"
-                     << detail::json_quote("hero.marshal.inspect")
+                     << detail::json_quote(
+                            tool_detail::marshal_inspect_result_tool(
+                                inspect_args))
                      << ",\"subject\":\"run\",\"mode\":\"compare\""
                      << tool_detail::marshal_operator_envelope_fields_json(
                             "kikijyeba.marshal.inspect.v2.5a", "read_only",
@@ -6021,33 +6918,32 @@ inspect_target_subject_json(const std::map<std::string, std::string> &args,
         } else if (mode == "latest_chain" || mode == "training_state" ||
                    mode == "single_job") {
           marshal_operational_report_options_t options{};
-          options.runtime_root =
-              std::filesystem::path(tool_detail::optional_string(
-                  args, "runtime_root", "/cuwacunu/.runtime/cuwacunu_exec"));
+          options.runtime_root = std::filesystem::path(
+              tool_detail::optional_string(inspect_args, "runtime_root",
+                                           "/cuwacunu/.runtime/cuwacunu_exec"));
           options.config_path =
               std::filesystem::path(tool_detail::optional_string(
-                  args, "config_path", "/cuwacunu/src/config/.config"));
+                  inspect_args, "config_path", "/cuwacunu/src/config/.config"));
           if (mode == "single_job") {
             const std::string job_id =
-                tool_detail::optional_string(args, "job_id");
+                tool_detail::optional_string(inspect_args, "job_id");
             if (job_id.empty()) {
               throw std::runtime_error(
-                  "hero.marshal.inspect subject=run mode=single_job requires "
-                  "job_id");
+                  "hero.marshal.inspect.run.single_job requires job_id");
             }
             options.job_ids = {job_id};
           } else {
             options.job_ids =
-                tool_detail::optional_string_array(args, "job_ids");
+                tool_detail::optional_string_array(inspect_args, "job_ids");
           }
           options.target_ids =
-              tool_detail::optional_string_array(args, "target_ids");
+              tool_detail::optional_string_array(inspect_args, "target_ids");
           if (options.target_ids.empty()) {
             options.target_ids =
                 default_marshal_operational_report_target_ids();
           }
           options.include_machine_payload = tool_detail::optional_bool(
-              args, "include_machine_payload", false);
+              inspect_args, "include_machine_payload", false);
 
           auto callback = marshal_lattice_tool_callback_slot();
           if (callback != nullptr && !options.target_ids.empty()) {
@@ -6055,10 +6951,10 @@ inspect_target_subject_json(const std::map<std::string, std::string> &args,
             std::string lattice_error;
             const std::string lattice_args =
                 tool_detail::lattice_evaluate_targets_arguments_json(
-                    args, options.target_ids, options.runtime_root,
+                    inspect_args, options.target_ids, options.runtime_root,
                     options.config_path);
-            if (callback("hero.lattice.evaluate", lattice_args, &lattice_result,
-                         &lattice_error) &&
+            if (callback("hero.lattice.evaluate.targets", lattice_args,
+                         &lattice_result, &lattice_error) &&
                 !tool_detail::tool_result_has_error_marker(lattice_result)) {
               options.target_statuses =
                   tool_detail::parse_lattice_evaluate_targets_statuses(
@@ -6074,7 +6970,9 @@ inspect_target_subject_json(const std::map<std::string, std::string> &args,
             }
           }
           structured << "{\"ok\":true,\"tool\":"
-                     << detail::json_quote("hero.marshal.inspect")
+                     << detail::json_quote(
+                            tool_detail::marshal_inspect_result_tool(
+                                inspect_args))
                      << ",\"subject\":\"run\",\"mode\":"
                      << detail::json_quote(mode)
                      << tool_detail::marshal_operator_envelope_fields_json(
@@ -6085,143 +6983,196 @@ inspect_target_subject_json(const std::map<std::string, std::string> &args,
                      << build_marshal_operational_report_json(options) << "}";
         } else {
           throw std::runtime_error(
-              "hero.marshal.inspect subject=run mode must be latest_chain, "
+              "hero.marshal.inspect.run.* suffix must be latest_chain, "
               "training_state, single_job, or compare");
         }
       } else if (subject == "target") {
         tool_detail::validate_fields(
-            args,
+            inspect_args,
             {"subject", "runtime_root", "config_path", "target_id",
-             "include_machine_payload", "protocol_contract_fingerprint",
-             "graph_order_fingerprint", "source_cursor_token",
-             "vicreg_assembly_fingerprint", "mdn_assembly_fingerprint"},
-            {"subject"}, "hero.marshal.inspect subject=target");
+             "include_machine_payload", "_tool_name"},
+            {"subject"}, "hero.marshal.inspect.target");
         structured << tool_detail::inspect_target_subject_json(
-            args, marshal_lattice_tool_callback_slot(),
+            inspect_args, marshal_lattice_tool_callback_slot(),
             include_machine_payload);
       } else if (subject == "protocol") {
-        tool_detail::validate_fields(
-            args,
-            {"subject", "identity_mode", "runtime_root", "config_path",
-             "job_id", "job_ids", "include_machine_payload",
-             "protocol_contract_fingerprint", "graph_order_fingerprint",
-             "source_cursor_token", "vicreg_assembly_fingerprint",
-             "mdn_assembly_fingerprint"},
-            {"subject"}, "hero.marshal.inspect subject=protocol");
+        std::set<std::string> allowed_fields{"subject",
+                                             "identity_mode",
+                                             "runtime_root",
+                                             "config_path",
+                                             "job_id",
+                                             "job_ids",
+                                             "include_machine_payload",
+                                             "_tool_name"};
+        if (tool_detail::optional_string(inspect_args, "identity_mode",
+                                         "report") == "strict") {
+          allowed_fields.insert("protocol_contract_fingerprint");
+          allowed_fields.insert("graph_order_fingerprint");
+          allowed_fields.insert("source_cursor_token");
+          allowed_fields.insert("vicreg_assembly_fingerprint");
+          allowed_fields.insert("mdn_assembly_fingerprint");
+        }
+        tool_detail::validate_fields(inspect_args, allowed_fields, {"subject"},
+                                     tool_name);
         structured << tool_detail::inspect_protocol_subject_json(
-            args, include_machine_payload);
+            inspect_args, include_machine_payload);
       } else if (subject == "spawn") {
-        tool_detail::validate_fields(
-            args,
-            {"subject", "runtime_root", "config_path", "job_id", "job_ids",
-             "spawn_id", "component_spawn_id", "component_spawn_registry_id",
-             "component_spawn_label", "component_spawn_fingerprint",
-             "include_machine_payload"},
-            {"subject"}, "hero.marshal.inspect subject=spawn");
+        std::set<std::string> allowed_fields{
+            "subject", "runtime_root", "config_path", "include_machine_payload",
+            "_tool_name"};
+        const std::string spawn_mode = split_spawn_mode.value_or(std::string{});
+        if (spawn_mode == "by_id") {
+          allowed_fields.insert("component_spawn_id");
+        } else if (spawn_mode == "by_label") {
+          allowed_fields.insert("component_spawn_label");
+        } else if (spawn_mode == "by_registry") {
+          allowed_fields.insert("component_spawn_registry_id");
+        } else if (spawn_mode == "by_fingerprint") {
+          allowed_fields.insert("component_spawn_fingerprint");
+        } else if (spawn_mode == "by_job") {
+          allowed_fields.insert("job_id");
+        } else {
+          throw std::runtime_error(
+              "hero.marshal.inspect.spawn.* suffix must be by_id, by_label, "
+              "by_registry, by_fingerprint, or by_job");
+        }
+        tool_detail::validate_fields(inspect_args, allowed_fields, {"subject"},
+                                     tool_name);
         structured << tool_detail::inspect_spawn_subject_json(
-            args, include_machine_payload);
+            inspect_args, include_machine_payload);
       } else if (subject == "component") {
         tool_detail::validate_fields(
-            args,
+            inspect_args,
             {"subject", "runtime_root", "config_path", "job_id", "job_ids",
-             "component_family_id", "include_machine_payload"},
-            {"subject"}, "hero.marshal.inspect subject=component");
+             "component_family_id", "include_machine_payload", "_tool_name"},
+            {"subject"}, "hero.marshal.inspect.component");
         structured << tool_detail::inspect_component_subject_json(
-            args, include_machine_payload);
+            inspect_args, include_machine_payload);
       } else {
         throw std::runtime_error(
-            "hero.marshal.inspect subject must be run, target, protocol, "
+            "hero.marshal.inspect.* suffix must be run, target, protocol, "
             "spawn, component, or facts");
       }
     } else if (tool_name == "hero.marshal.rollout") {
-      tool_detail::validate_fields(args,
-                                   {"rollout_id",
-                                    "rollout_attempt_id",
-                                    "idempotency_key",
-                                    "experiment_id",
-                                    "config_path",
-                                    "runtime_job_dir",
-                                    "replay_batch_index_path",
-                                    "runtime_exec_path",
-                                    "report_path",
-                                    "requested_mode",
-                                    "environment_mode",
-                                    "environment_assembly_id",
-                                    "graph_order_fingerprint",
-                                    "asset_universe_digest",
-                                    "accounting_numeraire_node_id",
-                                    "target_node_ids",
-                                    "policy_set",
-                                    "max_steps",
-                                    "max_parallel_jobs",
-                                    "execution_profile",
-                                    "timeout_seconds",
-                                    "require_existing_runtime_job_dir",
-                                    "require_completed_runtime_job",
-                                    "require_replay_artifacts",
-                                    "include_machine_payload"},
-                                   {}, tool_name);
+      tool_detail::validate_fields(
+          args, {"mode", "args_path", "args_digest", "include_machine_payload"},
+          {"mode", "args_path"}, tool_name);
+      const std::string requested_mode =
+          tool_detail::optional_string(args, "mode");
+      if (requested_mode != "plan" && requested_mode != "execute") {
+        throw std::runtime_error("mode must be plan or execute");
+      }
+      const auto request_file = tool_detail::load_rollout_request_arguments(
+          args, requested_mode == "execute",
+          "E_MARSHAL_ROLLOUT_REQUEST_DIGEST_REQUIRED",
+          "E_MARSHAL_ROLLOUT_REQUEST_DIGEST_MISMATCH");
       const auto request = normalize_rollout_request_defaults(
-          tool_detail::parse_rollout_request(args));
+          tool_detail::parse_rollout_request(request_file.fields));
       const auto plan = prepare_rollout_plan(request);
       const bool include_machine_payload =
           tool_detail::optional_bool(args, "include_machine_payload", false);
       const bool execute_requested =
           plan.accepted && request.requested_mode == "execute";
+      bool environment_rollout_attempted = false;
+      bool environment_rollout_ok = false;
+      bool environment_tool_call_ok = false;
+      bool environment_tool_result_error = false;
+      const std::string environment_tool_name = "hero.environment.rollout";
+      std::string environment_args_json{};
+      std::string environment_args_digest{};
+      std::string environment_result_json{};
+      std::string environment_result_digest{};
+      std::string environment_error_message{};
       bool runtime_replay_attempted = false;
       bool runtime_replay_ok = false;
       bool runtime_tool_call_ok = false;
       bool runtime_tool_result_error = false;
-      const std::string runtime_tool_name = "hero.runtime.run";
+      std::string runtime_tool_name = "hero.runtime.replay";
       std::string runtime_args_json{};
       std::string runtime_args_digest{};
       std::string runtime_result_json{};
       std::string runtime_result_digest{};
       std::string runtime_error_message{};
+      std::string runtime_replay_json{};
       if (execute_requested) {
-        runtime_replay_attempted = true;
-        cuwacunu::hero::runtime::runtime_context_t ctx{};
-        ctx.global_config_path = request.config_path;
-        ctx.policy_path =
-            cuwacunu::hero::runtime::resolve_runtime_hero_dsl_path(
-                ctx.global_config_path);
-        if (!cuwacunu::hero::runtime::load_runtime_policy(
-                ctx.policy_path, ctx.global_config_path, &ctx.policy,
-                &runtime_error_message)) {
-          runtime_replay_ok = false;
-        } else {
-          runtime_args_json =
-              rollout_runtime_replay_args_json(request, plan, false);
-          runtime_args_digest = marshal_digest_for_text(
-              "kikijyeba.marshal.rollout.runtime_replay_args.v1",
-              runtime_args_json);
-          runtime_tool_call_ok = cuwacunu::hero::runtime::execute_tool_json(
-              runtime_tool_name, runtime_args_json, &ctx, &runtime_result_json,
-              &runtime_error_message);
-          runtime_tool_result_error =
-              cuwacunu::hero::runtime::tool_result_is_error(
-                  runtime_result_json);
-          runtime_result_digest = marshal_digest_for_text(
-              "kikijyeba.marshal.rollout.runtime_replay_result.v1",
-              runtime_result_json);
-          runtime_replay_ok =
-              runtime_tool_call_ok && !runtime_tool_result_error &&
-              runtime_result_json.find("\"ok\":true") != std::string::npos;
+        environment_rollout_attempted = true;
+        std::map<std::string, std::string> environment_args;
+        environment_args["mode"] =
+            request.requested_mode == "execute" ? "\"replay\"" : "\"validate\"";
+        environment_args["args_path"] =
+            detail::json_quote(request_file.path.string());
+        environment_args["args_digest"] =
+            detail::json_quote(request_file.digest);
+        if (include_machine_payload) {
+          environment_args["include_machine_payload"] = "true";
+        }
+        environment_args_json = tool_detail::raw_object_json(environment_args);
+        environment_args_digest = marshal_digest_for_text(
+            "kikijyeba.marshal.rollout.environment_args.v1",
+            environment_args_json);
+        const auto environment_call =
+            cuwacunu::hero::mcp_cli::call_environment_tool(
+                request.config_path, {}, environment_tool_name,
+                environment_args_json, request.timeout_seconds, 1048576);
+        environment_tool_call_ok = environment_call.process_ok;
+        environment_result_json = environment_call.result_json;
+        environment_error_message = environment_call.error_message;
+        environment_tool_result_error =
+            cuwacunu::hero::mcp_cli::tool_result_is_error(
+                environment_result_json);
+        environment_result_digest = marshal_digest_for_text(
+            "kikijyeba.marshal.rollout.environment_result.v1",
+            environment_result_json);
+        const std::string environment_structured =
+            tool_detail::structured_content_json(environment_result_json);
+        environment_rollout_ok =
+            environment_tool_call_ok && !environment_tool_result_error &&
+            environment_structured.find("\"ok\":true") != std::string::npos;
+        if (environment_rollout_ok) {
+          const auto environment_fields =
+              tool_detail::object_fields(environment_structured);
+          if (const auto replay_raw = tool_detail::optional_raw(
+                  environment_fields, "runtime_replay")) {
+            runtime_replay_json = *replay_raw;
+            const auto replay_fields =
+                tool_detail::object_fields(runtime_replay_json);
+            runtime_replay_attempted =
+                tool_detail::optional_bool(replay_fields, "attempted", false);
+            runtime_tool_name = tool_detail::optional_string(
+                replay_fields, "tool_name", runtime_tool_name);
+            runtime_replay_ok =
+                tool_detail::optional_bool(replay_fields, "ok", false);
+            runtime_tool_call_ok = tool_detail::optional_bool(
+                replay_fields, "tool_call_ok", false);
+            runtime_tool_result_error = tool_detail::optional_bool(
+                replay_fields, "tool_result_error", false);
+            runtime_args_digest =
+                tool_detail::optional_string(replay_fields, "arguments_digest");
+            runtime_result_digest = tool_detail::optional_string(
+                replay_fields, "tool_result_digest");
+            runtime_error_message =
+                tool_detail::optional_string(replay_fields, "error_message");
+            runtime_args_json =
+                tool_detail::optional_string(replay_fields, "arguments_json");
+            runtime_result_json =
+                tool_detail::optional_string(replay_fields, "tool_result_json");
+          }
         }
       }
       const std::string dispatch_state =
-          !plan.accepted ? "blocked"
-                         : (execute_requested
-                                ? (runtime_replay_ok ? "executed" : "blocked")
-                                : "prepared");
+          !plan.accepted
+              ? "blocked"
+              : (execute_requested
+                     ? (environment_rollout_ok ? "executed" : "blocked")
+                     : "prepared");
       const std::vector<std::string> next_actions =
           !plan.accepted
               ? std::vector<std::string>{"fix_rollout_request"}
               : (execute_requested
-                     ? (runtime_replay_ok
+                     ? (environment_rollout_ok
                             ? std::vector<std::string>{"inspect_rollout_report"}
-                            : std::vector<std::string>{"inspect_runtime_replay_"
-                                                       "failure"})
+                            : std::vector<std::string>{"inspect_environment_"
+                                                       "rollout_failure"})
                      : std::vector<std::string>{"execute_rollout_via_marshal",
                                                 "inspect_rollout_plan"});
       structured << "{\"ok\":true,\"tool\":"
@@ -6230,108 +7181,95 @@ inspect_target_subject_json(const std::map<std::string, std::string> &args,
                         "kikijyeba.marshal.rollout.v2.5b", next_actions)
                  << ",\"requested_mode\":"
                  << detail::json_quote(request.requested_mode)
+                 << ",\"args_path\":"
+                 << detail::json_quote(request_file.path.string())
+                 << ",\"args_digest_domain\":"
+                 << detail::json_quote(request_file.digest_domain)
+                 << ",\"args_digest\":"
+                 << detail::json_quote(request_file.digest)
+                 << ",\"args_digest_verified\":"
+                 << (request_file.digest_supplied ? "true" : "false")
                  << ",\"dispatch_state\":" << detail::json_quote(dispatch_state)
                  << ",\"idempotency\":{\"scope\":\"request_digest_binding\","
                     "\"durable_duplicate_handoff_ledger\":false,"
                     "\"duplicate_execution_prevented_by_marshal\":false}"
                  << ",\"receipt_produced\":false"
                  << ",\"rollout_plan\":" << rollout_plan_json(plan)
-                 << ",\"runtime_replay\":{\"attempted\":"
-                 << (runtime_replay_attempted ? "true" : "false")
-                 << ",\"tool_name\":" << detail::json_quote(runtime_tool_name)
-                 << ",\"ok\":" << (runtime_replay_ok ? "true" : "false")
+                 << ",\"environment_rollout\":{\"attempted\":"
+                 << (environment_rollout_attempted ? "true" : "false")
+                 << ",\"tool_name\":"
+                 << detail::json_quote(environment_tool_name)
+                 << ",\"ok\":" << (environment_rollout_ok ? "true" : "false")
                  << ",\"tool_call_ok\":"
-                 << (runtime_tool_call_ok ? "true" : "false")
+                 << (environment_tool_call_ok ? "true" : "false")
                  << ",\"tool_result_error\":"
-                 << (runtime_tool_result_error ? "true" : "false")
+                 << (environment_tool_result_error ? "true" : "false")
                  << ",\"arguments_digest\":"
-                 << detail::json_quote(runtime_args_digest)
+                 << detail::json_quote(environment_args_digest)
                  << ",\"tool_result_digest\":"
-                 << detail::json_quote(runtime_result_digest)
+                 << detail::json_quote(environment_result_digest)
                  << ",\"error_message\":"
-                 << detail::json_quote(runtime_error_message);
+                 << detail::json_quote(environment_error_message);
       if (include_machine_payload) {
         structured << ",\"arguments_json\":"
-                   << detail::json_quote(runtime_args_json)
+                   << detail::json_quote(environment_args_json)
                    << ",\"tool_result_json\":"
-                   << detail::json_quote(runtime_result_json);
+                   << detail::json_quote(environment_result_json);
       }
-      structured << "}}";
-    } else if (tool_name == "hero.marshal.prepare") {
-      const std::string intent =
-          tool_detail::optional_string(args, "intent", "train");
-      tool_detail::validate_fields(args,
-                                   {"target_id",
-                                    "intent",
-                                    "config_path",
-                                    "runtime_root",
-                                    "requested_mode",
-                                    "drive_mode",
-                                    "driver_policy",
-                                    "resume_ledger",
-                                    "source_lattice_timestamp",
-                                    "max_waves",
-                                    "recommendation_attempt_count",
-                                    "context",
-                                    "protocol_contract_fingerprint",
-                                    "graph_order_fingerprint",
-                                    "source_cursor_token",
-                                    "vicreg_assembly_fingerprint",
-                                    "mdn_assembly_fingerprint",
-                                    "materialize_plan_inputs",
-                                    "include_runtime_dry_run",
-                                    "include_machine_payload",
-                                    "runtime_policy",
-                                    "runtime_wave",
-                                    "timeout_seconds",
-                                    "ledger_created_at_utc",
-                                    "ledger_nonce"},
-                                   {"drive_mode"}, tool_name);
+      structured << "},\"runtime_replay\":";
+      if (!runtime_replay_json.empty()) {
+        structured << runtime_replay_json;
+      } else {
+        structured << "{\"attempted\":"
+                   << (runtime_replay_attempted ? "true" : "false")
+                   << ",\"tool_name\":" << detail::json_quote(runtime_tool_name)
+                   << ",\"ok\":" << (runtime_replay_ok ? "true" : "false")
+                   << ",\"tool_call_ok\":"
+                   << (runtime_tool_call_ok ? "true" : "false")
+                   << ",\"tool_result_error\":"
+                   << (runtime_tool_result_error ? "true" : "false")
+                   << ",\"arguments_digest\":"
+                   << detail::json_quote(runtime_args_digest)
+                   << ",\"tool_result_digest\":"
+                   << detail::json_quote(runtime_result_digest)
+                   << ",\"error_message\":"
+                   << detail::json_quote(runtime_error_message);
+        if (include_machine_payload) {
+          structured << ",\"arguments_json\":"
+                     << detail::json_quote(runtime_args_json)
+                     << ",\"tool_result_json\":"
+                     << detail::json_quote(runtime_result_json);
+        }
+        structured << "}";
+      }
+      structured << "}";
+    } else if (split_prepare_route.has_value()) {
+      tool_detail::validate_fields(
+          args, {"target_id", "mode", "args_path", "args_digest"},
+          {"target_id", "mode"}, tool_name);
       if (tool_detail::optional_string(args, "target_id").empty()) {
-        throw std::runtime_error("hero.marshal.prepare requires target_id");
+        throw std::runtime_error(tool_name + " requires target_id");
       }
-      if (intent == "replay" || intent == "rollout") {
+      const auto requested_mode = tool_detail::parse_mode_text(
+          tool_detail::optional_string(args, "mode"));
+      if (requested_mode == marshal_dispatch_mode_t::unknown) {
         throw std::runtime_error(
-            "hero.marshal.prepare replay/rollout intent is not supported; use "
-            "hero.marshal.rollout");
+            tool_name + " mode must be plan, dry_run, or execute");
       }
-      if (intent == "artifact_validation") {
-        throw std::runtime_error(
-            "hero.marshal.prepare intent=artifact_validation is not "
-            "supported; use hero.marshal.inspect");
-      }
-      if (intent == "policy_training") {
-        throw std::runtime_error(
-            "hero.marshal.prepare intent=policy_training is reserved until a "
-            "finite Runtime policy-training contract exists");
-      }
-      if (intent != "train" && intent != "evaluate") {
-        throw std::runtime_error(
-            "hero.marshal.prepare intent must be train or evaluate");
-      }
+      const auto prepare_request_file =
+          tool_detail::load_prepare_request_arguments(
+              args, requested_mode != marshal_dispatch_mode_t::plan);
+      const auto &prepare_args = prepare_request_file.fields;
+      const auto drive_mode = split_prepare_route->drive_mode;
       auto callback = marshal_lattice_tool_callback_slot();
       if (callback == nullptr) {
         throw std::runtime_error(
             "Marshal target dispatch preparation requires a Lattice Hero "
             "callback");
       }
-      const auto drive_mode = tool_detail::parse_drive_mode_text(
-          tool_detail::optional_string(args, "drive_mode", "one_step"));
-      if (drive_mode == marshal_target_drive_mode_t::unknown) {
-        throw std::runtime_error(
-            "hero.marshal.prepare drive_mode must be one_step or "
-            "budgeted");
-      }
-      const auto requested_mode = tool_detail::parse_mode_text(
-          tool_detail::optional_string(args, "requested_mode", "plan"));
-      if (requested_mode == marshal_dispatch_mode_t::unknown) {
-        throw std::runtime_error(
-            "hero.marshal.prepare requested_mode must be plan, dry_run, "
-            "or execute");
-      }
       marshal_target_driver_policy_t driver_policy{};
       const auto driver_policy_raw =
-          tool_detail::optional_raw(args, "driver_policy");
+          tool_detail::optional_raw(prepare_args, "driver_policy");
       bool driver_policy_has_max_waves = false;
       if (driver_policy_raw.has_value()) {
         const auto policy_fields =
@@ -6340,8 +7278,7 @@ inspect_target_subject_json(const std::map<std::string, std::string> &args,
             policy_fields.find("max_waves") != policy_fields.end();
         driver_policy = tool_detail::parse_driver_policy(*driver_policy_raw);
       } else {
-        driver_policy.max_waves =
-            tool_detail::optional_i64(args, "max_waves", 1);
+        driver_policy.max_waves = 1;
       }
       if (drive_mode == marshal_target_drive_mode_t::budgeted &&
           !driver_policy_raw.has_value()) {
@@ -6370,28 +7307,25 @@ inspect_target_subject_json(const std::map<std::string, std::string> &args,
       }
 
       tool_detail::target_driver_resume_state_t resume{};
-      if (const auto raw = tool_detail::optional_raw(args, "resume_ledger")) {
+      if (const auto raw =
+              tool_detail::optional_raw(prepare_args, "resume_ledger")) {
         resume = tool_detail::parse_target_driver_resume_state(*raw);
       }
 
-      const bool include_machine_payload =
-          tool_detail::optional_bool(args, "include_machine_payload", false);
+      const bool include_machine_payload = tool_detail::optional_bool(
+          prepare_args, "include_machine_payload", false);
       const bool include_runtime_dry_run =
           requested_mode != marshal_dispatch_mode_t::plan;
 
       marshal_target_driver_ledger_t ledger{};
-      ledger.target_id = tool_detail::optional_string(args, "target_id");
+      ledger.target_id =
+          tool_detail::optional_string(prepare_args, "target_id");
       ledger.drive_mode = drive_mode;
       ledger.requested_mode = requested_mode;
       ledger.driver_policy = driver_policy;
       ledger.driver_policy_digest = target_driver_policy_digest(driver_policy);
-      ledger.ledger_created_at_utc = tool_detail::optional_string(
-          args, "ledger_created_at_utc", tool_detail::current_utc_timestamp());
-      ledger.ledger_nonce = tool_detail::optional_string(args, "ledger_nonce");
-      if (ledger.ledger_nonce.empty()) {
-        ledger.ledger_nonce =
-            tool_detail::generated_target_driver_ledger_nonce();
-      }
+      ledger.ledger_created_at_utc = tool_detail::current_utc_timestamp();
+      ledger.ledger_nonce = tool_detail::generated_target_driver_ledger_nonce();
       bool prepare_result_ready = false;
       if (resume.present) {
         ledger.target_driver_run_id = resume.target_driver_run_id;
@@ -6431,7 +7365,7 @@ inspect_target_subject_json(const std::map<std::string, std::string> &args,
               "does not match this request";
           finalize_target_driver_run_id(&ledger);
           structured << "{\"ok\":true,\"tool\":"
-                     << detail::json_quote("hero.marshal.prepare")
+                     << detail::json_quote(tool_name)
                      << tool_detail::marshal_operator_envelope_supplement_json(
                             "kikijyeba.marshal.prepare.v2.5b",
                             {"inspect_blocker"})
@@ -6439,6 +7373,8 @@ inspect_target_subject_json(const std::map<std::string, std::string> &args,
                      << tool_detail::marshal_prepare_non_proof_contract_json()
                      << ",\"target_id\":"
                      << detail::json_quote(ledger.target_id)
+                     << tool_detail::prepare_request_file_json_fields(
+                            prepare_request_file)
                      << ",\"dispatch_state\":\"blocked\""
                      << ",\"blocker_bucket\":\"stale_resume\""
                      << ",\"drive_mode\":"
@@ -6455,7 +7391,7 @@ inspect_target_subject_json(const std::map<std::string, std::string> &args,
           ledger.terminal_reason = "resume_ledger is missing ledger_digest";
           finalize_target_driver_run_id(&ledger);
           structured << "{\"ok\":true,\"tool\":"
-                     << detail::json_quote("hero.marshal.prepare")
+                     << detail::json_quote(tool_name)
                      << tool_detail::marshal_operator_envelope_supplement_json(
                             "kikijyeba.marshal.prepare.v2.5b",
                             {"inspect_blocker"})
@@ -6463,6 +7399,8 @@ inspect_target_subject_json(const std::map<std::string, std::string> &args,
                      << tool_detail::marshal_prepare_non_proof_contract_json()
                      << ",\"target_id\":"
                      << detail::json_quote(ledger.target_id)
+                     << tool_detail::prepare_request_file_json_fields(
+                            prepare_request_file)
                      << ",\"dispatch_state\":\"blocked\""
                      << ",\"blocker_bucket\":\"stale_resume\""
                      << ",\"drive_mode\":"
@@ -6485,7 +7423,7 @@ inspect_target_subject_json(const std::map<std::string, std::string> &args,
               "terminal evidence, job manifest, or handoff identity";
           finalize_target_driver_run_id(&ledger);
           structured << "{\"ok\":true,\"tool\":"
-                     << detail::json_quote("hero.marshal.prepare")
+                     << detail::json_quote(tool_name)
                      << tool_detail::marshal_operator_envelope_supplement_json(
                             "kikijyeba.marshal.prepare.v2.5b",
                             {"inspect_blocker"})
@@ -6493,6 +7431,8 @@ inspect_target_subject_json(const std::map<std::string, std::string> &args,
                      << tool_detail::marshal_prepare_non_proof_contract_json()
                      << ",\"target_id\":"
                      << detail::json_quote(ledger.target_id)
+                     << tool_detail::prepare_request_file_json_fields(
+                            prepare_request_file)
                      << ",\"dispatch_state\":\"blocked\""
                      << ",\"blocker_bucket\":\"stale_resume\""
                      << ",\"drive_mode\":"
@@ -6510,7 +7450,7 @@ inspect_target_subject_json(const std::map<std::string, std::string> &args,
               "resume_ledger already records the target as reached";
           finalize_target_driver_run_id(&ledger);
           structured << "{\"ok\":true,\"tool\":"
-                     << detail::json_quote("hero.marshal.prepare")
+                     << detail::json_quote(tool_name)
                      << tool_detail::marshal_operator_envelope_supplement_json(
                             "kikijyeba.marshal.prepare.v2.5b",
                             {"inspect_lattice_certificate"})
@@ -6518,6 +7458,8 @@ inspect_target_subject_json(const std::map<std::string, std::string> &args,
                      << tool_detail::marshal_prepare_non_proof_contract_json()
                      << ",\"target_id\":"
                      << detail::json_quote(ledger.target_id)
+                     << tool_detail::prepare_request_file_json_fields(
+                            prepare_request_file)
                      << ",\"dispatch_state\":\"already_satisfied\""
                      << ",\"blocker_bucket\":\"none\""
                      << ",\"drive_mode\":"
@@ -6634,9 +7576,9 @@ inspect_target_subject_json(const std::map<std::string, std::string> &args,
         tool_detail::prepare_target_step_result_t last_step{};
         if (drive_mode == marshal_target_drive_mode_t::one_step) {
           last_step = tool_detail::run_prepare_target_step(
-              args, callback, 1,
-              tool_detail::optional_i64(args, "recommendation_attempt_count",
-                                        0),
+              prepare_args, callback, 1,
+              tool_detail::optional_i64(prepare_args,
+                                        "recommendation_attempt_count", 0),
               requested_mode, include_runtime_dry_run, include_machine_payload,
               ledger.target_driver_run_id);
           auto iteration = make_iteration(last_step);
@@ -6690,7 +7632,7 @@ inspect_target_subject_json(const std::map<std::string, std::string> &args,
             const bool step_include_runtime_dry_run =
                 requested_mode != marshal_dispatch_mode_t::plan;
             last_step = tool_detail::run_prepare_target_step(
-                args, callback, driver_policy.max_waves, attempt,
+                prepare_args, callback, driver_policy.max_waves, attempt,
                 step_requested_mode, step_include_runtime_dry_run,
                 include_machine_payload, ledger.target_driver_run_id);
             auto iteration = make_iteration(last_step);
@@ -6895,8 +7837,9 @@ inspect_target_subject_json(const std::map<std::string, std::string> &args,
             }
 
             marshal_runtime_hero_handoff_options_t options{};
-            options.timeout_seconds = static_cast<int>(
-                tool_detail::optional_i64(args, "timeout_seconds", 600));
+            options.timeout_seconds =
+                static_cast<int>(tool_detail::optional_i64(
+                    prepare_args, "timeout_seconds", 600));
             const auto handoff = call_runtime_hero_execution(gate, options);
             iteration.execution_attempted = true;
             iteration.execution_accepted = handoff.ok;
@@ -7026,7 +7969,7 @@ inspect_target_subject_json(const std::map<std::string, std::string> &args,
 
             if (driver_policy.require_post_wave_lattice_satisfied_check) {
               auto post_step = tool_detail::run_prepare_target_step(
-                  args, callback, driver_policy.max_waves, attempt + 1,
+                  prepare_args, callback, driver_policy.max_waves, attempt + 1,
                   marshal_dispatch_mode_t::dry_run, false,
                   include_machine_payload, ledger.target_driver_run_id);
               iteration.post_run_lattice_evaluation_digest =
@@ -7059,28 +8002,13 @@ inspect_target_subject_json(const std::map<std::string, std::string> &args,
 
         finalize_target_driver_run_id(&ledger);
         structured << tool_detail::prepare_target_operator_packet_json(
-            last_step, &ledger);
+            last_step, &ledger, &prepare_request_file, tool_name);
       }
     } else if (tool_name == "hero.marshal.status") {
-      tool_detail::validate_fields(args,
-                                   {"receipt_root", "limit", "receipts",
-                                    "runtime_policy",
-                                    "lattice_advice_surface_available"},
-                                   {}, tool_name);
+      tool_detail::validate_fields(args, {}, {}, tool_name);
       std::vector<marshal_dispatch_receipt_t> receipts;
-      if (const auto raw = tool_detail::optional_raw(args, "receipts")) {
-        for (const auto &item_raw : tool_detail::array_values(*raw)) {
-          receipts.push_back(tool_detail::parse_receipt(item_raw));
-        }
-      }
       marshal_runtime_policy_snapshot_t policy{};
-      if (const auto raw = tool_detail::optional_raw(args, "runtime_policy")) {
-        policy = tool_detail::parse_runtime_policy(*raw);
-      }
-      const auto status = make_marshal_status(
-          tool_detail::optional_string(args, "receipt_root"), receipts, policy,
-          tool_detail::optional_bool(args, "lattice_advice_surface_available",
-                                     false));
+      const auto status = make_marshal_status({}, receipts, policy, false);
       structured << "{\"ok\":true,\"tool\":\"hero.marshal.status\""
                  << ",\"schema\":\"kikijyeba.marshal.status.v1\""
                  << tool_detail::marshal_operator_envelope_fields_json(
@@ -7138,12 +8066,15 @@ inspect_target_subject_json(const std::map<std::string, std::string> &args,
 }
 
 inline void run_marshal_jsonrpc_stdio_loop() {
-  std::string line;
-  while (std::getline(std::cin, line)) {
-    line = tool_detail::trim_ascii(line);
+  mcp_stdio::message_t message;
+  while (mcp_stdio::read_message(std::cin, &message)) {
+    std::string line = tool_detail::trim_ascii(message.json);
     if (line.empty()) {
       continue;
     }
+    const auto send = [&](std::string response) {
+      mcp_stdio::write_response(std::cout, response);
+    };
     std::string id_raw = "null";
     try {
       const auto request = tool_detail::object_fields(line);
@@ -7152,18 +8083,37 @@ inline void run_marshal_jsonrpc_stdio_loop() {
       }
       const std::string method =
           tool_detail::optional_string(request, "method");
+      if (method == "notifications/initialized") {
+        continue;
+      }
+      if (method == "exit") {
+        break;
+      }
       if (method == "initialize") {
-        std::cout << "{\"jsonrpc\":\"2.0\",\"id\":" << id_raw
-                  << ",\"result\":{\"protocolVersion\":\"2024-11-05\","
-                     "\"capabilities\":{\"tools\":{}},\"serverInfo\":{"
-                     "\"name\":\"hero-marshal\",\"version\":\"0.1\"}}}"
-                  << std::endl;
+        send(std::string("{\"jsonrpc\":\"2.0\",\"id\":") + id_raw +
+             ",\"result\":{\"protocolVersion\":\"2024-11-05\","
+             "\"capabilities\":{\"tools\":{}},\"serverInfo\":{\"name\":"
+             "\"hero-marshal\",\"version\":\"0.1\"}}}");
         continue;
       }
       if (method == "tools/list") {
-        std::cout << "{\"jsonrpc\":\"2.0\",\"id\":" << id_raw
-                  << ",\"result\":" << build_marshal_tools_list_result_json()
-                  << "}" << std::endl;
+        send(std::string("{\"jsonrpc\":\"2.0\",\"id\":") + id_raw +
+             ",\"result\":" + build_marshal_tools_list_result_json() + "}");
+        continue;
+      }
+      if (method == "resources/list") {
+        send(std::string("{\"jsonrpc\":\"2.0\",\"id\":") + id_raw +
+             ",\"result\":{\"resources\":[]}}");
+        continue;
+      }
+      if (method == "resources/templates/list") {
+        send(std::string("{\"jsonrpc\":\"2.0\",\"id\":") + id_raw +
+             ",\"result\":{\"resourceTemplates\":[]}}");
+        continue;
+      }
+      if (method == "shutdown") {
+        send(std::string("{\"jsonrpc\":\"2.0\",\"id\":") + id_raw +
+             ",\"result\":null}");
         continue;
       }
       if (method == "tools/call") {
@@ -7178,15 +8128,15 @@ inline void run_marshal_jsonrpc_stdio_loop() {
         std::string result;
         std::string error;
         (void)execute_marshal_tool_json(name, arguments, &result, &error);
-        std::cout << "{\"jsonrpc\":\"2.0\",\"id\":" << id_raw
-                  << ",\"result\":" << result << "}" << std::endl;
+        send(std::string("{\"jsonrpc\":\"2.0\",\"id\":") + id_raw +
+             ",\"result\":" + result + "}");
         continue;
       }
       throw std::runtime_error("unknown method: " + method);
     } catch (const std::exception &ex) {
-      std::cout << "{\"jsonrpc\":\"2.0\",\"id\":" << id_raw
-                << ",\"error\":{\"code\":-32602,\"message\":"
-                << detail::json_quote(ex.what()) << "}}" << std::endl;
+      send(std::string("{\"jsonrpc\":\"2.0\",\"id\":") + id_raw +
+           ",\"error\":{\"code\":-32602,\"message\":" +
+           detail::json_quote(ex.what()) + "}}");
     }
   }
 }

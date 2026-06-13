@@ -4,6 +4,7 @@
 #include "hero/lattice_hero/lattice/exposure/exposure_ledger.h"
 #include "hero/lattice_hero/lattice/target/lattice_target_evaluator.h"
 #include "hero/mcp_schema_compat.h"
+#include "hero/mcp_stdio_transport.h"
 #include "hero/runtime_hero/runtime/job_layout.h"
 #include "hero/short_ref.h"
 #include "wikimyei/assembly.h"
@@ -63,40 +64,240 @@ struct runtime_scan_session_cache_t {
 
 runtime_scan_session_cache_t g_runtime_scan_session_cache{};
 
-constexpr tool_descriptor_t kTools[] = {
-    {"hero.lattice.status",
-     "Summarize Lattice Hero policy, target DSL, runtime root, "
-     "exposure "
-     "facts, "
-     "and inferred active proof_context.",
-     R"({"type":"object","properties":{"config_path":{"type":"string"},"runtime_root":{"type":"string"}},"additionalProperties":false})"},
-    {"hero.lattice.inspect",
-     "Read-only Lattice inspection. subject=schema reads policy keys; "
-     "subject=targets lists configured targets; subject=target explains "
-     "one target; subject=exposure scans runtime exposure; "
-     "subject=fact_families lists fact families; subject=facts with "
-     "mode=scan|summary|lineage|preview inspects fact evidence; "
-     "subject=index with mode=status|query inspects the audit index; "
-     "subject=derived answers one derived query; subject=checkpoint "
-     "inspects checkpoint closure.",
-     R"({"type":"object","properties":{"subject":{"type":"string","enum":["schema","targets","target","exposure","fact_families","facts","index","derived","checkpoint"]},"mode":{"type":"string","enum":["scan","summary","lineage","preview","status","query","explain","closure"]},"target_id":{"type":"string"},"target_ids":{"type":"array","items":{"type":"string"}},"config_path":{"type":"string"},"runtime_root":{"type":"string"},"family":{"type":"string"},"limit":{"type":"integer"},"include_facts":{"type":"boolean"},"digest":{"type":"string"},"fact_digest":{"type":"string"},"digest_prefix":{"type":"string"},"fact_digest_prefix":{"type":"string"},"fact_index":{"type":"integer"},"index":{"type":"integer"},"index_path":{"type":"string"},"validation_strength":{"type":"string"},"relation":{"type":"string"},"key":{"type":"string"},"key_contains":{"type":"string"},"compare_live_scan":{"type":"boolean"},"allow_unproven_cache":{"type":"boolean"},"checkpoint_path":{"type":"string"},"checkpoint_id":{"type":"string"},"checkpoint_file_digest":{"type":"string"},"ancestor_checkpoint_path":{"type":"string"},"ancestor_checkpoint_id":{"type":"string"},"protocol_id":{"type":"string"},"protocol_contract_fingerprint":{"type":"string"},"graph_order_fingerprint":{"type":"string"},"source_cursor_token":{"type":"string"},"vicreg_assembly_fingerprint":{"type":"string"},"mtf_jepa_mae_vicreg_assembly_fingerprint":{"type":"string"},"mdn_assembly_fingerprint":{"type":"string"}},"required":["subject"],"additionalProperties":false})"},
-    {"hero.lattice.evaluate",
-     "Read-only Lattice target evaluation. operation=target evaluates one "
-     "target; operation=targets evaluates several targets with one scan; "
-     "operation=deficit returns proof deficits and target-authored advice; "
-     "operation=latest_satisfying_checkpoint resolves one checkpoint "
-     "candidate using Lattice proof semantics.",
-     R"({"type":"object","properties":{"operation":{"type":"string","enum":["target","targets","deficit","latest_satisfying_checkpoint"]},"target_id":{"type":"string"},"target_ids":{"type":"array","items":{"type":"string"}},"symbolic_hint":{"type":"string"},"config_path":{"type":"string"},"runtime_root":{"type":"string"},"protocol_id":{"type":"string"},"protocol_contract_fingerprint":{"type":"string"},"graph_order_fingerprint":{"type":"string"},"source_cursor_token":{"type":"string"},"vicreg_assembly_fingerprint":{"type":"string"},"mtf_jepa_mae_vicreg_assembly_fingerprint":{"type":"string"},"mdn_assembly_fingerprint":{"type":"string"},"limit":{"type":"integer"}},"required":["operation"],"additionalProperties":false})"},
-    {"hero.lattice.compare",
-     "Read-only Pareto comparison for two clean satisfying target evidence "
-     "vectors. Reports explicit dimensions and never emits a scalar score, "
-     "winner, deployment decision, or model selection.",
-     R"({"type":"object","properties":{"left_target_id":{"type":"string"},"right_target_id":{"type":"string"},"config_path":{"type":"string"},"runtime_root":{"type":"string"},"protocol_id":{"type":"string"},"protocol_contract_fingerprint":{"type":"string"},"graph_order_fingerprint":{"type":"string"},"source_cursor_token":{"type":"string"},"vicreg_assembly_fingerprint":{"type":"string"},"mtf_jepa_mae_vicreg_assembly_fingerprint":{"type":"string"},"mdn_assembly_fingerprint":{"type":"string"}},"required":["left_target_id","right_target_id"],"additionalProperties":false})"},
+constexpr tool_descriptor_t
+    kTools
+        [] =
+            {
+                {"hero.lattice.status",
+                 "Summarize Lattice Hero policy, target DSL, runtime root, "
+                 "exposure "
+                 "facts, "
+                 "and inferred active proof_context.",
+                 R"({"type":"object","properties":{},"additionalProperties":false})"},
+                {"hero.lattice.inspect.schema",
+                 "Read-only Lattice policy schema inspection.",
+                 R"({"type":"object","properties":{},"additionalProperties":false})"},
+                {"hero.lattice.inspect.targets",
+                 "Read-only Lattice target catalog inspection.",
+                 R"({"type":"object","properties":{"config_path":{"type":"string"}},"additionalProperties":false})"},
+                {"hero.lattice.inspect.target",
+                 "Read-only explanation for one configured Lattice target.",
+                 R"({"type":"object","required":["target_id"],"properties":{"target_id":{"type":"string"},"config_path":{"type":"string"}},"additionalProperties":false})"},
+                {"hero.lattice.inspect.exposure",
+                 "Read-only scan of runtime exposure evidence.",
+                 R"({"type":"object","properties":{"runtime_root":{"type":"string"},"limit":{"type":"integer"}},"additionalProperties":false})"},
+                {"hero.lattice.inspect.fact_families",
+                 "Read-only Lattice fact-family registry inspection.",
+                 R"({"type":"object","properties":{"runtime_root":{"type":"string"}},"additionalProperties":false})"},
+                {"hero.lattice.inspect.facts.summary",
+                 "Read-only fact-family summary inspection.",
+                 R"({"type":"object","properties":{"runtime_root":{"type":"string"},"family":{"type":"string"}},"additionalProperties":false})"},
+                {"hero.lattice.inspect.facts.scan",
+                 "Read-only fact-family row scan inspection.",
+                 R"({"type":"object","properties":{"runtime_root":{"type":"string"},"family":{"type":"string"},"limit":{"type":"integer"},"include_facts":{"type":"boolean"}},"additionalProperties":false})"},
+                {"hero.lattice.inspect.facts.lineage",
+                 "Read-only fact-family runtime-index lineage inspection.",
+                 R"({"type":"object","properties":{"runtime_root":{"type":"string"},"family":{"type":"string"},"limit":{"type":"integer"}},"additionalProperties":false})"},
+                {"hero.lattice.inspect.facts.preview",
+                 "Read-only concrete fact-row preview inspection.",
+                 R"({"type":"object","required":["family"],"properties":{"runtime_root":{"type":"string"},"family":{"type":"string"},"limit":{"type":"integer"}},"additionalProperties":false})"},
+                {"hero.lattice.inspect.facts.preview.by_digest",
+                 "Read-only concrete fact-row preview by exact digest.",
+                 R"({"type":"object","required":["family","fact_digest"],"properties":{"runtime_root":{"type":"string"},"family":{"type":"string"},"limit":{"type":"integer"},"fact_digest":{"type":"string"}},"additionalProperties":false})"},
+                {"hero.lattice.inspect.facts.preview.by_digest_prefix",
+                 "Read-only concrete fact-row preview by unique digest prefix.",
+                 R"({"type":"object","required":["family","fact_digest_prefix"],"properties":{"runtime_root":{"type":"string"},"family":{"type":"string"},"limit":{"type":"integer"},"fact_digest_prefix":{"type":"string"}},"additionalProperties":false})"},
+                {"hero.lattice.inspect.facts.preview.by_index",
+                 "Read-only concrete fact-row preview by family-local row "
+                 "index.",
+                 R"({"type":"object","required":["family","fact_index"],"properties":{"runtime_root":{"type":"string"},"family":{"type":"string"},"limit":{"type":"integer"},"fact_index":{"type":"integer"}},"additionalProperties":false})"},
+                {"hero.lattice.inspect.index.status",
+                 "Read-only runtime audit index status inspection.",
+                 R"({"type":"object","properties":{"runtime_root":{"type":"string"},"index_path":{"type":"string"},"limit":{"type":"integer"},"validation_strength":{"type":"string"}},"additionalProperties":false})"},
+                {"hero.lattice.inspect.index.query", "Read-only verified runtime audit index query inspection.", R"({"type":"object","properties":{"runtime_root":{"type":"string"},"index_path":{"type":"string"},"limit":{"type":"integer"},"validation_strength":{"type":"string"}},"additionalProperties":false})"},
+                {"hero.lattice.inspect.index.query.by_relation",
+                 "Read-only verified runtime audit index query by relation.",
+                 R"({"type":"object","required":["relation"],"properties":{"runtime_root":{"type":"string"},"index_path":{"type":"string"},"limit":{"type":"integer"},"validation_strength":{"type":"string"},"relation":{"type":"string"}},"additionalProperties":false})"},
+                {"hero.lattice.inspect.index.query.by_key",
+                 "Read-only verified runtime audit index query by exact key.",
+                 R"({"type":"object","required":["key"],"properties":{"runtime_root":{"type":"string"},"index_path":{"type":"string"},"limit":{"type":"integer"},"validation_strength":{"type":"string"},"key":{"type":"string"}},"additionalProperties":false})"},
+                {"hero.lattice.inspect.index.query.by_key_contains",
+                 "Read-only verified runtime audit index query by key "
+                 "substring.",
+                 R"({"type":"object","required":["key_contains"],"properties":{"runtime_root":{"type":"string"},"index_path":{"type":"string"},"limit":{"type":"integer"},"validation_strength":{"type":"string"},"key_contains":{"type":"string"}},"additionalProperties":false})"},
+                {"hero.lattice.inspect.index.query.by_digest",
+                 "Read-only verified runtime audit index query by exact "
+                 "digest.",
+                 R"({"type":"object","required":["digest"],"properties":{"runtime_root":{"type":"string"},"index_path":{"type":"string"},"limit":{"type":"integer"},"validation_strength":{"type":"string"},"digest":{"type":"string"}},"additionalProperties":false})"},
+                {"hero.lattice.inspect.index.query.by_digest_prefix",
+                 "Read-only verified runtime audit index query by digest "
+                 "prefix.",
+                 R"({"type":"object","required":["digest_prefix"],"properties":{"runtime_root":{"type":"string"},"index_path":{"type":"string"},"limit":{"type":"integer"},"validation_strength":{"type":"string"},"digest_prefix":{"type":"string"}},"additionalProperties":false})"},
+                {"hero.lattice.inspect.index.query.unproven_cache",
+                 "Read-only fast runtime audit index query using validated "
+                 "headers "
+                 "without live-scan parity.",
+                 R"({"type":"object","properties":{"runtime_root":{"type":"string"},"index_path":{"type":"string"},"limit":{"type":"integer"},"validation_strength":{"type":"string"}},"additionalProperties":false})"},
+                {"hero.lattice.inspect.index.query.unproven_cache.by_relation",
+                 "Read-only fast runtime audit index query by relation using "
+                 "validated headers without live-scan parity.",
+                 R"({"type":"object","required":["relation"],"properties":{"runtime_root":{"type":"string"},"index_path":{"type":"string"},"limit":{"type":"integer"},"validation_strength":{"type":"string"},"relation":{"type":"string"}},"additionalProperties":false})"},
+                {"hero.lattice.inspect.index.query.unproven_cache.by_key",
+                 "Read-only fast runtime audit index query by exact key using "
+                 "validated headers without live-scan parity.",
+                 R"({"type":"object","required":["key"],"properties":{"runtime_root":{"type":"string"},"index_path":{"type":"string"},"limit":{"type":"integer"},"validation_strength":{"type":"string"},"key":{"type":"string"}},"additionalProperties":false})"},
+                {"hero.lattice.inspect.index.query.unproven_cache.by_key_"
+                 "contains",
+                 "Read-only fast runtime audit index query by key substring "
+                 "using validated headers without live-scan parity.",
+                 R"({"type":"object","required":["key_contains"],"properties":{"runtime_root":{"type":"string"},"index_path":{"type":"string"},"limit":{"type":"integer"},"validation_strength":{"type":"string"},"key_contains":{"type":"string"}},"additionalProperties":false})"},
+                {"hero.lattice.inspect.index.query.unproven_cache.by_digest",
+                 "Read-only fast runtime audit index query by exact digest "
+                 "using validated headers without live-scan parity.",
+                 R"({"type":"object","required":["digest"],"properties":{"runtime_root":{"type":"string"},"index_path":{"type":"string"},"limit":{"type":"integer"},"validation_strength":{"type":"string"},"digest":{"type":"string"}},"additionalProperties":false})"},
+                {"hero.lattice.inspect.index.query.unproven_cache.by_digest_"
+                 "prefix",
+                 "Read-only fast runtime audit index query by digest prefix "
+                 "using validated headers without live-scan parity.",
+                 R"({"type":"object","required":["digest_prefix"],"properties":{"runtime_root":{"type":"string"},"index_path":{"type":"string"},"limit":{"type":"integer"},"validation_strength":{"type":"string"},"digest_prefix":{"type":"string"}},"additionalProperties":false})"},
+                {"hero.lattice.inspect.derived.target_satisfied",
+                 "Read-only target-satisfaction derived relation inspection.",
+                 R"({"type":"object","required":["target_id"],"properties":{"target_id":{"type":"string"},"runtime_root":{"type":"string"},"config_path":{"type":"string"},"limit":{"type":"integer"}},"additionalProperties":false})"},
+                {"hero.lattice.inspect.derived.forbidden_overlap",
+                 "Read-only forbidden-overlap derived relation inspection.",
+                 R"({"type":"object","required":["target_id"],"properties":{"target_id":{"type":"string"},"runtime_root":{"type":"string"},"config_path":{"type":"string"},"limit":{"type":"integer"}},"additionalProperties":false})"},
+                {"hero.lattice.inspect.derived.unresolved_lineage.target",
+                 "Read-only target proof unresolved-lineage derived relation "
+                 "inspection.",
+                 R"({"type":"object","required":["target_id"],"properties":{"target_id":{"type":"string"},"runtime_root":{"type":"string"},"config_path":{"type":"string"},"limit":{"type":"integer"}},"additionalProperties":false})"},
+                {"hero.lattice.inspect.derived.stale_cache",
+                 "Read-only runtime-index stale-cache derived relation "
+                 "inspection.",
+                 R"({"type":"object","properties":{"runtime_root":{"type":"string"},"index_path":{"type":"string"},"validation_strength":{"type":"string"},"limit":{"type":"integer"}},"additionalProperties":false})"},
+                {"hero.lattice.inspect.derived.checkpoint_ancestor.by_"
+                 "checkpoint_path",
+                 "Read-only checkpoint-ancestor derived relation inspection by "
+                 "checkpoint path.",
+                 R"({"type":"object","required":["checkpoint_path"],"properties":{"runtime_root":{"type":"string"},"limit":{"type":"integer"},"checkpoint_path":{"type":"string"}},"additionalProperties":false})"},
+                {"hero.lattice.inspect.derived.checkpoint_ancestor.by_"
+                 "checkpoint_path.with_ancestor_path",
+                 "Read-only checkpoint-ancestor derived relation inspection by "
+                 "checkpoint path and ancestor checkpoint path.",
+                 R"({"type":"object","required":["checkpoint_path","ancestor_checkpoint_path"],"properties":{"runtime_root":{"type":"string"},"limit":{"type":"integer"},"checkpoint_path":{"type":"string"},"ancestor_checkpoint_path":{"type":"string"}},"additionalProperties":false})"},
+                {"hero.lattice.inspect.derived.checkpoint_ancestor.by_"
+                 "checkpoint_path.with_ancestor_id",
+                 "Read-only checkpoint-ancestor derived relation inspection by "
+                 "checkpoint path and ancestor checkpoint id.",
+                 R"({"type":"object","required":["checkpoint_path","ancestor_checkpoint_id"],"properties":{"runtime_root":{"type":"string"},"limit":{"type":"integer"},"checkpoint_path":{"type":"string"},"ancestor_checkpoint_id":{"type":"string"}},"additionalProperties":false})"},
+                {"hero.lattice.inspect.derived.checkpoint_ancestor.by_"
+                 "checkpoint_identity",
+                 "Read-only checkpoint-ancestor derived relation inspection by "
+                 "checkpoint id and file digest.",
+                 R"({"type":"object","required":["checkpoint_id","checkpoint_file_digest"],"properties":{"runtime_root":{"type":"string"},"limit":{"type":"integer"},"checkpoint_id":{"type":"string"},"checkpoint_file_digest":{"type":"string"}},"additionalProperties":false})"},
+                {"hero.lattice.inspect.derived.checkpoint_ancestor.by_"
+                 "checkpoint_identity.with_ancestor_path",
+                 "Read-only checkpoint-ancestor derived relation inspection by "
+                 "checkpoint identity and ancestor checkpoint path.",
+                 R"({"type":"object","required":["checkpoint_id","checkpoint_file_digest","ancestor_checkpoint_path"],"properties":{"runtime_root":{"type":"string"},"limit":{"type":"integer"},"checkpoint_id":{"type":"string"},"checkpoint_file_digest":{"type":"string"},"ancestor_checkpoint_path":{"type":"string"}},"additionalProperties":false})"},
+                {"hero.lattice.inspect.derived.checkpoint_ancestor.by_"
+                 "checkpoint_identity.with_ancestor_id",
+                 "Read-only checkpoint-ancestor derived relation inspection by "
+                 "checkpoint identity and ancestor checkpoint id.",
+                 R"({"type":"object","required":["checkpoint_id","checkpoint_file_digest","ancestor_checkpoint_id"],"properties":{"runtime_root":{"type":"string"},"limit":{"type":"integer"},"checkpoint_id":{"type":"string"},"checkpoint_file_digest":{"type":"string"},"ancestor_checkpoint_id":{"type":"string"}},"additionalProperties":false})"},
+                {"hero.lattice.inspect.derived.unresolved_lineage.checkpoint",
+                 "Read-only checkpoint-closure unresolved-lineage derived "
+                 "relation "
+                 "inspection.",
+                 R"({"type":"object","properties":{"runtime_root":{"type":"string"},"limit":{"type":"integer"},"checkpoint_path":{"type":"string"},"checkpoint_id":{"type":"string"},"checkpoint_file_digest":{"type":"string"}},"additionalProperties":false})"},
+                {"hero.lattice.inspect.checkpoint", "Read-only checkpoint closure inspection.", R"({"type":"object","properties":{"runtime_root":{"type":"string"},"checkpoint_path":{"type":"string"},"checkpoint_id":{"type":"string"},"checkpoint_file_digest":{"type":"string"},"limit":{"type":"integer"}},"additionalProperties":false})"},
+                {"hero.lattice.evaluate.target",
+                 "Read-only Lattice proof evaluation for one target.",
+                 R"({"type":"object","required":["target_id"],"properties":{"target_id":{"type":"string"},"config_path":{"type":"string"},"runtime_root":{"type":"string"}},"additionalProperties":false})"},
+                {"hero.lattice.evaluate.targets",
+                 "Read-only Lattice proof evaluation for several targets with "
+                 "one "
+                 "scan.",
+                 R"({"type":"object","properties":{"target_ids":{"type":"array","items":{"type":"string"}},"config_path":{"type":"string"},"runtime_root":{"type":"string"},"limit":{"type":"integer"}},"additionalProperties":false})"},
+                {"hero.lattice.evaluate.deficit",
+                 "Read-only Lattice proof deficit and target-authored advice "
+                 "for "
+                 "one "
+                 "target.",
+                 R"({"type":"object","required":["target_id"],"properties":{"target_id":{"type":"string"},"config_path":{"type":"string"},"runtime_root":{"type":"string"}},"additionalProperties":false})"},
+                {"hero.lattice.evaluate.latest_satisfying_checkpoint.target",
+                 "Read-only deterministic latest-satisfying checkpoint "
+                 "resolution by "
+                 "target id.",
+                 R"({"type":"object","required":["target_id"],"properties":{"target_id":{"type":"string"},"config_path":{"type":"string"},"runtime_root":{"type":"string"}},"additionalProperties":false})"},
+                {"hero.lattice.evaluate.latest_satisfying_checkpoint.hint",
+                 "Read-only deterministic latest-satisfying checkpoint "
+                 "resolution by symbolic hint.",
+                 R"({"type":"object","required":["symbolic_hint"],"properties":{"symbolic_hint":{"type":"string"},"config_path":{"type":"string"},"runtime_root":{"type":"string"}},"additionalProperties":false})"},
+                {"hero.lattice.compare",
+                 "Read-only Pareto comparison for two clean satisfying target "
+                 "evidence "
+                 "vectors. Reports explicit dimensions and never emits a "
+                 "scalar "
+                 "score, "
+                 "winner, deployment decision, or model selection. Comparison "
+                 "identity is inferred from runtime evidence.",
+                 R"({"type":"object","required":["left_target_id","right_target_id"],"properties":{"left_target_id":{"type":"string"},"right_target_id":{"type":"string"},"config_path":{"type":"string"},"runtime_root":{"type":"string"}},"additionalProperties":false})"},
 };
 
 [[nodiscard]] bool tool_is_read_only(std::string_view name) {
-  return name == "hero.lattice.status" || name == "hero.lattice.inspect" ||
-         name == "hero.lattice.evaluate" || name == "hero.lattice.compare";
+  return name == "hero.lattice.status" ||
+         name == "hero.lattice.inspect.schema" ||
+         name == "hero.lattice.inspect.targets" ||
+         name == "hero.lattice.inspect.target" ||
+         name == "hero.lattice.inspect.exposure" ||
+         name == "hero.lattice.inspect.fact_families" ||
+         name == "hero.lattice.inspect.facts.summary" ||
+         name == "hero.lattice.inspect.facts.scan" ||
+         name == "hero.lattice.inspect.facts.lineage" ||
+         name == "hero.lattice.inspect.facts.preview" ||
+         name == "hero.lattice.inspect.facts.preview.by_digest" ||
+         name == "hero.lattice.inspect.facts.preview.by_digest_prefix" ||
+         name == "hero.lattice.inspect.facts.preview.by_index" ||
+         name == "hero.lattice.inspect.index.status" ||
+         name == "hero.lattice.inspect.index.query" ||
+         name == "hero.lattice.inspect.index.query.by_relation" ||
+         name == "hero.lattice.inspect.index.query.by_key" ||
+         name == "hero.lattice.inspect.index.query.by_key_contains" ||
+         name == "hero.lattice.inspect.index.query.by_digest" ||
+         name == "hero.lattice.inspect.index.query.by_digest_prefix" ||
+         name == "hero.lattice.inspect.index.query.unproven_cache" ||
+         name ==
+             "hero.lattice.inspect.index.query.unproven_cache.by_relation" ||
+         name == "hero.lattice.inspect.index.query.unproven_cache.by_key" ||
+         name == "hero.lattice.inspect.index.query.unproven_cache.by_key_"
+                 "contains" ||
+         name == "hero.lattice.inspect.index.query.unproven_cache.by_digest" ||
+         name == "hero.lattice.inspect.index.query.unproven_cache.by_digest_"
+                 "prefix" ||
+         name == "hero.lattice.inspect.derived.target_satisfied" ||
+         name == "hero.lattice.inspect.derived.forbidden_overlap" ||
+         name == "hero.lattice.inspect.derived.unresolved_lineage.target" ||
+         name == "hero.lattice.inspect.derived.stale_cache" ||
+         name == "hero.lattice.inspect.derived.checkpoint_ancestor."
+                 "by_checkpoint_path" ||
+         name == "hero.lattice.inspect.derived.checkpoint_ancestor."
+                 "by_checkpoint_path.with_ancestor_path" ||
+         name == "hero.lattice.inspect.derived.checkpoint_ancestor."
+                 "by_checkpoint_path.with_ancestor_id" ||
+         name == "hero.lattice.inspect.derived.checkpoint_ancestor."
+                 "by_checkpoint_identity" ||
+         name == "hero.lattice.inspect.derived.checkpoint_ancestor."
+                 "by_checkpoint_identity.with_ancestor_path" ||
+         name == "hero.lattice.inspect.derived.checkpoint_ancestor."
+                 "by_checkpoint_identity.with_ancestor_id" ||
+         name == "hero.lattice.inspect.derived.unresolved_lineage.checkpoint" ||
+         name == "hero.lattice.inspect.checkpoint" ||
+         name == "hero.lattice.evaluate.target" ||
+         name == "hero.lattice.evaluate.targets" ||
+         name == "hero.lattice.evaluate.deficit" ||
+         name == "hero.lattice.evaluate.latest_satisfying_checkpoint.target" ||
+         name == "hero.lattice.evaluate.latest_satisfying_checkpoint.hint" ||
+         name == "hero.lattice.compare";
 }
 
 [[nodiscard]] std::string trim_ascii(std::string_view in) {
@@ -212,6 +413,22 @@ constexpr tool_descriptor_t kTools[] = {
 
 [[nodiscard]] const char *bool_json(bool value) {
   return value ? "true" : "false";
+}
+
+void append_raw_json_field(std::ostringstream &out, std::string_view key,
+                           std::string_view raw, bool *first) {
+  if (!first || !*first) {
+    out << ",";
+  }
+  out << json_quote(key) << ":" << raw;
+  if (first) {
+    *first = false;
+  }
+}
+
+void append_string_json_field(std::ostringstream &out, std::string_view key,
+                              std::string_view value, bool *first) {
+  append_raw_json_field(out, key, json_quote(value), first);
 }
 
 [[nodiscard]] std::string double_json(double value) {
@@ -428,6 +645,169 @@ void skip_ws(const std::string &s, std::size_t *idx) {
     return false;
   }
   return parse_int(raw, out);
+}
+
+struct json_field_t {
+  std::string key;
+  std::string raw;
+};
+
+[[nodiscard]] bool parse_json_object_fields(const std::string &json,
+                                            std::vector<json_field_t> *out,
+                                            std::string *err) {
+  std::size_t idx = 0;
+  skip_ws(json, &idx);
+  if (idx >= json.size() || json[idx] != '{') {
+    if (err) {
+      *err = "arguments must be a JSON object";
+    }
+    return false;
+  }
+  ++idx;
+  std::vector<json_field_t> fields;
+  while (idx < json.size()) {
+    skip_ws(json, &idx);
+    if (idx < json.size() && json[idx] == '}') {
+      ++idx;
+      skip_ws(json, &idx);
+      if (idx != json.size()) {
+        if (err) {
+          *err = "trailing data after JSON object";
+        }
+        return false;
+      }
+      if (out) {
+        *out = std::move(fields);
+      }
+      return true;
+    }
+    std::string key;
+    if (!parse_json_string_token(json, &idx, &key)) {
+      if (err) {
+        *err = "expected JSON object key";
+      }
+      return false;
+    }
+    skip_ws(json, &idx);
+    if (idx >= json.size() || json[idx] != ':') {
+      if (err) {
+        *err = "expected ':' after JSON object key";
+      }
+      return false;
+    }
+    ++idx;
+    skip_ws(json, &idx);
+    const std::size_t value_begin = idx;
+    if (!skip_json_value(json, &idx)) {
+      if (err) {
+        *err = "invalid JSON value for key: " + key;
+      }
+      return false;
+    }
+    fields.push_back(
+        json_field_t{.key = std::move(key),
+                     .raw = trim_ascii(std::string_view(json).substr(
+                         value_begin, idx - value_begin))});
+    skip_ws(json, &idx);
+    if (idx < json.size() && json[idx] == ',') {
+      ++idx;
+      continue;
+    }
+    if (idx < json.size() && json[idx] == '}') {
+      continue;
+    }
+    if (err) {
+      *err = "expected ',' or '}' in JSON object";
+    }
+    return false;
+  }
+  if (err) {
+    *err = "unterminated JSON object";
+  }
+  return false;
+}
+
+[[nodiscard]] bool
+field_allowed(std::string_view key,
+              std::initializer_list<std::string_view> allowed) {
+  return std::find(allowed.begin(), allowed.end(), key) != allowed.end();
+}
+
+[[nodiscard]] bool
+validate_json_fields(const std::string &args,
+                     std::initializer_list<std::string_view> allowed,
+                     std::string *err) {
+  std::vector<json_field_t> fields;
+  if (!parse_json_object_fields(args, &fields, err)) {
+    return false;
+  }
+  for (const auto &field : fields) {
+    if (!field_allowed(field.key, allowed)) {
+      if (err) {
+        *err = "unknown field: " + field.key;
+      }
+      return false;
+    }
+  }
+  return true;
+}
+
+[[nodiscard]] bool with_fixed_json_string_field(const std::string &args,
+                                                std::string_view key,
+                                                std::string_view value,
+                                                std::string *out,
+                                                std::string *err) {
+  std::vector<json_field_t> fields;
+  if (!parse_json_object_fields(args, &fields, err)) {
+    return false;
+  }
+  std::ostringstream json;
+  json << "{";
+  bool first = true;
+  for (const auto &field : fields) {
+    if (field.key == key) {
+      if (err) {
+        *err = std::string(key) + " is encoded in the tool name";
+      }
+      return false;
+    }
+    append_raw_json_field(json, field.key, field.raw, &first);
+  }
+  append_string_json_field(json, key, value, &first);
+  json << "}";
+  if (out) {
+    *out = json.str();
+  }
+  return true;
+}
+
+[[nodiscard]] bool with_fixed_json_raw_field(const std::string &args,
+                                             std::string_view key,
+                                             std::string_view raw_value,
+                                             std::string *out,
+                                             std::string *err) {
+  std::vector<json_field_t> fields;
+  if (!parse_json_object_fields(args, &fields, err)) {
+    return false;
+  }
+  std::ostringstream json;
+  json << "{";
+  bool first = true;
+  for (const auto &field : fields) {
+    if (field.key == key) {
+      if (err) {
+        *err = std::string(key) + " is encoded in the tool name";
+      }
+      return false;
+    }
+    append_raw_json_field(json, field.key, field.raw, &first);
+  }
+  append_raw_json_field(json, key, raw_value, &first);
+  json << "}";
+  if (out) {
+    *out = json.str();
+  }
+  return true;
 }
 
 [[nodiscard]] fs::path normalize_path(const fs::path &path) {
@@ -2671,19 +3051,23 @@ node_support_summary_json(const exposure::node_support_summary_t &summary) {
   const bool available = !family.empty() && !digest.empty();
   std::ostringstream out;
   out << "{\"available\":" << bool_json(available)
-      << ",\"tool\":\"hero.lattice.inspect\""
-      << ",\"subject\":\"facts\""
-      << ",\"mode\":\"preview\""
-      << ",\"marshal_tool\":\"hero.marshal.inspect\""
+      << ",\"tool\":\"hero.lattice.inspect.facts.preview.by_digest\""
+      << ",\"marshal_tool\":\"hero.marshal.inspect.facts.preview.by_digest\""
       << ",\"fact_family\":" << json_quote(family)
       << ",\"fact_ref\":" << json_quote(display::fact_ref(family, digest))
       << ",\"fact_digest_prefix\":"
       << json_quote(display::digest_prefix(digest))
       << ",\"fact_digest\":" << json_quote(digest) << ",\"lattice_args\":";
   if (available) {
-    out << "{\"subject\":\"facts\",\"mode\":\"preview\",\"family\":"
-        << json_quote(family) << ",\"fact_digest\":" << json_quote(digest)
-        << ",\"limit\":1}";
+    out << "{\"family\":" << json_quote(family)
+        << ",\"fact_digest\":" << json_quote(digest) << ",\"limit\":1}";
+  } else {
+    out << "null";
+  }
+  out << ",\"lattice_args_json\":";
+  if (available) {
+    out << json_quote("{\"family\":\"" + family + "\",\"fact_digest\":\"" +
+                      digest + "\",\"limit\":1}");
   } else {
     out << "null";
   }
@@ -2716,18 +3100,19 @@ node_support_summary_json(const exposure::node_support_summary_t &summary) {
   std::ostringstream out;
   out << "{\"available\":"
       << bool_json(!hint.fact_family.empty() && !hint.fact_digest.empty())
-      << ",\"tool\":" << json_quote(hint.tool) << ",\"subject\":\"facts\""
-      << ",\"mode\":\"preview\""
+      << ",\"tool\":" << json_quote(hint.tool)
       << ",\"marshal_tool\":" << json_quote(hint.marshal_tool)
       << ",\"fact_family\":" << json_quote(hint.fact_family) << ",\"fact_ref\":"
       << json_quote(display::fact_ref(hint.fact_family, hint.fact_digest))
       << ",\"fact_digest_prefix\":"
       << json_quote(display::digest_prefix(hint.fact_digest))
       << ",\"fact_digest\":" << json_quote(hint.fact_digest)
-      << ",\"lattice_args\":{\"subject\":\"facts\",\"mode\":\"preview\","
-         "\"family\":"
-      << json_quote(hint.fact_family)
+      << ",\"lattice_args\":{\"family\":" << json_quote(hint.fact_family)
       << ",\"fact_digest\":" << json_quote(hint.fact_digest) << ",\"limit\":1}"
+      << ",\"lattice_args_json\":"
+      << json_quote("{\"family\":\"" + hint.fact_family +
+                    "\",\"fact_digest\":\"" + hint.fact_digest +
+                    "\",\"limit\":1}")
       << ",\"marshal_args\":{\"fact_family\":" << json_quote(hint.fact_family)
       << ",\"fact_digest\":" << json_quote(hint.fact_digest)
       << ",\"include_preview\":" << bool_json(hint.include_preview)
@@ -5737,7 +6122,7 @@ derived_query_results_json(const target::lattice_target_evaluation_t &eval) {
       "stale_cache", /*known=*/false, /*value=*/false,
       "runtime_index_cache_validation.issues[]",
       "cache validation is unavailable in target-evaluation projection; use "
-      "hero.lattice.inspect subject=derived for concrete cache witnesses",
+      "hero.lattice.inspect.derived.* for concrete cache witnesses",
       "any_cache_validation_issue", 0, 0, 0, "any", "false_when_empty",
       "runtime_index_cache_validation"));
   results.push_back(make_derived_query_result(
@@ -8281,11 +8666,215 @@ forecast_eval_summary_json(const exposure::forecast_eval_summary_t &summary) {
   return out.str();
 }
 
+[[nodiscard]] std::string
+policy_training_operator_issue_explanation(const std::string &issue) {
+  if (issue == "missing_optimizer_torch_state_digest" ||
+      issue == "missing_optimizer_torch_state_path") {
+    return "PPO evidence is missing the resumable Torch optimizer archive; "
+           "rerun Runtime PPO training so optimizer state is written and "
+           "digest-bound.";
+  }
+  if (issue == "cuda_verification_not_proven" ||
+      issue == "cuda_not_available" ||
+      issue == "unsupported_runtime_device_kind" ||
+      issue == "unsupported_device_policy") {
+    return "Runtime did not prove the PPO module, tensors, loss, and optimizer "
+           "state were on CUDA under device_policy=require_cuda.";
+  }
+  if (issue == "resume_weights_and_optimizer_missing_optimizer_state") {
+    return "resume_mode=resume_weights_and_optimizer requires a parent actor "
+           "checkpoint and optimizer state archive to be loaded before the "
+           "update.";
+  }
+  if (issue == "fresh_spawn_must_not_load_resume_artifacts") {
+    return "resume_mode=fresh_spawn must not carry parent checkpoint or "
+           "optimizer resume artifacts.";
+  }
+  if (issue == "resume_weights_missing_parent_checkpoint") {
+    return "resume_mode=resume_weights requires a bound parent actor "
+           "checkpoint and a true resume_parent_loaded proof.";
+  }
+  if (issue == "missing_parent_forecast_eval_fact_digest" ||
+      issue == "parent_forecast_eval_fact_digest_not_found") {
+    return "Policy training must bind to the upstream forecast-evaluation "
+           "fact that produced the AllocationBelief evidence.";
+  }
+  if (issue == "missing_parent_observer_belief_fact_digest" ||
+      issue == "parent_observer_belief_fact_digest_not_found") {
+    return "Policy training must bind to the upstream observer/belief fact.";
+  }
+  if (issue == "missing_parent_replay_environment_lineage_digest" ||
+      issue == "parent_replay_environment_lineage_digest_not_found") {
+    return "Policy training must bind replay-environment lineage through a "
+           "replay fact digest or replay report digest.";
+  }
+  if (issue == "policy_training_must_remain_artifact_evidence_only") {
+    return "The policy-training fact must stay artifact evidence only; it may "
+           "not claim policy quality, selection, execution, market readiness, "
+           "or deployment authority.";
+  }
+  if (issue == "causal_schedule_future_snapshot_use_not_proven" ||
+      issue == "causal_schedule_no_future_snapshot_use_source_not_derived") {
+    return "The causal schedule must prove no future snapshot use from the "
+           "artifact fit/use ledgers rather than a caller assertion.";
+  }
+  if (issue.starts_with("missing_")) {
+    return "A required policy-training evidence field is missing.";
+  }
+  if (issue.starts_with("unsupported_")) {
+    return "The policy-training evidence uses a schema, mode, or contract "
+           "value this Lattice target does not accept.";
+  }
+  if (issue.starts_with("invalid_")) {
+    return "The policy-training evidence contains an invalid or unbound "
+           "numeric/config value.";
+  }
+  return "Inspect the policy-training fact and upstream Runtime reports for "
+         "this issue code.";
+}
+
+[[nodiscard]] std::string
+policy_training_operator_issue_action(const std::string &issue) {
+  if (issue == "missing_optimizer_torch_state_digest" ||
+      issue == "missing_optimizer_torch_state_path" ||
+      issue == "cuda_verification_not_proven" ||
+      issue == "cuda_not_available" ||
+      issue == "resume_weights_and_optimizer_missing_optimizer_state") {
+    return "rerun_runtime_ppo_training";
+  }
+  if (issue.find("parent_") != std::string::npos ||
+      issue == "missing_parent_exposure_fact_digest") {
+    return "inspect_parent_lineage";
+  }
+  if (issue.find("authority") != std::string::npos ||
+      issue.find("artifact_evidence_only") != std::string::npos) {
+    return "remove_readiness_or_quality_claim";
+  }
+  if (issue.find("causal_schedule") != std::string::npos) {
+    return "inspect_causal_schedule_ledgers";
+  }
+  return "inspect_policy_training_fact";
+}
+
+[[nodiscard]] std::string
+policy_training_operator_issue_json(const std::string &issue) {
+  std::ostringstream out;
+  out << "{\"code\":" << json_quote(issue) << ",\"operator_action\":"
+      << json_quote(policy_training_operator_issue_action(issue))
+      << ",\"explanation\":"
+      << json_quote(policy_training_operator_issue_explanation(issue)) << "}";
+  return out.str();
+}
+
+[[nodiscard]] std::string
+policy_training_operator_issues_json(const std::vector<std::string> &issues) {
+  std::ostringstream out;
+  out << "[";
+  for (std::size_t i = 0; i < issues.size(); ++i) {
+    if (i != 0) {
+      out << ",";
+    }
+    out << policy_training_operator_issue_json(issues[i]);
+  }
+  out << "]";
+  return out.str();
+}
+
+[[nodiscard]] std::string policy_training_operator_refs_json(
+    const exposure::lattice_policy_training_fact_t &fact,
+    const std::string &fact_digest) {
+  std::ostringstream out;
+  out << "{\"display_refs_are_not_proof_identity\":true"
+      << ",\"fact_ref\":"
+      << json_quote(display::fact_ref("policy_training", fact_digest))
+      << ",\"fact_digest_prefix\":"
+      << json_quote(display::digest_prefix(fact_digest))
+      << ",\"parent_exposure_ref\":"
+      << json_quote(
+             display::fact_ref("exposure", fact.parent_exposure_fact_digest))
+      << ",\"actor_checkpoint_ref\":"
+      << json_quote(display::checkpoint_ref(fact.actor_checkpoint_digest))
+      << ",\"critic_checkpoint_ref\":"
+      << json_quote(display::checkpoint_ref(fact.critic_checkpoint_digest))
+      << ",\"input_policy_checkpoint_ref\":"
+      << json_quote(
+             display::checkpoint_ref(fact.input_policy_checkpoint_digest))
+      << ",\"resume_actor_checkpoint_ref\":"
+      << json_quote(
+             display::checkpoint_ref(fact.resume_actor_checkpoint_digest))
+      << ",\"optimizer_state_ref\":"
+      << json_quote(display::digest_ref("opt", fact.optimizer_state_digest))
+      << ",\"optimizer_torch_state_ref\":"
+      << json_quote(
+             display::digest_ref("opt", fact.optimizer_torch_state_digest))
+      << ",\"rollout_collection_ref\":"
+      << json_quote(display::report_ref(fact.rollout_collection_digest))
+      << ",\"ppo_update_report_ref\":"
+      << json_quote(display::report_ref(fact.ppo_update_report_digest))
+      << ",\"validation_rollout_report_ref\":"
+      << json_quote(display::report_ref(fact.validation_rollout_report_digest))
+      << ",\"policy_quality_report_ref\":"
+      << json_quote(display::report_ref(fact.policy_quality_report_digest))
+      << ",\"parent_forecast_eval_ref\":"
+      << json_quote(display::fact_ref("forecast_eval",
+                                      fact.parent_forecast_eval_fact_digest))
+      << ",\"parent_observer_belief_ref\":"
+      << json_quote(display::fact_ref("observer_belief",
+                                      fact.parent_observer_belief_fact_digest))
+      << ",\"parent_replay_environment_ref\":"
+      << json_quote(display::fact_ref(
+             "replay_environment", fact.parent_replay_environment_fact_digest))
+      << ",\"parent_replay_environment_report_ref\":"
+      << json_quote(
+             display::report_ref(fact.parent_replay_environment_report_digest))
+      << "}";
+  return out.str();
+}
+
+[[nodiscard]] std::string policy_training_operator_diagnostics_json(
+    const exposure::lattice_policy_training_fact_t &fact,
+    const std::vector<std::string> &issues) {
+  std::ostringstream out;
+  out << "{\"schema\":\"kikijyeba.lattice.policy_training.operator_"
+         "diagnostics.v1\""
+      << ",\"machine_payload_boundary\":\"full digest fields remain canonical; "
+         "operator refs are display-only handles\""
+      << ",\"readiness_target\":\"policy_training_artifact_ready\""
+      << ",\"issue_count\":" << issues.size()
+      << ",\"issues\":" << policy_training_operator_issues_json(issues)
+      << ",\"cuda\":{\"device_policy\":" << json_quote(fact.device_policy)
+      << ",\"runtime_device_kind\":" << json_quote(fact.runtime_device_kind)
+      << ",\"cuda_verification_passed\":"
+      << bool_json(fact.cuda_verification_passed) << "}"
+      << ",\"resume\":{\"resume_mode\":" << json_quote(fact.resume_mode)
+      << ",\"resume_parent_loaded\":" << bool_json(fact.resume_parent_loaded)
+      << ",\"optimizer_state_resume_loaded\":"
+      << bool_json(fact.optimizer_state_resume_loaded) << "}"
+      << ",\"authority_denials\":{\"policy_training_authority\":"
+      << bool_json(fact.policy_training_authority)
+      << ",\"policy_selector\":" << bool_json(fact.policy_selector)
+      << ",\"quality_authority\":" << bool_json(fact.quality_authority)
+      << ",\"market_readiness_authority\":"
+      << bool_json(fact.market_readiness_authority)
+      << ",\"deployment_authority\":" << bool_json(fact.deployment_authority)
+      << "}}";
+  return out.str();
+}
+
 [[nodiscard]] std::string policy_training_fact_json(
     const exposure::lattice_policy_training_fact_t &fact) {
+  const auto issues = exposure::policy_training_fact_issues(fact);
+  const auto digest = exposure::policy_training_fact_digest(fact);
   std::ostringstream out;
   out << "{\"schema\":" << json_quote(fact.schema)
-      << ",\"fact_type\":" << json_quote(fact.fact_type)
+      << ",\"fact_type\":" << json_quote(fact.fact_type) << ",\"fact_ref\":"
+      << json_quote(display::fact_ref("policy_training", digest))
+      << ",\"fact_digest_prefix\":"
+      << json_quote(display::digest_prefix(digest))
+      << ",\"short_ref_scheme\":\"kikijyeba.hero.short_ref.v1\""
+      << ",\"display_digest_prefix_length\":"
+      << display::kDefaultDigestDisplayPrefixLength << ",\"operator_refs\":"
+      << policy_training_operator_refs_json(fact, digest)
       << ",\"parent_exposure_fact_digest\":"
       << json_quote(fact.parent_exposure_fact_digest)
       << ",\"contract_fingerprint\":" << json_quote(fact.contract_fingerprint)
@@ -8325,8 +8914,77 @@ forecast_eval_summary_json(const exposure::forecast_eval_summary_t &summary) {
       << ",\"action_schema_digest\":" << json_quote(fact.action_schema_digest)
       << ",\"reward_contract_digest\":"
       << json_quote(fact.reward_contract_digest)
+      << ",\"policy_input_schema_id\":"
+      << json_quote(fact.policy_input_schema_id)
+      << ",\"action_adapter_id\":" << json_quote(fact.action_adapter_id)
+      << ",\"action_distribution_id\":"
+      << json_quote(fact.action_distribution_id)
+      << ",\"reward_contract_id\":" << json_quote(fact.reward_contract_id)
       << ",\"execution_profile_digest\":"
       << json_quote(fact.execution_profile_digest)
+      << ",\"ppo_policy_artifact_contract_id\":"
+      << json_quote(fact.ppo_policy_artifact_contract_id)
+      << ",\"policy_family_id\":" << json_quote(fact.policy_family_id)
+      << ",\"policy_checkpoint_schema_id\":"
+      << json_quote(fact.policy_checkpoint_schema_id)
+      << ",\"policy_dsl_digest\":" << json_quote(fact.policy_dsl_digest)
+      << ",\"policy_net_digest\":" << json_quote(fact.policy_net_digest)
+      << ",\"policy_input_feature_manifest_digest\":"
+      << json_quote(fact.policy_input_feature_manifest_digest)
+      << ",\"policy_jkimyei_digest\":" << json_quote(fact.policy_jkimyei_digest)
+      << ",\"target_node_universe_digest\":"
+      << json_quote(fact.target_node_universe_digest)
+      << ",\"action_distribution_config_digest\":"
+      << json_quote(fact.action_distribution_config_digest)
+      << ",\"snapshot_family_digest\":"
+      << json_quote(fact.snapshot_family_digest)
+      << ",\"actor_architecture_digest\":"
+      << json_quote(fact.actor_architecture_digest)
+      << ",\"critic_architecture_digest\":"
+      << json_quote(fact.critic_architecture_digest)
+      << ",\"input_policy_checkpoint_path\":"
+      << json_quote(fact.input_policy_checkpoint_path)
+      << ",\"input_policy_checkpoint_digest\":"
+      << json_quote(fact.input_policy_checkpoint_digest)
+      << ",\"actor_checkpoint_digest\":"
+      << json_quote(fact.actor_checkpoint_digest)
+      << ",\"critic_checkpoint_digest\":"
+      << json_quote(fact.critic_checkpoint_digest)
+      << ",\"optimizer_state_digest\":"
+      << json_quote(fact.optimizer_state_digest)
+      << ",\"optimizer_state_schema_id\":"
+      << json_quote(fact.optimizer_state_schema_id)
+      << ",\"optimizer_torch_state_path\":"
+      << json_quote(fact.optimizer_torch_state_path)
+      << ",\"optimizer_torch_state_digest\":"
+      << json_quote(fact.optimizer_torch_state_digest)
+      << ",\"ppo_config_digest\":" << json_quote(fact.ppo_config_digest)
+      << ",\"device_policy\":" << json_quote(fact.device_policy)
+      << ",\"runtime_device_kind\":" << json_quote(fact.runtime_device_kind)
+      << ",\"cuda_device_index\":" << fact.cuda_device_index
+      << ",\"cuda_device_index_bound\":"
+      << bool_json(fact.cuda_device_index_bound)
+      << ",\"cuda_available\":" << bool_json(fact.cuda_available)
+      << ",\"module_parameters_on_cuda\":"
+      << bool_json(fact.module_parameters_on_cuda)
+      << ",\"forward_input_on_cuda\":" << bool_json(fact.forward_input_on_cuda)
+      << ",\"loss_on_cuda\":" << bool_json(fact.loss_on_cuda)
+      << ",\"optimizer_state_on_cuda\":"
+      << bool_json(fact.optimizer_state_on_cuda)
+      << ",\"cuda_verification_passed\":"
+      << bool_json(fact.cuda_verification_passed)
+      << ",\"resume_mode\":" << json_quote(fact.resume_mode)
+      << ",\"resume_actor_checkpoint_path\":"
+      << json_quote(fact.resume_actor_checkpoint_path)
+      << ",\"resume_actor_checkpoint_digest\":"
+      << json_quote(fact.resume_actor_checkpoint_digest)
+      << ",\"resume_optimizer_state_path\":"
+      << json_quote(fact.resume_optimizer_state_path)
+      << ",\"resume_optimizer_state_digest\":"
+      << json_quote(fact.resume_optimizer_state_digest)
+      << ",\"resume_parent_loaded\":" << bool_json(fact.resume_parent_loaded)
+      << ",\"optimizer_state_resume_loaded\":"
+      << bool_json(fact.optimizer_state_resume_loaded)
       << ",\"normalization_fit_range_digest\":"
       << json_quote(fact.normalization_fit_range_digest)
       << ",\"replay_buffer_source_range_digest\":"
@@ -8395,10 +9053,11 @@ forecast_eval_summary_json(const exposure::forecast_eval_summary_t &summary) {
       << ",\"coverage_authority\":" << bool_json(fact.coverage_authority)
       << ",\"leakage_authority\":" << bool_json(fact.leakage_authority)
       << ",\"contract_identity_authority\":"
-      << bool_json(fact.contract_identity_authority) << ",\"issues\":"
-      << string_array_json(exposure::policy_training_fact_issues(fact))
-      << ",\"digest\":"
-      << json_quote(exposure::policy_training_fact_digest(fact)) << "}";
+      << bool_json(fact.contract_identity_authority)
+      << ",\"issues\":" << string_array_json(issues)
+      << ",\"operator_diagnostics\":"
+      << policy_training_operator_diagnostics_json(fact, issues)
+      << ",\"digest\":" << json_quote(digest) << "}";
   return out.str();
 }
 
@@ -8472,6 +9131,18 @@ forecast_eval_summary_json(const exposure::forecast_eval_summary_t &summary) {
       << summary.critic_checkpoint_bound_count
       << ",\"optimizer_state_bound_count\":"
       << summary.optimizer_state_bound_count
+      << ",\"optimizer_state_schema_bound_count\":"
+      << summary.optimizer_state_schema_bound_count
+      << ",\"optimizer_torch_state_bound_count\":"
+      << summary.optimizer_torch_state_bound_count
+      << ",\"cuda_runtime_contract_bound_count\":"
+      << summary.cuda_runtime_contract_bound_count
+      << ",\"cuda_verified_count\":" << summary.cuda_verified_count
+      << ",\"resume_mode_bound_count\":" << summary.resume_mode_bound_count
+      << ",\"resume_parent_loaded_count\":"
+      << summary.resume_parent_loaded_count
+      << ",\"optimizer_state_resume_loaded_count\":"
+      << summary.optimizer_state_resume_loaded_count
       << ",\"ppo_config_bound_count\":" << summary.ppo_config_bound_count
       << ",\"rollout_collection_bound_count\":"
       << summary.rollout_collection_bound_count
@@ -8567,6 +9238,644 @@ forecast_eval_summary_json(const exposure::forecast_eval_summary_t &summary) {
       << ",\"leakage_authority\":" << bool_json(summary.leakage_authority)
       << ",\"contract_identity_authority\":"
       << bool_json(summary.contract_identity_authority)
+      << ",\"issues\":" << string_array_json(summary.issues) << "}";
+  return out.str();
+}
+
+[[nodiscard]] std::string tsodao_settings_protection_fact_json(
+    const exposure::lattice_tsodao_settings_protection_fact_t &fact) {
+  const auto issues = exposure::tsodao_settings_protection_fact_issues(fact);
+  const auto digest = exposure::tsodao_settings_protection_fact_digest(fact);
+  std::ostringstream out;
+  out << "{\"schema\":" << json_quote(fact.schema)
+      << ",\"fact_type\":" << json_quote(fact.fact_type) << ",\"fact_ref\":"
+      << json_quote(display::fact_ref("tsodao_settings_protection", digest))
+      << ",\"fact_digest_prefix\":"
+      << json_quote(display::digest_prefix(digest))
+      << ",\"short_ref_scheme\":\"kikijyeba.hero.short_ref.v1\""
+      << ",\"parent_exposure_fact_digest\":"
+      << json_quote(fact.parent_exposure_fact_digest)
+      << ",\"contract_fingerprint\":" << json_quote(fact.contract_fingerprint)
+      << ",\"protocol_id\":" << json_quote(fact.protocol_id)
+      << ",\"graph_order_fingerprint\":"
+      << json_quote(fact.graph_order_fingerprint)
+      << ",\"source_cursor_token\":" << json_quote(fact.source_cursor_token)
+      << ",\"split_policy_fingerprint\":"
+      << json_quote(fact.split_policy_fingerprint)
+      << ",\"component_assembly_fingerprint\":"
+      << json_quote(fact.component_assembly_fingerprint)
+      << ",\"target_component_family_id\":"
+      << json_quote(fact.target_component_family_id)
+      << ",\"job_id\":" << json_quote(fact.job_id)
+      << ",\"wave_id\":" << json_quote(fact.wave_id)
+      << ",\"job_status\":" << json_quote(fact.job_status)
+      << ",\"wave_action\":" << json_quote(fact.wave_action)
+      << ",\"split_name\":" << json_quote(fact.split_name) << ",\"split_role\":"
+      << json_quote(exposure::exposure_split_role_name(fact.split_role))
+      << ",\"anchor_range\":" << interval_json(fact.anchor_range)
+      << ",\"completed_anchor_range\":"
+      << interval_json(fact.completed_anchor_range)
+      << ",\"protection_id\":" << json_quote(fact.protection_id)
+      << ",\"protection_contract_id\":"
+      << json_quote(fact.protection_contract_id)
+      << ",\"protected_settings_bundle_digest\":"
+      << json_quote(fact.protected_settings_bundle_digest)
+      << ",\"protected_policy_training_fact_digest\":"
+      << json_quote(fact.protected_policy_training_fact_digest)
+      << ",\"protected_policy_training_ref\":"
+      << json_quote(display::fact_ref(
+             "policy_training", fact.protected_policy_training_fact_digest))
+      << ",\"protected_policy_training_target_id\":"
+      << json_quote(fact.protected_policy_training_target_id)
+      << ",\"protected_policy_training_proof_certificate_digest\":"
+      << json_quote(fact.protected_policy_training_proof_certificate_digest)
+      << ",\"policy_id\":" << json_quote(fact.policy_id)
+      << ",\"policy_kind\":" << json_quote(fact.policy_kind)
+      << ",\"policy_family_id\":" << json_quote(fact.policy_family_id)
+      << ",\"policy_checkpoint_schema_id\":"
+      << json_quote(fact.policy_checkpoint_schema_id)
+      << ",\"policy_input_schema_id\":"
+      << json_quote(fact.policy_input_schema_id)
+      << ",\"policy_input_feature_manifest_digest\":"
+      << json_quote(fact.policy_input_feature_manifest_digest)
+      << ",\"graph_node_action_universe_digest\":"
+      << json_quote(fact.graph_node_action_universe_digest)
+      << ",\"action_schema_digest\":" << json_quote(fact.action_schema_digest)
+      << ",\"action_adapter_id\":" << json_quote(fact.action_adapter_id)
+      << ",\"action_distribution_id\":"
+      << json_quote(fact.action_distribution_id)
+      << ",\"action_distribution_config_digest\":"
+      << json_quote(fact.action_distribution_config_digest)
+      << ",\"reward_contract_id\":" << json_quote(fact.reward_contract_id)
+      << ",\"reward_contract_digest\":"
+      << json_quote(fact.reward_contract_digest)
+      << ",\"environment_contract_id\":"
+      << json_quote(fact.environment_contract_id)
+      << ",\"execution_profile_digest\":"
+      << json_quote(fact.execution_profile_digest)
+      << ",\"accounting_numeraire_node_id\":"
+      << json_quote(fact.accounting_numeraire_node_id)
+      << ",\"causal_schedule_schema_id\":"
+      << json_quote(fact.causal_schedule_schema_id)
+      << ",\"causal_schedule_digest\":"
+      << json_quote(fact.causal_schedule_digest)
+      << ",\"snapshot_family_digest\":"
+      << json_quote(fact.snapshot_family_digest)
+      << ",\"training_config_digest\":"
+      << json_quote(fact.training_config_digest)
+      << ",\"ppo_config_digest\":" << json_quote(fact.ppo_config_digest)
+      << ",\"actor_architecture_digest\":"
+      << json_quote(fact.actor_architecture_digest)
+      << ",\"critic_architecture_digest\":"
+      << json_quote(fact.critic_architecture_digest)
+      << ",\"optimizer_state_schema_id\":"
+      << json_quote(fact.optimizer_state_schema_id)
+      << ",\"optimizer_state_digest\":"
+      << json_quote(fact.optimizer_state_digest)
+      << ",\"optimizer_torch_state_digest\":"
+      << json_quote(fact.optimizer_torch_state_digest)
+      << ",\"resume_mode\":" << json_quote(fact.resume_mode)
+      << ",\"validation_rollout_report_digest\":"
+      << json_quote(fact.validation_rollout_report_digest)
+      << ",\"policy_quality_report_digest\":"
+      << json_quote(fact.policy_quality_report_digest)
+      << ",\"protected_settings_match_policy_training_fact\":"
+      << bool_json(fact.protected_settings_match_policy_training_fact)
+      << ",\"protected_evidence_digests_bound\":"
+      << bool_json(fact.protected_evidence_digests_bound)
+      << ",\"protected_policy_training_ready\":"
+      << bool_json(fact.protected_policy_training_ready)
+      << ",\"artifact_evidence\":" << bool_json(fact.artifact_evidence)
+      << ",\"visibility_only\":" << bool_json(fact.visibility_only)
+      << ",\"settings_protection_artifact\":"
+      << bool_json(fact.settings_protection_artifact)
+      << ",\"tsodao_optimizes_settings\":"
+      << bool_json(fact.tsodao_optimizes_settings)
+      << ",\"tsodao_selects_policy\":" << bool_json(fact.tsodao_selects_policy)
+      << ",\"tsodao_claims_policy_quality\":"
+      << bool_json(fact.tsodao_claims_policy_quality)
+      << ",\"tsodao_claims_market_readiness\":"
+      << bool_json(fact.tsodao_claims_market_readiness)
+      << ",\"tsodao_allows_live_execution\":"
+      << bool_json(fact.tsodao_allows_live_execution)
+      << ",\"readiness_authority\":" << bool_json(fact.readiness_authority)
+      << ",\"quality_authority\":" << bool_json(fact.quality_authority)
+      << ",\"performance_authority\":" << bool_json(fact.performance_authority)
+      << ",\"policy_gate\":" << bool_json(fact.policy_gate)
+      << ",\"checkpoint_selector\":" << bool_json(fact.checkpoint_selector)
+      << ",\"allocation_authority\":" << bool_json(fact.allocation_authority)
+      << ",\"execution_authority\":" << bool_json(fact.execution_authority)
+      << ",\"market_readiness_authority\":"
+      << bool_json(fact.market_readiness_authority)
+      << ",\"deployment_authority\":" << bool_json(fact.deployment_authority)
+      << ",\"coverage_authority\":" << bool_json(fact.coverage_authority)
+      << ",\"leakage_authority\":" << bool_json(fact.leakage_authority)
+      << ",\"contract_identity_authority\":"
+      << bool_json(fact.contract_identity_authority)
+      << ",\"issues\":" << string_array_json(issues)
+      << ",\"digest\":" << json_quote(digest) << "}";
+  return out.str();
+}
+
+[[nodiscard]] std::string tsodao_settings_protection_facts_json(
+    const std::vector<exposure::lattice_tsodao_settings_protection_fact_t>
+        &facts,
+    std::size_t limit) {
+  const std::size_t n = std::min(facts.size(), limit);
+  std::ostringstream out;
+  out << "[";
+  for (std::size_t i = 0; i < n; ++i) {
+    if (i != 0) {
+      out << ",";
+    }
+    out << tsodao_settings_protection_fact_json(facts[i]);
+  }
+  out << "]";
+  return out.str();
+}
+
+[[nodiscard]] std::string tsodao_settings_protection_summary_json(
+    const exposure::tsodao_settings_protection_summary_t &summary) {
+  std::ostringstream out;
+  out << "{\"schema\":" << json_quote(summary.schema)
+      << ",\"exposure_fact_count\":" << summary.exposure_fact_count
+      << ",\"tsodao_settings_protection_fact_count\":"
+      << summary.tsodao_settings_protection_fact_count
+      << ",\"parent_exposure_fact_count\":"
+      << summary.parent_exposure_fact_count
+      << ",\"protection_id_bound_count\":" << summary.protection_id_bound_count
+      << ",\"protection_contract_bound_count\":"
+      << summary.protection_contract_bound_count
+      << ",\"protected_settings_bundle_bound_count\":"
+      << summary.protected_settings_bundle_bound_count
+      << ",\"protected_policy_training_fact_declared_count\":"
+      << summary.protected_policy_training_fact_declared_count
+      << ",\"protected_policy_training_fact_bound_count\":"
+      << summary.protected_policy_training_fact_bound_count
+      << ",\"unresolved_policy_training_fact_count\":"
+      << summary.unresolved_policy_training_fact_count
+      << ",\"protected_settings_match_count\":"
+      << summary.protected_settings_match_count
+      << ",\"protected_settings_mismatch_count\":"
+      << summary.protected_settings_mismatch_count
+      << ",\"protected_evidence_digest_bound_count\":"
+      << summary.protected_evidence_digest_bound_count
+      << ",\"policy_training_ready_bound_count\":"
+      << summary.policy_training_ready_bound_count
+      << ",\"authority_drift_count\":" << summary.authority_drift_count
+      << ",\"artifact_evidence_count\":" << summary.artifact_evidence_count
+      << ",\"warning_count\":" << summary.warning_count
+      << ",\"artifact_evidence\":" << bool_json(summary.artifact_evidence)
+      << ",\"visibility_only\":" << bool_json(summary.visibility_only)
+      << ",\"settings_protection_artifact\":"
+      << bool_json(summary.settings_protection_artifact)
+      << ",\"tsodao_optimizes_settings\":"
+      << bool_json(summary.tsodao_optimizes_settings)
+      << ",\"tsodao_selects_policy\":"
+      << bool_json(summary.tsodao_selects_policy)
+      << ",\"tsodao_claims_policy_quality\":"
+      << bool_json(summary.tsodao_claims_policy_quality)
+      << ",\"tsodao_claims_market_readiness\":"
+      << bool_json(summary.tsodao_claims_market_readiness)
+      << ",\"tsodao_allows_live_execution\":"
+      << bool_json(summary.tsodao_allows_live_execution)
+      << ",\"readiness_authority\":" << bool_json(summary.readiness_authority)
+      << ",\"quality_authority\":" << bool_json(summary.quality_authority)
+      << ",\"performance_authority\":"
+      << bool_json(summary.performance_authority)
+      << ",\"policy_gate\":" << bool_json(summary.policy_gate)
+      << ",\"checkpoint_selector\":" << bool_json(summary.checkpoint_selector)
+      << ",\"allocation_authority\":" << bool_json(summary.allocation_authority)
+      << ",\"execution_authority\":" << bool_json(summary.execution_authority)
+      << ",\"market_readiness_authority\":"
+      << bool_json(summary.market_readiness_authority)
+      << ",\"deployment_authority\":" << bool_json(summary.deployment_authority)
+      << ",\"coverage_authority\":" << bool_json(summary.coverage_authority)
+      << ",\"leakage_authority\":" << bool_json(summary.leakage_authority)
+      << ",\"contract_identity_authority\":"
+      << bool_json(summary.contract_identity_authority)
+      << ",\"issues\":" << string_array_json(summary.issues) << "}";
+  return out.str();
+}
+
+[[nodiscard]] std::string policy_acceptance_fact_json(
+    const exposure::lattice_policy_acceptance_fact_t &fact) {
+  const auto issues = exposure::policy_acceptance_fact_issues(fact);
+  const auto digest = exposure::policy_acceptance_fact_digest(fact);
+  std::ostringstream out;
+  out << "{\"schema\":" << json_quote(fact.schema)
+      << ",\"fact_type\":" << json_quote(fact.fact_type) << ",\"fact_ref\":"
+      << json_quote(display::fact_ref("policy_acceptance", digest))
+      << ",\"fact_digest_prefix\":"
+      << json_quote(display::digest_prefix(digest))
+      << ",\"short_ref_scheme\":\"kikijyeba.hero.short_ref.v1\""
+      << ",\"parent_exposure_fact_digest\":"
+      << json_quote(fact.parent_exposure_fact_digest)
+      << ",\"contract_fingerprint\":" << json_quote(fact.contract_fingerprint)
+      << ",\"protocol_id\":" << json_quote(fact.protocol_id)
+      << ",\"graph_order_fingerprint\":"
+      << json_quote(fact.graph_order_fingerprint)
+      << ",\"source_cursor_token\":" << json_quote(fact.source_cursor_token)
+      << ",\"split_policy_fingerprint\":"
+      << json_quote(fact.split_policy_fingerprint)
+      << ",\"component_assembly_fingerprint\":"
+      << json_quote(fact.component_assembly_fingerprint)
+      << ",\"target_component_family_id\":"
+      << json_quote(fact.target_component_family_id)
+      << ",\"job_id\":" << json_quote(fact.job_id)
+      << ",\"wave_id\":" << json_quote(fact.wave_id)
+      << ",\"split_name\":" << json_quote(fact.split_name) << ",\"split_role\":"
+      << json_quote(exposure::exposure_split_role_name(fact.split_role))
+      << ",\"anchor_range\":" << interval_json(fact.anchor_range)
+      << ",\"completed_anchor_range\":"
+      << interval_json(fact.completed_anchor_range)
+      << ",\"acceptance_id\":" << json_quote(fact.acceptance_id)
+      << ",\"acceptance_contract_id\":"
+      << json_quote(fact.acceptance_contract_id)
+      << ",\"acceptance_policy_digest\":"
+      << json_quote(fact.acceptance_policy_digest)
+      << ",\"accepted_policy_training_fact_digest\":"
+      << json_quote(fact.accepted_policy_training_fact_digest)
+      << ",\"accepted_policy_training_ref\":"
+      << json_quote(display::fact_ref(
+             "policy_training", fact.accepted_policy_training_fact_digest))
+      << ",\"accepted_policy_training_target_id\":"
+      << json_quote(fact.accepted_policy_training_target_id)
+      << ",\"accepted_policy_training_proof_certificate_digest\":"
+      << json_quote(fact.accepted_policy_training_proof_certificate_digest)
+      << ",\"tsodao_settings_protection_fact_digest\":"
+      << json_quote(fact.tsodao_settings_protection_fact_digest)
+      << ",\"tsodao_settings_protection_ref\":"
+      << json_quote(
+             display::fact_ref("tsodao_settings_protection",
+                               fact.tsodao_settings_protection_fact_digest))
+      << ",\"tsodao_settings_protection_target_id\":"
+      << json_quote(fact.tsodao_settings_protection_target_id)
+      << ",\"tsodao_settings_protection_proof_certificate_digest\":"
+      << json_quote(fact.tsodao_settings_protection_proof_certificate_digest)
+      << ",\"protected_settings_bundle_digest\":"
+      << json_quote(fact.protected_settings_bundle_digest)
+      << ",\"accepted_policy_id\":" << json_quote(fact.accepted_policy_id)
+      << ",\"accepted_policy_kind\":" << json_quote(fact.accepted_policy_kind)
+      << ",\"accepted_policy_family_id\":"
+      << json_quote(fact.accepted_policy_family_id)
+      << ",\"accepted_actor_checkpoint_digest\":"
+      << json_quote(fact.accepted_actor_checkpoint_digest)
+      << ",\"accepted_checkpoint_digest\":"
+      << json_quote(fact.accepted_checkpoint_digest)
+      << ",\"policy_quality_report_digest\":"
+      << json_quote(fact.policy_quality_report_digest)
+      << ",\"validation_rollout_report_digest\":"
+      << json_quote(fact.validation_rollout_report_digest)
+      << ",\"reward_contract_id\":" << json_quote(fact.reward_contract_id)
+      << ",\"execution_profile_digest\":"
+      << json_quote(fact.execution_profile_digest)
+      << ",\"accounting_numeraire_node_id\":"
+      << json_quote(fact.accounting_numeraire_node_id)
+      << ",\"mandatory_baseline_set_digest\":"
+      << json_quote(fact.mandatory_baseline_set_digest)
+      << ",\"mandatory_baselines\":" << json_quote(fact.mandatory_baselines)
+      << ",\"primary_metric_id\":" << json_quote(fact.primary_metric_id)
+      << ",\"primary_metric_value\":" << fact.primary_metric_value
+      << ",\"primary_metric_threshold\":" << fact.primary_metric_threshold
+      << ",\"primary_metric_direction\":"
+      << json_quote(fact.primary_metric_direction)
+      << ",\"after_cost_metric_set_digest\":"
+      << json_quote(fact.after_cost_metric_set_digest)
+      << ",\"cost_slippage_assumption_digest\":"
+      << json_quote(fact.cost_slippage_assumption_digest)
+      << ",\"uncertainty_policy\":" << json_quote(fact.uncertainty_policy)
+      << ",\"uncertainty_model\":" << json_quote(fact.uncertainty_model)
+      << ",\"selector_split\":" << json_quote(fact.selector_split)
+      << ",\"validation_split\":" << json_quote(fact.validation_split)
+      << ",\"test_split\":" << json_quote(fact.test_split)
+      << ",\"sealed_test_policy\":" << json_quote(fact.sealed_test_policy)
+      << ",\"tie_policy\":" << json_quote(fact.tie_policy)
+      << ",\"negative_tests_digest\":" << json_quote(fact.negative_tests_digest)
+      << ",\"threshold_selection_audit_digest\":"
+      << json_quote(fact.threshold_selection_audit_digest)
+      << ",\"promotion_criteria_digest\":"
+      << json_quote(fact.promotion_criteria_digest)
+      << ",\"accepted_policy_training_ready\":"
+      << bool_json(fact.accepted_policy_training_ready)
+      << ",\"tsodao_settings_protection_ready\":"
+      << bool_json(fact.tsodao_settings_protection_ready)
+      << ",\"protected_settings_bound\":"
+      << bool_json(fact.protected_settings_bound)
+      << ",\"mandatory_baselines_passed\":"
+      << bool_json(fact.mandatory_baselines_passed)
+      << ",\"primary_metric_passed\":" << bool_json(fact.primary_metric_passed)
+      << ",\"uncertainty_passed\":" << bool_json(fact.uncertainty_passed)
+      << ",\"validation_test_disjoint\":"
+      << bool_json(fact.validation_test_disjoint)
+      << ",\"test_sealed_until_acceptance\":"
+      << bool_json(fact.test_sealed_until_acceptance)
+      << ",\"negative_tests_passed\":" << bool_json(fact.negative_tests_passed)
+      << ",\"leakage_negative_tests_passed\":"
+      << bool_json(fact.leakage_negative_tests_passed)
+      << ",\"threshold_selected_before_test\":"
+      << bool_json(fact.threshold_selected_before_test)
+      << ",\"promotion_criteria_satisfied\":"
+      << bool_json(fact.promotion_criteria_satisfied)
+      << ",\"policy_acceptance_decision\":"
+      << bool_json(fact.policy_acceptance_decision)
+      << ",\"artifact_evidence\":" << bool_json(fact.artifact_evidence)
+      << ",\"visibility_only\":" << bool_json(fact.visibility_only)
+      << ",\"policy_acceptance_artifact\":"
+      << bool_json(fact.policy_acceptance_artifact)
+      << ",\"policy_selector\":" << bool_json(fact.policy_selector)
+      << ",\"checkpoint_selector\":" << bool_json(fact.checkpoint_selector)
+      << ",\"optimizer\":" << bool_json(fact.optimizer)
+      << ",\"allocation_authority\":" << bool_json(fact.allocation_authority)
+      << ",\"execution_authority\":" << bool_json(fact.execution_authority)
+      << ",\"readiness_authority\":" << bool_json(fact.readiness_authority)
+      << ",\"quality_authority\":" << bool_json(fact.quality_authority)
+      << ",\"performance_authority\":" << bool_json(fact.performance_authority)
+      << ",\"market_readiness_authority\":"
+      << bool_json(fact.market_readiness_authority)
+      << ",\"deployment_authority\":" << bool_json(fact.deployment_authority)
+      << ",\"live_execution_authority\":"
+      << bool_json(fact.live_execution_authority)
+      << ",\"coverage_authority\":" << bool_json(fact.coverage_authority)
+      << ",\"leakage_authority\":" << bool_json(fact.leakage_authority)
+      << ",\"contract_identity_authority\":"
+      << bool_json(fact.contract_identity_authority)
+      << ",\"issues\":" << string_array_json(issues)
+      << ",\"digest\":" << json_quote(digest) << "}";
+  return out.str();
+}
+
+[[nodiscard]] std::string policy_acceptance_facts_json(
+    const std::vector<exposure::lattice_policy_acceptance_fact_t> &facts,
+    std::size_t limit) {
+  const std::size_t n = std::min(facts.size(), limit);
+  std::ostringstream out;
+  out << "[";
+  for (std::size_t i = 0; i < n; ++i) {
+    if (i != 0) {
+      out << ",";
+    }
+    out << policy_acceptance_fact_json(facts[i]);
+  }
+  out << "]";
+  return out.str();
+}
+
+[[nodiscard]] std::string policy_acceptance_summary_json(
+    const exposure::policy_acceptance_summary_t &summary) {
+  std::ostringstream out;
+  out << "{\"schema\":" << json_quote(summary.schema)
+      << ",\"exposure_fact_count\":" << summary.exposure_fact_count
+      << ",\"policy_acceptance_fact_count\":"
+      << summary.policy_acceptance_fact_count
+      << ",\"parent_exposure_fact_count\":"
+      << summary.parent_exposure_fact_count
+      << ",\"acceptance_id_bound_count\":" << summary.acceptance_id_bound_count
+      << ",\"acceptance_contract_bound_count\":"
+      << summary.acceptance_contract_bound_count
+      << ",\"policy_training_fact_declared_count\":"
+      << summary.policy_training_fact_declared_count
+      << ",\"policy_training_fact_bound_count\":"
+      << summary.policy_training_fact_bound_count
+      << ",\"unresolved_policy_training_fact_count\":"
+      << summary.unresolved_policy_training_fact_count
+      << ",\"tsodao_settings_protection_declared_count\":"
+      << summary.tsodao_settings_protection_declared_count
+      << ",\"tsodao_settings_protection_bound_count\":"
+      << summary.tsodao_settings_protection_bound_count
+      << ",\"unresolved_tsodao_settings_protection_count\":"
+      << summary.unresolved_tsodao_settings_protection_count
+      << ",\"protected_settings_bound_count\":"
+      << summary.protected_settings_bound_count
+      << ",\"mandatory_baselines_passed_count\":"
+      << summary.mandatory_baselines_passed_count
+      << ",\"after_cost_metrics_bound_count\":"
+      << summary.after_cost_metrics_bound_count
+      << ",\"primary_metric_passed_count\":"
+      << summary.primary_metric_passed_count
+      << ",\"uncertainty_passed_count\":" << summary.uncertainty_passed_count
+      << ",\"validation_test_disjoint_count\":"
+      << summary.validation_test_disjoint_count
+      << ",\"sealed_test_count\":" << summary.sealed_test_count
+      << ",\"negative_tests_passed_count\":"
+      << summary.negative_tests_passed_count
+      << ",\"leakage_negative_tests_passed_count\":"
+      << summary.leakage_negative_tests_passed_count
+      << ",\"threshold_selected_before_test_count\":"
+      << summary.threshold_selected_before_test_count
+      << ",\"promotion_criteria_satisfied_count\":"
+      << summary.promotion_criteria_satisfied_count
+      << ",\"accepted_decision_count\":" << summary.accepted_decision_count
+      << ",\"authority_drift_count\":" << summary.authority_drift_count
+      << ",\"artifact_evidence_count\":" << summary.artifact_evidence_count
+      << ",\"warning_count\":" << summary.warning_count
+      << ",\"artifact_evidence\":" << bool_json(summary.artifact_evidence)
+      << ",\"visibility_only\":" << bool_json(summary.visibility_only)
+      << ",\"policy_acceptance_artifact\":"
+      << bool_json(summary.policy_acceptance_artifact)
+      << ",\"policy_selector\":" << bool_json(summary.policy_selector)
+      << ",\"checkpoint_selector\":" << bool_json(summary.checkpoint_selector)
+      << ",\"optimizer\":" << bool_json(summary.optimizer)
+      << ",\"allocation_authority\":" << bool_json(summary.allocation_authority)
+      << ",\"execution_authority\":" << bool_json(summary.execution_authority)
+      << ",\"readiness_authority\":" << bool_json(summary.readiness_authority)
+      << ",\"quality_authority\":" << bool_json(summary.quality_authority)
+      << ",\"performance_authority\":"
+      << bool_json(summary.performance_authority)
+      << ",\"market_readiness_authority\":"
+      << bool_json(summary.market_readiness_authority)
+      << ",\"deployment_authority\":" << bool_json(summary.deployment_authority)
+      << ",\"live_execution_authority\":"
+      << bool_json(summary.live_execution_authority)
+      << ",\"coverage_authority\":" << bool_json(summary.coverage_authority)
+      << ",\"leakage_authority\":" << bool_json(summary.leakage_authority)
+      << ",\"contract_identity_authority\":"
+      << bool_json(summary.contract_identity_authority)
+      << ",\"issues\":" << string_array_json(summary.issues) << "}";
+  return out.str();
+}
+
+[[nodiscard]] std::string paper_online_readiness_fact_json(
+    const exposure::lattice_paper_online_readiness_fact_t &fact) {
+  const auto issues = exposure::paper_online_readiness_fact_issues(fact);
+  const auto digest = exposure::paper_online_readiness_fact_digest(fact);
+  std::ostringstream out;
+  out << "{\"schema\":" << json_quote(fact.schema)
+      << ",\"fact_type\":" << json_quote(fact.fact_type) << ",\"fact_ref\":"
+      << json_quote(display::fact_ref("paper_online_readiness", digest))
+      << ",\"fact_digest_prefix\":"
+      << json_quote(display::digest_prefix(digest))
+      << ",\"short_ref_scheme\":\"kikijyeba.hero.short_ref.v1\""
+      << ",\"parent_exposure_fact_digest\":"
+      << json_quote(fact.parent_exposure_fact_digest)
+      << ",\"contract_fingerprint\":" << json_quote(fact.contract_fingerprint)
+      << ",\"protocol_id\":" << json_quote(fact.protocol_id)
+      << ",\"graph_order_fingerprint\":"
+      << json_quote(fact.graph_order_fingerprint)
+      << ",\"source_cursor_token\":" << json_quote(fact.source_cursor_token)
+      << ",\"target_component_family_id\":"
+      << json_quote(fact.target_component_family_id)
+      << ",\"job_id\":" << json_quote(fact.job_id)
+      << ",\"wave_id\":" << json_quote(fact.wave_id)
+      << ",\"split_name\":" << json_quote(fact.split_name) << ",\"split_role\":"
+      << json_quote(exposure::exposure_split_role_name(fact.split_role))
+      << ",\"readiness_id\":" << json_quote(fact.readiness_id)
+      << ",\"readiness_contract_id\":" << json_quote(fact.readiness_contract_id)
+      << ",\"policy_acceptance_fact_digest\":"
+      << json_quote(fact.policy_acceptance_fact_digest)
+      << ",\"policy_acceptance_ref\":"
+      << json_quote(display::fact_ref("policy_acceptance",
+                                      fact.policy_acceptance_fact_digest))
+      << ",\"policy_acceptance_target_id\":"
+      << json_quote(fact.policy_acceptance_target_id)
+      << ",\"policy_acceptance_proof_certificate_digest\":"
+      << json_quote(fact.policy_acceptance_proof_certificate_digest)
+      << ",\"tsodao_settings_protection_fact_digest\":"
+      << json_quote(fact.tsodao_settings_protection_fact_digest)
+      << ",\"tsodao_settings_protection_ref\":"
+      << json_quote(
+             display::fact_ref("tsodao_settings_protection",
+                               fact.tsodao_settings_protection_fact_digest))
+      << ",\"protected_settings_bundle_digest\":"
+      << json_quote(fact.protected_settings_bundle_digest)
+      << ",\"accepted_policy_id\":" << json_quote(fact.accepted_policy_id)
+      << ",\"accepted_policy_kind\":" << json_quote(fact.accepted_policy_kind)
+      << ",\"accepted_policy_family_id\":"
+      << json_quote(fact.accepted_policy_family_id)
+      << ",\"accepted_actor_checkpoint_digest\":"
+      << json_quote(fact.accepted_actor_checkpoint_digest)
+      << ",\"accepted_checkpoint_digest\":"
+      << json_quote(fact.accepted_checkpoint_digest)
+      << ",\"reward_contract_id\":" << json_quote(fact.reward_contract_id)
+      << ",\"execution_profile_digest\":"
+      << json_quote(fact.execution_profile_digest)
+      << ",\"locked_execution_profile_digest\":"
+      << json_quote(fact.locked_execution_profile_digest)
+      << ",\"accounting_numeraire_node_id\":"
+      << json_quote(fact.accounting_numeraire_node_id)
+      << ",\"paper_online_environment_contract_id\":"
+      << json_quote(fact.paper_online_environment_contract_id)
+      << ",\"paper_online_profile_digest\":"
+      << json_quote(fact.paper_online_profile_digest)
+      << ",\"direct_edge_universe_digest\":"
+      << json_quote(fact.direct_edge_universe_digest)
+      << ",\"missing_direct_pair_policy\":"
+      << json_quote(fact.missing_direct_pair_policy)
+      << ",\"market_data_staleness_policy_id\":"
+      << json_quote(fact.market_data_staleness_policy_id)
+      << ",\"max_market_data_staleness_ms\":"
+      << fact.max_market_data_staleness_ms
+      << ",\"clock_skew_tolerance_ms\":" << fact.clock_skew_tolerance_ms
+      << ",\"paper_ledger_storage_policy_id\":"
+      << json_quote(fact.paper_ledger_storage_policy_id)
+      << ",\"persistent_paper_ledger_recovery_policy_id\":"
+      << json_quote(fact.persistent_paper_ledger_recovery_policy_id)
+      << ",\"idempotency_policy_id\":" << json_quote(fact.idempotency_policy_id)
+      << ",\"duplicate_action_policy\":"
+      << json_quote(fact.duplicate_action_policy)
+      << ",\"operator_abort_policy_id\":"
+      << json_quote(fact.operator_abort_policy_id)
+      << ",\"kill_switch_policy_id\":" << json_quote(fact.kill_switch_policy_id)
+      << ",\"policy_acceptance_ready\":"
+      << bool_json(fact.policy_acceptance_ready)
+      << ",\"direct_edge_universe_validated\":"
+      << bool_json(fact.direct_edge_universe_validated)
+      << ",\"market_data_staleness_bound\":"
+      << bool_json(fact.market_data_staleness_bound)
+      << ",\"idempotency_bound\":" << bool_json(fact.idempotency_bound)
+      << ",\"persistent_paper_ledger_recovery_bound\":"
+      << bool_json(fact.persistent_paper_ledger_recovery_bound)
+      << ",\"operator_abort_bound\":" << bool_json(fact.operator_abort_bound)
+      << ",\"kill_switch_bound\":" << bool_json(fact.kill_switch_bound)
+      << ",\"synthetic_execution_markets_allowed\":"
+      << bool_json(fact.synthetic_execution_markets_allowed)
+      << ",\"numeraire_fallback_allowed\":"
+      << bool_json(fact.numeraire_fallback_allowed)
+      << ",\"paper_online_execution_allowed\":"
+      << bool_json(fact.paper_online_execution_allowed)
+      << ",\"live_execution_allowed\":"
+      << bool_json(fact.live_execution_allowed)
+      << ",\"broker_execution_allowed\":"
+      << bool_json(fact.broker_execution_allowed)
+      << ",\"artifact_evidence\":" << bool_json(fact.artifact_evidence)
+      << ",\"visibility_only\":" << bool_json(fact.visibility_only)
+      << ",\"paper_online_readiness_artifact\":"
+      << bool_json(fact.paper_online_readiness_artifact)
+      << ",\"readiness_authority\":" << bool_json(fact.readiness_authority)
+      << ",\"execution_authority\":" << bool_json(fact.execution_authority)
+      << ",\"market_readiness_authority\":"
+      << bool_json(fact.market_readiness_authority)
+      << ",\"deployment_authority\":" << bool_json(fact.deployment_authority)
+      << ",\"live_execution_authority\":"
+      << bool_json(fact.live_execution_authority)
+      << ",\"issues\":" << string_array_json(issues)
+      << ",\"digest\":" << json_quote(digest) << "}";
+  return out.str();
+}
+
+[[nodiscard]] std::string paper_online_readiness_facts_json(
+    const std::vector<exposure::lattice_paper_online_readiness_fact_t> &facts,
+    std::size_t limit) {
+  const std::size_t n = std::min(facts.size(), limit);
+  std::ostringstream out;
+  out << "[";
+  for (std::size_t i = 0; i < n; ++i) {
+    if (i != 0) {
+      out << ",";
+    }
+    out << paper_online_readiness_fact_json(facts[i]);
+  }
+  out << "]";
+  return out.str();
+}
+
+[[nodiscard]] std::string paper_online_readiness_summary_json(
+    const exposure::paper_online_readiness_summary_t &summary) {
+  std::ostringstream out;
+  out << "{\"schema\":" << json_quote(summary.schema)
+      << ",\"exposure_fact_count\":" << summary.exposure_fact_count
+      << ",\"paper_online_readiness_fact_count\":"
+      << summary.paper_online_readiness_fact_count
+      << ",\"parent_exposure_fact_count\":"
+      << summary.parent_exposure_fact_count
+      << ",\"policy_acceptance_fact_declared_count\":"
+      << summary.policy_acceptance_fact_declared_count
+      << ",\"policy_acceptance_fact_bound_count\":"
+      << summary.policy_acceptance_fact_bound_count
+      << ",\"unresolved_policy_acceptance_count\":"
+      << summary.unresolved_policy_acceptance_count
+      << ",\"accepted_policy_bound_count\":"
+      << summary.accepted_policy_bound_count
+      << ",\"direct_edge_universe_validated_count\":"
+      << summary.direct_edge_universe_validated_count
+      << ",\"staleness_policy_bound_count\":"
+      << summary.staleness_policy_bound_count
+      << ",\"idempotency_bound_count\":" << summary.idempotency_bound_count
+      << ",\"ledger_recovery_bound_count\":"
+      << summary.ledger_recovery_bound_count
+      << ",\"session_lifecycle_bound_count\":"
+      << summary.session_lifecycle_bound_count
+      << ",\"abort_policy_bound_count\":" << summary.abort_policy_bound_count
+      << ",\"kill_switch_bound_count\":" << summary.kill_switch_bound_count
+      << ",\"authority_drift_count\":" << summary.authority_drift_count
+      << ",\"artifact_evidence_count\":" << summary.artifact_evidence_count
+      << ",\"warning_count\":" << summary.warning_count
+      << ",\"artifact_evidence\":" << bool_json(summary.artifact_evidence)
+      << ",\"visibility_only\":" << bool_json(summary.visibility_only)
+      << ",\"paper_online_readiness_artifact\":"
+      << bool_json(summary.paper_online_readiness_artifact)
+      << ",\"paper_online_execution_allowed\":"
+      << bool_json(summary.paper_online_execution_allowed)
+      << ",\"live_execution_allowed\":"
+      << bool_json(summary.live_execution_allowed)
+      << ",\"broker_execution_allowed\":"
+      << bool_json(summary.broker_execution_allowed)
+      << ",\"readiness_authority\":" << bool_json(summary.readiness_authority)
+      << ",\"market_readiness_authority\":"
+      << bool_json(summary.market_readiness_authority)
+      << ",\"deployment_authority\":" << bool_json(summary.deployment_authority)
+      << ",\"live_execution_authority\":"
+      << bool_json(summary.live_execution_authority)
       << ",\"issues\":" << string_array_json(summary.issues) << "}";
   return out.str();
 }
@@ -8999,6 +10308,12 @@ runtime_index_cache_json(const exposure::lattice_runtime_index_cache_t &cache,
       << ",\"replay_environment_fact_count\":"
       << cache.replay_environment_fact_count
       << ",\"policy_training_fact_count\":" << cache.policy_training_fact_count
+      << ",\"tsodao_settings_protection_fact_count\":"
+      << cache.tsodao_settings_protection_fact_count
+      << ",\"policy_acceptance_fact_count\":"
+      << cache.policy_acceptance_fact_count
+      << ",\"paper_online_readiness_fact_count\":"
+      << cache.paper_online_readiness_fact_count
       << ",\"selection_signal_fact_count\":"
       << cache.selection_signal_fact_count
       << ",\"representation_support_fact_count\":"
@@ -9243,6 +10558,21 @@ fact_identity_lineage_digest_fields(const std::string &family) {
   if (family == "replay_environment") {
     return {"parent_exposure_fact_digest", "runtime_replay_batch_digest",
             "runtime_replay_experiment_digest", "runtime_replay_report_digest"};
+  }
+  if (family == "policy_training") {
+    return {"parent_exposure_fact_digest",
+            "parent_forecast_eval_fact_digest",
+            "parent_observer_belief_fact_digest",
+            "parent_allocation_engine_fact_digest",
+            "parent_replay_environment_fact_digest",
+            "policy_dsl_digest",
+            "policy_net_digest",
+            "policy_input_feature_manifest_digest",
+            "policy_jkimyei_digest",
+            "target_node_universe_digest",
+            "action_distribution_config_digest",
+            "causal_schedule_digest",
+            "snapshot_family_digest"};
   }
   if (family == "selection_signal") {
     return {"parent_exposure_fact_digest", "parent_evaluation_fact_digests",
@@ -9740,6 +11070,23 @@ simple_fact_family_summary_json(const char *schema, std::int64_t fact_count) {
         ledger.facts(), ledger.policy_training_facts(),
         ledger.forecast_eval_facts(), ledger.observer_belief_facts(),
         ledger.allocation_engine_facts(), ledger.replay_environment_facts()));
+  case exposure::lattice_fact_family_t::tsodao_settings_protection:
+    return tsodao_settings_protection_summary_json(
+        exposure::summarize_tsodao_settings_protections(
+            ledger.facts(), ledger.tsodao_settings_protection_facts(),
+            ledger.policy_training_facts()));
+  case exposure::lattice_fact_family_t::policy_acceptance:
+    return policy_acceptance_summary_json(
+        exposure::summarize_policy_acceptances(
+            ledger.facts(), ledger.policy_acceptance_facts(),
+            ledger.policy_training_facts(),
+            ledger.tsodao_settings_protection_facts()));
+  case exposure::lattice_fact_family_t::paper_online_readiness:
+    return paper_online_readiness_summary_json(
+        exposure::summarize_paper_online_readiness(
+            ledger.facts(), ledger.paper_online_readiness_facts(),
+            ledger.policy_acceptance_facts(),
+            ledger.tsodao_settings_protection_facts()));
   case exposure::lattice_fact_family_t::selection_signal:
     return selection_signal_summary_json(exposure::summarize_selection_signals(
         ledger.facts(), ledger.selection_signal_facts(),
@@ -9784,6 +11131,15 @@ fact_family_facts_json(const exposure::lattice_exposure_ledger_t &ledger,
                                          limit);
   case exposure::lattice_fact_family_t::policy_training:
     return policy_training_facts_json(ledger.policy_training_facts(), limit);
+  case exposure::lattice_fact_family_t::tsodao_settings_protection:
+    return tsodao_settings_protection_facts_json(
+        ledger.tsodao_settings_protection_facts(), limit);
+  case exposure::lattice_fact_family_t::policy_acceptance:
+    return policy_acceptance_facts_json(ledger.policy_acceptance_facts(),
+                                        limit);
+  case exposure::lattice_fact_family_t::paper_online_readiness:
+    return paper_online_readiness_facts_json(
+        ledger.paper_online_readiness_facts(), limit);
   case exposure::lattice_fact_family_t::selection_signal:
     return selection_signal_facts_json(ledger.selection_signal_facts(), limit);
   case exposure::lattice_fact_family_t::representation_support:
@@ -9958,6 +11314,17 @@ resolve_fact_digest_prefix(const std::vector<Fact> &facts,
   case exposure::lattice_fact_family_t::policy_training:
     return resolve_fact_digest_prefix(ledger.policy_training_facts(), prefix,
                                       exposure::policy_training_fact_digest);
+  case exposure::lattice_fact_family_t::tsodao_settings_protection:
+    return resolve_fact_digest_prefix(
+        ledger.tsodao_settings_protection_facts(), prefix,
+        exposure::tsodao_settings_protection_fact_digest);
+  case exposure::lattice_fact_family_t::policy_acceptance:
+    return resolve_fact_digest_prefix(ledger.policy_acceptance_facts(), prefix,
+                                      exposure::policy_acceptance_fact_digest);
+  case exposure::lattice_fact_family_t::paper_online_readiness:
+    return resolve_fact_digest_prefix(
+        ledger.paper_online_readiness_facts(), prefix,
+        exposure::paper_online_readiness_fact_digest);
   case exposure::lattice_fact_family_t::selection_signal:
     return resolve_fact_digest_prefix(ledger.selection_signal_facts(), prefix,
                                       exposure::selection_signal_fact_digest);
@@ -10044,6 +11411,24 @@ fact_family_preview_rows_json(const exposure::lattice_exposure_ledger_t &ledger,
                                   exposure::policy_training_fact_digest,
                                   policy_training_fact_json, matching_count,
                                   truncated);
+  case exposure::lattice_fact_family_t::tsodao_settings_protection:
+    return fact_preview_rows_json(
+        ledger.tsodao_settings_protection_facts(), filter,
+        exposure::lattice_fact_family_name(family),
+        exposure::tsodao_settings_protection_fact_digest,
+        tsodao_settings_protection_fact_json, matching_count, truncated);
+  case exposure::lattice_fact_family_t::policy_acceptance:
+    return fact_preview_rows_json(ledger.policy_acceptance_facts(), filter,
+                                  exposure::lattice_fact_family_name(family),
+                                  exposure::policy_acceptance_fact_digest,
+                                  policy_acceptance_fact_json, matching_count,
+                                  truncated);
+  case exposure::lattice_fact_family_t::paper_online_readiness:
+    return fact_preview_rows_json(ledger.paper_online_readiness_facts(), filter,
+                                  exposure::lattice_fact_family_name(family),
+                                  exposure::paper_online_readiness_fact_digest,
+                                  paper_online_readiness_fact_json,
+                                  matching_count, truncated);
   case exposure::lattice_fact_family_t::selection_signal:
     return fact_preview_rows_json(ledger.selection_signal_facts(), filter,
                                   exposure::lattice_fact_family_name(family),
@@ -10397,6 +11782,9 @@ build_target_evaluator(const std::string &args, lattice_context_t *ctx,
 [[nodiscard]] bool handle_status(const std::string &args,
                                  lattice_context_t *ctx, std::string *out,
                                  std::string *err) {
+  if (!validate_json_fields(args, {}, err)) {
+    return false;
+  }
   std::vector<target::lattice_target_spec_t> targets;
   exposure::exposure_ledger_scan_result_t scan;
   target::lattice_target_active_identity_t identity;
@@ -10474,6 +11862,12 @@ build_target_evaluator(const std::string &args, lattice_context_t *ctx,
        << scan.ledger.replay_environment_facts().size()
        << ",\"policy_training_fact_count\":"
        << scan.ledger.policy_training_facts().size()
+       << ",\"tsodao_settings_protection_fact_count\":"
+       << scan.ledger.tsodao_settings_protection_facts().size()
+       << ",\"policy_acceptance_fact_count\":"
+       << scan.ledger.policy_acceptance_facts().size()
+       << ",\"paper_online_readiness_fact_count\":"
+       << scan.ledger.paper_online_readiness_facts().size()
        << ",\"selection_signal_fact_count\":"
        << scan.ledger.selection_signal_facts().size()
        << ",\"representation_support_fact_count\":"
@@ -11041,6 +12435,12 @@ build_target_evaluator(const std::string &args, lattice_context_t *ctx,
        << scan.ledger.replay_environment_facts().size()
        << ",\"policy_training_fact_count\":"
        << scan.ledger.policy_training_facts().size()
+       << ",\"tsodao_settings_protection_fact_count\":"
+       << scan.ledger.tsodao_settings_protection_facts().size()
+       << ",\"policy_acceptance_fact_count\":"
+       << scan.ledger.policy_acceptance_facts().size()
+       << ",\"paper_online_readiness_fact_count\":"
+       << scan.ledger.paper_online_readiness_facts().size()
        << ",\"selection_signal_fact_count\":"
        << scan.ledger.selection_signal_facts().size()
        << ",\"representation_support_fact_count\":"
@@ -11391,6 +12791,12 @@ build_target_evaluator(const std::string &args, lattice_context_t *ctx,
        << scan.ledger.replay_environment_facts().size()
        << ",\"policy_training_fact_count\":"
        << scan.ledger.policy_training_facts().size()
+       << ",\"tsodao_settings_protection_fact_count\":"
+       << scan.ledger.tsodao_settings_protection_facts().size()
+       << ",\"policy_acceptance_fact_count\":"
+       << scan.ledger.policy_acceptance_facts().size()
+       << ",\"paper_online_readiness_fact_count\":"
+       << scan.ledger.paper_online_readiness_facts().size()
        << ",\"selection_signal_fact_count\":"
        << scan.ledger.selection_signal_facts().size()
        << ",\"representation_support_fact_count\":"
@@ -11723,6 +13129,12 @@ build_target_evaluator(const std::string &args, lattice_context_t *ctx,
        << scan.ledger.replay_environment_facts().size()
        << ",\"policy_training_fact_count\":"
        << scan.ledger.policy_training_facts().size()
+       << ",\"tsodao_settings_protection_fact_count\":"
+       << scan.ledger.tsodao_settings_protection_facts().size()
+       << ",\"policy_acceptance_fact_count\":"
+       << scan.ledger.policy_acceptance_facts().size()
+       << ",\"paper_online_readiness_fact_count\":"
+       << scan.ledger.paper_online_readiness_facts().size()
        << ",\"selection_signal_fact_count\":"
        << scan.ledger.selection_signal_facts().size()
        << ",\"representation_support_fact_count\":"
@@ -11763,6 +13175,17 @@ build_target_evaluator(const std::string &args, lattice_context_t *ctx,
        << ",\"returned_policy_training_fact_count\":"
        << std::min<std::size_t>(scan.ledger.policy_training_facts().size(),
                                 static_cast<std::size_t>(limit))
+       << ",\"returned_tsodao_settings_protection_fact_count\":"
+       << std::min<std::size_t>(
+              scan.ledger.tsodao_settings_protection_facts().size(),
+              static_cast<std::size_t>(limit))
+       << ",\"returned_policy_acceptance_fact_count\":"
+       << std::min<std::size_t>(scan.ledger.policy_acceptance_facts().size(),
+                                static_cast<std::size_t>(limit))
+       << ",\"returned_paper_online_readiness_fact_count\":"
+       << std::min<std::size_t>(
+              scan.ledger.paper_online_readiness_facts().size(),
+              static_cast<std::size_t>(limit))
        << ",\"returned_selection_signal_fact_count\":"
        << std::min<std::size_t>(scan.ledger.selection_signal_facts().size(),
                                 static_cast<std::size_t>(limit))
@@ -12121,24 +13544,23 @@ build_target_evaluator(const std::string &args, lattice_context_t *ctx,
   filter.limit = static_cast<std::size_t>(limit);
   if (extract_json_raw_field(args, "digest", nullptr)) {
     if (err) {
-      *err =
-          "hero.lattice.inspect subject=facts mode=preview uses fact_digest; "
-          "digest is reserved for subject=index queries";
+      *err = "hero.lattice.inspect.facts.preview uses fact_digest; digest "
+             "is reserved for hero.lattice.inspect.index.query";
     }
     return false;
   }
   if (extract_json_raw_field(args, "digest_prefix", nullptr)) {
     if (err) {
-      *err = "hero.lattice.inspect subject=facts mode=preview uses "
-             "fact_digest_prefix; digest_prefix is reserved for subject=index "
-             "queries";
+      *err = "hero.lattice.inspect.facts.preview uses "
+             "fact_digest_prefix; digest_prefix is reserved for "
+             "hero.lattice.inspect.index.query";
     }
     return false;
   }
   if (extract_json_raw_field(args, "index", nullptr)) {
     if (err) {
-      *err = "hero.lattice.inspect subject=facts mode=preview uses fact_index; "
-             "index is reserved for subject=index queries";
+      *err = "hero.lattice.inspect.facts.preview uses fact_index; index "
+             "is reserved for hero.lattice.inspect.index.query";
     }
     return false;
   }
@@ -13096,6 +14518,12 @@ evidence_dimension_comparison_rows(
        << scan.ledger.replay_environment_facts().size()
        << ",\"policy_training_fact_count\":"
        << scan.ledger.policy_training_facts().size()
+       << ",\"tsodao_settings_protection_fact_count\":"
+       << scan.ledger.tsodao_settings_protection_facts().size()
+       << ",\"policy_acceptance_fact_count\":"
+       << scan.ledger.policy_acceptance_facts().size()
+       << ",\"paper_online_readiness_fact_count\":"
+       << scan.ledger.paper_online_readiness_facts().size()
        << ",\"selection_signal_fact_count\":"
        << scan.ledger.selection_signal_facts().size()
        << ",\"representation_support_fact_count\":"
@@ -13752,129 +15180,631 @@ find_checkpoint_fact_for_path(
 using handler_fn = bool (*)(const std::string &, lattice_context_t *,
                             std::string *, std::string *);
 
-[[nodiscard]] bool handle_inspect(const std::string &args,
-                                  lattice_context_t *ctx, std::string *out,
-                                  std::string *err) {
-  std::string subject;
-  if (!extract_json_string_field(args, "subject", &subject) ||
-      trim_ascii(subject).empty()) {
-    if (err) {
-      *err = "hero.lattice.inspect requires subject";
-    }
+[[nodiscard]] bool handle_inspect_schema(const std::string &args,
+                                         lattice_context_t *ctx,
+                                         std::string *out, std::string *err) {
+  if (!validate_json_fields(args, {}, err)) {
     return false;
   }
-  subject = lowercase_ascii(trim_ascii(subject));
-
-  std::string mode;
-  (void)extract_json_string_field(args, "mode", &mode);
-  mode = lowercase_ascii(trim_ascii(mode));
-
-  if (subject == "schema") {
-    return handle_schema(args, ctx, out, err);
-  }
-  if (subject == "targets") {
-    return handle_list_targets(args, ctx, out, err);
-  }
-  if (subject == "target") {
-    if (!mode.empty() && mode != "explain") {
-      if (err) {
-        *err = "hero.lattice.inspect subject=target mode must be explain";
-      }
-      return false;
-    }
-    return handle_explain_target(args, ctx, out, err);
-  }
-  if (subject == "exposure") {
-    return handle_scan_exposure(args, ctx, out, err);
-  }
-  if (subject == "fact_families") {
-    return handle_list_fact_families(args, ctx, out, err);
-  }
-  if (subject == "facts") {
-    if (mode.empty() || mode == "summary") {
-      return handle_fact_summary(args, ctx, out, err);
-    }
-    if (mode == "scan") {
-      return handle_scan_facts(args, ctx, out, err);
-    }
-    if (mode == "lineage") {
-      return handle_fact_lineage(args, ctx, out, err);
-    }
-    if (mode == "preview") {
-      return handle_fact_preview(args, ctx, out, err);
-    }
-    if (err) {
-      *err = "hero.lattice.inspect subject=facts mode must be scan, summary, "
-             "lineage, or preview";
-    }
-    return false;
-  }
-  if (subject == "index") {
-    if (mode.empty() || mode == "status") {
-      return handle_index_status(args, ctx, out, err);
-    }
-    if (mode == "query") {
-      return handle_index_query(args, ctx, out, err);
-    }
-    if (err) {
-      *err = "hero.lattice.inspect subject=index mode must be status or query";
-    }
-    return false;
-  }
-  if (subject == "derived") {
-    return handle_derived_query(args, ctx, out, err);
-  }
-  if (subject == "checkpoint") {
-    if (!mode.empty() && mode != "closure") {
-      if (err) {
-        *err = "hero.lattice.inspect subject=checkpoint mode must be closure";
-      }
-      return false;
-    }
-    return handle_checkpoint_closure(args, ctx, out, err);
-  }
-  if (err) {
-    *err = "hero.lattice.inspect subject must be one of schema, targets, "
-           "target, exposure, fact_families, facts, index, derived, or "
-           "checkpoint";
-  }
-  return false;
+  return handle_schema(args, ctx, out, err);
 }
 
-[[nodiscard]] bool handle_evaluate(const std::string &args,
-                                   lattice_context_t *ctx, std::string *out,
-                                   std::string *err) {
-  std::string operation;
-  if (!extract_json_string_field(args, "operation", &operation) ||
-      trim_ascii(operation).empty()) {
+[[nodiscard]] bool handle_inspect_targets(const std::string &args,
+                                          lattice_context_t *ctx,
+                                          std::string *out, std::string *err) {
+  if (!validate_json_fields(args, {"config_path"}, err)) {
+    return false;
+  }
+  return handle_list_targets(args, ctx, out, err);
+}
+
+[[nodiscard]] bool handle_inspect_target(const std::string &args,
+                                         lattice_context_t *ctx,
+                                         std::string *out, std::string *err) {
+  if (!validate_json_fields(args, {"target_id", "config_path"}, err)) {
+    return false;
+  }
+  return handle_explain_target(args, ctx, out, err);
+}
+
+[[nodiscard]] bool handle_inspect_exposure(const std::string &args,
+                                           lattice_context_t *ctx,
+                                           std::string *out, std::string *err) {
+  if (!validate_json_fields(args, {"runtime_root", "limit"}, err)) {
+    return false;
+  }
+  return handle_scan_exposure(args, ctx, out, err);
+}
+
+[[nodiscard]] bool handle_inspect_fact_families(const std::string &args,
+                                                lattice_context_t *ctx,
+                                                std::string *out,
+                                                std::string *err) {
+  if (!validate_json_fields(args, {"runtime_root"}, err)) {
+    return false;
+  }
+  return handle_list_fact_families(args, ctx, out, err);
+}
+
+[[nodiscard]] bool require_inspect_mode(const std::string &args,
+                                        std::string_view tool,
+                                        std::string *mode, std::string *err) {
+  std::string raw;
+  if (!extract_json_string_field(args, "mode", &raw) ||
+      trim_ascii(raw).empty()) {
     if (err) {
-      *err = "hero.lattice.evaluate requires operation";
+      *err = std::string(tool) + " requires mode";
     }
     return false;
   }
-  operation = lowercase_ascii(trim_ascii(operation));
-  if (operation == "target") {
-    return handle_evaluate_target(args, ctx, out, err);
+  if (mode) {
+    *mode = lowercase_ascii(trim_ascii(raw));
   }
-  if (operation == "targets") {
-    return handle_evaluate_targets(args, ctx, out, err);
+  return true;
+}
+
+[[nodiscard]] bool handle_inspect_facts_summary_tool(const std::string &args,
+                                                     lattice_context_t *ctx,
+                                                     std::string *out,
+                                                     std::string *err) {
+  if (!validate_json_fields(args, {"runtime_root", "family"}, err)) {
+    return false;
   }
-  if (operation == "deficit") {
-    return handle_target_deficit(args, ctx, out, err);
+  return handle_fact_summary(args, ctx, out, err);
+}
+
+[[nodiscard]] bool handle_inspect_facts_scan_tool(const std::string &args,
+                                                  lattice_context_t *ctx,
+                                                  std::string *out,
+                                                  std::string *err) {
+  if (!validate_json_fields(
+          args, {"runtime_root", "family", "limit", "include_facts"}, err)) {
+    return false;
   }
-  if (operation == "latest_satisfying_checkpoint") {
-    return handle_latest_satisfying_checkpoint(args, ctx, out, err);
+  return handle_scan_facts(args, ctx, out, err);
+}
+
+[[nodiscard]] bool handle_inspect_facts_lineage_tool(const std::string &args,
+                                                     lattice_context_t *ctx,
+                                                     std::string *out,
+                                                     std::string *err) {
+  if (!validate_json_fields(args, {"runtime_root", "family", "limit"}, err)) {
+    return false;
   }
-  if (err) {
-    *err = "hero.lattice.evaluate operation must be target, targets, deficit, "
-           "or latest_satisfying_checkpoint";
+  return handle_fact_lineage(args, ctx, out, err);
+}
+
+[[nodiscard]] bool handle_inspect_facts_preview_tool(const std::string &args,
+                                                     lattice_context_t *ctx,
+                                                     std::string *out,
+                                                     std::string *err) {
+  if (!validate_json_fields(args, {"runtime_root", "family", "limit"}, err)) {
+    return false;
   }
-  return false;
+  return handle_fact_preview(args, ctx, out, err);
+}
+
+[[nodiscard]] bool handle_inspect_facts_preview_by_digest_tool(
+    const std::string &args, lattice_context_t *ctx, std::string *out,
+    std::string *err) {
+  if (!validate_json_fields(
+          args, {"runtime_root", "family", "limit", "fact_digest"}, err)) {
+    return false;
+  }
+  std::string fact_digest;
+  if (!extract_json_string_field(args, "fact_digest", &fact_digest) ||
+      trim_ascii(fact_digest).empty()) {
+    if (err) {
+      *err = "fact_digest is required";
+    }
+    return false;
+  }
+  return handle_fact_preview(args, ctx, out, err);
+}
+
+[[nodiscard]] bool handle_inspect_facts_preview_by_digest_prefix_tool(
+    const std::string &args, lattice_context_t *ctx, std::string *out,
+    std::string *err) {
+  if (!validate_json_fields(
+          args, {"runtime_root", "family", "limit", "fact_digest_prefix"},
+          err)) {
+    return false;
+  }
+  std::string fact_digest_prefix;
+  if (!extract_json_string_field(args, "fact_digest_prefix",
+                                 &fact_digest_prefix) ||
+      trim_ascii(fact_digest_prefix).empty()) {
+    if (err) {
+      *err = "fact_digest_prefix is required";
+    }
+    return false;
+  }
+  return handle_fact_preview(args, ctx, out, err);
+}
+
+[[nodiscard]] bool
+handle_inspect_facts_preview_by_index_tool(const std::string &args,
+                                           lattice_context_t *ctx,
+                                           std::string *out, std::string *err) {
+  if (!validate_json_fields(
+          args, {"runtime_root", "family", "limit", "fact_index"}, err)) {
+    return false;
+  }
+  if (!extract_json_raw_field(args, "fact_index", nullptr)) {
+    if (err) {
+      *err = "fact_index is required";
+    }
+    return false;
+  }
+  return handle_fact_preview(args, ctx, out, err);
+}
+
+[[nodiscard]] bool handle_inspect_index_status_tool(const std::string &args,
+                                                    lattice_context_t *ctx,
+                                                    std::string *out,
+                                                    std::string *err) {
+  if (!validate_json_fields(
+          args, {"runtime_root", "index_path", "limit", "validation_strength"},
+          err)) {
+    return false;
+  }
+  return handle_index_status(args, ctx, out, err);
+}
+
+[[nodiscard]] bool handle_inspect_index_query_tool(const std::string &args,
+                                                   lattice_context_t *ctx,
+                                                   std::string *out,
+                                                   std::string *err) {
+  if (!validate_json_fields(
+          args, {"runtime_root", "index_path", "limit", "validation_strength"},
+          err)) {
+    return false;
+  }
+  return handle_index_query(args, ctx, out, err);
+}
+
+[[nodiscard]] bool validate_index_query_selector_fields(
+    const std::string &args, std::string_view selector, std::string *err) {
+  std::vector<std::string_view> allowed{"runtime_root", "index_path", "limit",
+                                        "validation_strength"};
+  if (!selector.empty()) {
+    allowed.push_back(selector);
+  }
+  std::vector<json_field_t> fields;
+  if (!parse_json_object_fields(args, &fields, err)) {
+    return false;
+  }
+  for (const auto &field : fields) {
+    const auto allowed_it =
+        std::find_if(allowed.begin(), allowed.end(),
+                     [&](std::string_view key) { return key == field.key; });
+    if (allowed_it == allowed.end()) {
+      if (err) {
+        *err = "unknown field: " + field.key;
+      }
+      return false;
+    }
+  }
+  if (!selector.empty()) {
+    std::string value;
+    if (!extract_json_string_field(args, selector, &value) ||
+        trim_ascii(value).empty()) {
+      if (err) {
+        *err = std::string(selector) + " is required";
+      }
+      return false;
+    }
+  }
+  return true;
+}
+
+[[nodiscard]] bool handle_index_query_unproven_cache_forwarded(
+    const std::string &args, lattice_context_t *ctx, std::string *out,
+    std::string *err) {
+  std::string forwarded;
+  if (!with_fixed_json_raw_field(args, "compare_live_scan", "false", &forwarded,
+                                 err)) {
+    return false;
+  }
+  if (!with_fixed_json_raw_field(forwarded, "allow_unproven_cache", "true",
+                                 &forwarded, err)) {
+    return false;
+  }
+  return handle_index_query(forwarded, ctx, out, err);
+}
+
+[[nodiscard]] bool handle_inspect_index_query_by_relation_tool(
+    const std::string &args, lattice_context_t *ctx, std::string *out,
+    std::string *err) {
+  return validate_index_query_selector_fields(args, "relation", err) &&
+         handle_index_query(args, ctx, out, err);
+}
+
+[[nodiscard]] bool
+handle_inspect_index_query_by_key_tool(const std::string &args,
+                                       lattice_context_t *ctx, std::string *out,
+                                       std::string *err) {
+  return validate_index_query_selector_fields(args, "key", err) &&
+         handle_index_query(args, ctx, out, err);
+}
+
+[[nodiscard]] bool handle_inspect_index_query_by_key_contains_tool(
+    const std::string &args, lattice_context_t *ctx, std::string *out,
+    std::string *err) {
+  return validate_index_query_selector_fields(args, "key_contains", err) &&
+         handle_index_query(args, ctx, out, err);
+}
+
+[[nodiscard]] bool
+handle_inspect_index_query_by_digest_tool(const std::string &args,
+                                          lattice_context_t *ctx,
+                                          std::string *out, std::string *err) {
+  return validate_index_query_selector_fields(args, "digest", err) &&
+         handle_index_query(args, ctx, out, err);
+}
+
+[[nodiscard]] bool handle_inspect_index_query_by_digest_prefix_tool(
+    const std::string &args, lattice_context_t *ctx, std::string *out,
+    std::string *err) {
+  return validate_index_query_selector_fields(args, "digest_prefix", err) &&
+         handle_index_query(args, ctx, out, err);
+}
+
+[[nodiscard]] bool handle_inspect_index_query_unproven_cache_tool(
+    const std::string &args, lattice_context_t *ctx, std::string *out,
+    std::string *err) {
+  if (!validate_index_query_selector_fields(args, "", err)) {
+    return false;
+  }
+  return handle_index_query_unproven_cache_forwarded(args, ctx, out, err);
+}
+
+[[nodiscard]] bool handle_inspect_index_query_unproven_cache_by_relation_tool(
+    const std::string &args, lattice_context_t *ctx, std::string *out,
+    std::string *err) {
+  return validate_index_query_selector_fields(args, "relation", err) &&
+         handle_index_query_unproven_cache_forwarded(args, ctx, out, err);
+}
+
+[[nodiscard]] bool handle_inspect_index_query_unproven_cache_by_key_tool(
+    const std::string &args, lattice_context_t *ctx, std::string *out,
+    std::string *err) {
+  return validate_index_query_selector_fields(args, "key", err) &&
+         handle_index_query_unproven_cache_forwarded(args, ctx, out, err);
+}
+
+[[nodiscard]] bool
+handle_inspect_index_query_unproven_cache_by_key_contains_tool(
+    const std::string &args, lattice_context_t *ctx, std::string *out,
+    std::string *err) {
+  return validate_index_query_selector_fields(args, "key_contains", err) &&
+         handle_index_query_unproven_cache_forwarded(args, ctx, out, err);
+}
+
+[[nodiscard]] bool handle_inspect_index_query_unproven_cache_by_digest_tool(
+    const std::string &args, lattice_context_t *ctx, std::string *out,
+    std::string *err) {
+  return validate_index_query_selector_fields(args, "digest", err) &&
+         handle_index_query_unproven_cache_forwarded(args, ctx, out, err);
+}
+
+[[nodiscard]] bool
+handle_inspect_index_query_unproven_cache_by_digest_prefix_tool(
+    const std::string &args, lattice_context_t *ctx, std::string *out,
+    std::string *err) {
+  return validate_index_query_selector_fields(args, "digest_prefix", err) &&
+         handle_index_query_unproven_cache_forwarded(args, ctx, out, err);
+}
+
+[[nodiscard]] bool handle_derived_relation_tool(const std::string &args,
+                                                lattice_context_t *ctx,
+                                                std::string_view relation,
+                                                std::string *out,
+                                                std::string *err) {
+  std::string forwarded;
+  if (!with_fixed_json_string_field(args, "relation", relation, &forwarded,
+                                    err)) {
+    return false;
+  }
+  return handle_derived_query(forwarded, ctx, out, err);
+}
+
+[[nodiscard]] bool validate_target_derived_fields(const std::string &args,
+                                                  std::string *err) {
+  return validate_json_fields(
+      args, {"target_id", "config_path", "runtime_root", "limit"}, err);
+}
+
+[[nodiscard]] bool handle_inspect_derived_target_satisfied_tool(
+    const std::string &args, lattice_context_t *ctx, std::string *out,
+    std::string *err) {
+  if (!validate_target_derived_fields(args, err)) {
+    return false;
+  }
+  return handle_derived_relation_tool(args, ctx, "target_satisfied", out, err);
+}
+
+[[nodiscard]] bool handle_inspect_derived_forbidden_overlap_tool(
+    const std::string &args, lattice_context_t *ctx, std::string *out,
+    std::string *err) {
+  if (!validate_target_derived_fields(args, err)) {
+    return false;
+  }
+  return handle_derived_relation_tool(args, ctx, "forbidden_overlap", out, err);
+}
+
+[[nodiscard]] bool handle_inspect_derived_unresolved_lineage_target_tool(
+    const std::string &args, lattice_context_t *ctx, std::string *out,
+    std::string *err) {
+  if (!validate_target_derived_fields(args, err)) {
+    return false;
+  }
+  return handle_derived_relation_tool(args, ctx, "unresolved_lineage", out,
+                                      err);
+}
+
+[[nodiscard]] bool
+handle_inspect_derived_stale_cache_tool(const std::string &args,
+                                        lattice_context_t *ctx,
+                                        std::string *out, std::string *err) {
+  if (!validate_json_fields(
+          args, {"runtime_root", "limit", "index_path", "validation_strength"},
+          err)) {
+    return false;
+  }
+  return handle_derived_relation_tool(args, ctx, "stale_cache", out, err);
+}
+
+enum class checkpoint_ancestor_selector_t {
+  by_checkpoint_path,
+  by_checkpoint_path_with_ancestor_path,
+  by_checkpoint_path_with_ancestor_id,
+  by_checkpoint_identity,
+  by_checkpoint_identity_with_ancestor_path,
+  by_checkpoint_identity_with_ancestor_id,
+};
+
+[[nodiscard]] bool require_non_empty_string_field(const std::string &args,
+                                                  std::string_view field,
+                                                  std::string *err) {
+  std::string value;
+  if (!extract_json_string_field(args, field, &value) ||
+      trim_ascii(value).empty()) {
+    if (err) {
+      *err = std::string(field) + " is required";
+    }
+    return false;
+  }
+  return true;
+}
+
+[[nodiscard]] bool
+validate_checkpoint_ancestor_fields(const std::string &args,
+                                    checkpoint_ancestor_selector_t selector,
+                                    std::string *err) {
+  std::vector<std::string_view> allowed{"runtime_root", "limit"};
+  const bool uses_checkpoint_path =
+      selector == checkpoint_ancestor_selector_t::by_checkpoint_path ||
+      selector == checkpoint_ancestor_selector_t::
+                      by_checkpoint_path_with_ancestor_path ||
+      selector ==
+          checkpoint_ancestor_selector_t::by_checkpoint_path_with_ancestor_id;
+  if (uses_checkpoint_path) {
+    allowed.push_back("checkpoint_path");
+  } else {
+    allowed.push_back("checkpoint_id");
+    allowed.push_back("checkpoint_file_digest");
+  }
+  const bool uses_ancestor_path =
+      selector == checkpoint_ancestor_selector_t::
+                      by_checkpoint_path_with_ancestor_path ||
+      selector == checkpoint_ancestor_selector_t::
+                      by_checkpoint_identity_with_ancestor_path;
+  const bool uses_ancestor_id =
+      selector ==
+          checkpoint_ancestor_selector_t::by_checkpoint_path_with_ancestor_id ||
+      selector == checkpoint_ancestor_selector_t::
+                      by_checkpoint_identity_with_ancestor_id;
+  if (uses_ancestor_path) {
+    allowed.push_back("ancestor_checkpoint_path");
+  }
+  if (uses_ancestor_id) {
+    allowed.push_back("ancestor_checkpoint_id");
+  }
+  std::vector<json_field_t> fields;
+  if (!parse_json_object_fields(args, &fields, err)) {
+    return false;
+  }
+  for (const auto &field : fields) {
+    const auto allowed_it =
+        std::find_if(allowed.begin(), allowed.end(),
+                     [&](std::string_view key) { return key == field.key; });
+    if (allowed_it == allowed.end()) {
+      if (err) {
+        *err = "unknown field: " + field.key;
+      }
+      return false;
+    }
+  }
+  if (uses_checkpoint_path) {
+    if (!require_non_empty_string_field(args, "checkpoint_path", err)) {
+      return false;
+    }
+  } else if (!require_non_empty_string_field(args, "checkpoint_id", err) ||
+             !require_non_empty_string_field(args, "checkpoint_file_digest",
+                                             err)) {
+    return false;
+  }
+  if (uses_ancestor_path &&
+      !require_non_empty_string_field(args, "ancestor_checkpoint_path", err)) {
+    return false;
+  }
+  if (uses_ancestor_id &&
+      !require_non_empty_string_field(args, "ancestor_checkpoint_id", err)) {
+    return false;
+  }
+  return true;
+}
+
+[[nodiscard]] bool
+handle_checkpoint_ancestor_split_tool(const std::string &args,
+                                      lattice_context_t *ctx,
+                                      checkpoint_ancestor_selector_t selector,
+                                      std::string *out, std::string *err) {
+  if (!validate_checkpoint_ancestor_fields(args, selector, err)) {
+    return false;
+  }
+  return handle_derived_relation_tool(args, ctx, "checkpoint_ancestor", out,
+                                      err);
+}
+
+[[nodiscard]] bool handle_inspect_derived_checkpoint_ancestor_by_path_tool(
+    const std::string &args, lattice_context_t *ctx, std::string *out,
+    std::string *err) {
+  return handle_checkpoint_ancestor_split_tool(
+      args, ctx, checkpoint_ancestor_selector_t::by_checkpoint_path, out, err);
+}
+
+[[nodiscard]] bool
+handle_inspect_derived_checkpoint_ancestor_by_path_with_ancestor_path_tool(
+    const std::string &args, lattice_context_t *ctx, std::string *out,
+    std::string *err) {
+  return handle_checkpoint_ancestor_split_tool(
+      args, ctx,
+      checkpoint_ancestor_selector_t::by_checkpoint_path_with_ancestor_path,
+      out, err);
+}
+
+[[nodiscard]] bool
+handle_inspect_derived_checkpoint_ancestor_by_path_with_ancestor_id_tool(
+    const std::string &args, lattice_context_t *ctx, std::string *out,
+    std::string *err) {
+  return handle_checkpoint_ancestor_split_tool(
+      args, ctx,
+      checkpoint_ancestor_selector_t::by_checkpoint_path_with_ancestor_id, out,
+      err);
+}
+
+[[nodiscard]] bool handle_inspect_derived_checkpoint_ancestor_by_identity_tool(
+    const std::string &args, lattice_context_t *ctx, std::string *out,
+    std::string *err) {
+  return handle_checkpoint_ancestor_split_tool(
+      args, ctx, checkpoint_ancestor_selector_t::by_checkpoint_identity, out,
+      err);
+}
+
+[[nodiscard]] bool
+handle_inspect_derived_checkpoint_ancestor_by_identity_with_ancestor_path_tool(
+    const std::string &args, lattice_context_t *ctx, std::string *out,
+    std::string *err) {
+  return handle_checkpoint_ancestor_split_tool(
+      args, ctx,
+      checkpoint_ancestor_selector_t::by_checkpoint_identity_with_ancestor_path,
+      out, err);
+}
+
+[[nodiscard]] bool
+handle_inspect_derived_checkpoint_ancestor_by_identity_with_ancestor_id_tool(
+    const std::string &args, lattice_context_t *ctx, std::string *out,
+    std::string *err) {
+  return handle_checkpoint_ancestor_split_tool(
+      args, ctx,
+      checkpoint_ancestor_selector_t::by_checkpoint_identity_with_ancestor_id,
+      out, err);
+}
+
+[[nodiscard]] bool handle_inspect_derived_unresolved_lineage_checkpoint_tool(
+    const std::string &args, lattice_context_t *ctx, std::string *out,
+    std::string *err) {
+  if (!validate_json_fields(args,
+                            {"runtime_root", "limit", "checkpoint_path",
+                             "checkpoint_id", "checkpoint_file_digest"},
+                            err)) {
+    return false;
+  }
+  return handle_derived_relation_tool(args, ctx, "unresolved_lineage", out,
+                                      err);
+}
+
+[[nodiscard]] bool handle_inspect_checkpoint(const std::string &args,
+                                             lattice_context_t *ctx,
+                                             std::string *out,
+                                             std::string *err) {
+  if (!validate_json_fields(args,
+                            {"runtime_root", "checkpoint_path", "checkpoint_id",
+                             "checkpoint_file_digest", "limit"},
+                            err)) {
+    return false;
+  }
+  return handle_checkpoint_closure(args, ctx, out, err);
+}
+
+[[nodiscard]] bool validate_evaluate_target_fields(const std::string &args,
+                                                   std::string *err) {
+  return validate_json_fields(
+      args, {"target_id", "config_path", "runtime_root"}, err);
+}
+
+[[nodiscard]] bool handle_evaluate_target_tool(const std::string &args,
+                                               lattice_context_t *ctx,
+                                               std::string *out,
+                                               std::string *err) {
+  if (!validate_evaluate_target_fields(args, err)) {
+    return false;
+  }
+  return handle_evaluate_target(args, ctx, out, err);
+}
+
+[[nodiscard]] bool handle_evaluate_targets_tool(const std::string &args,
+                                                lattice_context_t *ctx,
+                                                std::string *out,
+                                                std::string *err) {
+  if (!validate_json_fields(
+          args, {"target_ids", "config_path", "runtime_root", "limit"}, err)) {
+    return false;
+  }
+  return handle_evaluate_targets(args, ctx, out, err);
+}
+
+[[nodiscard]] bool handle_evaluate_deficit_tool(const std::string &args,
+                                                lattice_context_t *ctx,
+                                                std::string *out,
+                                                std::string *err) {
+  if (!validate_evaluate_target_fields(args, err)) {
+    return false;
+  }
+  return handle_target_deficit(args, ctx, out, err);
+}
+
+[[nodiscard]] bool handle_evaluate_latest_satisfying_checkpoint_target_tool(
+    const std::string &args, lattice_context_t *ctx, std::string *out,
+    std::string *err) {
+  if (!validate_json_fields(args, {"target_id", "config_path", "runtime_root"},
+                            err)) {
+    return false;
+  }
+  return handle_latest_satisfying_checkpoint(args, ctx, out, err);
+}
+
+[[nodiscard]] bool handle_evaluate_latest_satisfying_checkpoint_hint_tool(
+    const std::string &args, lattice_context_t *ctx, std::string *out,
+    std::string *err) {
+  if (!validate_json_fields(
+          args, {"symbolic_hint", "config_path", "runtime_root"}, err)) {
+    return false;
+  }
+  return handle_latest_satisfying_checkpoint(args, ctx, out, err);
 }
 
 [[nodiscard]] bool handle_compare(const std::string &args,
                                   lattice_context_t *ctx, std::string *out,
                                   std::string *err) {
+  if (!validate_json_fields(
+          args,
+          {"left_target_id", "right_target_id", "config_path", "runtime_root"},
+          err)) {
+    return false;
+  }
   return handle_compare_evidence(args, ctx, out, err);
 }
 
@@ -13882,11 +15812,139 @@ using handler_fn = bool (*)(const std::string &, lattice_context_t *,
   if (name == "hero.lattice.status") {
     return handle_status;
   }
-  if (name == "hero.lattice.inspect") {
-    return handle_inspect;
+  if (name == "hero.lattice.inspect.schema") {
+    return handle_inspect_schema;
   }
-  if (name == "hero.lattice.evaluate") {
-    return handle_evaluate;
+  if (name == "hero.lattice.inspect.targets") {
+    return handle_inspect_targets;
+  }
+  if (name == "hero.lattice.inspect.target") {
+    return handle_inspect_target;
+  }
+  if (name == "hero.lattice.inspect.exposure") {
+    return handle_inspect_exposure;
+  }
+  if (name == "hero.lattice.inspect.fact_families") {
+    return handle_inspect_fact_families;
+  }
+  if (name == "hero.lattice.inspect.facts.summary") {
+    return handle_inspect_facts_summary_tool;
+  }
+  if (name == "hero.lattice.inspect.facts.scan") {
+    return handle_inspect_facts_scan_tool;
+  }
+  if (name == "hero.lattice.inspect.facts.lineage") {
+    return handle_inspect_facts_lineage_tool;
+  }
+  if (name == "hero.lattice.inspect.facts.preview") {
+    return handle_inspect_facts_preview_tool;
+  }
+  if (name == "hero.lattice.inspect.facts.preview.by_digest") {
+    return handle_inspect_facts_preview_by_digest_tool;
+  }
+  if (name == "hero.lattice.inspect.facts.preview.by_digest_prefix") {
+    return handle_inspect_facts_preview_by_digest_prefix_tool;
+  }
+  if (name == "hero.lattice.inspect.facts.preview.by_index") {
+    return handle_inspect_facts_preview_by_index_tool;
+  }
+  if (name == "hero.lattice.inspect.index.status") {
+    return handle_inspect_index_status_tool;
+  }
+  if (name == "hero.lattice.inspect.index.query") {
+    return handle_inspect_index_query_tool;
+  }
+  if (name == "hero.lattice.inspect.index.query.by_relation") {
+    return handle_inspect_index_query_by_relation_tool;
+  }
+  if (name == "hero.lattice.inspect.index.query.by_key") {
+    return handle_inspect_index_query_by_key_tool;
+  }
+  if (name == "hero.lattice.inspect.index.query.by_key_contains") {
+    return handle_inspect_index_query_by_key_contains_tool;
+  }
+  if (name == "hero.lattice.inspect.index.query.by_digest") {
+    return handle_inspect_index_query_by_digest_tool;
+  }
+  if (name == "hero.lattice.inspect.index.query.by_digest_prefix") {
+    return handle_inspect_index_query_by_digest_prefix_tool;
+  }
+  if (name == "hero.lattice.inspect.index.query.unproven_cache") {
+    return handle_inspect_index_query_unproven_cache_tool;
+  }
+  if (name == "hero.lattice.inspect.index.query.unproven_cache.by_relation") {
+    return handle_inspect_index_query_unproven_cache_by_relation_tool;
+  }
+  if (name == "hero.lattice.inspect.index.query.unproven_cache.by_key") {
+    return handle_inspect_index_query_unproven_cache_by_key_tool;
+  }
+  if (name ==
+      "hero.lattice.inspect.index.query.unproven_cache.by_key_contains") {
+    return handle_inspect_index_query_unproven_cache_by_key_contains_tool;
+  }
+  if (name == "hero.lattice.inspect.index.query.unproven_cache.by_digest") {
+    return handle_inspect_index_query_unproven_cache_by_digest_tool;
+  }
+  if (name ==
+      "hero.lattice.inspect.index.query.unproven_cache.by_digest_prefix") {
+    return handle_inspect_index_query_unproven_cache_by_digest_prefix_tool;
+  }
+  if (name == "hero.lattice.inspect.derived.target_satisfied") {
+    return handle_inspect_derived_target_satisfied_tool;
+  }
+  if (name == "hero.lattice.inspect.derived.forbidden_overlap") {
+    return handle_inspect_derived_forbidden_overlap_tool;
+  }
+  if (name == "hero.lattice.inspect.derived.unresolved_lineage.target") {
+    return handle_inspect_derived_unresolved_lineage_target_tool;
+  }
+  if (name == "hero.lattice.inspect.derived.stale_cache") {
+    return handle_inspect_derived_stale_cache_tool;
+  }
+  if (name == "hero.lattice.inspect.derived.checkpoint_ancestor."
+              "by_checkpoint_path") {
+    return handle_inspect_derived_checkpoint_ancestor_by_path_tool;
+  }
+  if (name == "hero.lattice.inspect.derived.checkpoint_ancestor."
+              "by_checkpoint_path.with_ancestor_path") {
+    return handle_inspect_derived_checkpoint_ancestor_by_path_with_ancestor_path_tool;
+  }
+  if (name == "hero.lattice.inspect.derived.checkpoint_ancestor."
+              "by_checkpoint_path.with_ancestor_id") {
+    return handle_inspect_derived_checkpoint_ancestor_by_path_with_ancestor_id_tool;
+  }
+  if (name == "hero.lattice.inspect.derived.checkpoint_ancestor."
+              "by_checkpoint_identity") {
+    return handle_inspect_derived_checkpoint_ancestor_by_identity_tool;
+  }
+  if (name == "hero.lattice.inspect.derived.checkpoint_ancestor."
+              "by_checkpoint_identity.with_ancestor_path") {
+    return handle_inspect_derived_checkpoint_ancestor_by_identity_with_ancestor_path_tool;
+  }
+  if (name == "hero.lattice.inspect.derived.checkpoint_ancestor."
+              "by_checkpoint_identity.with_ancestor_id") {
+    return handle_inspect_derived_checkpoint_ancestor_by_identity_with_ancestor_id_tool;
+  }
+  if (name == "hero.lattice.inspect.derived.unresolved_lineage.checkpoint") {
+    return handle_inspect_derived_unresolved_lineage_checkpoint_tool;
+  }
+  if (name == "hero.lattice.inspect.checkpoint") {
+    return handle_inspect_checkpoint;
+  }
+  if (name == "hero.lattice.evaluate.target") {
+    return handle_evaluate_target_tool;
+  }
+  if (name == "hero.lattice.evaluate.targets") {
+    return handle_evaluate_targets_tool;
+  }
+  if (name == "hero.lattice.evaluate.deficit") {
+    return handle_evaluate_deficit_tool;
+  }
+  if (name == "hero.lattice.evaluate.latest_satisfying_checkpoint.target") {
+    return handle_evaluate_latest_satisfying_checkpoint_target_tool;
+  }
+  if (name == "hero.lattice.evaluate.latest_satisfying_checkpoint.hint") {
+    return handle_evaluate_latest_satisfying_checkpoint_hint_tool;
   }
   if (name == "hero.lattice.compare") {
     return handle_compare;
@@ -14033,12 +16091,15 @@ std::string build_tools_list_human_text() {
 }
 
 void run_jsonrpc_stdio_loop(lattice_context_t *ctx) {
-  std::string line;
-  while (std::getline(std::cin, line)) {
-    line = trim_ascii(line);
+  mcp_stdio::message_t message;
+  while (mcp_stdio::read_message(std::cin, &message)) {
+    std::string line = trim_ascii(message.json);
     if (line.empty()) {
       continue;
     }
+    const auto send = [&](std::string response) {
+      mcp_stdio::write_response(std::cout, response);
+    };
     std::string id_raw = "null";
     (void)extract_json_raw_field(line, "id", &id_raw);
     std::string method;
@@ -14054,49 +16115,45 @@ void run_jsonrpc_stdio_loop(lattice_context_t *ctx) {
     if (method == "initialize") {
       std::string protocol = "2024-11-05";
       (void)extract_json_string_field(line, "protocolVersion", &protocol);
-      std::cout << "{\"jsonrpc\":\"2.0\",\"id\":" << id_raw
-                << ",\"result\":{\"protocolVersion\":" << json_quote(protocol)
-                << ",\"capabilities\":{\"tools\":{}},\"serverInfo\":{"
-                   "\"name\":\"hero_lattice\",\"version\":\"0\"}}}"
-                << std::endl;
+      send(std::string("{\"jsonrpc\":\"2.0\",\"id\":") + id_raw +
+           ",\"result\":{\"protocolVersion\":" + json_quote(protocol) +
+           ",\"capabilities\":{\"tools\":{}},\"serverInfo\":{\"name\":"
+           "\"hero_lattice\",\"version\":\"0\"}}}");
       continue;
     }
     if (method == "tools/list") {
-      std::cout << "{\"jsonrpc\":\"2.0\",\"id\":" << id_raw
-                << ",\"result\":" << build_tools_list_result_json() << "}"
-                << std::endl;
+      send(std::string("{\"jsonrpc\":\"2.0\",\"id\":") + id_raw +
+           ",\"result\":" + build_tools_list_result_json() + "}");
       continue;
     }
     if (method == "resources/list") {
-      std::cout << "{\"jsonrpc\":\"2.0\",\"id\":" << id_raw
-                << ",\"result\":{\"resources\":[]}}" << std::endl;
+      send(std::string("{\"jsonrpc\":\"2.0\",\"id\":") + id_raw +
+           ",\"result\":{\"resources\":[]}}");
       continue;
     }
     if (method == "resources/templates/list") {
-      std::cout << "{\"jsonrpc\":\"2.0\",\"id\":" << id_raw
-                << ",\"result\":{\"resourceTemplates\":[]}}" << std::endl;
+      send(std::string("{\"jsonrpc\":\"2.0\",\"id\":") + id_raw +
+           ",\"result\":{\"resourceTemplates\":[]}}");
       continue;
     }
     if (method == "shutdown") {
-      std::cout << "{\"jsonrpc\":\"2.0\",\"id\":" << id_raw
-                << ",\"result\":null}" << std::endl;
+      send(std::string("{\"jsonrpc\":\"2.0\",\"id\":") + id_raw +
+           ",\"result\":null}");
       continue;
     }
     if (method == "tools/call") {
       std::string params;
       if (!extract_json_raw_field(line, "params", &params)) {
-        std::cout << "{\"jsonrpc\":\"2.0\",\"id\":" << id_raw
-                  << ",\"error\":{\"code\":-32602,\"message\":\"missing "
-                     "params\"}}"
-                  << std::endl;
+        send(std::string("{\"jsonrpc\":\"2.0\",\"id\":") + id_raw +
+             ",\"error\":{\"code\":-32602,\"message\":\"missing "
+             "params\"}}");
         continue;
       }
       std::string name;
       if (!extract_json_string_field(params, "name", &name)) {
-        std::cout << "{\"jsonrpc\":\"2.0\",\"id\":" << id_raw
-                  << ",\"error\":{\"code\":-32602,\"message\":\"missing tool "
-                     "name\"}}"
-                  << std::endl;
+        send(std::string("{\"jsonrpc\":\"2.0\",\"id\":") + id_raw +
+             ",\"error\":{\"code\":-32602,\"message\":\"missing tool "
+             "name\"}}");
         continue;
       }
       std::string arguments = "{}";
@@ -14104,13 +16161,12 @@ void run_jsonrpc_stdio_loop(lattice_context_t *ctx) {
       std::string result;
       std::string error;
       (void)execute_tool_json(name, arguments, ctx, &result, &error);
-      std::cout << "{\"jsonrpc\":\"2.0\",\"id\":" << id_raw
-                << ",\"result\":" << result << "}" << std::endl;
+      send(std::string("{\"jsonrpc\":\"2.0\",\"id\":") + id_raw +
+           ",\"result\":" + result + "}");
       continue;
     }
-    std::cout << "{\"jsonrpc\":\"2.0\",\"id\":" << id_raw
-              << ",\"error\":{\"code\":-32601,\"message\":\"unknown method\"}}"
-              << std::endl;
+    send(std::string("{\"jsonrpc\":\"2.0\",\"id\":") + id_raw +
+         ",\"error\":{\"code\":-32601,\"message\":\"unknown method\"}}");
   }
 }
 

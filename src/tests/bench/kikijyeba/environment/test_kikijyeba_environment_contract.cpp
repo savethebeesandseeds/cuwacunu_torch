@@ -30,6 +30,8 @@ namespace mdn_stream =
     cuwacunu::wikimyei::inference::expected_value::mdn::stream;
 namespace vicreg_stream =
     cuwacunu::wikimyei::representation::encoding::vicreg::stream;
+namespace graph_alloc =
+    cuwacunu::wikimyei::policy::portfolio::graph_node_allocation;
 
 void check(bool condition, const char *message) {
   if (!condition) {
@@ -5138,6 +5140,13 @@ void test_replay_source_graph_anchor_binding() {
   check(runtime_forecast_records[0].forecast_artifact.identity.anchor_key ==
             "1000",
         "runtime replay source preserves MDN anchor key");
+  check(!runtime_forecast_records[0]
+             .forecast_artifact.identity.target_coords_fingerprint.empty(),
+        "runtime replay source binds target coords fingerprint");
+  check(runtime_forecast_records[0]
+                .forecast_artifact.identity.normalization_fingerprint ==
+            "identity_norm",
+        "runtime replay source binds normalization fingerprint");
   check(runtime_forecast_records[0].observation_anchor_index.has_value(),
         "runtime replay source derives observation anchor index from cursor");
   vicreg_stream::channel_representation_batch_t<std::int64_t>
@@ -5947,6 +5956,97 @@ void test_trainable_policy_contract() {
         "graph-node Torch policy module emits distribution parameter scalar");
   check(std::isfinite(module_raw.value_estimate),
         "graph-node Torch policy module emits finite state value");
+  const auto checkpoint_root =
+      std::filesystem::temp_directory_path() /
+      "graph_node_allocation_torch_checkpoint_artifact_v0_test";
+  std::filesystem::remove_all(checkpoint_root);
+  const auto module_state_path =
+      checkpoint_root / "actor_checkpoint" / "module_state.pt";
+  torch::manual_seed(77);
+  auto source_module = graph_alloc::GraphNodeAllocationTorchPolicyModule(
+      graph_alloc::make_graph_node_allocation_torch_policy_options());
+  const auto source_module_out = source_module->forward(
+      module_input.node_features, module_input.global_features,
+      module_input.risk_features, module_input.executable_mask);
+  const auto saved_logit_bias = torch::tensor(
+      {0.25, -0.5, 0.75}, torch::TensorOptions().dtype(torch::kFloat64));
+  const auto saved_distribution_params =
+      torch::tensor({1.25}, torch::TensorOptions().dtype(torch::kFloat64));
+  graph_alloc::save_graph_node_allocation_torch_module_state(
+      module_state_path, source_module, saved_logit_bias,
+      saved_distribution_params, true, 0.125);
+  check(std::filesystem::exists(module_state_path),
+        "graph-node Torch policy checkpoint writes module_state.pt");
+  torch::manual_seed(99);
+  auto loaded_module = graph_alloc::GraphNodeAllocationTorchPolicyModule(
+      graph_alloc::make_graph_node_allocation_torch_policy_options());
+  torch::Tensor loaded_logit_bias{};
+  torch::Tensor loaded_distribution_params{};
+  bool loaded_distribution_params_bound = false;
+  double loaded_value_bias = 0.0;
+  graph_alloc::load_graph_node_allocation_torch_module_state(
+      module_state_path, loaded_module, &loaded_logit_bias,
+      &loaded_distribution_params, &loaded_distribution_params_bound,
+      &loaded_value_bias);
+  const auto loaded_module_out = loaded_module->forward(
+      module_input.node_features, module_input.global_features,
+      module_input.risk_features, module_input.executable_mask);
+  close((loaded_module_out.node_weight_logits -
+         source_module_out.node_weight_logits)
+            .abs()
+            .max()
+            .item<double>(),
+        0.0, 1.0e-12,
+        "graph-node Torch checkpoint reload preserves module logits");
+  close((loaded_module_out.action_distribution_params -
+         source_module_out.action_distribution_params)
+            .abs()
+            .max()
+            .item<double>(),
+        0.0, 1.0e-12,
+        "graph-node Torch checkpoint reload preserves distribution head");
+  close(std::abs(loaded_module_out.state_value.item<double>() -
+                 source_module_out.state_value.item<double>()),
+        0.0, 1.0e-12,
+        "graph-node Torch checkpoint reload preserves value head");
+  check(loaded_distribution_params_bound,
+        "graph-node Torch checkpoint reload preserves distribution-param "
+        "binding");
+  close((loaded_logit_bias - saved_logit_bias).abs().max().item<double>(), 0.0,
+        1.0e-12,
+        "graph-node Torch checkpoint reload preserves bounded logit bias");
+  close((loaded_distribution_params - saved_distribution_params)
+            .abs()
+            .max()
+            .item<double>(),
+        0.0, 1.0e-12,
+        "graph-node Torch checkpoint reload preserves bounded distribution "
+        "params");
+  close(loaded_value_bias, 0.125, 1.0e-12,
+        "graph-node Torch checkpoint reload preserves value bias");
+  auto checkpoint_module_config = module_config;
+  checkpoint_module_config.module_state_path = module_state_path.string();
+  env::graph_node_allocation_torch_policy_t checkpoint_module_policy(
+      checkpoint_module_config);
+  const auto checkpoint_module_raw =
+      checkpoint_module_policy.forward(module_input);
+  close((checkpoint_module_raw.node_weight_logits -
+         (source_module_out.node_weight_logits + saved_logit_bias))
+            .abs()
+            .max()
+            .item<double>(),
+        0.0, 1.0e-12,
+        "graph-node Torch policy loads module_state.pt plus logit bias");
+  close((checkpoint_module_raw.action_distribution_params -
+         saved_distribution_params)
+            .abs()
+            .max()
+            .item<double>(),
+        0.0, 1.0e-12,
+        "graph-node Torch policy loads checkpoint distribution params");
+  close(checkpoint_module_raw.value_estimate,
+        source_module_out.state_value.item<double>() + 0.125, 1.0e-12,
+        "graph-node Torch policy loads checkpoint value bias");
   const auto module_action = module_policy.act(observation);
   env::validate_action(module_action, observation.portfolio_state.node_ids);
   check(module_action.policy_artifact_digest ==

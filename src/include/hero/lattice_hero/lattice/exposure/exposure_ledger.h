@@ -72,6 +72,9 @@ enum class lattice_fact_family_t {
   allocation_engine,
   replay_environment,
   policy_training,
+  tsodao_settings_protection,
+  policy_acceptance,
+  paper_online_readiness,
   selection_signal,
   representation_support,
 };
@@ -195,6 +198,7 @@ struct lattice_exposure_fact_t {
   std::string graph_order_fingerprint{};
   std::string component_assembly_fingerprint{};
   std::string target_component_family_id{};
+  std::string component_operator_surface_digest{};
   std::string config_bundle_id{};
   std::string config_receipt_id{};
   std::string component_spawn_registry_id{};
@@ -2747,7 +2751,11 @@ struct lattice_policy_training_fact_t {
   std::string ppo_policy_artifact_contract_id{};
   std::string policy_family_id{};
   std::string policy_checkpoint_schema_id{};
+  std::string policy_dsl_digest{};
+  std::string policy_net_digest{};
   std::string policy_input_feature_manifest_digest{};
+  std::string policy_jkimyei_digest{};
+  std::string target_node_universe_digest{};
   std::string action_distribution_config_digest{};
   std::string snapshot_family_digest{};
   std::string actor_architecture_digest{};
@@ -2757,7 +2765,27 @@ struct lattice_policy_training_fact_t {
   std::string actor_checkpoint_digest{};
   std::string critic_checkpoint_digest{};
   std::string optimizer_state_digest{};
+  std::string optimizer_state_schema_id{};
+  std::string optimizer_torch_state_path{};
+  std::string optimizer_torch_state_digest{};
   std::string ppo_config_digest{};
+  std::string device_policy{};
+  std::string runtime_device_kind{};
+  std::int64_t cuda_device_index{0};
+  bool cuda_device_index_bound{false};
+  bool cuda_available{false};
+  bool module_parameters_on_cuda{false};
+  bool forward_input_on_cuda{false};
+  bool loss_on_cuda{false};
+  bool optimizer_state_on_cuda{false};
+  bool cuda_verification_passed{false};
+  std::string resume_mode{};
+  std::string resume_actor_checkpoint_path{};
+  std::string resume_actor_checkpoint_digest{};
+  std::string resume_optimizer_state_path{};
+  std::string resume_optimizer_state_digest{};
+  bool resume_parent_loaded{false};
+  bool optimizer_state_resume_loaded{false};
   std::string advantage_estimator_id{};
   std::string advantage_normalization_policy{};
   std::string rollout_collection_schema_id{};
@@ -2872,6 +2900,13 @@ struct policy_training_summary_t {
   std::int64_t actor_checkpoint_bound_count{0};
   std::int64_t critic_checkpoint_bound_count{0};
   std::int64_t optimizer_state_bound_count{0};
+  std::int64_t optimizer_state_schema_bound_count{0};
+  std::int64_t optimizer_torch_state_bound_count{0};
+  std::int64_t cuda_runtime_contract_bound_count{0};
+  std::int64_t cuda_verified_count{0};
+  std::int64_t resume_mode_bound_count{0};
+  std::int64_t resume_parent_loaded_count{0};
+  std::int64_t optimizer_state_resume_loaded_count{0};
   std::int64_t ppo_config_bound_count{0};
   std::int64_t rollout_collection_bound_count{0};
   std::int64_t ppo_update_report_bound_count{0};
@@ -2935,6 +2970,445 @@ struct policy_training_summary_t {
   bool coverage_authority{false};
   bool leakage_authority{false};
   bool contract_identity_authority{false};
+  std::vector<std::string> issues{};
+};
+
+struct lattice_tsodao_settings_protection_fact_t {
+  std::string schema{"kikijyeba.lattice.tsodao_settings_protection.v1"};
+  std::string fact_type{"tsodao_settings_protection"};
+  std::string parent_exposure_fact_digest{};
+
+  std::string contract_fingerprint{};
+  std::string protocol_id{};
+  std::string graph_order_fingerprint{};
+  std::string source_cursor_token{};
+  std::string split_policy_fingerprint{};
+  std::string component_assembly_fingerprint{};
+  std::string target_component_family_id{};
+  std::string job_id{};
+  std::string wave_id{};
+  std::string job_status{};
+  std::string wave_action{};
+  std::string split_name{"unknown"};
+  exposure_split_role_t split_role{exposure_split_role_t::unknown};
+  anchor_interval_t anchor_range{};
+  anchor_interval_t completed_anchor_range{};
+
+  std::string protection_id{};
+  std::string protection_contract_id{"tsodao_settings_protection_contract.v1"};
+  std::string protected_settings_bundle_digest{};
+  std::string protected_policy_training_fact_digest{};
+  std::string protected_policy_training_target_id{
+      "policy_training_artifact_ready"};
+  std::string protected_policy_training_proof_certificate_digest{};
+
+  std::string policy_id{};
+  std::string policy_kind{};
+  std::string policy_family_id{};
+  std::string policy_checkpoint_schema_id{};
+  std::string policy_input_schema_id{};
+  std::string policy_input_feature_manifest_digest{};
+  std::string graph_node_action_universe_digest{};
+  std::string action_schema_digest{};
+  std::string action_adapter_id{};
+  std::string action_distribution_id{};
+  std::string action_distribution_config_digest{};
+  std::string reward_contract_id{};
+  std::string reward_contract_digest{};
+  std::string environment_contract_id{};
+  std::string execution_profile_digest{};
+  std::string accounting_numeraire_node_id{};
+  std::string causal_schedule_schema_id{};
+  std::string causal_schedule_digest{};
+  std::string snapshot_family_digest{};
+  std::string training_config_digest{};
+  std::string ppo_config_digest{};
+  std::string actor_architecture_digest{};
+  std::string critic_architecture_digest{};
+  std::string optimizer_state_schema_id{};
+  std::string optimizer_state_digest{};
+  std::string optimizer_torch_state_digest{};
+  std::string resume_mode{};
+  std::string validation_rollout_report_digest{};
+  std::string policy_quality_report_digest{};
+
+  bool protected_settings_match_policy_training_fact{false};
+  bool protected_evidence_digests_bound{false};
+  bool protected_policy_training_ready{false};
+
+  bool artifact_evidence{true};
+  bool visibility_only{true};
+  bool settings_protection_artifact{true};
+  bool tsodao_optimizes_settings{false};
+  bool tsodao_selects_policy{false};
+  bool tsodao_claims_policy_quality{false};
+  bool tsodao_claims_market_readiness{false};
+  bool tsodao_allows_live_execution{false};
+  bool readiness_authority{false};
+  bool quality_authority{false};
+  bool performance_authority{false};
+  bool policy_gate{false};
+  bool checkpoint_selector{false};
+  bool allocation_authority{false};
+  bool execution_authority{false};
+  bool market_readiness_authority{false};
+  bool deployment_authority{false};
+  bool coverage_authority{false};
+  bool leakage_authority{false};
+  bool contract_identity_authority{false};
+};
+
+struct tsodao_settings_protection_summary_t {
+  std::string schema{"kikijyeba.lattice.tsodao_settings_protection_summary.v1"};
+  std::int64_t exposure_fact_count{0};
+  std::int64_t tsodao_settings_protection_fact_count{0};
+  std::int64_t parent_exposure_fact_count{0};
+  std::int64_t protection_id_bound_count{0};
+  std::int64_t protection_contract_bound_count{0};
+  std::int64_t protected_settings_bundle_bound_count{0};
+  std::int64_t protected_policy_training_fact_declared_count{0};
+  std::int64_t protected_policy_training_fact_bound_count{0};
+  std::int64_t unresolved_policy_training_fact_count{0};
+  std::int64_t protected_settings_match_count{0};
+  std::int64_t protected_settings_mismatch_count{0};
+  std::int64_t protected_evidence_digest_bound_count{0};
+  std::int64_t policy_training_ready_bound_count{0};
+  std::int64_t authority_drift_count{0};
+  std::int64_t artifact_evidence_count{0};
+  std::int64_t warning_count{0};
+  bool artifact_evidence{true};
+  bool visibility_only{true};
+  bool settings_protection_artifact{true};
+  bool tsodao_optimizes_settings{false};
+  bool tsodao_selects_policy{false};
+  bool tsodao_claims_policy_quality{false};
+  bool tsodao_claims_market_readiness{false};
+  bool tsodao_allows_live_execution{false};
+  bool readiness_authority{false};
+  bool quality_authority{false};
+  bool performance_authority{false};
+  bool policy_gate{false};
+  bool checkpoint_selector{false};
+  bool allocation_authority{false};
+  bool execution_authority{false};
+  bool market_readiness_authority{false};
+  bool deployment_authority{false};
+  bool coverage_authority{false};
+  bool leakage_authority{false};
+  bool contract_identity_authority{false};
+  std::vector<std::string> issues{};
+};
+
+struct lattice_policy_acceptance_fact_t {
+  std::string schema{"kikijyeba.lattice.policy_acceptance.v1"};
+  std::string fact_type{"policy_acceptance"};
+  std::string parent_exposure_fact_digest{};
+
+  std::string contract_fingerprint{};
+  std::string protocol_id{};
+  std::string graph_order_fingerprint{};
+  std::string source_cursor_token{};
+  std::string split_policy_fingerprint{};
+  std::string component_assembly_fingerprint{};
+  std::string target_component_family_id{};
+  std::string job_id{};
+  std::string wave_id{};
+  std::string job_status{};
+  std::string wave_action{};
+  std::string split_name{"unknown"};
+  exposure_split_role_t split_role{exposure_split_role_t::unknown};
+  anchor_interval_t anchor_range{};
+  anchor_interval_t completed_anchor_range{};
+
+  std::string acceptance_id{};
+  std::string acceptance_contract_id{"policy_acceptance_contract.v1"};
+  std::string acceptance_policy_digest{};
+  std::string accepted_policy_training_fact_digest{};
+  std::string accepted_policy_training_target_id{
+      "policy_training_artifact_ready"};
+  std::string accepted_policy_training_proof_certificate_digest{};
+  std::string tsodao_settings_protection_fact_digest{};
+  std::string tsodao_settings_protection_target_id{
+      "tsodao_settings_protection_ready"};
+  std::string tsodao_settings_protection_proof_certificate_digest{};
+  std::string protected_settings_bundle_digest{};
+
+  std::string accepted_policy_id{};
+  std::string accepted_policy_kind{};
+  std::string accepted_policy_family_id{};
+  std::string accepted_actor_checkpoint_digest{};
+  std::string accepted_checkpoint_digest{};
+  std::string policy_quality_report_digest{};
+  std::string validation_rollout_report_digest{};
+  std::string reward_contract_id{};
+  std::string execution_profile_digest{};
+  std::string accounting_numeraire_node_id{};
+
+  std::string mandatory_baseline_set_digest{};
+  std::string mandatory_baselines{};
+  std::string primary_metric_id{};
+  double primary_metric_value{std::numeric_limits<double>::quiet_NaN()};
+  double primary_metric_threshold{std::numeric_limits<double>::quiet_NaN()};
+  std::string primary_metric_direction{};
+  std::string after_cost_metric_set_digest{};
+  std::string cost_slippage_assumption_digest{};
+  std::string uncertainty_policy{};
+  std::string uncertainty_model{};
+  std::string selector_split{};
+  std::string validation_split{};
+  std::string test_split{};
+  std::string sealed_test_policy{};
+  std::string tie_policy{};
+  std::string negative_tests_digest{};
+  std::string threshold_selection_audit_digest{};
+  std::string promotion_criteria_digest{};
+
+  bool accepted_policy_training_ready{false};
+  bool tsodao_settings_protection_ready{false};
+  bool protected_settings_bound{false};
+  bool mandatory_baselines_bound{false};
+  bool mandatory_baselines_passed{false};
+  bool after_cost_metrics_bound{false};
+  bool primary_metric_passed{false};
+  bool uncertainty_policy_bound{false};
+  bool uncertainty_passed{false};
+  bool selector_split_bound{false};
+  bool validation_test_disjoint{false};
+  bool test_sealed_until_acceptance{false};
+  bool negative_tests_bound{false};
+  bool negative_tests_passed{false};
+  bool leakage_negative_tests_passed{false};
+  bool threshold_selection_audit_bound{false};
+  bool threshold_selected_before_test{false};
+  bool tie_policy_bound{false};
+  bool tie_policy_passed{false};
+  bool cost_slippage_assumptions_bound{false};
+  bool promotion_criteria_bound{false};
+  bool promotion_criteria_satisfied{false};
+  bool policy_acceptance_decision{false};
+
+  bool artifact_evidence{true};
+  bool visibility_only{true};
+  bool policy_acceptance_artifact{true};
+  bool policy_selector{false};
+  bool checkpoint_selector{false};
+  bool optimizer{false};
+  bool allocation_authority{false};
+  bool execution_authority{false};
+  bool readiness_authority{false};
+  bool quality_authority{false};
+  bool performance_authority{false};
+  bool market_readiness_authority{false};
+  bool deployment_authority{false};
+  bool live_execution_authority{false};
+  bool coverage_authority{false};
+  bool leakage_authority{false};
+  bool contract_identity_authority{false};
+};
+
+struct policy_acceptance_summary_t {
+  std::string schema{"kikijyeba.lattice.policy_acceptance_summary.v1"};
+  std::int64_t exposure_fact_count{0};
+  std::int64_t policy_acceptance_fact_count{0};
+  std::int64_t parent_exposure_fact_count{0};
+  std::int64_t acceptance_id_bound_count{0};
+  std::int64_t acceptance_contract_bound_count{0};
+  std::int64_t policy_training_fact_declared_count{0};
+  std::int64_t policy_training_fact_bound_count{0};
+  std::int64_t unresolved_policy_training_fact_count{0};
+  std::int64_t tsodao_settings_protection_declared_count{0};
+  std::int64_t tsodao_settings_protection_bound_count{0};
+  std::int64_t unresolved_tsodao_settings_protection_count{0};
+  std::int64_t protected_settings_bound_count{0};
+  std::int64_t mandatory_baselines_bound_count{0};
+  std::int64_t mandatory_baselines_passed_count{0};
+  std::int64_t after_cost_metrics_bound_count{0};
+  std::int64_t primary_metric_passed_count{0};
+  std::int64_t uncertainty_policy_bound_count{0};
+  std::int64_t uncertainty_passed_count{0};
+  std::int64_t selector_split_bound_count{0};
+  std::int64_t validation_test_disjoint_count{0};
+  std::int64_t sealed_test_count{0};
+  std::int64_t negative_tests_bound_count{0};
+  std::int64_t negative_tests_passed_count{0};
+  std::int64_t leakage_negative_tests_passed_count{0};
+  std::int64_t threshold_selection_audit_bound_count{0};
+  std::int64_t threshold_selected_before_test_count{0};
+  std::int64_t tie_policy_bound_count{0};
+  std::int64_t tie_policy_passed_count{0};
+  std::int64_t cost_slippage_assumptions_bound_count{0};
+  std::int64_t promotion_criteria_bound_count{0};
+  std::int64_t promotion_criteria_satisfied_count{0};
+  std::int64_t accepted_decision_count{0};
+  std::int64_t artifact_evidence_count{0};
+  std::int64_t authority_drift_count{0};
+  std::int64_t warning_count{0};
+  bool artifact_evidence{true};
+  bool visibility_only{true};
+  bool policy_acceptance_artifact{true};
+  bool policy_selector{false};
+  bool checkpoint_selector{false};
+  bool optimizer{false};
+  bool allocation_authority{false};
+  bool execution_authority{false};
+  bool readiness_authority{false};
+  bool quality_authority{false};
+  bool performance_authority{false};
+  bool market_readiness_authority{false};
+  bool deployment_authority{false};
+  bool live_execution_authority{false};
+  bool coverage_authority{false};
+  bool leakage_authority{false};
+  bool contract_identity_authority{false};
+  std::vector<std::string> issues{};
+};
+
+struct lattice_paper_online_readiness_fact_t {
+  std::string schema{"kikijyeba.lattice.paper_online_readiness.v1"};
+  std::string fact_type{"paper_online_readiness"};
+  std::string parent_exposure_fact_digest{};
+
+  std::string contract_fingerprint{};
+  std::string protocol_id{};
+  std::string graph_order_fingerprint{};
+  std::string source_cursor_token{};
+  std::string split_policy_fingerprint{};
+  std::string component_assembly_fingerprint{};
+  std::string target_component_family_id{};
+  std::string job_id{};
+  std::string wave_id{};
+  std::string job_status{};
+  std::string wave_action{};
+  std::string split_name{"unknown"};
+  exposure_split_role_t split_role{exposure_split_role_t::unknown};
+  anchor_interval_t anchor_range{};
+  anchor_interval_t completed_anchor_range{};
+
+  std::string readiness_id{};
+  std::string readiness_contract_id{"paper_online_readiness_contract.v1"};
+  std::string policy_acceptance_fact_digest{};
+  std::string policy_acceptance_target_id{"policy_acceptance_contract_ready"};
+  std::string policy_acceptance_proof_certificate_digest{};
+  std::string tsodao_settings_protection_fact_digest{};
+  std::string protected_settings_bundle_digest{};
+
+  std::string accepted_policy_id{};
+  std::string accepted_policy_kind{};
+  std::string accepted_policy_family_id{};
+  std::string accepted_actor_checkpoint_digest{};
+  std::string accepted_checkpoint_digest{};
+  std::string policy_quality_report_digest{};
+  std::string validation_rollout_report_digest{};
+  std::string reward_contract_id{};
+  std::string execution_profile_digest{};
+  std::string accounting_numeraire_node_id{};
+
+  std::string paper_online_environment_contract_id{
+      "kikijyeba.environment.paper_online.v1"};
+  std::string paper_online_profile_digest{};
+  std::string direct_edge_universe_digest{};
+  std::string direct_edge_universe_validation_policy_id{
+      "direct_graph_node_pair_universe_required.v1"};
+  std::string missing_direct_pair_policy{"skip_pair_warn"};
+  std::string synthetic_execution_market_policy_id{
+      "synthetic_execution_markets_forbidden.v1"};
+  std::string locked_execution_profile_digest{};
+  std::string persistent_paper_ledger_recovery_policy_id{};
+  std::string paper_ledger_storage_policy_id{};
+  std::string session_state_schema_id{
+      "kikijyeba.paper_online.session_state.v1"};
+  std::string session_lifecycle_policy_id{};
+  std::string idempotency_policy_id{};
+  std::string execution_intent_id_policy{};
+  std::string duplicate_action_policy{};
+  std::string duplicate_execution_intent_policy{};
+  std::string clock_policy_id{};
+  std::string timestamp_policy_id{};
+  std::string market_data_staleness_policy_id{};
+  std::int64_t max_market_data_staleness_ms{0};
+  std::int64_t clock_skew_tolerance_ms{0};
+  std::string reward_report_artifact_policy_id{};
+  std::string operator_abort_policy_id{};
+  std::string kill_switch_policy_id{};
+
+  bool policy_acceptance_ready{false};
+  bool tsodao_settings_protection_ready{false};
+  bool accepted_policy_bound{false};
+  bool protected_settings_bound{false};
+  bool direct_edge_universe_validated{false};
+  bool locked_execution_profile_bound{false};
+  bool persistent_paper_ledger_recovery_bound{false};
+  bool idempotency_bound{false};
+  bool duplicate_action_protection_bound{false};
+  bool session_lifecycle_bound{false};
+  bool clock_timestamp_policy_bound{false};
+  bool market_data_staleness_bound{false};
+  bool reward_report_artifact_path_bound{false};
+  bool operator_abort_bound{false};
+  bool kill_switch_bound{false};
+
+  bool synthetic_execution_markets_allowed{false};
+  bool numeraire_fallback_allowed{false};
+  bool paper_online_execution_allowed{false};
+  bool live_execution_allowed{false};
+  bool broker_execution_allowed{false};
+  bool direct_policy_to_broker_allowed{false};
+  bool direct_policy_to_cajtucu_allowed{false};
+
+  bool artifact_evidence{true};
+  bool visibility_only{true};
+  bool paper_online_readiness_artifact{true};
+  bool policy_selector{false};
+  bool checkpoint_selector{false};
+  bool optimizer{false};
+  bool allocation_authority{false};
+  bool execution_authority{false};
+  bool readiness_authority{false};
+  bool quality_authority{false};
+  bool performance_authority{false};
+  bool market_readiness_authority{false};
+  bool deployment_authority{false};
+  bool live_execution_authority{false};
+  bool coverage_authority{false};
+  bool leakage_authority{false};
+  bool contract_identity_authority{false};
+};
+
+struct paper_online_readiness_summary_t {
+  std::string schema{"kikijyeba.lattice.paper_online_readiness_summary.v1"};
+  std::int64_t exposure_fact_count{0};
+  std::int64_t paper_online_readiness_fact_count{0};
+  std::int64_t parent_exposure_fact_count{0};
+  std::int64_t readiness_id_bound_count{0};
+  std::int64_t readiness_contract_bound_count{0};
+  std::int64_t policy_acceptance_fact_declared_count{0};
+  std::int64_t policy_acceptance_fact_bound_count{0};
+  std::int64_t unresolved_policy_acceptance_count{0};
+  std::int64_t accepted_policy_bound_count{0};
+  std::int64_t direct_edge_universe_validated_count{0};
+  std::int64_t staleness_policy_bound_count{0};
+  std::int64_t idempotency_bound_count{0};
+  std::int64_t ledger_recovery_bound_count{0};
+  std::int64_t session_lifecycle_bound_count{0};
+  std::int64_t abort_policy_bound_count{0};
+  std::int64_t kill_switch_bound_count{0};
+  std::int64_t artifact_evidence_count{0};
+  std::int64_t authority_drift_count{0};
+  std::int64_t warning_count{0};
+  bool artifact_evidence{true};
+  bool visibility_only{true};
+  bool paper_online_readiness_artifact{true};
+  bool paper_online_execution_allowed{false};
+  bool live_execution_allowed{false};
+  bool broker_execution_allowed{false};
+  bool direct_policy_to_broker_allowed{false};
+  bool direct_policy_to_cajtucu_allowed{false};
+  bool readiness_authority{false};
+  bool quality_authority{false};
+  bool performance_authority{false};
+  bool market_readiness_authority{false};
+  bool deployment_authority{false};
+  bool live_execution_authority{false};
   std::vector<std::string> issues{};
 };
 
@@ -3228,6 +3702,26 @@ empty_replay_environment_facts() {
 [[nodiscard]] inline const std::vector<lattice_policy_training_fact_t> &
 empty_policy_training_facts() {
   static const std::vector<lattice_policy_training_fact_t> empty{};
+  return empty;
+}
+
+[[nodiscard]] inline const std::vector<
+    lattice_tsodao_settings_protection_fact_t> &
+empty_tsodao_settings_protection_facts() {
+  static const std::vector<lattice_tsodao_settings_protection_fact_t> empty{};
+  return empty;
+}
+
+[[nodiscard]] inline const std::vector<lattice_policy_acceptance_fact_t> &
+empty_policy_acceptance_facts() {
+  static const std::vector<lattice_policy_acceptance_fact_t> empty{};
+  return empty;
+}
+
+[[nodiscard]] inline const std::vector<
+    lattice_paper_online_readiness_fact_t> &
+empty_paper_online_readiness_facts() {
+  static const std::vector<lattice_paper_online_readiness_fact_t> empty{};
   return empty;
 }
 
@@ -3812,16 +4306,25 @@ inline void append_i64_list(std::ostringstream &out, const char *key,
 [[nodiscard]] inline std::string component_fingerprint_from_manifest(
     const std::unordered_map<std::string, std::string> &manifest) {
   const auto target = map_get(manifest, "target_component_family_id");
-  if (target == "wikimyei.representation.encoding.vicreg" ||
-      target == "wikimyei.representation.encoding.vicreg") {
+  if (target == "wikimyei.representation.encoding.vicreg") {
     return map_get(manifest, "vicreg_assembly_fingerprint");
   }
   if (target == "wikimyei.representation.encoding.mtf_jepa_mae_vicreg") {
     return map_get(manifest, "mtf_jepa_mae_vicreg_assembly_fingerprint");
   }
-  if (target == "wikimyei.inference.expected_value.mdn" ||
-      target == "wikimyei.inference.expected_value.mdn") {
+  if (target == "wikimyei.inference.expected_value.mdn") {
     return map_get(manifest, "mdn_assembly_fingerprint");
+  }
+  if (target == "wikimyei.policy.portfolio.graph_node_allocation") {
+    auto policy_surface = map_get(manifest, "policy_operator_surface_digest");
+    if (!policy_surface.empty()) {
+      return policy_surface;
+    }
+    policy_surface = map_get(manifest, "component_assembly_fingerprint");
+    if (!policy_surface.empty()) {
+      return policy_surface;
+    }
+    return map_get(manifest, "component_spawn_fingerprint");
   }
   return {};
 }
@@ -9136,8 +9639,13 @@ make_policy_training_facts_from_job_dir(const std::filesystem::path &job_dir,
   fact.policy_family_id = first_value({"policy_family_id"});
   fact.policy_checkpoint_schema_id =
       first_value({"policy_checkpoint_schema_id"});
+  fact.policy_dsl_digest = first_value({"policy_dsl_digest"});
+  fact.policy_net_digest = first_value({"policy_net_digest"});
   fact.policy_input_feature_manifest_digest =
       first_value({"policy_input_feature_manifest_digest"});
+  fact.policy_jkimyei_digest = first_value({"policy_jkimyei_digest"});
+  fact.target_node_universe_digest =
+      first_value({"target_node_universe_digest"});
   fact.action_distribution_config_digest =
       first_value({"action_distribution_config_digest"});
   fact.snapshot_family_digest = first_value({"snapshot_family_digest"});
@@ -9150,7 +9658,31 @@ make_policy_training_facts_from_job_dir(const std::filesystem::path &job_dir,
   fact.actor_checkpoint_digest = first_value({"actor_checkpoint_digest"});
   fact.critic_checkpoint_digest = first_value({"critic_checkpoint_digest"});
   fact.optimizer_state_digest = first_value({"optimizer_state_digest"});
+  fact.optimizer_state_schema_id = first_value({"optimizer_state_schema_id"});
+  fact.optimizer_torch_state_path = first_value({"optimizer_torch_state_path"});
+  fact.optimizer_torch_state_digest =
+      first_value({"optimizer_torch_state_digest"});
   fact.ppo_config_digest = first_value({"ppo_config_digest"});
+  fact.device_policy = first_value({"device_policy"});
+  fact.runtime_device_kind = first_value({"runtime_device_kind"});
+  fact.cuda_available = first_bool({"cuda_available"});
+  fact.module_parameters_on_cuda = first_bool({"module_parameters_on_cuda"});
+  fact.forward_input_on_cuda = first_bool({"forward_input_on_cuda"});
+  fact.loss_on_cuda = first_bool({"loss_on_cuda"});
+  fact.optimizer_state_on_cuda = first_bool({"optimizer_state_on_cuda"});
+  fact.cuda_verification_passed = first_bool({"cuda_verification_passed"});
+  fact.resume_mode = first_value({"resume_mode"});
+  fact.resume_actor_checkpoint_path =
+      first_value({"resume_actor_checkpoint_path"});
+  fact.resume_actor_checkpoint_digest =
+      first_value({"resume_actor_checkpoint_digest"});
+  fact.resume_optimizer_state_path =
+      first_value({"resume_optimizer_state_path"});
+  fact.resume_optimizer_state_digest =
+      first_value({"resume_optimizer_state_digest"});
+  fact.resume_parent_loaded = first_bool({"resume_parent_loaded"});
+  fact.optimizer_state_resume_loaded =
+      first_bool({"optimizer_state_resume_loaded"});
   fact.advantage_estimator_id = first_value({"advantage_estimator_id"});
   fact.advantage_normalization_policy =
       first_value({"advantage_normalization_policy"});
@@ -9193,6 +9725,8 @@ make_policy_training_facts_from_job_dir(const std::filesystem::path &job_dir,
                   &fact.ppo_minibatch_size_bound);
   parse_bound_i64("ppo_epochs_per_rollout", &fact.ppo_epochs_per_rollout,
                   &fact.ppo_epochs_per_rollout_bound);
+  parse_bound_i64("cuda_device_index", &fact.cuda_device_index,
+                  &fact.cuda_device_index_bound);
   fact.training_schedule_mode = first_value({"training_schedule_mode"});
   fact.causal_schedule_schema_id = first_value({"causal_schedule_schema_id"});
   fact.causal_schedule_digest = first_value({"causal_schedule_digest"});
@@ -9340,8 +9874,13 @@ make_policy_training_facts_from_job_dir(const std::filesystem::path &job_dir,
   out << "policy_family_id=" << fact.policy_family_id << "\n";
   out << "policy_checkpoint_schema_id=" << fact.policy_checkpoint_schema_id
       << "\n";
+  out << "policy_dsl_digest=" << fact.policy_dsl_digest << "\n";
+  out << "policy_net_digest=" << fact.policy_net_digest << "\n";
   out << "policy_input_feature_manifest_digest="
       << fact.policy_input_feature_manifest_digest << "\n";
+  out << "policy_jkimyei_digest=" << fact.policy_jkimyei_digest << "\n";
+  out << "target_node_universe_digest=" << fact.target_node_universe_digest
+      << "\n";
   out << "action_distribution_config_digest="
       << fact.action_distribution_config_digest << "\n";
   out << "snapshot_family_digest=" << fact.snapshot_family_digest << "\n";
@@ -9355,7 +9894,40 @@ make_policy_training_facts_from_job_dir(const std::filesystem::path &job_dir,
   out << "actor_checkpoint_digest=" << fact.actor_checkpoint_digest << "\n";
   out << "critic_checkpoint_digest=" << fact.critic_checkpoint_digest << "\n";
   out << "optimizer_state_digest=" << fact.optimizer_state_digest << "\n";
+  out << "optimizer_state_schema_id=" << fact.optimizer_state_schema_id << "\n";
+  out << "optimizer_torch_state_path=" << fact.optimizer_torch_state_path
+      << "\n";
+  out << "optimizer_torch_state_digest=" << fact.optimizer_torch_state_digest
+      << "\n";
   out << "ppo_config_digest=" << fact.ppo_config_digest << "\n";
+  out << "device_policy=" << fact.device_policy << "\n";
+  out << "runtime_device_kind=" << fact.runtime_device_kind << "\n";
+  out << "cuda_device_index=" << fact.cuda_device_index << "\n";
+  out << "cuda_device_index_bound="
+      << (fact.cuda_device_index_bound ? "true" : "false") << "\n";
+  out << "cuda_available=" << (fact.cuda_available ? "true" : "false") << "\n";
+  out << "module_parameters_on_cuda="
+      << (fact.module_parameters_on_cuda ? "true" : "false") << "\n";
+  out << "forward_input_on_cuda="
+      << (fact.forward_input_on_cuda ? "true" : "false") << "\n";
+  out << "loss_on_cuda=" << (fact.loss_on_cuda ? "true" : "false") << "\n";
+  out << "optimizer_state_on_cuda="
+      << (fact.optimizer_state_on_cuda ? "true" : "false") << "\n";
+  out << "cuda_verification_passed="
+      << (fact.cuda_verification_passed ? "true" : "false") << "\n";
+  out << "resume_mode=" << fact.resume_mode << "\n";
+  out << "resume_actor_checkpoint_path=" << fact.resume_actor_checkpoint_path
+      << "\n";
+  out << "resume_actor_checkpoint_digest="
+      << fact.resume_actor_checkpoint_digest << "\n";
+  out << "resume_optimizer_state_path=" << fact.resume_optimizer_state_path
+      << "\n";
+  out << "resume_optimizer_state_digest=" << fact.resume_optimizer_state_digest
+      << "\n";
+  out << "resume_parent_loaded="
+      << (fact.resume_parent_loaded ? "true" : "false") << "\n";
+  out << "optimizer_state_resume_loaded="
+      << (fact.optimizer_state_resume_loaded ? "true" : "false") << "\n";
   out << "advantage_estimator_id=" << fact.advantage_estimator_id << "\n";
   out << "advantage_normalization_policy="
       << fact.advantage_normalization_policy << "\n";
@@ -9527,6 +10099,57 @@ policy_training_fact_requires_allocation_engine_parent(
          !fact.parent_replay_environment_report_digest.empty();
 }
 
+[[nodiscard]] inline bool policy_training_fact_has_cuda_runtime_evidence(
+    const lattice_policy_training_fact_t &fact) {
+  return fact.device_policy == "require_cuda" &&
+         fact.runtime_device_kind == "cuda" && fact.cuda_device_index_bound &&
+         fact.cuda_device_index >= 0 && fact.cuda_available &&
+         fact.module_parameters_on_cuda && fact.forward_input_on_cuda &&
+         fact.loss_on_cuda && fact.optimizer_state_on_cuda &&
+         fact.cuda_verification_passed;
+}
+
+[[nodiscard]] inline bool policy_training_fact_has_optimizer_archive_evidence(
+    const lattice_policy_training_fact_t &fact) {
+  return fact.optimizer_state_schema_id ==
+             "kikijyeba.runtime.ppo_optimizer_state.v1" &&
+         !fact.optimizer_torch_state_path.empty() &&
+         !fact.optimizer_torch_state_digest.empty();
+}
+
+[[nodiscard]] inline bool policy_training_fact_has_supported_resume_evidence(
+    const lattice_policy_training_fact_t &fact) {
+  if (fact.resume_mode == "fresh_spawn") {
+    return fact.resume_actor_checkpoint_path.empty() &&
+           fact.resume_actor_checkpoint_digest.empty() &&
+           fact.resume_optimizer_state_path.empty() &&
+           fact.resume_optimizer_state_digest.empty() &&
+           (!fact.resume_parent_loaded ||
+            !fact.input_policy_checkpoint_digest.empty()) &&
+           !fact.optimizer_state_resume_loaded;
+  }
+  if (fact.resume_mode == "resume_weights") {
+    return !fact.resume_actor_checkpoint_path.empty() &&
+           !fact.resume_actor_checkpoint_digest.empty() &&
+           fact.resume_parent_loaded && !fact.optimizer_state_resume_loaded;
+  }
+  if (fact.resume_mode == "resume_weights_and_optimizer") {
+    return !fact.resume_actor_checkpoint_path.empty() &&
+           !fact.resume_actor_checkpoint_digest.empty() &&
+           !fact.resume_optimizer_state_path.empty() &&
+           !fact.resume_optimizer_state_digest.empty() &&
+           fact.resume_parent_loaded && fact.optimizer_state_resume_loaded;
+  }
+  return false;
+}
+
+[[nodiscard]] inline bool policy_training_fact_has_ppo_runtime_state_evidence(
+    const lattice_policy_training_fact_t &fact) {
+  return policy_training_fact_has_optimizer_archive_evidence(fact) &&
+         policy_training_fact_has_cuda_runtime_evidence(fact) &&
+         policy_training_fact_has_supported_resume_evidence(fact);
+}
+
 [[nodiscard]] inline std::vector<std::string>
 policy_training_fact_issues(const lattice_policy_training_fact_t &fact) {
   std::vector<std::string> issues;
@@ -9637,8 +10260,20 @@ policy_training_fact_issues(const lattice_policy_training_fact_t &fact) {
                "ppo_checkpoint.v1") {
       issues.emplace_back("unsupported_policy_checkpoint_schema_id");
     }
+    if (fact.policy_dsl_digest.empty()) {
+      issues.emplace_back("missing_policy_dsl_digest");
+    }
+    if (fact.policy_net_digest.empty()) {
+      issues.emplace_back("missing_policy_net_digest");
+    }
     if (fact.policy_input_feature_manifest_digest.empty()) {
       issues.emplace_back("missing_policy_input_feature_manifest_digest");
+    }
+    if (fact.policy_jkimyei_digest.empty()) {
+      issues.emplace_back("missing_policy_jkimyei_digest");
+    }
+    if (fact.target_node_universe_digest.empty()) {
+      issues.emplace_back("missing_target_node_universe_digest");
     }
     if (fact.action_distribution_config_digest.empty()) {
       issues.emplace_back("missing_action_distribution_config_digest");
@@ -9664,8 +10299,94 @@ policy_training_fact_issues(const lattice_policy_training_fact_t &fact) {
     if (fact.optimizer_state_digest.empty()) {
       issues.emplace_back("missing_optimizer_state_digest");
     }
+    if (fact.optimizer_state_schema_id.empty()) {
+      issues.emplace_back("missing_optimizer_state_schema_id");
+    } else if (fact.optimizer_state_schema_id !=
+               "kikijyeba.runtime.ppo_optimizer_state.v1") {
+      issues.emplace_back("unsupported_optimizer_state_schema_id");
+    }
+    if (fact.optimizer_torch_state_path.empty()) {
+      issues.emplace_back("missing_optimizer_torch_state_path");
+    }
+    if (fact.optimizer_torch_state_digest.empty()) {
+      issues.emplace_back("missing_optimizer_torch_state_digest");
+    }
     if (fact.ppo_config_digest.empty()) {
       issues.emplace_back("missing_ppo_config_digest");
+    }
+    if (fact.device_policy.empty()) {
+      issues.emplace_back("missing_device_policy");
+    } else if (fact.device_policy != "require_cuda") {
+      issues.emplace_back("unsupported_device_policy");
+    }
+    if (fact.runtime_device_kind.empty()) {
+      issues.emplace_back("missing_runtime_device_kind");
+    } else if (fact.runtime_device_kind != "cuda") {
+      issues.emplace_back("unsupported_runtime_device_kind");
+    }
+    if (!fact.cuda_device_index_bound || fact.cuda_device_index < 0) {
+      issues.emplace_back("invalid_cuda_device_index");
+    }
+    if (!fact.cuda_available) {
+      issues.emplace_back("cuda_not_available");
+    }
+    if (!fact.module_parameters_on_cuda) {
+      issues.emplace_back("module_parameters_not_on_cuda");
+    }
+    if (!fact.forward_input_on_cuda) {
+      issues.emplace_back("forward_input_not_on_cuda");
+    }
+    if (!fact.loss_on_cuda) {
+      issues.emplace_back("loss_not_on_cuda");
+    }
+    if (!fact.optimizer_state_on_cuda) {
+      issues.emplace_back("optimizer_state_not_on_cuda");
+    }
+    if (!fact.cuda_verification_passed) {
+      issues.emplace_back("cuda_verification_not_proven");
+    }
+    if (fact.resume_mode.empty()) {
+      issues.emplace_back("missing_resume_mode");
+    } else if (fact.resume_mode != "fresh_spawn" &&
+               fact.resume_mode != "resume_weights" &&
+               fact.resume_mode != "resume_weights_and_optimizer") {
+      issues.emplace_back("unsupported_resume_mode");
+    }
+    if (fact.resume_mode == "fresh_spawn") {
+      if (!fact.resume_actor_checkpoint_path.empty() ||
+          !fact.resume_actor_checkpoint_digest.empty() ||
+          !fact.resume_optimizer_state_path.empty() ||
+          !fact.resume_optimizer_state_digest.empty() ||
+          fact.optimizer_state_resume_loaded) {
+        issues.emplace_back("fresh_spawn_must_not_load_resume_artifacts");
+      }
+      if (fact.resume_parent_loaded &&
+          fact.input_policy_checkpoint_digest.empty()) {
+        issues.emplace_back(
+            "fresh_spawn_parent_load_requires_input_policy_checkpoint");
+      }
+    } else if (fact.resume_mode == "resume_weights") {
+      if (fact.resume_actor_checkpoint_path.empty() ||
+          fact.resume_actor_checkpoint_digest.empty() ||
+          !fact.resume_parent_loaded) {
+        issues.emplace_back("resume_weights_missing_parent_checkpoint");
+      }
+      if (fact.optimizer_state_resume_loaded) {
+        issues.emplace_back("resume_weights_must_not_load_optimizer_state");
+      }
+    } else if (fact.resume_mode == "resume_weights_and_optimizer") {
+      if (fact.resume_actor_checkpoint_path.empty() ||
+          fact.resume_actor_checkpoint_digest.empty() ||
+          !fact.resume_parent_loaded) {
+        issues.emplace_back(
+            "resume_weights_and_optimizer_missing_parent_checkpoint");
+      }
+      if (fact.resume_optimizer_state_path.empty() ||
+          fact.resume_optimizer_state_digest.empty() ||
+          !fact.optimizer_state_resume_loaded) {
+        issues.emplace_back(
+            "resume_weights_and_optimizer_missing_optimizer_state");
+      }
     }
     if (fact.advantage_estimator_id.empty()) {
       issues.emplace_back("missing_advantage_estimator_id");
@@ -9900,6 +10621,2842 @@ append_policy_training_scan_warning(const lattice_policy_training_fact_t &fact,
   warnings.push_back(oss.str());
 }
 
+[[nodiscard]] inline std::vector<std::filesystem::path>
+tsodao_settings_protection_fact_paths_for_job_dir(
+    const std::filesystem::path &job_dir) {
+  const auto artifact_dir =
+      job_dir / "artifacts" / "tsodao.settings.protection.v1";
+  return {job_dir / "lattice.tsodao_settings_protection.fact",
+          job_dir / "tsodao_settings_protection.fact",
+          job_dir / "runtime.tsodao_settings_protection.fact",
+          artifact_dir / "tsodao_settings_protection.fact"};
+}
+
+[[nodiscard]] inline bool tsodao_settings_protection_fact_has_payload(
+    const lattice_tsodao_settings_protection_fact_t &fact) {
+  return !fact.protection_id.empty() ||
+         !fact.protected_settings_bundle_digest.empty() ||
+         !fact.protected_policy_training_fact_digest.empty() ||
+         !fact.policy_id.empty() || !fact.policy_kind.empty() ||
+         !fact.policy_input_feature_manifest_digest.empty() ||
+         !fact.action_distribution_config_digest.empty() ||
+         !fact.reward_contract_id.empty() ||
+         !fact.execution_profile_digest.empty() ||
+         !fact.causal_schedule_digest.empty() ||
+         !fact.ppo_config_digest.empty() ||
+         !fact.actor_architecture_digest.empty() ||
+         !fact.critic_architecture_digest.empty() ||
+         !fact.validation_rollout_report_digest.empty() ||
+         !fact.policy_quality_report_digest.empty() ||
+         fact.protected_settings_match_policy_training_fact ||
+         fact.protected_evidence_digests_bound ||
+         fact.protected_policy_training_ready || !fact.artifact_evidence ||
+         !fact.visibility_only || !fact.settings_protection_artifact ||
+         fact.tsodao_optimizes_settings || fact.tsodao_selects_policy ||
+         fact.tsodao_claims_policy_quality ||
+         fact.tsodao_claims_market_readiness ||
+         fact.tsodao_allows_live_execution || fact.readiness_authority ||
+         fact.quality_authority || fact.performance_authority ||
+         fact.policy_gate || fact.checkpoint_selector ||
+         fact.allocation_authority || fact.execution_authority ||
+         fact.market_readiness_authority || fact.deployment_authority ||
+         fact.coverage_authority || fact.leakage_authority ||
+         fact.contract_identity_authority;
+}
+
+[[nodiscard]] inline std::vector<lattice_tsodao_settings_protection_fact_t>
+make_tsodao_settings_protection_facts_from_job_dir(
+    const std::filesystem::path &job_dir,
+    const lattice_exposure_fact_t &parent) {
+  namespace detail = exposure_detail;
+  const auto protection = detail::parse_first_assignment_file(
+      tsodao_settings_protection_fact_paths_for_job_dir(job_dir));
+  if (protection.empty()) {
+    return {};
+  }
+
+  const auto first_value =
+      [&](const std::vector<std::string> &keys) -> std::string {
+    for (const auto &key : keys) {
+      const auto value = detail::map_get(protection, key);
+      if (!value.empty()) {
+        return value;
+      }
+    }
+    return {};
+  };
+  const auto first_bool = [&](const std::vector<std::string> &keys,
+                              bool fallback = false) {
+    return detail::parse_bool_fallback(first_value(keys), fallback);
+  };
+
+  lattice_tsodao_settings_protection_fact_t fact{};
+  fact.parent_exposure_fact_digest = exposure_fact_digest(parent);
+  fact.contract_fingerprint = parent.contract_fingerprint;
+  fact.protocol_id = parent.protocol_id;
+  fact.graph_order_fingerprint = parent.graph_order_fingerprint;
+  fact.source_cursor_token = parent.source_cursor_token;
+  fact.split_policy_fingerprint = parent.split_policy_fingerprint;
+  fact.component_assembly_fingerprint = parent.component_assembly_fingerprint;
+  fact.target_component_family_id = parent.target_component_family_id;
+  fact.job_id = parent.job_id;
+  fact.wave_id = parent.wave_id;
+  fact.job_status = parent.job_status;
+  fact.wave_action = parent.wave_action;
+  fact.split_name = parent.split_name;
+  fact.split_role = parent.split_role;
+  fact.anchor_range = parent.anchor_range;
+  fact.completed_anchor_range = parent.completed_anchor_range;
+
+  const auto file_parent_exposure_fact_digest =
+      first_value({"parent_exposure_fact_digest"});
+  if (!file_parent_exposure_fact_digest.empty()) {
+    fact.parent_exposure_fact_digest = file_parent_exposure_fact_digest;
+  }
+  const auto file_contract_fingerprint = first_value({"contract_fingerprint"});
+  if (!file_contract_fingerprint.empty()) {
+    fact.contract_fingerprint = file_contract_fingerprint;
+  }
+  const auto file_protocol_id = first_value({"protocol_id"});
+  if (!file_protocol_id.empty()) {
+    fact.protocol_id = file_protocol_id;
+  }
+  const auto file_graph_order_fingerprint =
+      first_value({"graph_order_fingerprint"});
+  if (!file_graph_order_fingerprint.empty()) {
+    fact.graph_order_fingerprint = file_graph_order_fingerprint;
+  }
+  const auto file_source_cursor_token = first_value({"source_cursor_token"});
+  if (!file_source_cursor_token.empty()) {
+    fact.source_cursor_token = file_source_cursor_token;
+  }
+  const auto file_split_policy_fingerprint =
+      first_value({"split_policy_fingerprint"});
+  if (!file_split_policy_fingerprint.empty()) {
+    fact.split_policy_fingerprint = file_split_policy_fingerprint;
+  }
+  const auto file_component_assembly_fingerprint =
+      first_value({"component_assembly_fingerprint"});
+  if (!file_component_assembly_fingerprint.empty()) {
+    fact.component_assembly_fingerprint = file_component_assembly_fingerprint;
+  }
+  const auto file_target_component_family_id =
+      first_value({"target_component_family_id"});
+  if (!file_target_component_family_id.empty()) {
+    fact.target_component_family_id = file_target_component_family_id;
+  }
+  const auto file_job_id = first_value({"job_id"});
+  if (!file_job_id.empty()) {
+    fact.job_id = file_job_id;
+  }
+  const auto file_wave_id = first_value({"wave_id"});
+  if (!file_wave_id.empty()) {
+    fact.wave_id = file_wave_id;
+  }
+  const auto file_job_status = first_value({"job_status"});
+  if (!file_job_status.empty()) {
+    fact.job_status = file_job_status;
+  }
+  const auto file_wave_action = first_value({"wave_action"});
+  if (!file_wave_action.empty()) {
+    fact.wave_action = file_wave_action;
+  }
+  const auto file_split_name = first_value({"split_name"});
+  if (!file_split_name.empty()) {
+    fact.split_name = file_split_name;
+  }
+  const auto file_split_role = first_value({"split_role"});
+  if (!file_split_role.empty()) {
+    fact.split_role = parse_exposure_split_role(file_split_role);
+  }
+  const auto file_anchor_begin = first_value({"anchor_begin"});
+  const auto file_anchor_end = first_value({"anchor_end"});
+  if (!file_anchor_begin.empty() && !file_anchor_end.empty()) {
+    fact.anchor_range.begin =
+        detail::parse_i64_fallback(file_anchor_begin, fact.anchor_range.begin);
+    fact.anchor_range.end =
+        detail::parse_i64_fallback(file_anchor_end, fact.anchor_range.end);
+  }
+  const auto file_completed_anchor_begin =
+      first_value({"completed_anchor_begin"});
+  const auto file_completed_anchor_end = first_value({"completed_anchor_end"});
+  if (!file_completed_anchor_begin.empty() &&
+      !file_completed_anchor_end.empty()) {
+    fact.completed_anchor_range.begin = detail::parse_i64_fallback(
+        file_completed_anchor_begin, fact.completed_anchor_range.begin);
+    fact.completed_anchor_range.end = detail::parse_i64_fallback(
+        file_completed_anchor_end, fact.completed_anchor_range.end);
+  }
+
+  fact.protection_id = first_value({"protection_id"});
+  fact.protection_contract_id =
+      first_value({"protection_contract_id", "tsodao_contract_id"});
+  if (fact.protection_contract_id.empty()) {
+    fact.protection_contract_id = "tsodao_settings_protection_contract.v1";
+  }
+  fact.protected_settings_bundle_digest =
+      first_value({"protected_settings_bundle_digest"});
+  fact.protected_policy_training_fact_digest = first_value(
+      {"protected_policy_training_fact_digest", "policy_training_fact_digest"});
+  fact.protected_policy_training_target_id = first_value(
+      {"protected_policy_training_target_id", "policy_training_target_id"});
+  if (fact.protected_policy_training_target_id.empty()) {
+    fact.protected_policy_training_target_id = "policy_training_artifact_ready";
+  }
+  fact.protected_policy_training_proof_certificate_digest =
+      first_value({"protected_policy_training_proof_certificate_digest",
+                   "policy_training_proof_certificate_digest"});
+  fact.policy_id = first_value({"policy_id"});
+  fact.policy_kind = first_value({"policy_kind"});
+  fact.policy_family_id = first_value({"policy_family_id"});
+  fact.policy_checkpoint_schema_id =
+      first_value({"policy_checkpoint_schema_id"});
+  fact.policy_input_schema_id = first_value({"policy_input_schema_id"});
+  fact.policy_input_feature_manifest_digest =
+      first_value({"policy_input_feature_manifest_digest"});
+  fact.graph_node_action_universe_digest = first_value(
+      {"graph_node_action_universe_digest", "graph_order_fingerprint"});
+  if (fact.graph_node_action_universe_digest.empty()) {
+    fact.graph_node_action_universe_digest = fact.graph_order_fingerprint;
+  }
+  fact.action_schema_digest = first_value({"action_schema_digest"});
+  fact.action_adapter_id = first_value({"action_adapter_id"});
+  fact.action_distribution_id = first_value({"action_distribution_id"});
+  fact.action_distribution_config_digest =
+      first_value({"action_distribution_config_digest"});
+  fact.reward_contract_id = first_value({"reward_contract_id"});
+  fact.reward_contract_digest = first_value({"reward_contract_digest"});
+  fact.environment_contract_id = first_value({"environment_contract_id"});
+  fact.execution_profile_digest = first_value({"execution_profile_digest"});
+  fact.accounting_numeraire_node_id =
+      first_value({"accounting_numeraire_node_id"});
+  fact.causal_schedule_schema_id = first_value({"causal_schedule_schema_id"});
+  fact.causal_schedule_digest = first_value({"causal_schedule_digest"});
+  fact.snapshot_family_digest = first_value({"snapshot_family_digest"});
+  fact.training_config_digest = first_value({"training_config_digest"});
+  fact.ppo_config_digest = first_value({"ppo_config_digest"});
+  fact.actor_architecture_digest = first_value({"actor_architecture_digest"});
+  fact.critic_architecture_digest = first_value({"critic_architecture_digest"});
+  fact.optimizer_state_schema_id = first_value({"optimizer_state_schema_id"});
+  fact.optimizer_state_digest = first_value({"optimizer_state_digest"});
+  fact.optimizer_torch_state_digest =
+      first_value({"optimizer_torch_state_digest"});
+  fact.resume_mode = first_value({"resume_mode"});
+  fact.validation_rollout_report_digest =
+      first_value({"validation_rollout_report_digest"});
+  fact.policy_quality_report_digest =
+      first_value({"policy_quality_report_digest"});
+
+  fact.protected_settings_match_policy_training_fact =
+      first_bool({"protected_settings_match_policy_training_fact"});
+  fact.protected_evidence_digests_bound =
+      first_bool({"protected_evidence_digests_bound"});
+  fact.protected_policy_training_ready =
+      first_bool({"protected_policy_training_ready"});
+
+  fact.artifact_evidence =
+      first_bool({"artifact_evidence"}, fact.artifact_evidence);
+  fact.visibility_only = first_bool({"visibility_only"}, fact.visibility_only);
+  fact.settings_protection_artifact = first_bool(
+      {"settings_protection_artifact"}, fact.settings_protection_artifact);
+  fact.tsodao_optimizes_settings = first_bool({"tsodao_optimizes_settings"});
+  fact.tsodao_selects_policy = first_bool({"tsodao_selects_policy"});
+  fact.tsodao_claims_policy_quality =
+      first_bool({"tsodao_claims_policy_quality"});
+  fact.tsodao_claims_market_readiness =
+      first_bool({"tsodao_claims_market_readiness"});
+  fact.tsodao_allows_live_execution =
+      first_bool({"tsodao_allows_live_execution"});
+  fact.readiness_authority = first_bool({"readiness_authority"});
+  fact.quality_authority = first_bool({"quality_authority"});
+  fact.performance_authority = first_bool({"performance_authority"});
+  fact.policy_gate = first_bool({"policy_gate"});
+  fact.checkpoint_selector = first_bool({"checkpoint_selector"});
+  fact.allocation_authority = first_bool({"allocation_authority"});
+  fact.execution_authority = first_bool({"execution_authority"});
+  fact.market_readiness_authority = first_bool({"market_readiness_authority"});
+  fact.deployment_authority = first_bool({"deployment_authority"});
+  fact.coverage_authority = first_bool({"coverage_authority"});
+  fact.leakage_authority = first_bool({"leakage_authority"});
+  fact.contract_identity_authority =
+      first_bool({"contract_identity_authority"});
+
+  if (!tsodao_settings_protection_fact_has_payload(fact)) {
+    return {};
+  }
+  return {std::move(fact)};
+}
+
+[[nodiscard]] inline std::string canonical_tsodao_settings_protection_fact_text(
+    const lattice_tsodao_settings_protection_fact_t &fact) {
+  std::ostringstream out;
+  out << "schema=" << fact.schema << "\n";
+  out << "fact_type=" << fact.fact_type << "\n";
+  out << "parent_exposure_fact_digest=" << fact.parent_exposure_fact_digest
+      << "\n";
+  out << "contract_fingerprint=" << fact.contract_fingerprint << "\n";
+  out << "protocol_id=" << fact.protocol_id << "\n";
+  out << "graph_order_fingerprint=" << fact.graph_order_fingerprint << "\n";
+  out << "source_cursor_token=" << fact.source_cursor_token << "\n";
+  out << "split_policy_fingerprint=" << fact.split_policy_fingerprint << "\n";
+  out << "component_assembly_fingerprint="
+      << fact.component_assembly_fingerprint << "\n";
+  out << "target_component_family_id=" << fact.target_component_family_id
+      << "\n";
+  out << "job_id=" << fact.job_id << "\n";
+  out << "wave_id=" << fact.wave_id << "\n";
+  out << "job_status=" << fact.job_status << "\n";
+  out << "wave_action=" << fact.wave_action << "\n";
+  out << "split_name=" << fact.split_name << "\n";
+  out << "split_role=" << exposure_split_role_name(fact.split_role) << "\n";
+  out << "anchor_begin=" << fact.anchor_range.begin << "\n";
+  out << "anchor_end=" << fact.anchor_range.end << "\n";
+  out << "completed_anchor_begin=" << fact.completed_anchor_range.begin << "\n";
+  out << "completed_anchor_end=" << fact.completed_anchor_range.end << "\n";
+  out << "protection_id=" << fact.protection_id << "\n";
+  out << "protection_contract_id=" << fact.protection_contract_id << "\n";
+  out << "protected_settings_bundle_digest="
+      << fact.protected_settings_bundle_digest << "\n";
+  out << "protected_policy_training_fact_digest="
+      << fact.protected_policy_training_fact_digest << "\n";
+  out << "protected_policy_training_target_id="
+      << fact.protected_policy_training_target_id << "\n";
+  out << "protected_policy_training_proof_certificate_digest="
+      << fact.protected_policy_training_proof_certificate_digest << "\n";
+  out << "policy_id=" << fact.policy_id << "\n";
+  out << "policy_kind=" << fact.policy_kind << "\n";
+  out << "policy_family_id=" << fact.policy_family_id << "\n";
+  out << "policy_checkpoint_schema_id=" << fact.policy_checkpoint_schema_id
+      << "\n";
+  out << "policy_input_schema_id=" << fact.policy_input_schema_id << "\n";
+  out << "policy_input_feature_manifest_digest="
+      << fact.policy_input_feature_manifest_digest << "\n";
+  out << "graph_node_action_universe_digest="
+      << fact.graph_node_action_universe_digest << "\n";
+  out << "action_schema_digest=" << fact.action_schema_digest << "\n";
+  out << "action_adapter_id=" << fact.action_adapter_id << "\n";
+  out << "action_distribution_id=" << fact.action_distribution_id << "\n";
+  out << "action_distribution_config_digest="
+      << fact.action_distribution_config_digest << "\n";
+  out << "reward_contract_id=" << fact.reward_contract_id << "\n";
+  out << "reward_contract_digest=" << fact.reward_contract_digest << "\n";
+  out << "environment_contract_id=" << fact.environment_contract_id << "\n";
+  out << "execution_profile_digest=" << fact.execution_profile_digest << "\n";
+  out << "accounting_numeraire_node_id=" << fact.accounting_numeraire_node_id
+      << "\n";
+  out << "causal_schedule_schema_id=" << fact.causal_schedule_schema_id << "\n";
+  out << "causal_schedule_digest=" << fact.causal_schedule_digest << "\n";
+  out << "snapshot_family_digest=" << fact.snapshot_family_digest << "\n";
+  out << "training_config_digest=" << fact.training_config_digest << "\n";
+  out << "ppo_config_digest=" << fact.ppo_config_digest << "\n";
+  out << "actor_architecture_digest=" << fact.actor_architecture_digest << "\n";
+  out << "critic_architecture_digest=" << fact.critic_architecture_digest
+      << "\n";
+  out << "optimizer_state_schema_id=" << fact.optimizer_state_schema_id << "\n";
+  out << "optimizer_state_digest=" << fact.optimizer_state_digest << "\n";
+  out << "optimizer_torch_state_digest=" << fact.optimizer_torch_state_digest
+      << "\n";
+  out << "resume_mode=" << fact.resume_mode << "\n";
+  out << "validation_rollout_report_digest="
+      << fact.validation_rollout_report_digest << "\n";
+  out << "policy_quality_report_digest=" << fact.policy_quality_report_digest
+      << "\n";
+  out << "protected_settings_match_policy_training_fact="
+      << (fact.protected_settings_match_policy_training_fact ? "true" : "false")
+      << "\n";
+  out << "protected_evidence_digests_bound="
+      << (fact.protected_evidence_digests_bound ? "true" : "false") << "\n";
+  out << "protected_policy_training_ready="
+      << (fact.protected_policy_training_ready ? "true" : "false") << "\n";
+  out << "artifact_evidence=" << (fact.artifact_evidence ? "true" : "false")
+      << "\n";
+  out << "visibility_only=" << (fact.visibility_only ? "true" : "false")
+      << "\n";
+  out << "settings_protection_artifact="
+      << (fact.settings_protection_artifact ? "true" : "false") << "\n";
+  out << "tsodao_optimizes_settings="
+      << (fact.tsodao_optimizes_settings ? "true" : "false") << "\n";
+  out << "tsodao_selects_policy="
+      << (fact.tsodao_selects_policy ? "true" : "false") << "\n";
+  out << "tsodao_claims_policy_quality="
+      << (fact.tsodao_claims_policy_quality ? "true" : "false") << "\n";
+  out << "tsodao_claims_market_readiness="
+      << (fact.tsodao_claims_market_readiness ? "true" : "false") << "\n";
+  out << "tsodao_allows_live_execution="
+      << (fact.tsodao_allows_live_execution ? "true" : "false") << "\n";
+  out << "readiness_authority=" << (fact.readiness_authority ? "true" : "false")
+      << "\n";
+  out << "quality_authority=" << (fact.quality_authority ? "true" : "false")
+      << "\n";
+  out << "performance_authority="
+      << (fact.performance_authority ? "true" : "false") << "\n";
+  out << "policy_gate=" << (fact.policy_gate ? "true" : "false") << "\n";
+  out << "checkpoint_selector=" << (fact.checkpoint_selector ? "true" : "false")
+      << "\n";
+  out << "allocation_authority="
+      << (fact.allocation_authority ? "true" : "false") << "\n";
+  out << "execution_authority=" << (fact.execution_authority ? "true" : "false")
+      << "\n";
+  out << "market_readiness_authority="
+      << (fact.market_readiness_authority ? "true" : "false") << "\n";
+  out << "deployment_authority="
+      << (fact.deployment_authority ? "true" : "false") << "\n";
+  out << "coverage_authority=" << (fact.coverage_authority ? "true" : "false")
+      << "\n";
+  out << "leakage_authority=" << (fact.leakage_authority ? "true" : "false")
+      << "\n";
+  out << "contract_identity_authority="
+      << (fact.contract_identity_authority ? "true" : "false") << "\n";
+  return out.str();
+}
+
+[[nodiscard]] inline std::string tsodao_settings_protection_fact_digest(
+    const lattice_tsodao_settings_protection_fact_t &fact) {
+  return exposure_digest_for_text(
+      canonical_tsodao_settings_protection_fact_text(fact));
+}
+
+[[nodiscard]] inline std::vector<std::string>
+tsodao_settings_protection_fact_issues(
+    const lattice_tsodao_settings_protection_fact_t &fact) {
+  std::vector<std::string> issues;
+  if (fact.parent_exposure_fact_digest.empty()) {
+    issues.emplace_back("missing_parent_exposure_fact_digest");
+  }
+  if (fact.contract_fingerprint.empty()) {
+    issues.emplace_back("missing_contract_fingerprint");
+  }
+  if (fact.protocol_id.empty()) {
+    issues.emplace_back("missing_protocol_id");
+  }
+  if (fact.graph_order_fingerprint.empty()) {
+    issues.emplace_back("missing_graph_order_fingerprint");
+  }
+  if (fact.source_cursor_token.empty()) {
+    issues.emplace_back("missing_source_cursor_token");
+  }
+  if (fact.protection_id.empty()) {
+    issues.emplace_back("missing_protection_id");
+  }
+  if (fact.protection_contract_id.empty()) {
+    issues.emplace_back("missing_protection_contract_id");
+  } else if (fact.protection_contract_id !=
+             "tsodao_settings_protection_contract.v1") {
+    issues.emplace_back("unsupported_protection_contract_id");
+  }
+  if (fact.protected_settings_bundle_digest.empty()) {
+    issues.emplace_back("missing_protected_settings_bundle_digest");
+  }
+  if (fact.protected_policy_training_fact_digest.empty()) {
+    issues.emplace_back("missing_protected_policy_training_fact_digest");
+  }
+  if (fact.protected_policy_training_target_id !=
+      "policy_training_artifact_ready") {
+    issues.emplace_back("protected_policy_training_target_mismatch");
+  }
+  if (fact.protected_policy_training_proof_certificate_digest.empty()) {
+    issues.emplace_back(
+        "missing_protected_policy_training_proof_certificate_digest");
+  }
+  if (fact.policy_id.empty()) {
+    issues.emplace_back("missing_policy_id");
+  }
+  if (fact.policy_kind.empty()) {
+    issues.emplace_back("missing_policy_kind");
+  }
+  if (fact.policy_family_id.empty()) {
+    issues.emplace_back("missing_policy_family_id");
+  }
+  if (fact.policy_checkpoint_schema_id.empty()) {
+    issues.emplace_back("missing_policy_checkpoint_schema_id");
+  }
+  if (fact.policy_input_schema_id.empty()) {
+    issues.emplace_back("missing_policy_input_schema_id");
+  }
+  if (fact.policy_input_feature_manifest_digest.empty()) {
+    issues.emplace_back("missing_policy_input_feature_manifest_digest");
+  }
+  if (fact.graph_node_action_universe_digest.empty()) {
+    issues.emplace_back("missing_graph_node_action_universe_digest");
+  }
+  if (fact.action_schema_digest.empty()) {
+    issues.emplace_back("missing_action_schema_digest");
+  }
+  if (fact.action_adapter_id.empty()) {
+    issues.emplace_back("missing_action_adapter_id");
+  }
+  if (fact.action_distribution_id.empty()) {
+    issues.emplace_back("missing_action_distribution_id");
+  }
+  if (fact.action_distribution_config_digest.empty()) {
+    issues.emplace_back("missing_action_distribution_config_digest");
+  }
+  if (fact.reward_contract_id.empty()) {
+    issues.emplace_back("missing_reward_contract_id");
+  } else if (fact.reward_contract_id !=
+             "kikijyeba.environment.reward.post_execution_ledger_log_growth_"
+             "cost_drawdown.v1") {
+    issues.emplace_back("unsupported_reward_contract_id");
+  }
+  if (fact.reward_contract_digest.empty()) {
+    issues.emplace_back("missing_reward_contract_digest");
+  }
+  if (fact.environment_contract_id.empty()) {
+    issues.emplace_back("missing_environment_contract_id");
+  }
+  if (fact.execution_profile_digest.empty()) {
+    issues.emplace_back("missing_execution_profile_digest");
+  }
+  if (fact.accounting_numeraire_node_id.empty()) {
+    issues.emplace_back("missing_accounting_numeraire_node_id");
+  }
+  if (fact.causal_schedule_schema_id.empty()) {
+    issues.emplace_back("missing_causal_schedule_schema_id");
+  }
+  if (fact.causal_schedule_digest.empty()) {
+    issues.emplace_back("missing_causal_schedule_digest");
+  }
+  if (fact.snapshot_family_digest.empty()) {
+    issues.emplace_back("missing_snapshot_family_digest");
+  }
+  if (fact.training_config_digest.empty()) {
+    issues.emplace_back("missing_training_config_digest");
+  }
+  if (fact.ppo_config_digest.empty()) {
+    issues.emplace_back("missing_ppo_config_digest");
+  }
+  if (fact.actor_architecture_digest.empty()) {
+    issues.emplace_back("missing_actor_architecture_digest");
+  }
+  if (fact.critic_architecture_digest.empty()) {
+    issues.emplace_back("missing_critic_architecture_digest");
+  }
+  if (fact.optimizer_state_schema_id.empty()) {
+    issues.emplace_back("missing_optimizer_state_schema_id");
+  }
+  if (fact.optimizer_state_digest.empty()) {
+    issues.emplace_back("missing_optimizer_state_digest");
+  }
+  if (fact.optimizer_torch_state_digest.empty()) {
+    issues.emplace_back("missing_optimizer_torch_state_digest");
+  }
+  if (fact.resume_mode.empty()) {
+    issues.emplace_back("missing_resume_mode");
+  }
+  if (fact.validation_rollout_report_digest.empty()) {
+    issues.emplace_back("missing_validation_rollout_report_digest");
+  }
+  if (fact.policy_quality_report_digest.empty()) {
+    issues.emplace_back("missing_policy_quality_report_digest");
+  }
+  if (!fact.protected_settings_match_policy_training_fact) {
+    issues.emplace_back("protected_settings_not_declared_matched");
+  }
+  if (!fact.protected_evidence_digests_bound) {
+    issues.emplace_back("protected_evidence_digests_not_bound");
+  }
+  if (!fact.protected_policy_training_ready) {
+    issues.emplace_back("protected_policy_training_ready_not_bound");
+  }
+  if (!fact.artifact_evidence || !fact.visibility_only ||
+      !fact.settings_protection_artifact || fact.tsodao_optimizes_settings ||
+      fact.tsodao_selects_policy || fact.tsodao_claims_policy_quality ||
+      fact.tsodao_claims_market_readiness ||
+      fact.tsodao_allows_live_execution || fact.readiness_authority ||
+      fact.quality_authority || fact.performance_authority ||
+      fact.policy_gate || fact.checkpoint_selector ||
+      fact.allocation_authority || fact.execution_authority ||
+      fact.market_readiness_authority || fact.deployment_authority ||
+      fact.coverage_authority || fact.leakage_authority ||
+      fact.contract_identity_authority) {
+    issues.emplace_back(
+        "tsodao_settings_protection_must_remain_artifact_evidence_only");
+  }
+  return issues;
+}
+
+[[nodiscard]] inline std::vector<std::string>
+tsodao_settings_protection_policy_training_binding_issues(
+    const lattice_tsodao_settings_protection_fact_t &fact,
+    const std::vector<lattice_policy_training_fact_t> &policy_training_facts) {
+  std::vector<std::string> issues;
+  const lattice_policy_training_fact_t *protected_fact = nullptr;
+  for (const auto &candidate : policy_training_facts) {
+    if (policy_training_fact_digest(candidate) ==
+        fact.protected_policy_training_fact_digest) {
+      protected_fact = &candidate;
+      break;
+    }
+  }
+  if (protected_fact == nullptr) {
+    issues.emplace_back("protected_policy_training_fact_digest_not_found");
+    return issues;
+  }
+  const auto policy_issues = policy_training_fact_issues(*protected_fact);
+  if (!policy_issues.empty()) {
+    issues.emplace_back("protected_policy_training_fact_not_ready");
+  }
+  const auto check_equal = [&](const std::string &protected_value,
+                               const std::string &policy_value,
+                               const char *issue) {
+    if (protected_value != policy_value) {
+      issues.emplace_back(issue);
+    }
+  };
+  check_equal(fact.policy_id, protected_fact->policy_id,
+              "protected_policy_id_mismatch");
+  check_equal(fact.policy_kind, protected_fact->policy_kind,
+              "protected_policy_kind_mismatch");
+  check_equal(fact.policy_family_id, protected_fact->policy_family_id,
+              "protected_policy_family_id_mismatch");
+  check_equal(fact.policy_checkpoint_schema_id,
+              protected_fact->policy_checkpoint_schema_id,
+              "protected_policy_checkpoint_schema_id_mismatch");
+  check_equal(fact.policy_input_schema_id,
+              protected_fact->policy_input_schema_id,
+              "protected_policy_input_schema_id_mismatch");
+  check_equal(fact.policy_input_feature_manifest_digest,
+              protected_fact->policy_input_feature_manifest_digest,
+              "protected_policy_input_feature_manifest_digest_mismatch");
+  check_equal(fact.graph_node_action_universe_digest,
+              protected_fact->graph_order_fingerprint,
+              "protected_graph_node_action_universe_digest_mismatch");
+  check_equal(fact.action_schema_digest, protected_fact->action_schema_digest,
+              "protected_action_schema_digest_mismatch");
+  check_equal(fact.action_adapter_id, protected_fact->action_adapter_id,
+              "protected_action_adapter_id_mismatch");
+  check_equal(fact.action_distribution_id,
+              protected_fact->action_distribution_id,
+              "protected_action_distribution_id_mismatch");
+  check_equal(fact.action_distribution_config_digest,
+              protected_fact->action_distribution_config_digest,
+              "protected_action_distribution_config_digest_mismatch");
+  check_equal(fact.reward_contract_id, protected_fact->reward_contract_id,
+              "protected_reward_contract_id_mismatch");
+  check_equal(fact.reward_contract_digest,
+              protected_fact->reward_contract_digest,
+              "protected_reward_contract_digest_mismatch");
+  check_equal(fact.environment_contract_id,
+              protected_fact->environment_contract_id,
+              "protected_environment_contract_id_mismatch");
+  check_equal(fact.execution_profile_digest,
+              protected_fact->execution_profile_digest,
+              "protected_execution_profile_digest_mismatch");
+  check_equal(fact.causal_schedule_schema_id,
+              protected_fact->causal_schedule_schema_id,
+              "protected_causal_schedule_schema_id_mismatch");
+  check_equal(fact.causal_schedule_digest,
+              protected_fact->causal_schedule_digest,
+              "protected_causal_schedule_digest_mismatch");
+  check_equal(fact.snapshot_family_digest,
+              protected_fact->snapshot_family_digest,
+              "protected_snapshot_family_digest_mismatch");
+  check_equal(fact.training_config_digest,
+              protected_fact->training_config_digest,
+              "protected_training_config_digest_mismatch");
+  check_equal(fact.ppo_config_digest, protected_fact->ppo_config_digest,
+              "protected_ppo_config_digest_mismatch");
+  check_equal(fact.actor_architecture_digest,
+              protected_fact->actor_architecture_digest,
+              "protected_actor_architecture_digest_mismatch");
+  check_equal(fact.critic_architecture_digest,
+              protected_fact->critic_architecture_digest,
+              "protected_critic_architecture_digest_mismatch");
+  check_equal(fact.optimizer_state_schema_id,
+              protected_fact->optimizer_state_schema_id,
+              "protected_optimizer_state_schema_id_mismatch");
+  check_equal(fact.optimizer_state_digest,
+              protected_fact->optimizer_state_digest,
+              "protected_optimizer_state_digest_mismatch");
+  check_equal(fact.optimizer_torch_state_digest,
+              protected_fact->optimizer_torch_state_digest,
+              "protected_optimizer_torch_state_digest_mismatch");
+  check_equal(fact.resume_mode, protected_fact->resume_mode,
+              "protected_resume_mode_mismatch");
+  check_equal(fact.validation_rollout_report_digest,
+              protected_fact->validation_rollout_report_digest,
+              "protected_validation_rollout_report_digest_mismatch");
+  check_equal(fact.policy_quality_report_digest,
+              protected_fact->policy_quality_report_digest,
+              "protected_policy_quality_report_digest_mismatch");
+  return issues;
+}
+
+inline void append_tsodao_settings_protection_scan_warning(
+    const lattice_tsodao_settings_protection_fact_t &fact,
+    const std::filesystem::path &job_dir, std::vector<std::string> &warnings) {
+  const auto issues = tsodao_settings_protection_fact_issues(fact);
+  if (issues.empty()) {
+    return;
+  }
+  std::ostringstream oss;
+  oss << "[lattice_exposure] tsodao_settings_protection warning job_dir="
+      << job_dir.string() << " job_id=" << fact.job_id << " issues=";
+  for (std::size_t i = 0; i < issues.size(); ++i) {
+    if (i != 0) {
+      oss << ",";
+    }
+    oss << issues[i];
+  }
+  warnings.push_back(oss.str());
+}
+
+[[nodiscard]] inline tsodao_settings_protection_summary_t
+summarize_tsodao_settings_protections(
+    const std::vector<lattice_exposure_fact_t> &exposure_facts,
+    const std::vector<lattice_tsodao_settings_protection_fact_t>
+        &protection_facts,
+    const std::vector<lattice_policy_training_fact_t> &policy_training_facts =
+        empty_policy_training_facts()) {
+  tsodao_settings_protection_summary_t out{};
+  out.exposure_fact_count = static_cast<std::int64_t>(exposure_facts.size());
+  out.tsodao_settings_protection_fact_count =
+      static_cast<std::int64_t>(protection_facts.size());
+  std::set<std::string> parent_digests;
+  for (const auto &fact : protection_facts) {
+    if (!fact.parent_exposure_fact_digest.empty()) {
+      parent_digests.insert(fact.parent_exposure_fact_digest);
+    }
+    if (!fact.protection_id.empty()) {
+      ++out.protection_id_bound_count;
+    }
+    if (!fact.protection_contract_id.empty()) {
+      ++out.protection_contract_bound_count;
+    }
+    if (!fact.protected_settings_bundle_digest.empty()) {
+      ++out.protected_settings_bundle_bound_count;
+    }
+    if (!fact.protected_policy_training_fact_digest.empty()) {
+      ++out.protected_policy_training_fact_declared_count;
+    }
+    if (fact.protected_settings_match_policy_training_fact) {
+      ++out.protected_settings_match_count;
+    } else {
+      ++out.protected_settings_mismatch_count;
+    }
+    if (fact.protected_evidence_digests_bound) {
+      ++out.protected_evidence_digest_bound_count;
+    }
+    if (fact.protected_policy_training_ready) {
+      ++out.policy_training_ready_bound_count;
+    }
+    if (fact.artifact_evidence) {
+      ++out.artifact_evidence_count;
+    }
+    const auto binding_issues =
+        tsodao_settings_protection_policy_training_binding_issues(
+            fact, policy_training_facts);
+    if (binding_issues.empty()) {
+      ++out.protected_policy_training_fact_bound_count;
+    } else {
+      ++out.unresolved_policy_training_fact_count;
+    }
+    out.artifact_evidence = out.artifact_evidence && fact.artifact_evidence;
+    out.visibility_only = out.visibility_only && fact.visibility_only;
+    out.settings_protection_artifact =
+        out.settings_protection_artifact && fact.settings_protection_artifact;
+    out.tsodao_optimizes_settings =
+        out.tsodao_optimizes_settings || fact.tsodao_optimizes_settings;
+    out.tsodao_selects_policy =
+        out.tsodao_selects_policy || fact.tsodao_selects_policy;
+    out.tsodao_claims_policy_quality =
+        out.tsodao_claims_policy_quality || fact.tsodao_claims_policy_quality;
+    out.tsodao_claims_market_readiness = out.tsodao_claims_market_readiness ||
+                                         fact.tsodao_claims_market_readiness;
+    out.tsodao_allows_live_execution =
+        out.tsodao_allows_live_execution || fact.tsodao_allows_live_execution;
+    out.readiness_authority =
+        out.readiness_authority || fact.readiness_authority;
+    out.quality_authority = out.quality_authority || fact.quality_authority;
+    out.performance_authority =
+        out.performance_authority || fact.performance_authority;
+    out.policy_gate = out.policy_gate || fact.policy_gate;
+    out.checkpoint_selector =
+        out.checkpoint_selector || fact.checkpoint_selector;
+    out.allocation_authority =
+        out.allocation_authority || fact.allocation_authority;
+    out.execution_authority =
+        out.execution_authority || fact.execution_authority;
+    out.market_readiness_authority =
+        out.market_readiness_authority || fact.market_readiness_authority;
+    out.deployment_authority =
+        out.deployment_authority || fact.deployment_authority;
+    out.coverage_authority = out.coverage_authority || fact.coverage_authority;
+    out.leakage_authority = out.leakage_authority || fact.leakage_authority;
+    out.contract_identity_authority =
+        out.contract_identity_authority || fact.contract_identity_authority;
+    const auto issues = tsodao_settings_protection_fact_issues(fact);
+    out.warning_count +=
+        static_cast<std::int64_t>(issues.size() + binding_issues.size());
+    for (const auto &issue : issues) {
+      out.issues.push_back(fact.job_id + ":" + issue);
+    }
+    for (const auto &issue : binding_issues) {
+      out.issues.push_back(fact.job_id + ":" + issue);
+    }
+    if (!fact.artifact_evidence || !fact.visibility_only ||
+        !fact.settings_protection_artifact || fact.tsodao_optimizes_settings ||
+        fact.tsodao_selects_policy || fact.tsodao_claims_policy_quality ||
+        fact.tsodao_claims_market_readiness ||
+        fact.tsodao_allows_live_execution || fact.readiness_authority ||
+        fact.quality_authority || fact.performance_authority ||
+        fact.policy_gate || fact.checkpoint_selector ||
+        fact.allocation_authority || fact.execution_authority ||
+        fact.market_readiness_authority || fact.deployment_authority ||
+        fact.coverage_authority || fact.leakage_authority ||
+        fact.contract_identity_authority) {
+      ++out.authority_drift_count;
+    }
+  }
+  out.parent_exposure_fact_count =
+      static_cast<std::int64_t>(parent_digests.size());
+  if (!out.artifact_evidence || !out.visibility_only ||
+      !out.settings_protection_artifact || out.tsodao_optimizes_settings ||
+      out.tsodao_selects_policy || out.tsodao_claims_policy_quality ||
+      out.tsodao_claims_market_readiness || out.tsodao_allows_live_execution ||
+      out.readiness_authority || out.quality_authority ||
+      out.performance_authority || out.policy_gate || out.checkpoint_selector ||
+      out.allocation_authority || out.execution_authority ||
+      out.market_readiness_authority || out.deployment_authority ||
+      out.coverage_authority || out.leakage_authority ||
+      out.contract_identity_authority) {
+    out.issues.push_back(
+        "Tsodao settings-protection facts must remain read-only artifact "
+        "evidence; they cannot search settings, select policies, claim "
+        "quality/performance/market readiness, execute, deploy, or authorize "
+        "live capital");
+    ++out.warning_count;
+  }
+  return out;
+}
+
+[[nodiscard]] inline std::vector<std::filesystem::path>
+policy_acceptance_fact_paths_for_job_dir(const std::filesystem::path &job_dir) {
+  const auto artifact_dir = job_dir / "artifacts" / "policy.acceptance.v1";
+  return {job_dir / "lattice.policy_acceptance.fact",
+          job_dir / "policy_acceptance.fact",
+          job_dir / "runtime.policy_acceptance.fact",
+          artifact_dir / "policy_acceptance.fact"};
+}
+
+[[nodiscard]] inline bool policy_acceptance_fact_has_payload(
+    const lattice_policy_acceptance_fact_t &fact) {
+  return !fact.acceptance_id.empty() ||
+         !fact.acceptance_policy_digest.empty() ||
+         !fact.accepted_policy_training_fact_digest.empty() ||
+         !fact.tsodao_settings_protection_fact_digest.empty() ||
+         !fact.protected_settings_bundle_digest.empty() ||
+         !fact.accepted_policy_id.empty() ||
+         !fact.accepted_actor_checkpoint_digest.empty() ||
+         !fact.policy_quality_report_digest.empty() ||
+         !fact.validation_rollout_report_digest.empty() ||
+         !fact.mandatory_baseline_set_digest.empty() ||
+         !fact.primary_metric_id.empty() ||
+         std::isfinite(fact.primary_metric_value) ||
+         std::isfinite(fact.primary_metric_threshold) ||
+         !fact.after_cost_metric_set_digest.empty() ||
+         !fact.uncertainty_policy.empty() || !fact.selector_split.empty() ||
+         !fact.validation_split.empty() || !fact.test_split.empty() ||
+         !fact.negative_tests_digest.empty() ||
+         !fact.threshold_selection_audit_digest.empty() ||
+         !fact.promotion_criteria_digest.empty() ||
+         fact.accepted_policy_training_ready ||
+         fact.tsodao_settings_protection_ready ||
+         fact.protected_settings_bound || fact.mandatory_baselines_bound ||
+         fact.mandatory_baselines_passed || fact.after_cost_metrics_bound ||
+         fact.primary_metric_passed || fact.uncertainty_policy_bound ||
+         fact.uncertainty_passed || fact.selector_split_bound ||
+         fact.validation_test_disjoint || fact.test_sealed_until_acceptance ||
+         fact.negative_tests_bound || fact.negative_tests_passed ||
+         fact.leakage_negative_tests_passed ||
+         fact.threshold_selection_audit_bound ||
+         fact.threshold_selected_before_test || fact.tie_policy_bound ||
+         fact.tie_policy_passed || fact.cost_slippage_assumptions_bound ||
+         fact.promotion_criteria_bound || fact.promotion_criteria_satisfied ||
+         fact.policy_acceptance_decision || !fact.artifact_evidence ||
+         !fact.visibility_only || !fact.policy_acceptance_artifact ||
+         fact.policy_selector || fact.checkpoint_selector || fact.optimizer ||
+         fact.allocation_authority || fact.execution_authority ||
+         fact.readiness_authority || fact.quality_authority ||
+         fact.performance_authority || fact.market_readiness_authority ||
+         fact.deployment_authority || fact.live_execution_authority ||
+         fact.coverage_authority || fact.leakage_authority ||
+         fact.contract_identity_authority;
+}
+
+[[nodiscard]] inline std::vector<lattice_policy_acceptance_fact_t>
+make_policy_acceptance_facts_from_job_dir(
+    const std::filesystem::path &job_dir,
+    const lattice_exposure_fact_t &parent) {
+  namespace detail = exposure_detail;
+  const auto acceptance = detail::parse_first_assignment_file(
+      policy_acceptance_fact_paths_for_job_dir(job_dir));
+  if (acceptance.empty()) {
+    return {};
+  }
+  const auto first_value =
+      [&](const std::vector<std::string> &keys) -> std::string {
+    for (const auto &key : keys) {
+      const auto value = detail::map_get(acceptance, key);
+      if (!value.empty()) {
+        return value;
+      }
+    }
+    return {};
+  };
+  const auto first_bool = [&](const std::vector<std::string> &keys,
+                              bool fallback = false) {
+    return detail::parse_bool_fallback(first_value(keys), fallback);
+  };
+  const auto first_double = [&](const std::vector<std::string> &keys,
+                                double fallback =
+                                    std::numeric_limits<double>::quiet_NaN()) {
+    return detail::parse_double_fallback(first_value(keys), fallback);
+  };
+
+  lattice_policy_acceptance_fact_t fact{};
+  fact.parent_exposure_fact_digest = exposure_fact_digest(parent);
+  fact.contract_fingerprint = parent.contract_fingerprint;
+  fact.protocol_id = parent.protocol_id;
+  fact.graph_order_fingerprint = parent.graph_order_fingerprint;
+  fact.source_cursor_token = parent.source_cursor_token;
+  fact.split_policy_fingerprint = parent.split_policy_fingerprint;
+  fact.component_assembly_fingerprint = parent.component_assembly_fingerprint;
+  fact.target_component_family_id = parent.target_component_family_id;
+  fact.job_id = parent.job_id;
+  fact.wave_id = parent.wave_id;
+  fact.job_status = parent.job_status;
+  fact.wave_action = parent.wave_action;
+  fact.split_name = parent.split_name;
+  fact.split_role = parent.split_role;
+  fact.anchor_range = parent.anchor_range;
+  fact.completed_anchor_range = parent.completed_anchor_range;
+
+  const auto file_parent_exposure_fact_digest =
+      first_value({"parent_exposure_fact_digest"});
+  if (!file_parent_exposure_fact_digest.empty()) {
+    fact.parent_exposure_fact_digest = file_parent_exposure_fact_digest;
+  }
+  const auto file_contract_fingerprint = first_value({"contract_fingerprint"});
+  if (!file_contract_fingerprint.empty()) {
+    fact.contract_fingerprint = file_contract_fingerprint;
+  }
+  const auto file_protocol_id = first_value({"protocol_id"});
+  if (!file_protocol_id.empty()) {
+    fact.protocol_id = file_protocol_id;
+  }
+  const auto file_graph_order_fingerprint =
+      first_value({"graph_order_fingerprint"});
+  if (!file_graph_order_fingerprint.empty()) {
+    fact.graph_order_fingerprint = file_graph_order_fingerprint;
+  }
+  const auto file_source_cursor_token = first_value({"source_cursor_token"});
+  if (!file_source_cursor_token.empty()) {
+    fact.source_cursor_token = file_source_cursor_token;
+  }
+  const auto file_split_policy_fingerprint =
+      first_value({"split_policy_fingerprint"});
+  if (!file_split_policy_fingerprint.empty()) {
+    fact.split_policy_fingerprint = file_split_policy_fingerprint;
+  }
+  const auto file_component_assembly_fingerprint =
+      first_value({"component_assembly_fingerprint"});
+  if (!file_component_assembly_fingerprint.empty()) {
+    fact.component_assembly_fingerprint = file_component_assembly_fingerprint;
+  }
+  const auto file_target_component_family_id =
+      first_value({"target_component_family_id"});
+  if (!file_target_component_family_id.empty()) {
+    fact.target_component_family_id = file_target_component_family_id;
+  }
+  const auto file_job_id = first_value({"job_id"});
+  if (!file_job_id.empty()) {
+    fact.job_id = file_job_id;
+  }
+  const auto file_wave_id = first_value({"wave_id"});
+  if (!file_wave_id.empty()) {
+    fact.wave_id = file_wave_id;
+  }
+  const auto file_job_status = first_value({"job_status"});
+  if (!file_job_status.empty()) {
+    fact.job_status = file_job_status;
+  }
+  const auto file_wave_action = first_value({"wave_action"});
+  if (!file_wave_action.empty()) {
+    fact.wave_action = file_wave_action;
+  }
+  const auto file_split_name = first_value({"split_name"});
+  if (!file_split_name.empty()) {
+    fact.split_name = file_split_name;
+  }
+  const auto file_split_role = first_value({"split_role"});
+  if (!file_split_role.empty()) {
+    fact.split_role = parse_exposure_split_role(file_split_role);
+  }
+  const auto file_anchor_begin = first_value({"anchor_begin"});
+  const auto file_anchor_end = first_value({"anchor_end"});
+  if (!file_anchor_begin.empty() && !file_anchor_end.empty()) {
+    fact.anchor_range.begin =
+        detail::parse_i64_fallback(file_anchor_begin, fact.anchor_range.begin);
+    fact.anchor_range.end =
+        detail::parse_i64_fallback(file_anchor_end, fact.anchor_range.end);
+  }
+  const auto file_completed_anchor_begin =
+      first_value({"completed_anchor_begin"});
+  const auto file_completed_anchor_end = first_value({"completed_anchor_end"});
+  if (!file_completed_anchor_begin.empty() &&
+      !file_completed_anchor_end.empty()) {
+    fact.completed_anchor_range.begin = detail::parse_i64_fallback(
+        file_completed_anchor_begin, fact.completed_anchor_range.begin);
+    fact.completed_anchor_range.end = detail::parse_i64_fallback(
+        file_completed_anchor_end, fact.completed_anchor_range.end);
+  }
+
+  fact.acceptance_id = first_value({"acceptance_id"});
+  fact.acceptance_contract_id =
+      first_value({"acceptance_contract_id", "policy_acceptance_contract_id"});
+  if (fact.acceptance_contract_id.empty()) {
+    fact.acceptance_contract_id = "policy_acceptance_contract.v1";
+  }
+  fact.acceptance_policy_digest = first_value({"acceptance_policy_digest"});
+  fact.accepted_policy_training_fact_digest = first_value(
+      {"accepted_policy_training_fact_digest", "policy_training_fact_digest"});
+  fact.accepted_policy_training_target_id = first_value(
+      {"accepted_policy_training_target_id", "policy_training_target_id"});
+  if (fact.accepted_policy_training_target_id.empty()) {
+    fact.accepted_policy_training_target_id = "policy_training_artifact_ready";
+  }
+  fact.accepted_policy_training_proof_certificate_digest =
+      first_value({"accepted_policy_training_proof_certificate_digest",
+                   "policy_training_proof_certificate_digest"});
+  fact.tsodao_settings_protection_fact_digest =
+      first_value({"tsodao_settings_protection_fact_digest",
+                   "protected_settings_fact_digest"});
+  fact.tsodao_settings_protection_target_id = first_value(
+      {"tsodao_settings_protection_target_id", "protected_settings_target_id"});
+  if (fact.tsodao_settings_protection_target_id.empty()) {
+    fact.tsodao_settings_protection_target_id =
+        "tsodao_settings_protection_ready";
+  }
+  fact.tsodao_settings_protection_proof_certificate_digest =
+      first_value({"tsodao_settings_protection_proof_certificate_digest",
+                   "protected_settings_proof_certificate_digest"});
+  fact.protected_settings_bundle_digest =
+      first_value({"protected_settings_bundle_digest"});
+  fact.accepted_policy_id = first_value({"accepted_policy_id", "policy_id"});
+  fact.accepted_policy_kind =
+      first_value({"accepted_policy_kind", "policy_kind"});
+  fact.accepted_policy_family_id =
+      first_value({"accepted_policy_family_id", "policy_family_id"});
+  fact.accepted_actor_checkpoint_digest = first_value(
+      {"accepted_actor_checkpoint_digest", "actor_checkpoint_digest"});
+  fact.accepted_checkpoint_digest =
+      first_value({"accepted_checkpoint_digest", "checkpoint_digest"});
+  fact.policy_quality_report_digest =
+      first_value({"policy_quality_report_digest"});
+  fact.validation_rollout_report_digest =
+      first_value({"validation_rollout_report_digest"});
+  fact.reward_contract_id = first_value({"reward_contract_id"});
+  fact.execution_profile_digest = first_value({"execution_profile_digest"});
+  fact.accounting_numeraire_node_id =
+      first_value({"accounting_numeraire_node_id"});
+  fact.mandatory_baseline_set_digest =
+      first_value({"mandatory_baseline_set_digest"});
+  fact.mandatory_baselines = first_value({"mandatory_baselines"});
+  fact.primary_metric_id = first_value({"primary_metric_id", "metric"});
+  fact.primary_metric_value = first_double({"primary_metric_value"});
+  fact.primary_metric_threshold =
+      first_double({"primary_metric_threshold", "threshold"});
+  fact.primary_metric_direction =
+      first_value({"primary_metric_direction", "metric_direction"});
+  fact.after_cost_metric_set_digest =
+      first_value({"after_cost_metric_set_digest"});
+  fact.cost_slippage_assumption_digest =
+      first_value({"cost_slippage_assumption_digest"});
+  fact.uncertainty_policy = first_value({"uncertainty_policy"});
+  fact.uncertainty_model = first_value({"uncertainty_model"});
+  fact.selector_split = first_value({"selector_split"});
+  fact.validation_split = first_value({"validation_split"});
+  fact.test_split = first_value({"test_split"});
+  fact.sealed_test_policy = first_value({"sealed_test_policy"});
+  fact.tie_policy = first_value({"tie_policy"});
+  fact.negative_tests_digest = first_value({"negative_tests_digest"});
+  fact.threshold_selection_audit_digest =
+      first_value({"threshold_selection_audit_digest"});
+  fact.promotion_criteria_digest = first_value({"promotion_criteria_digest"});
+
+  fact.accepted_policy_training_ready =
+      first_bool({"accepted_policy_training_ready"});
+  fact.tsodao_settings_protection_ready =
+      first_bool({"tsodao_settings_protection_ready"});
+  fact.protected_settings_bound = first_bool({"protected_settings_bound"});
+  fact.mandatory_baselines_bound = first_bool({"mandatory_baselines_bound"});
+  fact.mandatory_baselines_passed = first_bool({"mandatory_baselines_passed"});
+  fact.after_cost_metrics_bound = first_bool({"after_cost_metrics_bound"});
+  fact.primary_metric_passed = first_bool({"primary_metric_passed"});
+  fact.uncertainty_policy_bound = first_bool({"uncertainty_policy_bound"});
+  fact.uncertainty_passed = first_bool({"uncertainty_passed"});
+  fact.selector_split_bound = first_bool({"selector_split_bound"});
+  fact.validation_test_disjoint = first_bool({"validation_test_disjoint"});
+  fact.test_sealed_until_acceptance =
+      first_bool({"test_sealed_until_acceptance"});
+  fact.negative_tests_bound = first_bool({"negative_tests_bound"});
+  fact.negative_tests_passed = first_bool({"negative_tests_passed"});
+  fact.leakage_negative_tests_passed =
+      first_bool({"leakage_negative_tests_passed"});
+  fact.threshold_selection_audit_bound =
+      first_bool({"threshold_selection_audit_bound"});
+  fact.threshold_selected_before_test =
+      first_bool({"threshold_selected_before_test"});
+  fact.tie_policy_bound = first_bool({"tie_policy_bound"});
+  fact.tie_policy_passed = first_bool({"tie_policy_passed"});
+  fact.cost_slippage_assumptions_bound =
+      first_bool({"cost_slippage_assumptions_bound"});
+  fact.promotion_criteria_bound = first_bool({"promotion_criteria_bound"});
+  fact.promotion_criteria_satisfied =
+      first_bool({"promotion_criteria_satisfied"});
+  fact.policy_acceptance_decision =
+      first_bool({"policy_acceptance_decision", "policy_accepted"});
+
+  fact.artifact_evidence =
+      first_bool({"artifact_evidence"}, fact.artifact_evidence);
+  fact.visibility_only = first_bool({"visibility_only"}, fact.visibility_only);
+  fact.policy_acceptance_artifact = first_bool({"policy_acceptance_artifact"},
+                                               fact.policy_acceptance_artifact);
+  fact.policy_selector = first_bool({"policy_selector"});
+  fact.checkpoint_selector = first_bool({"checkpoint_selector"});
+  fact.optimizer = first_bool({"optimizer"});
+  fact.allocation_authority = first_bool({"allocation_authority"});
+  fact.execution_authority = first_bool({"execution_authority"});
+  fact.readiness_authority = first_bool({"readiness_authority"});
+  fact.quality_authority = first_bool({"quality_authority"});
+  fact.performance_authority = first_bool({"performance_authority"});
+  fact.market_readiness_authority = first_bool({"market_readiness_authority"});
+  fact.deployment_authority = first_bool({"deployment_authority"});
+  fact.live_execution_authority = first_bool({"live_execution_authority"});
+  fact.coverage_authority = first_bool({"coverage_authority"});
+  fact.leakage_authority = first_bool({"leakage_authority"});
+  fact.contract_identity_authority =
+      first_bool({"contract_identity_authority"});
+
+  if (!policy_acceptance_fact_has_payload(fact)) {
+    return {};
+  }
+  return {std::move(fact)};
+}
+
+[[nodiscard]] inline std::string canonical_policy_acceptance_fact_text(
+    const lattice_policy_acceptance_fact_t &fact) {
+  std::ostringstream out;
+  out << "schema=" << fact.schema << "\n";
+  out << "fact_type=" << fact.fact_type << "\n";
+  out << "parent_exposure_fact_digest=" << fact.parent_exposure_fact_digest
+      << "\n";
+  out << "contract_fingerprint=" << fact.contract_fingerprint << "\n";
+  out << "protocol_id=" << fact.protocol_id << "\n";
+  out << "graph_order_fingerprint=" << fact.graph_order_fingerprint << "\n";
+  out << "source_cursor_token=" << fact.source_cursor_token << "\n";
+  out << "split_policy_fingerprint=" << fact.split_policy_fingerprint << "\n";
+  out << "component_assembly_fingerprint="
+      << fact.component_assembly_fingerprint << "\n";
+  out << "target_component_family_id=" << fact.target_component_family_id
+      << "\n";
+  out << "job_id=" << fact.job_id << "\n";
+  out << "wave_id=" << fact.wave_id << "\n";
+  out << "job_status=" << fact.job_status << "\n";
+  out << "wave_action=" << fact.wave_action << "\n";
+  out << "split_name=" << fact.split_name << "\n";
+  out << "split_role=" << exposure_split_role_name(fact.split_role) << "\n";
+  out << "anchor_begin=" << fact.anchor_range.begin << "\n";
+  out << "anchor_end=" << fact.anchor_range.end << "\n";
+  out << "completed_anchor_begin=" << fact.completed_anchor_range.begin << "\n";
+  out << "completed_anchor_end=" << fact.completed_anchor_range.end << "\n";
+  out << "acceptance_id=" << fact.acceptance_id << "\n";
+  out << "acceptance_contract_id=" << fact.acceptance_contract_id << "\n";
+  out << "acceptance_policy_digest=" << fact.acceptance_policy_digest << "\n";
+  out << "accepted_policy_training_fact_digest="
+      << fact.accepted_policy_training_fact_digest << "\n";
+  out << "accepted_policy_training_target_id="
+      << fact.accepted_policy_training_target_id << "\n";
+  out << "accepted_policy_training_proof_certificate_digest="
+      << fact.accepted_policy_training_proof_certificate_digest << "\n";
+  out << "tsodao_settings_protection_fact_digest="
+      << fact.tsodao_settings_protection_fact_digest << "\n";
+  out << "tsodao_settings_protection_target_id="
+      << fact.tsodao_settings_protection_target_id << "\n";
+  out << "tsodao_settings_protection_proof_certificate_digest="
+      << fact.tsodao_settings_protection_proof_certificate_digest << "\n";
+  out << "protected_settings_bundle_digest="
+      << fact.protected_settings_bundle_digest << "\n";
+  out << "accepted_policy_id=" << fact.accepted_policy_id << "\n";
+  out << "accepted_policy_kind=" << fact.accepted_policy_kind << "\n";
+  out << "accepted_policy_family_id=" << fact.accepted_policy_family_id << "\n";
+  out << "accepted_actor_checkpoint_digest="
+      << fact.accepted_actor_checkpoint_digest << "\n";
+  out << "accepted_checkpoint_digest=" << fact.accepted_checkpoint_digest
+      << "\n";
+  out << "policy_quality_report_digest=" << fact.policy_quality_report_digest
+      << "\n";
+  out << "validation_rollout_report_digest="
+      << fact.validation_rollout_report_digest << "\n";
+  out << "reward_contract_id=" << fact.reward_contract_id << "\n";
+  out << "execution_profile_digest=" << fact.execution_profile_digest << "\n";
+  out << "accounting_numeraire_node_id=" << fact.accounting_numeraire_node_id
+      << "\n";
+  out << "mandatory_baseline_set_digest=" << fact.mandatory_baseline_set_digest
+      << "\n";
+  out << "mandatory_baselines=" << fact.mandatory_baselines << "\n";
+  out << "primary_metric_id=" << fact.primary_metric_id << "\n";
+  out << "primary_metric_value=" << fact.primary_metric_value << "\n";
+  out << "primary_metric_threshold=" << fact.primary_metric_threshold << "\n";
+  out << "primary_metric_direction=" << fact.primary_metric_direction << "\n";
+  out << "after_cost_metric_set_digest=" << fact.after_cost_metric_set_digest
+      << "\n";
+  out << "cost_slippage_assumption_digest="
+      << fact.cost_slippage_assumption_digest << "\n";
+  out << "uncertainty_policy=" << fact.uncertainty_policy << "\n";
+  out << "uncertainty_model=" << fact.uncertainty_model << "\n";
+  out << "selector_split=" << fact.selector_split << "\n";
+  out << "validation_split=" << fact.validation_split << "\n";
+  out << "test_split=" << fact.test_split << "\n";
+  out << "sealed_test_policy=" << fact.sealed_test_policy << "\n";
+  out << "tie_policy=" << fact.tie_policy << "\n";
+  out << "negative_tests_digest=" << fact.negative_tests_digest << "\n";
+  out << "threshold_selection_audit_digest="
+      << fact.threshold_selection_audit_digest << "\n";
+  out << "promotion_criteria_digest=" << fact.promotion_criteria_digest << "\n";
+#define CUWACUNU_POLICY_ACCEPTANCE_BOOL_FIELD(name)                            \
+  out << #name "=" << (fact.name ? "true" : "false") << "\n";
+  CUWACUNU_POLICY_ACCEPTANCE_BOOL_FIELD(accepted_policy_training_ready)
+  CUWACUNU_POLICY_ACCEPTANCE_BOOL_FIELD(tsodao_settings_protection_ready)
+  CUWACUNU_POLICY_ACCEPTANCE_BOOL_FIELD(protected_settings_bound)
+  CUWACUNU_POLICY_ACCEPTANCE_BOOL_FIELD(mandatory_baselines_bound)
+  CUWACUNU_POLICY_ACCEPTANCE_BOOL_FIELD(mandatory_baselines_passed)
+  CUWACUNU_POLICY_ACCEPTANCE_BOOL_FIELD(after_cost_metrics_bound)
+  CUWACUNU_POLICY_ACCEPTANCE_BOOL_FIELD(primary_metric_passed)
+  CUWACUNU_POLICY_ACCEPTANCE_BOOL_FIELD(uncertainty_policy_bound)
+  CUWACUNU_POLICY_ACCEPTANCE_BOOL_FIELD(uncertainty_passed)
+  CUWACUNU_POLICY_ACCEPTANCE_BOOL_FIELD(selector_split_bound)
+  CUWACUNU_POLICY_ACCEPTANCE_BOOL_FIELD(validation_test_disjoint)
+  CUWACUNU_POLICY_ACCEPTANCE_BOOL_FIELD(test_sealed_until_acceptance)
+  CUWACUNU_POLICY_ACCEPTANCE_BOOL_FIELD(negative_tests_bound)
+  CUWACUNU_POLICY_ACCEPTANCE_BOOL_FIELD(negative_tests_passed)
+  CUWACUNU_POLICY_ACCEPTANCE_BOOL_FIELD(leakage_negative_tests_passed)
+  CUWACUNU_POLICY_ACCEPTANCE_BOOL_FIELD(threshold_selection_audit_bound)
+  CUWACUNU_POLICY_ACCEPTANCE_BOOL_FIELD(threshold_selected_before_test)
+  CUWACUNU_POLICY_ACCEPTANCE_BOOL_FIELD(tie_policy_bound)
+  CUWACUNU_POLICY_ACCEPTANCE_BOOL_FIELD(tie_policy_passed)
+  CUWACUNU_POLICY_ACCEPTANCE_BOOL_FIELD(cost_slippage_assumptions_bound)
+  CUWACUNU_POLICY_ACCEPTANCE_BOOL_FIELD(promotion_criteria_bound)
+  CUWACUNU_POLICY_ACCEPTANCE_BOOL_FIELD(promotion_criteria_satisfied)
+  CUWACUNU_POLICY_ACCEPTANCE_BOOL_FIELD(policy_acceptance_decision)
+  CUWACUNU_POLICY_ACCEPTANCE_BOOL_FIELD(artifact_evidence)
+  CUWACUNU_POLICY_ACCEPTANCE_BOOL_FIELD(visibility_only)
+  CUWACUNU_POLICY_ACCEPTANCE_BOOL_FIELD(policy_acceptance_artifact)
+  CUWACUNU_POLICY_ACCEPTANCE_BOOL_FIELD(policy_selector)
+  CUWACUNU_POLICY_ACCEPTANCE_BOOL_FIELD(checkpoint_selector)
+  CUWACUNU_POLICY_ACCEPTANCE_BOOL_FIELD(optimizer)
+  CUWACUNU_POLICY_ACCEPTANCE_BOOL_FIELD(allocation_authority)
+  CUWACUNU_POLICY_ACCEPTANCE_BOOL_FIELD(execution_authority)
+  CUWACUNU_POLICY_ACCEPTANCE_BOOL_FIELD(readiness_authority)
+  CUWACUNU_POLICY_ACCEPTANCE_BOOL_FIELD(quality_authority)
+  CUWACUNU_POLICY_ACCEPTANCE_BOOL_FIELD(performance_authority)
+  CUWACUNU_POLICY_ACCEPTANCE_BOOL_FIELD(market_readiness_authority)
+  CUWACUNU_POLICY_ACCEPTANCE_BOOL_FIELD(deployment_authority)
+  CUWACUNU_POLICY_ACCEPTANCE_BOOL_FIELD(live_execution_authority)
+  CUWACUNU_POLICY_ACCEPTANCE_BOOL_FIELD(coverage_authority)
+  CUWACUNU_POLICY_ACCEPTANCE_BOOL_FIELD(leakage_authority)
+  CUWACUNU_POLICY_ACCEPTANCE_BOOL_FIELD(contract_identity_authority)
+#undef CUWACUNU_POLICY_ACCEPTANCE_BOOL_FIELD
+  return out.str();
+}
+
+[[nodiscard]] inline std::string
+policy_acceptance_fact_digest(const lattice_policy_acceptance_fact_t &fact) {
+  return exposure_digest_for_text(canonical_policy_acceptance_fact_text(fact));
+}
+
+[[nodiscard]] inline std::string_view
+policy_acceptance_governance_thresholds_v0_id() {
+  return "policy_acceptance_governance_thresholds_v0.v1";
+}
+
+[[nodiscard]] inline std::string_view
+policy_acceptance_governance_v0_mandatory_baselines() {
+  return "numeraire_only,current_weight_no_trade,equal_weight,"
+         "spot_distributional_utility";
+}
+
+[[nodiscard]] inline std::string
+policy_acceptance_governance_v0_baseline_set_text() {
+  std::ostringstream out;
+  out << "schema=kikijyeba.lattice.policy_acceptance.baseline_set.v1\n";
+  out << "policy_id=" << policy_acceptance_governance_thresholds_v0_id()
+      << "\n";
+  out << "mandatory_baselines="
+      << policy_acceptance_governance_v0_mandatory_baselines() << "\n";
+  return out.str();
+}
+
+[[nodiscard]] inline std::string
+policy_acceptance_governance_v0_after_cost_metric_set_text() {
+  return "schema=kikijyeba.lattice.policy_acceptance.after_cost_metric_set.v1\n"
+         "policy_id=policy_acceptance_governance_thresholds_v0.v1\n"
+         "primary_metric_id=after_cost_total_log_growth_delta\n"
+         "secondary_visibility=max_drawdown,total_turnover,"
+         "transaction_cost,rejects,partials,missing_direct_pair,"
+         "numeraire_fallback,target_tracking\n";
+}
+
+[[nodiscard]] inline std::string
+policy_acceptance_governance_v0_cost_slippage_assumption_text() {
+  return "schema=kikijyeba.lattice.policy_acceptance."
+         "cost_slippage_assumption.v1\n"
+         "policy_id=policy_acceptance_governance_thresholds_v0.v1\n"
+         "validation_cost_profile=nonzero\n"
+         "synthetic_execution_markets_allowed=false\n"
+         "numeraire_fallback_allowed=false\n"
+         "direct_pair_missing_policy=skip_or_reject_with_evidence\n";
+}
+
+[[nodiscard]] inline std::string
+policy_acceptance_governance_v0_negative_tests_text() {
+  return "schema=kikijyeba.lattice.policy_acceptance.negative_tests.v1\n"
+         "policy_id=policy_acceptance_governance_thresholds_v0.v1\n"
+         "required=leakage,cost,execution_fallback,authority_drift,"
+         "baseline_binding,threshold_binding\n";
+}
+
+[[nodiscard]] inline std::string
+policy_acceptance_governance_v0_threshold_selection_audit_text() {
+  return "schema=kikijyeba.lattice.policy_acceptance."
+         "threshold_selection_audit.v1\n"
+         "policy_id=policy_acceptance_governance_thresholds_v0.v1\n"
+         "threshold_selected_before_test=true\n"
+         "selector_split=validation\n"
+         "test_split=sealed_test\n";
+}
+
+[[nodiscard]] inline std::string
+policy_acceptance_governance_v0_promotion_criteria_text() {
+  return "schema=kikijyeba.lattice.policy_acceptance.promotion_criteria.v1\n"
+         "policy_id=policy_acceptance_governance_thresholds_v0.v1\n"
+         "requires=policy_training_artifact_ready,"
+         "tsodao_settings_protection_ready,mandatory_baselines_passed,"
+         "after_cost_metrics_bound,uncertainty_passed,"
+         "validation_test_disjoint,test_sealed_until_acceptance,"
+         "negative_tests_passed,leakage_negative_tests_passed,"
+         "threshold_selected_before_test,tie_policy_passed,"
+         "cost_slippage_assumptions_bound\n"
+         "denies=policy_selection,policy_quality_claim,"
+         "market_readiness,deployment_readiness,live_execution\n";
+}
+
+[[nodiscard]] inline std::string
+policy_acceptance_governance_thresholds_v0_text() {
+  std::ostringstream out;
+  out << "schema=kikijyeba.lattice.policy_acceptance_governance_thresholds."
+         "v1\n";
+  out << "policy_id=" << policy_acceptance_governance_thresholds_v0_id()
+      << "\n";
+  out << "milestone=policy_finalization_before_paper_online.v1\n";
+  out << "mandatory_baselines="
+      << policy_acceptance_governance_v0_mandatory_baselines() << "\n";
+  out << "mandatory_baseline_set_digest="
+      << exposure_digest_for_text(
+             policy_acceptance_governance_v0_baseline_set_text())
+      << "\n";
+  out << "primary_metric_id=after_cost_total_log_growth_delta\n";
+  out << "primary_metric_threshold=0\n";
+  out << "primary_metric_direction=at_or_above\n";
+  out << "after_cost_metric_set_digest="
+      << exposure_digest_for_text(
+             policy_acceptance_governance_v0_after_cost_metric_set_text())
+      << "\n";
+  out << "cost_slippage_assumption_digest="
+      << exposure_digest_for_text(
+             policy_acceptance_governance_v0_cost_slippage_assumption_text())
+      << "\n";
+  out << "uncertainty_policy=block_bootstrap_required\n";
+  out << "uncertainty_model=validation_block_bootstrap_v1\n";
+  out << "selector_split=validation\n";
+  out << "validation_split=validation_holdout\n";
+  out << "test_split=sealed_test\n";
+  out << "sealed_test_policy=sealed_until_acceptance\n";
+  out << "tie_policy=reject_ties\n";
+  out << "negative_tests_digest="
+      << exposure_digest_for_text(
+             policy_acceptance_governance_v0_negative_tests_text())
+      << "\n";
+  out << "threshold_selection_audit_digest="
+      << exposure_digest_for_text(
+             policy_acceptance_governance_v0_threshold_selection_audit_text())
+      << "\n";
+  out << "promotion_criteria_digest="
+      << exposure_digest_for_text(
+             policy_acceptance_governance_v0_promotion_criteria_text())
+      << "\n";
+  out << "paper_online_readiness_claimed=false\n";
+  out << "market_readiness_claimed=false\n";
+  out << "deployment_readiness_claimed=false\n";
+  out << "live_execution_authority=false\n";
+  return out.str();
+}
+
+[[nodiscard]] inline std::string
+policy_acceptance_governance_thresholds_v0_digest() {
+  return exposure_digest_for_text(
+      policy_acceptance_governance_thresholds_v0_text());
+}
+
+[[nodiscard]] inline std::string
+policy_acceptance_governance_v0_mandatory_baseline_set_digest() {
+  return exposure_digest_for_text(
+      policy_acceptance_governance_v0_baseline_set_text());
+}
+
+[[nodiscard]] inline std::string
+policy_acceptance_governance_v0_after_cost_metric_set_digest() {
+  return exposure_digest_for_text(
+      policy_acceptance_governance_v0_after_cost_metric_set_text());
+}
+
+[[nodiscard]] inline std::string
+policy_acceptance_governance_v0_cost_slippage_assumption_digest() {
+  return exposure_digest_for_text(
+      policy_acceptance_governance_v0_cost_slippage_assumption_text());
+}
+
+[[nodiscard]] inline std::string
+policy_acceptance_governance_v0_negative_tests_digest() {
+  return exposure_digest_for_text(
+      policy_acceptance_governance_v0_negative_tests_text());
+}
+
+[[nodiscard]] inline std::string
+policy_acceptance_governance_v0_threshold_selection_audit_digest() {
+  return exposure_digest_for_text(
+      policy_acceptance_governance_v0_threshold_selection_audit_text());
+}
+
+[[nodiscard]] inline std::string
+policy_acceptance_governance_v0_promotion_criteria_digest() {
+  return exposure_digest_for_text(
+      policy_acceptance_governance_v0_promotion_criteria_text());
+}
+
+[[nodiscard]] inline std::vector<std::string>
+policy_acceptance_fact_issues(const lattice_policy_acceptance_fact_t &fact) {
+  std::vector<std::string> issues;
+  if (fact.parent_exposure_fact_digest.empty()) {
+    issues.emplace_back("missing_parent_exposure_fact_digest");
+  }
+  if (fact.contract_fingerprint.empty()) {
+    issues.emplace_back("missing_contract_fingerprint");
+  }
+  if (fact.protocol_id.empty()) {
+    issues.emplace_back("missing_protocol_id");
+  }
+  if (fact.graph_order_fingerprint.empty()) {
+    issues.emplace_back("missing_graph_order_fingerprint");
+  }
+  if (fact.source_cursor_token.empty()) {
+    issues.emplace_back("missing_source_cursor_token");
+  }
+  if (fact.acceptance_id.empty()) {
+    issues.emplace_back("missing_acceptance_id");
+  }
+  if (fact.acceptance_contract_id != "policy_acceptance_contract.v1") {
+    issues.emplace_back("unsupported_acceptance_contract_id");
+  }
+  if (fact.acceptance_policy_digest.empty()) {
+    issues.emplace_back("missing_acceptance_policy_digest");
+  } else if (fact.acceptance_policy_digest !=
+             policy_acceptance_governance_thresholds_v0_digest()) {
+    issues.emplace_back(
+        "acceptance_policy_digest_mismatch_governance_thresholds_v0");
+  }
+  if (fact.accepted_policy_training_fact_digest.empty()) {
+    issues.emplace_back("missing_accepted_policy_training_fact_digest");
+  }
+  if (fact.accepted_policy_training_target_id !=
+      "policy_training_artifact_ready") {
+    issues.emplace_back("accepted_policy_training_target_mismatch");
+  }
+  if (fact.accepted_policy_training_proof_certificate_digest.empty()) {
+    issues.emplace_back(
+        "missing_accepted_policy_training_proof_certificate_digest");
+  }
+  if (fact.tsodao_settings_protection_fact_digest.empty()) {
+    issues.emplace_back("missing_tsodao_settings_protection_fact_digest");
+  }
+  if (fact.tsodao_settings_protection_target_id !=
+      "tsodao_settings_protection_ready") {
+    issues.emplace_back("tsodao_settings_protection_target_mismatch");
+  }
+  if (fact.tsodao_settings_protection_proof_certificate_digest.empty()) {
+    issues.emplace_back(
+        "missing_tsodao_settings_protection_proof_certificate_digest");
+  }
+  if (fact.protected_settings_bundle_digest.empty()) {
+    issues.emplace_back("missing_protected_settings_bundle_digest");
+  }
+  if (fact.accepted_policy_id.empty()) {
+    issues.emplace_back("missing_accepted_policy_id");
+  }
+  if (fact.accepted_policy_kind.empty()) {
+    issues.emplace_back("missing_accepted_policy_kind");
+  }
+  if (fact.accepted_policy_family_id.empty()) {
+    issues.emplace_back("missing_accepted_policy_family_id");
+  }
+  if (fact.accepted_actor_checkpoint_digest.empty()) {
+    issues.emplace_back("missing_accepted_actor_checkpoint_digest");
+  }
+  if (fact.accepted_checkpoint_digest.empty()) {
+    issues.emplace_back("missing_accepted_checkpoint_digest");
+  }
+  if (fact.policy_quality_report_digest.empty()) {
+    issues.emplace_back("missing_policy_quality_report_digest");
+  }
+  if (fact.validation_rollout_report_digest.empty()) {
+    issues.emplace_back("missing_validation_rollout_report_digest");
+  }
+  if (fact.reward_contract_id !=
+      "kikijyeba.environment.reward.post_execution_ledger_log_growth_"
+      "cost_drawdown.v1") {
+    issues.emplace_back("unsupported_reward_contract_id");
+  }
+  if (fact.execution_profile_digest.empty()) {
+    issues.emplace_back("missing_execution_profile_digest");
+  }
+  if (fact.accounting_numeraire_node_id.empty()) {
+    issues.emplace_back("missing_accounting_numeraire_node_id");
+  }
+  if (fact.mandatory_baseline_set_digest.empty()) {
+    issues.emplace_back("missing_mandatory_baseline_set_digest");
+  } else if (fact.mandatory_baseline_set_digest !=
+             policy_acceptance_governance_v0_mandatory_baseline_set_digest()) {
+    issues.emplace_back("mandatory_baseline_set_digest_mismatch");
+  }
+  if (fact.mandatory_baselines.empty()) {
+    issues.emplace_back("missing_mandatory_baselines");
+  } else if (fact.mandatory_baselines !=
+             policy_acceptance_governance_v0_mandatory_baselines()) {
+    issues.emplace_back("mandatory_baselines_mismatch_governance_v0");
+  }
+  if (fact.primary_metric_id.empty()) {
+    issues.emplace_back("missing_primary_metric_id");
+  } else if (fact.primary_metric_id != "after_cost_total_log_growth_delta") {
+    issues.emplace_back("unsupported_primary_metric_id_governance_v0");
+  }
+  if (!std::isfinite(fact.primary_metric_value)) {
+    issues.emplace_back("missing_primary_metric_value");
+  }
+  if (!std::isfinite(fact.primary_metric_threshold)) {
+    issues.emplace_back("missing_primary_metric_threshold");
+  } else if (fact.primary_metric_threshold != 0.0) {
+    issues.emplace_back("primary_metric_threshold_mismatch_governance_v0");
+  }
+  if (fact.primary_metric_direction.empty()) {
+    issues.emplace_back("missing_primary_metric_direction");
+  } else if (fact.primary_metric_direction != "at_or_above") {
+    issues.emplace_back("unsupported_primary_metric_direction_governance_v0");
+  }
+  if (std::isfinite(fact.primary_metric_value) &&
+      std::isfinite(fact.primary_metric_threshold) &&
+      fact.primary_metric_direction == "at_or_above" &&
+      fact.primary_metric_value < fact.primary_metric_threshold) {
+    issues.emplace_back("primary_metric_value_below_threshold");
+  }
+  if (fact.after_cost_metric_set_digest.empty()) {
+    issues.emplace_back("missing_after_cost_metric_set_digest");
+  } else if (fact.after_cost_metric_set_digest !=
+             policy_acceptance_governance_v0_after_cost_metric_set_digest()) {
+    issues.emplace_back("after_cost_metric_set_digest_mismatch");
+  }
+  if (fact.cost_slippage_assumption_digest.empty()) {
+    issues.emplace_back("missing_cost_slippage_assumption_digest");
+  } else if (
+      fact.cost_slippage_assumption_digest !=
+      policy_acceptance_governance_v0_cost_slippage_assumption_digest()) {
+    issues.emplace_back("cost_slippage_assumption_digest_mismatch");
+  }
+  if (fact.uncertainty_policy.empty()) {
+    issues.emplace_back("missing_uncertainty_policy");
+  } else if (fact.uncertainty_policy != "block_bootstrap_required") {
+    issues.emplace_back("uncertainty_policy_mismatch_governance_v0");
+  }
+  if (fact.uncertainty_model.empty()) {
+    issues.emplace_back("missing_uncertainty_model");
+  } else if (fact.uncertainty_model != "validation_block_bootstrap_v1") {
+    issues.emplace_back("uncertainty_model_mismatch_governance_v0");
+  }
+  if (fact.selector_split.empty()) {
+    issues.emplace_back("missing_selector_split");
+  } else if (fact.selector_split != "validation") {
+    issues.emplace_back("selector_split_mismatch_governance_v0");
+  }
+  if (fact.validation_split.empty()) {
+    issues.emplace_back("missing_validation_split");
+  } else if (fact.validation_split != "validation_holdout") {
+    issues.emplace_back("validation_split_mismatch_governance_v0");
+  }
+  if (fact.test_split.empty()) {
+    issues.emplace_back("missing_test_split");
+  } else if (fact.test_split != "sealed_test") {
+    issues.emplace_back("test_split_mismatch_governance_v0");
+  }
+  if (fact.sealed_test_policy.empty()) {
+    issues.emplace_back("missing_sealed_test_policy");
+  } else if (fact.sealed_test_policy != "sealed_until_acceptance") {
+    issues.emplace_back("sealed_test_policy_mismatch_governance_v0");
+  }
+  if (fact.tie_policy.empty()) {
+    issues.emplace_back("missing_tie_policy");
+  } else if (fact.tie_policy != "reject_ties") {
+    issues.emplace_back("tie_policy_mismatch_governance_v0");
+  }
+  if (fact.negative_tests_digest.empty()) {
+    issues.emplace_back("missing_negative_tests_digest");
+  } else if (fact.negative_tests_digest !=
+             policy_acceptance_governance_v0_negative_tests_digest()) {
+    issues.emplace_back("negative_tests_digest_mismatch");
+  }
+  if (fact.threshold_selection_audit_digest.empty()) {
+    issues.emplace_back("missing_threshold_selection_audit_digest");
+  } else if (
+      fact.threshold_selection_audit_digest !=
+      policy_acceptance_governance_v0_threshold_selection_audit_digest()) {
+    issues.emplace_back("threshold_selection_audit_digest_mismatch");
+  }
+  if (fact.promotion_criteria_digest.empty()) {
+    issues.emplace_back("missing_promotion_criteria_digest");
+  } else if (fact.promotion_criteria_digest !=
+             policy_acceptance_governance_v0_promotion_criteria_digest()) {
+    issues.emplace_back("promotion_criteria_digest_mismatch");
+  }
+  const auto require_true = [&](bool value, const char *issue) {
+    if (!value) {
+      issues.emplace_back(issue);
+    }
+  };
+  require_true(fact.accepted_policy_training_ready,
+               "accepted_policy_training_ready_not_bound");
+  require_true(fact.tsodao_settings_protection_ready,
+               "tsodao_settings_protection_ready_not_bound");
+  require_true(fact.protected_settings_bound, "protected_settings_not_bound");
+  require_true(fact.mandatory_baselines_bound, "mandatory_baselines_not_bound");
+  require_true(fact.mandatory_baselines_passed,
+               "mandatory_baselines_not_passed");
+  require_true(fact.after_cost_metrics_bound, "after_cost_metrics_not_bound");
+  require_true(fact.primary_metric_passed, "primary_metric_not_passed");
+  require_true(fact.uncertainty_policy_bound, "uncertainty_policy_not_bound");
+  require_true(fact.uncertainty_passed, "uncertainty_not_passed");
+  require_true(fact.selector_split_bound, "selector_split_not_bound");
+  require_true(fact.validation_test_disjoint, "validation_test_not_disjoint");
+  require_true(fact.test_sealed_until_acceptance,
+               "test_not_sealed_until_acceptance");
+  require_true(fact.negative_tests_bound, "negative_tests_not_bound");
+  require_true(fact.negative_tests_passed, "negative_tests_not_passed");
+  require_true(fact.leakage_negative_tests_passed,
+               "leakage_negative_tests_not_passed");
+  require_true(fact.threshold_selection_audit_bound,
+               "threshold_selection_audit_not_bound");
+  require_true(fact.threshold_selected_before_test,
+               "threshold_not_selected_before_test");
+  require_true(fact.tie_policy_bound, "tie_policy_not_bound");
+  require_true(fact.tie_policy_passed, "tie_policy_not_passed");
+  require_true(fact.cost_slippage_assumptions_bound,
+               "cost_slippage_assumptions_not_bound");
+  require_true(fact.promotion_criteria_bound, "promotion_criteria_not_bound");
+  require_true(fact.promotion_criteria_satisfied,
+               "promotion_criteria_not_satisfied");
+  require_true(fact.policy_acceptance_decision,
+               "policy_acceptance_decision_not_bound");
+  if (!fact.artifact_evidence || !fact.visibility_only ||
+      !fact.policy_acceptance_artifact || fact.policy_selector ||
+      fact.checkpoint_selector || fact.optimizer || fact.allocation_authority ||
+      fact.execution_authority || fact.readiness_authority ||
+      fact.quality_authority || fact.performance_authority ||
+      fact.market_readiness_authority || fact.deployment_authority ||
+      fact.live_execution_authority || fact.coverage_authority ||
+      fact.leakage_authority || fact.contract_identity_authority) {
+    issues.emplace_back("policy_acceptance_must_remain_artifact_evidence_only");
+  }
+  return issues;
+}
+
+[[nodiscard]] inline std::vector<std::string> policy_acceptance_binding_issues(
+    const lattice_policy_acceptance_fact_t &fact,
+    const std::vector<lattice_policy_training_fact_t> &policy_training_facts,
+    const std::vector<lattice_tsodao_settings_protection_fact_t>
+        &protection_facts) {
+  std::vector<std::string> issues;
+  const lattice_policy_training_fact_t *policy_fact = nullptr;
+  for (const auto &candidate : policy_training_facts) {
+    if (policy_training_fact_digest(candidate) ==
+        fact.accepted_policy_training_fact_digest) {
+      policy_fact = &candidate;
+      break;
+    }
+  }
+  if (policy_fact == nullptr) {
+    issues.emplace_back("accepted_policy_training_fact_digest_not_found");
+  } else {
+    const auto policy_issues = policy_training_fact_issues(*policy_fact);
+    if (!policy_issues.empty()) {
+      issues.emplace_back("accepted_policy_training_fact_not_ready");
+    }
+    const auto check_equal = [&](const std::string &accepted_value,
+                                 const std::string &policy_value,
+                                 const char *issue) {
+      if (accepted_value != policy_value) {
+        issues.emplace_back(issue);
+      }
+    };
+    check_equal(fact.accepted_policy_id, policy_fact->policy_id,
+                "accepted_policy_id_mismatch");
+    check_equal(fact.accepted_policy_kind, policy_fact->policy_kind,
+                "accepted_policy_kind_mismatch");
+    check_equal(fact.accepted_policy_family_id, policy_fact->policy_family_id,
+                "accepted_policy_family_id_mismatch");
+    check_equal(fact.accepted_actor_checkpoint_digest,
+                policy_fact->actor_checkpoint_digest,
+                "accepted_actor_checkpoint_digest_mismatch");
+    check_equal(fact.accepted_checkpoint_digest, policy_fact->checkpoint_digest,
+                "accepted_checkpoint_digest_mismatch");
+    check_equal(fact.policy_quality_report_digest,
+                policy_fact->policy_quality_report_digest,
+                "accepted_policy_quality_report_digest_mismatch");
+    check_equal(fact.validation_rollout_report_digest,
+                policy_fact->validation_rollout_report_digest,
+                "accepted_validation_rollout_report_digest_mismatch");
+    check_equal(fact.reward_contract_id, policy_fact->reward_contract_id,
+                "accepted_reward_contract_id_mismatch");
+    check_equal(fact.execution_profile_digest,
+                policy_fact->execution_profile_digest,
+                "accepted_execution_profile_digest_mismatch");
+    check_equal(fact.selector_split, policy_fact->selector_split,
+                "accepted_selector_split_mismatch");
+  }
+
+  const lattice_tsodao_settings_protection_fact_t *protection_fact = nullptr;
+  for (const auto &candidate : protection_facts) {
+    if (tsodao_settings_protection_fact_digest(candidate) ==
+        fact.tsodao_settings_protection_fact_digest) {
+      protection_fact = &candidate;
+      break;
+    }
+  }
+  if (protection_fact == nullptr) {
+    issues.emplace_back("tsodao_settings_protection_fact_digest_not_found");
+  } else {
+    const auto protection_issues =
+        tsodao_settings_protection_fact_issues(*protection_fact);
+    if (!protection_issues.empty()) {
+      issues.emplace_back("tsodao_settings_protection_fact_not_ready");
+    }
+    const auto protection_binding_issues =
+        tsodao_settings_protection_policy_training_binding_issues(
+            *protection_fact, policy_training_facts);
+    if (!protection_binding_issues.empty()) {
+      issues.emplace_back("tsodao_settings_protection_binding_not_ready");
+    }
+    if (protection_fact->protected_policy_training_fact_digest !=
+        fact.accepted_policy_training_fact_digest) {
+      issues.emplace_back(
+          "tsodao_protected_policy_training_fact_digest_mismatch");
+    }
+    if (protection_fact->protected_settings_bundle_digest !=
+        fact.protected_settings_bundle_digest) {
+      issues.emplace_back("protected_settings_bundle_digest_mismatch");
+    }
+  }
+  return issues;
+}
+
+inline void append_policy_acceptance_scan_warning(
+    const lattice_policy_acceptance_fact_t &fact,
+    const std::filesystem::path &job_dir, std::vector<std::string> &warnings) {
+  const auto issues = policy_acceptance_fact_issues(fact);
+  if (issues.empty()) {
+    return;
+  }
+  std::ostringstream oss;
+  oss << "[lattice_exposure] policy_acceptance warning job_dir="
+      << job_dir.string() << " job_id=" << fact.job_id << " issues=";
+  for (std::size_t i = 0; i < issues.size(); ++i) {
+    if (i != 0) {
+      oss << ",";
+    }
+    oss << issues[i];
+  }
+  warnings.push_back(oss.str());
+}
+
+[[nodiscard]] inline std::vector<std::filesystem::path>
+paper_online_readiness_fact_paths_for_job_dir(
+    const std::filesystem::path &job_dir) {
+  const auto artifact_dir =
+      job_dir / "artifacts" / "paper.online.readiness.v1";
+  return {job_dir / "lattice.paper_online_readiness.fact",
+          job_dir / "paper_online_readiness.fact",
+          job_dir / "runtime.paper_online_readiness.fact",
+          artifact_dir / "paper_online_readiness.fact"};
+}
+
+[[nodiscard]] inline bool paper_online_readiness_fact_has_payload(
+    const lattice_paper_online_readiness_fact_t &fact) {
+  return !fact.readiness_id.empty() ||
+         !fact.policy_acceptance_fact_digest.empty() ||
+         !fact.policy_acceptance_proof_certificate_digest.empty() ||
+         !fact.accepted_policy_id.empty() ||
+         !fact.accepted_actor_checkpoint_digest.empty() ||
+         !fact.paper_online_profile_digest.empty() ||
+         !fact.direct_edge_universe_digest.empty() ||
+         !fact.persistent_paper_ledger_recovery_policy_id.empty() ||
+         !fact.idempotency_policy_id.empty() ||
+         !fact.clock_policy_id.empty() ||
+         !fact.market_data_staleness_policy_id.empty() ||
+         !fact.operator_abort_policy_id.empty() ||
+         !fact.kill_switch_policy_id.empty() || fact.policy_acceptance_ready ||
+         fact.accepted_policy_bound || fact.direct_edge_universe_validated ||
+         fact.locked_execution_profile_bound ||
+         fact.persistent_paper_ledger_recovery_bound ||
+         fact.idempotency_bound || fact.duplicate_action_protection_bound ||
+         fact.session_lifecycle_bound || fact.clock_timestamp_policy_bound ||
+         fact.market_data_staleness_bound ||
+         fact.reward_report_artifact_path_bound || fact.operator_abort_bound ||
+         fact.kill_switch_bound || fact.synthetic_execution_markets_allowed ||
+         fact.numeraire_fallback_allowed || fact.paper_online_execution_allowed ||
+         fact.live_execution_allowed || fact.broker_execution_allowed ||
+         fact.direct_policy_to_broker_allowed ||
+         fact.direct_policy_to_cajtucu_allowed || !fact.artifact_evidence ||
+         !fact.visibility_only || !fact.paper_online_readiness_artifact ||
+         fact.policy_selector || fact.checkpoint_selector || fact.optimizer ||
+         fact.allocation_authority || fact.execution_authority ||
+         fact.readiness_authority || fact.quality_authority ||
+         fact.performance_authority || fact.market_readiness_authority ||
+         fact.deployment_authority || fact.live_execution_authority ||
+         fact.coverage_authority || fact.leakage_authority ||
+         fact.contract_identity_authority;
+}
+
+[[nodiscard]] inline std::vector<lattice_paper_online_readiness_fact_t>
+make_paper_online_readiness_facts_from_job_dir(
+    const std::filesystem::path &job_dir,
+    const lattice_exposure_fact_t &parent) {
+  namespace detail = exposure_detail;
+  const auto readiness = detail::parse_first_assignment_file(
+      paper_online_readiness_fact_paths_for_job_dir(job_dir));
+  if (readiness.empty()) {
+    return {};
+  }
+  const auto first_value =
+      [&](const std::vector<std::string> &keys) -> std::string {
+    for (const auto &key : keys) {
+      const auto value = detail::map_get(readiness, key);
+      if (!value.empty()) {
+        return value;
+      }
+    }
+    return {};
+  };
+  const auto first_bool = [&](const std::vector<std::string> &keys,
+                              bool fallback = false) {
+    return detail::parse_bool_fallback(first_value(keys), fallback);
+  };
+  const auto first_i64 = [&](const std::vector<std::string> &keys,
+                             std::int64_t fallback = 0) {
+    return detail::parse_i64_fallback(first_value(keys), fallback);
+  };
+
+  lattice_paper_online_readiness_fact_t fact{};
+  fact.parent_exposure_fact_digest = exposure_fact_digest(parent);
+  fact.contract_fingerprint = parent.contract_fingerprint;
+  fact.protocol_id = parent.protocol_id;
+  fact.graph_order_fingerprint = parent.graph_order_fingerprint;
+  fact.source_cursor_token = parent.source_cursor_token;
+  fact.split_policy_fingerprint = parent.split_policy_fingerprint;
+  fact.component_assembly_fingerprint = parent.component_assembly_fingerprint;
+  fact.target_component_family_id = parent.target_component_family_id;
+  fact.job_id = parent.job_id;
+  fact.wave_id = parent.wave_id;
+  fact.job_status = parent.job_status;
+  fact.wave_action = parent.wave_action;
+  fact.split_name = parent.split_name;
+  fact.split_role = parent.split_role;
+  fact.anchor_range = parent.anchor_range;
+  fact.completed_anchor_range = parent.completed_anchor_range;
+
+  const auto file_parent_exposure_fact_digest =
+      first_value({"parent_exposure_fact_digest"});
+  if (!file_parent_exposure_fact_digest.empty()) {
+    fact.parent_exposure_fact_digest = file_parent_exposure_fact_digest;
+  }
+  const auto file_contract_fingerprint = first_value({"contract_fingerprint"});
+  if (!file_contract_fingerprint.empty()) {
+    fact.contract_fingerprint = file_contract_fingerprint;
+  }
+  const auto file_protocol_id = first_value({"protocol_id"});
+  if (!file_protocol_id.empty()) {
+    fact.protocol_id = file_protocol_id;
+  }
+  const auto file_graph_order_fingerprint =
+      first_value({"graph_order_fingerprint"});
+  if (!file_graph_order_fingerprint.empty()) {
+    fact.graph_order_fingerprint = file_graph_order_fingerprint;
+  }
+  const auto file_source_cursor_token = first_value({"source_cursor_token"});
+  if (!file_source_cursor_token.empty()) {
+    fact.source_cursor_token = file_source_cursor_token;
+  }
+  const auto file_split_policy_fingerprint =
+      first_value({"split_policy_fingerprint"});
+  if (!file_split_policy_fingerprint.empty()) {
+    fact.split_policy_fingerprint = file_split_policy_fingerprint;
+  }
+  const auto file_component_assembly_fingerprint =
+      first_value({"component_assembly_fingerprint"});
+  if (!file_component_assembly_fingerprint.empty()) {
+    fact.component_assembly_fingerprint = file_component_assembly_fingerprint;
+  }
+  const auto file_target_component_family_id =
+      first_value({"target_component_family_id"});
+  if (!file_target_component_family_id.empty()) {
+    fact.target_component_family_id = file_target_component_family_id;
+  }
+  const auto file_job_id = first_value({"job_id"});
+  if (!file_job_id.empty()) {
+    fact.job_id = file_job_id;
+  }
+  const auto file_wave_id = first_value({"wave_id"});
+  if (!file_wave_id.empty()) {
+    fact.wave_id = file_wave_id;
+  }
+  const auto file_job_status = first_value({"job_status"});
+  if (!file_job_status.empty()) {
+    fact.job_status = file_job_status;
+  }
+  const auto file_wave_action = first_value({"wave_action"});
+  if (!file_wave_action.empty()) {
+    fact.wave_action = file_wave_action;
+  }
+  const auto file_split_name = first_value({"split_name"});
+  if (!file_split_name.empty()) {
+    fact.split_name = file_split_name;
+  }
+  const auto file_split_role = first_value({"split_role"});
+  if (!file_split_role.empty()) {
+    fact.split_role = parse_exposure_split_role(file_split_role);
+  }
+  const auto file_anchor_begin = first_value({"anchor_begin"});
+  const auto file_anchor_end = first_value({"anchor_end"});
+  if (!file_anchor_begin.empty() && !file_anchor_end.empty()) {
+    fact.anchor_range.begin =
+        detail::parse_i64_fallback(file_anchor_begin, fact.anchor_range.begin);
+    fact.anchor_range.end =
+        detail::parse_i64_fallback(file_anchor_end, fact.anchor_range.end);
+  }
+  const auto file_completed_anchor_begin =
+      first_value({"completed_anchor_begin"});
+  const auto file_completed_anchor_end = first_value({"completed_anchor_end"});
+  if (!file_completed_anchor_begin.empty() &&
+      !file_completed_anchor_end.empty()) {
+    fact.completed_anchor_range.begin = detail::parse_i64_fallback(
+        file_completed_anchor_begin, fact.completed_anchor_range.begin);
+    fact.completed_anchor_range.end = detail::parse_i64_fallback(
+        file_completed_anchor_end, fact.completed_anchor_range.end);
+  }
+
+  fact.readiness_id = first_value({"readiness_id"});
+  fact.readiness_contract_id = first_value({"readiness_contract_id",
+                                            "paper_online_readiness_contract_id"});
+  if (fact.readiness_contract_id.empty()) {
+    fact.readiness_contract_id = "paper_online_readiness_contract.v1";
+  }
+  fact.policy_acceptance_fact_digest =
+      first_value({"policy_acceptance_fact_digest"});
+  fact.policy_acceptance_target_id = first_value({"policy_acceptance_target_id"});
+  if (fact.policy_acceptance_target_id.empty()) {
+    fact.policy_acceptance_target_id = "policy_acceptance_contract_ready";
+  }
+  fact.policy_acceptance_proof_certificate_digest =
+      first_value({"policy_acceptance_proof_certificate_digest"});
+  fact.tsodao_settings_protection_fact_digest =
+      first_value({"tsodao_settings_protection_fact_digest"});
+  fact.protected_settings_bundle_digest =
+      first_value({"protected_settings_bundle_digest"});
+  fact.accepted_policy_id = first_value({"accepted_policy_id", "policy_id"});
+  fact.accepted_policy_kind =
+      first_value({"accepted_policy_kind", "policy_kind"});
+  fact.accepted_policy_family_id =
+      first_value({"accepted_policy_family_id", "policy_family_id"});
+  fact.accepted_actor_checkpoint_digest = first_value(
+      {"accepted_actor_checkpoint_digest", "actor_checkpoint_digest"});
+  fact.accepted_checkpoint_digest =
+      first_value({"accepted_checkpoint_digest", "checkpoint_digest"});
+  fact.policy_quality_report_digest =
+      first_value({"policy_quality_report_digest"});
+  fact.validation_rollout_report_digest =
+      first_value({"validation_rollout_report_digest"});
+  fact.reward_contract_id = first_value({"reward_contract_id"});
+  fact.execution_profile_digest = first_value({"execution_profile_digest"});
+  fact.accounting_numeraire_node_id =
+      first_value({"accounting_numeraire_node_id"});
+
+  fact.paper_online_environment_contract_id =
+      first_value({"paper_online_environment_contract_id",
+                   "environment_contract_id"});
+  if (fact.paper_online_environment_contract_id.empty()) {
+    fact.paper_online_environment_contract_id =
+        "kikijyeba.environment.paper_online.v1";
+  }
+  fact.paper_online_profile_digest =
+      first_value({"paper_online_profile_digest"});
+  fact.direct_edge_universe_digest =
+      first_value({"direct_edge_universe_digest"});
+  fact.direct_edge_universe_validation_policy_id =
+      first_value({"direct_edge_universe_validation_policy_id"});
+  if (fact.direct_edge_universe_validation_policy_id.empty()) {
+    fact.direct_edge_universe_validation_policy_id =
+        "direct_graph_node_pair_universe_required.v1";
+  }
+  fact.missing_direct_pair_policy =
+      first_value({"missing_direct_pair_policy"});
+  if (fact.missing_direct_pair_policy.empty()) {
+    fact.missing_direct_pair_policy = "skip_pair_warn";
+  }
+  fact.synthetic_execution_market_policy_id =
+      first_value({"synthetic_execution_market_policy_id"});
+  if (fact.synthetic_execution_market_policy_id.empty()) {
+    fact.synthetic_execution_market_policy_id =
+        "synthetic_execution_markets_forbidden.v1";
+  }
+  fact.locked_execution_profile_digest =
+      first_value({"locked_execution_profile_digest"});
+  fact.persistent_paper_ledger_recovery_policy_id =
+      first_value({"persistent_paper_ledger_recovery_policy_id",
+                   "paper_ledger_recovery_policy_id"});
+  fact.paper_ledger_storage_policy_id =
+      first_value({"paper_ledger_storage_policy_id"});
+  fact.session_state_schema_id = first_value({"session_state_schema_id"});
+  if (fact.session_state_schema_id.empty()) {
+    fact.session_state_schema_id = "kikijyeba.paper_online.session_state.v1";
+  }
+  fact.session_lifecycle_policy_id =
+      first_value({"session_lifecycle_policy_id",
+                   "session_start_stop_policy_id"});
+  fact.idempotency_policy_id = first_value({"idempotency_policy_id"});
+  fact.execution_intent_id_policy =
+      first_value({"execution_intent_id_policy"});
+  fact.duplicate_action_policy = first_value({"duplicate_action_policy"});
+  fact.duplicate_execution_intent_policy =
+      first_value({"duplicate_execution_intent_policy"});
+  fact.clock_policy_id = first_value({"clock_policy_id"});
+  fact.timestamp_policy_id = first_value({"timestamp_policy_id"});
+  fact.market_data_staleness_policy_id =
+      first_value({"market_data_staleness_policy_id"});
+  fact.max_market_data_staleness_ms =
+      first_i64({"max_market_data_staleness_ms"});
+  fact.clock_skew_tolerance_ms = first_i64({"clock_skew_tolerance_ms"});
+  fact.reward_report_artifact_policy_id =
+      first_value({"reward_report_artifact_policy_id"});
+  fact.operator_abort_policy_id = first_value({"operator_abort_policy_id"});
+  fact.kill_switch_policy_id = first_value({"kill_switch_policy_id"});
+
+  fact.policy_acceptance_ready = first_bool({"policy_acceptance_ready"});
+  fact.tsodao_settings_protection_ready =
+      first_bool({"tsodao_settings_protection_ready"});
+  fact.accepted_policy_bound = first_bool({"accepted_policy_bound"});
+  fact.protected_settings_bound = first_bool({"protected_settings_bound"});
+  fact.direct_edge_universe_validated =
+      first_bool({"direct_edge_universe_validated"});
+  fact.locked_execution_profile_bound =
+      first_bool({"locked_execution_profile_bound"});
+  fact.persistent_paper_ledger_recovery_bound =
+      first_bool({"persistent_paper_ledger_recovery_bound"});
+  fact.idempotency_bound = first_bool({"idempotency_bound"});
+  fact.duplicate_action_protection_bound =
+      first_bool({"duplicate_action_protection_bound"});
+  fact.session_lifecycle_bound = first_bool({"session_lifecycle_bound"});
+  fact.clock_timestamp_policy_bound =
+      first_bool({"clock_timestamp_policy_bound"});
+  fact.market_data_staleness_bound =
+      first_bool({"market_data_staleness_bound"});
+  fact.reward_report_artifact_path_bound =
+      first_bool({"reward_report_artifact_path_bound"});
+  fact.operator_abort_bound = first_bool({"operator_abort_bound"});
+  fact.kill_switch_bound = first_bool({"kill_switch_bound"});
+  fact.synthetic_execution_markets_allowed =
+      first_bool({"synthetic_execution_markets_allowed"});
+  fact.numeraire_fallback_allowed =
+      first_bool({"numeraire_fallback_allowed"});
+  fact.paper_online_execution_allowed =
+      first_bool({"paper_online_execution_allowed"});
+  fact.live_execution_allowed = first_bool({"live_execution_allowed"});
+  fact.broker_execution_allowed = first_bool({"broker_execution_allowed"});
+  fact.direct_policy_to_broker_allowed =
+      first_bool({"direct_policy_to_broker_allowed"});
+  fact.direct_policy_to_cajtucu_allowed =
+      first_bool({"direct_policy_to_cajtucu_allowed"});
+
+  fact.artifact_evidence =
+      first_bool({"artifact_evidence"}, fact.artifact_evidence);
+  fact.visibility_only = first_bool({"visibility_only"}, fact.visibility_only);
+  fact.paper_online_readiness_artifact = first_bool(
+      {"paper_online_readiness_artifact"}, fact.paper_online_readiness_artifact);
+  fact.policy_selector = first_bool({"policy_selector"});
+  fact.checkpoint_selector = first_bool({"checkpoint_selector"});
+  fact.optimizer = first_bool({"optimizer"});
+  fact.allocation_authority = first_bool({"allocation_authority"});
+  fact.execution_authority = first_bool({"execution_authority"});
+  fact.readiness_authority = first_bool({"readiness_authority"});
+  fact.quality_authority = first_bool({"quality_authority"});
+  fact.performance_authority = first_bool({"performance_authority"});
+  fact.market_readiness_authority = first_bool({"market_readiness_authority"});
+  fact.deployment_authority = first_bool({"deployment_authority"});
+  fact.live_execution_authority = first_bool({"live_execution_authority"});
+  fact.coverage_authority = first_bool({"coverage_authority"});
+  fact.leakage_authority = first_bool({"leakage_authority"});
+  fact.contract_identity_authority =
+      first_bool({"contract_identity_authority"});
+
+  if (!paper_online_readiness_fact_has_payload(fact)) {
+    return {};
+  }
+  return {std::move(fact)};
+}
+
+[[nodiscard]] inline std::string canonical_paper_online_readiness_fact_text(
+    const lattice_paper_online_readiness_fact_t &fact) {
+  std::ostringstream out;
+  out << "schema=" << fact.schema << "\n";
+  out << "fact_type=" << fact.fact_type << "\n";
+  out << "parent_exposure_fact_digest=" << fact.parent_exposure_fact_digest
+      << "\n";
+  out << "contract_fingerprint=" << fact.contract_fingerprint << "\n";
+  out << "protocol_id=" << fact.protocol_id << "\n";
+  out << "graph_order_fingerprint=" << fact.graph_order_fingerprint << "\n";
+  out << "source_cursor_token=" << fact.source_cursor_token << "\n";
+  out << "split_policy_fingerprint=" << fact.split_policy_fingerprint << "\n";
+  out << "component_assembly_fingerprint="
+      << fact.component_assembly_fingerprint << "\n";
+  out << "target_component_family_id=" << fact.target_component_family_id
+      << "\n";
+  out << "job_id=" << fact.job_id << "\n";
+  out << "wave_id=" << fact.wave_id << "\n";
+  out << "job_status=" << fact.job_status << "\n";
+  out << "wave_action=" << fact.wave_action << "\n";
+  out << "split_name=" << fact.split_name << "\n";
+  out << "split_role=" << exposure_split_role_name(fact.split_role) << "\n";
+  out << "anchor_begin=" << fact.anchor_range.begin << "\n";
+  out << "anchor_end=" << fact.anchor_range.end << "\n";
+  out << "completed_anchor_begin=" << fact.completed_anchor_range.begin << "\n";
+  out << "completed_anchor_end=" << fact.completed_anchor_range.end << "\n";
+  out << "readiness_id=" << fact.readiness_id << "\n";
+  out << "readiness_contract_id=" << fact.readiness_contract_id << "\n";
+  out << "policy_acceptance_fact_digest="
+      << fact.policy_acceptance_fact_digest << "\n";
+  out << "policy_acceptance_target_id=" << fact.policy_acceptance_target_id
+      << "\n";
+  out << "policy_acceptance_proof_certificate_digest="
+      << fact.policy_acceptance_proof_certificate_digest << "\n";
+  out << "tsodao_settings_protection_fact_digest="
+      << fact.tsodao_settings_protection_fact_digest << "\n";
+  out << "protected_settings_bundle_digest="
+      << fact.protected_settings_bundle_digest << "\n";
+  out << "accepted_policy_id=" << fact.accepted_policy_id << "\n";
+  out << "accepted_policy_kind=" << fact.accepted_policy_kind << "\n";
+  out << "accepted_policy_family_id=" << fact.accepted_policy_family_id << "\n";
+  out << "accepted_actor_checkpoint_digest="
+      << fact.accepted_actor_checkpoint_digest << "\n";
+  out << "accepted_checkpoint_digest=" << fact.accepted_checkpoint_digest
+      << "\n";
+  out << "policy_quality_report_digest=" << fact.policy_quality_report_digest
+      << "\n";
+  out << "validation_rollout_report_digest="
+      << fact.validation_rollout_report_digest << "\n";
+  out << "reward_contract_id=" << fact.reward_contract_id << "\n";
+  out << "execution_profile_digest=" << fact.execution_profile_digest << "\n";
+  out << "accounting_numeraire_node_id=" << fact.accounting_numeraire_node_id
+      << "\n";
+  out << "paper_online_environment_contract_id="
+      << fact.paper_online_environment_contract_id << "\n";
+  out << "paper_online_profile_digest=" << fact.paper_online_profile_digest
+      << "\n";
+  out << "direct_edge_universe_digest=" << fact.direct_edge_universe_digest
+      << "\n";
+  out << "direct_edge_universe_validation_policy_id="
+      << fact.direct_edge_universe_validation_policy_id << "\n";
+  out << "missing_direct_pair_policy=" << fact.missing_direct_pair_policy
+      << "\n";
+  out << "synthetic_execution_market_policy_id="
+      << fact.synthetic_execution_market_policy_id << "\n";
+  out << "locked_execution_profile_digest="
+      << fact.locked_execution_profile_digest << "\n";
+  out << "persistent_paper_ledger_recovery_policy_id="
+      << fact.persistent_paper_ledger_recovery_policy_id << "\n";
+  out << "paper_ledger_storage_policy_id="
+      << fact.paper_ledger_storage_policy_id << "\n";
+  out << "session_state_schema_id=" << fact.session_state_schema_id << "\n";
+  out << "session_lifecycle_policy_id="
+      << fact.session_lifecycle_policy_id << "\n";
+  out << "idempotency_policy_id=" << fact.idempotency_policy_id << "\n";
+  out << "execution_intent_id_policy="
+      << fact.execution_intent_id_policy << "\n";
+  out << "duplicate_action_policy=" << fact.duplicate_action_policy << "\n";
+  out << "duplicate_execution_intent_policy="
+      << fact.duplicate_execution_intent_policy << "\n";
+  out << "clock_policy_id=" << fact.clock_policy_id << "\n";
+  out << "timestamp_policy_id=" << fact.timestamp_policy_id << "\n";
+  out << "market_data_staleness_policy_id="
+      << fact.market_data_staleness_policy_id << "\n";
+  out << "max_market_data_staleness_ms="
+      << fact.max_market_data_staleness_ms << "\n";
+  out << "clock_skew_tolerance_ms=" << fact.clock_skew_tolerance_ms << "\n";
+  out << "reward_report_artifact_policy_id="
+      << fact.reward_report_artifact_policy_id << "\n";
+  out << "operator_abort_policy_id=" << fact.operator_abort_policy_id << "\n";
+  out << "kill_switch_policy_id=" << fact.kill_switch_policy_id << "\n";
+#define CUWACUNU_PAPER_ONLINE_READINESS_BOOL_FIELD(name)                      \
+  out << #name "=" << (fact.name ? "true" : "false") << "\n";
+  CUWACUNU_PAPER_ONLINE_READINESS_BOOL_FIELD(policy_acceptance_ready)
+  CUWACUNU_PAPER_ONLINE_READINESS_BOOL_FIELD(
+      tsodao_settings_protection_ready)
+  CUWACUNU_PAPER_ONLINE_READINESS_BOOL_FIELD(accepted_policy_bound)
+  CUWACUNU_PAPER_ONLINE_READINESS_BOOL_FIELD(protected_settings_bound)
+  CUWACUNU_PAPER_ONLINE_READINESS_BOOL_FIELD(direct_edge_universe_validated)
+  CUWACUNU_PAPER_ONLINE_READINESS_BOOL_FIELD(locked_execution_profile_bound)
+  CUWACUNU_PAPER_ONLINE_READINESS_BOOL_FIELD(
+      persistent_paper_ledger_recovery_bound)
+  CUWACUNU_PAPER_ONLINE_READINESS_BOOL_FIELD(idempotency_bound)
+  CUWACUNU_PAPER_ONLINE_READINESS_BOOL_FIELD(
+      duplicate_action_protection_bound)
+  CUWACUNU_PAPER_ONLINE_READINESS_BOOL_FIELD(session_lifecycle_bound)
+  CUWACUNU_PAPER_ONLINE_READINESS_BOOL_FIELD(clock_timestamp_policy_bound)
+  CUWACUNU_PAPER_ONLINE_READINESS_BOOL_FIELD(market_data_staleness_bound)
+  CUWACUNU_PAPER_ONLINE_READINESS_BOOL_FIELD(
+      reward_report_artifact_path_bound)
+  CUWACUNU_PAPER_ONLINE_READINESS_BOOL_FIELD(operator_abort_bound)
+  CUWACUNU_PAPER_ONLINE_READINESS_BOOL_FIELD(kill_switch_bound)
+  CUWACUNU_PAPER_ONLINE_READINESS_BOOL_FIELD(
+      synthetic_execution_markets_allowed)
+  CUWACUNU_PAPER_ONLINE_READINESS_BOOL_FIELD(numeraire_fallback_allowed)
+  CUWACUNU_PAPER_ONLINE_READINESS_BOOL_FIELD(paper_online_execution_allowed)
+  CUWACUNU_PAPER_ONLINE_READINESS_BOOL_FIELD(live_execution_allowed)
+  CUWACUNU_PAPER_ONLINE_READINESS_BOOL_FIELD(broker_execution_allowed)
+  CUWACUNU_PAPER_ONLINE_READINESS_BOOL_FIELD(direct_policy_to_broker_allowed)
+  CUWACUNU_PAPER_ONLINE_READINESS_BOOL_FIELD(direct_policy_to_cajtucu_allowed)
+  CUWACUNU_PAPER_ONLINE_READINESS_BOOL_FIELD(artifact_evidence)
+  CUWACUNU_PAPER_ONLINE_READINESS_BOOL_FIELD(visibility_only)
+  CUWACUNU_PAPER_ONLINE_READINESS_BOOL_FIELD(
+      paper_online_readiness_artifact)
+  CUWACUNU_PAPER_ONLINE_READINESS_BOOL_FIELD(policy_selector)
+  CUWACUNU_PAPER_ONLINE_READINESS_BOOL_FIELD(checkpoint_selector)
+  CUWACUNU_PAPER_ONLINE_READINESS_BOOL_FIELD(optimizer)
+  CUWACUNU_PAPER_ONLINE_READINESS_BOOL_FIELD(allocation_authority)
+  CUWACUNU_PAPER_ONLINE_READINESS_BOOL_FIELD(execution_authority)
+  CUWACUNU_PAPER_ONLINE_READINESS_BOOL_FIELD(readiness_authority)
+  CUWACUNU_PAPER_ONLINE_READINESS_BOOL_FIELD(quality_authority)
+  CUWACUNU_PAPER_ONLINE_READINESS_BOOL_FIELD(performance_authority)
+  CUWACUNU_PAPER_ONLINE_READINESS_BOOL_FIELD(market_readiness_authority)
+  CUWACUNU_PAPER_ONLINE_READINESS_BOOL_FIELD(deployment_authority)
+  CUWACUNU_PAPER_ONLINE_READINESS_BOOL_FIELD(live_execution_authority)
+  CUWACUNU_PAPER_ONLINE_READINESS_BOOL_FIELD(coverage_authority)
+  CUWACUNU_PAPER_ONLINE_READINESS_BOOL_FIELD(leakage_authority)
+  CUWACUNU_PAPER_ONLINE_READINESS_BOOL_FIELD(contract_identity_authority)
+#undef CUWACUNU_PAPER_ONLINE_READINESS_BOOL_FIELD
+  return out.str();
+}
+
+[[nodiscard]] inline std::string paper_online_readiness_fact_digest(
+    const lattice_paper_online_readiness_fact_t &fact) {
+  return exposure_digest_for_text(
+      canonical_paper_online_readiness_fact_text(fact));
+}
+
+[[nodiscard]] inline std::vector<std::string>
+paper_online_readiness_fact_issues(
+    const lattice_paper_online_readiness_fact_t &fact) {
+  std::vector<std::string> issues;
+  const auto require_nonempty = [&](const std::string &value,
+                                    const char *issue) {
+    if (value.empty()) {
+      issues.emplace_back(issue);
+    }
+  };
+  require_nonempty(fact.parent_exposure_fact_digest,
+                   "missing_parent_exposure_fact_digest");
+  require_nonempty(fact.contract_fingerprint, "missing_contract_fingerprint");
+  require_nonempty(fact.protocol_id, "missing_protocol_id");
+  require_nonempty(fact.graph_order_fingerprint,
+                   "missing_graph_order_fingerprint");
+  require_nonempty(fact.source_cursor_token, "missing_source_cursor_token");
+  require_nonempty(fact.readiness_id, "missing_readiness_id");
+  if (fact.readiness_contract_id != "paper_online_readiness_contract.v1") {
+    issues.emplace_back("unsupported_readiness_contract_id");
+  }
+  require_nonempty(fact.policy_acceptance_fact_digest,
+                   "missing_policy_acceptance_fact_digest");
+  if (fact.policy_acceptance_target_id != "policy_acceptance_contract_ready") {
+    issues.emplace_back("policy_acceptance_target_mismatch");
+  }
+  require_nonempty(fact.policy_acceptance_proof_certificate_digest,
+                   "missing_policy_acceptance_proof_certificate_digest");
+  require_nonempty(fact.tsodao_settings_protection_fact_digest,
+                   "missing_tsodao_settings_protection_fact_digest");
+  require_nonempty(fact.protected_settings_bundle_digest,
+                   "missing_protected_settings_bundle_digest");
+  require_nonempty(fact.accepted_policy_id, "missing_accepted_policy_id");
+  require_nonempty(fact.accepted_policy_kind, "missing_accepted_policy_kind");
+  require_nonempty(fact.accepted_policy_family_id,
+                   "missing_accepted_policy_family_id");
+  require_nonempty(fact.accepted_actor_checkpoint_digest,
+                   "missing_accepted_actor_checkpoint_digest");
+  require_nonempty(fact.accepted_checkpoint_digest,
+                   "missing_accepted_checkpoint_digest");
+  require_nonempty(fact.policy_quality_report_digest,
+                   "missing_policy_quality_report_digest");
+  require_nonempty(fact.validation_rollout_report_digest,
+                   "missing_validation_rollout_report_digest");
+  if (fact.reward_contract_id !=
+      "kikijyeba.environment.reward.post_execution_ledger_log_growth_"
+      "cost_drawdown.v1") {
+    issues.emplace_back("unsupported_reward_contract_id");
+  }
+  require_nonempty(fact.execution_profile_digest,
+                   "missing_execution_profile_digest");
+  require_nonempty(fact.accounting_numeraire_node_id,
+                   "missing_accounting_numeraire_node_id");
+  if (fact.paper_online_environment_contract_id !=
+      "kikijyeba.environment.paper_online.v1") {
+    issues.emplace_back("unsupported_paper_online_environment_contract_id");
+  }
+  require_nonempty(fact.paper_online_profile_digest,
+                   "missing_paper_online_profile_digest");
+  require_nonempty(fact.direct_edge_universe_digest,
+                   "missing_direct_edge_universe_digest");
+  if (fact.direct_edge_universe_validation_policy_id.empty()) {
+    issues.emplace_back("missing_direct_edge_universe_validation_policy_id");
+  }
+  if (fact.missing_direct_pair_policy != "skip_pair_warn" &&
+      fact.missing_direct_pair_policy != "invalid_trace") {
+    issues.emplace_back("unsupported_missing_direct_pair_policy");
+  }
+  if (fact.synthetic_execution_market_policy_id !=
+      "synthetic_execution_markets_forbidden.v1") {
+    issues.emplace_back("synthetic_execution_market_policy_mismatch");
+  }
+  require_nonempty(fact.locked_execution_profile_digest,
+                   "missing_locked_execution_profile_digest");
+  require_nonempty(fact.persistent_paper_ledger_recovery_policy_id,
+                   "missing_persistent_paper_ledger_recovery_policy_id");
+  require_nonempty(fact.paper_ledger_storage_policy_id,
+                   "missing_paper_ledger_storage_policy_id");
+  if (fact.session_state_schema_id != "kikijyeba.paper_online.session_state.v1") {
+    issues.emplace_back("unsupported_session_state_schema_id");
+  }
+  require_nonempty(fact.session_lifecycle_policy_id,
+                   "missing_session_lifecycle_policy_id");
+  require_nonempty(fact.idempotency_policy_id,
+                   "missing_idempotency_policy_id");
+  require_nonempty(fact.execution_intent_id_policy,
+                   "missing_execution_intent_id_policy");
+  require_nonempty(fact.duplicate_action_policy,
+                   "missing_duplicate_action_policy");
+  require_nonempty(fact.duplicate_execution_intent_policy,
+                   "missing_duplicate_execution_intent_policy");
+  require_nonempty(fact.clock_policy_id, "missing_clock_policy_id");
+  require_nonempty(fact.timestamp_policy_id, "missing_timestamp_policy_id");
+  require_nonempty(fact.market_data_staleness_policy_id,
+                   "missing_market_data_staleness_policy_id");
+  if (fact.max_market_data_staleness_ms <= 0) {
+    issues.emplace_back("invalid_max_market_data_staleness_ms");
+  }
+  if (fact.clock_skew_tolerance_ms < 0) {
+    issues.emplace_back("invalid_clock_skew_tolerance_ms");
+  }
+  require_nonempty(fact.reward_report_artifact_policy_id,
+                   "missing_reward_report_artifact_policy_id");
+  require_nonempty(fact.operator_abort_policy_id,
+                   "missing_operator_abort_policy_id");
+  require_nonempty(fact.kill_switch_policy_id,
+                   "missing_kill_switch_policy_id");
+  const auto require_true = [&](bool value, const char *issue) {
+    if (!value) {
+      issues.emplace_back(issue);
+    }
+  };
+  require_true(fact.policy_acceptance_ready,
+               "policy_acceptance_ready_not_bound");
+  require_true(fact.tsodao_settings_protection_ready,
+               "tsodao_settings_protection_ready_not_bound");
+  require_true(fact.accepted_policy_bound, "accepted_policy_not_bound");
+  require_true(fact.protected_settings_bound, "protected_settings_not_bound");
+  require_true(fact.direct_edge_universe_validated,
+               "direct_edge_universe_not_validated");
+  require_true(fact.locked_execution_profile_bound,
+               "locked_execution_profile_not_bound");
+  require_true(fact.persistent_paper_ledger_recovery_bound,
+               "persistent_paper_ledger_recovery_not_bound");
+  require_true(fact.idempotency_bound, "idempotency_not_bound");
+  require_true(fact.duplicate_action_protection_bound,
+               "duplicate_action_protection_not_bound");
+  require_true(fact.session_lifecycle_bound,
+               "session_lifecycle_not_bound");
+  require_true(fact.clock_timestamp_policy_bound,
+               "clock_timestamp_policy_not_bound");
+  require_true(fact.market_data_staleness_bound,
+               "market_data_staleness_not_bound");
+  require_true(fact.reward_report_artifact_path_bound,
+               "reward_report_artifact_path_not_bound");
+  require_true(fact.operator_abort_bound, "operator_abort_not_bound");
+  require_true(fact.kill_switch_bound, "kill_switch_not_bound");
+  if (fact.synthetic_execution_markets_allowed ||
+      fact.numeraire_fallback_allowed || fact.paper_online_execution_allowed ||
+      fact.live_execution_allowed || fact.broker_execution_allowed ||
+      fact.direct_policy_to_broker_allowed ||
+      fact.direct_policy_to_cajtucu_allowed || !fact.artifact_evidence ||
+      !fact.visibility_only || !fact.paper_online_readiness_artifact ||
+      fact.policy_selector || fact.checkpoint_selector || fact.optimizer ||
+      fact.allocation_authority || fact.execution_authority ||
+      fact.readiness_authority || fact.quality_authority ||
+      fact.performance_authority || fact.market_readiness_authority ||
+      fact.deployment_authority || fact.live_execution_authority ||
+      fact.coverage_authority || fact.leakage_authority ||
+      fact.contract_identity_authority) {
+    issues.emplace_back(
+        "paper_online_readiness_must_remain_artifact_evidence_only");
+  }
+  return issues;
+}
+
+[[nodiscard]] inline std::vector<std::string>
+paper_online_readiness_binding_issues(
+    const lattice_paper_online_readiness_fact_t &fact,
+    const std::vector<lattice_policy_acceptance_fact_t> &acceptance_facts,
+    const std::vector<lattice_tsodao_settings_protection_fact_t>
+        &protection_facts = empty_tsodao_settings_protection_facts()) {
+  std::vector<std::string> issues;
+  const lattice_policy_acceptance_fact_t *acceptance_fact = nullptr;
+  for (const auto &candidate : acceptance_facts) {
+    if (policy_acceptance_fact_digest(candidate) ==
+        fact.policy_acceptance_fact_digest) {
+      acceptance_fact = &candidate;
+      break;
+    }
+  }
+  if (acceptance_fact == nullptr) {
+    issues.emplace_back("policy_acceptance_fact_digest_not_found");
+    return issues;
+  }
+  const auto acceptance_issues =
+      policy_acceptance_fact_issues(*acceptance_fact);
+  if (!acceptance_issues.empty()) {
+    issues.emplace_back("policy_acceptance_fact_not_ready");
+  }
+  const auto check_equal = [&](const std::string &readiness_value,
+                               const std::string &accepted_value,
+                               const char *issue) {
+    if (readiness_value != accepted_value) {
+      issues.emplace_back(issue);
+    }
+  };
+  check_equal(fact.tsodao_settings_protection_fact_digest,
+              acceptance_fact->tsodao_settings_protection_fact_digest,
+              "tsodao_settings_protection_fact_digest_mismatch");
+  check_equal(fact.protected_settings_bundle_digest,
+              acceptance_fact->protected_settings_bundle_digest,
+              "protected_settings_bundle_digest_mismatch");
+  check_equal(fact.accepted_policy_id, acceptance_fact->accepted_policy_id,
+              "accepted_policy_id_mismatch");
+  check_equal(fact.accepted_policy_kind, acceptance_fact->accepted_policy_kind,
+              "accepted_policy_kind_mismatch");
+  check_equal(fact.accepted_policy_family_id,
+              acceptance_fact->accepted_policy_family_id,
+              "accepted_policy_family_id_mismatch");
+  check_equal(fact.accepted_actor_checkpoint_digest,
+              acceptance_fact->accepted_actor_checkpoint_digest,
+              "accepted_actor_checkpoint_digest_mismatch");
+  check_equal(fact.accepted_checkpoint_digest,
+              acceptance_fact->accepted_checkpoint_digest,
+              "accepted_checkpoint_digest_mismatch");
+  check_equal(fact.policy_quality_report_digest,
+              acceptance_fact->policy_quality_report_digest,
+              "policy_quality_report_digest_mismatch");
+  check_equal(fact.validation_rollout_report_digest,
+              acceptance_fact->validation_rollout_report_digest,
+              "validation_rollout_report_digest_mismatch");
+  check_equal(fact.reward_contract_id, acceptance_fact->reward_contract_id,
+              "reward_contract_id_mismatch");
+  check_equal(fact.execution_profile_digest,
+              acceptance_fact->execution_profile_digest,
+              "execution_profile_digest_mismatch");
+  check_equal(fact.accounting_numeraire_node_id,
+              acceptance_fact->accounting_numeraire_node_id,
+              "accounting_numeraire_node_id_mismatch");
+  if (!acceptance_fact->policy_acceptance_decision) {
+    issues.emplace_back("policy_acceptance_decision_not_ready");
+  }
+  if (fact.locked_execution_profile_digest != fact.execution_profile_digest) {
+    issues.emplace_back("locked_execution_profile_digest_mismatch");
+  }
+  const lattice_tsodao_settings_protection_fact_t *protection_fact = nullptr;
+  for (const auto &candidate : protection_facts) {
+    if (tsodao_settings_protection_fact_digest(candidate) ==
+        fact.tsodao_settings_protection_fact_digest) {
+      protection_fact = &candidate;
+      break;
+    }
+  }
+  if (protection_fact != nullptr) {
+    const auto protection_issues =
+        tsodao_settings_protection_fact_issues(*protection_fact);
+    if (!protection_issues.empty()) {
+      issues.emplace_back("tsodao_settings_protection_fact_not_ready");
+    }
+  }
+  return issues;
+}
+
+inline void append_paper_online_readiness_scan_warning(
+    const lattice_paper_online_readiness_fact_t &fact,
+    const std::filesystem::path &job_dir, std::vector<std::string> &warnings) {
+  const auto issues = paper_online_readiness_fact_issues(fact);
+  if (issues.empty()) {
+    return;
+  }
+  std::ostringstream oss;
+  oss << "[lattice_exposure] paper_online_readiness warning job_dir="
+      << job_dir.string() << " job_id=" << fact.job_id << " issues=";
+  for (std::size_t i = 0; i < issues.size(); ++i) {
+    if (i != 0) {
+      oss << ",";
+    }
+    oss << issues[i];
+  }
+  warnings.push_back(oss.str());
+}
+
+[[nodiscard]] inline policy_acceptance_summary_t summarize_policy_acceptances(
+    const std::vector<lattice_exposure_fact_t> &exposure_facts,
+    const std::vector<lattice_policy_acceptance_fact_t> &acceptance_facts,
+    const std::vector<lattice_policy_training_fact_t> &policy_training_facts =
+        empty_policy_training_facts(),
+    const std::vector<lattice_tsodao_settings_protection_fact_t>
+        &protection_facts = empty_tsodao_settings_protection_facts()) {
+  policy_acceptance_summary_t out{};
+  out.exposure_fact_count = static_cast<std::int64_t>(exposure_facts.size());
+  out.policy_acceptance_fact_count =
+      static_cast<std::int64_t>(acceptance_facts.size());
+  std::set<std::string> parent_digests;
+  for (const auto &fact : acceptance_facts) {
+    if (!fact.parent_exposure_fact_digest.empty()) {
+      parent_digests.insert(fact.parent_exposure_fact_digest);
+    }
+    if (!fact.acceptance_id.empty()) {
+      ++out.acceptance_id_bound_count;
+    }
+    if (!fact.acceptance_contract_id.empty()) {
+      ++out.acceptance_contract_bound_count;
+    }
+    if (!fact.accepted_policy_training_fact_digest.empty()) {
+      ++out.policy_training_fact_declared_count;
+    }
+    if (!fact.tsodao_settings_protection_fact_digest.empty()) {
+      ++out.tsodao_settings_protection_declared_count;
+    }
+    if (fact.protected_settings_bound) {
+      ++out.protected_settings_bound_count;
+    }
+    if (fact.mandatory_baselines_bound) {
+      ++out.mandatory_baselines_bound_count;
+    }
+    if (fact.mandatory_baselines_passed) {
+      ++out.mandatory_baselines_passed_count;
+    }
+    if (fact.after_cost_metrics_bound) {
+      ++out.after_cost_metrics_bound_count;
+    }
+    if (fact.primary_metric_passed) {
+      ++out.primary_metric_passed_count;
+    }
+    if (fact.uncertainty_policy_bound) {
+      ++out.uncertainty_policy_bound_count;
+    }
+    if (fact.uncertainty_passed) {
+      ++out.uncertainty_passed_count;
+    }
+    if (fact.selector_split_bound) {
+      ++out.selector_split_bound_count;
+    }
+    if (fact.validation_test_disjoint) {
+      ++out.validation_test_disjoint_count;
+    }
+    if (fact.test_sealed_until_acceptance) {
+      ++out.sealed_test_count;
+    }
+    if (fact.negative_tests_bound) {
+      ++out.negative_tests_bound_count;
+    }
+    if (fact.negative_tests_passed) {
+      ++out.negative_tests_passed_count;
+    }
+    if (fact.leakage_negative_tests_passed) {
+      ++out.leakage_negative_tests_passed_count;
+    }
+    if (fact.threshold_selection_audit_bound) {
+      ++out.threshold_selection_audit_bound_count;
+    }
+    if (fact.threshold_selected_before_test) {
+      ++out.threshold_selected_before_test_count;
+    }
+    if (fact.tie_policy_bound) {
+      ++out.tie_policy_bound_count;
+    }
+    if (fact.tie_policy_passed) {
+      ++out.tie_policy_passed_count;
+    }
+    if (fact.cost_slippage_assumptions_bound) {
+      ++out.cost_slippage_assumptions_bound_count;
+    }
+    if (fact.promotion_criteria_bound) {
+      ++out.promotion_criteria_bound_count;
+    }
+    if (fact.promotion_criteria_satisfied) {
+      ++out.promotion_criteria_satisfied_count;
+    }
+    if (fact.policy_acceptance_decision) {
+      ++out.accepted_decision_count;
+    }
+    if (fact.artifact_evidence) {
+      ++out.artifact_evidence_count;
+    }
+    const auto binding_issues = policy_acceptance_binding_issues(
+        fact, policy_training_facts, protection_facts);
+    bool policy_bound = true;
+    bool protection_bound = true;
+    for (const auto &issue : binding_issues) {
+      if (issue.find("policy_training") != std::string::npos ||
+          issue.starts_with("accepted_")) {
+        policy_bound = false;
+      }
+      if (issue.find("tsodao") != std::string::npos ||
+          issue.find("protected_settings") != std::string::npos) {
+        protection_bound = false;
+      }
+    }
+    if (policy_bound) {
+      ++out.policy_training_fact_bound_count;
+    } else {
+      ++out.unresolved_policy_training_fact_count;
+    }
+    if (protection_bound) {
+      ++out.tsodao_settings_protection_bound_count;
+    } else {
+      ++out.unresolved_tsodao_settings_protection_count;
+    }
+    out.artifact_evidence = out.artifact_evidence && fact.artifact_evidence;
+    out.visibility_only = out.visibility_only && fact.visibility_only;
+    out.policy_acceptance_artifact =
+        out.policy_acceptance_artifact && fact.policy_acceptance_artifact;
+    out.policy_selector = out.policy_selector || fact.policy_selector;
+    out.checkpoint_selector =
+        out.checkpoint_selector || fact.checkpoint_selector;
+    out.optimizer = out.optimizer || fact.optimizer;
+    out.allocation_authority =
+        out.allocation_authority || fact.allocation_authority;
+    out.execution_authority =
+        out.execution_authority || fact.execution_authority;
+    out.readiness_authority =
+        out.readiness_authority || fact.readiness_authority;
+    out.quality_authority = out.quality_authority || fact.quality_authority;
+    out.performance_authority =
+        out.performance_authority || fact.performance_authority;
+    out.market_readiness_authority =
+        out.market_readiness_authority || fact.market_readiness_authority;
+    out.deployment_authority =
+        out.deployment_authority || fact.deployment_authority;
+    out.live_execution_authority =
+        out.live_execution_authority || fact.live_execution_authority;
+    out.coverage_authority = out.coverage_authority || fact.coverage_authority;
+    out.leakage_authority = out.leakage_authority || fact.leakage_authority;
+    out.contract_identity_authority =
+        out.contract_identity_authority || fact.contract_identity_authority;
+    const auto issues = policy_acceptance_fact_issues(fact);
+    out.warning_count +=
+        static_cast<std::int64_t>(issues.size() + binding_issues.size());
+    for (const auto &issue : issues) {
+      out.issues.push_back(fact.job_id + ":" + issue);
+    }
+    for (const auto &issue : binding_issues) {
+      out.issues.push_back(fact.job_id + ":" + issue);
+    }
+    if (!fact.artifact_evidence || !fact.visibility_only ||
+        !fact.policy_acceptance_artifact || fact.policy_selector ||
+        fact.checkpoint_selector || fact.optimizer ||
+        fact.allocation_authority || fact.execution_authority ||
+        fact.readiness_authority || fact.quality_authority ||
+        fact.performance_authority || fact.market_readiness_authority ||
+        fact.deployment_authority || fact.live_execution_authority ||
+        fact.coverage_authority || fact.leakage_authority ||
+        fact.contract_identity_authority) {
+      ++out.authority_drift_count;
+    }
+  }
+  out.parent_exposure_fact_count =
+      static_cast<std::int64_t>(parent_digests.size());
+  if (!out.artifact_evidence || !out.visibility_only ||
+      !out.policy_acceptance_artifact || out.policy_selector ||
+      out.checkpoint_selector || out.optimizer || out.allocation_authority ||
+      out.execution_authority || out.readiness_authority ||
+      out.quality_authority || out.performance_authority ||
+      out.market_readiness_authority || out.deployment_authority ||
+      out.live_execution_authority || out.coverage_authority ||
+      out.leakage_authority || out.contract_identity_authority) {
+    out.issues.push_back(
+        "Policy acceptance facts must remain artifact evidence; they cannot "
+        "select policies, optimize settings, allocate, execute, declare "
+        "market/deployment readiness, or authorize live capital");
+    ++out.warning_count;
+  }
+  return out;
+}
+
+[[nodiscard]] inline paper_online_readiness_summary_t
+summarize_paper_online_readiness(
+    const std::vector<lattice_exposure_fact_t> &exposure_facts,
+    const std::vector<lattice_paper_online_readiness_fact_t> &readiness_facts,
+    const std::vector<lattice_policy_acceptance_fact_t> &acceptance_facts =
+        empty_policy_acceptance_facts(),
+    const std::vector<lattice_tsodao_settings_protection_fact_t>
+        &protection_facts = empty_tsodao_settings_protection_facts()) {
+  paper_online_readiness_summary_t out{};
+  out.exposure_fact_count = static_cast<std::int64_t>(exposure_facts.size());
+  out.paper_online_readiness_fact_count =
+      static_cast<std::int64_t>(readiness_facts.size());
+  std::set<std::string> parent_digests;
+  for (const auto &fact : readiness_facts) {
+    if (!fact.parent_exposure_fact_digest.empty()) {
+      parent_digests.insert(fact.parent_exposure_fact_digest);
+    }
+    if (!fact.readiness_id.empty()) {
+      ++out.readiness_id_bound_count;
+    }
+    if (!fact.readiness_contract_id.empty()) {
+      ++out.readiness_contract_bound_count;
+    }
+    if (!fact.policy_acceptance_fact_digest.empty()) {
+      ++out.policy_acceptance_fact_declared_count;
+    }
+    if (fact.accepted_policy_bound) {
+      ++out.accepted_policy_bound_count;
+    }
+    if (fact.direct_edge_universe_validated) {
+      ++out.direct_edge_universe_validated_count;
+    }
+    if (fact.market_data_staleness_bound) {
+      ++out.staleness_policy_bound_count;
+    }
+    if (fact.idempotency_bound) {
+      ++out.idempotency_bound_count;
+    }
+    if (fact.persistent_paper_ledger_recovery_bound) {
+      ++out.ledger_recovery_bound_count;
+    }
+    if (fact.session_lifecycle_bound) {
+      ++out.session_lifecycle_bound_count;
+    }
+    if (fact.operator_abort_bound) {
+      ++out.abort_policy_bound_count;
+    }
+    if (fact.kill_switch_bound) {
+      ++out.kill_switch_bound_count;
+    }
+    if (fact.artifact_evidence) {
+      ++out.artifact_evidence_count;
+    }
+    const auto binding_issues = paper_online_readiness_binding_issues(
+        fact, acceptance_facts, protection_facts);
+    if (binding_issues.empty()) {
+      ++out.policy_acceptance_fact_bound_count;
+    } else {
+      ++out.unresolved_policy_acceptance_count;
+    }
+    out.artifact_evidence = out.artifact_evidence && fact.artifact_evidence;
+    out.visibility_only = out.visibility_only && fact.visibility_only;
+    out.paper_online_readiness_artifact =
+        out.paper_online_readiness_artifact &&
+        fact.paper_online_readiness_artifact;
+    out.paper_online_execution_allowed =
+        out.paper_online_execution_allowed ||
+        fact.paper_online_execution_allowed;
+    out.live_execution_allowed =
+        out.live_execution_allowed || fact.live_execution_allowed;
+    out.broker_execution_allowed =
+        out.broker_execution_allowed || fact.broker_execution_allowed;
+    out.direct_policy_to_broker_allowed =
+        out.direct_policy_to_broker_allowed ||
+        fact.direct_policy_to_broker_allowed;
+    out.direct_policy_to_cajtucu_allowed =
+        out.direct_policy_to_cajtucu_allowed ||
+        fact.direct_policy_to_cajtucu_allowed;
+    out.readiness_authority =
+        out.readiness_authority || fact.readiness_authority;
+    out.quality_authority = out.quality_authority || fact.quality_authority;
+    out.performance_authority =
+        out.performance_authority || fact.performance_authority;
+    out.market_readiness_authority =
+        out.market_readiness_authority || fact.market_readiness_authority;
+    out.deployment_authority =
+        out.deployment_authority || fact.deployment_authority;
+    out.live_execution_authority =
+        out.live_execution_authority || fact.live_execution_authority;
+    const auto issues = paper_online_readiness_fact_issues(fact);
+    out.warning_count +=
+        static_cast<std::int64_t>(issues.size() + binding_issues.size());
+    for (const auto &issue : issues) {
+      out.issues.push_back(fact.job_id + ":" + issue);
+    }
+    for (const auto &issue : binding_issues) {
+      out.issues.push_back(fact.job_id + ":" + issue);
+    }
+    if (!fact.artifact_evidence || !fact.visibility_only ||
+        !fact.paper_online_readiness_artifact ||
+        fact.paper_online_execution_allowed || fact.live_execution_allowed ||
+        fact.broker_execution_allowed || fact.direct_policy_to_broker_allowed ||
+        fact.direct_policy_to_cajtucu_allowed || fact.policy_selector ||
+        fact.checkpoint_selector || fact.optimizer ||
+        fact.allocation_authority || fact.execution_authority ||
+        fact.readiness_authority || fact.quality_authority ||
+        fact.performance_authority || fact.market_readiness_authority ||
+        fact.deployment_authority || fact.live_execution_authority ||
+        fact.coverage_authority || fact.leakage_authority ||
+        fact.contract_identity_authority) {
+      ++out.authority_drift_count;
+    }
+  }
+  out.parent_exposure_fact_count =
+      static_cast<std::int64_t>(parent_digests.size());
+  if (!out.artifact_evidence || !out.visibility_only ||
+      !out.paper_online_readiness_artifact ||
+      out.paper_online_execution_allowed || out.live_execution_allowed ||
+      out.broker_execution_allowed || out.direct_policy_to_broker_allowed ||
+      out.direct_policy_to_cajtucu_allowed || out.readiness_authority ||
+      out.quality_authority || out.performance_authority ||
+      out.market_readiness_authority || out.deployment_authority ||
+      out.live_execution_authority) {
+    out.issues.push_back(
+        "Paper-online readiness facts must remain artifact evidence; they "
+        "cannot run paper sessions, execute, deploy, bypass Marshal/Runtime/"
+        "Cajtucu, declare market readiness, or authorize live capital");
+    ++out.warning_count;
+  }
+  return out;
+}
+
 [[nodiscard]] inline policy_training_summary_t summarize_policy_trainings(
     const std::vector<lattice_exposure_fact_t> &exposure_facts,
     const std::vector<lattice_policy_training_fact_t> &policy_training_facts,
@@ -9992,6 +13549,28 @@ append_policy_training_scan_warning(const lattice_policy_training_fact_t &fact,
     }
     if (!fact.optimizer_state_digest.empty()) {
       ++out.optimizer_state_bound_count;
+    }
+    if (!fact.optimizer_state_schema_id.empty()) {
+      ++out.optimizer_state_schema_bound_count;
+    }
+    if (!fact.optimizer_torch_state_digest.empty()) {
+      ++out.optimizer_torch_state_bound_count;
+    }
+    if (fact.device_policy == "require_cuda" &&
+        fact.runtime_device_kind == "cuda" && fact.cuda_device_index_bound) {
+      ++out.cuda_runtime_contract_bound_count;
+    }
+    if (policy_training_fact_has_cuda_runtime_evidence(fact)) {
+      ++out.cuda_verified_count;
+    }
+    if (!fact.resume_mode.empty()) {
+      ++out.resume_mode_bound_count;
+    }
+    if (fact.resume_parent_loaded) {
+      ++out.resume_parent_loaded_count;
+    }
+    if (fact.optimizer_state_resume_loaded) {
+      ++out.optimizer_state_resume_loaded_count;
     }
     if (!fact.ppo_config_digest.empty()) {
       ++out.ppo_config_bound_count;
@@ -10595,6 +14174,12 @@ lattice_fact_family_name(lattice_fact_family_t family) {
     return "replay_environment";
   case lattice_fact_family_t::policy_training:
     return "policy_training";
+  case lattice_fact_family_t::tsodao_settings_protection:
+    return "tsodao_settings_protection";
+  case lattice_fact_family_t::policy_acceptance:
+    return "policy_acceptance";
+  case lattice_fact_family_t::paper_online_readiness:
+    return "paper_online_readiness";
   case lattice_fact_family_t::selection_signal:
     return "selection_signal";
   case lattice_fact_family_t::representation_support:
@@ -10671,6 +14256,25 @@ lattice_fact_family_registry() {
        "kikijyeba.lattice.policy_training.v1", "policy_training",
        "kikijyeba.lattice.policy_training_summary.v1", "audit_only", true,
        false, false, false, false, false, false, false},
+      {lattice_fact_family_t::tsodao_settings_protection,
+       "tsodao_settings_protection",
+       "kikijyeba.lattice.tsodao_settings_protection.v1",
+       "tsodao_settings_protection",
+       "kikijyeba.lattice.tsodao_settings_protection_summary.v1",
+       "settings_protection_artifact", true, false, false, false, false, false,
+       false, false},
+      {lattice_fact_family_t::policy_acceptance, "policy_acceptance",
+       "kikijyeba.lattice.policy_acceptance.v1", "policy_acceptance",
+       "kikijyeba.lattice.policy_acceptance_summary.v1",
+       "policy_acceptance_artifact", true, false, false, false, false, false,
+       false, false},
+      {lattice_fact_family_t::paper_online_readiness,
+       "paper_online_readiness",
+       "kikijyeba.lattice.paper_online_readiness.v1",
+       "paper_online_readiness",
+       "kikijyeba.lattice.paper_online_readiness_summary.v1",
+       "paper_online_readiness_artifact", true, false, false, false, false,
+       false, false, false},
       {lattice_fact_family_t::selection_signal, "selection_signal",
        "kikijyeba.lattice.selection_signal.v1", "selection_signal",
        "kikijyeba.lattice.selection_signal_summary.v1", "leakage_visibility",
@@ -11851,6 +15455,8 @@ make_exposure_fact_from_job_dir(const std::filesystem::path &job_dir,
   out.component_assembly_fingerprint =
       detail::component_fingerprint_from_manifest(manifest);
   out.target_component_family_id = target_component_family_id;
+  out.component_operator_surface_digest = detail::first_string(
+      runtime_result, manifest, {"component_operator_surface_digest"});
   out.config_bundle_id = detail::map_get(manifest, "config_bundle_id");
   out.config_receipt_id = detail::map_get(manifest, "config_receipt_id");
   out.component_spawn_registry_id =
@@ -12404,6 +16010,8 @@ canonical_exposure_fact_text(const lattice_exposure_fact_t &fact) {
       << fact.component_assembly_fingerprint << "\n";
   out << "target_component_family_id=" << fact.target_component_family_id
       << "\n";
+  out << "component_operator_surface_digest="
+      << fact.component_operator_surface_digest << "\n";
   out << "config_bundle_id=" << fact.config_bundle_id << "\n";
   out << "config_receipt_id=" << fact.config_receipt_id << "\n";
   out << "component_spawn_registry_id=" << fact.component_spawn_registry_id
@@ -12688,6 +16296,8 @@ make_exposure_fact_from_sidecar_text(const std::string &text,
       detail::map_get(map, "component_assembly_fingerprint");
   out.target_component_family_id =
       detail::map_get(map, "target_component_family_id");
+  out.component_operator_surface_digest =
+      detail::map_get(map, "component_operator_surface_digest");
   out.config_bundle_id = detail::map_get(map, "config_bundle_id");
   out.config_receipt_id = detail::map_get(map, "config_receipt_id");
   out.component_spawn_registry_id =
@@ -13994,6 +17604,20 @@ public:
     policy_training_facts_.push_back(std::move(fact));
   }
 
+  void add_tsodao_settings_protection(
+      lattice_tsodao_settings_protection_fact_t fact) {
+    tsodao_settings_protection_facts_.push_back(std::move(fact));
+  }
+
+  void add_policy_acceptance(lattice_policy_acceptance_fact_t fact) {
+    policy_acceptance_facts_.push_back(std::move(fact));
+  }
+
+  void add_paper_online_readiness(
+      lattice_paper_online_readiness_fact_t fact) {
+    paper_online_readiness_facts_.push_back(std::move(fact));
+  }
+
   void add_selection_signal(lattice_selection_signal_fact_t fact) {
     for (const auto &forecast_eval_fact : forecast_eval_facts_) {
       bind_selection_signal_parent_evaluation(fact, forecast_eval_fact);
@@ -14062,6 +17686,21 @@ public:
   [[nodiscard]] const std::vector<lattice_policy_training_fact_t> &
   policy_training_facts() const {
     return policy_training_facts_;
+  }
+
+  [[nodiscard]] const std::vector<lattice_tsodao_settings_protection_fact_t> &
+  tsodao_settings_protection_facts() const {
+    return tsodao_settings_protection_facts_;
+  }
+
+  [[nodiscard]] const std::vector<lattice_policy_acceptance_fact_t> &
+  policy_acceptance_facts() const {
+    return policy_acceptance_facts_;
+  }
+
+  [[nodiscard]] const std::vector<lattice_paper_online_readiness_fact_t> &
+  paper_online_readiness_facts() const {
+    return paper_online_readiness_facts_;
   }
 
   [[nodiscard]] const std::vector<lattice_selection_signal_fact_t> &
@@ -14421,6 +18060,11 @@ private:
   std::vector<lattice_allocation_engine_fact_t> allocation_engine_facts_{};
   std::vector<lattice_replay_environment_fact_t> replay_environment_facts_{};
   std::vector<lattice_policy_training_fact_t> policy_training_facts_{};
+  std::vector<lattice_tsodao_settings_protection_fact_t>
+      tsodao_settings_protection_facts_{};
+  std::vector<lattice_policy_acceptance_fact_t> policy_acceptance_facts_{};
+  std::vector<lattice_paper_online_readiness_fact_t>
+      paper_online_readiness_facts_{};
   std::vector<lattice_selection_signal_fact_t> selection_signal_facts_{};
   std::vector<lattice_representation_support_fact_t>
       representation_support_facts_{};
@@ -14569,6 +18213,14 @@ lattice_fact_family_count(const lattice_exposure_ledger_t &ledger,
     return static_cast<std::int64_t>(ledger.replay_environment_facts().size());
   case lattice_fact_family_t::policy_training:
     return static_cast<std::int64_t>(ledger.policy_training_facts().size());
+  case lattice_fact_family_t::tsodao_settings_protection:
+    return static_cast<std::int64_t>(
+        ledger.tsodao_settings_protection_facts().size());
+  case lattice_fact_family_t::policy_acceptance:
+    return static_cast<std::int64_t>(ledger.policy_acceptance_facts().size());
+  case lattice_fact_family_t::paper_online_readiness:
+    return static_cast<std::int64_t>(
+        ledger.paper_online_readiness_facts().size());
   case lattice_fact_family_t::selection_signal:
     return static_cast<std::int64_t>(ledger.selection_signal_facts().size());
   case lattice_fact_family_t::representation_support:
@@ -14756,6 +18408,44 @@ summarize_lattice_fact_family(const lattice_exposure_ledger_t &ledger,
             .issues;
     break;
   }
+  case lattice_fact_family_t::tsodao_settings_protection: {
+    for (const auto &fact : ledger.tsodao_settings_protection_facts()) {
+      if (!fact.parent_exposure_fact_digest.empty()) {
+        parent_digests.insert(fact.parent_exposure_fact_digest);
+      }
+    }
+    out.issues = summarize_tsodao_settings_protections(
+                     ledger.facts(), ledger.tsodao_settings_protection_facts(),
+                     ledger.policy_training_facts())
+                     .issues;
+    break;
+  }
+  case lattice_fact_family_t::policy_acceptance: {
+    for (const auto &fact : ledger.policy_acceptance_facts()) {
+      if (!fact.parent_exposure_fact_digest.empty()) {
+        parent_digests.insert(fact.parent_exposure_fact_digest);
+      }
+    }
+    out.issues = summarize_policy_acceptances(
+                     ledger.facts(), ledger.policy_acceptance_facts(),
+                     ledger.policy_training_facts(),
+                     ledger.tsodao_settings_protection_facts())
+                     .issues;
+    break;
+  }
+  case lattice_fact_family_t::paper_online_readiness: {
+    for (const auto &fact : ledger.paper_online_readiness_facts()) {
+      if (!fact.parent_exposure_fact_digest.empty()) {
+        parent_digests.insert(fact.parent_exposure_fact_digest);
+      }
+    }
+    out.issues = summarize_paper_online_readiness(
+                     ledger.facts(), ledger.paper_online_readiness_facts(),
+                     ledger.policy_acceptance_facts(),
+                     ledger.tsodao_settings_protection_facts())
+                     .issues;
+    break;
+  }
   case lattice_fact_family_t::selection_signal: {
     for (const auto &fact : ledger.selection_signal_facts()) {
       if (!fact.parent_exposure_fact_digest.empty()) {
@@ -14807,6 +18497,49 @@ summarize_lattice_fact_family_integrity(const lattice_exposure_ledger_t &ledger,
   case lattice_fact_family_t::selection_signal:
   case lattice_fact_family_t::representation_support:
     break;
+  case lattice_fact_family_t::tsodao_settings_protection: {
+    const auto summary = summarize_tsodao_settings_protections(
+        ledger.facts(), ledger.tsodao_settings_protection_facts(),
+        ledger.policy_training_facts());
+    add_lattice_fact_relation_integrity(
+        out, summary.protected_policy_training_fact_declared_count,
+        summary.protected_policy_training_fact_bound_count,
+        summary.unresolved_policy_training_fact_count,
+        summary.protected_settings_mismatch_count);
+    out.warning_count = summary.warning_count;
+    out.issues = summary.issues;
+    break;
+  }
+  case lattice_fact_family_t::policy_acceptance: {
+    const auto summary = summarize_policy_acceptances(
+        ledger.facts(), ledger.policy_acceptance_facts(),
+        ledger.policy_training_facts(),
+        ledger.tsodao_settings_protection_facts());
+    add_lattice_fact_relation_integrity(
+        out, summary.policy_training_fact_declared_count,
+        summary.policy_training_fact_bound_count,
+        summary.unresolved_policy_training_fact_count, 0);
+    add_lattice_fact_relation_integrity(
+        out, summary.tsodao_settings_protection_declared_count,
+        summary.tsodao_settings_protection_bound_count,
+        summary.unresolved_tsodao_settings_protection_count, 0);
+    out.warning_count = summary.warning_count;
+    out.issues = summary.issues;
+    break;
+  }
+  case lattice_fact_family_t::paper_online_readiness: {
+    const auto summary = summarize_paper_online_readiness(
+        ledger.facts(), ledger.paper_online_readiness_facts(),
+        ledger.policy_acceptance_facts(),
+        ledger.tsodao_settings_protection_facts());
+    add_lattice_fact_relation_integrity(
+        out, summary.policy_acceptance_fact_declared_count,
+        summary.policy_acceptance_fact_bound_count,
+        summary.unresolved_policy_acceptance_count, 0);
+    out.warning_count = summary.warning_count;
+    out.issues = summary.issues;
+    break;
+  }
   case lattice_fact_family_t::policy_training: {
     const auto summary = summarize_policy_trainings(
         ledger.facts(), ledger.policy_training_facts(),
@@ -15186,6 +18919,9 @@ struct exposure_scan_options_t {
   bool derive_allocation_engine_facts{true};
   bool derive_replay_environment_facts{false};
   bool derive_policy_training_facts{true};
+  bool derive_tsodao_settings_protection_facts{true};
+  bool derive_policy_acceptance_facts{true};
+  bool derive_paper_online_readiness_facts{true};
   bool derive_selection_signal_facts{true};
   bool read_checkpoint_sidecars{true};
   bool collect_warnings{true};
@@ -15496,6 +19232,30 @@ scan_exposure_ledger_from_runtime_root(
                                                   out.warnings);
             }
           }
+          if (options.derive_tsodao_settings_protection_facts) {
+            for (const auto &protection_fact :
+                 make_tsodao_settings_protection_facts_from_job_dir(
+                     job_dir, sidecar_fact)) {
+              append_tsodao_settings_protection_scan_warning(
+                  protection_fact, job_dir, out.warnings);
+            }
+          }
+          if (options.derive_policy_acceptance_facts) {
+            for (const auto &acceptance_fact :
+                 make_policy_acceptance_facts_from_job_dir(job_dir,
+                                                           sidecar_fact)) {
+              append_policy_acceptance_scan_warning(acceptance_fact, job_dir,
+                                                    out.warnings);
+            }
+          }
+          if (options.derive_paper_online_readiness_facts) {
+            for (const auto &readiness_fact :
+                 make_paper_online_readiness_facts_from_job_dir(job_dir,
+                                                                sidecar_fact)) {
+              append_paper_online_readiness_scan_warning(
+                  readiness_fact, job_dir, out.warnings);
+            }
+          }
           if (options.derive_selection_signal_facts) {
             append_selection_signal_scan_warning(sidecar_fact, job_dir,
                                                  out.warnings);
@@ -15560,6 +19320,27 @@ scan_exposure_ledger_from_runtime_root(
           for (auto policy_training_fact :
                make_policy_training_facts_from_job_dir(job_dir, sidecar_fact)) {
             out.ledger.add_policy_training(std::move(policy_training_fact));
+          }
+        }
+        if (options.derive_tsodao_settings_protection_facts) {
+          for (auto protection_fact :
+               make_tsodao_settings_protection_facts_from_job_dir(
+                   job_dir, sidecar_fact)) {
+            out.ledger.add_tsodao_settings_protection(
+                std::move(protection_fact));
+          }
+        }
+        if (options.derive_policy_acceptance_facts) {
+          for (auto acceptance_fact : make_policy_acceptance_facts_from_job_dir(
+                   job_dir, sidecar_fact)) {
+            out.ledger.add_policy_acceptance(std::move(acceptance_fact));
+          }
+        }
+        if (options.derive_paper_online_readiness_facts) {
+          for (auto readiness_fact :
+               make_paper_online_readiness_facts_from_job_dir(job_dir,
+                                                              sidecar_fact)) {
+            out.ledger.add_paper_online_readiness(std::move(readiness_fact));
           }
         }
         out.ledger.add(std::move(sidecar_fact),
@@ -15629,6 +19410,29 @@ scan_exposure_ledger_from_runtime_root(
                                                   out.warnings);
             }
           }
+          if (options.derive_tsodao_settings_protection_facts) {
+            for (const auto &protection_fact :
+                 make_tsodao_settings_protection_facts_from_job_dir(job_dir,
+                                                                    fact)) {
+              append_tsodao_settings_protection_scan_warning(
+                  protection_fact, job_dir, out.warnings);
+            }
+          }
+          if (options.derive_policy_acceptance_facts) {
+            for (const auto &acceptance_fact :
+                 make_policy_acceptance_facts_from_job_dir(job_dir, fact)) {
+              append_policy_acceptance_scan_warning(acceptance_fact, job_dir,
+                                                    out.warnings);
+            }
+          }
+          if (options.derive_paper_online_readiness_facts) {
+            for (const auto &readiness_fact :
+                 make_paper_online_readiness_facts_from_job_dir(job_dir,
+                                                                fact)) {
+              append_paper_online_readiness_scan_warning(
+                  readiness_fact, job_dir, out.warnings);
+            }
+          }
           if (options.derive_selection_signal_facts) {
             append_selection_signal_scan_warning(fact, job_dir, out.warnings);
           }
@@ -15691,6 +19495,26 @@ scan_exposure_ledger_from_runtime_root(
           for (auto policy_training_fact :
                make_policy_training_facts_from_job_dir(job_dir, fact)) {
             out.ledger.add_policy_training(std::move(policy_training_fact));
+          }
+        }
+        if (options.derive_tsodao_settings_protection_facts) {
+          for (auto protection_fact :
+               make_tsodao_settings_protection_facts_from_job_dir(job_dir,
+                                                                  fact)) {
+            out.ledger.add_tsodao_settings_protection(
+                std::move(protection_fact));
+          }
+        }
+        if (options.derive_policy_acceptance_facts) {
+          for (auto acceptance_fact :
+               make_policy_acceptance_facts_from_job_dir(job_dir, fact)) {
+            out.ledger.add_policy_acceptance(std::move(acceptance_fact));
+          }
+        }
+        if (options.derive_paper_online_readiness_facts) {
+          for (auto readiness_fact :
+               make_paper_online_readiness_facts_from_job_dir(job_dir, fact)) {
+            out.ledger.add_paper_online_readiness(std::move(readiness_fact));
           }
         }
         out.ledger.add(std::move(fact), options.derive_source_receipt_facts,
@@ -15814,6 +19638,9 @@ struct lattice_runtime_index_cache_t {
   std::int64_t allocation_engine_fact_count{0};
   std::int64_t replay_environment_fact_count{0};
   std::int64_t policy_training_fact_count{0};
+  std::int64_t tsodao_settings_protection_fact_count{0};
+  std::int64_t policy_acceptance_fact_count{0};
+  std::int64_t paper_online_readiness_fact_count{0};
   std::int64_t selection_signal_fact_count{0};
   std::int64_t representation_support_fact_count{0};
   std::vector<lattice_runtime_index_relation_count_t> relation_counts{};
@@ -15905,6 +19732,15 @@ runtime_index_watched_file_is_relevant(const std::filesystem::path &path) {
       filename == "lattice.policy_training.fact" ||
       filename == "policy_training.fact" ||
       filename == "runtime.policy_training.fact" ||
+      filename == "lattice.tsodao_settings_protection.fact" ||
+      filename == "tsodao_settings_protection.fact" ||
+      filename == "runtime.tsodao_settings_protection.fact" ||
+      filename == "lattice.policy_acceptance.fact" ||
+      filename == "policy_acceptance.fact" ||
+      filename == "runtime.policy_acceptance.fact" ||
+      filename == "lattice.paper_online_readiness.fact" ||
+      filename == "paper_online_readiness.fact" ||
+      filename == "runtime.paper_online_readiness.fact" ||
       filename == "runtime_replay_batches.index" ||
       filename == "runtime_replay_experiments.index") {
     return true;
@@ -16023,6 +19859,25 @@ watched_runtime_metadata_digest(const std::filesystem::path &runtime_root) {
         append_file(it->path());
       }
     }
+    const auto tsodao_artifact_dir =
+        job_dir / "artifacts" / "tsodao.settings.protection.v1";
+    if (fs::is_directory(tsodao_artifact_dir, job_ec)) {
+      for (fs::recursive_directory_iterator it(tsodao_artifact_dir, job_ec),
+           end;
+           !job_ec && it != end; it.increment(job_ec)) {
+        append_file(it->path());
+      }
+    }
+    const auto policy_acceptance_artifact_dir =
+        job_dir / "artifacts" / "policy.acceptance.v1";
+    if (fs::is_directory(policy_acceptance_artifact_dir, job_ec)) {
+      for (fs::recursive_directory_iterator
+               it(policy_acceptance_artifact_dir, job_ec),
+           end;
+           !job_ec && it != end; it.increment(job_ec)) {
+        append_file(it->path());
+      }
+    }
   };
   if (fs::is_regular_file(runtime_root, ec)) {
     append_file(runtime_root);
@@ -16099,6 +19954,12 @@ make_runtime_index_cache_from_scan(const std::filesystem::path &runtime_root,
       static_cast<std::int64_t>(scan.ledger.replay_environment_facts().size());
   cache.policy_training_fact_count =
       static_cast<std::int64_t>(scan.ledger.policy_training_facts().size());
+  cache.tsodao_settings_protection_fact_count = static_cast<std::int64_t>(
+      scan.ledger.tsodao_settings_protection_facts().size());
+  cache.policy_acceptance_fact_count =
+      static_cast<std::int64_t>(scan.ledger.policy_acceptance_facts().size());
+  cache.paper_online_readiness_fact_count = static_cast<std::int64_t>(
+      scan.ledger.paper_online_readiness_facts().size());
   cache.selection_signal_fact_count =
       static_cast<std::int64_t>(scan.ledger.selection_signal_facts().size());
   cache.representation_support_fact_count = static_cast<std::int64_t>(
@@ -16197,6 +20058,26 @@ make_runtime_index_cache_from_scan(const std::filesystem::path &runtime_root,
                 fact.policy_id + "|" + fact.checkpoint_digest,
             policy_training_fact_digest(fact));
   }
+  for (const auto &fact : scan.ledger.tsodao_settings_protection_facts()) {
+    add_row("tsodao_settings_protection",
+            fact.parent_exposure_fact_digest + "|" + fact.job_id + "|" +
+                fact.protection_id + "|" +
+                fact.protected_policy_training_fact_digest,
+            tsodao_settings_protection_fact_digest(fact));
+  }
+  for (const auto &fact : scan.ledger.policy_acceptance_facts()) {
+    add_row("policy_acceptance",
+            fact.parent_exposure_fact_digest + "|" + fact.job_id + "|" +
+                fact.acceptance_id + "|" +
+                fact.accepted_policy_training_fact_digest,
+            policy_acceptance_fact_digest(fact));
+  }
+  for (const auto &fact : scan.ledger.paper_online_readiness_facts()) {
+    add_row("paper_online_readiness",
+            fact.parent_exposure_fact_digest + "|" + fact.job_id + "|" +
+                fact.readiness_id + "|" + fact.policy_acceptance_fact_digest,
+            paper_online_readiness_fact_digest(fact));
+  }
   for (const auto &fact : scan.ledger.selection_signal_facts()) {
     add_row("selection_signal",
             fact.parent_exposure_fact_digest + "|" + fact.selector_id + "|" +
@@ -16269,6 +20150,12 @@ canonical_runtime_index_cache_text(const lattice_runtime_index_cache_t &cache) {
       << "\n";
   out << "policy_training_fact_count=" << cache.policy_training_fact_count
       << "\n";
+  out << "tsodao_settings_protection_fact_count="
+      << cache.tsodao_settings_protection_fact_count << "\n";
+  out << "policy_acceptance_fact_count=" << cache.policy_acceptance_fact_count
+      << "\n";
+  out << "paper_online_readiness_fact_count="
+      << cache.paper_online_readiness_fact_count << "\n";
   out << "selection_signal_fact_count=" << cache.selection_signal_fact_count
       << "\n";
   out << "representation_support_fact_count="
@@ -16343,6 +20230,12 @@ read_runtime_index_cache(const std::filesystem::path &path) {
       detail::map_get(map, "replay_environment_fact_count"), 0);
   cache.policy_training_fact_count = detail::parse_i64_fallback(
       detail::map_get(map, "policy_training_fact_count"), 0);
+  cache.tsodao_settings_protection_fact_count = detail::parse_i64_fallback(
+      detail::map_get(map, "tsodao_settings_protection_fact_count"), 0);
+  cache.policy_acceptance_fact_count = detail::parse_i64_fallback(
+      detail::map_get(map, "policy_acceptance_fact_count"), 0);
+  cache.paper_online_readiness_fact_count = detail::parse_i64_fallback(
+      detail::map_get(map, "paper_online_readiness_fact_count"), 0);
   cache.selection_signal_fact_count = detail::parse_i64_fallback(
       detail::map_get(map, "selection_signal_fact_count"), 0);
   cache.representation_support_fact_count = detail::parse_i64_fallback(

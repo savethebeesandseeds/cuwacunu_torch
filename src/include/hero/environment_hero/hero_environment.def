@@ -1,0 +1,106 @@
+/*
+  Environment Hero public tool registry.
+
+  Consumers may define:
+    HERO_ENVIRONMENT_TOOL(NAME, DESCRIPTION, INPUT_SCHEMA_JSON)
+*/
+
+#ifndef HERO_ENVIRONMENT_TOOL
+#define HERO_ENVIRONMENT_TOOL(NAME, DESCRIPTION, INPUT_SCHEMA_JSON)
+#endif
+
+HERO_ENVIRONMENT_TOOL(
+    "hero.environment.status",
+    "Read-only Environment Hero health and authority-boundary summary. "
+    "Environment owns execution-environment admission and environment-run "
+    "evidence; Runtime executes low-level jobs, Lattice proves evidence, and "
+    "Marshal orchestrates.",
+    R"({"type":"object","properties":{},"additionalProperties":false})")
+
+HERO_ENVIRONMENT_TOOL(
+    "hero.environment.inspect.schema",
+    "Read-only Environment policy/schema inspection.",
+    R"({"type":"object","properties":{},"additionalProperties":false})")
+
+HERO_ENVIRONMENT_TOOL(
+    "hero.environment.inspect.job",
+    "Read-only inspection for job-local Environment evidence sidecars.",
+    R"({"type":"object","required":["job_dir"],"properties":{"job_dir":{"type":"string"},"include_text":{"type":"boolean"},"max_bytes":{"type":"integer"}},"additionalProperties":false})")
+
+HERO_ENVIRONMENT_TOOL(
+    "hero.environment.certify.policy_acceptance",
+    "Check and optionally issue policy-acceptance prerequisite evidence. "
+    "Writes lattice.policy_acceptance.fact from completed policy-training and "
+    "Tsodao settings-protection evidence. mode=check validates without "
+    "writing; issue writes the sidecar after validation and request digest "
+    "binding.",
+    R"({
+      "type": "object",
+      "required": ["mode", "args_path"],
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": ["check", "issue"]
+        },
+        "args_path": {
+          "type": "string"
+        },
+        "args_digest": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    })")
+
+HERO_ENVIRONMENT_TOOL(
+    "hero.environment.certify.paper_online_readiness",
+    "Check and optionally issue paper-online-readiness prerequisite evidence. "
+    "Writes lattice.paper_online_readiness.fact from accepted policy evidence. "
+    "mode=check validates without writing; issue writes the sidecar after "
+    "validation and request digest binding.",
+    R"({
+      "type": "object",
+      "required": ["mode", "args_path"],
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": ["check", "issue"]
+        },
+        "args_path": {
+          "type": "string"
+        },
+        "args_digest": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    })")
+
+HERO_ENVIRONMENT_TOOL(
+    "hero.environment.rollout",
+    "Validate or replay a bounded historical replay rollout as environment "
+    "evidence. Environment owns the rollout surface and delegates low-level "
+    "Runtime replay execution. Rollout packet fields live in "
+    "args_path.",
+    R"({
+      "type": "object",
+      "required": ["mode", "args_path"],
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": ["validate", "replay"]
+        },
+        "args_path": {
+          "type": "string"
+        },
+        "args_digest": {
+          "type": "string"
+        },
+        "include_machine_payload": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    })")
+
+#undef HERO_ENVIRONMENT_TOOL

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -36,6 +37,36 @@ void write_text(const std::filesystem::path &path, const std::string &text) {
   std::ofstream out(path, std::ios::trunc);
   check(out.is_open(), "failed to open output file: " + path.string());
   out << text;
+}
+
+std::string read_text(const std::filesystem::path &path) {
+  std::ifstream in(path);
+  check(in.is_open(), "failed to open input file: " + path.string());
+  std::ostringstream buffer;
+  buffer << in.rdbuf();
+  return buffer.str();
+}
+
+std::string json_string_field(const std::string &json,
+                              const std::string &field) {
+  const std::string needle = "\"" + field + "\":\"";
+  const auto begin = json.find(needle);
+  check(begin != std::string::npos, "missing JSON field: " + field);
+  const auto value_begin = begin + needle.size();
+  const auto value_end = json.find('"', value_begin);
+  check(value_end != std::string::npos, "unterminated JSON field: " + field);
+  return json.substr(value_begin, value_end - value_begin);
+}
+
+std::string assignment_value(const std::string &text, const std::string &key) {
+  const std::string needle = key + "=";
+  const auto begin = text.find(needle);
+  check(begin != std::string::npos, "missing assignment: " + key);
+  const auto value_begin = begin + needle.size();
+  const auto value_end = text.find('\n', value_begin);
+  return text.substr(value_begin, value_end == std::string::npos
+                                     ? std::string::npos
+                                     : value_end - value_begin);
 }
 
 std::string hex_digest(char value) { return std::string(64U, value); }
@@ -137,33 +168,39 @@ void test_evaluation_plan_accepts_out_of_sample_request() {
         "runtime execute args digest should be strong hex");
   check(marshal::marshal_digest_is_strong_hex(handoff.handoff_digest),
         "runtime handoff digest should be strong hex");
-  check(handoff.runtime_execute_args_json.find("\"operation\":\"wave\"") !=
+  check(handoff.runtime_execute_args_json.find("\"subject\":\"wave\"") !=
             std::string::npos,
-        "runtime handoff args should target wave operation");
-  check(handoff.runtime_execute_args_json.find(
-            "\"requested_mode\":\"dry_run\"") != std::string::npos,
-        "runtime handoff args should force requested_mode=dry_run");
-  check(handoff.runtime_execute_args_json.find("\"confirm_execute\":false") !=
+        "runtime handoff args should target wave subject");
+  check(handoff.runtime_execute_args_json.find("\"mode\":\"dry_run\"") !=
             std::string::npos,
-        "runtime handoff args should force confirm_execute=false");
-  check(handoff.runtime_execute_args_json.find(
-            "\"source_range\":\"anchor_index\"") != std::string::npos,
-        "runtime handoff should bind anchor-index source range");
-  check(handoff.runtime_execute_args_json.find("\"anchor_index_begin\":1800") !=
+        "runtime handoff args should force mode=dry_run");
+  check(handoff.runtime_execute_args_json.find("\"confirm_execute\"") ==
             std::string::npos,
-        "runtime handoff should bind validation begin");
-  check(handoff.runtime_execute_args_json.find("\"anchor_index_end\":2050") !=
+        "runtime handoff args should not expose retired confirm_execute");
+  check(handoff.runtime_execute_args_json.find("\"wave_overlay\"") ==
             std::string::npos,
-        "runtime handoff should bind validation end");
-  check(handoff.runtime_execute_args_json.find("\"runtime_handoff\"") !=
+        "runtime handoff args should not expose retired wave_overlay");
+  check(handoff.runtime_execute_args_json.find("\"marshal_expected_wave\"") ==
             std::string::npos,
-        "runtime handoff args should include handoff object");
-  check(handoff.runtime_execute_args_json.find(request.evaluation_id) !=
+        "runtime handoff args should not expose retired marshal_expected_wave");
+  check(handoff.runtime_execute_args_json.find("\"args_path\"") !=
             std::string::npos,
-        "runtime handoff args should bind evaluation id");
-  check(handoff.runtime_execute_args_json.find(
-            "runtime_replay_command_template") != std::string::npos,
-        "runtime handoff args should preserve replay command template");
+        "runtime handoff args should carry launch data through args_path");
+  const std::string run_request_text =
+      read_text(json_string_field(handoff.runtime_execute_args_json,
+                                  "args_path"));
+  check(run_request_text.find("execution_request_path=") != std::string::npos,
+        "runtime handoff request should carry launch range through an "
+        "execution request");
+  check(run_request_text.find("runtime_handoff_path=") != std::string::npos,
+        "runtime handoff request should include handoff file path");
+  const std::string runtime_handoff_text =
+      read_text(assignment_value(run_request_text, "runtime_handoff_path"));
+  check(runtime_handoff_text.find(request.evaluation_id) != std::string::npos,
+        "runtime handoff file should bind evaluation id");
+  check(runtime_handoff_text.find("runtime_replay_command_template") !=
+            std::string::npos,
+        "runtime handoff file should preserve replay command template");
 
   marshal::marshal_evaluation_receipt_t receipt{};
   receipt.request_digest = plan.request_digest;

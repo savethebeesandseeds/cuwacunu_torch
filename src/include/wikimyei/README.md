@@ -112,7 +112,8 @@ scenario bank next to the single-anchor `AllocationBelief`, while
 `AllocationBelief::scenarios` remains the base arithmetic-return scenario
 matrix consumed by the allocator.
 The observer forecast-artifact utility persists the single-anchor marginal
-forecast and belief tensors as a Torch archive, so later realized returns can
+forecast and belief tensors as a Torch archive, including target-coordinate and
+normalization fingerprints, so later realized returns can
 drive surprise and calibration observers instead of relying on text reports. It
 also persists scenario-bank stress families when supplied by the builder result.
 `observer::belief::apply_surprise` and `observer::belief::apply_calibration`
@@ -125,7 +126,7 @@ residual energy is small enough to trust potential-only projection, and
 scenarios with realized log returns through MAE, bias, directional accuracy,
 correlation, interval coverage, and per-node scores.
 
-The first portfolio method is
+The first deterministic portfolio method and current reference baseline is
 `policy::portfolio::spot_distributional_utility`, rooted on disk at
 `policy/portfolio/spot_distributional_utility/`. Its deterministic Wikimyei
 assembly consumes a post-projection `AllocationBelief` dock and produces an
@@ -185,7 +186,7 @@ and infeasible or negative constraints.
 numeraire membership, finite diagnostics scalars, and delta/turnover consistency
 against current weights before execution routing creates order intents.
 
-The bounded PPO V0 trainable policy contract is
+The bounded PPO V0 graph-node allocation policy component contract is
 `policy::portfolio::graph_node_allocation`. It is rooted on disk at
 `policy/portfolio/graph_node_allocation/` and backed by authored
 `wikimyei.policy.portfolio.graph_node_allocation.{dsl,net,features.dsl,jkimyei}`
@@ -199,7 +200,10 @@ policy/value heads, raw `node_weight_logits[A]`, and the `state_value` critic
 head for PPO update evidence. The V0 Torch module lives at
 `policy/portfolio/graph_node_allocation/torch_policy_module.h` and consumes the
 manifest-bound `node_features[A,28]`, `global_features[6]`, and
-`risk_features[10]` tensors. Kikijyeba adapts policy output into one unified
-`target_node_weights[A]` action. The accounting numeraire remains an ordinary
-graph node in that action universe, not a separate cash output. Runtime owns PPO
-execution and keeps it replay/paper-only.
+`risk_features[10]` tensors. The same header owns the V0 checkpoint state
+helpers for `module_state.pt`, which serialize the module parameters plus the
+bounded PPO V0 head overlay used before full autograd PPO exists. Kikijyeba
+adapts policy output into one unified `target_node_weights[A]` action. The
+accounting numeraire remains an ordinary graph node in that action universe,
+not a separate cash output. Runtime owns PPO execution and keeps it
+replay/paper-only.

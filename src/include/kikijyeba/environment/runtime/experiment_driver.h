@@ -231,6 +231,16 @@ inline void load_graph_node_allocation_checkpoint_into_config(
     }
     config->action_distribution_id = checkpoint_distribution;
   }
+  const std::string module_state_path =
+      runtime_layout::map_get(kv, "module_state_path");
+  if (!module_state_path.empty()) {
+    std::filesystem::path resolved_module_state_path{module_state_path};
+    if (resolved_module_state_path.is_relative()) {
+      resolved_module_state_path =
+          checkpoint_path.parent_path() / resolved_module_state_path;
+    }
+    config->module_state_path = resolved_module_state_path.string();
+  }
   const std::string logits = runtime_layout::map_get(kv, "node_weight_logits");
   const std::string logit_bias =
       runtime_layout::map_get(kv, "node_weight_logit_bias");
@@ -1422,6 +1432,27 @@ inline void write_replay_experiment_report(
       out << step_prefix << "action_distribution_evidence_bound="
           << (step.action_distribution_evidence_bound ? "true" : "false")
           << "\n";
+      write_kv(out, step_prefix + "policy_input_tensor_payload_schema_id",
+               step.policy_input_tensor_payload_schema_id);
+      out << step_prefix << "policy_input_tensor_payload_bound="
+          << (step.policy_input_tensor_payload_bound ? "true" : "false")
+          << "\n";
+      write_kv(out, step_prefix + "policy_input_node_features_shape",
+               step.policy_input_node_features_shape);
+      write_kv(out, step_prefix + "policy_input_node_features",
+               step.policy_input_node_features);
+      write_kv(out, step_prefix + "policy_input_global_features_shape",
+               step.policy_input_global_features_shape);
+      write_kv(out, step_prefix + "policy_input_global_features",
+               step.policy_input_global_features);
+      write_kv(out, step_prefix + "policy_input_risk_features_shape",
+               step.policy_input_risk_features_shape);
+      write_kv(out, step_prefix + "policy_input_risk_features",
+               step.policy_input_risk_features);
+      write_kv(out, step_prefix + "policy_input_executable_mask_shape",
+               step.policy_input_executable_mask_shape);
+      write_kv(out, step_prefix + "policy_input_executable_mask",
+               step.policy_input_executable_mask);
       write_kv(out, step_prefix + "reward_contract_id",
                step.reward_contract_id);
       write_kv(out, step_prefix + "policy_artifact_digest",

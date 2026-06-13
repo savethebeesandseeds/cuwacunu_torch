@@ -36,6 +36,10 @@ Changing only the MDN training profile after representation training changes the
 active protocol contract fingerprint and makes the representation dependency
 stale for MDN. If these files change, rerun representation first.
 
+Both profiles use the shared `src/config/ujcamei.source.cursor.dsl` cursor catalog.
+The durable wave profiles select `SOURCE_CURSOR_ID = train_core.all`;
+Marshal/Runtime overlays provide the concrete train-core range at launch.
+
 The profile configs use only the canonical
 `wikimyei_policy_portfolio_spot_distributional_utility_*` keys. Portfolio
 policy evidence remains protocol/config identity; it does not make portfolio

@@ -1,11 +1,12 @@
 # Config Hero
 
-The fresh Hero migration currently has Config Hero, Runtime Hero, Lattice Hero,
-and Marshal Hero.
+The fresh Hero migration currently has Config Hero, Runtime Hero, Environment
+Hero, Lattice Hero, and Marshal Hero.
 
 Each Hero binary has two entry modes:
 
-- MCP stdio server mode for Codex/tool clients.
+- MCP stdio server mode for Codex/tool clients. Stdio accepts MCP
+  `Content-Length` framing.
 - Direct one-shot mode with `--tool <name> --args-json <json>` for local smoke
   tests and scripts.
 
@@ -14,6 +15,7 @@ Build:
 ```bash
 make -C /cuwacunu/src/main/hero build-config-hero
 make -C /cuwacunu/src/main/hero build-runtime-hero
+make -C /cuwacunu/src/main/hero build-environment-hero
 make -C /cuwacunu/src/main/hero build-lattice-hero
 make -C /cuwacunu/src/main/hero build-marshal-hero
 ```
@@ -31,6 +33,11 @@ Direct smoke:
   --tool hero.runtime.status \
   --args-json '{}'
 
+/cuwacunu/.build/hero/hero_environment.mcp \
+  --global-config /cuwacunu/src/config/.config \
+  --tool hero.environment.status \
+  --args-json '{}'
+
 /cuwacunu/.build/hero/hero_lattice.mcp \
   --global-config /cuwacunu/src/config/.config \
   --tool hero.lattice.status \
@@ -42,23 +49,26 @@ Direct smoke:
 ```
 
 MCP schema hygiene is a harness-safety gate. Tool catalogs emitted by the
-Config, Runtime, Lattice, and Marshal Heroes validate each `inputSchema` before
+Config, Runtime, Environment, Lattice, and Marshal Heroes validate each
+`inputSchema` before
 `--list-tools-json` or JSON-RPC `tools/list` returns it: the root schema must
 have `type=object`, and top-level `oneOf`, `anyOf`, `allOf`, `enum`, and `not`
 are rejected with a message naming the tool, schema path, and offending
 construct. The focused smoke
 `make -C src/tests/bench/kikijyeba/runtime run-test_hero_mcp_schema_compat -j12`
-checks the generated Config, Runtime, Lattice, and Marshal catalogs. This
+checks the generated Config, Runtime, Environment, Lattice, and Marshal
+catalogs. This
 protects Codex/MCP harnesses;
 it is not a lattice proof condition and does not affect runtime execution
 policy.
 
 The default policy paths are `[HERO].config_hero_dsl_path`,
-`[HERO].runtime_hero_dsl_path`, `[HERO].lattice_hero_dsl_path`, and
-`[HERO].marshal_hero_dsl_path` in
+`[HERO].runtime_hero_dsl_path`, `[HERO].environment_hero_dsl_path`,
+`[HERO].lattice_hero_dsl_path`, and `[HERO].marshal_hero_dsl_path` in
 `src/config/.config`, falling back to
 `/cuwacunu/src/config/hero.config.dsl` and
 `/cuwacunu/src/config/hero.runtime.dsl` and
+`/cuwacunu/src/config/hero.environment.dsl` and
 `/cuwacunu/src/config/hero.lattice.dsl` and
 `/cuwacunu/src/config/hero.marshal.dsl`.
 
@@ -70,23 +80,26 @@ familiar:
 
 | Authority | Tool families | Use | Boundary |
 | --- | --- | --- | --- |
-| Read-only health | `hero.config.status`, `hero.runtime.status`, `hero.lattice.status`, `hero.marshal.status` | Check policy paths, visible roots, active wave/advice state, and explicit non-authority flags. | No mutation, proof escalation, Runtime launch, or policy selection. |
-| Schema/help | `hero.config.inspect subject=schema`, `hero.runtime.inspect subject=schema`, `hero.lattice.inspect subject=schema`, `--list-tools`, `--list-tools-json`, `--help` | Inspect exact MCP arguments or operator runbooks. | Documentation/catalog surface only. |
-| Config inspection | `hero.config.inspect` | Read policy-controlled config values, files, path provenance, `validate_global_config`, diffs, backups, and config-bundle receipts by `subject`. | Does not execute Runtime or prove Lattice targets. |
-| Config mutation | `hero.config.apply` | Plan or execute in-memory policy/session config changes or file mutations by `operation`. | Config-scope only; use `requested_mode=plan` and expected digests for file writes/deletes. |
-| Runtime execution | `hero.runtime.run`, `hero.runtime.reset` | Preview or perform guarded Runtime wave/replay work, or plan/execute a guarded developer reset. | Runtime Hero is the executor. `reset` is a guarded developer reset surface. |
-| Runtime evidence | `hero.runtime.inspect` | Read active wave or durable Runtime job/replay artifacts by `subject`. | No target proof or config mutation. |
-| Lattice proof/evidence | `hero.lattice.*` | Scan evidence, explain/evaluate targets, inspect fact/catalog/checkpoint lineage, compare proof vectors. | Read-only. Lattice proves; it does not execute or select deployments. |
-| Marshal coordination | `hero.marshal.prepare`, `hero.marshal.rollout` | Prepare/delegate bounded target handoffs or replay rollouts through Runtime policy. | Marshal coordinates and records handoffs; Runtime executes, Lattice proves. |
-| Marshal inspection | `hero.marshal.status`, `hero.marshal.inspect` | Read Marshal visibility and explain Runtime/Lattice/Marshal evidence. | Read-only and non-decision-making. |
+| Read-only health | `hero.config.status`, `hero.runtime.status`, `hero.environment.status`, `hero.lattice.status`, `hero.marshal.status` | Check policy paths, visible roots, active wave/advice state, and explicit non-authority flags. | No mutation, proof escalation, Runtime launch, or policy selection. |
+| Schema/help | `hero.config.inspect.schema`, `hero.runtime.inspect.schema`, `hero.environment.inspect.schema`, `hero.lattice.inspect.schema`, `--list-tools`, `--list-tools-json`, `--help` | Inspect exact MCP arguments or operator runbooks. | Documentation/catalog surface only. |
+| Config inspection | `hero.config.inspect.*` | Read policy-controlled config values, files, path provenance, global-config validation, diffs, backups, and config-bundle receipts through concrete inspect tools with direct arguments. | Does not execute Runtime or prove Lattice targets. |
+| Config mutation | `hero.config.apply.*` | Execute in-memory policy/session config changes or file mutations through concrete apply tools with built-in preflight. | Config-scope only; public args are direct; file writes/deletes still use expected digests. |
+| Runtime execution | `hero.runtime.run`, `hero.runtime.reset` | Preview or perform guarded Runtime component-wave work, including contract-backed policy component waves, or plan/execute a guarded developer reset. | Runtime Hero is the low-level executor. `hero.runtime.run` is the canonical wave execution surface; wave locators such as contract, handoff, and execution request paths live in `args_path`. |
+| Environment admission | `hero.environment.certify.*`, `hero.environment.rollout`, `hero.environment.inspect.*` | Check/issue policy-acceptance and paper-online readiness prerequisite evidence, inspect job-local Environment sidecars, and validate/replay bounded historical replay rollouts. Environment job inspect selectors are direct arguments on `hero.environment.inspect.job`. | Environment owns execution-environment admission and rollout evidence. It may delegate low-level replay execution to Runtime; Lattice still proves evidence and Marshal still coordinates. |
+| Runtime evidence | `hero.runtime.inspect.*` | Read active wave or durable Runtime job/replay artifacts through concrete inspect tools with direct selectors. | No target proof or config mutation. |
+| Lattice proof/evidence | `hero.lattice.*` | Scan evidence, explain/evaluate targets, inspect fact/catalog/checkpoint lineage, compare proof vectors. | Read-only. Lattice proves; it does not execute or select deployments. Lattice inspect and evaluate use concrete tools with direct selectors; compare keeps request-file selectors. |
+| Marshal coordination | `hero.marshal.prepare.*`, `hero.marshal.rollout` | Prepare/delegate bounded target handoffs or replay rollouts through Environment/Runtime policy. | Marshal coordinates and records handoffs; Environment admits rollout work, Runtime executes low-level jobs, Lattice proves. |
+| Marshal inspection | `hero.marshal.status`, `hero.marshal.inspect.*` | Read Marshal visibility and explain Runtime/Lattice/Marshal evidence through concrete inspect tools. | Read-only and non-decision-making. |
 
 Shortest routing rules:
 
 1. Need current visibility: call the matching `status`.
-2. Need a config value or file: use `hero.config.inspect`.
-3. Need target truth: use `hero.lattice.evaluate operation=target` or
-   `hero.lattice.evaluate operation=deficit`.
-4. Need a finite next step toward one target: use `hero.marshal.prepare`.
+2. Need a config value or file: use the matching concrete
+   `hero.config.inspect.*` tool.
+3. Need target truth: use `hero.lattice.evaluate.target` or
+   `hero.lattice.evaluate.deficit` with direct selectors.
+4. Need a finite next step toward one target: use the matching
+   `hero.marshal.prepare.*` tool.
 5. Need historical environment replay from a completed job:
    use `hero.marshal.rollout`.
 6. Need an actual Runtime action: use Runtime Hero directly or a Marshal
@@ -97,9 +110,30 @@ operator-facing surface is small:
 
 ```text
 hero.marshal.status
-hero.marshal.prepare
+hero.marshal.prepare.train.one_step
+hero.marshal.prepare.train.budgeted
+hero.marshal.prepare.evaluate.one_step
+hero.marshal.prepare.evaluate.budgeted
 hero.marshal.rollout
-hero.marshal.inspect
+hero.marshal.inspect.run.latest_chain
+hero.marshal.inspect.run.training_state
+hero.marshal.inspect.run.single_job
+hero.marshal.inspect.run.compare
+hero.marshal.inspect.target
+hero.marshal.inspect.protocol.report
+hero.marshal.inspect.protocol.strict
+hero.marshal.inspect.spawn.by_id
+hero.marshal.inspect.spawn.by_label
+hero.marshal.inspect.spawn.by_registry
+hero.marshal.inspect.spawn.by_fingerprint
+hero.marshal.inspect.spawn.by_job
+hero.marshal.inspect.component
+hero.marshal.inspect.facts.summary
+hero.marshal.inspect.facts.lineage
+hero.marshal.inspect.facts.preview
+hero.marshal.inspect.facts.preview.by_digest
+hero.marshal.inspect.facts.preview.by_digest_prefix
+hero.marshal.inspect.facts.preview.by_index
 ```
 
 Marshal is a deterministic coordination surface over explicit Lattice target
@@ -112,40 +146,57 @@ does not execute waves by itself; execution handoff still goes through Runtime
 Hero.
 
 For Marshal specifically, `hero_marshal.mcp --help` is maintained as the
-operator runbook. It explains when to use `status`, `prepare`, `rollout`, and
-`inspect`, lists the high-value arguments, and gives direct one-shot examples.
-`--list-tools-json` remains the machine schema surface.
+operator runbook. It explains when to use `status`, `prepare.*`, `rollout`, and
+the concrete `inspect.*` tools, lists the high-value arguments, and gives direct
+one-shot examples. `--list-tools-json` remains the machine schema surface.
 
-For operator visibility, use `hero.marshal.inspect`. Its `subject=run` modes
-(`latest_chain`, `training_state`, `single_job`, and `compare`) read Runtime
-jobs and reports, quote Lattice target statuses when requested, and return
-compact operator packets with a summary, stop reason, runtime/lattice/audit
-panels, current state, job chain, explicit chain summary, target blockers,
-warnings, suspicious items, comparison deltas, and next safe actions. Compare
-mode exposes config-identity, wave/range, metric, checkpoint, warning, and
-proof-context deltas without choosing a winner. `subject=target` quotes
-`hero.lattice.evaluate operation=deficit` status and only points at certificate inspection
-when Lattice returned certificate material. `subject=protocol` has report and
-strict identity modes; report mode is observed-only and strict mode requires
-explicit expected identity. `subject=spawn` and `subject=component` group
-Runtime evidence only. Detailed job rows, checkpoint rows, target-status maps,
-performance panels, checkpoint-lineage details, fact preview rows, fact lineage
-rows, identity-envelope payloads, and metrics are returned only with
-`include_machine_payload=true`. It is read-only and does not prepare or execute
-a wave.
+For operator visibility, use the concrete `hero.marshal.inspect.*` tools.
+`hero.marshal.inspect.run.latest_chain`,
+`hero.marshal.inspect.run.training_state`,
+`hero.marshal.inspect.run.single_job`, and
+`hero.marshal.inspect.run.compare` read Runtime jobs and reports, quote Lattice
+target statuses when requested, and return compact operator packets with a
+summary, stop reason, runtime/lattice/audit panels, current state, job chain,
+explicit chain summary, target blockers, warnings, suspicious items, comparison
+deltas, and next safe actions. Compare exposes config-identity, wave/range,
+metric, checkpoint, warning, and proof-context deltas without choosing a winner.
+`hero.marshal.inspect.target` quotes `hero.lattice.evaluate.deficit` status and
+only points at certificate inspection when Lattice returned certificate
+material. `hero.marshal.inspect.protocol.report` is observed-only;
+`hero.marshal.inspect.protocol.strict` requires explicit expected
+identity. `hero.marshal.inspect.spawn.*` and
+`hero.marshal.inspect.component` group Runtime evidence only. Detailed job rows,
+checkpoint rows, target-status maps, performance panels, checkpoint-lineage
+details, fact preview rows, fact lineage rows, identity-envelope payloads, and
+metrics are returned only with `include_machine_payload=true` on the concrete
+inspect call. It is read-only and does not prepare or execute a wave.
 
-For operator-facing target pursuit, use
-`hero.marshal.prepare`. It accepts one canonical `target_id`, plus an explicit
-`drive_mode`:
+For operator-facing target pursuit, use the concrete
+`hero.marshal.prepare.*` tool for the target intent and driver shape:
 
 ```text
-one_step
-budgeted
+hero.marshal.prepare.train.one_step
+hero.marshal.prepare.train.budgeted
+hero.marshal.prepare.evaluate.one_step
+hero.marshal.prepare.evaluate.budgeted
+```
+
+Each accepts one canonical `target_id`, plus an explicit `mode`, and optional
+`args_path` / `args_digest`:
+
+```text
+plan
+dry_run
+execute
 ```
 
 `one_step` is the compact single-move packet. `budgeted` is a finite target
 driver controlled by `driver_policy.max_waves`, optional wall-clock budget,
-Runtime policy, and the existing Marshal execution gate. Both modes expose
+Runtime policy, and the existing Marshal execution gate. Those driver-specific
+fields belong in the prepare request file, while `intent` and `drive_mode` are
+encoded by the split tool name.
+`args_digest` is optional for `plan` and required for
+`dry_run`/`execute`. Both modes expose
 `operator_summary`, `stop_reason`, `wave_panel`, `runtime_panel`,
 `lattice_panel`, and `audit_panel` before detailed machine fields. Marshal
 queries the
@@ -156,14 +207,25 @@ still owns dry-run/execution, and Lattice remains the only target-satisfaction
 authority.
 
 For Lattice artifact-readiness targets and fact-family evidence, use
-`hero.marshal.inspect`. It is read-only and calls Lattice
-`hero.lattice.evaluate operation=target`,
-`hero.lattice.inspect subject=facts mode=summary`,
-`hero.lattice.inspect subject=facts mode=scan`,
-`hero.lattice.inspect subject=facts mode=lineage`, or
-`hero.lattice.inspect subject=facts mode=preview`; Marshal does not dispatch,
+`hero.marshal.inspect.facts.summary`,
+`hero.marshal.inspect.facts.lineage`, or
+`hero.marshal.inspect.facts.preview` and its `.by_digest`,
+`.by_digest_prefix`, and `.by_index` selector splits. These are read-only and
+call Lattice
+`hero.lattice.evaluate.target`,
+`hero.lattice.inspect.facts.summary`,
+`hero.lattice.inspect.facts.scan`,
+`hero.lattice.inspect.facts.lineage`, and
+`hero.lattice.inspect.facts.preview`; Marshal does not dispatch,
 dry-run Runtime, select checkpoints,
 or become proof authority from this panel.
+Policy acceptance appears here only as the artifact target
+`policy_acceptance_contract_ready`: Lattice checks that an acceptance sidecar is
+bound to a clean policy-training fact, Tsodao protected-settings fact, required
+baselines, after-cost metrics, uncertainty, split/test discipline, negative
+tests, threshold audit, promotion criteria, and authority denials. It is still
+not a checkpoint selector, policy-quality judge, market/deployment readiness
+gate, or live-capital authority.
 Failed artifact proofs are summarized with failed-proof count,
 proof-template bound/unbound count, proof kind, proof-template claim,
 identity-mismatch count, lineage-unbound count, authority-drift count,
@@ -176,15 +238,23 @@ Fact panels relay Lattice's native `fact_integrity_summary` with declared,
 bound, unresolved, identity-mismatch, and digest-mismatch relation counts plus
 affected families and issue codes. This makes unresolved fact lineage visible in
 the evidence panel before it becomes a target-proof blocker. The same field is
-native to `hero.lattice.inspect subject=facts mode=scan`, `hero.lattice.inspect subject=facts mode=summary`, and
-`hero.lattice.inspect subject=facts mode=lineage`; `hero.lattice.inspect subject=facts mode=preview` adds concrete
-family-row inspection by digest, digest prefix, or fact index while preserving
-the same audit-only contract. Clients do not need Marshal to see relation
+native to `hero.lattice.inspect.facts.scan`,
+`hero.lattice.inspect.facts.summary`, and
+`hero.lattice.inspect.facts.lineage`; `hero.lattice.inspect.facts.preview`
+adds unfiltered concrete family-row inspection, while
+`hero.lattice.inspect.facts.preview.by_digest`,
+`hero.lattice.inspect.facts.preview.by_digest_prefix`, and
+`hero.lattice.inspect.facts.preview.by_index` handle exact digest,
+prefix, and row-index selection while preserving the same audit-only contract.
+Clients do not need Marshal to see relation
 integrity. Lattice fact-catalog tools expose top-level read-only,
 non-target-proof, non-dispatchable, non-runtime-executor, non-writing, and
 non-decision flags so fact-family names do not imply target kinds, Marshal
 reachability, model selection, allocation, market-readiness, or deployment
-authority. Their catalog summaries also expose zero-count decision-authority
+authority. Lattice inspect selectors such as fact family, target id, digest,
+index, relation, and checkpoint identity are direct arguments on concrete
+`hero.lattice.inspect.*` tools. Their
+catalog summaries also expose zero-count decision-authority
 fields for quality/performance authority, checkpoint selection, allocation,
 execution, market/deployment authority, policy gates, target dependencies,
 Runtime waves, Marshal reachability, checkpoint sources, and plan checkpoint
@@ -195,13 +265,15 @@ protocol/contract/graph/source-cursor/split/component/job-wave identity,
 row-index anchor/completed intervals, lineage digest fields, and support
 fields. It keeps row-index intervals authoritative, source-key windows
 audit-only, and target-kind, Runtime-wave, Marshal reachability, and policy-gate
-authority false. `hero.lattice.inspect subject=facts mode=lineage` adds
+authority false. `hero.lattice.inspect.facts.lineage` adds
 selected runtime-index relation/key/digest rows as audit-only lineage witnesses;
 those rows do not satisfy targets or create Marshal reachability.
-`hero.lattice.inspect subject=facts mode=preview` returns concrete rows plus
-matching lineage rows selected by `fact_digest`, `fact_digest_prefix`, or
-`fact_index`. Prefix selection must resolve to exactly one full fact digest in
-the selected family. Preview rows keep
+`hero.lattice.inspect.facts.preview` returns unfiltered concrete rows plus
+matching lineage rows. Exact digest, digest-prefix, and row-index selection use
+`hero.lattice.inspect.facts.preview.by_digest`,
+`hero.lattice.inspect.facts.preview.by_digest_prefix`, and
+`hero.lattice.inspect.facts.preview.by_index`. Prefix selection must resolve to
+exactly one full fact digest in the selected family. Preview rows keep
 `facts_used_for_target_satisfaction=false` and `checkpoint_selected=false`.
 Those preview rows include display-only `fact_ref` and `fact_digest_prefix`
 helpers next to the full `fact_digest`; short refs are operator handles only.
@@ -215,8 +287,9 @@ display JSON may also include `certificate_ref`, `checkpoint_ref`, and
 authority.
 Marshal fact panels now include that compact lineage view by default, with
 `include_lineage=false` available only to suppress the audit panel; callers can
-request `include_preview=true` with a fact family and optional digest/index for
-the concrete-row view.
+use `hero.marshal.inspect.facts.preview` for unfiltered concrete rows or the
+`.by_digest`, `.by_digest_prefix`, and `.by_index` tools for selected concrete
+rows.
 Artifact target panels also relay Lattice `fact_preview_hint` entries as
 `artifact_fact_preview_*` fields, so a failed proof can point to the exact
 catalog row to inspect without making Marshal a proof authority or selector.
@@ -238,7 +311,7 @@ surfaces now carry explicit boundary fields such as `target_proof=false`,
 prevent evidence inspection from becoming proof, allocation, market-readiness,
 or deployment authority by implication.
 The same artifact summary is preserved in run-level `target_blockers` when
-`hero.marshal.inspect` asks Lattice for bulk target status.
+`hero.marshal.inspect.run.*` asks Lattice for bulk target status.
 If `prepare` sees `target_class=artifact_readiness`, it stops with
 `next_safe_actions=["inspect"]` before Runtime dispatch validation or
 dry-run preview construction.
@@ -260,33 +333,34 @@ Config Hero is now a small policy-controlled config file surface. It can list,
 read, plan writes/deletes, execute guarded writes/deletes, and inspect config
 provenance under configured roots, while domain-specific DSL validation remains
 owned by Ujcamei, Kikijyeba, Wikimyei, and Jkimyei. It can also describe an
-exact global config bundle with `hero.config.inspect subject=bundle`: the
+exact global config bundle with `hero.config.inspect.bundle`: the
 receipt records every `_path`/`_filename` entry, canonical file paths, content
 digests, a stable `config_bundle_id`, and a per-capture `config_receipt_id`.
 
 Agent workflow:
 
 1. `hero.config.status` checks policy health.
-2. `hero.config.inspect subject=map` finds global config path references and
-   missing files.
-3. `hero.config.inspect subject=validate_global_config` validates that the
+2. `hero.config.inspect.map` finds global config path references and missing
+   files.
+3. `hero.config.inspect.validate_global_config` validates that the
    active global `.config` can be read and that configured path entries resolve
    to the expected file/directory surfaces.
-4. `hero.config.inspect subject=bundle` records the current config provenance
+4. `hero.config.inspect.bundle` records the current config provenance
    receipt when runtime spawn evidence or target proof context needs an exact
    config link.
-5. `hero.config.inspect subject=resolve_path` preflights a target path before
-   read or mutation.
-6. `hero.config.inspect subject=file_read` returns file content plus `sha256`.
-7. `hero.config.apply operation=write requested_mode=plan` previews a write;
-   `requested_mode=execute` writes with `expected_sha256` or
-   `expected_current_sha256` when replacing an existing file.
+5. `hero.config.inspect.resolve_path.read` or
+   `hero.config.inspect.resolve_path.write` preflights a target path before read
+   or mutation.
+6. `hero.config.inspect.file_read` returns file content plus `sha256`.
+7. `hero.config.apply.write` preflights and then writes with
+   `expected_sha256` when replacing an existing
+   file. Apply payload fields are direct tool arguments.
 
-`hero.config.apply operation=delete requested_mode=plan` previews deletion;
-`requested_mode=execute` deletes and requires `expected_sha256` by default.
+`hero.config.apply.delete` preflights and then deletes; it requires
+`expected_sha256` by default.
 Direct one-shot CLI calls are useful for smoke tests; MCP sessions are better
 for multi-step agent work because in-memory policy edits from
-`hero.config.apply operation=set` stay alive for the session.
+`hero.config.apply.set` stay alive for the session.
 
 Runtime Hero is the agent surface around `/cuwacunu/.build/exec/cuwacunu_exec`.
 It does not own model logic; it decodes the active wave, invokes the runtime
@@ -297,32 +371,35 @@ Runtime agent workflow:
 
 1. `hero.runtime.status` checks policy, executable availability, and active
    wave intent.
-2. `hero.runtime.inspect subject=wave` decodes
+2. `hero.runtime.inspect.wave` decodes
    `hero.runtime.wave.dsl`. Canonical VICReg/MDN targets report channel
    job kinds; old node MDN targets are not active.
    The experimental
    `wikimyei.representation.encoding.mtf_jepa_mae_vicreg` target reports the
    separate `channel_representation_mtf_jepa_mae_vicreg` job kind. It is
    representation-only and does not reuse the production VICReg job identity.
-3. `hero.runtime.run operation=wave requested_mode=dry_run` builds and
+3. `hero.runtime.run mode=dry_run` builds and
    validates the protocol contract through `cuwacunu_exec --dry-run` and
-   returns job artifacts. `requested_mode=execute` uses the same surface with
+   returns job artifacts. `mode=execute` uses the same surface with
    Runtime policy guards and confirmation.
-4. `hero.runtime.inspect subject=jobs` and `subject=job` inspect prior job
+4. `hero.runtime.inspect.jobs` and `hero.runtime.inspect.job` inspect prior job
    directories.
-5. `hero.runtime.run operation=replay requested_mode=plan|dry_run|execute`
-   runs the Kikijyeba replay adapter against an already completed Runtime job
-   that has
+5. Replay operators should use `hero.environment.rollout`. Environment validates
+   rollout admission and delegates low-level Runtime replay execution against
+   an already completed Runtime job that has
    `artifacts/kikijyeba.environment.replay.v1/runtime_replay_batches.index`.
-   It delegates to `cuwacunu_exec --replay-from-job-dir`, writes replay reports
-   and `runtime_replay_experiments.index`, and does not launch a new wave or
-   mutate model checkpoints. Replay arguments can bind Cajtucu paper execution
-   profile hints. Validation rollouts set `validation_rollout=true`, which
+   `hero.environment.rollout` and `hero.marshal.rollout` keep only
+   `mode`, `args_path`, `args_digest`, and `include_machine_payload`
+   public; rollout packet fields live in the request file.
+   Runtime then delegates to `cuwacunu_exec --replay-from-job-dir`, writes replay reports and
+   `runtime_replay_experiments.index`, and does not launch a new wave or mutate
+   model checkpoints. Replay arguments can bind Cajtucu paper execution profile
+   hints. Validation rollouts set `validation_rollout=true`, which
    requires nonzero transaction cost, finite bounds, profile/policy digests, and
    rejects synthetic direct execution edges.
-6. `hero.runtime.inspect subject=artifact` can read replay evidence by name:
+6. `hero.runtime.inspect.artifact.job` can read replay evidence by name:
    `replay_batch_index`, `replay_experiment_index`, and
-   `replay_experiment_report`. `hero.runtime.inspect subject=job` includes the
+   `replay_experiment_report`. `hero.runtime.inspect.job` includes the
    same replay artifact summaries next to the normal manifest/state/report
    summaries.
    Runtime Hero does not follow parent-directory components in report paths
@@ -333,36 +410,47 @@ Runtime agent workflow:
    bound/match booleans, and whether an indexed report path was rejected. These
    fields are operator visibility; Lattice replay targets remain the proof
    authority.
-7. `hero.runtime.run operation=wave requested_mode=plan|dry_run|execute` with
-   policy-training contract fields validates a causal trainable-policy job
-   handoff. The selected `WAVE_SETTINGS` block may bind `POLICY_ID`,
+7. `hero.runtime.run mode=dry_run` on a
+   policy-component wave reports the contract-backed policy-training packet.
+   The same `hero.runtime.run` surface with `contract_path` inside `args_path`
+   validates a persisted causal policy component job contract.
+   The selected `WAVE_SETTINGS` block may bind `POLICY_ID`,
    `POLICY_KIND`, `TRAINING_SCHEDULE_MODE`, and `LIVE_EXECUTION_ALLOWED`; the
    request still supplies causal schedule evidence, parent evidence, range
    digests, and finite bounds. It returns a
    `kikijyeba.runtime.policy_training_job_contract.v1` packet and digest binding
    protocol/source identity, policy identity, train/validation/test range
    digests, normalization and replay-buffer isolation,
-   environment/action/action-distribution/reward/execution-profile identity,
-   causal walk-forward schedule identity, typed cursor-key ordering,
-   ledger-derived no-future-snapshot source, selector/checkpoint lineage,
-   parent evidence digests, random seed, and finite bounds. PPO-shaped policy
-   contracts also bind the artifact contract id, graph-node allocation policy
-   family, actor/critic architecture and checkpoint digests, optimizer-state
-   digest, PPO config digest, rollout-collection digest, PPO update-report
-   digest, validation rollout-report digest, GAE/advantage-normalization
-   identity, and PPO hyperparameters. Schedule-less policy training,
-   caller-asserted no-future-snapshot claims, opaque cursor keys, late
+   observation/action-distribution/reward/execution-profile identity,
+   causal walk-forward schedule digest, typed cursor-key ordering,
+   selector/checkpoint lineage, parent evidence digests, random seed, and finite
+   bounds. Runtime derives fixed contract constants for the Environment replay
+   contract, action schema, policy input schema, action adapter, reward
+   contract, PPO artifact contract, graph-node allocation policy family,
+   checkpoint/update/rollout schemas, optimizer-state schema, CUDA policy,
+   GAE estimator, causal-schedule schema, and no-future snapshot source.
+   PPO-shaped policy contracts also bind policy DSL/net/features/jkimyei
+   digests, target-node universe digest, actor/critic architecture and
+   checkpoint digests, optimizer-state digest, PPO config digest,
+   rollout-collection digest, PPO update-report digest, validation
+   rollout-report digest, advantage-normalization identity, and PPO
+   hyperparameters. Schedule-less policy training, opaque cursor keys, late
    target-label/reward/trajectory availability, and
    `offline_full_window_research` cannot satisfy readiness-grade contracts.
-   In this mode, `requested_mode=execute` is available for
+   In this mode, `mode=execute` is available for
    `policy_kind=noop_policy_training.v1` and the bounded
    `policy_kind=ppo_policy_adapter.v1` trainer under Runtime execute/train
    policy. The noop path writes a no-op checkpoint, `policy_training.report`,
    terminal Runtime facts, and `runtime.policy_training.fact` for Lattice
-   inspection. The PPO V0 path writes actor/critic checkpoints, optimizer state,
+   inspection. The PPO V0 path writes actor/critic checkpoints, a readable
+   optimizer-state receipt plus a resumable Torch optimizer archive,
    rollout/update/validation reports, terminal Runtime facts, and a
-   Lattice-readable `runtime.policy_training.fact`. With no `report_path`, the
-   rollout collection uses an explicit smoke fallback; with `report_path`, it
+   Lattice-readable `runtime.policy_training.fact`. PPO V0 execute requires
+   `device_policy=require_cuda` and records CUDA verification for fresh-spawn
+   and resumed policy updates. Resume modes are explicit:
+   `fresh_spawn`, `resume_weights`, and `resume_weights_and_optimizer`. With no
+   `report_path`, the rollout collection uses an explicit smoke fallback; with
+   `report_path`, it
    ingests an existing Kikijyeba replay report into PPO rollout samples and
    records whether policy-distribution log-probability evidence was bound.
    Replay reports produced by trainable policies now carry old-policy
@@ -394,48 +482,83 @@ Runtime agent workflow:
    satisfy `policy_training_artifact_ready` when its forecast-eval and
    observer-belief parent fact digests are present and replay-environment
    lineage resolves through either a replay fact digest or a replay report
-   digest. Allocation-engine parent evidence is required only for policy kinds
-   that declare that parent; PPO adapter facts bind replay lineage through the
-   replay report path. This is an artifact proof, not policy selection or
-   policy-quality proof.
+   digest. PPO adapter facts also bind policy-source digests, target-node
+   universe identity, optimizer-state schema, Torch optimizer archive digest,
+   CUDA verification, and resume-mode evidence. Allocation-
+   engine parent evidence is required only for policy kinds that declare that
+   parent; PPO adapter facts bind replay lineage through the replay report path.
+   This is an artifact proof, not policy selection or policy-quality proof.
    Runtime still does not claim Lattice target satisfaction, policy quality,
    market readiness, deployment readiness, or live-capital authority.
-8. `hero.runtime.reset requested_mode=plan|execute` previews and, when
+8. `hero.environment.certify.policy_acceptance mode=check|issue args_path=...`
+   emits a Lattice
+   policy-acceptance sidecar from an explicit certification request file plus
+   existing policy-training and Tsodao settings-protection evidence. In issue
+   mode, `args_digest` is required and must bind the request file.
+   Environment derives the parent fact digests from parsed sidecars, requires
+   the named `policy_acceptance_governance_thresholds_v0.v1` acceptance-policy
+   digest, derives the canonical governance-v0 metric, baseline, split,
+   uncertainty, tie, and governance digest fields, validates the assembled fact
+   with Lattice exposure validators, writes `lattice.policy_acceptance.fact`
+   only in issue mode, and refuses to overwrite an existing sidecar. The result
+   is evidence for
+   `policy_acceptance_contract_ready`; Environment still does not select a
+   policy, judge quality, prove readiness, approve deployment, or authorize
+   live capital.
+9. `hero.environment.certify.paper_online_readiness mode=check|issue
+   args_path=...` emits a pre-execution
+   Lattice paper-online readiness sidecar from an explicit certification
+   request file plus existing policy-acceptance evidence. In issue mode,
+   `args_digest` is required and must bind the request file.
+   Environment
+   derives accepted policy identity from parsed sidecars, binds session
+   lifecycle, clock/staleness, idempotency, duplicate protection, persistent
+   paper-ledger recovery, direct-edge universe, locked Cajtucu execution
+   profile, reward/report artifact, operator-abort, and kill-switch policies,
+   derives the fixed paper-online environment contract and default validation
+   policy ids,
+   writes `lattice.paper_online_readiness.fact` only in issue mode, and
+   refuses to overwrite an existing sidecar. The result is evidence for
+   `paper_online_readiness_contract_ready`; Environment still does not start
+   paper-online, execute broker orders, approve deployment, or authorize live
+   capital.
+10. `hero.runtime.reset mode=plan|execute` previews and, when
    explicitly enabled, clears the runtime artifact root for developer reset
    workflows.
 
-`hero.runtime.run operation=wave requested_mode=execute` is denied unless
+`hero.runtime.run mode=execute` is denied unless
 `allow_execute=true`; MODE=train has the additional `allow_train_execute=true`
-guard. `operation=replay requested_mode=execute` is a post-job report adapter
-rather than a wave executor: it is permitted under the default locked policy
-once the job is completed, inside an allowed job root, and has the replay batch
-index.
+guard. Low-level Runtime replay execution is a post-job report adapter rather
+than a wave executor and is normally reached through `hero.environment.rollout`:
+it requires the job to be completed, inside an allowed job root, and to have the
+replay batch index; it also honors Runtime execute policy.
 
-Marshal handoffs should use the explicit `runtime_handoff` object accepted by
-`hero.runtime.run operation=wave`. Runtime validates the object against the
-effective wave and policy, rejects unresolved `latest_satisfying:*` model-state
-selectors, and only then launches `cuwacunu_exec`. Accepted
+Marshal handoffs should use `runtime_handoff_path` inside
+`hero.runtime.run` `args_path`. Runtime validates the object against the
+effective wave and policy, rejects unresolved
+`latest_satisfying:*` model-state selectors, and only then launches
+`cuwacunu_exec`. Accepted
 `PLAN_INPUT_REPRESENTATION_CHECKPOINT` and `PLAN_INPUT_MDN_CHECKPOINT` values are
 passed as launch-time checkpoint overrides, so readiness-grade operator launches
 do not need to copy materialized checkpoint paths into static `.jkimyei` files.
-Concrete source ranges should be supplied as `wave_overlay` launch fields rather
-than baked into reusable wave profiles. Checked-in reusable wave profiles are
-selected from the single `hero.runtime.wave.dsl` catalog with
+Concrete source ranges should be supplied through `execution_request_path`
+inside `args_path`, rather than baked into reusable wave profiles or
+exposed as top-level Runtime tool arguments. Checked-in reusable wave profiles
+are selected from the single `hero.runtime.wave.dsl` catalog with
 `[HERO].runtime_wave_id`.
 Accepted handoff id/digest values are passed into the Runtime job and echoed in
 `job.manifest`, `runtime.result.fact`, and the derived lattice exposure fact;
 Lattice proof certificates then carry the same handoff identity on closure causal
-exposures when that evidence participates in checkpoint lineage. The older
-`marshal_expected_wave` field remains as compatibility scaffolding.
+exposures when that evidence participates in checkpoint lineage.
 
 The checked-in Runtime policy is intentionally profile-scoped for Codex/MCP
-safety. The default `operator_default` profile permits confirmed non-live
+safety. The default `operator_default` profile permits digest-bound non-live
 wave/train execution, while developer reset is available only through the
-guarded `hero.runtime.reset` path with explicit confirmation. Use
+guarded `hero.runtime.reset` path with a digest-pinned reset request. Use
 `runtime_hero_profile = long_train_operator` in an operator-local `.config`, or
 pass `--profile long_train_operator`, for longer intentional training runs; it
-keeps execute/train enabled with confirmation, extends the timeout, and disables
-developer reset.
+keeps execute/train enabled, leaves Runtime process timeout unlimited by
+default, and disables developer reset.
 
 Direct `cuwacunu_exec` remains available for recovery/debugging, but it is not
 the normal operator path. Non-dry-run direct launches without handoff identity
@@ -445,12 +568,13 @@ active wave bounds, checkpoint/source identity, or handoff lineage. Direct
 validated rollout bounds, Runtime policy, or Cajtucu execution-profile identity.
 Artifacts from direct debug/recovery launches may be unsuitable for readiness
 claims; prefer
-`hero.marshal.rollout` or `hero.runtime.run operation=replay` for auditable
-replay reports.
+`hero.marshal.rollout` or `hero.environment.rollout` for auditable replay
+reports.
 
-`hero.runtime.reset requested_mode=plan` is a dry-run preview. Non-dry-run reset
-is denied unless `allow_dev_nuke=true` and, by default,
-`confirm_dev_nuke=true` is passed.
+`hero.runtime.reset mode=plan` is a dry-run preview. Non-dry-run reset
+is denied unless `allow_dev_nuke=true` and `args_path` plus `args_digest` bind
+the exact reset request file. Per-call selectors such as `runtime_root` and
+`backup` belong in that request file.
 The checked-in policies allow the disposable `/cuwacunu/.runtime` tree to be
 selected for reset, but keep `dev_nuke_backup_enabled=false` so reset does not
 create new backup clutter under `.runtime`. Operators can explicitly enable
@@ -470,7 +594,8 @@ defaults through `PROTECT_SPLIT`. The future lattice DB should index immutable
 runtime/fact files for faster queries; runtime remains the producer of durable
 evidence files. Runtime manifests and exposure facts carry
 `config_bundle_id`, `config_receipt_id`, `component_spawn_registry_id`,
-`component_family_id`, `component_spawn_fingerprint`, the scoped base26
+`component_family_id`, `component_operator_surface_digest` for representation
+and MDN component waves, `component_spawn_fingerprint`, the scoped base26
 `component_spawn_id`, and `component_spawn_label` as `<family>#<spawn_id>`.
 The full fingerprint is the audit authority; the spawn id is only an operator
 display and retrieval handle inside its registry/family scope.
@@ -484,12 +609,13 @@ Lattice Hero agent runbook:
    execution; it writes no evidence and has no model, performance, policy-gate,
    allocation, market-readiness, or deployment authority. Fact counts are catalog
    evidence, not `TARGET_KIND` declarations.
-2. Call `hero.lattice.inspect subject=targets` to discover target ids. V0 has one active
+2. Call `hero.lattice.inspect.targets` to discover target ids. V0 has one active
    target file per global config, but that file may contain many
    `LATTICE_TARGET` blocks. The response is a read-only catalog:
    `target_proof=false`, `dispatchable=false`, `runtime_executor=false`, and
    `fact_families_are_not_target_kinds=true`.
-3. Call `hero.lattice.inspect subject=target mode=explain` before editing or evaluating a target. It
+3. Call `hero.lattice.inspect.target`
+   before editing or evaluating a target. It
    does not scan runtime evidence; it explains the compiled proof obligation,
    profile, dependency, cursor-epoch exposure requirements, split protection,
    checkpoint source, resolved split range, derived query vocabulary, proof
@@ -512,7 +638,7 @@ Lattice Hero agent runbook:
 	   templates rather than target-dependency scheduling. The explanation
 	   response is not live proof: `target_proof=false`,
 	   `dispatchable=false`, and `runtime_executor=false`.
-4. Call `hero.lattice.inspect subject=exposure` before evaluating unfamiliar runtime
+4. Call `hero.lattice.inspect.exposure` before evaluating unfamiliar runtime
    roots. Runtime roots contain job directories with `job.manifest`,
    `job.state`, component reports, Runtime terminal facts
    (`runtime.result.fact`, `runtime.checkpoint_io.fact`,
@@ -533,7 +659,7 @@ Lattice Hero agent runbook:
    The audit object exposes parsed endpoints, order-preservation booleans, and
    inferred key-step/affine-consistency fields, gap-warning counts, and
    row/source-key mismatch counts so agents can inspect the auxiliary source-key
-   coordinate map without parsing warning text. `inspect subject=exposure` also emits
+   coordinate map without parsing warning text. `inspect.exposure` also emits
    `source_key_map_audit_summary`, binding audits to graph-order identity,
    source-cursor identity, and source-receipt parent facts while preserving
    row-index authority.
@@ -558,7 +684,7 @@ Lattice Hero agent runbook:
    Hero JSON also exposes `node_support_scope_policy_summary`, self-checking
    that boundary with four policy rows, no VICReg per-node readiness authority,
    no synthetic backfill, and no runtime executor authority.
-   `inspect subject=exposure` also exposes `representation_support_facts` and
+   `inspect.exposure` also exposes `representation_support_facts` and
    `representation_support_summary` when representation reports or NodeLift
    `.lls` sidecars emit aggregate shared-encoder support payloads. These rows
    bind to the parent representation exposure digest, inherit protocol identity,
@@ -580,14 +706,14 @@ Lattice Hero agent runbook:
    summaries. Lattice must not ingest raw embeddings, token tensors, per-token
    masks, unbounded histograms, or downstream forecast claims from this
    representation family.
-5. Call `hero.lattice.evaluate operation=target` to ask whether a target is satisfied by
-   evidence. Call `hero.lattice.evaluate operation=deficit` when the user asks what proof
+5. Call `hero.lattice.evaluate.target` to ask whether a target is satisfied by
+   evidence. Call `hero.lattice.evaluate.deficit` when the user asks what proof
    deficit remains or which target-authored wave would address it; it returns
    the same proof certificate/check plus any suggested wave, and the wave is a
    recommendation only. Both responses are read-only proof-engine outputs:
    `target_proof=true`, `target_proof_engine=lattice_target_evaluator`,
    `dispatchable=false`, `runtime_executor=false`, and `writes_evidence=false`.
-   `evaluate operation=deficit` additionally declares `plan_advice_only=true`.
+   `evaluate.deficit` additionally declares `plan_advice_only=true`.
    Exposure-backed target results
    include `exposure_summaries`: unique cursor coverage, repeated cursor-epoch
    load, and optimizer-step density. These are visibility metrics, not
@@ -618,7 +744,7 @@ Lattice Hero agent runbook:
    default to the target range. If trusted completed coverage is unavailable,
    warning overlap can use anchor-range visibility without making that evidence
    satisfy readiness coverage. Hero JSON exposes the resolved interval as
-   `warning_results[].warning_anchor_range`; `hero.lattice.inspect subject=target mode=explain`
+   `warning_results[].warning_anchor_range`; `hero.lattice.inspect.target`
    exposes the same pre-evaluation scope as
    `warning_scope_previews[].resolved_warning_anchor_range`; and
    `warning_anchor_scope_policy_vocabulary` describes the visibility-only
@@ -653,7 +779,7 @@ Lattice Hero agent runbook:
    the first matching `proof_certificate.artifacts[]` row with `passed=false`,
    the drift flags, and the issue list. Deficits are derived from that failed
    row with artifact-specific keys such as `artifact:forecast_eval_authority`, so
-   the primary operator action remains `inspect subject=facts` rather than a
+   the primary operator action remains `inspect.facts` rather than a
    generic certificate failure. Artifact lineage digests are resolved only
    against fact rows that match the target identity, so a transform, baseline,
    selection-signal, forecast, or observer digest from another split/cursor
@@ -706,7 +832,7 @@ Lattice Hero agent runbook:
    `derived_query_projection_semantics_vocabulary` defines the allowed
    projection-scope, quantifier, empty-policy, and compatibility-alias values
    used by rule and result rows.
-   `evaluate operation=target` and `evaluate operation=deficit` also include
+   `evaluate.target` and `evaluate.deficit` also include
    `derived_query_results`, a read-only projection of those relation truth
    values from the existing proof certificate, warning summary, deficits, plan
    basis, and status. It is not separate evidence and does not affect target
@@ -720,12 +846,14 @@ Lattice Hero agent runbook:
    their proof issue matches concrete catalog issue rows, preserving the link
    from a proof issue such as `baseline_fact_digest_not_found` to the exact
    job/component-prefixed fact-integrity issue code.
-   `hero.lattice.inspect subject=derived` is the V3-E standalone pilot for asking one
+   `hero.lattice.inspect.derived.*` is the V3-E standalone pilot for asking one
    named relation for concrete witnesses. It supports `target_satisfied`,
-   `checkpoint_ancestor`, `forbidden_overlap`, `stale_cache`, and
-   `unresolved_lineage`; each response reports the rule row, result source,
-   witnesses, and fail-closed flags while keeping cache rows non-authoritative
-   for target satisfaction. Its top-level JSON declares `target_proof=false`,
+   `checkpoint_ancestor`, `forbidden_overlap`, `stale_cache`, and target or
+   checkpoint `unresolved_lineage`; checkpoint ancestry is split by checkpoint
+   path versus checkpoint id/file digest, with ancestor filters named in the
+   tool suffix. Each response reports the rule row, result source, witnesses,
+   and fail-closed flags while keeping cache rows non-authoritative for target
+   satisfaction. Its top-level JSON declares `target_proof=false`,
    `dispatchable=false`, `checkpoint_selector=false`,
    `automatic_checkpoint_selection=false`, `db_source_of_truth=false`, and
    `fact_families_are_not_target_kinds=true`.
@@ -772,20 +900,24 @@ Lattice Hero agent runbook:
    files/facts are the source of truth, DB/cache rows are rebuildable read
    models, cached plans are not evidence, checkpoint ids/digests are preview
    cache keys until v2, and Runtime Hero remains the only executor.
-   V3-A adds `hero.lattice.inspect subject=index mode=query`, a read-only audit query surface over
-   rebuildable index rows. It filters by relation/key/digest, reports stored
-   cache parity against live scan, falls back to live scan on missing/stale/
-   mismatched cache rows, and never upgrades target satisfaction. Interactive
-   callers can opt into `validation_strength=header_only` plus
-   `allow_unproven_cache=true` and `compare_live_scan=false` for a fast
-   read-only audit query; the response marks that as
-   `cache_used_unproven_for_audit_query=true`, not proof. `inspect subject=index mode=status` and
-   `inspect subject=index mode=query` both declare `target_proof=false`, `dispatchable=false`,
+   V3-A adds `hero.lattice.inspect.index.query`, a read-only audit query
+   surface over rebuildable index rows. The base query is unfiltered;
+   relation/key/digest selection uses the `.by_relation`, `.by_key`,
+   `.by_key_contains`, `.by_digest`, and `.by_digest_prefix` split tools. It
+   reports stored cache parity against live scan, falls back to live scan on
+   missing/stale/mismatched cache rows, and never upgrades target satisfaction.
+   Interactive
+   callers can use the matching `hero.lattice.inspect.index.query.unproven_cache*`
+   tools with `validation_strength=header_only` for a fast read-only audit
+   query; the response marks that as `cache_used_unproven_for_audit_query=true`,
+   not proof.
+   `inspect.index.status` and `inspect.index.query` both declare
+   `target_proof=false`, `dispatchable=false`,
    `checkpoint_selector=false`, `automatic_checkpoint_selection=false`,
    `db_source_of_truth=false`, and `fact_families_are_not_target_kinds=true`.
-	   V3-B adds `hero.lattice.evaluate operation=targets` so agents can evaluate several
+	   V3-B adds `hero.lattice.evaluate.targets` so agents can evaluate several
 	   readiness targets through one runtime scan. The batch response has the same
-	   read-only, non-dispatching proof-engine envelope as `evaluate operation=target`.
+	   read-only, non-dispatching proof-engine envelope as `evaluate.target`.
 	   Runtime index caches also carry
    `watched_file_metadata_digest`, `row_set_digest`, and `relation_counts`;
    `validation_strength=watched_file_manifest` is a bounded freshness check,
@@ -954,12 +1086,15 @@ Lattice Hero agent runbook:
 	   relation; it is read-only, not target proof, non-dispatchable, not a Runtime
 	   executor, and emits explicit false authority flags for model selection,
 	   checkpoint selection, quality acceptance, policy gates, allocation, market
-	   readiness, scalar scores, and deployment decisions.
+	   readiness, scalar scores, and deployment decisions. Pass `left_target_id`,
+	   `right_target_id`, optional `config_path`, and optional `runtime_root`
+	   directly; proof identity is inferred from runtime evidence.
 	   Hero JSON also exposes `checkpoint_selection_policy_vocabulary`, recording
 	   that `latest_satisfying` is deterministic readiness selection over a
 	   referenced satisfied target, not a best-model, Pareto, performance,
 	   deployment, or scalar-score selector.
-	   `hero.lattice.evaluate operation=latest_satisfying_checkpoint` now reports the
+	   `hero.lattice.evaluate.latest_satisfying_checkpoint.target` and
+	   `hero.lattice.evaluate.latest_satisfying_checkpoint.hint` now report the
 	   `source_target_class` and `checkpoint_selectable_source_target` gate; calls
 	   against `artifact_readiness` or `evaluation_readiness` sources fail closed as
 	   `resolution_status=non_checkpoint_target_class`. Its top-level JSON also
@@ -1050,7 +1185,7 @@ Lattice Hero agent runbook:
    consolidated V1 scope table for included read-only evidence-authority claims,
    deferred DB/performance/checkpoint-identity/source-receipt/selection-event/
    VICReg-node-support work, and explicit non-authority boundaries.
-   V2 `inspect subject=exposure` now emits read-only `selection_signal_facts` and a
+   V2 `inspect.exposure` now emits read-only `selection_signal_facts` and a
    `selection_signal_summary` when runtime evidence contains
    `use_selection_signal=true`; these rows explain selector lineage and selected
    checkpoint paths without becoming coverage, contract identity, execution, or
@@ -1174,7 +1309,8 @@ Lattice Hero agent runbook:
    symbolic model-state source hints such as `PLAN_INPUT_MDN_CHECKPOINT`, which
    Marshal must materialize into concrete Runtime handoff checkpoint inputs
    before Runtime executes. The runtime report remains the proof.
-6. Call `hero.lattice.inspect subject=checkpoint mode=closure` for checkpoint lineage. A complete
+6. Call `hero.lattice.inspect.checkpoint`
+   for checkpoint lineage. A complete
    MDN closure should include the MDN exposure fact and the exact upstream
    VICReg checkpoint producer fact. The tool accepts either checkpoint_path or
    checkpoint_id plus checkpoint_file_digest. Missing input lineage or
@@ -1193,24 +1329,24 @@ unsatisfied, the guard target blocks and forwards the source target's suggested
 wave.
 
 When the active runtime root is empty, graph-anchor targets cannot infer active
-identity. Pass `protocol_contract_fingerprint`, `graph_order_fingerprint`,
-`source_cursor_token`, and component assembly fingerprints explicitly to
-`evaluate operation=target` or `evaluate operation=deficit`, or run a Runtime Hero dry-run first to
-produce identity-bearing manifests. Lattice Hero may suggest a wave, but Runtime
-Hero remains the only executor.
+identity from evidence. Run a Runtime Hero dry-run first to produce
+identity-bearing manifests, or use `hero.marshal.inspect.protocol.strict` when
+the task is to compare observed Runtime identity against explicit expectations.
+Lattice Hero may suggest a wave, but Runtime Hero remains the only executor.
 
 Agent invariants:
 
 - Lattice Hero is read-only: never use it as an executor or scheduler.
 - Runtime Hero is the execution surface for any suggested wave.
-- `inspect subject=target mode=explain` is the source of truth for target language meaning.
-- `inspect subject=exposure` is the source of truth for runtime evidence warnings,
+- `inspect.target` is the source of truth for target language meaning.
+- `inspect.exposure` is the source of truth for runtime evidence warnings,
   including Ujcamei graph-anchor domain health warnings and derived MDN
   node-exposure previews. It also exposes audit-only source receipt facts and
   summaries; malformed non-empty receipts warn, while missing receipts are
   counted as audit absence.
-- `evaluate operation=target` is the source of truth for exposure-load summaries,
+- `evaluate.target` is the source of truth for exposure-load summaries,
   non-blocking target warnings, and proof deficits. Warning measurements are
   anchor-interval scoped. Repeated exposure is suspicious only when an explicit
   `LATTICE_WARN` policy says it is suspicious.
-- Empty runtime roots require explicit active identity for graph-anchor targets.
+- Empty runtime roots require Runtime evidence before graph-anchor targets can
+  infer active identity.

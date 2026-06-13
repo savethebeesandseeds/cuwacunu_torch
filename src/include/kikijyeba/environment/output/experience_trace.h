@@ -63,6 +63,16 @@ struct transition_record_t {
   double old_entropy{std::numeric_limits<double>::quiet_NaN()};
   double old_value_estimate{std::numeric_limits<double>::quiet_NaN()};
   bool action_distribution_evidence_bound{false};
+  std::string policy_input_tensor_payload_schema_id{};
+  bool policy_input_tensor_payload_bound{false};
+  std::string policy_input_node_features_shape{};
+  std::string policy_input_node_features{};
+  std::string policy_input_global_features_shape{};
+  std::string policy_input_global_features{};
+  std::string policy_input_risk_features_shape{};
+  std::string policy_input_risk_features{};
+  std::string policy_input_executable_mask_shape{};
+  std::string policy_input_executable_mask{};
   std::string target_node_weights{};
   std::string accounting_numeraire_node_id{};
   double target_numeraire_weight{std::numeric_limits<double>::quiet_NaN()};
@@ -542,6 +552,18 @@ make_transition_record(const step_report_t &step) {
   out.old_value_estimate = step.old_value_estimate;
   out.action_distribution_evidence_bound =
       step.action_distribution_evidence_bound;
+  out.policy_input_tensor_payload_schema_id =
+      step.policy_input_tensor_payload_schema_id;
+  out.policy_input_tensor_payload_bound = step.policy_input_tensor_payload_bound;
+  out.policy_input_node_features_shape = step.policy_input_node_features_shape;
+  out.policy_input_node_features = step.policy_input_node_features;
+  out.policy_input_global_features_shape = step.policy_input_global_features_shape;
+  out.policy_input_global_features = step.policy_input_global_features;
+  out.policy_input_risk_features_shape = step.policy_input_risk_features_shape;
+  out.policy_input_risk_features = step.policy_input_risk_features;
+  out.policy_input_executable_mask_shape =
+      step.policy_input_executable_mask_shape;
+  out.policy_input_executable_mask = step.policy_input_executable_mask;
   out.target_node_weights = step.target_node_weights;
   out.accounting_numeraire_node_id = step.accounting_numeraire_node_id;
   out.target_numeraire_weight = step.target_numeraire_weight;
@@ -918,6 +940,26 @@ inline void write_transition_record(std::ostream &out,
                   record.old_value_estimate);
   write_bool_kv(out, prefix + "action_distribution_evidence_bound",
                 record.action_distribution_evidence_bound);
+  write_text_kv(out, prefix + "policy_input_tensor_payload_schema_id",
+                record.policy_input_tensor_payload_schema_id);
+  write_bool_kv(out, prefix + "policy_input_tensor_payload_bound",
+                record.policy_input_tensor_payload_bound);
+  write_text_kv(out, prefix + "policy_input_node_features_shape",
+                record.policy_input_node_features_shape);
+  write_text_kv(out, prefix + "policy_input_node_features",
+                record.policy_input_node_features);
+  write_text_kv(out, prefix + "policy_input_global_features_shape",
+                record.policy_input_global_features_shape);
+  write_text_kv(out, prefix + "policy_input_global_features",
+                record.policy_input_global_features);
+  write_text_kv(out, prefix + "policy_input_risk_features_shape",
+                record.policy_input_risk_features_shape);
+  write_text_kv(out, prefix + "policy_input_risk_features",
+                record.policy_input_risk_features);
+  write_text_kv(out, prefix + "policy_input_executable_mask_shape",
+                record.policy_input_executable_mask_shape);
+  write_text_kv(out, prefix + "policy_input_executable_mask",
+                record.policy_input_executable_mask);
   write_text_kv(out, prefix + "target_node_weights",
                 record.target_node_weights);
   write_text_kv(out, prefix + "accounting_numeraire_node_id",
@@ -1077,8 +1119,43 @@ read_transition_record(const kv_map_t &values, const std::string &prefix) {
   record.policy_id = read_text(values, prefix + "policy_id");
   record.method_id = read_text(values, prefix + "method_id");
   record.policy_kind = read_policy_kind(values, prefix + "policy_kind");
+  record.policy_action_mode = read_text(values, prefix + "policy_action_mode");
   record.world_mode = read_world_mode(values, prefix + "world_mode");
   record.action_schema_id = read_text(values, prefix + "action_schema_id");
+  record.policy_input_schema_id =
+      read_text(values, prefix + "policy_input_schema_id");
+  record.action_adapter_id = read_text(values, prefix + "action_adapter_id");
+  record.action_distribution_id =
+      read_text(values, prefix + "action_distribution_id");
+  record.policy_input_digest = read_text(values, prefix + "policy_input_digest");
+  record.active_node_indices = read_text(values, prefix + "active_node_indices");
+  record.active_count = read_i64(values, prefix + "active_count");
+  record.old_log_prob = read_double(values, prefix + "old_log_prob");
+  record.old_entropy = read_double(values, prefix + "old_entropy");
+  record.old_value_estimate =
+      read_double(values, prefix + "old_value_estimate");
+  record.action_distribution_evidence_bound =
+      read_bool(values, prefix + "action_distribution_evidence_bound");
+  record.policy_input_tensor_payload_schema_id =
+      read_text(values, prefix + "policy_input_tensor_payload_schema_id");
+  record.policy_input_tensor_payload_bound =
+      read_bool(values, prefix + "policy_input_tensor_payload_bound");
+  record.policy_input_node_features_shape =
+      read_text(values, prefix + "policy_input_node_features_shape");
+  record.policy_input_node_features =
+      read_text(values, prefix + "policy_input_node_features");
+  record.policy_input_global_features_shape =
+      read_text(values, prefix + "policy_input_global_features_shape");
+  record.policy_input_global_features =
+      read_text(values, prefix + "policy_input_global_features");
+  record.policy_input_risk_features_shape =
+      read_text(values, prefix + "policy_input_risk_features_shape");
+  record.policy_input_risk_features =
+      read_text(values, prefix + "policy_input_risk_features");
+  record.policy_input_executable_mask_shape =
+      read_text(values, prefix + "policy_input_executable_mask_shape");
+  record.policy_input_executable_mask =
+      read_text(values, prefix + "policy_input_executable_mask");
   record.target_node_weights =
       read_text(values, prefix + "target_node_weights");
   record.accounting_numeraire_node_id =

@@ -51,9 +51,92 @@ KEYS
 
 TOOLS
   hero.lattice.status
-  hero.lattice.inspect
-  hero.lattice.evaluate
+  hero.lattice.inspect.schema
+  hero.lattice.inspect.targets
+  hero.lattice.inspect.target
+  hero.lattice.inspect.exposure
+  hero.lattice.inspect.fact_families
+  hero.lattice.inspect.facts.summary
+  hero.lattice.inspect.facts.scan
+  hero.lattice.inspect.facts.lineage
+  hero.lattice.inspect.facts.preview
+  hero.lattice.inspect.facts.preview.by_digest
+  hero.lattice.inspect.facts.preview.by_digest_prefix
+  hero.lattice.inspect.facts.preview.by_index
+  hero.lattice.inspect.index.status
+  hero.lattice.inspect.index.query
+  hero.lattice.inspect.index.query.by_relation
+  hero.lattice.inspect.index.query.by_key
+  hero.lattice.inspect.index.query.by_key_contains
+  hero.lattice.inspect.index.query.by_digest
+  hero.lattice.inspect.index.query.by_digest_prefix
+  hero.lattice.inspect.index.query.unproven_cache
+  hero.lattice.inspect.index.query.unproven_cache.by_relation
+  hero.lattice.inspect.index.query.unproven_cache.by_key
+  hero.lattice.inspect.index.query.unproven_cache.by_key_contains
+  hero.lattice.inspect.index.query.unproven_cache.by_digest
+  hero.lattice.inspect.index.query.unproven_cache.by_digest_prefix
+  hero.lattice.inspect.derived.target_satisfied
+  hero.lattice.inspect.derived.forbidden_overlap
+  hero.lattice.inspect.derived.unresolved_lineage.target
+  hero.lattice.inspect.derived.stale_cache
+  hero.lattice.inspect.derived.checkpoint_ancestor.by_checkpoint_path
+  hero.lattice.inspect.derived.checkpoint_ancestor.by_checkpoint_path.with_ancestor_path
+  hero.lattice.inspect.derived.checkpoint_ancestor.by_checkpoint_path.with_ancestor_id
+  hero.lattice.inspect.derived.checkpoint_ancestor.by_checkpoint_identity
+  hero.lattice.inspect.derived.checkpoint_ancestor.by_checkpoint_identity.with_ancestor_path
+  hero.lattice.inspect.derived.checkpoint_ancestor.by_checkpoint_identity.with_ancestor_id
+  hero.lattice.inspect.derived.unresolved_lineage.checkpoint
+  hero.lattice.inspect.checkpoint
+  hero.lattice.evaluate.target
+  hero.lattice.evaluate.targets
+  hero.lattice.evaluate.deficit
+  hero.lattice.evaluate.latest_satisfying_checkpoint.target
+  hero.lattice.evaluate.latest_satisfying_checkpoint.hint
   hero.lattice.compare
+
+  Lattice inspection is split into concrete read-only tools with direct
+  selectors:
+    inspect.schema accepts no arguments.
+    inspect.targets accepts optional config_path.
+    inspect.target accepts target_id and optional config_path.
+    inspect.exposure accepts optional runtime_root and limit.
+    inspect.fact_families accepts optional runtime_root.
+    inspect.facts.summary accepts optional family and runtime_root.
+    inspect.facts.scan accepts optional family, runtime_root, limit, and
+      include_facts.
+    inspect.facts.lineage accepts optional family, runtime_root, and limit.
+    inspect.facts.preview accepts family plus optional runtime_root and limit.
+      Exact digest, digest-prefix, and row-index previews use
+      inspect.facts.preview.by_digest, .by_digest_prefix, and .by_index.
+    inspect.index.status accepts runtime_root, index_path, limit, and
+      validation_strength.
+    inspect.index.query accepts runtime_root, index_path, limit,
+      and validation_strength for an unfiltered verified audit query. Relation,
+      key, key-substring, exact-digest, and digest-prefix selection use
+      inspect.index.query.by_relation, .by_key, .by_key_contains, .by_digest,
+      and .by_digest_prefix. The matching inspect.index.query.unproven_cache*
+      tools use validated cache headers without live-scan parity.
+    inspect.derived accepts concrete split tools with optional target, runtime,
+      index, checkpoint, ancestor-checkpoint, and witness-limit selectors.
+    inspect.checkpoint accepts runtime_root, checkpoint identity/path, and limit.
+
+  Lattice evaluation is split into concrete read-only tools with direct
+  selectors:
+    evaluate.target accepts target_id plus optional config_path and runtime_root.
+    evaluate.targets accepts optional target_ids, config_path, runtime_root,
+      and limit.
+    evaluate.deficit accepts target_id plus optional config_path and
+      runtime_root.
+    evaluate.latest_satisfying_checkpoint accepts target_id or symbolic_hint
+      plus optional config_path and runtime_root.
+
+  hero.lattice.compare accepts direct read-only selectors:
+    left_target_id, right_target_id, optional config_path, and optional
+    runtime_root.
+  Comparison identity is inferred from runtime evidence/config. Explicit
+  protocol identity, proof-context fingerprints, assembly fingerprints,
+  args_path, and args_digest are rejected on the public compare surface.
 
 MCP SCHEMA HYGIENE
   Tool schemas are a harness-safety gate, not a lattice proof condition.
@@ -241,12 +324,15 @@ AGENT RUNBOOK
     families and issue codes. fact_lineage additionally exposes selected
     runtime-index relation/key/digest rows as audit-only lineage witnesses;
     cache rows are never used for target satisfaction. fact_preview returns
-    concrete rows for one family by fact_digest, fact_digest_prefix, or
-    fact_index, plus matching lineage rows. fact_digest_prefix must resolve to
-    exactly one full fact digest in the selected family; zero-match and
-    ambiguous prefixes fail closed. The generic digest/digest_prefix/index
-    selectors are reserved for subject=index mode=query and are rejected by
-    subject=facts mode=preview.
+    concrete rows for one family, plus matching lineage rows. Exact digest,
+    digest-prefix, and row-index selection use
+    hero.lattice.inspect.facts.preview.by_digest,
+    hero.lattice.inspect.facts.preview.by_digest_prefix, and
+    hero.lattice.inspect.facts.preview.by_index. fact_digest_prefix must
+    resolve to exactly one full fact digest in the selected family; zero-match
+    and ambiguous prefixes fail closed. The generic digest/digest_prefix/index
+    selectors are reserved for hero.lattice.inspect.index.query and are
+    rejected by fact preview tools.
     Preview rows include display-only fact_ref and fact_digest_prefix helpers
     derived from the full fact_digest. These short refs are operator handles,
     not proof identity or accepted authority inputs. Preview rows are audit-only,
@@ -551,7 +637,10 @@ AGENT RUNBOOK
     read-only projection of those relation truth values from the existing proof
     result. Lattice inspect/evaluate derived-query panels answer the finite rule set
     target_satisfied, checkpoint_ancestor, forbidden_overlap, stale_cache, and
-    unresolved_lineage with concrete witnesses and fail-closed flags. These
+    unresolved_lineage with concrete witnesses and fail-closed flags.
+    checkpoint_ancestor is exposed through split tools by checkpoint path or
+    checkpoint identity, with optional suffixes for ancestor path or ancestor id
+    filters, so checkpoint selector families are not mixed in one schema. These
     relations are query/cache metadata over runtime evidence, do not execute
     waves, and do not alter target status or certificate digests.
     Rule rows include projection_scope, projection_quantifier, and
@@ -910,7 +999,9 @@ AGENT RUNBOOK
   derived_query
     Answers one read-only named rule query with concrete witnesses. The V3-E
     pilot supports target_satisfied, checkpoint_ancestor, forbidden_overlap,
-    stale_cache, and unresolved_lineage. Results include the versioned rule row,
+    stale_cache, and unresolved_lineage. checkpoint_ancestor uses explicit split
+    tools for checkpoint path versus checkpoint id/file-digest selectors, with
+    ancestor filters expressed in the tool suffix. Results include the versioned rule row,
     result source, witness count, returned witnesses, missing-witness rejection,
     unsafe/incomplete fail-closed flags, and an explicit
     cache_rows_used_for_target_satisfaction=false boundary. The top-level schema
@@ -933,9 +1024,9 @@ AGENT RUNBOOK
 	    with resolution_status=non_checkpoint_target_class for artifact/evaluation
 	    sources.
 
-  Empty runtime roots cannot infer graph-anchor identity. Pass active contract,
-  graph-order, source-cursor, and component assembly fingerprints explicitly, or
-  run a Runtime Hero dry-run first.
+  Empty runtime roots cannot infer graph-anchor identity. Run a Runtime Hero
+  dry-run first to produce identity-bearing evidence, or use Marshal
+  inspect.protocol.strict for explicit identity comparison.
 
   Agent invariants:
     - Never execute waves from Lattice Hero.

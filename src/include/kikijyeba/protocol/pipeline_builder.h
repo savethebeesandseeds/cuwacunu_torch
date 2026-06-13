@@ -115,6 +115,7 @@ struct graph_first_pipeline_dry_run_report_t {
   std::string active_representation_component_assembly_id{};
   std::string protocol_observer_family{};
   std::string protocol_allocation_policy_family{};
+  std::string protocol_policy_component_family{};
   std::string protocol_representation_contract{};
   std::string protocol_contract_fingerprint{};
   std::string protocol_contract_token{};
@@ -163,8 +164,8 @@ struct graph_first_pipeline_dry_run_report_t {
         << " protocol_warning=" << protocol_warning
         << " active_representation_family=" << active_representation_family
         << " protocol_observer=" << protocol_observer_family
-        << " protocol_allocation_policy="
-        << protocol_allocation_policy_family
+        << " protocol_allocation_policy=" << protocol_allocation_policy_family
+        << " protocol_policy_component=" << protocol_policy_component_family
         << " protocol_contract=" << protocol_contract_fingerprint
         << " nodelift_assembly=" << nodelift_assembly_fingerprint
         << " vicreg_assembly=" << vicreg_assembly_fingerprint
@@ -209,9 +210,11 @@ resolve_batch_size(const channel_graph_first_config_bundle_t &bundle,
         "mtf_jepa_mae_vicreg_training.batch_size");
   case cuwacunu::hero::runtime::settings::wave_target_t::inference_channel_mdn:
     break;
-  case cuwacunu::hero::runtime::settings::wave_target_t::policy_trainable:
+  case cuwacunu::hero::runtime::settings::wave_target_t::
+      graph_node_allocation_policy:
     throw std::runtime_error(
-        "[graph_first_pipeline_builder] wikimyei.policy.trainable is a "
+        "[graph_first_pipeline_builder] "
+        "wikimyei.policy.portfolio.graph_node_allocation is a "
         "Runtime Hero policy-training wave target, not a graph-first channel "
         "pipeline target");
   }
@@ -246,9 +249,11 @@ source_order_random_seed(const channel_graph_first_config_bundle_t &bundle) {
     return bundle.mtf_jepa_mae_vicreg_training.seed;
   case cuwacunu::hero::runtime::settings::wave_target_t::inference_channel_mdn:
     return bundle.channel_mdn_training.seed;
-  case cuwacunu::hero::runtime::settings::wave_target_t::policy_trainable:
+  case cuwacunu::hero::runtime::settings::wave_target_t::
+      graph_node_allocation_policy:
     throw std::runtime_error(
-        "[graph_first_pipeline_builder] wikimyei.policy.trainable has no "
+        "[graph_first_pipeline_builder] "
+        "wikimyei.policy.portfolio.graph_node_allocation has no "
         "graph-first source-order seed");
   }
   throw std::runtime_error(
@@ -266,9 +271,11 @@ source_order_random_seed(const channel_graph_first_config_bundle_t &bundle) {
     return "mtf_jepa_mae_vicreg_training.seed";
   case cuwacunu::hero::runtime::settings::wave_target_t::inference_channel_mdn:
     return "channel_mdn_training.seed";
-  case cuwacunu::hero::runtime::settings::wave_target_t::policy_trainable:
+  case cuwacunu::hero::runtime::settings::wave_target_t::
+      graph_node_allocation_policy:
     throw std::runtime_error(
-        "[graph_first_pipeline_builder] wikimyei.policy.trainable has no "
+        "[graph_first_pipeline_builder] "
+        "wikimyei.policy.portfolio.graph_node_allocation has no "
         "graph-first source-order seed source");
   }
   throw std::runtime_error(
@@ -572,6 +579,8 @@ public:
     out.protocol_observer_family = bundle_.protocol_variant.observer_family;
     out.protocol_allocation_policy_family =
         bundle_.protocol_variant.allocation_policy_family;
+    out.protocol_policy_component_family =
+        bundle_.protocol_variant.policy_component_family;
     out.protocol_representation_contract =
         bundle_.protocol_variant.representation_contract;
     out.protocol_contract_fingerprint = cuwacunu::kikijyeba::protocol::
@@ -695,9 +704,8 @@ public:
     return out;
   }
 
-  [[nodiscard]] cuwacunu::hero::lattice::runtime_report::
-      runtime_report_mode_t
-      effective_runtime_report_mode() const {
+  [[nodiscard]] cuwacunu::hero::lattice::runtime_report::runtime_report_mode_t
+  effective_runtime_report_mode() const {
     return graph_first_pipeline_builder_detail::resolve_runtime_report_mode(
         bundle_.wave_settings, options_.runtime_report_mode);
   }
@@ -756,9 +764,9 @@ public:
     stream_options.lift_future =
         cuwacunu::wikimyei::expression::nodelift::srl::lift_future_enabled(
             bundle_.nodelift);
-    const auto resolved_range =
-        cuwacunu::hero::runtime::settings::resolve_source_range_to_anchor_indices(
-            bundle_.wave_settings, source.cursor_report());
+    const auto resolved_range = cuwacunu::hero::runtime::settings::
+        resolve_source_range_to_anchor_indices(bundle_.wave_settings,
+                                               source.cursor_report());
     stream_options.begin_anchor_index = resolved_range.anchor_index_begin;
     stream_options.end_anchor_index = resolved_range.anchor_index_end;
     stream_options.source_order =

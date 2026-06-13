@@ -49,10 +49,9 @@ For the actual dispatch, Runtime Hero was intentionally opened with:
 
 ```text
 default_dry_run = true
-execute argument dry_run = false
+execute argument requested_mode = execute
 allow_execute = true
 allow_train_execute = true
-confirm_execute = true
 ```
 
 Lattice Hero remained read-only for the full run. It was used only for status,

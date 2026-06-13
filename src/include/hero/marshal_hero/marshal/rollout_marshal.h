@@ -225,8 +225,7 @@ inline void append_double(std::ostringstream &out, const std::string &key,
   return std::string(text.substr(begin, end - begin));
 }
 
-[[nodiscard]] inline std::string
-read_accounting_numeraire_node_id_from_config(
+[[nodiscard]] inline std::string read_accounting_numeraire_node_id_from_config(
     const std::filesystem::path &config_path) {
   std::ifstream input(config_path);
   if (!input.is_open()) {
@@ -244,8 +243,8 @@ read_accounting_numeraire_node_id_from_config(
       continue;
     }
     if (line.front() == '[' && line.back() == ']') {
-      current_section = trim_ascii(std::string_view(line).substr(
-          1U, line.size() - 2U));
+      current_section =
+          trim_ascii(std::string_view(line).substr(1U, line.size() - 2U));
       continue;
     }
     if (current_section != "ACCOUNTING") {
@@ -406,7 +405,8 @@ rollout_asset_universe_text(const std::string &accounting_numeraire_node_id,
   std::ostringstream out;
   detail::append_kv(out, "schema_version",
                     k_marshal_rollout_asset_universe_schema_v1);
-  detail::append_kv(out, "accounting_numeraire_node_id", accounting_numeraire_node_id);
+  detail::append_kv(out, "accounting_numeraire_node_id",
+                    accounting_numeraire_node_id);
   detail::append_kv(out, "target_node_ids", detail::csv(target_node_ids));
   return out.str();
 }
@@ -416,7 +416,8 @@ rollout_asset_universe_digest(const std::string &accounting_numeraire_node_id,
                               const std::vector<std::string> &target_node_ids) {
   return marshal_digest_for_text(
       k_marshal_rollout_asset_universe_schema_v1,
-      rollout_asset_universe_text(accounting_numeraire_node_id, target_node_ids));
+      rollout_asset_universe_text(accounting_numeraire_node_id,
+                                  target_node_ids));
 }
 
 [[nodiscard]] inline std::string
@@ -490,8 +491,10 @@ canonical_rollout_request_text(const marshal_rollout_request_t &request) {
                     request.graph_order_fingerprint);
   detail::append_kv(out, "asset_universe_digest",
                     request.asset_universe_digest);
-  detail::append_kv(out, "accounting_numeraire_node_id", request.accounting_numeraire_node_id);
-  detail::append_kv(out, "target_node_ids", detail::csv(request.target_node_ids));
+  detail::append_kv(out, "accounting_numeraire_node_id",
+                    request.accounting_numeraire_node_id);
+  detail::append_kv(out, "target_node_ids",
+                    detail::csv(request.target_node_ids));
   detail::append_kv(out, "policy_tokens", detail::csv(request.policy_tokens));
   detail::append_i64(out, "max_steps", request.max_steps);
   detail::append_i64(out, "max_parallel_jobs", request.max_parallel_jobs);
@@ -511,7 +514,7 @@ canonical_rollout_request_text(const marshal_rollout_request_t &request) {
 }
 
 [[nodiscard]] inline std::string
-rollout_request_digest(const marshal_rollout_request_t &request) {
+args_digest(const marshal_rollout_request_t &request) {
   return marshal_digest_for_text(k_marshal_rollout_request_schema_v1,
                                  canonical_rollout_request_text(request));
 }
@@ -598,9 +601,9 @@ validate_rollout_request(const marshal_rollout_request_t &request) {
       refusals.emplace_back("duplicate_target_node_id");
     }
   }
-  if (!request.accounting_numeraire_node_id.empty() &&
-      !contains_numeraire) {
-    refusals.emplace_back("accounting_numeraire_node_missing_from_target_nodes");
+  if (!request.accounting_numeraire_node_id.empty() && !contains_numeraire) {
+    refusals.emplace_back(
+        "accounting_numeraire_node_missing_from_target_nodes");
   }
 
   const auto computed_asset_universe_digest = rollout_asset_universe_digest(
@@ -789,7 +792,7 @@ prepare_rollout_plan(marshal_rollout_request_t request) {
   namespace detail = rollout_marshal_detail;
   request = normalize_rollout_request_defaults(std::move(request));
   marshal_rollout_plan_t plan{};
-  plan.request_digest = rollout_request_digest(request);
+  plan.request_digest = args_digest(request);
   plan.rollout_id = request.rollout_id;
   plan.rollout_attempt_id = request.rollout_attempt_id;
   plan.idempotency_key = request.idempotency_key;
@@ -983,70 +986,103 @@ rollout_plan_json(const marshal_rollout_plan_t &plan) {
   return out.str();
 }
 
+[[nodiscard]] inline std::string rollout_runtime_replay_execution_request_text(
+    const marshal_rollout_request_t &request,
+    const marshal_rollout_plan_t &plan) {
+  namespace detail = rollout_marshal_detail;
+  std::ostringstream out;
+  detail::append_kv(out, "job_dir", request.runtime_job_dir.string());
+  detail::append_kv(out, "accounting_numeraire_node_id",
+                    request.accounting_numeraire_node_id);
+  detail::append_kv(out, "target_node_ids",
+                    detail::csv(request.target_node_ids));
+  detail::append_kv(out, "experiment_id", plan.experiment_id);
+  detail::append_kv(out, "report_path", plan.expected_report_path.string());
+  detail::append_kv(out, "execution_profile_digest",
+                    plan.execution_profile_digest);
+  detail::append_kv(out, "policy_set_digest", plan.policy_set_digest);
+  if (request.max_steps > 0) {
+    detail::append_i64(out, "max_steps", request.max_steps);
+  }
+  if (request.max_parallel_jobs > 0) {
+    detail::append_i64(out, "max_parallel_jobs", request.max_parallel_jobs);
+  }
+  detail::append_bool(out, "include_equal_weight",
+                      detail::contains_policy(plan.resolved_policy_ids,
+                                              k_rollout_policy_equal_weight));
+  detail::append_bool(out, "include_current_weight",
+                      detail::contains_policy(plan.resolved_policy_ids,
+                                              k_rollout_policy_current_weight));
+  detail::append_bool(out, "include_numeraire_only_policy",
+                      detail::contains_policy(plan.resolved_policy_ids,
+                                              k_rollout_policy_numeraire_only));
+  detail::append_bool(
+      out, "include_spot_distributional_utility_policy",
+      detail::contains_policy(plan.resolved_policy_ids, k_rollout_policy_sdu));
+  detail::append_bool(out, "allow_synthetic_direct_edges",
+                      request.execution_profile.allow_synthetic_direct_edges);
+  detail::append_bool(out, "validation_rollout", true);
+  if (request.execution_profile.linear_transaction_cost_rate > 0.0) {
+    detail::append_double(
+        out, "linear_transaction_cost_rate",
+        request.execution_profile.linear_transaction_cost_rate);
+  }
+  return out.str();
+}
+
+[[nodiscard]] inline std::filesystem::path
+materialize_rollout_runtime_replay_execution_request(
+    const marshal_rollout_request_t &request,
+    const marshal_rollout_plan_t &plan, std::string *request_digest) {
+  const std::string text =
+      rollout_runtime_replay_execution_request_text(request, plan);
+  const std::string digest = marshal_digest_for_text(
+      "kikijyeba.runtime.policy_training_execution_request.v1", text);
+  if (request_digest != nullptr) {
+    *request_digest = digest;
+  }
+  const std::filesystem::path dir =
+      std::filesystem::temp_directory_path() / "cuwacunu_hero_runtime_requests";
+  std::filesystem::create_directories(dir);
+  const std::filesystem::path path = dir / ("replay_" + digest + ".kv");
+  std::ofstream out(path, std::ios::trunc);
+  out << text;
+  return path;
+}
+
 [[nodiscard]] inline std::string
 rollout_runtime_replay_args_json(const marshal_rollout_request_t &request,
                                  const marshal_rollout_plan_t &plan,
                                  bool dry_run) {
   namespace detail = rollout_marshal_detail;
+  std::string execution_request_digest;
+  const std::filesystem::path execution_request_path =
+      materialize_rollout_runtime_replay_execution_request(
+          request, plan, &execution_request_digest);
+  std::ostringstream run_request_text;
+  run_request_text << "config_path=" << request.config_path.string() << "\n"
+                   << "execution_request_path="
+                   << execution_request_path.string() << "\n"
+                   << "execution_request_digest=" << execution_request_digest
+                   << "\n";
+  const std::string args_digest = marshal_digest_for_text(
+      "kikijyeba.runtime.run_request.replay.v1", run_request_text.str());
+  const std::filesystem::path run_request_dir =
+      std::filesystem::temp_directory_path() / "cuwacunu_hero_runtime_requests";
+  std::filesystem::create_directories(run_request_dir);
+  const std::filesystem::path args_path =
+      run_request_dir / ("replay_run_" + args_digest + ".kv");
+  std::ofstream run_request_out(args_path, std::ios::trunc);
+  run_request_out << run_request_text.str();
+
   std::ostringstream out;
   out << "{";
   bool first = true;
-  detail::append_json_string_field(out, "operation", "replay", &first);
-  detail::append_json_string_field(out, "requested_mode",
-                                   dry_run ? "plan" : "execute", &first);
-  detail::append_json_string_field(out, "job_dir",
-                                   request.runtime_job_dir.string(), &first);
-  detail::append_json_string_field(out, "config_path",
-                                   request.config_path.string(), &first);
-  detail::append_json_string_field(out, "accounting_numeraire_node_id",
-                                   request.accounting_numeraire_node_id, &first);
-  detail::append_json_string_field(out, "target_node_ids",
-                                   detail::csv(request.target_node_ids), &first);
-  detail::append_json_string_field(out, "experiment_id", plan.experiment_id,
+  detail::append_json_string_field(out, "mode", dry_run ? "dry_run" : "execute",
                                    &first);
-  detail::append_json_string_field(out, "report_path",
-                                   plan.expected_report_path.string(), &first);
-  detail::append_json_string_field(out, "execution_profile_digest",
-                                   plan.execution_profile_digest, &first);
-  detail::append_json_string_field(out, "policy_set_digest",
-                                   plan.policy_set_digest, &first);
-  if (request.max_steps > 0) {
-    detail::append_json_i64_field(out, "max_steps", request.max_steps, &first);
-  }
-  if (request.max_parallel_jobs > 0) {
-    detail::append_json_i64_field(out, "max_parallel_jobs",
-                                  request.max_parallel_jobs, &first);
-  }
-  detail::append_json_bool_field(
-      out, "include_equal_weight",
-      detail::contains_policy(plan.resolved_policy_ids,
-                              k_rollout_policy_equal_weight),
-      &first);
-  detail::append_json_bool_field(
-      out, "include_current_weight",
-      detail::contains_policy(plan.resolved_policy_ids,
-                              k_rollout_policy_current_weight),
-      &first);
-  detail::append_json_bool_field(
-      out, "include_numeraire_only_policy",
-      detail::contains_policy(plan.resolved_policy_ids,
-                              k_rollout_policy_numeraire_only),
-      &first);
-  detail::append_json_bool_field(
-      out, "include_spot_distributional_utility_policy",
-      detail::contains_policy(plan.resolved_policy_ids, k_rollout_policy_sdu),
-      &first);
-  detail::append_json_bool_field(
-      out, "allow_synthetic_direct_edges",
-      request.execution_profile.allow_synthetic_direct_edges, &first);
-  detail::append_json_bool_field(out, "validation_rollout", true, &first);
-  if (request.execution_profile.linear_transaction_cost_rate > 0.0) {
-    detail::append_json_double_field(
-        out, "linear_transaction_cost_rate",
-        request.execution_profile.linear_transaction_cost_rate, &first);
-  }
-  detail::append_json_i64_field(out, "timeout_seconds", request.timeout_seconds,
-                                &first);
+  detail::append_json_string_field(out, "args_path", args_path.string(),
+                                   &first);
+  detail::append_json_string_field(out, "args_digest", args_digest, &first);
   out << "}";
   return out.str();
 }

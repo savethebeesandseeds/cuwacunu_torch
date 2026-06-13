@@ -15,7 +15,7 @@
 namespace cuwacunu {
 namespace jkimyei {
 
-using contract_hash_t = std::string;
+using contract_fingerprint_t = std::string;
 
 /* ------------------------------- config rows -------------------------------
  */
@@ -139,7 +139,7 @@ struct jkimyei_component_t {
         row = *profile_row;
       } else {
         row = instruction.retrieve_row("component_profiles_table",
-                                      component_lookup_name);
+                                       component_lookup_name);
       }
       from_component_profile_row = true;
     }
@@ -151,8 +151,8 @@ struct jkimyei_component_t {
 
     if (from_component_profile_row) {
       resolved_profile_row_id = row_id;
-      resolved_component_assembly_id =
-          cuwacunu::jkimyei::specs::require_column(row, "component_assembly_id");
+      resolved_component_assembly_id = cuwacunu::jkimyei::specs::require_column(
+          row, "component_assembly_id");
       resolved_profile_id =
           cuwacunu::jkimyei::specs::require_column(row, "profile_id");
     } else {
@@ -182,18 +182,19 @@ struct jkimyei_setup_t {
   static jkimyei_setup_t registry;
 
   // Get (or lazily build from explicit DSL text) a component by name.
-  jkimyei_component_t &operator()(const std::string &component_name,
-                                  const contract_hash_t &contract_hash);
+  jkimyei_component_t &
+  operator()(const std::string &component_name,
+             const contract_fingerprint_t &contract_fingerprint);
   // Bind a runtime component to explicit training DSL text.
-  void set_component_instruction_override(const contract_hash_t &contract_hash,
-                                          std::string runtime_component_name,
-                                          std::string component_lookup_name,
-                                          std::string instruction_text);
+  void set_component_instruction_override(
+      const contract_fingerprint_t &contract_fingerprint,
+      std::string runtime_component_name, std::string component_lookup_name,
+      std::string instruction_text);
   void clear_component_instruction_override(
-      const contract_hash_t &contract_hash,
+      const contract_fingerprint_t &contract_fingerprint,
       const std::string &runtime_component_name);
-  void
-  clear_component_instruction_overrides(const contract_hash_t &contract_hash);
+  void clear_component_instruction_overrides(
+      const contract_fingerprint_t &contract_fingerprint);
   void clear_all_component_instruction_overrides();
 
 private:
@@ -207,7 +208,7 @@ private:
       component_instruction_overrides;
   std::mutex mtx;
   static std::string
-  make_component_key(const contract_hash_t &contract_hash,
+  make_component_key(const contract_fingerprint_t &contract_fingerprint,
                      const std::string &runtime_component_name);
 
   static void init();
@@ -220,12 +221,11 @@ private:
 };
 
 // ---- Convenience free function to call `jkimyei_setup_t("...",
-// contract_hash)`
-// ----
+// contract_fingerprint)` ----
 inline jkimyei_component_t &
 jkimyei_setup(const std::string &component_name,
-              const contract_hash_t &contract_hash) {
-  return jkimyei_setup_t::registry(component_name, contract_hash);
+              const contract_fingerprint_t &contract_fingerprint) {
+  return jkimyei_setup_t::registry(component_name, contract_fingerprint);
 }
 
 } // namespace jkimyei

@@ -65,7 +65,8 @@ Runtime boundary:
 Design goals:
 - schema-first definitions (`.def` is source of truth)
 - strict allow-lists and no silent defaults
-- runtime component setup by explicit DSL text keyed by `contract_hash + component_name`
+- runtime component setup by explicit DSL text keyed by
+  `contract_fingerprint + component_name`
 
 The copied `jkimyei_specs` declarations now live under the public
 `jkimyei/api` path while keeping namespace

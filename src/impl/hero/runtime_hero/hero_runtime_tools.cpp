@@ -1,12 +1,16 @@
 #include "hero/runtime_hero/hero_runtime_tools.h"
 
+#include "hero/lattice_hero/lattice/exposure/exposure_ledger.h"
 #include "hero/marshal_hero/marshal/digest.h"
 #include "hero/mcp_schema_compat.h"
+#include "hero/mcp_stdio_transport.h"
 #include "hero/runtime_hero/hero_runtime.h"
 #include "hero/runtime_hero/runtime/job_layout.h"
 #include "hero/runtime_hero/runtime/policy_training_job_contract.h"
 #include "hero/runtime_hero/runtime/wave_settings.h"
+#include "hero/short_ref.h"
 #include "wikimyei/assembly.h"
+#include "wikimyei/policy/portfolio/graph_node_allocation/torch_policy_module.h"
 
 #include <algorithm>
 #include <array>
@@ -40,6 +44,7 @@ namespace cuwacunu::hero::runtime {
 namespace {
 
 namespace fs = std::filesystem;
+namespace display = cuwacunu::hero::display;
 
 constexpr int kPolicyErrorCode = -32050;
 constexpr const char *kDefaultGlobalConfigPath = "/cuwacunu/src/config/.config";
@@ -52,47 +57,53 @@ struct tool_descriptor_t {
   const char *input_schema_json;
 };
 
-constexpr tool_descriptor_t
-    kTools
-        [] =
-            {
-                {"hero.runtime.status",
-                 "Read-only health: summarize Runtime Hero policy, executable, "
-                 "active "
-                 "wave, job root, and explicit non-proof boundary state.",
-                 R"({"type":"object","properties":{},"additionalProperties":false})"},
-                {"hero.runtime.inspect",
-                 "Read-only Runtime inspection. subject=schema reads policy "
-                 "keys; "
-                 "subject=wave decodes the active wave; "
-                 "subject=jobs/job/artifact "
-                 "reads "
-                 "bounded Runtime evidence.",
-                 R"({"type":"object","required":["subject"],"properties":{"subject":{"type":"string","enum":["schema","wave","jobs","job","artifact"]},"config_path":{"type":"string"},"root":{"type":"string"},"job_id":{"type":"string"},"job_dir":{"type":"string"},"artifact":{"type":"string"},"path":{"type":"string"},"include_artifacts":{"type":"boolean"},"include_text":{"type":"boolean"},"max_bytes":{"type":"integer"},"limit":{"type":"integer"}},"additionalProperties":false})"},
-                {"hero.runtime.run",
-                 "Runtime execution/delegation. operation=wave runs the active "
-                 "Runtime "
-                 "wave with requested_mode=dry_run|execute. Policy-training "
-                 "contracts are also submitted as operation=wave with policy "
-                 "identity and causal schedule fields; execute supports the "
-                 "bounded "
-                 "noop_policy_training.v1 smoke trainer and the PPO V0 "
-                 "ppo_policy_adapter.v1 trainer. "
-                 "operation=replay plans, dry-runs, or executes replay from a "
-                 "completed Runtime job.",
-                 R"({"type":"object","required":["operation","requested_mode"],"properties":{"operation":{"type":"string","enum":["wave","replay"]},"requested_mode":{"type":"string","enum":["plan","dry_run","execute"]},"config_path":{"type":"string"},"job_id":{"type":"string"},"job_dir":{"type":"string"},"replay_job_dir":{"type":"string"},"force_rebuild_cache":{"type":"boolean"},"confirm_execute":{"type":"boolean"},"timeout_seconds":{"type":"integer"},"wave_overlay":{"type":"object","properties":{"source_range":{"type":"string"},"anchor_index_begin":{"type":"string"},"anchor_index_end":{"type":"string"},"source_key_begin":{"type":"string"},"source_key_end":{"type":"string"}}},"runtime_handoff":{"type":"object","properties":{}},"marshal_expected_wave":{"type":"object","properties":{"target_component_family_id":{"type":"string"},"mode":{"type":"string"},"source_range":{"type":"string"},"source_order":{"type":"string"},"anchor_index_begin":{"type":"string"},"anchor_index_end":{"type":"string"},"source_key_begin":{"type":"string"},"source_key_end":{"type":"string"},"model_state_inputs":{"type":"object"}}},"accounting_numeraire_node_id":{"type":"string"},"target_node_ids":{"type":"string"},"experiment_id":{"type":"string"},"report_path":{"type":"string"},"initial_equity_numeraire":{"type":"number"},"max_node_weight":{"type":"number"},"max_turnover_l1":{"type":"number"},"max_steps":{"type":"integer"},"max_parallel_jobs":{"type":"integer"},"include_equal_weight":{"type":"boolean"},"include_current_weight":{"type":"boolean"},"include_graph_node_allocation_policy":{"type":"boolean"},"on_policy_sample":{"type":"boolean"},"include_numeraire_only_policy":{"type":"boolean"},"include_spot_distributional_utility_policy":{"type":"boolean"},"allow_synthetic_direct_edges":{"type":"boolean"},"validation_rollout":{"type":"boolean"},"linear_transaction_cost_rate":{"type":"number"},"execution_profile_digest":{"type":"string"},"policy_set_digest":{"type":"string"},"policy_artifact_digest":{"type":"string"},"protocol_id":{"type":"string"},"protocol_contract_fingerprint":{"type":"string"},"graph_order_fingerprint":{"type":"string"},"source_cursor_token":{"type":"string"},"split_policy_fingerprint":{"type":"string"},"component_assembly_fingerprint":{"type":"string"},"policy_id":{"type":"string"},"policy_kind":{"type":"string"},"policy_architecture_digest":{"type":"string"},"training_config_digest":{"type":"string"},"training_range_digest":{"type":"string"},"validation_range_digest":{"type":"string"},"test_range_digest":{"type":"string"},"environment_contract_id":{"type":"string"},"observation_schema_digest":{"type":"string"},"action_schema_digest":{"type":"string"},"reward_contract_digest":{"type":"string"},"policy_input_schema_id":{"type":"string"},"action_adapter_id":{"type":"string"},"action_distribution_id":{"type":"string","enum":["masked_dirichlet_simplex.v1","masked_logistic_normal_simplex.v1"]},"reward_contract_id":{"type":"string"},"ppo_policy_artifact_contract_id":{"type":"string"},"policy_family_id":{"type":"string"},"policy_checkpoint_schema_id":{"type":"string"},"policy_input_feature_manifest_digest":{"type":"string"},"action_distribution_config_digest":{"type":"string"},"snapshot_family_digest":{"type":"string"},"actor_architecture_digest":{"type":"string"},"critic_architecture_digest":{"type":"string"},"actor_checkpoint_digest":{"type":"string"},"critic_checkpoint_digest":{"type":"string"},"optimizer_state_digest":{"type":"string"},"ppo_config_digest":{"type":"string"},"advantage_estimator_id":{"type":"string"},"advantage_normalization_policy":{"type":"string"},"rollout_collection_schema_id":{"type":"string"},"rollout_collection_digest":{"type":"string"},"ppo_update_report_schema_id":{"type":"string"},"ppo_update_report_digest":{"type":"string"},"validation_rollout_report_digest":{"type":"string"},"policy_quality_report_digest":{"type":"string"},"ppo_gamma":{"type":"number"},"ppo_gae_lambda":{"type":"number"},"ppo_clip_epsilon":{"type":"number"},"ppo_target_kl":{"type":"number"},"ppo_entropy_coeff":{"type":"number"},"ppo_value_loss_coeff":{"type":"number"},"ppo_max_grad_norm":{"type":"number"},"ppo_minibatch_size":{"type":"integer"},"ppo_epochs_per_rollout":{"type":"integer"},"training_schedule_mode":{"type":"string","enum":["causal_walk_forward_training.v1","offline_full_window_research","batch_final_refit_candidate"]},"causal_schedule_schema_id":{"type":"string"},"causal_schedule_digest":{"type":"string"},"causal_schedule_cursor_key_kind":{"type":"string","enum":["numeric_anchor_index","numeric_source_key","fixed_width_source_key","timestamp_ms"]},"causal_schedule_no_future_snapshot_use_source":{"type":"string"},"normalization_fit_range_digest":{"type":"string"},"replay_buffer_source_range_digest":{"type":"string"},"early_stopping_policy_digest":{"type":"string"},"hyperparameter_selection_policy_digest":{"type":"string"},"selector_split":{"type":"string","enum":["none","train","training","validation"]},"selector_policy_digest":{"type":"string"},"parent_checkpoint_digest":{"type":"string"},"parent_forecast_eval_fact_digest":{"type":"string"},"parent_observer_belief_fact_digest":{"type":"string"},"parent_allocation_engine_fact_digest":{"type":"string"},"parent_replay_environment_fact_digest":{"type":"string"},"parent_replay_environment_report_digest":{"type":"string"},"final_refit_parent_selected_checkpoint_digest":{"type":"string"},"random_seed":{"type":"integer"},"max_episodes":{"type":"integer"},"max_wall_clock_seconds":{"type":"integer"},"causal_schedule_readiness_eligible":{"type":"boolean"},"causal_schedule_no_future_snapshot_use":{"type":"boolean"},"offline_full_window_research_allowed":{"type":"boolean"},"final_refit_uses_validation":{"type":"boolean"},"validation_no_longer_proof":{"type":"boolean"},"sealed_test_required":{"type":"boolean"},"live_execution_allowed":{"type":"boolean"}},"additionalProperties":false})"},
-                {"hero.runtime.reset",
-                 "Guarded developer reset. requested_mode=plan previews the "
-                 "reset; "
-                 "requested_mode=execute clears allowed Runtime roots only "
-                 "with "
-                 "explicit "
-                 "confirmation and policy permission.",
-                 R"({"type":"object","required":["requested_mode"],"properties":{"requested_mode":{"type":"string","enum":["plan","execute"]},"runtime_root":{"type":"string"},"backup":{"type":"boolean"},"confirm_dev_nuke":{"type":"boolean"}},"additionalProperties":false})"},
+constexpr tool_descriptor_t kTools[] = {
+    {"hero.runtime.status",
+     "Read-only health: summarize Runtime Hero policy, executable, "
+     "active "
+     "wave, job root, and explicit non-proof boundary state.",
+     R"({"type":"object","properties":{},"additionalProperties":false})"},
+    {"hero.runtime.inspect.schema",
+     "Read-only Runtime policy key registry inspection.",
+     R"({"type":"object","properties":{},"additionalProperties":false})"},
+    {"hero.runtime.inspect.wave", "Read-only active Runtime wave inspection.",
+     R"({"type":"object","properties":{"config_path":{"type":"string"}},"additionalProperties":false})"},
+    {"hero.runtime.inspect.jobs", "Read-only Runtime job directory listing.",
+     R"({"type":"object","properties":{"root":{"type":"string"},"limit":{"type":"integer"},"include_artifacts":{"type":"boolean"}},"additionalProperties":false})"},
+    {"hero.runtime.inspect.job",
+     "Read-only Runtime job manifest/state/report bundle inspection.",
+     R"({"type":"object","properties":{"job_id":{"type":"string"},"job_dir":{"type":"string"},"include_text":{"type":"boolean"},"max_bytes":{"type":"integer"}},"additionalProperties":false})"},
+    {"hero.runtime.inspect.artifact.job",
+     "Read-only bounded named artifact inspection inside one Runtime job.",
+     R"({"type":"object","properties":{"job_id":{"type":"string"},"job_dir":{"type":"string"},"artifact":{"type":"string"},"max_bytes":{"type":"integer"}},"additionalProperties":false})"},
+    {"hero.runtime.inspect.artifact.path",
+     "Read-only bounded Runtime artifact inspection by explicit path.",
+     R"({"type":"object","required":["path"],"properties":{"path":{"type":"string"},"max_bytes":{"type":"integer"}},"additionalProperties":false})"},
+    {"hero.runtime.run",
+     "Runtime wave execution with mode=dry_run|execute. Policy component "
+     "waves use the contract-backed graph_node_allocation driver inside "
+     "this same surface; wave-specific payload lives in args_path. Execute "
+     "supports the bounded "
+     "noop_policy_training.v1 smoke trainer and the PPO V0 "
+     "ppo_policy_adapter.v1 trainer. Operators should use "
+     "hero.environment.rollout for replay admission.",
+     R"({"type":"object","required":["mode"],"properties":{"mode":{"type":"string","enum":["dry_run","execute"]},"args_path":{"type":"string"},"args_digest":{"type":"string"}},"additionalProperties":false})"},
+    {"hero.runtime.reset",
+     "Guarded developer reset. mode=plan previews the "
+     "reset; "
+     "mode=execute clears allowed Runtime roots only "
+     "with a digest-pinned args_path request and policy permission.",
+     R"({"type":"object","required":["mode"],"properties":{"mode":{"type":"string","enum":["plan","execute"]},"args_path":{"type":"string"},"args_digest":{"type":"string"}},"additionalProperties":false})"},
 };
 
 [[nodiscard]] bool tool_is_read_only(std::string_view name) {
-  return name == "hero.runtime.status" || name == "hero.runtime.inspect";
+  return name == "hero.runtime.status" ||
+         name == "hero.runtime.inspect.schema" ||
+         name == "hero.runtime.inspect.wave" ||
+         name == "hero.runtime.inspect.jobs" ||
+         name == "hero.runtime.inspect.job" ||
+         name == "hero.runtime.inspect.artifact.job" ||
+         name == "hero.runtime.inspect.artifact.path";
 }
 
 [[nodiscard]] bool tool_is_destructive(std::string_view name) {
@@ -144,6 +155,23 @@ constexpr tool_descriptor_t
     return false;
   }
   int parsed = 0;
+  const auto result =
+      std::from_chars(value.data(), value.data() + value.size(), parsed);
+  if (result.ec != std::errc{} || result.ptr != value.data() + value.size()) {
+    return false;
+  }
+  if (out) {
+    *out = parsed;
+  }
+  return true;
+}
+
+[[nodiscard]] bool parse_int64(std::string_view raw, std::int64_t *out) {
+  const std::string value = trim_ascii(raw);
+  if (value.empty()) {
+    return false;
+  }
+  std::int64_t parsed = 0;
   const auto result =
       std::from_chars(value.data(), value.data() + value.size(), parsed);
   if (result.ec != std::errc{} || result.ptr != value.data() + value.size()) {
@@ -699,6 +727,11 @@ void append_bool_json_field(std::ostringstream &out, std::string_view key,
   append_raw_json_field(out, key, value ? "true" : "false", first);
 }
 
+void append_string_json_field(std::ostringstream &out, std::string_view key,
+                              std::string_view value, bool *first) {
+  append_raw_json_field(out, key, json_quote(value), first);
+}
+
 void append_optional_raw_json_field(const std::string &args,
                                     std::ostringstream &out,
                                     std::string_view key, bool *first) {
@@ -1090,6 +1123,913 @@ kv_map_to_json(const std::unordered_map<std::string, std::string> &map) {
   return out.str();
 }
 
+enum class kv_json_field_kind_t {
+  string_value,
+  bool_value,
+  int_value,
+  number_value
+};
+
+struct kv_json_field_t {
+  const char *key;
+  kv_json_field_kind_t kind;
+};
+
+[[nodiscard]] bool
+kv_get_trimmed(const std::unordered_map<std::string, std::string> &map,
+               std::string_view key, std::string *out) {
+  const auto found = map.find(std::string(key));
+  if (found == map.end()) {
+    return false;
+  }
+  if (out) {
+    *out = trim_ascii(found->second);
+  }
+  return true;
+}
+
+void kv_set_string(const std::unordered_map<std::string, std::string> &map,
+                   std::string_view key, std::string *field) {
+  std::string value;
+  if (!kv_get_trimmed(map, key, &value)) {
+    return;
+  }
+  *field = std::move(value);
+}
+
+[[nodiscard]] bool
+kv_set_bool(const std::unordered_map<std::string, std::string> &map,
+            std::string_view key, bool *field, std::string *err) {
+  std::string value;
+  if (!kv_get_trimmed(map, key, &value) || value.empty()) {
+    return true;
+  }
+  bool parsed = false;
+  if (!parse_bool(value, &parsed)) {
+    if (err) {
+      *err = std::string(key) + " must be boolean";
+    }
+    return false;
+  }
+  *field = parsed;
+  return true;
+}
+
+[[nodiscard]] bool
+kv_set_int64(const std::unordered_map<std::string, std::string> &map,
+             std::string_view key, std::int64_t *field, std::string *err) {
+  std::string value;
+  if (!kv_get_trimmed(map, key, &value) || value.empty()) {
+    return true;
+  }
+  std::int64_t parsed = 0;
+  if (!parse_int64(value, &parsed)) {
+    if (err) {
+      *err = std::string(key) + " must be integer";
+    }
+    return false;
+  }
+  *field = parsed;
+  return true;
+}
+
+[[nodiscard]] bool
+kv_set_double(const std::unordered_map<std::string, std::string> &map,
+              std::string_view key, double *field, std::string *err) {
+  std::string value;
+  if (!kv_get_trimmed(map, key, &value) || value.empty()) {
+    return true;
+  }
+  double parsed = 0.0;
+  if (!parse_double(value, &parsed)) {
+    if (err) {
+      *err = std::string(key) + " must be number";
+    }
+    return false;
+  }
+  *field = parsed;
+  return true;
+}
+
+[[nodiscard]] bool
+append_kv_json_field(const std::unordered_map<std::string, std::string> &map,
+                     const kv_json_field_t &field, std::ostringstream &out,
+                     bool *first, std::string *err) {
+  std::string value;
+  if (!kv_get_trimmed(map, field.key, &value) || value.empty()) {
+    return true;
+  }
+  switch (field.kind) {
+  case kv_json_field_kind_t::string_value:
+    append_string_json_field(out, field.key, value, first);
+    return true;
+  case kv_json_field_kind_t::bool_value: {
+    bool parsed = false;
+    if (!parse_bool(value, &parsed)) {
+      if (err) {
+        *err = std::string(field.key) + " must be boolean";
+      }
+      return false;
+    }
+    append_bool_json_field(out, field.key, parsed, first);
+    return true;
+  }
+  case kv_json_field_kind_t::int_value: {
+    std::int64_t parsed = 0;
+    if (!parse_int64(value, &parsed)) {
+      if (err) {
+        *err = std::string(field.key) + " must be integer";
+      }
+      return false;
+    }
+    append_raw_json_field(out, field.key, std::to_string(parsed), first);
+    return true;
+  }
+  case kv_json_field_kind_t::number_value: {
+    double parsed = 0.0;
+    if (!parse_double(value, &parsed) || !std::isfinite(parsed)) {
+      if (err) {
+        *err = std::string(field.key) + " must be finite number";
+      }
+      return false;
+    }
+    append_raw_json_field(out, field.key, value, first);
+    return true;
+  }
+  }
+  return false;
+}
+
+[[nodiscard]] bool
+append_kv_json_fields(const std::unordered_map<std::string, std::string> &map,
+                      std::initializer_list<kv_json_field_t> fields,
+                      std::ostringstream &out, bool *first, std::string *err) {
+  for (const auto &field : fields) {
+    if (!append_kv_json_field(map, field, out, first, err)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+[[nodiscard]] bool validate_kv_json_fields(
+    const std::unordered_map<std::string, std::string> &map,
+    std::initializer_list<kv_json_field_t> allowed, std::string *err,
+    std::string_view request_name = "execution request",
+    std::initializer_list<std::string_view> extra_allowed = {}) {
+  for (const auto &[key, _] : map) {
+    bool allowed_key = false;
+    for (const auto &field : allowed) {
+      if (key == field.key) {
+        allowed_key = true;
+        break;
+      }
+    }
+    if (!allowed_key && field_allowed(key, extra_allowed)) {
+      allowed_key = true;
+    }
+    if (!allowed_key) {
+      if (err != nullptr) {
+        *err = std::string(request_name) + " unknown field: " + key;
+      }
+      return false;
+    }
+  }
+  return true;
+}
+
+[[nodiscard]] bool read_required_text_file_arg(const std::string &args,
+                                               std::string_view path_key,
+                                               fs::path *path,
+                                               std::string *text,
+                                               std::string *err) {
+  std::string path_arg;
+  if (!parse_required_string_arg(args, path_key, &path_arg, err)) {
+    return false;
+  }
+  fs::path resolved = normalize_path(fs::path(path_arg));
+  std::string read_error;
+  if (!read_text_file(resolved, text, &read_error)) {
+    if (err) {
+      *err = "failed to read " + std::string(path_key) + ": " + read_error;
+    }
+    return false;
+  }
+  if (path) {
+    *path = std::move(resolved);
+  }
+  return true;
+}
+
+[[nodiscard]] bool check_optional_string_digest_arg(const std::string &args,
+                                                    std::string_view digest_key,
+                                                    std::string_view actual,
+                                                    std::string_view error_code,
+                                                    std::string *err) {
+  if (!extract_json_raw_field(args, digest_key, nullptr)) {
+    return true;
+  }
+  std::string supplied;
+  if (!extract_json_string_field(args, digest_key, &supplied)) {
+    if (err) {
+      *err = std::string(digest_key) + " must be string";
+    }
+    return false;
+  }
+  supplied = trim_ascii(supplied);
+  if (!supplied.empty() && supplied != actual) {
+    if (err) {
+      *err = std::string(error_code) + ": expected " + supplied + " actual " +
+             std::string(actual);
+    }
+    return false;
+  }
+  return true;
+}
+
+[[nodiscard]] bool load_optional_execution_request(
+    const std::string &args, std::unordered_map<std::string, std::string> *out,
+    std::string *err) {
+  if (out != nullptr) {
+    out->clear();
+  }
+  if (!extract_json_raw_field(args, "execution_request_path", nullptr)) {
+    if (extract_json_raw_field(args, "execution_request_digest", nullptr)) {
+      *err = "execution_request_digest requires execution_request_path";
+      return false;
+    }
+    return true;
+  }
+
+  fs::path execution_request_path;
+  std::string execution_request_text;
+  if (!read_required_text_file_arg(args, "execution_request_path",
+                                   &execution_request_path,
+                                   &execution_request_text, err)) {
+    return false;
+  }
+  const std::string execution_request_digest =
+      cuwacunu::hero::marshal::marshal_digest_for_text(
+          "kikijyeba.runtime.policy_training_execution_request.v1",
+          execution_request_text);
+  if (!check_optional_string_digest_arg(
+          args, "execution_request_digest", execution_request_digest,
+          "E_RUNTIME_EXECUTION_REQUEST_DIGEST_MISMATCH", err)) {
+    return false;
+  }
+
+  auto parsed = parse_assignment_text(execution_request_text, false);
+  if (parsed.count("confirm_execute") != 0 ||
+      parsed.count("timeout_seconds") != 0) {
+    *err = "execution request must not contain confirm_execute or "
+           "timeout_seconds";
+    return false;
+  }
+  if (out != nullptr) {
+    *out = std::move(parsed);
+  }
+  return true;
+}
+
+struct runtime_run_request_file_t {
+  std::unordered_map<std::string, std::string> fields{};
+  fs::path path{};
+  std::string digest_domain{};
+  std::string digest{};
+  bool digest_supplied = false;
+  bool present = false;
+};
+
+struct runtime_reset_request_file_t {
+  std::unordered_map<std::string, std::string> fields{};
+  fs::path path{};
+  std::string digest_domain{};
+  std::string digest{};
+  bool digest_supplied = false;
+  bool present = false;
+};
+
+[[nodiscard]] bool runtime_run_request_public_field(std::string_view key) {
+  return key == "subject" || key == "mode" || key == "operation" ||
+         key == "requested_mode" || key == "args_path" || key == "args_digest";
+}
+
+[[nodiscard]] bool runtime_run_request_allowed_field(std::string_view key) {
+  return key == "config_path" || key == "contract_path" ||
+         key == "contract_digest" || key == "execution_request_path" ||
+         key == "execution_request_digest" || key == "runtime_handoff_path" ||
+         key == "runtime_handoff_digest";
+}
+
+[[nodiscard]] std::string
+runtime_run_request_digest_domain(std::string_view operation) {
+  return "kikijyeba.runtime.run_request." + std::string(operation) + ".v1";
+}
+
+[[nodiscard]] bool runtime_reset_request_public_field(std::string_view key) {
+  return key == "mode" || key == "requested_mode" || key == "args_path" ||
+         key == "args_digest";
+}
+
+[[nodiscard]] bool runtime_reset_request_allowed_field(std::string_view key) {
+  return key == "runtime_root" || key == "backup";
+}
+
+[[nodiscard]] std::string runtime_reset_request_digest_domain() {
+  return "kikijyeba.runtime.reset_request.v1";
+}
+
+[[nodiscard]] bool parse_runtime_run_request_text(
+    std::string_view text, std::unordered_map<std::string, std::string> *out,
+    std::string *err) {
+  if (out == nullptr) {
+    *err = "run request output map is null";
+    return false;
+  }
+  out->clear();
+  std::istringstream lines{std::string(text)};
+  std::string line;
+  std::size_t line_no = 0;
+  while (std::getline(lines, line)) {
+    ++line_no;
+    line = trim_ascii(strip_ini_comment(line));
+    if (line.empty()) {
+      continue;
+    }
+    if (line == "}" || line == "};" || line.find('{') != std::string::npos ||
+        (line.front() == '[' && line.back() == ']')) {
+      *err = "E_RUNTIME_RUN_REQUEST_PARSE: line " + std::to_string(line_no) +
+             " is not a key=value assignment";
+      return false;
+    }
+    const std::size_t eq = line.find('=');
+    if (eq == std::string::npos) {
+      *err = "E_RUNTIME_RUN_REQUEST_PARSE: line " + std::to_string(line_no) +
+             " is missing '='";
+      return false;
+    }
+    std::string key = trim_ascii(line.substr(0, eq));
+    const std::size_t domain = key.find_first_of("[:");
+    if (domain != std::string::npos) {
+      key = trim_ascii(key.substr(0, domain));
+    }
+    std::string value = trim_ascii(line.substr(eq + 1));
+    if (!value.empty() && value.back() == ';') {
+      value.pop_back();
+      value = trim_ascii(value);
+    }
+    if (key.empty()) {
+      *err = "E_RUNTIME_RUN_REQUEST_PARSE: line " + std::to_string(line_no) +
+             " has empty key";
+      return false;
+    }
+    if (runtime_run_request_public_field(key)) {
+      *err = "E_RUNTIME_RUN_REQUEST_PUBLIC_FIELD: " + key;
+      return false;
+    }
+    if (!runtime_run_request_allowed_field(key)) {
+      *err = "E_RUNTIME_RUN_REQUEST_UNKNOWN_FIELD: " + key;
+      return false;
+    }
+    if (out->find(key) != out->end()) {
+      *err = "E_RUNTIME_RUN_REQUEST_DUPLICATE_FIELD: " + key;
+      return false;
+    }
+    out->emplace(std::move(key), std::move(value));
+  }
+  return true;
+}
+
+[[nodiscard]] bool parse_runtime_reset_request_text(
+    std::string_view text, std::unordered_map<std::string, std::string> *out,
+    std::string *err) {
+  if (out == nullptr) {
+    *err = "reset request output map is null";
+    return false;
+  }
+  out->clear();
+  std::istringstream lines{std::string(text)};
+  std::string line;
+  std::size_t line_no = 0;
+  while (std::getline(lines, line)) {
+    ++line_no;
+    line = trim_ascii(strip_ini_comment(line));
+    if (line.empty()) {
+      continue;
+    }
+    if (line == "}" || line == "};" || line.find('{') != std::string::npos ||
+        (line.front() == '[' && line.back() == ']')) {
+      *err = "E_RUNTIME_RESET_REQUEST_PARSE: line " + std::to_string(line_no) +
+             " is not a key=value assignment";
+      return false;
+    }
+    const std::size_t eq = line.find('=');
+    if (eq == std::string::npos) {
+      *err = "E_RUNTIME_RESET_REQUEST_PARSE: line " + std::to_string(line_no) +
+             " is missing '='";
+      return false;
+    }
+    std::string key = trim_ascii(line.substr(0, eq));
+    const std::size_t domain = key.find_first_of("[:");
+    if (domain != std::string::npos) {
+      key = trim_ascii(key.substr(0, domain));
+    }
+    std::string value = trim_ascii(line.substr(eq + 1));
+    if (!value.empty() && value.back() == ';') {
+      value.pop_back();
+      value = trim_ascii(value);
+    }
+    if (key.empty()) {
+      *err = "E_RUNTIME_RESET_REQUEST_PARSE: line " + std::to_string(line_no) +
+             " has empty key";
+      return false;
+    }
+    if (runtime_reset_request_public_field(key)) {
+      *err = "E_RUNTIME_RESET_REQUEST_PUBLIC_FIELD: " + key;
+      return false;
+    }
+    if (key == "confirm_dev_nuke") {
+      *err = "E_RUNTIME_RESET_REQUEST_RETIRED_FIELD: confirm_dev_nuke";
+      return false;
+    }
+    if (!runtime_reset_request_allowed_field(key)) {
+      *err = "E_RUNTIME_RESET_REQUEST_UNKNOWN_FIELD: " + key;
+      return false;
+    }
+    if (out->find(key) != out->end()) {
+      *err = "E_RUNTIME_RESET_REQUEST_DUPLICATE_FIELD: " + key;
+      return false;
+    }
+    out->emplace(std::move(key), std::move(value));
+  }
+  return true;
+}
+
+[[nodiscard]] bool load_optional_run_request(const std::string &args,
+                                             std::string_view operation,
+                                             std::string_view requested_mode,
+                                             runtime_run_request_file_t *out,
+                                             std::string *err) {
+  if (out == nullptr) {
+    *err = "run request packet output is null";
+    return false;
+  }
+  runtime_run_request_file_t packet{};
+  packet.present = extract_json_raw_field(args, "args_path", nullptr);
+  packet.digest_supplied = extract_json_raw_field(args, "args_digest", nullptr);
+  if (!packet.present) {
+    if (packet.digest_supplied) {
+      *err = "args_digest requires args_path";
+      return false;
+    }
+    *out = std::move(packet);
+    return true;
+  }
+
+  std::string request_text;
+  if (!read_required_text_file_arg(args, "args_path", &packet.path,
+                                   &request_text, err)) {
+    return false;
+  }
+  packet.digest_domain = runtime_run_request_digest_domain(operation);
+  packet.digest = cuwacunu::hero::marshal::marshal_digest_for_text(
+      packet.digest_domain, request_text);
+  if (requested_mode == "execute" && !packet.digest_supplied) {
+    *err = "E_RUNTIME_RUN_REQUEST_DIGEST_REQUIRED: args_digest is "
+           "required when mode=execute and args_path is set";
+    return false;
+  }
+  if (packet.digest_supplied) {
+    std::string supplied;
+    if (!extract_json_string_field(args, "args_digest", &supplied)) {
+      *err = "args_digest must be string";
+      return false;
+    }
+    supplied = trim_ascii(supplied);
+    if (supplied.empty()) {
+      *err = "args_digest must be non-empty when supplied";
+      return false;
+    }
+    if (supplied != packet.digest) {
+      *err = "E_RUNTIME_RUN_REQUEST_DIGEST_MISMATCH: expected " + supplied +
+             " actual " + packet.digest;
+      return false;
+    }
+  }
+  if (!parse_runtime_run_request_text(request_text, &packet.fields, err)) {
+    return false;
+  }
+  *out = std::move(packet);
+  return true;
+}
+
+[[nodiscard]] bool load_optional_reset_request(
+    const std::string &args, std::string_view requested_mode,
+    runtime_reset_request_file_t *out, std::string *err) {
+  if (out == nullptr) {
+    *err = "reset request packet output is null";
+    return false;
+  }
+  runtime_reset_request_file_t packet{};
+  packet.present = extract_json_raw_field(args, "args_path", nullptr);
+  packet.digest_supplied = extract_json_raw_field(args, "args_digest", nullptr);
+  if (!packet.present) {
+    if (packet.digest_supplied) {
+      *err = "args_digest requires args_path";
+      return false;
+    }
+    if (requested_mode == "execute") {
+      *err = "E_RUNTIME_RESET_REQUEST_REQUIRED: args_path is required when "
+             "mode=execute";
+      return false;
+    }
+    *out = std::move(packet);
+    return true;
+  }
+
+  std::string request_text;
+  if (!read_required_text_file_arg(args, "args_path", &packet.path,
+                                   &request_text, err)) {
+    return false;
+  }
+  packet.digest_domain = runtime_reset_request_digest_domain();
+  packet.digest = cuwacunu::hero::marshal::marshal_digest_for_text(
+      packet.digest_domain, request_text);
+  if (requested_mode == "execute" && !packet.digest_supplied) {
+    *err = "E_RUNTIME_RESET_REQUEST_DIGEST_REQUIRED: args_digest is required "
+           "when mode=execute";
+    return false;
+  }
+  if (packet.digest_supplied) {
+    std::string supplied;
+    if (!extract_json_string_field(args, "args_digest", &supplied)) {
+      *err = "args_digest must be string";
+      return false;
+    }
+    supplied = trim_ascii(supplied);
+    if (supplied.empty()) {
+      *err = "args_digest must be non-empty when supplied";
+      return false;
+    }
+    if (supplied != packet.digest) {
+      *err = "E_RUNTIME_RESET_REQUEST_DIGEST_MISMATCH: expected " + supplied +
+             " actual " + packet.digest;
+      return false;
+    }
+  }
+  if (!parse_runtime_reset_request_text(request_text, &packet.fields, err)) {
+    return false;
+  }
+  *out = std::move(packet);
+  return true;
+}
+
+[[nodiscard]] bool read_runtime_handoff_for_run_request(
+    const std::unordered_map<std::string, std::string> &request,
+    std::string *handoff_json, std::string *err) {
+  std::string handoff_path_raw;
+  const bool has_handoff_path =
+      kv_get_trimmed(request, "runtime_handoff_path", &handoff_path_raw) &&
+      !handoff_path_raw.empty();
+  std::string supplied_digest;
+  const bool has_handoff_digest =
+      kv_get_trimmed(request, "runtime_handoff_digest", &supplied_digest) &&
+      !supplied_digest.empty();
+  if (!has_handoff_path) {
+    if (has_handoff_digest) {
+      *err = "runtime_handoff_digest requires runtime_handoff_path";
+      return false;
+    }
+    return true;
+  }
+  fs::path handoff_path = normalize_path(fs::path(handoff_path_raw));
+  std::string read_error;
+  std::string text;
+  if (!read_text_file(handoff_path, &text, &read_error)) {
+    *err = "failed to read runtime_handoff_path: " + read_error;
+    return false;
+  }
+  const std::string actual_digest =
+      cuwacunu::hero::marshal::marshal_digest_for_text(
+          "kikijyeba.runtime.run_request.runtime_handoff_file.v1", text);
+  if (has_handoff_digest && supplied_digest != actual_digest) {
+    *err = "E_RUNTIME_RUN_REQUEST_HANDOFF_DIGEST_MISMATCH: expected " +
+           supplied_digest + " actual " + actual_digest;
+    return false;
+  }
+  std::vector<json_field_t> handoff_fields;
+  if (!parse_json_object_fields(text, &handoff_fields, err)) {
+    if (err != nullptr) {
+      *err = "E_RUNTIME_RUN_REQUEST_HANDOFF_INVALID: " + *err;
+    }
+    return false;
+  }
+  if (handoff_json != nullptr) {
+    *handoff_json = trim_ascii(text);
+  }
+  return true;
+}
+
+[[nodiscard]] bool materialize_runtime_run_args(const std::string &public_args,
+                                                std::string_view operation,
+                                                std::string_view requested_mode,
+                                                std::string *out,
+                                                std::string *err) {
+  runtime_run_request_file_t request{};
+  if (!load_optional_run_request(public_args, operation, requested_mode,
+                                 &request, err)) {
+    return false;
+  }
+  std::ostringstream resolved;
+  resolved << "{";
+  bool first = true;
+  append_string_json_field(resolved, "operation", operation, &first);
+  append_string_json_field(resolved, "requested_mode", requested_mode, &first);
+  if (request.present) {
+    if (!append_kv_json_fields(
+            request.fields,
+            {{"config_path", kv_json_field_kind_t::string_value},
+             {"contract_path", kv_json_field_kind_t::string_value},
+             {"contract_digest", kv_json_field_kind_t::string_value},
+             {"execution_request_path", kv_json_field_kind_t::string_value},
+             {"execution_request_digest", kv_json_field_kind_t::string_value}},
+            resolved, &first, err)) {
+      return false;
+    }
+    std::string handoff_json;
+    if (!read_runtime_handoff_for_run_request(request.fields, &handoff_json,
+                                              err)) {
+      return false;
+    }
+    if (!handoff_json.empty()) {
+      append_raw_json_field(resolved, "runtime_handoff", handoff_json, &first);
+    }
+  }
+  resolved << "}";
+  if (out != nullptr) {
+    *out = resolved.str();
+  }
+  return true;
+}
+
+[[nodiscard]] bool
+validate_kv_fields(const std::unordered_map<std::string, std::string> &map,
+                   std::initializer_list<std::string_view> allowed,
+                   std::string *err,
+                   std::string_view request_name = "execution request") {
+  for (const auto &[key, _] : map) {
+    if (!field_allowed(key, allowed)) {
+      if (err != nullptr) {
+        *err = std::string(request_name) + " unknown field: " + key;
+      }
+      return false;
+    }
+  }
+  return true;
+}
+
+[[nodiscard]] bool append_top_or_kv_string_field(
+    const std::string &args,
+    const std::unordered_map<std::string, std::string> &map,
+    std::string_view key, std::ostringstream &out, bool *first) {
+  std::string raw;
+  if (extract_json_raw_field(args, key, &raw)) {
+    append_raw_json_field(out, key, raw, first);
+    return true;
+  }
+  std::string value;
+  if (kv_get_trimmed(map, key, &value) && !value.empty()) {
+    append_string_json_field(out, key, value, first);
+    return true;
+  }
+  return false;
+}
+
+[[nodiscard]] bool append_wave_overlay_from_request(
+    const std::unordered_map<std::string, std::string> &map,
+    std::ostringstream &out, bool *first, std::string *err) {
+  bool present = false;
+  for (const auto key :
+       {"source_range", "anchor_index_begin", "anchor_index_end",
+        "source_key_begin", "source_key_end"}) {
+    std::string value;
+    if (kv_get_trimmed(map, key, &value) && !value.empty()) {
+      present = true;
+      break;
+    }
+  }
+  if (!present) {
+    return true;
+  }
+
+  std::ostringstream overlay;
+  overlay << "{";
+  bool overlay_first = true;
+  if (!append_kv_json_fields(
+          map,
+          {{"source_range", kv_json_field_kind_t::string_value},
+           {"anchor_index_begin", kv_json_field_kind_t::string_value},
+           {"anchor_index_end", kv_json_field_kind_t::string_value},
+           {"source_key_begin", kv_json_field_kind_t::string_value},
+           {"source_key_end", kv_json_field_kind_t::string_value}},
+          overlay, &overlay_first, err)) {
+    return false;
+  }
+  overlay << "}";
+  append_raw_json_field(out, "wave_overlay", overlay.str(), first);
+  return true;
+}
+
+[[nodiscard]] bool policy_training_contract_from_kv(
+    const std::unordered_map<std::string, std::string> &map,
+    cuwacunu::hero::runtime::policy_training_job_contract_t *contract,
+    std::string *err) {
+  if (contract == nullptr) {
+    if (err) {
+      *err = "policy training contract output pointer is null";
+    }
+    return false;
+  }
+  cuwacunu::hero::runtime::policy_training_job_contract_t parsed{};
+  kv_set_string(map, "schema_version", &parsed.schema_version);
+  kv_set_string(map, "artifact_schema_id", &parsed.artifact_schema_id);
+  kv_set_string(map, "runtime_job_kind", &parsed.runtime_job_kind);
+  kv_set_string(map, "protocol_id", &parsed.protocol_id);
+  kv_set_string(map, "protocol_contract_fingerprint",
+                &parsed.protocol_contract_fingerprint);
+  kv_set_string(map, "graph_order_fingerprint",
+                &parsed.graph_order_fingerprint);
+  kv_set_string(map, "source_cursor_token", &parsed.source_cursor_token);
+  kv_set_string(map, "split_policy_fingerprint",
+                &parsed.split_policy_fingerprint);
+  kv_set_string(map, "component_assembly_fingerprint",
+                &parsed.component_assembly_fingerprint);
+  kv_set_string(map, "policy_id", &parsed.policy_id);
+  kv_set_string(map, "policy_kind", &parsed.policy_kind);
+  kv_set_string(map, "policy_architecture_digest",
+                &parsed.policy_architecture_digest);
+  kv_set_string(map, "training_config_digest", &parsed.training_config_digest);
+  kv_set_string(map, "training_range_digest", &parsed.training_range_digest);
+  kv_set_string(map, "validation_range_digest",
+                &parsed.validation_range_digest);
+  kv_set_string(map, "test_range_digest", &parsed.test_range_digest);
+  kv_set_string(map, "environment_contract_id",
+                &parsed.environment_contract_id);
+  kv_set_string(map, "observation_schema_digest",
+                &parsed.observation_schema_digest);
+  kv_set_string(map, "action_schema_digest", &parsed.action_schema_digest);
+  kv_set_string(map, "reward_contract_digest", &parsed.reward_contract_digest);
+  kv_set_string(map, "policy_input_schema_id", &parsed.policy_input_schema_id);
+  kv_set_string(map, "action_adapter_id", &parsed.action_adapter_id);
+  kv_set_string(map, "action_distribution_id", &parsed.action_distribution_id);
+  kv_set_string(map, "reward_contract_id", &parsed.reward_contract_id);
+  kv_set_string(map, "execution_profile_digest",
+                &parsed.execution_profile_digest);
+  kv_set_string(map, "ppo_policy_artifact_contract_id",
+                &parsed.ppo_policy_artifact_contract_id);
+  kv_set_string(map, "policy_family_id", &parsed.policy_family_id);
+  kv_set_string(map, "policy_checkpoint_schema_id",
+                &parsed.policy_checkpoint_schema_id);
+  kv_set_string(map, "policy_dsl_digest", &parsed.policy_dsl_digest);
+  kv_set_string(map, "policy_net_digest", &parsed.policy_net_digest);
+  kv_set_string(map, "policy_input_feature_manifest_digest",
+                &parsed.policy_input_feature_manifest_digest);
+  kv_set_string(map, "policy_jkimyei_digest", &parsed.policy_jkimyei_digest);
+  kv_set_string(map, "target_node_universe_digest",
+                &parsed.target_node_universe_digest);
+  kv_set_string(map, "action_distribution_config_digest",
+                &parsed.action_distribution_config_digest);
+  kv_set_string(map, "snapshot_family_digest", &parsed.snapshot_family_digest);
+  kv_set_string(map, "actor_architecture_digest",
+                &parsed.actor_architecture_digest);
+  kv_set_string(map, "critic_architecture_digest",
+                &parsed.critic_architecture_digest);
+  kv_set_string(map, "actor_checkpoint_digest",
+                &parsed.actor_checkpoint_digest);
+  kv_set_string(map, "critic_checkpoint_digest",
+                &parsed.critic_checkpoint_digest);
+  kv_set_string(map, "optimizer_state_digest", &parsed.optimizer_state_digest);
+  kv_set_string(map, "ppo_config_digest", &parsed.ppo_config_digest);
+  kv_set_string(map, "optimizer_state_schema_id",
+                &parsed.optimizer_state_schema_id);
+  kv_set_string(map, "device_policy", &parsed.device_policy);
+  kv_set_string(map, "resume_mode", &parsed.resume_mode);
+  kv_set_string(map, "resume_actor_checkpoint_path",
+                &parsed.resume_actor_checkpoint_path);
+  kv_set_string(map, "resume_actor_checkpoint_digest",
+                &parsed.resume_actor_checkpoint_digest);
+  kv_set_string(map, "resume_optimizer_state_path",
+                &parsed.resume_optimizer_state_path);
+  kv_set_string(map, "resume_optimizer_state_digest",
+                &parsed.resume_optimizer_state_digest);
+  kv_set_string(map, "advantage_estimator_id", &parsed.advantage_estimator_id);
+  kv_set_string(map, "advantage_normalization_policy",
+                &parsed.advantage_normalization_policy);
+  kv_set_string(map, "rollout_collection_schema_id",
+                &parsed.rollout_collection_schema_id);
+  kv_set_string(map, "rollout_collection_digest",
+                &parsed.rollout_collection_digest);
+  kv_set_string(map, "ppo_update_report_schema_id",
+                &parsed.ppo_update_report_schema_id);
+  kv_set_string(map, "ppo_update_report_digest",
+                &parsed.ppo_update_report_digest);
+  kv_set_string(map, "validation_rollout_report_digest",
+                &parsed.validation_rollout_report_digest);
+  kv_set_string(map, "policy_quality_report_digest",
+                &parsed.policy_quality_report_digest);
+  kv_set_string(map, "training_schedule_mode", &parsed.training_schedule_mode);
+  kv_set_string(map, "causal_schedule_schema_id",
+                &parsed.causal_schedule_schema_id);
+  kv_set_string(map, "causal_schedule_digest", &parsed.causal_schedule_digest);
+  kv_set_string(map, "causal_schedule_cursor_key_kind",
+                &parsed.causal_schedule_cursor_key_kind);
+  kv_set_string(map, "causal_schedule_no_future_snapshot_use_source",
+                &parsed.causal_schedule_no_future_snapshot_use_source);
+  kv_set_string(map, "normalization_fit_range_digest",
+                &parsed.normalization_fit_range_digest);
+  kv_set_string(map, "replay_buffer_source_range_digest",
+                &parsed.replay_buffer_source_range_digest);
+  kv_set_string(map, "early_stopping_policy_digest",
+                &parsed.early_stopping_policy_digest);
+  kv_set_string(map, "hyperparameter_selection_policy_digest",
+                &parsed.hyperparameter_selection_policy_digest);
+  kv_set_string(map, "selector_split", &parsed.selector_split);
+  kv_set_string(map, "selector_policy_digest", &parsed.selector_policy_digest);
+  kv_set_string(map, "parent_checkpoint_digest",
+                &parsed.parent_checkpoint_digest);
+  kv_set_string(map, "parent_forecast_eval_fact_digest",
+                &parsed.parent_forecast_eval_fact_digest);
+  kv_set_string(map, "parent_observer_belief_fact_digest",
+                &parsed.parent_observer_belief_fact_digest);
+  kv_set_string(map, "parent_allocation_engine_fact_digest",
+                &parsed.parent_allocation_engine_fact_digest);
+  kv_set_string(map, "parent_replay_environment_fact_digest",
+                &parsed.parent_replay_environment_fact_digest);
+  kv_set_string(map, "parent_replay_environment_report_digest",
+                &parsed.parent_replay_environment_report_digest);
+  kv_set_string(map, "final_refit_parent_selected_checkpoint_digest",
+                &parsed.final_refit_parent_selected_checkpoint_digest);
+  if (!kv_set_double(map, "ppo_gamma", &parsed.ppo_gamma, err) ||
+      !kv_set_bool(map, "ppo_gamma_bound", &parsed.ppo_gamma_bound, err) ||
+      !kv_set_double(map, "ppo_gae_lambda", &parsed.ppo_gae_lambda, err) ||
+      !kv_set_bool(map, "ppo_gae_lambda_bound", &parsed.ppo_gae_lambda_bound,
+                   err) ||
+      !kv_set_double(map, "ppo_clip_epsilon", &parsed.ppo_clip_epsilon, err) ||
+      !kv_set_bool(map, "ppo_clip_epsilon_bound",
+                   &parsed.ppo_clip_epsilon_bound, err) ||
+      !kv_set_double(map, "ppo_target_kl", &parsed.ppo_target_kl, err) ||
+      !kv_set_bool(map, "ppo_target_kl_bound", &parsed.ppo_target_kl_bound,
+                   err) ||
+      !kv_set_double(map, "ppo_entropy_coeff", &parsed.ppo_entropy_coeff,
+                     err) ||
+      !kv_set_bool(map, "ppo_entropy_coeff_bound",
+                   &parsed.ppo_entropy_coeff_bound, err) ||
+      !kv_set_double(map, "ppo_value_loss_coeff", &parsed.ppo_value_loss_coeff,
+                     err) ||
+      !kv_set_bool(map, "ppo_value_loss_coeff_bound",
+                   &parsed.ppo_value_loss_coeff_bound, err) ||
+      !kv_set_double(map, "ppo_max_grad_norm", &parsed.ppo_max_grad_norm,
+                     err) ||
+      !kv_set_bool(map, "ppo_max_grad_norm_bound",
+                   &parsed.ppo_max_grad_norm_bound, err) ||
+      !kv_set_int64(map, "ppo_minibatch_size", &parsed.ppo_minibatch_size,
+                    err) ||
+      !kv_set_bool(map, "ppo_minibatch_size_bound",
+                   &parsed.ppo_minibatch_size_bound, err) ||
+      !kv_set_int64(map, "ppo_epochs_per_rollout",
+                    &parsed.ppo_epochs_per_rollout, err) ||
+      !kv_set_bool(map, "ppo_epochs_per_rollout_bound",
+                   &parsed.ppo_epochs_per_rollout_bound, err) ||
+      !kv_set_int64(map, "cuda_device_index", &parsed.cuda_device_index, err) ||
+      !kv_set_bool(map, "cuda_device_index_bound",
+                   &parsed.cuda_device_index_bound, err) ||
+      !kv_set_int64(map, "random_seed", &parsed.random_seed, err) ||
+      !kv_set_bool(map, "random_seed_bound", &parsed.random_seed_bound, err) ||
+      !kv_set_int64(map, "max_episodes", &parsed.max_episodes, err) ||
+      !kv_set_int64(map, "max_steps", &parsed.max_steps, err) ||
+      !kv_set_int64(map, "max_parallel_jobs", &parsed.max_parallel_jobs, err) ||
+      !kv_set_int64(map, "max_wall_clock_seconds",
+                    &parsed.max_wall_clock_seconds, err) ||
+      !kv_set_bool(map, "causal_schedule_readiness_eligible",
+                   &parsed.causal_schedule_readiness_eligible, err) ||
+      !kv_set_bool(map, "causal_schedule_no_future_snapshot_use",
+                   &parsed.causal_schedule_no_future_snapshot_use, err) ||
+      !kv_set_bool(map, "offline_full_window_research_allowed",
+                   &parsed.offline_full_window_research_allowed, err) ||
+      !kv_set_bool(map, "final_refit_uses_validation",
+                   &parsed.final_refit_uses_validation, err) ||
+      !kv_set_bool(map, "validation_no_longer_proof",
+                   &parsed.validation_no_longer_proof, err) ||
+      !kv_set_bool(map, "sealed_test_required", &parsed.sealed_test_required,
+                   err) ||
+      !kv_set_bool(map, "live_execution_allowed",
+                   &parsed.live_execution_allowed, err)) {
+    return false;
+  }
+  *contract = std::move(parsed);
+  return true;
+}
+
 [[nodiscard]] std::string
 string_array_json(const std::vector<std::string> &values) {
   std::ostringstream out;
@@ -1132,6 +2072,22 @@ string_array_json(const std::vector<std::string> &values) {
   return parsed;
 }
 
+[[nodiscard]] bool
+policy_runtime_timeout_seconds(const runtime_policy_t &policy, int *out,
+                               std::string *err) {
+  const int timeout_seconds = policy_int_or(policy, "max_runtime_seconds", 0);
+  if (timeout_seconds < 0) {
+    if (err) {
+      *err = "max_runtime_seconds must be >= 0";
+    }
+    return false;
+  }
+  if (out) {
+    *out = timeout_seconds;
+  }
+  return true;
+}
+
 [[nodiscard]] fs::path policy_path(const runtime_policy_t &policy,
                                    std::string_view key) {
   return resolve_against(policy.policy_path, policy_get(policy, key));
@@ -1163,12 +2119,15 @@ string_array_json(const std::vector<std::string> &values) {
 struct wave_info_t {
   fs::path config_path{};
   fs::path wave_path{};
+  fs::path cursor_path{};
   fs::path protocol_path{};
   std::string selected_wave_id{};
   std::string selected_wave_source{};
   bool readable{false};
+  bool cursor_readable{false};
   bool protocol_readable{false};
   std::string error{};
+  std::string cursor_error{};
   std::string protocol_error{};
   std::unordered_map<std::string, std::string> values{};
   std::unordered_map<std::string, std::string> protocol_values{};
@@ -1183,6 +2142,103 @@ struct wave_info_t {
     return normalize_path(ctx.global_config_path);
   }
   return policy_path(ctx.policy, "default_config_path");
+}
+
+[[nodiscard]] std::string
+canonical_protocol_representation_family(std::string_view value) {
+  const std::string trimmed = trim_ascii(value);
+  const std::string lower = lowercase_ascii(trimmed);
+  if (lower.empty()) {
+    return "wikimyei.representation.encoding.vicreg";
+  }
+  if (lower == "mtf_jepa_mae_vicreg" ||
+      lower == "mtf_jepa_mae_vicreg_representation" ||
+      lower == "mtf_jvmae_representation" ||
+      lower == "wikimyei.representation.encoding.mtf_jepa_mae_vicreg") {
+    return "wikimyei.representation.encoding.mtf_jepa_mae_vicreg";
+  }
+  if (lower == "vicreg" || lower == "vicreg_representation" ||
+      lower == "wikimyei.representation.encoding.vicreg") {
+    return "wikimyei.representation.encoding.vicreg";
+  }
+  return trimmed;
+}
+
+[[nodiscard]] std::string protocol_value_or(
+    const std::unordered_map<std::string, std::string> &protocol_values,
+    const char *key, std::string fallback) {
+  const auto it = protocol_values.find(key);
+  if (it == protocol_values.end() || trim_ascii(it->second).empty()) {
+    return fallback;
+  }
+  return trim_ascii(it->second);
+}
+
+[[nodiscard]] cuwacunu::hero::runtime::settings::wave_protocol_bindings_t
+wave_protocol_bindings_from_values(
+    const std::unordered_map<std::string, std::string> &protocol_values) {
+  auto out =
+      cuwacunu::hero::runtime::settings::default_wave_protocol_bindings();
+  out.protocol_id =
+      protocol_value_or(protocol_values, "PROTOCOL_ID", out.protocol_id);
+  out.representation_family =
+      canonical_protocol_representation_family(protocol_value_or(
+          protocol_values, "REPRESENTATION", out.representation_family));
+  out.inference_family =
+      protocol_value_or(protocol_values, "INFERENCE", out.inference_family);
+  out.allocation_policy_family = protocol_value_or(
+      protocol_values, "ALLOCATION_POLICY", out.allocation_policy_family);
+  out.policy_component_family = protocol_value_or(
+      protocol_values, "POLICY_COMPONENT", out.policy_component_family);
+  return out;
+}
+
+inline void populate_wave_info_values(
+    const cuwacunu::piaabo::parse::simple_kv::block_t &block,
+    const cuwacunu::hero::runtime::settings::wave_settings_t &settings,
+    wave_info_t *info) {
+  if (info == nullptr) {
+    return;
+  }
+  namespace wave_settings = cuwacunu::hero::runtime::settings;
+  info->values = block.values;
+  info->values["WAVE_ID"] = settings.wave_id;
+  info->values["PROTOCOL"] = settings.protocol_id;
+  info->values["AUTHORED_TARGET"] = settings.authored_target;
+  info->values["TARGET"] = wave_settings::wave_target_name(settings.target);
+  info->values["MODE"] = settings.mode_text;
+  info->values["SOURCE_CURSOR_ID"] = settings.source_cursor_id;
+  info->values["SOURCE_CURSOR_KIND"] = settings.source_cursor_kind;
+  info->values["SOURCE_CURSOR_SCOPE"] = settings.source_cursor_scope;
+  info->values["SOURCE_RANGE"] =
+      wave_settings::source_range_policy_name(settings.source_range_policy);
+  if (settings.source_order_policy_explicit) {
+    info->values["SOURCE_ORDER"] =
+        wave_settings::source_order_policy_name(settings.source_order_policy);
+  } else {
+    info->values.erase("SOURCE_ORDER");
+  }
+  info->values.erase("ANCHOR_INDEX_BEGIN");
+  info->values.erase("ANCHOR_INDEX_END");
+  info->values.erase("SOURCE_KEY_BEGIN");
+  info->values.erase("SOURCE_KEY_END");
+  info->values.erase("ANCHOR_KEY_BEGIN");
+  info->values.erase("ANCHOR_KEY_END");
+  if (settings.anchor_index_begin.has_value()) {
+    info->values["ANCHOR_INDEX_BEGIN"] =
+        std::to_string(*settings.anchor_index_begin);
+  }
+  if (settings.anchor_index_end.has_value()) {
+    info->values["ANCHOR_INDEX_END"] =
+        std::to_string(*settings.anchor_index_end);
+  }
+  if (settings.source_key_begin.has_value()) {
+    info->values["SOURCE_KEY_BEGIN"] =
+        std::to_string(*settings.source_key_begin);
+  }
+  if (settings.source_key_end.has_value()) {
+    info->values["SOURCE_KEY_END"] = std::to_string(*settings.source_key_end);
+  }
 }
 
 [[nodiscard]] wave_info_t load_wave_info(const runtime_context_t &ctx,
@@ -1202,6 +2258,44 @@ struct wave_info_t {
     return info;
   }
   info.readable = true;
+  const auto maybe_protocol =
+      read_ini_value(config_path, "KIKIJYEBA", "kikijyeba_protocol_dsl_path");
+  if (!maybe_protocol.has_value()) {
+    info.protocol_error =
+        "missing [KIKIJYEBA].kikijyeba_protocol_dsl_path in " +
+        config_path.string();
+    info.error = info.protocol_error;
+    return info;
+  }
+  info.protocol_path = resolve_against(config_path, *maybe_protocol);
+  std::string protocol_text;
+  if (!read_text_file(info.protocol_path, &protocol_text,
+                      &info.protocol_error)) {
+    info.error = info.protocol_error;
+    return info;
+  }
+  info.protocol_readable = true;
+  info.protocol_values =
+      parse_assignment_text(strip_dsl_comments(protocol_text), true);
+  const auto protocol_bindings =
+      wave_protocol_bindings_from_values(info.protocol_values);
+
+  const auto maybe_cursor =
+      read_ini_value(config_path, "UJCAMEI", "ujcamei_source_cursor_dsl_path");
+  if (!maybe_cursor.has_value()) {
+    info.cursor_error = "missing [UJCAMEI].ujcamei_source_cursor_dsl_path in " +
+                        config_path.string();
+    info.error = info.cursor_error;
+    return info;
+  }
+  info.cursor_path = resolve_against(config_path, *maybe_cursor);
+  std::string cursor_text;
+  if (!read_text_file(info.cursor_path, &cursor_text, &info.cursor_error)) {
+    info.error = info.cursor_error;
+    return info;
+  }
+  info.cursor_readable = true;
+
   const auto maybe_wave_id =
       read_ini_value(config_path, "HERO", "runtime_wave_id");
   info.selected_wave_id =
@@ -1213,11 +2307,11 @@ struct wave_info_t {
         selected_wave_settings_block_from_dsl(text, info.selected_wave_id);
     const auto settings =
         cuwacunu::hero::runtime::settings::decode_wave_settings_from_block(
-            block);
+            block, protocol_bindings, cursor_text);
     if (info.selected_wave_id.empty()) {
       info.selected_wave_id = settings.wave_id;
     }
-    info.values = block.values;
+    populate_wave_info_values(block, settings, &info);
   } catch (const std::exception &ex) {
     info.error = ex.what();
     return info;
@@ -1225,10 +2319,7 @@ struct wave_info_t {
   const auto target_it = info.values.find("TARGET");
   const bool mdn_wave =
       target_it != info.values.end() &&
-      (target_it->second == "wikimyei.inference.expected_value.mdn" ||
-       target_it->second == "inference_mdn" ||
-       target_it->second == "inference_channel_mdn" ||
-       target_it->second == "mdn_expected_value_inference");
+      target_it->second == "wikimyei.inference.expected_value.mdn";
   if (mdn_wave) {
     const auto maybe_mdn_jkimyei =
         read_ini_value(config_path, "JKIMYEI",
@@ -1249,18 +2340,6 @@ struct wave_info_t {
           }
         }
       }
-    }
-  }
-  const auto maybe_protocol =
-      read_ini_value(config_path, "KIKIJYEBA", "kikijyeba_protocol_dsl_path");
-  if (maybe_protocol.has_value()) {
-    info.protocol_path = resolve_against(config_path, *maybe_protocol);
-    std::string protocol_text;
-    if (read_text_file(info.protocol_path, &protocol_text,
-                       &info.protocol_error)) {
-      info.protocol_readable = true;
-      info.protocol_values =
-          parse_assignment_text(strip_dsl_comments(protocol_text), true);
     }
   }
   return info;
@@ -1414,22 +2493,16 @@ inline void apply_wave_overlay_to_info(wave_info_t *info,
 
 [[nodiscard]] std::string job_kind_from_target(std::string_view target) {
   const std::string lower = lowercase_ascii(target);
-  if (lower == "wikimyei.representation.encoding.vicreg" ||
-      lower == "vicreg_representation") {
+  if (lower == "wikimyei.representation.encoding.vicreg") {
     return "channel_representation_vicreg";
   }
-  if (lower == "wikimyei.representation.encoding.mtf_jepa_mae_vicreg" ||
-      lower == "mtf_jepa_mae_vicreg_representation" ||
-      lower == "mtf_jvmae_representation") {
+  if (lower == "wikimyei.representation.encoding.mtf_jepa_mae_vicreg") {
     return "channel_representation_mtf_jepa_mae_vicreg";
   }
-  if (lower == "wikimyei.inference.expected_value.mdn" ||
-      lower == "inference_mdn" || lower == "inference_channel_mdn" ||
-      lower == "mdn_expected_value_inference") {
+  if (lower == "wikimyei.inference.expected_value.mdn") {
     return "channel_inference_mdn";
   }
-  if (lower == "wikimyei.policy.trainable" || lower == "policy_trainable" ||
-      lower == "trainable_policy") {
+  if (lower == "wikimyei.policy.portfolio.graph_node_allocation") {
     return "policy_training";
   }
   return "invalid_wave_target";
@@ -1512,30 +2585,13 @@ wave_source_order_warning_token(std::string_view action,
   return it == info.protocol_values.end() ? std::move(fallback) : it->second;
 }
 
-[[nodiscard]] std::vector<std::string>
-compatible_protocols_from_info(const wave_info_t &info) {
-  const auto it = info.values.find("COMPATIBLE_PROTOCOLS");
-  if (it == info.values.end() || trim_ascii(it->second).empty()) {
-    return {};
-  }
-  std::string raw = it->second;
-  for (char &ch : raw) {
-    if (ch == '|' || ch == '+') {
-      ch = ',';
-    }
-  }
-  return split_csv(raw);
+[[nodiscard]] std::string wave_protocol_id_from_info(const wave_info_t &info) {
+  return wave_value_or_empty(info, "PROTOCOL");
 }
 
-[[nodiscard]] bool
-wave_protocol_compatible(const std::vector<std::string> &compatible_protocols,
-                         std::string_view active_protocol_id) {
-  if (compatible_protocols.empty()) {
-    return true;
-  }
-  const std::string active = trim_ascii(active_protocol_id);
-  return std::find(compatible_protocols.begin(), compatible_protocols.end(),
-                   active) != compatible_protocols.end();
+[[nodiscard]] bool wave_protocol_matches_active(const wave_info_t &info,
+                                                std::string_view active) {
+  return trim_ascii(wave_protocol_id_from_info(info)) == trim_ascii(active);
 }
 
 [[nodiscard]] std::string
@@ -1646,6 +2702,9 @@ execution_chain(std::string_view target, std::string_view action,
   const std::string target = info.values.count("TARGET") != 0
                                  ? info.values.at("TARGET")
                                  : std::string{};
+  const std::string authored_target = info.values.count("AUTHORED_TARGET") != 0
+                                          ? info.values.at("AUTHORED_TARGET")
+                                          : target;
   const std::string mode = info.values.count("MODE") != 0
                                ? info.values.at("MODE")
                                : std::string{"run"};
@@ -1663,7 +2722,12 @@ execution_chain(std::string_view target, std::string_view action,
   const std::string cursor_scope = info.values.count("SOURCE_CURSOR_SCOPE") != 0
                                        ? info.values.at("SOURCE_CURSOR_SCOPE")
                                        : std::string{"wave_batch"};
+  const std::string source_cursor_id =
+      info.values.count("SOURCE_CURSOR_ID") != 0
+          ? info.values.at("SOURCE_CURSOR_ID")
+          : std::string{};
   const std::string protocol_id = protocol_id_from_info(info);
+  const std::string wave_protocol_id = wave_protocol_id_from_info(info);
   const std::string protocol_status =
       protocol_value_from_info(info, "PROTOCOL_STATUS", "active");
   const std::string successor_protocol =
@@ -1673,10 +2737,7 @@ execution_chain(std::string_view target, std::string_view action,
   const bool protocol_warns =
       !protocol_warning.empty() ||
       lowercase_ascii(trim_ascii(protocol_status)) != "active";
-  const std::vector<std::string> compatible_protocols =
-      compatible_protocols_from_info(info);
-  const bool profile_compatible =
-      wave_protocol_compatible(compatible_protocols, protocol_id);
+  const bool protocol_match = wave_protocol_matches_active(info, protocol_id);
   const std::string active_representation =
       active_representation_from_info(info);
   const std::string protocol_observer =
@@ -1684,6 +2745,9 @@ execution_chain(std::string_view target, std::string_view action,
   const std::string protocol_allocation_policy = protocol_value_from_info(
       info, "ALLOCATION_POLICY",
       "wikimyei.policy.portfolio.spot_distributional_utility");
+  const std::string protocol_policy_component = protocol_value_from_info(
+      info, "POLICY_COMPONENT",
+      "wikimyei.policy.portfolio.graph_node_allocation");
   const bool target_compatible =
       protocol_target_compatible(target, active_representation);
   const std::string job_kind = wave_job_kind_from_info(info);
@@ -1696,6 +2760,7 @@ execution_chain(std::string_view target, std::string_view action,
   std::ostringstream out;
   out << "{\"config_path\":" << json_quote(info.config_path.string())
       << ",\"wave_path\":" << json_quote(info.wave_path.string())
+      << ",\"cursor_path\":" << json_quote(info.cursor_path.string())
       << ",\"protocol_path\":" << json_quote(info.protocol_path.string())
       << ",\"selected_wave_id\":" << json_quote(info.selected_wave_id)
       << ",\"selected_wave_source\":" << json_quote(info.selected_wave_source)
@@ -1703,37 +2768,46 @@ execution_chain(std::string_view target, std::string_view action,
   if (!info.error.empty()) {
     out << ",\"error\":" << json_quote(info.error);
   }
+  out << ",\"cursor_readable\":" << bool_json(info.cursor_readable);
+  if (!info.cursor_error.empty()) {
+    out << ",\"cursor_error\":" << json_quote(info.cursor_error);
+  }
   out << ",\"protocol_readable\":" << bool_json(info.protocol_readable);
   if (!info.protocol_error.empty()) {
     out << ",\"protocol_error\":" << json_quote(info.protocol_error);
   }
   out << ",\"wave_id\":" << json_quote(wave_id)
       << ",\"protocol_id\":" << json_quote(protocol_id)
+      << ",\"wave_protocol_id\":" << json_quote(wave_protocol_id)
       << ",\"protocol_status\":" << json_quote(protocol_status)
       << ",\"successor_protocol\":" << json_quote(successor_protocol)
       << ",\"protocol_warning_level\":"
       << json_quote(protocol_warns ? "warning" : "none")
       << ",\"protocol_warning\":" << json_quote(protocol_warning)
-      << ",\"compatible_protocols\":" << string_array_json(compatible_protocols)
-      << ",\"wave_protocol_compatible\":" << bool_json(profile_compatible)
+      << ",\"wave_protocol_match\":" << bool_json(protocol_match)
       << ",\"wave_protocol_warning\":"
-      << json_quote(profile_compatible
+      << json_quote(protocol_match
                         ? std::string{}
-                        : "active_protocol_not_declared_by_wave_profile")
+                        : "wave_protocol_does_not_match_active_protocol")
       << ",\"active_representation_family\":"
       << json_quote(active_representation)
       << ",\"protocol_observer_family\":" << json_quote(protocol_observer)
       << ",\"protocol_allocation_policy_family\":"
       << json_quote(protocol_allocation_policy)
+      << ",\"protocol_policy_component_family\":"
+      << json_quote(protocol_policy_component)
       << ",\"protocol_target_compatible\":" << bool_json(target_compatible)
       << ",\"protocol_target_warning\":"
       << json_quote(target_compatible ? std::string{}
                                       : "wave_target_not_docked_by_active_"
                                         "protocol")
+      << ",\"authored_target_component_family_id\":"
+      << json_quote(authored_target)
       << ",\"target_component_family_id\":" << json_quote(target)
       << ",\"mode\":" << json_quote(mode)
       << ",\"action\":" << json_quote(action)
       << ",\"debug\":" << bool_json(wave_debug_from_mode(mode))
+      << ",\"source_cursor_id\":" << json_quote(source_cursor_id)
       << ",\"source_cursor_kind\":" << json_quote(cursor_kind)
       << ",\"source_cursor_scope\":" << json_quote(cursor_scope)
       << ",\"source_range\":" << json_quote(source_range)
@@ -2974,8 +4048,14 @@ validate_replay_report_for_validation_rollout(const fs::path &report_path,
       << ",\"policy_family_id\":" << json_quote(contract.policy_family_id)
       << ",\"policy_checkpoint_schema_id\":"
       << json_quote(contract.policy_checkpoint_schema_id)
+      << ",\"policy_dsl_digest\":" << json_quote(contract.policy_dsl_digest)
+      << ",\"policy_net_digest\":" << json_quote(contract.policy_net_digest)
       << ",\"policy_input_feature_manifest_digest\":"
       << json_quote(contract.policy_input_feature_manifest_digest)
+      << ",\"policy_jkimyei_digest\":"
+      << json_quote(contract.policy_jkimyei_digest)
+      << ",\"target_node_universe_digest\":"
+      << json_quote(contract.target_node_universe_digest)
       << ",\"action_distribution_config_digest\":"
       << json_quote(contract.action_distribution_config_digest)
       << ",\"snapshot_family_digest\":"
@@ -2991,6 +4071,21 @@ validate_replay_report_for_validation_rollout(const fs::path &report_path,
       << ",\"optimizer_state_digest\":"
       << json_quote(contract.optimizer_state_digest)
       << ",\"ppo_config_digest\":" << json_quote(contract.ppo_config_digest)
+      << ",\"optimizer_state_schema_id\":"
+      << json_quote(contract.optimizer_state_schema_id)
+      << ",\"device_policy\":" << json_quote(contract.device_policy)
+      << ",\"cuda_device_index\":" << contract.cuda_device_index
+      << ",\"cuda_device_index_bound\":"
+      << bool_json(contract.cuda_device_index_bound)
+      << ",\"resume_mode\":" << json_quote(contract.resume_mode)
+      << ",\"resume_actor_checkpoint_path\":"
+      << json_quote(contract.resume_actor_checkpoint_path)
+      << ",\"resume_actor_checkpoint_digest\":"
+      << json_quote(contract.resume_actor_checkpoint_digest)
+      << ",\"resume_optimizer_state_path\":"
+      << json_quote(contract.resume_optimizer_state_path)
+      << ",\"resume_optimizer_state_digest\":"
+      << json_quote(contract.resume_optimizer_state_digest)
       << ",\"advantage_estimator_id\":"
       << json_quote(contract.advantage_estimator_id)
       << ",\"advantage_normalization_policy\":"
@@ -3109,7 +4204,7 @@ validate_replay_report_for_validation_rollout(const fs::path &report_path,
            "training execute supports policy_kind=ppo_policy_adapter.v1";
   }
   return "E_RUNTIME_POLICY_TRAINING_POLICY_KIND_UNSUPPORTED: "
-         "requested_mode=execute currently supports "
+         "mode=execute currently supports "
          "policy_kind=noop_policy_training.v1 or ppo_policy_adapter.v1";
 }
 
@@ -3186,6 +4281,8 @@ validate_replay_report_for_validation_rollout(const fs::path &report_path,
     std::string_view execution_chain =
         "runtime.policy_training_contract:validate -> "
         "runtime.policy_training.noop:write_checkpoint") {
+  const auto operator_surface_digest =
+      cuwacunu::hero::runtime::policy_operator_surface_digest(contract);
   std::ostringstream out;
   out << "manifest_format=kikijyeba.runtime.job_manifest.v1\n";
   out << "job_id=" << job_id << "\n";
@@ -3200,9 +4297,11 @@ validate_replay_report_for_validation_rollout(const fs::path &report_path,
   out << "config_receipt_id=policy_training_contract_" << contract_digest
       << "\n";
   out << "component_spawn_registry_id=hero.runtime.policy_training\n";
-  out << "component_family_id=wikimyei.policy.trainable\n";
+  out << "component_family_id=wikimyei.policy.portfolio.graph_node_"
+         "allocation\n";
   out << "component_spawn_schema=kikijyeba.component_spawn.v2\n";
-  out << "component_spawn_fingerprint=" << contract_digest << "\n";
+  out << "component_spawn_fingerprint=" << operator_surface_digest << "\n";
+  out << "component_operator_surface_digest=\n";
   out << "component_spawn_id=" << contract.policy_id << "\n";
   out << "component_spawn_label=" << contract.policy_id << "\n";
   out << "topology_id=kikijyeba.topology.graph.v1\n";
@@ -3210,11 +4309,12 @@ validate_replay_report_for_validation_rollout(const fs::path &report_path,
   out << "protocol_kind=policy_training_contract\n";
   out << "protocol_status=" << protocol_status << "\n";
   out << "wave_id=" << wave_id << "\n";
-  out << "target_component_family_id=wikimyei.policy.trainable\n";
+  out << "target_component_family_id=wikimyei.policy.portfolio.graph_node_"
+         "allocation\n";
   out << "wave_action=train\n";
   out << "wave_mode=train\n";
   out << "execution_chain=" << execution_chain << "\n";
-  out << "mutated_components=wikimyei.policy.trainable\n";
+  out << "mutated_components=wikimyei.policy.portfolio.graph_node_allocation\n";
   out << "frozen_components=wikimyei.representation,"
          "wikimyei.inference.expected_value.mdn,wikimyei.observer.belief,"
          "kikijyeba.environment.replay.v1,cajtucu.execution.paper.v1\n";
@@ -3229,6 +4329,25 @@ validate_replay_report_for_validation_rollout(const fs::path &report_path,
   out << "protocol_contract_fingerprint="
       << contract.protocol_contract_fingerprint << "\n";
   out << "graph_order_fingerprint=" << contract.graph_order_fingerprint << "\n";
+  out << "component_assembly_fingerprint=" << operator_surface_digest << "\n";
+  out << "policy_operator_surface_contract_id="
+      << "policy_operator_surface_and_identity_standardization.v1\n";
+  out << "policy_operator_surface_digest=" << operator_surface_digest << "\n";
+  out << "policy_family_id=" << contract.policy_family_id << "\n";
+  out << "policy_dsl_digest=" << contract.policy_dsl_digest << "\n";
+  out << "policy_net_digest=" << contract.policy_net_digest << "\n";
+  out << "policy_input_feature_manifest_digest="
+      << contract.policy_input_feature_manifest_digest << "\n";
+  out << "policy_jkimyei_digest=" << contract.policy_jkimyei_digest << "\n";
+  out << "target_node_universe_digest=" << contract.target_node_universe_digest
+      << "\n";
+  out << "action_distribution_id=" << contract.action_distribution_id << "\n";
+  out << "action_distribution_config_digest="
+      << contract.action_distribution_config_digest << "\n";
+  out << "reward_contract_id=" << contract.reward_contract_id << "\n";
+  out << "execution_profile_digest=" << contract.execution_profile_digest
+      << "\n";
+  out << "causal_schedule_digest=" << contract.causal_schedule_digest << "\n";
   out << "nodelift_assembly_fingerprint=\n";
   out << "vicreg_assembly_fingerprint=\n";
   out << "mtf_jepa_mae_vicreg_assembly_fingerprint=\n";
@@ -3258,7 +4377,8 @@ validate_replay_report_for_validation_rollout(const fs::path &report_path,
   out << "status=completed\n";
   out << "error_message=\n";
   out << "wave_id=policy_training_pre_ppo\n";
-  out << "target_component_family_id=wikimyei.policy.trainable\n";
+  out << "target_component_family_id=wikimyei.policy.portfolio.graph_node_"
+         "allocation\n";
   out << "wave_action=train\n";
   out << "steps_attempted=0\n";
   out << "steps_completed=0\n";
@@ -3389,6 +4509,26 @@ struct ppo_v0_update_metrics_t {
   bool target_kl_exceeded{false};
   bool early_stop{false};
   bool parameter_update_applied{false};
+  bool policy_input_tensor_payload_bound{false};
+  bool cuda_available{false};
+  bool module_parameters_on_cuda{false};
+  bool forward_input_on_cuda{false};
+  bool loss_on_cuda{false};
+  bool optimizer_state_on_cuda{false};
+  bool cuda_verification_passed{false};
+  bool resume_parent_loaded{false};
+  bool optimizer_state_resume_loaded{false};
+  std::string policy_input_tensor_payload_source{};
+  std::string parameter_update_mode{"torch_autograd_ppo_clip_gae_v0"};
+  std::string optimizer_kind{"torch_adam"};
+  std::string device_policy{"require_cuda"};
+  std::string runtime_device_kind{"cuda"};
+  std::string resume_mode{"fresh_spawn"};
+  std::string resume_parent_actor_checkpoint_digest{};
+  std::string resume_optimizer_state_digest{};
+  std::string optimizer_torch_state_path{};
+  std::string optimizer_torch_state_digest{};
+  std::int64_t cuda_device_index{0};
   double actor_learning_rate{0.0};
   double critic_learning_rate{0.0};
   double actor_logit_gradient_norm{0.0};
@@ -3398,6 +4538,19 @@ struct ppo_v0_update_metrics_t {
   std::vector<double> updated_action_distribution_params{};
   std::vector<ppo_v0_update_sample_t> update_samples{};
 };
+
+inline void write_seed_graph_node_allocation_module_state_artifact(
+    const fs::path &module_state_path, const torch::Device &device) {
+  namespace graph_alloc =
+      cuwacunu::wikimyei::policy::portfolio::graph_node_allocation;
+  torch::manual_seed(17);
+  auto options = graph_alloc::make_graph_node_allocation_torch_policy_options();
+  options.device = device;
+  auto module =
+      graph_alloc::GraphNodeAllocationTorchPolicyModule(std::move(options));
+  graph_alloc::save_graph_node_allocation_torch_module_state(module_state_path,
+                                                             module);
+}
 
 struct ppo_v0_rollout_sample_t {
   std::int64_t step_index{0};
@@ -3430,6 +4583,21 @@ struct ppo_v0_rollout_sample_t {
   double new_log_prob{0.0};
   double entropy{0.0};
   std::string target_node_weights{};
+  std::string policy_input_tensor_payload_schema_id{};
+  bool policy_input_tensor_payload_bound{false};
+  std::string policy_input_node_features_shape{};
+  std::string policy_input_node_features{};
+  std::string policy_input_global_features_shape{};
+  std::string policy_input_global_features{};
+  std::string policy_input_risk_features_shape{};
+  std::string policy_input_risk_features{};
+  std::string policy_input_executable_mask_shape{};
+  std::string policy_input_executable_mask{};
+  torch::Tensor node_features{};
+  torch::Tensor global_features{};
+  torch::Tensor risk_features{};
+  torch::Tensor executable_mask{};
+  torch::Tensor target_weights_tensor{};
   double transaction_cost_numeraire{0.0};
   double turnover{0.0};
   double rejected_notional_numeraire{0.0};
@@ -3452,6 +4620,263 @@ struct ppo_v0_rollout_sample_t {
   bool done{false};
   bool truncated{false};
 };
+
+[[nodiscard]] std::string device_kind_string(const torch::Device &device) {
+  return device.type() == torch::kCUDA ? "cuda" : "cpu";
+}
+
+[[nodiscard]] bool tensor_on_device(const torch::Tensor &tensor,
+                                    const torch::Device &device) {
+  return tensor.defined() && tensor.device().type() == device.type() &&
+         (device.type() != torch::kCUDA ||
+          tensor.device().index() == device.index());
+}
+
+[[nodiscard]] bool module_parameters_on_device(
+    const cuwacunu::wikimyei::policy::portfolio::graph_node_allocation::
+        GraphNodeAllocationTorchPolicyModule &module,
+    const torch::Device &device) {
+  if (module.is_empty()) {
+    return false;
+  }
+  for (const auto &parameter : module->parameters()) {
+    if (!tensor_on_device(parameter, device)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+[[nodiscard]] torch::Tensor
+tensor_to_runtime_device(const torch::Tensor &tensor,
+                         const torch::Device &device, torch::Dtype dtype) {
+  return tensor.to(torch::TensorOptions().dtype(dtype).device(device));
+}
+
+[[nodiscard]] bool resolve_ppo_v0_runtime_device(
+    const cuwacunu::hero::runtime::policy_training_job_contract_t &contract,
+    torch::Device *device, std::string *err) {
+  if (contract.device_policy != "require_cuda") {
+    if (err != nullptr) {
+      *err = "E_RUNTIME_POLICY_TRAINING_PPO_DEVICE_POLICY_UNSUPPORTED: "
+             "PPO V0 requires device_policy=require_cuda";
+    }
+    return false;
+  }
+  if (!torch::cuda::is_available()) {
+    if (err != nullptr) {
+      *err = "E_RUNTIME_POLICY_TRAINING_PPO_CUDA_UNAVAILABLE: "
+             "device_policy=require_cuda but CUDA is not available";
+    }
+    return false;
+  }
+  if (contract.cuda_device_index != 0) {
+    if (err != nullptr) {
+      *err = "E_RUNTIME_POLICY_TRAINING_PPO_CUDA_DEVICE_UNSUPPORTED: "
+             "PPO V0 currently supports cuda_device_index=0 only";
+    }
+    return false;
+  }
+  if (device != nullptr) {
+    *device = torch::Device(torch::kCUDA, 0);
+  }
+  return true;
+}
+
+struct resolved_resume_actor_checkpoint_t {
+  fs::path checkpoint_path{};
+  std::string checkpoint_digest{};
+  fs::path module_state_path{};
+  std::string module_state_digest{};
+};
+
+[[nodiscard]] std::string
+kv_field_or_empty(const std::unordered_map<std::string, std::string> &fields,
+                  std::string_view key) {
+  const auto it = fields.find(std::string(key));
+  return it == fields.end() ? std::string{} : it->second;
+}
+
+[[nodiscard]] bool validate_resume_checkpoint_field(
+    const std::unordered_map<std::string, std::string> &fields,
+    std::string_view key, std::string_view expected, std::string *err) {
+  if (expected.empty()) {
+    return true;
+  }
+  const std::string actual = kv_field_or_empty(fields, key);
+  if (actual.empty()) {
+    if (err != nullptr) {
+      *err = "E_RUNTIME_POLICY_TRAINING_PPO_RESUME_FIELD_MISSING: parent "
+             "checkpoint missing " +
+             std::string(key);
+    }
+    return false;
+  }
+  if (actual != expected) {
+    if (err != nullptr) {
+      *err = "E_RUNTIME_POLICY_TRAINING_PPO_RESUME_INCOMPATIBLE: parent " +
+             std::string(key) + " does not match current contract";
+    }
+    return false;
+  }
+  return true;
+}
+
+[[nodiscard]] bool resolve_resume_actor_checkpoint(
+    const cuwacunu::hero::runtime::policy_training_job_contract_t &contract,
+    resolved_resume_actor_checkpoint_t *resolved, std::string *err) {
+  if (contract.resume_mode == "fresh_spawn") {
+    return true;
+  }
+  const fs::path checkpoint_path =
+      normalize_path(fs::path(contract.resume_actor_checkpoint_path));
+  if (!fs::exists(checkpoint_path)) {
+    if (err != nullptr) {
+      *err = "E_RUNTIME_POLICY_TRAINING_PPO_RESUME_CHECKPOINT_MISSING: " +
+             checkpoint_path.string();
+    }
+    return false;
+  }
+  const std::string actual_checkpoint_digest = file_digest_or_empty(
+      checkpoint_path, contract.policy_checkpoint_schema_id);
+  if (!contract.resume_actor_checkpoint_digest.empty() &&
+      actual_checkpoint_digest != contract.resume_actor_checkpoint_digest) {
+    if (err != nullptr) {
+      *err = "E_RUNTIME_POLICY_TRAINING_PPO_RESUME_CHECKPOINT_DIGEST_MISMATCH";
+    }
+    return false;
+  }
+  const auto fields = parse_kv_file(checkpoint_path);
+  const auto require_match = [&fields, err](std::string_view key,
+                                            std::string_view expected) {
+    return validate_resume_checkpoint_field(fields, key, expected, err);
+  };
+  if (!require_match("policy_family_id", contract.policy_family_id) ||
+      !require_match("module_contract_id",
+                     "wikimyei.policy.portfolio.graph_node_allocation."
+                     "torch_policy_module.v0") ||
+      !require_match("network_contract_id",
+                     "wikimyei.policy.portfolio.graph_node_allocation."
+                     "net.v1") ||
+      !require_match("policy_input_feature_manifest_digest",
+                     contract.policy_input_feature_manifest_digest) ||
+      !require_match("action_distribution_id",
+                     contract.action_distribution_id) ||
+      !require_match("action_distribution_config_digest",
+                     contract.action_distribution_config_digest) ||
+      !require_match("ppo_config_digest", contract.ppo_config_digest) ||
+      !require_match("causal_schedule_digest",
+                     contract.causal_schedule_digest) ||
+      !require_match("snapshot_family_digest",
+                     contract.snapshot_family_digest) ||
+      !require_match("reward_contract_id", contract.reward_contract_id) ||
+      !require_match("execution_profile_digest",
+                     contract.execution_profile_digest) ||
+      !require_match("graph_order_fingerprint",
+                     contract.graph_order_fingerprint) ||
+      !require_match("actor_architecture_digest",
+                     contract.actor_architecture_digest) ||
+      !require_match("critic_architecture_digest",
+                     contract.critic_architecture_digest)) {
+    return false;
+  }
+
+  const std::string module_state_field =
+      kv_field_or_empty(fields, "module_state_path");
+  if (trim_ascii(module_state_field).empty()) {
+    if (err != nullptr) {
+      *err = "E_RUNTIME_POLICY_TRAINING_PPO_RESUME_MODULE_STATE_MISSING: "
+             "parent checkpoint has no module_state_path";
+    }
+    return false;
+  }
+  const fs::path module_state_path =
+      fs::path(module_state_field).is_absolute()
+          ? normalize_path(fs::path(module_state_field))
+          : normalize_path(checkpoint_path.parent_path() /
+                           fs::path(module_state_field));
+  if (!fs::exists(module_state_path)) {
+    if (err != nullptr) {
+      *err = "E_RUNTIME_POLICY_TRAINING_PPO_RESUME_MODULE_STATE_NOT_FOUND: " +
+             module_state_path.string();
+    }
+    return false;
+  }
+  const std::string module_state_digest = file_digest_or_empty(
+      module_state_path,
+      "wikimyei.policy.portfolio.graph_node_allocation.module_state.v0");
+  const std::string expected_module_state_digest =
+      kv_field_or_empty(fields, "module_state_digest");
+  if (!expected_module_state_digest.empty() &&
+      module_state_digest != expected_module_state_digest) {
+    if (err != nullptr) {
+      *err = "E_RUNTIME_POLICY_TRAINING_PPO_RESUME_MODULE_STATE_DIGEST_"
+             "MISMATCH";
+    }
+    return false;
+  }
+  if (resolved != nullptr) {
+    resolved->checkpoint_path = checkpoint_path;
+    resolved->checkpoint_digest = actual_checkpoint_digest;
+    resolved->module_state_path = module_state_path;
+    resolved->module_state_digest = module_state_digest;
+  }
+  return true;
+}
+
+[[nodiscard]] bool resolve_resume_optimizer_torch_state_path(
+    const cuwacunu::hero::runtime::policy_training_job_contract_t &contract,
+    fs::path *torch_state_path, std::string *err) {
+  if (contract.resume_mode != "resume_weights_and_optimizer") {
+    return true;
+  }
+  const fs::path optimizer_state_path =
+      normalize_path(fs::path(contract.resume_optimizer_state_path));
+  if (!fs::exists(optimizer_state_path)) {
+    if (err != nullptr) {
+      *err = "E_RUNTIME_POLICY_TRAINING_PPO_RESUME_OPTIMIZER_STATE_MISSING: " +
+             optimizer_state_path.string();
+    }
+    return false;
+  }
+  const std::string actual_digest = file_digest_or_empty(
+      optimizer_state_path, contract.optimizer_state_schema_id);
+  if (!contract.resume_optimizer_state_digest.empty() &&
+      actual_digest != contract.resume_optimizer_state_digest) {
+    if (err != nullptr) {
+      *err = "E_RUNTIME_POLICY_TRAINING_PPO_RESUME_OPTIMIZER_STATE_DIGEST_"
+             "MISMATCH";
+    }
+    return false;
+  }
+  const auto fields = parse_kv_file(optimizer_state_path);
+  const std::string torch_state_field =
+      kv_field_or_empty(fields, "optimizer_torch_state_path");
+  if (trim_ascii(torch_state_field).empty()) {
+    if (err != nullptr) {
+      *err = "E_RUNTIME_POLICY_TRAINING_PPO_RESUME_OPTIMIZER_TORCH_STATE_"
+             "MISSING";
+    }
+    return false;
+  }
+  const fs::path resolved_path =
+      fs::path(torch_state_field).is_absolute()
+          ? normalize_path(fs::path(torch_state_field))
+          : normalize_path(optimizer_state_path.parent_path() /
+                           fs::path(torch_state_field));
+  if (!fs::exists(resolved_path)) {
+    if (err != nullptr) {
+      *err = "E_RUNTIME_POLICY_TRAINING_PPO_RESUME_OPTIMIZER_TORCH_STATE_NOT_"
+             "FOUND: " +
+             resolved_path.string();
+    }
+    return false;
+  }
+  if (torch_state_path != nullptr) {
+    *torch_state_path = resolved_path;
+  }
+  return true;
+}
 
 struct ppo_v0_policy_summary_t {
   std::string policy_id{};
@@ -3516,6 +4941,118 @@ struct ppo_v0_rollout_collection_t {
   double target_tracking_error_linf{0.0};
 };
 
+[[nodiscard]] std::string tensor_shape_csv(torch::Tensor tensor) {
+  if (!tensor.defined()) {
+    return {};
+  }
+  std::ostringstream out;
+  for (std::int64_t i = 0; i < tensor.dim(); ++i) {
+    if (i != 0) {
+      out << ",";
+    }
+    out << tensor.size(i);
+  }
+  return out.str();
+}
+
+[[nodiscard]] std::string tensor_flat_values_csv(torch::Tensor tensor) {
+  if (!tensor.defined()) {
+    return {};
+  }
+  const auto flat = tensor.to(torch::kFloat64).contiguous().view({-1});
+  if (!torch::isfinite(flat).all().item<bool>()) {
+    return {};
+  }
+  std::ostringstream out;
+  out << std::setprecision(17);
+  const auto *data = flat.data_ptr<double>();
+  for (std::int64_t i = 0; i < flat.numel(); ++i) {
+    if (i != 0) {
+      out << ",";
+    }
+    out << data[i];
+  }
+  return out.str();
+}
+
+inline void bind_sample_policy_input_tensors(ppo_v0_rollout_sample_t &sample,
+                                             torch::Tensor node_features,
+                                             torch::Tensor global_features,
+                                             torch::Tensor risk_features,
+                                             torch::Tensor executable_mask,
+                                             torch::Tensor target_weights) {
+  sample.policy_input_tensor_payload_schema_id =
+      "kikijyeba.environment.policy_input.tensor_payload.v1";
+  sample.node_features = node_features.to(torch::kFloat64).contiguous();
+  sample.global_features = global_features.to(torch::kFloat64).contiguous();
+  sample.risk_features = risk_features.to(torch::kFloat64).contiguous();
+  sample.executable_mask = executable_mask.to(torch::kBool).contiguous();
+  sample.target_weights_tensor =
+      target_weights.to(torch::kFloat64).contiguous();
+  sample.policy_input_node_features_shape =
+      tensor_shape_csv(sample.node_features);
+  sample.policy_input_node_features =
+      tensor_flat_values_csv(sample.node_features);
+  sample.policy_input_global_features_shape =
+      tensor_shape_csv(sample.global_features);
+  sample.policy_input_global_features =
+      tensor_flat_values_csv(sample.global_features);
+  sample.policy_input_risk_features_shape =
+      tensor_shape_csv(sample.risk_features);
+  sample.policy_input_risk_features =
+      tensor_flat_values_csv(sample.risk_features);
+  sample.policy_input_executable_mask_shape =
+      tensor_shape_csv(sample.executable_mask);
+  sample.policy_input_executable_mask =
+      tensor_flat_values_csv(sample.executable_mask);
+  sample.policy_input_tensor_payload_bound =
+      !sample.policy_input_node_features_shape.empty() &&
+      !sample.policy_input_node_features.empty() &&
+      !sample.policy_input_global_features_shape.empty() &&
+      !sample.policy_input_global_features.empty() &&
+      !sample.policy_input_risk_features_shape.empty() &&
+      !sample.policy_input_risk_features.empty() &&
+      !sample.policy_input_executable_mask_shape.empty() &&
+      !sample.policy_input_executable_mask.empty() &&
+      sample.target_weights_tensor.defined();
+}
+
+inline void bind_smoke_policy_input_tensors(ppo_v0_rollout_sample_t &sample,
+                                            double weight0, double weight1) {
+  auto node =
+      torch::zeros({2, 28}, torch::TensorOptions().dtype(torch::kFloat64));
+  node.index_put_({0, 0}, weight0);
+  node.index_put_({1, 0}, weight1);
+  node.index_put_({0, 1}, weight0);
+  node.index_put_({1, 1}, weight1);
+  node.index_put_({0, 2}, 0.0);
+  node.index_put_({1, 2}, 0.0);
+  node.index_put_({0, 3}, 0.0);
+  node.index_put_({1, 3}, 0.0);
+  for (std::int64_t j = 4; j <= 6; ++j) {
+    node.index_put_({0, j}, 1.0);
+    node.index_put_({1, j}, 1.0);
+  }
+  node.index_put_({0, 7}, sample.reward_log_growth);
+  node.index_put_({1, 7}, sample.reward_log_growth * 0.5);
+  node.index_put_({0, 15}, 0.75);
+  node.index_put_({1, 15}, 0.70);
+  node.index_put_({0, 17}, sample.transaction_cost_numeraire);
+  node.index_put_({1, 17}, sample.transaction_cost_numeraire);
+  node.index_put_({0, 24}, sample.entropy);
+  node.index_put_({1, 24}, sample.entropy);
+  const auto global = torch::tensor(
+      {0.0, 0.0, weight0 + weight1, weight0 + weight1, weight0, weight0},
+      torch::TensorOptions().dtype(torch::kFloat64));
+  const auto risk =
+      torch::zeros({10}, torch::TensorOptions().dtype(torch::kFloat64));
+  const auto mask =
+      torch::tensor({true, true}, torch::TensorOptions().dtype(torch::kBool));
+  const auto target = torch::tensor(
+      {weight0, weight1}, torch::TensorOptions().dtype(torch::kFloat64));
+  bind_sample_policy_input_tensors(sample, node, global, risk, mask, target);
+}
+
 [[nodiscard]] std::vector<ppo_v0_rollout_sample_t> ppo_v0_smoke_samples() {
   struct seed_t {
     double reward;
@@ -3530,21 +5067,23 @@ struct ppo_v0_rollout_collection_t {
     double fee_cost_numeraire;
     double spread_cost_numeraire;
     double slippage_cost_numeraire;
+    double weight0;
+    double weight1;
     bool done;
   };
   const std::array<seed_t, 4> seeds{{
       {0.0020, 0.0008, 0.0010, -0.7100, -0.6950, 1.08,
        "fixture_node_0:0.50,fixture_node_1:0.50", 0.00010, 0.120, 0.00003,
-       0.00004, 0.00003, false},
+       0.00004, 0.00003, 0.50, 0.50, false},
       {-0.0010, 0.0002, 0.0001, -0.7200, -0.7330, 1.05,
        "fixture_node_0:0.48,fixture_node_1:0.52", 0.00008, 0.060, 0.00002,
-       0.00003, 0.00003, false},
+       0.00003, 0.00003, 0.48, 0.52, false},
       {0.0030, 0.0005, 0.0007, -0.7050, -0.6930, 1.06,
        "fixture_node_0:0.46,fixture_node_1:0.54", 0.00012, 0.090, 0.00004,
-       0.00004, 0.00004, false},
+       0.00004, 0.00004, 0.46, 0.54, false},
       {0.0005, 0.0001, 0.0002, -0.7300, -0.7220, 1.04,
        "fixture_node_0:0.47,fixture_node_1:0.53", 0.00006, 0.030, 0.00002,
-       0.00002, 0.00002, true},
+       0.00002, 0.00002, 0.47, 0.53, true},
   }};
   std::vector<ppo_v0_rollout_sample_t> out;
   out.reserve(seeds.size());
@@ -3571,6 +5110,7 @@ struct ppo_v0_rollout_collection_t {
     sample.spread_cost_numeraire = seed.spread_cost_numeraire;
     sample.slippage_cost_numeraire = seed.slippage_cost_numeraire;
     sample.done = seed.done;
+    bind_smoke_policy_input_tensors(sample, seed.weight0, seed.weight1);
     out.push_back(std::move(sample));
   }
   return out;
@@ -3581,6 +5121,10 @@ struct ppo_v0_rollout_collection_t {
   out.samples = ppo_v0_smoke_samples();
   return out;
 }
+
+[[nodiscard]] bool
+load_sample_policy_input_tensors(ppo_v0_rollout_sample_t *sample,
+                                 std::string *err);
 
 [[nodiscard]] std::string
 kv_string_or(const std::unordered_map<std::string, std::string> &kv,
@@ -3940,6 +5484,30 @@ kv_bool_or(const std::unordered_map<std::string, std::string> &kv,
       sample.old_value = old_value_bound ? parsed_old_value : 0.0;
       sample.new_value =
           kv_double_or(kv, prefix + "new_value_estimate", sample.old_value);
+      sample.policy_input_tensor_payload_schema_id = kv_string_or(
+          kv, prefix + "policy_input_tensor_payload_schema_id", "");
+      sample.policy_input_tensor_payload_bound =
+          kv_bool_or(kv, prefix + "policy_input_tensor_payload_bound", false);
+      sample.policy_input_node_features_shape =
+          kv_string_or(kv, prefix + "policy_input_node_features_shape", "");
+      sample.policy_input_node_features =
+          kv_string_or(kv, prefix + "policy_input_node_features", "");
+      sample.policy_input_global_features_shape =
+          kv_string_or(kv, prefix + "policy_input_global_features_shape", "");
+      sample.policy_input_global_features =
+          kv_string_or(kv, prefix + "policy_input_global_features", "");
+      sample.policy_input_risk_features_shape =
+          kv_string_or(kv, prefix + "policy_input_risk_features_shape", "");
+      sample.policy_input_risk_features =
+          kv_string_or(kv, prefix + "policy_input_risk_features", "");
+      sample.policy_input_executable_mask_shape =
+          kv_string_or(kv, prefix + "policy_input_executable_mask_shape", "");
+      sample.policy_input_executable_mask =
+          kv_string_or(kv, prefix + "policy_input_executable_mask", "");
+      if (sample.policy_input_tensor_payload_bound &&
+          !load_sample_policy_input_tensors(&sample, err)) {
+        return false;
+      }
 
       sample.transaction_cost_numeraire = kv_double_or(
           kv, prefix + "transaction_cost_numeraire",
@@ -4050,15 +5618,261 @@ parse_target_weight_values(std::string_view text) {
   return out.str();
 }
 
-[[nodiscard]] ppo_v0_update_metrics_t compute_ppo_v0_update_metrics(
+[[nodiscard]] std::vector<std::int64_t> parse_shape_csv(std::string_view text) {
+  std::vector<std::int64_t> out;
+  std::stringstream stream{std::string(text)};
+  std::string token;
+  while (std::getline(stream, token, ',')) {
+    token = trim_ascii(token);
+    if (token.empty()) {
+      continue;
+    }
+    std::int64_t parsed = 0;
+    if (!parse_i64_text(token, &parsed) || parsed <= 0) {
+      return {};
+    }
+    out.push_back(parsed);
+  }
+  return out;
+}
+
+[[nodiscard]] std::vector<double> parse_double_csv(std::string_view text) {
+  std::vector<double> out;
+  std::stringstream stream{std::string(text)};
+  std::string token;
+  while (std::getline(stream, token, ',')) {
+    token = trim_ascii(token);
+    if (token.empty()) {
+      continue;
+    }
+    double parsed = 0.0;
+    if (!parse_double(token, &parsed) || !std::isfinite(parsed)) {
+      return {};
+    }
+    out.push_back(parsed);
+  }
+  return out;
+}
+
+[[nodiscard]] bool shape_element_count(const std::vector<std::int64_t> &shape,
+                                       std::int64_t *out) {
+  if (shape.empty()) {
+    return false;
+  }
+  std::int64_t count = 1;
+  for (const auto dim : shape) {
+    if (dim <= 0 || count > (std::numeric_limits<std::int64_t>::max() / dim)) {
+      return false;
+    }
+    count *= dim;
+  }
+  if (out) {
+    *out = count;
+  }
+  return true;
+}
+
+[[nodiscard]] torch::Tensor
+tensor_from_csv_payload(std::string_view label, std::string_view shape_text,
+                        std::string_view values_text, torch::Dtype dtype,
+                        std::string *err) {
+  const auto shape = parse_shape_csv(shape_text);
+  const auto values = parse_double_csv(values_text);
+  std::int64_t count = 0;
+  if (!shape_element_count(shape, &count)) {
+    if (err) {
+      *err =
+          "E_RUNTIME_POLICY_TRAINING_PPO_POLICY_INPUT_TENSOR_PAYLOAD_INVALID: "
+          "invalid shape for " +
+          std::string(label);
+    }
+    return {};
+  }
+  if (values.empty() || static_cast<std::int64_t>(values.size()) != count) {
+    if (err) {
+      *err =
+          "E_RUNTIME_POLICY_TRAINING_PPO_POLICY_INPUT_TENSOR_PAYLOAD_INVALID: "
+          "value count mismatch for " +
+          std::string(label) + " expected=" + std::to_string(count) +
+          " actual=" + std::to_string(values.size());
+    }
+    return {};
+  }
+  auto tensor =
+      torch::tensor(values, torch::TensorOptions().dtype(torch::kFloat64))
+          .reshape(shape);
+  if (!torch::isfinite(tensor).all().item<bool>()) {
+    if (err) {
+      *err =
+          "E_RUNTIME_POLICY_TRAINING_PPO_POLICY_INPUT_TENSOR_PAYLOAD_INVALID: "
+          "non-finite values for " +
+          std::string(label);
+    }
+    return {};
+  }
+  if (dtype == torch::kBool) {
+    return tensor.ne(0.0).to(torch::kBool).contiguous();
+  }
+  return tensor.to(dtype).contiguous();
+}
+
+[[nodiscard]] bool
+load_sample_policy_input_tensors(ppo_v0_rollout_sample_t *sample,
+                                 std::string *err) {
+  if (sample == nullptr) {
+    if (err) {
+      *err =
+          "E_RUNTIME_POLICY_TRAINING_PPO_POLICY_INPUT_TENSOR_PAYLOAD_INVALID: "
+          "null sample";
+    }
+    return false;
+  }
+  sample->node_features = tensor_from_csv_payload(
+      "policy_input_node_features", sample->policy_input_node_features_shape,
+      sample->policy_input_node_features, torch::kFloat64, err);
+  if (!sample->node_features.defined()) {
+    return false;
+  }
+  sample->global_features = tensor_from_csv_payload(
+      "policy_input_global_features",
+      sample->policy_input_global_features_shape,
+      sample->policy_input_global_features, torch::kFloat64, err);
+  if (!sample->global_features.defined()) {
+    return false;
+  }
+  sample->risk_features = tensor_from_csv_payload(
+      "policy_input_risk_features", sample->policy_input_risk_features_shape,
+      sample->policy_input_risk_features, torch::kFloat64, err);
+  if (!sample->risk_features.defined()) {
+    return false;
+  }
+  sample->executable_mask = tensor_from_csv_payload(
+      "policy_input_executable_mask",
+      sample->policy_input_executable_mask_shape,
+      sample->policy_input_executable_mask, torch::kBool, err);
+  if (!sample->executable_mask.defined()) {
+    return false;
+  }
+  if (!sample->target_weights_tensor.defined()) {
+    const auto target_weights =
+        parse_target_weight_values(sample->target_node_weights);
+    if (!target_weights.empty()) {
+      sample->target_weights_tensor = torch::tensor(
+          target_weights, torch::TensorOptions().dtype(torch::kFloat64));
+    }
+  }
+  if (!sample->target_weights_tensor.defined()) {
+    if (err) {
+      *err =
+          "E_RUNTIME_POLICY_TRAINING_PPO_POLICY_INPUT_TENSOR_PAYLOAD_INVALID: "
+          "target_node_weights could not be parsed";
+    }
+    return false;
+  }
+  sample->policy_input_tensor_payload_bound =
+      sample->node_features.defined() && sample->node_features.dim() == 2 &&
+      sample->global_features.defined() && sample->global_features.dim() == 1 &&
+      sample->risk_features.defined() && sample->risk_features.dim() == 1 &&
+      sample->executable_mask.defined() && sample->executable_mask.dim() == 1 &&
+      sample->target_weights_tensor.defined() &&
+      sample->target_weights_tensor.dim() == 1 &&
+      sample->node_features.size(0) == sample->target_weights_tensor.size(0) &&
+      sample->executable_mask.size(0) == sample->target_weights_tensor.size(0);
+  if (!sample->policy_input_tensor_payload_bound && err) {
+    *err = "E_RUNTIME_POLICY_TRAINING_PPO_POLICY_INPUT_TENSOR_PAYLOAD_INVALID: "
+           "node, mask, and target-weight dimensions do not agree";
+  }
+  return sample->policy_input_tensor_payload_bound;
+}
+
+struct ppo_v0_dirichlet_eval_t {
+  torch::Tensor log_prob{};
+  torch::Tensor entropy{};
+};
+
+[[nodiscard]] ppo_v0_dirichlet_eval_t masked_dirichlet_log_prob_entropy(
+    torch::Tensor logits, torch::Tensor action_distribution_params,
+    torch::Tensor target_weights, torch::Tensor executable_mask) {
+  const auto mask = executable_mask.to(torch::kBool).contiguous();
+  const auto active_indices = torch::nonzero(mask).reshape({-1});
+  const auto active_count = active_indices.numel();
+  if (active_count <= 0) {
+    throw std::runtime_error(
+        "E_RUNTIME_POLICY_TRAINING_PPO_NO_EXECUTABLE_NODE: sample has no "
+        "active executable graph node");
+  }
+  const auto dtype = torch::kFloat64;
+  const auto device = logits.device();
+  if (active_count == 1) {
+    const auto zero =
+        torch::zeros({}, torch::TensorOptions().dtype(dtype).device(device));
+    return {.log_prob = zero, .entropy = zero};
+  }
+  const auto active_logits = logits.to(dtype).index_select(0, active_indices);
+  auto active_weights = target_weights.to(dtype)
+                            .index_select(0, active_indices)
+                            .clamp_min(1.0e-12);
+  active_weights = active_weights / active_weights.sum().clamp_min(1.0e-12);
+  const auto mean = torch::softmax(active_logits, 0);
+  torch::Tensor raw_concentration =
+      action_distribution_params.defined() &&
+              action_distribution_params.numel() > 0
+          ? action_distribution_params.to(dtype).reshape({-1}).index({0})
+          : torch::zeros({},
+                         torch::TensorOptions().dtype(dtype).device(device));
+  raw_concentration =
+      raw_concentration.to(torch::TensorOptions().dtype(dtype).device(device));
+  const auto concentration = torch::clamp(
+      torch::log1p(torch::exp(torch::clamp(raw_concentration, -60.0, 60.0))) +
+          0.25,
+      0.25, 256.0);
+  const auto alpha = mean * concentration + 1.0e-4;
+  const auto alpha_sum = alpha.sum();
+  const auto log_prob = torch::lgamma(alpha_sum) - torch::lgamma(alpha).sum() +
+                        ((alpha - 1.0) * torch::log(active_weights)).sum();
+  const auto log_beta = torch::lgamma(alpha).sum() - torch::lgamma(alpha_sum);
+  const auto entropy = log_beta +
+                       (alpha_sum - static_cast<double>(active_count)) *
+                           torch::digamma(alpha_sum) -
+                       ((alpha - 1.0) * torch::digamma(alpha)).sum();
+  return {.log_prob = log_prob, .entropy = entropy};
+}
+
+[[nodiscard]] bool compute_ppo_v0_update_metrics(
     const cuwacunu::hero::runtime::policy_training_job_contract_t &contract,
-    const std::vector<ppo_v0_rollout_sample_t> &samples) {
+    const std::vector<ppo_v0_rollout_sample_t> &samples,
+    const fs::path &collection_module_state_path,
+    const fs::path &resume_optimizer_torch_state_path,
+    const fs::path &updated_module_state_path,
+    const fs::path &updated_optimizer_torch_state_path,
+    const torch::Device &device, ppo_v0_update_metrics_t *metrics,
+    std::string *err) {
   const std::int64_t sample_count = static_cast<std::int64_t>(samples.size());
   ppo_v0_update_metrics_t out{};
   out.sample_count = sample_count;
+  out.parameter_update_mode = "torch_autograd_ppo_clip_gae_v0";
+  out.optimizer_kind = "torch_adam";
+  out.device_policy = contract.device_policy;
+  out.runtime_device_kind = device_kind_string(device);
+  out.cuda_device_index = contract.cuda_device_index;
+  out.cuda_available = torch::cuda::is_available();
+  out.resume_mode = contract.resume_mode;
+  out.resume_parent_actor_checkpoint_digest =
+      contract.resume_actor_checkpoint_digest;
+  out.resume_optimizer_state_digest = contract.resume_optimizer_state_digest;
   if (sample_count <= 0) {
     out.optimizer_steps = 0;
-    return out;
+    if (metrics) {
+      *metrics = std::move(out);
+    }
+    return true;
+  }
+  if (contract.action_distribution_id != "masked_dirichlet_simplex.v1") {
+    if (err) {
+      *err = "E_RUNTIME_POLICY_TRAINING_PPO_ACTION_DISTRIBUTION_UNSUPPORTED: "
+             "real PPO autograd V0 supports masked_dirichlet_simplex.v1 only";
+    }
+    return false;
   }
 
   std::vector<double> advantages(samples.size(), 0.0);
@@ -4101,17 +5915,202 @@ parse_target_weight_values(std::string_view text) {
     out.advantage_std = 1.0;
   }
 
+  for (const auto &sample : samples) {
+    if (!sample.policy_input_tensor_payload_bound ||
+        !sample.node_features.defined() || !sample.global_features.defined() ||
+        !sample.risk_features.defined() || !sample.executable_mask.defined() ||
+        !sample.target_weights_tensor.defined()) {
+      if (err) {
+        *err =
+            "E_RUNTIME_POLICY_TRAINING_PPO_POLICY_INPUT_TENSOR_PAYLOAD_MISSING:"
+            " "
+            "real PPO autograd requires actor-visible policy_input_t tensors "
+            "for every collected rollout sample";
+      }
+      return false;
+    }
+  }
+  out.policy_input_tensor_payload_bound = true;
+  out.policy_input_tensor_payload_source =
+      "collected_actor_visible_policy_input_tensors";
+
+  namespace graph_alloc =
+      cuwacunu::wikimyei::policy::portfolio::graph_node_allocation;
+  torch::manual_seed(17);
+  auto module_options =
+      graph_alloc::make_graph_node_allocation_torch_policy_options();
+  module_options.device = device;
+  auto module = graph_alloc::GraphNodeAllocationTorchPolicyModule(
+      std::move(module_options));
+  if (!collection_module_state_path.empty() &&
+      fs::exists(collection_module_state_path)) {
+    graph_alloc::load_graph_node_allocation_torch_module_state(
+        collection_module_state_path, module);
+  }
+  module->to(device, torch::kFloat64);
+  out.resume_parent_loaded = !collection_module_state_path.empty() &&
+                             fs::exists(collection_module_state_path);
+  out.module_parameters_on_cuda = device.type() == torch::kCUDA &&
+                                  module_parameters_on_device(module, device);
+  module->train();
+  std::vector<torch::Tensor> initial_parameters;
+  for (const auto &parameter : module->parameters()) {
+    initial_parameters.push_back(parameter.detach().clone());
+  }
+
+  out.actor_learning_rate =
+      clamp_double(contract.ppo_clip_epsilon * 0.005, 1.0e-5, 1.0e-3);
+  out.critic_learning_rate = out.actor_learning_rate;
+  torch::optim::Adam optimizer(
+      module->parameters(), torch::optim::AdamOptions(out.actor_learning_rate));
+  if (!resume_optimizer_torch_state_path.empty()) {
+    try {
+      torch::serialize::InputArchive optimizer_archive;
+      optimizer_archive.load_from(resume_optimizer_torch_state_path.string(),
+                                  device);
+      optimizer.load(optimizer_archive);
+      out.optimizer_state_resume_loaded = true;
+    } catch (const std::exception &ex) {
+      if (err) {
+        *err = "E_RUNTIME_POLICY_TRAINING_PPO_RESUME_OPTIMIZER_LOAD_FAILED: " +
+               std::string(ex.what());
+      }
+      return false;
+    }
+  }
+  const std::int64_t epochs =
+      std::max<std::int64_t>(1, contract.ppo_epochs_per_rollout);
+  const std::int64_t minibatch_size = std::clamp<std::int64_t>(
+      contract.ppo_minibatch_size > 0 ? contract.ppo_minibatch_size
+                                      : sample_count,
+      1, sample_count);
+  out.optimizer_steps = 0;
+  for (std::int64_t epoch = 0; epoch < epochs; ++epoch) {
+    for (std::int64_t begin = 0; begin < sample_count;
+         begin += minibatch_size) {
+      const std::int64_t end = std::min(sample_count, begin + minibatch_size);
+      std::vector<torch::Tensor> policy_losses;
+      std::vector<torch::Tensor> value_losses;
+      std::vector<torch::Tensor> entropies;
+      std::vector<double> approx_kls;
+      policy_losses.reserve(static_cast<std::size_t>(end - begin));
+      value_losses.reserve(static_cast<std::size_t>(end - begin));
+      entropies.reserve(static_cast<std::size_t>(end - begin));
+      approx_kls.reserve(static_cast<std::size_t>(end - begin));
+      for (std::int64_t i = begin; i < end; ++i) {
+        const auto &sample = samples[static_cast<std::size_t>(i)];
+        const auto node_features = tensor_to_runtime_device(
+            sample.node_features, device, torch::kFloat64);
+        const auto global_features = tensor_to_runtime_device(
+            sample.global_features, device, torch::kFloat64);
+        const auto risk_features = tensor_to_runtime_device(
+            sample.risk_features, device, torch::kFloat64);
+        const auto executable_mask = sample.executable_mask.to(
+            torch::TensorOptions().dtype(torch::kBool).device(device));
+        const auto target_weights = tensor_to_runtime_device(
+            sample.target_weights_tensor, device, torch::kFloat64);
+        out.forward_input_on_cuda =
+            out.forward_input_on_cuda ||
+            (device.type() == torch::kCUDA &&
+             tensor_on_device(node_features, device) &&
+             tensor_on_device(global_features, device) &&
+             tensor_on_device(risk_features, device) &&
+             tensor_on_device(executable_mask, device) &&
+             tensor_on_device(target_weights, device));
+        const auto module_out = module->forward(node_features, global_features,
+                                                risk_features, executable_mask);
+        const auto dist = masked_dirichlet_log_prob_entropy(
+            module_out.node_weight_logits,
+            module_out.action_distribution_params, target_weights,
+            executable_mask);
+        const auto old_log_prob = torch::tensor(
+            sample.old_log_prob,
+            torch::TensorOptions().dtype(torch::kFloat64).device(device));
+        const auto advantage = torch::tensor(
+            (advantages[static_cast<std::size_t>(i)] - out.advantage_mean) /
+                out.advantage_std,
+            torch::TensorOptions().dtype(torch::kFloat64).device(device));
+        const auto ratio = torch::exp(dist.log_prob - old_log_prob);
+        const auto clipped_ratio =
+            torch::clamp(ratio, 1.0 - contract.ppo_clip_epsilon,
+                         1.0 + contract.ppo_clip_epsilon);
+        policy_losses.push_back(
+            -torch::minimum(ratio * advantage, clipped_ratio * advantage));
+        const auto value = module_out.state_value.reshape({-1}).index({0});
+        const auto return_target = torch::tensor(
+            returns[static_cast<std::size_t>(i)],
+            torch::TensorOptions().dtype(torch::kFloat64).device(device));
+        const auto value_error = value - return_target;
+        value_losses.push_back(0.5 * value_error * value_error);
+        entropies.push_back(dist.entropy);
+        approx_kls.push_back(sample.old_log_prob -
+                             dist.log_prob.detach().item<double>());
+      }
+      const auto policy_loss = torch::stack(policy_losses).mean();
+      const auto value_loss = torch::stack(value_losses).mean();
+      const auto entropy = torch::stack(entropies).mean();
+      const auto loss = policy_loss +
+                        contract.ppo_value_loss_coeff * value_loss -
+                        contract.ppo_entropy_coeff * entropy;
+      out.loss_on_cuda = out.loss_on_cuda || (device.type() == torch::kCUDA &&
+                                              tensor_on_device(loss, device));
+      optimizer.zero_grad();
+      loss.backward();
+      const auto clipped_norm = torch::nn::utils::clip_grad_norm_(
+          module->parameters(), contract.ppo_max_grad_norm);
+      out.gradient_norm = clipped_norm;
+      out.actor_logit_gradient_norm = out.gradient_norm;
+      optimizer.step();
+      ++out.optimizer_steps;
+      double mean_kl = 0.0;
+      for (const double value : approx_kls) {
+        mean_kl += value;
+      }
+      mean_kl /=
+          static_cast<double>(std::max<std::size_t>(1, approx_kls.size()));
+      if (mean_kl > contract.ppo_target_kl) {
+        out.target_kl_exceeded = true;
+        out.early_stop = true;
+        break;
+      }
+    }
+    if (out.early_stop) {
+      break;
+    }
+  }
+
   double value_target_var = 0.0;
   double value_error_var = 0.0;
   const double return_mean = out.mean_return_target;
   out.update_samples.clear();
   out.update_samples.reserve(samples.size());
+  module->eval();
+  torch::NoGradGuard no_grad;
   for (std::int64_t i = 0; i < sample_count; ++i) {
     const auto &sample = samples[static_cast<std::size_t>(i)];
     const double normalized_advantage =
         (advantages[static_cast<std::size_t>(i)] - out.advantage_mean) /
         out.advantage_std;
-    const double log_ratio = sample.new_log_prob - sample.old_log_prob;
+    const auto node_features =
+        tensor_to_runtime_device(sample.node_features, device, torch::kFloat64);
+    const auto global_features = tensor_to_runtime_device(
+        sample.global_features, device, torch::kFloat64);
+    const auto risk_features =
+        tensor_to_runtime_device(sample.risk_features, device, torch::kFloat64);
+    const auto executable_mask = sample.executable_mask.to(
+        torch::TensorOptions().dtype(torch::kBool).device(device));
+    const auto target_weights = tensor_to_runtime_device(
+        sample.target_weights_tensor, device, torch::kFloat64);
+    const auto module_out = module->forward(node_features, global_features,
+                                            risk_features, executable_mask);
+    const auto dist = masked_dirichlet_log_prob_entropy(
+        module_out.node_weight_logits, module_out.action_distribution_params,
+        target_weights, executable_mask);
+    const double new_log_prob = dist.log_prob.item<double>();
+    const double new_value =
+        module_out.state_value.reshape({-1}).index({0}).item<double>();
+    const double entropy = dist.entropy.item<double>();
+    const double log_ratio = new_log_prob - sample.old_log_prob;
     const double ratio = std::exp(log_ratio);
     const double clipped_ratio =
         clamp_double(ratio, 1.0 - contract.ppo_clip_epsilon,
@@ -4128,12 +6127,11 @@ parse_target_weight_values(std::string_view text) {
     out.policy_loss_final += policy_loss_final;
     out.clip_fraction += ratio_clipped ? 1.0 : 0.0;
 
-    const double value_error =
-        sample.new_value - returns[static_cast<std::size_t>(i)];
+    const double value_error = new_value - returns[static_cast<std::size_t>(i)];
     const double value_loss = 0.5 * value_error * value_error;
-    const double approx_kl = sample.old_log_prob - sample.new_log_prob;
+    const double approx_kl = sample.old_log_prob - new_log_prob;
     out.value_loss += value_loss;
-    out.entropy += sample.entropy;
+    out.entropy += entropy;
     out.approx_kl += approx_kl;
     value_target_var += (returns[static_cast<std::size_t>(i)] - return_mean) *
                         (returns[static_cast<std::size_t>(i)] - return_mean);
@@ -4144,12 +6142,12 @@ parse_target_weight_values(std::string_view text) {
     update.policy_input_digest = sample.policy_input_digest;
     update.reward = sample.reward;
     update.old_value = sample.old_value;
-    update.new_value = sample.new_value;
+    update.new_value = new_value;
     update.advantage = advantages[static_cast<std::size_t>(i)];
     update.normalized_advantage = normalized_advantage;
     update.return_target = returns[static_cast<std::size_t>(i)];
     update.old_log_prob = sample.old_log_prob;
-    update.new_log_prob = sample.new_log_prob;
+    update.new_log_prob = new_log_prob;
     update.log_prob_delta = log_ratio;
     update.prob_ratio = ratio;
     update.clipped_prob_ratio = clipped_ratio;
@@ -4158,8 +6156,8 @@ parse_target_weight_values(std::string_view text) {
     update.policy_loss_clipped = policy_loss_clipped;
     update.policy_loss_final = policy_loss_final;
     update.value_loss = value_loss;
-    update.entropy = sample.entropy;
-    update.entropy_bonus = contract.ppo_entropy_coeff * sample.entropy;
+    update.entropy = entropy;
+    update.entropy_bonus = contract.ppo_entropy_coeff * entropy;
     update.approx_kl = approx_kl;
     out.update_samples.push_back(std::move(update));
   }
@@ -4173,97 +6171,73 @@ parse_target_weight_values(std::string_view text) {
   out.approx_kl /= denom;
   out.clip_fraction /= denom;
   out.entropy_bonus = contract.ppo_entropy_coeff * out.entropy;
-  out.gradient_norm =
-      std::min(contract.ppo_max_grad_norm,
-               std::sqrt(out.policy_loss_final * out.policy_loss_final +
-                         out.value_loss * out.value_loss));
   out.explained_variance = value_target_var > 1.0e-18
                                ? 1.0 - (value_error_var / value_target_var)
                                : 0.0;
   out.target_kl_exceeded = out.approx_kl > contract.ppo_target_kl;
-  out.early_stop = out.target_kl_exceeded;
+  out.early_stop = out.early_stop || out.target_kl_exceeded;
 
-  std::vector<std::vector<double>> parsed_weights(samples.size());
-  std::size_t action_dim = 0;
-  for (std::size_t i = 0; i < samples.size(); ++i) {
-    auto weights = parse_target_weight_values(samples[i].target_node_weights);
-    if (weights.empty()) {
-      continue;
-    }
-    if (action_dim == 0) {
-      action_dim = weights.size();
-    }
-    if (weights.size() != action_dim) {
-      continue;
-    }
-    parsed_weights[i] = std::move(weights);
+  const auto final_out = module->forward(
+      tensor_to_runtime_device(samples.front().node_features, device,
+                               torch::kFloat64),
+      tensor_to_runtime_device(samples.front().global_features, device,
+                               torch::kFloat64),
+      tensor_to_runtime_device(samples.front().risk_features, device,
+                               torch::kFloat64),
+      samples.front().executable_mask.to(
+          torch::TensorOptions().dtype(torch::kBool).device(device)));
+  const auto final_logits =
+      final_out.node_weight_logits.detach()
+          .to(torch::TensorOptions().dtype(torch::kFloat64).device(torch::kCPU))
+          .contiguous();
+  out.updated_node_weight_logits.assign(final_logits.data_ptr<double>(),
+                                        final_logits.data_ptr<double>() +
+                                            final_logits.numel());
+  const auto final_params =
+      final_out.action_distribution_params.detach()
+          .to(torch::TensorOptions().dtype(torch::kFloat64).device(torch::kCPU))
+          .contiguous()
+          .view({-1});
+  out.updated_action_distribution_params.assign(
+      final_params.data_ptr<double>(),
+      final_params.data_ptr<double>() + final_params.numel());
+  out.updated_value_estimate =
+      final_out.state_value.reshape({-1}).index({0}).item<double>();
+  auto parameters = module->parameters();
+  for (std::size_t i = 0;
+       i < parameters.size() && i < initial_parameters.size(); ++i) {
+    const auto diff = parameters[i].detach().to(torch::kFloat64) -
+                      initial_parameters[i].to(torch::kFloat64);
+    out.parameter_delta_l2 += diff.pow(2).sum().item<double>();
   }
-
-  if (action_dim > 0) {
-    std::vector<double> actor_gradient(action_dim, 0.0);
-    std::vector<double> mean_weights(action_dim, 0.0);
-    std::size_t bound_sample_count = 0;
-    const double uniform_weight = 1.0 / static_cast<double>(action_dim);
-    for (std::size_t i = 0; i < parsed_weights.size(); ++i) {
-      const auto &weights = parsed_weights[i];
-      if (weights.size() != action_dim || i >= out.update_samples.size()) {
-        continue;
-      }
-      ++bound_sample_count;
-      const double normalized_advantage =
-          out.update_samples[i].normalized_advantage;
-      for (std::size_t j = 0; j < action_dim; ++j) {
-        mean_weights[j] += weights[j];
-        actor_gradient[j] +=
-            normalized_advantage * (weights[j] - uniform_weight);
-      }
+  out.parameter_delta_l2 = std::sqrt(out.parameter_delta_l2);
+  out.parameter_update_applied =
+      std::isfinite(out.parameter_delta_l2) && out.parameter_delta_l2 > 0.0;
+  graph_alloc::save_graph_node_allocation_torch_module_state(
+      updated_module_state_path, module);
+  if (!updated_optimizer_torch_state_path.empty()) {
+    torch::serialize::OutputArchive optimizer_archive;
+    optimizer.save(optimizer_archive);
+    if (!updated_optimizer_torch_state_path.parent_path().empty()) {
+      fs::create_directories(updated_optimizer_torch_state_path.parent_path());
     }
-    if (bound_sample_count > 0) {
-      const double inv_count = 1.0 / static_cast<double>(bound_sample_count);
-      double gradient_mean = 0.0;
-      for (double &value : mean_weights) {
-        value *= inv_count;
-      }
-      for (double &value : actor_gradient) {
-        value *= inv_count;
-        gradient_mean += value;
-      }
-      gradient_mean /= static_cast<double>(action_dim);
-      for (double &value : actor_gradient) {
-        value -= gradient_mean;
-        out.actor_logit_gradient_norm += value * value;
-      }
-      out.actor_logit_gradient_norm = std::sqrt(out.actor_logit_gradient_norm);
-      const double clip_scale =
-          out.actor_logit_gradient_norm > contract.ppo_max_grad_norm &&
-                  out.actor_logit_gradient_norm > 1.0e-18
-              ? contract.ppo_max_grad_norm / out.actor_logit_gradient_norm
-              : 1.0;
-      out.actor_learning_rate =
-          clamp_double(contract.ppo_clip_epsilon * 0.25, 0.001, 0.05);
-      out.critic_learning_rate = out.actor_learning_rate;
-      out.updated_node_weight_logits.assign(action_dim, 0.0);
-      for (std::size_t j = 0; j < action_dim; ++j) {
-        const double delta =
-            out.actor_learning_rate * clip_scale * actor_gradient[j];
-        out.updated_node_weight_logits[j] = clamp_double(delta, -5.0, 5.0);
-        out.parameter_delta_l2 += out.updated_node_weight_logits[j] *
-                                  out.updated_node_weight_logits[j];
-      }
-      out.parameter_delta_l2 = std::sqrt(out.parameter_delta_l2);
-      out.updated_value_estimate = clamp_double(
-          out.critic_learning_rate * out.mean_return_target, -1.0, 1.0);
-      out.updated_action_distribution_params =
-          contract.action_distribution_id == "masked_logistic_normal_simplex.v1"
-              ? std::vector<double>{-1.0}
-              : std::vector<double>{0.0};
-      out.parameter_update_applied =
-          std::isfinite(out.parameter_delta_l2) &&
-          (out.parameter_delta_l2 > 0.0 ||
-           std::abs(out.updated_value_estimate) > 0.0);
-    }
+    optimizer_archive.save_to(updated_optimizer_torch_state_path.string());
+    out.optimizer_state_on_cuda = device.type() == torch::kCUDA;
   }
-  return out;
+  out.cuda_verification_passed =
+      out.cuda_available && device.type() == torch::kCUDA &&
+      out.module_parameters_on_cuda && out.forward_input_on_cuda &&
+      out.loss_on_cuda && out.optimizer_state_on_cuda;
+  if (!out.cuda_verification_passed) {
+    if (err) {
+      *err = "E_RUNTIME_POLICY_TRAINING_PPO_CUDA_VERIFICATION_FAILED";
+    }
+    return false;
+  }
+  if (metrics) {
+    *metrics = std::move(out);
+  }
+  return true;
 }
 
 [[nodiscard]] std::string policy_training_ppo_actor_checkpoint_text(
@@ -4271,7 +6245,9 @@ parse_target_weight_values(std::string_view text) {
     std::string_view contract_digest,
     std::string_view checkpoint_stage = "post_update_policy",
     std::string_view parent_actor_checkpoint_digest = {},
-    const ppo_v0_update_metrics_t *metrics = nullptr) {
+    const ppo_v0_update_metrics_t *metrics = nullptr,
+    std::string_view module_state_path = "module_state.pt",
+    std::string_view module_state_digest = {}) {
   std::ostringstream out;
   out << "schema=" << contract.policy_checkpoint_schema_id << "\n";
   out << "checkpoint_part=actor\n";
@@ -4282,17 +6258,30 @@ parse_target_weight_values(std::string_view text) {
   out << "contract_digest=" << contract_digest << "\n";
   out << "parent_actor_checkpoint_digest=" << parent_actor_checkpoint_digest
       << "\n";
+  out << "policy_dsl_digest=" << contract.policy_dsl_digest << "\n";
+  out << "policy_net_digest=" << contract.policy_net_digest << "\n";
   out << "policy_input_schema_id=" << contract.policy_input_schema_id << "\n";
   out << "policy_input_feature_manifest_digest="
       << contract.policy_input_feature_manifest_digest << "\n";
+  out << "policy_jkimyei_digest=" << contract.policy_jkimyei_digest << "\n";
+  out << "target_node_universe_digest=" << contract.target_node_universe_digest
+      << "\n";
   out << "action_schema_id=" << contract.action_schema_digest << "\n";
   out << "action_adapter_id=" << contract.action_adapter_id << "\n";
   out << "action_distribution_id=" << contract.action_distribution_id << "\n";
+  out << "action_distribution_config_digest="
+      << contract.action_distribution_config_digest << "\n";
+  out << "reward_contract_id=" << contract.reward_contract_id << "\n";
+  out << "execution_profile_digest=" << contract.execution_profile_digest
+      << "\n";
+  out << "graph_order_fingerprint=" << contract.graph_order_fingerprint << "\n";
+  out << "ppo_config_digest=" << contract.ppo_config_digest << "\n";
   out << "actor_architecture_digest=" << contract.actor_architecture_digest
       << "\n";
   out << "critic_architecture_digest=" << contract.critic_architecture_digest
       << "\n";
   out << "causal_schedule_digest=" << contract.causal_schedule_digest << "\n";
+  out << "snapshot_family_digest=" << contract.snapshot_family_digest << "\n";
   out << "module_contract_id="
       << "wikimyei.policy.portfolio.graph_node_allocation."
          "torch_policy_module.v0"
@@ -4300,32 +6289,71 @@ parse_target_weight_values(std::string_view text) {
   out << "network_contract_id="
       << "wikimyei.policy.portfolio.graph_node_allocation.net.v1\n";
   out << "module_parameterization="
-      << "seeded_torch_module_v0_plus_checkpoint_head_delta\n";
+      << (metrics != nullptr ? "graph_node_allocation_torch_module_autograd_v0"
+                             : "seeded_graph_node_allocation_torch_module_v0")
+      << "\n";
+  out << "checkpoint_layout="
+      << "graph_node_allocation_torch_checkpoint_artifact_v0.v1\n";
+  out << "module_state_schema="
+      << "wikimyei.policy.portfolio.graph_node_allocation.module_state.v0\n";
+  out << "module_state_path=" << module_state_path << "\n";
+  out << "module_state_digest=" << module_state_digest << "\n";
+  out << "optimizer_state_schema_id=" << contract.optimizer_state_schema_id
+      << "\n";
+  out << "device_policy=" << contract.device_policy << "\n";
+  out << "cuda_device_index=" << contract.cuda_device_index << "\n";
+  out << "resume_mode=" << contract.resume_mode << "\n";
+  out << "resume_parent_actor_checkpoint_digest="
+      << contract.resume_actor_checkpoint_digest << "\n";
+  out << "resume_optimizer_state_digest="
+      << contract.resume_optimizer_state_digest << "\n";
+  out << "runtime_device_kind="
+      << (metrics != nullptr ? metrics->runtime_device_kind : "") << "\n";
+  out << "cuda_available="
+      << (metrics != nullptr && metrics->cuda_available ? "true" : "false")
+      << "\n";
+  out << "module_parameters_on_cuda="
+      << (metrics != nullptr && metrics->module_parameters_on_cuda ? "true"
+                                                                   : "false")
+      << "\n";
+  out << "forward_input_on_cuda="
+      << (metrics != nullptr && metrics->forward_input_on_cuda ? "true"
+                                                               : "false")
+      << "\n";
+  out << "loss_on_cuda="
+      << (metrics != nullptr && metrics->loss_on_cuda ? "true" : "false")
+      << "\n";
+  out << "optimizer_state_on_cuda="
+      << (metrics != nullptr && metrics->optimizer_state_on_cuda ? "true"
+                                                                 : "false")
+      << "\n";
+  out << "cuda_verification_passed="
+      << (metrics != nullptr && metrics->cuda_verification_passed ? "true"
+                                                                  : "false")
+      << "\n";
   out << "node_feature_dim=28\n";
   out << "global_feature_dim=6\n";
   out << "risk_feature_dim=10\n";
   out << "forward_mode=graph_node_allocation_torch_policy_module_v0.v1\n";
-  const bool learned_update = metrics != nullptr &&
-                              metrics->parameter_update_applied &&
-                              !metrics->updated_node_weight_logits.empty();
+  const bool learned_update =
+      metrics != nullptr && metrics->parameter_update_applied;
   out << "node_weight_logit_bias_mode="
-      << (learned_update ? "learned_bounded_ppo_v0" : "zero") << "\n";
+      << (metrics != nullptr ? "none_autograd_module_state" : "zero") << "\n";
   out << "node_weight_logit_bias="
-      << (learned_update ? csv_from_doubles(metrics->updated_node_weight_logits)
-                         : "")
       << "\n";
   out << "action_distribution_params="
-      << (learned_update
+      << (metrics != nullptr
               ? csv_from_doubles(metrics->updated_action_distribution_params)
               : "")
       << "\n";
   out << "value_estimate="
-      << (learned_update ? metrics->updated_value_estimate : 0.0) << "\n";
+      << (metrics != nullptr ? metrics->updated_value_estimate : 0.0) << "\n";
   out << "parameter_update_mode="
-      << (learned_update
-              ? "bounded_ppo_v0_module_head_delta_update"
-              : (metrics != nullptr ? "bounded_ppo_v0_no_parameter_update"
-                                    : "collection_policy_initialization"))
+      << (metrics != nullptr
+              ? (learned_update
+                     ? metrics->parameter_update_mode
+                     : "torch_autograd_ppo_clip_gae_v0_no_parameter_update")
+              : "collection_policy_initialization")
       << "\n";
   out << "ppo_update_bound=" << (metrics != nullptr ? "true" : "false") << "\n";
   out << "parameter_update_applied=" << (learned_update ? "true" : "false")
@@ -4339,6 +6367,12 @@ parse_target_weight_values(std::string_view text) {
     out << "clip_fraction=" << metrics->clip_fraction << "\n";
     out << "actor_learning_rate=" << metrics->actor_learning_rate << "\n";
     out << "critic_learning_rate=" << metrics->critic_learning_rate << "\n";
+    out << "optimizer_kind=" << metrics->optimizer_kind << "\n";
+    out << "policy_input_tensor_payload_bound="
+        << (metrics->policy_input_tensor_payload_bound ? "true" : "false")
+        << "\n";
+    out << "policy_input_tensor_payload_source="
+        << metrics->policy_input_tensor_payload_source << "\n";
     out << "actor_logit_gradient_norm=" << metrics->actor_logit_gradient_norm
         << "\n";
     out << "parameter_delta_l2=" << metrics->parameter_delta_l2 << "\n";
@@ -4373,8 +6407,8 @@ parse_target_weight_values(std::string_view text) {
       << "\n";
   out << "parameter_update_mode="
       << (metrics != nullptr && metrics->parameter_update_applied
-              ? "bounded_ppo_v0_value_update"
-              : "bounded_ppo_v0_no_value_update")
+              ? metrics->parameter_update_mode
+              : "torch_autograd_ppo_clip_gae_v0_no_value_update")
       << "\n";
   out << "ppo_update_bound=" << (metrics != nullptr ? "true" : "false") << "\n";
   out << "live_execution_allowed=false\n";
@@ -4385,11 +6419,55 @@ parse_target_weight_values(std::string_view text) {
     const cuwacunu::hero::runtime::policy_training_job_contract_t &contract,
     std::string_view contract_digest, const ppo_v0_update_metrics_t &metrics) {
   std::ostringstream out;
+  const auto effective_minibatch_size =
+      metrics.sample_count > 0
+          ? std::clamp<std::int64_t>(contract.ppo_minibatch_size > 0
+                                         ? contract.ppo_minibatch_size
+                                         : metrics.sample_count,
+                                     1, metrics.sample_count)
+          : 0;
+  const auto minibatch_count_per_epoch =
+      effective_minibatch_size > 0
+          ? (metrics.sample_count + effective_minibatch_size - 1) /
+                effective_minibatch_size
+          : 0;
   out << "schema=kikijyeba.runtime.ppo_optimizer_state.v1\n";
   out << "policy_id=" << contract.policy_id << "\n";
   out << "contract_digest=" << contract_digest << "\n";
   out << "ppo_config_digest=" << contract.ppo_config_digest << "\n";
+  out << "optimizer_state_schema_id=" << contract.optimizer_state_schema_id
+      << "\n";
+  out << "optimizer_torch_state_path=" << metrics.optimizer_torch_state_path
+      << "\n";
+  out << "optimizer_torch_state_digest=" << metrics.optimizer_torch_state_digest
+      << "\n";
+  out << "device_policy=" << metrics.device_policy << "\n";
+  out << "runtime_device_kind=" << metrics.runtime_device_kind << "\n";
+  out << "cuda_device_index=" << metrics.cuda_device_index << "\n";
+  out << "cuda_available=" << (metrics.cuda_available ? "true" : "false")
+      << "\n";
+  out << "module_parameters_on_cuda="
+      << (metrics.module_parameters_on_cuda ? "true" : "false") << "\n";
+  out << "forward_input_on_cuda="
+      << (metrics.forward_input_on_cuda ? "true" : "false") << "\n";
+  out << "loss_on_cuda=" << (metrics.loss_on_cuda ? "true" : "false") << "\n";
+  out << "optimizer_state_on_cuda="
+      << (metrics.optimizer_state_on_cuda ? "true" : "false") << "\n";
+  out << "cuda_verification_passed="
+      << (metrics.cuda_verification_passed ? "true" : "false") << "\n";
+  out << "resume_mode=" << metrics.resume_mode << "\n";
+  out << "resume_parent_loaded="
+      << (metrics.resume_parent_loaded ? "true" : "false") << "\n";
+  out << "optimizer_state_resume_loaded="
+      << (metrics.optimizer_state_resume_loaded ? "true" : "false") << "\n";
+  out << "resume_parent_actor_checkpoint_digest="
+      << metrics.resume_parent_actor_checkpoint_digest << "\n";
+  out << "resume_optimizer_state_digest="
+      << metrics.resume_optimizer_state_digest << "\n";
   out << "optimizer_steps=" << metrics.optimizer_steps << "\n";
+  out << "minibatch_policy=deterministic_contiguous_v0\n";
+  out << "effective_minibatch_size=" << effective_minibatch_size << "\n";
+  out << "minibatch_count_per_epoch=" << minibatch_count_per_epoch << "\n";
   out << "learning_rate_actor=" << metrics.actor_learning_rate << "\n";
   out << "learning_rate_critic=" << metrics.critic_learning_rate << "\n";
   out << "max_grad_norm=" << contract.ppo_max_grad_norm << "\n";
@@ -4399,7 +6477,29 @@ parse_target_weight_values(std::string_view text) {
   out << "parameter_delta_l2=" << metrics.parameter_delta_l2 << "\n";
   out << "parameter_update_applied="
       << (metrics.parameter_update_applied ? "true" : "false") << "\n";
-  out << "state_kind=bounded_ppo_v0_update_state\n";
+  out << "optimizer_kind=" << metrics.optimizer_kind << "\n";
+  out << "device_policy=" << metrics.device_policy << "\n";
+  out << "runtime_device_kind=" << metrics.runtime_device_kind << "\n";
+  out << "cuda_device_index=" << metrics.cuda_device_index << "\n";
+  out << "cuda_available=" << (metrics.cuda_available ? "true" : "false")
+      << "\n";
+  out << "module_parameters_on_cuda="
+      << (metrics.module_parameters_on_cuda ? "true" : "false") << "\n";
+  out << "forward_input_on_cuda="
+      << (metrics.forward_input_on_cuda ? "true" : "false") << "\n";
+  out << "loss_on_cuda=" << (metrics.loss_on_cuda ? "true" : "false") << "\n";
+  out << "optimizer_state_on_cuda="
+      << (metrics.optimizer_state_on_cuda ? "true" : "false") << "\n";
+  out << "cuda_verification_passed="
+      << (metrics.cuda_verification_passed ? "true" : "false") << "\n";
+  out << "resume_mode=" << metrics.resume_mode << "\n";
+  out << "resume_parent_loaded="
+      << (metrics.resume_parent_loaded ? "true" : "false") << "\n";
+  out << "optimizer_state_resume_loaded="
+      << (metrics.optimizer_state_resume_loaded ? "true" : "false") << "\n";
+  out << "policy_input_tensor_payload_bound="
+      << (metrics.policy_input_tensor_payload_bound ? "true" : "false") << "\n";
+  out << "state_kind=torch_autograd_ppo_clip_gae_v0_update_state\n";
   return out.str();
 }
 
@@ -4458,6 +6558,17 @@ parse_target_weight_values(std::string_view text) {
       << "\n";
   out << "policy_distribution_evidence_bound="
       << bool_json(collection.policy_distribution_evidence_bound) << "\n";
+  std::int64_t tensor_payload_bound_count = 0;
+  for (const auto &sample : samples) {
+    tensor_payload_bound_count +=
+        sample.policy_input_tensor_payload_bound ? 1 : 0;
+  }
+  out << "policy_input_tensor_payload_schema_id="
+      << "kikijyeba.environment.policy_input.tensor_payload.v1\n";
+  out << "policy_input_tensor_payload_bound_count="
+      << tensor_payload_bound_count << "\n";
+  out << "policy_input_tensor_payload_complete="
+      << bool_json(tensor_payload_bound_count == metrics.sample_count) << "\n";
   out << "value_estimate_source="
       << (collection.policy_distribution_evidence_bound
               ? "policy_value_head_evidence"
@@ -4573,6 +6684,18 @@ parse_target_weight_values(std::string_view text) {
     out << prefix << "entropy=" << sample.entropy << "\n";
     out << prefix << "old_value_estimate=" << sample.old_value << "\n";
     out << prefix << "new_value_estimate=" << sample.new_value << "\n";
+    out << prefix << "policy_input_tensor_payload_schema_id="
+        << sample.policy_input_tensor_payload_schema_id << "\n";
+    out << prefix << "policy_input_tensor_payload_bound="
+        << bool_json(sample.policy_input_tensor_payload_bound) << "\n";
+    out << prefix << "policy_input_node_features_shape="
+        << sample.policy_input_node_features_shape << "\n";
+    out << prefix << "policy_input_global_features_shape="
+        << sample.policy_input_global_features_shape << "\n";
+    out << prefix << "policy_input_risk_features_shape="
+        << sample.policy_input_risk_features_shape << "\n";
+    out << prefix << "policy_input_executable_mask_shape="
+        << sample.policy_input_executable_mask_shape << "\n";
     out << prefix << "action_target_node_weights=" << sample.target_node_weights
         << "\n";
     out << prefix << "transition_digest=" << transition_digest << "\n";
@@ -4636,6 +6759,18 @@ parse_target_weight_values(std::string_view text) {
     const cuwacunu::hero::runtime::policy_training_job_contract_t &contract,
     std::string_view contract_digest, const ppo_v0_update_metrics_t &metrics) {
   std::ostringstream out;
+  const auto effective_minibatch_size =
+      metrics.sample_count > 0
+          ? std::clamp<std::int64_t>(contract.ppo_minibatch_size > 0
+                                         ? contract.ppo_minibatch_size
+                                         : metrics.sample_count,
+                                     1, metrics.sample_count)
+          : 0;
+  const auto minibatch_count_per_epoch =
+      effective_minibatch_size > 0
+          ? (metrics.sample_count + effective_minibatch_size - 1) /
+                effective_minibatch_size
+          : 0;
   out << "schema=" << contract.ppo_update_report_schema_id << "\n";
   out << "report_writer_id=hero.runtime.policy_training.ppo_v0.v1\n";
   out << "contract_digest=" << contract_digest << "\n";
@@ -4653,6 +6788,9 @@ parse_target_weight_values(std::string_view text) {
   out << "value_loss_coeff=" << contract.ppo_value_loss_coeff << "\n";
   out << "max_grad_norm=" << contract.ppo_max_grad_norm << "\n";
   out << "minibatch_size=" << contract.ppo_minibatch_size << "\n";
+  out << "minibatch_policy=deterministic_contiguous_v0\n";
+  out << "effective_minibatch_size=" << effective_minibatch_size << "\n";
+  out << "minibatch_count_per_epoch=" << minibatch_count_per_epoch << "\n";
   out << "epochs_per_rollout=" << contract.ppo_epochs_per_rollout << "\n";
   out << "sample_count=" << metrics.sample_count << "\n";
   out << "optimizer_steps=" << metrics.optimizer_steps << "\n";
@@ -4675,11 +6813,35 @@ parse_target_weight_values(std::string_view text) {
   out << "explained_variance=" << metrics.explained_variance << "\n";
   out << "parameter_update_mode="
       << (metrics.parameter_update_applied
-              ? "bounded_ppo_v0_module_head_delta_update"
-              : "bounded_ppo_v0_no_parameter_update")
+              ? metrics.parameter_update_mode
+              : "torch_autograd_ppo_clip_gae_v0_no_parameter_update")
       << "\n";
   out << "parameter_update_applied="
       << (metrics.parameter_update_applied ? "true" : "false") << "\n";
+  out << "optimizer_kind=" << metrics.optimizer_kind << "\n";
+  out << "device_policy=" << metrics.device_policy << "\n";
+  out << "runtime_device_kind=" << metrics.runtime_device_kind << "\n";
+  out << "cuda_device_index=" << metrics.cuda_device_index << "\n";
+  out << "cuda_available=" << (metrics.cuda_available ? "true" : "false")
+      << "\n";
+  out << "module_parameters_on_cuda="
+      << (metrics.module_parameters_on_cuda ? "true" : "false") << "\n";
+  out << "forward_input_on_cuda="
+      << (metrics.forward_input_on_cuda ? "true" : "false") << "\n";
+  out << "loss_on_cuda=" << (metrics.loss_on_cuda ? "true" : "false") << "\n";
+  out << "optimizer_state_on_cuda="
+      << (metrics.optimizer_state_on_cuda ? "true" : "false") << "\n";
+  out << "cuda_verification_passed="
+      << (metrics.cuda_verification_passed ? "true" : "false") << "\n";
+  out << "resume_mode=" << metrics.resume_mode << "\n";
+  out << "resume_parent_loaded="
+      << (metrics.resume_parent_loaded ? "true" : "false") << "\n";
+  out << "optimizer_state_resume_loaded="
+      << (metrics.optimizer_state_resume_loaded ? "true" : "false") << "\n";
+  out << "policy_input_tensor_payload_bound="
+      << (metrics.policy_input_tensor_payload_bound ? "true" : "false") << "\n";
+  out << "policy_input_tensor_payload_source="
+      << metrics.policy_input_tensor_payload_source << "\n";
   out << "actor_learning_rate=" << metrics.actor_learning_rate << "\n";
   out << "critic_learning_rate=" << metrics.critic_learning_rate << "\n";
   out << "actor_logit_gradient_norm=" << metrics.actor_logit_gradient_norm
@@ -5270,6 +7432,18 @@ find_policy_summary_by_id(const std::vector<ppo_v0_policy_summary_t> &summaries,
   out << "critic_checkpoint_digest=" << critic_checkpoint_digest << "\n";
   out << "optimizer_state_path=" << optimizer_state_path.string() << "\n";
   out << "optimizer_state_digest=" << optimizer_state_digest << "\n";
+  out << "optimizer_state_schema_id=" << contract.optimizer_state_schema_id
+      << "\n";
+  out << "device_policy=" << metrics.device_policy << "\n";
+  out << "runtime_device_kind=" << metrics.runtime_device_kind << "\n";
+  out << "cuda_device_index=" << metrics.cuda_device_index << "\n";
+  out << "cuda_verification_passed="
+      << bool_json(metrics.cuda_verification_passed) << "\n";
+  out << "resume_mode=" << metrics.resume_mode << "\n";
+  out << "resume_parent_loaded=" << bool_json(metrics.resume_parent_loaded)
+      << "\n";
+  out << "optimizer_state_resume_loaded="
+      << bool_json(metrics.optimizer_state_resume_loaded) << "\n";
   out << "rollout_collection_path=" << rollout_collection_path.string() << "\n";
   out << "rollout_collection_digest=" << rollout_collection_digest << "\n";
   out << "ppo_update_report_path=" << ppo_update_report_path.string() << "\n";
@@ -5315,6 +7489,11 @@ find_policy_summary_by_id(const std::vector<ppo_v0_policy_summary_t> &summaries,
   out << "error_message=\n";
   out << "trainer_kind=ppo_policy_adapter.v1\n";
   out << "optimizer_steps=" << metrics.optimizer_steps << "\n";
+  out << "device_policy=" << metrics.device_policy << "\n";
+  out << "runtime_device_kind=" << metrics.runtime_device_kind << "\n";
+  out << "cuda_verification_passed="
+      << (metrics.cuda_verification_passed ? "true" : "false") << "\n";
+  out << "resume_mode=" << metrics.resume_mode << "\n";
   out << "checkpoint_written=true\n";
   out << "checkpoint_path=" << actor_checkpoint_path.string() << "\n";
   out << "model_state_mutated=true\n";
@@ -5324,6 +7503,11 @@ find_policy_summary_by_id(const std::vector<ppo_v0_policy_summary_t> &summaries,
   out << "mean_loss=" << metrics.policy_loss_final << "\n";
   out << "runtime_trains_ppo=true\n";
   out << "runtime_executes_live_capital=false\n";
+  out << "device_policy=" << metrics.device_policy << "\n";
+  out << "runtime_device_kind=" << metrics.runtime_device_kind << "\n";
+  out << "cuda_verification_passed="
+      << (metrics.cuda_verification_passed ? "true" : "false") << "\n";
+  out << "resume_mode=" << metrics.resume_mode << "\n";
   return out.str();
 }
 
@@ -5370,7 +7554,8 @@ find_policy_summary_by_id(const std::vector<ppo_v0_policy_summary_t> &summaries,
   out << "status=completed\n";
   out << "error_message=\n";
   out << "wave_id=policy_training_ppo_v0\n";
-  out << "target_component_family_id=wikimyei.policy.trainable\n";
+  out << "target_component_family_id=wikimyei.policy.portfolio.graph_node_"
+         "allocation\n";
   out << "wave_action=train\n";
   out << "steps_attempted=" << metrics.sample_count << "\n";
   out << "steps_completed=" << metrics.sample_count << "\n";
@@ -5478,7 +7663,8 @@ policy_training_lattice_identity_from_source_job(
     std::string_view checkpoint_digest, bool runtime_trainer = false,
     std::string_view input_policy_checkpoint_path = {},
     std::string_view input_policy_checkpoint_digest = {},
-    const policy_training_lattice_identity_t *identity = nullptr) {
+    const policy_training_lattice_identity_t *identity = nullptr,
+    const ppo_v0_update_metrics_t *ppo_metrics = nullptr) {
   std::ostringstream out;
   append_assignment(out, "schema", contract.artifact_schema_id);
   append_assignment(out, "fact_type", "policy_training");
@@ -5509,7 +7695,7 @@ policy_training_lattice_identity_from_source_job(
   append_assignment(out, "component_assembly_fingerprint",
                     contract.component_assembly_fingerprint);
   append_assignment(out, "target_component_family_id",
-                    "wikimyei.policy.trainable");
+                    "wikimyei.policy.portfolio.graph_node_allocation");
   append_assignment(out, "policy_id", contract.policy_id);
   append_assignment(out, "policy_kind", contract.policy_kind);
   append_assignment(out, "policy_architecture_digest",
@@ -5541,8 +7727,14 @@ policy_training_lattice_identity_from_source_job(
   append_assignment(out, "policy_family_id", contract.policy_family_id);
   append_assignment(out, "policy_checkpoint_schema_id",
                     contract.policy_checkpoint_schema_id);
+  append_assignment(out, "policy_dsl_digest", contract.policy_dsl_digest);
+  append_assignment(out, "policy_net_digest", contract.policy_net_digest);
   append_assignment(out, "policy_input_feature_manifest_digest",
                     contract.policy_input_feature_manifest_digest);
+  append_assignment(out, "policy_jkimyei_digest",
+                    contract.policy_jkimyei_digest);
+  append_assignment(out, "target_node_universe_digest",
+                    contract.target_node_universe_digest);
   append_assignment(out, "action_distribution_config_digest",
                     contract.action_distribution_config_digest);
   append_assignment(out, "snapshot_family_digest",
@@ -5562,6 +7754,42 @@ policy_training_lattice_identity_from_source_job(
   append_assignment(out, "optimizer_state_digest",
                     contract.optimizer_state_digest);
   append_assignment(out, "ppo_config_digest", contract.ppo_config_digest);
+  append_assignment(out, "optimizer_state_schema_id",
+                    contract.optimizer_state_schema_id);
+  append_assignment(out, "device_policy", contract.device_policy);
+  append_assignment(out, "cuda_device_index",
+                    std::to_string(contract.cuda_device_index));
+  append_assignment(out, "resume_mode", contract.resume_mode);
+  append_assignment(out, "resume_actor_checkpoint_path",
+                    contract.resume_actor_checkpoint_path);
+  append_assignment(out, "resume_actor_checkpoint_digest",
+                    contract.resume_actor_checkpoint_digest);
+  append_assignment(out, "resume_optimizer_state_path",
+                    contract.resume_optimizer_state_path);
+  append_assignment(out, "resume_optimizer_state_digest",
+                    contract.resume_optimizer_state_digest);
+  if (ppo_metrics != nullptr) {
+    append_assignment(out, "runtime_device_kind",
+                      ppo_metrics->runtime_device_kind);
+    append_assignment_bool(out, "cuda_available", ppo_metrics->cuda_available);
+    append_assignment_bool(out, "module_parameters_on_cuda",
+                           ppo_metrics->module_parameters_on_cuda);
+    append_assignment_bool(out, "forward_input_on_cuda",
+                           ppo_metrics->forward_input_on_cuda);
+    append_assignment_bool(out, "loss_on_cuda", ppo_metrics->loss_on_cuda);
+    append_assignment_bool(out, "optimizer_state_on_cuda",
+                           ppo_metrics->optimizer_state_on_cuda);
+    append_assignment_bool(out, "cuda_verification_passed",
+                           ppo_metrics->cuda_verification_passed);
+    append_assignment_bool(out, "resume_parent_loaded",
+                           ppo_metrics->resume_parent_loaded);
+    append_assignment_bool(out, "optimizer_state_resume_loaded",
+                           ppo_metrics->optimizer_state_resume_loaded);
+    append_assignment(out, "optimizer_torch_state_path",
+                      ppo_metrics->optimizer_torch_state_path);
+    append_assignment(out, "optimizer_torch_state_digest",
+                      ppo_metrics->optimizer_torch_state_digest);
+  }
   append_assignment(out, "advantage_estimator_id",
                     contract.advantage_estimator_id);
   append_assignment(out, "advantage_normalization_policy",
@@ -5728,18 +7956,8 @@ unique_policy_training_attempt_leaf(std::string_view contract_digest) {
     const cuwacunu::hero::runtime::policy_training_job_contract_t &contract,
     const std::string &contract_text, std::string_view contract_digest,
     runtime_context_t *ctx, std::string *out, std::string *err) {
-  bool confirm_execute = false;
-  if (!parse_optional_bool_arg(args, "confirm_execute", false, &confirm_execute,
-                               err)) {
-    return false;
-  }
   if (!policy_bool_or(ctx->policy, "allow_execute", false)) {
     *err = "E_RUNTIME_EXECUTE_DENIED: allow_execute is false";
-    return false;
-  }
-  if (policy_bool_or(ctx->policy, "require_confirm_execute", true) &&
-      !confirm_execute) {
-    *err = "E_RUNTIME_CONFIRM_REQUIRED: confirm_execute=true is required";
     return false;
   }
   if (!policy_bool_or(ctx->policy, "allow_train_execute", false)) {
@@ -5751,17 +7969,12 @@ unique_policy_training_attempt_leaf(std::string_view contract_digest) {
     return false;
   }
 
-  int timeout_seconds =
-      contract.max_wall_clock_seconds > 0
-          ? static_cast<int>(contract.max_wall_clock_seconds)
-          : policy_int_or(ctx->policy, "max_runtime_seconds", 600);
-  if (!parse_optional_int_arg(args, "timeout_seconds", timeout_seconds,
-                              &timeout_seconds, err)) {
+  int timeout_seconds = 0;
+  if (!policy_runtime_timeout_seconds(ctx->policy, &timeout_seconds, err)) {
     return false;
   }
-  if (timeout_seconds < 1) {
-    *err = "timeout_seconds must be >= 1";
-    return false;
+  if (contract.max_wall_clock_seconds > 0) {
+    timeout_seconds = static_cast<int>(contract.max_wall_clock_seconds);
   }
 
   std::string job_dir_arg;
@@ -5789,8 +8002,10 @@ unique_policy_training_attempt_leaf(std::string_view contract_digest) {
     }
   } else {
     job_dir = cuwacunu::hero::runtime::job_layout::job_dir(
-        root, "wikimyei.policy.trainable", contract.policy_id,
-        std::string(contract_digest), "train", job_id);
+        root, "wikimyei.policy.portfolio.graph_node_allocation",
+        contract.policy_id,
+        cuwacunu::hero::runtime::policy_operator_surface_digest(contract),
+        "train", job_id);
   }
   if (path_exists_and_is_nonempty_dir(job_dir)) {
     *err = "E_RUNTIME_POLICY_TRAINING_JOB_DIR_EXISTS: refusing to overwrite "
@@ -5804,7 +8019,8 @@ unique_policy_training_attempt_leaf(std::string_view contract_digest) {
     cuwacunu::hero::runtime::job_layout::write_runtime_layout_marker(root);
 
     const fs::path checkpoint_dir =
-        job_dir / "artifacts" / "wikimyei.policy.trainable" / "checkpoints";
+        job_dir / "artifacts" /
+        "wikimyei.policy.portfolio.graph_node_allocation" / "checkpoints";
     const fs::path checkpoint_path =
         checkpoint_dir / "noop_policy_training.checkpoint";
     const std::string checkpoint_text =
@@ -5827,8 +8043,9 @@ unique_policy_training_attempt_leaf(std::string_view contract_digest) {
                                       job_stable_id, attempt_leaf,
                                       ctx->global_config_path));
     cuwacunu::hero::runtime::job_layout::write_component_spawn_ref(
-        root, "wikimyei.policy.trainable", contract.policy_id,
-        contract.policy_id, std::string(contract_digest),
+        root, "wikimyei.policy.portfolio.graph_node_allocation",
+        contract.policy_id, contract.policy_id,
+        cuwacunu::hero::runtime::policy_operator_surface_digest(contract),
         "hero.runtime.policy_training",
         "policy_training_contract_" + std::string(contract_digest),
         "policy_training_contract_" + std::string(contract_digest));
@@ -5899,18 +8116,8 @@ unique_policy_training_attempt_leaf(std::string_view contract_digest) {
     const cuwacunu::hero::runtime::policy_training_job_contract_t &contract,
     const std::string &contract_text, std::string_view contract_digest,
     runtime_context_t *ctx, std::string *out, std::string *err) {
-  bool confirm_execute = false;
-  if (!parse_optional_bool_arg(args, "confirm_execute", false, &confirm_execute,
-                               err)) {
-    return false;
-  }
   if (!policy_bool_or(ctx->policy, "allow_execute", false)) {
     *err = "E_RUNTIME_EXECUTE_DENIED: allow_execute is false";
-    return false;
-  }
-  if (policy_bool_or(ctx->policy, "require_confirm_execute", true) &&
-      !confirm_execute) {
-    *err = "E_RUNTIME_CONFIRM_REQUIRED: confirm_execute=true is required";
     return false;
   }
   if (!policy_bool_or(ctx->policy, "allow_train_execute", false)) {
@@ -5926,18 +8133,17 @@ unique_policy_training_attempt_leaf(std::string_view contract_digest) {
     *err = policy_training_unsupported_execute_reason(contract);
     return false;
   }
-
-  int timeout_seconds =
-      contract.max_wall_clock_seconds > 0
-          ? static_cast<int>(contract.max_wall_clock_seconds)
-          : policy_int_or(ctx->policy, "max_runtime_seconds", 600);
-  if (!parse_optional_int_arg(args, "timeout_seconds", timeout_seconds,
-                              &timeout_seconds, err)) {
+  torch::Device runtime_device(torch::kCPU);
+  if (!resolve_ppo_v0_runtime_device(contract, &runtime_device, err)) {
     return false;
   }
-  if (timeout_seconds < 1) {
-    *err = "timeout_seconds must be >= 1";
+
+  int timeout_seconds = 0;
+  if (!policy_runtime_timeout_seconds(ctx->policy, &timeout_seconds, err)) {
     return false;
+  }
+  if (contract.max_wall_clock_seconds > 0) {
+    timeout_seconds = static_cast<int>(contract.max_wall_clock_seconds);
   }
 
   std::string job_dir_arg;
@@ -5978,6 +8184,36 @@ unique_policy_training_attempt_leaf(std::string_view contract_digest) {
   }
 
   const fs::path root = runtime_root(ctx->policy);
+  resolved_resume_actor_checkpoint_t resolved_resume_actor{};
+  fs::path resume_optimizer_torch_state_path;
+  if (contract.resume_mode != "fresh_spawn") {
+    if (!explicit_job_dir_allowed(
+            ctx->policy,
+            normalize_path(fs::path(contract.resume_actor_checkpoint_path))) &&
+        !path_within(root, fs::path(contract.resume_actor_checkpoint_path))) {
+      *err = "E_RUNTIME_POLICY_TRAINING_PPO_RESUME_CHECKPOINT_DENIED: "
+             "resume_actor_checkpoint_path is outside Runtime Hero roots";
+      return false;
+    }
+    if (!resolve_resume_actor_checkpoint(contract, &resolved_resume_actor,
+                                         err)) {
+      return false;
+    }
+  }
+  if (contract.resume_mode == "resume_weights_and_optimizer") {
+    if (!explicit_job_dir_allowed(
+            ctx->policy,
+            normalize_path(fs::path(contract.resume_optimizer_state_path))) &&
+        !path_within(root, fs::path(contract.resume_optimizer_state_path))) {
+      *err = "E_RUNTIME_POLICY_TRAINING_PPO_RESUME_OPTIMIZER_STATE_DENIED: "
+             "resume_optimizer_state_path is outside Runtime Hero roots";
+      return false;
+    }
+    if (!resolve_resume_optimizer_torch_state_path(
+            contract, &resume_optimizer_torch_state_path, err)) {
+      return false;
+    }
+  }
   const std::string job_stable_id =
       "policy_training_ppo_v0_" + std::string(contract_digest.substr(0, 16));
   const std::string attempt_leaf =
@@ -5997,8 +8233,10 @@ unique_policy_training_attempt_leaf(std::string_view contract_digest) {
     }
   } else {
     job_dir = cuwacunu::hero::runtime::job_layout::job_dir(
-        root, "wikimyei.policy.trainable", contract.policy_id,
-        std::string(contract_digest), "train", job_id);
+        root, "wikimyei.policy.portfolio.graph_node_allocation",
+        contract.policy_id,
+        cuwacunu::hero::runtime::policy_operator_surface_digest(contract),
+        "train", job_id);
   }
   if (path_exists_and_is_nonempty_dir(job_dir)) {
     *err = "E_RUNTIME_POLICY_TRAINING_JOB_DIR_EXISTS: refusing to overwrite "
@@ -6070,17 +8308,28 @@ unique_policy_training_attempt_leaf(std::string_view contract_digest) {
     cuwacunu::hero::runtime::job_layout::write_runtime_layout_marker(root);
 
     const fs::path artifact_dir =
-        job_dir / "artifacts" / "wikimyei.policy.trainable";
+        job_dir / "artifacts" /
+        "wikimyei.policy.portfolio.graph_node_allocation";
     const fs::path checkpoint_dir = artifact_dir / "checkpoints";
     const fs::path report_dir = artifact_dir / "reports";
-    const fs::path actor_checkpoint_path =
+    const fs::path actor_checkpoint_dir =
         checkpoint_dir / "ppo_v0_actor.checkpoint";
-    const fs::path collection_actor_checkpoint_path =
+    const fs::path collection_actor_checkpoint_dir =
         checkpoint_dir / "ppo_v0_actor.collection.checkpoint";
+    const fs::path actor_checkpoint_path =
+        actor_checkpoint_dir / "checkpoint.meta";
+    const fs::path actor_module_state_path =
+        actor_checkpoint_dir / "module_state.pt";
+    const fs::path collection_actor_checkpoint_path =
+        collection_actor_checkpoint_dir / "checkpoint.meta";
+    const fs::path collection_actor_module_state_path =
+        collection_actor_checkpoint_dir / "module_state.pt";
     const fs::path critic_checkpoint_path =
         checkpoint_dir / "ppo_v0_critic.checkpoint";
     const fs::path optimizer_state_path =
         checkpoint_dir / "ppo_v0_optimizer.state";
+    const fs::path optimizer_torch_state_path =
+        checkpoint_dir / "ppo_v0_optimizer_state.pt";
     const fs::path rollout_collection_path =
         report_dir / "ppo_v0_rollout_collection.report";
     const fs::path runtime_replay_report_path =
@@ -6114,17 +8363,34 @@ unique_policy_training_attempt_leaf(std::string_view contract_digest) {
         trim_ascii(policy_set_digest_arg).empty()
             ? contract.policy_family_id
             : trim_ascii(policy_set_digest_arg);
+    fs::path input_actor_checkpoint_path = collection_actor_checkpoint_path;
+    fs::path input_actor_module_state_path = collection_actor_module_state_path;
+    std::string input_actor_checkpoint_digest;
 
     if (!source_replay_job_dir.empty()) {
       fs::create_directories(checkpoint_dir);
       fs::create_directories(report_dir);
-      cuwacunu::hero::runtime::job_layout::write_text_file_atomically(
-          collection_actor_checkpoint_path,
-          policy_training_ppo_actor_checkpoint_text(contract, contract_digest,
-                                                    "collection_policy"));
-      const std::string collection_actor_checkpoint_digest =
-          file_digest_or_empty(collection_actor_checkpoint_path,
-                               contract.policy_checkpoint_schema_id);
+      if (contract.resume_mode == "fresh_spawn") {
+        write_seed_graph_node_allocation_module_state_artifact(
+            collection_actor_module_state_path, runtime_device);
+        const std::string collection_actor_module_state_digest =
+            file_digest_or_empty(
+                collection_actor_module_state_path,
+                "wikimyei.policy.portfolio.graph_node_allocation.module_state."
+                "v0");
+        cuwacunu::hero::runtime::job_layout::write_text_file_atomically(
+            collection_actor_checkpoint_path,
+            policy_training_ppo_actor_checkpoint_text(
+                contract, contract_digest, "collection_policy", {}, nullptr,
+                "module_state.pt", collection_actor_module_state_digest));
+        input_actor_checkpoint_digest =
+            file_digest_or_empty(collection_actor_checkpoint_path,
+                                 contract.policy_checkpoint_schema_id);
+      } else {
+        input_actor_checkpoint_path = resolved_resume_actor.checkpoint_path;
+        input_actor_module_state_path = resolved_resume_actor.module_state_path;
+        input_actor_checkpoint_digest = resolved_resume_actor.checkpoint_digest;
+      }
       replay_config_path = effective_config_path(*ctx, config_arg);
       accounting_numeraire_node_id =
           trim_ascii(accounting_numeraire_node_id_arg);
@@ -6146,8 +8412,7 @@ unique_policy_training_attempt_leaf(std::string_view contract_digest) {
                exec_path.string();
         return false;
       }
-      const std::string source_policy_digest =
-          collection_actor_checkpoint_digest;
+      const std::string source_policy_digest = input_actor_checkpoint_digest;
       std::vector<std::string> argv{
           exec_path.string(),
           "--config",
@@ -6169,7 +8434,7 @@ unique_policy_training_attempt_leaf(std::string_view contract_digest) {
           "--replay-policy-artifact-digest",
           source_policy_digest,
           "--replay-policy-checkpoint-path",
-          collection_actor_checkpoint_path.string(),
+          input_actor_checkpoint_path.string(),
           "--replay-causal-schedule-digest",
           contract.causal_schedule_digest,
           "--replay-snapshot-family-digest",
@@ -6221,9 +8486,9 @@ unique_policy_training_attempt_leaf(std::string_view contract_digest) {
           "runtime_ppo_v0_on_policy_replay_collection";
       rollout_collection.collection_source = "kikijyeba_on_policy_replay";
       rollout_collection.input_policy_checkpoint_path =
-          collection_actor_checkpoint_path;
+          input_actor_checkpoint_path;
       rollout_collection.input_policy_checkpoint_digest =
-          collection_actor_checkpoint_digest;
+          input_actor_checkpoint_digest;
       rollout_collection.on_policy_runtime_collection_complete = true;
       for (auto &sample : rollout_collection.samples) {
         sample.source = "kikijyeba_on_policy_replay";
@@ -6249,14 +8514,32 @@ unique_policy_training_attempt_leaf(std::string_view contract_digest) {
       validation_rollout_reason =
           "existing_replay_report_ingestion_not_post_update_evaluation";
     }
-    const auto metrics =
-        compute_ppo_v0_update_metrics(contract, rollout_collection.samples);
-
+    if (contract.resume_mode != "fresh_spawn" &&
+        source_replay_job_dir.empty()) {
+      input_actor_checkpoint_path = resolved_resume_actor.checkpoint_path;
+      input_actor_module_state_path = resolved_resume_actor.module_state_path;
+      input_actor_checkpoint_digest = resolved_resume_actor.checkpoint_digest;
+      rollout_collection.input_policy_checkpoint_path =
+          input_actor_checkpoint_path;
+      rollout_collection.input_policy_checkpoint_digest =
+          input_actor_checkpoint_digest;
+    }
+    ppo_v0_update_metrics_t metrics{};
+    if (!compute_ppo_v0_update_metrics(
+            contract, rollout_collection.samples, input_actor_module_state_path,
+            resume_optimizer_torch_state_path, actor_module_state_path,
+            optimizer_torch_state_path, runtime_device, &metrics, err)) {
+      return false;
+    }
+    const std::string actor_module_state_digest = file_digest_or_empty(
+        actor_module_state_path,
+        "wikimyei.policy.portfolio.graph_node_allocation.module_state.v0");
     cuwacunu::hero::runtime::job_layout::write_text_file_atomically(
         actor_checkpoint_path,
         policy_training_ppo_actor_checkpoint_text(
             contract, contract_digest, "post_update_policy",
-            rollout_collection.input_policy_checkpoint_digest, &metrics));
+            rollout_collection.input_policy_checkpoint_digest, &metrics,
+            "module_state.pt", actor_module_state_digest));
     const std::string actor_checkpoint_digest = file_digest_or_empty(
         actor_checkpoint_path, contract.policy_checkpoint_schema_id);
 
@@ -6268,6 +8551,11 @@ unique_policy_training_attempt_leaf(std::string_view contract_digest) {
     const std::string critic_checkpoint_digest = file_digest_or_empty(
         critic_checkpoint_path, contract.policy_checkpoint_schema_id);
 
+    metrics.optimizer_torch_state_path =
+        optimizer_torch_state_path.filename().string();
+    metrics.optimizer_torch_state_digest =
+        file_digest_or_empty(optimizer_torch_state_path,
+                             "kikijyeba.runtime.ppo_optimizer_torch_state.v1");
     cuwacunu::hero::runtime::job_layout::write_text_file_atomically(
         optimizer_state_path, policy_training_ppo_optimizer_state_text(
                                   contract, contract_digest, metrics));
@@ -6609,8 +8897,10 @@ unique_policy_training_attempt_leaf(std::string_view contract_digest) {
             attempt_leaf, ctx->global_config_path, ppo_protocol_status,
             "policy_training_ppo_v0", ppo_execution_chain));
     cuwacunu::hero::runtime::job_layout::write_component_spawn_ref(
-        root, "wikimyei.policy.trainable", emitted_contract.policy_id,
-        emitted_contract.policy_id, std::string(contract_digest),
+        root, "wikimyei.policy.portfolio.graph_node_allocation",
+        emitted_contract.policy_id, emitted_contract.policy_id,
+        cuwacunu::hero::runtime::policy_operator_surface_digest(
+            emitted_contract),
         "hero.runtime.policy_training.ppo_v0",
         "policy_training_contract_" + std::string(contract_digest),
         "policy_training_contract_" + std::string(contract_digest));
@@ -6640,7 +8930,7 @@ unique_policy_training_attempt_leaf(std::string_view contract_digest) {
         /*runtime_trainer=*/false,
         rollout_collection.input_policy_checkpoint_path.string(),
         rollout_collection.input_policy_checkpoint_digest,
-        &policy_training_identity);
+        &policy_training_identity, &metrics);
     const fs::path policy_fact_path = job_dir / "runtime.policy_training.fact";
     cuwacunu::hero::runtime::job_layout::write_text_file_atomically(
         policy_fact_path, fact_text);
@@ -6658,20 +8948,61 @@ unique_policy_training_attempt_leaf(std::string_view contract_digest) {
          << ",\"trainer_kind\":\"ppo_policy_adapter.v1\""
          << ",\"ppo_implemented\":true"
          << ",\"contract_digest\":" << json_quote(contract_digest)
+         << ",\"contract_ref\":"
+         << json_quote(display::contract_ref(contract_digest))
          << ",\"actor_checkpoint_digest\":"
          << json_quote(emitted_contract.actor_checkpoint_digest)
+         << ",\"actor_checkpoint_ref\":"
+         << json_quote(display::checkpoint_ref(
+                emitted_contract.actor_checkpoint_digest))
          << ",\"critic_checkpoint_digest\":"
          << json_quote(emitted_contract.critic_checkpoint_digest)
+         << ",\"critic_checkpoint_ref\":"
+         << json_quote(display::checkpoint_ref(
+                emitted_contract.critic_checkpoint_digest))
          << ",\"optimizer_state_digest\":"
          << json_quote(emitted_contract.optimizer_state_digest)
+         << ",\"optimizer_state_ref\":"
+         << json_quote(display::digest_ref(
+                "opt", emitted_contract.optimizer_state_digest))
+         << ",\"optimizer_state_schema_id\":"
+         << json_quote(emitted_contract.optimizer_state_schema_id)
+         << ",\"optimizer_torch_state_digest\":"
+         << json_quote(metrics.optimizer_torch_state_digest)
+         << ",\"optimizer_torch_state_ref\":"
+         << json_quote(display::digest_ref(
+                "opt", metrics.optimizer_torch_state_digest))
+         << ",\"device_policy\":" << json_quote(metrics.device_policy)
+         << ",\"runtime_device_kind\":"
+         << json_quote(metrics.runtime_device_kind)
+         << ",\"cuda_device_index\":" << metrics.cuda_device_index
+         << ",\"cuda_verification_passed\":"
+         << bool_json(metrics.cuda_verification_passed)
+         << ",\"resume_mode\":" << json_quote(metrics.resume_mode)
+         << ",\"resume_parent_loaded\":"
+         << bool_json(metrics.resume_parent_loaded)
+         << ",\"optimizer_state_resume_loaded\":"
+         << bool_json(metrics.optimizer_state_resume_loaded)
          << ",\"rollout_collection_digest\":"
          << json_quote(emitted_contract.rollout_collection_digest)
+         << ",\"rollout_collection_ref\":"
+         << json_quote(
+                display::report_ref(emitted_contract.rollout_collection_digest))
          << ",\"ppo_update_report_digest\":"
          << json_quote(emitted_contract.ppo_update_report_digest)
+         << ",\"ppo_update_report_ref\":"
+         << json_quote(
+                display::report_ref(emitted_contract.ppo_update_report_digest))
          << ",\"validation_rollout_report_digest\":"
          << json_quote(emitted_contract.validation_rollout_report_digest)
+         << ",\"validation_rollout_report_ref\":"
+         << json_quote(display::report_ref(
+                emitted_contract.validation_rollout_report_digest))
          << ",\"policy_quality_report_digest\":"
          << json_quote(emitted_contract.policy_quality_report_digest)
+         << ",\"policy_quality_report_ref\":"
+         << json_quote(display::report_ref(
+                emitted_contract.policy_quality_report_digest))
          << ",\"optimizer_steps\":" << metrics.optimizer_steps
          << ",\"sample_count\":" << metrics.sample_count
          << ",\"rollout_collection_source\":"
@@ -6684,10 +9015,16 @@ unique_policy_training_attempt_leaf(std::string_view contract_digest) {
          << json_quote(rollout_collection.input_replay_report_path.string())
          << ",\"input_replay_report_digest\":"
          << json_quote(rollout_collection.input_replay_report_digest)
+         << ",\"input_replay_report_ref\":"
+         << json_quote(display::report_ref(
+                rollout_collection.input_replay_report_digest))
          << ",\"input_policy_checkpoint_path\":"
          << json_quote(rollout_collection.input_policy_checkpoint_path.string())
          << ",\"input_policy_checkpoint_digest\":"
          << json_quote(rollout_collection.input_policy_checkpoint_digest)
+         << ",\"input_policy_checkpoint_ref\":"
+         << json_quote(display::checkpoint_ref(
+                rollout_collection.input_policy_checkpoint_digest))
          << ",\"job_id\":" << json_quote(job_id)
          << ",\"job_dir\":" << json_quote(job_dir.string())
          << ",\"manifest_path\":"
@@ -6700,6 +9037,8 @@ unique_policy_training_attempt_leaf(std::string_view contract_digest) {
          << json_quote(critic_checkpoint_path.string())
          << ",\"optimizer_state_path\":"
          << json_quote(optimizer_state_path.string())
+         << ",\"optimizer_torch_state_path\":"
+         << json_quote(optimizer_torch_state_path.string())
          << ",\"rollout_collection_path\":"
          << json_quote(rollout_collection_path.string())
          << ",\"ppo_update_report_path\":"
@@ -6758,6 +9097,107 @@ unique_policy_training_attempt_leaf(std::string_view contract_digest) {
   }
 }
 
+[[nodiscard]] bool handle_policy_training_contract_object(
+    cuwacunu::hero::runtime::policy_training_job_contract_t contract,
+    const std::string &execution_args, std::string_view requested_mode,
+    runtime_context_t *ctx, std::string *out, std::string *err) {
+  namespace runtime_contract = cuwacunu::hero::runtime;
+  if (runtime_contract::policy_training_requires_ppo_artifact_contract(
+          contract)) {
+    contract.component_assembly_fingerprint =
+        runtime_contract::policy_operator_surface_digest(contract);
+  }
+
+  const auto issues =
+      runtime_contract::validate_policy_training_job_contract(contract);
+  if (!issues.empty()) {
+    *err = "E_RUNTIME_POLICY_TRAINING_CONTRACT_INVALID: " +
+           string_array_json(issues);
+    return false;
+  }
+
+  const auto contract_text = contract.to_text();
+  const auto contract_digest =
+      runtime_contract::policy_training_contract_digest_for_text(contract_text);
+  if (requested_mode == "execute") {
+    if (policy_training_execute_kind_is_ppo_v0(contract)) {
+      return execute_policy_training_ppo_v0(execution_args, contract,
+                                            contract_text, contract_digest, ctx,
+                                            out, err);
+    }
+    return execute_policy_training_noop(execution_args, contract, contract_text,
+                                        contract_digest, ctx, out, err);
+  }
+  const bool execution_supported =
+      policy_training_execute_kind_supported(contract);
+  std::ostringstream json;
+  json << "{\"ok\":true,\"requested_mode\":" << json_quote(requested_mode)
+       << ",\"dry_run\":true"
+       << ",\"schema_version\":\"kikijyeba.runtime.policy_training_job_"
+          "contract_packet.v1\""
+       << ",\"contract_digest\":" << json_quote(contract_digest)
+       << ",\"policy_training_execution_supported\":"
+       << bool_json(execution_supported)
+       << ",\"supported_execute_policy_kinds\":[\"noop_policy_training.v1\","
+          "\"ppo_policy_adapter.v1\"]"
+       << ",\"artifact_schema_id\":" << json_quote(contract.artifact_schema_id)
+       << ",\"contract\":" << policy_training_contract_json(contract)
+       << ",\"contract_text\":" << json_quote(contract_text)
+       << ",\"authority\":{\"runtime_trains_policy\":"
+       << bool_json(execution_supported)
+       << ","
+          "\"runtime_executes_live_capital\":false,"
+          "\"runtime_selects_policy\":false,"
+          "\"runtime_proves_lattice_target\":false}"
+       << ",\"next_safe_actions\":[\"persist_contract_with_future_"
+          "policy_training_runner\","
+          "\"inspect_policy_training_contract\"]}";
+  *out = json.str();
+  return true;
+}
+
+void apply_policy_training_request_fixed_contract_values(
+    cuwacunu::hero::runtime::policy_training_job_contract_t *contract) {
+  if (contract == nullptr) {
+    return;
+  }
+  namespace runtime_contract = cuwacunu::hero::runtime;
+  contract->environment_contract_id = "kikijyeba.environment.replay.v1";
+  contract->action_schema_digest =
+      runtime_contract::k_target_node_weights_action_schema_v1;
+  contract->policy_input_schema_id = runtime_contract::k_policy_input_schema_v1;
+  contract->action_adapter_id =
+      runtime_contract::k_target_node_weights_simplex_adapter_v1;
+  contract->reward_contract_id =
+      runtime_contract::k_post_execution_reward_contract_v1;
+  contract->causal_schedule_schema_id =
+      runtime_contract::k_policy_training_causal_schedule_schema_v1;
+  contract->causal_schedule_no_future_snapshot_use_source =
+      runtime_contract::k_policy_training_schedule_no_future_snapshot_source_v1;
+
+  if (!runtime_contract::policy_training_requires_ppo_artifact_contract(
+          *contract)) {
+    return;
+  }
+  contract->ppo_policy_artifact_contract_id =
+      runtime_contract::k_ppo_policy_artifact_contract_v1;
+  contract->policy_family_id =
+      runtime_contract::k_graph_node_allocation_policy_family_v1;
+  contract->policy_checkpoint_schema_id =
+      runtime_contract::k_ppo_policy_checkpoint_schema_v1;
+  contract->optimizer_state_schema_id =
+      "kikijyeba.runtime.ppo_optimizer_state.v1";
+  contract->device_policy = "require_cuda";
+  contract->cuda_device_index = 0;
+  contract->cuda_device_index_bound = true;
+  contract->advantage_estimator_id =
+      runtime_contract::k_gae_advantage_estimator_v1;
+  contract->rollout_collection_schema_id =
+      runtime_contract::k_ppo_rollout_collection_schema_v1;
+  contract->ppo_update_report_schema_id =
+      runtime_contract::k_ppo_update_report_schema_v1;
+}
+
 [[nodiscard]] bool handle_policy_training_contract(
     const std::string &args, std::string_view requested_mode,
     runtime_context_t *ctx, std::string *out, std::string *err) {
@@ -6802,33 +9242,20 @@ unique_policy_training_attempt_leaf(std::string_view contract_digest) {
                                  &contract.test_range_digest, err) ||
       !parse_required_string_arg(args, "observation_schema_digest",
                                  &contract.observation_schema_digest, err) ||
-      !parse_required_string_arg(args, "action_schema_digest",
-                                 &contract.action_schema_digest, err) ||
       !parse_required_string_arg(args, "reward_contract_digest",
                                  &contract.reward_contract_digest, err) ||
-      !parse_required_string_arg(args, "policy_input_schema_id",
-                                 &contract.policy_input_schema_id, err) ||
-      !parse_required_string_arg(args, "action_adapter_id",
-                                 &contract.action_adapter_id, err) ||
       !parse_required_string_arg(args, "action_distribution_id",
                                  &contract.action_distribution_id, err) ||
-      !parse_required_string_arg(args, "reward_contract_id",
-                                 &contract.reward_contract_id, err) ||
       !parse_required_string_arg(args, "execution_profile_digest",
                                  &contract.execution_profile_digest, err) ||
       !parse_required_string_arg_or_wave(
           args, "training_schedule_mode", wave_defaults,
           "TRAINING_SCHEDULE_MODE", &contract.training_schedule_mode, err) ||
-      !parse_required_string_arg(args, "causal_schedule_schema_id",
-                                 &contract.causal_schedule_schema_id, err) ||
       !parse_required_string_arg(args, "causal_schedule_digest",
                                  &contract.causal_schedule_digest, err) ||
       !parse_required_string_arg(args, "causal_schedule_cursor_key_kind",
                                  &contract.causal_schedule_cursor_key_kind,
                                  err) ||
-      !parse_required_string_arg(
-          args, "causal_schedule_no_future_snapshot_use_source",
-          &contract.causal_schedule_no_future_snapshot_use_source, err) ||
       !parse_required_string_arg(args, "normalization_fit_range_digest",
                                  &contract.normalization_fit_range_digest,
                                  err) ||
@@ -6856,8 +9283,6 @@ unique_policy_training_attempt_leaf(std::string_view contract_digest) {
                                   &contract.split_policy_fingerprint);
   (void)extract_json_string_field(args, "component_assembly_fingerprint",
                                   &contract.component_assembly_fingerprint);
-  (void)extract_json_string_field(args, "environment_contract_id",
-                                  &contract.environment_contract_id);
   (void)extract_json_string_field(args, "selector_split",
                                   &contract.selector_split);
   (void)extract_json_string_field(
@@ -6872,15 +9297,17 @@ unique_policy_training_attempt_leaf(std::string_view contract_digest) {
   (void)extract_json_string_field(
       args, "parent_replay_environment_report_digest",
       &contract.parent_replay_environment_report_digest);
-  (void)extract_json_string_field(args, "ppo_policy_artifact_contract_id",
-                                  &contract.ppo_policy_artifact_contract_id);
-  (void)extract_json_string_field(args, "policy_family_id",
-                                  &contract.policy_family_id);
-  (void)extract_json_string_field(args, "policy_checkpoint_schema_id",
-                                  &contract.policy_checkpoint_schema_id);
+  (void)extract_json_string_field(args, "policy_dsl_digest",
+                                  &contract.policy_dsl_digest);
+  (void)extract_json_string_field(args, "policy_net_digest",
+                                  &contract.policy_net_digest);
   (void)extract_json_string_field(
       args, "policy_input_feature_manifest_digest",
       &contract.policy_input_feature_manifest_digest);
+  (void)extract_json_string_field(args, "policy_jkimyei_digest",
+                                  &contract.policy_jkimyei_digest);
+  (void)extract_json_string_field(args, "target_node_universe_digest",
+                                  &contract.target_node_universe_digest);
   (void)extract_json_string_field(args, "action_distribution_config_digest",
                                   &contract.action_distribution_config_digest);
   (void)extract_json_string_field(args, "snapshot_family_digest",
@@ -6897,16 +9324,19 @@ unique_policy_training_attempt_leaf(std::string_view contract_digest) {
                                   &contract.optimizer_state_digest);
   (void)extract_json_string_field(args, "ppo_config_digest",
                                   &contract.ppo_config_digest);
-  (void)extract_json_string_field(args, "advantage_estimator_id",
-                                  &contract.advantage_estimator_id);
+  (void)extract_json_string_field(args, "resume_mode", &contract.resume_mode);
+  (void)extract_json_string_field(args, "resume_actor_checkpoint_path",
+                                  &contract.resume_actor_checkpoint_path);
+  (void)extract_json_string_field(args, "resume_actor_checkpoint_digest",
+                                  &contract.resume_actor_checkpoint_digest);
+  (void)extract_json_string_field(args, "resume_optimizer_state_path",
+                                  &contract.resume_optimizer_state_path);
+  (void)extract_json_string_field(args, "resume_optimizer_state_digest",
+                                  &contract.resume_optimizer_state_digest);
   (void)extract_json_string_field(args, "advantage_normalization_policy",
                                   &contract.advantage_normalization_policy);
-  (void)extract_json_string_field(args, "rollout_collection_schema_id",
-                                  &contract.rollout_collection_schema_id);
   (void)extract_json_string_field(args, "rollout_collection_digest",
                                   &contract.rollout_collection_digest);
-  (void)extract_json_string_field(args, "ppo_update_report_schema_id",
-                                  &contract.ppo_update_report_schema_id);
   (void)extract_json_string_field(args, "ppo_update_report_digest",
                                   &contract.ppo_update_report_digest);
   (void)extract_json_string_field(args, "validation_rollout_report_digest",
@@ -7047,51 +9477,9 @@ unique_policy_training_attempt_leaf(std::string_view contract_digest) {
     return false;
   }
 
-  const auto issues =
-      runtime_contract::validate_policy_training_job_contract(contract);
-  if (!issues.empty()) {
-    *err = "E_RUNTIME_POLICY_TRAINING_CONTRACT_INVALID: " +
-           string_array_json(issues);
-    return false;
-  }
-
-  const auto contract_text = contract.to_text();
-  const auto contract_digest =
-      runtime_contract::policy_training_contract_digest_for_text(contract_text);
-  if (requested_mode == "execute") {
-    if (policy_training_execute_kind_is_ppo_v0(contract)) {
-      return execute_policy_training_ppo_v0(args, contract, contract_text,
-                                            contract_digest, ctx, out, err);
-    }
-    return execute_policy_training_noop(args, contract, contract_text,
-                                        contract_digest, ctx, out, err);
-  }
-  const bool execution_supported =
-      policy_training_execute_kind_supported(contract);
-  std::ostringstream json;
-  json << "{\"ok\":true,\"requested_mode\":" << json_quote(requested_mode)
-       << ",\"dry_run\":true"
-       << ",\"schema_version\":\"kikijyeba.runtime.policy_training_job_"
-          "contract_packet.v1\""
-       << ",\"contract_digest\":" << json_quote(contract_digest)
-       << ",\"policy_training_execution_supported\":"
-       << bool_json(execution_supported)
-       << ",\"supported_execute_policy_kinds\":[\"noop_policy_training.v1\","
-          "\"ppo_policy_adapter.v1\"]"
-       << ",\"artifact_schema_id\":" << json_quote(contract.artifact_schema_id)
-       << ",\"contract\":" << policy_training_contract_json(contract)
-       << ",\"contract_text\":" << json_quote(contract_text)
-       << ",\"authority\":{\"runtime_trains_policy\":"
-       << bool_json(execution_supported)
-       << ","
-          "\"runtime_executes_live_capital\":false,"
-          "\"runtime_selects_policy\":false,"
-          "\"runtime_proves_lattice_target\":false}"
-       << ",\"next_safe_actions\":[\"persist_contract_with_future_"
-          "policy_training_runner\","
-          "\"inspect_policy_training_contract\"]}";
-  *out = json.str();
-  return true;
+  apply_policy_training_request_fixed_contract_values(&contract);
+  return handle_policy_training_contract_object(contract, args, requested_mode,
+                                                ctx, out, err);
 }
 
 [[nodiscard]] bool json_raw_is_empty_array(const std::string &raw) {
@@ -7157,9 +9545,9 @@ struct runtime_handoff_binding_t {
 
 [[nodiscard]] bool validate_runtime_handoff_object(
     const std::string &handoff_raw, const fs::path &config_path,
-    const fs::path &policy_path, bool dry_run, bool confirm_execute,
-    bool force_rebuild_cache, std::string *wave_raw,
-    runtime_handoff_binding_t *binding, std::string *err) {
+    const fs::path &policy_path, bool dry_run, bool force_rebuild_cache,
+    std::string *wave_raw, runtime_handoff_binding_t *binding,
+    std::string *err) {
   std::string schema_version;
   if (!extract_json_string_field(handoff_raw, "handoff_schema_version",
                                  &schema_version) ||
@@ -7296,14 +9684,17 @@ struct runtime_handoff_binding_t {
     return false;
   }
   bool intent_dry_run = false;
-  bool intent_confirm_execute = false;
   bool intent_force_rebuild_cache = false;
+  if (extract_json_raw_field(intent_raw, "confirm_execute", nullptr)) {
+    if (err) {
+      *err = "E_RUNTIME_HANDOFF_INVALID: intent.confirm_execute is retired";
+    }
+    return false;
+  }
   if (!extract_json_bool_field(intent_raw, "dry_run", &intent_dry_run) ||
-      !extract_json_bool_field(intent_raw, "confirm_execute",
-                               &intent_confirm_execute) ||
       !extract_json_bool_field(intent_raw, "force_rebuild_cache",
                                &intent_force_rebuild_cache) ||
-      intent_dry_run != dry_run || intent_confirm_execute != confirm_execute ||
+      intent_dry_run != dry_run ||
       intent_force_rebuild_cache != force_rebuild_cache) {
     if (err) {
       *err = "E_RUNTIME_HANDOFF_INVALID: intent differs from execute args";
@@ -7396,9 +9787,8 @@ struct runtime_handoff_binding_t {
 
 [[nodiscard]] bool expected_wave_matches_runtime_wave(
     const std::string &args, const fs::path &config_path,
-    const fs::path &policy_path, bool dry_run, bool confirm_execute,
-    bool force_rebuild_cache, const wave_info_t &wave,
-    runtime_handoff_binding_t *binding,
+    const fs::path &policy_path, bool dry_run, bool force_rebuild_cache,
+    const wave_info_t &wave, runtime_handoff_binding_t *binding,
     std::unordered_map<std::string, std::string> *effective_model_state_inputs,
     std::string *err) {
   std::string expected_raw;
@@ -7410,13 +9800,12 @@ struct runtime_handoff_binding_t {
       }
       return false;
     }
-    if (!validate_runtime_handoff_object(
-            handoff_raw, config_path, policy_path, dry_run, confirm_execute,
-            force_rebuild_cache, &expected_raw, binding, err)) {
+    if (!validate_runtime_handoff_object(handoff_raw, config_path, policy_path,
+                                         dry_run, force_rebuild_cache,
+                                         &expected_raw, binding, err)) {
       return false;
     }
-  } else if (!extract_json_raw_field(args, "marshal_expected_wave",
-                                     &expected_raw)) {
+  } else {
     return true;
   }
 
@@ -7709,11 +10098,6 @@ void append_model_state_checkpoint_arg(
     return false;
   }
 
-  bool confirm_execute = false;
-  if (!parse_optional_bool_arg(args, "confirm_execute", false, &confirm_execute,
-                               err)) {
-    return false;
-  }
   const fs::path config_path = effective_config_path(*ctx, config_arg);
   wave_overlay_t wave_overlay{};
   if (!parse_wave_overlay_from_args(args, &wave_overlay, err)) {
@@ -7731,9 +10115,8 @@ void append_model_state_checkpoint_arg(
   runtime_handoff_binding_t handoff_binding{};
   std::unordered_map<std::string, std::string> handoff_model_state_inputs;
   if (!expected_wave_matches_runtime_wave(
-          args, config_path, ctx->policy_path, dry_run, confirm_execute,
-          force_rebuild_cache, wave, &handoff_binding,
-          &handoff_model_state_inputs, err)) {
+          args, config_path, ctx->policy_path, dry_run, force_rebuild_cache,
+          wave, &handoff_binding, &handoff_model_state_inputs, err)) {
     return false;
   }
   const std::string mode = wave.values.count("MODE") != 0
@@ -7744,11 +10127,6 @@ void append_model_state_checkpoint_arg(
   if (!dry_run) {
     if (!policy_bool_or(ctx->policy, "allow_execute", false)) {
       *err = "E_RUNTIME_EXECUTE_DENIED: allow_execute is false";
-      return false;
-    }
-    if (policy_bool_or(ctx->policy, "require_confirm_execute", true) &&
-        !confirm_execute) {
-      *err = "E_RUNTIME_CONFIRM_REQUIRED: confirm_execute=true is required";
       return false;
     }
     if (action == "train" &&
@@ -7769,13 +10147,8 @@ void append_model_state_checkpoint_arg(
     }
   }
 
-  int timeout_seconds = policy_int_or(ctx->policy, "max_runtime_seconds", 600);
-  if (!parse_optional_int_arg(args, "timeout_seconds", timeout_seconds,
-                              &timeout_seconds, err)) {
-    return false;
-  }
-  if (timeout_seconds < 1) {
-    *err = "timeout_seconds must be >= 1";
+  int timeout_seconds = 0;
+  if (!policy_runtime_timeout_seconds(ctx->policy, &timeout_seconds, err)) {
     return false;
   }
   int max_capture = policy_int_or(ctx->policy, "max_capture_bytes", 65536);
@@ -8099,13 +10472,8 @@ replay_dry_run_json(const std::vector<std::string> &argv,
     }
   }
 
-  int timeout_seconds = policy_int_or(ctx->policy, "max_runtime_seconds", 600);
-  if (!parse_optional_int_arg(args, "timeout_seconds", timeout_seconds,
-                              &timeout_seconds, err)) {
-    return false;
-  }
-  if (timeout_seconds < 1) {
-    *err = "timeout_seconds must be >= 1";
+  int timeout_seconds = 0;
+  if (!policy_runtime_timeout_seconds(ctx->policy, &timeout_seconds, err)) {
     return false;
   }
   int max_capture = policy_int_or(ctx->policy, "max_capture_bytes", 65536);
@@ -8248,12 +10616,6 @@ replay_dry_run_json(const std::vector<std::string> &argv,
                                err)) {
     return false;
   }
-  bool confirm_dev_nuke = false;
-  if (!parse_optional_bool_arg(args, "confirm_dev_nuke", false,
-                               &confirm_dev_nuke, err)) {
-    return false;
-  }
-
   if (!looks_safe_to_clear_runtime_root(root)) {
     *err = "E_RUNTIME_DEV_NUKE_UNSAFE_ROOT: refusing unsafe runtime_root: " +
            root.string();
@@ -8293,8 +10655,6 @@ replay_dry_run_json(const std::vector<std::string> &argv,
 
   const bool allow_dev_nuke =
       policy_bool_or(ctx->policy, "allow_dev_nuke", false);
-  const bool confirm_required =
-      policy_bool_or(ctx->policy, "require_confirm_dev_nuke", true);
   if (dry_run) {
     std::ostringstream json;
     json << "{\"ok\":true,\"dry_run\":true,\"would_clear\":"
@@ -8309,7 +10669,6 @@ replay_dry_run_json(const std::vector<std::string> &argv,
          << (backup_enabled ? json_quote(backup_root.string())
                             : std::string{"null"})
          << ",\"allow_dev_nuke\":" << bool_json(allow_dev_nuke)
-         << ",\"confirm_required\":" << bool_json(confirm_required)
          << ",\"targets\":" << dev_nuke_targets_json(targets)
          << ",\"active_jobs\":" << active_jobs_json(active_jobs) << "}";
     *out = json.str();
@@ -8318,11 +10677,6 @@ replay_dry_run_json(const std::vector<std::string> &argv,
 
   if (!allow_dev_nuke) {
     *err = "E_RUNTIME_DEV_NUKE_DENIED: allow_dev_nuke is false";
-    return false;
-  }
-  if (confirm_required && !confirm_dev_nuke) {
-    *err = "E_RUNTIME_DEV_NUKE_CONFIRM_REQUIRED: confirm_dev_nuke=true is "
-           "required";
     return false;
   }
   if (!active_jobs.empty()) {
@@ -8577,48 +10931,78 @@ replay_dry_run_json(const std::vector<std::string> &argv,
   return true;
 }
 
-[[nodiscard]] bool handle_inspect(const std::string &args,
-                                  runtime_context_t *ctx, std::string *out,
-                                  std::string *err) {
+[[nodiscard]] bool handle_inspect_schema(const std::string &args,
+                                         runtime_context_t *ctx,
+                                         std::string *out, std::string *err) {
   std::vector<json_field_t> fields;
-  if (!validate_tool_fields(args,
-                            {"subject", "config_path", "root", "job_id",
-                             "job_dir", "artifact", "path", "include_artifacts",
-                             "include_text", "max_bytes", "limit"},
+  if (!validate_tool_fields(args, {}, &fields, err)) {
+    return false;
+  }
+  return handle_schema(args, ctx, out, err);
+}
+
+[[nodiscard]] bool handle_inspect_wave(const std::string &args,
+                                       runtime_context_t *ctx, std::string *out,
+                                       std::string *err) {
+  std::vector<json_field_t> fields;
+  if (!validate_tool_fields(args, {"config_path"}, &fields, err)) {
+    return false;
+  }
+  return handle_wave(args, ctx, out, err);
+}
+
+[[nodiscard]] bool handle_inspect_jobs(const std::string &args,
+                                       runtime_context_t *ctx, std::string *out,
+                                       std::string *err) {
+  std::vector<json_field_t> fields;
+  if (!validate_tool_fields(args, {"root", "limit", "include_artifacts"},
                             &fields, err)) {
     return false;
   }
-  std::string subject;
-  if (!parse_required_string_arg(args, "subject", &subject, err)) {
+  return handle_list_jobs(args, ctx, out, err);
+}
+
+[[nodiscard]] bool handle_inspect_job(const std::string &args,
+                                      runtime_context_t *ctx, std::string *out,
+                                      std::string *err) {
+  std::vector<json_field_t> fields;
+  if (!validate_tool_fields(args,
+                            {"job_id", "job_dir", "include_text", "max_bytes"},
+                            &fields, err)) {
     return false;
   }
-  subject = lowercase_ascii(subject);
-  if (subject == "schema") {
-    const std::string forwarded = "{}";
-    return handle_schema(forwarded, ctx, out, err);
+  return handle_get_job(args, ctx, out, err);
+}
+
+[[nodiscard]] bool handle_inspect_artifact_job(const std::string &args,
+                                               runtime_context_t *ctx,
+                                               std::string *out,
+                                               std::string *err) {
+  std::vector<json_field_t> fields;
+  if (!validate_tool_fields(
+          args, {"job_id", "job_dir", "artifact", "max_bytes"}, &fields, err)) {
+    return false;
   }
-  if (subject == "wave") {
-    const std::string forwarded =
-        object_with_selected_fields(args, {"config_path"});
-    return handle_wave(forwarded, ctx, out, err);
+  return handle_read_artifact(args, ctx, out, err);
+}
+
+[[nodiscard]] bool handle_inspect_artifact_path(const std::string &args,
+                                                runtime_context_t *ctx,
+                                                std::string *out,
+                                                std::string *err) {
+  std::vector<json_field_t> fields;
+  if (!validate_tool_fields(args, {"path", "max_bytes"}, &fields, err)) {
+    return false;
   }
-  if (subject == "jobs") {
-    const std::string forwarded = object_with_selected_fields(
-        args, {"root", "limit", "include_artifacts"});
-    return handle_list_jobs(forwarded, ctx, out, err);
+  std::string path;
+  if (!extract_json_string_field(args, "path", &path) ||
+      trim_ascii(path).empty()) {
+    if (err) {
+      *err = "hero.runtime.inspect.artifact.path requires path";
+    }
+    return false;
   }
-  if (subject == "job") {
-    const std::string forwarded = object_with_selected_fields(
-        args, {"job_id", "job_dir", "include_text", "max_bytes"});
-    return handle_get_job(forwarded, ctx, out, err);
-  }
-  if (subject == "artifact") {
-    const std::string forwarded = object_with_selected_fields(
-        args, {"job_id", "job_dir", "artifact", "path", "max_bytes"});
-    return handle_read_artifact(forwarded, ctx, out, err);
-  }
-  *err = "subject must be schema, wave, jobs, job, or artifact";
-  return false;
+  return handle_read_artifact(args, ctx, out, err);
 }
 
 [[nodiscard]] bool policy_training_wave_requested(const std::string &args) {
@@ -8628,177 +11012,383 @@ replay_dry_run_json(const std::vector<std::string> &argv,
          extract_json_raw_field(args, "causal_schedule_digest", nullptr);
 }
 
-[[nodiscard]] bool handle_run(const std::string &args, runtime_context_t *ctx,
-                              std::string *out, std::string *err) {
+[[nodiscard]] bool policy_training_wave_requested(
+    const std::unordered_map<std::string, std::string> &request) {
+  return request.count("policy_kind") != 0 || request.count("policy_id") != 0 ||
+         request.count("training_schedule_mode") != 0 ||
+         request.count("causal_schedule_digest") != 0;
+}
+
+[[nodiscard]] bool append_policy_training_request_json_fields(
+    const std::unordered_map<std::string, std::string> &request,
+    std::ostringstream &out, bool *first, std::string *err) {
+  const std::initializer_list<kv_json_field_t> fields = {
+      {"job_id", kv_json_field_kind_t::string_value},
+      {"job_dir", kv_json_field_kind_t::string_value},
+      {"report_path", kv_json_field_kind_t::string_value},
+      {"replay_job_dir", kv_json_field_kind_t::string_value},
+      {"accounting_numeraire_node_id", kv_json_field_kind_t::string_value},
+      {"target_node_ids", kv_json_field_kind_t::string_value},
+      {"experiment_id", kv_json_field_kind_t::string_value},
+      {"protocol_id", kv_json_field_kind_t::string_value},
+      {"protocol_contract_fingerprint", kv_json_field_kind_t::string_value},
+      {"graph_order_fingerprint", kv_json_field_kind_t::string_value},
+      {"source_cursor_token", kv_json_field_kind_t::string_value},
+      {"split_policy_fingerprint", kv_json_field_kind_t::string_value},
+      {"component_assembly_fingerprint", kv_json_field_kind_t::string_value},
+      {"policy_id", kv_json_field_kind_t::string_value},
+      {"policy_kind", kv_json_field_kind_t::string_value},
+      {"policy_architecture_digest", kv_json_field_kind_t::string_value},
+      {"training_config_digest", kv_json_field_kind_t::string_value},
+      {"training_range_digest", kv_json_field_kind_t::string_value},
+      {"validation_range_digest", kv_json_field_kind_t::string_value},
+      {"test_range_digest", kv_json_field_kind_t::string_value},
+      {"observation_schema_digest", kv_json_field_kind_t::string_value},
+      {"reward_contract_digest", kv_json_field_kind_t::string_value},
+      {"action_distribution_id", kv_json_field_kind_t::string_value},
+      {"execution_profile_digest", kv_json_field_kind_t::string_value},
+      {"policy_set_digest", kv_json_field_kind_t::string_value},
+      {"policy_dsl_digest", kv_json_field_kind_t::string_value},
+      {"policy_net_digest", kv_json_field_kind_t::string_value},
+      {"policy_input_feature_manifest_digest",
+       kv_json_field_kind_t::string_value},
+      {"policy_jkimyei_digest", kv_json_field_kind_t::string_value},
+      {"target_node_universe_digest", kv_json_field_kind_t::string_value},
+      {"action_distribution_config_digest", kv_json_field_kind_t::string_value},
+      {"snapshot_family_digest", kv_json_field_kind_t::string_value},
+      {"actor_architecture_digest", kv_json_field_kind_t::string_value},
+      {"critic_architecture_digest", kv_json_field_kind_t::string_value},
+      {"actor_checkpoint_digest", kv_json_field_kind_t::string_value},
+      {"critic_checkpoint_digest", kv_json_field_kind_t::string_value},
+      {"optimizer_state_digest", kv_json_field_kind_t::string_value},
+      {"ppo_config_digest", kv_json_field_kind_t::string_value},
+      {"resume_mode", kv_json_field_kind_t::string_value},
+      {"resume_actor_checkpoint_path", kv_json_field_kind_t::string_value},
+      {"resume_actor_checkpoint_digest", kv_json_field_kind_t::string_value},
+      {"resume_optimizer_state_path", kv_json_field_kind_t::string_value},
+      {"resume_optimizer_state_digest", kv_json_field_kind_t::string_value},
+      {"advantage_normalization_policy", kv_json_field_kind_t::string_value},
+      {"rollout_collection_digest", kv_json_field_kind_t::string_value},
+      {"ppo_update_report_digest", kv_json_field_kind_t::string_value},
+      {"validation_rollout_report_digest", kv_json_field_kind_t::string_value},
+      {"policy_quality_report_digest", kv_json_field_kind_t::string_value},
+      {"training_schedule_mode", kv_json_field_kind_t::string_value},
+      {"causal_schedule_digest", kv_json_field_kind_t::string_value},
+      {"causal_schedule_cursor_key_kind", kv_json_field_kind_t::string_value},
+      {"normalization_fit_range_digest", kv_json_field_kind_t::string_value},
+      {"replay_buffer_source_range_digest", kv_json_field_kind_t::string_value},
+      {"early_stopping_policy_digest", kv_json_field_kind_t::string_value},
+      {"hyperparameter_selection_policy_digest",
+       kv_json_field_kind_t::string_value},
+      {"selector_split", kv_json_field_kind_t::string_value},
+      {"selector_policy_digest", kv_json_field_kind_t::string_value},
+      {"parent_checkpoint_digest", kv_json_field_kind_t::string_value},
+      {"parent_forecast_eval_fact_digest", kv_json_field_kind_t::string_value},
+      {"parent_observer_belief_fact_digest",
+       kv_json_field_kind_t::string_value},
+      {"parent_allocation_engine_fact_digest",
+       kv_json_field_kind_t::string_value},
+      {"parent_replay_environment_fact_digest",
+       kv_json_field_kind_t::string_value},
+      {"parent_replay_environment_report_digest",
+       kv_json_field_kind_t::string_value},
+      {"final_refit_parent_selected_checkpoint_digest",
+       kv_json_field_kind_t::string_value},
+      {"policy_artifact_digest", kv_json_field_kind_t::string_value},
+      {"ppo_gamma", kv_json_field_kind_t::number_value},
+      {"ppo_gae_lambda", kv_json_field_kind_t::number_value},
+      {"ppo_clip_epsilon", kv_json_field_kind_t::number_value},
+      {"ppo_target_kl", kv_json_field_kind_t::number_value},
+      {"ppo_entropy_coeff", kv_json_field_kind_t::number_value},
+      {"ppo_value_loss_coeff", kv_json_field_kind_t::number_value},
+      {"ppo_max_grad_norm", kv_json_field_kind_t::number_value},
+      {"linear_transaction_cost_rate", kv_json_field_kind_t::number_value},
+      {"initial_equity_numeraire", kv_json_field_kind_t::number_value},
+      {"max_node_weight", kv_json_field_kind_t::number_value},
+      {"max_turnover_l1", kv_json_field_kind_t::number_value},
+      {"ppo_minibatch_size", kv_json_field_kind_t::int_value},
+      {"ppo_epochs_per_rollout", kv_json_field_kind_t::int_value},
+      {"random_seed", kv_json_field_kind_t::int_value},
+      {"max_episodes", kv_json_field_kind_t::int_value},
+      {"max_steps", kv_json_field_kind_t::int_value},
+      {"max_parallel_jobs", kv_json_field_kind_t::int_value},
+      {"max_wall_clock_seconds", kv_json_field_kind_t::int_value},
+      {"causal_schedule_readiness_eligible", kv_json_field_kind_t::bool_value},
+      {"causal_schedule_no_future_snapshot_use",
+       kv_json_field_kind_t::bool_value},
+      {"offline_full_window_research_allowed",
+       kv_json_field_kind_t::bool_value},
+      {"final_refit_uses_validation", kv_json_field_kind_t::bool_value},
+      {"validation_no_longer_proof", kv_json_field_kind_t::bool_value},
+      {"sealed_test_required", kv_json_field_kind_t::bool_value},
+      {"live_execution_allowed", kv_json_field_kind_t::bool_value}};
+  if (!validate_kv_json_fields(request, fields, err, "execution request",
+                               {"config_path"})) {
+    return false;
+  }
+  return append_kv_json_fields(request, fields, out, first, err);
+}
+
+[[nodiscard]] bool handle_run_policy_training(const std::string &args,
+                                              runtime_context_t *ctx,
+                                              std::string *out,
+                                              std::string *err);
+
+[[nodiscard]] bool handle_run_policy_training(const std::string &args,
+                                              runtime_context_t *ctx,
+                                              std::string *out,
+                                              std::string *err) {
   std::vector<json_field_t> fields;
   if (!validate_tool_fields(args,
-                            {"operation",
-                             "requested_mode",
-                             "config_path",
-                             "job_id",
-                             "job_dir",
-                             "replay_job_dir",
-                             "force_rebuild_cache",
-                             "confirm_execute",
-                             "timeout_seconds",
-                             "wave_overlay",
-                             "runtime_handoff",
-                             "marshal_expected_wave",
-                             "accounting_numeraire_node_id",
-                             "target_node_ids",
-                             "experiment_id",
-                             "report_path",
-                             "initial_equity_numeraire",
-                             "max_node_weight",
-                             "max_turnover_l1",
-                             "max_steps",
-                             "max_parallel_jobs",
-                             "include_equal_weight",
-                             "include_current_weight",
-                             "include_graph_node_allocation_policy",
-                             "on_policy_sample",
-                             "include_numeraire_only_policy",
-                             "include_spot_distributional_utility_policy",
-                             "allow_synthetic_direct_edges",
-                             "validation_rollout",
-                             "linear_transaction_cost_rate",
-                             "execution_profile_digest",
-                             "policy_set_digest",
-                             "policy_artifact_digest",
-                             "protocol_id",
-                             "protocol_contract_fingerprint",
-                             "graph_order_fingerprint",
-                             "source_cursor_token",
-                             "split_policy_fingerprint",
-                             "component_assembly_fingerprint",
-                             "policy_id",
-                             "policy_kind",
-                             "policy_architecture_digest",
-                             "training_config_digest",
-                             "training_range_digest",
-                             "validation_range_digest",
-                             "test_range_digest",
-                             "environment_contract_id",
-                             "observation_schema_digest",
-                             "action_schema_digest",
-                             "reward_contract_digest",
-                             "policy_input_schema_id",
-                             "action_adapter_id",
-                             "action_distribution_id",
-                             "reward_contract_id",
-                             "ppo_policy_artifact_contract_id",
-                             "policy_family_id",
-                             "policy_checkpoint_schema_id",
-                             "policy_input_feature_manifest_digest",
-                             "action_distribution_config_digest",
-                             "snapshot_family_digest",
-                             "actor_architecture_digest",
-                             "critic_architecture_digest",
-                             "actor_checkpoint_digest",
-                             "critic_checkpoint_digest",
-                             "optimizer_state_digest",
-                             "ppo_config_digest",
-                             "advantage_estimator_id",
-                             "advantage_normalization_policy",
-                             "rollout_collection_schema_id",
-                             "rollout_collection_digest",
-                             "ppo_update_report_schema_id",
-                             "ppo_update_report_digest",
-                             "validation_rollout_report_digest",
-                             "policy_quality_report_digest",
-                             "ppo_gamma",
-                             "ppo_gae_lambda",
-                             "ppo_clip_epsilon",
-                             "ppo_target_kl",
-                             "ppo_entropy_coeff",
-                             "ppo_value_loss_coeff",
-                             "ppo_max_grad_norm",
-                             "ppo_minibatch_size",
-                             "ppo_epochs_per_rollout",
-                             "training_schedule_mode",
-                             "causal_schedule_schema_id",
-                             "causal_schedule_digest",
-                             "causal_schedule_cursor_key_kind",
-                             "causal_schedule_no_future_snapshot_use_source",
-                             "normalization_fit_range_digest",
-                             "replay_buffer_source_range_digest",
-                             "early_stopping_policy_digest",
-                             "hyperparameter_selection_policy_digest",
-                             "selector_split",
-                             "selector_policy_digest",
-                             "parent_checkpoint_digest",
-                             "parent_forecast_eval_fact_digest",
-                             "parent_observer_belief_fact_digest",
-                             "parent_allocation_engine_fact_digest",
-                             "parent_replay_environment_fact_digest",
-                             "parent_replay_environment_report_digest",
-                             "final_refit_parent_selected_checkpoint_digest",
-                             "random_seed",
-                             "max_episodes",
-                             "max_wall_clock_seconds",
-                             "causal_schedule_readiness_eligible",
-                             "causal_schedule_no_future_snapshot_use",
-                             "offline_full_window_research_allowed",
-                             "final_refit_uses_validation",
-                             "validation_no_longer_proof",
-                             "sealed_test_required",
-                             "live_execution_allowed"},
+                            {"requested_mode", "contract_path",
+                             "contract_digest", "execution_request_path",
+                             "execution_request_digest"},
                             &fields, err)) {
     return false;
   }
-  std::string operation;
   std::string requested_mode;
-  if (!parse_required_string_arg(args, "operation", &operation, err) ||
-      !parse_required_string_arg(args, "requested_mode", &requested_mode,
+  if (!parse_required_string_arg(args, "requested_mode", &requested_mode,
                                  err)) {
     return false;
   }
-  operation = lowercase_ascii(operation);
   requested_mode = lowercase_ascii(requested_mode);
-  if (requested_mode != "plan" && requested_mode != "dry_run" &&
-      requested_mode != "execute") {
-    *err = "requested_mode must be plan, dry_run, or execute";
+  if (requested_mode != "dry_run" && requested_mode != "execute") {
+    *err = "requested_mode must be dry_run or execute";
+    return false;
+  }
+  if (ctx == nullptr) {
+    *err = "runtime context is required";
     return false;
   }
 
-  if (operation == "wave") {
-    bool run_policy_training_contract = policy_training_wave_requested(args);
-    if (!run_policy_training_contract && ctx != nullptr) {
-      std::string config_arg;
-      (void)extract_json_string_field(args, "config_path", &config_arg);
-      const wave_info_t selected_wave =
-          load_wave_info(*ctx, effective_config_path(*ctx, config_arg));
-      run_policy_training_contract =
-          wave_info_requests_policy_training(selected_wave);
-    }
-    if (run_policy_training_contract) {
-      return handle_policy_training_contract(args, requested_mode, ctx, out,
-                                             err);
-    }
-    if (requested_mode == "plan") {
-      *err = "requested_mode=plan is not supported for operation=wave; use "
-             "dry_run or execute";
-      return false;
-    }
-    std::ostringstream forwarded;
-    forwarded << "{";
-    bool first = true;
-    for (const auto key : {"config_path", "job_dir", "force_rebuild_cache",
-                           "confirm_execute", "timeout_seconds", "wave_overlay",
-                           "runtime_handoff", "marshal_expected_wave"}) {
-      append_optional_raw_json_field(args, forwarded, key, &first);
-    }
-    append_bool_json_field(forwarded, "dry_run", requested_mode == "dry_run",
-                           &first);
-    forwarded << "}";
-    return execute_runtime(forwarded.str(), ctx, false, out, err);
+  fs::path contract_path;
+  std::string contract_text;
+  if (!read_required_text_file_arg(args, "contract_path", &contract_path,
+                                   &contract_text, err)) {
+    return false;
+  }
+  auto contract_kv = parse_assignment_text(contract_text, false);
+  cuwacunu::hero::runtime::policy_training_job_contract_t contract{};
+  if (!policy_training_contract_from_kv(contract_kv, &contract, err)) {
+    return false;
+  }
+  const std::string canonical_contract_text = contract.to_text();
+  const std::string contract_digest =
+      cuwacunu::hero::runtime::policy_training_contract_digest_for_text(
+          canonical_contract_text);
+  if (!check_optional_string_digest_arg(
+          args, "contract_digest", contract_digest,
+          "E_RUNTIME_POLICY_TRAINING_CONTRACT_DIGEST_MISMATCH", err)) {
+    return false;
   }
 
-  if (operation == "replay") {
-    std::ostringstream forwarded;
-    forwarded << "{";
-    bool first = true;
-    for (const auto key : {"job_id",
+  std::unordered_map<std::string, std::string> execution_request;
+  if (extract_json_raw_field(args, "execution_request_path", nullptr)) {
+    fs::path execution_request_path;
+    std::string execution_request_text;
+    if (!read_required_text_file_arg(args, "execution_request_path",
+                                     &execution_request_path,
+                                     &execution_request_text, err)) {
+      return false;
+    }
+    const std::string execution_request_digest =
+        cuwacunu::hero::marshal::marshal_digest_for_text(
+            "kikijyeba.runtime.policy_training_execution_request.v1",
+            execution_request_text);
+    if (!check_optional_string_digest_arg(
+            args, "execution_request_digest", execution_request_digest,
+            "E_RUNTIME_POLICY_TRAINING_EXECUTION_REQUEST_DIGEST_MISMATCH",
+            err)) {
+      return false;
+    }
+    execution_request = parse_assignment_text(execution_request_text, false);
+    if (execution_request.count("confirm_execute") != 0 ||
+        execution_request.count("timeout_seconds") != 0) {
+      *err = "execution request must not contain confirm_execute or "
+             "timeout_seconds";
+      return false;
+    }
+  } else if (extract_json_raw_field(args, "execution_request_digest",
+                                    nullptr)) {
+    *err = "execution_request_digest requires execution_request_path";
+    return false;
+  }
+
+  std::ostringstream execution_args;
+  execution_args << "{";
+  bool first = true;
+  if (!append_kv_json_fields(
+          execution_request,
+          {{"job_id", kv_json_field_kind_t::string_value},
+           {"job_dir", kv_json_field_kind_t::string_value},
+           {"report_path", kv_json_field_kind_t::string_value},
+           {"replay_job_dir", kv_json_field_kind_t::string_value},
+           {"config_path", kv_json_field_kind_t::string_value},
+           {"accounting_numeraire_node_id", kv_json_field_kind_t::string_value},
+           {"target_node_ids", kv_json_field_kind_t::string_value},
+           {"experiment_id", kv_json_field_kind_t::string_value},
+           {"policy_set_digest", kv_json_field_kind_t::string_value},
+           {"linear_transaction_cost_rate", kv_json_field_kind_t::number_value},
+           {"initial_equity_numeraire", kv_json_field_kind_t::number_value},
+           {"max_node_weight", kv_json_field_kind_t::number_value},
+           {"max_turnover_l1", kv_json_field_kind_t::number_value},
+           {"max_steps", kv_json_field_kind_t::int_value},
+           {"max_parallel_jobs", kv_json_field_kind_t::int_value}},
+          execution_args, &first, err)) {
+    return false;
+  }
+  execution_args << "}";
+  return handle_policy_training_contract_object(contract, execution_args.str(),
+                                                requested_mode, ctx, out, err);
+}
+
+[[nodiscard]] bool handle_runtime_wave_run_materialized(
+    const std::string &run_args, std::string_view requested_mode,
+    runtime_context_t *ctx, std::string *out, std::string *err) {
+  if (extract_json_raw_field(run_args, "contract_path", nullptr)) {
+    return handle_run_policy_training(
+        object_with_selected_fields(
+            run_args, {"requested_mode", "contract_path", "contract_digest",
+                       "execution_request_path", "execution_request_digest"}),
+        ctx, out, err);
+  }
+
+  std::unordered_map<std::string, std::string> execution_request;
+  if (!load_optional_execution_request(run_args, &execution_request, err)) {
+    return false;
+  }
+  const bool request_policy_training_contract =
+      policy_training_wave_requested(execution_request);
+  if (request_policy_training_contract) {
+    std::ostringstream contract_args;
+    contract_args << "{";
+    bool contract_first = true;
+    append_string_json_field(contract_args, "requested_mode", requested_mode,
+                             &contract_first);
+    (void)append_top_or_kv_string_field(run_args, execution_request,
+                                        "config_path", contract_args,
+                                        &contract_first);
+    if (!append_policy_training_request_json_fields(
+            execution_request, contract_args, &contract_first, err)) {
+      return false;
+    }
+    contract_args << "}";
+    return handle_policy_training_contract(contract_args.str(), requested_mode,
+                                           ctx, out, err);
+  }
+  if (!validate_kv_fields(execution_request,
+                          {"config_path", "job_dir", "force_rebuild_cache",
+                           "source_range", "anchor_index_begin",
+                           "anchor_index_end", "source_key_begin",
+                           "source_key_end"},
+                          err)) {
+    return false;
+  }
+
+  std::optional<wave_info_t> selected_wave;
+  if (ctx != nullptr) {
+    std::string config_arg;
+    if (!extract_json_string_field(run_args, "config_path", &config_arg)) {
+      (void)kv_get_trimmed(execution_request, "config_path", &config_arg);
+    }
+    selected_wave =
+        load_wave_info(*ctx, effective_config_path(*ctx, config_arg));
+  }
+  const bool active_policy_training_wave =
+      selected_wave.has_value() &&
+      wave_info_requests_policy_training(*selected_wave);
+  if (active_policy_training_wave) {
+    const std::string target =
+        wave_value_or_empty(*selected_wave, "TARGET").empty()
+            ? "wikimyei.policy.portfolio.graph_node_allocation"
+            : wave_value_or_empty(*selected_wave, "TARGET");
+    const std::string wave_id = wave_value_or_empty(*selected_wave, "WAVE_ID");
+    const std::string policy_id =
+        wave_value_or_empty(*selected_wave, "POLICY_ID");
+    const std::string policy_kind =
+        wave_value_or_empty(*selected_wave, "POLICY_KIND");
+    const std::string training_schedule_mode =
+        wave_value_or_empty(*selected_wave, "TRAINING_SCHEDULE_MODE");
+    if (requested_mode == "dry_run") {
+      std::ostringstream json;
+      json << "{\"ok\":true,\"requested_mode\":\"dry_run\",\"dry_run\":true"
+           << ",\"schema_version\":\"kikijyeba.runtime.component_wave_"
+              "driver_plan.v1\""
+           << ",\"wave_id\":" << json_quote(wave_id)
+           << ",\"target_component_family_id\":" << json_quote(target)
+           << ",\"component_driver_id\":\"hero.runtime."
+              "graph_node_allocation_policy_component_driver.v1\""
+           << ",\"component_driver_kind\":\"contract_backed_policy_training\""
+           << ",\"contract_required\":true"
+           << ",\"contract_path_bound\":false"
+           << ",\"policy_id\":";
+      if (policy_id.empty()) {
+        json << "null";
+      } else {
+        json << json_quote(policy_id);
+      }
+      json << ",\"policy_kind\":";
+      if (policy_kind.empty()) {
+        json << "null";
+      } else {
+        json << json_quote(policy_kind);
+      }
+      json << ",\"training_schedule_mode\":";
+      if (training_schedule_mode.empty()) {
+        json << "null";
+      } else {
+        json << json_quote(training_schedule_mode);
+      }
+      json << ",\"authority\":{\"runtime_executes_component_wave\":true,"
+              "\"runtime_component_driver_specialized\":true,"
+              "\"environment_replay_dispatch\":false,"
+              "\"runtime_emits_environment_admission_fact\":false,"
+              "\"runtime_selects_policy\":false,"
+              "\"runtime_executes_live_capital\":false}"
+           << ",\"next_safe_actions\":[\"materialize_policy_training_"
+              "contract\",\"run_policy_component_wave_with_contract_path\","
+              "\"inspect_policy_component_wave\"]}";
+      *out = json.str();
+      return true;
+    }
+    *err = "E_RUNTIME_POLICY_COMPONENT_DRIVER_CONTRACT_REQUIRED: active wave "
+           "TARGET=wikimyei.policy.portfolio.graph_node_allocation uses the "
+           "contract-backed policy component driver; provide contract_path or "
+           "request dry_run";
+    return false;
+  }
+
+  std::ostringstream forwarded;
+  forwarded << "{";
+  bool first = true;
+  (void)append_top_or_kv_string_field(run_args, execution_request,
+                                      "config_path", forwarded, &first);
+  if (!append_kv_json_fields(
+          execution_request,
+          {{"job_dir", kv_json_field_kind_t::string_value},
+           {"force_rebuild_cache", kv_json_field_kind_t::bool_value}},
+          forwarded, &first, err) ||
+      !append_wave_overlay_from_request(execution_request, forwarded, &first,
+                                        err)) {
+    return false;
+  }
+  append_optional_raw_json_field(run_args, forwarded, "runtime_handoff",
+                                 &first);
+  append_bool_json_field(forwarded, "dry_run", requested_mode == "dry_run",
+                         &first);
+  forwarded << "}";
+  return execute_runtime(forwarded.str(), ctx, false, out, err);
+}
+
+[[nodiscard]] bool handle_runtime_replay_run_materialized(
+    const std::string &run_args, std::string_view requested_mode,
+    runtime_context_t *ctx, std::string *out, std::string *err) {
+  std::unordered_map<std::string, std::string> execution_request;
+  if (!load_optional_execution_request(run_args, &execution_request, err)) {
+    return false;
+  }
+  if (!validate_kv_fields(execution_request,
+                          {"job_id",
                            "job_dir",
                            "config_path",
                            "accounting_numeraire_node_id",
@@ -8819,49 +11409,141 @@ replay_dry_run_json(const std::vector<std::string> &argv,
                            "allow_synthetic_direct_edges",
                            "validation_rollout",
                            "linear_transaction_cost_rate",
-                           "timeout_seconds",
                            "execution_profile_digest",
                            "policy_set_digest",
                            "policy_artifact_digest",
                            "action_distribution_id",
                            "causal_schedule_digest",
-                           "snapshot_family_digest"}) {
-      append_optional_raw_json_field(args, forwarded, key, &first);
-    }
-    append_bool_json_field(forwarded, "dry_run", requested_mode != "execute",
-                           &first);
-    forwarded << "}";
-    return handle_replay(forwarded.str(), ctx, out, err);
+                           "snapshot_family_digest"},
+                          err)) {
+    return false;
   }
 
-  *err = "operation must be wave or replay";
-  return false;
+  std::ostringstream forwarded;
+  forwarded << "{";
+  bool first = true;
+  (void)append_top_or_kv_string_field(run_args, execution_request,
+                                      "config_path", forwarded, &first);
+  if (!append_kv_json_fields(
+          execution_request,
+          {{"job_id", kv_json_field_kind_t::string_value},
+           {"job_dir", kv_json_field_kind_t::string_value},
+           {"accounting_numeraire_node_id", kv_json_field_kind_t::string_value},
+           {"target_node_ids", kv_json_field_kind_t::string_value},
+           {"experiment_id", kv_json_field_kind_t::string_value},
+           {"report_path", kv_json_field_kind_t::string_value},
+           {"initial_equity_numeraire", kv_json_field_kind_t::number_value},
+           {"max_node_weight", kv_json_field_kind_t::number_value},
+           {"max_turnover_l1", kv_json_field_kind_t::number_value},
+           {"max_steps", kv_json_field_kind_t::int_value},
+           {"max_parallel_jobs", kv_json_field_kind_t::int_value},
+           {"include_equal_weight", kv_json_field_kind_t::bool_value},
+           {"include_current_weight", kv_json_field_kind_t::bool_value},
+           {"include_graph_node_allocation_policy",
+            kv_json_field_kind_t::bool_value},
+           {"on_policy_sample", kv_json_field_kind_t::bool_value},
+           {"include_numeraire_only_policy", kv_json_field_kind_t::bool_value},
+           {"include_spot_distributional_utility_policy",
+            kv_json_field_kind_t::bool_value},
+           {"allow_synthetic_direct_edges", kv_json_field_kind_t::bool_value},
+           {"validation_rollout", kv_json_field_kind_t::bool_value},
+           {"linear_transaction_cost_rate", kv_json_field_kind_t::number_value},
+           {"execution_profile_digest", kv_json_field_kind_t::string_value},
+           {"policy_set_digest", kv_json_field_kind_t::string_value},
+           {"policy_artifact_digest", kv_json_field_kind_t::string_value},
+           {"action_distribution_id", kv_json_field_kind_t::string_value},
+           {"causal_schedule_digest", kv_json_field_kind_t::string_value},
+           {"snapshot_family_digest", kv_json_field_kind_t::string_value}},
+          forwarded, &first, err)) {
+    return false;
+  }
+  append_bool_json_field(forwarded, "dry_run", requested_mode != "execute",
+                         &first);
+  forwarded << "}";
+  return handle_replay(forwarded.str(), ctx, out, err);
+}
+
+[[nodiscard]] bool handle_run(const std::string &args, runtime_context_t *ctx,
+                              std::string *out, std::string *err) {
+  std::vector<json_field_t> fields;
+  if (!validate_tool_fields(args, {"mode", "args_path", "args_digest"}, &fields,
+                            err)) {
+    return false;
+  }
+  std::string requested_mode;
+  if (!parse_required_string_arg(args, "mode", &requested_mode, err)) {
+    return false;
+  }
+  requested_mode = lowercase_ascii(requested_mode);
+  if (requested_mode != "dry_run" && requested_mode != "execute") {
+    *err = "mode must be dry_run or execute";
+    return false;
+  }
+  std::string run_args;
+  if (!materialize_runtime_run_args(args, "wave", requested_mode, &run_args,
+                                    err)) {
+    return false;
+  }
+  return handle_runtime_wave_run_materialized(run_args, requested_mode, ctx,
+                                              out, err);
+}
+
+[[nodiscard]] bool handle_replay_internal(const std::string &args,
+                                          runtime_context_t *ctx,
+                                          std::string *out, std::string *err) {
+  std::vector<json_field_t> fields;
+  if (!validate_tool_fields(args, {"mode", "args_path", "args_digest"}, &fields,
+                            err)) {
+    return false;
+  }
+  std::string requested_mode;
+  if (!parse_required_string_arg(args, "mode", &requested_mode, err)) {
+    return false;
+  }
+  requested_mode = lowercase_ascii(requested_mode);
+  if (requested_mode != "dry_run" && requested_mode != "execute") {
+    *err = "mode must be dry_run or execute";
+    return false;
+  }
+  std::string run_args;
+  if (!materialize_runtime_run_args(args, "replay", requested_mode, &run_args,
+                                    err)) {
+    return false;
+  }
+  return handle_runtime_replay_run_materialized(run_args, requested_mode, ctx,
+                                                out, err);
 }
 
 [[nodiscard]] bool handle_reset(const std::string &args, runtime_context_t *ctx,
                                 std::string *out, std::string *err) {
   std::vector<json_field_t> fields;
-  if (!validate_tool_fields(
-          args,
-          {"requested_mode", "runtime_root", "backup", "confirm_dev_nuke"},
-          &fields, err)) {
+  if (!validate_tool_fields(args, {"mode", "args_path", "args_digest"}, &fields,
+                            err)) {
     return false;
   }
   std::string requested_mode;
-  if (!parse_required_string_arg(args, "requested_mode", &requested_mode,
-                                 err)) {
+  if (!parse_required_string_arg(args, "mode", &requested_mode, err)) {
     return false;
   }
   requested_mode = lowercase_ascii(requested_mode);
   if (requested_mode != "plan" && requested_mode != "execute") {
-    *err = "requested_mode must be plan or execute";
+    *err = "mode must be plan or execute";
+    return false;
+  }
+  runtime_reset_request_file_t reset_request{};
+  if (!load_optional_reset_request(args, requested_mode, &reset_request, err)) {
     return false;
   }
   std::ostringstream forwarded;
   forwarded << "{";
   bool first = true;
-  for (const auto key : {"runtime_root", "backup", "confirm_dev_nuke"}) {
-    append_optional_raw_json_field(args, forwarded, key, &first);
+  if (reset_request.present &&
+      !append_kv_json_fields(
+          reset_request.fields,
+          {{"runtime_root", kv_json_field_kind_t::string_value},
+           {"backup", kv_json_field_kind_t::bool_value}},
+          forwarded, &first, err)) {
+    return false;
   }
   append_bool_json_field(forwarded, "dry_run", requested_mode == "plan",
                          &first);
@@ -8876,11 +11558,29 @@ using handler_fn = bool (*)(const std::string &, runtime_context_t *,
   if (name == "hero.runtime.status") {
     return handle_status;
   }
-  if (name == "hero.runtime.inspect") {
-    return handle_inspect;
+  if (name == "hero.runtime.inspect.schema") {
+    return handle_inspect_schema;
+  }
+  if (name == "hero.runtime.inspect.wave") {
+    return handle_inspect_wave;
+  }
+  if (name == "hero.runtime.inspect.jobs") {
+    return handle_inspect_jobs;
+  }
+  if (name == "hero.runtime.inspect.job") {
+    return handle_inspect_job;
+  }
+  if (name == "hero.runtime.inspect.artifact.job") {
+    return handle_inspect_artifact_job;
+  }
+  if (name == "hero.runtime.inspect.artifact.path") {
+    return handle_inspect_artifact_path;
   }
   if (name == "hero.runtime.run") {
     return handle_run;
+  }
+  if (name == "hero.runtime.replay") {
+    return handle_replay_internal;
   }
   if (name == "hero.runtime.reset") {
     return handle_reset;
@@ -9044,6 +11744,9 @@ bool execute_tool_json(const std::string &tool_name, std::string arguments_json,
   std::string err;
   const bool ok = (*handler)(arguments_json, ctx, &structured, &err);
   if (!ok) {
+    if (err.empty()) {
+      err = "E_RUNTIME_HANDLER_FAILED_WITHOUT_DIAGNOSTIC";
+    }
     if (out_error_message) {
       *out_error_message = err;
     }
@@ -9090,13 +11793,16 @@ std::string build_tools_list_human_text() {
 }
 
 void run_jsonrpc_stdio_loop(runtime_context_t *ctx) {
-  std::string line;
+  mcp_stdio::message_t message;
   bool shutdown_seen = false;
-  while (std::getline(std::cin, line)) {
-    line = trim_ascii(line);
+  while (mcp_stdio::read_message(std::cin, &message)) {
+    std::string line = trim_ascii(message.json);
     if (line.empty()) {
       continue;
     }
+    const auto send = [&](std::string response) {
+      mcp_stdio::write_response(std::cout, response);
+    };
     std::string id_raw = "null";
     (void)extract_json_raw_field(line, "id", &id_raw);
     std::string method;
@@ -9112,50 +11818,46 @@ void run_jsonrpc_stdio_loop(runtime_context_t *ctx) {
     if (method == "initialize") {
       std::string protocol = "2024-11-05";
       (void)extract_json_string_field(line, "protocolVersion", &protocol);
-      std::cout << "{\"jsonrpc\":\"2.0\",\"id\":" << id_raw
-                << ",\"result\":{\"protocolVersion\":" << json_quote(protocol)
-                << ",\"capabilities\":{\"tools\":{}},\"serverInfo\":{"
-                   "\"name\":\"hero_runtime\",\"version\":\"2\"}}}"
-                << std::endl;
+      send(std::string("{\"jsonrpc\":\"2.0\",\"id\":") + id_raw +
+           ",\"result\":{\"protocolVersion\":" + json_quote(protocol) +
+           ",\"capabilities\":{\"tools\":{}},\"serverInfo\":{\"name\":"
+           "\"hero_runtime\",\"version\":\"2\"}}}");
       continue;
     }
     if (method == "tools/list") {
-      std::cout << "{\"jsonrpc\":\"2.0\",\"id\":" << id_raw
-                << ",\"result\":" << build_tools_list_result_json() << "}"
-                << std::endl;
+      send(std::string("{\"jsonrpc\":\"2.0\",\"id\":") + id_raw +
+           ",\"result\":" + build_tools_list_result_json() + "}");
       continue;
     }
     if (method == "resources/list") {
-      std::cout << "{\"jsonrpc\":\"2.0\",\"id\":" << id_raw
-                << ",\"result\":{\"resources\":[]}}" << std::endl;
+      send(std::string("{\"jsonrpc\":\"2.0\",\"id\":") + id_raw +
+           ",\"result\":{\"resources\":[]}}");
       continue;
     }
     if (method == "resources/templates/list") {
-      std::cout << "{\"jsonrpc\":\"2.0\",\"id\":" << id_raw
-                << ",\"result\":{\"resourceTemplates\":[]}}" << std::endl;
+      send(std::string("{\"jsonrpc\":\"2.0\",\"id\":") + id_raw +
+           ",\"result\":{\"resourceTemplates\":[]}}");
       continue;
     }
     if (method == "shutdown") {
       shutdown_seen = true;
-      std::cout << "{\"jsonrpc\":\"2.0\",\"id\":" << id_raw
-                << ",\"result\":null}" << std::endl;
+      send(std::string("{\"jsonrpc\":\"2.0\",\"id\":") + id_raw +
+           ",\"result\":null}");
       continue;
     }
     if (method == "tools/call") {
       std::string params;
       if (!extract_json_raw_field(line, "params", &params)) {
-        std::cout << "{\"jsonrpc\":\"2.0\",\"id\":" << id_raw
-                  << ",\"error\":{\"code\":-32602,\"message\":\"missing "
-                     "params\"}}"
-                  << std::endl;
+        send(std::string("{\"jsonrpc\":\"2.0\",\"id\":") + id_raw +
+             ",\"error\":{\"code\":-32602,\"message\":\"missing "
+             "params\"}}");
         continue;
       }
       std::string name;
       if (!extract_json_string_field(params, "name", &name)) {
-        std::cout << "{\"jsonrpc\":\"2.0\",\"id\":" << id_raw
-                  << ",\"error\":{\"code\":-32602,\"message\":\"missing tool "
-                     "name\"}}"
-                  << std::endl;
+        send(std::string("{\"jsonrpc\":\"2.0\",\"id\":") + id_raw +
+             ",\"error\":{\"code\":-32602,\"message\":\"missing tool "
+             "name\"}}");
         continue;
       }
       std::string arguments = "{}";
@@ -9163,13 +11865,12 @@ void run_jsonrpc_stdio_loop(runtime_context_t *ctx) {
       std::string result;
       std::string error;
       (void)execute_tool_json(name, arguments, ctx, &result, &error);
-      std::cout << "{\"jsonrpc\":\"2.0\",\"id\":" << id_raw
-                << ",\"result\":" << result << "}" << std::endl;
+      send(std::string("{\"jsonrpc\":\"2.0\",\"id\":") + id_raw +
+           ",\"result\":" + result + "}");
       continue;
     }
-    std::cout << "{\"jsonrpc\":\"2.0\",\"id\":" << id_raw
-              << ",\"error\":{\"code\":-32601,\"message\":\"unknown method\"}}"
-              << std::endl;
+    send(std::string("{\"jsonrpc\":\"2.0\",\"id\":") + id_raw +
+         ",\"error\":{\"code\":-32601,\"message\":\"unknown method\"}}");
     if (shutdown_seen) {
       break;
     }

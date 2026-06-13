@@ -1534,8 +1534,23 @@ int main() {
       fact_catalog_summary.families.begin(),
       fact_catalog_summary.families.end(),
       [](const auto &summary) { return summary.family == "policy_training"; });
+  const auto tsodao_settings_protection_family = std::find_if(
+      fact_catalog_summary.families.begin(),
+      fact_catalog_summary.families.end(), [](const auto &summary) {
+        return summary.family == "tsodao_settings_protection";
+      });
+  const auto policy_acceptance_family = std::find_if(
+      fact_catalog_summary.families.begin(),
+      fact_catalog_summary.families.end(), [](const auto &summary) {
+        return summary.family == "policy_acceptance";
+      });
+  const auto paper_online_readiness_family = std::find_if(
+      fact_catalog_summary.families.begin(),
+      fact_catalog_summary.families.end(), [](const auto &summary) {
+        return summary.family == "paper_online_readiness";
+      });
   check(
-      fact_family_registry.size() == 14 &&
+      fact_family_registry.size() == 17 &&
           exposure::parse_lattice_fact_family("source_analytics").has_value() &&
           exposure::parse_lattice_fact_family(
               "kikijyeba.lattice.source_analytics.v1")
@@ -1571,7 +1586,22 @@ int main() {
           exposure::parse_lattice_fact_family(
               "kikijyeba.lattice.policy_training.v1")
               .has_value() &&
-          fact_catalog_summary.family_count == 14 &&
+          exposure::parse_lattice_fact_family("tsodao_settings_protection")
+              .has_value() &&
+          exposure::parse_lattice_fact_family(
+              "kikijyeba.lattice.tsodao_settings_protection.v1")
+              .has_value() &&
+          exposure::parse_lattice_fact_family("policy_acceptance")
+              .has_value() &&
+          exposure::parse_lattice_fact_family(
+              "kikijyeba.lattice.policy_acceptance.v1")
+              .has_value() &&
+          exposure::parse_lattice_fact_family("paper_online_readiness")
+              .has_value() &&
+          exposure::parse_lattice_fact_family(
+              "kikijyeba.lattice.paper_online_readiness.v1")
+              .has_value() &&
+          fact_catalog_summary.family_count == 17 &&
           fact_catalog_summary.target_kind_family_count == 0 &&
           fact_catalog_summary.dispatchable_family_count == 0 &&
           fact_catalog_summary.runtime_executor_family_count == 0 &&
@@ -1660,13 +1690,52 @@ int main() {
           !policy_training_family->readiness_authority &&
           !policy_training_family->coverage_authority &&
           !policy_training_family->leakage_authority &&
-          !policy_training_family->contract_identity_authority,
+          !policy_training_family->contract_identity_authority &&
+          tsodao_settings_protection_family !=
+              fact_catalog_summary.families.end() &&
+          tsodao_settings_protection_family->fact_count == 0 &&
+          tsodao_settings_protection_family->parent_exposure_bound_count == 0 &&
+          tsodao_settings_protection_family->authority_model ==
+              "settings_protection_artifact" &&
+          !tsodao_settings_protection_family->target_kind &&
+          !tsodao_settings_protection_family->dispatchable &&
+          !tsodao_settings_protection_family->runtime_executor &&
+          !tsodao_settings_protection_family->readiness_authority &&
+          !tsodao_settings_protection_family->coverage_authority &&
+          !tsodao_settings_protection_family->leakage_authority &&
+          !tsodao_settings_protection_family->contract_identity_authority &&
+          policy_acceptance_family != fact_catalog_summary.families.end() &&
+          policy_acceptance_family->fact_count == 0 &&
+          policy_acceptance_family->parent_exposure_bound_count == 0 &&
+          policy_acceptance_family->authority_model ==
+              "policy_acceptance_artifact" &&
+          !policy_acceptance_family->target_kind &&
+          !policy_acceptance_family->dispatchable &&
+          !policy_acceptance_family->runtime_executor &&
+          !policy_acceptance_family->readiness_authority &&
+          !policy_acceptance_family->coverage_authority &&
+          !policy_acceptance_family->leakage_authority &&
+          !policy_acceptance_family->contract_identity_authority &&
+          paper_online_readiness_family !=
+              fact_catalog_summary.families.end() &&
+          paper_online_readiness_family->fact_count == 0 &&
+          paper_online_readiness_family->parent_exposure_bound_count == 0 &&
+          paper_online_readiness_family->authority_model ==
+              "paper_online_readiness_artifact" &&
+          !paper_online_readiness_family->target_kind &&
+          !paper_online_readiness_family->dispatchable &&
+          !paper_online_readiness_family->runtime_executor &&
+          !paper_online_readiness_family->readiness_authority &&
+          !paper_online_readiness_family->coverage_authority &&
+          !paper_online_readiness_family->leakage_authority &&
+          !paper_online_readiness_family->contract_identity_authority,
       "fact catalog lists source analytics, target transforms, and forecast "
       "baselines/evals plus observer/allocation evidence as non-target, "
-      "non-dispatchable fact families while replay remains parked by default");
+      "non-dispatchable fact families while replay and paper-online readiness "
+      "remain parked by default");
   check(fact_integrity_summary.schema ==
                 "kikijyeba.lattice.fact_integrity_summary.v1" &&
-            fact_integrity_summary.inspected_family_count == 14 &&
+            fact_integrity_summary.inspected_family_count == 17 &&
             fact_integrity_summary.reported_family_count == 4 &&
             fact_integrity_summary.relation_declared_count == 7 &&
             fact_integrity_summary.relation_bound_count == 1 &&
@@ -1721,6 +1790,9 @@ int main() {
       runtime_index_cache.allocation_engine_fact_count +
       runtime_index_cache.replay_environment_fact_count +
       runtime_index_cache.policy_training_fact_count +
+      runtime_index_cache.tsodao_settings_protection_fact_count +
+      runtime_index_cache.policy_acceptance_fact_count +
+      runtime_index_cache.paper_online_readiness_fact_count +
       runtime_index_cache.selection_signal_fact_count +
       runtime_index_cache.representation_support_fact_count;
   check(runtime_index_cache.schema ==
@@ -1741,6 +1813,9 @@ int main() {
             runtime_index_cache.allocation_engine_fact_count == 1 &&
             runtime_index_cache.replay_environment_fact_count == 0 &&
             runtime_index_cache.policy_training_fact_count == 0 &&
+            runtime_index_cache.tsodao_settings_protection_fact_count == 0 &&
+            runtime_index_cache.policy_acceptance_fact_count == 0 &&
+            runtime_index_cache.paper_online_readiness_fact_count == 0 &&
             runtime_index_cache.representation_support_fact_count == 4 &&
             static_cast<std::int64_t>(runtime_index_cache.rows.size()) ==
                 expected_runtime_index_rows &&
@@ -2001,8 +2076,12 @@ int main() {
          "wikimyei.policy.portfolio.graph_node_allocation\n"
       << "policy_checkpoint_schema_id="
          "wikimyei.policy.portfolio.graph_node_allocation.ppo_checkpoint.v1\n"
+      << "policy_dsl_digest=policy_dsl_digest_1\n"
+      << "policy_net_digest=policy_net_digest_1\n"
       << "policy_input_feature_manifest_digest="
          "policy_input_manifest_digest_1\n"
+      << "policy_jkimyei_digest=policy_jkimyei_digest_1\n"
+      << "target_node_universe_digest=target_node_universe_digest_1\n"
       << "action_distribution_config_digest="
          "action_distribution_config_digest_1\n"
       << "snapshot_family_digest=snapshot_family_digest_1\n"
@@ -2014,7 +2093,23 @@ int main() {
       << "actor_checkpoint_digest=actor_checkpoint_digest_1\n"
       << "critic_checkpoint_digest=critic_checkpoint_digest_1\n"
       << "optimizer_state_digest=optimizer_state_digest_1\n"
+      << "optimizer_state_schema_id="
+         "kikijyeba.runtime.ppo_optimizer_state.v1\n"
+      << "optimizer_torch_state_path=ppo_v0_optimizer_state.pt\n"
+      << "optimizer_torch_state_digest=optimizer_torch_state_digest_1\n"
       << "ppo_config_digest=ppo_config_digest_1\n"
+      << "device_policy=require_cuda\n"
+      << "runtime_device_kind=cuda\n"
+      << "cuda_device_index=0\n"
+      << "cuda_available=true\n"
+      << "module_parameters_on_cuda=true\n"
+      << "forward_input_on_cuda=true\n"
+      << "loss_on_cuda=true\n"
+      << "optimizer_state_on_cuda=true\n"
+      << "cuda_verification_passed=true\n"
+      << "resume_mode=fresh_spawn\n"
+      << "resume_parent_loaded=false\n"
+      << "optimizer_state_resume_loaded=false\n"
       << "advantage_estimator_id=gae.v1\n"
       << "advantage_normalization_policy=per_rollout_standardize_v1\n"
       << "rollout_collection_schema_id="
@@ -2025,6 +2120,7 @@ int main() {
       << "ppo_update_report_digest=ppo_update_report_digest_1\n"
       << "validation_rollout_report_digest="
          "validation_rollout_report_digest_1\n"
+      << "policy_quality_report_digest=policy_quality_report_digest_1\n"
       << "ppo_gamma=0.99\n"
       << "ppo_gae_lambda=0.95\n"
       << "ppo_clip_epsilon=0.2\n"
@@ -2128,12 +2224,37 @@ int main() {
               "kikijyeba.runtime.ppo_policy_artifact_contract.v1" &&
           policy_training_fact.policy_family_id ==
               "wikimyei.policy.portfolio.graph_node_allocation" &&
+          policy_training_fact.policy_dsl_digest == "policy_dsl_digest_1" &&
+          policy_training_fact.policy_net_digest == "policy_net_digest_1" &&
+          policy_training_fact.policy_jkimyei_digest ==
+              "policy_jkimyei_digest_1" &&
+          policy_training_fact.target_node_universe_digest ==
+              "target_node_universe_digest_1" &&
           policy_training_fact.actor_architecture_digest ==
               "actor_architecture_digest_1" &&
           policy_training_fact.critic_architecture_digest ==
               "critic_architecture_digest_1" &&
           policy_training_fact.input_policy_checkpoint_digest ==
               "input_actor_checkpoint_digest_1" &&
+          policy_training_fact.optimizer_state_schema_id ==
+              "kikijyeba.runtime.ppo_optimizer_state.v1" &&
+          policy_training_fact.optimizer_torch_state_path ==
+              "ppo_v0_optimizer_state.pt" &&
+          policy_training_fact.optimizer_torch_state_digest ==
+              "optimizer_torch_state_digest_1" &&
+          policy_training_fact.device_policy == "require_cuda" &&
+          policy_training_fact.runtime_device_kind == "cuda" &&
+          policy_training_fact.cuda_device_index == 0 &&
+          policy_training_fact.cuda_device_index_bound &&
+          policy_training_fact.cuda_available &&
+          policy_training_fact.module_parameters_on_cuda &&
+          policy_training_fact.forward_input_on_cuda &&
+          policy_training_fact.loss_on_cuda &&
+          policy_training_fact.optimizer_state_on_cuda &&
+          policy_training_fact.cuda_verification_passed &&
+          policy_training_fact.resume_mode == "fresh_spawn" &&
+          !policy_training_fact.resume_parent_loaded &&
+          !policy_training_fact.optimizer_state_resume_loaded &&
           policy_training_fact.ppo_config_digest == "ppo_config_digest_1" &&
           policy_training_fact.rollout_collection_digest ==
               "rollout_collection_digest_1" &&
@@ -2172,6 +2293,13 @@ int main() {
           policy_training_summary.actor_checkpoint_bound_count == 1 &&
           policy_training_summary.critic_checkpoint_bound_count == 1 &&
           policy_training_summary.optimizer_state_bound_count == 1 &&
+          policy_training_summary.optimizer_state_schema_bound_count == 1 &&
+          policy_training_summary.optimizer_torch_state_bound_count == 1 &&
+          policy_training_summary.cuda_runtime_contract_bound_count == 1 &&
+          policy_training_summary.cuda_verified_count == 1 &&
+          policy_training_summary.resume_mode_bound_count == 1 &&
+          policy_training_summary.resume_parent_loaded_count == 0 &&
+          policy_training_summary.optimizer_state_resume_loaded_count == 0 &&
           policy_training_summary.ppo_config_bound_count == 1 &&
           policy_training_summary.rollout_collection_bound_count == 1 &&
           policy_training_summary.ppo_update_report_bound_count == 1 &&
@@ -2238,6 +2366,13 @@ int main() {
                       "missing_ppo_update_report_digest"),
         "PPO policy-training facts require update-report evidence");
 
+  auto policy_training_missing_policy_surface = policy_training_fact;
+  policy_training_missing_policy_surface.policy_dsl_digest.clear();
+  check(contains_text(exposure::policy_training_fact_issues(
+                          policy_training_missing_policy_surface),
+                      "missing_policy_dsl_digest"),
+        "PPO policy-training facts require policy DSL surface evidence");
+
   auto policy_training_missing_input_checkpoint = policy_training_fact;
   policy_training_missing_input_checkpoint.input_policy_checkpoint_digest
       .clear();
@@ -2246,6 +2381,44 @@ int main() {
                       "missing_input_policy_checkpoint_digest"),
         "PPO policy-training facts require collection checkpoint evidence");
 
+  auto policy_training_missing_optimizer_archive = policy_training_fact;
+  policy_training_missing_optimizer_archive.optimizer_torch_state_digest
+      .clear();
+  check(contains_text(exposure::policy_training_fact_issues(
+                          policy_training_missing_optimizer_archive),
+                      "missing_optimizer_torch_state_digest"),
+        "PPO policy-training facts require Torch optimizer archive evidence");
+
+  auto policy_training_missing_cuda_verification = policy_training_fact;
+  policy_training_missing_cuda_verification.cuda_verification_passed = false;
+  check(contains_text(exposure::policy_training_fact_issues(
+                          policy_training_missing_cuda_verification),
+                      "cuda_verification_not_proven"),
+        "PPO policy-training facts require Runtime CUDA verification evidence");
+
+  auto policy_training_bad_resume_mode = policy_training_fact;
+  policy_training_bad_resume_mode.resume_mode = "resume_from_air";
+  check(contains_text(exposure::policy_training_fact_issues(
+                          policy_training_bad_resume_mode),
+                      "unsupported_resume_mode"),
+        "PPO policy-training facts reject unsupported resume modes");
+
+  auto policy_training_incomplete_optimizer_resume = policy_training_fact;
+  policy_training_incomplete_optimizer_resume.resume_mode =
+      "resume_weights_and_optimizer";
+  policy_training_incomplete_optimizer_resume.resume_actor_checkpoint_path =
+      "/tmp/ppo_parent_actor.checkpoint";
+  policy_training_incomplete_optimizer_resume.resume_actor_checkpoint_digest =
+      "parent_actor_checkpoint_digest_1";
+  policy_training_incomplete_optimizer_resume.resume_parent_loaded = true;
+  policy_training_incomplete_optimizer_resume.optimizer_state_resume_loaded =
+      false;
+  check(contains_text(exposure::policy_training_fact_issues(
+                          policy_training_incomplete_optimizer_resume),
+                      "resume_weights_and_optimizer_missing_optimizer_state"),
+        "PPO policy-training facts require optimizer resume evidence when "
+        "resume_weights_and_optimizer is declared");
+
   auto policy_training_opaque_cursor = policy_training_fact;
   policy_training_opaque_cursor.causal_schedule_cursor_key_kind =
       "opaque_unsortable";
@@ -2253,6 +2426,525 @@ int main() {
                           policy_training_opaque_cursor),
                       "opaque_or_unsupported_causal_schedule_cursor_key_kind"),
         "policy-training facts reject opaque cursor key ordering");
+
+  std::ostringstream tsodao_settings_protection_sidecar;
+  tsodao_settings_protection_sidecar
+      << "schema=kikijyeba.lattice.tsodao_settings_protection.v1\n"
+      << "fact_type=tsodao_settings_protection\n"
+      << "parent_exposure_fact_digest="
+      << policy_training_fact.parent_exposure_fact_digest << "\n"
+      << "contract_fingerprint=" << policy_training_fact.contract_fingerprint
+      << "\n"
+      << "protocol_id=" << policy_training_fact.protocol_id << "\n"
+      << "graph_order_fingerprint="
+      << policy_training_fact.graph_order_fingerprint << "\n"
+      << "source_cursor_token=" << policy_training_fact.source_cursor_token
+      << "\n"
+      << "split_policy_fingerprint="
+      << policy_training_fact.split_policy_fingerprint << "\n"
+      << "component_assembly_fingerprint="
+      << policy_training_fact.component_assembly_fingerprint << "\n"
+      << "target_component_family_id=tsodao.settings_protection\n"
+      << "job_id=" << policy_training_fact.job_id << "\n"
+      << "wave_id=" << policy_training_fact.wave_id << "\n"
+      << "job_status=" << policy_training_fact.job_status << "\n"
+      << "wave_action=" << policy_training_fact.wave_action << "\n"
+      << "split_name=" << policy_training_fact.split_name << "\n"
+      << "split_role=validation\n"
+      << "anchor_begin=" << policy_training_fact.anchor_range.begin << "\n"
+      << "anchor_end=" << policy_training_fact.anchor_range.end << "\n"
+      << "completed_anchor_begin="
+      << policy_training_fact.completed_anchor_range.begin << "\n"
+      << "completed_anchor_end="
+      << policy_training_fact.completed_anchor_range.end << "\n"
+      << "protection_id=tsodao_policy_settings_protection_1\n"
+      << "protection_contract_id=tsodao_settings_protection_contract.v1\n"
+      << "protected_settings_bundle_digest="
+         "protected_policy_settings_bundle_digest_1\n"
+      << "protected_policy_training_fact_digest="
+      << exposure::policy_training_fact_digest(policy_training_fact) << "\n"
+      << "protected_policy_training_target_id=policy_training_artifact_ready\n"
+      << "protected_policy_training_proof_certificate_digest="
+         "policy_training_ready_certificate_digest_1\n"
+      << "policy_id=" << policy_training_fact.policy_id << "\n"
+      << "policy_kind=" << policy_training_fact.policy_kind << "\n"
+      << "policy_family_id=" << policy_training_fact.policy_family_id << "\n"
+      << "policy_checkpoint_schema_id="
+      << policy_training_fact.policy_checkpoint_schema_id << "\n"
+      << "policy_dsl_digest=" << policy_training_fact.policy_dsl_digest << "\n"
+      << "policy_net_digest=" << policy_training_fact.policy_net_digest << "\n"
+      << "policy_input_schema_id="
+      << policy_training_fact.policy_input_schema_id << "\n"
+      << "policy_input_feature_manifest_digest="
+      << policy_training_fact.policy_input_feature_manifest_digest << "\n"
+      << "policy_jkimyei_digest=" << policy_training_fact.policy_jkimyei_digest
+      << "\n"
+      << "target_node_universe_digest="
+      << policy_training_fact.target_node_universe_digest << "\n"
+      << "graph_node_action_universe_digest="
+      << policy_training_fact.graph_order_fingerprint << "\n"
+      << "action_schema_digest=" << policy_training_fact.action_schema_digest
+      << "\n"
+      << "action_adapter_id=" << policy_training_fact.action_adapter_id << "\n"
+      << "action_distribution_id="
+      << policy_training_fact.action_distribution_id << "\n"
+      << "action_distribution_config_digest="
+      << policy_training_fact.action_distribution_config_digest << "\n"
+      << "reward_contract_id=" << policy_training_fact.reward_contract_id
+      << "\n"
+      << "reward_contract_digest="
+      << policy_training_fact.reward_contract_digest << "\n"
+      << "environment_contract_id="
+      << policy_training_fact.environment_contract_id << "\n"
+      << "execution_profile_digest="
+      << policy_training_fact.execution_profile_digest << "\n"
+      << "accounting_numeraire_node_id=USD_CASH\n"
+      << "causal_schedule_schema_id="
+      << policy_training_fact.causal_schedule_schema_id << "\n"
+      << "causal_schedule_digest="
+      << policy_training_fact.causal_schedule_digest << "\n"
+      << "snapshot_family_digest="
+      << policy_training_fact.snapshot_family_digest << "\n"
+      << "training_config_digest="
+      << policy_training_fact.training_config_digest << "\n"
+      << "ppo_config_digest=" << policy_training_fact.ppo_config_digest << "\n"
+      << "actor_architecture_digest="
+      << policy_training_fact.actor_architecture_digest << "\n"
+      << "critic_architecture_digest="
+      << policy_training_fact.critic_architecture_digest << "\n"
+      << "optimizer_state_schema_id="
+      << policy_training_fact.optimizer_state_schema_id << "\n"
+      << "optimizer_state_digest="
+      << policy_training_fact.optimizer_state_digest << "\n"
+      << "optimizer_torch_state_digest="
+      << policy_training_fact.optimizer_torch_state_digest << "\n"
+      << "resume_mode=" << policy_training_fact.resume_mode << "\n"
+      << "validation_rollout_report_digest="
+      << policy_training_fact.validation_rollout_report_digest << "\n"
+      << "policy_quality_report_digest="
+      << policy_training_fact.policy_quality_report_digest << "\n"
+      << "protected_settings_match_policy_training_fact=true\n"
+      << "protected_evidence_digests_bound=true\n"
+      << "protected_policy_training_ready=true\n"
+      << "artifact_evidence=true\n"
+      << "visibility_only=true\n"
+      << "settings_protection_artifact=true\n"
+      << "tsodao_optimizes_settings=false\n"
+      << "tsodao_selects_policy=false\n"
+      << "tsodao_claims_policy_quality=false\n"
+      << "tsodao_claims_market_readiness=false\n"
+      << "tsodao_allows_live_execution=false\n"
+      << "readiness_authority=false\n"
+      << "quality_authority=false\n"
+      << "performance_authority=false\n"
+      << "policy_gate=false\n"
+      << "checkpoint_selector=false\n"
+      << "allocation_authority=false\n"
+      << "execution_authority=false\n"
+      << "market_readiness_authority=false\n"
+      << "deployment_authority=false\n"
+      << "coverage_authority=false\n"
+      << "leakage_authority=false\n"
+      << "contract_identity_authority=false\n";
+  write_text(channel_mdn_dir / "lattice.tsodao_settings_protection.fact",
+             tsodao_settings_protection_sidecar.str());
+  const auto tsodao_scan = exposure::scan_exposure_ledger_from_runtime_root(
+      root, train_context, parked_environment_scan_options);
+  check(tsodao_scan.ledger.policy_training_facts().size() == 1 &&
+            tsodao_scan.ledger.tsodao_settings_protection_facts().size() == 1,
+        "explicit replay scan derives Tsodao settings-protection evidence "
+        "when a protection sidecar is present");
+  const auto &tsodao_fact =
+      tsodao_scan.ledger.tsodao_settings_protection_facts().front();
+  const auto tsodao_summary = exposure::summarize_tsodao_settings_protections(
+      tsodao_scan.ledger.facts(),
+      tsodao_scan.ledger.tsodao_settings_protection_facts(),
+      tsodao_scan.ledger.policy_training_facts());
+  check(
+      tsodao_fact.protection_contract_id ==
+              "tsodao_settings_protection_contract.v1" &&
+          tsodao_fact.protected_policy_training_fact_digest ==
+              exposure::policy_training_fact_digest(policy_training_fact) &&
+          tsodao_fact.protected_policy_training_target_id ==
+              "policy_training_artifact_ready" &&
+          tsodao_fact.policy_id == policy_training_fact.policy_id &&
+          tsodao_fact.graph_node_action_universe_digest ==
+              policy_training_fact.graph_order_fingerprint &&
+          tsodao_fact.action_distribution_id ==
+              policy_training_fact.action_distribution_id &&
+          tsodao_fact.reward_contract_id ==
+              "kikijyeba.environment.reward.post_execution_ledger_log_growth_"
+              "cost_drawdown.v1" &&
+          tsodao_fact.ppo_config_digest ==
+              policy_training_fact.ppo_config_digest &&
+          tsodao_fact.optimizer_torch_state_digest ==
+              policy_training_fact.optimizer_torch_state_digest &&
+          tsodao_fact.validation_rollout_report_digest ==
+              policy_training_fact.validation_rollout_report_digest &&
+          tsodao_fact.policy_quality_report_digest ==
+              policy_training_fact.policy_quality_report_digest &&
+          tsodao_fact.protected_settings_match_policy_training_fact &&
+          tsodao_fact.protected_evidence_digests_bound &&
+          tsodao_fact.protected_policy_training_ready &&
+          exposure::tsodao_settings_protection_fact_issues(tsodao_fact)
+              .empty() &&
+          exposure::tsodao_settings_protection_policy_training_binding_issues(
+              tsodao_fact, tsodao_scan.ledger.policy_training_facts())
+              .empty() &&
+          tsodao_summary.schema ==
+              "kikijyeba.lattice.tsodao_settings_protection_summary.v1" &&
+          tsodao_summary.tsodao_settings_protection_fact_count == 1 &&
+          tsodao_summary.parent_exposure_fact_count == 1 &&
+          tsodao_summary.protection_id_bound_count == 1 &&
+          tsodao_summary.protection_contract_bound_count == 1 &&
+          tsodao_summary.protected_settings_bundle_bound_count == 1 &&
+          tsodao_summary.protected_policy_training_fact_declared_count == 1 &&
+          tsodao_summary.protected_policy_training_fact_bound_count == 1 &&
+          tsodao_summary.unresolved_policy_training_fact_count == 0 &&
+          tsodao_summary.protected_settings_match_count == 1 &&
+          tsodao_summary.protected_settings_mismatch_count == 0 &&
+          tsodao_summary.protected_evidence_digest_bound_count == 1 &&
+          tsodao_summary.policy_training_ready_bound_count == 1 &&
+          tsodao_summary.authority_drift_count == 0 &&
+          tsodao_summary.warning_count == 0 && tsodao_summary.issues.empty() &&
+          tsodao_summary.artifact_evidence && tsodao_summary.visibility_only &&
+          tsodao_summary.settings_protection_artifact &&
+          !tsodao_summary.tsodao_optimizes_settings &&
+          !tsodao_summary.tsodao_selects_policy &&
+          !tsodao_summary.tsodao_claims_policy_quality &&
+          !tsodao_summary.tsodao_claims_market_readiness &&
+          !tsodao_summary.tsodao_allows_live_execution &&
+          !tsodao_summary.readiness_authority &&
+          !tsodao_summary.quality_authority &&
+          !tsodao_summary.performance_authority &&
+          !tsodao_summary.policy_gate && !tsodao_summary.checkpoint_selector &&
+          !tsodao_summary.allocation_authority &&
+          !tsodao_summary.execution_authority &&
+          !tsodao_summary.market_readiness_authority &&
+          !tsodao_summary.deployment_authority &&
+          !tsodao_summary.coverage_authority &&
+          !tsodao_summary.leakage_authority &&
+          !tsodao_summary.contract_identity_authority,
+      "Tsodao settings-protection facts bind protected settings and evidence "
+      "digests to a policy-training readiness artifact without optimizer, "
+      "selection, policy-quality, readiness, execution, deployment, or live "
+      "authority");
+
+  auto tsodao_ppo_config_drift = tsodao_fact;
+  tsodao_ppo_config_drift.ppo_config_digest = "mutated_ppo_config_digest";
+  check(contains_text(
+            exposure::tsodao_settings_protection_policy_training_binding_issues(
+                tsodao_ppo_config_drift,
+                tsodao_scan.ledger.policy_training_facts()),
+            "protected_ppo_config_digest_mismatch"),
+        "Tsodao settings-protection binding rejects protected PPO config "
+        "digest drift against the referenced policy-training fact");
+
+  auto tsodao_missing_policy_training = tsodao_fact;
+  tsodao_missing_policy_training.protected_policy_training_fact_digest =
+      "missing_policy_training_fact_digest";
+  check(contains_text(
+            exposure::tsodao_settings_protection_policy_training_binding_issues(
+                tsodao_missing_policy_training,
+                tsodao_scan.ledger.policy_training_facts()),
+            "protected_policy_training_fact_digest_not_found"),
+        "Tsodao settings-protection binding rejects missing referenced "
+        "policy-training fact digests");
+
+  auto tsodao_authority_drift = tsodao_fact;
+  tsodao_authority_drift.tsodao_selects_policy = true;
+  check(contains_text(exposure::tsodao_settings_protection_fact_issues(
+                          tsodao_authority_drift),
+                      "tsodao_settings_protection_must_remain_artifact_"
+                      "evidence_only"),
+        "Tsodao settings-protection facts reject policy-selection authority");
+
+  std::ostringstream policy_acceptance_sidecar;
+  policy_acceptance_sidecar
+      << "schema=kikijyeba.lattice.policy_acceptance.v1\n"
+      << "fact_type=policy_acceptance\n"
+      << "parent_exposure_fact_digest="
+      << policy_training_fact.parent_exposure_fact_digest << "\n"
+      << "contract_fingerprint=" << policy_training_fact.contract_fingerprint
+      << "\n"
+      << "protocol_id=" << policy_training_fact.protocol_id << "\n"
+      << "graph_order_fingerprint="
+      << policy_training_fact.graph_order_fingerprint << "\n"
+      << "source_cursor_token=" << policy_training_fact.source_cursor_token
+      << "\n"
+      << "split_policy_fingerprint="
+      << policy_training_fact.split_policy_fingerprint << "\n"
+      << "component_assembly_fingerprint="
+      << policy_training_fact.component_assembly_fingerprint << "\n"
+      << "target_component_family_id=tsodao.policy_acceptance\n"
+      << "job_id=" << policy_training_fact.job_id << "\n"
+      << "wave_id=" << policy_training_fact.wave_id << "\n"
+      << "job_status=" << policy_training_fact.job_status << "\n"
+      << "wave_action=" << policy_training_fact.wave_action << "\n"
+      << "split_name=" << policy_training_fact.split_name << "\n"
+      << "split_role="
+      << exposure::exposure_split_role_name(policy_training_fact.split_role)
+      << "\n"
+      << "anchor_begin=" << policy_training_fact.anchor_range.begin << "\n"
+      << "anchor_end=" << policy_training_fact.anchor_range.end << "\n"
+      << "completed_anchor_begin="
+      << policy_training_fact.completed_anchor_range.begin << "\n"
+      << "completed_anchor_end="
+      << policy_training_fact.completed_anchor_range.end << "\n"
+      << "acceptance_id=policy_acceptance_v1_smoke\n"
+      << "acceptance_contract_id=policy_acceptance_contract.v1\n"
+      << "acceptance_policy_digest="
+      << exposure::policy_acceptance_governance_thresholds_v0_digest() << "\n"
+      << "accepted_policy_training_fact_digest="
+      << exposure::policy_training_fact_digest(policy_training_fact) << "\n"
+      << "accepted_policy_training_target_id=policy_training_artifact_ready\n"
+      << "accepted_policy_training_proof_certificate_digest="
+         "policy_training_ready_certificate_digest_1\n"
+      << "tsodao_settings_protection_fact_digest="
+      << exposure::tsodao_settings_protection_fact_digest(tsodao_fact) << "\n"
+      << "tsodao_settings_protection_target_id="
+         "tsodao_settings_protection_ready\n"
+      << "tsodao_settings_protection_proof_certificate_digest="
+         "tsodao_ready_certificate_digest_1\n"
+      << "protected_settings_bundle_digest="
+      << tsodao_fact.protected_settings_bundle_digest << "\n"
+      << "accepted_policy_id=" << policy_training_fact.policy_id << "\n"
+      << "accepted_policy_kind=" << policy_training_fact.policy_kind << "\n"
+      << "accepted_policy_family_id=" << policy_training_fact.policy_family_id
+      << "\n"
+      << "accepted_actor_checkpoint_digest="
+      << policy_training_fact.actor_checkpoint_digest << "\n"
+      << "accepted_checkpoint_digest=" << policy_training_fact.checkpoint_digest
+      << "\n"
+      << "policy_quality_report_digest="
+      << policy_training_fact.policy_quality_report_digest << "\n"
+      << "validation_rollout_report_digest="
+      << policy_training_fact.validation_rollout_report_digest << "\n"
+      << "reward_contract_id=" << policy_training_fact.reward_contract_id
+      << "\n"
+      << "execution_profile_digest="
+      << policy_training_fact.execution_profile_digest << "\n"
+      << "accounting_numeraire_node_id="
+      << tsodao_fact.accounting_numeraire_node_id << "\n"
+      << "mandatory_baseline_set_digest="
+      << exposure::
+             policy_acceptance_governance_v0_mandatory_baseline_set_digest()
+      << "\n"
+      << "mandatory_baselines="
+      << exposure::policy_acceptance_governance_v0_mandatory_baselines() << "\n"
+      << "primary_metric_id=after_cost_total_log_growth_delta\n"
+      << "primary_metric_value=0.12\n"
+      << "primary_metric_threshold=0\n"
+      << "primary_metric_direction=at_or_above\n"
+      << "after_cost_metric_set_digest="
+      << exposure::
+             policy_acceptance_governance_v0_after_cost_metric_set_digest()
+      << "\n"
+      << "cost_slippage_assumption_digest="
+      << exposure::
+             policy_acceptance_governance_v0_cost_slippage_assumption_digest()
+      << "\n"
+      << "uncertainty_policy=block_bootstrap_required\n"
+      << "uncertainty_model=validation_block_bootstrap_v1\n"
+      << "selector_split=validation\n"
+      << "validation_split=validation_holdout\n"
+      << "test_split=sealed_test\n"
+      << "sealed_test_policy=sealed_until_acceptance\n"
+      << "tie_policy=reject_ties\n"
+      << "negative_tests_digest="
+      << exposure::policy_acceptance_governance_v0_negative_tests_digest()
+      << "\n"
+      << "threshold_selection_audit_digest="
+      << exposure::
+             policy_acceptance_governance_v0_threshold_selection_audit_digest()
+      << "\n"
+      << "promotion_criteria_digest="
+      << exposure::policy_acceptance_governance_v0_promotion_criteria_digest()
+      << "\n"
+      << "accepted_policy_training_ready=true\n"
+      << "tsodao_settings_protection_ready=true\n"
+      << "protected_settings_bound=true\n"
+      << "mandatory_baselines_bound=true\n"
+      << "mandatory_baselines_passed=true\n"
+      << "after_cost_metrics_bound=true\n"
+      << "primary_metric_passed=true\n"
+      << "uncertainty_policy_bound=true\n"
+      << "uncertainty_passed=true\n"
+      << "selector_split_bound=true\n"
+      << "validation_test_disjoint=true\n"
+      << "test_sealed_until_acceptance=true\n"
+      << "negative_tests_bound=true\n"
+      << "negative_tests_passed=true\n"
+      << "leakage_negative_tests_passed=true\n"
+      << "threshold_selection_audit_bound=true\n"
+      << "threshold_selected_before_test=true\n"
+      << "tie_policy_bound=true\n"
+      << "tie_policy_passed=true\n"
+      << "cost_slippage_assumptions_bound=true\n"
+      << "promotion_criteria_bound=true\n"
+      << "promotion_criteria_satisfied=true\n"
+      << "policy_acceptance_decision=true\n"
+      << "artifact_evidence=true\n"
+      << "visibility_only=true\n"
+      << "policy_acceptance_artifact=true\n"
+      << "policy_selector=false\n"
+      << "checkpoint_selector=false\n"
+      << "optimizer=false\n"
+      << "allocation_authority=false\n"
+      << "execution_authority=false\n"
+      << "readiness_authority=false\n"
+      << "quality_authority=false\n"
+      << "performance_authority=false\n"
+      << "market_readiness_authority=false\n"
+      << "deployment_authority=false\n"
+      << "live_execution_authority=false\n"
+      << "coverage_authority=false\n"
+      << "leakage_authority=false\n"
+      << "contract_identity_authority=false\n";
+  write_text(channel_mdn_dir / "lattice.policy_acceptance.fact",
+             policy_acceptance_sidecar.str());
+  const auto acceptance_scan = exposure::scan_exposure_ledger_from_runtime_root(
+      root, train_context, parked_environment_scan_options);
+  check(acceptance_scan.ledger.policy_training_facts().size() == 1 &&
+            acceptance_scan.ledger.tsodao_settings_protection_facts().size() ==
+                1 &&
+            acceptance_scan.ledger.policy_acceptance_facts().size() == 1,
+        "explicit replay scan derives policy acceptance evidence when an "
+        "acceptance sidecar is present");
+  const auto &acceptance_fact =
+      acceptance_scan.ledger.policy_acceptance_facts().front();
+  const auto acceptance_summary = exposure::summarize_policy_acceptances(
+      acceptance_scan.ledger.facts(),
+      acceptance_scan.ledger.policy_acceptance_facts(),
+      acceptance_scan.ledger.policy_training_facts(),
+      acceptance_scan.ledger.tsodao_settings_protection_facts());
+  check(acceptance_fact.acceptance_contract_id ==
+                "policy_acceptance_contract.v1" &&
+            acceptance_fact.accepted_policy_training_fact_digest ==
+                exposure::policy_training_fact_digest(policy_training_fact) &&
+            acceptance_fact.tsodao_settings_protection_fact_digest ==
+                exposure::tsodao_settings_protection_fact_digest(tsodao_fact) &&
+            acceptance_fact.accepted_policy_id ==
+                policy_training_fact.policy_id &&
+            acceptance_fact.accepted_actor_checkpoint_digest ==
+                policy_training_fact.actor_checkpoint_digest &&
+            acceptance_fact.policy_quality_report_digest ==
+                policy_training_fact.policy_quality_report_digest &&
+            acceptance_fact.reward_contract_id ==
+                "kikijyeba.environment.reward.post_execution_ledger_log_growth_"
+                "cost_drawdown.v1" &&
+            acceptance_fact.selector_split ==
+                policy_training_fact.selector_split &&
+            exposure::policy_acceptance_fact_issues(acceptance_fact).empty() &&
+            exposure::policy_acceptance_binding_issues(
+                acceptance_fact, acceptance_scan.ledger.policy_training_facts(),
+                acceptance_scan.ledger.tsodao_settings_protection_facts())
+                .empty() &&
+            acceptance_summary.schema ==
+                "kikijyeba.lattice.policy_acceptance_summary.v1" &&
+            acceptance_summary.policy_acceptance_fact_count == 1 &&
+            acceptance_summary.parent_exposure_fact_count == 1 &&
+            acceptance_summary.acceptance_id_bound_count == 1 &&
+            acceptance_summary.acceptance_contract_bound_count == 1 &&
+            acceptance_summary.policy_training_fact_declared_count == 1 &&
+            acceptance_summary.policy_training_fact_bound_count == 1 &&
+            acceptance_summary.unresolved_policy_training_fact_count == 0 &&
+            acceptance_summary.tsodao_settings_protection_declared_count == 1 &&
+            acceptance_summary.tsodao_settings_protection_bound_count == 1 &&
+            acceptance_summary.unresolved_tsodao_settings_protection_count ==
+                0 &&
+            acceptance_summary.protected_settings_bound_count == 1 &&
+            acceptance_summary.mandatory_baselines_bound_count == 1 &&
+            acceptance_summary.mandatory_baselines_passed_count == 1 &&
+            acceptance_summary.after_cost_metrics_bound_count == 1 &&
+            acceptance_summary.primary_metric_passed_count == 1 &&
+            acceptance_summary.uncertainty_policy_bound_count == 1 &&
+            acceptance_summary.uncertainty_passed_count == 1 &&
+            acceptance_summary.selector_split_bound_count == 1 &&
+            acceptance_summary.validation_test_disjoint_count == 1 &&
+            acceptance_summary.sealed_test_count == 1 &&
+            acceptance_summary.negative_tests_bound_count == 1 &&
+            acceptance_summary.negative_tests_passed_count == 1 &&
+            acceptance_summary.leakage_negative_tests_passed_count == 1 &&
+            acceptance_summary.threshold_selection_audit_bound_count == 1 &&
+            acceptance_summary.threshold_selected_before_test_count == 1 &&
+            acceptance_summary.tie_policy_bound_count == 1 &&
+            acceptance_summary.tie_policy_passed_count == 1 &&
+            acceptance_summary.cost_slippage_assumptions_bound_count == 1 &&
+            acceptance_summary.promotion_criteria_bound_count == 1 &&
+            acceptance_summary.promotion_criteria_satisfied_count == 1 &&
+            acceptance_summary.accepted_decision_count == 1 &&
+            acceptance_summary.authority_drift_count == 0 &&
+            acceptance_summary.warning_count == 0 &&
+            acceptance_summary.issues.empty() &&
+            acceptance_summary.artifact_evidence &&
+            acceptance_summary.visibility_only &&
+            acceptance_summary.policy_acceptance_artifact &&
+            !acceptance_summary.policy_selector &&
+            !acceptance_summary.checkpoint_selector &&
+            !acceptance_summary.optimizer &&
+            !acceptance_summary.allocation_authority &&
+            !acceptance_summary.execution_authority &&
+            !acceptance_summary.readiness_authority &&
+            !acceptance_summary.quality_authority &&
+            !acceptance_summary.performance_authority &&
+            !acceptance_summary.market_readiness_authority &&
+            !acceptance_summary.deployment_authority &&
+            !acceptance_summary.live_execution_authority &&
+            !acceptance_summary.coverage_authority &&
+            !acceptance_summary.leakage_authority &&
+            !acceptance_summary.contract_identity_authority,
+        "policy acceptance facts bind accepted policy-training readiness and "
+        "Tsodao protected settings to after-cost acceptance criteria without "
+        "selection, optimizer, quality, readiness, execution, deployment, or "
+        "live authority");
+
+  auto acceptance_primary_metric_fault = acceptance_fact;
+  acceptance_primary_metric_fault.primary_metric_passed = false;
+  check(contains_text(exposure::policy_acceptance_fact_issues(
+                          acceptance_primary_metric_fault),
+                      "primary_metric_not_passed"),
+        "policy acceptance facts reject failed primary metrics");
+
+  auto acceptance_governance_drift = acceptance_fact;
+  acceptance_governance_drift.acceptance_policy_digest =
+      "mutated_policy_acceptance_governance_digest";
+  check(
+      contains_text(
+          exposure::policy_acceptance_fact_issues(acceptance_governance_drift),
+          "acceptance_policy_digest_mismatch_governance_thresholds_v0"),
+      "policy acceptance facts reject governance-threshold digest drift");
+
+  auto acceptance_actor_checkpoint_drift = acceptance_fact;
+  acceptance_actor_checkpoint_drift.accepted_actor_checkpoint_digest =
+      "mutated_actor_checkpoint_digest";
+  check(contains_text(
+            exposure::policy_acceptance_binding_issues(
+                acceptance_actor_checkpoint_drift,
+                acceptance_scan.ledger.policy_training_facts(),
+                acceptance_scan.ledger.tsodao_settings_protection_facts()),
+            "accepted_actor_checkpoint_digest_mismatch"),
+        "policy acceptance binding rejects actor checkpoint drift against the "
+        "accepted policy-training fact");
+
+  auto acceptance_missing_tsodao = acceptance_fact;
+  acceptance_missing_tsodao.tsodao_settings_protection_fact_digest =
+      "missing_tsodao_settings_protection_fact_digest";
+  check(contains_text(
+            exposure::policy_acceptance_binding_issues(
+                acceptance_missing_tsodao,
+                acceptance_scan.ledger.policy_training_facts(),
+                acceptance_scan.ledger.tsodao_settings_protection_facts()),
+            "tsodao_settings_protection_fact_digest_not_found"),
+        "policy acceptance binding rejects missing Tsodao settings-protection "
+        "fact digests");
+
+  auto acceptance_authority_drift = acceptance_fact;
+  acceptance_authority_drift.market_readiness_authority = true;
+  check(contains_text(
+            exposure::policy_acceptance_fact_issues(acceptance_authority_drift),
+            "policy_acceptance_must_remain_artifact_evidence_only"),
+        "policy acceptance facts reject market-readiness authority claims");
 
   const auto scan_receipt_summary = exposure::summarize_source_receipts(
       scan.ledger.facts(), scan.ledger.source_receipt_facts());

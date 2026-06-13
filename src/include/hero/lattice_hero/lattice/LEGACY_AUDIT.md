@@ -20,7 +20,7 @@ behavior.
 
 Runtime Hero's pre-collapse developer reset surface was run against
 `/cuwacunu/.runtime` on 2026-06-01 with `dry_run=false`, `backup=false`, and
-`confirm_dev_nuke=true`.
+the then-current explicit developer-reset confirmation.
 
 Result:
 

@@ -1,8 +1,8 @@
 # Lattice Roadmap
 
 This roadmap is the active Lattice work index. It is not a history log for the
-recovered Lattice expansion, completed Hero surface collapse, or completed
-artifact-readiness contracts.
+recovered Lattice expansion, Hero surface collapse, or completed artifact
+readiness contracts.
 
 ## Operating Rules
 
@@ -12,8 +12,6 @@ artifact-readiness contracts.
 - Lattice does not execute, schedule, optimize, select checkpoints by quality,
   allocate, or make market/deployment decisions.
 - Marshal coordinates and inspects; it does not prove.
-- Policy gates remain disabled until thresholds, uncertainty, baselines,
-  selector policy, leakage policy, and negative tests are explicit.
 - Warnings are diagnostic. They do not become hidden readiness gates.
 
 ## Current Stable Surface
@@ -52,6 +50,8 @@ Implemented non-dispatchable artifact targets:
 ```text
 replay_environment_artifact_ready
 policy_training_artifact_ready
+tsodao_settings_protection_ready
+policy_acceptance_contract_ready
 ```
 
 `replay_environment_artifact_ready` proves replay report completeness, lineage,
@@ -59,75 +59,202 @@ boundedness, schema identity, time-law cleanliness, projection counter coverage,
 Cajtucu execution evidence, execution profile binding, policy set binding, and
 authority denials.
 
-It does not prove:
-
-- reward quality
-- profitability
-- projection economic validity
-- policy quality
-- policy acceptance
-- checkpoint ranking
-- market readiness
-- deployment readiness
-
 `policy_training_artifact_ready` proves policy-training artifact identity,
 checkpoint identity, training/validation/test range separation, causal schedule
 identity, ledger-derived no-future snapshot use, typed cursor-key ordering,
 normalization/replay-buffer/reward-baseline isolation, selector/test discipline,
-parent evidence binding, optional `policy_quality_report.v1` digest binding,
-and authority denials. A bound policy-quality report is comparison evidence
-only; Lattice may prove its presence and lineage as part of the policy-training
-artifact record, but it does not treat the report as selection, ranking,
-profitability, market-readiness, deployment, or live-capital proof.
+parent evidence binding, PPO artifact lineage, optimizer archive evidence,
+Runtime CUDA verification, resume-mode consistency, and authority denials.
 
-It does not prove:
+For PPO adapter facts, Lattice may bind forecast-eval and observer-belief
+parents plus replay lineage through either a replay-environment fact digest or a
+replay report digest. Allocation-engine parent facts are required only for
+policy kinds that declare that parent.
+
+For PPO adapter facts, Lattice requires the readable optimizer-state receipt and
+the resumable Torch optimizer archive to be schema/digest-bound. It also
+requires `device_policy=require_cuda`, `runtime_device_kind=cuda`, CUDA
+availability, module-parameter, forward-input, loss, and optimizer-state CUDA
+checks, and `cuda_verification_passed=true`. Resume evidence is mode-specific:
+`fresh_spawn` must not bind `resume_*` artifacts or load optimizer state,
+`resume_weights` must bind and load a parent actor checkpoint, and
+`resume_weights_and_optimizer` must also bind and load the optimizer state.
+Fresh on-policy collection may load the separately recorded
+`input_policy_checkpoint_digest`; that is collection lineage, not resume
+lineage.
+
+`tsodao_settings_protection_ready` proves that a protected settings bundle is
+bound to a specific `policy_training_artifact_ready` fact. The proof resolves
+the referenced policy-training fact digest, checks that the protected
+policy/training/action/reward/execution/causal/checkpoint digests match the
+policy-training artifact, requires bound proof/evidence digests, and rejects any
+Tsodao claim to optimize settings, select policy checkpoints, judge
+quality/performance, declare market/deployment readiness, execute, or authorize
+live capital.
+
+`policy_acceptance_contract_ready` proves a read-only policy acceptance artifact
+binding. It resolves the accepted `policy_training_artifact_ready` fact and the
+referenced `tsodao_settings_protection_ready` fact, checks policy/checkpoint,
+report, reward, execution, accounting, the named
+`policy_acceptance_governance_thresholds_v0.v1` acceptance policy, mandatory
+baseline set, after-cost metric, uncertainty, selector/test split,
+negative-test, threshold-audit, tie-policy, and promotion-criteria fields, and
+rejects any policy-selection, checkpoint-selection, optimizer, allocation,
+execution, quality/performance, market/deployment readiness, or live-capital
+authority.
+
+Lattice does not prove:
 
 - policy quality
-- policy acceptance
 - profitability
+- checkpoint ranking
 - market readiness
 - deployment readiness
-- PPO correctness
+- PPO economic correctness
 
-## Active Milestone: Pre-PPO Proof Rehearsal
+## Current Proof Closure
+
+### PPO Runtime State Evidence Closure
 
 Milestone:
 
 ```text
-pre_ppo_full_pipeline_rehearsal.v1
+policy_training_resume_lattice_closure.v1
+```
+
+Status:
+
+```text
+complete
 ```
 
 Lattice role:
 
-- Prove `replay_environment_artifact_ready` from a fresh cost-aware replay
-  report.
-- Prove `policy_training_artifact_ready` from a fresh no-op policy-training
-  artifact.
-- Prove `policy_training_artifact_ready` from a Runtime-generated PPO V0
-  `runtime.policy_training.fact` whose forecast-eval and observer-belief parent
-  fact digests are relation-bound and whose replay lineage resolves through a
-  replay-environment fact digest or replay report digest. Allocation-engine
-  parent facts are required only for policy kinds that declare that parent,
-  while the subject fact remains scoped to `wikimyei.policy.trainable`.
-- Confirm no proof path accepts schedule-less policy-training evidence.
-- Confirm `offline_full_window_research` remains non-readiness evidence.
-- Confirm direct Runtime/exec debug paths do not become proof authority.
+- Keep `policy_training_artifact_ready` focused on artifact integrity after
+  Runtime introduced real Torch autograd PPO updates and explicit resume modes.
+- Require module-state, optimizer-state receipt, Torch optimizer archive, PPO
+  config, action distribution, feature manifest, causal schedule, rollout
+  collection, update report, validation report, comparison report, CUDA
+  verification, and resume-mode evidence to remain bound.
+- Preserve all authority denials: no policy quality, no selection, no market
+  readiness, no deployment readiness, and no live-capital proof.
 
-Acceptance:
+Acceptance sketch:
 
-- All proofs are derived from durable artifacts, not caller assertions.
-- Policy-training parent lineage may cross component families: the policy fact
-  can be `wikimyei.policy.trainable` while its evidence parents remain MDN,
-  observer/allocation, and replay artifacts, provided protocol, contract, graph,
-  cursor, split, parent exposure, and digest identity are shared.
-- `causal_schedule_no_future_snapshot_use` is derived from artifact fit/use
-  ledgers.
-- Opaque cursor keys fail closed unless a sortable ordering kind or resolved
-  ordering map is bound.
-- Lattice may report latest satisfying artifacts by recency, but never as
-  best-model or policy-quality selection.
+- PPO facts without optimizer Torch archive evidence fail closed.
+- PPO facts without Runtime CUDA verification fail closed.
+- Unsupported or internally inconsistent `resume_mode` evidence fails closed.
+- Autograd PPO facts do not weaken old causal, range, parent, checkpoint, or
+  authority requirements.
 
-## Optional Refinement Before Executable PPO
+### Tsodao Settings Protection
+
+Milestone:
+
+```text
+tsodao_settings_protection_contract.v1
+```
+
+Status:
+
+```text
+complete
+```
+
+Lattice role:
+
+- Normalize `kikijyeba.lattice.tsodao_settings_protection.v1` facts from
+  Runtime job sidecars.
+- Prove only protected-settings artifact binding through
+  `tsodao_settings_protection_ready`.
+- Cross-check protected settings against the referenced
+  `policy_training_artifact_ready` fact digest.
+- Preserve all authority denials: no setting search, policy selection,
+  policy-quality claim, market/deployment readiness, execution authority, or
+  live-capital authority.
+
+Acceptance sketch:
+
+- Valid protected-settings facts satisfy `tsodao_settings_protection_ready`.
+- Missing referenced policy-training facts fail closed.
+- Protected setting digest drift fails closed.
+- Any Tsodao optimizer/selector/readiness/execution/live authority flag fails
+  closed.
+
+### Policy Acceptance Contract
+
+Milestone:
+
+```text
+policy_acceptance_contract.v1
+```
+
+Status:
+
+```text
+complete
+```
+
+Lattice role:
+
+- Normalize `kikijyeba.lattice.policy_acceptance.v1` facts from Runtime job
+  sidecars.
+- Prove only the acceptance artifact contract through
+  `policy_acceptance_contract_ready`.
+- Cross-check the accepted policy-training digest against
+  `policy_training_artifact_ready` evidence and the protected-settings digest
+  against `tsodao_settings_protection_ready` evidence.
+- Require the named `policy_acceptance_governance_thresholds_v0.v1` policy,
+  mandatory baselines, after-cost metrics, uncertainty policy, selector/test
+  split discipline, negative leakage tests, threshold-selection audit, tie
+  policy, cost/slippage assumptions, promotion criteria, and explicit
+  non-selection/non-deployment authority denials.
+
+Acceptance sketch:
+
+- Valid acceptance facts satisfy `policy_acceptance_contract_ready`.
+- Stale or arbitrary acceptance-policy digests fail closed.
+- Missing policy-training or Tsodao parent facts fail closed.
+- Accepted policy/checkpoint/report/reward/execution digest drift fails closed.
+- Failed acceptance metric, baseline, uncertainty, negative-test, or promotion
+  criteria fail closed.
+- Any policy-selection, checkpoint-selection, optimizer, allocation, execution,
+  quality/performance, market/deployment readiness, or live authority flag fails
+  closed.
+
+## Next Lattice Work
+
+### Paper-Online Readiness Target Contract
+
+Milestone:
+
+```text
+paper_online_readiness_contract.v1 support
+```
+
+Lattice role:
+
+- Define the read-only artifact target shape for online-paper readiness before
+  any paper-online executor exists.
+- Prove only contract identity, lineage, session-state evidence, stale-data
+  policy, ledger-recovery policy, idempotency/duplicate-action protection,
+  Cajtucu execution-profile binding, graph/direct-pair universe validation,
+  operator abort/kill-switch evidence, and authority denials.
+- Do not prove policy quality, market readiness, deployment readiness, or live
+  execution safety.
+
+Acceptance sketch:
+
+- Missing session, clock/staleness, ledger-recovery, idempotency, execution
+  profile, graph universe, abort/kill-switch, or authority-denial evidence
+  fails closed.
+- Any paper-online fact claiming policy selection, execution authority beyond
+  paper mode, deployment readiness, market readiness, broker access, or live
+  capital authority fails closed.
+
+## Optional Lattice Work
+
+### Optional Causal Schedule Subtarget
 
 Milestone:
 
@@ -135,8 +262,8 @@ Milestone:
 policy_training_causal_schedule_ready.v1
 ```
 
-Add only if the broad `policy_training_artifact_ready` target becomes too dense
-to explain cleanly.
+Add only if `policy_training_artifact_ready` becomes too dense to explain
+cleanly.
 
 Scope:
 
@@ -150,26 +277,6 @@ Scope:
 
 `policy_training_artifact_ready` would continue to prove the broader policy
 artifact lineage, range, selector, checkpoint, and parent-evidence contract.
-
-## Reserved: Policy Acceptance And Tsodao
-
-Policy acceptance remains a disabled policy-gate topic until these are explicit:
-
-```text
-mandatory baselines
-reward thresholds
-uncertainty policy
-selector split
-test split
-negative leakage tests
-cost/slippage assumptions
-promotion criteria
-Tsodao settings-protection contract
-```
-
-Tsodao should later protect approved settings and evidence digests. Lattice may
-prove that Tsodao-bound settings match evidence, but Lattice must not search for
-or choose those settings.
 
 ## Validation Groups
 

@@ -994,7 +994,43 @@ LATTICE_TARGET {
   TARGET_CLASS = artifact_readiness;
   PROOF_KIND = policy_training_artifact_bound;
   SUBJECT_FACT_FAMILY = policy_training;
-  SUBJECT_COMPONENT = wikimyei.policy.trainable;
+  SUBJECT_COMPONENT = wikimyei.policy.portfolio.graph_node_allocation;
+  PROTOCOL_ID = cwu_02v;
+  SOURCE_RANGE = anchor_index;
+  OVER_SPLIT = validation_holdout;
+  REQUIRE_CONTRACT_MATCH = true;
+};
+
+LATTICE_TARGET {
+  TARGET_ID = tsodao_settings_protection_ready;
+  TARGET_CLASS = artifact_readiness;
+  PROOF_KIND = tsodao_settings_protection_artifact_bound;
+  SUBJECT_FACT_FAMILY = tsodao_settings_protection;
+  SUBJECT_COMPONENT = tsodao.settings_protection;
+  PROTOCOL_ID = cwu_02v;
+  SOURCE_RANGE = anchor_index;
+  OVER_SPLIT = validation_holdout;
+  REQUIRE_CONTRACT_MATCH = true;
+};
+
+LATTICE_TARGET {
+  TARGET_ID = policy_acceptance_contract_ready;
+  TARGET_CLASS = artifact_readiness;
+  PROOF_KIND = policy_acceptance_contract_bound;
+  SUBJECT_FACT_FAMILY = policy_acceptance;
+  SUBJECT_COMPONENT = tsodao.policy_acceptance;
+  PROTOCOL_ID = cwu_02v;
+  SOURCE_RANGE = anchor_index;
+  OVER_SPLIT = validation_holdout;
+  REQUIRE_CONTRACT_MATCH = true;
+};
+
+LATTICE_TARGET {
+  TARGET_ID = paper_online_readiness_contract_ready;
+  TARGET_CLASS = artifact_readiness;
+  PROOF_KIND = paper_online_readiness_contract_bound;
+  SUBJECT_FACT_FAMILY = paper_online_readiness;
+  SUBJECT_COMPONENT = kikijyeba.paper_online.readiness;
   PROTOCOL_ID = cwu_02v;
   SOURCE_RANGE = anchor_index;
   OVER_SPLIT = validation_holdout;

@@ -1,3 +1,4 @@
+#include "hero/environment_hero/hero_environment_tools.h"
 #include "hero/lattice_hero/lattice/exposure/exposure_ledger.h"
 #include "hero/lattice_hero/lattice/target/lattice_target_evaluator.h"
 #include "hero/marshal_hero/marshal/digest.h"
@@ -7,6 +8,7 @@
 #include "wikimyei/assembly.h"
 
 #include <algorithm>
+#include <cctype>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -20,6 +22,7 @@
 #include <unistd.h>
 
 namespace hero_runtime = cuwacunu::hero::runtime;
+namespace hero_environment = cuwacunu::hero::environment;
 namespace lattice_exposure = cuwacunu::hero::lattice::exposure;
 namespace lattice_target = cuwacunu::hero::lattice::target;
 namespace wave_settings = cuwacunu::hero::runtime::settings;
@@ -78,6 +81,44 @@ std::string read_text(const std::filesystem::path &path) {
   return buffer.str();
 }
 
+std::string certify_request_digest_domain(std::string_view subject) {
+  if (subject == "policy_acceptance") {
+    return "kikijyeba.environment.certify_request.policy_acceptance.v1";
+  }
+  if (subject == "paper_online_readiness") {
+    return "kikijyeba.environment.certify_request.paper_online_readiness.v1";
+  }
+  throw std::runtime_error("unknown certify request subject");
+}
+
+std::string args_digest(std::string_view subject, const std::string &text) {
+  return cuwacunu::hero::marshal::marshal_digest_for_text(
+      certify_request_digest_domain(subject), text);
+}
+
+std::string certify_tool_name(std::string_view subject) {
+  if (subject == "policy_acceptance") {
+    return "hero.environment.certify.policy_acceptance";
+  }
+  if (subject == "paper_online_readiness") {
+    return "hero.environment.certify.paper_online_readiness";
+  }
+  throw std::runtime_error("unknown certify tool subject");
+}
+
+std::string certify_args(std::string_view subject, std::string_view mode,
+                         const std::filesystem::path &request_path,
+                         const std::string &request_text, bool include_digest) {
+  std::ostringstream args;
+  args << "{\"mode\":\"" << mode << "\",\"args_path\":\""
+       << request_path.string() << "\"";
+  if (include_digest) {
+    args << ",\"args_digest\":\"" << args_digest(subject, request_text) << "\"";
+  }
+  args << "}";
+  return args.str();
+}
+
 std::string json_string_field(const std::string &json,
                               const std::string &field) {
   const std::string needle = "\"" + field + "\":\"";
@@ -87,6 +128,425 @@ std::string json_string_field(const std::string &json,
   const auto end = json.find("\"", begin);
   check(end != std::string::npos, "unterminated JSON string field: " + field);
   return json.substr(begin, end - begin);
+}
+
+std::string json_unescaped_string_field(const std::string &json,
+                                        const std::string &field) {
+  const std::string needle = "\"" + field + "\":\"";
+  const auto pos = json.find(needle);
+  check(pos != std::string::npos, "missing JSON string field: " + field);
+  std::string out;
+  for (std::size_t i = pos + needle.size(); i < json.size(); ++i) {
+    const char c = json[i];
+    if (c == '"') {
+      return out;
+    }
+    if (c != '\\') {
+      out.push_back(c);
+      continue;
+    }
+    check(i + 1 < json.size(), "unterminated JSON escape in field: " + field);
+    const char escaped = json[++i];
+    switch (escaped) {
+    case '"':
+    case '\\':
+    case '/':
+      out.push_back(escaped);
+      break;
+    case 'b':
+      out.push_back('\b');
+      break;
+    case 'f':
+      out.push_back('\f');
+      break;
+    case 'n':
+      out.push_back('\n');
+      break;
+    case 'r':
+      out.push_back('\r');
+      break;
+    case 't':
+      out.push_back('\t');
+      break;
+    default:
+      throw std::runtime_error("unsupported JSON escape in field: " + field);
+    }
+  }
+  throw std::runtime_error("unterminated JSON string field: " + field);
+}
+
+void skip_json_ws(const std::string &json, std::size_t *idx) {
+  while (*idx < json.size() &&
+         std::isspace(static_cast<unsigned char>(json[*idx])) != 0) {
+    ++(*idx);
+  }
+}
+
+bool skip_json_string(const std::string &json, std::size_t *idx) {
+  if (*idx >= json.size() || json[*idx] != '"') {
+    return false;
+  }
+  ++(*idx);
+  while (*idx < json.size()) {
+    const char c = json[(*idx)++];
+    if (c == '"') {
+      return true;
+    }
+    if (c == '\\') {
+      if (*idx >= json.size()) {
+        return false;
+      }
+      ++(*idx);
+    }
+  }
+  return false;
+}
+
+bool skip_json_value(const std::string &json, std::size_t *idx) {
+  skip_json_ws(json, idx);
+  if (*idx >= json.size()) {
+    return false;
+  }
+  if (json[*idx] == '"') {
+    return skip_json_string(json, idx);
+  }
+  if (json[*idx] == '{' || json[*idx] == '[') {
+    const char open = json[*idx];
+    const char close = open == '{' ? '}' : ']';
+    int depth = 0;
+    while (*idx < json.size()) {
+      if (json[*idx] == '"') {
+        if (!skip_json_string(json, idx)) {
+          return false;
+        }
+        continue;
+      }
+      if (json[*idx] == open) {
+        ++depth;
+      } else if (json[*idx] == close) {
+        --depth;
+        if (depth == 0) {
+          ++(*idx);
+          return true;
+        }
+      }
+      ++(*idx);
+    }
+    return false;
+  }
+  while (*idx < json.size() && json[*idx] != ',' && json[*idx] != '}' &&
+         json[*idx] != ']') {
+    ++(*idx);
+  }
+  return true;
+}
+
+struct json_field_t {
+  std::string key{};
+  std::string raw{};
+};
+
+std::vector<json_field_t> parse_json_object_fields(const std::string &json) {
+  std::vector<json_field_t> out;
+  std::size_t idx = 0;
+  skip_json_ws(json, &idx);
+  check(idx < json.size() && json[idx] == '{', "expected JSON object");
+  ++idx;
+  skip_json_ws(json, &idx);
+  while (idx < json.size() && json[idx] != '}') {
+    check(json[idx] == '"', "expected JSON object key");
+    const std::size_t key_begin = ++idx;
+    while (idx < json.size() && json[idx] != '"') {
+      check(json[idx] != '\\', "escaped test keys are unsupported");
+      ++idx;
+    }
+    check(idx < json.size(), "unterminated JSON key");
+    std::string key = json.substr(key_begin, idx - key_begin);
+    ++idx;
+    skip_json_ws(json, &idx);
+    check(idx < json.size() && json[idx] == ':', "expected JSON ':'");
+    ++idx;
+    skip_json_ws(json, &idx);
+    const std::size_t value_begin = idx;
+    check(skip_json_value(json, &idx), "invalid JSON value");
+    out.push_back(
+        {std::move(key), json.substr(value_begin, idx - value_begin)});
+    skip_json_ws(json, &idx);
+    if (idx < json.size() && json[idx] == ',') {
+      ++idx;
+      skip_json_ws(json, &idx);
+    }
+  }
+  check(idx < json.size() && json[idx] == '}', "unterminated JSON object");
+  return out;
+}
+
+std::string unquote_json_string_raw(const std::string &raw) {
+  check(!raw.empty() && raw.front() == '"', "expected JSON string");
+  std::string wrapped = "{\"value\":" + raw + "}";
+  return json_unescaped_string_field(wrapped, "value");
+}
+
+bool runtime_run_top_level_field(const std::string &key) {
+  return key == "mode" || key == "args_path" || key == "args_digest";
+}
+
+bool runtime_reset_top_level_field(const std::string &key) {
+  return key == "mode" || key == "args_path" || key == "args_digest";
+}
+
+std::string request_assignment_value(const std::string &raw) {
+  if (!raw.empty() && raw.front() == '"') {
+    return unquote_json_string_raw(raw);
+  }
+  return raw;
+}
+
+std::string materialize_runtime_run_args(const std::string &args) {
+  const auto fields = parse_json_object_fields(args);
+  std::ostringstream top;
+  std::ostringstream run_request;
+  std::ostringstream execution_request;
+  top << "{";
+  bool top_first = true;
+  bool wrote_run_request = false;
+  bool wrote_execution_request = false;
+  bool has_run_request_path = false;
+  std::string operation = "wave";
+  const auto append_top_raw = [&](const std::string &key,
+                                  const std::string &raw) {
+    if (!top_first) {
+      top << ",";
+    }
+    top << "\"" << key << "\":" << raw;
+    top_first = false;
+  };
+  const auto append_run_request = [&](const std::string &key,
+                                      const std::string &value) {
+    run_request << key << "=" << value << "\n";
+    wrote_run_request = true;
+  };
+  const auto append_execution_request = [&](const std::string &key,
+                                            const std::string &value) {
+    execution_request << key << "=" << value << "\n";
+    wrote_execution_request = true;
+  };
+
+  for (const auto &field : fields) {
+    if (field.key == "subject") {
+      if (!field.raw.empty() && field.raw.front() == '"') {
+        operation = unquote_json_string_raw(field.raw);
+      }
+      continue;
+    }
+    if (runtime_run_top_level_field(field.key)) {
+      if (field.key == "args_path") {
+        has_run_request_path = true;
+      }
+      append_top_raw(field.key, field.raw);
+      continue;
+    }
+    if (field.key == "config_path" || field.key == "contract_path" ||
+        field.key == "contract_digest" ||
+        field.key == "execution_request_path" ||
+        field.key == "execution_request_digest") {
+      append_run_request(field.key, request_assignment_value(field.raw));
+      continue;
+    }
+    if (field.key == "runtime_handoff") {
+      const auto handoff_dir = make_tmp_dir("runtime_handoff_request");
+      const auto handoff_path = handoff_dir / "runtime_handoff.json";
+      write_text(handoff_path, field.raw);
+      const std::string handoff_digest =
+          cuwacunu::hero::marshal::marshal_digest_for_text(
+              "kikijyeba.runtime.run_request.runtime_handoff_file.v1",
+              field.raw);
+      append_run_request("runtime_handoff_path", handoff_path.string());
+      append_run_request("runtime_handoff_digest", handoff_digest);
+      continue;
+    }
+    if (field.key == "wave_overlay") {
+      for (const auto &overlay_field : parse_json_object_fields(field.raw)) {
+        append_execution_request(overlay_field.key,
+                                 request_assignment_value(overlay_field.raw));
+      }
+      continue;
+    }
+    if (field.key == "marshal_expected_wave") {
+      throw std::runtime_error("marshal_expected_wave is retired");
+    }
+    append_execution_request(field.key, request_assignment_value(field.raw));
+  }
+
+  if (wrote_execution_request) {
+    const auto request_dir = make_tmp_dir("execution_request");
+    const auto request_path = request_dir / "request.kv";
+    write_text(request_path, execution_request.str());
+    const std::string request_digest =
+        cuwacunu::hero::marshal::marshal_digest_for_text(
+            "kikijyeba.runtime.policy_training_execution_request.v1",
+            execution_request.str());
+    append_run_request("execution_request_path", request_path.string());
+    append_run_request("execution_request_digest", request_digest);
+  }
+  if (wrote_run_request) {
+    check(!has_run_request_path,
+          "test fixture must not mix inline payload with args_path");
+    const auto request_dir = make_tmp_dir("run_request");
+    const auto request_path = request_dir / "request.kv";
+    write_text(request_path, run_request.str());
+    const std::string request_digest =
+        cuwacunu::hero::marshal::marshal_digest_for_text(
+            "kikijyeba.runtime.run_request." + operation + ".v1",
+            run_request.str());
+    append_top_raw("args_path", "\"" + request_path.string() + "\"");
+    append_top_raw("args_digest", "\"" + request_digest + "\"");
+  }
+  top << "}";
+  return top.str();
+}
+
+std::string runtime_run_tool_name_for_args(const std::string &args) {
+  const auto fields = parse_json_object_fields(args);
+  for (const auto &field : fields) {
+    if (field.key == "subject" && !field.raw.empty() &&
+        field.raw.front() == '"') {
+      const std::string subject = unquote_json_string_raw(field.raw);
+      if (subject == "replay") {
+        return "hero.runtime.replay";
+      }
+      break;
+    }
+  }
+  return "hero.runtime.run";
+}
+
+std::string materialize_runtime_inspect_args(const std::string &args) {
+  const auto fields = parse_json_object_fields(args);
+  std::ostringstream top;
+  top << "{";
+  bool top_first = true;
+  const auto append_top_raw = [&](const std::string &key,
+                                  const std::string &raw) {
+    if (!top_first) {
+      top << ",";
+    }
+    top << "\"" << key << "\":" << raw;
+    top_first = false;
+  };
+
+  for (const auto &field : fields) {
+    if (field.key == "subject") {
+      continue;
+    }
+    append_top_raw(field.key, field.raw);
+  }
+  top << "}";
+  return top.str();
+}
+
+std::string runtime_inspect_tool_name(const std::string &args) {
+  const auto fields = parse_json_object_fields(args);
+  bool has_path = false;
+  std::string subject;
+  for (const auto &field : fields) {
+    if (field.key == "path") {
+      has_path = true;
+    }
+    if (field.key == "subject") {
+      subject = unquote_json_string_raw(field.raw);
+    }
+  }
+  if (subject == "artifact") {
+    return has_path ? "hero.runtime.inspect.artifact.path"
+                    : "hero.runtime.inspect.artifact.job";
+  }
+  if (!subject.empty()) {
+    return "hero.runtime.inspect." + subject;
+  }
+  check(false, "runtime inspect test fixture requires subject");
+  return "hero.runtime.inspect.schema";
+}
+
+std::string materialize_runtime_reset_args(const std::string &args) {
+  const auto fields = parse_json_object_fields(args);
+  std::ostringstream top;
+  std::ostringstream request;
+  top << "{";
+  bool top_first = true;
+  bool wrote_request = false;
+  bool has_reset_request_path = false;
+  std::string requested_mode = "plan";
+  const auto append_top_raw = [&](const std::string &key,
+                                  const std::string &raw) {
+    if (!top_first) {
+      top << ",";
+    }
+    top << "\"" << key << "\":" << raw;
+    top_first = false;
+  };
+  const auto append_request = [&](const std::string &key,
+                                  const std::string &value) {
+    request << key << "=" << value << "\n";
+    wrote_request = true;
+  };
+
+  for (const auto &field : fields) {
+    if (runtime_reset_top_level_field(field.key)) {
+      if (field.key == "mode" && !field.raw.empty() &&
+          field.raw.front() == '"') {
+        requested_mode = unquote_json_string_raw(field.raw);
+      }
+      if (field.key == "args_path") {
+        has_reset_request_path = true;
+      }
+      append_top_raw(field.key, field.raw);
+      continue;
+    }
+    append_request(field.key, request_assignment_value(field.raw));
+  }
+
+  if (wrote_request) {
+    check(!has_reset_request_path,
+          "test fixture must not mix inline reset payload with args_path");
+    const auto request_dir = make_tmp_dir("reset_request");
+    const auto request_path = request_dir / "request.kv";
+    const std::string request_text = request.str();
+    write_text(request_path, request_text);
+    const std::string request_digest =
+        cuwacunu::hero::marshal::marshal_digest_for_text(
+            "kikijyeba.runtime.reset_request.v1", request_text);
+    append_top_raw("args_path", "\"" + request_path.string() + "\"");
+    if (requested_mode == "execute") {
+      append_top_raw("args_digest", "\"" + request_digest + "\"");
+    }
+  }
+  top << "}";
+  return top.str();
+}
+
+bool execute_runtime_run_json(const std::string &args,
+                              hero_runtime::runtime_context_t *ctx,
+                              std::string *result, std::string *error) {
+  return hero_runtime::execute_tool_json(runtime_run_tool_name_for_args(args),
+                                         materialize_runtime_run_args(args),
+                                         ctx, result, error);
+}
+
+bool execute_runtime_inspect_json(const std::string &args,
+                                  hero_runtime::runtime_context_t *ctx,
+                                  std::string *result, std::string *error) {
+  return hero_runtime::execute_tool_json(runtime_inspect_tool_name(args),
+                                         materialize_runtime_inspect_args(args),
+                                         ctx, result, error);
+}
+
+bool execute_runtime_reset_json(const std::string &args,
+                                hero_runtime::runtime_context_t *ctx,
+                                std::string *result, std::string *error) {
+  return hero_runtime::execute_tool_json("hero.runtime.reset",
+                                         materialize_runtime_reset_args(args),
+                                         ctx, result, error);
 }
 
 std::string digest_file_for_handoff(const std::filesystem::path &path,
@@ -126,8 +586,9 @@ ppo_rehearsal_parent_fact_bundle_t make_ppo_rehearsal_parent_fact_bundle() {
   bundle.parent_fact.graph_order_fingerprint = "graph_1";
   bundle.parent_fact.source_cursor_token = "cursor_1";
   bundle.parent_fact.split_policy_fingerprint = "split_policy_1";
-  bundle.parent_fact.component_assembly_fingerprint = "policy_trainable_1";
-  bundle.parent_fact.target_component_family_id = "wikimyei.policy.trainable";
+  bundle.parent_fact.component_assembly_fingerprint = "graph_node_allocation_1";
+  bundle.parent_fact.target_component_family_id =
+      "wikimyei.policy.portfolio.graph_node_allocation";
   bundle.parent_fact.job_id = "ppo_on_policy_parent";
   bundle.parent_fact.wave_id = "policy_training_ppo_v0";
   bundle.parent_fact.job_status = "completed";
@@ -361,58 +822,193 @@ ppo_rehearsal_parent_fact_bundle_t make_ppo_rehearsal_parent_fact_bundle() {
   return bundle;
 }
 
+lattice_exposure::lattice_tsodao_settings_protection_fact_t
+make_tsodao_settings_protection_fact_from_policy_training(
+    const lattice_exposure::lattice_policy_training_fact_t &policy_fact) {
+  lattice_exposure::lattice_tsodao_settings_protection_fact_t fact{};
+  fact.parent_exposure_fact_digest = policy_fact.parent_exposure_fact_digest;
+  fact.contract_fingerprint = policy_fact.contract_fingerprint;
+  fact.protocol_id = policy_fact.protocol_id;
+  fact.graph_order_fingerprint = policy_fact.graph_order_fingerprint;
+  fact.source_cursor_token = policy_fact.source_cursor_token;
+  fact.split_policy_fingerprint = policy_fact.split_policy_fingerprint;
+  fact.component_assembly_fingerprint =
+      policy_fact.component_assembly_fingerprint;
+  fact.target_component_family_id = "tsodao.settings_protection";
+  fact.job_id = policy_fact.job_id;
+  fact.wave_id = "tsodao_policy_settings_protection";
+  fact.job_status = "completed";
+  fact.wave_action = "settings_protection";
+  fact.split_name = policy_fact.split_name;
+  fact.split_role = policy_fact.split_role;
+  fact.anchor_range = policy_fact.anchor_range;
+  fact.completed_anchor_range = policy_fact.completed_anchor_range;
+  fact.protection_id = "tsodao_policy_settings_protection_v1";
+  fact.protection_contract_id = "tsodao_settings_protection_contract.v1";
+  fact.protected_settings_bundle_digest =
+      "protected_policy_settings_bundle_digest_v1";
+  fact.protected_policy_training_fact_digest =
+      lattice_exposure::policy_training_fact_digest(policy_fact);
+  fact.protected_policy_training_target_id = "policy_training_artifact_ready";
+  fact.protected_policy_training_proof_certificate_digest =
+      "policy_training_artifact_ready_certificate_digest_v1";
+  fact.policy_id = policy_fact.policy_id;
+  fact.policy_kind = policy_fact.policy_kind;
+  fact.policy_family_id = policy_fact.policy_family_id;
+  fact.policy_checkpoint_schema_id = policy_fact.policy_checkpoint_schema_id;
+  fact.policy_input_schema_id = policy_fact.policy_input_schema_id;
+  fact.policy_input_feature_manifest_digest =
+      policy_fact.policy_input_feature_manifest_digest;
+  fact.graph_node_action_universe_digest = policy_fact.graph_order_fingerprint;
+  fact.action_schema_digest = policy_fact.action_schema_digest;
+  fact.action_adapter_id = policy_fact.action_adapter_id;
+  fact.action_distribution_id = policy_fact.action_distribution_id;
+  fact.action_distribution_config_digest =
+      policy_fact.action_distribution_config_digest;
+  fact.reward_contract_id = policy_fact.reward_contract_id;
+  fact.reward_contract_digest = policy_fact.reward_contract_digest;
+  fact.environment_contract_id = policy_fact.environment_contract_id;
+  fact.execution_profile_digest = policy_fact.execution_profile_digest;
+  fact.accounting_numeraire_node_id = "USDT";
+  fact.causal_schedule_schema_id = policy_fact.causal_schedule_schema_id;
+  fact.causal_schedule_digest = policy_fact.causal_schedule_digest;
+  fact.snapshot_family_digest = policy_fact.snapshot_family_digest;
+  fact.training_config_digest = policy_fact.training_config_digest;
+  fact.ppo_config_digest = policy_fact.ppo_config_digest;
+  fact.actor_architecture_digest = policy_fact.actor_architecture_digest;
+  fact.critic_architecture_digest = policy_fact.critic_architecture_digest;
+  fact.optimizer_state_schema_id = policy_fact.optimizer_state_schema_id;
+  fact.optimizer_state_digest = policy_fact.optimizer_state_digest;
+  fact.optimizer_torch_state_digest = policy_fact.optimizer_torch_state_digest;
+  fact.resume_mode = policy_fact.resume_mode;
+  fact.validation_rollout_report_digest =
+      policy_fact.validation_rollout_report_digest;
+  fact.policy_quality_report_digest = policy_fact.policy_quality_report_digest;
+  fact.protected_settings_match_policy_training_fact = true;
+  fact.protected_evidence_digests_bound = true;
+  fact.protected_policy_training_ready = true;
+  return fact;
+}
+
+std::string cwu01_vicreg_protocol_text() {
+  return std::string("PROTOCOL {\n"
+                     "  PROTOCOL_ID = cwu_01v;\n"
+                     "  PROTOCOL_KIND = channel_graph_first;\n"
+                     "  GRAPH_TOPOLOGY = kikijyeba.topology.graph;\n"
+                     "  NODELIFT = wikimyei.expression.nodelift.srl;\n"
+                     "  REPRESENTATION = "
+                     "wikimyei.representation.encoding.vicreg;\n"
+                     "  INFERENCE = wikimyei.inference.expected_value.mdn;\n"
+                     "  OBSERVER = wikimyei.observer.belief;\n"
+                     "  ALLOCATION_POLICY = "
+                     "wikimyei.policy.portfolio.spot_distributional_utility;\n"
+                     "  POLICY_COMPONENT = "
+                     "wikimyei.policy.portfolio.graph_node_allocation;\n"
+                     "  REPRESENTATION_CONTRACT = "
+                     "graph_order.channel_node_representation.v1;\n"
+                     "};\n");
+}
+
+std::string cwu02_mtf_protocol_text() {
+  return std::string("PROTOCOL {\n"
+                     "  PROTOCOL_ID = cwu_02v;\n"
+                     "  PROTOCOL_KIND = channel_graph_first;\n"
+                     "  GRAPH_TOPOLOGY = kikijyeba.topology.graph;\n"
+                     "  NODELIFT = wikimyei.expression.nodelift.srl;\n"
+                     "  REPRESENTATION = "
+                     "wikimyei.representation.encoding.mtf_jepa_mae_vicreg;\n"
+                     "  INFERENCE = wikimyei.inference.expected_value.mdn;\n"
+                     "  OBSERVER = wikimyei.observer.belief;\n"
+                     "  ALLOCATION_POLICY = "
+                     "wikimyei.policy.portfolio.spot_distributional_utility;\n"
+                     "  POLICY_COMPONENT = "
+                     "wikimyei.policy.portfolio.graph_node_allocation;\n"
+                     "  REPRESENTATION_CONTRACT = "
+                     "graph_order.channel_node_representation.v1;\n"
+                     "};\n");
+}
+
+std::string protocol_id_from_text(const std::string &protocol_text) {
+  if (protocol_text.find("PROTOCOL_ID = cwu_02v") != std::string::npos) {
+    return "cwu_02v";
+  }
+  return "cwu_01v";
+}
+
+std::string
+cursor_catalog_text(const std::string &cursor_id,
+                    const std::string &source_range = "anchor_index",
+                    const std::string &begin = "1",
+                    const std::string &end = "3") {
+  std::ostringstream cursor;
+  cursor << "UJCAMEI_SOURCE_CURSOR {\n"
+         << "  CURSOR_ID = " << cursor_id << ";\n"
+         << "  SOURCE_CURSOR_KIND = graph_anchor;\n"
+         << "  SOURCE_CURSOR_SCOPE = wave_batch;\n"
+         << "  SOURCE_RANGE = " << source_range << ";\n";
+  if (source_range == "anchor_index") {
+    cursor << "  ANCHOR_INDEX_BEGIN = " << begin << ";\n"
+           << "  ANCHOR_INDEX_END = " << end << ";\n";
+  } else if (source_range == "source_key") {
+    cursor << "  SOURCE_KEY_BEGIN = " << begin << ";\n"
+           << "  SOURCE_KEY_END = " << end << ";\n";
+  }
+  cursor << "};\n";
+  return cursor.str();
+}
+
 std::string run_wave_preview(const std::string &target, const std::string &mode,
                              const std::string &source_order = {},
                              const std::string &protocol_text = {},
-                             const std::string &compatible_protocols = {}) {
+                             const std::string &wave_protocol = {}) {
   const auto dir = make_tmp_dir(target);
   const auto wave_path = dir / "hero.runtime.wave.dsl";
   const auto protocol_path = dir / "kikijyeba.protocol.dsl";
+  const auto cursor_path = dir / "ujcamei.source.cursor.dsl";
   const auto config_path = dir / ".config";
+  const std::string active_protocol =
+      protocol_text.empty() ? cwu01_vicreg_protocol_text() : protocol_text;
+  const std::string wave_protocol_id =
+      wave_protocol.empty() ? protocol_id_from_text(active_protocol)
+                            : wave_protocol;
 
   std::ostringstream wave;
   wave << "WAVE_SETTINGS {\n"
        << "  WAVE_ID = test_wave;\n"
-       << (compatible_protocols.empty()
-               ? ""
-               : "  COMPATIBLE_PROTOCOLS = " + compatible_protocols + ";\n")
+       << "  PROTOCOL = " << wave_protocol_id << ";\n"
        << "  TARGET = " << target << ";\n"
        << "  MODE = " << mode << ";\n"
-       << "  SOURCE_CURSOR_KIND = graph_anchor;\n"
-       << "  SOURCE_CURSOR_SCOPE = wave_batch;\n"
-       << "  SOURCE_RANGE = anchor_index;\n"
+       << "  SOURCE_CURSOR_ID = test_cursor;\n"
        << (source_order.empty() ? ""
                                 : "  SOURCE_ORDER = " + source_order + ";\n")
-       << "  ANCHOR_INDEX_BEGIN = 1;\n"
-       << "  ANCHOR_INDEX_END = 3;\n"
        << "};\n";
   write_text(wave_path, wave.str());
-  if (!protocol_text.empty()) {
-    write_text(protocol_path, protocol_text);
-  }
+  write_text(protocol_path, active_protocol);
+  write_text(cursor_path, cursor_catalog_text("test_cursor"));
 
-  std::ostringstream config;
-  config << "[HERO]\n"
-         << "runtime_wave_dsl_path = " << wave_path.string() << "\n";
-  if (!protocol_text.empty()) {
-    config << "[KIKIJYEBA]\n"
-           << "kikijyeba_protocol_dsl_path = " << protocol_path.string()
-           << "\n";
-  }
-  write_text(config_path, config.str());
+  write_text(config_path, "[UJCAMEI]\n"
+                          "ujcamei_source_cursor_dsl_path = " +
+                              cursor_path.string() +
+                              "\n"
+                              "[KIKIJYEBA]\n"
+                              "kikijyeba_protocol_dsl_path = " +
+                              protocol_path.string() +
+                              "\n"
+                              "[HERO]\n"
+                              "runtime_wave_dsl_path = " +
+                              wave_path.string() + "\n");
 
   hero_runtime::runtime_context_t ctx{};
   ctx.global_config_path = config_path;
 
   std::string result;
   std::string error;
-  const bool ok = hero_runtime::execute_tool_json(
-      "hero.runtime.inspect",
+  const bool ok = execute_runtime_inspect_json(
       "{\"subject\":\"wave\",\"config_path\":\"" + config_path.string() + "\"}",
       &ctx, &result, &error);
-  check(ok, "hero.runtime.inspect subject=wave failed: " + error);
+  check(ok, "hero.runtime.inspect.wave failed: " + error);
   check(!hero_runtime::tool_result_is_error(result),
-        "hero.runtime.inspect subject=wave returned error: " + result);
+        "hero.runtime.inspect.wave returned error: " + result);
   std::filesystem::remove_all(dir);
   return result;
 }
@@ -430,43 +1026,26 @@ bool has_issue_containing(const std::vector<std::string> &issues,
   });
 }
 
-std::string cwu02_mtf_protocol_text() {
-  return std::string("PROTOCOL {\n"
-                     "  PROTOCOL_ID = cwu_02v;\n"
-                     "  PROTOCOL_KIND = channel_graph_first;\n"
-                     "  GRAPH_TOPOLOGY = kikijyeba.topology.graph;\n"
-                     "  NODELIFT = wikimyei.expression.nodelift.srl;\n"
-                     "  REPRESENTATION = "
-                     "wikimyei.representation.encoding.mtf_jepa_mae_vicreg;\n"
-                     "  INFERENCE = wikimyei.inference.expected_value.mdn;\n"
-                     "  OBSERVER = wikimyei.observer.belief;\n"
-                     "  ALLOCATION_POLICY = "
-                     "wikimyei.policy.portfolio.spot_distributional_utility;\n"
-                     "  REPRESENTATION_CONTRACT = "
-                     "graph_order.channel_node_representation.v1;\n"
-                     "};\n");
-}
-
 void test_wave_settings_train_defaults_to_random_source_order() {
+  const std::string cursor_text = cursor_catalog_text("train_cursor", "all");
   const auto implicit_train = wave_settings::decode_wave_settings_from_dsl(
       "WAVE_SETTINGS {\n"
       "  WAVE_ID = train_default;\n"
-      "  COMPATIBLE_PROTOCOLS = cwu_01v,cwu_02v;\n"
-      "  TARGET = wikimyei.representation.encoding.vicreg;\n"
+      "  PROTOCOL = cwu_01v;\n"
+      "  TARGET = wikimyei.representation.encoding;\n"
       "  MODE = train;\n"
-      "  SOURCE_RANGE = all;\n"
-      "};\n");
+      "  SOURCE_CURSOR_ID = train_cursor;\n"
+      "};\n",
+      {}, wave_settings::default_wave_protocol_bindings(), cursor_text);
   check(implicit_train.source_order_policy ==
             wave_settings::wave_source_order_policy_t::random_per_epoch,
         "train waves must default to random_per_epoch SOURCE_ORDER");
-  check(implicit_train.compatible_protocol_ids.size() == 2 &&
-            implicit_train.compatible_protocol_ids[0] == "cwu_01v" &&
-            implicit_train.compatible_protocol_ids[1] == "cwu_02v",
-        "COMPATIBLE_PROTOCOLS should parse as ordered protocol ids");
-  check(wave_settings::wave_supports_protocol(implicit_train, "cwu_02v"),
-        "parsed compatible protocols should include cwu_02v");
+  check(implicit_train.protocol_id == "cwu_01v",
+        "wave PROTOCOL should parse as the exact protocol id");
+  check(wave_settings::wave_supports_protocol(implicit_train, "cwu_01v"),
+        "parsed protocol should match cwu_01v");
   check(!wave_settings::wave_supports_protocol(implicit_train, "cwu_03v"),
-        "parsed compatible protocols should reject unknown protocol");
+        "parsed protocol should reject unknown protocol");
   check(!implicit_train.source_order_policy_explicit,
         "omitted train SOURCE_ORDER must remain implicit");
   check(std::string(wave_settings::source_order_warning_token(implicit_train))
@@ -476,11 +1055,13 @@ void test_wave_settings_train_defaults_to_random_source_order() {
   const auto explicit_train = wave_settings::decode_wave_settings_from_dsl(
       "WAVE_SETTINGS {\n"
       "  WAVE_ID = train_sequential;\n"
-      "  TARGET = wikimyei.representation.encoding.vicreg;\n"
+      "  PROTOCOL = cwu_01v;\n"
+      "  TARGET = wikimyei.representation.encoding;\n"
       "  MODE = train;\n"
-      "  SOURCE_RANGE = all;\n"
+      "  SOURCE_CURSOR_ID = train_cursor;\n"
       "  SOURCE_ORDER = sequential;\n"
-      "};\n");
+      "};\n",
+      {}, wave_settings::default_wave_protocol_bindings(), cursor_text);
   check(explicit_train.source_order_policy ==
             wave_settings::wave_source_order_policy_t::sequential,
         "explicit sequential train SOURCE_ORDER must be preserved");
@@ -492,31 +1073,38 @@ void test_wave_settings_train_defaults_to_random_source_order() {
 }
 
 void test_multi_wave_catalog_selection() {
-  const std::string catalog =
-      "WAVE_SELECTION {\n"
-      "  ACTIVE_WAVE_ID = eval_wave;\n"
-      "};\n"
-      "WAVE_SETTINGS {\n"
-      "  WAVE_ID = eval_wave;\n"
-      "  TARGET = wikimyei.inference.expected_value.mdn;\n"
-      "  MODE = run|debug;\n"
-      "  SOURCE_RANGE = all;\n"
-      "};\n"
-      "WAVE_SETTINGS {\n"
-      "  WAVE_ID = train_wave;\n"
-      "  TARGET = wikimyei.representation.encoding.mtf_jepa_mae_vicreg;\n"
-      "  MODE = train|debug;\n"
-      "  SOURCE_RANGE = all;\n"
-      "  SOURCE_ORDER = random_per_epoch;\n"
-      "};\n";
-  const auto fallback = wave_settings::decode_wave_settings_from_dsl(catalog);
+  wave_settings::wave_protocol_bindings_t protocol{};
+  protocol.protocol_id = "cwu_02v";
+  protocol.representation_family =
+      "wikimyei.representation.encoding.mtf_jepa_mae_vicreg";
+  const std::string cursor_text = cursor_catalog_text("all_cursor", "all");
+  const std::string catalog = "WAVE_SELECTION {\n"
+                              "  ACTIVE_WAVE_ID = eval_wave;\n"
+                              "};\n"
+                              "WAVE_SETTINGS {\n"
+                              "  WAVE_ID = eval_wave;\n"
+                              "  PROTOCOL = cwu_02v;\n"
+                              "  TARGET = wikimyei.inference.expected_value;\n"
+                              "  MODE = run|debug;\n"
+                              "  SOURCE_CURSOR_ID = all_cursor;\n"
+                              "};\n"
+                              "WAVE_SETTINGS {\n"
+                              "  WAVE_ID = train_wave;\n"
+                              "  PROTOCOL = cwu_02v;\n"
+                              "  TARGET = wikimyei.representation.encoding;\n"
+                              "  MODE = train|debug;\n"
+                              "  SOURCE_CURSOR_ID = all_cursor;\n"
+                              "  SOURCE_ORDER = random_per_epoch;\n"
+                              "};\n";
+  const auto fallback = wave_settings::decode_wave_settings_from_dsl(
+      catalog, {}, protocol, cursor_text);
   check(fallback.wave_id == "eval_wave",
         "WAVE_SELECTION should select the default wave");
   check(fallback.action == wave_settings::wave_action_t::run,
         "selected fallback wave should be the eval/run profile");
 
-  const auto selected =
-      wave_settings::decode_wave_settings_from_dsl(catalog, "train_wave");
+  const auto selected = wave_settings::decode_wave_settings_from_dsl(
+      catalog, "train_wave", protocol, cursor_text);
   check(selected.wave_id == "train_wave",
         "config wave id should select matching WAVE_SETTINGS block");
   check(selected.action == wave_settings::wave_action_t::train,
@@ -527,14 +1115,19 @@ void test_multi_wave_catalog_selection() {
     (void)wave_settings::decode_wave_settings_from_dsl(
         "WAVE_SETTINGS {\n"
         "  WAVE_ID = a;\n"
-        "  TARGET = wikimyei.inference.expected_value.mdn;\n"
+        "  PROTOCOL = cwu_01v;\n"
+        "  TARGET = wikimyei.inference.expected_value;\n"
         "  MODE = run;\n"
+        "  SOURCE_CURSOR_ID = all_cursor;\n"
         "};\n"
         "WAVE_SETTINGS {\n"
         "  WAVE_ID = b;\n"
-        "  TARGET = wikimyei.inference.expected_value.mdn;\n"
+        "  PROTOCOL = cwu_01v;\n"
+        "  TARGET = wikimyei.inference.expected_value;\n"
         "  MODE = run;\n"
-        "};\n");
+        "  SOURCE_CURSOR_ID = all_cursor;\n"
+        "};\n",
+        {}, wave_settings::default_wave_protocol_bindings(), cursor_text);
   } catch (const std::exception &ex) {
     refused_missing_selection =
         std::string(ex.what()).find("multiple WAVE_SETTINGS") !=
@@ -545,10 +1138,22 @@ void test_multi_wave_catalog_selection() {
 
   const auto dir = make_tmp_dir("multi_wave_catalog_selection");
   const auto wave_path = dir / "hero.runtime.wave.dsl";
+  const auto protocol_path = dir / "kikijyeba.protocol.dsl";
+  const auto cursor_path = dir / "ujcamei.source.cursor.dsl";
   const auto config_path = dir / ".config";
   write_text(wave_path, catalog);
-  write_text(config_path, "[HERO]\n"
-                          "runtime_wave_dsl_path = " +
+  write_text(protocol_path, cwu02_mtf_protocol_text());
+  write_text(cursor_path, cursor_text);
+  write_text(config_path, "[UJCAMEI]\n"
+                          "ujcamei_source_cursor_dsl_path = " +
+                              cursor_path.string() +
+                              "\n"
+                              "[KIKIJYEBA]\n"
+                              "kikijyeba_protocol_dsl_path = " +
+                              protocol_path.string() +
+                              "\n"
+                              "[HERO]\n"
+                              "runtime_wave_dsl_path = " +
                               wave_path.string() +
                               "\n"
                               "runtime_wave_id = train_wave\n");
@@ -557,12 +1162,11 @@ void test_multi_wave_catalog_selection() {
   ctx.global_config_path = config_path;
   std::string result;
   std::string error;
-  check(hero_runtime::execute_tool_json(
-            "hero.runtime.inspect",
-            "{\"subject\":\"wave\",\"config_path\":\"" + config_path.string() +
-                "\"}",
-            &ctx, &result, &error),
-        "Runtime wave inspect should decode selected catalog wave: " + error);
+  check(
+      execute_runtime_inspect_json("{\"subject\":\"wave\",\"config_path\":\"" +
+                                       config_path.string() + "\"}",
+                                   &ctx, &result, &error),
+      "Runtime wave inspect should decode selected catalog wave: " + error);
   check(!hero_runtime::tool_result_is_error(result),
         "Runtime wave inspect should not return error: " + result);
   require_contains(result, "\"selected_wave_id\":\"train_wave\"",
@@ -601,8 +1205,6 @@ void test_runtime_policy_profiles() {
                               "allowed_job_roots:path_list = " +
                               runtime_root.string() +
                               "\n"
-                              "require_confirm_execute:bool = true\n"
-                              "require_confirm_dev_nuke:bool = true\n"
                               "max_capture_bytes:int = 4096\n"
                               "RUNTIME_PROFILE operator_default {\n"
                               "  default_dry_run:bool = true\n"
@@ -662,25 +1264,34 @@ void test_execute_expected_wave_binding() {
   const auto dir = make_tmp_dir("expected_wave_execute");
   const auto runtime_root = dir / "runtime";
   const auto wave_path = dir / "hero.runtime.wave.dsl";
+  const auto protocol_path = dir / "kikijyeba.protocol.dsl";
+  const auto cursor_path = dir / "ujcamei.source.cursor.dsl";
   const auto config_path = dir / ".config";
   const auto policy_path = dir / "hero.runtime.dsl";
   std::filesystem::create_directories(runtime_root);
 
   write_text(wave_path, "WAVE_SETTINGS {\n"
                         "  WAVE_ID = test_wave;\n"
-                        "  TARGET = wikimyei.inference.expected_value.mdn;\n"
+                        "  PROTOCOL = cwu_01v;\n"
+                        "  TARGET = wikimyei.inference.expected_value;\n"
                         "  MODE = run|debug;\n"
-                        "  SOURCE_CURSOR_KIND = graph_anchor;\n"
-                        "  SOURCE_CURSOR_SCOPE = wave_batch;\n"
-                        "  SOURCE_RANGE = anchor_index;\n"
-                        "  ANCHOR_INDEX_BEGIN = 1;\n"
-                        "  ANCHOR_INDEX_END = 3;\n"
+                        "  SOURCE_CURSOR_ID = test_cursor;\n"
                         "  INPUT_MDN_CHECKPOINT = /tmp/mdn.pt;\n"
                         "  INPUT_REPRESENTATION_CHECKPOINT = /tmp/rep.pt;\n"
                         "};\n");
+  write_text(protocol_path, cwu01_vicreg_protocol_text());
+  write_text(cursor_path, cursor_catalog_text("test_cursor"));
 
-  write_text(config_path, "[HERO]\n"
-                          "runtime_hero_dsl_path = " +
+  write_text(config_path, "[UJCAMEI]\n"
+                          "ujcamei_source_cursor_dsl_path = " +
+                              cursor_path.string() +
+                              "\n"
+                              "[KIKIJYEBA]\n"
+                              "kikijyeba_protocol_dsl_path = " +
+                              protocol_path.string() +
+                              "\n"
+                              "[HERO]\n"
+                              "runtime_hero_dsl_path = " +
                               policy_path.string() +
                               "\n"
                               "runtime_wave_dsl_path = " +
@@ -700,9 +1311,7 @@ void test_execute_expected_wave_binding() {
                               "allow_execute:bool = false\n"
                               "allow_train_execute:bool = false\n"
                               "allow_force_rebuild_cache:bool = false\n"
-                              "require_confirm_execute:bool = true\n"
                               "allow_dev_nuke:bool = false\n"
-                              "require_confirm_dev_nuke:bool = true\n"
                               "dev_nuke_backup_enabled:bool = true\n"
                               "dev_nuke_backup_root:path = " +
                               (dir / "backups").string() +
@@ -734,36 +1343,38 @@ void test_execute_expected_wave_binding() {
   const std::string symbolic_handoff_id =
       "runtime_handoff_" + symbolic_handoff_digest;
 
-  const std::string good_args =
-      "{\"operation\":\"wave\",\"requested_mode\":\"dry_run\","
-      "\"config_path\":\"" +
-      config_path.string() +
-      "\",\"marshal_expected_wave\":{"
-      "\"target_component_family_id\":\"wikimyei.inference.expected_value."
-      "mdn\","
-      "\"mode\":\"run|debug\","
-      "\"source_range\":\"anchor_index\","
-      "\"source_order\":\"sequential\","
-      "\"anchor_index_begin\":\"1\","
-      "\"anchor_index_end\":\"3\","
-      "\"model_state_inputs\":{"
-      "\"PLAN_INPUT_MDN_CHECKPOINT\":\"/tmp/mdn.pt\","
-      "\"PLAN_INPUT_REPRESENTATION_CHECKPOINT\":\"/tmp/rep.pt\"}}}";
+  const std::string good_args = "{\"subject\":\"wave\",\"mode\":\"dry_run\","
+                                "\"config_path\":\"" +
+                                config_path.string() +
+                                "\",\"wave_overlay\":{"
+                                "\"anchor_index_begin\":\"1\","
+                                "\"anchor_index_end\":\"3\","
+                                "\"source_range\":\"anchor_index\"}}";
   std::string result;
   error.clear();
-  check(hero_runtime::execute_tool_json("hero.runtime.run", good_args, &ctx,
-                                        &result, &error),
-        "expected-wave-bound execute failed: " + error);
+  check(execute_runtime_run_json(good_args, &ctx, &result, &error),
+        "request-file wave-overlay execute failed: " + error);
   check(!hero_runtime::tool_result_is_error(result),
-        "expected-wave-bound execute returned error: " + result);
+        "request-file wave-overlay execute returned error: " + result);
   require_contains(result, "\"ok\":true",
-                   "expected-wave-bound execute should run when fields match");
+                   "request-file wave-overlay execute should run");
+
+  result.clear();
+  error.clear();
+  const bool compact_runtime_run_ok = execute_runtime_run_json(
+      "{\"subject\":\"wave\",\"mode\":\"dry_run\"}", &ctx, &result, &error);
+  check(compact_runtime_run_ok,
+        "compact Runtime wave dry-run failed: " + error + " result=" + result);
+  check(!hero_runtime::tool_result_is_error(result),
+        "compact Runtime wave dry-run returned error: " + result);
+  require_contains(result, "\"ok\":true",
+                   "compact Runtime run should execute active wave");
 
   const std::string handoff_args =
-      "{\"operation\":\"wave\",\"requested_mode\":\"dry_run\","
+      "{\"subject\":\"wave\",\"mode\":\"dry_run\","
       "\"config_path\":\"" +
       config_path.string() +
-      "\",\"confirm_execute\":false,\"runtime_handoff\":{"
+      "\",\"runtime_handoff\":{"
       "\"handoff_schema_version\":\"1\","
       "\"handoff_id\":\"" +
       good_handoff_id +
@@ -796,13 +1407,12 @@ void test_execute_expected_wave_binding() {
       "\"runtime_policy\":{\"path\":\"" +
       policy_path.string() + "\",\"digest\":\"" + policy_digest +
       "\"},"
-      "\"intent\":{\"dry_run\":true,\"confirm_execute\":false,"
+      "\"intent\":{\"dry_run\":true,"
       "\"force_rebuild_cache\":false},"
       "\"unresolved_symbols\":[]}}";
   result.clear();
   error.clear();
-  check(hero_runtime::execute_tool_json("hero.runtime.run", handoff_args, &ctx,
-                                        &result, &error),
+  check(execute_runtime_run_json(handoff_args, &ctx, &result, &error),
         "runtime_handoff execute failed: error=" + error + " result=" + result);
   check(!hero_runtime::tool_result_is_error(result),
         "runtime_handoff execute returned error: " + result);
@@ -820,10 +1430,10 @@ void test_execute_expected_wave_binding() {
                    "digest");
 
   const std::string stale_hash_handoff_args =
-      "{\"operation\":\"wave\",\"requested_mode\":\"dry_run\","
+      "{\"subject\":\"wave\",\"mode\":\"dry_run\","
       "\"config_path\":\"" +
       config_path.string() +
-      "\",\"confirm_execute\":false,\"runtime_handoff\":{"
+      "\",\"runtime_handoff\":{"
       "\"handoff_schema_version\":\"1\","
       "\"handoff_id\":\"" +
       stale_handoff_id +
@@ -856,13 +1466,13 @@ void test_execute_expected_wave_binding() {
       "\"runtime_policy\":{\"path\":\"" +
       policy_path.string() + "\",\"digest\":\"" + policy_digest +
       "\"},"
-      "\"intent\":{\"dry_run\":true,\"confirm_execute\":false,"
+      "\"intent\":{\"dry_run\":true,"
       "\"force_rebuild_cache\":false},"
       "\"unresolved_symbols\":[]}}";
   result.clear();
   error.clear();
-  const bool stale_hash_ok = hero_runtime::execute_tool_json(
-      "hero.runtime.run", stale_hash_handoff_args, &ctx, &result, &error);
+  const bool stale_hash_ok =
+      execute_runtime_run_json(stale_hash_handoff_args, &ctx, &result, &error);
   check(
       !stale_hash_ok,
       "runtime_handoff stale base config digest should fail before execution: "
@@ -873,10 +1483,10 @@ void test_execute_expected_wave_binding() {
       "runtime_handoff stale digest should report base_config digest failure");
 
   const std::string unresolved_handoff_args =
-      "{\"operation\":\"wave\",\"requested_mode\":\"dry_run\","
+      "{\"subject\":\"wave\",\"mode\":\"dry_run\","
       "\"config_path\":\"" +
       config_path.string() +
-      "\",\"confirm_execute\":false,\"runtime_handoff\":{"
+      "\",\"runtime_handoff\":{"
       "\"handoff_schema_version\":\"1\","
       "\"handoff_id\":\"" +
       symbolic_handoff_id +
@@ -910,23 +1520,21 @@ void test_execute_expected_wave_binding() {
       "\"runtime_policy\":{\"path\":\"" +
       policy_path.string() + "\",\"digest\":\"" + policy_digest +
       "\"},"
-      "\"intent\":{\"dry_run\":true,\"confirm_execute\":false,"
+      "\"intent\":{\"dry_run\":true,"
       "\"force_rebuild_cache\":false},"
       "\"unresolved_symbols\":[\"PLAN_INPUT_MDN_CHECKPOINT=latest_satisfying:"
       "channel_mdn_train_core_ready\"]}}";
   result.clear();
   error.clear();
-  check(!hero_runtime::execute_tool_json(
-            "hero.runtime.run", unresolved_handoff_args, &ctx, &result, &error),
-        "runtime_handoff unresolved selector should fail before execution");
+  check(
+      !execute_runtime_run_json(unresolved_handoff_args, &ctx, &result, &error),
+      "runtime_handoff unresolved selector should fail before execution");
   check(error.find("E_RUNTIME_HANDOFF_UNRESOLVED_SYMBOLS") != std::string::npos,
         "runtime_handoff unresolved selector should report unresolved symbols");
 
   const std::string bad_args =
-      "{\"operation\":\"wave\",\"requested_mode\":\"dry_run\","
-      "\"config_path\":\"" +
-      config_path.string() +
-      "\",\"marshal_expected_wave\":{"
+      "{\"mode\":\"dry_run\","
+      "\"marshal_expected_wave\":{"
       "\"target_component_family_id\":\"wikimyei.inference.expected_value."
       "mdn\","
       "\"mode\":\"train|debug\","
@@ -940,15 +1548,13 @@ void test_execute_expected_wave_binding() {
   error.clear();
   check(!hero_runtime::execute_tool_json("hero.runtime.run", bad_args, &ctx,
                                          &result, &error),
-        "expected-wave mismatch should fail before execution");
-  check(error.find("E_RUNTIME_EXPECTED_WAVE_MISMATCH") != std::string::npos,
-        "expected-wave mismatch should report a specific error");
+        "retired marshal_expected_wave should fail before execution");
+  check(error.find("unknown field: marshal_expected_wave") != std::string::npos,
+        "retired marshal_expected_wave should be rejected by schema");
 
   const std::string bad_checkpoint_args =
-      "{\"operation\":\"wave\",\"requested_mode\":\"dry_run\","
-      "\"config_path\":\"" +
-      config_path.string() +
-      "\",\"marshal_expected_wave\":{"
+      "{\"mode\":\"dry_run\","
+      "\"marshal_expected_wave\":{"
       "\"target_component_family_id\":\"wikimyei.inference.expected_value."
       "mdn\","
       "\"mode\":\"run|debug\","
@@ -962,9 +1568,9 @@ void test_execute_expected_wave_binding() {
   error.clear();
   check(!hero_runtime::execute_tool_json(
             "hero.runtime.run", bad_checkpoint_args, &ctx, &result, &error),
-        "expected-wave checkpoint mismatch should fail before execution");
-  check(error.find("model_state_inputs differs") != std::string::npos,
-        "checkpoint mismatch should report model_state_inputs failure");
+        "retired marshal_expected_wave checkpoint payload should fail");
+  check(error.find("unknown field: marshal_expected_wave") != std::string::npos,
+        "retired checkpoint payload should be rejected by schema");
 
   std::filesystem::remove_all(dir);
 }
@@ -973,23 +1579,32 @@ void test_handoff_checkpoint_inputs_launch_without_static_config_inputs() {
   const auto dir = make_tmp_dir("handoff_checkpoint_inputs_launch");
   const auto runtime_root = dir / "runtime";
   const auto wave_path = dir / "hero.runtime.wave.dsl";
+  const auto protocol_path = dir / "kikijyeba.protocol.dsl";
+  const auto cursor_path = dir / "ujcamei.source.cursor.dsl";
   const auto config_path = dir / ".config";
   const auto policy_path = dir / "hero.runtime.dsl";
   std::filesystem::create_directories(runtime_root);
 
   write_text(wave_path, "WAVE_SETTINGS {\n"
                         "  WAVE_ID = handoff_wave;\n"
-                        "  TARGET = wikimyei.inference.expected_value.mdn;\n"
+                        "  PROTOCOL = cwu_01v;\n"
+                        "  TARGET = wikimyei.inference.expected_value;\n"
                         "  MODE = run|debug;\n"
-                        "  SOURCE_CURSOR_KIND = graph_anchor;\n"
-                        "  SOURCE_CURSOR_SCOPE = wave_batch;\n"
-                        "  SOURCE_RANGE = anchor_index;\n"
-                        "  ANCHOR_INDEX_BEGIN = 1;\n"
-                        "  ANCHOR_INDEX_END = 3;\n"
+                        "  SOURCE_CURSOR_ID = test_cursor;\n"
                         "};\n");
+  write_text(protocol_path, cwu01_vicreg_protocol_text());
+  write_text(cursor_path, cursor_catalog_text("test_cursor"));
 
-  write_text(config_path, "[HERO]\n"
-                          "runtime_hero_dsl_path = " +
+  write_text(config_path, "[UJCAMEI]\n"
+                          "ujcamei_source_cursor_dsl_path = " +
+                              cursor_path.string() +
+                              "\n"
+                              "[KIKIJYEBA]\n"
+                              "kikijyeba_protocol_dsl_path = " +
+                              protocol_path.string() +
+                              "\n"
+                              "[HERO]\n"
+                              "runtime_hero_dsl_path = " +
                               policy_path.string() +
                               "\n"
                               "runtime_wave_dsl_path = " +
@@ -1009,9 +1624,7 @@ void test_handoff_checkpoint_inputs_launch_without_static_config_inputs() {
                               "allow_execute:bool = false\n"
                               "allow_train_execute:bool = false\n"
                               "allow_force_rebuild_cache:bool = false\n"
-                              "require_confirm_execute:bool = true\n"
                               "allow_dev_nuke:bool = false\n"
-                              "require_confirm_dev_nuke:bool = true\n"
                               "dev_nuke_backup_enabled:bool = true\n"
                               "dev_nuke_backup_root:path = " +
                               (dir / "backups").string() +
@@ -1038,10 +1651,10 @@ void test_handoff_checkpoint_inputs_launch_without_static_config_inputs() {
   const std::string handoff_id = "runtime_handoff_" + handoff_digest;
 
   const std::string args =
-      "{\"operation\":\"wave\",\"requested_mode\":\"dry_run\","
+      "{\"subject\":\"wave\",\"mode\":\"dry_run\","
       "\"config_path\":\"" +
       config_path.string() +
-      "\",\"confirm_execute\":false,\"runtime_handoff\":{"
+      "\",\"runtime_handoff\":{"
       "\"handoff_schema_version\":\"1\","
       "\"handoff_id\":\"" +
       handoff_id +
@@ -1074,14 +1687,13 @@ void test_handoff_checkpoint_inputs_launch_without_static_config_inputs() {
       "\"runtime_policy\":{\"path\":\"" +
       policy_path.string() + "\",\"digest\":\"" + policy_digest +
       "\"},"
-      "\"intent\":{\"dry_run\":true,\"confirm_execute\":false,"
+      "\"intent\":{\"dry_run\":true,"
       "\"force_rebuild_cache\":false},"
       "\"unresolved_symbols\":[]}}";
 
   std::string result;
   error.clear();
-  check(hero_runtime::execute_tool_json("hero.runtime.run", args, &ctx, &result,
-                                        &error),
+  check(execute_runtime_run_json(args, &ctx, &result, &error),
         "materialized runtime_handoff execute failed: result=" + result +
             " error=" + error);
   check(!hero_runtime::tool_result_is_error(result),
@@ -1103,20 +1715,31 @@ void test_execute_wave_overlay() {
   const auto dir = make_tmp_dir("execute_wave_overlay");
   const auto runtime_root = dir / "runtime";
   const auto wave_path = dir / "hero.runtime.wave.dsl";
+  const auto protocol_path = dir / "kikijyeba.protocol.dsl";
+  const auto cursor_path = dir / "ujcamei.source.cursor.dsl";
   const auto config_path = dir / ".config";
   const auto policy_path = dir / "hero.runtime.dsl";
   std::filesystem::create_directories(runtime_root);
 
   write_text(wave_path, "WAVE_SETTINGS {\n"
                         "  WAVE_ID = profile_wave;\n"
-                        "  TARGET = wikimyei.inference.expected_value.mdn;\n"
+                        "  PROTOCOL = cwu_01v;\n"
+                        "  TARGET = wikimyei.inference.expected_value;\n"
                         "  MODE = run|debug;\n"
-                        "  SOURCE_CURSOR_KIND = graph_anchor;\n"
-                        "  SOURCE_CURSOR_SCOPE = wave_batch;\n"
-                        "  SOURCE_RANGE = all;\n"
+                        "  SOURCE_CURSOR_ID = all_cursor;\n"
                         "};\n");
-  write_text(config_path, "[HERO]\n"
-                          "runtime_hero_dsl_path = " +
+  write_text(protocol_path, cwu01_vicreg_protocol_text());
+  write_text(cursor_path, cursor_catalog_text("all_cursor", "all"));
+  write_text(config_path, "[UJCAMEI]\n"
+                          "ujcamei_source_cursor_dsl_path = " +
+                              cursor_path.string() +
+                              "\n"
+                              "[KIKIJYEBA]\n"
+                              "kikijyeba_protocol_dsl_path = " +
+                              protocol_path.string() +
+                              "\n"
+                              "[HERO]\n"
+                              "runtime_hero_dsl_path = " +
                               policy_path.string() +
                               "\n"
                               "runtime_wave_dsl_path = " +
@@ -1136,9 +1759,7 @@ void test_execute_wave_overlay() {
                               "allow_execute:bool = false\n"
                               "allow_train_execute:bool = false\n"
                               "allow_force_rebuild_cache:bool = false\n"
-                              "require_confirm_execute:bool = true\n"
                               "allow_dev_nuke:bool = false\n"
-                              "require_confirm_dev_nuke:bool = true\n"
                               "dev_nuke_backup_enabled:bool = false\n"
                               "dev_nuke_backup_root:path = " +
                               (dir / "backups").string() +
@@ -1158,24 +1779,15 @@ void test_execute_wave_overlay() {
         "failed to load runtime policy: " + error);
 
   const std::string args =
-      "{\"operation\":\"wave\",\"requested_mode\":\"dry_run\","
+      "{\"subject\":\"wave\",\"mode\":\"dry_run\","
       "\"config_path\":\"" +
       config_path.string() +
       "\","
       "\"wave_overlay\":{\"source_range\":\"anchor_index\","
-      "\"anchor_index_begin\":\"1\",\"anchor_index_end\":\"3\"},"
-      "\"marshal_expected_wave\":{"
-      "\"target_component_family_id\":\"wikimyei.inference.expected_value."
-      "mdn\","
-      "\"mode\":\"run|debug\","
-      "\"source_range\":\"anchor_index\","
-      "\"source_order\":\"sequential\","
-      "\"anchor_index_begin\":\"1\","
-      "\"anchor_index_end\":\"3\"}}";
+      "\"anchor_index_begin\":\"1\",\"anchor_index_end\":\"3\"}}";
   std::string result;
   error.clear();
-  check(hero_runtime::execute_tool_json("hero.runtime.run", args, &ctx, &result,
-                                        &error),
+  check(execute_runtime_run_json(args, &ctx, &result, &error),
         "wave-overlay execute failed: " + error);
   check(!hero_runtime::tool_result_is_error(result),
         "wave-overlay execute returned error: " + result);
@@ -1191,7 +1803,7 @@ void test_execute_wave_overlay() {
   require_contains(result, "\"3\"", "wave overlay should pass anchor end");
 
   const std::string invalid_args =
-      "{\"operation\":\"wave\",\"requested_mode\":\"dry_run\","
+      "{\"subject\":\"wave\",\"mode\":\"dry_run\","
       "\"config_path\":\"" +
       config_path.string() +
       "\","
@@ -1199,8 +1811,7 @@ void test_execute_wave_overlay() {
       "\"anchor_index_begin\":\"1\",\"anchor_index_end\":\"3\"}}";
   result.clear();
   error.clear();
-  check(!hero_runtime::execute_tool_json("hero.runtime.run", invalid_args, &ctx,
-                                         &result, &error),
+  check(!execute_runtime_run_json(invalid_args, &ctx, &result, &error),
         "invalid wave overlay should fail");
   check(error.find("E_RUNTIME_WAVE_OVERLAY_INVALID") != std::string::npos,
         "invalid wave overlay reports overlay error");
@@ -1290,9 +1901,7 @@ void test_replay_operator_tool() {
                               "allow_execute:bool = false\n"
                               "allow_train_execute:bool = false\n"
                               "allow_force_rebuild_cache:bool = false\n"
-                              "require_confirm_execute:bool = true\n"
                               "allow_dev_nuke:bool = false\n"
-                              "require_confirm_dev_nuke:bool = true\n"
                               "dev_nuke_backup_enabled:bool = false\n"
                               "dev_nuke_backup_root:path = " +
                               (dir / "backups").string() +
@@ -1312,7 +1921,7 @@ void test_replay_operator_tool() {
         "failed to load replay runtime policy: " + error);
 
   const std::string dry_args =
-      "{\"operation\":\"replay\",\"requested_mode\":\"plan\","
+      "{\"subject\":\"replay\",\"mode\":\"dry_run\","
       "\"job_dir\":\"" +
       job_dir.string() +
       "\","
@@ -1327,8 +1936,7 @@ void test_replay_operator_tool() {
       "\"policy_set_digest\":\"policy_set_digest_fixture\"}";
   std::string result;
   error.clear();
-  check(hero_runtime::execute_tool_json("hero.runtime.run", dry_args, &ctx,
-                                        &result, &error),
+  check(execute_runtime_run_json(dry_args, &ctx, &result, &error),
         "replay dry-run failed: " + error);
   check(!hero_runtime::tool_result_is_error(result),
         "replay dry-run returned error: " + result);
@@ -1358,7 +1966,7 @@ void test_replay_operator_tool() {
                    "replay should bind policy set digest value");
 
   const std::string validation_args =
-      "{\"operation\":\"replay\",\"requested_mode\":\"plan\","
+      "{\"subject\":\"replay\",\"mode\":\"dry_run\","
       "\"job_dir\":\"" +
       job_dir.string() +
       "\","
@@ -1374,8 +1982,7 @@ void test_replay_operator_tool() {
       "\"policy_set_digest\":\"policy_set_digest_fixture\"}";
   result.clear();
   error.clear();
-  check(hero_runtime::execute_tool_json("hero.runtime.run", validation_args,
-                                        &ctx, &result, &error),
+  check(execute_runtime_run_json(validation_args, &ctx, &result, &error),
         "validation replay dry-run failed: " + error);
   check(!hero_runtime::tool_result_is_error(result),
         "validation replay dry-run returned error: " + result);
@@ -1396,14 +2003,14 @@ void test_replay_operator_tool() {
           const std::string &message) {
         result.clear();
         error.clear();
-        check(!hero_runtime::execute_tool_json("hero.runtime.run", bad_args,
-                                               &ctx, &result, &error),
+        check(!execute_runtime_run_json(bad_args, &ctx, &result, &error),
               message);
         require_contains(error, error_needle, message + " error");
       };
 
   expect_validation_replay_rejection(
-      "{\"operation\":\"replay\",\"requested_mode\":\"plan\",\"job_dir\":\"" +
+      "{\"subject\":\"replay\",\"mode\":\"dry_run\",\"job_dir\":"
+      "\"" +
           job_dir.string() +
           "\",\"max_steps\":8,\"max_parallel_jobs\":1,"
           "\"validation_rollout\":true,"
@@ -1412,7 +2019,8 @@ void test_replay_operator_tool() {
       "E_RUNTIME_REPLAY_VALIDATION_PROFILE_DIGEST_MISSING",
       "validation replay should reject missing execution profile digest");
   expect_validation_replay_rejection(
-      "{\"operation\":\"replay\",\"requested_mode\":\"plan\",\"job_dir\":\"" +
+      "{\"subject\":\"replay\",\"mode\":\"dry_run\",\"job_dir\":"
+      "\"" +
           job_dir.string() +
           "\",\"max_steps\":8,\"max_parallel_jobs\":1,"
           "\"validation_rollout\":true,"
@@ -1421,7 +2029,8 @@ void test_replay_operator_tool() {
       "E_RUNTIME_REPLAY_VALIDATION_POLICY_SET_DIGEST_MISSING",
       "validation replay should reject missing policy set digest");
   expect_validation_replay_rejection(
-      "{\"operation\":\"replay\",\"requested_mode\":\"plan\",\"job_dir\":\"" +
+      "{\"subject\":\"replay\",\"mode\":\"dry_run\",\"job_dir\":"
+      "\"" +
           job_dir.string() +
           "\",\"max_steps\":8,\"max_parallel_jobs\":1,"
           "\"validation_rollout\":true,"
@@ -1431,7 +2040,8 @@ void test_replay_operator_tool() {
       "E_RUNTIME_REPLAY_VALIDATION_NONZERO_COST_REQUIRED",
       "validation replay should reject zero transaction cost");
   expect_validation_replay_rejection(
-      "{\"operation\":\"replay\",\"requested_mode\":\"plan\",\"job_dir\":\"" +
+      "{\"subject\":\"replay\",\"mode\":\"dry_run\",\"job_dir\":"
+      "\"" +
           job_dir.string() +
           "\",\"max_steps\":8,\"max_parallel_jobs\":1,"
           "\"validation_rollout\":true,"
@@ -1442,7 +2052,8 @@ void test_replay_operator_tool() {
       "E_RUNTIME_REPLAY_VALIDATION_SYNTHETIC_EDGES_FORBIDDEN",
       "validation replay should reject synthetic execution markets");
   expect_validation_replay_rejection(
-      "{\"operation\":\"replay\",\"requested_mode\":\"plan\",\"job_dir\":\"" +
+      "{\"subject\":\"replay\",\"mode\":\"dry_run\",\"job_dir\":"
+      "\"" +
           job_dir.string() +
           "\",\"max_parallel_jobs\":1,"
           "\"validation_rollout\":true,"
@@ -1452,7 +2063,8 @@ void test_replay_operator_tool() {
       "E_RUNTIME_REPLAY_VALIDATION_MAX_STEPS_REQUIRED",
       "validation replay should reject missing max_steps");
   expect_validation_replay_rejection(
-      "{\"operation\":\"replay\",\"requested_mode\":\"plan\",\"job_dir\":\"" +
+      "{\"subject\":\"replay\",\"mode\":\"dry_run\",\"job_dir\":"
+      "\"" +
           job_dir.string() +
           "\",\"max_steps\":8,"
           "\"validation_rollout\":true,"
@@ -1462,19 +2074,17 @@ void test_replay_operator_tool() {
       "E_RUNTIME_REPLAY_VALIDATION_PARALLELISM_INVALID",
       "validation replay should reject missing max_parallel_jobs");
 
-  const std::string run_args =
-      "{\"operation\":\"replay\",\"requested_mode\":\"execute\","
-      "\"job_dir\":\"" +
-      job_dir.string() +
-      "\","
-      "\"accounting_numeraire_node_id\":\"USDT\","
-      "\"target_node_ids\":\"BTC,ETH\","
-      "\"experiment_id\":\"hero_replay\","
-      "\"max_steps\":8}";
+  const std::string run_args = "{\"subject\":\"replay\",\"mode\":\"execute\","
+                               "\"job_dir\":\"" +
+                               job_dir.string() +
+                               "\","
+                               "\"accounting_numeraire_node_id\":\"USDT\","
+                               "\"target_node_ids\":\"BTC,ETH\","
+                               "\"experiment_id\":\"hero_replay\","
+                               "\"max_steps\":8}";
   result.clear();
   error.clear();
-  check(hero_runtime::execute_tool_json("hero.runtime.run", run_args, &ctx,
-                                        &result, &error),
+  check(execute_runtime_run_json(run_args, &ctx, &result, &error),
         "replay execution failed with allow_execute=false: " + error);
   check(!hero_runtime::tool_result_is_error(result),
         "replay execution returned error: " + result);
@@ -1483,7 +2093,7 @@ void test_replay_operator_tool() {
                    "replay should expose replay stdout fields");
 
   const std::string validation_run_args =
-      "{\"operation\":\"replay\",\"requested_mode\":\"execute\","
+      "{\"subject\":\"replay\",\"mode\":\"execute\","
       "\"job_dir\":\"" +
       job_dir.string() +
       "\","
@@ -1498,8 +2108,7 @@ void test_replay_operator_tool() {
       "\"policy_set_digest\":\"policy_set_digest_fixture\"}";
   result.clear();
   error.clear();
-  check(hero_runtime::execute_tool_json("hero.runtime.run", validation_run_args,
-                                        &ctx, &result, &error),
+  check(execute_runtime_run_json(validation_run_args, &ctx, &result, &error),
         "validation replay execution should accept clean Cajtucu report: " +
             error);
   check(!hero_runtime::tool_result_is_error(result),
@@ -1514,9 +2123,8 @@ void test_replay_operator_tool() {
         write_text(replay_artifact_dir / "hero_replay.report", report_text);
         result.clear();
         error.clear();
-        check(!hero_runtime::execute_tool_json("hero.runtime.run",
-                                               validation_run_args, &ctx,
-                                               &result, &error),
+        check(!execute_runtime_run_json(validation_run_args, &ctx, &result,
+                                        &error),
               message);
         require_contains(error, error_needle, message + " error");
       };
@@ -1562,8 +2170,7 @@ void test_replay_operator_tool() {
 
   result.clear();
   error.clear();
-  check(hero_runtime::execute_tool_json(
-            "hero.runtime.inspect",
+  check(execute_runtime_inspect_json(
             "{\"subject\":\"artifact\",\"job_dir\":\"" + job_dir.string() +
                 "\",\"artifact\":\"replay_experiment_index\"}",
             &ctx, &result, &error),
@@ -1577,8 +2184,7 @@ void test_replay_operator_tool() {
 
   result.clear();
   error.clear();
-  check(hero_runtime::execute_tool_json(
-            "hero.runtime.inspect",
+  check(execute_runtime_inspect_json(
             "{\"subject\":\"artifact\",\"job_dir\":\"" + job_dir.string() +
                 "\",\"artifact\":\"replay_experiment_report\"}",
             &ctx, &result, &error),
@@ -1600,11 +2206,10 @@ void test_replay_operator_tool() {
 
   result.clear();
   error.clear();
-  check(hero_runtime::execute_tool_json("hero.runtime.inspect",
-                                        "{\"subject\":\"job\",\"job_dir\":\"" +
-                                            job_dir.string() +
-                                            "\",\"include_text\":false}",
-                                        &ctx, &result, &error),
+  check(execute_runtime_inspect_json("{\"subject\":\"job\",\"job_dir\":\"" +
+                                         job_dir.string() +
+                                         "\",\"include_text\":false}",
+                                     &ctx, &result, &error),
         "get_job replay artifact summary failed: " + error);
   check(!hero_runtime::tool_result_is_error(result),
         "get_job replay artifact summary returned error: " + result);
@@ -1640,8 +2245,7 @@ void test_replay_operator_tool() {
                  escaped_replay_report_digest + "\n");
   result.clear();
   error.clear();
-  check(hero_runtime::execute_tool_json(
-            "hero.runtime.inspect",
+  check(execute_runtime_inspect_json(
             "{\"subject\":\"artifact\",\"job_dir\":\"" + job_dir.string() +
                 "\",\"artifact\":\"replay_experiment_report\"}",
             &ctx, &result, &error),
@@ -1671,8 +2275,7 @@ void test_replay_operator_tool() {
              "entry_0_report_digest=mutated_digest\n");
   result.clear();
   error.clear();
-  check(hero_runtime::execute_tool_json(
-            "hero.runtime.inspect",
+  check(execute_runtime_inspect_json(
             "{\"subject\":\"artifact\",\"job_dir\":\"" + job_dir.string() +
                 "\",\"artifact\":\"replay_experiment_report\"}",
             &ctx, &result, &error),
@@ -1692,8 +2295,7 @@ void test_replay_operator_tool() {
   write_text(job_dir / "job.state", "status=failed\n");
   result.clear();
   error.clear();
-  check(!hero_runtime::execute_tool_json("hero.runtime.run", dry_args, &ctx,
-                                         &result, &error),
+  check(!execute_runtime_run_json(dry_args, &ctx, &result, &error),
         "replay should reject non-completed jobs");
   require_contains(error, "E_RUNTIME_REPLAY_JOB_NOT_COMPLETED",
                    "replay should report non-completed job error");
@@ -1703,13 +2305,13 @@ void test_replay_operator_tool() {
 
 void test_canonical_mdn_previews_channel_job() {
   const auto result =
-      run_wave_preview("wikimyei.inference.expected_value.mdn", "run|debug");
+      run_wave_preview("wikimyei.inference.expected_value", "run|debug");
   require_contains(result, "\"protocol_id\":\"cwu_01v\"",
                    "default protocol id should be cwu_01v");
-  require_contains(result, "\"compatible_protocols\":[]",
-                   "missing COMPATIBLE_PROTOCOLS is represented as empty");
-  require_contains(result, "\"wave_protocol_compatible\":true",
-                   "missing COMPATIBLE_PROTOCOLS remains backward compatible");
+  require_contains(result, "\"wave_protocol_id\":\"cwu_01v\"",
+                   "wave protocol should be surfaced");
+  require_contains(result, "\"wave_protocol_match\":true",
+                   "wave protocol should match active protocol");
   require_contains(result,
                    "\"active_representation_family\":\"wikimyei."
                    "representation.encoding.vicreg\"",
@@ -1728,11 +2330,13 @@ void test_canonical_mdn_previews_channel_job() {
                    "omitted run SOURCE_ORDER is reported as implicit");
   require_contains(result, "\"source_order_warning_level\":\"none\"",
                    "run waves do not warn about sequential source order");
+  require_contains(result, "\"source_cursor_id\":\"test_cursor\"",
+                   "preview reports selected cursor id");
 }
 
 void test_cwu02_mdn_preview_uses_mtf_representation_chain() {
   const auto result =
-      run_wave_preview("wikimyei.inference.expected_value.mdn", "run|debug", "",
+      run_wave_preview("wikimyei.inference.expected_value", "run|debug", "",
                        cwu02_mtf_protocol_text());
   require_contains(result, "\"protocol_id\":\"cwu_02v\"",
                    "cwu_02v protocol id should be surfaced");
@@ -1746,8 +2350,8 @@ void test_cwu02_mdn_preview_uses_mtf_representation_chain() {
 }
 
 void test_canonical_vicreg_previews_channel_job() {
-  const auto result = run_wave_preview(
-      "wikimyei.representation.encoding.vicreg", "train|debug");
+  const auto result =
+      run_wave_preview("wikimyei.representation.encoding", "train|debug");
   require_contains(result, "\"job_kind\":\"channel_representation_vicreg\"",
                    "canonical VICReg target previews channel job");
   require_contains(result, "\"train_target\":true",
@@ -1762,8 +2366,8 @@ void test_canonical_vicreg_previews_channel_job() {
 
 void test_canonical_mtf_previews_separate_representation_job() {
   const auto result =
-      run_wave_preview("wikimyei.representation.encoding.mtf_jepa_mae_vicreg",
-                       "train|debug", "", cwu02_mtf_protocol_text());
+      run_wave_preview("wikimyei.representation.encoding", "train|debug", "",
+                       cwu02_mtf_protocol_text());
   require_contains(result, "\"protocol_id\":\"cwu_02v\"",
                    "MTF representation preview should use cwu_02v protocol");
   require_contains(result, "\"protocol_target_compatible\":true",
@@ -1792,23 +2396,25 @@ void test_mismatched_protocol_representation_preview_warns() {
 }
 
 void test_wave_profile_protocol_preview_warns() {
-  const auto result = run_wave_preview("wikimyei.inference.expected_value.mdn",
+  const auto result = run_wave_preview("wikimyei.inference.expected_value",
                                        "run|debug", "", "", "cwu_02v");
   require_contains(result, "\"protocol_id\":\"cwu_01v\"",
                    "default preview protocol remains cwu_01v");
-  require_contains(result, "\"compatible_protocols\":[\"cwu_02v\"]",
-                   "preview reports declared compatible protocols");
-  require_contains(result, "\"wave_protocol_compatible\":false",
+  require_contains(result,
+                   "WAVE_SETTINGS.PROTOCOL cwu_02v does not match "
+                   "active protocol cwu_01v",
+                   "preview reports exact protocol mismatch");
+  require_contains(result, "\"wave_protocol_match\":false",
                    "active cwu_01v should not match cwu_02v-only profile");
   require_contains(result,
-                   "\"wave_protocol_warning\":\"active_protocol_not_declared_by"
-                   "_wave_profile\"",
+                   "\"wave_protocol_warning\":\"wave_protocol_does_not_match_"
+                   "active_protocol\"",
                    "profile protocol mismatch reports warning");
 }
 
 void test_train_wave_explicit_sequential_source_order_warns() {
-  const auto result = run_wave_preview(
-      "wikimyei.representation.encoding.vicreg", "train|debug", "sequential");
+  const auto result = run_wave_preview("wikimyei.representation.encoding",
+                                       "train|debug", "sequential");
   require_contains(result, "\"source_order\":\"sequential\"",
                    "explicit sequential train SOURCE_ORDER is preserved");
   require_contains(result, "\"source_order_explicit\":true",
@@ -1824,36 +2430,43 @@ void test_train_wave_explicit_sequential_source_order_warns() {
 void test_source_key_wave_preview_reports_key_bounds() {
   const auto dir = make_tmp_dir("source_key_wave");
   const auto wave_path = dir / "hero.runtime.wave.dsl";
+  const auto protocol_path = dir / "kikijyeba.protocol.dsl";
+  const auto cursor_path = dir / "ujcamei.source.cursor.dsl";
   const auto config_path = dir / ".config";
 
   write_text(wave_path, "WAVE_SETTINGS {\n"
                         "  WAVE_ID = source_key_wave;\n"
-                        "  TARGET = wikimyei.inference.expected_value.mdn;\n"
+                        "  PROTOCOL = cwu_01v;\n"
+                        "  TARGET = wikimyei.inference.expected_value;\n"
                         "  MODE = run|debug;\n"
-                        "  SOURCE_CURSOR_KIND = graph_anchor;\n"
-                        "  SOURCE_CURSOR_SCOPE = wave_batch;\n"
-                        "  SOURCE_RANGE = source_key;\n"
-                        "  SOURCE_KEY_BEGIN = 1002;\n"
-                        "  SOURCE_KEY_END = 1004;\n"
+                        "  SOURCE_CURSOR_ID = source_key_cursor;\n"
                         "};\n");
-  write_text(config_path, "[HERO]\n"
-                          "runtime_wave_dsl_path = " +
+  write_text(protocol_path, cwu01_vicreg_protocol_text());
+  write_text(cursor_path, cursor_catalog_text("source_key_cursor", "source_key",
+                                              "1002", "1004"));
+  write_text(config_path, "[UJCAMEI]\n"
+                          "ujcamei_source_cursor_dsl_path = " +
+                              cursor_path.string() +
+                              "\n"
+                              "[KIKIJYEBA]\n"
+                              "kikijyeba_protocol_dsl_path = " +
+                              protocol_path.string() +
+                              "\n"
+                              "[HERO]\n"
+                              "runtime_wave_dsl_path = " +
                               wave_path.string() + "\n");
 
   hero_runtime::runtime_context_t ctx{};
   ctx.global_config_path = config_path;
   std::string result;
   std::string error;
-  const bool ok = hero_runtime::execute_tool_json(
-      "hero.runtime.inspect",
+  const bool ok = execute_runtime_inspect_json(
       "{\"subject\":\"wave\",\"config_path\":\"" + config_path.string() + "\"}",
       &ctx, &result, &error);
-  check(ok, "hero.runtime.inspect subject=wave source-key preview failed: " +
-                error);
-  check(
-      !hero_runtime::tool_result_is_error(result),
-      "hero.runtime.inspect subject=wave source-key preview returned error: " +
-          result);
+  check(ok, "hero.runtime.inspect.wave source-key preview failed: " + error);
+  check(!hero_runtime::tool_result_is_error(result),
+        "hero.runtime.inspect.wave source-key preview returned error: " +
+            result);
   require_contains(result, "\"source_range\":\"source_key\"",
                    "source-key preview reports source range");
   require_contains(result, "\"source_key_begin\":\"1002\"",
@@ -1866,18 +2479,21 @@ void test_source_key_wave_preview_reports_key_bounds() {
 void test_mdn_wave_preview_reads_jkimyei_model_state_inputs() {
   const auto dir = make_tmp_dir("mdn_jkimyei_inputs_preview");
   const auto wave_path = dir / "hero.runtime.wave.dsl";
+  const auto protocol_path = dir / "kikijyeba.protocol.dsl";
+  const auto cursor_path = dir / "ujcamei.source.cursor.dsl";
   const auto jkimyei_path =
       dir / "wikimyei.inference.expected_value.mdn.jkimyei";
   const auto config_path = dir / ".config";
 
   write_text(wave_path, "WAVE_SETTINGS {\n"
                         "  WAVE_ID = mdn_train;\n"
-                        "  TARGET = wikimyei.inference.expected_value.mdn;\n"
+                        "  PROTOCOL = cwu_01v;\n"
+                        "  TARGET = wikimyei.inference.expected_value;\n"
                         "  MODE = train|debug;\n"
-                        "  SOURCE_CURSOR_KIND = graph_anchor;\n"
-                        "  SOURCE_CURSOR_SCOPE = wave_batch;\n"
-                        "  SOURCE_RANGE = all;\n"
+                        "  SOURCE_CURSOR_ID = all_cursor;\n"
                         "};\n");
+  write_text(protocol_path, cwu01_vicreg_protocol_text());
+  write_text(cursor_path, cursor_catalog_text("all_cursor", "all"));
   write_text(jkimyei_path, "TRAINING {\n"
                            "  TRAINING_ID = mdn_train;\n"
                            "  TASK = mdn_expected_value_inference;\n"
@@ -1888,8 +2504,16 @@ void test_mdn_wave_preview_reads_jkimyei_model_state_inputs() {
                            "  INPUT_REPRESENTATION_CHECKPOINT = /tmp/rep.pt;\n"
                            "  INPUT_MDN_CHECKPOINT = /tmp/mdn.pt;\n"
                            "};\n");
-  write_text(config_path, "[HERO]\n"
-                          "runtime_wave_dsl_path = " +
+  write_text(config_path, "[UJCAMEI]\n"
+                          "ujcamei_source_cursor_dsl_path = " +
+                              cursor_path.string() +
+                              "\n"
+                              "[KIKIJYEBA]\n"
+                              "kikijyeba_protocol_dsl_path = " +
+                              protocol_path.string() +
+                              "\n"
+                              "[HERO]\n"
+                              "runtime_wave_dsl_path = " +
                               wave_path.string() +
                               "\n"
                               "[JKIMYEI]\n"
@@ -1901,15 +2525,12 @@ void test_mdn_wave_preview_reads_jkimyei_model_state_inputs() {
   ctx.global_config_path = config_path;
   std::string result;
   std::string error;
-  const bool ok = hero_runtime::execute_tool_json(
-      "hero.runtime.inspect",
+  const bool ok = execute_runtime_inspect_json(
       "{\"subject\":\"wave\",\"config_path\":\"" + config_path.string() + "\"}",
       &ctx, &result, &error);
-  check(ok, "hero.runtime.inspect subject=wave jkimyei-input preview failed: " +
-                error);
+  check(ok, "hero.runtime.inspect.wave jkimyei-input preview failed: " + error);
   check(!hero_runtime::tool_result_is_error(result),
-        "hero.runtime.inspect subject=wave jkimyei-input preview returned "
-        "error: " +
+        "hero.runtime.inspect.wave jkimyei-input preview returned error: " +
             result);
   require_contains(
       result, "\"PLAN_INPUT_REPRESENTATION_CHECKPOINT\":\"/tmp/rep.pt\"",
@@ -2107,12 +2728,11 @@ void test_policy_training_causal_schedule_contract() {
 }
 
 std::string valid_policy_training_args(
-    std::string requested_mode = "plan", std::string policy_kind = "ppo",
+    std::string requested_mode = "dry_run", std::string policy_kind = "ppo",
     std::string policy_id = "wikimyei.policy.rl.ppo_portfolio.v0",
     std::string config_path = {}, bool include_wave_identity_fields = true) {
   std::ostringstream out;
-  out << "{\"operation\":\"wave\",\"requested_mode\":\"" << requested_mode
-      << "\"";
+  out << "{\"subject\":\"wave\",\"mode\":\"" << requested_mode << "\"";
   if (!config_path.empty()) {
     out << ",\"config_path\":\"" << config_path << "\"";
   }
@@ -2121,7 +2741,7 @@ std::string valid_policy_training_args(
          "\"graph_order_fingerprint\":\"graph_1\","
          "\"source_cursor_token\":\"cursor_1\","
          "\"split_policy_fingerprint\":\"split_policy_1\","
-         "\"component_assembly_fingerprint\":\"policy_trainable_1\",";
+         "\"component_assembly_fingerprint\":\"graph_node_allocation_1\",";
   if (include_wave_identity_fields) {
     out << "\"policy_id\":\"" << policy_id << "\","
         << "\"policy_kind\":\"" << policy_kind << "\",";
@@ -2131,30 +2751,20 @@ std::string valid_policy_training_args(
          "\"training_range_digest\":\"range_train_digest\","
          "\"validation_range_digest\":\"range_validation_digest\","
          "\"test_range_digest\":\"range_test_digest\","
-         "\"environment_contract_id\":\"kikijyeba.environment.replay.v1\","
          "\"observation_schema_digest\":\"kikijyeba.environment.policy_input."
          "v1\","
-         "\"action_schema_digest\":\"kikijyeba.environment.action."
-         "target_node_weights.v1\","
          "\"reward_contract_digest\":\"kikijyeba.environment.reward."
          "post_execution_ledger_log_growth_cost_drawdown.v1\","
-         "\"policy_input_schema_id\":\"kikijyeba.environment.policy_input."
-         "v1\","
-         "\"action_adapter_id\":\"target_node_weights_simplex.v1\","
          "\"action_distribution_id\":\"masked_dirichlet_simplex.v1\","
-         "\"reward_contract_id\":\"kikijyeba.environment.reward."
-         "post_execution_ledger_log_growth_cost_drawdown.v1\","
          "\"execution_profile_digest\":\"execution_profile_digest_v1\",";
   if (policy_kind.find("ppo") != std::string::npos ||
       policy_kind.find("PPO") != std::string::npos) {
-    out << "\"ppo_policy_artifact_contract_id\":\"kikijyeba.runtime."
-           "ppo_policy_artifact_contract.v1\","
-           "\"policy_family_id\":\"wikimyei.policy.portfolio."
-           "graph_node_allocation\","
-           "\"policy_checkpoint_schema_id\":\"wikimyei.policy.portfolio."
-           "graph_node_allocation.ppo_checkpoint.v1\","
+    out << "\"policy_dsl_digest\":\"policy_dsl_digest_v1\","
+           "\"policy_net_digest\":\"policy_net_digest_v1\","
            "\"policy_input_feature_manifest_digest\":\"policy_input_manifest_"
            "digest_v1\","
+           "\"policy_jkimyei_digest\":\"policy_jkimyei_digest_v1\","
+           "\"target_node_universe_digest\":\"target_node_universe_digest_v1\","
            "\"action_distribution_config_digest\":\"action_distribution_config_"
            "digest_v1\","
            "\"snapshot_family_digest\":\"snapshot_family_digest_v1\","
@@ -2164,13 +2774,9 @@ std::string valid_policy_training_args(
            "\"critic_checkpoint_digest\":\"critic_checkpoint_digest_v1\","
            "\"optimizer_state_digest\":\"optimizer_state_digest_v1\","
            "\"ppo_config_digest\":\"ppo_config_digest_v1\","
-           "\"advantage_estimator_id\":\"gae.v1\","
+           "\"resume_mode\":\"fresh_spawn\","
            "\"advantage_normalization_policy\":\"per_rollout_standardize_v1\","
-           "\"rollout_collection_schema_id\":\"kikijyeba.runtime."
-           "ppo_rollout_collection.v1\","
            "\"rollout_collection_digest\":\"rollout_collection_digest_v1\","
-           "\"ppo_update_report_schema_id\":\"kikijyeba.runtime."
-           "ppo_update_report.v1\","
            "\"ppo_update_report_digest\":\"ppo_update_report_digest_v1\","
            "\"validation_rollout_report_digest\":\"validation_rollout_report_"
            "digest_v1\","
@@ -2187,12 +2793,8 @@ std::string valid_policy_training_args(
   if (include_wave_identity_fields) {
     out << "\"training_schedule_mode\":\"causal_walk_forward_training.v1\",";
   }
-  out << "\"causal_schedule_schema_id\":\"kikijyeba.runtime.policy_training_"
-         "causal_schedule.v1\","
-         "\"causal_schedule_digest\":\"causal_schedule_digest_v1\","
+  out << "\"causal_schedule_digest\":\"causal_schedule_digest_v1\","
          "\"causal_schedule_cursor_key_kind\":\"numeric_anchor_index\","
-         "\"causal_schedule_no_future_snapshot_use_source\":\"derived_from_"
-         "artifact_fit_use_ledgers\","
          "\"normalization_fit_range_digest\":\"range_train_digest\","
          "\"replay_buffer_source_range_digest\":\"range_train_digest\","
          "\"early_stopping_policy_digest\":\"early_stop_digest_v1\","
@@ -2225,81 +2827,127 @@ void test_policy_training_contract_and_pre_ppo_execute() {
   hero_runtime::runtime_context_t ctx{};
   std::string result;
   std::string error;
-  const bool plan_ok = hero_runtime::execute_tool_json(
-      "hero.runtime.run", valid_policy_training_args("plan"), &ctx, &result,
-      &error);
-  check(plan_ok, "policy-training plan failed: " + error + " result=" + result);
+  const bool plan_ok = execute_runtime_run_json(
+      valid_policy_training_args("dry_run"), &ctx, &result, &error);
+  check(plan_ok,
+        "policy-training dry-run failed: " + error + " result=" + result);
   check(!hero_runtime::tool_result_is_error(result),
-        "policy-training plan returned error: " + result);
+        "policy-training dry-run returned error: " + result);
   require_contains(result,
                    "\"schema_version\":\"kikijyeba.runtime.policy_training_"
                    "job_contract_packet.v1\"",
-                   "policy-training plan reports contract packet schema");
+                   "policy-training dry-run reports contract packet schema");
   require_contains(result, "\"contract_digest\":",
-                   "policy-training plan reports contract digest");
-  require_contains(result, "\"policy_training_execution_supported\":true",
-                   "PPO policy-training plan is executable through Runtime V0");
+                   "policy-training dry-run reports contract digest");
+  require_contains(
+      result, "\"policy_training_execution_supported\":true",
+      "PPO policy-training dry-run is executable through Runtime V0");
   require_contains(result,
                    "\"supported_execute_policy_kinds\":[\"noop_policy_"
                    "training.v1\",\"ppo_policy_adapter.v1\"]",
-                   "policy-training plan reports PPO V0 execute support");
+                   "policy-training dry-run reports PPO V0 execute support");
   require_contains(result,
                    "\"normalization_fit_range_digest\":\"range_train_digest\"",
-                   "policy-training plan binds normalization fit range");
+                   "policy-training dry-run binds normalization fit range");
   require_contains(result,
                    "\"training_schedule_mode\":\"causal_walk_forward_"
                    "training.v1\"",
-                   "policy-training plan binds causal schedule mode");
+                   "policy-training dry-run binds causal schedule mode");
   require_contains(result,
                    "\"causal_schedule_digest\":\"causal_schedule_digest_v1\"",
-                   "policy-training plan binds causal schedule digest");
+                   "policy-training dry-run binds causal schedule digest");
   require_contains(result,
                    "\"policy_input_schema_id\":\"kikijyeba.environment."
                    "policy_input.v1\"",
-                   "policy-training plan binds policy input schema");
+                   "policy-training dry-run binds policy input schema");
   require_contains(result,
                    "\"action_adapter_id\":\"target_node_weights_simplex.v1\"",
-                   "policy-training plan binds action adapter");
+                   "policy-training dry-run binds action adapter");
   require_contains(result,
                    "\"action_distribution_id\":\"masked_dirichlet_simplex.v1\"",
-                   "policy-training plan binds action distribution");
+                   "policy-training dry-run binds action distribution");
   require_contains(result,
                    "\"ppo_policy_artifact_contract_id\":\"kikijyeba.runtime."
                    "ppo_policy_artifact_contract.v1\"",
-                   "PPO policy-training plan binds artifact contract id");
+                   "PPO policy-training dry-run binds artifact contract id");
+  require_contains(result, "\"policy_dsl_digest\":\"policy_dsl_digest_v1\"",
+                   "PPO policy-training dry-run binds policy DSL digest");
+  require_contains(result, "\"policy_net_digest\":\"policy_net_digest_v1\"",
+                   "PPO policy-training dry-run binds policy net digest");
   require_contains(result,
-                   "\"actor_architecture_digest\":\"actor_arch_digest_v1\"",
-                   "PPO policy-training plan binds actor architecture digest");
-  require_contains(result,
-                   "\"critic_architecture_digest\":\"critic_arch_digest_v1\"",
-                   "PPO policy-training plan binds critic architecture digest");
+                   "\"policy_jkimyei_digest\":\"policy_jkimyei_digest_v1\"",
+                   "PPO policy-training dry-run binds policy jkimyei digest");
+  require_contains(
+      result,
+      "\"target_node_universe_digest\":\"target_node_universe_"
+      "digest_v1\"",
+      "PPO policy-training dry-run binds target node universe digest");
+  require_contains(
+      result, "\"actor_architecture_digest\":\"actor_arch_digest_v1\"",
+      "PPO policy-training dry-run binds actor architecture digest");
+  require_contains(
+      result, "\"critic_architecture_digest\":\"critic_arch_digest_v1\"",
+      "PPO policy-training dry-run binds critic architecture digest");
   require_contains(result, "\"ppo_config_digest\":\"ppo_config_digest_v1\"",
-                   "PPO policy-training plan binds PPO config digest");
-  require_contains(result,
-                   "\"rollout_collection_digest\":\"rollout_collection_digest_"
-                   "v1\"",
-                   "PPO policy-training plan binds rollout collection digest");
-  require_contains(result,
-                   "\"ppo_update_report_digest\":\"ppo_update_report_digest_"
-                   "v1\"",
-                   "PPO policy-training plan binds PPO update report digest");
-  require_contains(result,
-                   "\"reward_contract_id\":\"kikijyeba.environment.reward."
-                   "post_execution_ledger_log_growth_cost_drawdown.v1\"",
-                   "policy-training plan binds post-execution reward contract");
+                   "PPO policy-training dry-run binds PPO config digest");
+  require_contains(
+      result,
+      "\"rollout_collection_digest\":\"rollout_collection_digest_"
+      "v1\"",
+      "PPO policy-training dry-run binds rollout collection digest");
+  require_contains(
+      result,
+      "\"ppo_update_report_digest\":\"ppo_update_report_digest_"
+      "v1\"",
+      "PPO policy-training dry-run binds PPO update report digest");
+  require_contains(
+      result,
+      "\"reward_contract_id\":\"kikijyeba.environment.reward."
+      "post_execution_ledger_log_growth_cost_drawdown.v1\"",
+      "policy-training dry-run binds post-execution reward contract");
   require_contains(
       result, "\"causal_schedule_cursor_key_kind\":\"numeric_anchor_index\"",
-      "policy-training plan binds causal cursor key ordering");
-  require_contains(result,
-                   "\"causal_schedule_no_future_snapshot_use_source\":"
-                   "\"derived_from_artifact_fit_use_ledgers\"",
-                   "policy-training plan binds derived no-future proof source");
-  require_contains(result, "\"runtime_trains_policy\":true",
-                   "policy-training plan exposes Runtime train authority for "
-                   "supported PPO V0");
+      "policy-training dry-run binds causal cursor key ordering");
+  require_contains(
+      result,
+      "\"causal_schedule_no_future_snapshot_use_source\":"
+      "\"derived_from_artifact_fit_use_ledgers\"",
+      "policy-training dry-run binds derived no-future proof source");
+  require_contains(
+      result, "\"runtime_trains_policy\":true",
+      "policy-training dry-run exposes Runtime train authority for "
+      "supported PPO V0");
+
+  const std::string legacy_contract_digest =
+      json_string_field(result, "contract_digest");
+  const auto compact_contract_dir =
+      make_tmp_dir("policy_training_contract_file");
+  const auto compact_contract_path =
+      compact_contract_dir / "policy_training.contract";
+  write_text(compact_contract_path,
+             json_unescaped_string_field(result, "contract_text"));
+  result.clear();
+  error.clear();
+  const std::string compact_policy_training_args =
+      "{\"subject\":\"wave\",\"mode\":\"dry_run\",\"contract_"
+      "path\":\"" +
+      compact_contract_path.string() + "\",\"contract_digest\":\"" +
+      legacy_contract_digest + "\"}";
+  const bool compact_policy_training_ok = execute_runtime_run_json(
+      compact_policy_training_args, &ctx, &result, &error);
+  check(compact_policy_training_ok,
+        "compact policy-training contract-file dry-run failed: " + error);
+  check(!hero_runtime::tool_result_is_error(result),
+        "compact policy-training dry-run returned error: " + result);
+  require_contains(
+      result, "\"contract_digest\":\"" + legacy_contract_digest + "\"",
+      "Runtime run with policy contract preserves contract digest");
+  std::filesystem::remove_all(compact_contract_dir);
 
   const auto wave_defaults_root = make_tmp_dir("policy_training_wave_defaults");
   const auto wave_path = wave_defaults_root / "hero.runtime.wave.dsl";
+  const auto protocol_path = wave_defaults_root / "kikijyeba.protocol.dsl";
+  const auto cursor_path = wave_defaults_root / "ujcamei.source.cursor.dsl";
   const auto config_path = wave_defaults_root / ".config";
   write_text(wave_path,
              "WAVE_SELECTION {\n"
@@ -2307,22 +2955,31 @@ void test_policy_training_contract_and_pre_ppo_execute() {
              "};\n"
              "WAVE_SETTINGS {\n"
              "  WAVE_ID = policy_training_pre_ppo_noop;\n"
-             "  COMPATIBLE_PROTOCOLS = cwu_02v;\n"
-             "  TARGET = wikimyei.policy.trainable;\n"
+             "  PROTOCOL = cwu_02v;\n"
+             "  TARGET = wikimyei.policy.portfolio;\n"
              "  MODE = train;\n"
              "  JOB_KIND = policy_training;\n"
-             "  POLICY_ID = wikimyei.policy.trainable.noop_pre_ppo;\n"
+             "  POLICY_ID = "
+             "wikimyei.policy.portfolio.graph_node_allocation.noop_pre_ppo;\n"
              "  POLICY_KIND = noop_policy_training.v1;\n"
              "  TRAINING_SCHEDULE_MODE = causal_walk_forward_training.v1;\n"
              "  LIVE_EXECUTION_ALLOWED = false;\n"
-             "  SOURCE_CURSOR_KIND = graph_anchor;\n"
-             "  SOURCE_CURSOR_SCOPE = wave_batch;\n"
-             "  SOURCE_RANGE = all;\n"
+             "  SOURCE_CURSOR_ID = policy_cursor;\n"
              "  SOURCE_ORDER = random_per_epoch;\n"
              "};\n");
+  write_text(protocol_path, cwu02_mtf_protocol_text());
+  write_text(cursor_path, cursor_catalog_text("policy_cursor", "all"));
   write_text(config_path,
-             "[HERO]\n"
-             "runtime_wave_dsl_path = " +
+             "[UJCAMEI]\n"
+             "ujcamei_source_cursor_dsl_path = " +
+                 cursor_path.string() +
+                 "\n"
+                 "[KIKIJYEBA]\n"
+                 "kikijyeba_protocol_dsl_path = " +
+                 protocol_path.string() +
+                 "\n"
+                 "[HERO]\n"
+                 "runtime_wave_dsl_path = " +
                  wave_path.string() +
                  "\n"
                  "runtime_wave_id = policy_training_pre_ppo_noop\n");
@@ -2330,12 +2987,11 @@ void test_policy_training_contract_and_pre_ppo_execute() {
   wave_ctx.global_config_path = config_path;
   result.clear();
   error.clear();
-  check(hero_runtime::execute_tool_json(
-            "hero.runtime.inspect",
-            "{\"subject\":\"wave\",\"config_path\":\"" + config_path.string() +
-                "\"}",
-            &wave_ctx, &result, &error),
-        "policy-training wave inspect failed: " + error);
+  check(
+      execute_runtime_inspect_json("{\"subject\":\"wave\",\"config_path\":\"" +
+                                       config_path.string() + "\"}",
+                                   &wave_ctx, &result, &error),
+      "policy-training wave inspect failed: " + error);
   require_contains(result, "\"job_kind\":\"policy_training\"",
                    "policy-training wave exposes policy_training job kind");
   require_contains(result, "\"policy_training_wave\":true",
@@ -2344,15 +3000,32 @@ void test_policy_training_contract_and_pre_ppo_execute() {
                    "policy-training wave exposes policy kind");
   result.clear();
   error.clear();
-  check(hero_runtime::execute_tool_json(
-            "hero.runtime.run",
-            valid_policy_training_args("plan", "unused", "unused",
+  check(execute_runtime_run_json("{\"subject\":\"wave\",\"mode\":\"dry_run\"}",
+                                 &wave_ctx, &result, &error),
+        "policy component wave dry-run failed: " + error + " result=" + result);
+  require_contains(result,
+                   "\"target_component_family_id\":\"wikimyei.policy."
+                   "portfolio.graph_node_allocation\"",
+                   "policy component wave plan exposes graph-node allocation "
+                   "target");
+  require_contains(result,
+                   "\"component_driver_kind\":\"contract_backed_policy_"
+                   "training\"",
+                   "policy component wave uses contract-backed component "
+                   "driver through hero.runtime.run");
+  require_contains(result, "\"contract_required\":true",
+                   "policy component wave plan requires persisted contract");
+  result.clear();
+  error.clear();
+  check(execute_runtime_run_json(
+            valid_policy_training_args("dry_run", "unused", "unused",
                                        config_path.string(), false),
             &wave_ctx, &result, &error),
-        "policy-training wave-default plan failed: " + error +
+        "policy-training wave-default dry-run failed: " + error +
             " result=" + result);
   require_contains(result,
-                   "\"policy_id\":\"wikimyei.policy.trainable.noop_pre_ppo\"",
+                   "\"policy_id\":\"wikimyei.policy.portfolio.graph_node_"
+                   "allocation.noop_pre_ppo\"",
                    "policy-training contract should take policy_id from wave");
   require_contains(
       result, "\"policy_kind\":\"noop_policy_training.v1\"",
@@ -2362,18 +3035,37 @@ void test_policy_training_contract_and_pre_ppo_execute() {
                    "training.v1\"",
                    "policy-training contract should take schedule mode from "
                    "wave");
+  const auto policy_wave_contract_path =
+      wave_defaults_root / "policy_training.contract";
+  const std::string policy_wave_contract_digest =
+      json_string_field(result, "contract_digest");
+  write_text(policy_wave_contract_path,
+             json_unescaped_string_field(result, "contract_text"));
+  result.clear();
+  error.clear();
+  check(execute_runtime_run_json("{\"subject\":\"wave\",\"mode\":\"dry_run\","
+                                 "\"contract_path\":\"" +
+                                     policy_wave_contract_path.string() +
+                                     "\",\"contract_digest\":\"" +
+                                     policy_wave_contract_digest + "\"}",
+                                 &wave_ctx, &result, &error),
+        "policy component wave contract-backed dry-run failed: " + error +
+            " result=" + result);
+  require_contains(
+      result, "\"contract_digest\":\"" + policy_wave_contract_digest + "\"",
+      "policy component wave delegates persisted contract to "
+      "policy-training driver");
   std::filesystem::remove_all(wave_defaults_root);
 
   result.clear();
   error.clear();
-  check(hero_runtime::execute_tool_json("hero.runtime.run",
-                                        valid_policy_training_args("dry_run"),
-                                        &ctx, &result, &error),
+  check(execute_runtime_run_json(valid_policy_training_args("dry_run"), &ctx,
+                                 &result, &error),
         "policy-training dry_run failed: " + error);
   require_contains(result, "\"requested_mode\":\"dry_run\"",
                    "policy-training dry_run reports requested mode");
 
-  std::string leaking_args = valid_policy_training_args("plan");
+  std::string leaking_args = valid_policy_training_args("dry_run");
   const std::string validation_digest_field =
       "\"validation_range_digest\":\"range_validation_digest\"";
   const auto validation_pos = leaking_args.find(validation_digest_field);
@@ -2383,13 +3075,12 @@ void test_policy_training_contract_and_pre_ppo_execute() {
                        "\"validation_range_digest\":\"range_train_digest\"");
   result.clear();
   error.clear();
-  check(!hero_runtime::execute_tool_json("hero.runtime.run", leaking_args, &ctx,
-                                         &result, &error),
+  check(!execute_runtime_run_json(leaking_args, &ctx, &result, &error),
         "policy-training contract should reject train/validation overlap");
   require_contains(error, "training_validation_range_overlap",
                    "policy-training overlap refusal should name the issue");
 
-  std::string scheduleless_args = valid_policy_training_args("plan");
+  std::string scheduleless_args = valid_policy_training_args("dry_run");
   const std::string schedule_digest_field =
       "\"causal_schedule_digest\":\"causal_schedule_digest_v1\",";
   const auto schedule_digest_pos =
@@ -2399,71 +3090,88 @@ void test_policy_training_contract_and_pre_ppo_execute() {
   scheduleless_args.erase(schedule_digest_pos, schedule_digest_field.size());
   result.clear();
   error.clear();
-  check(!hero_runtime::execute_tool_json("hero.runtime.run", scheduleless_args,
-                                         &ctx, &result, &error),
+  check(!execute_runtime_run_json(scheduleless_args, &ctx, &result, &error),
         "policy-training contract should reject missing causal schedule");
   require_contains(error, "missing required field: causal_schedule_digest",
                    "missing causal schedule refusal should be stable");
 
-  std::string missing_source_args = valid_policy_training_args("plan");
-  const std::string schedule_source_field =
+  const auto with_retired_policy_training_field =
+      [](std::string args, const std::string &field_json) {
+        check(!args.empty() && args.back() == '}',
+              "policy-training fixture should be a JSON object");
+        args.insert(args.size() - 1, "," + field_json);
+        return args;
+      };
+  const auto expect_retired_policy_training_request_field =
+      [&](const std::string &field_name, const std::string &field_json) {
+        std::string args = with_retired_policy_training_field(
+            valid_policy_training_args("dry_run"), field_json);
+        result.clear();
+        error.clear();
+        check(!execute_runtime_run_json(args, &ctx, &result, &error),
+              "policy-training request should reject retired field " +
+                  field_name);
+        require_contains(error,
+                         "execution request unknown field: " + field_name,
+                         "retired " + field_name +
+                             " request-field refusal should be stable");
+      };
+  expect_retired_policy_training_request_field(
+      "environment_contract_id",
+      "\"environment_contract_id\":\"kikijyeba.environment.replay.v1\"");
+  expect_retired_policy_training_request_field(
+      "action_schema_digest",
+      "\"action_schema_digest\":\"kikijyeba.environment.action."
+      "target_node_weights.v1\"");
+  expect_retired_policy_training_request_field(
+      "policy_input_schema_id",
+      "\"policy_input_schema_id\":\"kikijyeba.environment.policy_input.v1\"");
+  expect_retired_policy_training_request_field(
+      "action_adapter_id",
+      "\"action_adapter_id\":\"target_node_weights_simplex.v1\"");
+  expect_retired_policy_training_request_field(
+      "reward_contract_id",
+      "\"reward_contract_id\":\"kikijyeba.environment.reward."
+      "post_execution_ledger_log_growth_cost_drawdown.v1\"");
+  expect_retired_policy_training_request_field(
+      "ppo_policy_artifact_contract_id",
+      "\"ppo_policy_artifact_contract_id\":\"kikijyeba.runtime."
+      "ppo_policy_artifact_contract.v1\"");
+  expect_retired_policy_training_request_field(
+      "policy_family_id", "\"policy_family_id\":\"wikimyei.policy.portfolio."
+                          "graph_node_allocation\"");
+  expect_retired_policy_training_request_field(
+      "policy_checkpoint_schema_id",
+      "\"policy_checkpoint_schema_id\":\"wikimyei.policy.portfolio."
+      "graph_node_allocation.ppo_checkpoint.v1\"");
+  expect_retired_policy_training_request_field(
+      "optimizer_state_schema_id",
+      "\"optimizer_state_schema_id\":\"kikijyeba.runtime."
+      "ppo_optimizer_state.v1\"");
+  expect_retired_policy_training_request_field(
+      "device_policy", "\"device_policy\":\"require_cuda\"");
+  expect_retired_policy_training_request_field("cuda_device_index",
+                                               "\"cuda_device_index\":0");
+  expect_retired_policy_training_request_field(
+      "advantage_estimator_id", "\"advantage_estimator_id\":\"gae.v1\"");
+  expect_retired_policy_training_request_field(
+      "rollout_collection_schema_id",
+      "\"rollout_collection_schema_id\":\"kikijyeba.runtime."
+      "ppo_rollout_collection.v1\"");
+  expect_retired_policy_training_request_field(
+      "ppo_update_report_schema_id",
+      "\"ppo_update_report_schema_id\":\"kikijyeba.runtime."
+      "ppo_update_report.v1\"");
+  expect_retired_policy_training_request_field(
+      "causal_schedule_schema_id",
+      "\"causal_schedule_schema_id\":\"kikijyeba.runtime.policy_training_"
+      "causal_schedule.v1\"");
+  expect_retired_policy_training_request_field(
+      "causal_schedule_no_future_snapshot_use_source",
       "\"causal_schedule_no_future_snapshot_use_source\":\"derived_from_"
-      "artifact_fit_use_ledgers\",";
-  const auto schedule_source_pos =
-      missing_source_args.find(schedule_source_field);
-  check(schedule_source_pos != std::string::npos,
-        "test fixture should contain causal schedule no-future source");
-  missing_source_args.erase(schedule_source_pos, schedule_source_field.size());
-  result.clear();
-  error.clear();
-  check(!hero_runtime::execute_tool_json(
-            "hero.runtime.run", missing_source_args, &ctx, &result, &error),
-        "policy-training contract should reject missing causal schedule "
-        "no-future source");
-  require_contains(
-      error,
-      "missing required field: causal_schedule_no_future_snapshot_use_source",
-      "missing causal schedule no-future source refusal should be stable");
+      "artifact_fit_use_ledgers\"");
 
-  std::string missing_policy_input_args = valid_policy_training_args("plan");
-  const std::string policy_input_field =
-      "\"policy_input_schema_id\":\"kikijyeba.environment.policy_input.v1\",";
-  const auto policy_input_pos =
-      missing_policy_input_args.find(policy_input_field);
-  check(policy_input_pos != std::string::npos,
-        "test fixture should contain policy input schema id");
-  missing_policy_input_args.erase(policy_input_pos, policy_input_field.size());
-  result.clear();
-  error.clear();
-  check(!hero_runtime::execute_tool_json("hero.runtime.run",
-                                         missing_policy_input_args, &ctx,
-                                         &result, &error),
-        "policy-training contract should reject missing policy input schema");
-  require_contains(error, "missing required field: policy_input_schema_id",
-                   "missing policy input schema refusal should be stable");
-
-  std::string old_action_schema_args = valid_policy_training_args("plan");
-  const std::string action_schema_field =
-      "\"action_schema_digest\":\"kikijyeba.environment.action."
-      "target_node_weights.v1\",";
-  const auto action_schema_pos =
-      old_action_schema_args.find(action_schema_field);
-  check(action_schema_pos != std::string::npos,
-        "test fixture should contain unified action schema");
-  old_action_schema_args.replace(
-      action_schema_pos, action_schema_field.size(),
-      "\"action_schema_digest\":\"kikijyeba.environment.action."
-      "target_weights.v1\",");
-  result.clear();
-  error.clear();
-  check(!hero_runtime::execute_tool_json(
-            "hero.runtime.run", old_action_schema_args, &ctx, &result, &error),
-        "policy-training contract should reject old target_weights action "
-        "schema");
-  require_contains(error, "unsupported_action_schema_digest",
-                   "old action schema refusal should be stable");
-
-  std::string bad_distribution_args = valid_policy_training_args("plan");
+  std::string bad_distribution_args = valid_policy_training_args("dry_run");
   const std::string action_distribution_field =
       "\"action_distribution_id\":\"masked_dirichlet_simplex.v1\",";
   const auto action_distribution_pos =
@@ -2475,8 +3183,7 @@ void test_policy_training_contract_and_pre_ppo_execute() {
       "\"action_distribution_id\":\"unsupported_simplex_policy.v1\",");
   result.clear();
   error.clear();
-  check(!hero_runtime::execute_tool_json(
-            "hero.runtime.run", bad_distribution_args, &ctx, &result, &error),
+  check(!execute_runtime_run_json(bad_distribution_args, &ctx, &result, &error),
         "policy-training contract should reject unsupported action "
         "distribution");
   check(error.find("unsupported_action_distribution_id") != std::string::npos ||
@@ -2485,25 +3192,7 @@ void test_policy_training_contract_and_pre_ppo_execute() {
         "contract issue: " +
             error);
 
-  std::string asserted_source_args = valid_policy_training_args("plan");
-  const auto asserted_source_pos =
-      asserted_source_args.find(schedule_source_field);
-  check(asserted_source_pos != std::string::npos,
-        "test fixture should contain causal schedule no-future source");
-  asserted_source_args.replace(
-      asserted_source_pos, schedule_source_field.size(),
-      "\"causal_schedule_no_future_snapshot_use_source\":\"asserted_by_"
-      "caller\",");
-  result.clear();
-  error.clear();
-  check(!hero_runtime::execute_tool_json(
-            "hero.runtime.run", asserted_source_args, &ctx, &result, &error),
-        "policy-training contract should reject caller-asserted no-future "
-        "source");
-  require_contains(error, "unsupported_no_future_snapshot_use_source",
-                   "caller-asserted no-future source refusal should be stable");
-
-  std::string opaque_cursor_args = valid_policy_training_args("plan");
+  std::string opaque_cursor_args = valid_policy_training_args("dry_run");
   const std::string cursor_kind_field =
       "\"causal_schedule_cursor_key_kind\":\"numeric_anchor_index\",";
   const auto cursor_kind_pos = opaque_cursor_args.find(cursor_kind_field);
@@ -2514,8 +3203,7 @@ void test_policy_training_contract_and_pre_ppo_execute() {
       "\"causal_schedule_cursor_key_kind\":\"opaque_unsortable\",");
   result.clear();
   error.clear();
-  check(!hero_runtime::execute_tool_json("hero.runtime.run", opaque_cursor_args,
-                                         &ctx, &result, &error),
+  check(!execute_runtime_run_json(opaque_cursor_args, &ctx, &result, &error),
         "policy-training contract should reject opaque cursor key ordering");
   require_contains(error,
                    "opaque_or_unsupported_causal_schedule_cursor_key_kind",
@@ -2524,14 +3212,13 @@ void test_policy_training_contract_and_pre_ppo_execute() {
   const auto expect_missing_ppo_contract_field =
       [&](const std::string &field_text, const std::string &expected_issue,
           const std::string &label) {
-        std::string args = valid_policy_training_args("plan");
+        std::string args = valid_policy_training_args("dry_run");
         const auto pos = args.find(field_text);
         check(pos != std::string::npos, "PPO fixture should contain " + label);
         args.erase(pos, field_text.size());
         result.clear();
         error.clear();
-        check(!hero_runtime::execute_tool_json("hero.runtime.run", args, &ctx,
-                                               &result, &error),
+        check(!execute_runtime_run_json(args, &ctx, &result, &error),
               "policy-training contract should reject missing " + label);
         require_contains(error, expected_issue,
                          "missing " + label + " refusal should be stable");
@@ -2558,7 +3245,7 @@ void test_policy_training_contract_and_pre_ppo_execute() {
       "\"ppo_update_report_digest\":\"ppo_update_report_digest_v1\",",
       "missing_ppo_update_report_digest", "PPO update report digest");
 
-  std::string offline_args = valid_policy_training_args("plan");
+  std::string offline_args = valid_policy_training_args("dry_run");
   const std::string causal_mode =
       "\"training_schedule_mode\":\"causal_walk_forward_training.v1\"";
   const auto causal_mode_pos = offline_args.find(causal_mode);
@@ -2569,8 +3256,7 @@ void test_policy_training_contract_and_pre_ppo_execute() {
                        "research\"");
   result.clear();
   error.clear();
-  check(!hero_runtime::execute_tool_json("hero.runtime.run", offline_args, &ctx,
-                                         &result, &error),
+  check(!execute_runtime_run_json(offline_args, &ctx, &result, &error),
         "policy-training contract should reject full-window research as "
         "readiness evidence");
   require_contains(error, "offline_full_window_research_not_readiness_eligible",
@@ -2587,9 +3273,7 @@ void test_policy_training_contract_and_pre_ppo_execute() {
   ppo_ctx.policy.values["allowed_job_roots"] = ppo_runtime_root.string();
   ppo_ctx.policy.values["allow_execute"] = "true";
   ppo_ctx.policy.values["allow_train_execute"] = "true";
-  ppo_ctx.policy.values["require_confirm_execute"] = "true";
   ppo_ctx.policy.values["allow_dev_nuke"] = "true";
-  ppo_ctx.policy.values["require_confirm_dev_nuke"] = "true";
   ppo_ctx.policy.values["dev_nuke_backup_enabled"] = "false";
   ppo_ctx.policy.values["dev_nuke_backup_root"] =
       (ppo_runtime_root.parent_path() / "ppo_dev_nuke_backups").string();
@@ -2599,22 +3283,19 @@ void test_policy_training_contract_and_pre_ppo_execute() {
   std::filesystem::create_directories(ppo_stale_job_dir);
   write_text(ppo_stale_job_dir / "stale.marker",
              "previous_runtime_state=true\n");
-  std::string ppo_reset_args =
-      "{\"requested_mode\":\"plan\",\"runtime_root\":\"" +
-      ppo_runtime_root.string() + "\"}";
-  check(hero_runtime::execute_tool_json("hero.runtime.reset", ppo_reset_args,
-                                        &ppo_ctx, &result, &error),
-        "PPO fresh-run reset plan failed: " + error);
+  std::string ppo_reset_args = "{\"mode\":\"plan\",\"runtime_root\":\"" +
+                               ppo_runtime_root.string() + "\"}";
+  check(execute_runtime_reset_json(ppo_reset_args, &ppo_ctx, &result, &error),
+        "PPO fresh-run reset dry-run failed: " + error);
   require_contains(result, "\"dry_run\":true",
                    "PPO fresh-run reset plan stays dry-run");
   require_contains(result, "\"would_clear\":true",
                    "PPO fresh-run reset plan detects stale runtime state");
-  ppo_reset_args = "{\"requested_mode\":\"execute\",\"runtime_root\":\"" +
-                   ppo_runtime_root.string() + "\",\"confirm_dev_nuke\":true}";
+  ppo_reset_args = "{\"mode\":\"execute\",\"runtime_root\":\"" +
+                   ppo_runtime_root.string() + "\"}";
   result.clear();
   error.clear();
-  check(hero_runtime::execute_tool_json("hero.runtime.reset", ppo_reset_args,
-                                        &ppo_ctx, &result, &error),
+  check(execute_runtime_reset_json(ppo_reset_args, &ppo_ctx, &result, &error),
         "PPO fresh-run reset execute failed: " + error);
   require_contains(result, "\"dry_run\":false",
                    "PPO fresh-run reset execute is non-dry-run");
@@ -2627,14 +3308,7 @@ void test_policy_training_contract_and_pre_ppo_execute() {
   error.clear();
   std::string ppo_execute_args = valid_policy_training_args("execute");
   const std::string ppo_live_forbidden = "\"live_execution_allowed\":false}";
-  const auto ppo_live_forbidden_pos = ppo_execute_args.find(ppo_live_forbidden);
-  check(ppo_live_forbidden_pos != std::string::npos,
-        "PPO test fixture should contain live execution denial");
-  ppo_execute_args.replace(ppo_live_forbidden_pos, ppo_live_forbidden.size(),
-                           "\"live_execution_allowed\":false,"
-                           "\"confirm_execute\":true}");
-  check(hero_runtime::execute_tool_json("hero.runtime.run", ppo_execute_args,
-                                        &ppo_ctx, &result, &error),
+  check(execute_runtime_run_json(ppo_execute_args, &ppo_ctx, &result, &error),
         "PPO policy-training execute failed: " + error);
   check(!hero_runtime::tool_result_is_error(result),
         "PPO policy-training execute returned error: " + result);
@@ -2648,12 +3322,28 @@ void test_policy_training_contract_and_pre_ppo_execute() {
                    "PPO execute denies live capital");
   require_contains(result, "\"actor_checkpoint_digest\":",
                    "PPO execute reports actor checkpoint digest");
+  require_contains(result, "\"actor_checkpoint_ref\":\"ckpt_",
+                   "PPO execute reports actor checkpoint operator ref");
   require_contains(result, "\"critic_checkpoint_digest\":",
                    "PPO execute reports critic checkpoint digest");
+  require_contains(result, "\"critic_checkpoint_ref\":\"ckpt_",
+                   "PPO execute reports critic checkpoint operator ref");
   require_contains(result, "\"rollout_collection_digest\":",
                    "PPO execute reports rollout collection digest");
+  require_contains(result, "\"rollout_collection_ref\":\"rpt_",
+                   "PPO execute reports rollout collection operator ref");
   require_contains(result, "\"ppo_update_report_digest\":",
                    "PPO execute reports PPO update report digest");
+  require_contains(result, "\"ppo_update_report_ref\":\"rpt_",
+                   "PPO execute reports PPO update report operator ref");
+  require_contains(result, "\"optimizer_torch_state_ref\":\"opt_",
+                   "PPO execute reports optimizer archive operator ref");
+  require_contains(result, "\"runtime_device_kind\":\"cuda\"",
+                   "PPO execute reports CUDA runtime device");
+  require_contains(result, "\"cuda_verification_passed\":true",
+                   "PPO execute reports CUDA verification");
+  require_contains(result, "\"resume_mode\":\"fresh_spawn\"",
+                   "PPO execute reports fresh-spawn mode");
   require_contains(
       result, "\"kikijyeba_cajtucu_replay_integration\":false",
       "PPO smoke execute still declares missing replay integration");
@@ -2669,6 +3359,21 @@ void test_policy_training_contract_and_pre_ppo_execute() {
                    "runtime.policy_training.ppo_v0:"
                    "write_checkpoint_rollout_update",
                    "PPO manifest records PPO execution chain");
+  const auto ppo_actor_checkpoint_path =
+      std::filesystem::path(json_string_field(result, "actor_checkpoint_path"));
+  const auto ppo_actor_checkpoint_text = read_text(ppo_actor_checkpoint_path);
+  require_contains(ppo_actor_checkpoint_text, "runtime_device_kind=cuda",
+                   "PPO actor checkpoint records CUDA device");
+  require_contains(ppo_actor_checkpoint_text, "module_parameters_on_cuda=true",
+                   "PPO actor checkpoint records CUDA module parameters");
+  require_contains(ppo_actor_checkpoint_text, "forward_input_on_cuda=true",
+                   "PPO actor checkpoint records CUDA forward tensors");
+  require_contains(ppo_actor_checkpoint_text, "loss_on_cuda=true",
+                   "PPO actor checkpoint records CUDA loss tensor");
+  require_contains(ppo_actor_checkpoint_text, "optimizer_state_on_cuda=true",
+                   "PPO actor checkpoint records CUDA optimizer state");
+  require_contains(ppo_actor_checkpoint_text, "cuda_verification_passed=true",
+                   "PPO actor checkpoint records CUDA verification");
   const auto ppo_rollout_collection_path = std::filesystem::path(
       json_string_field(result, "rollout_collection_path"));
   const auto ppo_rollout_text = read_text(ppo_rollout_collection_path);
@@ -2685,6 +3390,9 @@ void test_policy_training_contract_and_pre_ppo_execute() {
       ppo_rollout_text,
       "step_0_action_distribution_id=masked_dirichlet_simplex.v1",
       "PPO rollout collection records action distribution evidence");
+  require_contains(ppo_rollout_text,
+                   "policy_input_tensor_payload_complete=true",
+                   "PPO rollout collection binds actor-visible tensors");
   require_contains(ppo_rollout_text, "step_0_old_log_prob=",
                    "PPO rollout collection records old log probability");
   require_contains(ppo_rollout_text, "step_0_prob_ratio=",
@@ -2722,13 +3430,20 @@ void test_policy_training_contract_and_pre_ppo_execute() {
   require_contains(ppo_update_text, "sample_0_approx_kl=",
                    "PPO update report records sample KL estimate");
   require_contains(ppo_update_text,
-                   "parameter_update_mode=bounded_ppo_v0_module_head_delta_"
-                   "update",
-                   "PPO update report records bounded parameter update mode");
+                   "parameter_update_mode=torch_autograd_ppo_clip_gae_v0",
+                   "PPO update report records autograd parameter update mode");
   require_contains(ppo_update_text, "parameter_update_applied=true",
                    "PPO update report records applied parameter update");
+  require_contains(ppo_update_text, "policy_input_tensor_payload_bound=true",
+                   "PPO update report records tensor payload binding");
+  require_contains(ppo_update_text, "runtime_device_kind=cuda",
+                   "PPO update report records CUDA runtime device");
+  require_contains(ppo_update_text, "cuda_verification_passed=true",
+                   "PPO update report records CUDA verification");
+  require_contains(ppo_update_text, "resume_mode=fresh_spawn",
+                   "PPO update report records fresh spawn mode");
   require_contains(ppo_update_text, "updated_node_weight_logits=",
-                   "PPO update report records learned actor logits");
+                   "PPO update report records post-update actor logits");
   require_contains(ppo_update_text, "updated_value_estimate=",
                    "PPO update report records learned value estimate");
   require_contains(ppo_update_text, "finite_loss_check=true",
@@ -2737,12 +3452,27 @@ void test_policy_training_contract_and_pre_ppo_execute() {
       std::filesystem::path(json_string_field(result, "optimizer_state_path"));
   const auto ppo_optimizer_state_text = read_text(ppo_optimizer_state_path);
   require_contains(ppo_optimizer_state_text,
-                   "state_kind=bounded_ppo_v0_update_state",
+                   "state_kind=torch_autograd_ppo_clip_gae_v0_update_state",
                    "PPO optimizer state records update-state kind");
   require_contains(ppo_optimizer_state_text, "parameter_update_applied=true",
                    "PPO optimizer state records applied parameter update");
   require_contains(ppo_optimizer_state_text, "learning_rate_actor=",
                    "PPO optimizer state records actor learning rate");
+  require_contains(ppo_optimizer_state_text,
+                   "optimizer_torch_state_path=ppo_v0_optimizer_state.pt",
+                   "PPO optimizer state records Torch archive path");
+  require_contains(ppo_optimizer_state_text, "optimizer_torch_state_digest=",
+                   "PPO optimizer state records Torch archive digest");
+  require_contains(ppo_optimizer_state_text, "runtime_device_kind=cuda",
+                   "PPO optimizer state records CUDA device");
+  require_contains(ppo_optimizer_state_text, "cuda_verification_passed=true",
+                   "PPO optimizer state records CUDA verification");
+  require_contains(ppo_optimizer_state_text, "resume_mode=fresh_spawn",
+                   "PPO optimizer state records fresh-spawn mode");
+  const auto ppo_optimizer_torch_state_path = std::filesystem::path(
+      json_string_field(result, "optimizer_torch_state_path"));
+  check(std::filesystem::exists(ppo_optimizer_torch_state_path),
+        "PPO optimizer Torch state archive should exist");
   const auto ppo_fact_path = std::filesystem::path(
       json_string_field(result, "policy_training_fact_path"));
   const auto ppo_fact_text = read_text(ppo_fact_path);
@@ -2760,6 +3490,16 @@ void test_policy_training_contract_and_pre_ppo_execute() {
                    "PPO fact carries collection actor checkpoint digest");
   require_contains(ppo_fact_text, "ppo_update_report_digest=",
                    "PPO fact carries emitted update report digest");
+  require_contains(ppo_fact_text, "device_policy=require_cuda",
+                   "PPO fact carries CUDA device policy");
+  require_contains(ppo_fact_text, "runtime_device_kind=cuda",
+                   "PPO fact carries CUDA runtime device");
+  require_contains(ppo_fact_text, "cuda_verification_passed=true",
+                   "PPO fact carries CUDA verification");
+  require_contains(ppo_fact_text, "resume_mode=fresh_spawn",
+                   "PPO fact carries fresh-spawn mode");
+  require_contains(ppo_fact_text, "optimizer_torch_state_digest=",
+                   "PPO fact carries optimizer Torch state digest");
   lattice_exposure::lattice_exposure_fact_t parent_fact{};
   const auto parsed_ppo_facts =
       lattice_exposure::make_policy_training_facts_from_job_dir(
@@ -2772,101 +3512,237 @@ void test_policy_training_contract_and_pre_ppo_execute() {
         "parsed PPO fact carries actor checkpoint digest");
   check(!parsed_ppo_facts.front().ppo_update_report_digest.empty(),
         "parsed PPO fact carries PPO update report digest");
+  check(parsed_ppo_facts.front().optimizer_state_schema_id ==
+                "kikijyeba.runtime.ppo_optimizer_state.v1" &&
+            !parsed_ppo_facts.front().optimizer_torch_state_digest.empty(),
+        "parsed PPO fact carries optimizer archive evidence");
+  check(parsed_ppo_facts.front().device_policy == "require_cuda" &&
+            parsed_ppo_facts.front().runtime_device_kind == "cuda" &&
+            parsed_ppo_facts.front().cuda_device_index_bound &&
+            parsed_ppo_facts.front().cuda_available &&
+            parsed_ppo_facts.front().module_parameters_on_cuda &&
+            parsed_ppo_facts.front().forward_input_on_cuda &&
+            parsed_ppo_facts.front().loss_on_cuda &&
+            parsed_ppo_facts.front().optimizer_state_on_cuda &&
+            parsed_ppo_facts.front().cuda_verification_passed,
+        "parsed PPO fact carries Runtime CUDA verification evidence");
+  check(parsed_ppo_facts.front().resume_mode == "fresh_spawn" &&
+            !parsed_ppo_facts.front().resume_parent_loaded &&
+            !parsed_ppo_facts.front().optimizer_state_resume_loaded,
+        "parsed PPO fact carries fresh-spawn resume evidence");
+
+  const std::string first_actor_checkpoint_digest =
+      json_string_field(result, "actor_checkpoint_digest");
+  const std::string first_optimizer_state_digest =
+      json_string_field(result, "optimizer_state_digest");
+  result.clear();
+  error.clear();
+  std::string ppo_resume_args = valid_policy_training_args(
+      "execute", "ppo", "wikimyei.policy.rl.ppo_portfolio.resume.v0");
+  const std::string resume_mode_fresh = "\"resume_mode\":\"fresh_spawn\"";
+  const auto resume_mode_fresh_pos = ppo_resume_args.find(resume_mode_fresh);
+  check(resume_mode_fresh_pos != std::string::npos,
+        "PPO resume fixture should contain fresh-spawn mode");
+  ppo_resume_args.replace(resume_mode_fresh_pos, resume_mode_fresh.size(),
+                          "\"resume_mode\":\"resume_weights_and_optimizer\"");
+  const std::string ppo_resume_live_forbidden =
+      "\"live_execution_allowed\":false}";
+  const auto ppo_resume_live_pos =
+      ppo_resume_args.find(ppo_resume_live_forbidden);
+  check(ppo_resume_live_pos != std::string::npos,
+        "PPO resume fixture should contain live execution denial");
+  ppo_resume_args.replace(ppo_resume_live_pos, ppo_resume_live_forbidden.size(),
+                          "\"live_execution_allowed\":false,"
+                          "\"resume_actor_checkpoint_path\":\"" +
+                              ppo_actor_checkpoint_path.string() +
+                              "\",\"resume_actor_checkpoint_digest\":\"" +
+                              first_actor_checkpoint_digest +
+                              "\",\"resume_optimizer_state_path\":\"" +
+                              ppo_optimizer_state_path.string() +
+                              "\",\"resume_optimizer_state_digest\":\"" +
+                              first_optimizer_state_digest + "\"}");
+  check(execute_runtime_run_json(ppo_resume_args, &ppo_ctx, &result, &error),
+        "PPO resume execute failed: " + error);
+  check(!hero_runtime::tool_result_is_error(result),
+        "PPO resume execute returned error: " + result);
+  require_contains(result, "\"resume_mode\":\"resume_weights_and_optimizer\"",
+                   "PPO resume execute reports resume mode");
+  require_contains(result, "\"resume_parent_loaded\":true",
+                   "PPO resume execute loads parent actor checkpoint");
+  require_contains(result, "\"optimizer_state_resume_loaded\":true",
+                   "PPO resume execute loads optimizer state");
+  require_contains(result, "\"runtime_device_kind\":\"cuda\"",
+                   "PPO resume execute reports CUDA runtime device");
+  require_contains(result, "\"cuda_verification_passed\":true",
+                   "PPO resume execute reports CUDA verification");
+  const auto ppo_resume_actor_checkpoint_path =
+      std::filesystem::path(json_string_field(result, "actor_checkpoint_path"));
+  const auto ppo_resume_actor_checkpoint_text =
+      read_text(ppo_resume_actor_checkpoint_path);
+  require_contains(ppo_resume_actor_checkpoint_text,
+                   "resume_mode=resume_weights_and_optimizer",
+                   "PPO resume actor checkpoint records resume mode");
+  require_contains(ppo_resume_actor_checkpoint_text,
+                   "cuda_verification_passed=true",
+                   "PPO resume actor checkpoint records CUDA verification");
+  const auto ppo_resume_optimizer_state_path =
+      std::filesystem::path(json_string_field(result, "optimizer_state_path"));
+  const auto ppo_resume_optimizer_state_text =
+      read_text(ppo_resume_optimizer_state_path);
+  require_contains(ppo_resume_optimizer_state_text,
+                   "optimizer_state_resume_loaded=true",
+                   "PPO resume optimizer state records optimizer resume");
+  require_contains(ppo_resume_optimizer_state_text,
+                   "cuda_verification_passed=true",
+                   "PPO resume optimizer state records CUDA verification");
+  const auto ppo_resume_fact_path = std::filesystem::path(
+      json_string_field(result, "policy_training_fact_path"));
+  const auto ppo_resume_fact_text = read_text(ppo_resume_fact_path);
+  require_contains(ppo_resume_fact_text,
+                   "resume_mode=resume_weights_and_optimizer",
+                   "PPO resume fact records resume mode");
+  require_contains(ppo_resume_fact_text, "optimizer_state_resume_loaded=true",
+                   "PPO resume fact records optimizer resume");
+  require_contains(ppo_resume_fact_text, "cuda_verification_passed=true",
+                   "PPO resume fact records CUDA verification");
 
   const auto ppo_replay_report_path =
       ppo_runtime_root / "ppo_input_replay.report";
-  write_text(ppo_replay_report_path,
-             "schema=kikijyeba.environment.replay.report.v1\n"
-             "runtime_run_id=runtime_replay_fixture\n"
-             "environment_run_id=env_replay_fixture\n"
-             "episode_count=1\n"
-             "episode_0_step_count=2\n"
-             "episode_0_step_0_step_index=0\n"
-             "episode_0_step_0_episode_id=episode_replay_fixture\n"
-             "episode_0_step_0_anchor_key=anchor_0000\n"
-             "episode_0_step_0_observation_anchor_index=100\n"
-             "episode_0_step_0_knowledge_timestamp_ms=100000\n"
-             "episode_0_step_0_accepted_anchor_index_begin=100\n"
-             "episode_0_step_0_accepted_anchor_index_end=101\n"
-             "episode_0_step_0_policy_input_digest=policy_input_digest_0\n"
-             "episode_0_step_0_action_distribution_id="
-             "masked_dirichlet_simplex.v1\n"
-             "episode_0_step_0_active_node_indices=0,1\n"
-             "episode_0_step_0_active_count=2\n"
-             "episode_0_step_0_old_log_prob=-0.812\n"
-             "episode_0_step_0_old_entropy=0.71\n"
-             "episode_0_step_0_old_value_estimate=0.006\n"
-             "episode_0_step_0_action_distribution_evidence_bound=true\n"
-             "episode_0_step_0_target_node_weights=BTC:0.60,ETH:0.40\n"
-             "episode_0_step_0_reward_total=0.004\n"
-             "episode_0_step_0_reward_log_growth=0.005\n"
-             "episode_0_step_0_reward_transaction_cost_penalty=-0.001\n"
-             "episode_0_step_0_transaction_cost_numeraire=0.00021\n"
-             "episode_0_step_0_turnover=0.18\n"
-             "episode_0_step_0_cajtucu_execution_trace_available=true\n"
-             "episode_0_step_0_cajtucu_trace_valid=true\n"
-             "episode_0_step_0_cajtucu_trace_id=trace_fixture_0\n"
-             "episode_0_step_0_cajtucu_total_fee_numeraire=0.00005\n"
-             "episode_0_step_0_cajtucu_total_spread_cost_numeraire=0.00007\n"
-             "episode_0_step_0_cajtucu_total_slippage_numeraire=0.00009\n"
-             "episode_0_step_0_cajtucu_rejected_notional_numeraire=0.0\n"
-             "episode_0_step_0_cajtucu_partial_notional_numeraire=0.0\n"
-             "episode_0_step_0_cajtucu_missing_direct_pair_count=0\n"
-             "episode_0_step_0_cajtucu_numeraire_fallback_pair_count=0\n"
-             "episode_0_step_0_cajtucu_rejected_fill_count=0\n"
-             "episode_0_step_0_cajtucu_partial_fill_count=0\n"
-             "episode_0_step_0_invalid_action=false\n"
-             "episode_0_step_0_done=false\n"
-             "episode_0_step_1_step_index=1\n"
-             "episode_0_step_1_episode_id=episode_replay_fixture\n"
-             "episode_0_step_1_anchor_key=anchor_0001\n"
-             "episode_0_step_1_observation_anchor_index=101\n"
-             "episode_0_step_1_knowledge_timestamp_ms=101000\n"
-             "episode_0_step_1_accepted_anchor_index_begin=101\n"
-             "episode_0_step_1_accepted_anchor_index_end=102\n"
-             "episode_0_step_1_policy_input_digest=policy_input_digest_1\n"
-             "episode_0_step_1_action_distribution_id="
-             "masked_dirichlet_simplex.v1\n"
-             "episode_0_step_1_active_node_indices=0,1\n"
-             "episode_0_step_1_active_count=2\n"
-             "episode_0_step_1_old_log_prob=-0.744\n"
-             "episode_0_step_1_old_entropy=0.69\n"
-             "episode_0_step_1_old_value_estimate=0.002\n"
-             "episode_0_step_1_action_distribution_evidence_bound=true\n"
-             "episode_0_step_1_target_node_weights=BTC:0.55,ETH:0.45\n"
-             "episode_0_step_1_reward_total=-0.002\n"
-             "episode_0_step_1_reward_log_growth=-0.001\n"
-             "episode_0_step_1_reward_turnover_penalty=-0.001\n"
-             "episode_0_step_1_transaction_cost_numeraire=0.00013\n"
-             "episode_0_step_1_turnover=0.05\n"
-             "episode_0_step_1_cajtucu_execution_trace_available=true\n"
-             "episode_0_step_1_cajtucu_trace_valid=true\n"
-             "episode_0_step_1_cajtucu_trace_id=trace_fixture_1\n"
-             "episode_0_step_1_cajtucu_total_fee_numeraire=0.00003\n"
-             "episode_0_step_1_cajtucu_total_spread_cost_numeraire=0.00004\n"
-             "episode_0_step_1_cajtucu_total_slippage_numeraire=0.00006\n"
-             "episode_0_step_1_cajtucu_rejected_notional_numeraire=0.2\n"
-             "episode_0_step_1_cajtucu_partial_notional_numeraire=0.1\n"
-             "episode_0_step_1_cajtucu_missing_direct_pair_count=1\n"
-             "episode_0_step_1_cajtucu_numeraire_fallback_pair_count=0\n"
-             "episode_0_step_1_cajtucu_rejected_fill_count=1\n"
-             "episode_0_step_1_cajtucu_partial_fill_count=1\n"
-             "episode_0_step_1_invalid_action=false\n"
-             "episode_0_step_1_done=true\n");
+  const std::string ppo_fixture_node_features_2x28 =
+      "0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,"
+      "0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0";
+  const std::string ppo_fixture_global_features_2 = "0,0,1,1,0.6,0.6";
+  const std::string ppo_fixture_risk_features_10 = "0,0,0,0,0,0,0,0,0,0";
+  const std::string ppo_fixture_executable_mask_2 = "1,1";
+  write_text(
+      ppo_replay_report_path,
+      "schema=kikijyeba.environment.replay.report.v1\n"
+      "runtime_run_id=runtime_replay_fixture\n"
+      "environment_run_id=env_replay_fixture\n"
+      "episode_count=1\n"
+      "episode_0_step_count=2\n"
+      "episode_0_step_0_step_index=0\n"
+      "episode_0_step_0_episode_id=episode_replay_fixture\n"
+      "episode_0_step_0_anchor_key=anchor_0000\n"
+      "episode_0_step_0_observation_anchor_index=100\n"
+      "episode_0_step_0_knowledge_timestamp_ms=100000\n"
+      "episode_0_step_0_accepted_anchor_index_begin=100\n"
+      "episode_0_step_0_accepted_anchor_index_end=101\n"
+      "episode_0_step_0_policy_input_digest=policy_input_digest_0\n"
+      "episode_0_step_0_action_distribution_id="
+      "masked_dirichlet_simplex.v1\n"
+      "episode_0_step_0_active_node_indices=0,1\n"
+      "episode_0_step_0_active_count=2\n"
+      "episode_0_step_0_old_log_prob=-0.812\n"
+      "episode_0_step_0_old_entropy=0.71\n"
+      "episode_0_step_0_old_value_estimate=0.006\n"
+      "episode_0_step_0_action_distribution_evidence_bound=true\n"
+      "episode_0_step_0_policy_input_tensor_payload_schema_id="
+      "kikijyeba.environment.policy_input.tensor_payload.v1\n"
+      "episode_0_step_0_policy_input_tensor_payload_bound=true\n"
+      "episode_0_step_0_policy_input_node_features_shape=2,28\n"
+      "episode_0_step_0_policy_input_node_features=" +
+          ppo_fixture_node_features_2x28 +
+          "\n"
+          "episode_0_step_0_policy_input_global_features_shape=6\n"
+          "episode_0_step_0_policy_input_global_features=" +
+          ppo_fixture_global_features_2 +
+          "\n"
+          "episode_0_step_0_policy_input_risk_features_shape=10\n"
+          "episode_0_step_0_policy_input_risk_features=" +
+          ppo_fixture_risk_features_10 +
+          "\n"
+          "episode_0_step_0_policy_input_executable_mask_shape=2\n"
+          "episode_0_step_0_policy_input_executable_mask=" +
+          ppo_fixture_executable_mask_2 +
+          "\n"
+          "episode_0_step_0_target_node_weights=BTC:0.60,ETH:0.40\n"
+          "episode_0_step_0_reward_total=0.004\n"
+          "episode_0_step_0_reward_log_growth=0.005\n"
+          "episode_0_step_0_reward_transaction_cost_penalty=-0.001\n"
+          "episode_0_step_0_transaction_cost_numeraire=0.00021\n"
+          "episode_0_step_0_turnover=0.18\n"
+          "episode_0_step_0_cajtucu_execution_trace_available=true\n"
+          "episode_0_step_0_cajtucu_trace_valid=true\n"
+          "episode_0_step_0_cajtucu_trace_id=trace_fixture_0\n"
+          "episode_0_step_0_cajtucu_total_fee_numeraire=0.00005\n"
+          "episode_0_step_0_cajtucu_total_spread_cost_numeraire=0.00007\n"
+          "episode_0_step_0_cajtucu_total_slippage_numeraire=0.00009\n"
+          "episode_0_step_0_cajtucu_rejected_notional_numeraire=0.0\n"
+          "episode_0_step_0_cajtucu_partial_notional_numeraire=0.0\n"
+          "episode_0_step_0_cajtucu_missing_direct_pair_count=0\n"
+          "episode_0_step_0_cajtucu_numeraire_fallback_pair_count=0\n"
+          "episode_0_step_0_cajtucu_rejected_fill_count=0\n"
+          "episode_0_step_0_cajtucu_partial_fill_count=0\n"
+          "episode_0_step_0_invalid_action=false\n"
+          "episode_0_step_0_done=false\n"
+          "episode_0_step_1_step_index=1\n"
+          "episode_0_step_1_episode_id=episode_replay_fixture\n"
+          "episode_0_step_1_anchor_key=anchor_0001\n"
+          "episode_0_step_1_observation_anchor_index=101\n"
+          "episode_0_step_1_knowledge_timestamp_ms=101000\n"
+          "episode_0_step_1_accepted_anchor_index_begin=101\n"
+          "episode_0_step_1_accepted_anchor_index_end=102\n"
+          "episode_0_step_1_policy_input_digest=policy_input_digest_1\n"
+          "episode_0_step_1_action_distribution_id="
+          "masked_dirichlet_simplex.v1\n"
+          "episode_0_step_1_active_node_indices=0,1\n"
+          "episode_0_step_1_active_count=2\n"
+          "episode_0_step_1_old_log_prob=-0.744\n"
+          "episode_0_step_1_old_entropy=0.69\n"
+          "episode_0_step_1_old_value_estimate=0.002\n"
+          "episode_0_step_1_action_distribution_evidence_bound=true\n"
+          "episode_0_step_1_policy_input_tensor_payload_schema_id="
+          "kikijyeba.environment.policy_input.tensor_payload.v1\n"
+          "episode_0_step_1_policy_input_tensor_payload_bound=true\n"
+          "episode_0_step_1_policy_input_node_features_shape=2,28\n"
+          "episode_0_step_1_policy_input_node_features=" +
+          ppo_fixture_node_features_2x28 +
+          "\n"
+          "episode_0_step_1_policy_input_global_features_shape=6\n"
+          "episode_0_step_1_policy_input_global_features=" +
+          ppo_fixture_global_features_2 +
+          "\n"
+          "episode_0_step_1_policy_input_risk_features_shape=10\n"
+          "episode_0_step_1_policy_input_risk_features=" +
+          ppo_fixture_risk_features_10 +
+          "\n"
+          "episode_0_step_1_policy_input_executable_mask_shape=2\n"
+          "episode_0_step_1_policy_input_executable_mask=" +
+          ppo_fixture_executable_mask_2 +
+          "\n"
+          "episode_0_step_1_target_node_weights=BTC:0.55,ETH:0.45\n"
+          "episode_0_step_1_reward_total=-0.002\n"
+          "episode_0_step_1_reward_log_growth=-0.001\n"
+          "episode_0_step_1_reward_turnover_penalty=-0.001\n"
+          "episode_0_step_1_transaction_cost_numeraire=0.00013\n"
+          "episode_0_step_1_turnover=0.05\n"
+          "episode_0_step_1_cajtucu_execution_trace_available=true\n"
+          "episode_0_step_1_cajtucu_trace_valid=true\n"
+          "episode_0_step_1_cajtucu_trace_id=trace_fixture_1\n"
+          "episode_0_step_1_cajtucu_total_fee_numeraire=0.00003\n"
+          "episode_0_step_1_cajtucu_total_spread_cost_numeraire=0.00004\n"
+          "episode_0_step_1_cajtucu_total_slippage_numeraire=0.00006\n"
+          "episode_0_step_1_cajtucu_rejected_notional_numeraire=0.2\n"
+          "episode_0_step_1_cajtucu_partial_notional_numeraire=0.1\n"
+          "episode_0_step_1_cajtucu_missing_direct_pair_count=1\n"
+          "episode_0_step_1_cajtucu_numeraire_fallback_pair_count=0\n"
+          "episode_0_step_1_cajtucu_rejected_fill_count=1\n"
+          "episode_0_step_1_cajtucu_partial_fill_count=1\n"
+          "episode_0_step_1_invalid_action=false\n"
+          "episode_0_step_1_done=true\n");
   std::string ppo_replay_args = valid_policy_training_args("execute");
   const auto ppo_replay_live_pos = ppo_replay_args.find(ppo_live_forbidden);
   check(ppo_replay_live_pos != std::string::npos,
         "PPO replay fixture should contain live execution denial");
   ppo_replay_args.replace(ppo_replay_live_pos, ppo_live_forbidden.size(),
                           "\"live_execution_allowed\":false,"
-                          "\"confirm_execute\":true,"
                           "\"job_id\":\"ppo_replay_ingest\","
                           "\"report_path\":\"" +
                               ppo_replay_report_path.string() + "\"}");
   result.clear();
   error.clear();
-  check(hero_runtime::execute_tool_json("hero.runtime.run", ppo_replay_args,
-                                        &ppo_ctx, &result, &error),
+  check(execute_runtime_run_json(ppo_replay_args, &ppo_ctx, &result, &error),
         "PPO replay-report execute failed: " + error);
   require_contains(result,
                    "\"rollout_collection_source\":\"kikijyeba_replay_"
@@ -2961,19 +3837,81 @@ void test_policy_training_contract_and_pre_ppo_execute() {
   ppo_legacy_replay_args.replace(
       ppo_legacy_live_pos, ppo_live_forbidden.size(),
       "\"live_execution_allowed\":false,"
-      "\"confirm_execute\":true,"
       "\"job_id\":\"ppo_legacy_replay_missing_distribution\","
       "\"report_path\":\"" +
           ppo_legacy_replay_report_path.string() + "\"}");
   result.clear();
   error.clear();
-  check(!hero_runtime::execute_tool_json("hero.runtime.run",
-                                         ppo_legacy_replay_args, &ppo_ctx,
-                                         &result, &error),
+  check(!execute_runtime_run_json(ppo_legacy_replay_args, &ppo_ctx, &result,
+                                  &error),
         "PPO replay ingestion should reject missing distribution evidence");
   require_contains(
       error, "E_RUNTIME_POLICY_TRAINING_PPO_DISTRIBUTION_EVIDENCE_MISSING",
       "PPO missing distribution evidence refusal should be stable");
+
+  const auto ppo_missing_tensor_report_path =
+      ppo_runtime_root / "ppo_input_replay_missing_tensors.report";
+  write_text(
+      ppo_missing_tensor_report_path,
+      "schema=kikijyeba.environment.replay.report.v1\n"
+      "runtime_run_id=runtime_missing_tensor_fixture\n"
+      "environment_run_id=env_missing_tensor_fixture\n"
+      "episode_count=1\n"
+      "episode_0_step_count=1\n"
+      "episode_0_step_0_step_index=0\n"
+      "episode_0_step_0_episode_id=episode_missing_tensor_fixture\n"
+      "episode_0_step_0_anchor_key=anchor_missing_tensor_0000\n"
+      "episode_0_step_0_observation_anchor_index=100\n"
+      "episode_0_step_0_knowledge_timestamp_ms=100000\n"
+      "episode_0_step_0_policy_input_digest=missing_tensor_policy_input\n"
+      "episode_0_step_0_action_distribution_id="
+      "masked_dirichlet_simplex.v1\n"
+      "episode_0_step_0_active_node_indices=0,1\n"
+      "episode_0_step_0_active_count=2\n"
+      "episode_0_step_0_old_log_prob=-0.812\n"
+      "episode_0_step_0_old_entropy=0.71\n"
+      "episode_0_step_0_old_value_estimate=0.006\n"
+      "episode_0_step_0_action_distribution_evidence_bound=true\n"
+      "episode_0_step_0_target_node_weights=BTC:0.60,ETH:0.40\n"
+      "episode_0_step_0_reward_total=0.004\n"
+      "episode_0_step_0_reward_log_growth=0.005\n"
+      "episode_0_step_0_done=true\n");
+  std::string ppo_missing_tensor_args = valid_policy_training_args("execute");
+  const auto ppo_missing_tensor_live_pos =
+      ppo_missing_tensor_args.find(ppo_live_forbidden);
+  check(ppo_missing_tensor_live_pos != std::string::npos,
+        "PPO missing-tensor fixture should contain live execution denial");
+  ppo_missing_tensor_args.replace(
+      ppo_missing_tensor_live_pos, ppo_live_forbidden.size(),
+      "\"live_execution_allowed\":false,"
+      "\"job_id\":\"ppo_replay_missing_policy_input_tensors\","
+      "\"report_path\":\"" +
+          ppo_missing_tensor_report_path.string() + "\"}");
+  result.clear();
+  error.clear();
+  check(
+      !execute_runtime_run_json(ppo_missing_tensor_args, &ppo_ctx, &result,
+                                &error),
+      "PPO autograd should reject replay reports missing policy input tensors");
+  require_contains(
+      error,
+      "E_RUNTIME_POLICY_TRAINING_PPO_POLICY_INPUT_TENSOR_PAYLOAD_MISSING",
+      "PPO missing tensor payload refusal should be stable");
+
+  std::string ppo_e2e_reset_args = "{\"mode\":\"execute\",\"runtime_root\":\"" +
+                                   ppo_runtime_root.string() + "\"}";
+  result.clear();
+  error.clear();
+  check(
+      execute_runtime_reset_json(ppo_e2e_reset_args, &ppo_ctx, &result, &error),
+      "PPO end-to-end fresh-run reset execute failed: " + error);
+  require_contains(result, "\"dry_run\":false",
+                   "PPO end-to-end fresh-run reset is non-dry-run");
+  require_contains(result, "\"cleared\":true",
+                   "PPO end-to-end fresh-run reset clears previous PPO "
+                   "artifacts");
+  check(!std::filesystem::exists(ppo_actor_checkpoint_path),
+        "PPO end-to-end fresh-run reset removes earlier actor checkpoint");
 
   const auto ppo_source_job_dir = ppo_runtime_root / "source_completed_job";
   const auto ppo_source_replay_artifact_dir =
@@ -2989,409 +3927,463 @@ void test_policy_training_contract_and_pre_ppo_execute() {
              "entry_count=1\n");
   const auto fake_ppo_replay_exec =
       ppo_runtime_root / "fake_ppo_replay_exec.sh";
-  write_text(fake_ppo_replay_exec,
-             "#!/bin/sh\n"
-             "report_path=''\n"
-             "policy_checkpoint_path=''\n"
-             "policy_artifact_digest=''\n"
-             "linear_cost_rate=''\n"
-             "on_policy_sample='false'\n"
-             "quality_replay='false'\n"
-             "no_numeraire_policy='false'\n"
-             "no_sdu_policy='false'\n"
-             "while [ \"$#\" -gt 0 ]; do\n"
-             "  if [ \"$1\" = '--replay-report-path' ]; then\n"
-             "    shift\n"
-             "    report_path=\"$1\"\n"
-             "  elif [ \"$1\" = '--replay-policy-checkpoint-path' ]; then\n"
-             "    shift\n"
-             "    policy_checkpoint_path=\"$1\"\n"
-             "  elif [ \"$1\" = '--replay-policy-artifact-digest' ]; then\n"
-             "    shift\n"
-             "    policy_artifact_digest=\"$1\"\n"
-             "  elif [ \"$1\" = '--replay-linear-transaction-cost-rate' ]; "
-             "then\n"
-             "    shift\n"
-             "    linear_cost_rate=\"$1\"\n"
-             "  elif [ \"$1\" = '--replay-on-policy-sample' ]; then\n"
-             "    on_policy_sample='true'\n"
-             "  elif [ \"$1\" = '--replay-no-numeraire-only-policy' ]; then\n"
-             "    no_numeraire_policy='true'\n"
-             "  elif [ \"$1\" = '--replay-no-sdu-policy' ]; then\n"
-             "    no_sdu_policy='true'\n"
-             "  fi\n"
-             "  shift\n"
-             "done\n"
-             "if [ -z \"$report_path\" ]; then\n"
-             "  echo missing replay report path >&2\n"
-             "  exit 2\n"
-             "fi\n"
-             "case \"$report_path\" in\n"
-             "  *policy_quality_replay.report) quality_replay='true' ;;\n"
-             "esac\n"
-             "if [ \"$quality_replay\" = 'true' ]; then\n"
-             "  if [ \"$no_numeraire_policy\" = 'true' ] || "
-             "[ \"$no_sdu_policy\" = 'true' ]; then\n"
-             "    echo quality replay unexpectedly disabled a required "
-             "baseline >&2\n"
-             "    exit 5\n"
-             "  fi\n"
-             "fi\n"
-             "if [ -z \"$policy_checkpoint_path\" ] || [ ! -s "
-             "\"$policy_checkpoint_path\" ]; then\n"
-             "  echo missing replay policy checkpoint path >&2\n"
-             "  exit 3\n"
-             "fi\n"
-             "if [ \"$on_policy_sample\" = 'true' ]; then\n"
-             "  expected_stage='collection_policy'\n"
-             "  mode='on_policy_sample'\n"
-             "  runtime_run_id='runtime_on_policy_fixture'\n"
-             "  environment_run_id='env_on_policy_fixture'\n"
-             "  episode_id='episode_on_policy_fixture'\n"
-             "  anchor0='anchor_on_policy_0000'\n"
-             "  anchor1='anchor_on_policy_0001'\n"
-             "  input0='on_policy_input_digest_0'\n"
-             "  input1='on_policy_input_digest_1'\n"
-             "  trace_prefix='trace_on_policy'\n"
-             "  old_log0='-1.234'\n"
-             "  old_log1='-1.111'\n"
-             "  entropy0='0.88'\n"
-             "  entropy1='0.83'\n"
-             "  value0='0.015'\n"
-             "  value1='0.010'\n"
-             "  weights0='USDT:0.20,BTC:0.50,ETH:0.30'\n"
-             "  weights1='USDT:0.25,BTC:0.45,ETH:0.30'\n"
-             "  reward0='0.003'\n"
-             "  reward1='-0.001'\n"
-             "  log_growth0='0.004'\n"
-             "  log_growth1='-0.0005'\n"
-             "  cost0='0.00031'\n"
-             "  cost1='0.00011'\n"
-             "  turnover0='0.21'\n"
-             "  turnover1='0.07'\n"
-             "  fee0='0.00007'\n"
-             "  fee1='0.00003'\n"
-             "  spread0='0.00010'\n"
-             "  spread1='0.00004'\n"
-             "  slippage0='0.00014'\n"
-             "  slippage1='0.00004'\n"
-             "  final_equity='100.08'\n"
-             "  total_log_growth='0.0035'\n"
-             "  max_drawdown='0.010'\n"
-             "  realized_volatility='0.00318'\n"
-             "  target_l1='0.000'\n"
-             "  target_linf='0.000'\n"
-             "else\n"
-             "  expected_stage='post_update_policy'\n"
-             "  mode='deterministic_action'\n"
-             "  runtime_run_id='runtime_validation_fixture'\n"
-             "  environment_run_id='env_validation_fixture'\n"
-             "  episode_id='episode_validation_fixture'\n"
-             "  anchor0='anchor_validation_0000'\n"
-             "  anchor1='anchor_validation_0001'\n"
-             "  input0='validation_input_digest_0'\n"
-             "  input1='validation_input_digest_1'\n"
-             "  trace_prefix='trace_validation'\n"
-             "  old_log0='-0.900'\n"
-             "  old_log1='-0.905'\n"
-             "  entropy0='0.55'\n"
-             "  entropy1='0.54'\n"
-             "  value0='0.020'\n"
-             "  value1='0.018'\n"
-             "  weights0='USDT:0.24,BTC:0.46,ETH:0.30'\n"
-             "  weights1='USDT:0.24,BTC:0.46,ETH:0.30'\n"
-             "  reward0='0.0015'\n"
-             "  reward1='-0.0003'\n"
-             "  log_growth0='0.0018'\n"
-             "  log_growth1='-0.0006'\n"
-             "  cost0='0.00024'\n"
-             "  cost1='0.00006'\n"
-             "  turnover0='0.09'\n"
-             "  turnover1='0.02'\n"
-             "  fee0='0.00006'\n"
-             "  fee1='0.00002'\n"
-             "  spread0='0.00008'\n"
-             "  spread1='0.00002'\n"
-             "  slippage0='0.00010'\n"
-             "  slippage1='0.00002'\n"
-             "  final_equity='100.12'\n"
-             "  total_log_growth='0.0012'\n"
-             "  max_drawdown='0.012'\n"
-             "  realized_volatility='0.00170'\n"
-             "  target_l1='0.010'\n"
-             "  target_linf='0.005'\n"
-             "fi\n"
-             "if ! grep -q \"checkpoint_stage=$expected_stage\" "
-             "\"$policy_checkpoint_path\"; then\n"
-             "  echo wrong checkpoint stage for replay mode >&2\n"
-             "  exit 4\n"
-             "fi\n"
-             "mkdir -p \"$(dirname \"$report_path\")\"\n"
-             "cat > \"$report_path\" <<REPORT\n"
-             "schema=kikijyeba.environment.replay.cajtucu_ready_experiment_"
-             "artifact.v1\n"
-             "runtime_run_id=$runtime_run_id\n"
-             "environment_run_id=$environment_run_id\n"
-             "mean_final_equity_numeraire=$final_equity\n"
-             "mean_total_log_growth=$total_log_growth\n"
-             "mean_max_drawdown=$max_drawdown\n"
-             "mean_realized_volatility=$realized_volatility\n"
-             "mean_target_weight_error_l1=$target_l1\n"
-             "mean_target_weight_error_linf=$target_linf\n"
-             "policy_artifact_digest=$policy_artifact_digest\n"
-             "linear_transaction_cost_rate=$linear_cost_rate\n"
-             "episode_count=1\n"
-             "episode_0_policy_id=wikimyei.policy.portfolio.graph_node_"
-             "allocation.v1\n"
-             "episode_0_policy_kind=reinforcement_learning\n"
-             "episode_0_policy_action_mode=$mode\n"
-             "episode_0_step_count=2\n"
-             "episode_0_step_0_step_index=0\n"
-             "episode_0_step_0_episode_id=$episode_id\n"
-             "episode_0_step_0_policy_action_mode=$mode\n"
-             "episode_0_step_0_anchor_key=$anchor0\n"
-             "episode_0_step_0_observation_anchor_index=200\n"
-             "episode_0_step_0_knowledge_timestamp_ms=200000\n"
-             "episode_0_step_0_accepted_anchor_index_begin=200\n"
-             "episode_0_step_0_accepted_anchor_index_end=201\n"
-             "episode_0_step_0_policy_input_digest=$input0\n"
-             "episode_0_step_0_action_distribution_id="
-             "masked_dirichlet_simplex.v1\n"
-             "episode_0_step_0_active_node_indices=0,1,2\n"
-             "episode_0_step_0_active_count=3\n"
-             "episode_0_step_0_old_log_prob=$old_log0\n"
-             "episode_0_step_0_old_entropy=$entropy0\n"
-             "episode_0_step_0_old_value_estimate=$value0\n"
-             "episode_0_step_0_action_distribution_evidence_bound=true\n"
-             "episode_0_step_0_target_node_weights=$weights0\n"
-             "episode_0_step_0_reward_total=$reward0\n"
-             "episode_0_step_0_reward_log_growth=$log_growth0\n"
-             "episode_0_step_0_reward_transaction_cost_penalty=-0.001\n"
-             "episode_0_step_0_transaction_cost_numeraire=$cost0\n"
-             "episode_0_step_0_turnover=$turnover0\n"
-             "episode_0_step_0_cajtucu_execution_trace_available=true\n"
-             "episode_0_step_0_cajtucu_trace_valid=true\n"
-             "episode_0_step_0_cajtucu_trace_id=${trace_prefix}_0\n"
-             "episode_0_step_0_cajtucu_total_fee_numeraire=$fee0\n"
-             "episode_0_step_0_cajtucu_total_spread_cost_numeraire=$spread0\n"
-             "episode_0_step_0_cajtucu_total_slippage_numeraire=$slippage0\n"
-             "episode_0_step_0_cajtucu_missing_direct_pair_count=0\n"
-             "episode_0_step_0_cajtucu_numeraire_fallback_pair_count=0\n"
-             "episode_0_step_0_cajtucu_rejected_fill_count=0\n"
-             "episode_0_step_0_cajtucu_partial_fill_count=0\n"
-             "episode_0_step_0_invalid_action=false\n"
-             "episode_0_step_0_done=false\n"
-             "episode_0_step_1_step_index=1\n"
-             "episode_0_step_1_episode_id=$episode_id\n"
-             "episode_0_step_1_policy_action_mode=$mode\n"
-             "episode_0_step_1_anchor_key=$anchor1\n"
-             "episode_0_step_1_observation_anchor_index=201\n"
-             "episode_0_step_1_knowledge_timestamp_ms=201000\n"
-             "episode_0_step_1_accepted_anchor_index_begin=201\n"
-             "episode_0_step_1_accepted_anchor_index_end=202\n"
-             "episode_0_step_1_policy_input_digest=$input1\n"
-             "episode_0_step_1_action_distribution_id="
-             "masked_dirichlet_simplex.v1\n"
-             "episode_0_step_1_active_node_indices=0,1,2\n"
-             "episode_0_step_1_active_count=3\n"
-             "episode_0_step_1_old_log_prob=$old_log1\n"
-             "episode_0_step_1_old_entropy=$entropy1\n"
-             "episode_0_step_1_old_value_estimate=$value1\n"
-             "episode_0_step_1_action_distribution_evidence_bound=true\n"
-             "episode_0_step_1_target_node_weights=$weights1\n"
-             "episode_0_step_1_reward_total=$reward1\n"
-             "episode_0_step_1_reward_log_growth=$log_growth1\n"
-             "episode_0_step_1_reward_turnover_penalty=-0.0005\n"
-             "episode_0_step_1_transaction_cost_numeraire=$cost1\n"
-             "episode_0_step_1_turnover=$turnover1\n"
-             "episode_0_step_1_cajtucu_execution_trace_available=true\n"
-             "episode_0_step_1_cajtucu_trace_valid=true\n"
-             "episode_0_step_1_cajtucu_trace_id=${trace_prefix}_1\n"
-             "episode_0_step_1_cajtucu_total_fee_numeraire=$fee1\n"
-             "episode_0_step_1_cajtucu_total_spread_cost_numeraire=$spread1\n"
-             "episode_0_step_1_cajtucu_total_slippage_numeraire=$slippage1\n"
-             "episode_0_step_1_cajtucu_missing_direct_pair_count=0\n"
-             "episode_0_step_1_cajtucu_numeraire_fallback_pair_count=0\n"
-             "episode_0_step_1_cajtucu_rejected_fill_count=0\n"
-             "episode_0_step_1_cajtucu_partial_fill_count=0\n"
-             "episode_0_step_1_invalid_action=false\n"
-             "episode_0_step_1_done=true\n"
-             "REPORT\n"
-             "if [ \"$quality_replay\" = 'true' ]; then\n"
-             "cat >> \"$report_path\" <<REPORT\n"
-             "policy_summary_count=5\n"
-             "policy_0_id=numeraire_only.v1\n"
-             "policy_0_kind=baseline\n"
-             "policy_0_attempted_count=1\n"
-             "policy_0_completed_count=1\n"
-             "policy_0_failed_count=0\n"
-             "policy_0_mean_total_reward=0.0\n"
-             "policy_0_mean_total_log_growth=0.0\n"
-             "policy_0_mean_final_equity_numeraire=100.00\n"
-             "policy_0_mean_max_drawdown=0.0\n"
-             "policy_0_realized_volatility=0.0\n"
-             "policy_0_mean_total_turnover=0.0\n"
-             "policy_0_mean_total_transaction_cost_numeraire=0.0\n"
-             "policy_0_requested_notional_numeraire=0.0\n"
-             "policy_0_executed_notional_numeraire=0.0\n"
-             "policy_0_rejected_notional_numeraire=0.0\n"
-             "policy_0_partial_notional_numeraire=0.0\n"
-             "policy_0_fill_ratio=1.0\n"
-             "policy_0_fee_cost_numeraire=0.0\n"
-             "policy_0_spread_cost_numeraire=0.0\n"
-             "policy_0_slippage_cost_numeraire=0.0\n"
-             "policy_0_mean_target_weight_error_l1=0.0\n"
-             "policy_0_mean_target_weight_error_linf=0.0\n"
-             "policy_0_mean_projection_mae=0.020\n"
-             "policy_0_mean_projection_signed_bias=0.000\n"
-             "policy_0_mean_projection_directional_accuracy=0.50\n"
-             "policy_0_mean_projection_interval_coverage=0.75\n"
-             "policy_0_cajtucu_valid_trace_count=2\n"
-             "policy_0_cajtucu_invalid_trace_count=0\n"
-             "policy_0_cajtucu_missing_direct_pair_count=0\n"
-             "policy_0_cajtucu_numeraire_fallback_pair_count=0\n"
-             "policy_0_rejected_order_count=0\n"
-             "policy_0_partial_order_count=0\n"
-             "policy_1_id=current_weight_no_trade.v1\n"
-             "policy_1_kind=baseline\n"
-             "policy_1_attempted_count=1\n"
-             "policy_1_completed_count=1\n"
-             "policy_1_failed_count=0\n"
-             "policy_1_mean_total_reward=0.0004\n"
-             "policy_1_mean_total_log_growth=0.0004\n"
-             "policy_1_mean_final_equity_numeraire=100.04\n"
-             "policy_1_mean_max_drawdown=0.010\n"
-             "policy_1_realized_volatility=0.0012\n"
-             "policy_1_mean_total_turnover=0.0\n"
-             "policy_1_mean_total_transaction_cost_numeraire=0.0\n"
-             "policy_1_requested_notional_numeraire=0.0\n"
-             "policy_1_executed_notional_numeraire=0.0\n"
-             "policy_1_rejected_notional_numeraire=0.0\n"
-             "policy_1_partial_notional_numeraire=0.0\n"
-             "policy_1_fill_ratio=1.0\n"
-             "policy_1_fee_cost_numeraire=0.0\n"
-             "policy_1_spread_cost_numeraire=0.0\n"
-             "policy_1_slippage_cost_numeraire=0.0\n"
-             "policy_1_mean_target_weight_error_l1=0.0\n"
-             "policy_1_mean_target_weight_error_linf=0.0\n"
-             "policy_1_mean_projection_mae=0.018\n"
-             "policy_1_mean_projection_signed_bias=0.001\n"
-             "policy_1_mean_projection_directional_accuracy=0.55\n"
-             "policy_1_mean_projection_interval_coverage=0.78\n"
-             "policy_1_cajtucu_valid_trace_count=2\n"
-             "policy_1_cajtucu_invalid_trace_count=0\n"
-             "policy_1_cajtucu_missing_direct_pair_count=0\n"
-             "policy_1_cajtucu_numeraire_fallback_pair_count=0\n"
-             "policy_1_rejected_order_count=0\n"
-             "policy_1_partial_order_count=0\n"
-             "policy_2_id=equal_weight.v1\n"
-             "policy_2_kind=baseline\n"
-             "policy_2_attempted_count=1\n"
-             "policy_2_completed_count=1\n"
-             "policy_2_failed_count=0\n"
-             "policy_2_mean_total_reward=0.0006\n"
-             "policy_2_mean_total_log_growth=0.0006\n"
-             "policy_2_mean_final_equity_numeraire=100.06\n"
-             "policy_2_mean_max_drawdown=0.018\n"
-             "policy_2_realized_volatility=0.0019\n"
-             "policy_2_mean_total_turnover=0.15\n"
-             "policy_2_mean_total_transaction_cost_numeraire=0.00040\n"
-             "policy_2_requested_notional_numeraire=1.10\n"
-             "policy_2_executed_notional_numeraire=1.10\n"
-             "policy_2_rejected_notional_numeraire=0.0\n"
-             "policy_2_partial_notional_numeraire=0.0\n"
-             "policy_2_fill_ratio=1.0\n"
-             "policy_2_fee_cost_numeraire=0.00010\n"
-             "policy_2_spread_cost_numeraire=0.00013\n"
-             "policy_2_slippage_cost_numeraire=0.00017\n"
-             "policy_2_mean_target_weight_error_l1=0.004\n"
-             "policy_2_mean_target_weight_error_linf=0.002\n"
-             "policy_2_mean_projection_mae=0.015\n"
-             "policy_2_mean_projection_signed_bias=0.001\n"
-             "policy_2_mean_projection_directional_accuracy=0.56\n"
-             "policy_2_mean_projection_interval_coverage=0.80\n"
-             "policy_2_cajtucu_valid_trace_count=2\n"
-             "policy_2_cajtucu_invalid_trace_count=0\n"
-             "policy_2_cajtucu_missing_direct_pair_count=0\n"
-             "policy_2_cajtucu_numeraire_fallback_pair_count=0\n"
-             "policy_2_rejected_order_count=0\n"
-             "policy_2_partial_order_count=0\n"
-             "policy_3_id=kikijyeba.environment.policy."
-             "spot_distributional_utility.v1\n"
-             "policy_3_kind=baseline\n"
-             "policy_3_attempted_count=1\n"
-             "policy_3_completed_count=1\n"
-             "policy_3_failed_count=0\n"
-             "policy_3_mean_total_reward=0.0010\n"
-             "policy_3_mean_total_log_growth=0.0010\n"
-             "policy_3_mean_final_equity_numeraire=100.10\n"
-             "policy_3_mean_max_drawdown=0.013\n"
-             "policy_3_realized_volatility=0.0016\n"
-             "policy_3_mean_total_turnover=0.10\n"
-             "policy_3_mean_total_transaction_cost_numeraire=0.00025\n"
-             "policy_3_requested_notional_numeraire=0.90\n"
-             "policy_3_executed_notional_numeraire=0.90\n"
-             "policy_3_rejected_notional_numeraire=0.0\n"
-             "policy_3_partial_notional_numeraire=0.0\n"
-             "policy_3_fill_ratio=1.0\n"
-             "policy_3_fee_cost_numeraire=0.00006\n"
-             "policy_3_spread_cost_numeraire=0.00008\n"
-             "policy_3_slippage_cost_numeraire=0.00011\n"
-             "policy_3_mean_target_weight_error_l1=0.006\n"
-             "policy_3_mean_target_weight_error_linf=0.003\n"
-             "policy_3_mean_projection_mae=0.012\n"
-             "policy_3_mean_projection_signed_bias=0.001\n"
-             "policy_3_mean_projection_directional_accuracy=0.59\n"
-             "policy_3_mean_projection_interval_coverage=0.82\n"
-             "policy_3_cajtucu_valid_trace_count=2\n"
-             "policy_3_cajtucu_invalid_trace_count=0\n"
-             "policy_3_cajtucu_missing_direct_pair_count=0\n"
-             "policy_3_cajtucu_numeraire_fallback_pair_count=0\n"
-             "policy_3_rejected_order_count=0\n"
-             "policy_3_partial_order_count=0\n"
-             "policy_4_id=wikimyei.policy.portfolio.graph_node_allocation.v1\n"
-             "policy_4_kind=reinforcement_learning\n"
-             "policy_4_attempted_count=1\n"
-             "policy_4_completed_count=1\n"
-             "policy_4_failed_count=0\n"
-             "policy_4_mean_total_reward=0.0012\n"
-             "policy_4_mean_total_log_growth=0.0012\n"
-             "policy_4_mean_final_equity_numeraire=100.12\n"
-             "policy_4_mean_max_drawdown=0.012\n"
-             "policy_4_realized_volatility=0.0017\n"
-             "policy_4_mean_total_turnover=0.11\n"
-             "policy_4_mean_total_transaction_cost_numeraire=0.00030\n"
-             "policy_4_requested_notional_numeraire=1.0\n"
-             "policy_4_executed_notional_numeraire=1.0\n"
-             "policy_4_rejected_notional_numeraire=0.0\n"
-             "policy_4_partial_notional_numeraire=0.0\n"
-             "policy_4_fill_ratio=1.0\n"
-             "policy_4_fee_cost_numeraire=0.00008\n"
-             "policy_4_spread_cost_numeraire=0.00010\n"
-             "policy_4_slippage_cost_numeraire=0.00012\n"
-             "policy_4_mean_target_weight_error_l1=0.010\n"
-             "policy_4_mean_target_weight_error_linf=0.005\n"
-             "policy_4_mean_projection_mae=0.010\n"
-             "policy_4_mean_projection_signed_bias=0.001\n"
-             "policy_4_mean_projection_directional_accuracy=0.60\n"
-             "policy_4_mean_projection_interval_coverage=0.80\n"
-             "policy_4_cajtucu_valid_trace_count=2\n"
-             "policy_4_cajtucu_invalid_trace_count=0\n"
-             "policy_4_cajtucu_missing_direct_pair_count=0\n"
-             "policy_4_cajtucu_numeraire_fallback_pair_count=0\n"
-             "policy_4_rejected_order_count=0\n"
-             "policy_4_partial_order_count=0\n"
-             "REPORT\n"
-             "fi\n"
-             "printf 'replay_experiment_id=ppo_on_policy_fixture\\n'\n"
-             "printf 'replay_completed_count=1\\n'\n"
-             "printf 'replay_report_path=%s\\n' \"$report_path\"\n");
+  write_text(
+      fake_ppo_replay_exec,
+      "#!/bin/sh\n"
+      "report_path=''\n"
+      "policy_checkpoint_path=''\n"
+      "policy_artifact_digest=''\n"
+      "linear_cost_rate=''\n"
+      "on_policy_sample='false'\n"
+      "quality_replay='false'\n"
+      "no_numeraire_policy='false'\n"
+      "no_sdu_policy='false'\n"
+      "while [ \"$#\" -gt 0 ]; do\n"
+      "  if [ \"$1\" = '--replay-report-path' ]; then\n"
+      "    shift\n"
+      "    report_path=\"$1\"\n"
+      "  elif [ \"$1\" = '--replay-policy-checkpoint-path' ]; then\n"
+      "    shift\n"
+      "    policy_checkpoint_path=\"$1\"\n"
+      "  elif [ \"$1\" = '--replay-policy-artifact-digest' ]; then\n"
+      "    shift\n"
+      "    policy_artifact_digest=\"$1\"\n"
+      "  elif [ \"$1\" = '--replay-linear-transaction-cost-rate' ]; "
+      "then\n"
+      "    shift\n"
+      "    linear_cost_rate=\"$1\"\n"
+      "  elif [ \"$1\" = '--replay-on-policy-sample' ]; then\n"
+      "    on_policy_sample='true'\n"
+      "  elif [ \"$1\" = '--replay-no-numeraire-only-policy' ]; then\n"
+      "    no_numeraire_policy='true'\n"
+      "  elif [ \"$1\" = '--replay-no-sdu-policy' ]; then\n"
+      "    no_sdu_policy='true'\n"
+      "  fi\n"
+      "  shift\n"
+      "done\n"
+      "if [ -z \"$report_path\" ]; then\n"
+      "  echo missing replay report path >&2\n"
+      "  exit 2\n"
+      "fi\n"
+      "case \"$report_path\" in\n"
+      "  *policy_quality_replay.report) quality_replay='true' ;;\n"
+      "esac\n"
+      "if [ \"$quality_replay\" = 'true' ]; then\n"
+      "  if [ \"$no_numeraire_policy\" = 'true' ] || "
+      "[ \"$no_sdu_policy\" = 'true' ]; then\n"
+      "    echo quality replay unexpectedly disabled a required "
+      "baseline >&2\n"
+      "    exit 5\n"
+      "  fi\n"
+      "fi\n"
+      "if [ -z \"$policy_checkpoint_path\" ] || [ ! -s "
+      "\"$policy_checkpoint_path\" ]; then\n"
+      "  echo missing replay policy checkpoint path >&2\n"
+      "  exit 3\n"
+      "fi\n"
+      "if [ \"$on_policy_sample\" = 'true' ]; then\n"
+      "  expected_stage='collection_policy'\n"
+      "  mode='on_policy_sample'\n"
+      "  runtime_run_id='runtime_on_policy_fixture'\n"
+      "  environment_run_id='env_on_policy_fixture'\n"
+      "  episode_id='episode_on_policy_fixture'\n"
+      "  anchor0='anchor_on_policy_0000'\n"
+      "  anchor1='anchor_on_policy_0001'\n"
+      "  input0='on_policy_input_digest_0'\n"
+      "  input1='on_policy_input_digest_1'\n"
+      "  trace_prefix='trace_on_policy'\n"
+      "  old_log0='-1.234'\n"
+      "  old_log1='-1.111'\n"
+      "  entropy0='0.88'\n"
+      "  entropy1='0.83'\n"
+      "  value0='0.015'\n"
+      "  value1='0.010'\n"
+      "  weights0='USDT:0.20,BTC:0.50,ETH:0.30'\n"
+      "  weights1='USDT:0.25,BTC:0.45,ETH:0.30'\n"
+      "  reward0='0.003'\n"
+      "  reward1='-0.001'\n"
+      "  log_growth0='0.004'\n"
+      "  log_growth1='-0.0005'\n"
+      "  cost0='0.00031'\n"
+      "  cost1='0.00011'\n"
+      "  turnover0='0.21'\n"
+      "  turnover1='0.07'\n"
+      "  fee0='0.00007'\n"
+      "  fee1='0.00003'\n"
+      "  spread0='0.00010'\n"
+      "  spread1='0.00004'\n"
+      "  slippage0='0.00014'\n"
+      "  slippage1='0.00004'\n"
+      "  final_equity='100.08'\n"
+      "  total_log_growth='0.0035'\n"
+      "  max_drawdown='0.010'\n"
+      "  realized_volatility='0.00318'\n"
+      "  target_l1='0.000'\n"
+      "  target_linf='0.000'\n"
+      "else\n"
+      "  expected_stage='post_update_policy'\n"
+      "  mode='deterministic_action'\n"
+      "  runtime_run_id='runtime_validation_fixture'\n"
+      "  environment_run_id='env_validation_fixture'\n"
+      "  episode_id='episode_validation_fixture'\n"
+      "  anchor0='anchor_validation_0000'\n"
+      "  anchor1='anchor_validation_0001'\n"
+      "  input0='validation_input_digest_0'\n"
+      "  input1='validation_input_digest_1'\n"
+      "  trace_prefix='trace_validation'\n"
+      "  old_log0='-0.900'\n"
+      "  old_log1='-0.905'\n"
+      "  entropy0='0.55'\n"
+      "  entropy1='0.54'\n"
+      "  value0='0.020'\n"
+      "  value1='0.018'\n"
+      "  weights0='USDT:0.24,BTC:0.46,ETH:0.30'\n"
+      "  weights1='USDT:0.24,BTC:0.46,ETH:0.30'\n"
+      "  reward0='0.0015'\n"
+      "  reward1='-0.0003'\n"
+      "  log_growth0='0.0018'\n"
+      "  log_growth1='-0.0006'\n"
+      "  cost0='0.00024'\n"
+      "  cost1='0.00006'\n"
+      "  turnover0='0.09'\n"
+      "  turnover1='0.02'\n"
+      "  fee0='0.00006'\n"
+      "  fee1='0.00002'\n"
+      "  spread0='0.00008'\n"
+      "  spread1='0.00002'\n"
+      "  slippage0='0.00010'\n"
+      "  slippage1='0.00002'\n"
+      "  final_equity='100.12'\n"
+      "  total_log_growth='0.0012'\n"
+      "  max_drawdown='0.012'\n"
+      "  realized_volatility='0.00170'\n"
+      "  target_l1='0.010'\n"
+      "  target_linf='0.005'\n"
+      "fi\n"
+      "node_features_shape='3,28'\n"
+      "node_features='0,0,0,0,0,0,0,0,0,0,0,0,"
+      "0,0,0,0,0,0,0,0,0,0,0,0,"
+      "0,0,0,0,0,0,0,0,0,0,0,0,"
+      "0,0,0,0,0,0,0,0,0,0,0,0,"
+      "0,0,0,0,0,0,0,0,0,0,0,0,"
+      "0,0,0,0,0,0,0,0,0,0,0,0,"
+      "0,0,0,0,0,0,0,0,0,0,0,0'\n"
+      "global_features_shape='6'\n"
+      "global_features='0,0,1,1,0.25,0.25'\n"
+      "risk_features_shape='10'\n"
+      "risk_features='0,0,0,0,0,0,0,0,0,0'\n"
+      "executable_mask_shape='3'\n"
+      "executable_mask='1,1,1'\n"
+      "if ! grep -q \"checkpoint_stage=$expected_stage\" "
+      "\"$policy_checkpoint_path\"; then\n"
+      "  echo wrong checkpoint stage for replay mode >&2\n"
+      "  exit 4\n"
+      "fi\n"
+      "mkdir -p \"$(dirname \"$report_path\")\"\n"
+      "cat > \"$report_path\" <<REPORT\n"
+      "schema=kikijyeba.environment.replay.cajtucu_ready_experiment_"
+      "artifact.v1\n"
+      "runtime_run_id=$runtime_run_id\n"
+      "environment_run_id=$environment_run_id\n"
+      "mean_final_equity_numeraire=$final_equity\n"
+      "mean_total_log_growth=$total_log_growth\n"
+      "mean_max_drawdown=$max_drawdown\n"
+      "mean_realized_volatility=$realized_volatility\n"
+      "mean_target_weight_error_l1=$target_l1\n"
+      "mean_target_weight_error_linf=$target_linf\n"
+      "policy_artifact_digest=$policy_artifact_digest\n"
+      "linear_transaction_cost_rate=$linear_cost_rate\n"
+      "episode_count=1\n"
+      "episode_0_policy_id=wikimyei.policy.portfolio.graph_node_"
+      "allocation.v1\n"
+      "episode_0_policy_kind=reinforcement_learning\n"
+      "episode_0_policy_action_mode=$mode\n"
+      "episode_0_step_count=2\n"
+      "episode_0_step_0_step_index=0\n"
+      "episode_0_step_0_episode_id=$episode_id\n"
+      "episode_0_step_0_policy_action_mode=$mode\n"
+      "episode_0_step_0_anchor_key=$anchor0\n"
+      "episode_0_step_0_observation_anchor_index=200\n"
+      "episode_0_step_0_knowledge_timestamp_ms=200000\n"
+      "episode_0_step_0_accepted_anchor_index_begin=200\n"
+      "episode_0_step_0_accepted_anchor_index_end=201\n"
+      "episode_0_step_0_policy_input_digest=$input0\n"
+      "episode_0_step_0_action_distribution_id="
+      "masked_dirichlet_simplex.v1\n"
+      "episode_0_step_0_active_node_indices=0,1,2\n"
+      "episode_0_step_0_active_count=3\n"
+      "episode_0_step_0_old_log_prob=$old_log0\n"
+      "episode_0_step_0_old_entropy=$entropy0\n"
+      "episode_0_step_0_old_value_estimate=$value0\n"
+      "episode_0_step_0_action_distribution_evidence_bound=true\n"
+      "episode_0_step_0_policy_input_tensor_payload_schema_id="
+      "kikijyeba.environment.policy_input.tensor_payload.v1\n"
+      "episode_0_step_0_policy_input_tensor_payload_bound=true\n"
+      "episode_0_step_0_policy_input_node_features_shape=$node_features_shape\n"
+      "episode_0_step_0_policy_input_node_features=$node_features\n"
+      "episode_0_step_0_policy_input_global_features_shape=$global_features_"
+      "shape\n"
+      "episode_0_step_0_policy_input_global_features=$global_features\n"
+      "episode_0_step_0_policy_input_risk_features_shape=$risk_features_shape\n"
+      "episode_0_step_0_policy_input_risk_features=$risk_features\n"
+      "episode_0_step_0_policy_input_executable_mask_shape=$executable_mask_"
+      "shape\n"
+      "episode_0_step_0_policy_input_executable_mask=$executable_mask\n"
+      "episode_0_step_0_target_node_weights=$weights0\n"
+      "episode_0_step_0_reward_total=$reward0\n"
+      "episode_0_step_0_reward_log_growth=$log_growth0\n"
+      "episode_0_step_0_reward_transaction_cost_penalty=-0.001\n"
+      "episode_0_step_0_transaction_cost_numeraire=$cost0\n"
+      "episode_0_step_0_turnover=$turnover0\n"
+      "episode_0_step_0_cajtucu_execution_trace_available=true\n"
+      "episode_0_step_0_cajtucu_trace_valid=true\n"
+      "episode_0_step_0_cajtucu_trace_id=${trace_prefix}_0\n"
+      "episode_0_step_0_cajtucu_total_fee_numeraire=$fee0\n"
+      "episode_0_step_0_cajtucu_total_spread_cost_numeraire=$spread0\n"
+      "episode_0_step_0_cajtucu_total_slippage_numeraire=$slippage0\n"
+      "episode_0_step_0_cajtucu_missing_direct_pair_count=0\n"
+      "episode_0_step_0_cajtucu_numeraire_fallback_pair_count=0\n"
+      "episode_0_step_0_cajtucu_rejected_fill_count=0\n"
+      "episode_0_step_0_cajtucu_partial_fill_count=0\n"
+      "episode_0_step_0_invalid_action=false\n"
+      "episode_0_step_0_done=false\n"
+      "episode_0_step_1_step_index=1\n"
+      "episode_0_step_1_episode_id=$episode_id\n"
+      "episode_0_step_1_policy_action_mode=$mode\n"
+      "episode_0_step_1_anchor_key=$anchor1\n"
+      "episode_0_step_1_observation_anchor_index=201\n"
+      "episode_0_step_1_knowledge_timestamp_ms=201000\n"
+      "episode_0_step_1_accepted_anchor_index_begin=201\n"
+      "episode_0_step_1_accepted_anchor_index_end=202\n"
+      "episode_0_step_1_policy_input_digest=$input1\n"
+      "episode_0_step_1_action_distribution_id="
+      "masked_dirichlet_simplex.v1\n"
+      "episode_0_step_1_active_node_indices=0,1,2\n"
+      "episode_0_step_1_active_count=3\n"
+      "episode_0_step_1_old_log_prob=$old_log1\n"
+      "episode_0_step_1_old_entropy=$entropy1\n"
+      "episode_0_step_1_old_value_estimate=$value1\n"
+      "episode_0_step_1_action_distribution_evidence_bound=true\n"
+      "episode_0_step_1_policy_input_tensor_payload_schema_id="
+      "kikijyeba.environment.policy_input.tensor_payload.v1\n"
+      "episode_0_step_1_policy_input_tensor_payload_bound=true\n"
+      "episode_0_step_1_policy_input_node_features_shape=$node_features_shape\n"
+      "episode_0_step_1_policy_input_node_features=$node_features\n"
+      "episode_0_step_1_policy_input_global_features_shape=$global_features_"
+      "shape\n"
+      "episode_0_step_1_policy_input_global_features=$global_features\n"
+      "episode_0_step_1_policy_input_risk_features_shape=$risk_features_shape\n"
+      "episode_0_step_1_policy_input_risk_features=$risk_features\n"
+      "episode_0_step_1_policy_input_executable_mask_shape=$executable_mask_"
+      "shape\n"
+      "episode_0_step_1_policy_input_executable_mask=$executable_mask\n"
+      "episode_0_step_1_target_node_weights=$weights1\n"
+      "episode_0_step_1_reward_total=$reward1\n"
+      "episode_0_step_1_reward_log_growth=$log_growth1\n"
+      "episode_0_step_1_reward_turnover_penalty=-0.0005\n"
+      "episode_0_step_1_transaction_cost_numeraire=$cost1\n"
+      "episode_0_step_1_turnover=$turnover1\n"
+      "episode_0_step_1_cajtucu_execution_trace_available=true\n"
+      "episode_0_step_1_cajtucu_trace_valid=true\n"
+      "episode_0_step_1_cajtucu_trace_id=${trace_prefix}_1\n"
+      "episode_0_step_1_cajtucu_total_fee_numeraire=$fee1\n"
+      "episode_0_step_1_cajtucu_total_spread_cost_numeraire=$spread1\n"
+      "episode_0_step_1_cajtucu_total_slippage_numeraire=$slippage1\n"
+      "episode_0_step_1_cajtucu_missing_direct_pair_count=0\n"
+      "episode_0_step_1_cajtucu_numeraire_fallback_pair_count=0\n"
+      "episode_0_step_1_cajtucu_rejected_fill_count=0\n"
+      "episode_0_step_1_cajtucu_partial_fill_count=0\n"
+      "episode_0_step_1_invalid_action=false\n"
+      "episode_0_step_1_done=true\n"
+      "REPORT\n"
+      "if [ \"$quality_replay\" = 'true' ]; then\n"
+      "cat >> \"$report_path\" <<REPORT\n"
+      "policy_summary_count=5\n"
+      "policy_0_id=numeraire_only.v1\n"
+      "policy_0_kind=baseline\n"
+      "policy_0_attempted_count=1\n"
+      "policy_0_completed_count=1\n"
+      "policy_0_failed_count=0\n"
+      "policy_0_mean_total_reward=0.0\n"
+      "policy_0_mean_total_log_growth=0.0\n"
+      "policy_0_mean_final_equity_numeraire=100.00\n"
+      "policy_0_mean_max_drawdown=0.0\n"
+      "policy_0_realized_volatility=0.0\n"
+      "policy_0_mean_total_turnover=0.0\n"
+      "policy_0_mean_total_transaction_cost_numeraire=0.0\n"
+      "policy_0_requested_notional_numeraire=0.0\n"
+      "policy_0_executed_notional_numeraire=0.0\n"
+      "policy_0_rejected_notional_numeraire=0.0\n"
+      "policy_0_partial_notional_numeraire=0.0\n"
+      "policy_0_fill_ratio=1.0\n"
+      "policy_0_fee_cost_numeraire=0.0\n"
+      "policy_0_spread_cost_numeraire=0.0\n"
+      "policy_0_slippage_cost_numeraire=0.0\n"
+      "policy_0_mean_target_weight_error_l1=0.0\n"
+      "policy_0_mean_target_weight_error_linf=0.0\n"
+      "policy_0_mean_projection_mae=0.020\n"
+      "policy_0_mean_projection_signed_bias=0.000\n"
+      "policy_0_mean_projection_directional_accuracy=0.50\n"
+      "policy_0_mean_projection_interval_coverage=0.75\n"
+      "policy_0_cajtucu_valid_trace_count=2\n"
+      "policy_0_cajtucu_invalid_trace_count=0\n"
+      "policy_0_cajtucu_missing_direct_pair_count=0\n"
+      "policy_0_cajtucu_numeraire_fallback_pair_count=0\n"
+      "policy_0_rejected_order_count=0\n"
+      "policy_0_partial_order_count=0\n"
+      "policy_1_id=current_weight_no_trade.v1\n"
+      "policy_1_kind=baseline\n"
+      "policy_1_attempted_count=1\n"
+      "policy_1_completed_count=1\n"
+      "policy_1_failed_count=0\n"
+      "policy_1_mean_total_reward=0.0004\n"
+      "policy_1_mean_total_log_growth=0.0004\n"
+      "policy_1_mean_final_equity_numeraire=100.04\n"
+      "policy_1_mean_max_drawdown=0.010\n"
+      "policy_1_realized_volatility=0.0012\n"
+      "policy_1_mean_total_turnover=0.0\n"
+      "policy_1_mean_total_transaction_cost_numeraire=0.0\n"
+      "policy_1_requested_notional_numeraire=0.0\n"
+      "policy_1_executed_notional_numeraire=0.0\n"
+      "policy_1_rejected_notional_numeraire=0.0\n"
+      "policy_1_partial_notional_numeraire=0.0\n"
+      "policy_1_fill_ratio=1.0\n"
+      "policy_1_fee_cost_numeraire=0.0\n"
+      "policy_1_spread_cost_numeraire=0.0\n"
+      "policy_1_slippage_cost_numeraire=0.0\n"
+      "policy_1_mean_target_weight_error_l1=0.0\n"
+      "policy_1_mean_target_weight_error_linf=0.0\n"
+      "policy_1_mean_projection_mae=0.018\n"
+      "policy_1_mean_projection_signed_bias=0.001\n"
+      "policy_1_mean_projection_directional_accuracy=0.55\n"
+      "policy_1_mean_projection_interval_coverage=0.78\n"
+      "policy_1_cajtucu_valid_trace_count=2\n"
+      "policy_1_cajtucu_invalid_trace_count=0\n"
+      "policy_1_cajtucu_missing_direct_pair_count=0\n"
+      "policy_1_cajtucu_numeraire_fallback_pair_count=0\n"
+      "policy_1_rejected_order_count=0\n"
+      "policy_1_partial_order_count=0\n"
+      "policy_2_id=equal_weight.v1\n"
+      "policy_2_kind=baseline\n"
+      "policy_2_attempted_count=1\n"
+      "policy_2_completed_count=1\n"
+      "policy_2_failed_count=0\n"
+      "policy_2_mean_total_reward=0.0006\n"
+      "policy_2_mean_total_log_growth=0.0006\n"
+      "policy_2_mean_final_equity_numeraire=100.06\n"
+      "policy_2_mean_max_drawdown=0.018\n"
+      "policy_2_realized_volatility=0.0019\n"
+      "policy_2_mean_total_turnover=0.15\n"
+      "policy_2_mean_total_transaction_cost_numeraire=0.00040\n"
+      "policy_2_requested_notional_numeraire=1.10\n"
+      "policy_2_executed_notional_numeraire=1.10\n"
+      "policy_2_rejected_notional_numeraire=0.0\n"
+      "policy_2_partial_notional_numeraire=0.0\n"
+      "policy_2_fill_ratio=1.0\n"
+      "policy_2_fee_cost_numeraire=0.00010\n"
+      "policy_2_spread_cost_numeraire=0.00013\n"
+      "policy_2_slippage_cost_numeraire=0.00017\n"
+      "policy_2_mean_target_weight_error_l1=0.004\n"
+      "policy_2_mean_target_weight_error_linf=0.002\n"
+      "policy_2_mean_projection_mae=0.015\n"
+      "policy_2_mean_projection_signed_bias=0.001\n"
+      "policy_2_mean_projection_directional_accuracy=0.56\n"
+      "policy_2_mean_projection_interval_coverage=0.80\n"
+      "policy_2_cajtucu_valid_trace_count=2\n"
+      "policy_2_cajtucu_invalid_trace_count=0\n"
+      "policy_2_cajtucu_missing_direct_pair_count=0\n"
+      "policy_2_cajtucu_numeraire_fallback_pair_count=0\n"
+      "policy_2_rejected_order_count=0\n"
+      "policy_2_partial_order_count=0\n"
+      "policy_3_id=kikijyeba.environment.policy."
+      "spot_distributional_utility.v1\n"
+      "policy_3_kind=baseline\n"
+      "policy_3_attempted_count=1\n"
+      "policy_3_completed_count=1\n"
+      "policy_3_failed_count=0\n"
+      "policy_3_mean_total_reward=0.0010\n"
+      "policy_3_mean_total_log_growth=0.0010\n"
+      "policy_3_mean_final_equity_numeraire=100.10\n"
+      "policy_3_mean_max_drawdown=0.013\n"
+      "policy_3_realized_volatility=0.0016\n"
+      "policy_3_mean_total_turnover=0.10\n"
+      "policy_3_mean_total_transaction_cost_numeraire=0.00025\n"
+      "policy_3_requested_notional_numeraire=0.90\n"
+      "policy_3_executed_notional_numeraire=0.90\n"
+      "policy_3_rejected_notional_numeraire=0.0\n"
+      "policy_3_partial_notional_numeraire=0.0\n"
+      "policy_3_fill_ratio=1.0\n"
+      "policy_3_fee_cost_numeraire=0.00006\n"
+      "policy_3_spread_cost_numeraire=0.00008\n"
+      "policy_3_slippage_cost_numeraire=0.00011\n"
+      "policy_3_mean_target_weight_error_l1=0.006\n"
+      "policy_3_mean_target_weight_error_linf=0.003\n"
+      "policy_3_mean_projection_mae=0.012\n"
+      "policy_3_mean_projection_signed_bias=0.001\n"
+      "policy_3_mean_projection_directional_accuracy=0.59\n"
+      "policy_3_mean_projection_interval_coverage=0.82\n"
+      "policy_3_cajtucu_valid_trace_count=2\n"
+      "policy_3_cajtucu_invalid_trace_count=0\n"
+      "policy_3_cajtucu_missing_direct_pair_count=0\n"
+      "policy_3_cajtucu_numeraire_fallback_pair_count=0\n"
+      "policy_3_rejected_order_count=0\n"
+      "policy_3_partial_order_count=0\n"
+      "policy_4_id=wikimyei.policy.portfolio.graph_node_allocation.v1\n"
+      "policy_4_kind=reinforcement_learning\n"
+      "policy_4_attempted_count=1\n"
+      "policy_4_completed_count=1\n"
+      "policy_4_failed_count=0\n"
+      "policy_4_mean_total_reward=0.0012\n"
+      "policy_4_mean_total_log_growth=0.0012\n"
+      "policy_4_mean_final_equity_numeraire=100.12\n"
+      "policy_4_mean_max_drawdown=0.012\n"
+      "policy_4_realized_volatility=0.0017\n"
+      "policy_4_mean_total_turnover=0.11\n"
+      "policy_4_mean_total_transaction_cost_numeraire=0.00030\n"
+      "policy_4_requested_notional_numeraire=1.0\n"
+      "policy_4_executed_notional_numeraire=1.0\n"
+      "policy_4_rejected_notional_numeraire=0.0\n"
+      "policy_4_partial_notional_numeraire=0.0\n"
+      "policy_4_fill_ratio=1.0\n"
+      "policy_4_fee_cost_numeraire=0.00008\n"
+      "policy_4_spread_cost_numeraire=0.00010\n"
+      "policy_4_slippage_cost_numeraire=0.00012\n"
+      "policy_4_mean_target_weight_error_l1=0.010\n"
+      "policy_4_mean_target_weight_error_linf=0.005\n"
+      "policy_4_mean_projection_mae=0.010\n"
+      "policy_4_mean_projection_signed_bias=0.001\n"
+      "policy_4_mean_projection_directional_accuracy=0.60\n"
+      "policy_4_mean_projection_interval_coverage=0.80\n"
+      "policy_4_cajtucu_valid_trace_count=2\n"
+      "policy_4_cajtucu_invalid_trace_count=0\n"
+      "policy_4_cajtucu_missing_direct_pair_count=0\n"
+      "policy_4_cajtucu_numeraire_fallback_pair_count=0\n"
+      "policy_4_rejected_order_count=0\n"
+      "policy_4_partial_order_count=0\n"
+      "REPORT\n"
+      "fi\n"
+      "printf 'replay_experiment_id=ppo_on_policy_fixture\\n'\n"
+      "printf 'replay_completed_count=1\\n'\n"
+      "printf 'replay_report_path=%s\\n' \"$report_path\"\n");
   std::filesystem::permissions(fake_ppo_replay_exec,
                                std::filesystem::perms::owner_exec |
                                    std::filesystem::perms::owner_read |
                                    std::filesystem::perms::owner_write);
   ppo_ctx.policy.values["runtime_exec_path"] = fake_ppo_replay_exec.string();
   auto ppo_parent_bundle = make_ppo_rehearsal_parent_fact_bundle();
+  write_text(ppo_source_job_dir / "lattice.forecast_eval.fact",
+             "fact_digest=" + ppo_parent_bundle.forecast_eval_digest +
+                 "\n"
+                 "parent_exposure_fact_digest=" +
+                 lattice_exposure::exposure_fact_digest(
+                     ppo_parent_bundle.parent_fact) +
+                 "\n"
+                 "split_name=train\n"
+                 "split_role=train\n"
+                 "anchor_begin=0\n"
+                 "anchor_end=10\n"
+                 "completed_anchor_begin=0\n"
+                 "completed_anchor_end=10\n");
   std::string ppo_on_policy_args = valid_policy_training_args("execute");
   replace_all(ppo_on_policy_args,
               "\"parent_forecast_eval_fact_digest\":\"forecast_eval_fact_"
@@ -3426,7 +4418,6 @@ void test_policy_training_contract_and_pre_ppo_execute() {
         "PPO on-policy fixture should contain live execution denial");
   ppo_on_policy_args.replace(ppo_on_policy_live_pos, ppo_live_forbidden.size(),
                              "\"live_execution_allowed\":false,"
-                             "\"confirm_execute\":true,"
                              "\"job_id\":\"ppo_on_policy_collect\","
                              "\"replay_job_dir\":\"" +
                                  ppo_source_job_dir.string() +
@@ -3434,8 +4425,7 @@ void test_policy_training_contract_and_pre_ppo_execute() {
                                  "\"accounting_numeraire_node_id\":\"USDT\"}");
   result.clear();
   error.clear();
-  check(hero_runtime::execute_tool_json("hero.runtime.run", ppo_on_policy_args,
-                                        &ppo_ctx, &result, &error),
+  check(execute_runtime_run_json(ppo_on_policy_args, &ppo_ctx, &result, &error),
         "PPO on-policy replay execute failed: " + error +
             "\nresult: " + result);
   require_contains(result,
@@ -3449,6 +4439,25 @@ void test_policy_training_contract_and_pre_ppo_execute() {
                    "PPO on-policy execute marks Runtime collection complete");
   require_contains(result, "\"policy_distribution_evidence_bound\":true",
                    "PPO on-policy execute binds policy distribution evidence");
+  require_contains(result, "\"actor_checkpoint_ref\":\"ckpt_",
+                   "PPO on-policy execute reports actor checkpoint operator "
+                   "ref");
+  require_contains(result, "\"ppo_update_report_ref\":\"rpt_",
+                   "PPO on-policy execute reports PPO update operator ref");
+  require_contains(result, "\"validation_rollout_report_ref\":\"rpt_",
+                   "PPO on-policy execute reports validation rollout operator "
+                   "ref");
+  require_contains(result, "\"policy_quality_report_ref\":\"rpt_",
+                   "PPO on-policy execute reports policy-quality operator ref");
+  require_contains(result, "\"optimizer_torch_state_ref\":\"opt_",
+                   "PPO on-policy execute reports optimizer archive operator "
+                   "ref");
+  require_contains(result, "\"runtime_executes_live_capital\":false",
+                   "PPO on-policy execute denies live capital");
+  require_contains(result, "\"policy_quality_claimed\":false",
+                   "PPO on-policy execute denies policy-quality claims");
+  require_contains(result, "\"market_readiness_claimed\":false",
+                   "PPO on-policy execute denies market-readiness claims");
   require_contains(result, "\"input_policy_checkpoint_path\":",
                    "PPO on-policy execute reports collection checkpoint path");
   require_contains(
@@ -3532,6 +4541,15 @@ void test_policy_training_contract_and_pre_ppo_execute() {
             ppo_parent_bundle.observer_belief_digest,
         "parsed on-policy PPO fact binds concrete observer-belief parent "
         "digest");
+  check(parsed_ppo_on_policy_fact.policy_dsl_digest == "policy_dsl_digest_v1" &&
+            parsed_ppo_on_policy_fact.policy_net_digest ==
+                "policy_net_digest_v1" &&
+            parsed_ppo_on_policy_fact.policy_jkimyei_digest ==
+                "policy_jkimyei_digest_v1" &&
+            parsed_ppo_on_policy_fact.target_node_universe_digest ==
+                "target_node_universe_digest_v1",
+        "parsed on-policy PPO fact binds policy DSL/net/jkimyei and target "
+        "universe identity");
   check(parsed_ppo_on_policy_fact.parent_allocation_engine_fact_digest.empty(),
         "parsed on-policy PPO fact does not require legacy allocation-engine "
         "parent lineage");
@@ -3564,11 +4582,11 @@ void test_policy_training_contract_and_pre_ppo_execute() {
   const auto ppo_generated_specs =
       lattice_target::decode_lattice_targets_from_dsl(R"DSL(
 LATTICE_TARGET {
-  TARGET_ID = generated_ppo_v0_policy_training_artifact_ready;
+  TARGET_ID = policy_training_artifact_ready;
   TARGET_CLASS = artifact_readiness;
   PROOF_KIND = policy_training_artifact_bound;
   SUBJECT_FACT_FAMILY = policy_training;
-  SUBJECT_COMPONENT = wikimyei.policy.trainable;
+  SUBJECT_COMPONENT = wikimyei.policy.portfolio.graph_node_allocation;
   PROTOCOL_ID = cwu_02v;
   SOURCE_RANGE = anchor_index;
   ANCHOR_INDEX_BEGIN = 0;
@@ -3586,43 +4604,47 @@ LATTICE_TARGET {
   ppo_artifact_options.active_identity.source_cursor_token = "cursor_1";
   lattice_target::lattice_target_evaluator_t ppo_artifact_evaluator(
       ppo_generated_specs, ppo_artifact_options);
-  const auto ppo_artifact_eval = ppo_artifact_evaluator.evaluate(
-      "generated_ppo_v0_policy_training_artifact_ready");
-  check(ppo_artifact_eval.status ==
-            lattice_target::lattice_target_status_t::satisfied,
-        "generated on-policy PPO fact should satisfy "
-        "policy_training_artifact_ready with concrete parent evidence: " +
-            join_issue_tokens(ppo_artifact_eval.reasons));
+  const auto ppo_artifact_eval =
+      ppo_artifact_evaluator.evaluate("policy_training_artifact_ready");
+  check(
+      ppo_artifact_eval.status ==
+          lattice_target::lattice_target_status_t::satisfied,
+      "fresh on-policy PPO fact should satisfy policy_training_artifact_ready "
+      "with concrete parent evidence: " +
+          join_issue_tokens(ppo_artifact_eval.reasons));
+  check(ppo_artifact_eval.target_id == "policy_training_artifact_ready",
+        "fresh PPO Lattice target proof should use the canonical "
+        "policy_training_artifact_ready target id");
   check(ppo_artifact_eval.proof_kind == "policy_training_artifact_bound",
-        "generated PPO Lattice target uses policy-training artifact proof");
+        "fresh PPO Lattice target uses policy-training artifact proof");
   check(ppo_artifact_eval.subject_fact_family == "policy_training",
-        "generated PPO Lattice target remains scoped to policy_training facts");
+        "fresh PPO Lattice target remains scoped to policy_training facts");
   check(!ppo_artifact_eval.plan_ready &&
             ppo_artifact_eval.suggested_wave.empty(),
-        "generated PPO artifact readiness does not suggest training or "
-        "selection work");
+        "fresh PPO artifact readiness does not suggest training or selection "
+        "work");
   check(ppo_artifact_eval.fact_integrity_summary_available,
-        "generated PPO artifact readiness exposes fact-integrity summary");
+        "fresh PPO artifact readiness exposes fact-integrity summary");
   check(ppo_artifact_eval.fact_integrity_summary.relation_declared_count == 3,
-        "generated PPO artifact readiness declares three parent evidence "
+        "fresh PPO artifact readiness declares three parent evidence "
         "relations");
   check(ppo_artifact_eval.fact_integrity_summary.relation_bound_count == 3,
-        "generated PPO artifact readiness binds all three parent evidence "
+        "fresh PPO artifact readiness binds all three parent evidence "
         "relations");
   check(ppo_artifact_eval.fact_integrity_summary.relation_integrity_clean,
-        "generated PPO artifact readiness has clean parent relation "
+        "fresh PPO artifact readiness has clean parent relation "
         "integrity");
   check(ppo_artifact_eval.proof_certificate.artifacts.size() == 1,
-        "generated PPO artifact readiness emits one proof artifact");
+        "fresh PPO artifact readiness emits one proof artifact");
   check(ppo_artifact_eval.proof_certificate.artifacts.front().passed,
-        "generated PPO proof artifact passes");
+        "fresh PPO proof artifact passes");
   check(ppo_artifact_eval.proof_certificate.artifacts.front().lineage_bound,
-        "generated PPO proof artifact binds parent lineage");
+        "fresh PPO proof artifact binds parent lineage");
   check(ppo_artifact_eval.proof_certificate.artifacts.front()
             .proof_template_bound,
-        "generated PPO proof artifact binds policy-training proof template");
+        "fresh PPO proof artifact binds policy-training proof template");
   check(ppo_artifact_eval.proof_certificate_check.passed,
-        "generated PPO proof certificate check passes");
+        "fresh PPO proof certificate check passes");
   const auto &ppo_artifact_proof =
       ppo_artifact_eval.proof_certificate.artifacts.front();
   check(ppo_artifact_proof.authority_clean &&
@@ -3641,6 +4663,10 @@ LATTICE_TARGET {
       json_string_field(result, "input_policy_checkpoint_path"));
   const auto ppo_on_policy_collection_checkpoint_text =
       read_text(ppo_on_policy_collection_checkpoint_path);
+  check(std::filesystem::exists(
+            ppo_on_policy_collection_checkpoint_path.parent_path() /
+            "module_state.pt"),
+        "PPO on-policy collection checkpoint writes module_state.pt");
   require_contains(ppo_on_policy_collection_checkpoint_text,
                    "checkpoint_stage=collection_policy",
                    "PPO on-policy collection checkpoint records stage");
@@ -3653,6 +4679,31 @@ LATTICE_TARGET {
                    "graph_node_allocation.torch_policy_module.v0",
                    "PPO on-policy collection checkpoint records module "
                    "contract");
+  require_contains(ppo_on_policy_collection_checkpoint_text,
+                   "reward_contract_id=kikijyeba.environment.reward."
+                   "post_execution_ledger_log_growth_cost_drawdown.v1",
+                   "PPO on-policy collection checkpoint records reward "
+                   "contract");
+  require_contains(ppo_on_policy_collection_checkpoint_text,
+                   "snapshot_family_digest=snapshot_family_digest_v1",
+                   "PPO on-policy collection checkpoint records snapshot "
+                   "family digest");
+  require_contains(ppo_on_policy_collection_checkpoint_text,
+                   "checkpoint_layout=graph_node_allocation_torch_checkpoint_"
+                   "artifact_v0.v1",
+                   "PPO on-policy collection checkpoint records checkpoint "
+                   "artifact layout");
+  require_contains(ppo_on_policy_collection_checkpoint_text,
+                   "module_state_path=module_state.pt",
+                   "PPO on-policy collection checkpoint records module state "
+                   "path");
+  require_contains(ppo_on_policy_collection_checkpoint_text,
+                   "module_state_digest=",
+                   "PPO on-policy collection checkpoint records module state "
+                   "digest");
+  check(ppo_on_policy_collection_checkpoint_text.find(
+            "module_state_digest=\n") == std::string::npos,
+        "PPO on-policy collection checkpoint module state digest is nonempty");
   require_contains(ppo_on_policy_collection_checkpoint_text,
                    "node_weight_logit_bias_mode=zero",
                    "PPO on-policy collection checkpoint records logit bias "
@@ -3674,22 +4725,53 @@ LATTICE_TARGET {
                    "PPO on-policy update records return target");
   require_contains(ppo_on_policy_update_text, "sample_0_policy_loss_final=",
                    "PPO on-policy update records clipped policy loss");
+  require_contains(ppo_on_policy_update_text,
+                   "parameter_update_mode=torch_autograd_ppo_clip_gae_v0",
+                   "PPO on-policy update records autograd update mode");
+  require_contains(ppo_on_policy_update_text,
+                   "minibatch_policy=deterministic_contiguous_v0",
+                   "PPO on-policy update records minibatch policy");
+  require_contains(ppo_on_policy_update_text, "minibatch_count_per_epoch=",
+                   "PPO on-policy update records minibatch count");
+  require_contains(ppo_on_policy_update_text,
+                   "policy_input_tensor_payload_bound=true",
+                   "PPO on-policy update records tensor payload binding");
   const auto ppo_on_policy_actor_checkpoint_path =
       std::filesystem::path(json_string_field(result, "actor_checkpoint_path"));
   const auto ppo_on_policy_actor_checkpoint_text =
       read_text(ppo_on_policy_actor_checkpoint_path);
+  check(std::filesystem::exists(
+            ppo_on_policy_actor_checkpoint_path.parent_path() /
+            "module_state.pt"),
+        "PPO on-policy actor checkpoint writes module_state.pt");
   require_contains(ppo_on_policy_actor_checkpoint_text,
                    "checkpoint_stage=post_update_policy",
                    "PPO on-policy actor checkpoint records post-update stage");
   require_contains(ppo_on_policy_actor_checkpoint_text, "ppo_update_bound=true",
                    "PPO on-policy actor checkpoint binds update evidence");
   require_contains(ppo_on_policy_actor_checkpoint_text,
-                   "node_weight_logit_bias_mode=learned_bounded_ppo_v0",
-                   "PPO on-policy actor checkpoint records learned logit "
-                   "bias");
+                   "reward_contract_id=kikijyeba.environment.reward."
+                   "post_execution_ledger_log_growth_cost_drawdown.v1",
+                   "PPO on-policy actor checkpoint records reward contract");
   require_contains(ppo_on_policy_actor_checkpoint_text,
-                   "parameter_update_mode=bounded_ppo_v0_module_head_delta_"
-                   "update",
+                   "snapshot_family_digest=snapshot_family_digest_v1",
+                   "PPO on-policy actor checkpoint records snapshot family "
+                   "digest");
+  require_contains(ppo_on_policy_actor_checkpoint_text,
+                   "module_state_path=module_state.pt",
+                   "PPO on-policy actor checkpoint records module state path");
+  require_contains(ppo_on_policy_actor_checkpoint_text, "module_state_digest=",
+                   "PPO on-policy actor checkpoint records module state "
+                   "digest");
+  check(ppo_on_policy_actor_checkpoint_text.find("module_state_digest=\n") ==
+            std::string::npos,
+        "PPO on-policy actor checkpoint module state digest is nonempty");
+  require_contains(ppo_on_policy_actor_checkpoint_text,
+                   "node_weight_logit_bias_mode=none_autograd_module_state",
+                   "PPO on-policy actor checkpoint records module-state "
+                   "parameterization");
+  require_contains(ppo_on_policy_actor_checkpoint_text,
+                   "parameter_update_mode=torch_autograd_ppo_clip_gae_v0",
                    "PPO on-policy actor checkpoint records update mode");
   require_contains(ppo_on_policy_actor_checkpoint_text,
                    "parameter_update_applied=true",
@@ -3705,7 +4787,7 @@ LATTICE_TARGET {
                    "checkpoint_stage=post_update_value",
                    "PPO on-policy critic checkpoint records post-update stage");
   require_contains(ppo_on_policy_critic_checkpoint_text,
-                   "parameter_update_mode=bounded_ppo_v0_value_update",
+                   "parameter_update_mode=torch_autograd_ppo_clip_gae_v0",
                    "PPO on-policy critic checkpoint records value update");
   require_contains(ppo_on_policy_critic_checkpoint_text,
                    "ppo_update_bound=true",
@@ -3717,8 +4799,11 @@ LATTICE_TARGET {
   const auto ppo_on_policy_optimizer_state_text =
       read_text(ppo_on_policy_optimizer_state_path);
   require_contains(ppo_on_policy_optimizer_state_text,
-                   "state_kind=bounded_ppo_v0_update_state",
+                   "state_kind=torch_autograd_ppo_clip_gae_v0_update_state",
                    "PPO on-policy optimizer state records update-state kind");
+  require_contains(ppo_on_policy_optimizer_state_text,
+                   "minibatch_policy=deterministic_contiguous_v0",
+                   "PPO on-policy optimizer state records minibatch policy");
   require_contains(ppo_on_policy_optimizer_state_text,
                    "parameter_update_applied=true",
                    "PPO on-policy optimizer state records applied update");
@@ -3889,6 +4974,630 @@ LATTICE_TARGET {
                    "PPO policy-quality report denies Lattice selection");
   require_contains(ppo_policy_quality_report_text, "report_integrity_only=true",
                    "PPO policy-quality report is integrity evidence only");
+
+  const auto ppo_policy_training_job_dir =
+      ppo_on_policy_fact_path.parent_path();
+  const auto acceptance_parent_fact =
+      lattice_exposure::make_exposure_fact_from_job_dir(
+          ppo_policy_training_job_dir,
+          lattice_exposure::exposure_build_context_t{});
+  const auto acceptance_source_policy_facts =
+      lattice_exposure::make_policy_training_facts_from_job_dir(
+          ppo_policy_training_job_dir, acceptance_parent_fact);
+  check(acceptance_source_policy_facts.size() == 1U,
+        "Runtime-equivalent policy-training sidecar parse should yield one "
+        "fact for acceptance emission");
+  const auto &acceptance_source_policy_fact =
+      acceptance_source_policy_facts.front();
+  check(lattice_exposure::policy_training_fact_issues(
+            acceptance_source_policy_fact)
+            .empty(),
+        "Runtime-equivalent policy-training fact should remain issue-clean");
+  const auto tsodao_protection_fact =
+      make_tsodao_settings_protection_fact_from_policy_training(
+          acceptance_source_policy_fact);
+  const auto tsodao_protection_issues =
+      lattice_exposure::tsodao_settings_protection_fact_issues(
+          tsodao_protection_fact);
+  check(tsodao_protection_issues.empty(),
+        "test Tsodao settings-protection fact should be issue-clean: " +
+            join_issue_tokens(tsodao_protection_issues));
+  const auto tsodao_binding_issues = lattice_exposure::
+      tsodao_settings_protection_policy_training_binding_issues(
+          tsodao_protection_fact,
+          std::vector<lattice_exposure::lattice_policy_training_fact_t>{
+              acceptance_source_policy_fact});
+  check(tsodao_binding_issues.empty(),
+        "test Tsodao settings-protection fact should bind policy-training "
+        "lineage: " +
+            join_issue_tokens(tsodao_binding_issues));
+  const auto tsodao_protection_fact_path =
+      ppo_policy_training_job_dir / "lattice.tsodao_settings_protection.fact";
+  write_text(tsodao_protection_fact_path,
+             lattice_exposure::canonical_tsodao_settings_protection_fact_text(
+                 tsodao_protection_fact));
+
+  hero_environment::environment_context_t environment_ctx{};
+  environment_ctx.global_config_path = ppo_ctx.global_config_path;
+  environment_ctx.policy_path =
+      hero_environment::resolve_environment_hero_dsl_path(
+          environment_ctx.global_config_path);
+  check(hero_environment::load_environment_policy(
+            environment_ctx.policy_path, environment_ctx.global_config_path,
+            &environment_ctx.policy, &error),
+        "failed to load Environment policy for certification checks: " + error);
+
+  result.clear();
+  error.clear();
+  check(!hero_runtime::execute_tool_json(
+            "hero.runtime.run",
+            "{\"subject\":\"policy_acceptance\",\"mode\":"
+            "\"dry_run\"}",
+            &ppo_ctx, &result, &error),
+        "Runtime run should not accept policy-acceptance fact emission");
+  require_contains(error, "unknown field: subject",
+                   "old Runtime run emission subject remains rejected");
+
+  std::ostringstream acceptance_request;
+  acceptance_request
+      << "policy_training_job_dir = " << ppo_policy_training_job_dir.string()
+      << "\n"
+      << "acceptance_id = policy_acceptance_fixture_v1\n"
+      << "accepted_policy_training_proof_certificate_digest = "
+         "policy_training_artifact_ready_certificate_digest_v1\n"
+      << "tsodao_settings_protection_proof_certificate_digest = "
+         "tsodao_settings_protection_ready_certificate_digest_v1\n"
+      << "primary_metric_value = 0.0012\n"
+      << "accepted_policy_training_ready = true\n"
+      << "tsodao_settings_protection_ready = true\n"
+      << "protected_settings_bound = true\n"
+      << "mandatory_baselines_bound = true\n"
+      << "mandatory_baselines_passed = true\n"
+      << "after_cost_metrics_bound = true\n"
+      << "primary_metric_passed = true\n"
+      << "uncertainty_policy_bound = true\n"
+      << "uncertainty_passed = true\n"
+      << "selector_split_bound = true\n"
+      << "validation_test_disjoint = true\n"
+      << "test_sealed_until_acceptance = true\n"
+      << "negative_tests_bound = true\n"
+      << "negative_tests_passed = true\n"
+      << "leakage_negative_tests_passed = true\n"
+      << "threshold_selection_audit_bound = true\n"
+      << "threshold_selected_before_test = true\n"
+      << "tie_policy_bound = true\n"
+      << "tie_policy_passed = true\n"
+      << "cost_slippage_assumptions_bound = true\n"
+      << "promotion_criteria_bound = true\n"
+      << "promotion_criteria_satisfied = true\n"
+      << "policy_acceptance_decision = true\n";
+  const std::string acceptance_request_text = acceptance_request.str();
+  const auto acceptance_request_path =
+      ppo_policy_training_job_dir / "policy_acceptance.certify_request";
+  write_text(acceptance_request_path, acceptance_request_text);
+  const std::string acceptance_args =
+      certify_args("policy_acceptance", "issue", acceptance_request_path,
+                   acceptance_request_text, true);
+  result.clear();
+  error.clear();
+  const bool acceptance_emit_ok = hero_environment::execute_tool_json(
+      certify_tool_name("policy_acceptance"), acceptance_args, &environment_ctx,
+      &result, &error);
+  check(acceptance_emit_ok,
+        "Runtime policy-acceptance emission failed: error_size=" +
+            std::to_string(error.size()) +
+            " result_size=" + std::to_string(result.size()) + " args_size=" +
+            std::to_string(acceptance_args.size()) + "\nerror: " + error +
+            "\nresult: " + result + "\nargs: " + acceptance_args);
+  require_contains(result,
+                   "\"schema_version\":\"kikijyeba.environment.policy_"
+                   "acceptance_certification_packet.v1\"",
+                   "policy acceptance certification reports packet schema");
+  require_contains(result,
+                   "\"tool\":\"hero.environment.certify.policy_acceptance\"",
+                   "Environment reports certification tool identity");
+  require_contains(result, "\"subject\":\"policy_acceptance\"",
+                   "Environment reports policy acceptance subject");
+  require_contains(result,
+                   "\"args_digest_domain\":\"" +
+                       certify_request_digest_domain("policy_acceptance") +
+                       "\"",
+                   "Environment reports policy acceptance request digest "
+                   "domain");
+  require_contains(
+      result,
+      "\"args_digest\":\"" +
+          args_digest("policy_acceptance", acceptance_request_text) + "\"",
+      "Environment reports policy acceptance request digest");
+  require_contains(result, "\"args_digest_verified\":true",
+                   "Environment confirms issue request digest binding");
+  require_contains(result, "\"policy_acceptance_contract_ready\":true",
+                   "Environment prevalidates emitted acceptance fact");
+  require_contains(result,
+                   "\"acceptance_governance_policy_id\":"
+                   "\"policy_acceptance_governance_thresholds_v0.v1\"",
+                   "Runtime reports policy acceptance governance identity");
+  require_contains(result,
+                   "\"acceptance_governance_policy_digest\":\"" +
+                       lattice_exposure::
+                           policy_acceptance_governance_thresholds_v0_digest() +
+                       "\"",
+                   "Runtime reports policy acceptance governance digest");
+  require_contains(result,
+                   "\"acceptance_policy_digest\":\"" +
+                       lattice_exposure::
+                           policy_acceptance_governance_thresholds_v0_digest() +
+                       "\"",
+                   "Runtime binds acceptance policy digest to governance "
+                   "thresholds");
+  require_contains(result, "\"policy_acceptance_fact_written\":true",
+                   "Environment writes policy acceptance sidecar on execute");
+  require_contains(result, "\"environment_emits_policy_acceptance_fact\":true",
+                   "Environment declares acceptance emission authority");
+  require_contains(result, "\"environment_selects_policy\":false",
+                   "Environment denies policy selection authority");
+  require_contains(result, "\"environment_claims_policy_quality\":false",
+                   "Environment denies policy-quality authority");
+  require_contains(result, "\"environment_claims_market_readiness\":false",
+                   "Environment denies market-readiness authority");
+  require_contains(result, "\"environment_executes_live_capital\":false",
+                   "Environment denies live-capital authority");
+  const std::string acceptance_emit_result = result;
+
+  result.clear();
+  error.clear();
+  check(!hero_environment::execute_tool_json(
+            certify_tool_name("policy_acceptance"),
+            certify_args("policy_acceptance", "issue", acceptance_request_path,
+                         acceptance_request_text, false),
+            &environment_ctx, &result, &error),
+        "Environment issue mode should require args_digest");
+  require_contains(error, "E_ENVIRONMENT_CERTIFY_REQUEST_DIGEST_REQUIRED",
+                   "issue mode without request digest is refused");
+
+  result.clear();
+  error.clear();
+  check(!hero_environment::execute_tool_json(
+            certify_tool_name("policy_acceptance"),
+            "{\"mode\":\"issue\",\"args_path\":\"" +
+                acceptance_request_path.string() +
+                "\",\"args_digest\":\"mutated_digest\"}",
+            &environment_ctx, &result, &error),
+        "Environment issue mode should reject mismatched request digest");
+  require_contains(error, "E_ENVIRONMENT_CERTIFY_REQUEST_DIGEST_MISMATCH",
+                   "digest mismatch refusal is explicit");
+
+  const auto duplicate_acceptance_request_path =
+      ppo_policy_training_job_dir /
+      "policy_acceptance_duplicate.certify_request";
+  write_text(duplicate_acceptance_request_path,
+             "acceptance_id = one\nacceptance_id = two\n");
+  result.clear();
+  error.clear();
+  check(!hero_environment::execute_tool_json(
+            certify_tool_name("policy_acceptance"),
+            certify_args("policy_acceptance", "check",
+                         duplicate_acceptance_request_path,
+                         read_text(duplicate_acceptance_request_path), false),
+            &environment_ctx, &result, &error),
+        "Environment certify request should reject duplicate keys");
+  require_contains(error, "E_ENVIRONMENT_CERTIFY_REQUEST_DUPLICATE_FIELD",
+                   "duplicate request key refusal is explicit");
+
+  result.clear();
+  error.clear();
+  check(!hero_environment::execute_tool_json(
+            certify_tool_name("policy_acceptance"),
+            "{\"mode\":\"check\",\"args_path\":\"" +
+                acceptance_request_path.string() +
+                "\",\"acceptance_id\":\"legacy_top_level\"}",
+            &environment_ctx, &result, &error),
+        "Environment certify should reject retired top-level payload fields");
+  require_contains(error,
+                   "hero.environment.certify.policy_acceptance unknown field: "
+                   "acceptance_id",
+                   "old top-level certification payload is rejected");
+
+  result = acceptance_emit_result;
+  const auto policy_acceptance_fact_path = std::filesystem::path(
+      json_string_field(result, "policy_acceptance_fact_path"));
+  const auto policy_acceptance_fact_text =
+      read_text(policy_acceptance_fact_path);
+  require_contains(policy_acceptance_fact_text,
+                   "schema=kikijyeba.lattice.policy_acceptance.v1",
+                   "Runtime writes canonical policy acceptance fact schema");
+  require_contains(policy_acceptance_fact_text,
+                   "acceptance_id=policy_acceptance_fixture_v1",
+                   "Runtime writes policy acceptance identity");
+  require_contains(
+      policy_acceptance_fact_text,
+      "acceptance_policy_digest=" +
+          lattice_exposure::policy_acceptance_governance_thresholds_v0_digest(),
+      "Runtime writes policy acceptance governance digest");
+  require_contains(
+      policy_acceptance_fact_text,
+      "mandatory_baseline_set_digest=" +
+          lattice_exposure::
+              policy_acceptance_governance_v0_mandatory_baseline_set_digest(),
+      "Runtime writes canonical mandatory baseline set digest");
+  require_contains(policy_acceptance_fact_text, "tie_policy=reject_ties",
+                   "Runtime writes canonical V0 acceptance tie policy");
+  require_contains(policy_acceptance_fact_text,
+                   "accepted_policy_training_fact_digest=" +
+                       lattice_exposure::policy_training_fact_digest(
+                           acceptance_source_policy_fact),
+                   "Runtime derives accepted policy-training fact digest");
+  require_contains(policy_acceptance_fact_text,
+                   "tsodao_settings_protection_fact_digest=" +
+                       lattice_exposure::tsodao_settings_protection_fact_digest(
+                           tsodao_protection_fact),
+                   "Runtime derives Tsodao settings-protection digest");
+  require_contains(policy_acceptance_fact_text,
+                   "policy_acceptance_decision=true",
+                   "Runtime records explicit acceptance decision evidence");
+  require_contains(policy_acceptance_fact_text, "policy_selector=false",
+                   "policy acceptance fact denies policy-selection authority");
+  require_contains(policy_acceptance_fact_text,
+                   "market_readiness_authority=false",
+                   "policy acceptance fact denies market-readiness authority");
+  require_contains(policy_acceptance_fact_text,
+                   "live_execution_authority=false",
+                   "policy acceptance fact denies live execution authority");
+
+  const auto acceptance_scan =
+      lattice_exposure::scan_exposure_ledger_from_runtime_root(
+          ppo_runtime_root);
+  check(acceptance_scan.ledger.policy_acceptance_facts().size() == 1U,
+        "Lattice exposure scan derives one policy-acceptance fact");
+  const auto &parsed_acceptance_fact =
+      acceptance_scan.ledger.policy_acceptance_facts().front();
+  const auto parsed_acceptance_issues =
+      lattice_exposure::policy_acceptance_fact_issues(parsed_acceptance_fact);
+  check(parsed_acceptance_issues.empty(),
+        "parsed Runtime policy acceptance fact should be issue-clean: " +
+            join_issue_tokens(parsed_acceptance_issues));
+  const auto parsed_acceptance_binding_issues =
+      lattice_exposure::policy_acceptance_binding_issues(
+          parsed_acceptance_fact,
+          acceptance_scan.ledger.policy_training_facts(),
+          acceptance_scan.ledger.tsodao_settings_protection_facts());
+  check(parsed_acceptance_binding_issues.empty(),
+        "parsed Runtime policy acceptance fact should bind parent evidence: " +
+            join_issue_tokens(parsed_acceptance_binding_issues));
+
+  std::ostringstream acceptance_target_dsl;
+  acceptance_target_dsl << R"DSL(
+LATTICE_TARGET {
+  TARGET_ID = policy_acceptance_contract_ready;
+  TARGET_CLASS = artifact_readiness;
+  PROOF_KIND = policy_acceptance_contract_bound;
+  SUBJECT_FACT_FAMILY = policy_acceptance;
+  SUBJECT_COMPONENT = tsodao.policy_acceptance;
+  PROTOCOL_ID = )DSL" << parsed_acceptance_fact.protocol_id
+                        << R"DSL(;
+  SOURCE_RANGE = all;
+  REQUIRE_CONTRACT_MATCH = true;
+};
+)DSL";
+  const auto acceptance_specs = lattice_target::decode_lattice_targets_from_dsl(
+      acceptance_target_dsl.str());
+  lattice_target::lattice_target_evaluator_options_t acceptance_options{};
+  acceptance_options.exposure_ledger = &acceptance_scan.ledger;
+  acceptance_options.auto_build_exposure_ledger = false;
+  acceptance_options.active_identity.protocol_id =
+      parsed_acceptance_fact.protocol_id;
+  acceptance_options.active_identity.protocol_contract_fingerprint =
+      parsed_acceptance_fact.contract_fingerprint;
+  acceptance_options.active_identity.graph_order_fingerprint =
+      parsed_acceptance_fact.graph_order_fingerprint;
+  acceptance_options.active_identity.source_cursor_token =
+      parsed_acceptance_fact.source_cursor_token;
+  lattice_target::lattice_target_evaluator_t acceptance_evaluator(
+      acceptance_specs, acceptance_options);
+  const auto acceptance_eval =
+      acceptance_evaluator.evaluate("policy_acceptance_contract_ready");
+  check(acceptance_eval.status ==
+            lattice_target::lattice_target_status_t::satisfied,
+        "Runtime-emitted policy acceptance fact should satisfy Lattice "
+        "policy_acceptance_contract_ready: " +
+            join_issue_tokens(acceptance_eval.reasons));
+  check(acceptance_eval.proof_certificate.artifacts.size() == 1U &&
+            acceptance_eval.proof_certificate.artifacts.front().passed &&
+            acceptance_eval.proof_certificate.artifacts.front().authority_clean,
+        "policy acceptance proof certificate should pass and remain "
+        "evidence-only");
+
+  std::ostringstream paper_online_readiness_request;
+  paper_online_readiness_request
+      << "policy_acceptance_job_dir = " << ppo_policy_training_job_dir.string()
+      << "\n"
+      << "readiness_id = paper_online_readiness_fixture_v1\n"
+      << "policy_acceptance_proof_certificate_digest = "
+         "policy_acceptance_contract_ready_certificate_digest_v1\n"
+      << "paper_online_profile_digest = paper_online_profile_digest_v1\n"
+      << "direct_edge_universe_digest = direct_edge_universe_digest_v1\n"
+      << "max_market_data_staleness_ms = 5000\n"
+      << "clock_skew_tolerance_ms = 250\n"
+      << "policy_acceptance_ready = true\n"
+      << "tsodao_settings_protection_ready = true\n"
+      << "accepted_policy_bound = true\n"
+      << "protected_settings_bound = true\n"
+      << "direct_edge_universe_validated = true\n"
+      << "locked_execution_profile_bound = true\n"
+      << "persistent_paper_ledger_recovery_bound = true\n"
+      << "idempotency_bound = true\n"
+      << "duplicate_action_protection_bound = true\n"
+      << "session_lifecycle_bound = true\n"
+      << "clock_timestamp_policy_bound = true\n"
+      << "market_data_staleness_bound = true\n"
+      << "reward_report_artifact_path_bound = true\n"
+      << "operator_abort_bound = true\n"
+      << "kill_switch_bound = true\n";
+  const std::string paper_online_readiness_request_text =
+      paper_online_readiness_request.str();
+  const auto paper_online_readiness_request_path =
+      ppo_policy_training_job_dir / "paper_online_readiness.certify_request";
+  write_text(paper_online_readiness_request_path,
+             paper_online_readiness_request_text);
+  const std::string paper_online_readiness_args = certify_args(
+      "paper_online_readiness", "issue", paper_online_readiness_request_path,
+      paper_online_readiness_request_text, true);
+  result.clear();
+  error.clear();
+  const bool readiness_emit_ok = hero_environment::execute_tool_json(
+      certify_tool_name("paper_online_readiness"), paper_online_readiness_args,
+      &environment_ctx, &result, &error);
+  check(readiness_emit_ok,
+        "Runtime paper-online readiness emission failed: error_size=" +
+            std::to_string(error.size()) + " result_size=" +
+            std::to_string(result.size()) + "\nerror: " + error +
+            "\nresult: " + result + "\nargs: " + paper_online_readiness_args);
+  require_contains(
+      result,
+      "\"schema_version\":\"kikijyeba.environment.paper_online_readiness_"
+      "certification_packet.v1\"",
+      "paper-online readiness certification reports packet schema");
+  require_contains(
+      result, "\"tool\":\"hero.environment.certify.paper_online_readiness\"",
+      "Environment reports readiness certification tool identity");
+  require_contains(result, "\"subject\":\"paper_online_readiness\"",
+                   "Environment reports paper-online readiness subject");
+  require_contains(
+      result,
+      "\"args_digest_domain\":\"" +
+          certify_request_digest_domain("paper_online_readiness") + "\"",
+      "Environment reports paper-online readiness request digest domain");
+  require_contains(result,
+                   "\"args_digest\":\"" +
+                       args_digest("paper_online_readiness",
+                                   paper_online_readiness_request_text) +
+                       "\"",
+                   "Environment reports paper-online readiness request digest");
+  require_contains(result, "\"args_digest_verified\":true",
+                   "Environment confirms readiness issue request digest "
+                   "binding");
+  require_contains(result, "\"paper_online_readiness_contract_ready\":true",
+                   "Environment prevalidates emitted paper-online readiness "
+                   "fact");
+  require_contains(result, "\"paper_online_readiness_fact_written\":true",
+                   "Environment writes paper-online readiness sidecar on "
+                   "execute");
+  require_contains(result, "\"environment_runs_paper_online_session\":false",
+                   "Environment denies paper-online session execution "
+                   "authority");
+  require_contains(result, "\"environment_executes_broker_orders\":false",
+                   "Environment denies broker execution authority");
+  require_contains(result, "\"environment_executes_live_capital\":false",
+                   "Environment denies live-capital authority");
+  const std::string paper_online_emit_result = result;
+
+  std::string paper_online_retired_default_request_text =
+      paper_online_readiness_request_text +
+      "missing_direct_pair_policy = skip_pair_warn\n";
+  const auto paper_online_retired_default_request_path =
+      ppo_policy_training_job_dir /
+      "paper_online_readiness_retired_default.certify_request";
+  write_text(paper_online_retired_default_request_path,
+             paper_online_retired_default_request_text);
+  const std::string paper_online_retired_default_args =
+      certify_args("paper_online_readiness", "check",
+                   paper_online_retired_default_request_path,
+                   paper_online_retired_default_request_text, false);
+  result.clear();
+  error.clear();
+  check(!hero_environment::execute_tool_json(
+            certify_tool_name("paper_online_readiness"),
+            paper_online_retired_default_args, &environment_ctx, &result,
+            &error),
+        "Environment certify should reject retired paper-online defaults");
+  require_contains(error, "E_ENVIRONMENT_CERTIFY_REQUEST_UNKNOWN_FIELD",
+                   "retired paper-online default refusal is explicit");
+  require_contains(error, "missing_direct_pair_policy",
+                   "retired paper-online default names the old key");
+
+  std::string paper_online_retired_policy_request_text =
+      paper_online_readiness_request_text +
+      "market_data_staleness_policy_id = max_receive_age_before_action.v1\n";
+  const auto paper_online_retired_policy_request_path =
+      ppo_policy_training_job_dir /
+      "paper_online_readiness_retired_policy.certify_request";
+  write_text(paper_online_retired_policy_request_path,
+             paper_online_retired_policy_request_text);
+  const std::string paper_online_retired_policy_args =
+      certify_args("paper_online_readiness", "check",
+                   paper_online_retired_policy_request_path,
+                   paper_online_retired_policy_request_text, false);
+  result.clear();
+  error.clear();
+  check(!hero_environment::execute_tool_json(
+            certify_tool_name("paper_online_readiness"),
+            paper_online_retired_policy_args, &environment_ctx, &result,
+            &error),
+        "Environment certify should reject retired paper-online policy ids");
+  require_contains(error, "E_ENVIRONMENT_CERTIFY_REQUEST_UNKNOWN_FIELD",
+                   "retired paper-online policy-id refusal is explicit");
+  require_contains(error, "market_data_staleness_policy_id",
+                   "retired paper-online policy-id names the old key");
+
+  result = paper_online_emit_result;
+  const auto paper_online_readiness_fact_path = std::filesystem::path(
+      json_string_field(result, "paper_online_readiness_fact_path"));
+  const auto paper_online_readiness_fact_text =
+      read_text(paper_online_readiness_fact_path);
+  require_contains(paper_online_readiness_fact_text,
+                   "schema=kikijyeba.lattice.paper_online_readiness.v1",
+                   "Runtime writes canonical paper-online readiness schema");
+  require_contains(paper_online_readiness_fact_text,
+                   "readiness_id=paper_online_readiness_fixture_v1",
+                   "Runtime writes paper-online readiness identity");
+  require_contains(paper_online_readiness_fact_text,
+                   "policy_acceptance_fact_digest=" +
+                       lattice_exposure::policy_acceptance_fact_digest(
+                           parsed_acceptance_fact),
+                   "Runtime derives policy acceptance fact digest");
+  require_contains(paper_online_readiness_fact_text,
+                   "paper_online_environment_contract_id="
+                   "kikijyeba.environment.paper_online.v1",
+                   "Runtime binds paper-online environment contract");
+  require_contains(paper_online_readiness_fact_text,
+                   "missing_direct_pair_policy=skip_pair_warn",
+                   "Runtime records missing-direct-pair policy");
+  require_contains(paper_online_readiness_fact_text,
+                   "synthetic_execution_markets_allowed=false",
+                   "paper-online readiness forbids synthetic execution "
+                   "markets");
+  require_contains(paper_online_readiness_fact_text,
+                   "paper_online_execution_allowed=false",
+                   "paper-online readiness sidecar does not permit execution");
+  require_contains(paper_online_readiness_fact_text,
+                   "live_execution_allowed=false",
+                   "paper-online readiness sidecar denies live execution");
+  require_contains(paper_online_readiness_fact_text,
+                   "direct_policy_to_broker_allowed=false",
+                   "paper-online readiness sidecar denies policy-to-broker "
+                   "shortcut");
+
+  const auto readiness_scan =
+      lattice_exposure::scan_exposure_ledger_from_runtime_root(
+          ppo_runtime_root);
+  check(readiness_scan.ledger.paper_online_readiness_facts().size() == 1U,
+        "Lattice exposure scan derives one paper-online readiness fact");
+  const auto &parsed_readiness_fact =
+      readiness_scan.ledger.paper_online_readiness_facts().front();
+  const auto parsed_readiness_issues =
+      lattice_exposure::paper_online_readiness_fact_issues(
+          parsed_readiness_fact);
+  check(parsed_readiness_issues.empty(),
+        "parsed Runtime paper-online readiness fact should be issue-clean: " +
+            join_issue_tokens(parsed_readiness_issues));
+  const auto parsed_readiness_binding_issues =
+      lattice_exposure::paper_online_readiness_binding_issues(
+          parsed_readiness_fact,
+          readiness_scan.ledger.policy_acceptance_facts(),
+          readiness_scan.ledger.tsodao_settings_protection_facts());
+  check(parsed_readiness_binding_issues.empty(),
+        "parsed Runtime paper-online readiness fact should bind acceptance "
+        "evidence: " +
+            join_issue_tokens(parsed_readiness_binding_issues));
+
+  std::ostringstream readiness_target_dsl;
+  readiness_target_dsl << R"DSL(
+LATTICE_TARGET {
+  TARGET_ID = paper_online_readiness_contract_ready;
+  TARGET_CLASS = artifact_readiness;
+  PROOF_KIND = paper_online_readiness_contract_bound;
+  SUBJECT_FACT_FAMILY = paper_online_readiness;
+  SUBJECT_COMPONENT = kikijyeba.paper_online.readiness;
+  PROTOCOL_ID = )DSL" << parsed_readiness_fact.protocol_id
+                       << R"DSL(;
+  SOURCE_RANGE = all;
+  REQUIRE_CONTRACT_MATCH = true;
+};
+)DSL";
+  const auto readiness_specs = lattice_target::decode_lattice_targets_from_dsl(
+      readiness_target_dsl.str());
+  lattice_target::lattice_target_evaluator_options_t readiness_options{};
+  readiness_options.exposure_ledger = &readiness_scan.ledger;
+  readiness_options.auto_build_exposure_ledger = false;
+  readiness_options.active_identity.protocol_id =
+      parsed_readiness_fact.protocol_id;
+  readiness_options.active_identity.protocol_contract_fingerprint =
+      parsed_readiness_fact.contract_fingerprint;
+  readiness_options.active_identity.graph_order_fingerprint =
+      parsed_readiness_fact.graph_order_fingerprint;
+  readiness_options.active_identity.source_cursor_token =
+      parsed_readiness_fact.source_cursor_token;
+  lattice_target::lattice_target_evaluator_t readiness_evaluator(
+      readiness_specs, readiness_options);
+  const auto readiness_eval =
+      readiness_evaluator.evaluate("paper_online_readiness_contract_ready");
+  check(readiness_eval.status ==
+            lattice_target::lattice_target_status_t::satisfied,
+        "Runtime-emitted paper-online readiness fact should satisfy Lattice "
+        "paper_online_readiness_contract_ready: " +
+            join_issue_tokens(readiness_eval.reasons));
+  check(readiness_eval.proof_certificate.artifacts.size() == 1U &&
+            readiness_eval.proof_certificate.artifacts.front().passed &&
+            readiness_eval.proof_certificate.artifacts.front().authority_clean,
+        "paper-online readiness proof certificate should pass and remain "
+        "pre-execution evidence-only");
+
+  std::string acceptance_check_request_text = acceptance_request_text;
+  replace_all(acceptance_check_request_text, "primary_metric_passed = true",
+              "primary_metric_passed = false");
+  const auto acceptance_check_request_path =
+      ppo_policy_training_job_dir / "policy_acceptance_check.certify_request";
+  write_text(acceptance_check_request_path, acceptance_check_request_text);
+  const std::string acceptance_check_args =
+      certify_args("policy_acceptance", "check", acceptance_check_request_path,
+                   acceptance_check_request_text, false);
+  result.clear();
+  error.clear();
+  check(hero_environment::execute_tool_json(
+            certify_tool_name("policy_acceptance"), acceptance_check_args,
+            &environment_ctx, &result, &error),
+        "Environment policy-acceptance check should report issues without "
+        "writing: " +
+            error);
+  require_contains(result, "\"policy_acceptance_contract_ready\":false",
+                   "acceptance check reports contract failure");
+  require_contains(result, "\"policy_acceptance_fact_written\":false",
+                   "acceptance check does not write sidecar");
+  require_contains(result, "primary_metric_not_passed",
+                   "acceptance check exposes failed metric issue");
+
+  std::string acceptance_retired_governance_request_text =
+      acceptance_request_text + "acceptance_policy_digest = "
+                                "mutated_policy_acceptance_governance_digest\n";
+  const auto acceptance_retired_governance_request_path =
+      ppo_policy_training_job_dir /
+      "policy_acceptance_retired_governance.certify_request";
+  write_text(acceptance_retired_governance_request_path,
+             acceptance_retired_governance_request_text);
+  const std::string acceptance_retired_governance_args = certify_args(
+      "policy_acceptance", "check", acceptance_retired_governance_request_path,
+      acceptance_retired_governance_request_text, false);
+  result.clear();
+  error.clear();
+  check(!hero_environment::execute_tool_json(
+            certify_tool_name("policy_acceptance"),
+            acceptance_retired_governance_args, &environment_ctx, &result,
+            &error),
+        "Environment certify should reject retired governance request fields");
+  require_contains(error, "E_ENVIRONMENT_CERTIFY_REQUEST_UNKNOWN_FIELD",
+                   "retired governance request field refusal is explicit");
+  require_contains(error, "acceptance_policy_digest",
+                   "retired governance request field names the old key");
+
+  result.clear();
+  error.clear();
+  check(!hero_environment::execute_tool_json(
+            certify_tool_name("policy_acceptance"), acceptance_args,
+            &environment_ctx, &result, &error),
+        "Runtime policy-acceptance execute should refuse sidecar overwrite");
+  require_contains(error, "E_ENVIRONMENT_POLICY_ACCEPTANCE_FACT_EXISTS",
+                   "acceptance execute refusal names existing sidecar");
+
   std::filesystem::remove_all(ppo_runtime_root);
 
   const auto runtime_root = make_tmp_dir("policy_training_noop_execute");
@@ -3900,22 +5609,17 @@ LATTICE_TARGET {
   exec_ctx.policy.values["allowed_job_roots"] = runtime_root.string();
   exec_ctx.policy.values["allow_execute"] = "true";
   exec_ctx.policy.values["allow_train_execute"] = "true";
-  exec_ctx.policy.values["require_confirm_execute"] = "true";
   exec_ctx.policy.values["max_capture_bytes"] = "65536";
-  std::string noop_execute_args =
-      valid_policy_training_args("execute", "noop_policy_training.v1",
-                                 "wikimyei.policy.trainable.noop_pre_ppo.v1");
+  std::string noop_execute_args = valid_policy_training_args(
+      "execute", "noop_policy_training.v1",
+      "wikimyei.policy.portfolio.graph_node_allocation.noop_pre_ppo.v1");
   const std::string live_forbidden = "\"live_execution_allowed\":false}";
   const auto live_forbidden_pos = noop_execute_args.find(live_forbidden);
   check(live_forbidden_pos != std::string::npos,
         "test fixture should contain live execution denial");
-  noop_execute_args.replace(live_forbidden_pos, live_forbidden.size(),
-                            "\"live_execution_allowed\":false,"
-                            "\"confirm_execute\":true}");
   result.clear();
   error.clear();
-  check(hero_runtime::execute_tool_json("hero.runtime.run", noop_execute_args,
-                                        &exec_ctx, &result, &error),
+  check(execute_runtime_run_json(noop_execute_args, &exec_ctx, &result, &error),
         "noop policy-training execute failed: " + error);
   check(!hero_runtime::tool_result_is_error(result),
         "noop policy-training execute returned error: " + result);
@@ -3938,8 +5642,7 @@ LATTICE_TARGET {
 
   std::string inspect_result;
   std::string inspect_error;
-  check(hero_runtime::execute_tool_json(
-            "hero.runtime.inspect",
+  check(execute_runtime_inspect_json(
             "{\"subject\":\"jobs\",\"root\":\"" + runtime_root.string() +
                 "\",\"include_artifacts\":true}",
             &exec_ctx, &inspect_result, &inspect_error),
@@ -3972,7 +5675,7 @@ LATTICE_TARGET {
       policy_training_fact.policy_input_schema_id ==
               "kikijyeba.environment.policy_input.v1" &&
           policy_training_fact.target_component_family_id ==
-              "wikimyei.policy.trainable" &&
+              "wikimyei.policy.portfolio.graph_node_allocation" &&
           policy_training_fact.action_schema_digest ==
               "kikijyeba.environment.action.target_node_weights.v1" &&
           policy_training_fact.action_adapter_id ==

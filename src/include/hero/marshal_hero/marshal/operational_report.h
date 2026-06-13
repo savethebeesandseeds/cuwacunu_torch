@@ -904,6 +904,9 @@ chain_summary_job_json(const job_summary_t &job) {
       << detail::json_quote(job_value(job, {"component_spawn_label"}))
       << ",\"spawn_fingerprint\":"
       << detail::json_quote(job_value(job, {"component_spawn_fingerprint"}))
+      << ",\"operator_surface_digest\":"
+      << detail::json_quote(
+             job_value(job, {"component_operator_surface_digest"}))
       << ",\"spawn_available\":"
       << (!job_value(job, {"component_spawn_fingerprint"}).empty() ? "true"
                                                                    : "false")

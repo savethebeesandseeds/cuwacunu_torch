@@ -186,7 +186,6 @@ Runtime PPO evidence path:
 Lattice/Marshal proof/inspect surfaces:
   src/include/hero/lattice_hero/lattice/README.md
   src/include/hero/marshal_hero/marshal/README.md
-  CLEANUP_DIGEST.md
 
 Current authored policy surfaces
 --------------------------------

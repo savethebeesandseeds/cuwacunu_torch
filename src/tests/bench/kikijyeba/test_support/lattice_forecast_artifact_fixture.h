@@ -6,6 +6,7 @@
 
 #include <filesystem>
 #include <fstream>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -109,7 +110,31 @@ inline void write_scanned_forecast_artifact_fixture(
   std::filesystem::remove_all(runtime_root);
   const auto job_dir = runtime_root / options.job_id;
   std::filesystem::create_directories(job_dir);
-  write_fixture_text(job_dir / "job.manifest", "");
+  std::ostringstream manifest;
+  manifest << "job_id=" << options.job_id << "\n"
+           << "job_kind=channel_inference_mdn\n"
+           << "protocol_id=" << options.protocol_id << "\n"
+           << "protocol_contract_fingerprint=" << options.contract_fingerprint
+           << "\n"
+           << "graph_order_fingerprint=" << options.graph_order_fingerprint
+           << "\n"
+           << "source_cursor_token=" << options.source_cursor_token << "\n"
+           << "target_component_family_id="
+           << options.target_component_family_id << "\n"
+           << "component_family_id=" << options.target_component_family_id
+           << "\n"
+           << "mdn_assembly_fingerprint="
+           << options.component_assembly_fingerprint << "\n"
+           << "wave_id=" << options.wave_id << "\n"
+           << "wave_action=" << options.wave_action << "\n";
+  write_fixture_text(job_dir / "job.manifest", manifest.str());
+
+  std::ostringstream state;
+  state << "status=" << options.job_status << "\n"
+        << "wave_id=" << options.wave_id << "\n"
+        << "wave_action=" << options.wave_action << "\n"
+        << "source_cursor_token=" << options.source_cursor_token << "\n";
+  write_fixture_text(job_dir / "job.state", state.str());
 
   exposure::lattice_exposure_fact_t parent_seed{};
   parent_seed.fact_type = "exposure";

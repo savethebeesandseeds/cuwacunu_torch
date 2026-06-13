@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <filesystem>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -17,6 +18,9 @@ namespace cuwacunu::wikimyei::policy::portfolio::graph_node_allocation {
 
 inline constexpr const char *k_graph_node_allocation_torch_policy_module_v0 =
     "wikimyei.policy.portfolio.graph_node_allocation.torch_policy_module.v0";
+inline constexpr const char
+    *k_graph_node_allocation_torch_module_state_schema_v0 =
+        "wikimyei.policy.portfolio.graph_node_allocation.module_state.v0";
 
 struct graph_node_allocation_torch_policy_options_t {
   graph_node_allocation_net_spec_t net{};
@@ -98,6 +102,21 @@ architecture_digest(const graph_node_allocation_net_spec_t &net) {
   mix_hash_string(hash, net.dirichlet_concentration_head);
   mix_hash_string(hash, net.logistic_normal_candidate);
   return hash_hex(hash);
+}
+
+[[nodiscard]] inline torch::Tensor tensor_or_empty_cpu(torch::Tensor tensor,
+                                                       torch::Dtype dtype) {
+  if (!tensor.defined()) {
+    return torch::empty({0}, torch::TensorOptions().dtype(dtype));
+  }
+  return tensor.detach()
+      .to(torch::TensorOptions().dtype(dtype).device(
+          torch::Device(torch::kCPU)))
+      .contiguous();
+}
+
+[[nodiscard]] inline torch::Tensor scalar_tensor(double value) {
+  return torch::tensor({value}, torch::TensorOptions().dtype(torch::kFloat64));
 }
 
 } // namespace torch_policy_detail
@@ -337,6 +356,118 @@ make_graph_node_allocation_torch_policy_options(
   out.dtype = torch::kFloat64;
   out.device = torch::kCPU;
   return out;
+}
+
+inline void save_graph_node_allocation_torch_module_state(
+    const std::filesystem::path &path,
+    GraphNodeAllocationTorchPolicyModule module,
+    torch::Tensor node_weight_logit_bias = {},
+    torch::Tensor action_distribution_params = {},
+    bool action_distribution_params_bound = false,
+    double value_estimate_bias = 0.0) {
+  if (path.empty()) {
+    throw std::runtime_error(
+        "[graph_node_allocation_torch_checkpoint] module state path is "
+        "required");
+  }
+  if (!path.parent_path().empty()) {
+    std::filesystem::create_directories(path.parent_path());
+  }
+  if (module.is_empty()) {
+    throw std::runtime_error(
+        "[graph_node_allocation_torch_checkpoint] module is null");
+  }
+  torch::serialize::OutputArchive root;
+  torch::serialize::OutputArchive model_archive;
+  module->save(model_archive);
+  root.write("model", model_archive);
+  root.write("meta/schema",
+             torch::tensor({0}, torch::TensorOptions().dtype(torch::kInt64)));
+  root.write("meta/node_feature_dim",
+             torch::tensor({module->options().net.input_node_feature_dim},
+                           torch::TensorOptions().dtype(torch::kInt64)));
+  root.write("meta/global_feature_dim",
+             torch::tensor({module->options().net.input_global_feature_dim},
+                           torch::TensorOptions().dtype(torch::kInt64)));
+  root.write("meta/risk_feature_dim",
+             torch::tensor({module->options().net.input_risk_feature_dim},
+                           torch::TensorOptions().dtype(torch::kInt64)));
+  root.write("bounded_head/node_weight_logit_bias",
+             torch_policy_detail::tensor_or_empty_cpu(node_weight_logit_bias,
+                                                      torch::kFloat64));
+  root.write("bounded_head/action_distribution_params",
+             torch_policy_detail::tensor_or_empty_cpu(
+                 action_distribution_params, torch::kFloat64));
+  root.write("bounded_head/action_distribution_params_bound",
+             torch::tensor({action_distribution_params_bound ? 1 : 0},
+                           torch::TensorOptions().dtype(torch::kInt64)));
+  root.write("bounded_head/value_estimate_bias",
+             torch_policy_detail::scalar_tensor(value_estimate_bias));
+  root.save_to(path.string());
+}
+
+inline void load_graph_node_allocation_torch_module_state(
+    const std::filesystem::path &path,
+    GraphNodeAllocationTorchPolicyModule module,
+    torch::Tensor *node_weight_logit_bias = nullptr,
+    torch::Tensor *action_distribution_params = nullptr,
+    bool *action_distribution_params_bound = nullptr,
+    double *value_estimate_bias = nullptr) {
+  if (path.empty() || !std::filesystem::exists(path)) {
+    throw std::runtime_error(
+        "[graph_node_allocation_torch_checkpoint] module state missing: " +
+        path.string());
+  }
+  if (module.is_empty()) {
+    throw std::runtime_error(
+        "[graph_node_allocation_torch_checkpoint] module is null");
+  }
+  torch::serialize::InputArchive root;
+  root.load_from(path.string(), module->options().device);
+  torch::serialize::InputArchive model_archive;
+  root.read("model", model_archive);
+  module->load(model_archive);
+
+  auto read_optional_tensor = [&](const char *key) -> torch::Tensor {
+    try {
+      torch::Tensor tensor;
+      root.read(key, tensor);
+      return tensor.to(torch::kFloat64).contiguous();
+    } catch (const std::exception &) {
+      return {};
+    }
+  };
+
+  if (node_weight_logit_bias != nullptr) {
+    const auto bias =
+        read_optional_tensor("bounded_head/node_weight_logit_bias");
+    *node_weight_logit_bias =
+        bias.defined() && bias.numel() > 0 ? bias : torch::Tensor{};
+  }
+  if (action_distribution_params != nullptr) {
+    const auto params =
+        read_optional_tensor("bounded_head/action_distribution_params");
+    *action_distribution_params =
+        params.defined() && params.numel() > 0 ? params : torch::Tensor{};
+  }
+  if (action_distribution_params_bound != nullptr) {
+    try {
+      torch::Tensor bound;
+      root.read("bounded_head/action_distribution_params_bound", bound);
+      *action_distribution_params_bound = bound.to(torch::kInt64)
+                                              .reshape({-1})
+                                              .index({0})
+                                              .item<std::int64_t>() != 0;
+    } catch (const std::exception &) {
+      *action_distribution_params_bound = false;
+    }
+  }
+  if (value_estimate_bias != nullptr) {
+    const auto bias = read_optional_tensor("bounded_head/value_estimate_bias");
+    *value_estimate_bias = bias.defined() && bias.numel() > 0
+                               ? bias.reshape({-1}).index({0}).item<double>()
+                               : 0.0;
+  }
 }
 
 } // namespace cuwacunu::wikimyei::policy::portfolio::graph_node_allocation

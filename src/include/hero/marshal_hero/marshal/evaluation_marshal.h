@@ -3,6 +3,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <fstream>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -423,8 +424,10 @@ canonical_evaluation_request_text(const marshal_evaluation_request_t &request) {
                     request.trained_range_evidence_digest);
   detail::append_kv(out, "validation_split_policy_digest",
                     request.validation_split_policy_digest);
-  detail::append_kv(out, "accounting_numeraire_node_id", request.accounting_numeraire_node_id);
-  detail::append_kv(out, "target_node_ids", detail::csv(request.target_node_ids));
+  detail::append_kv(out, "accounting_numeraire_node_id",
+                    request.accounting_numeraire_node_id);
+  detail::append_kv(out, "target_node_ids",
+                    detail::csv(request.target_node_ids));
   detail::append_bool(out, "include_numeraire_only_policy",
                       request.include_numeraire_only_policy);
   detail::append_bool(out, "include_equal_weight_policy",
@@ -524,9 +527,9 @@ validate_evaluation_request(const marshal_evaluation_request_t &request) {
       refusals.emplace_back("duplicate_target_node_id");
     }
   }
-  if (!request.accounting_numeraire_node_id.empty() &&
-      !contains_numeraire) {
-    refusals.emplace_back("accounting_numeraire_node_missing_from_target_nodes");
+  if (!request.accounting_numeraire_node_id.empty() && !contains_numeraire) {
+    refusals.emplace_back(
+        "accounting_numeraire_node_missing_from_target_nodes");
   }
   if (request.max_replay_steps < 0) {
     refusals.emplace_back("invalid_max_replay_steps");
@@ -693,84 +696,87 @@ prepare_evaluation_plan(const marshal_evaluation_request_t &request) {
     const marshal_evaluation_request_t &request,
     const marshal_evaluation_plan_t &plan) {
   namespace detail = evaluation_marshal_detail;
+  std::ostringstream request_text;
+  detail::append_kv(request_text, "source_range", "anchor_index");
+  detail::append_i64(request_text, "anchor_index_begin",
+                     request.validation_range.anchor_index_begin);
+  detail::append_i64(request_text, "anchor_index_end",
+                     request.validation_range.anchor_index_end);
+  detail::append_bool(request_text, "force_rebuild_cache",
+                      request.force_rebuild_cache);
+  const std::string execution_request_text = request_text.str();
+  const std::string execution_request_digest = marshal_digest_for_text(
+      "kikijyeba.runtime.policy_training_execution_request.v1",
+      execution_request_text);
+  const std::filesystem::path execution_request_dir =
+      std::filesystem::temp_directory_path() / "cuwacunu_hero_runtime_requests";
+  std::filesystem::create_directories(execution_request_dir);
+  const std::filesystem::path execution_request_path =
+      execution_request_dir /
+      ("evaluation_" + execution_request_digest + ".kv");
+  std::ofstream request_out(execution_request_path, std::ios::trunc);
+  request_out << execution_request_text;
+
+  std::ostringstream handoff_json;
+  handoff_json << "{";
+  bool handoff_first = true;
+  detail::append_json_string_field(
+      handoff_json, "handoff_schema_version",
+      k_marshal_evaluation_runtime_handoff_schema_v1, &handoff_first);
+  detail::append_json_string_field(
+      handoff_json, "handoff_id",
+      "evaluation_runtime_handoff_" + plan.plan_digest, &handoff_first);
+  detail::append_json_string_field(handoff_json, "request_digest",
+                                   plan.request_digest, &handoff_first);
+  detail::append_json_string_field(handoff_json, "plan_digest",
+                                   plan.plan_digest, &handoff_first);
+  detail::append_json_string_field(handoff_json, "evaluation_id",
+                                   request.evaluation_id, &handoff_first);
+  detail::append_json_string_field(
+      handoff_json, "runtime_replay_command_template",
+      plan.runtime_replay_command_template, &handoff_first);
+  detail::append_json_bool_field(handoff_json, "target_satisfaction_claimed",
+                                 false, &handoff_first);
+  detail::append_json_bool_field(handoff_json, "runtime_executor", false,
+                                 &handoff_first);
+  detail::append_json_bool_field(handoff_json, "lattice_proof_authority", false,
+                                 &handoff_first);
+  detail::append_json_string_field(handoff_json, "non_authority_statement",
+                                   k_marshal_evaluation_non_authority_statement,
+                                   &handoff_first);
+  handoff_json << "}";
+  const std::string handoff_text = handoff_json.str();
+  const std::string handoff_digest = marshal_digest_for_text(
+      "kikijyeba.runtime.run_request.runtime_handoff_file.v1", handoff_text);
+  const std::filesystem::path handoff_path =
+      execution_request_dir /
+      ("evaluation_handoff_" + handoff_digest + ".json");
+  std::ofstream handoff_out(handoff_path, std::ios::trunc);
+  handoff_out << handoff_text;
+
+  std::ostringstream run_request_text;
+  run_request_text << "config_path=" << request.evaluation_config_path.string()
+                   << "\n"
+                   << "execution_request_path="
+                   << execution_request_path.string() << "\n"
+                   << "execution_request_digest=" << execution_request_digest
+                   << "\n"
+                   << "runtime_handoff_path=" << handoff_path.string() << "\n"
+                   << "runtime_handoff_digest=" << handoff_digest << "\n";
+  const std::string args_digest = marshal_digest_for_text(
+      "kikijyeba.runtime.run_request.wave.v1", run_request_text.str());
+  const std::filesystem::path args_path =
+      execution_request_dir / ("evaluation_run_" + args_digest + ".kv");
+  std::ofstream run_request_out(args_path, std::ios::trunc);
+  run_request_out << run_request_text.str();
+
   std::ostringstream args;
   args << "{";
   bool first = true;
-  detail::append_json_string_field(
-      args, "config_path", request.evaluation_config_path.string(), &first);
-  detail::append_json_string_field(args, "operation", "wave", &first);
-  detail::append_json_string_field(args, "requested_mode", "dry_run", &first);
-  detail::append_json_bool_field(args, "confirm_execute", false, &first);
-  detail::append_json_i64_field(args, "timeout_seconds",
-                                request.runtime_timeout_seconds, &first);
-  detail::append_json_bool_field(args, "force_rebuild_cache",
-                                 request.force_rebuild_cache, &first);
-
-  if (!first) {
-    args << ",";
-  }
-  first = false;
-  args << detail::json_quote("wave_overlay") << ":{";
-  bool overlay_first = true;
-  detail::append_json_string_field(args, "source_range", "anchor_index",
-                                   &overlay_first);
-  detail::append_json_i64_field(args, "anchor_index_begin",
-                                request.validation_range.anchor_index_begin,
-                                &overlay_first);
-  detail::append_json_i64_field(args, "anchor_index_end",
-                                request.validation_range.anchor_index_end,
-                                &overlay_first);
-  args << "}";
-
-  args << "," << detail::json_quote("marshal_expected_wave") << ":{";
-  bool expected_first = true;
-  detail::append_json_string_field(args, "wave_id", request.wave_id,
-                                   &expected_first);
-  detail::append_json_string_field(args, "target_component_family_id",
-                                   request.target_component_family_id,
-                                   &expected_first);
-  detail::append_json_string_field(args, "mode", request.wave_mode,
-                                   &expected_first);
-  detail::append_json_string_field(args, "source_range", "anchor_index",
-                                   &expected_first);
-  detail::append_json_string_field(args, "source_order", request.source_order,
-                                   &expected_first);
-  detail::append_json_i64_field(args, "anchor_index_begin",
-                                request.validation_range.anchor_index_begin,
-                                &expected_first);
-  detail::append_json_i64_field(args, "anchor_index_end",
-                                request.validation_range.anchor_index_end,
-                                &expected_first);
-  args << "}";
-
-  args << "," << detail::json_quote("runtime_handoff") << ":{";
-  bool handoff_first = true;
-  detail::append_json_string_field(
-      args, "handoff_schema_version",
-      k_marshal_evaluation_runtime_handoff_schema_v1, &handoff_first);
-  detail::append_json_string_field(
-      args, "handoff_id", "evaluation_runtime_handoff_" + plan.plan_digest,
-      &handoff_first);
-  detail::append_json_string_field(args, "request_digest", plan.request_digest,
-                                   &handoff_first);
-  detail::append_json_string_field(args, "plan_digest", plan.plan_digest,
-                                   &handoff_first);
-  detail::append_json_string_field(args, "evaluation_id", request.evaluation_id,
-                                   &handoff_first);
-  detail::append_json_string_field(args, "runtime_replay_command_template",
-                                   plan.runtime_replay_command_template,
-                                   &handoff_first);
-  detail::append_json_bool_field(args, "target_satisfaction_claimed", false,
-                                 &handoff_first);
-  detail::append_json_bool_field(args, "runtime_executor", false,
-                                 &handoff_first);
-  detail::append_json_bool_field(args, "lattice_proof_authority", false,
-                                 &handoff_first);
-  detail::append_json_string_field(args, "non_authority_statement",
-                                   k_marshal_evaluation_non_authority_statement,
-                                   &handoff_first);
-  args << "}";
-
+  detail::append_json_string_field(args, "mode", "dry_run", &first);
+  detail::append_json_string_field(args, "args_path", args_path.string(),
+                                   &first);
+  detail::append_json_string_field(args, "args_digest", args_digest, &first);
   args << "}";
   return args.str();
 }

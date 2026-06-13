@@ -54,6 +54,88 @@ void write_text(const std::filesystem::path &path, const std::string &text) {
   out << text;
 }
 
+void write_cwu01_protocol(const std::filesystem::path &path) {
+  write_text(path,
+             "PROTOCOL {\n"
+             "  PROTOCOL_ID = cwu_01v;\n"
+             "  PROTOCOL_KIND = channel_graph_first;\n"
+             "  GRAPH_TOPOLOGY = kikijyeba.topology.graph;\n"
+             "  NODELIFT = wikimyei.expression.nodelift.srl;\n"
+             "  REPRESENTATION = wikimyei.representation.encoding.vicreg;\n"
+             "  INFERENCE = wikimyei.inference.expected_value.mdn;\n"
+             "  OBSERVER = wikimyei.observer.belief;\n"
+             "  ALLOCATION_POLICY = "
+             "wikimyei.policy.portfolio.spot_distributional_utility;\n"
+             "  POLICY_COMPONENT = "
+             "wikimyei.policy.portfolio.graph_node_allocation;\n"
+             "  REPRESENTATION_CONTRACT = "
+             "graph_order.channel_node_representation.v1;\n"
+             "};\n");
+}
+
+void write_validation_cursor(const std::filesystem::path &path,
+                             const std::string &cursor_id) {
+  write_text(path, "UJCAMEI_SOURCE_CURSOR {\n"
+                   "  CURSOR_ID = " +
+                       cursor_id +
+                       ";\n"
+                       "  SOURCE_CURSOR_KIND = graph_anchor;\n"
+                       "  SOURCE_CURSOR_SCOPE = wave_batch;\n"
+                       "  SOURCE_RANGE = anchor_index;\n"
+                       "  ANCHOR_INDEX_BEGIN = 1800;\n"
+                       "  ANCHOR_INDEX_END = 2050;\n"
+                       "};\n");
+}
+
+void write_runtime_config(const std::filesystem::path &config_path,
+                          const std::filesystem::path &policy_path,
+                          const std::filesystem::path &wave_path,
+                          const std::filesystem::path &protocol_path,
+                          const std::filesystem::path &cursor_path) {
+  write_cwu01_protocol(protocol_path);
+  write_validation_cursor(cursor_path, "validation_cursor");
+  write_text(config_path, "[UJCAMEI]\n"
+                          "ujcamei_source_cursor_dsl_path = " +
+                              cursor_path.string() +
+                              "\n"
+                              "[KIKIJYEBA]\n"
+                              "kikijyeba_protocol_dsl_path = " +
+                              protocol_path.string() +
+                              "\n"
+                              "[HERO]\n"
+                              "runtime_hero_dsl_path = " +
+                              policy_path.string() +
+                              "\n"
+                              "runtime_wave_dsl_path = " +
+                              wave_path.string() + "\n");
+}
+
+void write_validation_runtime_wave(
+    const std::filesystem::path &wave_path,
+    const std::string &wave_id =
+        "cwu_01v_channel_validation_eval_mdn_1800_2050",
+    const std::string &mdn_checkpoint =
+        "/cuwacunu/.runtime/cuwacunu_exec/jobs/mdn/checkpoint.pt",
+    const std::string &representation_checkpoint =
+        "/cuwacunu/.runtime/cuwacunu_exec/jobs/vicreg/checkpoint.pt") {
+  write_text(wave_path,
+             "WAVE_SETTINGS {\n"
+             "  WAVE_ID = " +
+                 wave_id +
+                 ";\n"
+                 "  PROTOCOL = cwu_01v;\n"
+                 "  TARGET = wikimyei.inference.expected_value.mdn;\n"
+                 "  MODE = run|debug;\n"
+                 "  SOURCE_CURSOR_ID = validation_cursor;\n"
+                 "  INPUT_MDN_CHECKPOINT = " +
+                 mdn_checkpoint +
+                 ";\n"
+                 "  INPUT_REPRESENTATION_CHECKPOINT = " +
+                 representation_checkpoint +
+                 ";\n"
+                 "};\n");
+}
+
 std::size_t count_substrings(const std::string &text,
                              const std::string &needle) {
   if (needle.empty()) {
@@ -79,6 +161,324 @@ std::string shell_quote(const std::string &value) {
   }
   out += "'";
   return out;
+}
+
+std::string read_text(const std::filesystem::path &path) {
+  std::ifstream in(path);
+  check(in.is_open(), "failed to read file: " + path.string());
+  std::ostringstream out;
+  out << in.rdbuf();
+  return out.str();
+}
+
+std::string json_string_field(const std::string &json, const std::string &key) {
+  const std::string needle = "\"" + key + "\":\"";
+  const std::size_t begin = json.find(needle);
+  check(begin != std::string::npos, "missing JSON string field: " + key);
+  std::string value;
+  for (std::size_t i = begin + needle.size(); i < json.size(); ++i) {
+    const char c = json[i];
+    if (c == '"') {
+      return value;
+    }
+    if (c == '\\') {
+      check(i + 1 < json.size(), "unterminated JSON string escape");
+      value.push_back(json[++i]);
+    } else {
+      value.push_back(c);
+    }
+  }
+  throw std::runtime_error("unterminated JSON string field: " + key);
+}
+
+std::string
+lattice_inspect_request_text_from_args(const std::string &arguments_json) {
+  if (arguments_json.find("\"args_path\"") == std::string::npos) {
+    return arguments_json;
+  }
+  return read_text(json_string_field(arguments_json, "args_path"));
+}
+
+std::string
+lattice_evaluate_request_text_from_args(const std::string &arguments_json) {
+  if (arguments_json.find("\"args_path\"") == std::string::npos) {
+    return arguments_json;
+  }
+  return read_text(json_string_field(arguments_json, "args_path"));
+}
+
+bool argument_context_has_mode(const std::string &argument_context,
+                               const std::string &mode) {
+  return argument_context.find("mode=" + mode) != std::string::npos ||
+         argument_context.find("\"mode\":\"" + mode + "\"") !=
+             std::string::npos;
+}
+
+bool lattice_facts_tool_has_view(const std::string &tool_name,
+                                 const std::string &argument_context,
+                                 const std::string &view) {
+  if (view == "preview" &&
+      tool_name.rfind("hero.lattice.inspect.facts.preview", 0) == 0) {
+    return true;
+  }
+  return tool_name == "hero.lattice.inspect.facts." + view ||
+         (tool_name == "hero.lattice.inspect.facts" &&
+          argument_context_has_mode(argument_context, view));
+}
+
+std::string assignment_value(const std::string &text, const std::string &key) {
+  std::istringstream lines{text};
+  std::string line;
+  while (std::getline(lines, line)) {
+    const auto comment = line.find('#');
+    if (comment != std::string::npos) {
+      line.resize(comment);
+    }
+    const auto eq = line.find('=');
+    if (eq == std::string::npos) {
+      continue;
+    }
+    std::string found = line.substr(0, eq);
+    while (!found.empty() &&
+           std::isspace(static_cast<unsigned char>(found.back())) != 0) {
+      found.pop_back();
+    }
+    std::size_t begin = 0;
+    while (begin < found.size() &&
+           std::isspace(static_cast<unsigned char>(found[begin])) != 0) {
+      ++begin;
+    }
+    found = found.substr(begin);
+    if (found == key) {
+      std::string value = line.substr(eq + 1);
+      while (!value.empty() &&
+             std::isspace(static_cast<unsigned char>(value.back())) != 0) {
+        value.pop_back();
+      }
+      begin = 0;
+      while (begin < value.size() &&
+             std::isspace(static_cast<unsigned char>(value[begin])) != 0) {
+        ++begin;
+      }
+      return value.substr(begin);
+    }
+  }
+  throw std::runtime_error("missing assignment: " + key);
+}
+
+std::string
+runtime_run_request_text_from_args(const std::string &arguments_json) {
+  return read_text(json_string_field(arguments_json, "args_path"));
+}
+
+std::string runtime_handoff_text_from_args(const std::string &arguments_json) {
+  const std::string run_request_text =
+      runtime_run_request_text_from_args(arguments_json);
+  return read_text(std::filesystem::path(
+      assignment_value(run_request_text, "runtime_handoff_path")));
+}
+
+std::string direct_marshal_inspect_args(const std::string &legacy_args_json,
+                                        bool skip_mode,
+                                        bool skip_include_preview,
+                                        bool skip_identity_mode = false) {
+  const auto fields = marshal::tool_detail::object_fields(legacy_args_json);
+  std::ostringstream out;
+  out << "{";
+  bool first = true;
+  for (const auto &[key, raw] : fields) {
+    if (key == "subject" || (skip_mode && key == "mode") ||
+        (skip_include_preview && key == "include_preview") ||
+        (skip_identity_mode && key == "identity_mode")) {
+      continue;
+    }
+    if (!first) {
+      out << ",";
+    }
+    first = false;
+    out << marshal::detail::json_quote(key) << ":" << raw;
+  }
+  out << "}";
+  return out.str();
+}
+
+bool execute_marshal_inspect_json(const std::string &legacy_args_json,
+                                  std::string *result, std::string *error) {
+  const auto fields = marshal::tool_detail::object_fields(legacy_args_json);
+  const std::string subject =
+      marshal::tool_detail::optional_string(fields, "subject");
+  if (subject.empty()) {
+    if (error != nullptr) {
+      *error = "test inspect helper requires subject";
+    }
+    return false;
+  }
+  std::string tool_name = "hero.marshal.inspect." + subject;
+  bool skip_mode = false;
+  bool skip_include_preview = false;
+  bool skip_identity_mode = false;
+  if (subject == "run") {
+    tool_name += "." + marshal::tool_detail::optional_string(fields, "mode",
+                                                             "latest_chain");
+    skip_mode = true;
+  } else if (subject == "facts") {
+    std::string facts_mode =
+        marshal::tool_detail::optional_string(fields, "mode");
+    if (facts_mode.empty()) {
+      const bool preview_requested =
+          marshal::tool_detail::optional_bool(fields, "include_preview",
+                                              false) ||
+          !marshal::tool_detail::optional_string(fields, "fact_digest")
+               .empty() ||
+          !marshal::tool_detail::optional_string(fields, "fact_digest_prefix")
+               .empty() ||
+          fields.find("fact_index") != fields.end();
+      facts_mode = preview_requested ? "preview" : "summary";
+    }
+    skip_include_preview = facts_mode == "preview";
+    tool_name += "." + facts_mode;
+    if (facts_mode == "preview") {
+      if (!marshal::tool_detail::optional_string(fields, "fact_digest")
+               .empty()) {
+        tool_name += ".by_digest";
+      } else if (!marshal::tool_detail::optional_string(fields,
+                                                        "fact_digest_prefix")
+                      .empty()) {
+        tool_name += ".by_digest_prefix";
+      } else if (fields.find("fact_index") != fields.end()) {
+        tool_name += ".by_index";
+      }
+    }
+    skip_mode = true;
+  } else if (subject == "protocol") {
+    const std::string identity_mode = marshal::tool_detail::optional_string(
+        fields, "identity_mode", "report");
+    tool_name += "." + identity_mode;
+    skip_identity_mode = true;
+  } else if (subject == "spawn") {
+    if (!marshal::tool_detail::optional_string(fields,
+                                               "component_spawn_fingerprint")
+             .empty()) {
+      tool_name += ".by_fingerprint";
+    } else if (!marshal::tool_detail::optional_string(
+                    fields, "component_spawn_registry_id")
+                    .empty()) {
+      tool_name += ".by_registry";
+    } else if (!marshal::tool_detail::optional_string(fields,
+                                                      "component_spawn_label")
+                    .empty()) {
+      tool_name += ".by_label";
+    } else if (!marshal::tool_detail::optional_string(fields,
+                                                      "component_spawn_id")
+                    .empty()) {
+      tool_name += ".by_id";
+    } else if (!marshal::tool_detail::optional_string(fields, "job_id")
+                    .empty()) {
+      tool_name += ".by_job";
+    } else {
+      tool_name += ".by_id";
+    }
+  }
+  return marshal::execute_marshal_tool_json(
+      tool_name,
+      direct_marshal_inspect_args(legacy_args_json, skip_mode,
+                                  skip_include_preview, skip_identity_mode),
+      result, error);
+}
+
+std::string marshal_prepare_request_digest(const std::string &request_text) {
+  return marshal::marshal_digest_for_text(
+      "kikijyeba.marshal.prepare_request.v1", request_text);
+}
+
+bool marshal_prepare_public_arg(const std::string &key) {
+  return key == "target_id" || key == "mode" || key == "requested_mode" ||
+         key == "args_path" || key == "args_digest" || key == "intent" ||
+         key == "drive_mode";
+}
+
+bool marshal_prepare_tool_name(const std::map<std::string, std::string> &fields,
+                               std::string *tool_name, std::string *error) {
+  const std::string intent =
+      marshal::tool_detail::optional_string(fields, "intent", "train");
+  const std::string drive_mode =
+      marshal::tool_detail::optional_string(fields, "drive_mode", "one_step");
+  if (intent != "train" && intent != "evaluate") {
+    if (error != nullptr) {
+      *error = "unsupported split prepare intent: " + intent;
+    }
+    return false;
+  }
+  if (drive_mode != "one_step" && drive_mode != "budgeted") {
+    if (error != nullptr) {
+      *error = "unsupported split prepare drive_mode: " + drive_mode;
+    }
+    return false;
+  }
+  if (tool_name != nullptr) {
+    *tool_name = "hero.marshal.prepare." + intent + "." + drive_mode;
+  }
+  return true;
+}
+
+std::string marshal_prepare_request_value_text(const std::string &key,
+                                               const std::string &raw) {
+  (void)key;
+  if (!raw.empty() && raw.front() == '"') {
+    return marshal::tool_detail::parse_string_raw(raw, key);
+  }
+  return raw;
+}
+
+std::string compact_marshal_prepare_args(const std::string &legacy_args_json) {
+  static int counter = 0;
+  const auto fields = marshal::tool_detail::object_fields(legacy_args_json);
+  const std::string target_id =
+      marshal::tool_detail::optional_string(fields, "target_id");
+  check(!target_id.empty(), "compact_marshal_prepare_args requires target_id");
+  const std::string requested_mode = marshal::tool_detail::optional_string(
+      fields, "mode",
+      marshal::tool_detail::optional_string(fields, "requested_mode", "plan"));
+
+  std::ostringstream request_text;
+  for (const auto &[key, raw] : fields) {
+    if (marshal_prepare_public_arg(key)) {
+      continue;
+    }
+    request_text << key << " = " << marshal_prepare_request_value_text(key, raw)
+                 << "\n";
+  }
+  const std::string request = request_text.str();
+  const bool needs_request_file = !request.empty() || requested_mode != "plan";
+
+  std::ostringstream out;
+  out << "{\"target_id\":" << marshal::detail::json_quote(target_id)
+      << ",\"mode\":" << marshal::detail::json_quote(requested_mode);
+  if (needs_request_file) {
+    const auto request_path =
+        std::filesystem::temp_directory_path() /
+        ("cuwacunu_marshal_prepare_request_" +
+         std::to_string(static_cast<long long>(::getpid())) + "_" +
+         std::to_string(counter++) + ".kv");
+    write_text(request_path, request);
+    out << ",\"args_path\":"
+        << marshal::detail::json_quote(request_path.string())
+        << ",\"args_digest\":"
+        << marshal::detail::json_quote(marshal_prepare_request_digest(request));
+  }
+  out << "}";
+  return out.str();
+}
+
+bool execute_marshal_prepare_json(const std::string &legacy_args_json,
+                                  std::string *result, std::string *error) {
+  const auto fields = marshal::tool_detail::object_fields(legacy_args_json);
+  std::string tool_name;
+  if (!marshal_prepare_tool_name(fields, &tool_name, error)) {
+    return false;
+  }
+  return marshal::execute_marshal_tool_json(
+      tool_name, compact_marshal_prepare_args(legacy_args_json), result, error);
 }
 
 std::string read_command_stdout(const std::string &command) {
@@ -170,7 +570,7 @@ marshal::marshal_dispatch_advice_t valid_advice() {
   advice.recommendation_attempt_count = 0;
   advice.required_plan_inputs = {"PLAN_INPUT_MDN_CHECKPOINT",
                                  "PLAN_INPUT_REPRESENTATION_CHECKPOINT"};
-  advice.source_lattice_tool = "hero.lattice.evaluate";
+  advice.source_lattice_tool = "hero.lattice.evaluate.deficit";
   advice.source_lattice_timestamp = "2026-05-23T00:00:00Z";
   advice.plan_basis_digest = marshal::plan_basis_digest(advice.plan_basis);
   advice.suggested_wave_digest =
@@ -933,68 +1333,107 @@ void test_m2_dry_run_preview_success() {
         "valid M2 dry-run preview should be handoff-available");
   check(decision.runtime_request.dry_run,
         "M2 runtime request must force dry_run=true");
-  check(!decision.runtime_request.confirm_execute,
-        "M2 runtime request must force confirm_execute=false");
   check(decision.runtime_request.wave_target == advice.suggested_wave.target,
         "runtime request target should derive from suggested_wave target");
   check(decision.runtime_request.model_state_inputs ==
             advice.suggested_wave.plan_inputs,
         "runtime request model-state inputs should derive from advice");
   const auto handoff_args =
-      marshal::runtime_hero_execute_args_json(decision.runtime_request, 30);
-  check(handoff_args.find("\"wave_overlay\":") != std::string::npos,
-        "Runtime handoff should include the Lattice range wave_overlay");
-  check(handoff_args.find("\"anchor_index_begin\":\"1800\"") !=
+      marshal::runtime_hero_execute_args_json(decision.runtime_request);
+  check(handoff_args.find("\"subject\"") == std::string::npos,
+        "Runtime handoff should not expose retired Runtime run subject");
+  check(handoff_args.find("\"mode\":\"dry_run\"") != std::string::npos,
+        "Runtime handoff should request dry_run through hero.runtime.run");
+  check(handoff_args.find("\"marshal_expected_wave\"") == std::string::npos,
+        "Runtime handoff should rely on runtime_handoff instead of duplicate "
+        "expected-wave args");
+  check(handoff_args.find("\"confirm_execute\"") == std::string::npos,
+        "Runtime handoff must not expose retired confirm_execute");
+  check(handoff_args.find("\"timeout_seconds\"") == std::string::npos,
+        "Runtime handoff must not expose retired timeout_seconds");
+  check(handoff_args.find("\"wave_overlay\":") == std::string::npos,
+        "Runtime handoff should not expose wave_overlay as a top-level tool "
+        "argument");
+  check(handoff_args.find("\"execution_request_path\":") == std::string::npos,
+        "Runtime handoff should not expose execution_request_path as a "
+        "top-level tool argument");
+  check(handoff_args.find("\"runtime_handoff\":") == std::string::npos,
+        "Runtime handoff should not expose the runtime_handoff object as a "
+        "top-level tool argument");
+  check(handoff_args.find("\"args_path\":") != std::string::npos,
+        "Runtime handoff should pass Runtime locators through args_path");
+  check(handoff_args.find("\"args_digest\":") != std::string::npos,
+        "Runtime handoff should pin the generated run request");
+  const auto run_request_text =
+      read_text(json_string_field(handoff_args, "args_path"));
+  check(run_request_text.find("execution_request_path=") != std::string::npos,
+        "Runtime run request should carry the execution request path");
+  check(run_request_text.find("runtime_handoff_path=") != std::string::npos,
+        "Runtime run request should carry the handoff object path");
+  const auto runtime_handoff_json = read_text(std::filesystem::path(
+      assignment_value(run_request_text, "runtime_handoff_path")));
+  const auto handoff_request_text =
+      marshal::runtime_wave_execution_request_text(decision.runtime_request);
+  check(handoff_request_text.find("source_range=") != std::string::npos,
+        "Runtime execution request should carry the source-range field");
+  check(handoff_request_text.find("anchor_index_begin=") != std::string::npos,
+        "Runtime execution request should carry the anchor-begin field");
+  check(handoff_request_text.find("anchor_index_end=") != std::string::npos,
+        "Runtime execution request should carry the anchor-end field");
+  check(runtime_handoff_json.find("\"anchor_index_begin\":\"1800\"") !=
             std::string::npos,
-        "Runtime handoff should overlay the advised anchor begin");
-  check(handoff_args.find("\"anchor_index_end\":\"2050\"") != std::string::npos,
-        "Runtime handoff should overlay the advised anchor end");
-  check(handoff_args.find("\"runtime_handoff\":") != std::string::npos,
-        "Runtime handoff should include the canonical runtime_handoff object");
-  check(handoff_args.find("\"handoff_schema_version\":\"1\"") !=
+        "runtime_handoff should bind the advised anchor begin");
+  check(runtime_handoff_json.find("\"anchor_index_end\":\"2050\"") !=
+            std::string::npos,
+        "runtime_handoff should bind the advised anchor end");
+  check(runtime_handoff_json.find("\"handoff_schema_version\":\"1\"") !=
             std::string::npos,
         "runtime_handoff should declare schema version 1");
-  check(handoff_args.find("\"handoff_digest\":") != std::string::npos,
+  check(runtime_handoff_json.find("\"handoff_digest\":") != std::string::npos,
         "runtime_handoff should expose its canonical digest");
-  check(handoff_args.find(
+  check(runtime_handoff_json.find(
             "\"target_id\":\"channel_mdn_validation_eval_ready\"") !=
             std::string::npos,
         "runtime_handoff should bind the lattice target id");
-  check(handoff_args.find("\"base_config\":") != std::string::npos,
+  check(runtime_handoff_json.find("\"base_config\":") != std::string::npos,
         "runtime_handoff should include base config identity");
-  check(handoff_args.find("\"base_config\":{\"path\":") != std::string::npos,
+  check(runtime_handoff_json.find("\"base_config\":{\"path\":") !=
+            std::string::npos,
         "runtime_handoff should include base config path");
-  check(handoff_args.find("\"runtime_policy\":{\"path\":") !=
+  check(runtime_handoff_json.find("\"runtime_policy\":{\"path\":") !=
             std::string::npos,
         "runtime_handoff should include runtime policy path");
-  check(handoff_args.find("\"hash\":") == std::string::npos,
+  check(runtime_handoff_json.find("\"hash\":") == std::string::npos,
         "runtime_handoff should not use generic hash identity fields");
-  check(handoff_args.find("\"checkpoint_artifact_digests\":{}") !=
+  check(runtime_handoff_json.find("\"checkpoint_artifact_digests\":{}") !=
             std::string::npos,
         "runtime_handoff should use canonical checkpoint artifact digest map");
-  check(handoff_args.find("\"checkpoint_artifact_hashes\"") ==
+  check(runtime_handoff_json.find("\"checkpoint_artifact_hashes\"") ==
             std::string::npos,
         "runtime_handoff should not emit the retired checkpoint artifact hash "
         "map");
-  check(handoff_args.find("\"runtime_policy\":") != std::string::npos,
+  check(runtime_handoff_json.find("\"runtime_policy\":") != std::string::npos,
         "runtime_handoff should include runtime policy identity");
   check(
-      handoff_args.find("\"unresolved_symbols\":[]") != std::string::npos,
+      runtime_handoff_json.find("\"unresolved_symbols\":[]") !=
+          std::string::npos,
       "resolved runtime handoff should expose an empty unresolved-symbol list");
-  check(handoff_args.find("\"lattice_certificate_refs\":{"
-                          "\"PLAN_INPUT_MDN_CHECKPOINT\":"
-                          "\"resolver_receipt_mdn\"}") != std::string::npos,
+  check(runtime_handoff_json.find("\"lattice_certificate_refs\":{"
+                                  "\"PLAN_INPUT_MDN_CHECKPOINT\":"
+                                  "\"resolver_receipt_mdn\"}") !=
+            std::string::npos,
         "runtime_handoff should carry Lattice resolver certificate refs");
-  check(handoff_args.find("\"target_component_family_id\":") !=
+  check(runtime_handoff_json.find("\"target_component_family_id\":") !=
             std::string::npos,
         "Runtime handoff should use canonical target_component_family_id");
-  check(handoff_args.find("\"mode\":\"run|debug\"") != std::string::npos,
+  check(runtime_handoff_json.find("\"mode\":\"run|debug\"") !=
+            std::string::npos,
         "Runtime handoff should use canonical mode");
-  check(handoff_args.find("\"source_order\":\"sequential\"") !=
+  check(runtime_handoff_json.find("\"source_order\":\"sequential\"") !=
             std::string::npos,
         "Runtime handoff should bind Runtime Hero source_order");
-  check(handoff_args.find("\"wave_target\":") == std::string::npos &&
-            handoff_args.find("\"wave_mode\":") == std::string::npos,
+  check(runtime_handoff_json.find("\"wave_target\":") == std::string::npos &&
+            runtime_handoff_json.find("\"wave_mode\":") == std::string::npos,
         "Runtime handoff should not emit removed wave aliases");
   check(!marshal::runtime_dry_run_request_digest(decision.runtime_request)
              .empty(),
@@ -1119,14 +1558,12 @@ void test_m2_runtime_hero_live_dry_run_handoff() {
   const auto config_path = root / ".config";
   const auto policy_path = root / "hero.runtime.dsl";
   const auto wave_path = root / "wave.dsl";
+  const auto protocol_path = root / "kikijyeba.protocol.dsl";
+  const auto cursor_path = root / "ujcamei.source.cursor.dsl";
   std::filesystem::create_directories(runtime_root);
 
-  write_text(config_path, "[HERO]\n"
-                          "runtime_hero_dsl_path = " +
-                              policy_path.string() +
-                              "\n"
-                              "runtime_wave_dsl_path = " +
-                              wave_path.string() + "\n");
+  write_runtime_config(config_path, policy_path, wave_path, protocol_path,
+                       cursor_path);
 
   write_text(policy_path, "protocol_layer[STDIO|HTTPS/SSE]:enum = STDIO\n"
                           "runtime_exec_path:path = /bin/true\n"
@@ -1143,9 +1580,7 @@ void test_m2_runtime_hero_live_dry_run_handoff() {
                               "allow_execute:bool = false\n"
                               "allow_train_execute:bool = false\n"
                               "allow_force_rebuild_cache:bool = false\n"
-                              "require_confirm_execute:bool = true\n"
                               "allow_dev_nuke:bool = false\n"
-                              "require_confirm_dev_nuke:bool = true\n"
                               "dev_nuke_backup_enabled:bool = true\n"
                               "dev_nuke_backup_root:path = " +
                               (root / "backups").string() +
@@ -1156,21 +1591,7 @@ void test_m2_runtime_hero_live_dry_run_handoff() {
                               "max_capture_bytes:int = 4096\n"
                               "max_runtime_seconds:int = 5\n");
 
-  write_text(wave_path,
-             "WAVE_SETTINGS {\n"
-             "  WAVE_ID = cwu_01v_channel_validation_eval_mdn_1800_2050;\n"
-             "  TARGET = wikimyei.inference.expected_value.mdn;\n"
-             "  MODE = run|debug;\n"
-             "  SOURCE_CURSOR_KIND = graph_anchor;\n"
-             "  SOURCE_CURSOR_SCOPE = wave_batch;\n"
-             "  SOURCE_RANGE = anchor_index;\n"
-             "  ANCHOR_INDEX_BEGIN = 1800;\n"
-             "  ANCHOR_INDEX_END = 2050;\n"
-             "  INPUT_MDN_CHECKPOINT = "
-             "/cuwacunu/.runtime/cuwacunu_exec/jobs/mdn/checkpoint.pt;\n"
-             "  INPUT_REPRESENTATION_CHECKPOINT = "
-             "/cuwacunu/.runtime/cuwacunu_exec/jobs/vicreg/checkpoint.pt;\n"
-             "};\n");
+  write_validation_runtime_wave(wave_path);
 
   auto advice = valid_advice();
   advice.config_path = config_path.string();
@@ -1200,19 +1621,25 @@ void test_m2_runtime_hero_live_dry_run_handoff() {
   const auto handoff = marshal::call_runtime_hero_dry_run(decision, options);
 
   check(handoff.attempted, "Runtime Hero handoff should be attempted");
-  check(handoff.tool_call_ok,
-        "Runtime Hero tool call should succeed: error=" +
-            handoff.error_message + " result=" + handoff.tool_result_json);
+  check(handoff.tool_name == "hero.runtime.run",
+        "Runtime Hero handoff should target canonical Runtime run tool");
+  check(handoff.tool_call_ok, "Runtime Hero tool call should succeed: error=" +
+                                  handoff.error_message +
+                                  " result=" + handoff.tool_result_json);
   check(handoff.runtime_dry_run_ok,
         "Runtime Hero dry-run structured result should be ok");
   check(handoff.ok, "Runtime Hero dry-run handoff should succeed");
   check(!handoff.tool_result_error,
         "Runtime Hero dry-run handoff should not return an error result");
-  check(handoff.arguments_json.find("\"dry_run\":true") != std::string::npos,
-        "Runtime Hero handoff must force dry_run=true");
-  check(handoff.arguments_json.find("\"confirm_execute\":false") !=
+  check(handoff.arguments_json.find("\"subject\"") == std::string::npos,
+        "Runtime Hero handoff must not expose retired subject");
+  check(handoff.arguments_json.find("\"mode\":\"dry_run\"") !=
             std::string::npos,
-        "Runtime Hero handoff must force confirm_execute=false");
+        "Runtime Hero handoff must request dry_run mode");
+  check(handoff.arguments_json.find("\"confirm_execute\"") == std::string::npos,
+        "Runtime Hero handoff must not expose retired confirm_execute");
+  check(handoff.arguments_json.find("\"timeout_seconds\"") == std::string::npos,
+        "Runtime Hero handoff must not expose retired timeout_seconds");
   check(handoff.tool_result_json.find("\"isError\":false") != std::string::npos,
         "Runtime Hero tool result should be non-error");
   check(handoff.tool_result_json.find("\"exit_code\":0") != std::string::npos,
@@ -1249,14 +1676,12 @@ void test_m2_public_dry_run_dispatch_operation() {
   const auto config_path = root / ".config";
   const auto policy_path = root / "hero.runtime.dsl";
   const auto wave_path = root / "wave.dsl";
+  const auto protocol_path = root / "kikijyeba.protocol.dsl";
+  const auto cursor_path = root / "ujcamei.source.cursor.dsl";
   std::filesystem::create_directories(runtime_root);
 
-  write_text(config_path, "[HERO]\n"
-                          "runtime_hero_dsl_path = " +
-                              policy_path.string() +
-                              "\n"
-                              "runtime_wave_dsl_path = " +
-                              wave_path.string() + "\n");
+  write_runtime_config(config_path, policy_path, wave_path, protocol_path,
+                       cursor_path);
   write_text(policy_path, "protocol_layer[STDIO|HTTPS/SSE]:enum = STDIO\n"
                           "runtime_exec_path:path = /bin/true\n"
                           "default_config_path:path = " +
@@ -1272,9 +1697,7 @@ void test_m2_public_dry_run_dispatch_operation() {
                               "allow_execute:bool = false\n"
                               "allow_train_execute:bool = false\n"
                               "allow_force_rebuild_cache:bool = false\n"
-                              "require_confirm_execute:bool = true\n"
                               "allow_dev_nuke:bool = false\n"
-                              "require_confirm_dev_nuke:bool = true\n"
                               "dev_nuke_backup_enabled:bool = true\n"
                               "dev_nuke_backup_root:path = " +
                               (root / "backups").string() +
@@ -1284,26 +1707,12 @@ void test_m2_public_dry_run_dispatch_operation() {
                               "\n"
                               "max_capture_bytes:int = 4096\n"
                               "max_runtime_seconds:int = 5\n");
-  write_text(wave_path,
-             "WAVE_SETTINGS {\n"
-             "  WAVE_ID = cwu_01v_channel_validation_eval_mdn_1800_2050;\n"
-             "  TARGET = wikimyei.inference.expected_value.mdn;\n"
-             "  MODE = run|debug;\n"
-             "  SOURCE_CURSOR_KIND = graph_anchor;\n"
-             "  SOURCE_CURSOR_SCOPE = wave_batch;\n"
-             "  SOURCE_RANGE = anchor_index;\n"
-             "  ANCHOR_INDEX_BEGIN = 1800;\n"
-             "  ANCHOR_INDEX_END = 2050;\n"
-             "  INPUT_MDN_CHECKPOINT = "
-             "/cuwacunu/.runtime/cuwacunu_exec/jobs/mdn/checkpoint.pt;\n"
-             "  INPUT_REPRESENTATION_CHECKPOINT = "
-             "/cuwacunu/.runtime/cuwacunu_exec/jobs/vicreg/checkpoint.pt;\n"
-             "};\n");
+  write_validation_runtime_wave(wave_path);
 
   auto advice = valid_advice();
   advice.config_path = config_path.string();
   advice.runtime_root = runtime_root.string();
-  advice.source_lattice_tool = "hero.lattice.evaluate";
+  advice.source_lattice_tool = "hero.lattice.evaluate.deficit";
   advice.plan_basis_digest.clear();
   advice.suggested_wave_digest.clear();
   advice.plan_input_digest.clear();
@@ -1504,14 +1913,12 @@ void test_m3_accepted_execution_handoff() {
   const auto config_path = root / ".config";
   const auto policy_path = root / "hero.runtime.dsl";
   const auto wave_path = root / "wave.dsl";
+  const auto protocol_path = root / "kikijyeba.protocol.dsl";
+  const auto cursor_path = root / "ujcamei.source.cursor.dsl";
   std::filesystem::create_directories(runtime_root);
 
-  write_text(config_path, "[HERO]\n"
-                          "runtime_hero_dsl_path = " +
-                              policy_path.string() +
-                              "\n"
-                              "runtime_wave_dsl_path = " +
-                              wave_path.string() + "\n");
+  write_runtime_config(config_path, policy_path, wave_path, protocol_path,
+                       cursor_path);
   write_text(policy_path, "protocol_layer[STDIO|HTTPS/SSE]:enum = STDIO\n"
                           "runtime_exec_path:path = /bin/true\n"
                           "default_config_path:path = " +
@@ -1527,9 +1934,7 @@ void test_m3_accepted_execution_handoff() {
                               "allow_execute:bool = true\n"
                               "allow_train_execute:bool = false\n"
                               "allow_force_rebuild_cache:bool = false\n"
-                              "require_confirm_execute:bool = true\n"
                               "allow_dev_nuke:bool = false\n"
-                              "require_confirm_dev_nuke:bool = true\n"
                               "dev_nuke_backup_enabled:bool = true\n"
                               "dev_nuke_backup_root:path = " +
                               (root / "backups").string() +
@@ -1539,26 +1944,12 @@ void test_m3_accepted_execution_handoff() {
                               "\n"
                               "max_capture_bytes:int = 4096\n"
                               "max_runtime_seconds:int = 5\n");
-  write_text(wave_path,
-             "WAVE_SETTINGS {\n"
-             "  WAVE_ID = cwu_01v_channel_validation_eval_mdn_1800_2050;\n"
-             "  TARGET = wikimyei.inference.expected_value.mdn;\n"
-             "  MODE = run|debug;\n"
-             "  SOURCE_CURSOR_KIND = graph_anchor;\n"
-             "  SOURCE_CURSOR_SCOPE = wave_batch;\n"
-             "  SOURCE_RANGE = anchor_index;\n"
-             "  ANCHOR_INDEX_BEGIN = 1800;\n"
-             "  ANCHOR_INDEX_END = 2050;\n"
-             "  INPUT_MDN_CHECKPOINT = "
-             "/cuwacunu/.runtime/cuwacunu_exec/jobs/mdn/checkpoint.pt;\n"
-             "  INPUT_REPRESENTATION_CHECKPOINT = "
-             "/cuwacunu/.runtime/cuwacunu_exec/jobs/vicreg/checkpoint.pt;\n"
-             "};\n");
+  write_validation_runtime_wave(wave_path);
 
   auto advice = valid_advice();
   advice.config_path = config_path.string();
   advice.runtime_root = runtime_root.string();
-  advice.source_lattice_tool = "hero.lattice.evaluate";
+  advice.source_lattice_tool = "hero.lattice.evaluate.deficit";
   advice.plan_basis_digest.clear();
   advice.suggested_wave_digest.clear();
   advice.plan_input_digest.clear();
@@ -1602,11 +1993,14 @@ void test_m3_accepted_execution_handoff() {
   check(handoff.ok, "M3 accepted execution handoff should succeed");
   check(marshal::marshal_digest_is_strong_hex(handoff.arguments_digest),
         "M3 execution handoff should record a strong argument digest");
-  check(handoff.arguments_json.find("\"dry_run\":false") != std::string::npos,
+  const std::string runtime_handoff_text =
+      runtime_handoff_text_from_args(handoff.arguments_json);
+  check(runtime_handoff_text.find("\"dry_run\":false") != std::string::npos,
         "M3 execution handoff must set dry_run=false");
-  check(handoff.arguments_json.find("\"confirm_execute\":true") !=
-            std::string::npos,
-        "M3 execution handoff must set confirm_execute=true");
+  check(handoff.arguments_json.find("\"confirm_execute\"") == std::string::npos,
+        "M3 execution handoff must not expose retired confirm_execute");
+  check(handoff.arguments_json.find("\"timeout_seconds\"") == std::string::npos,
+        "M3 execution handoff must not expose retired timeout_seconds");
   check(handoff.tool_result_json.find("\"isError\":false") != std::string::npos,
         "M3 execution handoff should return non-error Runtime Hero output");
 
@@ -1632,14 +2026,12 @@ void test_m3_execution_handoff_rechecks_runtime_wave() {
   const auto config_path = root / ".config";
   const auto policy_path = root / "hero.runtime.dsl";
   const auto wave_path = root / "wave.dsl";
+  const auto protocol_path = root / "kikijyeba.protocol.dsl";
+  const auto cursor_path = root / "ujcamei.source.cursor.dsl";
   std::filesystem::create_directories(runtime_root);
 
-  write_text(config_path, "[HERO]\n"
-                          "runtime_hero_dsl_path = " +
-                              policy_path.string() +
-                              "\n"
-                              "runtime_wave_dsl_path = " +
-                              wave_path.string() + "\n");
+  write_runtime_config(config_path, policy_path, wave_path, protocol_path,
+                       cursor_path);
   write_text(policy_path, "protocol_layer[STDIO|HTTPS/SSE]:enum = STDIO\n"
                           "runtime_exec_path:path = /bin/true\n"
                           "default_config_path:path = " +
@@ -1655,9 +2047,7 @@ void test_m3_execution_handoff_rechecks_runtime_wave() {
                               "allow_execute:bool = true\n"
                               "allow_train_execute:bool = false\n"
                               "allow_force_rebuild_cache:bool = false\n"
-                              "require_confirm_execute:bool = true\n"
                               "allow_dev_nuke:bool = false\n"
-                              "require_confirm_dev_nuke:bool = true\n"
                               "dev_nuke_backup_enabled:bool = true\n"
                               "dev_nuke_backup_root:path = " +
                               (root / "backups").string() +
@@ -1667,26 +2057,12 @@ void test_m3_execution_handoff_rechecks_runtime_wave() {
                               "\n"
                               "max_capture_bytes:int = 4096\n"
                               "max_runtime_seconds:int = 5\n");
-  write_text(wave_path,
-             "WAVE_SETTINGS {\n"
-             "  WAVE_ID = cwu_01v_channel_validation_eval_mdn_1800_2050;\n"
-             "  TARGET = wikimyei.inference.expected_value.mdn;\n"
-             "  MODE = run|debug;\n"
-             "  SOURCE_CURSOR_KIND = graph_anchor;\n"
-             "  SOURCE_CURSOR_SCOPE = wave_batch;\n"
-             "  SOURCE_RANGE = anchor_index;\n"
-             "  ANCHOR_INDEX_BEGIN = 1800;\n"
-             "  ANCHOR_INDEX_END = 2050;\n"
-             "  INPUT_MDN_CHECKPOINT = "
-             "/cuwacunu/.runtime/cuwacunu_exec/jobs/mdn/checkpoint.pt;\n"
-             "  INPUT_REPRESENTATION_CHECKPOINT = "
-             "/cuwacunu/.runtime/cuwacunu_exec/jobs/vicreg/checkpoint.pt;\n"
-             "};\n");
+  write_validation_runtime_wave(wave_path);
 
   auto advice = valid_advice();
   advice.config_path = config_path.string();
   advice.runtime_root = runtime_root.string();
-  advice.source_lattice_tool = "hero.lattice.evaluate";
+  advice.source_lattice_tool = "hero.lattice.evaluate.deficit";
   advice.plan_basis_digest.clear();
   advice.suggested_wave_digest.clear();
   advice.plan_input_digest.clear();
@@ -1717,21 +2093,9 @@ void test_m3_execution_handoff_rechecks_runtime_wave() {
   const auto gate = marshal::validate_execution_gate(input);
   check(gate.accepted, "pre-change execution gate should accept");
 
-  write_text(wave_path,
-             "WAVE_SETTINGS {\n"
-             "  WAVE_ID = cwu_01v_channel_validation_eval_mdn_1800_2050;\n"
-             "  TARGET = wikimyei.inference.expected_value.mdn;\n"
-             "  MODE = run|debug;\n"
-             "  SOURCE_CURSOR_KIND = graph_anchor;\n"
-             "  SOURCE_CURSOR_SCOPE = wave_batch;\n"
-             "  SOURCE_RANGE = anchor_index;\n"
-             "  ANCHOR_INDEX_BEGIN = 1800;\n"
-             "  ANCHOR_INDEX_END = 2050;\n"
-             "  INPUT_MDN_CHECKPOINT = "
-             "/cuwacunu/.runtime/cuwacunu_exec/jobs/other/checkpoint.pt;\n"
-             "  INPUT_REPRESENTATION_CHECKPOINT = "
-             "/cuwacunu/.runtime/cuwacunu_exec/jobs/vicreg/checkpoint.pt;\n"
-             "};\n");
+  write_validation_runtime_wave(
+      wave_path, "cwu_01v_channel_validation_eval_mdn_1800_2050",
+      "/cuwacunu/.runtime/cuwacunu_exec/jobs/other/checkpoint.pt");
 
   marshal::marshal_runtime_hero_handoff_options_t options{};
   options.global_config_path = config_path;
@@ -1757,14 +2121,12 @@ void test_m4_dispatch_receipt_replay_audit() {
   const auto config_path = root / ".config";
   const auto policy_path = root / "hero.runtime.dsl";
   const auto wave_path = root / "wave.dsl";
+  const auto protocol_path = root / "kikijyeba.protocol.dsl";
+  const auto cursor_path = root / "ujcamei.source.cursor.dsl";
   std::filesystem::create_directories(runtime_root);
 
-  write_text(config_path, "[HERO]\n"
-                          "runtime_hero_dsl_path = " +
-                              policy_path.string() +
-                              "\n"
-                              "runtime_wave_dsl_path = " +
-                              wave_path.string() + "\n");
+  write_runtime_config(config_path, policy_path, wave_path, protocol_path,
+                       cursor_path);
   write_text(policy_path, "protocol_layer[STDIO|HTTPS/SSE]:enum = STDIO\n"
                           "runtime_exec_path:path = /bin/true\n"
                           "default_config_path:path = " +
@@ -1780,9 +2142,7 @@ void test_m4_dispatch_receipt_replay_audit() {
                               "allow_execute:bool = false\n"
                               "allow_train_execute:bool = false\n"
                               "allow_force_rebuild_cache:bool = false\n"
-                              "require_confirm_execute:bool = true\n"
                               "allow_dev_nuke:bool = false\n"
-                              "require_confirm_dev_nuke:bool = true\n"
                               "dev_nuke_backup_enabled:bool = true\n"
                               "dev_nuke_backup_root:path = " +
                               (root / "backups").string() +
@@ -1792,26 +2152,12 @@ void test_m4_dispatch_receipt_replay_audit() {
                               "\n"
                               "max_capture_bytes:int = 4096\n"
                               "max_runtime_seconds:int = 5\n");
-  write_text(wave_path,
-             "WAVE_SETTINGS {\n"
-             "  WAVE_ID = cwu_01v_channel_validation_eval_mdn_1800_2050;\n"
-             "  TARGET = wikimyei.inference.expected_value.mdn;\n"
-             "  MODE = run|debug;\n"
-             "  SOURCE_CURSOR_KIND = graph_anchor;\n"
-             "  SOURCE_CURSOR_SCOPE = wave_batch;\n"
-             "  SOURCE_RANGE = anchor_index;\n"
-             "  ANCHOR_INDEX_BEGIN = 1800;\n"
-             "  ANCHOR_INDEX_END = 2050;\n"
-             "  INPUT_MDN_CHECKPOINT = "
-             "/cuwacunu/.runtime/cuwacunu_exec/jobs/mdn/checkpoint.pt;\n"
-             "  INPUT_REPRESENTATION_CHECKPOINT = "
-             "/cuwacunu/.runtime/cuwacunu_exec/jobs/vicreg/checkpoint.pt;\n"
-             "};\n");
+  write_validation_runtime_wave(wave_path);
 
   auto advice = valid_advice();
   advice.config_path = config_path.string();
   advice.runtime_root = runtime_root.string();
-  advice.source_lattice_tool = "hero.lattice.evaluate";
+  advice.source_lattice_tool = "hero.lattice.evaluate.deficit";
   advice.plan_basis_digest.clear();
   advice.suggested_wave_digest.clear();
   advice.plan_input_digest.clear();
@@ -1979,14 +2325,12 @@ void test_m7_batch_preview_independence() {
   const auto config_path = root / ".config";
   const auto policy_path = root / "hero.runtime.dsl";
   const auto wave_path = root / "wave.dsl";
+  const auto protocol_path = root / "kikijyeba.protocol.dsl";
+  const auto cursor_path = root / "ujcamei.source.cursor.dsl";
   std::filesystem::create_directories(runtime_root);
 
-  write_text(config_path, "[HERO]\n"
-                          "runtime_hero_dsl_path = " +
-                              policy_path.string() +
-                              "\n"
-                              "runtime_wave_dsl_path = " +
-                              wave_path.string() + "\n");
+  write_runtime_config(config_path, policy_path, wave_path, protocol_path,
+                       cursor_path);
   write_text(policy_path, "protocol_layer[STDIO|HTTPS/SSE]:enum = STDIO\n"
                           "runtime_exec_path:path = /bin/true\n"
                           "default_config_path:path = " +
@@ -2002,9 +2346,7 @@ void test_m7_batch_preview_independence() {
                               "allow_execute:bool = false\n"
                               "allow_train_execute:bool = false\n"
                               "allow_force_rebuild_cache:bool = false\n"
-                              "require_confirm_execute:bool = true\n"
                               "allow_dev_nuke:bool = false\n"
-                              "require_confirm_dev_nuke:bool = true\n"
                               "dev_nuke_backup_enabled:bool = true\n"
                               "dev_nuke_backup_root:path = " +
                               (root / "backups").string() +
@@ -2014,26 +2356,12 @@ void test_m7_batch_preview_independence() {
                               "\n"
                               "max_capture_bytes:int = 4096\n"
                               "max_runtime_seconds:int = 5\n");
-  write_text(wave_path,
-             "WAVE_SETTINGS {\n"
-             "  WAVE_ID = cwu_01v_channel_validation_eval_mdn_1800_2050;\n"
-             "  TARGET = wikimyei.inference.expected_value.mdn;\n"
-             "  MODE = run|debug;\n"
-             "  SOURCE_CURSOR_KIND = graph_anchor;\n"
-             "  SOURCE_CURSOR_SCOPE = wave_batch;\n"
-             "  SOURCE_RANGE = anchor_index;\n"
-             "  ANCHOR_INDEX_BEGIN = 1800;\n"
-             "  ANCHOR_INDEX_END = 2050;\n"
-             "  INPUT_MDN_CHECKPOINT = "
-             "/cuwacunu/.runtime/cuwacunu_exec/jobs/mdn/checkpoint.pt;\n"
-             "  INPUT_REPRESENTATION_CHECKPOINT = "
-             "/cuwacunu/.runtime/cuwacunu_exec/jobs/vicreg/checkpoint.pt;\n"
-             "};\n");
+  write_validation_runtime_wave(wave_path);
 
   auto advice = valid_advice();
   advice.config_path = config_path.string();
   advice.runtime_root = runtime_root.string();
-  advice.source_lattice_tool = "hero.lattice.evaluate";
+  advice.source_lattice_tool = "hero.lattice.evaluate.deficit";
   advice.plan_basis_digest.clear();
   advice.suggested_wave_digest.clear();
   advice.plan_input_digest.clear();
@@ -2100,14 +2428,12 @@ void test_m5_codex_assist_uses_deterministic_primitives() {
   const auto config_path = root / ".config";
   const auto policy_path = root / "hero.runtime.dsl";
   const auto wave_path = root / "wave.dsl";
+  const auto protocol_path = root / "kikijyeba.protocol.dsl";
+  const auto cursor_path = root / "ujcamei.source.cursor.dsl";
   std::filesystem::create_directories(runtime_root);
 
-  write_text(config_path, "[HERO]\n"
-                          "runtime_hero_dsl_path = " +
-                              policy_path.string() +
-                              "\n"
-                              "runtime_wave_dsl_path = " +
-                              wave_path.string() + "\n");
+  write_runtime_config(config_path, policy_path, wave_path, protocol_path,
+                       cursor_path);
   write_text(policy_path, "protocol_layer[STDIO|HTTPS/SSE]:enum = STDIO\n"
                           "runtime_exec_path:path = /bin/true\n"
                           "default_config_path:path = " +
@@ -2123,9 +2449,7 @@ void test_m5_codex_assist_uses_deterministic_primitives() {
                               "allow_execute:bool = false\n"
                               "allow_train_execute:bool = false\n"
                               "allow_force_rebuild_cache:bool = false\n"
-                              "require_confirm_execute:bool = true\n"
                               "allow_dev_nuke:bool = false\n"
-                              "require_confirm_dev_nuke:bool = true\n"
                               "dev_nuke_backup_enabled:bool = true\n"
                               "dev_nuke_backup_root:path = " +
                               (root / "backups").string() +
@@ -2135,26 +2459,12 @@ void test_m5_codex_assist_uses_deterministic_primitives() {
                               "\n"
                               "max_capture_bytes:int = 4096\n"
                               "max_runtime_seconds:int = 5\n");
-  write_text(wave_path,
-             "WAVE_SETTINGS {\n"
-             "  WAVE_ID = cwu_01v_channel_validation_eval_mdn_1800_2050;\n"
-             "  TARGET = wikimyei.inference.expected_value.mdn;\n"
-             "  MODE = run|debug;\n"
-             "  SOURCE_CURSOR_KIND = graph_anchor;\n"
-             "  SOURCE_CURSOR_SCOPE = wave_batch;\n"
-             "  SOURCE_RANGE = anchor_index;\n"
-             "  ANCHOR_INDEX_BEGIN = 1800;\n"
-             "  ANCHOR_INDEX_END = 2050;\n"
-             "  INPUT_MDN_CHECKPOINT = "
-             "/cuwacunu/.runtime/cuwacunu_exec/jobs/mdn/checkpoint.pt;\n"
-             "  INPUT_REPRESENTATION_CHECKPOINT = "
-             "/cuwacunu/.runtime/cuwacunu_exec/jobs/vicreg/checkpoint.pt;\n"
-             "};\n");
+  write_validation_runtime_wave(wave_path);
 
   auto advice = valid_advice();
   advice.config_path = config_path.string();
   advice.runtime_root = runtime_root.string();
-  advice.source_lattice_tool = "hero.lattice.evaluate";
+  advice.source_lattice_tool = "hero.lattice.evaluate.deficit";
   advice.plan_basis_digest.clear();
   advice.suggested_wave_digest.clear();
   advice.plan_input_digest.clear();
@@ -2208,120 +2518,289 @@ void test_m9_marshal_tool_schema_compatibility() {
         "Marshal direct CLI and MCP surfaces should expose same primitives");
   const auto names = marshal::marshal_tool_names();
   check(!names.empty(), "Marshal tool catalog should not be empty");
-  check(names.size() == 4, "Marshal tool catalog should expose exactly four "
-                           "operator-facing tools");
+  check(names.size() == 25,
+        "Marshal tool catalog should expose exactly twenty-five "
+        "operator-facing tools");
   check(std::find(names.begin(), names.end(), "hero.marshal.status") !=
             names.end(),
         "Marshal tool catalog should expose status");
-  check(std::find(names.begin(), names.end(), "hero.marshal.prepare") !=
-            names.end(),
-        "Marshal tool catalog should expose prepare");
+  for (const auto &prepare_name :
+       {"hero.marshal.prepare.train.one_step",
+        "hero.marshal.prepare.train.budgeted",
+        "hero.marshal.prepare.evaluate.one_step",
+        "hero.marshal.prepare.evaluate.budgeted"}) {
+    check(std::find(names.begin(), names.end(), prepare_name) != names.end(),
+          std::string("Marshal tool catalog should expose ") + prepare_name);
+  }
   check(std::find(names.begin(), names.end(), "hero.marshal.rollout") !=
             names.end(),
         "Marshal tool catalog should expose rollout");
-  check(std::find(names.begin(), names.end(), "hero.marshal.inspect") !=
+  for (const auto &inspect_name :
+       {"hero.marshal.inspect.run.latest_chain",
+        "hero.marshal.inspect.run.training_state",
+        "hero.marshal.inspect.run.single_job",
+        "hero.marshal.inspect.run.compare", "hero.marshal.inspect.target",
+        "hero.marshal.inspect.protocol.report",
+        "hero.marshal.inspect.protocol.strict",
+        "hero.marshal.inspect.spawn.by_id",
+        "hero.marshal.inspect.spawn.by_label",
+        "hero.marshal.inspect.spawn.by_registry",
+        "hero.marshal.inspect.spawn.by_fingerprint",
+        "hero.marshal.inspect.spawn.by_job", "hero.marshal.inspect.component",
+        "hero.marshal.inspect.facts.summary",
+        "hero.marshal.inspect.facts.lineage",
+        "hero.marshal.inspect.facts.preview",
+        "hero.marshal.inspect.facts.preview.by_digest",
+        "hero.marshal.inspect.facts.preview.by_digest_prefix",
+        "hero.marshal.inspect.facts.preview.by_index"}) {
+    check(std::find(names.begin(), names.end(), inspect_name) != names.end(),
+          std::string("Marshal tool catalog should expose ") + inspect_name);
+  }
+  check(std::find(names.begin(), names.end(), "hero.marshal.inspect") ==
             names.end(),
-        "Marshal tool catalog should expose inspect");
+        "Marshal tool catalog should not expose broad inspect router");
+  check(std::find(names.begin(), names.end(), "hero.marshal.inspect.spawn") ==
+            names.end(),
+        "Marshal tool catalog should not expose broad spawn router");
+  check(std::find(names.begin(), names.end(), "hero.marshal.prepare") ==
+            names.end(),
+        "Marshal tool catalog should not expose broad prepare router");
   const auto tools_list_json = marshal::build_marshal_tools_list_result_json();
-  check(
-      tools_list_json.find("\"name\":\"hero.marshal.inspect\"") !=
-              std::string::npos &&
-          tools_list_json.find("\"include_preview\":{\"type\":\"boolean\"}") !=
-              std::string::npos &&
-          tools_list_json.find("\"fact_family_id\":{\"type\":\"string\"}") !=
-              std::string::npos &&
-          tools_list_json.find("\"fact_digest\":{\"type\":\"string\"}") !=
-              std::string::npos &&
-          tools_list_json.find(
-              "\"fact_digest_prefix\":{\"type\":\"string\"}") !=
-              std::string::npos &&
-          tools_list_json.find("\"fact_index\":{\"type\":\"integer\"}") !=
+  const auto prepare_tool_begin =
+      tools_list_json.find("\"name\":\"hero.marshal.prepare.train.one_step\"");
+  check(prepare_tool_begin != std::string::npos,
+        "Marshal tool list should include split prepare tool entry");
+  const auto rollout_tool_begin =
+      tools_list_json.find("\"name\":\"hero.marshal.rollout\"");
+  check(rollout_tool_begin != std::string::npos,
+        "Marshal tool list should include rollout tool entry");
+  const auto inspect_tool_begin = tools_list_json.find(
+      "\"name\":\"hero.marshal.inspect.run.latest_chain\"");
+  check(inspect_tool_begin != std::string::npos,
+        "Marshal tool list should include inspect.run tool entry");
+  const std::string prepare_tool_json = tools_list_json.substr(
+      prepare_tool_begin, rollout_tool_begin - prepare_tool_begin);
+  const std::string rollout_tool_json = tools_list_json.substr(
+      rollout_tool_begin, inspect_tool_begin - rollout_tool_begin);
+  const std::string inspect_tools_json =
+      tools_list_json.substr(inspect_tool_begin);
+  const auto tool_fragment = [&](const std::string &name) {
+    const std::string marker = "\"name\":\"" + name + "\"";
+    const auto begin = tools_list_json.find(marker);
+    check(begin != std::string::npos,
+          std::string("Marshal tool list should include ") + name);
+    const auto next =
+        tools_list_json.find("\"name\":\"", begin + marker.size());
+    return tools_list_json.substr(
+        begin, next == std::string::npos ? std::string::npos : next - begin);
+  };
+  const auto fragment_has_property = [](const std::string &fragment,
+                                        const std::string &field) {
+    return fragment.find("\"" + field + "\":") != std::string::npos;
+  };
+  const auto require_fragment_property = [&](const std::string &name,
+                                             const std::string &field) {
+    check(fragment_has_property(tool_fragment(name), field),
+          name + " schema should advertise " + field);
+  };
+  const auto reject_fragment_property = [&](const std::string &name,
+                                            const std::string &field) {
+    check(!fragment_has_property(tool_fragment(name), field),
+          name + " schema should not advertise " + field);
+  };
+  for (const auto identity_field :
+       {"protocol_contract_fingerprint", "graph_order_fingerprint",
+        "source_cursor_token", "vicreg_assembly_fingerprint",
+        "mdn_assembly_fingerprint"}) {
+    for (const auto inspect_name :
+         {"hero.marshal.inspect.run.latest_chain",
+          "hero.marshal.inspect.run.training_state",
+          "hero.marshal.inspect.run.single_job", "hero.marshal.inspect.target",
+          "hero.marshal.inspect.spawn.by_id",
+          "hero.marshal.inspect.spawn.by_label",
+          "hero.marshal.inspect.spawn.by_registry",
+          "hero.marshal.inspect.spawn.by_fingerprint",
+          "hero.marshal.inspect.spawn.by_job",
+          "hero.marshal.inspect.facts.summary",
+          "hero.marshal.inspect.facts.lineage",
+          "hero.marshal.inspect.facts.preview",
+          "hero.marshal.inspect.facts.preview.by_digest",
+          "hero.marshal.inspect.facts.preview.by_digest_prefix",
+          "hero.marshal.inspect.facts.preview.by_index"}) {
+      reject_fragment_property(inspect_name, identity_field);
+    }
+    require_fragment_property("hero.marshal.inspect.protocol.strict",
+                              identity_field);
+    reject_fragment_property("hero.marshal.inspect.protocol.report",
+                             identity_field);
+  }
+  for (const auto retired_field : {"subject", "args_path", "args_digest"}) {
+    check(inspect_tools_json.find("\"" + std::string(retired_field) + "\":") ==
               std::string::npos,
-      "inspect MCP schema should advertise fact-preview "
-      "selectors accepted by the handler");
-  check(tools_list_json.find("\"fact_family\":{\"type\":\"string\"}") ==
-                std::string::npos &&
-            tools_list_json.find("\"family\":{\"type\":\"string\"}") ==
-                std::string::npos &&
-            tools_list_json.find("\"digest\":{\"type\":\"string\"}") ==
-                std::string::npos &&
-            tools_list_json.find("\"digest_prefix\":{\"type\":\"string\"}") ==
-                std::string::npos &&
-            tools_list_json.find("\"index\":{\"type\":\"integer\"}") ==
-                std::string::npos &&
-            tools_list_json.find("\"component\":{\"type\":\"string\"}") ==
-                std::string::npos,
-        "inspect MCP schema should not advertise retired inspect aliases");
-  const std::string requested_mode_enum =
-      "\"requested_mode\":{\"type\":\"string\",\"enum\":[\"plan\","
-      "\"dry_run\",\"execute\"]}";
-  check(count_substrings(tools_list_json, requested_mode_enum) == 1,
+          "inspect MCP schema should not advertise retired router fields");
+  }
+  for (const auto retained_field :
+       {"runtime_root", "config_path", "target_id", "job_id", "job_ids",
+        "target_ids", "baseline_job_id", "candidate_job_id",
+        "component_family_id", "component_spawn_id",
+        "component_spawn_registry_id", "component_spawn_label",
+        "component_spawn_fingerprint", "fact_family_id", "fact_digest",
+        "fact_digest_prefix", "fact_index", "include_machine_payload"}) {
+    check(inspect_tools_json.find("\"" + std::string(retained_field) + "\":") !=
+              std::string::npos,
+          "inspect MCP schema should advertise direct inspect fields");
+  }
+  check(inspect_tools_json.find("\"spawn_id\":") == std::string::npos,
+        "inspect MCP schema should not advertise retired spawn_id alias");
+  require_fragment_property("hero.marshal.inspect.facts.preview",
+                            "include_lineage");
+  for (const auto field : {"fact_digest", "fact_digest_prefix", "fact_index",
+                           "include_facts", "include_preview"}) {
+    reject_fragment_property("hero.marshal.inspect.facts.preview", field);
+  }
+  require_fragment_property("hero.marshal.inspect.facts.preview.by_digest",
+                            "fact_digest");
+  require_fragment_property("hero.marshal.inspect.facts.preview.by_digest",
+                            "include_lineage");
+  for (const auto field : {"fact_digest_prefix", "fact_index", "include_facts",
+                           "include_preview"}) {
+    reject_fragment_property("hero.marshal.inspect.facts.preview.by_digest",
+                             field);
+  }
+  require_fragment_property(
+      "hero.marshal.inspect.facts.preview.by_digest_prefix",
+      "fact_digest_prefix");
+  require_fragment_property(
+      "hero.marshal.inspect.facts.preview.by_digest_prefix", "include_lineage");
+  for (const auto field :
+       {"fact_digest", "fact_index", "include_facts", "include_preview"}) {
+    reject_fragment_property(
+        "hero.marshal.inspect.facts.preview.by_digest_prefix", field);
+  }
+  require_fragment_property("hero.marshal.inspect.facts.preview.by_index",
+                            "fact_index");
+  require_fragment_property("hero.marshal.inspect.facts.preview.by_index",
+                            "include_lineage");
+  for (const auto field : {"fact_digest", "fact_digest_prefix", "include_facts",
+                           "include_preview"}) {
+    reject_fragment_property("hero.marshal.inspect.facts.preview.by_index",
+                             field);
+  }
+  require_fragment_property("hero.marshal.inspect.spawn.by_id",
+                            "component_spawn_id");
+  for (const auto field :
+       {"job_id", "job_ids", "spawn_id", "component_spawn_registry_id",
+        "component_spawn_label", "component_spawn_fingerprint"}) {
+    reject_fragment_property("hero.marshal.inspect.spawn.by_id", field);
+  }
+  require_fragment_property("hero.marshal.inspect.spawn.by_label",
+                            "component_spawn_label");
+  for (const auto field :
+       {"job_id", "job_ids", "spawn_id", "component_spawn_id",
+        "component_spawn_registry_id", "component_spawn_fingerprint"}) {
+    reject_fragment_property("hero.marshal.inspect.spawn.by_label", field);
+  }
+  require_fragment_property("hero.marshal.inspect.spawn.by_registry",
+                            "component_spawn_registry_id");
+  for (const auto field :
+       {"job_id", "job_ids", "spawn_id", "component_spawn_id",
+        "component_spawn_label", "component_spawn_fingerprint"}) {
+    reject_fragment_property("hero.marshal.inspect.spawn.by_registry", field);
+  }
+  require_fragment_property("hero.marshal.inspect.spawn.by_fingerprint",
+                            "component_spawn_fingerprint");
+  for (const auto field :
+       {"job_id", "job_ids", "spawn_id", "component_spawn_id",
+        "component_spawn_registry_id", "component_spawn_label"}) {
+    reject_fragment_property("hero.marshal.inspect.spawn.by_fingerprint",
+                             field);
+  }
+  require_fragment_property("hero.marshal.inspect.spawn.by_job", "job_id");
+  for (const auto field :
+       {"job_ids", "spawn_id", "component_spawn_id",
+        "component_spawn_registry_id", "component_spawn_label",
+        "component_spawn_fingerprint"}) {
+    reject_fragment_property("hero.marshal.inspect.spawn.by_job", field);
+  }
+  check(prepare_tool_json.find("\"mode\"") != std::string::npos &&
+            prepare_tool_json.find("\"plan\"") != std::string::npos &&
+            prepare_tool_json.find("\"dry_run\"") != std::string::npos &&
+            prepare_tool_json.find("\"execute\"") != std::string::npos,
         "prepare MCP schema should advertise current target-dispatch "
-        "requested_mode values");
+        "mode values");
   check(tools_list_json.find("\"lattice_target\"") == std::string::npos,
         "prepare MCP schema should not advertise legacy lattice_target alias");
-  check(tools_list_json.find(
-            "\"requested_mode\":{\"type\":\"string\",\"enum\":[\"plan\","
-            "\"execute\"]}") != std::string::npos,
-        "rollout MCP schema should advertise V2.2a requested_mode values");
-  check(tools_list_json.find("\"rollout_attempt_id\":{\"type\":\"string\"}") !=
-            std::string::npos,
-        "rollout MCP schema should advertise rollout_attempt_id");
-  check(tools_list_json.find("\"idempotency_key\":{\"type\":\"string\"}") !=
-            std::string::npos,
-        "rollout MCP schema should advertise idempotency_key");
-  check(tools_list_json.find(
-            "\"replay_batch_index_path\":{\"type\":\"string\"}") !=
-            std::string::npos,
-        "rollout MCP schema should advertise replay_batch_index_path");
-  check(tools_list_json.find(
-            "\"graph_order_fingerprint\":{\"type\":\"string\"}") !=
-            std::string::npos,
-        "rollout MCP schema should advertise graph_order_fingerprint");
-  check(
-      tools_list_json.find("\"asset_universe_digest\":{\"type\":\"string\"}") !=
-          std::string::npos,
-      "rollout MCP schema should advertise asset_universe_digest");
-  check(tools_list_json.find("\"policy_set\":{\"type\":\"array\"") !=
-            std::string::npos,
-        "rollout MCP schema should advertise policy_set");
-  check(tools_list_json.find("\"max_steps\":{\"type\":\"integer\"") !=
-            std::string::npos,
-        "rollout MCP schema should advertise max_steps");
-  check(tools_list_json.find(
-            "\"required\":[\"rollout_id\",\"rollout_attempt_id\","
-            "\"idempotency_key\",\"runtime_job_dir\","
-            "\"replay_batch_index_path\",\"requested_mode\","
-            "\"graph_order_fingerprint\",\"asset_universe_digest\","
-            "\"target_node_ids\",\"policy_set\",\"max_steps\"]") !=
-            std::string::npos,
-        "rollout MCP schema should require bounded policy rollout fields");
-  check(tools_list_json.find(
-            "\"execution_profile\":{\"type\":\"object\",\"properties\"") !=
-            std::string::npos,
-        "rollout MCP schema should type execution_profile");
-  check(tools_list_json.find("\"cost_model_id\":{\"type\":\"string\"}") !=
-            std::string::npos,
-        "rollout MCP schema should advertise Cajtucu cost_model_id");
-  check(
-      tools_list_json.find("\"allow_partial_fills\":{\"type\":\"boolean\"}") !=
-          std::string::npos,
-      "rollout MCP schema should advertise partial-fill policy");
+  check(prepare_tool_json.find("\"target_id\"") != std::string::npos &&
+            prepare_tool_json.find("\"mode\"") != std::string::npos &&
+            prepare_tool_json.find("\"args_path\"") != std::string::npos &&
+            prepare_tool_json.find("\"args_digest\"") != std::string::npos,
+        "prepare MCP schema should advertise compact request-file fields");
+  for (const auto retired_field : {"drive_mode",
+                                   "intent",
+                                   "config_path",
+                                   "runtime_root",
+                                   "driver_policy",
+                                   "resume_ledger",
+                                   "source_lattice_timestamp",
+                                   "max_waves",
+                                   "recommendation_attempt_count",
+                                   "context",
+                                   "protocol_contract_fingerprint",
+                                   "graph_order_fingerprint",
+                                   "source_cursor_token",
+                                   "vicreg_assembly_fingerprint",
+                                   "mdn_assembly_fingerprint",
+                                   "materialize_plan_inputs",
+                                   "include_runtime_dry_run",
+                                   "include_machine_payload",
+                                   "runtime_policy",
+                                   "runtime_wave",
+                                   "timeout_seconds",
+                                   "ledger_created_at_utc",
+                                   "ledger_nonce"}) {
+    check(prepare_tool_json.find("\"" + std::string(retired_field) + "\":") ==
+              std::string::npos,
+          "prepare MCP schema should not advertise request payload fields");
+  }
+  check(rollout_tool_json.find("\"mode\"") != std::string::npos &&
+            rollout_tool_json.find("\"plan\"") != std::string::npos &&
+            rollout_tool_json.find("\"execute\"") != std::string::npos &&
+            rollout_tool_json.find("\"args_path\"") != std::string::npos &&
+            rollout_tool_json.find("\"args_digest\"") != std::string::npos &&
+            rollout_tool_json.find("\"include_machine_payload\"") !=
+                std::string::npos,
+        "rollout MCP schema should advertise compact request-file fields");
+  for (const auto retired_field : {"rollout_id",
+                                   "rollout_attempt_id",
+                                   "idempotency_key",
+                                   "experiment_id",
+                                   "config_path",
+                                   "runtime_job_dir",
+                                   "replay_batch_index_path",
+                                   "runtime_exec_path",
+                                   "report_path",
+                                   "environment_mode",
+                                   "environment_assembly_id",
+                                   "graph_order_fingerprint",
+                                   "asset_universe_digest",
+                                   "accounting_numeraire_node_id",
+                                   "target_node_ids",
+                                   "policy_set",
+                                   "max_steps",
+                                   "max_parallel_jobs",
+                                   "execution_profile",
+                                   "timeout_seconds",
+                                   "require_existing_runtime_job_dir",
+                                   "require_completed_runtime_job",
+                                   "require_replay_artifacts"}) {
+    check(rollout_tool_json.find("\"" + std::string(retired_field) + "\":") ==
+              std::string::npos,
+          "rollout MCP schema should not advertise request payload fields");
+  }
   check(tools_list_json.find("\"prepare_only\"") == std::string::npos,
         "rollout MCP schema should not advertise legacy prepare_only");
-  check(tools_list_json.find(
-            "\"drive_mode\":{\"type\":\"string\",\"enum\":[\"one_step\","
-            "\"budgeted\"]}") != std::string::npos,
-        "prepare MCP schema should advertise current V1 drive_mode values");
-  check(tools_list_json.find(
-            "\"identity_mode\":{\"type\":\"string\",\"enum\":[\"report\","
-            "\"strict\"]}") != std::string::npos,
-        "inspect MCP schema should advertise current V1 identity_mode values");
-  check(tools_list_json.find(
-            "\"subject\":{\"type\":\"string\",\"enum\":[\"run\",\"target\","
-            "\"protocol\",\"spawn\",\"component\",\"facts\"]}") !=
-            std::string::npos,
-        "inspect MCP schema should advertise all current V1 subjects");
+  check(prepare_tool_json.find("\"drive_mode\"") == std::string::npos,
+        "prepare MCP schema should keep drive_mode inside args_path");
   for (const auto &hidden_name :
        {"hero.marshal.summarize_training_state", "hero.marshal.compare_runs",
         "hero.marshal.lookup_target_advice",
@@ -2330,12 +2809,112 @@ void test_m9_marshal_tool_schema_compatibility() {
         "hero.marshal.replay_receipt", "hero.marshal.batch_preview",
         "hero.marshal.evaluate_run", "hero.marshal.inspect_run",
         "hero.marshal.reach_lattice_target", "hero.marshal.evaluate",
-        "hero.marshal.inspect_evidence_panel"}) {
+        "hero.marshal.prepare", "hero.marshal.inspect",
+        "hero.marshal.inspect.run",
+        "hero.marshal.inspect.facts", "hero.marshal.inspect_evidence_panel"}) {
     check(std::find(names.begin(), names.end(), hidden_name) == names.end(),
           std::string("Marshal tool catalog should not expose ") + hidden_name);
   }
   std::string result;
   std::string error;
+  check(
+      !marshal::execute_marshal_tool_json(
+          "hero.marshal.prepare",
+          R"({"target_id":"channel_mdn_validation_eval_ready","mode":"plan"})",
+          &result, &error),
+      "retired broad prepare tool should fail");
+  check(error.find("unknown tool: hero.marshal.prepare") != std::string::npos,
+        "retired broad prepare should fail as unknown");
+  result.clear();
+  error.clear();
+  const auto prepare_duplicate_path =
+      std::filesystem::temp_directory_path() /
+      ("cuwacunu_marshal_prepare_duplicate_request_" +
+       std::to_string(static_cast<long long>(::getpid())) + ".kv");
+  const std::string prepare_duplicate_request = "context = {}\n"
+                                                "context = {}\n";
+  write_text(prepare_duplicate_path, prepare_duplicate_request);
+  check(!marshal::execute_marshal_tool_json(
+            "hero.marshal.prepare.train.one_step",
+            std::string("{\"target_id\":\"channel_mdn_validation_eval_ready\","
+                        "\"mode\":\"plan\","
+                        "\"args_path\":") +
+                marshal::detail::json_quote(prepare_duplicate_path.string()) +
+                ",\"args_digest\":" +
+                marshal::detail::json_quote(
+                    marshal_prepare_request_digest(prepare_duplicate_request)) +
+                "}",
+            &result, &error),
+        "prepare request file should reject duplicate fields");
+  check(error.find("E_MARSHAL_PREPARE_REQUEST_DUPLICATE_FIELD: context") !=
+            std::string::npos,
+        "duplicate prepare request field should fail explicitly");
+  result.clear();
+  error.clear();
+  for (const auto &removed_field : {"intent", "drive_mode",
+                                    "include_runtime_dry_run", "max_waves",
+                                    "ledger_created_at_utc", "ledger_nonce"}) {
+    const auto prepare_removed_field_path =
+        std::filesystem::temp_directory_path() /
+        ("cuwacunu_marshal_prepare_removed_field_request_" +
+         std::string(removed_field) + "_" +
+         std::to_string(static_cast<long long>(::getpid())) + ".kv");
+    const std::string prepare_removed_field_request =
+        std::string(removed_field) + " = removed\n";
+    write_text(prepare_removed_field_path, prepare_removed_field_request);
+    check(
+        !marshal::execute_marshal_tool_json(
+            "hero.marshal.prepare.train.one_step",
+            std::string("{\"target_id\":\"channel_mdn_validation_eval_ready\","
+                        "\"mode\":\"plan\","
+                        "\"args_path\":") +
+                marshal::detail::json_quote(
+                    prepare_removed_field_path.string()) +
+                ",\"args_digest\":" +
+                marshal::detail::json_quote(marshal_prepare_request_digest(
+                    prepare_removed_field_request)) +
+                "}",
+            &result, &error),
+        "prepare request file should reject removed no-op fields");
+    check(error.find("E_MARSHAL_PREPARE_REQUEST_UNKNOWN_FIELD: " +
+                     std::string(removed_field)) != std::string::npos,
+          "removed prepare request field should fail explicitly");
+    result.clear();
+    error.clear();
+  }
+  const auto prepare_digest_path =
+      std::filesystem::temp_directory_path() /
+      ("cuwacunu_marshal_prepare_digest_request_" +
+       std::to_string(static_cast<long long>(::getpid())) + ".kv");
+  const std::string prepare_digest_request = "context = {}\n";
+  write_text(prepare_digest_path, prepare_digest_request);
+  check(!marshal::execute_marshal_tool_json(
+            "hero.marshal.prepare.train.one_step",
+            std::string("{\"target_id\":\"channel_mdn_validation_eval_ready\","
+                        "\"mode\":\"dry_run\","
+                        "\"args_path\":") +
+                marshal::detail::json_quote(prepare_digest_path.string()) + "}",
+            &result, &error),
+        "non-plan prepare should require request digest");
+  check(error.find("E_MARSHAL_PREPARE_REQUEST_DIGEST_REQUIRED") !=
+            std::string::npos,
+        "missing prepare digest should fail explicitly");
+  result.clear();
+  error.clear();
+  check(!marshal::execute_marshal_tool_json(
+            "hero.marshal.prepare.train.one_step",
+            std::string("{\"target_id\":\"channel_mdn_validation_eval_ready\","
+                        "\"mode\":\"dry_run\","
+                        "\"args_path\":") +
+                marshal::detail::json_quote(prepare_digest_path.string()) +
+                ",\"args_digest\":\"sha256:not_the_digest\"}",
+            &result, &error),
+        "prepare should reject mismatched request digest");
+  check(error.find("E_MARSHAL_PREPARE_REQUEST_DIGEST_MISMATCH") !=
+            std::string::npos,
+        "mismatched prepare digest should fail explicitly");
+  result.clear();
+  error.clear();
   check(!marshal::execute_marshal_tool_json("hero.marshal.evaluate_run", "{}",
                                             &result, &error),
         "old evaluate_run tool name should not remain callable");
@@ -2354,18 +2933,17 @@ void test_m9_marshal_tool_schema_compatibility() {
           std::string("retired public tool should fail as unknown: ") +
               retired_name);
   }
-  check(!marshal::execute_marshal_tool_json("hero.marshal.inspect",
-                                            R"({"subject":"codex_review"})",
-                                            &result, &error),
-        "inspect should reject unsupported subjects");
-  check(error.find("subject must be run, target, protocol, spawn, component, "
-                   "or facts") != std::string::npos,
-        "unsupported inspect subject should fail explicitly");
+  check(!execute_marshal_inspect_json(R"({"subject":"codex_review"})", &result,
+                                      &error),
+        "inspect should reject unsupported split suffixes");
+  check(error.find("unknown tool: hero.marshal.inspect.codex_review") !=
+            std::string::npos,
+        "unsupported inspect suffix should fail explicitly");
   check(!marshal::execute_marshal_tool_json("hero.marshal.inspect", "{}",
                                             &result, &error),
-        "inspect should require an explicit subject");
-  check(error.find("missing required field: subject") != std::string::npos,
-        "missing inspect subject should fail explicitly");
+        "broad inspect router should be retired");
+  check(error.find("unknown tool: hero.marshal.inspect") != std::string::npos,
+        "broad inspect router should fail as unknown");
   for (
       const auto &legacy_args :
       {R"({"subject":"facts","family":"forecast_eval"})",
@@ -2376,21 +2954,19 @@ void test_m9_marshal_tool_schema_compatibility() {
        R"({"subject":"component","component":"wikimyei.inference.expected_value.mdn"})"}) {
     result.clear();
     error.clear();
-    check(!marshal::execute_marshal_tool_json("hero.marshal.inspect",
-                                              legacy_args, &result, &error),
+    check(!execute_marshal_inspect_json(legacy_args, &result, &error),
           "inspect should reject retired V2.4 aliases");
     check(error.find("unknown field") != std::string::npos,
           "retired inspect aliases should fail as unknown fields");
   }
   check(
-      !marshal::execute_marshal_tool_json(
-          "hero.marshal.inspect",
+      !execute_marshal_inspect_json(
           R"({"subject":"facts","mode":"evidence","fact_family_id":"forecast_eval"})",
           &result, &error),
-      "facts subject should reject non-canonical modes");
-  check(error.find("subject=facts mode must be summary, lineage, or preview") !=
+      "facts inspect should reject non-canonical modes");
+  check(error.find("unknown tool: hero.marshal.inspect.facts.evidence") !=
             std::string::npos,
-        "facts mode rejection should name the canonical modes");
+        "facts mode rejection should fail as an unknown split tool");
   check(!marshal::execute_marshal_tool_json(
             "hero.marshal.status", R"({"unexpected":true})", &result, &error),
         "status should reject unknown fields");
@@ -2473,20 +3049,24 @@ bool real_lattice_hero_callback(const std::string &tool_name,
                                 std::string *out_error_message) {
   g_fake_lattice_tool_name = tool_name;
   g_fake_lattice_arguments_json = arguments_json;
-  if (tool_name == "hero.lattice.evaluate" &&
-      arguments_json.find("\"operation\":\"target\"") != std::string::npos) {
+  const std::string argument_context =
+      tool_name.rfind("hero.lattice.inspect.facts", 0) == 0 &&
+              arguments_json.find("\"args_path\"") != std::string::npos
+          ? arguments_json + "\n" +
+                lattice_inspect_request_text_from_args(arguments_json)
+          : arguments_json;
+  if (tool_name == "hero.lattice.evaluate.target") {
     ++g_fake_lattice_evaluate_target_count;
-  } else if (tool_name == "hero.lattice.inspect" &&
-             arguments_json.find("\"mode\":\"scan\"") != std::string::npos) {
+  } else if (lattice_facts_tool_has_view(tool_name, argument_context, "scan")) {
     ++g_fake_lattice_scan_facts_count;
-  } else if (tool_name == "hero.lattice.inspect" &&
-             arguments_json.find("\"mode\":\"summary\"") != std::string::npos) {
+  } else if (lattice_facts_tool_has_view(tool_name, argument_context,
+                                         "summary")) {
     ++g_fake_lattice_fact_summary_count;
-  } else if (tool_name == "hero.lattice.inspect" &&
-             arguments_json.find("\"mode\":\"lineage\"") != std::string::npos) {
+  } else if (lattice_facts_tool_has_view(tool_name, argument_context,
+                                         "lineage")) {
     ++g_fake_lattice_fact_lineage_count;
-  } else if (tool_name == "hero.lattice.inspect" &&
-             arguments_json.find("\"mode\":\"preview\"") != std::string::npos) {
+  } else if (lattice_facts_tool_has_view(tool_name, argument_context,
+                                         "preview")) {
     ++g_fake_lattice_fact_preview_count;
   }
   if (out_error_message) {
@@ -2521,7 +3101,7 @@ bool fake_lattice_target_deficit_callback(const std::string &tool_name,
   if (out_error_message) {
     out_error_message->clear();
   }
-  if (tool_name != "hero.lattice.evaluate") {
+  if (tool_name != "hero.lattice.evaluate.deficit") {
     if (out_error_message) {
       *out_error_message = "unexpected lattice tool";
     }
@@ -2542,7 +3122,7 @@ bool fake_lattice_satisfied_without_certificate_callback(
   if (out_error_message) {
     out_error_message->clear();
   }
-  if (tool_name != "hero.lattice.evaluate") {
+  if (tool_name != "hero.lattice.evaluate.deficit") {
     if (out_error_message) {
       *out_error_message = "unexpected lattice tool";
     }
@@ -2564,8 +3144,13 @@ bool fake_lattice_artifact_evidence_callback(const std::string &tool_name,
   if (out_error_message) {
     out_error_message->clear();
   }
-  if (tool_name == "hero.lattice.evaluate" &&
-      arguments_json.find("\"operation\":\"deficit\"") != std::string::npos) {
+  const std::string argument_context =
+      tool_name.rfind("hero.lattice.inspect.facts", 0) == 0 &&
+              arguments_json.find("\"args_path\"") != std::string::npos
+          ? arguments_json + "\n" +
+                lattice_inspect_request_text_from_args(arguments_json)
+          : arguments_json;
+  if (tool_name == "hero.lattice.evaluate.deficit") {
     if (out_tool_result_json) {
       *out_tool_result_json =
           R"({"content":[{"type":"text","text":"hero.lattice.evaluate operation=deficit executed"}],"structuredContent":{"config_path":"/tmp/marshal_artifact/.config","runtime_root":"/tmp/marshal_artifact/runtime","active_identity":{"protocol_contract_fingerprint":"pc","graph_order_fingerprint":"go","source_cursor_token":"cursor","vicreg_assembly_fingerprint":"vic","mdn_assembly_fingerprint":"mdn"},"target_id":"forecast_eval_artifact_ready","status":"metric_failed","target_class":"artifact_readiness","kind":"not_applicable","target_kind_applicable":false,"target_kind_effective":"none","proof_kind":"forecast_eval_artifact_bound","subject_fact_family":"forecast_eval","component":"","split_policy_fingerprint":"sp","plan_ready":false,"plan_basis":null,"suggested_wave":null,"proof_certificate":{"target_id":"forecast_eval_artifact_ready","target_spec_fingerprint":"ts","split_policy_fingerprint":"sp","artifacts":[{"proof_kind":"forecast_eval_artifact_bound","proof_template_bound":true,"proof_template_claim":"forecast evaluation artifact existence, checkpoint lineage, target-transform binding, baseline binding, selection-signal audit binding, and support counts","fact_family":"forecast_eval","fact_digest":"forecast_eval_fact","passed":false,"issues":["missing_baseline_fact"]}]}},"isError":false})";
@@ -2583,8 +3168,7 @@ bool fake_lattice_artifact_evidence_callback(const std::string &tool_name,
     }
     return true;
   }
-  if (tool_name == "hero.lattice.evaluate" &&
-      arguments_json.find("\"operation\":\"target\"") != std::string::npos) {
+  if (tool_name == "hero.lattice.evaluate.target") {
     ++g_fake_lattice_evaluate_target_count;
     if (out_tool_result_json) {
       *out_tool_result_json =
@@ -2594,8 +3178,7 @@ bool fake_lattice_artifact_evidence_callback(const std::string &tool_name,
     }
     return true;
   }
-  if (tool_name == "hero.lattice.inspect" &&
-      arguments_json.find("\"mode\":\"scan\"") != std::string::npos) {
+  if (lattice_facts_tool_has_view(tool_name, argument_context, "scan")) {
     ++g_fake_lattice_scan_facts_count;
     if (out_tool_result_json) {
       *out_tool_result_json =
@@ -2603,14 +3186,13 @@ bool fake_lattice_artifact_evidence_callback(const std::string &tool_name,
     }
     return true;
   }
-  if (tool_name == "hero.lattice.inspect" &&
-      arguments_json.find("\"mode\":\"summary\"") != std::string::npos) {
+  if (lattice_facts_tool_has_view(tool_name, argument_context, "summary")) {
     ++g_fake_lattice_fact_summary_count;
     if (out_tool_result_json) {
-      if (arguments_json.find("selection_signal") != std::string::npos) {
+      if (argument_context.find("selection_signal") != std::string::npos) {
         *out_tool_result_json =
             R"({"content":[{"type":"text","text":"hero.lattice.inspect subject=facts mode=summary executed"}],"structuredContent":{"schema":"kikijyeba.lattice.fact_summary.v1","runtime_root":"/tmp/marshal_artifact/runtime","read_only":true,"target_proof":false,"returned_family_count":1,"fact_integrity_summary":{"schema":"kikijyeba.lattice.fact_integrity_summary.v1","inspected_family_count":1,"reported_family_count":1,"relation_declared_count":0,"relation_bound_count":0,"unresolved_relation_count":0,"identity_mismatch_count":0,"digest_mismatch_count":0,"warning_count":1,"relation_integrity_clean":true,"read_only":true,"target_proof":false,"dispatchable":false,"runtime_executor":false,"families_with_unresolved_relation":[],"families_with_identity_mismatch":[],"families_with_digest_mismatch":[],"integrity_flags":[],"issue_codes":["selection_signal:visibility_only"],"families":[{"schema":"kikijyeba.lattice.fact_integrity_family_summary.v1","family":"selection_signal","summary_schema":"kikijyeba.lattice.selection_signal_summary.v1","relation_declared_count":0,"relation_bound_count":0,"unresolved_relation_count":0,"identity_mismatch_count":0,"digest_mismatch_count":0,"warning_count":1,"relation_integrity_clean":true,"issues":["selection_signal:visibility_only"]}]},"families":[{"catalog_summary":{"family":"selection_signal","fact_count":1,"artifact_readiness_proofable":false,"artifact_readiness_proof_kind":null,"artifact_readiness_proof_claim":null,"artifact_readiness_target_promotion_allowed":false,"artifact_readiness_target_promotion_blocked":true,"artifact_readiness_target_promotion_blocked_reason":"leakage_visibility_only","artifact_readiness_warning_summary_only":false},"payload_summary":{"schema":"kikijyeba.lattice.selection_signal_summary.v1","selection_signal_fact_count":1,"warning_count":1,"artifact_evidence":true,"visibility_only":true,"selection_authority":false,"checkpoint_selector":false,"coverage_authority":false,"leakage_authority":false,"readiness_authority":false,"quality_authority":false,"performance_authority":false,"issues":["selection_signal:visibility_only"]}}],"warnings":[]},"isError":false})";
-      } else if (arguments_json.find("replay_environment") !=
+      } else if (argument_context.find("replay_environment") !=
                  std::string::npos) {
         *out_tool_result_json =
             R"({"content":[{"type":"text","text":"hero.lattice.inspect subject=facts mode=summary executed"}],"structuredContent":{"schema":"kikijyeba.lattice.fact_summary.v1","runtime_root":"/tmp/marshal_artifact/runtime","read_only":true,"target_proof":false,"returned_family_count":1,"fact_integrity_summary":{"schema":"kikijyeba.lattice.fact_integrity_summary.v1","inspected_family_count":1,"reported_family_count":0,"relation_declared_count":0,"relation_bound_count":0,"unresolved_relation_count":0,"identity_mismatch_count":0,"digest_mismatch_count":0,"warning_count":0,"relation_integrity_clean":true,"read_only":true,"target_proof":false,"dispatchable":false,"runtime_executor":false,"families_with_unresolved_relation":[],"families_with_identity_mismatch":[],"families_with_digest_mismatch":[],"integrity_flags":[],"issue_codes":[],"families":[]},"families":[{"catalog_summary":{"family":"replay_environment","fact_count":1,"artifact_readiness_proofable":false,"artifact_readiness_proof_kind":null,"artifact_readiness_proof_claim":null,"artifact_readiness_target_promotion_allowed":false,"artifact_readiness_target_promotion_blocked":true,"artifact_readiness_target_promotion_blocked_reason":"no_artifact_proof_template","artifact_readiness_warning_summary_only":false},"payload_summary":{"schema":"kikijyeba.lattice.replay_environment_summary.v1","exposure_fact_count":1,"replay_environment_fact_count":1,"parent_exposure_fact_count":1,"batch_index_bound_count":1,"experiment_index_bound_count":1,"experiment_report_bound_count":1,"experiment_id_bound_count":1,"environment_run_id_bound_count":1,"replay_contract_version_bound_count":1,"replay_contract_component_bound_count":1,"replay_contract_policy_surface_bound_count":1,"replay_contract_time_law_bound_count":1,"replay_contract_guard_bound_count":1,"episode_requested_range_bound_count_total":2,"episode_cursor_bound_count_total":2,"episode_anchor_interval_bound_count_total":2,"episode_anchor_keys_bound_count_total":2,"missing_batch_index_count":0,"missing_experiment_index_count":0,"missing_experiment_report_count":0,"missing_episode_requested_range_count":0,"missing_episode_cursor_evidence_count":0,"missing_episode_anchor_interval_count":0,"missing_episode_anchor_keys_count":0,"artifact_evidence_count":1,"warning_count":0,"batch_entry_count_total":1,"experiment_entry_count_total":1,"replay_bundle_count_total":1,"policy_count_total":1,"attempted_count_total":1,"completed_count_total":1,"artifact_evidence":true,"visibility_only":true,"replay_executor":false,"allocation_authority":false,"execution_authority":false,"readiness_authority":false,"quality_authority":false,"performance_authority":false,"market_readiness_authority":false,"deployment_authority":false,"checkpoint_selector":false,"coverage_authority":false,"leakage_authority":false,"contract_identity_authority":false,"issues":[]}}],"warnings":[]},"isError":false})";
@@ -2621,13 +3203,12 @@ bool fake_lattice_artifact_evidence_callback(const std::string &tool_name,
     }
     return true;
   }
-  if (tool_name == "hero.lattice.inspect" &&
-      arguments_json.find("\"mode\":\"lineage\"") != std::string::npos) {
+  if (lattice_facts_tool_has_view(tool_name, argument_context, "lineage")) {
     ++g_fake_lattice_fact_lineage_count;
     std::string relation = "forecast_eval";
-    if (arguments_json.find("replay_environment") != std::string::npos) {
+    if (argument_context.find("replay_environment") != std::string::npos) {
       relation = "replay_environment";
-    } else if (arguments_json.find("selection_signal") != std::string::npos) {
+    } else if (argument_context.find("selection_signal") != std::string::npos) {
       relation = "selection_signal";
     }
     if (out_tool_result_json) {
@@ -2687,13 +3268,12 @@ bool fake_lattice_artifact_evidence_callback(const std::string &tool_name,
     }
     return true;
   }
-  if (tool_name == "hero.lattice.inspect" &&
-      arguments_json.find("\"mode\":\"preview\"") != std::string::npos) {
+  if (lattice_facts_tool_has_view(tool_name, argument_context, "preview")) {
     ++g_fake_lattice_fact_preview_count;
     std::string relation = "forecast_eval";
-    if (arguments_json.find("replay_environment") != std::string::npos) {
+    if (argument_context.find("replay_environment") != std::string::npos) {
       relation = "replay_environment";
-    } else if (arguments_json.find("selection_signal") != std::string::npos) {
+    } else if (argument_context.find("selection_signal") != std::string::npos) {
       relation = "selection_signal";
     }
     if (out_tool_result_json) {
@@ -2803,7 +3383,7 @@ bool fake_lattice_malformed_target_deficit_callback(
   if (out_error_message) {
     out_error_message->clear();
   }
-  if (tool_name != "hero.lattice.evaluate") {
+  if (tool_name != "hero.lattice.evaluate.deficit") {
     if (out_error_message) {
       *out_error_message = "unexpected lattice tool";
     }
@@ -2825,7 +3405,7 @@ bool fake_lattice_operational_report_callback(const std::string &tool_name,
   if (out_error_message) {
     out_error_message->clear();
   }
-  if (tool_name != "hero.lattice.evaluate") {
+  if (tool_name != "hero.lattice.evaluate.targets") {
     if (out_error_message) {
       *out_error_message = "unexpected lattice tool";
     }
@@ -2846,7 +3426,7 @@ bool fake_lattice_operational_report_blocker_callback(
   if (out_error_message) {
     out_error_message->clear();
   }
-  if (tool_name != "hero.lattice.evaluate") {
+  if (tool_name != "hero.lattice.evaluate.targets") {
     if (out_error_message) {
       *out_error_message = "unexpected lattice tool";
     }
@@ -2854,7 +3434,7 @@ bool fake_lattice_operational_report_blocker_callback(
   }
   if (out_tool_result_json) {
     *out_tool_result_json =
-        R"({"content":[{"type":"text","text":"hero.lattice.evaluate operation=targets executed"}],"structuredContent":{"read_only":true,"evaluations":[{"target_id":"vicreg_train_core_ready","status":"satisfied","proof_certificate_check":{"passed":true,"issues":[]}},{"target_id":"channel_mdn_train_core_ready","status":"satisfied","proof_certificate_check":{"passed":false,"issues":["closure_unresolved"]}},{"target_id":"channel_mdn_validation_eval_ready","status":"metric_failed","proof_certificate_check":{"passed":true,"issues":[]},"plan_basis":{"deficit_keys":["coverage:evaluation_metric"],"primary_deficit_key":"coverage:evaluation_metric"},"warnings":[{"warning_id":"validation_eval_missing","severity":"watch","source":"lattice"}]},{"target_id":"forecast_eval_artifact_ready","status":"blocked","target_class":"artifact_readiness","kind":"not_applicable","target_kind_applicable":false,"target_kind_effective":"none","proof_kind":"forecast_eval_artifact_bound","subject_fact_family":"forecast_eval","proof_certificate_check":{"passed":false,"issues":["artifact[0] quality authority present","artifact[0] authority drift present","artifact[0] lineage unbound"]},"deficits":[{"kind":"artifact","dimension":"forecast_eval_authority","key":"artifact:forecast_eval_authority","status":"forbidden"},{"kind":"artifact","dimension":"forecast_eval_lineage","key":"artifact:forecast_eval_lineage","status":"missing"},{"kind":"artifact","dimension":"forecast_eval_issue_forecast_eval_must_remain_artifact_evidence_only","key":"artifact:forecast_eval_issue_forecast_eval_must_remain_artifact_evidence_only","status":"forbidden"},{"kind":"artifact","dimension":"forecast_eval_issue_baseline_fact_digest_not_found","key":"artifact:forecast_eval_issue_baseline_fact_digest_not_found","status":"missing","related_fact_integrity_issue_codes":["mdn:baseline_fact_digest_not_found"]}],"plan_basis":{"primary_deficit_key":"artifact:forecast_eval_authority","deficit_keys":["artifact:forecast_eval_authority","artifact:forecast_eval_lineage","artifact:forecast_eval_issue_forecast_eval_must_remain_artifact_evidence_only","artifact:forecast_eval_issue_baseline_fact_digest_not_found"]},"proof_certificate":{"artifacts":[{"proof_kind":"forecast_eval_artifact_bound","proof_template_bound":true,"proof_template_claim":"forecast evaluation artifact existence, checkpoint lineage, target-transform binding, baseline binding, selection-signal audit binding, and support counts","fact_family":"forecast_eval","fact_digest":"forecast_eval_fact","fact_preview_hint":{"available":true,"fact_family":"forecast_eval","fact_digest":"forecast_eval_fact","tool":"hero.lattice.inspect","marshal_tool":"hero.marshal.inspect"},"identity_match":true,"artifact_evidence":true,"deterministic_artifact":true,"visibility_only":true,"authority_clean":false,"quality_authority":true,"lineage_bound":false,"passed":false,"issues":["forecast_eval_must_remain_artifact_evidence_only","baseline_fact_digest_not_found"]}]}}]},"isError":false})";
+        R"({"content":[{"type":"text","text":"hero.lattice.evaluate operation=targets executed"}],"structuredContent":{"read_only":true,"evaluations":[{"target_id":"vicreg_train_core_ready","status":"satisfied","proof_certificate_check":{"passed":true,"issues":[]}},{"target_id":"channel_mdn_train_core_ready","status":"satisfied","proof_certificate_check":{"passed":false,"issues":["closure_unresolved"]}},{"target_id":"channel_mdn_validation_eval_ready","status":"metric_failed","proof_certificate_check":{"passed":true,"issues":[]},"plan_basis":{"deficit_keys":["coverage:evaluation_metric"],"primary_deficit_key":"coverage:evaluation_metric"},"warnings":[{"warning_id":"validation_eval_missing","severity":"watch","source":"lattice"}]},{"target_id":"forecast_eval_artifact_ready","status":"blocked","target_class":"artifact_readiness","kind":"not_applicable","target_kind_applicable":false,"target_kind_effective":"none","proof_kind":"forecast_eval_artifact_bound","subject_fact_family":"forecast_eval","proof_certificate_check":{"passed":false,"issues":["artifact[0] quality authority present","artifact[0] authority drift present","artifact[0] lineage unbound"]},"deficits":[{"kind":"artifact","dimension":"forecast_eval_authority","key":"artifact:forecast_eval_authority","status":"forbidden"},{"kind":"artifact","dimension":"forecast_eval_lineage","key":"artifact:forecast_eval_lineage","status":"missing"},{"kind":"artifact","dimension":"forecast_eval_issue_forecast_eval_must_remain_artifact_evidence_only","key":"artifact:forecast_eval_issue_forecast_eval_must_remain_artifact_evidence_only","status":"forbidden"},{"kind":"artifact","dimension":"forecast_eval_issue_baseline_fact_digest_not_found","key":"artifact:forecast_eval_issue_baseline_fact_digest_not_found","status":"missing","related_fact_integrity_issue_codes":["mdn:baseline_fact_digest_not_found"]}],"plan_basis":{"primary_deficit_key":"artifact:forecast_eval_authority","deficit_keys":["artifact:forecast_eval_authority","artifact:forecast_eval_lineage","artifact:forecast_eval_issue_forecast_eval_must_remain_artifact_evidence_only","artifact:forecast_eval_issue_baseline_fact_digest_not_found"]},"proof_certificate":{"artifacts":[{"proof_kind":"forecast_eval_artifact_bound","proof_template_bound":true,"proof_template_claim":"forecast evaluation artifact existence, checkpoint lineage, target-transform binding, baseline binding, selection-signal audit binding, and support counts","fact_family":"forecast_eval","fact_digest":"forecast_eval_fact","fact_preview_hint":{"available":true,"fact_family":"forecast_eval","fact_digest":"forecast_eval_fact","tool":"hero.lattice.inspect.facts.preview.by_digest","marshal_tool":"hero.marshal.inspect.facts.preview.by_digest"},"identity_match":true,"artifact_evidence":true,"deterministic_artifact":true,"visibility_only":true,"authority_clean":false,"quality_authority":true,"lineage_bound":false,"passed":false,"issues":["forecast_eval_must_remain_artifact_evidence_only","baseline_fact_digest_not_found"]}]}}]},"isError":false})";
     inject_fake_artifact_boundary_denials(out_tool_result_json);
     inject_fake_policy_gate_reservations(out_tool_result_json);
   }
@@ -2870,8 +3450,7 @@ bool fake_lattice_prepare_callback(const std::string &tool_name,
   if (out_error_message) {
     out_error_message->clear();
   }
-  if (tool_name == "hero.lattice.evaluate" &&
-      arguments_json.find("\"operation\":\"deficit\"") != std::string::npos) {
+  if (tool_name == "hero.lattice.evaluate.deficit") {
     if (out_tool_result_json) {
       std::ostringstream json;
       json
@@ -2899,12 +3478,14 @@ bool fake_lattice_prepare_callback(const std::string &tool_name,
     }
     return true;
   }
-  if (tool_name == "hero.lattice.evaluate" &&
-      arguments_json.find("\"operation\":\"latest_satisfying_checkpoint\"") !=
-          std::string::npos) {
+  if (tool_name ==
+          "hero.lattice.evaluate.latest_satisfying_checkpoint.target" ||
+      tool_name == "hero.lattice.evaluate.latest_satisfying_checkpoint.hint") {
     ++g_fake_lattice_resolve_count;
+    const std::string resolver_arguments_text = arguments_json;
     const bool is_representation =
-        arguments_json.find("vicreg_train_core_ready") != std::string::npos;
+        resolver_arguments_text.find("vicreg_train_core_ready") !=
+        std::string::npos;
     const std::string source_target =
         is_representation ? "vicreg_train_core_ready"
                           : "channel_mdn_train_core_no_test_leakage";
@@ -3053,7 +3634,7 @@ std::string prepare_args_json(bool include_checkpoint_inputs,
   return "{\"target_id\":\"channel_mdn_validation_eval_ready\","
          "\"source_lattice_timestamp\":\"2026-05-24T00:00:00Z\","
          "\"drive_mode\":\"one_step\","
-         "\"requested_mode\":\"" +
+         "\"mode\":\"" +
          requested_mode +
          "\","
          "\"materialize_plan_inputs\":true,"
@@ -3074,17 +3655,15 @@ write_prepare_runtime_files(bool allow_execute = false,
   const auto config_path = root / ".config";
   const auto policy_path = root / "hero.runtime.dsl";
   const auto wave_path = root / "wave.dsl";
+  const auto protocol_path = root / "kikijyeba.protocol.dsl";
+  const auto cursor_path = root / "ujcamei.source.cursor.dsl";
   std::filesystem::remove_all(root);
   std::filesystem::create_directories(runtime_root);
   if (runtime_exec_path.empty()) {
     runtime_exec_path = "/bin/true";
   }
-  write_text(config_path, "[HERO]\n"
-                          "runtime_hero_dsl_path = " +
-                              policy_path.string() +
-                              "\n"
-                              "runtime_wave_dsl_path = " +
-                              wave_path.string() + "\n");
+  write_runtime_config(config_path, policy_path, wave_path, protocol_path,
+                       cursor_path);
   write_text(policy_path, "protocol_layer[STDIO|HTTPS/SSE]:enum = STDIO\n"
                           "runtime_exec_path:path = " +
                               runtime_exec_path.string() +
@@ -3106,9 +3685,7 @@ write_prepare_runtime_files(bool allow_execute = false,
                               std::string(allow_train ? "true" : "false") +
                               "\n"
                               "allow_force_rebuild_cache:bool = false\n"
-                              "require_confirm_execute:bool = true\n"
                               "allow_dev_nuke:bool = false\n"
-                              "require_confirm_dev_nuke:bool = true\n"
                               "dev_nuke_backup_enabled:bool = true\n"
                               "dev_nuke_backup_root:path = " +
                               (root / "backups").string() +
@@ -3118,20 +3695,9 @@ write_prepare_runtime_files(bool allow_execute = false,
                               "\n"
                               "max_capture_bytes:int = 4096\n"
                               "max_runtime_seconds:int = 5\n");
-  write_text(wave_path,
-             "WAVE_SETTINGS {\n"
-             "  WAVE_ID = prepare_validation_eval;\n"
-             "  TARGET = wikimyei.inference.expected_value.mdn;\n"
-             "  MODE = run|debug;\n"
-             "  SOURCE_CURSOR_KIND = graph_anchor;\n"
-             "  SOURCE_CURSOR_SCOPE = wave_batch;\n"
-             "  SOURCE_RANGE = anchor_index;\n"
-             "  ANCHOR_INDEX_BEGIN = 1800;\n"
-             "  ANCHOR_INDEX_END = 2050;\n"
-             "  INPUT_MDN_CHECKPOINT = /tmp/marshal_prepare/runtime/mdn.pt;\n"
-             "  INPUT_REPRESENTATION_CHECKPOINT = "
-             "/tmp/marshal_prepare/runtime/vicreg.pt;\n"
-             "};\n");
+  write_validation_runtime_wave(wave_path, "prepare_validation_eval",
+                                "/tmp/marshal_prepare/runtime/mdn.pt",
+                                "/tmp/marshal_prepare/runtime/vicreg.pt");
   return root;
 }
 
@@ -3383,9 +3949,8 @@ void test_prepare_target_unresolved_model_state() {
 
   std::string result;
   std::string error;
-  check(marshal::execute_marshal_tool_json("hero.marshal.prepare",
-                                           prepare_args_json(false, false),
-                                           &result, &error),
+  check(execute_marshal_prepare_json(prepare_args_json(false, false), &result,
+                                     &error),
         "prepare should produce an operator packet");
   check(result.find("\"dispatch_state\":\"blocked\"") != std::string::npos,
         "unresolved model-state inputs should block dispatch preparation");
@@ -3417,13 +3982,13 @@ void test_prepare_target_resolved_ready_for_dry_run() {
 
   std::string result;
   std::string error;
-  check(marshal::execute_marshal_tool_json("hero.marshal.prepare",
-                                           prepare_args_json(true, true),
-                                           &result, &error),
+  check(execute_marshal_prepare_json(prepare_args_json(true, true), &result,
+                                     &error),
         "prepare should materialize resolved hints");
   check(result.find("\"dispatch_state\":\"ready_for_dry_run\"") !=
             std::string::npos,
-        "plan mode with resolved inputs should prepare a Runtime dry-run");
+        "plan mode with resolved inputs should prepare a Runtime dry-run: " +
+            result);
   check(result.find("\"blocker_bucket\":\"none\"") != std::string::npos,
         "resolved prepare packet should not carry a blocker bucket");
   check(result.find("\"next_safe_actions\":[\"dry_run\"]") != std::string::npos,
@@ -3456,8 +4021,7 @@ void test_prepare_dry_run_calls_runtime_dry_run() {
                                    "\",\"timeout_seconds\":5");
   std::string result;
   std::string error;
-  check(marshal::execute_marshal_tool_json("hero.marshal.prepare", args,
-                                           &result, &error),
+  check(execute_marshal_prepare_json(args, &result, &error),
         "prepare requested_mode=dry_run should produce an operator packet");
   check(result.find("\"runtime_dry_run\":{\"requested\":true,"
                     "\"attempted\":true,\"accepted\":true") !=
@@ -3475,47 +4039,31 @@ void test_prepare_dry_run_calls_runtime_dry_run() {
   std::filesystem::remove_all(root);
 }
 
-void test_prepare_rejects_legacy_alias_and_reserved_intents() {
+void test_prepare_rejects_legacy_alias_and_retired_route_fields() {
   marshal::set_marshal_lattice_tool_callback(nullptr);
   std::string result;
   std::string error;
 
   const std::string alias_args =
-      "{\"lattice_target\":\"channel_mdn_validation_eval_ready\","
-      "\"drive_mode\":\"one_step\"}";
-  check(!marshal::execute_marshal_tool_json("hero.marshal.prepare", alias_args,
-                                            &result, &error),
+      "{\"lattice_target\":\"channel_mdn_validation_eval_ready\"}";
+  check(!marshal::execute_marshal_tool_json(
+            "hero.marshal.prepare.train.one_step", alias_args, &result,
+            &error),
         "prepare should reject legacy lattice_target alias");
   check(error.find("unknown field: lattice_target") != std::string::npos,
         "lattice_target rejection should be explicit");
 
-  const std::string replay_args =
+  const std::string retired_route_args =
       "{\"target_id\":\"channel_mdn_validation_eval_ready\","
-      "\"intent\":\"replay\",\"drive_mode\":\"one_step\"}";
-  check(!marshal::execute_marshal_tool_json("hero.marshal.prepare", replay_args,
-                                            &result, &error),
-        "prepare should reject replay intent");
-  check(error.find("use hero.marshal.rollout") != std::string::npos,
-        "replay intent should route to rollout");
-
-  const std::string artifact_args =
-      "{\"target_id\":\"forecast_eval_artifact_ready\","
-      "\"intent\":\"artifact_validation\",\"drive_mode\":\"one_step\"}";
-  check(!marshal::execute_marshal_tool_json("hero.marshal.prepare",
-                                            artifact_args, &result, &error),
-        "prepare should reject artifact_validation intent");
-  check(error.find("use hero.marshal.inspect") != std::string::npos,
-        "artifact_validation intent should route to inspect");
-
-  const std::string policy_training_args =
-      "{\"target_id\":\"policy_training_ready\","
-      "\"intent\":\"policy_training\",\"drive_mode\":\"one_step\"}";
+      "\"mode\":\"plan\",\"intent\":\"train\"}";
+  result.clear();
+  error.clear();
   check(!marshal::execute_marshal_tool_json(
-            "hero.marshal.prepare", policy_training_args, &result, &error),
-        "prepare should reject policy_training intent");
-  check(error.find("reserved until a finite Runtime policy-training contract "
-                   "exists") != std::string::npos,
-        "policy_training refusal should be explicit");
+            "hero.marshal.prepare.train.one_step", retired_route_args, &result,
+            &error),
+        "split prepare should reject retired top-level route fields");
+  check(error.find("unknown field: intent") != std::string::npos,
+        "retired top-level intent rejection should be explicit");
 }
 
 void test_prepare_wraps_target_dispatch() {
@@ -3526,12 +4074,12 @@ void test_prepare_wraps_target_dispatch() {
 
   std::string result;
   std::string error;
-  check(marshal::execute_marshal_tool_json("hero.marshal.prepare",
-                                           prepare_args_json(true, false),
-                                           &result, &error),
+  check(execute_marshal_prepare_json(prepare_args_json(true, false), &result,
+                                     &error),
         "prepare should produce the target-first operator packet");
-  check(result.find("\"tool\":\"hero.marshal.prepare\"") != std::string::npos,
-        "prepare should identify the high-level Marshal tool");
+  check(result.find("\"tool\":\"hero.marshal.prepare.train.one_step\"") !=
+            std::string::npos,
+        "prepare should identify the split Marshal tool");
   check(result.find("\"operator_summary\":{") != std::string::npos &&
             result.find("\"stop_reason\":{") != std::string::npos &&
             result.find("\"wave_panel\":{") != std::string::npos &&
@@ -3542,9 +4090,9 @@ void test_prepare_wraps_target_dispatch() {
   check(result.find("\"dispatch_state\":\"ready_for_dry_run\"") !=
             std::string::npos,
         "prepare should reuse the target-dispatch readiness logic");
-  check(result.find("\"next_command\":{\"tool\":\"hero.marshal.prepare\"") !=
-            std::string::npos,
-        "prepare should keep follow-up commands on the high-level surface");
+  check(result.find("\"next_command\":{\"tool\":\"hero.marshal.prepare."
+                    "train.one_step\"") != std::string::npos,
+        "prepare should keep follow-up commands on the split surface");
   check(result.find("\"checkpoint_inputs_match\":true") != std::string::npos,
         "prepare should still check Runtime checkpoint inputs");
   check(g_fake_lattice_resolve_count == 2,
@@ -3562,9 +4110,8 @@ void test_prepare_target_rejects_untrusted_resolution() {
 
   std::string result;
   std::string error;
-  check(marshal::execute_marshal_tool_json("hero.marshal.prepare",
-                                           prepare_args_json(true, false),
-                                           &result, &error),
+  check(execute_marshal_prepare_json(prepare_args_json(true, false), &result,
+                                     &error),
         "prepare should keep responding to untrusted resolver "
         "output");
   check(result.find("\"dispatch_state\":\"blocked\"") != std::string::npos,
@@ -3581,9 +4128,8 @@ void test_prepare_target_rejects_untrusted_resolution() {
 
   g_fake_lattice_resolve_fault = "authority_violation";
   g_fake_lattice_resolve_count = 0;
-  check(marshal::execute_marshal_tool_json("hero.marshal.prepare",
-                                           prepare_args_json(true, false),
-                                           &result, &error),
+  check(execute_marshal_prepare_json(prepare_args_json(true, false), &result,
+                                     &error),
         "prepare should report resolver authority violations");
   check(result.find("\"status\":\"resolver_authority_violation\"") !=
             std::string::npos,
@@ -3593,9 +4139,8 @@ void test_prepare_target_rejects_untrusted_resolution() {
 
   g_fake_lattice_resolve_fault = "source_target_mismatch";
   g_fake_lattice_resolve_count = 0;
-  check(marshal::execute_marshal_tool_json("hero.marshal.prepare",
-                                           prepare_args_json(true, false),
-                                           &result, &error),
+  check(execute_marshal_prepare_json(prepare_args_json(true, false), &result,
+                                     &error),
         "prepare should reject resolver source-target drift");
   check(result.find("\"status\":\"resolver_source_target_mismatch\"") !=
             std::string::npos,
@@ -3605,9 +4150,8 @@ void test_prepare_target_rejects_untrusted_resolution() {
 
   g_fake_lattice_resolve_fault = "target_status_not_satisfied";
   g_fake_lattice_resolve_count = 0;
-  check(marshal::execute_marshal_tool_json("hero.marshal.prepare",
-                                           prepare_args_json(true, false),
-                                           &result, &error),
+  check(execute_marshal_prepare_json(prepare_args_json(true, false), &result,
+                                     &error),
         "prepare should reject non-satisfying source targets");
   check(result.find("\"status\":\"target_not_satisfied\"") != std::string::npos,
         "Marshal should require latest_satisfying sources to be satisfied");
@@ -3633,7 +4177,6 @@ void test_m15_budgeted_prepare_target_dry_run_driver() {
       "\"requested_mode\":\"dry_run\","
       "\"source_lattice_timestamp\":\"2026-05-24T00:00:00Z\","
       "\"materialize_plan_inputs\":true,"
-      "\"include_runtime_dry_run\":false,"
       "\"include_machine_payload\":true,"
       "\"timeout_seconds\":5,"
       "\"driver_policy\":{\"max_waves\":1,"
@@ -3649,8 +4192,7 @@ void test_m15_budgeted_prepare_target_dry_run_driver() {
 
   std::string result;
   std::string error;
-  check(marshal::execute_marshal_tool_json("hero.marshal.prepare", args,
-                                           &result, &error),
+  check(execute_marshal_prepare_json(args, &result, &error),
         "budgeted prepare should execute bounded dry-run driver");
   check(result.find("\"drive_mode\":\"budgeted\"") != std::string::npos,
         "budgeted driver should report drive_mode");
@@ -3692,8 +4234,7 @@ void test_m16_5_budgeted_prepare_target_requires_explicit_policy() {
       "\"source_lattice_timestamp\":\"2026-05-24T00:00:00Z\"}";
   std::string result;
   std::string error;
-  check(!marshal::execute_marshal_tool_json(
-            "hero.marshal.prepare", missing_policy_args, &result, &error),
+  check(!execute_marshal_prepare_json(missing_policy_args, &result, &error),
         "budgeted prepare should reject missing driver_policy");
   check(error.find("requires explicit driver_policy") != std::string::npos,
         "missing driver_policy error should be explicit");
@@ -3704,8 +4245,7 @@ void test_m16_5_budgeted_prepare_target_requires_explicit_policy() {
       "\"requested_mode\":\"dry_run\","
       "\"source_lattice_timestamp\":\"2026-05-24T00:00:00Z\","
       "\"driver_policy\":{\"no_progress_window\":1}}";
-  check(!marshal::execute_marshal_tool_json(
-            "hero.marshal.prepare", missing_max_waves_args, &result, &error),
+  check(!execute_marshal_prepare_json(missing_max_waves_args, &result, &error),
         "budgeted prepare should reject missing max_waves");
   check(error.find("requires driver_policy.max_waves") != std::string::npos,
         "missing max_waves error should be explicit");
@@ -3716,8 +4256,7 @@ void test_m16_5_budgeted_prepare_target_requires_explicit_policy() {
       "\"requested_mode\":\"dry_run\","
       "\"source_lattice_timestamp\":\"2026-05-24T00:00:00Z\","
       "\"driver_policy\":{\"max_waves\":1,\"no_progress_window\":1}}";
-  check(!marshal::execute_marshal_tool_json(
-            "hero.marshal.prepare", missing_wall_clock_args, &result, &error),
+  check(!execute_marshal_prepare_json(missing_wall_clock_args, &result, &error),
         "budgeted prepare should reject missing max_wall_clock_seconds");
   check(error.find("requires driver_policy.max_wall_clock_seconds") !=
             std::string::npos,
@@ -3751,8 +4290,7 @@ void test_m15_budgeted_prepare_target_no_progress_window() {
 
   std::string result;
   std::string error;
-  check(marshal::execute_marshal_tool_json("hero.marshal.prepare", args,
-                                           &result, &error),
+  check(execute_marshal_prepare_json(args, &result, &error),
         "budgeted dry-run driver should enforce no-progress window");
   check(result.find("\"driver_terminal_state\":\"blocked_no_progress\"") !=
             std::string::npos,
@@ -3798,8 +4336,7 @@ void test_m16_5_execute_requires_runtime_terminal_evidence() {
 
   std::string result;
   std::string error;
-  check(marshal::execute_marshal_tool_json("hero.marshal.prepare", args,
-                                           &result, &error),
+  check(execute_marshal_prepare_json(args, &result, &error),
         "execute target driver should return an operator packet");
   check(result.find("\"driver_terminal_state\":"
                     "\"blocked_runtime_completion_missing\"") !=
@@ -3847,8 +4384,7 @@ void test_m16_5_execute_binds_runtime_terminal_evidence() {
 
   std::string result;
   std::string error;
-  check(marshal::execute_marshal_tool_json("hero.marshal.prepare", args,
-                                           &result, &error),
+  check(execute_marshal_prepare_json(args, &result, &error),
         "execute target driver should bind terminal Runtime evidence");
   check(result.find("\"runtime_job_completion_observed\":true") !=
             std::string::npos,
@@ -3916,8 +4452,7 @@ void test_m16_5_execute_rejects_terminal_evidence_handoff_mismatch() {
 
   std::string result;
   std::string error;
-  check(marshal::execute_marshal_tool_json("hero.marshal.prepare", args,
-                                           &result, &error),
+  check(execute_marshal_prepare_json(args, &result, &error),
         "handoff-mismatched Runtime evidence should produce a bounded packet");
   check(result.find("\"driver_terminal_state\":"
                     "\"blocked_runtime_completion_missing\"") !=
@@ -4090,8 +4625,7 @@ void test_m20_execute_requires_runtime_result_fact_not_state_only() {
 
   std::string result;
   std::string error;
-  check(marshal::execute_marshal_tool_json("hero.marshal.prepare", args,
-                                           &result, &error),
+  check(execute_marshal_prepare_json(args, &result, &error),
         "execute target driver should return an operator packet for state-only "
         "Runtime output");
   check(result.find("\"driver_terminal_state\":"
@@ -4141,8 +4675,7 @@ void test_m20_execute_requires_checkpoint_io_fact_when_checkpoint_io_occurs() {
 
   std::string result;
   std::string error;
-  check(marshal::execute_marshal_tool_json("hero.marshal.prepare", args,
-                                           &result, &error),
+  check(execute_marshal_prepare_json(args, &result, &error),
         "execute target driver should report missing checkpoint I/O fact");
   check(result.find("\"driver_terminal_state\":"
                     "\"blocked_runtime_checkpoint_io_missing\"") !=
@@ -4191,8 +4724,7 @@ void test_m20_execute_binds_checkpoint_io_fact() {
 
   std::string result;
   std::string error;
-  check(marshal::execute_marshal_tool_json("hero.marshal.prepare", args,
-                                           &result, &error),
+  check(execute_marshal_prepare_json(args, &result, &error),
         "execute target driver should accept checkpoint I/O evidence");
   check(result.find("\"runtime_job_completion_observed\":true") !=
             std::string::npos,
@@ -4239,8 +4771,7 @@ void test_m15_budgeted_prepare_target_stops_on_lattice_warning() {
 
   std::string result;
   std::string error;
-  check(marshal::execute_marshal_tool_json("hero.marshal.prepare", args,
-                                           &result, &error),
+  check(execute_marshal_prepare_json(args, &result, &error),
         "budgeted driver should enforce Lattice warning stop policy");
   check(result.find("\"driver_terminal_state\":\"blocked_lattice_warning\"") !=
             std::string::npos,
@@ -4336,8 +4867,7 @@ void test_m21_warning_only_visibility_does_not_stop_below_threshold() {
 
   std::string result;
   std::string error;
-  check(marshal::execute_marshal_tool_json("hero.marshal.prepare", args,
-                                           &result, &error),
+  check(execute_marshal_prepare_json(args, &result, &error),
         "non-blocking warning below threshold should still produce a bounded "
         "driver packet");
   check(result.find("\"driver_terminal_state\":\"blocked_lattice_warning\"") ==
@@ -4381,8 +4911,7 @@ void test_m21_blocking_lattice_warning_stops_with_owner_reason() {
 
   std::string result;
   std::string error;
-  check(marshal::execute_marshal_tool_json("hero.marshal.prepare", args,
-                                           &result, &error),
+  check(execute_marshal_prepare_json(args, &result, &error),
         "blocking typed Lattice warning should produce a bounded driver "
         "packet");
   check(result.find("\"driver_terminal_state\":\"blocked_lattice_warning\"") !=
@@ -4705,8 +5234,7 @@ void test_m16_target_driver_resume_guards_policy_and_identity() {
 
   std::string result;
   std::string error;
-  check(marshal::execute_marshal_tool_json("hero.marshal.prepare", args,
-                                           &result, &error),
+  check(execute_marshal_prepare_json(args, &result, &error),
         "stale resume ledger should produce a bounded Marshal packet");
   check(result.find("\"driver_terminal_state\":\"blocked_stale_resume\"") !=
             std::string::npos,
@@ -4761,8 +5289,7 @@ void test_m16_target_driver_resume_does_not_repeat_reached_run() {
 
   std::string result;
   std::string error;
-  check(marshal::execute_marshal_tool_json("hero.marshal.prepare", args,
-                                           &result, &error),
+  check(execute_marshal_prepare_json(args, &result, &error),
         "reached resume ledger should return a bounded Marshal packet");
   check(result.find("\"driver_terminal_state\":\"reached\"") !=
             std::string::npos,
@@ -4815,8 +5342,7 @@ void test_m16_5_target_driver_resume_requires_ledger_digest() {
 
   std::string result;
   std::string error;
-  check(marshal::execute_marshal_tool_json("hero.marshal.prepare", args,
-                                           &result, &error),
+  check(execute_marshal_prepare_json(args, &result, &error),
         "resume ledger without ledger_digest should fail closed");
   check(result.find("\"driver_terminal_state\":\"blocked_stale_resume\"") !=
             std::string::npos,
@@ -4869,8 +5395,7 @@ void test_m16_5_target_driver_resume_requires_terminal_identity_after_execute() 
 
   std::string result;
   std::string error;
-  check(marshal::execute_marshal_tool_json("hero.marshal.prepare", args,
-                                           &result, &error),
+  check(execute_marshal_prepare_json(args, &result, &error),
         "resume ledger with execution history should require terminal Runtime "
         "identity");
   check(result.find("\"driver_terminal_state\":\"blocked_stale_resume\"") !=
@@ -4910,16 +5435,19 @@ void test_m9_marshal_tool_handlers_validate_arguments() {
       "\"supported_source_ranges\":[\"anchor_index\"],"
       "\"allowed_model_state_roots\":[\"/tmp/marshal_lookup/runtime\"],"
       "\"freshness_check_timestamp_utc\":\"2026-05-24T00:00:00Z\"}}";
-  check(marshal::execute_marshal_tool_json("hero.marshal.prepare", lookup_args,
-                                           &result, &error),
+  check(execute_marshal_prepare_json(lookup_args, &result, &error),
         "prepare should ask Lattice and materialize advice");
-  check(g_fake_lattice_tool_name == "hero.lattice.evaluate",
+  check(g_fake_lattice_tool_name == "hero.lattice.evaluate.deficit",
         "prepare should call Lattice target_deficit");
-  check(g_fake_lattice_arguments_json.find("\"target_id\":\"lookup_target\"") !=
+  check(g_fake_lattice_arguments_json.find("\"args_path\"") ==
             std::string::npos,
-        "prepare should pass target_id to Lattice");
-  check(result.find("\"tool\":\"hero.marshal.prepare\"") != std::string::npos,
-        "prepare should return the public operator packet");
+        "prepare should pass Lattice selectors directly");
+  check(lattice_evaluate_request_text_from_args(g_fake_lattice_arguments_json)
+                .find("\"target_id\":\"lookup_target\"") != std::string::npos,
+        "prepare should pass target_id to Lattice request");
+  check(result.find("\"tool\":\"hero.marshal.prepare.train.one_step\"") !=
+            std::string::npos,
+        "prepare should return the split public operator packet");
   check(result.find("\"schema_version\":\"kikijyeba.marshal.prepare."
                     "v2.5b\"") != std::string::npos &&
             result.find("\"next_safe_actions\":[") != std::string::npos &&
@@ -4938,10 +5466,10 @@ void test_m9_marshal_tool_handlers_validate_arguments() {
   const std::string free_text_lookup_args =
       lookup_args.substr(0, lookup_args.size() - 1) +
       ",\"target_text\":\"dispatch whatever target seems useful\"}";
-  check(!marshal::execute_marshal_tool_json(
-            "hero.marshal.prepare", free_text_lookup_args, &result, &error),
+  check(!execute_marshal_prepare_json(free_text_lookup_args, &result, &error),
         "prepare must reject free-form target text");
-  check(error.find("unknown field: target_text") != std::string::npos,
+  check(error.find("E_MARSHAL_PREPARE_REQUEST_UNKNOWN_FIELD: target_text") !=
+            std::string::npos,
         "prepare should expose unknown-field rejection for "
         "target_text");
 
@@ -4953,10 +5481,8 @@ void test_m9_marshal_tool_handlers_validate_arguments() {
       "{\"target_id\":\"satisfied_without_certificate\","
       "\"drive_mode\":\"one_step\","
       "\"requested_mode\":\"dry_run\","
-      "\"include_runtime_dry_run\":true,"
       "\"source_lattice_timestamp\":\"2026-05-24T00:00:00Z\"}";
-  check(marshal::execute_marshal_tool_json(
-            "hero.marshal.prepare", already_satisfied_args, &result, &error),
+  check(execute_marshal_prepare_json(already_satisfied_args, &result, &error),
         "prepare should stop cleanly when Lattice returns a "
         "satisfied target with suggested_wave=null");
   check(result.find("\"dispatch_state\":\"already_satisfied\"") !=
@@ -4980,32 +5506,12 @@ void test_m9_marshal_tool_handlers_validate_arguments() {
         "mismatch refusal noise");
   marshal::set_marshal_lattice_tool_callback(nullptr);
 
-  const auto wave = valid_active_wave(advice);
-  marshal::marshal_dry_run_dispatch_response_t response{};
-  response.accepted = true;
-  response.advice_digest = marshal::dispatch_advice_digest(advice);
-  response.request_digest = marshal::dispatch_request_digest(request);
-  response.runtime_request_digest = marshal::runtime_dry_run_request_digest(
-      marshal::build_runtime_dry_run_dispatch_preview(advice, request, ctx,
-                                                      valid_policy(), wave)
-          .runtime_request);
-  response.runtime_handoff.arguments_digest =
-      marshal::marshal_digest_for_text("test.arguments", "{}");
-  response.runtime_handoff.tool_result_json = "{\"ok\":true}";
-  response.response_digest =
-      marshal::dry_run_dispatch_response_digest(response);
-  const auto receipt = marshal::make_dry_run_dispatch_receipt(
-      advice, response, "2026-05-23T00:00:00Z");
-  const std::string status_args =
-      "{\"receipt_root\":\"/tmp/marshal_status\",\"receipts\":[" +
-      receipt_json(receipt) +
-      "],\"runtime_policy\":" + policy_json(valid_policy()) +
-      ",\"lattice_advice_surface_available\":true}";
+  const std::string status_args = "{}";
   check(marshal::execute_marshal_tool_json("hero.marshal.status", status_args,
                                            &result, &error),
         "status handler should execute deterministic primitive");
-  check(result.find("\"recent_receipt_count\":1") != std::string::npos,
-        "status handler should expose receipt count");
+  check(result.find("\"recent_receipt_count\":0") != std::string::npos,
+        "status handler should expose default receipt count");
   check(result.find("\"schema\":\"kikijyeba.marshal.status.v1\"") !=
                 std::string::npos &&
             result.find("\"schema_version\":\"kikijyeba.marshal.status."
@@ -5058,8 +5564,7 @@ void test_artifact_evidence_panel_and_prepare_boundary() {
       "\"runtime_root\":\"/tmp/marshal_artifact/runtime\","
       "\"include_facts\":true,"
       "\"include_machine_payload\":true}";
-  check(marshal::execute_marshal_tool_json("hero.marshal.inspect", panel_args,
-                                           &result, &error),
+  check(execute_marshal_inspect_json(panel_args, &result, &error),
         "inspect should expose a read-only target/fact packet");
   check(g_fake_lattice_evaluate_target_count == 1,
         "inspect panel should call Lattice evaluate_target for target proof");
@@ -5069,10 +5574,15 @@ void test_artifact_evidence_panel_and_prepare_boundary() {
   check(g_fake_lattice_fact_lineage_count == 1,
         "inspect panel should call Lattice fact_lineage for fact-family "
         "lineage");
-  check(g_fake_lattice_arguments_json.find("\"family\":\"forecast_eval\"") !=
+  check(g_fake_lattice_arguments_json.find("\"args_path\"") ==
             std::string::npos,
-        "inspect panel should pass fact_family_id to Lattice as family");
-  check(result.find("\"tool\":\"hero.marshal.inspect\"") != std::string::npos,
+        "inspect panel should pass fact_family_id directly to Lattice inspect");
+  check(lattice_inspect_request_text_from_args(g_fake_lattice_arguments_json)
+                .find("\"family\":\"forecast_eval\"") != std::string::npos,
+        "inspect panel should materialize fact_family_id in the Lattice "
+        "inspect request");
+  check(result.find("\"tool\":\"hero.marshal.inspect.facts.summary\"") !=
+            std::string::npos,
         "inspect panel should identify the public tool");
   check(result.find("\"schema_version\":\"kikijyeba.marshal.inspect."
                     "v2.5a\"") != std::string::npos &&
@@ -5236,8 +5746,7 @@ void test_artifact_evidence_panel_and_prepare_boundary() {
   g_fake_lattice_fact_lineage_count = 0;
   result.clear();
   error.clear();
-  check(marshal::execute_marshal_tool_json("hero.marshal.inspect", panel_args,
-                                           &result, &error),
+  check(execute_marshal_inspect_json(panel_args, &result, &error),
         "inspect should surface a Lattice policy-fingerprint "
         "mismatch as read-only audit context");
   check(g_fake_lattice_evaluate_target_count == 1,
@@ -5270,15 +5779,15 @@ void test_artifact_evidence_panel_and_prepare_boundary() {
       "proof, dispatch, allocation, or market authority");
   g_fake_lattice_policy_fingerprint_mismatch = false;
 
-  check(result.find("\"source_tool\":\"hero.lattice.inspect\"") !=
+  check(result.find("\"source_tool\":\"hero.lattice.inspect.facts.scan\"") !=
                 std::string::npos &&
             result.find("\"source_subject\":\"facts\"") != std::string::npos &&
             result.find("\"source_mode\":\"scan\"") != std::string::npos,
         "fact panel should report the Lattice fact scan source");
   check(result.find("\"lineage_panel\":{\"source_tool\":\"hero.lattice."
-                    "inspect\"") != std::string::npos &&
+                    "inspect.facts.lineage\"") != std::string::npos &&
             result.find("\"source_subject\":\"facts\"") != std::string::npos &&
-            result.find("\"source_mode\":\"lineage\"") != std::string::npos &&
+            result.find("\"source_view\":\"lineage\"") != std::string::npos &&
             result.find("\"lineage_rows_are_audit_only\":true") !=
                 std::string::npos &&
             result.find("\"cache_rows_used_for_target_satisfaction\":false") !=
@@ -5337,8 +5846,7 @@ void test_artifact_evidence_panel_and_prepare_boundary() {
       "\"fact_family_id\":\"replay_environment\","
       "\"runtime_root\":\"/tmp/marshal_artifact/runtime\","
       "\"include_machine_payload\":true}";
-  check(marshal::execute_marshal_tool_json(
-            "hero.marshal.inspect", family_only_panel_args, &result, &error),
+  check(execute_marshal_inspect_json(family_only_panel_args, &result, &error),
         "inspect should support fact-family-only replay "
         "evidence inspection");
   check(g_fake_lattice_evaluate_target_count == 0,
@@ -5349,10 +5857,14 @@ void test_artifact_evidence_panel_and_prepare_boundary() {
             g_fake_lattice_fact_lineage_count == 1,
         "fact-family-only evidence inspection should use summary mode unless "
         "facts are requested and still relay lineage");
-  check(g_fake_lattice_arguments_json.find(
-            "\"family\":\"replay_environment\"") != std::string::npos,
-        "fact-family-only evidence inspection should pass replay_environment "
-        "to Lattice");
+  check(g_fake_lattice_arguments_json.find("\"args_path\"") ==
+            std::string::npos,
+        "fact-family-only evidence inspection should use direct Lattice "
+        "inspect selectors");
+  check(lattice_inspect_request_text_from_args(g_fake_lattice_arguments_json)
+                .find("\"family\":\"replay_environment\"") != std::string::npos,
+        "fact-family-only evidence inspection should materialize "
+        "replay_environment in the Lattice inspect request");
   check(result.find("\"target_panel\":null") != std::string::npos &&
             result.find("\"fact_family\":\"replay_environment\"") !=
                 std::string::npos &&
@@ -5397,9 +5909,8 @@ void test_artifact_evidence_panel_and_prepare_boundary() {
       "\"fact_family_id\":\"forecast_eval\","
       "\"runtime_root\":\"/tmp/marshal_artifact/runtime\","
       "\"include_machine_payload\":true}";
-  check(marshal::execute_marshal_tool_json("hero.marshal.inspect",
-                                           family_only_forecast_eval_args,
-                                           &result, &error),
+  check(execute_marshal_inspect_json(family_only_forecast_eval_args, &result,
+                                     &error),
         "inspect should expose forecast_eval fact summaries "
         "without target proof");
   check(g_fake_lattice_evaluate_target_count == 0 &&
@@ -5408,12 +5919,13 @@ void test_artifact_evidence_panel_and_prepare_boundary() {
         "forecast_eval fact-family-only evidence inspection should remain "
         "summary-only plus lineage audit");
   check(result.find("\"target_panel\":null") != std::string::npos &&
-            result.find("\"source_tool\":\"hero.lattice.inspect\"") !=
+            result.find(
+                "\"source_tool\":\"hero.lattice.inspect.facts.summary\"") !=
                 std::string::npos &&
             result.find("\"source_mode\":\"summary\"") != std::string::npos &&
             result.find("\"lineage_panel\":{\"source_tool\":\"hero.lattice."
-                        "inspect\"") != std::string::npos &&
-            result.find("\"source_mode\":\"lineage\"") != std::string::npos &&
+                        "inspect.facts.lineage\"") != std::string::npos &&
+            result.find("\"source_view\":\"lineage\"") != std::string::npos &&
             result.find("\"selected_relations\":[\"forecast_eval\"]") !=
                 std::string::npos &&
             result.find("\"fact_integrity_summary\":{") != std::string::npos &&
@@ -5439,22 +5951,22 @@ void test_artifact_evidence_panel_and_prepare_boundary() {
       "\"fact_family_id\":\"forecast_eval\","
       "\"runtime_root\":\"/tmp/marshal_artifact/runtime\","
       "\"include_preview\":true,\"fact_index\":0,"
+      "\"include_lineage\":false,"
       "\"include_machine_payload\":true}";
-  check(marshal::execute_marshal_tool_json(
-            "hero.marshal.inspect", family_preview_args, &result, &error),
+  check(execute_marshal_inspect_json(family_preview_args, &result, &error),
         "inspect should expose fact_preview when explicitly "
         "requested");
   check(g_fake_lattice_evaluate_target_count == 0 &&
             g_fake_lattice_fact_summary_count == 1 &&
-            g_fake_lattice_fact_lineage_count == 1 &&
+            g_fake_lattice_fact_lineage_count == 0 &&
             g_fake_lattice_fact_preview_count == 1,
-        "fact preview evidence inspection should remain summary plus lineage "
-        "plus preview, without target proof");
+        "fact preview evidence inspection should honor include_lineage=false "
+        "while still returning summary plus preview, without target proof");
   check(
       result.find("\"preview_panel\":{\"source_tool\":\"hero.lattice."
-                  "inspect\"") != std::string::npos &&
+                  "inspect.facts.preview.by_index\"") != std::string::npos &&
           result.find("\"source_subject\":\"facts\"") != std::string::npos &&
-          result.find("\"source_mode\":\"preview\"") != std::string::npos &&
+          result.find("\"source_view\":\"preview\"") != std::string::npos &&
           result.find("\"preview_rows_are_audit_only\":true") !=
               std::string::npos &&
           result.find("\"facts_used_for_target_satisfaction\":false") !=
@@ -5477,15 +5989,18 @@ void test_artifact_evidence_panel_and_prepare_boundary() {
           result.find("\\\"parent_exposure_fact_digests\\\":[\\\"parent_"
                       "digest\\\"]") != std::string::npos &&
           result.find("\\\"forecast_artifact_digest\\\":\\\"forecast_"
-                      "artifact_1\\\"") !=
-              std::string::npos &&
-          result.find("\"preview_lattice_args\":\"{\\\"subject\\\":"
-                      "\\\"facts\\\",\\\"mode\\\":\\\"preview\\\","
-                      "\\\"runtime_root\\\":\\\"/tmp/marshal_artifact/"
-                      "runtime\\\",\\\"family\\\":\\\"forecast_eval\\\","
-                      "\\\"fact_index\\\":0}\"") != std::string::npos,
+                      "artifact_1\\\"") != std::string::npos &&
+          result.find("\\\"args_path\\\":") == std::string::npos &&
+          result.find("\\\"args_digest\\\":") == std::string::npos,
       "fact preview panel should summarize refs and keep concrete facts in the "
-      "explicit machine payload");
+      "direct-selector machine payload");
+  check(
+      lattice_inspect_request_text_from_args(g_fake_lattice_arguments_json)
+                  .find("\"family\":\"forecast_eval\"") != std::string::npos &&
+          lattice_inspect_request_text_from_args(g_fake_lattice_arguments_json)
+                  .find("\"fact_index\":0") != std::string::npos,
+      "fact preview panel should materialize family and fact_index in the "
+      "Lattice inspect request");
 
   g_fake_lattice_fact_summary_count = 0;
   g_fake_lattice_fact_lineage_count = 0;
@@ -5499,23 +6014,23 @@ void test_artifact_evidence_panel_and_prepare_boundary() {
       "\"runtime_root\":\"/tmp/marshal_artifact/runtime\","
       "\"fact_digest_prefix\":\"forecast\","
       "\"include_machine_payload\":true}";
-  check(marshal::execute_marshal_tool_json("hero.marshal.inspect",
-                                           family_prefix_preview_args, &result,
-                                           &error),
-        "inspect should expose fact_preview from canonical digest-prefix "
-        "selection");
+  check(
+      execute_marshal_inspect_json(family_prefix_preview_args, &result, &error),
+      "inspect should expose fact_preview from canonical digest-prefix "
+      "selection");
   check(g_fake_lattice_fact_summary_count == 1 &&
             g_fake_lattice_fact_lineage_count == 1 &&
             g_fake_lattice_fact_preview_count == 1,
         "canonical digest-prefix preview should remain summary plus lineage "
         "plus preview");
-  check(result.find("\"preview_lattice_args\":\"{\\\"subject\\\":"
-                    "\\\"facts\\\",\\\"mode\\\":\\\"preview\\\","
-                    "\\\"runtime_root\\\":\\\"/tmp/marshal_artifact/"
-                    "runtime\\\",\\\"family\\\":\\\"forecast_eval\\\","
-                    "\\\"fact_digest_prefix\\\":\\\"forecast\\\"}\"") !=
-            std::string::npos,
-        "Marshal should pass fact_digest_prefix through to Lattice");
+  check(
+      lattice_inspect_request_text_from_args(g_fake_lattice_arguments_json)
+                  .find("\"family\":\"forecast_eval\"") != std::string::npos &&
+          lattice_inspect_request_text_from_args(g_fake_lattice_arguments_json)
+                  .find("\"fact_digest_prefix\":\"forecast\"") !=
+              std::string::npos,
+      "Marshal should pass fact_digest_prefix through the Lattice inspect "
+      "request");
 
   g_fake_lattice_fact_summary_count = 0;
   g_fake_lattice_fact_lineage_count = 0;
@@ -5526,9 +6041,8 @@ void test_artifact_evidence_panel_and_prepare_boundary() {
       "\"fact_family_id\":\"selection_signal\","
       "\"runtime_root\":\"/tmp/marshal_artifact/runtime\","
       "\"include_machine_payload\":true}";
-  check(marshal::execute_marshal_tool_json("hero.marshal.inspect",
-                                           family_only_selection_signal_args,
-                                           &result, &error),
+  check(execute_marshal_inspect_json(family_only_selection_signal_args, &result,
+                                     &error),
         "inspect should expose selection_signal fact summaries "
         "without target proof");
   check(g_fake_lattice_evaluate_target_count == 0 &&
@@ -5558,10 +6072,8 @@ void test_artifact_evidence_panel_and_prepare_boundary() {
       "{\"target_id\":\"forecast_eval_artifact_ready\","
       "\"drive_mode\":\"one_step\","
       "\"requested_mode\":\"dry_run\","
-      "\"include_runtime_dry_run\":true,"
       "\"include_machine_payload\":true}";
-  check(marshal::execute_marshal_tool_json("hero.marshal.prepare", prepare_args,
-                                           &result, &error),
+  check(execute_marshal_prepare_json(prepare_args, &result, &error),
         "prepare should return an operator packet for artifact "
         "targets");
   check(result.find("Lattice plan result missing suggested_wave") ==
@@ -5580,7 +6092,8 @@ void test_artifact_evidence_panel_and_prepare_boundary() {
         "non-applicability");
   check(result.find("\"next_safe_actions\":[\"inspect\"]") != std::string::npos,
         "artifact readiness prepare should route to evidence inspection");
-  check(result.find("\"tool\":\"hero.marshal.inspect\"") != std::string::npos,
+  check(result.find("\"tool\":\"hero.marshal.inspect.target\"") !=
+            std::string::npos,
         "artifact readiness prepare should suggest the inspect tool");
   check(result.find("\"runtime_dry_run\":{\"requested\":true,"
                     "\"attempted\":false") != std::string::npos,
@@ -5651,11 +6164,10 @@ void test_artifact_evidence_panel_and_prepare_boundary() {
       "\"target_id\":\"forecast_eval_artifact_ready\","
       "\"runtime_root\":\"/tmp/marshal_artifact/runtime\","
       "\"include_machine_payload\":true}";
-  check(marshal::execute_marshal_tool_json(
-            "hero.marshal.inspect", inspect_artifact_args, &result, &error),
+  check(execute_marshal_inspect_json(inspect_artifact_args, &result, &error),
         "inspect subject=target should report artifact-readiness targets: " +
             error);
-  check(g_fake_lattice_tool_name == "hero.lattice.evaluate",
+  check(g_fake_lattice_tool_name == "hero.lattice.evaluate.deficit",
         "inspect subject=target should use Lattice target_deficit for "
         "artifact targets");
   check(result.find("\"target_class\":\"artifact_readiness\"") !=
@@ -5714,12 +6226,14 @@ void test_artifact_evidence_panel_and_prepare_boundary() {
   const std::string fact_family_prepare_args =
       "{\"target_id\":\"forecast_eval_artifact_ready\","
       "\"fact_family\":\"forecast_eval\","
-      "\"drive_mode\":\"one_step\"}";
-  check(!marshal::execute_marshal_tool_json(
-            "hero.marshal.prepare", fact_family_prepare_args, &result, &error),
-        "prepare must reject fact_family arguments instead of "
-        "treating fact evidence as reachable work");
-  check(error.find("unknown field: fact_family") != std::string::npos,
+      "\"drive_mode\":\"one_step\","
+      "\"requested_mode\":\"dry_run\"}";
+  check(
+      !execute_marshal_prepare_json(fact_family_prepare_args, &result, &error),
+      "prepare must reject fact_family arguments instead of "
+      "treating fact evidence as reachable work");
+  check(error.find("E_MARSHAL_PREPARE_REQUEST_UNKNOWN_FIELD: fact_family") !=
+            std::string::npos,
         "prepare should expose unknown-field rejection for "
         "fact_family");
 
@@ -5738,7 +6252,6 @@ void test_artifact_prepare_warning_policy_remains_inspection_only() {
       "{\"target_id\":\"forecast_eval_artifact_ready\","
       "\"drive_mode\":\"budgeted\","
       "\"requested_mode\":\"dry_run\","
-      "\"include_runtime_dry_run\":true,"
       "\"include_machine_payload\":true,"
       "\"driver_policy\":{\"max_waves\":3,"
       "\"max_wall_clock_seconds\":5,"
@@ -5746,8 +6259,7 @@ void test_artifact_prepare_warning_policy_remains_inspection_only() {
       "\"stop_on_warning_severity\":\"watch\","
       "\"no_progress_window\":1}}";
   check(
-      marshal::execute_marshal_tool_json("hero.marshal.prepare", prepare_args,
-                                         &result, &error),
+      execute_marshal_prepare_json(prepare_args, &result, &error),
       "budgeted artifact prepare should produce an inspection packet even when "
       "Lattice warnings are present: " +
           error);
@@ -5767,7 +6279,7 @@ void test_artifact_prepare_warning_policy_remains_inspection_only() {
   check(result.find("\"next_safe_action\":\"inspect\"") != std::string::npos &&
             result.find("\"next_safe_actions\":[\"inspect\"]") !=
                 std::string::npos &&
-            result.find("\"tool\":\"hero.marshal.inspect\"") !=
+            result.find("\"tool\":\"hero.marshal.inspect.target\"") !=
                 std::string::npos,
         "artifact warning packets should still route operators to evidence "
         "inspection");
@@ -5809,23 +6321,19 @@ void test_artifact_evidence_panel_with_real_lattice_response() {
       "\"runtime_root\":" +
       marshal::detail::json_quote(runtime_root.string()) +
       ",\"config_path\":\"/cuwacunu/src/config/.config\","
-      "\"protocol_contract_fingerprint\":\"contract_1\","
-      "\"graph_order_fingerprint\":\"graph_1\","
-      "\"source_cursor_token\":\"cursor_1\","
-      "\"mdn_assembly_fingerprint\":\"mdn_1\","
       "\"include_facts\":true}";
-  check(marshal::execute_marshal_tool_json("hero.marshal.inspect", panel_args,
-                                           &result, &error),
+  check(execute_marshal_inspect_json(panel_args, &result, &error),
         "inspect should relay a real Lattice artifact response: " + error);
   check(g_fake_lattice_evaluate_target_count == 1 &&
             g_fake_lattice_scan_facts_count == 1 &&
             g_fake_lattice_fact_lineage_count == 1,
         "real Lattice panel should call evaluate_target, scan_facts, and "
         "fact_lineage");
-  check(g_fake_lattice_tool_name == "hero.lattice.inspect",
+  check(g_fake_lattice_tool_name == "hero.lattice.inspect.facts.lineage",
         "real Lattice panel should finish by inspecting requested fact "
         "lineage");
-  check(result.find("\"tool\":\"hero.marshal.inspect\"") != std::string::npos,
+  check(result.find("\"tool\":\"hero.marshal.inspect.facts.summary\"") !=
+            std::string::npos,
         "real Lattice panel should identify the Marshal tool");
   check(result.find("\"read_only\":true") != std::string::npos &&
             result.find("\"dispatchable\":false") != std::string::npos &&
@@ -5835,7 +6343,7 @@ void test_artifact_evidence_panel_with_real_lattice_response() {
             std::string::npos,
         "real Lattice panel must not claim target satisfaction for Marshal");
   check(result.find("\"target_panel\":{\"source_tool\":\"hero.lattice."
-                    "evaluate\"") != std::string::npos &&
+                    "evaluate.target\"") != std::string::npos &&
             result.find("\"source_operation\":\"target\"") !=
                 std::string::npos &&
             result.find("\"status\":\"blocked\"") != std::string::npos &&
@@ -5876,12 +6384,15 @@ void test_artifact_evidence_panel_with_real_lattice_response() {
               std::string::npos &&
           result.find("\"artifact_fact_preview_digest_count\":1") !=
               std::string::npos &&
-          result.find("\"artifact_fact_preview_digests_require_machine_payload\":"
-                      "true") != std::string::npos &&
+          result.find(
+              "\"artifact_fact_preview_digests_require_machine_payload\":"
+              "true") != std::string::npos &&
           result.find("\"artifact_fact_preview_tools\":[\"hero.lattice."
-                      "inspect\"]") != std::string::npos &&
+                      "inspect.facts.preview.by_digest\"]") !=
+              std::string::npos &&
           result.find("\"artifact_fact_preview_marshal_tools\":[\"hero."
-                      "marshal.inspect\"]") != std::string::npos &&
+                      "marshal.inspect.facts.preview.by_digest\"]") !=
+              std::string::npos &&
           result.find("\"artifact_issue_codes\":[\"baseline_fact_digest_not_"
                       "found\"]") != std::string::npos &&
           result.find("\"artifact_related_fact_integrity_issue_codes\":["
@@ -5949,7 +6460,7 @@ void test_artifact_evidence_panel_with_real_lattice_response() {
                     "digest_not_found\"") != std::string::npos,
         "real Lattice target panel should relay artifact deficit keys");
   check(result.find("\"fact_panel\":{\"source_tool\":\"hero.lattice."
-                    "inspect\"") != std::string::npos &&
+                    "inspect.facts.scan\"") != std::string::npos &&
             result.find("\"source_subject\":\"facts\"") != std::string::npos &&
             result.find("\"source_mode\":\"scan\"") != std::string::npos &&
             result.find("\"fact_family\":\"forecast_eval\"") !=
@@ -5966,9 +6477,9 @@ void test_artifact_evidence_panel_with_real_lattice_response() {
                 std::string::npos,
         "real Lattice fact panel should relay scanner-backed fact integrity");
   check(result.find("\"lineage_panel\":{\"source_tool\":\"hero.lattice."
-                    "inspect\"") != std::string::npos &&
+                    "inspect.facts.lineage\"") != std::string::npos &&
             result.find("\"source_subject\":\"facts\"") != std::string::npos &&
-            result.find("\"source_mode\":\"lineage\"") != std::string::npos &&
+            result.find("\"source_view\":\"lineage\"") != std::string::npos &&
             result.find("\"lineage_rows_are_audit_only\":true") !=
                 std::string::npos &&
             result.find("\"cache_rows_used_for_target_satisfaction\":false") !=
@@ -6346,10 +6857,9 @@ void test_operational_report_summarizes_training_state() {
       ",\"include_machine_payload\":true" + "}";
   std::string result;
   std::string error;
-  check(marshal::execute_marshal_tool_json("hero.marshal.inspect", args,
-                                           &result, &error),
+  check(execute_marshal_inspect_json(args, &result, &error),
         "inspect subject=run training_state mode should produce a report");
-  check(g_fake_lattice_tool_name == "hero.lattice.evaluate",
+  check(g_fake_lattice_tool_name == "hero.lattice.evaluate.targets",
         "operational report should quote Lattice target statuses");
   check(result.find("\"read_only\":true") != std::string::npos,
         "operational report should be read-only");
@@ -6477,10 +6987,9 @@ void test_operational_report_quotes_target_blockers() {
 
   std::string result;
   std::string error;
-  check(marshal::execute_marshal_tool_json("hero.marshal.inspect", args,
-                                           &result, &error),
+  check(execute_marshal_inspect_json(args, &result, &error),
         "inspect subject=run should quote Lattice target blockers");
-  check(g_fake_lattice_tool_name == "hero.lattice.evaluate",
+  check(g_fake_lattice_tool_name == "hero.lattice.evaluate.targets",
         "target blocker view should come from Lattice target inspection");
   check(result.find("\"target_satisfaction_claimed\":false") !=
             std::string::npos,
@@ -6550,12 +7059,14 @@ void test_operational_report_quotes_target_blockers() {
               std::string::npos &&
           result.find("\"artifact_fact_families\":[\"forecast_eval\"]") !=
               std::string::npos &&
-          result.find("\"artifact_fact_preview_refs\":[\"fev_forecast_eva\"]") !=
+          result.find(
+              "\"artifact_fact_preview_refs\":[\"fev_forecast_eva\"]") !=
               std::string::npos &&
           result.find("\"artifact_fact_preview_digest_count\":1") !=
               std::string::npos &&
-          result.find("\"artifact_fact_preview_digests_require_machine_payload\":"
-                      "true") != std::string::npos &&
+          result.find(
+              "\"artifact_fact_preview_digests_require_machine_payload\":"
+              "true") != std::string::npos &&
           result.find("\"artifact_fact_preview_digests\":[") ==
               std::string::npos &&
           result.find("\"artifact_proof_kinds\":[\"forecast_eval_artifact_"
@@ -6652,8 +7163,7 @@ void test_operational_report_quotes_target_blockers() {
       args.substr(0, args.size() - 1U) + ",\"include_machine_payload\":true}";
   result.clear();
   error.clear();
-  check(marshal::execute_marshal_tool_json("hero.marshal.inspect",
-                                           machine_args, &result, &error),
+  check(execute_marshal_inspect_json(machine_args, &result, &error),
         "inspect subject=run should expose full artifact digest details when "
         "machine payload is requested");
   check(result.find("\"machine_payload\":{") != std::string::npos &&
@@ -6688,6 +7198,7 @@ void test_inspect_deterministic_subjects() {
              "component_spawn_id=vic\n"
              "component_spawn_label=vicreg_main\n"
              "component_spawn_fingerprint=vic_fp\n"
+             "component_operator_surface_digest=vic_surface\n"
              "target_component_family_id=wikimyei.representation.encoding."
              "vicreg\n"
              "wave_action=train\n"
@@ -6714,6 +7225,7 @@ void test_inspect_deterministic_subjects() {
              "component_spawn_id=mdn\n"
              "component_spawn_label=mdn_main\n"
              "component_spawn_fingerprint=mdn_fp\n"
+             "component_operator_surface_digest=mdn_surface\n"
              "target_component_family_id=wikimyei.inference.expected_value."
              "mdn\n"
              "wave_action=train\n"
@@ -6745,18 +7257,17 @@ void test_inspect_deterministic_subjects() {
       marshal::detail::json_quote(runtime_root.string()) +
       ",\"config_path\":" + marshal::detail::json_quote(config_path.string()) +
       ",\"include_machine_payload\":true}";
-  check(marshal::execute_marshal_tool_json("hero.marshal.inspect", target_args,
-                                           &result, &error),
+  check(execute_marshal_inspect_json(target_args, &result, &error),
         "inspect subject=target should query Lattice target deficit");
-  check(g_fake_lattice_tool_name == "hero.lattice.evaluate",
+  check(g_fake_lattice_tool_name == "hero.lattice.evaluate.deficit",
         "target subject should use Lattice target_deficit");
   check(result.find("\"subject\":\"target\"") != std::string::npos &&
             result.find("\"target_panel\":{") != std::string::npos,
         "target subject should return a target panel");
   check(result.find("\"target_status\":\"metric_failed\"") != std::string::npos,
         "target subject should expose Lattice target status");
-  check(result.find("\"target_status_source\":\"hero.lattice.evaluate\"") !=
-                std::string::npos &&
+  check(result.find("\"target_status_source\":\"hero.lattice.evaluate."
+                    "deficit\"") != std::string::npos &&
             result.find("\"source_operation\":\"deficit\"") !=
                 std::string::npos,
         "target subject should mark the Lattice status source");
@@ -6781,9 +7292,8 @@ void test_inspect_deterministic_subjects() {
       "}";
   result.clear();
   error.clear();
-  check(marshal::execute_marshal_tool_json("hero.marshal.inspect",
-                                           satisfied_no_certificate_args,
-                                           &result, &error),
+  check(execute_marshal_inspect_json(satisfied_no_certificate_args, &result,
+                                     &error),
         "satisfied target without certificate metadata should still report");
   check(result.find("\"target_status\":\"satisfied\"") != std::string::npos,
         "satisfied target status should be quoted from Lattice");
@@ -6804,8 +7314,7 @@ void test_inspect_deterministic_subjects() {
       fake_lattice_malformed_target_deficit_callback);
   result.clear();
   error.clear();
-  check(!marshal::execute_marshal_tool_json("hero.marshal.inspect", target_args,
-                                            &result, &error),
+  check(!execute_marshal_inspect_json(target_args, &result, &error),
         "malformed Lattice target_deficit payload should fail closed");
   check(error.find("expected JSON object") != std::string::npos,
         "malformed target_deficit failure should explain JSON object shape");
@@ -6815,21 +7324,16 @@ void test_inspect_deterministic_subjects() {
       "{\"subject\":\"protocol\",\"runtime_root\":" +
       marshal::detail::json_quote(runtime_root.string()) +
       ",\"config_path\":" + marshal::detail::json_quote(config_path.string()) +
-      ",\"protocol_contract_fingerprint\":\"pc\","
-      "\"graph_order_fingerprint\":\"go\","
-      "\"source_cursor_token\":\"cursor\","
-      "\"vicreg_assembly_fingerprint\":\"vic\","
-      "\"mdn_assembly_fingerprint\":\"mdn\"}";
+      "}";
   result.clear();
   error.clear();
-  check(marshal::execute_marshal_tool_json("hero.marshal.inspect",
-                                           protocol_args, &result, &error),
+  check(execute_marshal_inspect_json(protocol_args, &result, &error),
         "inspect subject=protocol should inspect identity evidence");
   check(result.find("\"subject\":\"protocol\"") != std::string::npos &&
             result.find("\"issue_count\":0") != std::string::npos,
-        "protocol subject should report matched identity evidence");
-  check(result.find("\"status\":\"matched\"") != std::string::npos,
-        "protocol subject should mark expected observed fields as matched");
+        "protocol subject should report observed identity evidence");
+  check(result.find("\"status\":\"observed\"") != std::string::npos,
+        "protocol subject should distinguish observed identity evidence");
   check(result.find("\"expectation_policy\":\"observed_ok_report\"") !=
             std::string::npos,
         "protocol subject should default to report semantics");
@@ -6854,13 +7358,15 @@ void test_inspect_deterministic_subjects() {
       "\"mdn_assembly_fingerprint\":\"mdn\"}";
   result.clear();
   error.clear();
-  check(marshal::execute_marshal_tool_json(
-            "hero.marshal.inspect", protocol_strict_args, &result, &error),
+  check(execute_marshal_inspect_json(protocol_strict_args, &result, &error),
         "protocol strict mode should accept complete matching expected "
         "identity");
   check(result.find("\"expectation_policy\":\"strict_expected_identity\"") !=
             std::string::npos,
         "strict protocol subject should declare strict expectation policy");
+  check(result.find("\"status\":\"matched\"") != std::string::npos,
+        "strict protocol subject should mark expected observed fields as "
+        "matched");
   check(result.find("\"identity_verified\":true") != std::string::npos,
         "strict protocol subject should verify complete matching identity");
 
@@ -6871,9 +7377,8 @@ void test_inspect_deterministic_subjects() {
       "}";
   result.clear();
   error.clear();
-  check(marshal::execute_marshal_tool_json("hero.marshal.inspect",
-                                           protocol_observed_only_args, &result,
-                                           &error),
+  check(execute_marshal_inspect_json(protocol_observed_only_args, &result,
+                                     &error),
         "protocol report mode should allow observed-only identity evidence");
   check(result.find("\"issue_count\":0") != std::string::npos,
         "observed-only report mode should not invent a mismatch");
@@ -6884,26 +7389,29 @@ void test_inspect_deterministic_subjects() {
 
   result.clear();
   error.clear();
-  check(!marshal::execute_marshal_tool_json(
-            "hero.marshal.inspect",
+  check(!execute_marshal_inspect_json(
             "{\"subject\":\"protocol\",\"identity_mode\":\"strict\","
             "\"runtime_root\":" +
                 marshal::detail::json_quote(runtime_root.string()) + "}",
             &result, &error),
         "strict protocol mode should require explicit expected identity");
-  check(error.find("identity_mode=strict requires expected identity fields") !=
+  check(error.find("protocol.strict requires expected identity fields") !=
             std::string::npos,
         "strict protocol missing expectations should fail clearly");
 
   const std::string protocol_mismatch_args =
-      "{\"subject\":\"protocol\",\"runtime_root\":" +
+      "{\"subject\":\"protocol\",\"identity_mode\":\"strict\",\"runtime_"
+      "root\":" +
       marshal::detail::json_quote(runtime_root.string()) +
       ",\"config_path\":" + marshal::detail::json_quote(config_path.string()) +
-      ",\"protocol_contract_fingerprint\":\"wrong\"}";
+      ",\"protocol_contract_fingerprint\":\"wrong\","
+      "\"graph_order_fingerprint\":\"go\","
+      "\"source_cursor_token\":\"cursor\","
+      "\"vicreg_assembly_fingerprint\":\"vic\","
+      "\"mdn_assembly_fingerprint\":\"mdn\"}";
   result.clear();
   error.clear();
-  check(marshal::execute_marshal_tool_json(
-            "hero.marshal.inspect", protocol_mismatch_args, &result, &error),
+  check(execute_marshal_inspect_json(protocol_mismatch_args, &result, &error),
         "protocol mismatch should return a report with issues");
   check(result.find("identity_mismatch:protocol_contract_fingerprint") !=
             std::string::npos,
@@ -6913,16 +7421,17 @@ void test_inspect_deterministic_subjects() {
       "{\"subject\":\"spawn\",\"runtime_root\":" +
       marshal::detail::json_quote(runtime_root.string()) +
       ",\"config_path\":" + marshal::detail::json_quote(config_path.string()) +
-      ",\"spawn_id\":\"mdn\"}";
+      ",\"component_spawn_id\":\"mdn\"}";
   result.clear();
   error.clear();
-  check(marshal::execute_marshal_tool_json("hero.marshal.inspect", spawn_args,
-                                           &result, &error),
+  check(execute_marshal_inspect_json(spawn_args, &result, &error),
         "inspect subject=spawn should inspect spawn evidence");
   check(result.find("\"subject\":\"spawn\"") != std::string::npos &&
             result.find("\"match_count\":1") != std::string::npos &&
             result.find("\"spawn_fingerprints\":[\"mdn_fp\"]") !=
-                std::string::npos,
+                std::string::npos &&
+            result.find("\"component_operator_surface_digests\":[\"mdn_"
+                        "surface\"]") != std::string::npos,
         "spawn subject should match the requested spawn");
   check(result.find("\"evidence_scope\":\"runtime_jobs_only\"") !=
                 std::string::npos &&
@@ -6938,8 +7447,7 @@ void test_inspect_deterministic_subjects() {
       ",\"component_spawn_fingerprint\":\"mdn_fp\"}";
   result.clear();
   error.clear();
-  check(marshal::execute_marshal_tool_json(
-            "hero.marshal.inspect", spawn_fingerprint_args, &result, &error),
+  check(execute_marshal_inspect_json(spawn_fingerprint_args, &result, &error),
         "spawn subject should support fingerprint-only lookup");
   check(result.find("\"query_match_count\":1") != std::string::npos,
         "spawn fingerprint lookup should report query match count");
@@ -6948,11 +7456,10 @@ void test_inspect_deterministic_subjects() {
       "{\"subject\":\"spawn\",\"runtime_root\":" +
       marshal::detail::json_quote(runtime_root.string()) +
       ",\"config_path\":" + marshal::detail::json_quote(config_path.string()) +
-      ",\"spawn_id\":\"missing_spawn\"}";
+      ",\"component_spawn_id\":\"missing_spawn\"}";
   result.clear();
   error.clear();
-  check(marshal::execute_marshal_tool_json("hero.marshal.inspect",
-                                           missing_spawn_args, &result, &error),
+  check(execute_marshal_inspect_json(missing_spawn_args, &result, &error),
         "spawn no-match should produce a non-authoritative observation packet");
   check(result.find("\"query_match_count\":0") != std::string::npos &&
             result.find("missing_spawn_evidence") != std::string::npos,
@@ -6965,13 +7472,14 @@ void test_inspect_deterministic_subjects() {
       ",\"component_family_id\":\"wikimyei.inference.expected_value.mdn\"}";
   result.clear();
   error.clear();
-  check(marshal::execute_marshal_tool_json("hero.marshal.inspect",
-                                           component_args, &result, &error),
+  check(execute_marshal_inspect_json(component_args, &result, &error),
         "inspect subject=component should inspect component evidence");
   check(result.find("\"subject\":\"component\"") != std::string::npos &&
             result.find("\"component_family_id\":\"wikimyei.inference."
                         "expected_value.mdn\"") != std::string::npos &&
-            result.find("\"spawn_ids\":[\"mdn\"]") != std::string::npos,
+            result.find("\"spawn_ids\":[\"mdn\"]") != std::string::npos &&
+            result.find("\"component_operator_surface_digests\":[\"mdn_"
+                        "surface\"]") != std::string::npos,
         "component subject should group matching component jobs by spawn");
   check(result.find("\"evidence_scope\":\"runtime_jobs_only\"") !=
                 std::string::npos &&
@@ -6981,56 +7489,70 @@ void test_inspect_deterministic_subjects() {
         "component subject should declare non-proof Runtime grouping "
         "semantics");
 
-  check(!marshal::execute_marshal_tool_json(
-            "hero.marshal.inspect", R"({"subject":"target"})", &result, &error),
-        "target subject should require target_id");
-  check(error.find("subject=target requires target_id") != std::string::npos,
+  check(
+      !execute_marshal_inspect_json(R"({"subject":"target"})", &result, &error),
+      "target subject should require target_id");
+  check(error.find("hero.marshal.inspect.target requires target_id") !=
+            std::string::npos,
         "missing target_id should fail explicitly");
-  check(!marshal::execute_marshal_tool_json(
-            "hero.marshal.inspect", R"({"subject":"spawn"})", &result, &error),
-        "spawn subject should require spawn identity");
-  check(error.find("subject=spawn requires") != std::string::npos,
+  check(
+      !execute_marshal_inspect_json(R"({"subject":"spawn"})", &result, &error),
+      "spawn subject should require spawn identity");
+  check(error.find("hero.marshal.inspect.spawn.* requires") !=
+            std::string::npos,
         "missing spawn identity should fail explicitly");
-  check(!marshal::execute_marshal_tool_json("hero.marshal.inspect",
-                                            R"({"subject":"component"})",
-                                            &result, &error),
+  check(!execute_marshal_inspect_json(R"({"subject":"component"})", &result,
+                                      &error),
         "component subject should require component identity");
-  check(error.find("subject=component requires") != std::string::npos,
+  check(error.find("hero.marshal.inspect.component requires") !=
+            std::string::npos,
         "missing component identity should fail explicitly");
   check(
-      !marshal::execute_marshal_tool_json(
-          "hero.marshal.inspect",
+      !execute_marshal_inspect_json(
           R"({"subject":"target","target_id":"lookup_target","baseline_job_id":"x"})",
           &result, &error),
       "target subject should reject run-only fields");
-  check(error.find("subject=target unknown field: baseline_job_id") !=
-            std::string::npos,
+  check(error.find("hero.marshal.inspect.target unknown field: "
+                   "baseline_job_id") != std::string::npos,
         "target subject run-only field rejection should be explicit");
-  check(!marshal::execute_marshal_tool_json(
-            "hero.marshal.inspect",
+  check(!execute_marshal_inspect_json(
             R"({"subject":"protocol","spawn_id":"mdn"})", &result, &error),
         "protocol subject should reject spawn-only fields");
-  check(error.find("subject=protocol unknown field: spawn_id") !=
-            std::string::npos,
+  check(error.find("hero.marshal.inspect.protocol.report unknown field: "
+                   "spawn_id") != std::string::npos,
         "protocol subject spawn-only field rejection should be explicit");
   check(
-      !marshal::execute_marshal_tool_json(
-          "hero.marshal.inspect",
-          R"({"subject":"spawn","target_id":"lookup_target","spawn_id":"mdn"})",
+      !execute_marshal_inspect_json(
+          R"({"subject":"spawn","target_id":"lookup_target","component_spawn_id":"mdn"})",
           &result, &error),
       "spawn subject should reject target-only fields");
-  check(error.find("subject=spawn unknown field: target_id") !=
-            std::string::npos,
+  check(error.find("hero.marshal.inspect.spawn.by_id unknown field: "
+                   "target_id") != std::string::npos,
         "spawn subject target-only field rejection should be explicit");
   check(
-      !marshal::execute_marshal_tool_json(
-          "hero.marshal.inspect",
+      !execute_marshal_inspect_json(
           R"({"subject":"component","component_family_id":"x","protocol_contract_fingerprint":"pc"})",
           &result, &error),
       "component subject should reject protocol-only fields");
-  check(error.find("subject=component unknown field: "
+  check(error.find("hero.marshal.inspect.component unknown field: "
                    "protocol_contract_fingerprint") != std::string::npos,
         "component subject protocol-only field rejection should be explicit");
+  check(
+      !execute_marshal_inspect_json(
+          R"({"subject":"target","target_id":"lookup_target","protocol_contract_fingerprint":"pc"})",
+          &result, &error),
+      "target subject should reject retired identity filters");
+  check(error.find("hero.marshal.inspect.target unknown field: "
+                   "protocol_contract_fingerprint") != std::string::npos,
+        "target subject retired identity rejection should be explicit");
+  check(
+      !execute_marshal_inspect_json(
+          R"({"subject":"facts","target_id":"lookup_target","source_cursor_token":"cursor"})",
+          &result, &error),
+      "facts subject should reject retired identity filters");
+  check(error.find("hero.marshal.inspect.facts.summary unknown field: "
+                   "source_cursor_token") != std::string::npos,
+        "facts subject retired identity rejection should be explicit");
 
   std::filesystem::remove_all(root);
 }
@@ -7226,8 +7748,7 @@ void test_compare_runs_reports_descriptive_deltas() {
       ",\"include_machine_payload\":true}";
   std::string result;
   std::string error;
-  check(marshal::execute_marshal_tool_json("hero.marshal.inspect", args,
-                                           &result, &error),
+  check(execute_marshal_inspect_json(args, &result, &error),
         "inspect subject=run compare mode should produce a read-only "
         "comparison");
   check(result.find("\"read_only\":true") != std::string::npos,
@@ -7299,11 +7820,11 @@ void test_compare_runs_reports_descriptive_deltas() {
       ",\"include_machine_payload\":false}";
   result.clear();
   error.clear();
-  check(marshal::execute_marshal_tool_json("hero.marshal.inspect", inspect_args,
-                                           &result, &error),
+  check(execute_marshal_inspect_json(inspect_args, &result, &error),
         "inspect subject=run mode=compare should wrap descriptive run "
         "comparison");
-  check(result.find("\"tool\":\"hero.marshal.inspect\"") != std::string::npos,
+  check(result.find("\"tool\":\"hero.marshal.inspect.run.compare\"") !=
+            std::string::npos,
         "evaluate should identify the high-level Marshal report tool");
   check(result.find("\"subject\":\"run\"") != std::string::npos,
         "evaluate should identify the run subject");
@@ -7383,11 +7904,11 @@ void test_operational_report_missing_eval_steps_is_not_mutation_evidence() {
       "channel_inference_mdn\"}";
   std::string result;
   std::string error;
-  check(marshal::execute_marshal_tool_json("hero.marshal.inspect", inspect_args,
-                                           &result, &error),
+  check(execute_marshal_inspect_json(inspect_args, &result, &error),
         "inspect subject=run mode=single_job should wrap the operational "
         "report");
-  check(result.find("\"tool\":\"hero.marshal.inspect\"") != std::string::npos,
+  check(result.find("\"tool\":\"hero.marshal.inspect.run.single_job\"") !=
+            std::string::npos,
         "evaluate single-job mode should identify the high-level tool");
   check(result.find("\"subject\":\"run\"") != std::string::npos,
         "evaluate should identify the run subject");
@@ -7445,7 +7966,7 @@ int main() {
   test_prepare_target_unresolved_model_state();
   test_prepare_target_resolved_ready_for_dry_run();
   test_prepare_dry_run_calls_runtime_dry_run();
-  test_prepare_rejects_legacy_alias_and_reserved_intents();
+  test_prepare_rejects_legacy_alias_and_retired_route_fields();
   test_prepare_wraps_target_dispatch();
   test_prepare_target_rejects_untrusted_resolution();
   test_m15_budgeted_prepare_target_dry_run_driver();

@@ -131,6 +131,7 @@ struct fixture_paths_t {
   std::filesystem::path dir{};
   std::filesystem::path config{};
   std::filesystem::path protocol_dsl{};
+  std::filesystem::path cursor_dsl{};
   std::filesystem::path wave_dsl{};
   std::filesystem::path vicreg_jkimyei{};
   std::filesystem::path mtf_jkimyei{};
@@ -201,7 +202,7 @@ fixture_paths_t make_config_fixture(
     const std::string &target = "wikimyei.inference.expected_value.mdn",
     const std::string &wave_mode = "run | debug",
     const std::string &protocol_id_override = {},
-    const std::string &compatible_protocols_override = {}) {
+    const std::string &wave_protocol_override = {}) {
   fixture_paths_t out{};
   out.dir = make_tmp_dir(label);
   const auto btc_csv = out.dir / "BTCUSDT.csv";
@@ -217,6 +218,7 @@ fixture_paths_t make_config_fixture(
   const auto channels_dsl = out.dir / "ujcamei.source.retrieval.channels.dsl";
   const auto graph_dsl = out.dir / "kikijyeba.topology.graph.dsl";
   out.protocol_dsl = out.dir / "kikijyeba.protocol.dsl";
+  out.cursor_dsl = out.dir / "ujcamei.source.cursor.dsl";
   out.wave_dsl = out.dir / "hero.runtime.wave.dsl";
   const auto vicreg_dsl = out.dir / "wikimyei.representation.vicreg.dsl";
   const auto vicreg_net = out.dir / "wikimyei.representation.vicreg.net";
@@ -247,9 +249,6 @@ fixture_paths_t make_config_fixture(
       protocol_id_override.empty()
           ? (target_is_mtf ? std::string{"cwu_02v"} : std::string{"cwu_01v"})
           : protocol_id_override;
-  const std::string compatible_protocols = compatible_protocols_override.empty()
-                                               ? protocol_id
-                                               : compatible_protocols_override;
   const bool protocol_uses_mtf = protocol_id == "cwu_02v";
   const std::string protocol_representation =
       protocol_uses_mtf ? "wikimyei.representation.encoding.mtf_jepa_mae_vicreg"
@@ -341,20 +340,27 @@ fixture_paths_t make_config_fixture(
                         "\\----------------------------------------------------"
                         "-------------------/\n");
 
-  write_text(out.wave_dsl, std::string("WAVE_SETTINGS {\n"
-                                       "  WAVE_ID = runtime_test_wave;\n"
-                                       "  COMPATIBLE_PROTOCOLS = ") +
-                               compatible_protocols +
-                               ";\n"
-                               "  TARGET = " +
-                               target +
-                               ";\n"
-                               "  MODE = " +
-                               wave_mode +
-                               ";\n"
-                               "  SOURCE_CURSOR_KIND = graph_anchor;\n"
-                               "  SOURCE_CURSOR_SCOPE = wave_batch;\n" +
-                               wave_range + "};\n");
+  write_text(out.wave_dsl,
+             std::string("WAVE_SETTINGS {\n"
+                         "  WAVE_ID = runtime_test_wave;\n"
+                         "  PROTOCOL = ") +
+                 (wave_protocol_override.empty() ? protocol_id
+                                                 : wave_protocol_override) +
+                 ";\n"
+                 "  TARGET = " +
+                 target +
+                 ";\n"
+                 "  MODE = " +
+                 wave_mode +
+                 ";\n"
+                 "  SOURCE_CURSOR_ID = runtime_test_cursor;\n"
+                 "};\n");
+  write_text(out.cursor_dsl,
+             std::string("UJCAMEI_SOURCE_CURSOR {\n"
+                         "  CURSOR_ID = runtime_test_cursor;\n"
+                         "  SOURCE_CURSOR_KIND = graph_anchor;\n"
+                         "  SOURCE_CURSOR_SCOPE = wave_batch;\n") +
+                 wave_range + "};\n");
 
   write_text(out.protocol_dsl,
              "PROTOCOL {\n"
@@ -371,6 +377,8 @@ fixture_paths_t make_config_fixture(
                  "  OBSERVER = wikimyei.observer.belief;\n"
                  "  ALLOCATION_POLICY = "
                  "wikimyei.policy.portfolio.spot_distributional_utility;\n"
+                 "  POLICY_COMPONENT = "
+                 "wikimyei.policy.portfolio.graph_node_allocation;\n"
                  "  REPRESENTATION_CONTRACT = "
                  "graph_order.channel_node_representation.v1;\n"
                  "};\n");
@@ -563,6 +571,11 @@ fixture_paths_t make_config_fixture(
           "ujcamei_source_retrieval_channels_dsl_path = " +
           channels_dsl.string() +
           "\n"
+          "ujcamei_source_cursor_dsl_bnf_path = "
+          "/cuwacunu/src/config/grammar/ujcamei.source.cursor.dsl.bnf\n"
+          "ujcamei_source_cursor_dsl_path = " +
+          out.cursor_dsl.string() +
+          "\n"
           "\n"
           "[KIKIJYEBA]\n"
           "kikijyeba_protocol_dsl_bnf_path = "
@@ -709,15 +722,15 @@ void configure_channel_mdn_strict_eval(
 
 void write_fixture_wave(const fixture_paths_t &fixture,
                         const std::string &wave_id,
-                        const std::string &compatible_protocols,
+                        const std::string &protocol_id,
                         const std::string &target, const std::string &mode,
                         const std::string &wave_range) {
   write_text(fixture.wave_dsl, std::string("WAVE_SETTINGS {\n"
                                            "  WAVE_ID = ") +
                                    wave_id +
                                    ";\n"
-                                   "  COMPATIBLE_PROTOCOLS = " +
-                                   compatible_protocols +
+                                   "  PROTOCOL = " +
+                                   protocol_id +
                                    ";\n"
                                    "  TARGET = " +
                                    target +
@@ -725,9 +738,14 @@ void write_fixture_wave(const fixture_paths_t &fixture,
                                    "  MODE = " +
                                    mode +
                                    ";\n"
-                                   "  SOURCE_CURSOR_KIND = graph_anchor;\n"
-                                   "  SOURCE_CURSOR_SCOPE = wave_batch;\n" +
-                                   wave_range + "};\n");
+                                   "  SOURCE_CURSOR_ID = runtime_test_cursor;\n"
+                                   "};\n");
+  write_text(fixture.cursor_dsl,
+             std::string("UJCAMEI_SOURCE_CURSOR {\n"
+                         "  CURSOR_ID = runtime_test_cursor;\n"
+                         "  SOURCE_CURSOR_KIND = graph_anchor;\n"
+                         "  SOURCE_CURSOR_SCOPE = wave_batch;\n") +
+                 wave_range + "};\n");
 }
 
 void rewrite_fixture_protocol(const fixture_paths_t &fixture,
@@ -748,6 +766,8 @@ void rewrite_fixture_protocol(const fixture_paths_t &fixture,
                  "  OBSERVER = wikimyei.observer.belief;\n"
                  "  ALLOCATION_POLICY = "
                  "wikimyei.policy.portfolio.spot_distributional_utility;\n"
+                 "  POLICY_COMPONENT = "
+                 "wikimyei.policy.portfolio.graph_node_allocation;\n"
                  "  REPRESENTATION_CONTRACT = "
                  "graph_order.channel_node_representation.v1;\n"
                  "};\n");
@@ -785,6 +805,8 @@ void test_component_spawn_identity_is_protocol_not_wave_scoped() {
   const auto run_a = run_dry_job_in_fixture_runtime(fixture, "wave_a");
   check(run_a.manifest.component_spawn_schema == "kikijyeba.component_spawn.v2",
         "manifest records component spawn v2 schema");
+  check(!run_a.manifest.component_operator_surface_digest.empty(),
+        "component wave records operator surface digest");
 
   write_fixture_wave(fixture, "runtime_test_wave_eval_later", "cwu_01v",
                      "wikimyei.inference.expected_value.mdn", "run | debug",
@@ -803,6 +825,9 @@ void test_component_spawn_identity_is_protocol_not_wave_scoped() {
         "different wave ranges keep the same component spawn fingerprint");
   check(run_a.manifest.component_spawn_id == run_b.manifest.component_spawn_id,
         "different wave ranges keep the same scoped component spawn id");
+  check(run_a.manifest.component_operator_surface_digest !=
+            run_b.manifest.component_operator_surface_digest,
+        "different wave ranges produce different component operator surfaces");
 
   write_fixture_wave(fixture, "runtime_test_wave_train_same_component",
                      "cwu_01v", "wikimyei.inference.expected_value.mdn",
@@ -815,6 +840,9 @@ void test_component_spawn_identity_is_protocol_not_wave_scoped() {
   check(run_a.manifest.component_spawn_fingerprint ==
             train_c.manifest.component_spawn_fingerprint,
         "train/run mode keeps the same component spawn fingerprint");
+  check(run_a.manifest.component_operator_surface_digest !=
+            train_c.manifest.component_operator_surface_digest,
+        "train/run mode changes the component operator surface");
 
   rewrite_fixture_protocol(
       fixture, "cwu_02v",
@@ -831,6 +859,10 @@ void test_component_spawn_identity_is_protocol_not_wave_scoped() {
   check(run_a.manifest.component_spawn_fingerprint !=
             mtf_protocol.manifest.component_spawn_fingerprint,
         "different protocol versions produce different component spawns");
+  check(run_a.manifest.component_operator_surface_digest !=
+            mtf_protocol.manifest.component_operator_surface_digest,
+        "different protocol versions produce different component operator "
+        "surfaces");
 }
 
 void test_inference_dry_run_writes_manifest_and_state() {
@@ -863,6 +895,8 @@ void test_inference_dry_run_writes_manifest_and_state() {
         "manifest records component family id");
   check(!result.manifest.component_spawn_fingerprint.empty(),
         "manifest records component spawn fingerprint");
+  check(!result.manifest.component_operator_surface_digest.empty(),
+        "manifest records component operator surface digest");
   check(!result.manifest.component_spawn_id.empty(),
         "manifest records scoped component spawn id");
   check(result.manifest.component_spawn_label ==
@@ -1109,6 +1143,11 @@ void test_inference_dry_run_writes_manifest_and_state() {
             "component_spawn_fingerprint=" +
             result.manifest.component_spawn_fingerprint) != std::string::npos,
         "dry-run exposure fact records component spawn fingerprint");
+  check(dry_run_exposure_text.find(
+            "component_operator_surface_digest=" +
+            result.manifest.component_operator_surface_digest) !=
+            std::string::npos,
+        "dry-run exposure fact records component operator surface digest");
   check(dry_run_exposure_text.find("runtime_handoff_digest=" +
                                    options.runtime_handoff_digest) !=
             std::string::npos,
@@ -1118,6 +1157,11 @@ void test_inference_dry_run_writes_manifest_and_state() {
                                  options.runtime_handoff_id) !=
             std::string::npos,
         "Runtime terminal fact records Runtime handoff id");
+  check(dry_run_result_fact.find(
+            "component_operator_surface_digest=" +
+            result.manifest.component_operator_surface_digest) !=
+            std::string::npos,
+        "Runtime terminal fact records component operator surface digest");
   check(dry_run_result_fact.find("runtime_handoff_digest=" +
                                  options.runtime_handoff_digest) !=
             std::string::npos,
@@ -1469,8 +1513,8 @@ void test_wave_profile_protocol_mismatch_fails() {
     (void)runtime::run_graph_first_job<Kline>(fixture.config.string(), options);
   } catch (const std::exception &ex) {
     threw = std::string(ex.what()).find(
-                "is not declared by wave COMPATIBLE_PROTOCOLS") !=
-            std::string::npos;
+                "WAVE_SETTINGS.PROTOCOL cwu_02v does not match active "
+                "protocol cwu_01v") != std::string::npos;
   }
   check(threw, "wave profile incompatible protocol fails closed");
 }
@@ -2363,7 +2407,8 @@ void test_strict_channel_baseline_runs_through_runtime() {
   exposure::lattice_policy_training_fact_t policy_training_fact{};
   exposure::populate_artifact_fact_identity(policy_training_fact,
                                             eval_parent_exposure);
-  policy_training_fact.target_component_family_id = "wikimyei.policy.trainable";
+  policy_training_fact.target_component_family_id =
+      "wikimyei.policy.portfolio.graph_node_allocation";
   policy_training_fact.policy_id =
       "wikimyei.policy.portfolio.graph_node_allocation.v1";
   policy_training_fact.policy_kind = "noop_policy_training.v1";
@@ -2455,7 +2500,8 @@ void test_strict_channel_baseline_runs_through_runtime() {
         "strict baseline eval scan sees durable pre-PPO policy-training fact");
   check(pre_ppo_scan.ledger.policy_training_facts()
                 .front()
-                .target_component_family_id == "wikimyei.policy.trainable",
+                .target_component_family_id ==
+            "wikimyei.policy.portfolio.graph_node_allocation",
         "strict baseline policy-training fact preserves policy component "
         "identity");
   const auto policy_training_issues = exposure::policy_training_fact_issues(
@@ -2536,7 +2582,7 @@ LATTICE_TARGET {
   TARGET_ID = emitted_policy_training_artifact_ready;
   TARGET_CLASS = artifact_readiness;
   SUBJECT_FACT_FAMILY = policy_training;
-  SUBJECT_COMPONENT = wikimyei.policy.trainable;
+  SUBJECT_COMPONENT = wikimyei.policy.portfolio.graph_node_allocation;
   PROTOCOL_ID = )DSL" + eval_result.manifest.protocol_id +
                                               R"DSL(;
   SOURCE_RANGE = anchor_index;

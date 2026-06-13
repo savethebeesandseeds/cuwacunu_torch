@@ -377,7 +377,7 @@ make_data_symbolic_analytics_report(
     const data_source_analytics_report_t &report,
     const data_analytics_options_t &options, std::string_view source_label = {},
     const evaluation_report_identity_t &report_identity = {},
-    std::string_view contract_hash = {});
+    std::string_view contract_fingerprint = {});
 
 [[nodiscard]] std::string
 sequence_symbolic_analytics_to_latent_lineage_state_text(
@@ -390,7 +390,7 @@ sequence_symbolic_analytics_to_latent_lineage_state_text(
     const data_symbolic_analytics_report_t &report,
     std::string_view source_label = {},
     const evaluation_report_identity_t &report_identity = {},
-    std::string_view contract_hash = {});
+    std::string_view contract_fingerprint = {});
 
 [[nodiscard]] std::string sequence_symbolic_analytics_to_pretty_text(
     const sequence_symbolic_analytics_report_t &report,
@@ -416,7 +416,7 @@ sequence_symbolic_analytics_to_latent_lineage_state_text(
     const std::filesystem::path &output_file,
     std::string_view source_label = {}, std::string *error = nullptr,
     const evaluation_report_identity_t &report_identity = {},
-    std::string_view contract_hash = {});
+    std::string_view contract_fingerprint = {});
 
 [[nodiscard]] bool write_sequence_symbolic_analytics_file(
     const sequence_symbolic_analytics_report_t &report,
@@ -430,7 +430,7 @@ sequence_symbolic_analytics_to_latent_lineage_state_text(
     const std::filesystem::path &output_file,
     std::string_view source_label = {}, std::string *error = nullptr,
     const evaluation_report_identity_t &report_identity = {},
-    std::string_view contract_hash = {});
+    std::string_view contract_fingerprint = {});
 
 [[nodiscard]] std::string
 extract_sequence_analytics_kv_schema(std::string_view payload);
@@ -458,19 +458,19 @@ is_supported_data_symbolic_analytics_schema(std::string_view schema);
 [[nodiscard]] std::filesystem::path source_data_analytics_root_directory();
 
 [[nodiscard]] std::filesystem::path
-source_data_analytics_contract_directory(std::string_view contract_hash);
+source_data_analytics_contract_directory(std::string_view contract_fingerprint);
 
 [[nodiscard]] std::filesystem::path source_data_analytics_context_directory(
-    std::string_view contract_hash, std::string_view canonical_path,
+    std::string_view contract_fingerprint, std::string_view canonical_path,
     std::string_view source_runtime_cursor = {});
 
 [[nodiscard]] std::filesystem::path source_data_analytics_latest_file_path(
-    std::string_view contract_hash, std::string_view canonical_path,
+    std::string_view contract_fingerprint, std::string_view canonical_path,
     std::string_view source_runtime_cursor = {});
 
 [[nodiscard]] std::filesystem::path
 source_data_analytics_symbolic_latest_file_path(
-    std::string_view contract_hash, std::string_view canonical_path,
+    std::string_view contract_fingerprint, std::string_view canonical_path,
     std::string_view source_runtime_cursor = {});
 
 } // namespace evaluation

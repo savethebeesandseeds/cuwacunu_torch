@@ -3,9 +3,10 @@ PRIMARY_VALIDATORS = src/include/hero/marshal_hero/hero_marshal.h
 
 DESCRIPTION
   Marshal Hero v0 is a deterministic coordination and explanation surface over
-  Lattice target state and Runtime policy/wave evidence. Runtime executes and
-  writes evidence. Lattice proves target satisfaction. Marshal prepares bounded
-  handoffs and explains state.
+  Lattice target state, Environment admission evidence, and Runtime policy/wave
+  evidence. Environment owns environment-admission and rollout evidence.
+  Runtime executes low-level jobs. Lattice proves target satisfaction. Marshal
+  prepares bounded handoffs and explains state.
 
 KEYS
   protocol_layer
@@ -14,20 +15,82 @@ KEYS
 
 TOOLS
   hero.marshal.status
-  hero.marshal.prepare
+  hero.marshal.prepare.train.one_step
+  hero.marshal.prepare.train.budgeted
+  hero.marshal.prepare.evaluate.one_step
+  hero.marshal.prepare.evaluate.budgeted
   hero.marshal.rollout
-  hero.marshal.inspect
+  hero.marshal.inspect.run.latest_chain
+  hero.marshal.inspect.run.training_state
+  hero.marshal.inspect.run.single_job
+  hero.marshal.inspect.run.compare
+  hero.marshal.inspect.target
+  hero.marshal.inspect.protocol.report
+  hero.marshal.inspect.protocol.strict
+  hero.marshal.inspect.spawn.by_id
+  hero.marshal.inspect.spawn.by_label
+  hero.marshal.inspect.spawn.by_registry
+  hero.marshal.inspect.spawn.by_fingerprint
+  hero.marshal.inspect.spawn.by_job
+  hero.marshal.inspect.component
+  hero.marshal.inspect.facts.summary
+  hero.marshal.inspect.facts.lineage
+  hero.marshal.inspect.facts.preview
+  hero.marshal.inspect.facts.preview.by_digest
+  hero.marshal.inspect.facts.preview.by_digest_prefix
+  hero.marshal.inspect.facts.preview.by_index
+
+PREPARE_ARGUMENTS
+  hero.marshal.prepare.train.one_step, hero.marshal.prepare.train.budgeted,
+  hero.marshal.prepare.evaluate.one_step, and
+  hero.marshal.prepare.evaluate.budgeted public arguments are target_id, mode,
+  args_path, and args_digest. Target-pursuit packet fields such as
+  Runtime/config roots, driver_policy, resume_ledger, Lattice source timestamp,
+  recommendation attempt count, identity fingerprints, context, plan-input
+  materialization flags, machine payload flag, Runtime policy/wave snapshots,
+  and timeout belong in the prepare request file. intent and drive_mode are
+  encoded in the split tool name and are not request-file arguments. Digest is
+  optional for mode=plan and required for mode=dry_run or mode=execute.
+
+INSPECT_ARGUMENTS
+  hero.marshal.inspect.* tools expose direct selectors on the concrete tool.
+  The public split surfaces are inspect.run.latest_chain,
+  inspect.run.training_state, inspect.run.single_job, inspect.run.compare,
+  inspect.target, inspect.protocol.report, inspect.protocol.strict,
+  inspect.spawn.by_id, inspect.spawn.by_label, inspect.spawn.by_registry,
+  inspect.spawn.by_fingerprint, inspect.spawn.by_job, inspect.component,
+  inspect.facts.summary, inspect.facts.lineage, and inspect.facts.preview.
+  Selectors such as runtime_root, config_path, job_id/job_ids,
+  target_id/target_ids, baseline_job_id, candidate_job_id, fact_family_id,
+  preview selectors, component/spawn selectors, include_machine_payload, and
+  strict protocol expected-identity fingerprints belong on the relevant split
+  tool, not in an inspect request file. Component-spawn selectors are split by
+  locator: component_spawn_id, component_spawn_label,
+  component_spawn_registry_id, component_spawn_fingerprint, or job_id. Run,
+  spawn, and fact modes are encoded in the tool name.
+
+ROLLOUT_ARGUMENTS
+  hero.marshal.rollout public arguments are mode,
+  args_path, args_digest, and include_machine_payload.
+  Rollout packet fields such
+  as rollout identity, Runtime job paths, replay index, policy set, target
+  nodes, finite limits, and execution profile belong in the rollout request
+  file. Digest is
+  required for mode=execute.
 
 BOUNDARY
   This policy file is intentionally minimal. It exists for Hero policy-path
   symmetry and MCP harness consistency. It does not give Marshal independent
   execution, scheduling, proof, model-selection, checkpoint-selection, or config
-  editing authority. Runtime Hero policy still controls execution. Lattice Hero
-  still controls proof.
+  editing authority. Environment Hero policy controls environment admission and
+  rollout surfaces. Runtime Hero policy still controls low-level execution.
+  Lattice Hero still controls proof.
   Artifact-readiness targets and fact-family evidence, including
-  replay_environment, are inspected through hero.marshal.inspect. They are
-  read-only, non-dispatchable, and are not accepted by hero.marshal.prepare as
-  Runtime wave work. Artifact-readiness packets stop before Runtime dispatch
+  replay_environment, are inspected through hero.marshal.inspect.facts.summary,
+  hero.marshal.inspect.facts.lineage, or hero.marshal.inspect.facts.preview.
+  They are read-only, non-dispatchable, and are not accepted by
+  hero.marshal.prepare.* as Runtime wave work. Artifact-readiness packets stop
+  before Runtime dispatch
   validation or dry-run preview construction. Failed artifact proofs are
   summarized with failed-proof count, proof-template bound/unbound count, proof
   kind, proof-template claim, identity-mismatch count, lineage-unbound count,
@@ -43,10 +106,15 @@ BOUNDARY
   runtime-index relation counts with
   cache_rows_used_for_target_satisfaction=false; include_lineage=false only
   suppresses that audit view. Raw relation/key/digest rows stay in
-  machine_payload when include_machine_payload=true. The preview selectors are
-  include_preview, fact_digest, fact_digest_prefix, and fact_index. Retired
+  machine_payload when include_machine_payload=true is present on the concrete
+  inspect tool. The base hero.marshal.inspect.facts.preview tool is the
+  unfiltered preview view. Exact digest, digest-prefix, and row-index previews
+  use hero.marshal.inspect.facts.preview.by_digest,
+  hero.marshal.inspect.facts.preview.by_digest_prefix, and
+  hero.marshal.inspect.facts.preview.by_index. Retired include_preview,
   digest, digest_prefix, and index aliases are rejected on the Marshal facts
-  surface. The panel may summarize a current Lattice inspect fact preview as
+  surface.
+  The panel may summarize a current Lattice inspect fact preview as
   preview_panel.
   Preview rows are
   audit-only:
@@ -54,7 +122,8 @@ BOUNDARY
   model_selector=false. The preview_panel exposes display-only
   preview_fact_refs for operator display and keeps concrete fact rows,
   identity_envelope payloads, parent digest arrays, and lineage rows in
-  machine_payload when include_machine_payload=true. Target panels also summarize
+  machine_payload when include_machine_payload=true is present on the concrete
+  inspect tool. Target panels also summarize
   Lattice artifact
   fact_preview_hint entries as artifact_fact_preview_* fields, including
   artifact_fact_preview_refs and a digest count, so operators can

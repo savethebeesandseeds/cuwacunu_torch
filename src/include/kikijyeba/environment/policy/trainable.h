@@ -5,6 +5,7 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <iomanip>
 #include <iterator>
 #include <limits>
 #include <random>
@@ -25,6 +26,8 @@ namespace cuwacunu::kikijyeba::environment {
 
 inline constexpr const char *kPolicyInputSchemaV1 =
     "kikijyeba.environment.policy_input.v1";
+inline constexpr const char *kPolicyInputTensorPayloadSchemaV1 =
+    "kikijyeba.environment.policy_input.tensor_payload.v1";
 inline constexpr const char *kTargetNodeWeightsSimplexAdapterV1 =
     "target_node_weights_simplex.v1";
 inline constexpr const char *kMaskedDirichletSimplexDistributionV1 =
@@ -228,6 +231,67 @@ format_active_node_indices(const std::vector<std::int64_t> &indices) {
   return out.str();
 }
 
+[[nodiscard]] inline std::string tensor_shape_csv(const torch::Tensor &tensor) {
+  if (!tensor.defined()) {
+    return {};
+  }
+  std::ostringstream out;
+  for (std::int64_t i = 0; i < tensor.dim(); ++i) {
+    if (i != 0) {
+      out << ",";
+    }
+    out << tensor.size(i);
+  }
+  return out.str();
+}
+
+[[nodiscard]] inline std::string tensor_flat_values_csv(torch::Tensor tensor) {
+  if (!tensor.defined()) {
+    return {};
+  }
+  const auto flat = tensor.to(torch::kFloat64).contiguous().view({-1});
+  if (!torch::isfinite(flat).all().item<bool>()) {
+    return {};
+  }
+  std::ostringstream out;
+  out << std::setprecision(17);
+  const auto *data = flat.data_ptr<double>();
+  for (std::int64_t i = 0; i < flat.numel(); ++i) {
+    if (i != 0) {
+      out << ",";
+    }
+    out << data[i];
+  }
+  return out.str();
+}
+
+inline void bind_policy_input_tensor_payload(action_t &action,
+                                             const policy_input_t &input) {
+  action.policy_input_tensor_payload_schema_id =
+      kPolicyInputTensorPayloadSchemaV1;
+  action.policy_input_node_features_shape = tensor_shape_csv(input.node_features);
+  action.policy_input_node_features = tensor_flat_values_csv(input.node_features);
+  action.policy_input_global_features_shape =
+      tensor_shape_csv(input.global_features);
+  action.policy_input_global_features =
+      tensor_flat_values_csv(input.global_features);
+  action.policy_input_risk_features_shape = tensor_shape_csv(input.risk_features);
+  action.policy_input_risk_features = tensor_flat_values_csv(input.risk_features);
+  action.policy_input_executable_mask_shape =
+      tensor_shape_csv(input.executable_mask);
+  action.policy_input_executable_mask =
+      tensor_flat_values_csv(input.executable_mask);
+  action.policy_input_tensor_payload_bound =
+      !action.policy_input_node_features_shape.empty() &&
+      !action.policy_input_node_features.empty() &&
+      !action.policy_input_global_features_shape.empty() &&
+      !action.policy_input_global_features.empty() &&
+      !action.policy_input_risk_features_shape.empty() &&
+      !action.policy_input_risk_features.empty() &&
+      !action.policy_input_executable_mask_shape.empty() &&
+      !action.policy_input_executable_mask.empty();
+}
+
 inline void bind_action_distribution_evidence(
     action_t &action, const policy_input_t &input,
     const action_distribution_evidence_t &evidence) {
@@ -244,6 +308,7 @@ inline void bind_action_distribution_evidence(
       !action.policy_input_digest.empty() && evidence.active_count > 0 &&
       std::isfinite(evidence.log_prob) && std::isfinite(evidence.entropy) &&
       std::isfinite(evidence.value_estimate);
+  bind_policy_input_tensor_payload(action, input);
 }
 
 [[nodiscard]] inline bool tensor_is_bool_vector(const torch::Tensor &tensor,
@@ -1582,6 +1647,7 @@ struct graph_node_allocation_torch_policy_config_t {
   std::string causal_schedule_digest{};
   std::string snapshot_family_digest{"snapshot_family.fixture.digest"};
   std::string policy_checkpoint_path{};
+  std::string module_state_path{};
   cuwacunu::wikimyei::policy::portfolio::graph_node_allocation::
       graph_node_allocation_net_spec_t net_spec{};
   std::uint64_t module_seed{17};
@@ -1615,6 +1681,15 @@ public:
             cuwacunu::wikimyei::policy::portfolio::graph_node_allocation::
                 make_graph_node_allocation_torch_policy_options(
                     config_.net_spec));
+    if (!detail::blank(config_.module_state_path)) {
+      cuwacunu::wikimyei::policy::portfolio::graph_node_allocation::
+          load_graph_node_allocation_torch_module_state(
+              config_.module_state_path, module_,
+              &config_.node_weight_logit_bias,
+              &config_.action_distribution_params,
+              &config_.action_distribution_params_bound,
+              &config_.value_estimate_bias);
+    }
     module_->eval();
   }
 

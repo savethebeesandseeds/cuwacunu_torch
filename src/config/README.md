@@ -6,7 +6,8 @@ payloads live at the config root.
 
 Current migrated sections:
 
-- `UJCAMEI`: source registry and source retrieval channel DSL paths.
+- `UJCAMEI`: source registry, source retrieval channel, and source cursor DSL
+  paths.
 - `KIKIJYEBA`: protocol, topology graph, and replay environment DSL paths.
 - `ACCOUNTING`: global accounting/reporting defaults shared across waves.
 - `WIKIMYEI`: expression, representation, inference, observer, and policy DSL
@@ -40,8 +41,19 @@ asset paths resolve against the directory that contains the active `.config`;
 invalid assets fall back to the bundled waajacamaya resources or text wordmark.
 
 `hero.runtime.wave.dsl` is a Runtime-owned wave catalog. The active block is
-selected by `[HERO].runtime_wave_id`, and each selected block names the focal runtime
-component with `TARGET`.
+selected by `[HERO].runtime_wave_id`, and each selected block names the active
+protocol with `PROTOCOL`, the protocol-level focal runtime component with
+`TARGET`, and the shared source cursor with `SOURCE_CURSOR_ID`.
+Use `wave` for component execution profiles: representation and MDN train/run
+jobs, plus graph-node allocation policy train profiles, that move across a
+source range and mutate only their selected `TARGET` in train mode. Policy is a
+component wave too, but its Runtime driver is contract-backed: the persisted
+policy-training contract binds the completed replay/evidence source, causal
+schedule, policy DSL/net/features/jkimyei identity, action distribution, reward
+contract, execution profile, graph order, target-node universe, and
+checkpoint/update evidence. Environment replay profiles remain
+historical-world profiles: they drive reset/step/reward over a replay source
+and call Cajtucu paper execution.
 The default graph-first path is now the strict channel-preserving pair:
 `wikimyei.representation.encoding.vicreg` and
 `wikimyei.inference.expected_value.mdn`. The MDN path consumes the
@@ -71,7 +83,7 @@ is one of those graph nodes, resolved from
 `[ACCOUNTING].accounting_numeraire_node_id` into `BasePolicy`, not an external
 cash bucket, a separate policy output, or a routing hub.
 
-The graph-node allocation policy config is the bounded PPO V0 trainable policy
+The graph-node allocation policy config is the bounded PPO V0 policy component
 contract. Its DSL
 binds `kikijyeba.environment.policy_input.v1`,
 `target_node_weights_simplex.v1`,
@@ -99,7 +111,8 @@ replay report into PPO rollout evidence; with `replay_job_dir`, Runtime
 dispatches fresh on-policy replay collection through `cuwacunu_exec` and passes
 an explicit actor checkpoint artifact into the graph-node allocation policy
 forward path. Replay samples label whether policy-distribution log-probability
-evidence was present. Replay reports produced by the trainable policy bridge
+evidence was present. Replay reports produced by the graph-node allocation
+policy component
 now carry old policy-input/action-distribution evidence on each step; older
 reports remain explicitly labeled as missing that evidence. With
 `replay_job_dir`, Runtime can
@@ -108,10 +121,39 @@ dispatch `cuwacunu_exec --replay-from-job-dir` with graph-node allocation and
 `collection_source=kikijyeba_on_policy_replay`. Runtime now writes bounded
 post-update actor/critic checkpoints with learned graph-node logits and a value
 estimate derived from PPO V0 rollout evidence. PPO policy-training requests must
-bind actor/critic architecture and checkpoint digests, optimizer state, PPO
-config, rollout collection evidence, PPO update-report evidence, validation
-rollout evidence, and PPO hyperparameters before they can satisfy
-policy-training artifact readiness.
+bind policy DSL/net/features/jkimyei digests, target-node universe digest,
+actor/critic architecture and checkpoint digests, optimizer state, PPO config,
+rollout collection evidence, PPO update-report evidence, validation rollout
+evidence, and PPO hyperparameters before they can satisfy policy-training
+artifact readiness. Runtime folds those policy-source and environment bindings
+into a `policy_operator_surface_digest`, which is the policy-training
+component-spawn identity used by Runtime layout and Lattice exposure.
+Policy acceptance remains a separate post-training Environment evidence
+sidecar: `hero.environment.certify.policy_acceptance args_path=...` reads an
+explicit certification request file, an
+existing `runtime.policy_training.fact`, plus an existing
+`lattice.tsodao_settings_protection.fact`, derives their fact digests from
+parsed sidecars, requires the named
+`policy_acceptance_governance_thresholds_v0.v1` acceptance-policy digest,
+validates the assembled acceptance fact, and writes
+`lattice.policy_acceptance.fact` only when issue mode includes a matching
+`args_digest`. That
+sidecar is for Lattice `policy_acceptance_contract_ready`; it is not a policy
+selector, quality judge, market-readiness claim, deployment approval, or live
+authority.
+Paper-online readiness remains another explicit Environment evidence sidecar:
+`hero.environment.certify.paper_online_readiness args_path=...` reads an
+explicit certification request file and an
+existing `lattice.policy_acceptance.fact`, derives the accepted policy identity
+from the parsed sidecar, requires session lifecycle, clock/staleness,
+idempotency, duplicate-protection, durable paper-ledger recovery, direct-edge
+universe, locked Cajtucu execution-profile, reward/report artifact,
+operator-abort, and kill-switch policies, and writes
+`lattice.paper_online_readiness.fact` only when
+issue mode includes a matching `args_digest`. That sidecar is for Lattice
+`paper_online_readiness_contract_ready`; it does not start a paper-online
+session, select a policy, approve deployment, route through a broker, or
+authorize live capital.
 
 The observer and deterministic policy DSLs currently require projection
 validation and explicitly disable live capital; this keeps
@@ -160,11 +202,13 @@ that historical replay calls today and that a later paper-online environment
 should reuse with live market data.
 `MODE=run` executes the target dependency closure without optimizer steps.
 `MODE=train` mutates only `TARGET`; upstream dependencies run frozen.
-Wave source ranges may be authored as `SOURCE_RANGE=anchor_index` for explicit
-accepted-anchor positions or `SOURCE_RANGE=source_key` for stable integral
-graph-anchor source keys such as kline millisecond close times. Runtime resolves
-source-key ranges into anchor-index intervals before execution and records both
-coordinates in manifests, states, reports, and component stream `.lls` payloads.
+Wave source ranges are selected through protocol-neutral `SOURCE_CURSOR_ID`
+entries in `src/config/ujcamei.source.cursor.dsl`. Cursors may use
+`SOURCE_RANGE=all`, `SOURCE_RANGE=anchor_index`, or `SOURCE_RANGE=source_key` for
+stable integral graph-anchor source keys such as kline millisecond close times.
+Runtime resolves source-key cursors into anchor-index intervals before execution
+and records both coordinates in manifests, states, reports, and component stream
+`.lls` payloads.
 
 MDN training is graph-slot centered and expects a frozen representation encoder.
 `wikimyei.inference.expected_value.mdn.jkimyei` should normally provide
@@ -205,17 +249,22 @@ for new training/evaluation runs. Wave files remain launch profiles for
 target/mode/cursor/source-order choices; they should not be the authority for
 which representation architecture is docked into a protocol.
 
-Protocol variants also bind the active observer and allocation-policy family:
+Protocol variants also bind the active observer, deterministic allocation
+policy, and graph-node allocation policy component:
 `OBSERVER = wikimyei.observer.belief` and
-`ALLOCATION_POLICY = wikimyei.policy.portfolio.spot_distributional_utility`.
+`ALLOCATION_POLICY = wikimyei.policy.portfolio.spot_distributional_utility`,
+plus `POLICY_COMPONENT = wikimyei.policy.portfolio.graph_node_allocation`.
 The protocol owns this stack identity and its fingerprint; the individual
-Wikimyei policy DSL owns SDU parameters, and Marshal rollout requests own
-baseline comparison sets such as numeraire/current/equal-weight/SDU.
+Wikimyei policy DSL owns SDU parameters, graph-node allocation policy
+configuration, and Marshal/Environment rollout requests own baseline comparison
+sets such as numeraire/current/equal-weight/SDU.
 
-Wave profiles may declare `COMPATIBLE_PROTOCOLS` as a comma-separated protocol
-allow-list. When present, Runtime rejects a wave whose active protocol is not in
-that list. This is profile metadata, not the architecture selector; the active
-architecture still comes from `kikijyeba.protocol.*.dsl`.
+Wave profiles declare one exact `PROTOCOL`, and Runtime rejects a wave whose
+`WAVE_SETTINGS.PROTOCOL` does not match the active protocol selected by
+`[KIKIJYEBA].kikijyeba_protocol_dsl_path`. Broad wave targets such as
+`wikimyei.representation.encoding`, `wikimyei.inference.expected_value`, and
+`wikimyei.policy.portfolio` resolve through that protocol to concrete component
+families.
 
 Config Hero starts from:
 
@@ -242,17 +291,38 @@ confirmation and a longer runtime budget, but keeps `allow_dev_nuke=false`.
 Reusable wave profiles now live inside the single canonical wave catalog:
 
 - `src/config/hero.runtime.wave.dsl`
+- `src/config/ujcamei.source.cursor.dsl`
 - checked-in wave ids include `train_core_vicreg`,
   `train_core_mtf_jepa_mae_vicreg`, `train_core_channel_mdn`,
-  `validation_eval_channel_mdn`, and `policy_training_pre_ppo_noop`
+  `cwu_02v_channel_validation_eval_mdn_1800_2050`,
+  `cwu_01v_validation_eval_channel_mdn`,
+  `cwu_02v_validation_eval_channel_mdn`, and `policy_training_pre_ppo_noop`
 
 Operator-local `.config` files point `[HERO].runtime_wave_dsl_path` at this
 same file and select the active block with `[HERO].runtime_wave_id`. The
 checked-in `WAVE_SELECTION.ACTIVE_WAVE_ID` is only a fallback for direct file
-decoding. Reusable profiles use `SOURCE_RANGE=all` by default. Concrete
-anchor/source-key ranges are overlaid per launch through Runtime Hero
-`wave_overlay` or the equivalent `cuwacunu_exec --source-range ...` flags; they
-are not protocol identity.
+decoding. Cursor ranges live in `ujcamei.source.cursor.dsl`; cursor ids
+intentionally avoid protocol names because source availability is independent of
+the active protocol. Runtime execution requests may still adjust the effective
+launch range through an `execution_request_path` entry inside
+`hero.runtime.run` `args_path`, or the equivalent
+`cuwacunu_exec --source-range ...` flags, without mutating the wave or cursor
+catalog. Effective ranges are not protocol identity.
+
+Environment Hero starts from:
+
+- `[HERO].environment_hero_dsl_path`
+- `[HERO].environment_hero_profile`
+- `src/config/hero.environment.dsl`
+- `src/config/man/hero.environment.man`
+
+Environment owns execution-environment admission evidence and rollout surfaces.
+`hero.environment.certify.*` checks or issues policy-acceptance and paper-online
+readiness prerequisite sidecars; `hero.environment.inspect.schema` reads the
+Environment policy schema and `hero.environment.inspect.job` reads job-local
+sidecars with direct job selectors;
+`hero.environment.rollout` validates or replays bounded historical replay
+rollouts while delegating low-level replay execution to Runtime.
 
 Lattice Hero starts from:
 
@@ -275,8 +345,9 @@ independent execution, scheduling, proof, model-selection, checkpoint-selection,
 or config-editing authority. Marshal exposes a small deterministic coordination
 surface over Lattice target state and Runtime policy/wave evidence, while
 Runtime remains the executor and Lattice remains the proof authority.
-`hero.marshal.inspect` is the read-only path for Lattice artifact-readiness
-targets and fact-family summaries. It can relay current Lattice inspect panels
+`hero.marshal.inspect.facts` is the read-only path for Lattice
+artifact-readiness targets and fact-family summaries. It can relay current
+Lattice inspect panels
 for concrete fact rows by digest, digest prefix, or fact index, but that preview
 remains audit-only and cannot satisfy a target, select a checkpoint, or create
 Marshal reachability. Preview rows include the typed Lattice catalog
@@ -327,24 +398,28 @@ time-law cleanliness, projection coverage, execution trace/cost evidence, and
 authority denials.
 
 Fresh Config Hero is intentionally a small policy-controlled config file
-surface. Its public tools are `hero.config.status`, `hero.config.inspect`, and
-`hero.config.apply`. It can inspect, read, plan writes/deletes, and execute
-guarded writes/deletes for managed config files under configured roots; it does
-not own domain-specific DSL validation. Validation for Ujcamei, Kikijyeba,
-Wikimyei, and Jkimyei remains with those domain modules.
-`hero.config.inspect subject=bundle` is the read-only provenance tool over the
-same global config: it records every `_path`/`_filename` entry with canonical
-path, content digest, stable `config_bundle_id`, and per-capture
+surface. Its public tools are `hero.config.status`,
+`hero.config.inspect.*`, and `hero.config.apply.*`. It can inspect, read, and
+execute guarded writes/deletes for managed config files under configured roots;
+mutating tools run an internal preflight before changing state. It does not own
+domain-specific DSL validation.
+Validation for Ujcamei, Kikijyeba, Wikimyei, and Jkimyei remains with those
+domain modules. `hero.config.inspect.bundle` is the read-only provenance tool
+over the same global config: it records every `_path`/`_filename` entry with
+canonical path, content digest, stable `config_bundle_id`, and per-capture
 `config_receipt_id`.
 
-Agent-facing Config Hero calls should prefer `hero.config.inspect subject=map`
-for global path discovery, `hero.config.inspect subject=bundle` when runtime
-spawn evidence needs a config receipt, and
-`hero.config.inspect subject=resolve_path` for path preflight before reading or
-mutating. Reads use `hero.config.inspect subject=file_read` and can return
-`sha256`; replacements and deletions go through `hero.config.apply
-operation=write|delete requested_mode=plan|execute` and require
-`expected_sha256` or `expected_current_sha256` by default for existing targets.
+Agent-facing Config Hero calls should prefer `hero.config.inspect.map` for
+global path discovery, `hero.config.inspect.bundle` when runtime spawn evidence
+needs a config receipt, and `hero.config.inspect.resolve_path` for path
+preflight before reading or mutating. Reads use `hero.config.inspect.file_read`
+and return `sha256`; replacements and deletions go through
+`hero.config.apply.write` or `hero.config.apply.delete` with direct arguments
+and require `expected_sha256` by default for
+existing targets.
+Config inspect tools expose their small selectors directly. Config apply tools
+also expose their operation-specific arguments directly; there is no Config
+Apply `mode`, `args_path`, or `args_digest`.
 
 Runtime Hero is the agent-facing control and inspection surface for
 `/cuwacunu/.build/exec/cuwacunu_exec`. It decodes the active wave, performs
@@ -355,6 +430,7 @@ live under the canonical execution root unless a policy explicitly introduces a
 separate owner. Runtime manifests record config
 provenance and component spawn links: `config_bundle_id`, `config_receipt_id`,
 `component_spawn_registry_id`, `component_family_id`,
+`component_operator_surface_digest` for representation/MDN component waves,
 `component_spawn_fingerprint`, scoped `component_spawn_id`, and
 `component_spawn_label`. Component spawn identity is protocol/component scoped;
 wave source cursors and concrete source ranges remain job, checkpoint, and
@@ -364,12 +440,13 @@ component spawn writes a fresh attempt directory instead of replacing the prior
 report/checkpoint. Explicit `--job-dir` launches are guarded by a no-overwrite
 check unless resume support is implemented.
 
-Developer runtime reset is owned by Runtime Hero as `hero.runtime.dev_nuke`, not
-by Config Hero. The tool defaults to dry-run, reports the exact runtime-root
-entries it would clear, and requires `allow_dev_nuke=true` plus
-`confirm_dev_nuke=true` for non-dry-run reset. Checked-in policies allow
-clearing `/cuwacunu/.runtime` but keep backup snapshots disabled by default so a
-reset does not leave legacy backup folders under the disposable runtime tree.
+Developer runtime reset is owned by Runtime Hero as `hero.runtime.reset`, not by
+Config Hero. `mode=plan` reports the exact runtime-root entries it
+would clear. `mode=execute` requires `allow_dev_nuke=true` plus a
+digest-pinned `args_path` reset request, where per-call selectors such as
+`runtime_root` and `backup` live. Checked-in policies allow clearing
+`/cuwacunu/.runtime` but keep backup snapshots disabled by default so a reset
+does not leave legacy backup folders under the disposable runtime tree.
 Operators can explicitly enable backups to the configured `/tmp` backup root.
 
 `hero.lattice.targets.dsl` sits one level above waves and is pointed to by
@@ -421,7 +498,7 @@ whether the auxiliary row-to-source-key map is complete, numeric, monotone,
 order-preserving, and affine-consistent with the inferred regular key step
 without making it the leakage authority. The audit also counts missing endpoint
 pairs, irregular anchor steps, and row/source-key mismatches as explicit gap
-warnings. `hero.lattice.inspect` exposes `source_key_map_audit_summary`,
+warnings. `hero.lattice.inspect.exposure` exposes `source_key_map_audit_summary`,
 which binds available audits to graph-order identity, source-cursor identity,
 and source-receipt parent facts while preserving row-index authority. Manifests
 also include
@@ -483,7 +560,7 @@ anchor interval, defaulting to the target range. Warning interval overlap may
 use anchor-range visibility when trusted completed coverage is unavailable; that
 does not make untrusted coverage satisfy readiness. Hero JSON exposes the
 resolved interval as `warning_results[].warning_anchor_range`;
-`hero.lattice.inspect` exposes the same pre-evaluation scope as
+`hero.lattice.inspect.target` exposes the same pre-evaluation scope as
 `warning_scope_previews[].resolved_warning_anchor_range`; and
 `warning_anchor_scope_policy_vocabulary` describes the visibility-only fallback
 rules for both surfaces. Repeated exposure is therefore visible without being
@@ -616,8 +693,8 @@ last-valid-channel references. These remain warning/summary diagnostics, not a
 performance gate or checkpoint selector.
 
 Lattice Hero is the read-only agent surface for these checks. It provides
-`hero.lattice.status`, `hero.lattice.inspect`, `hero.lattice.evaluate`, and
-`hero.lattice.compare`. Inspect modes report compiled target proof objects,
+`hero.lattice.status`, `hero.lattice.inspect.*`, `hero.lattice.evaluate.*`, and
+`hero.lattice.compare`. Inspect tools report compiled target proof objects,
 fingerprints, derived query vocabulary, proof obligation vocabulary, proof digest
 policy, checkpoint selection policy, plan-advice policy, contract identity
 boundary, mathematical readiness crosswalk, operational scope/gate crosswalks,

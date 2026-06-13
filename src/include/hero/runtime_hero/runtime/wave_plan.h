@@ -20,6 +20,7 @@ struct wave_plan_t {
   std::string mode_text{};
   std::string source_cursor_kind{};
   std::string source_cursor_scope{};
+  std::string source_cursor_id{};
   std::string source_range_policy{};
   std::string source_order_policy{};
   bool source_order_policy_explicit{false};
@@ -74,6 +75,7 @@ struct wave_plan_t {
     out << "mode_text=" << mode_text << "\n";
     out << "source_cursor_kind=" << source_cursor_kind << "\n";
     out << "source_cursor_scope=" << source_cursor_scope << "\n";
+    out << "source_cursor_id=" << source_cursor_id << "\n";
     out << "source_range_policy=" << source_range_policy << "\n";
     out << "source_order_policy=" << source_order_policy << "\n";
     out << "source_order_policy_explicit="
@@ -305,18 +307,20 @@ inline void populate_source_footprint(wave_plan_t &plan) {
 }
 
 template <typename GraphSourceT>
-[[nodiscard]] inline wave_plan_t
-make_wave_plan(const cuwacunu::hero::runtime::settings::wave_settings_t &settings,
-               const GraphSourceT &source) {
+[[nodiscard]] inline wave_plan_t make_wave_plan(
+    const cuwacunu::hero::runtime::settings::wave_settings_t &settings,
+    const GraphSourceT &source) {
   const auto cursor_report = source.cursor_report();
   wave_plan_t out{};
   out.wave_id = settings.wave_id;
   out.target_component_family_id =
       cuwacunu::hero::runtime::settings::wave_target_name(settings.target);
-  out.action = cuwacunu::hero::runtime::settings::wave_action_name(settings.action);
+  out.action =
+      cuwacunu::hero::runtime::settings::wave_action_name(settings.action);
   out.mode_text = settings.mode_text;
   out.source_cursor_kind = settings.source_cursor_kind;
   out.source_cursor_scope = settings.source_cursor_scope;
+  out.source_cursor_id = settings.source_cursor_id;
   out.source_range_policy =
       cuwacunu::hero::runtime::settings::source_range_policy_name(
           settings.source_range_policy);

@@ -1141,6 +1141,22 @@ make_step_report(std::uint64_t step_index, const observation_t &observation,
   out.old_value_estimate = action.old_value_estimate;
   out.action_distribution_evidence_bound =
       action.action_distribution_evidence_bound;
+  out.policy_input_tensor_payload_schema_id =
+      action.policy_input_tensor_payload_schema_id;
+  out.policy_input_tensor_payload_bound =
+      action.policy_input_tensor_payload_bound;
+  out.policy_input_node_features_shape =
+      action.policy_input_node_features_shape;
+  out.policy_input_node_features = action.policy_input_node_features;
+  out.policy_input_global_features_shape =
+      action.policy_input_global_features_shape;
+  out.policy_input_global_features = action.policy_input_global_features;
+  out.policy_input_risk_features_shape =
+      action.policy_input_risk_features_shape;
+  out.policy_input_risk_features = action.policy_input_risk_features;
+  out.policy_input_executable_mask_shape =
+      action.policy_input_executable_mask_shape;
+  out.policy_input_executable_mask = action.policy_input_executable_mask;
   out.reward_contract_id = action.reward_contract_id;
   out.policy_artifact_digest = action.policy_artifact_digest;
   out.policy_net_digest = action.policy_net_digest;

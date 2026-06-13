@@ -242,7 +242,7 @@ void test_channel_protocol_contract_identity_binds_strict_channel_config() {
   protocol_variant_bundle.dock_binding_report =
       protocol::make_channel_graph_first_dock_binding_report(
           protocol_variant_bundle);
-  protocol_variant_bundle.wave_settings.compatible_protocol_ids = {"cwu_01v"};
+  protocol_variant_bundle.wave_settings.protocol_id = "cwu_01v";
   require_changed(protocol_variant_bundle, "active protocol variant");
 }
 
@@ -1187,7 +1187,7 @@ void test_cross_reference_failures() {
           "/cuwacunu/src/config/.config");
   channel_bundle.protocol_variant = protocol::decode_protocol_variant_from_dsl(
       read_text("/cuwacunu/src/config/kikijyeba.protocol.cwu_01v.dsl"));
-  channel_bundle.wave_settings.compatible_protocol_ids = {"cwu_01v"};
+  channel_bundle.wave_settings.protocol_id = "cwu_01v";
   channel_bundle.channel_mdn.input_representation_assembly_id =
       "other_channel_rep";
   expect_throw(
@@ -1200,7 +1200,7 @@ void test_cross_reference_failures() {
       "/cuwacunu/src/config/.config");
   channel_bundle.protocol_variant = protocol::decode_protocol_variant_from_dsl(
       read_text("/cuwacunu/src/config/kikijyeba.protocol.cwu_01v.dsl"));
-  channel_bundle.wave_settings.compatible_protocol_ids = {"cwu_01v"};
+  channel_bundle.wave_settings.protocol_id = "cwu_01v";
   channel_bundle.channel_mdn_assembly.docks.front().coordinate_space =
       "graph_order.node_representation.v1";
   expect_throw(
@@ -1242,7 +1242,7 @@ void test_cross_reference_failures() {
       "/cuwacunu/src/config/.config");
   channel_bundle.protocol_variant = protocol::decode_protocol_variant_from_dsl(
       read_text("/cuwacunu/src/config/kikijyeba.protocol.cwu_01v.dsl"));
-  channel_bundle.wave_settings.compatible_protocol_ids = {"cwu_01v"};
+  channel_bundle.wave_settings.protocol_id = "cwu_01v";
   channel_bundle.vicreg.channel_count =
       cuwacunu::kikijyeba::protocol::active_channel_count(
           channel_bundle.source_dock) +
@@ -1289,6 +1289,8 @@ void test_protocol_policy_identity_required() {
             "  OBSERVER = wikimyei.observer.other;\n"
             "  ALLOCATION_POLICY = "
             "wikimyei.policy.portfolio.spot_distributional_utility;\n"
+            "  POLICY_COMPONENT = "
+            "wikimyei.policy.portfolio.graph_node_allocation;\n"
             "  REPRESENTATION_CONTRACT = "
             "graph_order.channel_node_representation.v1;\n"
             "};\n");
@@ -1302,9 +1304,11 @@ void test_protocol_policy_identity_required() {
   if (contract_text.find("protocol_observer=wikimyei.observer.belief") ==
           std::string::npos ||
       contract_text.find("protocol_allocation_policy=wikimyei.policy.portfolio."
-                         "spot_distributional_utility") == std::string::npos) {
+                         "spot_distributional_utility") == std::string::npos ||
+      contract_text.find("protocol_policy_component=wikimyei.policy.portfolio."
+                         "graph_node_allocation") == std::string::npos) {
     throw std::runtime_error(
-        "protocol contract text missing observer/allocation policy identity");
+        "protocol contract text missing observer/policy identity");
   }
 }
 

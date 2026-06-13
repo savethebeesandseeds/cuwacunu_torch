@@ -10,8 +10,8 @@
 #include <string>
 #include <vector>
 
-#include "hero/runtime_hero/hero_runtime_tools.h"
 #include "hero/marshal_hero/marshal/dispatch_adapter.h"
+#include "hero/mcp_cli_client.h"
 
 namespace cuwacunu::hero::marshal {
 
@@ -114,6 +114,90 @@ inline void append_json_bool_field(std::ostringstream &out,
     --end;
   }
   return std::string(in.substr(begin, end - begin));
+}
+
+[[nodiscard]] inline std::string strip_ini_comment(std::string_view text) {
+  bool in_single = false;
+  bool in_double = false;
+  for (std::size_t i = 0; i < text.size(); ++i) {
+    const char c = text[i];
+    if (c == '\'' && !in_double) {
+      in_single = !in_single;
+      continue;
+    }
+    if (c == '"' && !in_single) {
+      in_double = !in_double;
+      continue;
+    }
+    if (!in_single && !in_double && (c == '#' || c == ';')) {
+      return trim_ascii(text.substr(0, i));
+    }
+  }
+  return trim_ascii(text);
+}
+
+[[nodiscard]] inline std::filesystem::path
+normalize_policy_path(const std::filesystem::path &path) {
+  std::error_code ec;
+  const std::filesystem::path canonical =
+      std::filesystem::weakly_canonical(path, ec);
+  return ec ? path.lexically_normal() : canonical;
+}
+
+[[nodiscard]] inline std::filesystem::path
+resolve_policy_path_against_config(const std::filesystem::path &config_path,
+                                   std::string_view raw_path) {
+  const std::string trimmed = trim_ascii(raw_path);
+  if (trimmed.empty()) {
+    return {};
+  }
+  const std::filesystem::path path(trimmed);
+  if (path.is_absolute()) {
+    return normalize_policy_path(path);
+  }
+  return normalize_policy_path(config_path.parent_path() / path);
+}
+
+[[nodiscard]] inline std::filesystem::path
+runtime_policy_path_from_global_config(
+    const std::filesystem::path &global_config_path,
+    const std::filesystem::path &override_policy_path = {}) {
+  if (!override_policy_path.empty()) {
+    return override_policy_path;
+  }
+  std::ifstream in(global_config_path);
+  if (!in.is_open()) {
+    return "/cuwacunu/src/config/hero.runtime.dsl";
+  }
+  std::string section;
+  std::string line;
+  while (std::getline(in, line)) {
+    line = strip_ini_comment(line);
+    if (line.empty()) {
+      continue;
+    }
+    if (line.front() == '[' && line.back() == ']') {
+      section = trim_ascii(std::string_view(line).substr(1, line.size() - 2U));
+      continue;
+    }
+    if (section != "HERO") {
+      continue;
+    }
+    const std::size_t eq = line.find('=');
+    if (eq == std::string::npos) {
+      continue;
+    }
+    const std::string key = trim_ascii(std::string_view(line).substr(0, eq));
+    if (key != "runtime_hero_dsl_path") {
+      continue;
+    }
+    const std::string value =
+        trim_ascii(std::string_view(line).substr(eq + 1U));
+    if (!value.empty()) {
+      return resolve_policy_path_against_config(global_config_path, value);
+    }
+  }
+  return "/cuwacunu/src/config/hero.runtime.dsl";
 }
 
 [[nodiscard]] inline bool is_symbolic_model_state_input(std::string_view raw) {
@@ -445,11 +529,9 @@ json_has_string_field_value(const std::string &json, const std::string &key,
 
 } // namespace detail
 
-[[nodiscard]] inline std::string
-canonical_runtime_handoff_text(const marshal_runtime_dry_run_request_t &request,
-                               bool dry_run, bool confirm_execute,
-                               const std::filesystem::path &policy_path,
-                               const std::string &created_at) {
+[[nodiscard]] inline std::string canonical_runtime_handoff_text(
+    const marshal_runtime_dry_run_request_t &request, bool dry_run,
+    const std::filesystem::path &policy_path, const std::string &created_at) {
   std::ostringstream out;
   detail::append_kv(out, "handoff_schema_version", "1");
   detail::append_kv(out, "created_by", "marshal");
@@ -485,7 +567,6 @@ canonical_runtime_handoff_text(const marshal_runtime_dry_run_request_t &request,
       detail::file_content_digest_or_empty(
           policy_path, "kikijyeba.runtime.handoff.runtime_policy_file.v1"));
   detail::append_kv(out, "dry_run", detail::bool_text(dry_run));
-  detail::append_kv(out, "confirm_execute", detail::bool_text(confirm_execute));
   detail::append_kv(out, "force_rebuild_cache",
                     detail::bool_text(request.force_rebuild_cache));
   detail::append_string_vector(out, "unresolved_symbols",
@@ -495,14 +576,14 @@ canonical_runtime_handoff_text(const marshal_runtime_dry_run_request_t &request,
 
 [[nodiscard]] inline std::string
 runtime_handoff_object_json(const marshal_runtime_dry_run_request_t &request,
-                            bool dry_run, bool confirm_execute,
+                            bool dry_run,
                             const std::filesystem::path &policy_path = {},
                             std::string created_at = {}) {
   if (created_at.empty()) {
     created_at = detail::utc_now_rfc3339();
   }
-  const std::string canonical = canonical_runtime_handoff_text(
-      request, dry_run, confirm_execute, policy_path, created_at);
+  const std::string canonical =
+      canonical_runtime_handoff_text(request, dry_run, policy_path, created_at);
   const std::string handoff_digest =
       marshal_digest_for_text("kikijyeba.runtime.handoff.object.v1", canonical);
   const std::string handoff_id = "runtime_handoff_" + handoff_digest;
@@ -513,8 +594,9 @@ runtime_handoff_object_json(const marshal_runtime_dry_run_request_t &request,
       "kikijyeba.runtime.handoff.base_config_file.v1");
   const std::string runtime_policy_path =
       detail::normalize_path_text(policy_path.string());
-  const std::string runtime_policy_digest = detail::file_content_digest_or_empty(
-      policy_path, "kikijyeba.runtime.handoff.runtime_policy_file.v1");
+  const std::string runtime_policy_digest =
+      detail::file_content_digest_or_empty(
+          policy_path, "kikijyeba.runtime.handoff.runtime_policy_file.v1");
   const auto unresolved = detail::unresolved_model_state_symbols(request);
 
   std::ostringstream out;
@@ -572,7 +654,6 @@ runtime_handoff_object_json(const marshal_runtime_dry_run_request_t &request,
       << detail::json_quote(runtime_policy_path)
       << ",\"digest\":" << detail::json_quote(runtime_policy_digest) << "}"
       << ",\"intent\":{\"dry_run\":" << (dry_run ? "true" : "false")
-      << ",\"confirm_execute\":" << (confirm_execute ? "true" : "false")
       << ",\"force_rebuild_cache\":"
       << (request.force_rebuild_cache ? "true" : "false") << "}"
       << ",\"unresolved_symbols\":";
@@ -581,88 +662,111 @@ runtime_handoff_object_json(const marshal_runtime_dry_run_request_t &request,
   return out.str();
 }
 
+[[nodiscard]] inline std::string runtime_wave_execution_request_text(
+    const marshal_runtime_dry_run_request_t &request) {
+  std::ostringstream out;
+  const auto append = [&out](const std::string &key, const std::string &value) {
+    if (!value.empty()) {
+      out << key << "=" << value << "\n";
+    }
+  };
+  append("source_range", request.source_range);
+  if (request.anchor_index_begin.has_value()) {
+    append("anchor_index_begin", std::to_string(*request.anchor_index_begin));
+  }
+  if (request.anchor_index_end.has_value()) {
+    append("anchor_index_end", std::to_string(*request.anchor_index_end));
+  }
+  if (request.source_key_begin.has_value()) {
+    append("source_key_begin", std::to_string(*request.source_key_begin));
+  }
+  if (request.source_key_end.has_value()) {
+    append("source_key_end", std::to_string(*request.source_key_end));
+  }
+  append("force_rebuild_cache", request.force_rebuild_cache ? "true" : "false");
+  return out.str();
+}
+
+[[nodiscard]] inline std::filesystem::path
+materialize_runtime_wave_execution_request(
+    const marshal_runtime_dry_run_request_t &request,
+    std::string *request_digest) {
+  const std::string text = runtime_wave_execution_request_text(request);
+  const std::string digest = marshal_digest_for_text(
+      "kikijyeba.runtime.policy_training_execution_request.v1", text);
+  if (request_digest != nullptr) {
+    *request_digest = digest;
+  }
+  const std::filesystem::path dir =
+      std::filesystem::temp_directory_path() / "cuwacunu_hero_runtime_requests";
+  std::filesystem::create_directories(dir);
+  const std::filesystem::path path = dir / ("wave_" + digest + ".kv");
+  std::ofstream out(path, std::ios::trunc);
+  out << text;
+  return path;
+}
+
+[[nodiscard]] inline std::filesystem::path materialize_runtime_handoff_object(
+    const marshal_runtime_dry_run_request_t &request, bool dry_run,
+    const std::filesystem::path &policy_path, std::string *file_digest) {
+  const std::string text =
+      runtime_handoff_object_json(request, dry_run, policy_path);
+  const std::string digest = marshal_digest_for_text(
+      "kikijyeba.runtime.run_request.runtime_handoff_file.v1", text);
+  if (file_digest != nullptr) {
+    *file_digest = digest;
+  }
+  const std::filesystem::path dir =
+      std::filesystem::temp_directory_path() / "cuwacunu_hero_runtime_requests";
+  std::filesystem::create_directories(dir);
+  const std::filesystem::path path = dir / ("handoff_" + digest + ".json");
+  std::ofstream out(path, std::ios::trunc);
+  out << text;
+  return path;
+}
+
+[[nodiscard]] inline std::filesystem::path materialize_runtime_run_request(
+    const marshal_runtime_dry_run_request_t &request, bool dry_run,
+    const std::filesystem::path &policy_path, std::string *request_digest) {
+  std::string execution_request_digest;
+  const std::filesystem::path execution_request_path =
+      materialize_runtime_wave_execution_request(request,
+                                                 &execution_request_digest);
+  std::string handoff_file_digest;
+  const std::filesystem::path handoff_path = materialize_runtime_handoff_object(
+      request, dry_run, policy_path, &handoff_file_digest);
+
+  std::ostringstream text;
+  text << "config_path=" << request.config_path << "\n"
+       << "execution_request_path=" << execution_request_path.string() << "\n"
+       << "execution_request_digest=" << execution_request_digest << "\n"
+       << "runtime_handoff_path=" << handoff_path.string() << "\n"
+       << "runtime_handoff_digest=" << handoff_file_digest << "\n";
+  const std::string digest = marshal_digest_for_text(
+      "kikijyeba.runtime.run_request.wave.v1", text.str());
+  if (request_digest != nullptr) {
+    *request_digest = digest;
+  }
+  const std::filesystem::path dir =
+      std::filesystem::temp_directory_path() / "cuwacunu_hero_runtime_requests";
+  std::filesystem::create_directories(dir);
+  const std::filesystem::path path = dir / ("run_" + digest + ".kv");
+  std::ofstream out(path, std::ios::trunc);
+  out << text.str();
+  return path;
+}
+
 [[nodiscard]] inline std::string
 runtime_hero_execute_args_json(const marshal_runtime_dry_run_request_t &request,
-                               int timeout_seconds, bool dry_run = true,
-                               bool confirm_execute = false,
+                               bool dry_run = true,
                                const std::filesystem::path &policy_path = {}) {
+  std::string args_digest;
+  const std::filesystem::path args_path = materialize_runtime_run_request(
+      request, dry_run, policy_path, &args_digest);
   std::ostringstream out;
-  out << "{\"operation\":\"wave\",\"requested_mode\":"
-      << detail::json_quote(dry_run ? "dry_run" : "execute")
-      << ",\"config_path\":"
-      << detail::json_quote(detail::normalize_path_text(request.config_path))
-      << ",\"confirm_execute\":" << (confirm_execute ? "true" : "false");
-  if (request.force_rebuild_cache) {
-    out << ",\"force_rebuild_cache\":true";
-  }
-  if (timeout_seconds > 0) {
-    out << ",\"timeout_seconds\":" << timeout_seconds;
-  }
-  out << ",\"wave_overlay\":{";
-  bool first_overlay = true;
-  detail::append_json_string_field(out, "source_range", request.source_range,
-                                   &first_overlay);
-  if (request.anchor_index_begin.has_value()) {
-    detail::append_json_string_field(
-        out, "anchor_index_begin", std::to_string(*request.anchor_index_begin),
-        &first_overlay);
-  }
-  if (request.anchor_index_end.has_value()) {
-    detail::append_json_string_field(out, "anchor_index_end",
-                                     std::to_string(*request.anchor_index_end),
-                                     &first_overlay);
-  }
-  if (request.source_key_begin.has_value()) {
-    detail::append_json_string_field(out, "source_key_begin",
-                                     std::to_string(*request.source_key_begin),
-                                     &first_overlay);
-  }
-  if (request.source_key_end.has_value()) {
-    detail::append_json_string_field(out, "source_key_end",
-                                     std::to_string(*request.source_key_end),
-                                     &first_overlay);
-  }
-  out << "}";
-  out << ",\"runtime_handoff\":"
-      << runtime_handoff_object_json(request, dry_run, confirm_execute,
-                                     policy_path);
-  out << ",\"marshal_expected_wave\":{";
-  bool first = true;
-  detail::append_json_string_field(out, "target_component_family_id",
-                                   request.wave_target, &first);
-  detail::append_json_string_field(out, "mode", request.wave_mode, &first);
-  detail::append_json_string_field(out, "source_range", request.source_range,
-                                   &first);
-  if (!request.source_order.empty()) {
-    detail::append_json_string_field(out, "source_order", request.source_order,
-                                     &first);
-  }
-  if (request.anchor_index_begin.has_value()) {
-    detail::append_json_string_field(
-        out, "anchor_index_begin", std::to_string(*request.anchor_index_begin),
-        &first);
-  }
-  if (request.anchor_index_end.has_value()) {
-    detail::append_json_string_field(out, "anchor_index_end",
-                                     std::to_string(*request.anchor_index_end),
-                                     &first);
-  }
-  if (request.source_key_begin.has_value()) {
-    detail::append_json_string_field(out, "source_key_begin",
-                                     std::to_string(*request.source_key_begin),
-                                     &first);
-  }
-  if (request.source_key_end.has_value()) {
-    detail::append_json_string_field(
-        out, "source_key_end", std::to_string(*request.source_key_end), &first);
-  }
-  out << ",\"model_state_inputs\":{";
-  bool first_input = true;
-  for (const auto &[key, value] : request.model_state_inputs) {
-    detail::append_json_string_field(
-        out, key, detail::normalize_path_text(value), &first_input);
-  }
-  out << "}}";
+  out << "{\"mode\":" << detail::json_quote(dry_run ? "dry_run" : "execute");
+  out << ",\"args_path\":" << detail::json_quote(args_path.string())
+      << ",\"args_digest\":" << detail::json_quote(args_digest);
   out << "}";
   return out.str();
 }
@@ -672,41 +776,33 @@ namespace detail {
 [[nodiscard]] inline marshal_runtime_hero_handoff_result_t
 call_runtime_hero_execute_request(
     const marshal_runtime_dry_run_request_t &request,
-    const marshal_runtime_hero_handoff_options_t &options, bool dry_run,
-    bool confirm_execute) {
+    const marshal_runtime_hero_handoff_options_t &options, bool dry_run) {
   marshal_runtime_hero_handoff_result_t out{};
   out.attempted = true;
-  cuwacunu::hero::runtime::runtime_context_t ctx{};
-  ctx.global_config_path = options.global_config_path.empty()
-                               ? std::filesystem::path(request.config_path)
-                               : options.global_config_path;
-  ctx.policy_path =
-      options.policy_path.empty()
-          ? cuwacunu::hero::runtime::resolve_runtime_hero_dsl_path(
-                ctx.global_config_path)
-          : options.policy_path;
-
-  std::string error;
-  if (!cuwacunu::hero::runtime::load_runtime_policy(
-          ctx.policy_path, ctx.global_config_path, &ctx.policy, &error)) {
-    out.error_message = error;
-    return out;
-  }
+  const std::filesystem::path global_config_path =
+      options.global_config_path.empty()
+          ? std::filesystem::path(request.config_path)
+          : options.global_config_path;
+  const std::filesystem::path runtime_policy_path =
+      runtime_policy_path_from_global_config(global_config_path,
+                                             options.policy_path);
 
   out.arguments_json =
-      runtime_hero_execute_args_json(request, options.timeout_seconds, dry_run,
-                                     confirm_execute, ctx.policy_path);
+      runtime_hero_execute_args_json(request, dry_run, runtime_policy_path);
   out.arguments_digest = marshal_digest_for_text(
       "kikijyeba.marshal.runtime_handoff_arguments.v1", out.arguments_json);
 
   std::string wave_error;
   const std::string wave_args =
-      "{\"subject\":\"wave\",\"config_path\":" +
+      "{\"config_path\":" +
       json_quote(detail::normalize_path_text(request.config_path)) + "}";
   out.decoded_wave_checked = true;
-  const bool wave_call_ok = cuwacunu::hero::runtime::execute_tool_json(
-      "hero.runtime.inspect", wave_args, &ctx, &out.decoded_wave_json,
-      &wave_error);
+  const auto wave_call = cuwacunu::hero::mcp_cli::call_runtime_tool(
+      global_config_path, runtime_policy_path, "hero.runtime.inspect.wave",
+      wave_args, options.timeout_seconds, 1048576);
+  const bool wave_call_ok = wave_call.process_ok;
+  out.decoded_wave_json = wave_call.result_json;
+  wave_error = wave_call.error_message;
   out.decoded_wave_digest = marshal_digest_for_text(
       "kikijyeba.marshal.runtime_decoded_wave.v1", out.decoded_wave_json);
   out.decoded_wave_matches_request =
@@ -721,9 +817,12 @@ call_runtime_hero_execute_request(
     return out;
   }
 
-  out.tool_call_ok = cuwacunu::hero::runtime::execute_tool_json(
-      out.tool_name, out.arguments_json, &ctx, &out.tool_result_json,
-      &out.error_message);
+  const auto tool_call = cuwacunu::hero::mcp_cli::call_runtime_tool(
+      global_config_path, runtime_policy_path, out.tool_name,
+      out.arguments_json, options.timeout_seconds, 1048576);
+  out.tool_call_ok = tool_call.process_ok;
+  out.tool_result_json = tool_call.result_json;
+  out.error_message = tool_call.error_message;
   out.tool_result_error = mcp_tool_result_is_error(out.tool_result_json);
   out.runtime_dry_run_ok =
       mcp_structured_content_bool_is_true(out.tool_result_json, "ok");
@@ -739,8 +838,8 @@ call_runtime_hero_dry_run(
     const marshal_runtime_hero_handoff_options_t &options = {}) {
   if (!decision.accepted || !decision.runtime_handoff_available) {
     marshal_runtime_hero_handoff_result_t out{};
-    out.arguments_json = runtime_hero_execute_args_json(
-        decision.runtime_request, options.timeout_seconds, true, false);
+    out.arguments_json =
+        runtime_hero_execute_args_json(decision.runtime_request, true);
     out.arguments_digest = marshal_digest_for_text(
         "kikijyeba.marshal.runtime_handoff_arguments.v1", out.arguments_json);
     out.error_message =
@@ -748,7 +847,7 @@ call_runtime_hero_dry_run(
     return out;
   }
   return detail::call_runtime_hero_execute_request(decision.runtime_request,
-                                                   options, true, false);
+                                                   options, true);
 }
 
 } // namespace cuwacunu::hero::marshal

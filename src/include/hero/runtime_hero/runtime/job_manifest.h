@@ -8,11 +8,12 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
-#include "kikijyeba/protocol/pipeline_builder.h"
 #include "hero/runtime_hero/runtime/wave_plan.h"
+#include "kikijyeba/protocol/pipeline_builder.h"
 #include "kikijyeba/topology/dock_binding.h"
 #include "wikimyei/assembly.h"
 
@@ -54,6 +55,7 @@ struct job_manifest_t {
   std::string component_family_id{};
   std::string component_spawn_schema{"kikijyeba.component_spawn.v2"};
   std::string component_spawn_fingerprint{};
+  std::string component_operator_surface_digest{};
   std::string component_spawn_id{};
   std::string component_spawn_label{};
   std::string topology_id{"kikijyeba.topology.graph.v1"};
@@ -66,6 +68,7 @@ struct job_manifest_t {
   std::string active_representation_component_assembly_id{};
   std::string protocol_observer_family{};
   std::string protocol_allocation_policy_family{};
+  std::string protocol_policy_component_family{};
   std::string protocol_representation_contract{};
   std::string wave_id{};
   std::string target_component_family_id{};
@@ -92,6 +95,7 @@ struct job_manifest_t {
   std::size_t duplicate_anchor_count{0};
   std::string anchor_domain_warning_level{"none"};
   std::string anchor_domain_warnings{};
+  std::string source_cursor_id{};
   std::string source_cursor_token{};
   std::size_t source_input_length{0};
   std::size_t source_future_length{0};
@@ -134,6 +138,19 @@ struct job_manifest_t {
   std::string policy_training_contract_schema{};
   std::string policy_training_contract_digest{};
   std::string policy_training_artifact_schema{};
+  std::string policy_operator_surface_contract_id{};
+  std::string policy_operator_surface_digest{};
+  std::string policy_family_id{};
+  std::string policy_dsl_digest{};
+  std::string policy_net_digest{};
+  std::string policy_input_feature_manifest_digest{};
+  std::string policy_jkimyei_digest{};
+  std::string target_node_universe_digest{};
+  std::string action_distribution_id{};
+  std::string action_distribution_config_digest{};
+  std::string reward_contract_id{};
+  std::string execution_profile_digest{};
+  std::string causal_schedule_digest{};
   std::string manifest_format{"kikijyeba.runtime.job_manifest.v1"};
 
   [[nodiscard]] std::string to_text() const {
@@ -154,6 +171,8 @@ struct job_manifest_t {
     out << "component_spawn_schema=" << component_spawn_schema << "\n";
     out << "component_spawn_fingerprint=" << component_spawn_fingerprint
         << "\n";
+    out << "component_operator_surface_digest="
+        << component_operator_surface_digest << "\n";
     out << "component_spawn_id=" << component_spawn_id << "\n";
     out << "component_spawn_label=" << component_spawn_label << "\n";
     out << "topology_id=" << topology_id << "\n";
@@ -169,6 +188,8 @@ struct job_manifest_t {
     out << "protocol_observer_family=" << protocol_observer_family << "\n";
     out << "protocol_allocation_policy_family="
         << protocol_allocation_policy_family << "\n";
+    out << "protocol_policy_component_family="
+        << protocol_policy_component_family << "\n";
     out << "protocol_representation_contract="
         << protocol_representation_contract << "\n";
     out << "wave_id=" << wave_id << "\n";
@@ -201,6 +222,7 @@ struct job_manifest_t {
     out << "anchor_domain_warning_level=" << anchor_domain_warning_level
         << "\n";
     out << "anchor_domain_warnings=" << anchor_domain_warnings << "\n";
+    out << "source_cursor_id=" << source_cursor_id << "\n";
     out << "source_cursor_token=" << source_cursor_token << "\n";
     out << "source_input_length=" << source_input_length << "\n";
     out << "source_future_length=" << source_future_length << "\n";
@@ -264,9 +286,141 @@ struct job_manifest_t {
         << "\n";
     out << "policy_training_artifact_schema=" << policy_training_artifact_schema
         << "\n";
+    out << "policy_operator_surface_contract_id="
+        << policy_operator_surface_contract_id << "\n";
+    out << "policy_operator_surface_digest=" << policy_operator_surface_digest
+        << "\n";
+    out << "policy_family_id=" << policy_family_id << "\n";
+    out << "policy_dsl_digest=" << policy_dsl_digest << "\n";
+    out << "policy_net_digest=" << policy_net_digest << "\n";
+    out << "policy_input_feature_manifest_digest="
+        << policy_input_feature_manifest_digest << "\n";
+    out << "policy_jkimyei_digest=" << policy_jkimyei_digest << "\n";
+    out << "target_node_universe_digest=" << target_node_universe_digest
+        << "\n";
+    out << "action_distribution_id=" << action_distribution_id << "\n";
+    out << "action_distribution_config_digest="
+        << action_distribution_config_digest << "\n";
+    out << "reward_contract_id=" << reward_contract_id << "\n";
+    out << "execution_profile_digest=" << execution_profile_digest << "\n";
+    out << "causal_schedule_digest=" << causal_schedule_digest << "\n";
     return out.str();
   }
 };
+
+[[nodiscard]] inline bool component_operator_surface_digest_supported_target(
+    const std::string &target_component_family_id) {
+  return target_component_family_id ==
+             "wikimyei.representation.encoding.vicreg" ||
+         target_component_family_id ==
+             "wikimyei.representation.encoding.mtf_jepa_mae_vicreg" ||
+         target_component_family_id == "wikimyei.inference.expected_value.mdn";
+}
+
+[[nodiscard]] inline std::string
+component_operator_surface_digest_for_text(std::string_view text) {
+  std::uint64_t hash =
+      cuwacunu::wikimyei::assembly::assembly_detail::kFnvOffsetBasis;
+  cuwacunu::wikimyei::assembly::assembly_detail::mix_hash_string(
+      hash, "kikijyeba.runtime.component_operator_surface.digest.v1");
+  cuwacunu::wikimyei::assembly::assembly_detail::mix_hash_string(hash, text);
+  return cuwacunu::wikimyei::assembly::assembly_detail::hash_hex(hash);
+}
+
+[[nodiscard]] inline std::string
+canonical_component_operator_surface_text(const job_manifest_t &manifest) {
+  if (!component_operator_surface_digest_supported_target(
+          manifest.target_component_family_id)) {
+    return {};
+  }
+
+  std::ostringstream out;
+  out << "schema=component_operator_surface_digest_contract.v1\n";
+  out << "target_component_family_id=" << manifest.target_component_family_id
+      << "\n";
+  out << "job_kind=" << manifest.job_kind << "\n";
+  out << "protocol_id=" << manifest.protocol_id << "\n";
+  out << "protocol_kind=" << manifest.protocol_kind << "\n";
+  out << "protocol_status=" << manifest.protocol_status << "\n";
+  out << "active_representation_family="
+      << manifest.active_representation_family << "\n";
+  out << "active_representation_component_assembly_id="
+      << manifest.active_representation_component_assembly_id << "\n";
+  out << "protocol_observer_family=" << manifest.protocol_observer_family
+      << "\n";
+  out << "protocol_allocation_policy_family="
+      << manifest.protocol_allocation_policy_family << "\n";
+  out << "protocol_policy_component_family="
+      << manifest.protocol_policy_component_family << "\n";
+  out << "protocol_representation_contract="
+      << manifest.protocol_representation_contract << "\n";
+  out << "wave_id=" << manifest.wave_id << "\n";
+  out << "wave_action=" << manifest.wave_action << "\n";
+  out << "wave_mode=" << manifest.wave_mode << "\n";
+  out << "source_range_policy=" << manifest.source_range_policy << "\n";
+  out << "source_order_policy=" << manifest.source_order_policy << "\n";
+  out << "source_order_policy_explicit="
+      << (manifest.source_order_policy_explicit ? "true" : "false") << "\n";
+  out << "requested_source_key_begin=" << manifest.requested_source_key_begin
+      << "\n";
+  out << "requested_source_key_end=" << manifest.requested_source_key_end
+      << "\n";
+  out << "resolved_anchor_index_begin=" << manifest.resolved_anchor_index_begin
+      << "\n";
+  out << "resolved_anchor_index_end=" << manifest.resolved_anchor_index_end
+      << "\n";
+  out << "source_cursor_token=" << manifest.source_cursor_token << "\n";
+  out << "source_cursor_id=" << manifest.source_cursor_id << "\n";
+  out << "source_input_length=" << manifest.source_input_length << "\n";
+  out << "source_future_length=" << manifest.source_future_length << "\n";
+  out << "observed_source_row_begin=" << manifest.observed_source_row_begin
+      << "\n";
+  out << "observed_source_row_end=" << manifest.observed_source_row_end << "\n";
+  out << "target_source_row_begin=" << manifest.target_source_row_begin << "\n";
+  out << "target_source_row_end=" << manifest.target_source_row_end << "\n";
+  out << "source_footprint_precision=" << manifest.source_footprint_precision
+      << "\n";
+  out << "observed_source_key_begin=" << manifest.observed_source_key_begin
+      << "\n";
+  out << "observed_source_key_end=" << manifest.observed_source_key_end << "\n";
+  out << "target_source_key_begin=" << manifest.target_source_key_begin << "\n";
+  out << "target_source_key_end=" << manifest.target_source_key_end << "\n";
+  out << "source_key_footprint_precision="
+      << manifest.source_key_footprint_precision << "\n";
+  out << "source_file_receipts=" << manifest.source_file_receipts << "\n";
+  out << "protocol_contract_fingerprint="
+      << manifest.protocol_contract_fingerprint << "\n";
+  out << "protocol_contract_token=" << manifest.protocol_contract_token << "\n";
+  out << "graph_order_fingerprint=" << manifest.graph_order_fingerprint << "\n";
+  out << "nodelift_assembly_fingerprint="
+      << manifest.nodelift_assembly_fingerprint << "\n";
+  out << "vicreg_assembly_fingerprint=" << manifest.vicreg_assembly_fingerprint
+      << "\n";
+  out << "mtf_jepa_mae_vicreg_assembly_fingerprint="
+      << manifest.mtf_jepa_mae_vicreg_assembly_fingerprint << "\n";
+  out << "mdn_assembly_fingerprint=" << manifest.mdn_assembly_fingerprint
+      << "\n";
+  out << "dock_binding_fingerprint=" << manifest.dock_binding_fingerprint
+      << "\n";
+  out << "dock_binding_token=" << manifest.dock_binding_token << "\n";
+  out << "stream_plan=" << manifest.stream_plan << "\n";
+  out << "representation_training_id=" << manifest.representation_training_id
+      << "\n";
+  out << "inference_training_id=" << manifest.inference_training_id << "\n";
+  out << "input_representation_checkpoint_path="
+      << manifest.input_representation_checkpoint_path << "\n";
+  out << "input_mdn_checkpoint_path=" << manifest.input_mdn_checkpoint_path
+      << "\n";
+  return out.str();
+}
+
+[[nodiscard]] inline std::string
+component_operator_surface_digest_for_manifest(const job_manifest_t &manifest) {
+  const auto canonical = canonical_component_operator_surface_text(manifest);
+  return canonical.empty()
+             ? std::string{}
+             : component_operator_surface_digest_for_text(canonical);
+}
 
 [[nodiscard]] inline std::string
 execution_chain_for_job(runtime_job_kind_t job_kind,
@@ -318,7 +472,7 @@ execution_chain_for_job(runtime_job_kind_t job_kind,
     return "runtime.completed_replay_job:read -> "
            "kikijyeba.environment.replay.v1:rollout -> "
            "cajtucu.execution.paper.v1:paper_execute -> "
-           "wikimyei.policy.trainable:train_contract";
+           "wikimyei.policy.portfolio.graph_node_allocation:train_contract";
   }
   return {};
 }
@@ -337,7 +491,7 @@ mutated_components_for_job(runtime_job_kind_t job_kind,
   case runtime_job_kind_t::channel_inference_mdn:
     return "wikimyei.inference.expected_value.mdn";
   case runtime_job_kind_t::policy_training:
-    return "wikimyei.policy.trainable";
+    return "wikimyei.policy.portfolio.graph_node_allocation";
   }
   return {};
 }
@@ -472,6 +626,8 @@ make_job_manifest(const BuilderT &builder, const wave_plan_t &wave_plan,
   out.protocol_observer_family = dry_run.protocol_observer_family;
   out.protocol_allocation_policy_family =
       dry_run.protocol_allocation_policy_family;
+  out.protocol_policy_component_family =
+      dry_run.protocol_policy_component_family;
   out.protocol_representation_contract =
       dry_run.protocol_representation_contract;
   out.wave_id = wave_plan.wave_id;
@@ -508,6 +664,7 @@ make_job_manifest(const BuilderT &builder, const wave_plan_t &wave_plan,
   out.duplicate_anchor_count = wave_plan.duplicate_anchor_count;
   out.anchor_domain_warning_level = wave_plan.anchor_domain_warning_level;
   out.anchor_domain_warnings = wave_plan.anchor_domain_warnings;
+  out.source_cursor_id = wave_plan.source_cursor_id;
   out.source_cursor_token = wave_plan.source_cursor_token;
   out.source_input_length = wave_plan.source_input_length;
   out.source_future_length = wave_plan.source_future_length;
@@ -551,6 +708,8 @@ make_job_manifest(const BuilderT &builder, const wave_plan_t &wave_plan,
   out.input_representation_checkpoint_path =
       inference_training.input_representation_checkpoint_path;
   out.input_mdn_checkpoint_path = inference_training.input_mdn_checkpoint_path;
+  out.component_operator_surface_digest =
+      component_operator_surface_digest_for_manifest(out);
   return out;
 }
 

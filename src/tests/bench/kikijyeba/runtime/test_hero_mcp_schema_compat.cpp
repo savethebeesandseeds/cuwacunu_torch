@@ -31,6 +31,14 @@ struct command_result_t {
   std::string output{};
 };
 
+[[nodiscard]] bool is_lattice_identity_filter_field(const std::string &field) {
+  return field == "protocol_id" || field == "protocol_contract_fingerprint" ||
+         field == "graph_order_fingerprint" || field == "source_cursor_token" ||
+         field == "vicreg_assembly_fingerprint" ||
+         field == "mtf_jepa_mae_vicreg_assembly_fingerprint" ||
+         field == "mdn_assembly_fingerprint";
+}
+
 [[nodiscard]] command_result_t run_command_capture(const std::string &command) {
   std::array<char, 4096> buffer{};
   FILE *pipe = popen((command + " 2>&1").c_str(), "r");
@@ -126,6 +134,96 @@ void skip_ws(const std::string &s, std::size_t *idx) {
       }
     }
     ++(*idx);
+  }
+  throw std::runtime_error("unterminated JSON object");
+}
+
+[[nodiscard]] bool skip_json_value(const std::string &s, std::size_t *idx) {
+  skip_ws(s, idx);
+  if (*idx >= s.size()) {
+    return false;
+  }
+  if (s[*idx] == '"') {
+    (void)parse_json_string_at(s, idx);
+    return true;
+  }
+  if (s[*idx] == '{' || s[*idx] == '[') {
+    const char open = s[*idx];
+    const char close = open == '{' ? '}' : ']';
+    int depth = 0;
+    while (*idx < s.size()) {
+      if (s[*idx] == '"') {
+        (void)parse_json_string_at(s, idx);
+        continue;
+      }
+      if (s[*idx] == open) {
+        ++depth;
+      } else if (s[*idx] == close) {
+        --depth;
+        ++(*idx);
+        if (depth == 0) {
+          return true;
+        }
+        continue;
+      }
+      ++(*idx);
+    }
+    return false;
+  }
+  const std::size_t begin = *idx;
+  while (*idx < s.size() && s[*idx] != ',' && s[*idx] != '}' &&
+         s[*idx] != ']') {
+    ++(*idx);
+  }
+  return *idx > begin;
+}
+
+struct json_object_field_t {
+  std::string key{};
+  std::string raw{};
+};
+
+[[nodiscard]] std::vector<json_object_field_t>
+parse_json_object_fields(const std::string &json) {
+  std::size_t idx = 0;
+  skip_ws(json, &idx);
+  if (idx >= json.size() || json[idx] != '{') {
+    throw std::runtime_error("expected JSON object");
+  }
+  ++idx;
+  std::vector<json_object_field_t> fields;
+  while (idx < json.size()) {
+    skip_ws(json, &idx);
+    if (idx < json.size() && json[idx] == '}') {
+      ++idx;
+      skip_ws(json, &idx);
+      if (idx != json.size()) {
+        throw std::runtime_error("trailing data after JSON object");
+      }
+      return fields;
+    }
+    std::string key = parse_json_string_at(json, &idx);
+    skip_ws(json, &idx);
+    if (idx >= json.size() || json[idx] != ':') {
+      throw std::runtime_error("expected ':' after JSON object key");
+    }
+    ++idx;
+    skip_ws(json, &idx);
+    const std::size_t value_begin = idx;
+    if (!skip_json_value(json, &idx)) {
+      throw std::runtime_error("invalid JSON value for key: " + key);
+    }
+    fields.push_back(
+        {std::move(key), json.substr(value_begin, idx - value_begin)});
+    skip_ws(json, &idx);
+    if (idx < json.size() && json[idx] == ',') {
+      ++idx;
+      continue;
+    }
+    if (idx < json.size() && json[idx] == '}') {
+      continue;
+    }
+    throw std::runtime_error("expected ',' or '}' in JSON object");
   }
   throw std::runtime_error("unterminated JSON object");
 }
@@ -265,17 +363,42 @@ void check_catalog(const std::string &label, const fs::path &binary,
   const auto tools = extract_tool_schemas(output);
   assert(!tools.empty());
   bool saw_lattice_status = false;
-  bool saw_lattice_inspect = false;
-  bool saw_lattice_evaluate = false;
+  int lattice_inspect_tool_count = 0;
+  int lattice_evaluate_tool_count = 0;
   bool saw_lattice_compare = false;
   int lattice_public_tool_count = 0;
   bool saw_config_status = false;
-  bool saw_config_inspect = false;
-  bool saw_config_apply = false;
+  int config_inspect_tool_count = 0;
+  int config_apply_tool_count = 0;
   bool saw_runtime_status = false;
-  bool saw_runtime_inspect = false;
+  bool saw_runtime_inspect_schema = false;
+  bool saw_runtime_inspect_wave = false;
+  bool saw_runtime_inspect_jobs = false;
+  bool saw_runtime_inspect_job = false;
+  bool saw_runtime_inspect_artifact = false;
+  int runtime_inspect_artifact_tool_count = 0;
+  int runtime_inspect_tool_count = 0;
   bool saw_runtime_run = false;
   bool saw_runtime_reset = false;
+  bool saw_environment_status = false;
+  bool saw_environment_inspect_schema = false;
+  bool saw_environment_inspect_job = false;
+  int environment_inspect_tool_count = 0;
+  int environment_certify_tool_count = 0;
+  bool saw_environment_certify_policy_acceptance = false;
+  bool saw_environment_certify_paper_online_readiness = false;
+  bool saw_environment_rollout = false;
+  bool saw_marshal_status = false;
+  int marshal_prepare_tool_count = 0;
+  bool saw_marshal_rollout = false;
+  int marshal_inspect_tool_count = 0;
+  int marshal_inspect_run_tool_count = 0;
+  bool saw_marshal_inspect_target = false;
+  bool saw_marshal_inspect_protocol = false;
+  int marshal_inspect_protocol_tool_count = 0;
+  int marshal_inspect_spawn_tool_count = 0;
+  bool saw_marshal_inspect_component = false;
+  int marshal_inspect_facts_tool_count = 0;
   for (const auto &tool : tools) {
     const auto issues =
         schema::validate_tool_input_schema(tool.name, tool.input_schema);
@@ -287,18 +410,580 @@ void check_catalog(const std::string &label, const fs::path &binary,
       ++lattice_public_tool_count;
       if (tool.name == "hero.lattice.status") {
         saw_lattice_status = true;
-      } else if (tool.name == "hero.lattice.inspect") {
-        saw_lattice_inspect = true;
-        if (tool.input_schema.find(
-                "\"fact_digest_prefix\":{\"type\":\"string\"}") ==
-            std::string::npos) {
-          throw std::runtime_error(
-              "Lattice inspect schema should advertise fact_digest_prefix");
+        for (const auto retired_field :
+             {"\"config_path\"", "\"runtime_root\""}) {
+          if (tool.input_schema.find(retired_field) != std::string::npos) {
+            throw std::runtime_error(
+                "Lattice status schema still exposes request field: " +
+                std::string(retired_field));
+          }
         }
-      } else if (tool.name == "hero.lattice.evaluate") {
-        saw_lattice_evaluate = true;
+      } else if (tool.name.rfind("hero.lattice.inspect.", 0) == 0) {
+        ++lattice_inspect_tool_count;
+        for (const auto retired_field :
+             {"\"subject\"", "\"args_path\"", "\"args_digest\""}) {
+          if (tool.input_schema.find(retired_field) != std::string::npos) {
+            throw std::runtime_error(
+                "Lattice inspect split schema still exposes router field: " +
+                std::string(retired_field));
+          }
+        }
+        if (tool.name == "hero.lattice.inspect.schema") {
+          if (tool.input_schema.find("\"properties\":{}") ==
+              std::string::npos) {
+            throw std::runtime_error(
+                "Lattice inspect.schema must expose no arguments");
+          }
+        } else if (tool.name == "hero.lattice.inspect.targets") {
+          if (tool.input_schema.find("\"config_path\"") == std::string::npos) {
+            throw std::runtime_error(
+                "Lattice inspect.targets must expose config_path");
+          }
+        } else if (tool.name == "hero.lattice.inspect.target") {
+          for (const auto retained_field :
+               {"\"target_id\"", "\"config_path\""}) {
+            if (tool.input_schema.find(retained_field) == std::string::npos) {
+              throw std::runtime_error(
+                  "Lattice inspect.target is missing field: " +
+                  std::string(retained_field));
+            }
+          }
+        } else if (tool.name == "hero.lattice.inspect.exposure") {
+          for (const auto retained_field : {"\"runtime_root\"", "\"limit\""}) {
+            if (tool.input_schema.find(retained_field) == std::string::npos) {
+              throw std::runtime_error(
+                  "Lattice inspect.exposure is missing field: " +
+                  std::string(retained_field));
+            }
+          }
+        } else if (tool.name == "hero.lattice.inspect.fact_families") {
+          if (tool.input_schema.find("\"runtime_root\"") == std::string::npos) {
+            throw std::runtime_error(
+                "Lattice inspect.fact_families must expose runtime_root");
+          }
+        } else if (tool.name == "hero.lattice.inspect.facts") {
+          throw std::runtime_error(
+              "Lattice catalog still exposes broad hero.lattice.inspect.facts");
+        } else if (tool.name.rfind("hero.lattice.inspect.facts.", 0) == 0) {
+          for (const auto retained_field : {"\"runtime_root\"", "\"family\""}) {
+            if (tool.input_schema.find(retained_field) == std::string::npos) {
+              throw std::runtime_error(
+                  "Lattice inspect.facts split is missing field: " +
+                  std::string(retained_field));
+            }
+          }
+          if (tool.input_schema.find("\"mode\"") != std::string::npos) {
+            throw std::runtime_error(
+                "Lattice inspect.facts split still exposes mode");
+          }
+          if (tool.name == "hero.lattice.inspect.facts.summary") {
+            for (const auto rejected_field :
+                 {"\"limit\"", "\"include_facts\"", "\"fact_digest\"",
+                  "\"fact_digest_prefix\"", "\"fact_index\""}) {
+              if (tool.input_schema.find(rejected_field) != std::string::npos) {
+                throw std::runtime_error(
+                    "Lattice inspect.facts.summary exposes wrong field: " +
+                    std::string(rejected_field));
+              }
+            }
+          } else if (tool.name == "hero.lattice.inspect.facts.scan") {
+            for (const auto retained_field :
+                 {"\"limit\"", "\"include_facts\""}) {
+              if (tool.input_schema.find(retained_field) == std::string::npos) {
+                throw std::runtime_error(
+                    "Lattice inspect.facts.scan is missing field: " +
+                    std::string(retained_field));
+              }
+            }
+            for (const auto rejected_field :
+                 {"\"fact_digest\"", "\"fact_digest_prefix\"",
+                  "\"fact_index\""}) {
+              if (tool.input_schema.find(rejected_field) != std::string::npos) {
+                throw std::runtime_error(
+                    "Lattice inspect.facts.scan exposes wrong field: " +
+                    std::string(rejected_field));
+              }
+            }
+          } else if (tool.name == "hero.lattice.inspect.facts.lineage") {
+            if (tool.input_schema.find("\"limit\"") == std::string::npos) {
+              throw std::runtime_error(
+                  "Lattice inspect.facts.lineage is missing limit");
+            }
+            for (const auto rejected_field :
+                 {"\"include_facts\"", "\"fact_digest\"",
+                  "\"fact_digest_prefix\"", "\"fact_index\""}) {
+              if (tool.input_schema.find(rejected_field) != std::string::npos) {
+                throw std::runtime_error(
+                    "Lattice inspect.facts.lineage exposes wrong field: " +
+                    std::string(rejected_field));
+              }
+            }
+          } else if (tool.name == "hero.lattice.inspect.facts.preview") {
+            if (tool.input_schema.find("\"limit\"") == std::string::npos) {
+              throw std::runtime_error(
+                  "Lattice inspect.facts.preview is missing limit");
+            }
+            for (const auto rejected_field :
+                 {"\"include_facts\"", "\"fact_digest\"",
+                  "\"fact_digest_prefix\"", "\"fact_index\""}) {
+              if (tool.input_schema.find(rejected_field) != std::string::npos) {
+                throw std::runtime_error(
+                    "Lattice inspect.facts.preview exposes wrong field: " +
+                    std::string(rejected_field));
+              }
+            }
+          } else if (tool.name ==
+                     "hero.lattice.inspect.facts.preview.by_digest") {
+            for (const auto retained_field : {"\"limit\"", "\"fact_digest\""}) {
+              if (tool.input_schema.find(retained_field) == std::string::npos) {
+                throw std::runtime_error(
+                    "Lattice inspect.facts.preview.by_digest is missing "
+                    "field: " +
+                    std::string(retained_field));
+              }
+            }
+            for (const auto rejected_field :
+                 {"\"include_facts\"", "\"fact_digest_prefix\"",
+                  "\"fact_index\""}) {
+              if (tool.input_schema.find(rejected_field) != std::string::npos) {
+                throw std::runtime_error(
+                    "Lattice inspect.facts.preview.by_digest exposes wrong "
+                    "field: " +
+                    std::string(rejected_field));
+              }
+            }
+          } else if (tool.name ==
+                     "hero.lattice.inspect.facts.preview.by_digest_prefix") {
+            for (const auto retained_field :
+                 {"\"limit\"", "\"fact_digest_prefix\""}) {
+              if (tool.input_schema.find(retained_field) == std::string::npos) {
+                throw std::runtime_error(
+                    "Lattice inspect.facts.preview.by_digest_prefix is missing "
+                    "field: " +
+                    std::string(retained_field));
+              }
+            }
+            for (const auto rejected_field :
+                 {"\"include_facts\"", "\"fact_digest\"", "\"fact_index\""}) {
+              if (tool.input_schema.find(rejected_field) != std::string::npos) {
+                throw std::runtime_error(
+                    "Lattice inspect.facts.preview.by_digest_prefix exposes "
+                    "wrong field: " +
+                    std::string(rejected_field));
+              }
+            }
+          } else if (tool.name ==
+                     "hero.lattice.inspect.facts.preview.by_index") {
+            for (const auto retained_field : {"\"limit\"", "\"fact_index\""}) {
+              if (tool.input_schema.find(retained_field) == std::string::npos) {
+                throw std::runtime_error(
+                    "Lattice inspect.facts.preview.by_index is missing "
+                    "field: " +
+                    std::string(retained_field));
+              }
+            }
+            for (const auto rejected_field :
+                 {"\"include_facts\"", "\"fact_digest\"",
+                  "\"fact_digest_prefix\""}) {
+              if (tool.input_schema.find(rejected_field) != std::string::npos) {
+                throw std::runtime_error(
+                    "Lattice inspect.facts.preview.by_index exposes wrong "
+                    "field: " +
+                    std::string(rejected_field));
+              }
+            }
+          } else {
+            throw std::runtime_error(
+                "Lattice catalog exposes unknown facts split tool: " +
+                tool.name);
+          }
+        } else if (tool.name == "hero.lattice.inspect.index") {
+          throw std::runtime_error(
+              "Lattice catalog still exposes broad hero.lattice.inspect.index");
+        } else if (tool.name == "hero.lattice.inspect.index.status") {
+          for (const auto retained_field :
+               {"\"runtime_root\"", "\"index_path\"", "\"limit\"",
+                "\"validation_strength\""}) {
+            if (tool.input_schema.find(retained_field) == std::string::npos) {
+              throw std::runtime_error(
+                  "Lattice inspect.index.status is missing field: " +
+                  std::string(retained_field));
+            }
+          }
+          for (const auto rejected_field :
+               {"\"mode\"", "\"relation\"", "\"key\"", "\"key_contains\"",
+                "\"digest\"", "\"digest_prefix\"", "\"compare_live_scan\"",
+                "\"allow_unproven_cache\""}) {
+            if (tool.input_schema.find(rejected_field) != std::string::npos) {
+              throw std::runtime_error(
+                  "Lattice inspect.index.status still exposes query field: " +
+                  std::string(rejected_field));
+            }
+          }
+        } else if (tool.name.rfind("hero.lattice.inspect.index.query", 0) ==
+                   0) {
+          for (const auto retained_field :
+               {"\"runtime_root\"", "\"index_path\"", "\"limit\"",
+                "\"validation_strength\""}) {
+            if (tool.input_schema.find(retained_field) == std::string::npos) {
+              throw std::runtime_error(
+                  "Lattice inspect.index.query is missing field: " +
+                  std::string(retained_field));
+            }
+          }
+          for (const auto rejected_field : {"\"mode\"", "\"compare_live_scan\"",
+                                            "\"allow_unproven_cache\""}) {
+            if (tool.input_schema.find(rejected_field) != std::string::npos) {
+              throw std::runtime_error(
+                  "Lattice inspect.index.query split exposes wrong field: " +
+                  std::string(rejected_field));
+            }
+          }
+          const auto require_index_query_field = [&](const std::string &field) {
+            if (tool.input_schema.find("\"" + field + "\"") ==
+                std::string::npos) {
+              throw std::runtime_error(
+                  "Lattice inspect.index.query selector tool is missing "
+                  "field: " +
+                  field);
+            }
+          };
+          const auto reject_index_query_field = [&](const std::string &field) {
+            if (tool.input_schema.find("\"" + field + "\"") !=
+                std::string::npos) {
+              throw std::runtime_error(
+                  "Lattice inspect.index.query selector tool exposes wrong "
+                  "field: " +
+                  field);
+            }
+          };
+          if (tool.name == "hero.lattice.inspect.index.query" ||
+              tool.name == "hero.lattice.inspect.index.query.unproven_cache") {
+            for (const auto field : {"relation", "key", "key_contains",
+                                     "digest", "digest_prefix"}) {
+              reject_index_query_field(field);
+            }
+          } else if (tool.name.ends_with(".by_relation")) {
+            require_index_query_field("relation");
+            for (const auto field :
+                 {"key", "key_contains", "digest", "digest_prefix"}) {
+              reject_index_query_field(field);
+            }
+          } else if (tool.name.ends_with(".by_key")) {
+            require_index_query_field("key");
+            for (const auto field :
+                 {"relation", "key_contains", "digest", "digest_prefix"}) {
+              reject_index_query_field(field);
+            }
+          } else if (tool.name.ends_with(".by_key_contains")) {
+            require_index_query_field("key_contains");
+            for (const auto field :
+                 {"relation", "key", "digest", "digest_prefix"}) {
+              reject_index_query_field(field);
+            }
+          } else if (tool.name.ends_with(".by_digest")) {
+            require_index_query_field("digest");
+            for (const auto field :
+                 {"relation", "key", "key_contains", "digest_prefix"}) {
+              reject_index_query_field(field);
+            }
+          } else if (tool.name.ends_with(".by_digest_prefix")) {
+            require_index_query_field("digest_prefix");
+            for (const auto field :
+                 {"relation", "key", "key_contains", "digest"}) {
+              reject_index_query_field(field);
+            }
+          } else {
+            throw std::runtime_error(
+                "Lattice catalog exposes unknown index query split tool: " +
+                tool.name);
+          }
+        } else if (tool.name == "hero.lattice.inspect.derived") {
+          throw std::runtime_error("Lattice catalog still exposes broad "
+                                   "hero.lattice.inspect.derived");
+        } else if (tool.name.rfind("hero.lattice.inspect.derived.", 0) == 0) {
+          if (tool.input_schema.find("\"relation\"") != std::string::npos) {
+            throw std::runtime_error(
+                "Lattice inspect.derived split still exposes relation");
+          }
+          if (tool.name == "hero.lattice.inspect.derived.target_satisfied" ||
+              tool.name == "hero.lattice.inspect.derived.forbidden_overlap" ||
+              tool.name ==
+                  "hero.lattice.inspect.derived.unresolved_lineage.target") {
+            for (const auto retained_field :
+                 {"\"target_id\"", "\"runtime_root\"", "\"config_path\"",
+                  "\"limit\""}) {
+              if (tool.input_schema.find(retained_field) == std::string::npos) {
+                throw std::runtime_error(
+                    "Lattice target-derived split is missing field: " +
+                    std::string(retained_field));
+              }
+            }
+            for (const auto field :
+                 {"protocol_id", "protocol_contract_fingerprint",
+                  "graph_order_fingerprint", "source_cursor_token",
+                  "vicreg_assembly_fingerprint",
+                  "mtf_jepa_mae_vicreg_assembly_fingerprint",
+                  "mdn_assembly_fingerprint"}) {
+              if (tool.input_schema.find("\"" + std::string(field) + "\"") !=
+                  std::string::npos) {
+                throw std::runtime_error("Lattice target-derived split still "
+                                         "exposes identity filter: " +
+                                         std::string(field));
+              }
+            }
+          } else if (tool.name == "hero.lattice.inspect.derived.stale_cache") {
+            for (const auto retained_field :
+                 {"\"runtime_root\"", "\"index_path\"",
+                  "\"validation_strength\"", "\"limit\""}) {
+              if (tool.input_schema.find(retained_field) == std::string::npos) {
+                throw std::runtime_error(
+                    "Lattice stale-cache split is missing field: " +
+                    std::string(retained_field));
+              }
+            }
+            if (tool.input_schema.find("\"target_id\"") != std::string::npos) {
+              throw std::runtime_error(
+                  "Lattice stale-cache split exposes target_id");
+            }
+          } else if (tool.name == "hero.lattice.inspect.derived."
+                                  "checkpoint_ancestor") {
+            throw std::runtime_error("Lattice catalog still exposes broad "
+                                     "checkpoint_ancestor split");
+          } else if (tool.name.rfind("hero.lattice.inspect.derived."
+                                     "checkpoint_ancestor.",
+                                     0) == 0) {
+            for (const auto retained_field :
+                 {"\"runtime_root\"", "\"limit\""}) {
+              if (tool.input_schema.find(retained_field) == std::string::npos) {
+                throw std::runtime_error(
+                    "Lattice checkpoint-ancestor split is missing field: " +
+                    std::string(retained_field));
+              }
+            }
+            const auto require_checkpoint_field =
+                [&](const std::string &field) {
+                  if (tool.input_schema.find("\"" + field + "\"") ==
+                      std::string::npos) {
+                    throw std::runtime_error(
+                        "Lattice checkpoint-ancestor split is missing field: " +
+                        field);
+                  }
+                };
+            const auto reject_checkpoint_field = [&](const std::string &field) {
+              if (tool.input_schema.find("\"" + field + "\"") !=
+                  std::string::npos) {
+                throw std::runtime_error(
+                    "Lattice checkpoint-ancestor split exposes wrong "
+                    "field: " +
+                    field);
+              }
+            };
+            const bool by_path =
+                tool.name.find(".by_checkpoint_path") != std::string::npos;
+            const bool by_identity =
+                tool.name.find(".by_checkpoint_identity") != std::string::npos;
+            const bool with_ancestor_path =
+                tool.name.ends_with(".with_ancestor_path");
+            const bool with_ancestor_id =
+                tool.name.ends_with(".with_ancestor_id");
+            if (by_path == by_identity) {
+              throw std::runtime_error(
+                  "Lattice checkpoint-ancestor split must choose path or "
+                  "identity: " +
+                  tool.name);
+            }
+            if (by_path) {
+              require_checkpoint_field("checkpoint_path");
+              reject_checkpoint_field("checkpoint_id");
+              reject_checkpoint_field("checkpoint_file_digest");
+            } else {
+              require_checkpoint_field("checkpoint_id");
+              require_checkpoint_field("checkpoint_file_digest");
+              reject_checkpoint_field("checkpoint_path");
+            }
+            if (with_ancestor_path && with_ancestor_id) {
+              throw std::runtime_error(
+                  "Lattice checkpoint-ancestor split mixes ancestor selectors");
+            }
+            if (with_ancestor_path) {
+              require_checkpoint_field("ancestor_checkpoint_path");
+              reject_checkpoint_field("ancestor_checkpoint_id");
+            } else if (with_ancestor_id) {
+              require_checkpoint_field("ancestor_checkpoint_id");
+              reject_checkpoint_field("ancestor_checkpoint_path");
+            } else {
+              reject_checkpoint_field("ancestor_checkpoint_path");
+              reject_checkpoint_field("ancestor_checkpoint_id");
+            }
+          } else if (tool.name == "hero.lattice.inspect.derived.unresolved_"
+                                  "lineage.checkpoint") {
+            for (const auto retained_field :
+                 {"\"runtime_root\"", "\"limit\"", "\"checkpoint_path\"",
+                  "\"checkpoint_id\"", "\"checkpoint_file_digest\""}) {
+              if (tool.input_schema.find(retained_field) == std::string::npos) {
+                throw std::runtime_error(
+                    "Lattice checkpoint-lineage split is missing field: " +
+                    std::string(retained_field));
+              }
+            }
+            for (const auto rejected_field :
+                 {"\"target_id\"", "\"ancestor_checkpoint_path\"",
+                  "\"ancestor_checkpoint_id\""}) {
+              if (tool.input_schema.find(rejected_field) != std::string::npos) {
+                throw std::runtime_error(
+                    "Lattice checkpoint-lineage split exposes wrong field: " +
+                    std::string(rejected_field));
+              }
+            }
+          } else {
+            throw std::runtime_error(
+                "Lattice catalog exposes unknown derived split tool: " +
+                tool.name);
+          }
+        } else if (tool.name == "hero.lattice.inspect.checkpoint") {
+          for (const auto retained_field :
+               {"\"runtime_root\"", "\"checkpoint_path\"", "\"checkpoint_id\"",
+                "\"checkpoint_file_digest\"", "\"limit\""}) {
+            if (tool.input_schema.find(retained_field) == std::string::npos) {
+              throw std::runtime_error(
+                  "Lattice inspect.checkpoint is missing field: " +
+                  std::string(retained_field));
+            }
+          }
+        } else {
+          throw std::runtime_error(
+              "Lattice catalog exposes unknown inspect split tool: " +
+              tool.name);
+        }
+      } else if (tool.name.rfind("hero.lattice.evaluate.", 0) == 0) {
+        ++lattice_evaluate_tool_count;
+        for (const auto retired_field :
+             {"\"subject\"", "\"args_path\"", "\"args_digest\""}) {
+          if (tool.input_schema.find(retired_field) != std::string::npos) {
+            throw std::runtime_error(
+                "Lattice evaluate split schema still exposes router field: " +
+                std::string(retired_field));
+          }
+        }
+        if (tool.name == "hero.lattice.evaluate.target" ||
+            tool.name == "hero.lattice.evaluate.deficit") {
+          for (const auto retained_field :
+               {"\"target_id\"", "\"config_path\"", "\"runtime_root\""}) {
+            if (tool.input_schema.find(retained_field) == std::string::npos) {
+              throw std::runtime_error(
+                  "Lattice evaluate target/deficit is missing field: " +
+                  std::string(retained_field));
+            }
+          }
+          for (const auto field :
+               {"protocol_id", "protocol_contract_fingerprint",
+                "graph_order_fingerprint", "source_cursor_token",
+                "vicreg_assembly_fingerprint",
+                "mtf_jepa_mae_vicreg_assembly_fingerprint",
+                "mdn_assembly_fingerprint"}) {
+            if (tool.input_schema.find("\"" + std::string(field) + "\"") !=
+                std::string::npos) {
+              throw std::runtime_error("Lattice evaluate target/deficit still "
+                                       "exposes identity filter: " +
+                                       std::string(field));
+            }
+          }
+        } else if (tool.name == "hero.lattice.evaluate.targets") {
+          for (const auto retained_field : {"\"target_ids\"", "\"config_path\"",
+                                            "\"runtime_root\"", "\"limit\""}) {
+            if (tool.input_schema.find(retained_field) == std::string::npos) {
+              throw std::runtime_error(
+                  "Lattice evaluate.targets is missing field: " +
+                  std::string(retained_field));
+            }
+          }
+          for (const auto field :
+               {"protocol_id", "protocol_contract_fingerprint",
+                "graph_order_fingerprint", "source_cursor_token",
+                "vicreg_assembly_fingerprint",
+                "mtf_jepa_mae_vicreg_assembly_fingerprint",
+                "mdn_assembly_fingerprint"}) {
+            if (tool.input_schema.find("\"" + std::string(field) + "\"") !=
+                std::string::npos) {
+              throw std::runtime_error("Lattice evaluate.targets still exposes "
+                                       "identity filter: " +
+                                       std::string(field));
+            }
+          }
+        } else if (
+            tool.name ==
+                "hero.lattice.evaluate.latest_satisfying_checkpoint.target" ||
+            tool.name ==
+                "hero.lattice.evaluate.latest_satisfying_checkpoint.hint") {
+          const char *selector = tool.name == "hero.lattice.evaluate.latest_"
+                                              "satisfying_checkpoint.target"
+                                     ? "\"target_id\""
+                                     : "\"symbolic_hint\"";
+          const char *rejected_selector =
+              tool.name == "hero.lattice.evaluate.latest_satisfying_checkpoint."
+                           "target"
+                  ? "\"symbolic_hint\""
+                  : "\"target_id\"";
+          for (const auto retained_field :
+               {selector, "\"config_path\"", "\"runtime_root\""}) {
+            if (tool.input_schema.find(retained_field) == std::string::npos) {
+              throw std::runtime_error(
+                  "Lattice evaluate.latest_satisfying_checkpoint split is "
+                  "missing "
+                  "field: " +
+                  std::string(retained_field));
+            }
+          }
+          for (const auto field :
+               {"protocol_id", "protocol_contract_fingerprint",
+                "graph_order_fingerprint", "source_cursor_token",
+                "vicreg_assembly_fingerprint",
+                "mtf_jepa_mae_vicreg_assembly_fingerprint",
+                "mdn_assembly_fingerprint"}) {
+            if (tool.input_schema.find("\"" + std::string(field) + "\"") !=
+                std::string::npos) {
+              throw std::runtime_error("Lattice latest_satisfying_checkpoint "
+                                       "split still exposes identity filter: " +
+                                       std::string(field));
+            }
+          }
+          if (tool.input_schema.find(rejected_selector) != std::string::npos) {
+            throw std::runtime_error(
+                "Lattice latest_satisfying_checkpoint split exposes wrong "
+                "selector: " +
+                std::string(rejected_selector));
+          }
+        } else {
+          throw std::runtime_error(
+              "Lattice catalog exposes unknown evaluate split tool: " +
+              tool.name);
+        }
       } else if (tool.name == "hero.lattice.compare") {
         saw_lattice_compare = true;
+        for (const auto retained_field :
+             {"\"left_target_id\"", "\"right_target_id\"", "\"config_path\"",
+              "\"runtime_root\""}) {
+          if (tool.input_schema.find(retained_field) == std::string::npos) {
+            throw std::runtime_error(
+                "Lattice compare schema is missing retained direct field: " +
+                std::string(retained_field));
+          }
+        }
+        for (const auto retired_field :
+             {"\"args_path\"", "\"args_digest\"", "\"protocol_id\"",
+              "\"protocol_contract_fingerprint\"",
+              "\"graph_order_fingerprint\"", "\"source_cursor_token\"",
+              "\"vicreg_assembly_fingerprint\"",
+              "\"mtf_jepa_mae_vicreg_assembly_"
+              "fingerprint\"",
+              "\"mdn_assembly_fingerprint\""}) {
+          if (tool.input_schema.find(retired_field) != std::string::npos) {
+            throw std::runtime_error(
+                "Lattice compare schema still exposes retired field: " +
+                std::string(retired_field));
+          }
+        }
       } else {
         throw std::runtime_error(
             "Lattice catalog still exposes retired tool: " + tool.name);
@@ -308,22 +993,847 @@ void check_catalog(const std::string &label, const fs::path &binary,
       saw_config_status = true;
     }
     if (tool.name == "hero.config.inspect") {
-      saw_config_inspect = true;
+      throw std::runtime_error(
+          "Config catalog still exposes broad inspect router");
+    }
+    if (tool.name.rfind("hero.config.inspect.", 0) == 0) {
+      ++config_inspect_tool_count;
+      const auto has_property = [&](const std::string &field) {
+        const std::string property = "\"" + field + "\":{";
+        return tool.input_schema.find(property) != std::string::npos;
+      };
+      const auto require_property = [&](const std::string &field) {
+        if (!has_property(field)) {
+          throw std::runtime_error("Config inspect split tool " + tool.name +
+                                   " is missing property: " + field);
+        }
+      };
+      const auto reject_property = [&](const std::string &field) {
+        if (has_property(field)) {
+          throw std::runtime_error("Config inspect split tool " + tool.name +
+                                   " still exposes wrong property: " + field);
+        }
+      };
+      for (const auto retired_public :
+           {"subject", "args_path", "args_digest", "include_machine_payload"}) {
+        reject_property(retired_public);
+      }
+      if (tool.name == "hero.config.inspect.schema" ||
+          tool.name == "hero.config.inspect.show" ||
+          tool.name == "hero.config.inspect.validate_global_config" ||
+          tool.name == "hero.config.inspect.backups") {
+        for (const auto field :
+             {"key", "path", "config_path", "include_content", "include_sha256",
+              "for_write", "recursive", "limit"}) {
+          reject_property(field);
+        }
+      } else if (tool.name == "hero.config.inspect.value") {
+        require_property("key");
+        reject_property("value");
+      } else if (tool.name == "hero.config.inspect.map") {
+        require_property("include_sha256");
+      } else if (tool.name == "hero.config.inspect.bundle") {
+        require_property("config_path");
+        require_property("include_content");
+        reject_property("include_text");
+      } else if (tool.name == "hero.config.inspect.resolve_path") {
+        throw std::runtime_error(
+            "Config catalog still exposes broad inspect.resolve_path");
+      } else if (tool.name == "hero.config.inspect.resolve_path.read" ||
+                 tool.name == "hero.config.inspect.resolve_path.write") {
+        require_property("path");
+        require_property("include_sha256");
+        reject_property("for_write");
+      } else if (tool.name == "hero.config.inspect.diff") {
+        require_property("include_content");
+        reject_property("include_text");
+      } else if (tool.name == "hero.config.inspect.file_list") {
+        require_property("path");
+        require_property("recursive");
+        require_property("include_sha256");
+        require_property("limit");
+      } else if (tool.name == "hero.config.inspect.file_read") {
+        require_property("path");
+      } else {
+        throw std::runtime_error(
+            "Config catalog exposes unexpected inspect split tool: " +
+            tool.name);
+      }
     }
     if (tool.name == "hero.config.apply") {
-      saw_config_apply = true;
+      throw std::runtime_error(
+          "Config catalog still exposes broad apply router");
     }
+    if (tool.name.rfind("hero.config.apply.", 0) == 0) {
+      ++config_apply_tool_count;
+      const bool expected_apply_name =
+          tool.name == "hero.config.apply.set" ||
+          tool.name == "hero.config.apply.save" ||
+          tool.name == "hero.config.apply.reload" ||
+          tool.name == "hero.config.apply.rollback" ||
+          tool.name == "hero.config.apply.write" ||
+          tool.name == "hero.config.apply.delete";
+      if (!expected_apply_name) {
+        throw std::runtime_error(
+            "Config catalog exposes unexpected apply split tool: " + tool.name);
+      }
+      const auto has_property = [&](const std::string &field) {
+        const std::string property = "\"" + field + "\":{";
+        return tool.input_schema.find(property) != std::string::npos;
+      };
+      const auto require_property = [&](const std::string &field) {
+        if (!has_property(field)) {
+          throw std::runtime_error("Config apply split tool " + tool.name +
+                                   " is missing property: " + field);
+        }
+      };
+      const auto reject_property = [&](const std::string &field) {
+        if (has_property(field)) {
+          throw std::runtime_error("Config apply split tool " + tool.name +
+                                   " still exposes wrong property: " + field);
+        }
+      };
+      for (const auto retired_field :
+           {"subject", "mode", "args_path", "args_digest", "create_backup"}) {
+        reject_property(retired_field);
+      }
+      if (tool.name == "hero.config.apply.set") {
+        require_property("key");
+        require_property("value");
+        require_property("reason");
+        for (const auto field :
+             {"path", "content", "backup_id", "expected_sha256",
+              "expected_current_sha256", "include_content"}) {
+          reject_property(field);
+        }
+      } else if (tool.name == "hero.config.apply.save") {
+        require_property("reason");
+        require_property("include_content");
+        for (const auto field :
+             {"key", "value", "path", "content", "backup_id", "expected_sha256",
+              "expected_current_sha256"}) {
+          reject_property(field);
+        }
+      } else if (tool.name == "hero.config.apply.reload") {
+        require_property("reason");
+        for (const auto field :
+             {"key", "value", "path", "content", "backup_id", "expected_sha256",
+              "expected_current_sha256", "include_content"}) {
+          reject_property(field);
+        }
+      } else if (tool.name == "hero.config.apply.rollback") {
+        require_property("backup_id");
+        require_property("reason");
+        for (const auto field :
+             {"key", "value", "path", "content", "expected_sha256",
+              "expected_current_sha256", "include_content"}) {
+          reject_property(field);
+        }
+      } else if (tool.name == "hero.config.apply.write") {
+        require_property("path");
+        require_property("content");
+        require_property("expected_sha256");
+        require_property("reason");
+        for (const auto field :
+             {"key", "value", "backup_id", "expected_current_sha256",
+              "include_content"}) {
+          reject_property(field);
+        }
+      } else if (tool.name == "hero.config.apply.delete") {
+        require_property("path");
+        require_property("expected_sha256");
+        require_property("reason");
+        for (const auto field :
+             {"key", "value", "content", "backup_id", "expected_current_sha256",
+              "include_content"}) {
+          reject_property(field);
+        }
+      }
+    }
+    const auto runtime_has_property = [&](const std::string &field) {
+      const std::string property = "\"" + field + "\":{";
+      return tool.input_schema.find(property) != std::string::npos;
+    };
+    const auto runtime_require_property = [&](const std::string &field) {
+      if (!runtime_has_property(field)) {
+        throw std::runtime_error("Runtime tool " + tool.name +
+                                 " is missing property: " + field);
+      }
+    };
+    const auto runtime_reject_property = [&](const std::string &field) {
+      if (runtime_has_property(field)) {
+        throw std::runtime_error("Runtime tool " + tool.name +
+                                 " still exposes wrong property: " + field);
+      }
+    };
     if (tool.name == "hero.runtime.status") {
       saw_runtime_status = true;
     }
     if (tool.name == "hero.runtime.inspect") {
-      saw_runtime_inspect = true;
+      throw std::runtime_error(
+          "Runtime catalog still exposes broad hero.runtime.inspect");
+    }
+    if (tool.name.rfind("hero.runtime.inspect.", 0) == 0) {
+      ++runtime_inspect_tool_count;
+    }
+    if (tool.name == "hero.runtime.inspect.schema") {
+      saw_runtime_inspect_schema = true;
+      for (const auto retired_field :
+           {"\"subject\"", "\"args_path\"", "\"args_digest\"",
+            "\"config_path\"", "\"root\"", "\"job_id\"", "\"job_dir\"",
+            "\"artifact\"", "\"path\"", "\"include_artifacts\"",
+            "\"include_text\"", "\"max_bytes\"", "\"limit\""}) {
+        if (tool.input_schema.find(retired_field) != std::string::npos) {
+          throw std::runtime_error(
+              "Runtime inspect.schema still exposes retired field: " +
+              std::string(retired_field));
+        }
+      }
+    }
+    if (tool.name == "hero.runtime.inspect.wave") {
+      saw_runtime_inspect_wave = true;
+      runtime_require_property("config_path");
+      for (const auto field :
+           {"subject", "args_path", "args_digest", "root", "job_id", "job_dir",
+            "artifact", "path", "include_artifacts", "include_text",
+            "max_bytes", "limit"}) {
+        runtime_reject_property(field);
+      }
+    }
+    if (tool.name == "hero.runtime.inspect.jobs") {
+      saw_runtime_inspect_jobs = true;
+      runtime_require_property("root");
+      runtime_require_property("limit");
+      runtime_require_property("include_artifacts");
+      for (const auto field :
+           {"subject", "args_path", "args_digest", "config_path", "job_id",
+            "job_dir", "artifact", "path", "include_text", "max_bytes"}) {
+        runtime_reject_property(field);
+      }
+    }
+    if (tool.name == "hero.runtime.inspect.job") {
+      saw_runtime_inspect_job = true;
+      runtime_require_property("job_id");
+      runtime_require_property("job_dir");
+      runtime_require_property("include_text");
+      runtime_require_property("max_bytes");
+      for (const auto field :
+           {"subject", "args_path", "args_digest", "config_path", "root",
+            "artifact", "path", "include_artifacts", "limit"}) {
+        runtime_reject_property(field);
+      }
+    }
+    if (tool.name == "hero.runtime.inspect.artifact") {
+      throw std::runtime_error(
+          "Runtime catalog still exposes broad inspect.artifact");
+    }
+    if (tool.name.rfind("hero.runtime.inspect.artifact.", 0) == 0) {
+      saw_runtime_inspect_artifact = true;
+      ++runtime_inspect_artifact_tool_count;
+      runtime_require_property("max_bytes");
+      if (tool.name == "hero.runtime.inspect.artifact.job") {
+        runtime_require_property("job_id");
+        runtime_require_property("job_dir");
+        runtime_require_property("artifact");
+        runtime_reject_property("path");
+      } else if (tool.name == "hero.runtime.inspect.artifact.path") {
+        runtime_require_property("path");
+        runtime_reject_property("job_id");
+        runtime_reject_property("job_dir");
+        runtime_reject_property("artifact");
+      } else {
+        throw std::runtime_error(
+            "Runtime catalog exposes unknown artifact split: " + tool.name);
+      }
+      for (const auto field :
+           {"subject", "args_path", "args_digest", "config_path", "root",
+            "include_artifacts", "include_text", "limit"}) {
+        runtime_reject_property(field);
+      }
     }
     if (tool.name == "hero.runtime.run") {
       saw_runtime_run = true;
+      for (const auto retired_field :
+           {"\"config_path\"", "\"runtime_handoff\"", "\"contract_path\"",
+            "\"contract_digest\"", "\"execution_request_path\"",
+            "\"execution_request_digest\"", "\"policy_id\"", "\"policy_kind\"",
+            "\"job_dir\"", "\"wave_overlay\"", "\"marshal_expected_wave\"",
+            "\"timeout_seconds\"", "\"confirm_execute\""}) {
+        if (tool.input_schema.find(retired_field) != std::string::npos) {
+          throw std::runtime_error(
+              "Runtime run schema still exposes retired payload field: " +
+              std::string(retired_field));
+        }
+      }
+      for (const auto retained_field :
+           {"\"mode\"", "\"args_path\"", "\"args_digest\""}) {
+        if (tool.input_schema.find(retained_field) == std::string::npos) {
+          throw std::runtime_error(
+              "Runtime run schema is missing retained locator field: " +
+              std::string(retained_field));
+        }
+      }
+      if (tool.input_schema.find("\"subject\"") != std::string::npos) {
+        throw std::runtime_error(
+            "Runtime run schema still exposes retired subject field");
+      }
     }
     if (tool.name == "hero.runtime.reset") {
       saw_runtime_reset = true;
+      for (const auto retained_field :
+           {"\"mode\"", "\"args_path\"", "\"args_digest\""}) {
+        if (tool.input_schema.find(retained_field) == std::string::npos) {
+          throw std::runtime_error(
+              "Runtime reset schema is missing retained request field: " +
+              std::string(retained_field));
+        }
+      }
+      for (const auto retired_field :
+           {"\"runtime_root\"", "\"backup\"", "\"confirm_dev_nuke\""}) {
+        if (tool.input_schema.find(retired_field) != std::string::npos) {
+          throw std::runtime_error(
+              "Runtime reset schema still exposes payload field: " +
+              std::string(retired_field));
+        }
+      }
+    }
+    if (tool.name == "hero.environment.status") {
+      saw_environment_status = true;
+    }
+    if (tool.name == "hero.environment.inspect") {
+      throw std::runtime_error(
+          "Environment catalog still exposes broad hero.environment.inspect");
+    }
+    if (tool.name.rfind("hero.environment.inspect.", 0) == 0) {
+      ++environment_inspect_tool_count;
+    }
+    if (tool.name == "hero.environment.inspect.schema") {
+      saw_environment_inspect_schema = true;
+      for (const auto retired_field :
+           {"\"subject\"", "\"args_path\"", "\"args_digest\"", "\"job_dir\"",
+            "\"include_text\"", "\"max_bytes\""}) {
+        if (tool.input_schema.find(retired_field) != std::string::npos) {
+          throw std::runtime_error(
+              "Environment inspect.schema still exposes retired field: " +
+              std::string(retired_field));
+        }
+      }
+    }
+    if (tool.name == "hero.environment.inspect.job") {
+      saw_environment_inspect_job = true;
+      for (const auto retained_field :
+           {"\"job_dir\"", "\"include_text\"", "\"max_bytes\""}) {
+        if (tool.input_schema.find(retained_field) == std::string::npos) {
+          throw std::runtime_error(
+              "Environment inspect.job schema is missing direct field: " +
+              std::string(retained_field));
+        }
+      }
+      for (const auto retired_field :
+           {"\"subject\"", "\"args_path\"", "\"args_digest\""}) {
+        if (tool.input_schema.find(retired_field) != std::string::npos) {
+          throw std::runtime_error(
+              "Environment inspect.job still exposes retired request field: " +
+              std::string(retired_field));
+        }
+      }
+    }
+    if (tool.name == "hero.environment.certify") {
+      throw std::runtime_error(
+          "Environment catalog still exposes broad hero.environment.certify");
+    }
+    if (tool.name.rfind("hero.environment.certify.", 0) == 0) {
+      ++environment_certify_tool_count;
+      if (tool.name == "hero.environment.certify.policy_acceptance") {
+        saw_environment_certify_policy_acceptance = true;
+      }
+      if (tool.name == "hero.environment.certify.paper_online_readiness") {
+        saw_environment_certify_paper_online_readiness = true;
+      }
+      for (const auto retired_field :
+           {"\"config_path\"", "\"job_id\"", "\"job_dir\"",
+            "\"policy_training_job_dir\"",
+            "\"tsodao_settings_protection_job_dir\"",
+            "\"policy_acceptance_job_dir\"", "\"confirm_issue\"",
+            "\"acceptance_id\"", "\"primary_metric_value\"",
+            "\"policy_acceptance_decision\"", "\"readiness_id\"",
+            "\"paper_online_profile_digest\"", "\"kill_switch_bound\"",
+            "\"subject\""}) {
+        if (tool.input_schema.find(retired_field) != std::string::npos) {
+          throw std::runtime_error("Environment certify schema still exposes "
+                                   "retired payload field: " +
+                                   std::string(retired_field));
+        }
+      }
+      for (const auto retained_field :
+           {"\"mode\"", "\"args_path\"", "\"args_digest\""}) {
+        if (tool.input_schema.find(retained_field) == std::string::npos) {
+          throw std::runtime_error(
+              "Environment certify schema is missing retained request field: " +
+              std::string(retained_field));
+        }
+      }
+    }
+    if (tool.name == "hero.environment.rollout") {
+      saw_environment_rollout = true;
+      for (const auto retired_field : {"\"rollout_id\"",
+                                       "\"rollout_attempt_id\"",
+                                       "\"idempotency_key\"",
+                                       "\"experiment_id\"",
+                                       "\"config_path\"",
+                                       "\"runtime_job_dir\"",
+                                       "\"replay_batch_index_path\"",
+                                       "\"runtime_exec_path\"",
+                                       "\"report_path\"",
+                                       "\"environment_mode\"",
+                                       "\"environment_assembly_id\"",
+                                       "\"graph_order_fingerprint\"",
+                                       "\"asset_universe_digest\"",
+                                       "\"accounting_numeraire_node_id\"",
+                                       "\"target_node_ids\"",
+                                       "\"policy_set\"",
+                                       "\"max_steps\"",
+                                       "\"max_parallel_jobs\"",
+                                       "\"execution_profile\"",
+                                       "\"timeout_seconds\"",
+                                       "\"require_existing_runtime_job_dir\"",
+                                       "\"require_completed_runtime_job\"",
+                                       "\"require_replay_artifacts\""}) {
+        if (tool.input_schema.find(retired_field) != std::string::npos) {
+          throw std::runtime_error("Environment rollout schema still exposes "
+                                   "request payload field: " +
+                                   std::string(retired_field));
+        }
+      }
+      for (const auto retained_field :
+           {"\"mode\"", "\"args_path\"", "\"args_digest\"",
+            "\"include_machine_payload\""}) {
+        if (tool.input_schema.find(retained_field) == std::string::npos) {
+          throw std::runtime_error(
+              "Environment rollout schema is missing retained request field: " +
+              std::string(retained_field));
+        }
+      }
+    }
+    if (tool.name == "hero.marshal.status") {
+      saw_marshal_status = true;
+      for (const auto retired_field :
+           {"\"receipt_root\"", "\"limit\"", "\"receipts\"",
+            "\"runtime_policy\"", "\"lattice_advice_surface_available\""}) {
+        if (tool.input_schema.find(retired_field) != std::string::npos) {
+          throw std::runtime_error(
+              "Marshal status schema still exposes request field: " +
+              std::string(retired_field));
+        }
+      }
+    }
+    if (tool.name.rfind("hero.marshal.prepare.", 0) == 0) {
+      ++marshal_prepare_tool_count;
+      const bool split_prepare_name =
+          tool.name == "hero.marshal.prepare.train.one_step" ||
+          tool.name == "hero.marshal.prepare.train.budgeted" ||
+          tool.name == "hero.marshal.prepare.evaluate.one_step" ||
+          tool.name == "hero.marshal.prepare.evaluate.budgeted";
+      if (!split_prepare_name) {
+        throw std::runtime_error("unexpected Marshal prepare split tool: " +
+                                 tool.name);
+      }
+      for (const auto retained_field :
+           {"\"target_id\"", "\"mode\"", "\"args_path\"", "\"args_digest\""}) {
+        if (tool.input_schema.find(retained_field) == std::string::npos) {
+          throw std::runtime_error(
+              "Marshal prepare schema is missing retained request field: " +
+              std::string(retained_field));
+        }
+      }
+      for (const auto retired_field : {"\"drive_mode\"",
+                                       "\"intent\"",
+                                       "\"config_path\"",
+                                       "\"runtime_root\"",
+                                       "\"driver_policy\"",
+                                       "\"resume_ledger\"",
+                                       "\"source_lattice_timestamp\"",
+                                       "\"max_waves\"",
+                                       "\"recommendation_attempt_count\"",
+                                       "\"context\"",
+                                       "\"protocol_contract_fingerprint\"",
+                                       "\"graph_order_fingerprint\"",
+                                       "\"source_cursor_token\"",
+                                       "\"vicreg_assembly_fingerprint\"",
+                                       "\"mdn_assembly_fingerprint\"",
+                                       "\"materialize_plan_inputs\"",
+                                       "\"include_runtime_dry_run\"",
+                                       "\"include_machine_payload\"",
+                                       "\"runtime_policy\"",
+                                       "\"runtime_wave\"",
+                                       "\"timeout_seconds\"",
+                                       "\"ledger_created_at_utc\"",
+                                       "\"ledger_nonce\""}) {
+        if (tool.input_schema.find(retired_field) != std::string::npos) {
+          throw std::runtime_error(
+              "Marshal prepare schema still exposes request payload field: " +
+              std::string(retired_field));
+        }
+      }
+    }
+    if (tool.name == "hero.marshal.rollout") {
+      saw_marshal_rollout = true;
+      for (const auto retired_field : {"\"rollout_id\"",
+                                       "\"rollout_attempt_id\"",
+                                       "\"idempotency_key\"",
+                                       "\"experiment_id\"",
+                                       "\"config_path\"",
+                                       "\"runtime_job_dir\"",
+                                       "\"replay_batch_index_path\"",
+                                       "\"runtime_exec_path\"",
+                                       "\"report_path\"",
+                                       "\"environment_mode\"",
+                                       "\"environment_assembly_id\"",
+                                       "\"graph_order_fingerprint\"",
+                                       "\"asset_universe_digest\"",
+                                       "\"accounting_numeraire_node_id\"",
+                                       "\"target_node_ids\"",
+                                       "\"policy_set\"",
+                                       "\"max_steps\"",
+                                       "\"max_parallel_jobs\"",
+                                       "\"execution_profile\"",
+                                       "\"timeout_seconds\"",
+                                       "\"require_existing_runtime_job_dir\"",
+                                       "\"require_completed_runtime_job\"",
+                                       "\"require_replay_artifacts\""}) {
+        if (tool.input_schema.find(retired_field) != std::string::npos) {
+          throw std::runtime_error(
+              "Marshal rollout schema still exposes request payload field: " +
+              std::string(retired_field));
+        }
+      }
+      for (const auto retained_field :
+           {"\"mode\"", "\"args_path\"", "\"args_digest\"",
+            "\"include_machine_payload\""}) {
+        if (tool.input_schema.find(retained_field) == std::string::npos) {
+          throw std::runtime_error(
+              "Marshal rollout schema is missing retained request field: " +
+              std::string(retained_field));
+        }
+      }
+    }
+    const auto marshal_has_property = [&](const std::string &field) {
+      const std::string property = "\"" + field + "\":{";
+      return tool.input_schema.find(property) != std::string::npos;
+    };
+    const auto marshal_require_property = [&](const std::string &field) {
+      if (!marshal_has_property(field)) {
+        throw std::runtime_error("Marshal tool " + tool.name +
+                                 " is missing property: " + field);
+      }
+    };
+    const auto marshal_reject_property = [&](const std::string &field) {
+      if (marshal_has_property(field)) {
+        throw std::runtime_error("Marshal tool " + tool.name +
+                                 " still exposes wrong property: " + field);
+      }
+    };
+    if (tool.name == "hero.marshal.inspect") {
+      throw std::runtime_error(
+          "Marshal catalog still exposes broad hero.marshal.inspect");
+    }
+    if (tool.name.rfind("hero.marshal.inspect.", 0) == 0) {
+      ++marshal_inspect_tool_count;
+      for (const auto field : {"subject", "args_path", "args_digest"}) {
+        marshal_reject_property(field);
+      }
+    }
+    if (tool.name == "hero.marshal.inspect.run" ||
+        tool.name == "hero.marshal.inspect.facts" ||
+        tool.name == "hero.marshal.inspect.protocol" ||
+        tool.name == "hero.marshal.inspect.spawn") {
+      throw std::runtime_error("Marshal catalog still exposes broad " +
+                               tool.name);
+    }
+    if (tool.name.rfind("hero.marshal.inspect.run.", 0) == 0) {
+      ++marshal_inspect_run_tool_count;
+      marshal_require_property("runtime_root");
+      marshal_require_property("config_path");
+      marshal_require_property("include_machine_payload");
+      marshal_reject_property("mode");
+      if (tool.name == "hero.marshal.inspect.run.compare") {
+        marshal_require_property("baseline_job_id");
+        marshal_require_property("candidate_job_id");
+        for (const auto field :
+             {"job_id", "job_ids", "target_ids",
+              "protocol_contract_fingerprint", "graph_order_fingerprint",
+              "source_cursor_token", "vicreg_assembly_fingerprint",
+              "mdn_assembly_fingerprint"}) {
+          marshal_reject_property(field);
+        }
+      } else {
+        marshal_require_property("target_ids");
+        if (tool.name == "hero.marshal.inspect.run.single_job") {
+          marshal_require_property("job_id");
+          marshal_reject_property("job_ids");
+        } else {
+          marshal_require_property("job_ids");
+          marshal_reject_property("job_id");
+        }
+        for (const auto field : {"baseline_job_id", "candidate_job_id"}) {
+          marshal_reject_property(field);
+        }
+        for (const auto field :
+             {"protocol_contract_fingerprint", "graph_order_fingerprint",
+              "source_cursor_token", "vicreg_assembly_fingerprint",
+              "mdn_assembly_fingerprint"}) {
+          marshal_reject_property(field);
+        }
+      }
+      for (const auto field :
+           {"target_id", "identity_mode", "component_family_id", "spawn_id",
+            "component_spawn_id", "component_spawn_registry_id",
+            "component_spawn_label", "component_spawn_fingerprint",
+            "fact_family_id", "limit", "include_facts", "include_lineage",
+            "include_preview", "fact_digest", "fact_digest_prefix",
+            "fact_index"}) {
+        marshal_reject_property(field);
+      }
+    }
+    if (tool.name == "hero.marshal.inspect.target") {
+      saw_marshal_inspect_target = true;
+      marshal_require_property("target_id");
+      marshal_require_property("runtime_root");
+      marshal_require_property("config_path");
+      marshal_require_property("include_machine_payload");
+      for (const auto field : {"mode",
+                               "identity_mode",
+                               "job_id",
+                               "job_ids",
+                               "target_ids",
+                               "baseline_job_id",
+                               "candidate_job_id",
+                               "component_family_id",
+                               "spawn_id",
+                               "component_spawn_id",
+                               "component_spawn_registry_id",
+                               "component_spawn_label",
+                               "component_spawn_fingerprint",
+                               "fact_family_id",
+                               "limit",
+                               "include_facts",
+                               "include_lineage",
+                               "include_preview",
+                               "fact_digest",
+                               "fact_digest_prefix",
+                               "fact_index",
+                               "protocol_contract_fingerprint",
+                               "graph_order_fingerprint",
+                               "source_cursor_token",
+                               "vicreg_assembly_fingerprint",
+                               "mdn_assembly_fingerprint"}) {
+        marshal_reject_property(field);
+      }
+    }
+    if (tool.name.rfind("hero.marshal.inspect.protocol.", 0) == 0) {
+      saw_marshal_inspect_protocol = true;
+      ++marshal_inspect_protocol_tool_count;
+      marshal_require_property("runtime_root");
+      marshal_require_property("config_path");
+      marshal_require_property("job_id");
+      marshal_require_property("job_ids");
+      marshal_require_property("include_machine_payload");
+      marshal_reject_property("identity_mode");
+      if (tool.name == "hero.marshal.inspect.protocol.strict") {
+        marshal_require_property("protocol_contract_fingerprint");
+        marshal_require_property("graph_order_fingerprint");
+        marshal_require_property("source_cursor_token");
+        marshal_require_property("vicreg_assembly_fingerprint");
+        marshal_require_property("mdn_assembly_fingerprint");
+      } else if (tool.name == "hero.marshal.inspect.protocol.report") {
+        for (const auto field :
+             {"protocol_contract_fingerprint", "graph_order_fingerprint",
+              "source_cursor_token", "vicreg_assembly_fingerprint",
+              "mdn_assembly_fingerprint"}) {
+          marshal_reject_property(field);
+        }
+      } else {
+        throw std::runtime_error(
+            "Marshal catalog exposes unknown protocol split: " + tool.name);
+      }
+      for (const auto field :
+           {"mode", "target_id", "target_ids", "baseline_job_id",
+            "candidate_job_id", "component_family_id", "spawn_id",
+            "component_spawn_id", "component_spawn_registry_id",
+            "component_spawn_label", "component_spawn_fingerprint",
+            "fact_family_id", "limit", "include_facts", "include_lineage",
+            "include_preview", "fact_digest", "fact_digest_prefix",
+            "fact_index"}) {
+        marshal_reject_property(field);
+      }
+    }
+    if (tool.name.rfind("hero.marshal.inspect.spawn.", 0) == 0) {
+      ++marshal_inspect_spawn_tool_count;
+      marshal_require_property("runtime_root");
+      marshal_require_property("config_path");
+      marshal_require_property("include_machine_payload");
+      if (tool.name == "hero.marshal.inspect.spawn.by_id") {
+        marshal_require_property("component_spawn_id");
+        for (const auto field :
+             {"job_id", "job_ids", "spawn_id", "component_spawn_registry_id",
+              "component_spawn_label", "component_spawn_fingerprint"}) {
+          marshal_reject_property(field);
+        }
+      } else if (tool.name == "hero.marshal.inspect.spawn.by_label") {
+        marshal_require_property("component_spawn_label");
+        for (const auto field :
+             {"job_id", "job_ids", "spawn_id", "component_spawn_id",
+              "component_spawn_registry_id", "component_spawn_fingerprint"}) {
+          marshal_reject_property(field);
+        }
+      } else if (tool.name == "hero.marshal.inspect.spawn.by_registry") {
+        marshal_require_property("component_spawn_registry_id");
+        for (const auto field :
+             {"job_id", "job_ids", "spawn_id", "component_spawn_id",
+              "component_spawn_label", "component_spawn_fingerprint"}) {
+          marshal_reject_property(field);
+        }
+      } else if (tool.name == "hero.marshal.inspect.spawn.by_fingerprint") {
+        marshal_require_property("component_spawn_fingerprint");
+        for (const auto field :
+             {"job_id", "job_ids", "spawn_id", "component_spawn_id",
+              "component_spawn_registry_id", "component_spawn_label"}) {
+          marshal_reject_property(field);
+        }
+      } else if (tool.name == "hero.marshal.inspect.spawn.by_job") {
+        marshal_require_property("job_id");
+        for (const auto field :
+             {"job_ids", "spawn_id", "component_spawn_id",
+              "component_spawn_registry_id", "component_spawn_label",
+              "component_spawn_fingerprint"}) {
+          marshal_reject_property(field);
+        }
+      } else {
+        throw std::runtime_error(
+            "Marshal catalog exposes unknown spawn split: " + tool.name);
+      }
+      for (const auto field : {"mode",
+                               "identity_mode",
+                               "target_id",
+                               "target_ids",
+                               "baseline_job_id",
+                               "candidate_job_id",
+                               "component_family_id",
+                               "fact_family_id",
+                               "limit",
+                               "include_facts",
+                               "include_lineage",
+                               "include_preview",
+                               "fact_digest",
+                               "fact_digest_prefix",
+                               "fact_index",
+                               "protocol_contract_fingerprint",
+                               "graph_order_fingerprint",
+                               "source_cursor_token",
+                               "vicreg_assembly_fingerprint",
+                               "mdn_assembly_fingerprint"}) {
+        marshal_reject_property(field);
+      }
+    }
+    if (tool.name == "hero.marshal.inspect.component") {
+      saw_marshal_inspect_component = true;
+      marshal_require_property("component_family_id");
+      marshal_require_property("runtime_root");
+      marshal_require_property("config_path");
+      marshal_require_property("job_id");
+      marshal_require_property("job_ids");
+      marshal_require_property("include_machine_payload");
+      for (const auto field : {"mode",
+                               "identity_mode",
+                               "target_id",
+                               "target_ids",
+                               "baseline_job_id",
+                               "candidate_job_id",
+                               "spawn_id",
+                               "component_spawn_id",
+                               "component_spawn_registry_id",
+                               "component_spawn_label",
+                               "component_spawn_fingerprint",
+                               "fact_family_id",
+                               "limit",
+                               "include_facts",
+                               "include_lineage",
+                               "include_preview",
+                               "fact_digest",
+                               "fact_digest_prefix",
+                               "fact_index",
+                               "protocol_contract_fingerprint",
+                               "graph_order_fingerprint",
+                               "source_cursor_token",
+                               "vicreg_assembly_fingerprint",
+                               "mdn_assembly_fingerprint"}) {
+        marshal_reject_property(field);
+      }
+    }
+    if (tool.name.rfind("hero.marshal.inspect.facts.", 0) == 0) {
+      ++marshal_inspect_facts_tool_count;
+      for (const auto field :
+           {"target_id", "fact_family_id", "config_path", "runtime_root",
+            "limit", "include_machine_payload"}) {
+        marshal_require_property(field);
+      }
+      marshal_reject_property("mode");
+      if (tool.name == "hero.marshal.inspect.facts.summary") {
+        marshal_require_property("include_facts");
+        marshal_require_property("include_lineage");
+        for (const auto field : {"include_preview", "fact_digest",
+                                 "fact_digest_prefix", "fact_index"}) {
+          marshal_reject_property(field);
+        }
+      } else if (tool.name == "hero.marshal.inspect.facts.lineage") {
+        for (const auto field :
+             {"include_facts", "include_lineage", "include_preview",
+              "fact_digest", "fact_digest_prefix", "fact_index"}) {
+          marshal_reject_property(field);
+        }
+      } else if (tool.name == "hero.marshal.inspect.facts.preview") {
+        marshal_require_property("include_lineage");
+        for (const auto field :
+             {"include_facts", "include_preview", "fact_digest",
+              "fact_digest_prefix", "fact_index"}) {
+          marshal_reject_property(field);
+        }
+      } else if (tool.name == "hero.marshal.inspect.facts.preview.by_digest") {
+        marshal_require_property("fact_digest");
+        marshal_require_property("include_lineage");
+        for (const auto field : {"include_facts", "include_preview",
+                                 "fact_digest_prefix", "fact_index"}) {
+          marshal_reject_property(field);
+        }
+      } else if (tool.name ==
+                 "hero.marshal.inspect.facts.preview.by_digest_prefix") {
+        marshal_require_property("fact_digest_prefix");
+        marshal_require_property("include_lineage");
+        for (const auto field : {"include_facts", "include_preview",
+                                 "fact_digest", "fact_index"}) {
+          marshal_reject_property(field);
+        }
+      } else if (tool.name == "hero.marshal.inspect.facts.preview.by_index") {
+        marshal_require_property("fact_index");
+        marshal_require_property("include_lineage");
+        for (const auto field : {"include_facts", "include_preview",
+                                 "fact_digest", "fact_digest_prefix"}) {
+          marshal_reject_property(field);
+        }
+      } else {
+        throw std::runtime_error(
+            "Marshal catalog exposes unknown facts split: " + tool.name);
+      }
+      for (const auto field :
+           {"identity_mode", "job_id", "job_ids", "target_ids",
+            "baseline_job_id", "candidate_job_id", "component_family_id",
+            "spawn_id", "component_spawn_id", "component_spawn_registry_id",
+            "component_spawn_label", "component_spawn_fingerprint",
+            "protocol_contract_fingerprint", "graph_order_fingerprint",
+            "source_cursor_token", "vicreg_assembly_fingerprint",
+            "mdn_assembly_fingerprint"}) {
+        marshal_reject_property(field);
+      }
     }
     if (label == "Config") {
       for (const auto retired_name :
@@ -342,34 +1852,89 @@ void check_catalog(const std::string &label, const fs::path &binary,
     if (label == "Runtime") {
       for (const auto retired_name :
            {"hero.runtime.schema", "hero.runtime.wave", "hero.runtime.dry_run",
-            "hero.runtime.execute", "hero.runtime.replay",
-            "hero.runtime.dev_nuke", "hero.runtime.list_jobs",
-            "hero.runtime.get_job", "hero.runtime.read_artifact"}) {
+            "hero.runtime.execute", "hero.runtime.replay", "hero.runtime.emit",
+            "hero.runtime.run_wave", "hero.runtime.run_replay",
+            "hero.runtime.run_policy_training", "hero.runtime.dev_nuke",
+            "hero.runtime.list_jobs", "hero.runtime.get_job",
+            "hero.runtime.read_artifact"}) {
         if (tool.name == retired_name) {
           throw std::runtime_error(
               "Runtime catalog still exposes retired tool: " + tool.name);
         }
       }
     }
+    if (label == "Marshal") {
+      for (const auto retired_name :
+           {"hero.marshal.summarize_training_state",
+            "hero.marshal.compare_runs", "hero.marshal.lookup_target_advice",
+            "hero.marshal.prepare_target_dispatch",
+            "hero.marshal.validate_advice", "hero.marshal.dry_run_dispatch",
+            "hero.marshal.execution_gate", "hero.marshal.replay_receipt",
+            "hero.marshal.batch_preview", "hero.marshal.evaluate_run",
+            "hero.marshal.inspect", "hero.marshal.inspect_run",
+            "hero.marshal.reach_lattice_target", "hero.marshal.evaluate",
+            "hero.marshal.inspect_evidence_panel"}) {
+        if (tool.name == retired_name) {
+          throw std::runtime_error(
+              "Marshal catalog still exposes retired tool: " + tool.name);
+        }
+      }
+    }
   }
-  if (label == "Config" && (tools.size() != 3U || !saw_config_status ||
-                            !saw_config_inspect || !saw_config_apply)) {
+  if (label == "Config" &&
+      (tools.size() != 19U || !saw_config_status ||
+       config_inspect_tool_count != 12 || config_apply_tool_count != 6)) {
     throw std::runtime_error(
-        "Config catalog must expose exactly hero.config.status, "
-        "hero.config.inspect, and hero.config.apply");
+        "Config catalog must expose exactly hero.config.status, 12 "
+        "hero.config.inspect.* tools, and 6 hero.config.apply.* tools");
   }
   if (label == "Runtime" &&
-      (tools.size() != 4U || !saw_runtime_status || !saw_runtime_inspect ||
-       !saw_runtime_run || !saw_runtime_reset)) {
+      (tools.size() != 9U || !saw_runtime_status ||
+       !saw_runtime_inspect_schema || !saw_runtime_inspect_wave ||
+       !saw_runtime_inspect_jobs || !saw_runtime_inspect_job ||
+       !saw_runtime_inspect_artifact || runtime_inspect_tool_count != 6 ||
+       runtime_inspect_artifact_tool_count != 2 || !saw_runtime_run ||
+       !saw_runtime_reset)) {
     throw std::runtime_error(
-        "Runtime catalog must expose exactly hero.runtime.status, "
-        "hero.runtime.inspect, hero.runtime.run, and hero.runtime.reset");
+        "Runtime catalog must expose exactly hero.runtime.status, six "
+        "hero.runtime.inspect.* tools, hero.runtime.run, and "
+        "hero.runtime.reset");
+  }
+  if (label == "Environment" &&
+      (tools.size() != 6U || !saw_environment_status ||
+       !saw_environment_inspect_schema || !saw_environment_inspect_job ||
+       environment_inspect_tool_count != 2 ||
+       environment_certify_tool_count != 2 ||
+       !saw_environment_certify_policy_acceptance ||
+       !saw_environment_certify_paper_online_readiness ||
+       !saw_environment_rollout)) {
+    throw std::runtime_error(
+        "Environment catalog must expose exactly hero.environment.status, "
+        "hero.environment.inspect.schema, hero.environment.inspect.job, "
+        "hero.environment.certify.*, and hero.environment.rollout");
   }
   if (require_lattice_checkpoint_closure &&
-      (!saw_lattice_status || !saw_lattice_inspect || !saw_lattice_evaluate ||
-       !saw_lattice_compare || lattice_public_tool_count != 4)) {
+      (!saw_lattice_status || lattice_inspect_tool_count != 37 ||
+       lattice_evaluate_tool_count != 5 || !saw_lattice_compare ||
+       lattice_public_tool_count != 44)) {
+    throw std::runtime_error("Lattice catalog must expose status, thirty-seven "
+                             "inspect subtools, five "
+                             "evaluate subtools, and compare");
+  }
+  if (label == "Marshal" &&
+      (tools.size() != 25U || !saw_marshal_status ||
+       marshal_prepare_tool_count != 4 || !saw_marshal_rollout ||
+       marshal_inspect_tool_count != 19 ||
+       marshal_inspect_run_tool_count != 4 || !saw_marshal_inspect_target ||
+       !saw_marshal_inspect_protocol ||
+       marshal_inspect_protocol_tool_count != 2 ||
+       marshal_inspect_spawn_tool_count != 5 ||
+       !saw_marshal_inspect_component ||
+       marshal_inspect_facts_tool_count != 6)) {
     throw std::runtime_error(
-        "Lattice catalog must expose exactly status/inspect/evaluate/compare");
+        "Marshal catalog must expose exactly hero.marshal.status, "
+        "four hero.marshal.prepare.* tools, hero.marshal.rollout, and "
+        "nineteen hero.marshal.inspect.* tools");
   }
 }
 
@@ -378,34 +1943,49 @@ void check_config_collapsed_surface(const fs::path &binary) {
       binary.string() + " --global-config /cuwacunu/src/config/.config ";
 
   const std::string schema_output =
-      read_command_stdout(base + "--tool hero.config.inspect --args-json "
-                                 "'{\"subject\":\"schema\"}'");
+      read_command_stdout(base + "--tool hero.config.inspect.schema "
+                                 "--args-json '{}'");
   require_contains(schema_output, "\"keys\":[",
-                   "Config inspect subject=schema should return schema keys");
+                   "Config inspect schema should return schema keys");
 
-  const std::string value_output = read_command_stdout(
-      base + "--tool hero.config.inspect --args-json "
-             "'{\"subject\":\"value\",\"key\":\"protocol_layer\"}'");
+  const std::string value_output =
+      read_command_stdout(base + "--tool hero.config.inspect.value "
+                                 "--args-json '{\"key\":\"protocol_layer\"}'");
   require_contains(value_output, "\"key\":\"protocol_layer\"",
-                   "Config inspect subject=value should read policy values");
+                   "Config inspect value should read policy values");
   require_contains(value_output, "\"value\":\"STDIO\"",
-                   "Config inspect subject=value should expose protocol_layer");
+                   "Config inspect value should expose protocol_layer");
 
   const std::string validate_output =
-      read_command_stdout(base + "--tool hero.config.inspect --args-json "
-                                 "'{\"subject\":\"validate_global_config\"}'");
+      read_command_stdout(base + "--tool "
+                                 "hero.config.inspect.validate_global_config "
+                                 "--args-json '{}'");
   require_contains(validate_output, "\"valid\":true",
-                   "Config inspect subject=validate_global_config should "
-                   "validate global config paths");
+                   "Config inspect validate_global_config should validate "
+                   "global config paths");
 
-  const std::string plan_output = read_command_stdout(
-      base + "--tool hero.config.apply --args-json "
-             "'{\"operation\":\"set\",\"requested_mode\":\"plan\","
-             "\"key\":\"protocol_layer\",\"value\":\"STDIO\"}'");
-  require_contains(plan_output, "\"planned\":true",
-                   "Config apply requested_mode=plan should not mutate");
-  require_contains(plan_output, "\"operation\":\"set\"",
-                   "Config apply plan should preserve operation identity");
+  const std::string map_output =
+      read_command_stdout(base + "--tool hero.config.inspect.map --args-json "
+                                 "'{\"include_sha256\":false}'");
+  require_contains(map_output, "\"global_config_path\":",
+                   "Config inspect map should expose global config paths");
+
+  const std::string apply_output =
+      read_command_stdout(base + "--tool hero.config.apply.set --args-json " +
+                          "'{\"key\":\"protocol_layer\",\"value\":\"STDIO\","
+                          "\"reason\":\"schema-compat\"}'");
+  require_contains(apply_output, "\"executed\":true",
+                   "Config apply direct set should execute");
+  require_contains(apply_output, "\"preflight\":{",
+                   "Config apply direct set should include preflight");
+  require_contains(apply_output, "\"updated\":true",
+                   "Config apply direct set should return mutation result");
+  if (apply_output.find("args_digest") != std::string::npos ||
+      apply_output.find("args_path") != std::string::npos) {
+    throw std::runtime_error(
+        "Config apply direct set should not return request-file metadata\n" +
+        apply_output);
+  }
 
   const auto unknown_old_tool =
       run_command_capture(base + "--tool hero.config.schema --args-json '{}'");
@@ -417,50 +1997,216 @@ void check_config_collapsed_surface(const fs::path &binary) {
         unknown_old_tool.output);
   }
 
+  const auto broad_router =
+      run_command_capture(base + "--tool hero.config.inspect --args-json "
+                                 "'{\"subject\":\"schema\"}'");
+  if (broad_router.status == 0 ||
+      broad_router.output.find("unknown tool: hero.config.inspect") ==
+          std::string::npos) {
+    throw std::runtime_error(
+        "retired broad Config inspect router should fail as unknown\n" +
+        broad_router.output);
+  }
+
+  const auto broad_apply_router =
+      run_command_capture(base + "--tool hero.config.apply --args-json "
+                                 "'{\"subject\":\"set\",\"mode\":\"plan\"}'");
+  if (broad_apply_router.status == 0 ||
+      broad_apply_router.output.find("unknown tool: hero.config.apply") ==
+          std::string::npos) {
+    throw std::runtime_error(
+        "retired broad Config apply router should fail as unknown\n" +
+        broad_apply_router.output);
+  }
+
   const auto unknown_field = run_command_capture(
-      base + "--tool hero.config.inspect --args-json "
-             "'{\"subject\":\"schema\",\"old_field\":true}'");
+      base + "--tool hero.config.inspect.schema --args-json "
+             "'{\"old_field\":true}'");
   if (unknown_field.status == 0 ||
       unknown_field.output.find("unknown field: old_field") ==
           std::string::npos) {
     throw std::runtime_error(
-        "Config inspect should fail closed on unknown fields\n" +
+        "Config inspect split tools should fail closed on unknown fields\n" +
         unknown_field.output);
   }
 
-  const auto retired_validate_subject =
-      run_command_capture(base + "--tool hero.config.inspect --args-json "
-                                 "'{\"subject\":\"validate\"}'");
-  if (retired_validate_subject.status == 0 ||
-      retired_validate_subject.output.find(
-          "hero.config.inspect subject must be one of") == std::string::npos) {
+  const auto retired_inspect_field = run_command_capture(
+      base + "--tool hero.config.inspect.value --args-json "
+             "'{\"key\":\"protocol_layer\",\"args_path\":\"/tmp/nope.kv\"}'");
+  if (retired_inspect_field.status == 0 ||
+      retired_inspect_field.output.find("unknown field: args_path") ==
+          std::string::npos) {
     throw std::runtime_error(
-        "retired Config inspect subject=validate should fail closed\n" +
-        retired_validate_subject.output);
+        "Config inspect split tools should reject retired args_path field\n" +
+        retired_inspect_field.output);
+  }
+
+  const auto retired_apply_field = run_command_capture(
+      base + "--tool hero.config.apply.set --args-json "
+             "'{\"mode\":\"plan\",\"key\":\"protocol_layer\","
+             "\"value\":\"STDIO\"}'");
+  if (retired_apply_field.status == 0 ||
+      retired_apply_field.output.find("unknown field: mode") ==
+          std::string::npos) {
+    throw std::runtime_error(
+        "Config apply direct tools should reject retired mode field\n" +
+        retired_apply_field.output);
+  }
+
+  const auto retired_apply_args_path = run_command_capture(
+      base + "--tool hero.config.apply.set --args-json "
+             "'{\"key\":\"protocol_layer\",\"value\":\"STDIO\","
+             "\"args_path\":\"/tmp/nope.kv\"}'");
+  if (retired_apply_args_path.status == 0 ||
+      retired_apply_args_path.output.find("unknown field: args_path") ==
+          std::string::npos) {
+    throw std::runtime_error(
+        "Config apply direct tools should reject retired args_path field\n" +
+        retired_apply_args_path.output);
+  }
+
+  const auto retired_apply_subject =
+      run_command_capture(base + "--tool hero.config.apply.set --args-json "
+                                 "'{\"subject\":\"set\","
+                                 "\"key\":\"protocol_layer\","
+                                 "\"value\":\"STDIO\"}'");
+  if (retired_apply_subject.status == 0 ||
+      retired_apply_subject.output.find("unknown field: subject") ==
+          std::string::npos) {
+    throw std::runtime_error(
+        "Config apply split tools should reject retired subject field\n" +
+        retired_apply_subject.output);
+  }
+
+  const auto retired_apply_digest = run_command_capture(
+      base + "--tool hero.config.apply.set --args-json "
+             "'{\"key\":\"protocol_layer\",\"value\":\"STDIO\","
+             "\"args_digest\":\"wrong\"}'");
+  if (retired_apply_digest.status == 0 ||
+      retired_apply_digest.output.find("unknown field: args_digest") ==
+          std::string::npos) {
+    throw std::runtime_error(
+        "Config apply direct tools should reject retired args_digest field\n" +
+        retired_apply_digest.output);
+  }
+
+  const auto retired_apply_create_backup = run_command_capture(
+      base + "--tool hero.config.apply.write --args-json "
+             "'{\"path\":\"hero.config.dsl\",\"content\":\"\","
+             "\"create_backup\":true}'");
+  if (retired_apply_create_backup.status == 0 ||
+      retired_apply_create_backup.output.find("unknown field: create_backup") ==
+          std::string::npos) {
+    throw std::runtime_error(
+        "Config apply write should reject no-op create_backup field\n" +
+        retired_apply_create_backup.output);
+  }
+
+  const auto retired_validate_tool =
+      run_command_capture(base + "--tool hero.config.inspect.validate "
+                                 "--args-json '{}'");
+  if (retired_validate_tool.status == 0 ||
+      retired_validate_tool.output.find(
+          "unknown tool: hero.config.inspect.validate") == std::string::npos) {
+    throw std::runtime_error(
+        "retired Config inspect validate shortcut should fail closed\n" +
+        retired_validate_tool.output);
   }
 }
 
 void check_runtime_collapsed_surface(const fs::path &binary) {
   const std::string base =
       binary.string() + " --global-config /cuwacunu/src/config/.config ";
+  const fs::path request_dir =
+      fs::temp_directory_path() / "hero_mcp_schema_compat" / "runtime_requests";
+  fs::create_directories(request_dir);
+  int request_index = 0;
+  const auto write_request = [&](const std::string &name,
+                                 const std::string &text) {
+    const fs::path path =
+        request_dir / (std::to_string(++request_index) + "_" + name + ".kv");
+    std::ofstream out(path, std::ios::trunc);
+    if (!out) {
+      throw std::runtime_error("failed to write Runtime request: " +
+                               path.string());
+    }
+    out << text;
+    return path;
+  };
 
-  const std::string schema_output =
-      read_command_stdout(base + "--tool hero.runtime.inspect --args-json "
-                                 "'{\"subject\":\"schema\"}'");
+  const std::string schema_output = read_command_stdout(
+      base + "--tool hero.runtime.inspect.schema --args-json '{}'");
   require_contains(schema_output, "\"keys\":[",
-                   "Runtime inspect subject=schema should return policy keys");
+                   "Runtime inspect.schema should return policy keys");
 
-  const std::string wave_output =
-      read_command_stdout(base + "--tool hero.runtime.inspect --args-json "
-                                 "'{\"subject\":\"wave\"}'");
+  const std::string wave_output = read_command_stdout(
+      base + "--tool hero.runtime.inspect.wave --args-json '{}'");
   require_contains(wave_output, "\"source_range\"",
-                   "Runtime inspect subject=wave should decode active wave");
+                   "Runtime inspect.wave should decode active wave");
+
+  const std::string jobs_output =
+      read_command_stdout(base + "--tool hero.runtime.inspect.jobs --args-json "
+                                 "'{\"root\":\"/tmp\",\"limit\":0,"
+                                 "\"include_artifacts\":false}'");
+  require_contains(jobs_output, "\"root\":\"/tmp\"",
+                   "Runtime inspect.jobs should accept direct selectors");
+
+  const auto retired_inspect_router =
+      run_command_capture(base + "--tool hero.runtime.inspect --args-json "
+                                 "'{\"subject\":\"schema\"}'");
+  if (retired_inspect_router.status == 0 ||
+      retired_inspect_router.output.find(
+          "unknown tool: hero.runtime.inspect") == std::string::npos) {
+    throw std::runtime_error(
+        "Runtime broad inspect router should fail as unknown\n" +
+        retired_inspect_router.output);
+  }
+
+  const auto inspect_schema_retired_args = run_command_capture(
+      base + "--tool hero.runtime.inspect.schema --args-json "
+             "'{\"subject\":\"schema\"}'");
+  if (inspect_schema_retired_args.status == 0 ||
+      inspect_schema_retired_args.output.find("unknown field: subject") ==
+          std::string::npos) {
+    throw std::runtime_error(
+        "Runtime inspect.schema should reject retired subject field\n" +
+        inspect_schema_retired_args.output);
+  }
+
+  const auto inspect_wave_retired_args =
+      run_command_capture(base + "--tool hero.runtime.inspect.wave --args-json "
+                                 "'{\"args_path\":\"/tmp/nope.kv\","
+                                 "\"args_digest\":\"wrong\"}'");
+  if (inspect_wave_retired_args.status == 0 ||
+      inspect_wave_retired_args.output.find("unknown field: args_path") ==
+          std::string::npos) {
+    throw std::runtime_error(
+        "Runtime inspect.wave should reject retired request fields\n" +
+        inspect_wave_retired_args.output);
+  }
 
   const std::string reset_plan_output =
       read_command_stdout(base + "--tool hero.runtime.reset --args-json "
-                                 "'{\"requested_mode\":\"plan\"}'");
+                                 "'{\"mode\":\"plan\"}'");
   require_contains(reset_plan_output, "\"dry_run\":true",
-                   "Runtime reset requested_mode=plan should preview reset");
+                   "Runtime reset mode=plan should preview reset");
+
+  const std::string run_preview_output =
+      read_command_stdout(base + "--tool hero.runtime.run --args-json "
+                                 "'{\"mode\":\"dry_run\"}'");
+  require_contains(run_preview_output, "\"argv\":[",
+                   "Runtime run dry_run should still be accepted without "
+                   "a request file");
+
+  const fs::path run_request = write_request(
+      "run_config_path", "config_path=/cuwacunu/src/config/.config\n");
+  const std::string run_request_output =
+      read_command_stdout(base +
+                          "--tool hero.runtime.run --args-json "
+                          "'{\"mode\":\"dry_run\",\"args_path\":\"" +
+                          run_request.string() + "\"}'");
+  require_contains(run_request_output, "\"argv\":[",
+                   "Runtime run should accept args_path payloads");
 
   const auto unknown_old_tool =
       run_command_capture(base + "--tool hero.runtime.schema --args-json '{}'");
@@ -472,16 +2218,299 @@ void check_runtime_collapsed_surface(const fs::path &binary) {
         unknown_old_tool.output);
   }
 
-  const auto old_dry_run_field = run_command_capture(
-      base + "--tool hero.runtime.run --args-json "
-             "'{\"operation\":\"wave\",\"requested_mode\":\"dry_run\","
-             "\"dry_run\":true}'");
+  const auto old_dry_run_field =
+      run_command_capture(base + "--tool hero.runtime.run --args-json "
+                                 "'{\"mode\":\"dry_run\",\"dry_run\":true}'");
   if (old_dry_run_field.status == 0 ||
       old_dry_run_field.output.find("unknown field: dry_run") ==
           std::string::npos) {
     throw std::runtime_error(
         "Runtime run should reject retired top-level dry_run field\n" +
         old_dry_run_field.output);
+  }
+
+  const auto old_config_path_field = run_command_capture(
+      base + "--tool hero.runtime.run --args-json "
+             "'{\"mode\":\"dry_run\","
+             "\"config_path\":\"/cuwacunu/src/config/.config\"}'");
+  if (old_config_path_field.status == 0 ||
+      old_config_path_field.output.find("unknown field: config_path") ==
+          std::string::npos) {
+    throw std::runtime_error(
+        "Runtime run should reject retired top-level config_path field\n" +
+        old_config_path_field.output);
+  }
+
+  const auto old_execution_request_field =
+      run_command_capture(base + "--tool hero.runtime.run --args-json "
+                                 "'{\"mode\":\"dry_run\","
+                                 "\"execution_request_path\":\"/tmp/x\"}'");
+  if (old_execution_request_field.status == 0 ||
+      old_execution_request_field.output.find(
+          "unknown field: execution_request_path") == std::string::npos) {
+    throw std::runtime_error(
+        "Runtime run should reject retired top-level execution_request_path "
+        "field\n" +
+        old_execution_request_field.output);
+  }
+
+  const fs::path duplicate_run_request = write_request(
+      "run_duplicate",
+      "config_path=/cuwacunu/src/config/.config\nconfig_path=/tmp/x\n");
+  const auto duplicate_run =
+      run_command_capture(base +
+                          "--tool hero.runtime.run --args-json "
+                          "'{\"mode\":\"dry_run\",\"args_path\":\"" +
+                          duplicate_run_request.string() + "\"}'");
+  if (duplicate_run.status == 0 ||
+      duplicate_run.output.find(
+          "E_RUNTIME_RUN_REQUEST_DUPLICATE_FIELD: config_path") ==
+          std::string::npos) {
+    throw std::runtime_error(
+        "Runtime run request should reject duplicate fields\n" +
+        duplicate_run.output);
+  }
+
+  const fs::path public_run_request = write_request(
+      "run_public", "subject=wave\nconfig_path=/cuwacunu/src/config/.config\n");
+  const auto public_run =
+      run_command_capture(base +
+                          "--tool hero.runtime.run --args-json "
+                          "'{\"mode\":\"dry_run\",\"args_path\":\"" +
+                          public_run_request.string() + "\"}'");
+  if (public_run.status == 0 ||
+      public_run.output.find("E_RUNTIME_RUN_REQUEST_PUBLIC_FIELD: subject") ==
+          std::string::npos) {
+    throw std::runtime_error(
+        "Runtime run request should reject public fields\n" +
+        public_run.output);
+  }
+
+  const auto run_digest_mismatch = run_command_capture(
+      base +
+      "--tool hero.runtime.run --args-json "
+      "'{\"mode\":\"dry_run\",\"args_path\":\"" +
+      run_request.string() + "\",\"args_digest\":\"wrong\"}'");
+  if (run_digest_mismatch.status == 0 ||
+      run_digest_mismatch.output.find(
+          "E_RUNTIME_RUN_REQUEST_DIGEST_MISMATCH") == std::string::npos) {
+    throw std::runtime_error(
+        "Runtime run should reject request digest mismatch\n" +
+        run_digest_mismatch.output);
+  }
+
+  const auto execute_without_digest =
+      run_command_capture(base +
+                          "--tool hero.runtime.run --args-json "
+                          "'{\"mode\":\"execute\",\"args_path\":\"" +
+                          run_request.string() + "\"}'");
+  if (execute_without_digest.status == 0 ||
+      execute_without_digest.output.find(
+          "E_RUNTIME_RUN_REQUEST_DIGEST_REQUIRED") == std::string::npos) {
+    throw std::runtime_error(
+        "Runtime run execute with request file should require digest\n" +
+        execute_without_digest.output);
+  }
+
+  const auto run_retired_subject =
+      run_command_capture(base + "--tool hero.runtime.run --args-json "
+                                 "'{\"subject\":\"wave\","
+                                 "\"mode\":\"dry_run\"}'");
+  if (run_retired_subject.status == 0 ||
+      run_retired_subject.output.find("unknown field: subject") ==
+          std::string::npos) {
+    throw std::runtime_error(
+        "Runtime run should reject retired subject field\n" +
+        run_retired_subject.output);
+  }
+
+  const auto split_run_wave_tool = run_command_capture(
+      base + "--tool hero.runtime.run_wave --args-json "
+             "'{\"mode\":\"dry_run\",\"config_path\":\"/tmp/x\"}'");
+  if (split_run_wave_tool.status == 0 ||
+      split_run_wave_tool.output.find("unknown tool: hero.runtime.run_wave") ==
+          std::string::npos) {
+    throw std::runtime_error(
+        "Runtime split tool hero.runtime.run_wave should fail as unknown\n" +
+        split_run_wave_tool.output);
+  }
+}
+
+void check_environment_inspect_derouted_surface(const fs::path &binary) {
+  const std::string base =
+      binary.string() + " --global-config /cuwacunu/src/config/.config ";
+  const fs::path root =
+      fs::temp_directory_path() / "hero_mcp_schema_compat" / "environment";
+  const fs::path job_dir = root / "job";
+  fs::create_directories(job_dir);
+
+  {
+    std::ofstream sidecar(job_dir / "lattice.policy_acceptance.fact",
+                          std::ios::trunc);
+    if (!sidecar) {
+      throw std::runtime_error("failed to write Environment sidecar fixture");
+    }
+    sidecar << "policy_acceptance_fixture=ok\n";
+  }
+
+  const std::string schema_output = read_command_stdout(
+      base + "--tool hero.environment.inspect.schema --args-json '{}'");
+  require_contains(schema_output, "\"policy_schema\":",
+                   "Environment inspect.schema should return policy schema");
+
+  const std::string job_output = read_command_stdout(
+      base +
+      "--tool hero.environment.inspect.job --args-json "
+      "'{\"job_dir\":\"" +
+      job_dir.string() + "\",\"include_text\":true,\"max_bytes\":12}'");
+  require_contains(job_output, "\"tool\":\"hero.environment.inspect.job\"",
+                   "Environment inspect.job should inspect job");
+  require_contains(job_output, "\"job_dir\":\"" + job_dir.string() + "\"",
+                   "Environment inspect.job should preserve job_dir identity");
+  require_contains(job_output, "\"policy_accep",
+                   "Environment inspect.job include_text should preview "
+                   "sidecar");
+  if (job_output.find("\"args_digest\"") != std::string::npos) {
+    throw std::runtime_error(
+        "Environment inspect.job should not return request digest metadata\n" +
+        job_output);
+  }
+
+  const auto retired_router =
+      run_command_capture(base + "--tool hero.environment.inspect --args-json "
+                                 "'{\"subject\":\"schema\"}'");
+  if (retired_router.status == 0 ||
+      retired_router.output.find("unknown tool: hero.environment.inspect") ==
+          std::string::npos) {
+    throw std::runtime_error(
+        "Environment broad inspect router should fail as unknown\n" +
+        retired_router.output);
+  }
+
+  const auto schema_retired_args = run_command_capture(
+      base + "--tool hero.environment.inspect.schema --args-json "
+             "'{\"args_path\":\"/tmp/nope.kv\"}'");
+  if (schema_retired_args.status == 0 ||
+      schema_retired_args.output.find("unknown field: args_path") ==
+          std::string::npos) {
+    throw std::runtime_error(
+        "Environment inspect.schema should reject retired args_path field\n" +
+        schema_retired_args.output);
+  }
+
+  const auto job_retired_args =
+      run_command_capture(base +
+                          "--tool hero.environment.inspect.job --args-json "
+                          "'{\"job_dir\":\"" +
+                          job_dir.string() +
+                          "\",\"subject\":\"job\",\"args_path\":\"/tmp/nope."
+                          "kv\",\"args_digest\":\"wrong\"}'");
+  if (job_retired_args.status == 0 ||
+      job_retired_args.output.find("unknown field: args_digest") ==
+          std::string::npos) {
+    throw std::runtime_error(
+        "Environment inspect.job should reject retired request fields\n" +
+        job_retired_args.output);
+  }
+
+  const auto job_missing_dir = run_command_capture(
+      base + "--tool hero.environment.inspect.job --args-json "
+             "'{}'");
+  if (job_missing_dir.status == 0 ||
+      job_missing_dir.output.find("missing required field: job_dir") ==
+          std::string::npos) {
+    throw std::runtime_error(
+        "Environment inspect.job should require direct job_dir\n" +
+        job_missing_dir.output);
+  }
+
+  const auto retired_certify_router = run_command_capture(
+      base + "--tool hero.environment.certify --args-json "
+             "'{\"subject\":\"policy_acceptance\",\"mode\":\"check\","
+             "\"args_path\":\"/tmp/nope.kv\"}'");
+  if (retired_certify_router.status == 0 ||
+      retired_certify_router.output.find(
+          "unknown tool: hero.environment.certify") == std::string::npos) {
+    throw std::runtime_error(
+        "Environment broad certify router should fail as unknown\n" +
+        retired_certify_router.output);
+  }
+
+  const auto certify_retired_subject = run_command_capture(
+      base + "--tool hero.environment.certify.policy_acceptance --args-json "
+             "'{\"subject\":\"policy_acceptance\",\"mode\":\"check\","
+             "\"args_path\":\"/tmp/nope.kv\"}'");
+  if (certify_retired_subject.status == 0 ||
+      certify_retired_subject.output.find("unknown field: subject") ==
+          std::string::npos) {
+    throw std::runtime_error(
+        "Environment certify.policy_acceptance should reject retired subject "
+        "field\n" +
+        certify_retired_subject.output);
+  }
+}
+
+void check_marshal_derouted_surface(const fs::path &binary) {
+  const std::string base =
+      binary.string() + " --global-config /cuwacunu/src/config/.config ";
+
+  const auto broad_inspect =
+      run_command_capture(base + "--tool hero.marshal.inspect --args-json "
+                                 "'{\"subject\":\"run\"}'");
+  if (broad_inspect.status == 0 ||
+      broad_inspect.output.find("unknown tool: hero.marshal.inspect") ==
+          std::string::npos) {
+    throw std::runtime_error(
+        "retired Marshal tool hero.marshal.inspect should fail as unknown\n" +
+        broad_inspect.output);
+  }
+
+  const auto retired_run =
+      run_command_capture(base + "--tool hero.marshal.inspect.run --args-json "
+                                 "'{\"subject\":\"run\"}'");
+  if (retired_run.status == 0 ||
+      retired_run.output.find("unknown tool: hero.marshal.inspect.run") ==
+          std::string::npos) {
+    throw std::runtime_error(
+        "retired Marshal tool hero.marshal.inspect.run should fail as "
+        "unknown\n" +
+        retired_run.output);
+  }
+
+  const auto retired_facts = run_command_capture(
+      base + "--tool hero.marshal.inspect.facts --args-json "
+             "'{\"mode\":\"summary\",\"args_path\":\"/tmp/request.kv\"}'");
+  if (retired_facts.status == 0 ||
+      retired_facts.output.find("unknown tool: hero.marshal.inspect.facts") ==
+          std::string::npos) {
+    throw std::runtime_error(
+        "retired Marshal tool hero.marshal.inspect.facts should fail as "
+        "unknown\n" +
+        retired_facts.output);
+  }
+
+  const auto retired_subject = run_command_capture(
+      base + "--tool hero.marshal.inspect.run.latest_chain --args-json "
+             "'{\"subject\":\"run\"}'");
+  if (retired_subject.status == 0 ||
+      retired_subject.output.find("unknown field: subject") ==
+          std::string::npos) {
+    throw std::runtime_error(
+        "Marshal inspect.run.latest_chain should reject retired subject "
+        "field\n" +
+        retired_subject.output);
+  }
+
+  const auto retired_args_path = run_command_capture(
+      base + "--tool hero.marshal.inspect.facts.summary --args-json "
+             "'{\"args_path\":\"/tmp/request.kv\"}'");
+  if (retired_args_path.status == 0 ||
+      retired_args_path.output.find("unknown field: args_path") ==
+          std::string::npos) {
+    throw std::runtime_error(
+        "Marshal inspect.facts.summary should reject retired args_path "
+        "field\n" +
+        retired_args_path.output);
   }
 }
 
@@ -592,6 +2621,551 @@ void write_text(const fs::path &path, const std::string &text) {
     throw std::runtime_error("failed to write fixture: " + path.string());
   }
   out << text;
+}
+
+[[nodiscard]] std::string json_string(const std::string &value) {
+  std::ostringstream out;
+  out << '"';
+  for (const char c : value) {
+    switch (c) {
+    case '"':
+      out << "\\\"";
+      break;
+    case '\\':
+      out << "\\\\";
+      break;
+    case '\n':
+      out << "\\n";
+      break;
+    case '\r':
+      out << "\\r";
+      break;
+    case '\t':
+      out << "\\t";
+      break;
+    default:
+      out << c;
+      break;
+    }
+  }
+  out << '"';
+  return out.str();
+}
+
+[[nodiscard]] std::string trim_ascii_copy(const std::string &value) {
+  std::size_t begin = 0;
+  while (begin < value.size() &&
+         std::isspace(static_cast<unsigned char>(value[begin])) != 0) {
+    ++begin;
+  }
+  std::size_t end = value.size();
+  while (end > begin &&
+         std::isspace(static_cast<unsigned char>(value[end - 1])) != 0) {
+    --end;
+  }
+  return value.substr(begin, end - begin);
+}
+
+[[nodiscard]] std::string shell_quote(const std::string &value) {
+  std::string out = "'";
+  for (const char c : value) {
+    if (c == '\'') {
+      out += "'\\''";
+    } else {
+      out.push_back(c);
+    }
+  }
+  out.push_back('\'');
+  return out;
+}
+
+[[nodiscard]] bool lattice_inspect_int_arg(const std::string &key) {
+  return key == "limit" || key == "fact_index";
+}
+
+[[nodiscard]] bool lattice_inspect_bool_arg(const std::string &key) {
+  return key == "include_facts" || key == "compare_live_scan" ||
+         key == "allow_unproven_cache";
+}
+
+[[nodiscard]] std::string
+lattice_inspect_request_value_json(const std::string &key,
+                                   const std::string &value) {
+  const std::string trimmed = trim_ascii_copy(value);
+  if (lattice_inspect_int_arg(key) || lattice_inspect_bool_arg(key)) {
+    return trimmed;
+  }
+  return json_string(trimmed);
+}
+
+[[nodiscard]] std::string
+lattice_inspect_tool_name(const std::string &top_level_json,
+                          const std::string &request_text = {}) {
+  const auto fields = parse_json_object_fields(top_level_json);
+  for (const auto &field : fields) {
+    if (field.key != "subject") {
+      continue;
+    }
+    std::size_t value_idx = 0;
+    const std::string subject = parse_json_string_at(field.raw, &value_idx);
+    if (subject == "schema") {
+      return "hero.lattice.inspect.schema";
+    }
+    if (subject == "targets") {
+      return "hero.lattice.inspect.targets";
+    }
+    if (subject == "target") {
+      return "hero.lattice.inspect.target";
+    }
+    if (subject == "exposure") {
+      return "hero.lattice.inspect.exposure";
+    }
+    if (subject == "fact_families") {
+      return "hero.lattice.inspect.fact_families";
+    }
+    if (subject == "facts") {
+      std::string mode = "summary";
+      for (const auto &mode_field : fields) {
+        if (mode_field.key == "mode") {
+          std::size_t mode_idx = 0;
+          mode = parse_json_string_at(mode_field.raw, &mode_idx);
+          break;
+        }
+      }
+      if (mode == "summary" || mode == "scan" || mode == "lineage" ||
+          mode == "preview") {
+        if (mode == "preview") {
+          bool has_fact_digest = false;
+          bool has_fact_digest_prefix = false;
+          bool has_fact_index = false;
+          for (const auto &selector_field : fields) {
+            if (selector_field.key == "fact_digest") {
+              has_fact_digest = true;
+            } else if (selector_field.key == "fact_digest_prefix") {
+              has_fact_digest_prefix = true;
+            } else if (selector_field.key == "fact_index") {
+              has_fact_index = true;
+            }
+          }
+          std::istringstream request_lines(request_text);
+          std::string line;
+          while (std::getline(request_lines, line)) {
+            line = trim_ascii_copy(line);
+            if (line.empty()) {
+              continue;
+            }
+            const std::size_t eq = line.find('=');
+            if (eq == std::string::npos) {
+              continue;
+            }
+            const std::string key = trim_ascii_copy(line.substr(0, eq));
+            if (key == "fact_digest") {
+              has_fact_digest = true;
+            } else if (key == "fact_digest_prefix") {
+              has_fact_digest_prefix = true;
+            } else if (key == "fact_index") {
+              has_fact_index = true;
+            }
+          }
+          if (has_fact_digest) {
+            return "hero.lattice.inspect.facts.preview.by_digest";
+          }
+          if (has_fact_digest_prefix) {
+            return "hero.lattice.inspect.facts.preview.by_digest_prefix";
+          }
+          if (has_fact_index) {
+            return "hero.lattice.inspect.facts.preview.by_index";
+          }
+        }
+        return "hero.lattice.inspect.facts." + mode;
+      }
+      throw std::runtime_error("unknown lattice inspect facts mode in test: " +
+                               mode);
+    }
+    if (subject == "index") {
+      std::string mode = "status";
+      bool unproven_cache = false;
+      for (const auto &mode_field : fields) {
+        if (mode_field.key == "mode") {
+          std::size_t mode_idx = 0;
+          mode = parse_json_string_at(mode_field.raw, &mode_idx);
+        }
+        if (mode_field.key == "allow_unproven_cache" &&
+            mode_field.raw == "true") {
+          unproven_cache = true;
+        }
+      }
+      if (mode == "status") {
+        return "hero.lattice.inspect.index.status";
+      }
+      if (mode == "query") {
+        bool has_relation = false;
+        bool has_key = false;
+        bool has_key_contains = false;
+        bool has_digest = false;
+        bool has_digest_prefix = false;
+        for (const auto &selector_field : fields) {
+          if (selector_field.key == "relation") {
+            has_relation = true;
+          } else if (selector_field.key == "key") {
+            has_key = true;
+          } else if (selector_field.key == "key_contains") {
+            has_key_contains = true;
+          } else if (selector_field.key == "digest") {
+            has_digest = true;
+          } else if (selector_field.key == "digest_prefix") {
+            has_digest_prefix = true;
+          }
+        }
+        std::istringstream request_lines(request_text);
+        std::string line;
+        while (std::getline(request_lines, line)) {
+          line = trim_ascii_copy(line);
+          if (line.empty()) {
+            continue;
+          }
+          const std::size_t eq = line.find('=');
+          if (eq == std::string::npos) {
+            continue;
+          }
+          const std::string key = trim_ascii_copy(line.substr(0, eq));
+          if (key == "relation") {
+            has_relation = true;
+          } else if (key == "key") {
+            has_key = true;
+          } else if (key == "key_contains") {
+            has_key_contains = true;
+          } else if (key == "digest") {
+            has_digest = true;
+          } else if (key == "digest_prefix") {
+            has_digest_prefix = true;
+          }
+        }
+        std::string tool = unproven_cache ? "hero.lattice.inspect.index.query."
+                                            "unproven_cache"
+                                          : "hero.lattice.inspect.index.query";
+        if (has_relation) {
+          tool += ".by_relation";
+        } else if (has_key) {
+          tool += ".by_key";
+        } else if (has_key_contains) {
+          tool += ".by_key_contains";
+        } else if (has_digest) {
+          tool += ".by_digest";
+        } else if (has_digest_prefix) {
+          tool += ".by_digest_prefix";
+        }
+        return tool;
+      }
+      throw std::runtime_error("unknown lattice inspect index mode in test: " +
+                               mode);
+    }
+    if (subject == "derived") {
+      std::string relation;
+      bool has_target_id = false;
+      bool has_checkpoint_path = false;
+      bool has_checkpoint_identity = false;
+      bool has_ancestor_path = false;
+      bool has_ancestor_id = false;
+      for (const auto &relation_field : fields) {
+        if (relation_field.key == "relation") {
+          std::size_t relation_idx = 0;
+          relation = parse_json_string_at(relation_field.raw, &relation_idx);
+        }
+        if (relation_field.key == "target_id") {
+          has_target_id = true;
+        } else if (relation_field.key == "checkpoint_path") {
+          has_checkpoint_path = true;
+        } else if (relation_field.key == "checkpoint_id" ||
+                   relation_field.key == "checkpoint_file_digest") {
+          has_checkpoint_identity = true;
+        } else if (relation_field.key == "ancestor_checkpoint_path") {
+          has_ancestor_path = true;
+        } else if (relation_field.key == "ancestor_checkpoint_id") {
+          has_ancestor_id = true;
+        }
+      }
+      std::istringstream request_lines(request_text);
+      std::string line;
+      while (std::getline(request_lines, line)) {
+        line = trim_ascii_copy(line);
+        if (line.empty()) {
+          continue;
+        }
+        const std::size_t eq = line.find('=');
+        if (eq == std::string::npos) {
+          continue;
+        }
+        const std::string key = trim_ascii_copy(line.substr(0, eq));
+        const std::string value = trim_ascii_copy(line.substr(eq + 1));
+        if (key == "relation" && relation.empty()) {
+          relation = value;
+        } else if (key == "target_id") {
+          has_target_id = true;
+        } else if (key == "checkpoint_path") {
+          has_checkpoint_path = true;
+        } else if (key == "checkpoint_id" || key == "checkpoint_file_digest") {
+          has_checkpoint_identity = true;
+        } else if (key == "ancestor_checkpoint_path") {
+          has_ancestor_path = true;
+        } else if (key == "ancestor_checkpoint_id") {
+          has_ancestor_id = true;
+        }
+      }
+      if (relation == "target_satisfied" || relation == "satisfied_target") {
+        return "hero.lattice.inspect.derived.target_satisfied";
+      }
+      if (relation == "forbidden_overlap") {
+        return "hero.lattice.inspect.derived.forbidden_overlap";
+      }
+      if (relation == "stale_cache") {
+        return "hero.lattice.inspect.derived.stale_cache";
+      }
+      if (relation == "checkpoint_ancestor") {
+        if (has_checkpoint_path && has_checkpoint_identity) {
+          throw std::runtime_error(
+              "checkpoint_ancestor test mixes checkpoint selectors");
+        }
+        std::string tool =
+            has_checkpoint_path
+                ? "hero.lattice.inspect.derived.checkpoint_ancestor."
+                  "by_checkpoint_path"
+                : "hero.lattice.inspect.derived.checkpoint_ancestor."
+                  "by_checkpoint_identity";
+        if (!has_checkpoint_path && !has_checkpoint_identity) {
+          throw std::runtime_error(
+              "checkpoint_ancestor test requires checkpoint path or identity");
+        }
+        if (has_ancestor_path && has_ancestor_id) {
+          throw std::runtime_error(
+              "checkpoint_ancestor test mixes ancestor selectors");
+        }
+        if (has_ancestor_path) {
+          tool += ".with_ancestor_path";
+        } else if (has_ancestor_id) {
+          tool += ".with_ancestor_id";
+        }
+        return tool;
+      }
+      if (relation == "unresolved_lineage") {
+        return has_target_id
+                   ? "hero.lattice.inspect.derived.unresolved_lineage.target"
+                   : "hero.lattice.inspect.derived.unresolved_lineage."
+                     "checkpoint";
+      }
+      throw std::runtime_error(
+          "unknown lattice inspect derived relation in test: " + relation);
+    }
+    if (subject == "checkpoint") {
+      return "hero.lattice.inspect.checkpoint";
+    }
+    throw std::runtime_error("unknown lattice inspect subject in test: " +
+                             subject);
+  }
+  throw std::runtime_error("missing lattice inspect subject in test");
+}
+
+[[nodiscard]] std::string
+lattice_inspect_args_json(const std::string &top_level_json,
+                          const std::string &request_text = {}) {
+  const auto fields = parse_json_object_fields(top_level_json);
+  std::string subject;
+  for (const auto &field : fields) {
+    if (field.key == "subject") {
+      std::size_t value_idx = 0;
+      subject = parse_json_string_at(field.raw, &value_idx);
+      break;
+    }
+  }
+  std::ostringstream top;
+  top << "{";
+  bool first = true;
+  const auto append_top = [&](const std::string &key, const std::string &raw) {
+    if (!first) {
+      top << ",";
+    }
+    top << json_string(key) << ":" << raw;
+    first = false;
+  };
+  for (const auto &field : fields) {
+    if (field.key == "subject" || field.key == "args_path" ||
+        field.key == "args_digest" ||
+        ((subject == "facts" || subject == "index") && field.key == "mode") ||
+        (subject == "derived" && field.key == "relation") ||
+        (subject == "derived" && is_lattice_identity_filter_field(field.key)) ||
+        (subject == "index" && (field.key == "compare_live_scan" ||
+                                field.key == "allow_unproven_cache"))) {
+      continue;
+    }
+    append_top(field.key, field.raw);
+  }
+
+  std::istringstream request_lines(request_text);
+  std::string line;
+  while (std::getline(request_lines, line)) {
+    line = trim_ascii_copy(line);
+    if (line.empty()) {
+      continue;
+    }
+    const std::size_t eq = line.find('=');
+    if (eq == std::string::npos) {
+      throw std::runtime_error("bad lattice inspect request line in test: " +
+                               line);
+    }
+    const std::string key = trim_ascii_copy(line.substr(0, eq));
+    const std::string value = line.substr(eq + 1);
+    if ((subject == "derived" &&
+         (key == "relation" || is_lattice_identity_filter_field(key))) ||
+        (subject == "index" &&
+         (key == "compare_live_scan" || key == "allow_unproven_cache"))) {
+      continue;
+    }
+    append_top(key, lattice_inspect_request_value_json(key, value));
+  }
+
+  top << "}";
+  return top.str();
+}
+
+[[nodiscard]] std::string
+lattice_inspect_call_shell(const std::string &top_level_json,
+                           const std::string &request_text = {}) {
+  return "--tool " + lattice_inspect_tool_name(top_level_json, request_text) +
+         " --args-json " +
+         shell_quote(lattice_inspect_args_json(top_level_json, request_text));
+}
+
+[[nodiscard]] std::string
+lattice_evaluate_args_json(const std::string &operation,
+                           const std::string &request_text) {
+  std::ostringstream top;
+  top << "{";
+  bool first = true;
+  const auto append_top = [&](const std::string &key, const std::string &raw) {
+    if (!first) {
+      top << ",";
+    }
+    top << json_string(key) << ":" << raw;
+    first = false;
+  };
+
+  std::istringstream request_lines(request_text);
+  std::string line;
+  while (std::getline(request_lines, line)) {
+    line = trim_ascii_copy(line);
+    if (line.empty()) {
+      continue;
+    }
+    const std::size_t eq = line.find('=');
+    if (eq == std::string::npos) {
+      throw std::runtime_error("bad lattice evaluate request line in test: " +
+                               line);
+    }
+    const std::string key = trim_ascii_copy(line.substr(0, eq));
+    const std::string value = trim_ascii_copy(line.substr(eq + 1));
+    if ((operation == "target" || operation == "targets" ||
+         operation == "deficit" ||
+         operation == "latest_satisfying_checkpoint") &&
+        is_lattice_identity_filter_field(key)) {
+      continue;
+    }
+    if (key == "limit") {
+      append_top(key, value);
+      continue;
+    }
+    if (key == "target_ids") {
+      if (!value.empty() && value.front() == '[') {
+        append_top(key, value);
+        continue;
+      }
+      std::ostringstream array_json;
+      array_json << "[";
+      std::istringstream csv(value);
+      std::string item;
+      bool first_item = true;
+      while (std::getline(csv, item, ',')) {
+        item = trim_ascii_copy(item);
+        if (item.empty()) {
+          continue;
+        }
+        if (!first_item) {
+          array_json << ",";
+        }
+        array_json << json_string(item);
+        first_item = false;
+      }
+      array_json << "]";
+      append_top(key, array_json.str());
+      continue;
+    }
+    append_top(key, json_string(value));
+  }
+
+  top << "}";
+  return top.str();
+}
+
+[[nodiscard]] std::string
+lattice_evaluate_tool_name(const std::string &operation,
+                           const std::string &request_text = {}) {
+  if (operation == "target") {
+    return "hero.lattice.evaluate.target";
+  }
+  if (operation == "targets") {
+    return "hero.lattice.evaluate.targets";
+  }
+  if (operation == "deficit") {
+    return "hero.lattice.evaluate.deficit";
+  }
+  if (operation == "latest_satisfying_checkpoint") {
+    return request_text.find("symbolic_hint=") != std::string::npos
+               ? "hero.lattice.evaluate.latest_satisfying_checkpoint.hint"
+               : "hero.lattice.evaluate.latest_satisfying_checkpoint.target";
+  }
+  throw std::runtime_error("unknown lattice evaluate operation in test: " +
+                           operation);
+}
+
+[[nodiscard]] std::string
+lattice_evaluate_call_shell(const std::string &operation,
+                            const std::string &request_text) {
+  return "--tool " + lattice_evaluate_tool_name(operation, request_text) +
+         " --args-json " +
+         shell_quote(lattice_evaluate_args_json(operation, request_text));
+}
+
+[[nodiscard]] std::string
+lattice_compare_args_json(const std::string &request_text) {
+  std::ostringstream top;
+  top << "{";
+  bool first = true;
+  std::istringstream request_lines(request_text);
+  std::string line;
+  while (std::getline(request_lines, line)) {
+    line = trim_ascii_copy(line);
+    if (line.empty()) {
+      continue;
+    }
+    const std::size_t eq = line.find('=');
+    if (eq == std::string::npos) {
+      throw std::runtime_error("bad lattice compare request line in test: " +
+                               line);
+    }
+    const std::string key = trim_ascii_copy(line.substr(0, eq));
+    const std::string value = trim_ascii_copy(line.substr(eq + 1));
+    if (!first) {
+      top << ",";
+    }
+    first = false;
+    top << json_string(key) << ":" << json_string(value);
+  }
+  top << "}";
+  return top.str();
+}
+
+[[nodiscard]] std::string
+lattice_compare_args_shell(const std::string &request_text) {
+  return shell_quote(lattice_compare_args_json(request_text));
 }
 
 std::string mtf_report_text(const std::string &checkpoint_digest) {
@@ -759,11 +3333,193 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
         unknown_old_tool.output);
   }
 
+  const auto retired_inspect_router =
+      run_command_capture(base + "--tool hero.lattice.inspect --args-json "
+                                 "'{\"subject\":\"schema\"}'");
+  if (retired_inspect_router.status == 0 ||
+      retired_inspect_router.output.find(
+          "unknown tool: hero.lattice.inspect") == std::string::npos) {
+    throw std::runtime_error(
+        "retired Lattice broad inspect router should fail as unknown\n" +
+        retired_inspect_router.output);
+  }
+
+  const auto inspect_schema_retired_subject = run_command_capture(
+      base + "--tool hero.lattice.inspect.schema --args-json "
+             "'{\"subject\":\"schema\"}'");
+  if (inspect_schema_retired_subject.status == 0 ||
+      inspect_schema_retired_subject.output.find("unknown field: subject") ==
+          std::string::npos) {
+    throw std::runtime_error(
+        "Lattice inspect.schema should reject retired subject field\n" +
+        inspect_schema_retired_subject.output);
+  }
+
+  const auto inspect_facts_retired_request = run_command_capture(
+      base + "--tool hero.lattice.inspect.facts --args-json "
+             "'{\"mode\":\"summary\",\"args_path\":\"/tmp/request.kv\"}'");
+  if (inspect_facts_retired_request.status == 0 ||
+      inspect_facts_retired_request.output.find(
+          "unknown tool: hero.lattice.inspect.facts") == std::string::npos) {
+    throw std::runtime_error(
+        "retired Lattice inspect.facts should fail as unknown\n" +
+        inspect_facts_retired_request.output);
+  }
+
+  const auto inspect_facts_split_retired_mode = run_command_capture(
+      base + "--tool hero.lattice.inspect.facts.summary --args-json "
+             "'{\"mode\":\"summary\"}'");
+  if (inspect_facts_split_retired_mode.status == 0 ||
+      inspect_facts_split_retired_mode.output.find("unknown field: mode") ==
+          std::string::npos) {
+    throw std::runtime_error(
+        "Lattice inspect.facts.summary should reject retired mode field\n" +
+        inspect_facts_split_retired_mode.output);
+  }
+
+  const auto retired_derived = run_command_capture(
+      base + "--tool hero.lattice.inspect.derived --args-json "
+             "'{\"relation\":\"target_satisfied\"}'");
+  if (retired_derived.status == 0 ||
+      retired_derived.output.find(
+          "unknown tool: hero.lattice.inspect.derived") == std::string::npos) {
+    throw std::runtime_error(
+        "retired Lattice inspect.derived should fail as unknown\n" +
+        retired_derived.output);
+  }
+
+  const auto retired_latest = run_command_capture(
+      base + "--tool hero.lattice.evaluate.latest_satisfying_checkpoint "
+             "--args-json '{\"target_id\":\"retired\"}'");
+  if (retired_latest.status == 0 ||
+      retired_latest.output.find("unknown tool: "
+                                 "hero.lattice.evaluate."
+                                 "latest_satisfying_checkpoint") ==
+          std::string::npos) {
+    throw std::runtime_error(
+        "retired Lattice latest_satisfying_checkpoint should fail as "
+        "unknown\n" +
+        retired_latest.output);
+  }
+
+  const auto retired_evaluate_router =
+      run_command_capture(base + "--tool hero.lattice.evaluate --args-json "
+                                 "'{\"subject\":\"target\"}'");
+  if (retired_evaluate_router.status == 0 ||
+      retired_evaluate_router.output.find(
+          "unknown tool: hero.lattice.evaluate") == std::string::npos) {
+    throw std::runtime_error(
+        "retired Lattice broad evaluate router should fail as unknown\n" +
+        retired_evaluate_router.output);
+  }
+
+  const auto evaluate_target_retired_subject = run_command_capture(
+      base + "--tool hero.lattice.evaluate.target --args-json "
+             "'{\"subject\":\"target\",\"target_id\":\"retired\"}'");
+  if (evaluate_target_retired_subject.status == 0 ||
+      evaluate_target_retired_subject.output.find("unknown field: subject") ==
+          std::string::npos) {
+    throw std::runtime_error(
+        "Lattice evaluate.target should reject retired subject field\n" +
+        evaluate_target_retired_subject.output);
+  }
+
+  const auto evaluate_target_retired_request = run_command_capture(
+      base + "--tool hero.lattice.evaluate.target --args-json "
+             "'{\"target_id\":\"retired\",\"args_path\":\"/tmp/request.kv\"}'");
+  if (evaluate_target_retired_request.status == 0 ||
+      evaluate_target_retired_request.output.find("unknown field: args_path") ==
+          std::string::npos) {
+    throw std::runtime_error(
+        "Lattice evaluate.target should reject retired args_path field\n" +
+        evaluate_target_retired_request.output);
+  }
+
+  const auto evaluate_deficit_retired_digest = run_command_capture(
+      base + "--tool hero.lattice.evaluate.deficit --args-json "
+             "'{\"target_id\":\"retired\",\"args_digest\":\"digest\"}'");
+  if (evaluate_deficit_retired_digest.status == 0 ||
+      evaluate_deficit_retired_digest.output.find(
+          "unknown field: args_digest") == std::string::npos) {
+    throw std::runtime_error(
+        "Lattice evaluate.deficit should reject retired args_digest field\n" +
+        evaluate_deficit_retired_digest.output);
+  }
+
+  const auto evaluate_target_retired_identity = run_command_capture(
+      base + "--tool hero.lattice.evaluate.target --args-json "
+             "'{\"target_id\":\"retired\","
+             "\"protocol_contract_fingerprint\":\"pc\"}'");
+  if (evaluate_target_retired_identity.status == 0 ||
+      evaluate_target_retired_identity.output.find(
+          "unknown field: protocol_contract_fingerprint") ==
+          std::string::npos) {
+    throw std::runtime_error(
+        "Lattice evaluate.target should reject retired identity filters\n" +
+        evaluate_target_retired_identity.output);
+  }
+
+  const auto derived_retired_identity = run_command_capture(
+      base + "--tool hero.lattice.inspect.derived.target_satisfied --args-json "
+             "'{\"target_id\":\"retired\",\"protocol_id\":\"protocol\"}'");
+  if (derived_retired_identity.status == 0 ||
+      derived_retired_identity.output.find("unknown field: protocol_id") ==
+          std::string::npos) {
+    throw std::runtime_error("Lattice target-derived inspect should reject "
+                             "retired identity filters\n" +
+                             derived_retired_identity.output);
+  }
+
+  const auto missing_compare_left = run_command_capture(
+      base + "--tool hero.lattice.compare --args-json '{}'");
+  if (missing_compare_left.status == 0 ||
+      missing_compare_left.output.find("left_target_id is required") ==
+          std::string::npos) {
+    throw std::runtime_error(
+        "Lattice compare should require direct left_target_id\n" +
+        missing_compare_left.output);
+  }
+
+  const auto retired_compare_args_path = run_command_capture(
+      base + "--tool hero.lattice.compare --args-json "
+             "'{\"left_target_id\":\"left\",\"right_target_id\":\"right\","
+             "\"args_path\":\"/tmp/request.kv\"}'");
+  if (retired_compare_args_path.status == 0 ||
+      retired_compare_args_path.output.find("unknown field: args_path") ==
+          std::string::npos) {
+    throw std::runtime_error(
+        "Lattice compare should reject retired args_path field\n" +
+        retired_compare_args_path.output);
+  }
+
+  const auto retired_compare_digest = run_command_capture(
+      base + "--tool hero.lattice.compare --args-json "
+             "'{\"left_target_id\":\"left\",\"right_target_id\":\"right\","
+             "\"args_digest\":\"wrong\"}'");
+  if (retired_compare_digest.status == 0 ||
+      retired_compare_digest.output.find("unknown field: args_digest") ==
+          std::string::npos) {
+    throw std::runtime_error(
+        "Lattice compare should reject retired args_digest field\n" +
+        retired_compare_digest.output);
+  }
+
+  const auto retired_compare_identity = run_command_capture(
+      base + "--tool hero.lattice.compare --args-json "
+             "'{\"left_target_id\":\"left\",\"right_target_id\":\"right\","
+             "\"protocol_contract_fingerprint\":\"pc\"}'");
+  if (retired_compare_identity.status == 0 ||
+      retired_compare_identity.output.find(
+          "unknown field: protocol_contract_fingerprint") ==
+          std::string::npos) {
+    throw std::runtime_error(
+        "Lattice compare should reject retired identity fields\n" +
+        retired_compare_identity.output);
+  }
+
   const std::string lattice_status =
-      read_command_stdout(base +
-                          "--tool hero.lattice.status --args-json "
-                          "'{\"runtime_root\":\"" +
-                          runtime_root.string() + "\"}'");
+      read_command_stdout(base + "--tool hero.lattice.status --args-json "
+                                 "'{}'");
   require_contains(
       lattice_status,
       "\"ok\":true,\"read_only\":true,\"target_proof\":false,"
@@ -774,8 +3530,7 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
   require_lattice_non_decision_boundary(lattice_status, "hero.lattice.status");
 
   const std::string lattice_schema = read_command_stdout(
-      base +
-      "--tool hero.lattice.inspect --args-json '{\"subject\":\"schema\"}'");
+      base + "--tool hero.lattice.inspect.schema --args-json '{}'");
   require_contains(
       lattice_schema,
       "\"schema\":\"kikijyeba.lattice.hero_policy_schema.v1\","
@@ -788,8 +3543,7 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
                    "schema must not act as a policy gate");
 
   const std::string target_list = read_command_stdout(
-      base +
-      "--tool hero.lattice.inspect --args-json '{\"subject\":\"targets\"}'");
+      base + "--tool hero.lattice.inspect.targets --args-json '{}'");
   require_contains(
       target_list,
       "\"schema\":\"kikijyeba.lattice.target_catalog.v1\","
@@ -799,7 +3553,7 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
       "list_targets should expose top-level read-only, non-proof, "
       "non-dispatchable boundaries");
   require_lattice_non_decision_boundary(target_list,
-                                        "hero.lattice.inspect subject=targets");
+                                        "hero.lattice.inspect.targets");
   require_contains(
       target_list,
       "\"policy_gate_reservation_summary\":{\"schema\":\"kikijyeba."
@@ -879,14 +3633,16 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
       "\"artifact_readiness_proof_template_registry\":{\"schema\":\"kikijyeba."
       "lattice.artifact_readiness_proof_template_registry.v1\"",
       "list_targets should expose artifact readiness proof template registry");
-  require_contains(target_list, "\"proof_template_count\":7",
+  require_contains(target_list, "\"proof_template_count\":10",
                    "artifact readiness registry should enumerate proof "
                    "templates");
   require_contains(
       target_list,
       "\"proofable_fact_families\":[\"target_transform\","
       "\"forecast_baseline\",\"forecast_eval\",\"observer_belief\","
-      "\"allocation_engine\",\"replay_environment\",\"policy_training\"]",
+      "\"allocation_engine\",\"replay_environment\",\"policy_training\","
+      "\"tsodao_settings_protection\",\"policy_acceptance\","
+      "\"paper_online_readiness\"]",
       "artifact readiness registry should expose proofable fact families");
   require_contains(
       target_list,
@@ -909,15 +3665,30 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
       "\"subject_fact_family\":\"policy_training\",\"proof_kind\":\"policy_"
       "training_artifact_bound\"",
       "artifact readiness registry should expose policy training proof kind");
+  require_contains(
+      target_list,
+      "\"subject_fact_family\":\"tsodao_settings_protection\",\"proof_kind\":"
+      "\"tsodao_settings_protection_artifact_bound\"",
+      "artifact readiness registry should expose Tsodao settings-protection "
+      "proof kind");
+  require_contains(
+      target_list,
+      "\"subject_fact_family\":\"policy_acceptance\",\"proof_kind\":\"policy_"
+      "acceptance_contract_bound\"",
+      "artifact readiness registry should expose policy acceptance proof kind");
+  require_contains(
+      target_list,
+      "\"subject_fact_family\":\"paper_online_readiness\",\"proof_kind\":"
+      "\"paper_online_readiness_contract_bound\"",
+      "artifact readiness registry should expose paper-online readiness proof "
+      "kind");
 
   const std::string latest = read_command_stdout(
-      base +
-      "--tool hero.lattice.evaluate "
-      "--args-json "
-      "'{\"operation\":\"latest_satisfying_checkpoint\",\"target_id\":"
-      "\"channel_mdn_train_core_no_test_leakage\","
-      "\"runtime_root\":\"" +
-      runtime_root.string() + "\"}'");
+      base + lattice_evaluate_call_shell(
+                 "latest_satisfying_checkpoint",
+                 "target_id=channel_mdn_train_core_no_test_leakage\n"
+                 "runtime_root=" +
+                     runtime_root.string() + "\n"));
   require_contains(
       latest,
       "\"schema\":\"kikijyeba.lattice.latest_satisfying_resolution.v1\","
@@ -946,13 +3717,11 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
                    "latest_satisfying must not make deployment decisions");
 
   const std::string artifact_latest =
-      read_command_stdout(base +
-                          "--tool hero.lattice.evaluate "
-                          "--args-json "
-                          "'{\"operation\":\"latest_satisfying_checkpoint\","
-                          "\"target_id\":\"forecast_eval_artifact_ready\","
-                          "\"runtime_root\":\"" +
-                          runtime_root.string() + "\"}'");
+      read_command_stdout(base + lattice_evaluate_call_shell(
+                                     "latest_satisfying_checkpoint",
+                                     "target_id=forecast_eval_artifact_ready\n"
+                                     "runtime_root=" +
+                                         runtime_root.string() + "\n"));
   require_contains(artifact_latest,
                    "\"source_target_class\":\"artifact_readiness\"",
                    "latest_satisfying should expose artifact source class");
@@ -966,13 +3735,11 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
                    "artifact source targets must not resolve to checkpoints");
 
   const std::string checkpoint_closure = read_command_stdout(
-      base +
-      "--tool hero.lattice.inspect "
-      "--args-json "
-      "'{\"subject\":\"checkpoint\",\"checkpoint_id\":\"missing_checkpoint\","
-      "\"checkpoint_file_digest\":\"missing_digest\","
-      "\"runtime_root\":\"" +
-      runtime_root.string() + "\"}'");
+      base + lattice_inspect_call_shell(
+                 "{\"subject\":\"checkpoint\",\"runtime_root\":\"" +
+                     runtime_root.string() + "\"}",
+                 "checkpoint_id=missing_checkpoint\n"
+                 "checkpoint_file_digest=missing_digest\n"));
   require_contains(
       checkpoint_closure,
       "\"schema\":\"kikijyeba.lattice.checkpoint_closure.v1\","
@@ -993,13 +3760,12 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
                    "missing checkpoint identity should fail closed");
 
   const std::string comparison = read_command_stdout(
-      base +
-      "--tool hero.lattice.compare "
-      "--args-json '{\"left_target_id\":\"channel_mdn_train_core_no_test_"
-      "leakage\","
-      "\"right_target_id\":\"channel_mdn_train_core_ready\","
-      "\"runtime_root\":\"" +
-      runtime_root.string() + "\"}'");
+      base + "--tool hero.lattice.compare --args-json " +
+      lattice_compare_args_shell(
+          "left_target_id=channel_mdn_train_core_no_test_leakage\n"
+          "right_target_id=channel_mdn_train_core_ready\n"
+          "runtime_root=" +
+          runtime_root.string() + "\n"));
   require_contains(
       comparison,
       "\"schema\":\"kikijyeba.lattice.evidence_comparison.v1\","
@@ -1035,10 +3801,10 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
 
   const std::string fact_summary = read_command_stdout(
       base +
-      "--tool hero.lattice.inspect "
-      "--args-json "
-      "'{\"subject\":\"facts\",\"mode\":\"summary\",\"runtime_root\":\"" +
-      runtime_root.string() + "\",\"family\":\"forecast_eval\"}'");
+      lattice_inspect_call_shell(
+          "{\"subject\":\"facts\",\"mode\":\"summary\",\"runtime_root\":\"" +
+              runtime_root.string() + "\"}",
+          "family=forecast_eval\n"));
   require_contains(
       fact_summary,
       "\"schema\":\"kikijyeba.lattice.fact_summary.v1\",\"runtime_root\":\"" +
@@ -1048,12 +3814,12 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
           "true",
       "fact_summary should expose top-level non-proof, non-dispatchable "
       "catalog boundaries");
-  require_lattice_non_decision_boundary(
-      fact_summary, "hero.lattice.inspect subject=facts mode=summary");
+  require_lattice_non_decision_boundary(fact_summary,
+                                        "hero.lattice.inspect.facts.summary");
   require_fact_catalog_no_decision_authority(
-      fact_summary, "hero.lattice.inspect subject=facts mode=summary");
-  require_fact_identity_contract(
-      fact_summary, "hero.lattice.inspect subject=facts mode=summary");
+      fact_summary, "hero.lattice.inspect.facts.summary");
+  require_fact_identity_contract(fact_summary,
+                                 "hero.lattice.inspect.facts.summary");
   require_contains(fact_summary, "\"fact_integrity_summary\":",
                    "fact_summary should expose top-level fact integrity");
   require_contains(fact_summary,
@@ -1086,10 +3852,9 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
       "fact_summary should mark forecast_eval as explicitly proofable");
 
   const std::string fact_family_registry = read_command_stdout(
-      base +
-      "--tool hero.lattice.inspect "
-      "--args-json '{\"subject\":\"fact_families\",\"runtime_root\":\"" +
-      runtime_root.string() + "\"}'");
+      base + lattice_inspect_call_shell(
+                 "{\"subject\":\"fact_families\",\"runtime_root\":\"" +
+                 runtime_root.string() + "\"}"));
   require_contains(
       fact_family_registry,
       "\"schema\":\"kikijyeba.lattice.fact_family_registry.v1\","
@@ -1097,12 +3862,12 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
       "\"runtime_executor\":false,\"fact_families_are_not_target_kinds\":true",
       "list_fact_families should expose top-level non-proof, non-dispatchable "
       "catalog boundaries");
-  require_lattice_non_decision_boundary(
-      fact_family_registry, "hero.lattice.inspect subject=fact_families");
+  require_lattice_non_decision_boundary(fact_family_registry,
+                                        "hero.lattice.inspect.fact_families");
   require_fact_catalog_no_decision_authority(
-      fact_family_registry, "hero.lattice.inspect subject=fact_families");
+      fact_family_registry, "hero.lattice.inspect.fact_families");
   require_fact_identity_contract(fact_family_registry,
-                                 "hero.lattice.inspect subject=fact_families");
+                                 "hero.lattice.inspect.fact_families");
   require_contains(
       fact_family_registry,
       "\"artifact_readiness_proof_template_registry\":{\"schema\":\"kikijyeba."
@@ -1206,11 +3971,11 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
 
   const std::string fact_scan = read_command_stdout(
       base +
-      "--tool hero.lattice.inspect "
-      "--args-json "
-      "'{\"subject\":\"facts\",\"mode\":\"scan\",\"runtime_root\":\"" +
-      runtime_root.string() +
-      "\",\"family\":\"forecast_eval\",\"include_facts\":false}'");
+      lattice_inspect_call_shell(
+          "{\"subject\":\"facts\",\"mode\":\"scan\",\"runtime_root\":\"" +
+              runtime_root.string() + "\"}",
+          "family=forecast_eval\n"
+          "include_facts=false\n"));
   require_contains(
       fact_scan,
       "\"schema\":\"kikijyeba.lattice.fact_catalog_scan.v1\",\"runtime_root\":"
@@ -1221,12 +3986,11 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
           "true",
       "scan_facts should expose top-level non-proof, non-dispatchable catalog "
       "boundaries");
-  require_lattice_non_decision_boundary(
-      fact_scan, "hero.lattice.inspect subject=facts mode=scan");
-  require_fact_catalog_no_decision_authority(
-      fact_scan, "hero.lattice.inspect subject=facts mode=scan");
-  require_fact_identity_contract(
-      fact_scan, "hero.lattice.inspect subject=facts mode=scan");
+  require_lattice_non_decision_boundary(fact_scan,
+                                        "hero.lattice.inspect.facts.scan");
+  require_fact_catalog_no_decision_authority(fact_scan,
+                                             "hero.lattice.inspect.facts.scan");
+  require_fact_identity_contract(fact_scan, "hero.lattice.inspect.facts.scan");
   require_contains(fact_scan, "\"fact_integrity_summary\":",
                    "scan_facts should expose top-level fact integrity");
   require_contains(fact_scan, "\"inspected_family_count\":1",
@@ -1250,10 +4014,11 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
 
   const std::string fact_lineage = read_command_stdout(
       base +
-      "--tool hero.lattice.inspect "
-      "--args-json "
-      "'{\"subject\":\"facts\",\"mode\":\"lineage\",\"runtime_root\":\"" +
-      runtime_root.string() + "\",\"family\":\"forecast_eval\",\"limit\":4}'");
+      lattice_inspect_call_shell(
+          "{\"subject\":\"facts\",\"mode\":\"lineage\",\"runtime_root\":\"" +
+              runtime_root.string() + "\"}",
+          "family=forecast_eval\n"
+          "limit=4\n"));
   require_contains(fact_lineage,
                    "\"schema\":\"kikijyeba.lattice.fact_lineage.v1\"",
                    "fact_lineage should expose its schema");
@@ -1267,8 +4032,8 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
                    "fact_lineage must not execute runtime work");
   require_contains(fact_lineage, "\"fact_families_are_not_target_kinds\":true",
                    "fact_lineage should preserve the catalog boundary");
-  require_lattice_non_decision_boundary(
-      fact_lineage, "hero.lattice.inspect subject=facts mode=lineage");
+  require_lattice_non_decision_boundary(fact_lineage,
+                                        "hero.lattice.inspect.facts.lineage");
   require_contains(fact_lineage, "\"lineage_rows_are_audit_only\":true",
                    "fact_lineage rows should be audit-only");
   require_contains(fact_lineage,
@@ -1292,10 +4057,10 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
 
   const std::string index_status = read_command_stdout(
       base +
-      "--tool hero.lattice.inspect "
-      "--args-json "
-      "'{\"subject\":\"index\",\"mode\":\"status\",\"runtime_root\":\"" +
-      runtime_root.string() + "\",\"limit\":4}'");
+      lattice_inspect_call_shell(
+          "{\"subject\":\"index\",\"mode\":\"status\",\"runtime_root\":\"" +
+              runtime_root.string() + "\"}",
+          "limit=4\n"));
   require_contains(
       index_status,
       "\"schema\":\"kikijyeba.lattice.runtime_index_status.v1\","
@@ -1315,11 +4080,11 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
 
   const std::string index_query = read_command_stdout(
       base +
-      "--tool hero.lattice.inspect "
-      "--args-json "
-      "'{\"subject\":\"index\",\"mode\":\"query\",\"runtime_root\":\"" +
-      runtime_root.string() +
-      "\",\"relation\":\"forecast_eval\",\"limit\":4}'");
+      lattice_inspect_call_shell(
+          "{\"subject\":\"index\",\"mode\":\"query\",\"runtime_root\":\"" +
+              runtime_root.string() + "\"}",
+          "relation=forecast_eval\n"
+          "limit=4\n"));
   require_contains(
       index_query,
       "\"schema\":\"kikijyeba.lattice.runtime_index_query_result.v1\","
@@ -1339,13 +4104,12 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
   require_contains(index_query, "\"cache_used_unproven_for_audit_query\":false",
                    "default index_query must not use unproven cache answers");
 
-  const std::string derived_query =
-      read_command_stdout(base +
-                          "--tool hero.lattice.inspect "
-                          "--args-json "
-                          "'{\"subject\":\"derived\",\"relation\":\"stale_"
-                          "cache\",\"runtime_root\":\"" +
-                          runtime_root.string() + "\",\"limit\":4}'");
+  const std::string derived_query = read_command_stdout(
+      base + lattice_inspect_call_shell(
+                 "{\"subject\":\"derived\",\"runtime_root\":\"" +
+                     runtime_root.string() + "\"}",
+                 "relation=stale_cache\n"
+                 "limit=4\n"));
   require_contains(
       derived_query,
       "\"schema\":\"kikijyeba.lattice.derived_query.v1\","
@@ -1369,10 +4133,10 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
                    "derived_query cache rows must not satisfy targets");
 
   const std::string exposure_scan = read_command_stdout(
-      base +
-      "--tool hero.lattice.inspect "
-      "--args-json '{\"subject\":\"exposure\",\"runtime_root\":\"" +
-      runtime_root.string() + "\",\"limit\":4}'");
+      base + lattice_inspect_call_shell(
+                 "{\"subject\":\"exposure\",\"runtime_root\":\"" +
+                     runtime_root.string() + "\"}",
+                 "limit=4\n"));
   require_contains(
       exposure_scan, "\"read_only\":true",
       "scan_exposure should advertise read-only evidence scanning");
@@ -1384,25 +4148,24 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
                    "scan_exposure must not execute runtime work");
   require_contains(exposure_scan, "\"fact_families_are_not_target_kinds\":true",
                    "scan_exposure should preserve the fact-catalog boundary");
-  require_lattice_non_decision_boundary(
-      exposure_scan, "hero.lattice.inspect subject=exposure");
+  require_lattice_non_decision_boundary(exposure_scan,
+                                        "hero.lattice.inspect.exposure");
 
   const fs::path source_analytics_runtime_root =
       "/tmp/hero_mcp_schema_compat/lattice_source_analytics_warning";
   write_mtf_source_analytics_warning_fixture(source_analytics_runtime_root);
   const std::string source_analytics_eval = read_command_stdout(
       base +
-      "--tool hero.lattice.evaluate "
-      "--args-json "
-      "'{\"operation\":\"target\",\"target_id\":\"mtf_jepa_mae_vicreg_train_"
-      "core_ready\","
-      "\"runtime_root\":\"" +
-      source_analytics_runtime_root.string() +
-      "\",\"protocol_id\":\"cwu_02v\","
-      "\"protocol_contract_fingerprint\":\"contract_1\","
-      "\"graph_order_fingerprint\":\"graph_1\","
-      "\"source_cursor_token\":\"cursor_1\","
-      "\"mtf_jepa_mae_vicreg_assembly_fingerprint\":\"mtf_1\"}'");
+      lattice_evaluate_call_shell(
+          "target", "target_id=mtf_jepa_mae_vicreg_train_core_ready\n"
+                    "runtime_root=" +
+                        source_analytics_runtime_root.string() +
+                        "\n"
+                        "protocol_id=cwu_02v\n"
+                        "protocol_contract_fingerprint=contract_1\n"
+                        "graph_order_fingerprint=graph_1\n"
+                        "source_cursor_token=cursor_1\n"
+                        "mtf_jepa_mae_vicreg_assembly_fingerprint=mtf_1\n"));
   require_contains(source_analytics_eval, "\"status\":\"satisfied\"",
                    "source analytics warning fixture should satisfy the "
                    "MTF readiness target");
@@ -1476,11 +4239,10 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
                    "source analytics warning summary should prove warnings are "
                    "non-blocking");
 
-  const std::string artifact_explain =
-      read_command_stdout(base + "--tool hero.lattice.inspect "
-                                 "--args-json "
-                                 "'{\"subject\":\"target\",\"target_id\":"
-                                 "\"forecast_eval_artifact_ready\"}'");
+  const std::string artifact_explain = read_command_stdout(
+      base +
+      lattice_inspect_call_shell("{\"subject\":\"target\"}",
+                                 "target_id=forecast_eval_artifact_ready\n"));
   require_contains(
       artifact_explain,
       "\"schema\":\"kikijyeba.lattice.target_explanation.v1\","
@@ -1596,18 +4358,19 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
                    "artifact policy reservation must not affect proof "
                    "certificates");
 
-  const std::string artifact_deficit =
-      read_command_stdout(base +
-                          "--tool hero.lattice.evaluate "
-                          "--args-json "
-                          "'{\"operation\":\"deficit\",\"target_id\":"
-                          "\"forecast_eval_artifact_ready\","
-                          "\"runtime_root\":\"" +
-                          runtime_root.string() +
-                          "\",\"protocol_contract_fingerprint\":\"contract_1\","
-                          "\"graph_order_fingerprint\":\"graph_1\","
-                          "\"source_cursor_token\":\"cursor_1\","
-                          "\"mdn_assembly_fingerprint\":\"mdn_1\"}'");
+  const fs::path missing_artifact_runtime_root =
+      "/tmp/hero_mcp_schema_compat/lattice_missing_forecast_eval_artifact";
+  lattice_fixture::write_scanned_forecast_artifact_fixture(
+      missing_artifact_runtime_root,
+      /*forecast_baseline_digest_mismatch=*/false);
+  fs::remove(missing_artifact_runtime_root / "artifact_job" /
+             "lattice.forecast_eval.fact");
+
+  const std::string artifact_deficit = read_command_stdout(
+      base + lattice_evaluate_call_shell(
+                 "deficit", "target_id=forecast_eval_artifact_ready\n"
+                            "runtime_root=" +
+                                missing_artifact_runtime_root.string() + "\n"));
   require_contains(
       artifact_deficit,
       "\"schema\":\"kikijyeba.lattice.target_deficit_response.v1\","
@@ -1677,18 +4440,11 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
                        "artifact target deficit should not fall back to a "
                        "generic train/readiness status deficit");
 
-  const std::string artifact_evaluation =
-      read_command_stdout(base +
-                          "--tool hero.lattice.evaluate "
-                          "--args-json "
-                          "'{\"operation\":\"target\",\"target_id\":\"forecast_"
-                          "eval_artifact_ready\","
-                          "\"runtime_root\":\"" +
-                          runtime_root.string() +
-                          "\",\"protocol_contract_fingerprint\":\"contract_1\","
-                          "\"graph_order_fingerprint\":\"graph_1\","
-                          "\"source_cursor_token\":\"cursor_1\","
-                          "\"mdn_assembly_fingerprint\":\"mdn_1\"}'");
+  const std::string artifact_evaluation = read_command_stdout(
+      base + lattice_evaluate_call_shell(
+                 "target", "target_id=forecast_eval_artifact_ready\n"
+                           "runtime_root=" +
+                               missing_artifact_runtime_root.string() + "\n"));
   require_contains(
       artifact_evaluation,
       "\"schema\":\"kikijyeba.lattice.target_evaluation_response.v1\","
@@ -1740,18 +4496,11 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
       "artifact evaluation deficits should expose related fact-integrity issue "
       "codes even when empty");
 
-  const std::string artifact_bulk_evaluation =
-      read_command_stdout(base +
-                          "--tool hero.lattice.evaluate "
-                          "--args-json "
-                          "'{\"operation\":\"targets\",\"target_ids\":["
-                          "\"forecast_eval_artifact_ready\"],"
-                          "\"runtime_root\":\"" +
-                          runtime_root.string() +
-                          "\",\"protocol_contract_fingerprint\":\"contract_1\","
-                          "\"graph_order_fingerprint\":\"graph_1\","
-                          "\"source_cursor_token\":\"cursor_1\","
-                          "\"mdn_assembly_fingerprint\":\"mdn_1\"}'");
+  const std::string artifact_bulk_evaluation = read_command_stdout(
+      base + lattice_evaluate_call_shell(
+                 "targets", "target_ids=forecast_eval_artifact_ready\n"
+                            "runtime_root=" +
+                                missing_artifact_runtime_root.string() + "\n"));
   require_contains(
       artifact_bulk_evaluation,
       "\"schema\":\"kikijyeba.lattice.target_evaluation_batch.v1\","
@@ -1841,11 +4590,12 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
       scanned_runtime_root, /*forecast_baseline_digest_mismatch=*/false);
   const std::string fact_preview = read_command_stdout(
       base +
-      "--tool hero.lattice.inspect "
-      "--args-json "
-      "'{\"subject\":\"facts\",\"mode\":\"preview\",\"runtime_root\":\"" +
-      scanned_runtime_root.string() +
-      "\",\"family\":\"forecast_eval\",\"fact_index\":0,\"limit\":1}'");
+      lattice_inspect_call_shell(
+          "{\"subject\":\"facts\",\"mode\":\"preview\",\"runtime_root\":\"" +
+              scanned_runtime_root.string() + "\"}",
+          "family=forecast_eval\n"
+          "fact_index=0\n"
+          "limit=1\n"));
   require_contains(
       fact_preview,
       "\"schema\":\"kikijyeba.lattice.fact_preview.v1\",\"runtime_root\":\"" +
@@ -1856,8 +4606,8 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
           "true",
       "fact_preview should expose top-level non-proof, non-dispatchable "
       "catalog boundaries");
-  require_lattice_non_decision_boundary(
-      fact_preview, "hero.lattice.inspect subject=facts mode=preview");
+  require_lattice_non_decision_boundary(fact_preview,
+                                        "hero.lattice.inspect.facts.preview");
   require_contains(fact_preview, "\"preview_rows_are_audit_only\":true",
                    "fact_preview rows should be audit-only");
   require_contains(fact_preview, "\"facts_used_for_target_satisfaction\":false",
@@ -1927,12 +4677,14 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
                    "to full digests");
   const std::string exact_digest_preview = read_command_stdout(
       base +
-      "--tool hero.lattice.inspect "
-      "--args-json "
-      "'{\"subject\":\"facts\",\"mode\":\"preview\",\"runtime_root\":\"" +
-      scanned_runtime_root.string() +
-      "\",\"family\":\"forecast_eval\",\"fact_digest\":\"" +
-      selected_fact_digest + "\",\"limit\":1}'");
+      lattice_inspect_call_shell(
+          "{\"subject\":\"facts\",\"mode\":\"preview\",\"runtime_root\":\"" +
+              scanned_runtime_root.string() + "\"}",
+          "family=forecast_eval\n"
+          "fact_digest=" +
+              selected_fact_digest +
+              "\n"
+              "limit=1\n"));
   require_contains(exact_digest_preview,
                    "\"fact_digest_filter\":\"" + selected_fact_digest + "\"",
                    "fact_preview should expose the exact fact_digest filter");
@@ -1948,12 +4700,14 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
 
   const std::string unique_prefix_preview = read_command_stdout(
       base +
-      "--tool hero.lattice.inspect "
-      "--args-json "
-      "'{\"subject\":\"facts\",\"mode\":\"preview\",\"runtime_root\":\"" +
-      scanned_runtime_root.string() +
-      "\",\"family\":\"forecast_eval\",\"fact_digest_prefix\":\"" +
-      selected_fact_digest_prefix + "\",\"limit\":1}'");
+      lattice_inspect_call_shell(
+          "{\"subject\":\"facts\",\"mode\":\"preview\",\"runtime_root\":\"" +
+              scanned_runtime_root.string() + "\"}",
+          "family=forecast_eval\n"
+          "fact_digest_prefix=" +
+              selected_fact_digest_prefix +
+              "\n"
+              "limit=1\n"));
   require_contains(unique_prefix_preview,
                    "\"fact_digest_prefix_filter\":\"" +
                        selected_fact_digest_prefix + "\"",
@@ -1978,27 +4732,25 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
        }) {
     const auto legacy_preview = run_command_capture(
         base +
-        "--tool hero.lattice.inspect "
-        "--args-json "
-        "'{\"subject\":\"facts\",\"mode\":\"preview\",\"runtime_root\":\"" +
-        scanned_runtime_root.string() + "\",\"family\":\"forecast_eval\",\"" +
-        legacy_selector.first + "\":\"x\"}'");
+        lattice_inspect_call_shell(
+            "{\"subject\":\"facts\",\"mode\":\"preview\",\"runtime_root\":\"" +
+                scanned_runtime_root.string() + "\"}",
+            "family=forecast_eval\n" + legacy_selector.first + "=x\n"));
     if (legacy_preview.status == 0 ||
-        legacy_preview.output.find(legacy_selector.second) ==
+        legacy_preview.output.find("unknown field: " + legacy_selector.first) ==
             std::string::npos) {
-      throw std::runtime_error("fact preview should reject legacy " +
-                               legacy_selector.first + " in favor of " +
-                               legacy_selector.second);
+      throw std::runtime_error("fact preview request should reject retired " +
+                               legacy_selector.first + " selector");
     }
   }
 
   const auto missing_prefix_preview = run_command_capture(
       base +
-      "--tool hero.lattice.inspect "
-      "--args-json "
-      "'{\"subject\":\"facts\",\"mode\":\"preview\",\"runtime_root\":\"" +
-      scanned_runtime_root.string() +
-      "\",\"family\":\"forecast_eval\",\"fact_digest_prefix\":\"not_found\"}'");
+      lattice_inspect_call_shell(
+          "{\"subject\":\"facts\",\"mode\":\"preview\",\"runtime_root\":\"" +
+              scanned_runtime_root.string() + "\"}",
+          "family=forecast_eval\n"
+          "fact_digest_prefix=not_found\n"));
   if (missing_prefix_preview.status == 0 ||
       missing_prefix_preview.output.find("E_LATTICE_FACT_REF_NOT_FOUND") ==
           std::string::npos) {
@@ -2015,12 +4767,12 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
       ambiguous_runtime_root, selected_fact_digest.substr(0, 1));
   const auto ambiguous_prefix_preview = run_command_capture(
       base +
-      "--tool hero.lattice.inspect "
-      "--args-json "
-      "'{\"subject\":\"facts\",\"mode\":\"preview\",\"runtime_root\":\"" +
-      ambiguous_runtime_root.string() +
-      "\",\"family\":\"forecast_eval\",\"fact_digest_prefix\":\"" +
-      selected_fact_digest.substr(0, 1) + "\"}'");
+      lattice_inspect_call_shell(
+          "{\"subject\":\"facts\",\"mode\":\"preview\",\"runtime_root\":\"" +
+              ambiguous_runtime_root.string() + "\"}",
+          "family=forecast_eval\n"
+          "fact_digest_prefix=" +
+              selected_fact_digest.substr(0, 1) + "\n"));
   if (ambiguous_prefix_preview.status == 0 ||
       ambiguous_prefix_preview.output.find("E_LATTICE_FACT_REF_AMBIGUOUS") ==
           std::string::npos) {
@@ -2029,18 +4781,16 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
         "ambiguous");
   }
 
-  const std::string scanned_baseline_evaluation =
-      read_command_stdout(base +
-                          "--tool hero.lattice.evaluate "
-                          "--args-json "
-                          "'{\"operation\":\"target\",\"target_id\":\"forecast_"
-                          "baseline_artifact_ready\","
-                          "\"runtime_root\":\"" +
-                          scanned_runtime_root.string() +
-                          "\",\"protocol_contract_fingerprint\":\"contract_1\","
-                          "\"graph_order_fingerprint\":\"graph_1\","
-                          "\"source_cursor_token\":\"cursor_1\","
-                          "\"mdn_assembly_fingerprint\":\"mdn_1\"}'");
+  const std::string scanned_baseline_evaluation = read_command_stdout(
+      base + lattice_evaluate_call_shell(
+                 "target", "target_id=forecast_baseline_artifact_ready\n"
+                           "runtime_root=" +
+                               scanned_runtime_root.string() +
+                               "\n"
+                               "protocol_contract_fingerprint=contract_1\n"
+                               "graph_order_fingerprint=graph_1\n"
+                               "source_cursor_token=cursor_1\n"
+                               "mdn_assembly_fingerprint=mdn_1\n"));
   require_contains(
       scanned_baseline_evaluation, "\"status\":\"satisfied\"",
       "scanned baseline artifact evaluation should satisfy target");
@@ -2115,18 +4865,16 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
                    "\"warning_messages\":[\"forecast-baseline valid_count",
                    "forecast baseline warning messages remain visible");
 
-  const std::string scanned_observer_evaluation =
-      read_command_stdout(base +
-                          "--tool hero.lattice.evaluate "
-                          "--args-json "
-                          "'{\"operation\":\"target\",\"target_id\":\"observer_"
-                          "belief_artifact_ready\","
-                          "\"runtime_root\":\"" +
-                          scanned_runtime_root.string() +
-                          "\",\"protocol_contract_fingerprint\":\"contract_1\","
-                          "\"graph_order_fingerprint\":\"graph_1\","
-                          "\"source_cursor_token\":\"cursor_1\","
-                          "\"mdn_assembly_fingerprint\":\"mdn_1\"}'");
+  const std::string scanned_observer_evaluation = read_command_stdout(
+      base + lattice_evaluate_call_shell(
+                 "target", "target_id=observer_belief_artifact_ready\n"
+                           "runtime_root=" +
+                               scanned_runtime_root.string() +
+                               "\n"
+                               "protocol_contract_fingerprint=contract_1\n"
+                               "graph_order_fingerprint=graph_1\n"
+                               "source_cursor_token=cursor_1\n"
+                               "mdn_assembly_fingerprint=mdn_1\n"));
   require_contains(
       scanned_observer_evaluation, "\"status\":\"satisfied\"",
       "scanned observer artifact evaluation should satisfy target");
@@ -2190,16 +4938,15 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
                    "observer belief warning messages remain visible");
 
   const std::string scanned_allocation_evaluation = read_command_stdout(
-      base +
-      "--tool hero.lattice.evaluate "
-      "--args-json "
-      "'{\"operation\":\"target\",\"target_id\":\"allocation_artifact_ready\","
-      "\"runtime_root\":\"" +
-      scanned_runtime_root.string() +
-      "\",\"protocol_contract_fingerprint\":\"contract_1\","
-      "\"graph_order_fingerprint\":\"graph_1\","
-      "\"source_cursor_token\":\"cursor_1\","
-      "\"mdn_assembly_fingerprint\":\"mdn_1\"}'");
+      base + lattice_evaluate_call_shell(
+                 "target", "target_id=allocation_artifact_ready\n"
+                           "runtime_root=" +
+                               scanned_runtime_root.string() +
+                               "\n"
+                               "protocol_contract_fingerprint=contract_1\n"
+                               "graph_order_fingerprint=graph_1\n"
+                               "source_cursor_token=cursor_1\n"
+                               "mdn_assembly_fingerprint=mdn_1\n"));
   require_contains(
       scanned_allocation_evaluation, "\"status\":\"satisfied\"",
       "scanned allocation artifact evaluation should satisfy target");
@@ -2277,18 +5024,16 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
                    "\"warning_messages\":[\"allocation-engine turnover",
                    "allocation engine warning messages remain visible");
 
-  const std::string scanned_artifact_evaluation =
-      read_command_stdout(base +
-                          "--tool hero.lattice.evaluate "
-                          "--args-json "
-                          "'{\"operation\":\"target\",\"target_id\":\"forecast_"
-                          "eval_artifact_ready\","
-                          "\"runtime_root\":\"" +
-                          scanned_runtime_root.string() +
-                          "\",\"protocol_contract_fingerprint\":\"contract_1\","
-                          "\"graph_order_fingerprint\":\"graph_1\","
-                          "\"source_cursor_token\":\"cursor_1\","
-                          "\"mdn_assembly_fingerprint\":\"mdn_1\"}'");
+  const std::string scanned_artifact_evaluation = read_command_stdout(
+      base + lattice_evaluate_call_shell(
+                 "target", "target_id=forecast_eval_artifact_ready\n"
+                           "runtime_root=" +
+                               scanned_runtime_root.string() +
+                               "\n"
+                               "protocol_contract_fingerprint=contract_1\n"
+                               "graph_order_fingerprint=graph_1\n"
+                               "source_cursor_token=cursor_1\n"
+                               "mdn_assembly_fingerprint=mdn_1\n"));
   require_contains(scanned_artifact_evaluation, "\"status\":\"satisfied\"",
                    "scanned artifact evaluation should satisfy target");
   require_contains(scanned_artifact_evaluation,
@@ -2467,18 +5212,16 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
                    "forecast eval warning summary should prove warnings are "
                    "non-blocking");
 
-  const std::string scanned_artifact_bulk =
-      read_command_stdout(base +
-                          "--tool hero.lattice.evaluate "
-                          "--args-json "
-                          "'{\"operation\":\"targets\",\"target_ids\":["
-                          "\"forecast_eval_artifact_ready\"],"
-                          "\"runtime_root\":\"" +
-                          scanned_runtime_root.string() +
-                          "\",\"protocol_contract_fingerprint\":\"contract_1\","
-                          "\"graph_order_fingerprint\":\"graph_1\","
-                          "\"source_cursor_token\":\"cursor_1\","
-                          "\"mdn_assembly_fingerprint\":\"mdn_1\"}'");
+  const std::string scanned_artifact_bulk = read_command_stdout(
+      base + lattice_evaluate_call_shell(
+                 "targets", "target_ids=forecast_eval_artifact_ready\n"
+                            "runtime_root=" +
+                                scanned_runtime_root.string() +
+                                "\n"
+                                "protocol_contract_fingerprint=contract_1\n"
+                                "graph_order_fingerprint=graph_1\n"
+                                "source_cursor_token=cursor_1\n"
+                                "mdn_assembly_fingerprint=mdn_1\n"));
   require_contains(scanned_artifact_bulk, "\"evaluated_target_count\":1",
                    "bulk scanned artifact evaluation should evaluate one "
                    "target");
@@ -2498,18 +5241,16 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
   lattice_fixture::write_scanned_forecast_artifact_fixture(
       scanned_bad_baseline_root,
       /*forecast_baseline_digest_mismatch=*/true);
-  const std::string scanned_bad_baseline =
-      read_command_stdout(base +
-                          "--tool hero.lattice.evaluate "
-                          "--args-json "
-                          "'{\"operation\":\"target\",\"target_id\":\"forecast_"
-                          "eval_artifact_ready\","
-                          "\"runtime_root\":\"" +
-                          scanned_bad_baseline_root.string() +
-                          "\",\"protocol_contract_fingerprint\":\"contract_1\","
-                          "\"graph_order_fingerprint\":\"graph_1\","
-                          "\"source_cursor_token\":\"cursor_1\","
-                          "\"mdn_assembly_fingerprint\":\"mdn_1\"}'");
+  const std::string scanned_bad_baseline = read_command_stdout(
+      base + lattice_evaluate_call_shell(
+                 "target", "target_id=forecast_eval_artifact_ready\n"
+                           "runtime_root=" +
+                               scanned_bad_baseline_root.string() +
+                               "\n"
+                               "protocol_contract_fingerprint=contract_1\n"
+                               "graph_order_fingerprint=graph_1\n"
+                               "source_cursor_token=cursor_1\n"
+                               "mdn_assembly_fingerprint=mdn_1\n"));
   require_contains(scanned_bad_baseline, "\"status\":\"blocked\"",
                    "scanned bad-baseline artifact should block target");
   require_contains(scanned_bad_baseline, "\"baseline_fact_digest_not_found\"",
@@ -2537,12 +5278,13 @@ void check_lattice_selector_boundaries(const fs::path &binary) {
                    "fact-integrity issue code");
   require_contains(scanned_bad_baseline,
                    "\"fact_preview_hint\":{\"available\":"
-                   "true,\"tool\":\"hero.lattice.inspect\","
-                   "\"subject\":\"facts\",\"mode\":\"preview\"",
+                   "true,\"tool\":\"hero.lattice.inspect.facts.preview.by_"
+                   "digest\"",
                    "scanned bad-baseline artifact proof should point to fact "
                    "preview");
   require_contains(scanned_bad_baseline,
-                   "\"marshal_tool\":\"hero.marshal.inspect\","
+                   "\"marshal_tool\":\"hero.marshal.inspect.facts.preview.by_"
+                   "digest\","
                    "\"fact_family\":\"forecast_eval\",\"fact_ref\":\"fev_",
                    "scanned bad-baseline artifact preview hint should include "
                    "family and display ref");
@@ -2604,14 +5346,18 @@ int main() {
       {hero_root / "hero_runtime.mcp", hero_root / "hero_runtime_mcp"});
   check_catalog("Runtime", runtime_binary, false);
   check_runtime_collapsed_surface(runtime_binary);
+  const auto environment_binary = first_existing(
+      {hero_root / "hero_environment.mcp", hero_root / "hero_environment_mcp"});
+  check_catalog("Environment", environment_binary, false);
+  check_environment_inspect_derouted_surface(environment_binary);
   const auto lattice_binary = first_existing(
       {hero_root / "hero_lattice.mcp", hero_root / "hero_lattice_mcp"});
   check_catalog("Lattice", lattice_binary, true);
   check_lattice_selector_boundaries(lattice_binary);
-  check_catalog("Marshal",
-                first_existing({hero_root / "hero_marshal.mcp",
-                                hero_root / "hero_marshal_mcp"}),
-                false);
+  const auto marshal_binary = first_existing(
+      {hero_root / "hero_marshal.mcp", hero_root / "hero_marshal_mcp"});
+  check_catalog("Marshal", marshal_binary, false);
+  check_marshal_derouted_surface(marshal_binary);
 
   return 0;
 }

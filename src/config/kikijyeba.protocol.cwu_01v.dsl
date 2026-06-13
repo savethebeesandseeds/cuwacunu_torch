@@ -28,5 +28,6 @@ PROTOCOL {
   INFERENCE = wikimyei.inference.expected_value.mdn;
   OBSERVER = wikimyei.observer.belief;
   ALLOCATION_POLICY = wikimyei.policy.portfolio.spot_distributional_utility;
+  POLICY_COMPONENT = wikimyei.policy.portfolio.graph_node_allocation;
   REPRESENTATION_CONTRACT = graph_order.channel_node_representation.v1;
 };

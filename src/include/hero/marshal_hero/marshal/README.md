@@ -19,13 +19,34 @@ Runtime Hero:
 
 ## Operator Quick Start
 
-Marshal has four public Hero tools:
+Marshal has concrete public Hero tools:
 
 ```text
 hero.marshal.status
-hero.marshal.prepare
+hero.marshal.prepare.train.one_step
+hero.marshal.prepare.train.budgeted
+hero.marshal.prepare.evaluate.one_step
+hero.marshal.prepare.evaluate.budgeted
 hero.marshal.rollout
-hero.marshal.inspect
+hero.marshal.inspect.run.latest_chain
+hero.marshal.inspect.run.training_state
+hero.marshal.inspect.run.single_job
+hero.marshal.inspect.run.compare
+hero.marshal.inspect.target
+hero.marshal.inspect.protocol.report
+hero.marshal.inspect.protocol.strict
+hero.marshal.inspect.spawn.by_id
+hero.marshal.inspect.spawn.by_label
+hero.marshal.inspect.spawn.by_registry
+hero.marshal.inspect.spawn.by_fingerprint
+hero.marshal.inspect.spawn.by_job
+hero.marshal.inspect.component
+hero.marshal.inspect.facts.summary
+hero.marshal.inspect.facts.lineage
+hero.marshal.inspect.facts.preview
+hero.marshal.inspect.facts.preview.by_digest
+hero.marshal.inspect.facts.preview.by_digest_prefix
+hero.marshal.inspect.facts.preview.by_index
 ```
 
 The shortest rule is:
@@ -65,20 +86,25 @@ whether Marshal is still denying execution/proof/deployment authority.
   --args-json '{}'
 ```
 
-`hero.marshal.prepare` is for target pursuit. It starts from one dispatchable
+`hero.marshal.prepare.*` is for target pursuit. It starts from one dispatchable
 Lattice training/evaluation target, then prepares the next finite Runtime
-handoff under policy.
+handoff under policy. The tool name encodes the target intent and driver shape:
+`train.one_step`, `train.budgeted`, `evaluate.one_step`, or
+`evaluate.budgeted`.
 
 Current dispatchable target movement is the training/evaluation path. Replay is
 not a `prepare` responsibility; use `hero.marshal.rollout`. Artifact-readiness
-targets are evidence proofs and route to `inspect`. Policy-training handoffs are
-reserved until a concrete finite Runtime job contract exists.
+targets are evidence proofs and route to `inspect`. Policy-training remains
+reserved until Marshal has an explicit policy-training profile/handoff and must
+not become the trainer, optimizer, or Lattice proof authority.
 
 ```bash
-ARGS='{"target_id":"channel_mdn_train_core_ready","requested_mode":"plan","drive_mode":"one_step"}'
+REQUEST=/tmp/hero_marshal_prepare.kv
+printf 'materialize_plan_inputs = true\n' > "$REQUEST"
+ARGS='{"target_id":"channel_mdn_train_core_ready","mode":"plan","args_path":"/tmp/hero_marshal_prepare.kv"}'
 /cuwacunu/.build/hero/hero_marshal.mcp \
   --global-config /cuwacunu/src/config/.config \
-  --tool hero.marshal.prepare \
+  --tool hero.marshal.prepare.train.one_step \
   --args-json "$ARGS"
 ```
 
@@ -88,34 +114,36 @@ profile, then prepares or delegates a bounded historical replay through Runtime
 Hero.
 
 ```bash
-ARGS='{
-  "rollout_id":"holdout_rollout_v1",
-  "rollout_attempt_id":"holdout_rollout_v1_attempt_001",
-  "idempotency_key":"holdout_rollout_v1_attempt_001",
-  "runtime_job_dir":"/tmp/runtime_job",
-  "replay_batch_index_path":"/tmp/runtime_job/artifacts/kikijyeba.environment.replay.v1/runtime_replay_batches.index",
-  "requested_mode":"plan",
-  "graph_order_fingerprint":"<graph_fingerprint>",
-  "asset_universe_digest":"<asset_universe_digest>",
-  "target_node_ids":["USDT","BTC","ETH"],
-  "policy_set":["numeraire","equal_weight","sdu"],
-  "max_steps":250,
-  "max_parallel_jobs":4
-}'
+REQUEST=/tmp/hero_rollout.kv
+cat > "$REQUEST" <<'EOF'
+rollout_id = holdout_rollout_v1
+rollout_attempt_id = holdout_rollout_v1_attempt_001
+idempotency_key = holdout_rollout_v1_attempt_001
+runtime_job_dir = /tmp/runtime_job
+replay_batch_index_path = /tmp/runtime_job/artifacts/kikijyeba.environment.replay.v1/runtime_replay_batches.index
+graph_order_fingerprint = <graph_fingerprint>
+asset_universe_digest = <asset_universe_digest>
+target_node_ids = USDT,BTC,ETH
+policy_set = numeraire,equal_weight,sdu
+max_steps = 250
+max_parallel_jobs = 4
+EOF
+ARGS='{"mode":"plan","args_path":"/tmp/hero_rollout.kv"}'
 /cuwacunu/.build/hero/hero_marshal.mcp \
   --global-config /cuwacunu/src/config/.config \
   --tool hero.marshal.rollout \
   --args-json "$ARGS"
 ```
 
-`hero.marshal.inspect` is for reading evidence. It is the tool to use after
-Runtime has written jobs, replay reports, or fact sidecars.
+`hero.marshal.inspect.*` is for reading evidence. Use the concrete inspect
+tool that matches the evidence panel after Runtime has written jobs, replay
+reports, or fact sidecars.
 
 ```bash
-ARGS='{"subject":"run","mode":"latest_chain","runtime_root":"/tmp/cuwacunu_runtime"}'
+ARGS='{"runtime_root":"/tmp/cuwacunu_runtime"}'
 /cuwacunu/.build/hero/hero_marshal.mcp \
   --global-config /cuwacunu/src/config/.config \
-  --tool hero.marshal.inspect \
+  --tool hero.marshal.inspect.run.latest_chain \
   --args-json "$ARGS"
 ```
 
@@ -125,12 +153,12 @@ A normal training-oriented control loop is:
 
 ```text
 hero.marshal.status
-  -> hero.marshal.prepare requested_mode=plan
+  -> hero.marshal.prepare.train.one_step mode=plan
   -> inspect the planned handoff, refusal fields, and next_safe_actions
-  -> hero.marshal.prepare requested_mode=dry_run when Runtime dry-run is wanted
-  -> hero.marshal.prepare requested_mode=execute only when policy allows it
+  -> hero.marshal.prepare.train.one_step mode=dry_run when Runtime dry-run is wanted
+  -> hero.marshal.prepare.train.one_step mode=execute only when policy allows it
   -> Runtime writes evidence
-  -> hero.marshal.inspect
+  -> hero.marshal.inspect.run.latest_chain
   -> Lattice re-reads evidence and proves or refuses the target
 ```
 
@@ -138,12 +166,12 @@ A normal environment rollout loop is:
 
 ```text
 completed Runtime job with replay batches
-  -> hero.marshal.rollout requested_mode=plan
+  -> hero.marshal.rollout mode=plan
   -> inspect rollout plan, policy set, finite limits, and execution profile
-  -> hero.marshal.rollout requested_mode=execute when the plan is accepted
-  -> Runtime Hero calls hero.runtime.run operation=replay
+  -> hero.marshal.rollout mode=execute when the plan is accepted
+  -> Runtime Hero calls the Runtime replay adapter
   -> Runtime writes replay report / trajectory evidence
-  -> hero.marshal.inspect reads the evidence later
+  -> hero.marshal.inspect.run.latest_chain or hero.marshal.inspect.facts.summary reads the evidence later
 ```
 
 `prepare` and `rollout` are not synonyms. `prepare` is target-driven and starts
@@ -313,7 +341,7 @@ The plan emits command templates for:
 The evaluation runtime handoff prepares a bounded dry-run argument package for:
 
 ```text
-hero.runtime.run operation=wave requested_mode=dry_run
+hero.runtime.run mode=dry_run
 ```
 
 It binds the validation anchor range, expected Runtime wave identity, replay
@@ -321,7 +349,6 @@ command template, request digest, and plan digest. It is dry-run only:
 
 ```text
 dry_run=true
-confirm_execute=false
 target_satisfaction_claimed=false
 runtime_executor=false
 lattice_proof_authority=false
@@ -388,7 +415,7 @@ marshal_rollout_request_t
 marshal_rollout_plan_t
 
 canonical_rollout_request_text(...)
-rollout_request_digest(...)
+args_digest(...)
 validate_rollout_request(...)
 prepare_rollout_plan(...)
 canonical_rollout_plan_text(...)
@@ -399,17 +426,19 @@ rollout_plan_json(...)
 `hero.marshal.rollout` has two modes:
 
 ```text
-requested_mode=plan
+mode=plan
   validate and return a rollout plan / replay command template
 
-requested_mode=execute
-  validate the same rollout plan, then call Runtime Hero replay
+mode=execute
+  validate the same rollout plan, then call Environment/Runtime replay
 ```
 
-The execute path still does not train, inspect reports, choose a policy,
-produce a receipt, or claim Lattice target satisfaction. Runtime remains the
-executor, Kikijyeba remains the environment, and Cajtucu remains the paper
-execution backend.
+Public rollout arguments are `mode`, `args_path`, `args_digest`, and optional
+`include_machine_payload`. The digest is optional for `plan` and required for
+`execute`. The execute path still does not train, inspect reports, choose a
+policy, produce a receipt, or claim Lattice target satisfaction. Environment
+owns rollout admission, Runtime remains the executor, Kikijyeba remains the
+environment, and Cajtucu remains the paper execution backend.
 
 The accepted V1 rollout mode is:
 
@@ -438,6 +467,9 @@ max_steps as a positive finite step cap
 max_parallel_jobs as a positive finite worker cap
 Cajtucu paper execution profile
 ```
+
+Those fields live in the rollout request file, not as public top-level MCP
+arguments.
 
 `idempotency_key` is identity binding in this checkpoint. It is included in
 request and plan digests for audit and future retry handling, but Marshal does
@@ -504,9 +536,11 @@ Runtime replay has a concrete forwarding contract for that option.
 cuwacunu_exec --config ... --replay-from-job-dir ...
 ```
 
-In `requested_mode=execute`, Marshal builds the equivalent
-`hero.runtime.run operation=replay` argument payload and hands it to Runtime
-Hero.
+In `mode=execute`, Marshal/Environment builds a compact replay handoff whose
+payload is carried by `execution_request_path`, then hands it to the non-catalog
+Runtime replay executor. Direct operators should prefer
+`hero.environment.rollout`, which validates rollout admission before delegating
+low-level replay to Runtime.
 The response records Runtime tool digests and whether replay execution
 completed, but it remains a handoff result, not a rollout receipt.
 
@@ -519,7 +553,7 @@ Runtime writes replay report / trajectory evidence
 inspect reads report later -> inspection_summary, future work
 ```
 
-`hero.marshal.rollout requested_mode=execute` records handoff digests in the
+`hero.marshal.rollout mode=execute` records handoff digests in the
 response. Durable rollout handoff receipts are future work. Runtime reports,
 metrics, and trajectory evidence are Runtime-owned artifacts, not Marshal
 receipts.
@@ -622,58 +656,92 @@ The current high-level Marshal surface is intentionally small:
 
 ```text
 hero.marshal.status
-hero.marshal.prepare
+hero.marshal.prepare.train.one_step
+hero.marshal.prepare.train.budgeted
+hero.marshal.prepare.evaluate.one_step
+hero.marshal.prepare.evaluate.budgeted
 hero.marshal.rollout
-hero.marshal.inspect
+hero.marshal.inspect.run.latest_chain
+hero.marshal.inspect.run.training_state
+hero.marshal.inspect.run.single_job
+hero.marshal.inspect.run.compare
+hero.marshal.inspect.target
+hero.marshal.inspect.protocol.report
+hero.marshal.inspect.protocol.strict
+hero.marshal.inspect.spawn.by_id
+hero.marshal.inspect.spawn.by_label
+hero.marshal.inspect.spawn.by_registry
+hero.marshal.inspect.spawn.by_fingerprint
+hero.marshal.inspect.spawn.by_job
+hero.marshal.inspect.component
+hero.marshal.inspect.facts.summary
+hero.marshal.inspect.facts.lineage
+hero.marshal.inspect.facts.preview
+hero.marshal.inspect.facts.preview.by_digest
+hero.marshal.inspect.facts.preview.by_digest_prefix
+hero.marshal.inspect.facts.preview.by_index
 ```
 
-`prepare` is the deterministic Marshal for moving one lattice
-target toward readiness. It has two explicit drive modes:
-
-```text
-drive_mode = one_step
-drive_mode = budgeted
-```
+`prepare.*` is the deterministic Marshal family for moving one lattice target
+toward readiness. Its public arguments are `target_id`, `mode`, and optional
+`args_path`/`args_digest`. The target intent and driver shape live in the tool
+name: `train.one_step`, `train.budgeted`, `evaluate.one_step`, or
+`evaluate.budgeted`. Target-specific packet fields such as `driver_policy`,
+`context`, Runtime snapshots, materialization flags, and resume evidence live
+in the prepare request file. The digest is optional for `plan` and required for
+`dry_run`/`execute`.
 
 `one_step` computes one Lattice-backed move, optionally dry-runs it, emits a
 target-driver ledger, and stops. `budgeted` performs a finite driver loop: it
 asks Lattice for the current target deficit, materializes model-state inputs,
 checks Runtime wave/policy alignment, dry-runs Runtime, and either stops before
-execution or executes only when `requested_mode=execute`, `driver_policy`
-allows execution, Runtime policy allows execution, and the existing execution
-gate accepts the dry-run evidence. The target is reported reached only after
-Lattice reports satisfaction.
+execution or executes only when `mode=execute`, `driver_policy`
+from the prepare request file allows execution, Runtime policy allows
+execution, and the existing execution gate accepts the dry-run evidence. The
+target is reported reached only after Lattice reports satisfaction.
 
 For V1, `prepare` should be read as dispatchable Runtime target movement, not
 as a general environment or artifact tool. Replay rollout uses
 `hero.marshal.rollout`; artifact-readiness targets stop with
-`next_safe_actions=["inspect"]`; policy-training remains reserved until the
-Runtime job contract is finite and explicit.
+`next_safe_actions=["inspect"]`; policy-training uses Runtime policy-training
+contracts and should be routed through a finite Marshal-materialized handoff
+surface when it is promoted to the operator path.
 
 `rollout` is the deterministic Marshal for replaying already produced Runtime
 job evidence through the Kikijyeba environment and Cajtucu paper execution
 backend. It starts from a completed Runtime job directory, a policy set, an
 accounting numeraire graph node, ordered target graph nodes, finite replay
-limits, and an execution profile. In `requested_mode=plan` it returns a rollout plan. In
-`requested_mode=execute` it delegates to
-`hero.runtime.run operation=replay requested_mode=execute` and records the
-handoff state and digests. It does not train, tune, inspect reports, produce a
-rollout receipt, or claim Lattice target satisfaction.
+limits, and an execution profile. In `mode=plan` it returns a rollout
+plan. In `mode=execute` it delegates through Runtime replay execution
+and records the handoff state and digests. Only `mode`,
+`args_path`, `args_digest`, and `include_machine_payload` are public; the
+rollout packet lives in the request file. Its current execute path delegates through
+`hero.environment.rollout mode=replay`, which then calls Runtime.
+Direct replay operators should use `hero.environment.rollout`. It does not
+train, tune, inspect reports, produce a rollout receipt, or claim Lattice target
+satisfaction.
+
+`inspect.*` exposes concrete read-only tools for run, target, protocol, spawn,
+component, and fact panels. Selectors such as `runtime_root`, `job_id`,
+`target_id`, `fact_family_id`, preview selectors, identity fingerprints, and
+`include_machine_payload` are direct arguments on the relevant concrete tool.
 
 Artifact-readiness targets are evidence proofs, not Runtime wave requests.
-When `hero.lattice.evaluate operation=deficit` reports `target_class=artifact_readiness`,
+When `hero.lattice.evaluate.deficit` reports `target_class=artifact_readiness`,
 `prepare` returns a non-dispatchable packet with
 `next_safe_actions=["inspect"]`; it does not resolve checkpoints, inspect
-Runtime wave shape, or dry-run Runtime. Use `hero.marshal.inspect`
-to view the target proof and any related fact-family summary.
+Runtime wave shape, or dry-run Runtime. Use `hero.marshal.inspect.target` or
+`hero.marshal.inspect.facts.summary` to view the target proof and any related
+fact-family summary.
 
-`inspect` is read-only. It calls Lattice
-`evaluate operation=target` for a target proof, `inspect subject=facts mode=summary` or `inspect subject=facts mode=scan` for
-fact-family evidence, `inspect subject=facts mode=lineage` for audit-only relation/key/digest lineage
-rows, and `inspect subject=facts mode=preview` when the caller explicitly asks for a concrete fact
-row by digest, digest prefix, or fact index. Marshal does not become proof
-authority, does not claim target satisfaction, and does not select checkpoints
-from this panel.
+`inspect.*` is read-only. It calls Lattice `hero.lattice.evaluate.target` for a
+target proof, `hero.lattice.inspect.facts.summary` for fact-family
+evidence, `hero.lattice.inspect.facts.lineage` for audit-only
+relation/key/digest lineage rows, and `hero.lattice.inspect.facts.preview`
+when the inspect call asks for a concrete fact row by digest, digest prefix, or
+fact index. Marshal does not
+become proof authority, does not claim target satisfaction, and does not select
+checkpoints from this panel.
 The public inspect, status, and operational-report JSON surfaces
 declare this boundary explicitly with fields such as `target_proof=false`,
 `dispatchable=false`, `runtime_executor=false`,
@@ -693,23 +761,25 @@ families, and issue codes. This keeps unresolved transform, baseline,
 selection-signal, observer, and forecast artifact lineage visible before an
 artifact proof failure is interpreted as a generic target problem.
 Fact panels include a compact `lineage_panel` by default. It relays
-`hero.lattice.inspect subject=facts mode=lineage` row counts, selected
+`hero.lattice.inspect.facts.lineage` row counts, selected
 relations, and explicit non-authority flags such as
-`cache_rows_used_for_target_satisfaction=false`; operators may pass
-`include_lineage=false` only to suppress that audit view. Raw
-relation/key/digest rows stay in `machine_payload` when
-`include_machine_payload=true`.
-Fact panels include `preview_panel` only when requested with `mode=preview`,
-`include_preview`, `fact_digest`, `fact_digest_prefix`, or `fact_index`. The
-preview relays `hero.lattice.inspect subject=facts mode=preview` rows using the
-same canonical selectors; `fact_digest_prefix` must resolve uniquely in the
-selected family before Lattice returns a preview. The panel keeps
+`cache_rows_used_for_target_satisfaction=false`; operators may put
+`include_lineage=false` on the inspect call only to suppress that audit
+view. Raw relation/key/digest rows stay in `machine_payload` when
+`include_machine_payload=true` is present on the inspect call.
+Fact panels include `preview_panel` on `hero.marshal.inspect.facts.preview` and
+its selector splits: `hero.marshal.inspect.facts.preview.by_digest`,
+`hero.marshal.inspect.facts.preview.by_digest_prefix`, and
+`hero.marshal.inspect.facts.preview.by_index`. The preview relays matching
+`hero.lattice.inspect.facts.preview*` rows; `fact_digest_prefix` must resolve
+uniquely in the selected family before Lattice returns a preview. The panel keeps
 `preview_rows_are_audit_only=true`,
 `facts_used_for_target_satisfaction=false`, `checkpoint_selected=false`, and
 `model_selector=false`. The operator panel summarizes display-only handles as
 `preview_fact_refs`; full fact rows, `fact_digest` fields, parent digest arrays,
 lineage rows, and Lattice `identity_envelope` payloads stay in
-`machine_payload` when `include_machine_payload=true`.
+`machine_payload` when `include_machine_payload=true` is present in the request
+file.
 Target panels also summarize Lattice artifact `fact_preview_hint` entries as
 `artifact_fact_preview_*` fields, including `artifact_fact_preview_refs`. Marshal
 relays refs, family, digest count, Lattice tool, and Marshal tool as navigation
@@ -749,33 +819,48 @@ state, target-driver ledger, and next safe actions.
 supports:
 
 ```text
-subject = run
-subject = target
-subject = protocol
-subject = spawn
-subject = component
-subject = facts
+hero.marshal.inspect.run.latest_chain
+hero.marshal.inspect.run.training_state
+hero.marshal.inspect.run.single_job
+hero.marshal.inspect.run.compare
+hero.marshal.inspect.target
+hero.marshal.inspect.protocol.report
+hero.marshal.inspect.protocol.strict
+hero.marshal.inspect.spawn.by_id
+hero.marshal.inspect.spawn.by_label
+hero.marshal.inspect.spawn.by_registry
+hero.marshal.inspect.spawn.by_fingerprint
+hero.marshal.inspect.spawn.by_job
+hero.marshal.inspect.component
+hero.marshal.inspect.facts.summary
+hero.marshal.inspect.facts.lineage
+hero.marshal.inspect.facts.preview
+hero.marshal.inspect.facts.preview.by_digest
+hero.marshal.inspect.facts.preview.by_digest_prefix
+hero.marshal.inspect.facts.preview.by_index
 ```
 
-`subject=run` wraps the operational report and comparison paths through
-`latest_chain`, `training_state`, `single_job`, and `compare` modes.
-When `subject=run` asks Lattice for bulk target status, artifact-readiness
+The `hero.marshal.inspect.run.*` tools wrap the operational report and
+comparison paths through concrete `latest_chain`, `training_state`,
+`single_job`, and `compare` tool names.
+When `hero.marshal.inspect.run.*` asks Lattice for bulk target status,
+artifact-readiness
 blockers preserve the failed artifact proof summary, including explicit
 boundary denials for non-dispatchable/non-checkpoint authority fields, and route
-to `inspect` rather than presenting the failure as a dispatchable
+to concrete inspect tools rather than presenting the failure as a dispatchable
 training deficit. Disabled policy-gate reservations remain attached as
 read-only blocker context and do not change next-safe-action selection.
-`subject=target` asks Lattice for the target deficit and explains the plan or
-blocker. It labels target status as sourced from `hero.lattice.evaluate operation=deficit`
-and only suggests certificate inspection when Lattice returned certificate
-material. `subject=protocol` checks observed Runtime identity fields against
-the requested protocol/graph/source/assembly identity. Its default
-`identity_mode=report` treats observed-only identity as an operator observation,
-not as strict verification; `identity_mode=strict` requires explicit expected
-identity fields and reports `identity_verified=true` only when they all match.
-`subject=spawn` and `subject=component` group Runtime evidence for one
-component spawn or component family with `evidence_scope=runtime_jobs_only`.
-All subjects explain evidence without execution, proof claims, model selection,
+`hero.marshal.inspect.target` asks Lattice for the target deficit and explains
+the plan or blocker. It labels target status as sourced from
+`hero.lattice.evaluate.deficit` and only suggests certificate inspection when
+Lattice returned certificate material. `hero.marshal.inspect.protocol.report`
+reports observed Runtime identity fields without expected-identity arguments.
+`hero.marshal.inspect.protocol.strict` requires explicit expected identity
+fields and reports `identity_verified=true` only when they all match.
+`hero.marshal.inspect.spawn.*` and `hero.marshal.inspect.component` group
+Runtime evidence for one component spawn or component family with
+`evidence_scope=runtime_jobs_only`. All inspect tools explain evidence without
+execution, proof claims, model selection,
 or checkpoint selection.
 
 The lower-level behavior is implementation detail, not a public tool surface:
@@ -799,8 +884,10 @@ separate research artifact.
 
 ## Marshal Operational Report v1
 
-`hero.marshal.inspect` with `subject=run` is the read-only operator report
-surface. Its `latest_chain`, `training_state`, and `single_job` modes answer:
+`hero.marshal.inspect.run.latest_chain`,
+`hero.marshal.inspect.run.training_state`, and
+`hero.marshal.inspect.run.single_job` are the read-only operator report
+surfaces. They answer:
 
 ```text
 Where are we, what just happened, and what is safe to do next?
@@ -836,9 +923,9 @@ reported from `artifacts/kikijyeba.environment.replay.v1/` when present:
 latest replay experiment report. Marshal only summarizes these files; Runtime
 Hero remains the replay executor/reader.
 
-When `include_machine_payload=true`, the report also includes full job rows,
-checkpoint rows, the target-status map, and detailed metrics under
-`machine_payload`.
+When `include_machine_payload=true` is present in the inspect request file, the
+report also includes full job rows, checkpoint rows, the target-status map, and
+detailed metrics under `machine_payload`.
 
 The report does not execute, dry-run, edit config, select checkpoints, or claim
 target satisfaction. Lattice remains the only proof authority; Marshal only
@@ -862,14 +949,14 @@ runtime executable availability
 runtime_root agreement
 active wave target/mode/range agreement
 checkpoint/model-state input agreement
-dry_run=true and confirm_execute=false
+mode=dry_run
 field derivations for each generated Runtime request field
 ```
 
 The handoff helper calls Runtime Hero through
-`hero.runtime.run operation=wave requested_mode=dry_run` with
-`confirm_execute=false`, returning the Runtime Hero tool result JSON plus the
-Marshal non-authority statement. Runtime handoff parsing
+`hero.runtime.run mode=dry_run` without retired
+Runtime-side confirmation or timeout arguments, returning the Runtime Hero tool
+result JSON plus the Marshal non-authority statement. Runtime handoff parsing
 reads the MCP result's top-level `isError` and `structuredContent.ok` fields so
 nested text or nested objects cannot accidentally masquerade as Runtime
 acceptance.
@@ -878,29 +965,30 @@ The public D2 operation accepts explicit fresh Lattice Hero advice, refuses
 unproven advice, calls the handoff helper, and includes the live Runtime Hero
 dry-run result in the Marshal response.
 
-`hero.marshal.prepare` is the operator-facing wrapper for
-“pursue lattice target X.” The target wrapper calls the current Lattice target
-advice query, asks Marshal's read-only Lattice callback to materialize symbolic
+`hero.marshal.prepare.*` is the operator-facing family for “pursue lattice
+target X.” The split suffix chooses train/evaluate and one_step/budgeted. The
+target wrapper calls the current Lattice target advice query, asks Marshal's
+read-only Lattice callback to materialize symbolic
 `latest_satisfying:<target_id>` model-state hints, validates the materialized
 advice, inspects Runtime policy and active wave shape, and returns one compact
 operator packet.
 
 If that query identifies an artifact-readiness target, Marshal stops before the
-handoff path and routes the operator to `hero.marshal.inspect`.
+handoff path and routes the operator to `hero.marshal.inspect.target` or
+`hero.marshal.inspect.facts.summary`.
 This keeps non-trainable Lattice evidence surfaces out of Runtime dispatch
 semantics.
 
-In `one_step` mode, `requested_mode=plan` prepares without a Runtime call,
-`requested_mode=dry_run` calls Runtime dry-run, and
-`requested_mode=execute` requires accepted dry-run evidence before any Runtime
+In `one_step` mode, `mode=plan` prepares without a Runtime call,
+`mode=dry_run` calls Runtime dry-run, and
+`mode=execute` requires accepted dry-run evidence before any Runtime
 execution gate can pass. In `budgeted` mode, Runtime dry-run is part of the
 driver loop for `dry_run` and `execute`, and is bounded by
 `driver_policy.max_waves`. `budgeted` execution also requires
 `driver_policy.max_wall_clock_seconds`, `driver_policy.allow_execute=true`, and
 Runtime `allow_execute=true`. Train waves additionally require both
 `driver_policy.allow_train_execute=true` and Runtime `allow_train_execute=true`.
-`include_runtime_dry_run` remains accepted only as a compatibility field; the
-requested mode controls whether Runtime dry-run is requested.
+The requested mode controls whether Runtime dry-run is requested.
 Marshal reports desired wave differences but does not edit wave config, select
 checkpoints, or claim target satisfaction.
 
@@ -911,10 +999,11 @@ non-authority statement. When `require_runtime_job_completion=true`, Marshal
 requires durable `runtime.result.fact` plus `job.manifest`; a completed
 `job.state` alone is not enough. If Runtime reports checkpoint writes or loaded
 model-state checkpoints, `runtime.checkpoint_io.fact` must also be present and
-is bound into the ledger. A compact `resume_ledger` may be supplied to continue
-a bounded run without forgetting spent handoff/execution budget; stale target,
-mode, policy identity, missing terminal evidence identity, missing manifest
-identity, or missing handoff identity blocks resume.
+is bound into the ledger. A compact `resume_ledger` in the prepare request file
+may be supplied to continue a bounded run without forgetting spent
+handoff/execution budget; stale target, mode, policy identity, missing
+terminal evidence identity, missing manifest identity, or missing handoff
+identity blocks resume.
 
 Target-driver identity is split deliberately:
 
@@ -935,10 +1024,10 @@ runtime_handoff_id / runtime_handoff_digest
   exactly; they are the hard reconciliation identity.
 ```
 
-`ledger_created_at_utc` and `ledger_nonce` may be supplied by tests; otherwise
-Marshal generates them for a fresh prepare call. Runtime handoff id/digest remain
-the strict terminal-evidence identity even when several ledgers share the same
-target-driver run key.
+Marshal generates `ledger_created_at_utc` and `ledger_nonce` for a fresh
+prepare call, or restores them from `resume_ledger` when continuing a bounded
+run. Runtime handoff id/digest remain the strict terminal-evidence identity even
+when several ledgers share the same target-driver run key.
 
 Target-driver replay audit is also available internally for retention drills.
 Full ledger replay recomputes iteration and ledger digests. Compact ledger
@@ -1002,11 +1091,12 @@ confirmation token.
 
 The public execution handoff takes an accepted `marshal_execution_gate_result_t`.
 It cannot be called from a plain dry-run decision. Immediately before calling
-`hero.runtime.run operation=wave requested_mode=execute`, Marshal asks Runtime
-Hero to decode the active wave and
-compares target, mode, source range, and anchor bounds against the derived
-request, including concrete `PLAN_INPUT_*` model-state inputs. The Runtime Hero
-run schema accepts a canonical `runtime_handoff` object. The object carries
+`hero.runtime.run mode=execute`, Marshal asks Runtime
+Hero to decode the active wave and compares target, mode, source range, and
+anchor bounds against the derived request, including concrete `PLAN_INPUT_*`
+model-state inputs. The Runtime Hero run-wave schema accepts a canonical
+`runtime_handoff` object plus an `execution_request_path` for launch-range
+payload. The object carries
 handoff schema/id/digest, creator/timestamp, target id, base config path/digest,
 concrete wave fields, concrete checkpoint inputs, Runtime policy path/digest,
 dry-run or execute intent, and an `unresolved_symbols` list. Runtime rejects
@@ -1015,10 +1105,6 @@ mismatched intent, and mismatched active-wave fields before launching
 `cuwacunu_exec`. Accepted handoffs are echoed back through the Runtime job
 manifest, terminal result fact, and derived lattice exposure fact using
 `runtime_handoff_id` and `runtime_handoff_digest`.
-
-`marshal_expected_wave` remains as compatibility scaffolding with the same
-canonical Runtime active-wave field names. Runtime also rejects symbolic
-model-state inputs on that legacy path.
 
 ## D4 Dispatch Receipts
 
@@ -1064,10 +1150,11 @@ deployment decisions.
 
 ## Marshal Run Comparison
 
-`hero.marshal.inspect` with `subject=run` and `mode=compare` compares two
-Runtime jobs descriptively. It reads the same Runtime job state, terminal facts,
-checkpoint I/O facts, health facts, and raw report fallback fields used by the
-operational report, then returns:
+`hero.marshal.inspect.run.compare` compares two
+Runtime jobs descriptively. The `baseline_job_id` and `candidate_job_id`
+selectors are direct tool arguments. It reads the same Runtime job
+state, terminal facts, checkpoint I/O facts, health facts, and raw report
+fallback fields used by the operational report, then returns:
 
 ```text
 operator_summary
@@ -1088,9 +1175,9 @@ proof_context
 `config_identity_deltas` and `wave_range_deltas` make config identity, protocol
 identity, graph/source identity, wave action/mode, source-range policy, anchor
 bounds, and accepted anchor count visible before metric differences. When
-`include_machine_payload=true`, comparison also returns full baseline and
-candidate job rows, full performance visibility panels, checkpoint lineage
-details, and per-run metric maps.
+`include_machine_payload=true` is present in the inspect request file,
+comparison also returns full baseline and candidate job rows, full performance
+visibility panels, checkpoint lineage details, and per-run metric maps.
 
 The comparison and run-report surfaces are read-only. They do not execute, edit
 config, select a checkpoint, choose a winner, claim target satisfaction, promote

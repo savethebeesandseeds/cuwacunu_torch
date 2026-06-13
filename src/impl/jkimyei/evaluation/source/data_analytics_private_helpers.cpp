@@ -75,8 +75,8 @@ using runtime_lls_document_t =
 }
 
 [[nodiscard]] std::string
-contract_hash_path_token_(std::string_view contract_hash) {
-  return analytics_path_token_(contract_hash);
+contract_fingerprint_path_token_(std::string_view contract_fingerprint) {
+  return analytics_path_token_(contract_fingerprint);
 }
 
 [[nodiscard]] std::filesystem::path evaluation_store_root_() {
@@ -85,8 +85,8 @@ contract_hash_path_token_(std::string_view contract_hash) {
     return std::filesystem::path(env);
   }
   return std::filesystem::path("/cuwacunu/.runtime") / "cuwacunu_exec" /
-         "components" / "jkimyei.evaluation.source.data_analytics" /
-         "spawns" / "standalone_runtime" / "artifacts" / "retrieval";
+         "components" / "jkimyei.evaluation.source.data_analytics" / "spawns" /
+         "standalone_runtime" / "artifacts" / "retrieval";
 }
 
 [[nodiscard]] std::filesystem::path
@@ -187,8 +187,8 @@ void append_string_entry_if_nonempty_(runtime_lls_document_t *document,
   if (!document || value.empty())
     return;
   document->entries.push_back(
-      cuwacunu::hero::lattice::runtime_report::
-          make_runtime_lls_string_entry(std::string(key), std::string(value)));
+      cuwacunu::hero::lattice::runtime_report::make_runtime_lls_string_entry(
+          std::string(key), std::string(value)));
 }
 
 void append_bool_entry_(runtime_lls_document_t *document, std::string_view key,
@@ -218,9 +218,8 @@ void append_double_entry_(runtime_lls_document_t *document,
                           std::string_view key, double value,
                           std::string_view declared_domain = kRefRangeSigned) {
   document->entries.push_back(
-      cuwacunu::hero::lattice::runtime_report::
-          make_runtime_lls_double_entry(std::string(key), value,
-                                        std::string(declared_domain)));
+      cuwacunu::hero::lattice::runtime_report::make_runtime_lls_double_entry(
+          std::string(key), value, std::string(declared_domain)));
 }
 
 [[nodiscard]] std::string
@@ -842,8 +841,8 @@ void fill_remaining_stream_indices_evenly_(
   runtime_lls_document_t document{};
   document.entries.reserve(18);
   document.entries.push_back(
-      cuwacunu::hero::lattice::runtime_report::
-          make_runtime_lls_string_entry("schema", report.schema));
+      cuwacunu::hero::lattice::runtime_report::make_runtime_lls_string_entry(
+          "schema", report.schema));
   append_component_report_identity_entries_(&document, report_identity);
   append_string_entry_if_nonempty_(&document, keys.label_key, report_label);
 
@@ -896,8 +895,8 @@ void fill_remaining_stream_indices_evenly_(
   runtime_lls_document_t document{};
   document.entries.reserve(40 + report.streams.size() * 15);
   document.entries.push_back(
-      cuwacunu::hero::lattice::runtime_report::
-          make_runtime_lls_string_entry("schema", report.schema));
+      cuwacunu::hero::lattice::runtime_report::make_runtime_lls_string_entry(
+          "schema", report.schema));
   append_component_report_identity_entries_(&document, report_identity);
   append_string_entry_if_nonempty_(&document, keys.label_key, report_label);
 

@@ -32,6 +32,12 @@ $(OUTPUT_PATH)/common/hero_runtime_tools.o: \
 	$(IMPL_PATH)/hero/runtime_hero/hero_runtime_tools.cpp \
 	$(SRC_ROOT)/Makefile.config
 	$(CC_RULE)
+$(OUTPUT_PATH)/common/hero_runtime_tools.o: INCLUDES_EXTRA += $(TORCH_INCLUDE_PATHS)
+
+$(OUTPUT_PATH)/common/hero_environment_tools.o: \
+	$(IMPL_PATH)/hero/environment_hero/hero_environment_tools.cpp \
+	$(SRC_ROOT)/Makefile.config
+	$(CC_RULE)
 
 .PHONY: kikijyeba_job_runner_objects
 kikijyeba_job_runner_objects:
@@ -47,7 +53,7 @@ $(eval $(call TEST_ONEFILE, test_kikijyeba_job_runner, test_kikijyeba_job_runner
   $(libtorch_a) $(KIKIJYEBA_RUNTIME_OBJS) $(LDLIBS_torch)))
 
 $(eval $(call TEST_ONEFILE, test_hero_runtime_wave_preview, test_hero_runtime_wave_preview.cpp, \
-  $(OUTPUT_PATH)/common/hero_runtime_tools.o))
+  $(OUTPUT_PATH)/common/hero_runtime_tools.o $(OUTPUT_PATH)/common/hero_environment_tools.o $(LDLIBS_torch)))
 
 $(eval $(call TEST_ONEFILE, test_hero_mcp_schema_compat, test_hero_mcp_schema_compat.cpp))
 
@@ -56,7 +62,7 @@ $(TEST_OUT)/test_kikijyeba_job_runner: kikijyeba_job_runner_objects
 
 .PHONY: hero_mcp_schema_catalogs
 hero_mcp_schema_catalogs:
-	$(MAKE) -C $(SRC_ROOT)/main/hero build-config-hero build-runtime-hero build-lattice-hero build-marshal-hero
+	$(MAKE) -C $(SRC_ROOT)/main/hero build-config-hero build-runtime-hero build-environment-hero build-lattice-hero build-marshal-hero
 
 $(TEST_OUT)/test_hero_mcp_schema_compat: hero_mcp_schema_catalogs
 

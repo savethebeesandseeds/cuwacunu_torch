@@ -263,6 +263,7 @@ struct lattice_target_evidence_t {
   std::string protocol_contract_fingerprint{};
   std::string protocol_id{};
   std::string component_fingerprint{};
+  std::string component_operator_surface_digest{};
   std::string graph_order_fingerprint{};
   std::string source_cursor_token{};
   std::string config_bundle_id{};
@@ -1739,7 +1740,7 @@ lattice_benchmark_regression_budget_vocabulary() {
        "live scan cost is separated from cache query cost", true, true, false,
        false, false, true, true},
       {"long_lived_mcp_header_only_index_query", "long_lived_mcp",
-       "header_only", "hero.lattice.inspect subject=index mode=query",
+       "header_only", "hero.lattice.inspect.index.query",
        "one Hero MCP process, repeated header-only audit queries, and session "
        "cache behavior visible",
        "compare_live_scan=false, allow_unproven_cache=true, "
@@ -1755,7 +1756,8 @@ lattice_benchmark_regression_budget_vocabulary() {
        "batch scan reuse is measured separately from cache audit queries", true,
        true, false, false, true, true, true},
       {"direct_cli_header_only_index_query", "direct_cli", "header_only",
-       "hero_lattice.mcp --tool hero.lattice.inspect subject=index mode=query",
+       "hero_lattice.mcp --tool hero.lattice.inspect.index.query "
+       "--args-json '{}'",
        "full direct process call timing for explicit header-only unproven "
        "audit-cache query",
        "compare_live_scan=false, allow_unproven_cache=true, "
@@ -1764,7 +1766,8 @@ lattice_benchmark_regression_budget_vocabulary() {
        "direct CLI startup is charged to this row, not to library timings",
        false, false, false, true, false, true, true},
       {"direct_cli_live_parity_index_query", "direct_cli", "live_parity",
-       "hero_lattice.mcp --tool hero.lattice.inspect subject=index mode=query",
+       "hero_lattice.mcp --tool hero.lattice.inspect.index.query "
+       "--args-json '{}'",
        "full direct process call timing for cache validation plus live-scan "
        "parity proof",
        "compare_live_scan=true and selected_answer_parity.checked=true",
@@ -7895,6 +7898,7 @@ struct lattice_target_proof_certificate_t {
     bool contract_match{false};
     std::string expected_component_fingerprint{};
     std::string evidence_component_fingerprint{};
+    std::string evidence_component_operator_surface_digest{};
     bool component_match{false};
     std::string active_graph_order_fingerprint{};
     std::string evidence_graph_order_fingerprint{};
@@ -8303,8 +8307,8 @@ struct lattice_target_evaluation_t {
   evidence_order_vector_t evidence_order_vector{};
   struct plan_basis_t {
     struct fact_preview_hint_t {
-      std::string tool{"hero.lattice.inspect"};
-      std::string marshal_tool{"hero.marshal.inspect"};
+      std::string tool{"hero.lattice.inspect.facts.preview.by_digest"};
+      std::string marshal_tool{"hero.marshal.inspect.facts.preview.by_digest"};
       std::string fact_family{};
       std::string fact_digest{};
       bool include_preview{true};
@@ -9223,7 +9227,26 @@ lattice_artifact_readiness_proof_templates() {
            "validation/test range separation, training-only normalization and "
            "replay-buffer binding, selector policy, sealed-test declaration, "
            "environment/action/reward/execution-profile binding, and parent "
-           "replay evidence binding"}};
+           "replay evidence binding"},
+          {"tsodao_settings_protection",
+           "tsodao_settings_protection_artifact_bound",
+           "Tsodao protected-settings artifact identity, protected "
+           "policy-training fact binding, protected digest match, evidence "
+           "digest binding, and non-selection/non-optimization authority "
+           "denials"},
+          {"policy_acceptance", "policy_acceptance_contract_bound",
+           "policy acceptance contract identity, accepted policy-training fact "
+           "binding, Tsodao protected-settings binding, mandatory baselines, "
+           "after-cost metrics, uncertainty policy, selector/test split "
+           "discipline, negative leakage tests, promotion criteria, and "
+           "non-selection/non-deployment authority denials"},
+          {"paper_online_readiness", "paper_online_readiness_contract_bound",
+           "paper-online readiness contract identity, accepted policy binding, "
+           "session lifecycle, clock/staleness policy, idempotent execution "
+           "intent handling, duplicate protection, persistent paper-ledger "
+           "recovery, direct-edge universe validation, locked Cajtucu "
+           "execution profile, reward/report artifact policy, abort/kill "
+           "switch semantics, and non-execution/non-live authority denials"}};
   return templates;
 }
 
@@ -12215,6 +12238,8 @@ canonical_lattice_target_proof_certificate_text(
       << proof_context.expected_component_fingerprint << "\n";
   out << "proof_context.evidence_component_fingerprint="
       << proof_context.evidence_component_fingerprint << "\n";
+  out << "proof_context.evidence_component_operator_surface_digest="
+      << proof_context.evidence_component_operator_surface_digest << "\n";
   out << "proof_context.component_match="
       << (proof_context.component_match ? "true" : "false") << "\n";
   out << "proof_context.active_graph_order_fingerprint="

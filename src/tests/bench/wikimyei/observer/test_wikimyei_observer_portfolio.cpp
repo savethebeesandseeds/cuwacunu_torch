@@ -6,6 +6,13 @@
 
 #include <torch/torch.h>
 
+#include "wikimyei/inference/expected_value/mdn/assembly.h"
+#include "wikimyei/inference/expected_value/mdn/mixture_density_network_types.h"
+#include "wikimyei/observer/belief/assembly.h"
+#include "wikimyei/observer/belief/builder.h"
+#include "wikimyei/observer/belief/health_update.h"
+#include "wikimyei/observer/belief/types.h"
+#include "wikimyei/observer/utility.h"
 #include "wikimyei/policy/portfolio/spot_distributional_utility/assembly.h"
 #include "wikimyei/policy/portfolio/spot_distributional_utility/decision_step.h"
 #include "wikimyei/policy/portfolio/spot_distributional_utility/solver.h"
@@ -17,13 +24,6 @@
 #include "wikimyei/policy/portfolio/spot_distributional_utility/utility/risk_gate.h"
 #include "wikimyei/policy/portfolio/spot_distributional_utility/utility/risk_parity_fallback.h"
 #include "wikimyei/policy/portfolio/spot_distributional_utility/utility/spot_rebalance_router.h"
-#include "wikimyei/inference/expected_value/mdn/assembly.h"
-#include "wikimyei/inference/expected_value/mdn/mixture_density_network_types.h"
-#include "wikimyei/observer/belief/assembly.h"
-#include "wikimyei/observer/belief/builder.h"
-#include "wikimyei/observer/belief/health_update.h"
-#include "wikimyei/observer/belief/types.h"
-#include "wikimyei/observer/utility.h"
 
 namespace {
 
@@ -397,8 +397,7 @@ void test_allocation_belief_builder() {
       torch::tensor({{1.0, 0.20, 0.10}, {0.20, 1.0, 0.15}, {0.10, 0.15, 1.0}},
                     torch::TensorOptions().dtype(torch::kFloat64));
   options.tradable_mask = torch::ones({3}, torch::kBool);
-  options.realized_variance =
-      torch::tensor({0.02, 0.03, 0.0}, torch::kFloat64);
+  options.realized_variance = torch::tensor({0.02, 0.03, 0.0}, torch::kFloat64);
   options.linear_cost = torch::full({3}, 0.001, torch::kFloat64);
   options.quadratic_impact = torch::zeros({3}, torch::kFloat64);
   options.capacity_weight_limit =
@@ -625,6 +624,11 @@ void test_forecast_persistence_surprise_and_calibration() {
   check(loaded.identity.anchor_key == "1000", "forecast artifact anchor key");
   check(loaded.identity.node_ids == fixture.allocation_belief.node_ids,
         "forecast artifact node ids");
+  check(loaded.identity.target_coords_fingerprint ==
+            "target_coords:0,1,2,3,4,5,6,7,8",
+        "forecast artifact target coords fingerprint");
+  check(loaded.identity.normalization_fingerprint == "identity_norm",
+        "forecast artifact normalization fingerprint");
   check(loaded.identity.graph_node_axis.node_ids ==
             fixture.allocation_belief.graph_node_axis.node_ids,
         "forecast artifact graph node axis round-trip");
@@ -773,8 +777,7 @@ void test_belief_contract_and_portfolio_engine() {
   check(rejected_bad_market, "market state rejects negative fee");
 
   portfolio::PortfolioConstraints constraints{};
-  constraints.max_weight =
-      torch::tensor({0.60, 0.60, 1.0}, torch::kFloat64);
+  constraints.max_weight = torch::tensor({0.60, 0.60, 1.0}, torch::kFloat64);
   constraints.min_weight = torch::zeros({3}, torch::kFloat64);
   constraints.max_turnover_l1 = 0.50;
   constraints.lambda_cvar = 0.5;
@@ -829,8 +832,7 @@ void test_method_support_allocators() {
   market.tradable_mask = torch::ones({3}, torch::kBool);
 
   portfolio::PortfolioConstraints constraints{};
-  constraints.max_weight =
-      torch::tensor({0.40, 0.40, 1.0}, torch::kFloat64);
+  constraints.max_weight = torch::tensor({0.40, 0.40, 1.0}, torch::kFloat64);
   constraints.min_weight = torch::zeros({3}, torch::kFloat64);
   constraints.max_turnover_l1 = 0.60;
   constraints.cvar_alpha = 0.90;
@@ -934,8 +936,7 @@ void test_spot_distributional_utility_decision_wrapper() {
   market.tradable_mask = torch::ones({3}, torch::kBool);
 
   portfolio::PortfolioConstraints constraints{};
-  constraints.max_weight =
-      torch::tensor({0.60, 0.60, 1.0}, torch::kFloat64);
+  constraints.max_weight = torch::tensor({0.60, 0.60, 1.0}, torch::kFloat64);
   constraints.min_weight = torch::zeros({3}, torch::kFloat64);
   constraints.max_turnover_l1 = 0.50;
   constraints.lambda_cvar = 0.5;
@@ -973,12 +974,10 @@ void test_spot_distributional_utility_decision_wrapper() {
         "decision step blocks low-confidence belief");
   check(blocked.risk_gate.force_numeraire_fallback,
         "decision step low-confidence belief uses numeraire fallback");
-  check(blocked.target.valid,
-        "decision step numeraire fallback target valid");
+  check(blocked.target.valid, "decision step numeraire fallback target valid");
   check(blocked.rebalance_plan.valid,
         "decision step numeraire fallback rebalance valid");
-  check(blocked.target.target_weights.sum().item<double>() <
-            1.0 + 1.0e-8,
+  check(blocked.target.target_weights.sum().item<double>() < 1.0 + 1.0e-8,
         "decision step numeraire fallback preserves graph-node budget");
   check(blocked.target.target_weights.index({2}).item<double>() >
             portfolio_state.current_weights.index({2}).item<double>(),

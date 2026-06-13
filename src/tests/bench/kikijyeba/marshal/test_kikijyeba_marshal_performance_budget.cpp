@@ -142,9 +142,19 @@ int main() {
   const auto config_path = root / ".config";
   const auto policy_path = root / "hero.runtime.dsl";
   const auto wave_path = root / "wave.dsl";
+  const auto protocol_path = root / "kikijyeba.protocol.dsl";
+  const auto cursor_path = root / "ujcamei.source.cursor.dsl";
   std::filesystem::create_directories(runtime_root);
-  write_text(config_path, "[HERO]\n"
-                          "runtime_hero_dsl_path = " +
+  write_text(config_path, "[UJCAMEI]\n"
+                          "ujcamei_source_cursor_dsl_path = " +
+                              cursor_path.string() +
+                              "\n"
+                              "[KIKIJYEBA]\n"
+                              "kikijyeba_protocol_dsl_path = " +
+                              protocol_path.string() +
+                              "\n"
+                              "[HERO]\n"
+                              "runtime_hero_dsl_path = " +
                               policy_path.string() +
                               "\n"
                               "runtime_wave_dsl_path = " +
@@ -164,9 +174,7 @@ int main() {
                               "allow_execute:bool = false\n"
                               "allow_train_execute:bool = false\n"
                               "allow_force_rebuild_cache:bool = false\n"
-                              "require_confirm_execute:bool = true\n"
                               "allow_dev_nuke:bool = false\n"
-                              "require_confirm_dev_nuke:bool = true\n"
                               "dev_nuke_backup_enabled:bool = true\n"
                               "dev_nuke_backup_root:path = " +
                               (root / "backups").string() +
@@ -179,13 +187,10 @@ int main() {
   const std::string wave_text =
       "WAVE_SETTINGS {\n"
       "  WAVE_ID = cwu_01v_channel_validation_eval_mdn_1800_2050;\n"
-      "  TARGET = wikimyei.inference.expected_value.mdn;\n"
+      "  PROTOCOL = cwu_01v;\n"
+      "  TARGET = wikimyei.inference.expected_value;\n"
       "  MODE = run|debug;\n"
-      "  SOURCE_CURSOR_KIND = graph_anchor;\n"
-      "  SOURCE_CURSOR_SCOPE = wave_batch;\n"
-      "  SOURCE_RANGE = anchor_index;\n"
-      "  ANCHOR_INDEX_BEGIN = 1800;\n"
-      "  ANCHOR_INDEX_END = 2050;\n"
+      "  SOURCE_CURSOR_ID = validation_cursor;\n"
       "  INPUT_MDN_CHECKPOINT = " +
       (runtime_root / "jobs/mdn/checkpoint.pt").string() +
       ";\n"
@@ -194,6 +199,30 @@ int main() {
       ";\n"
       "};\n";
   write_text(wave_path, wave_text);
+  write_text(cursor_path, "UJCAMEI_SOURCE_CURSOR {\n"
+                          "  CURSOR_ID = validation_cursor;\n"
+                          "  SOURCE_CURSOR_KIND = graph_anchor;\n"
+                          "  SOURCE_CURSOR_SCOPE = wave_batch;\n"
+                          "  SOURCE_RANGE = anchor_index;\n"
+                          "  ANCHOR_INDEX_BEGIN = 1800;\n"
+                          "  ANCHOR_INDEX_END = 2050;\n"
+                          "};\n");
+  write_text(protocol_path,
+             "PROTOCOL {\n"
+             "  PROTOCOL_ID = cwu_01v;\n"
+             "  PROTOCOL_KIND = channel_graph_first;\n"
+             "  GRAPH_TOPOLOGY = kikijyeba.topology.graph;\n"
+             "  NODELIFT = wikimyei.expression.nodelift.srl;\n"
+             "  REPRESENTATION = wikimyei.representation.encoding.vicreg;\n"
+             "  INFERENCE = wikimyei.inference.expected_value.mdn;\n"
+             "  OBSERVER = wikimyei.observer.belief;\n"
+             "  ALLOCATION_POLICY = "
+             "wikimyei.policy.portfolio.spot_distributional_utility;\n"
+             "  POLICY_COMPONENT = "
+             "wikimyei.policy.portfolio.graph_node_allocation;\n"
+             "  REPRESENTATION_CONTRACT = "
+             "graph_order.channel_node_representation.v1;\n"
+             "};\n");
 
   const auto advice = valid_advice(config_path, runtime_root);
   const auto request = request_for(advice);

@@ -2,6 +2,7 @@
 #pragma once
 
 #include <cstdint>
+#include <exception>
 #include <filesystem>
 #include <stdexcept>
 #include <string>
@@ -29,8 +30,8 @@ struct forecast_artifact_identity_t {
   std::string source_feature_semantics_id{};
   std::string source_feature_semantics_fingerprint{};
   std::string node_ids_fingerprint{};
-  std::string target_coords_hash{};
-  std::string normalization_hash{};
+  std::string target_coords_fingerprint{};
+  std::string normalization_fingerprint{};
   std::string model_version{};
 
   std::vector<belief::node_id_t> graph_node_ids{};
@@ -192,6 +193,26 @@ inline void read_string(torch::serialize::InputArchive &root,
   torch::Tensor bytes{};
   root.read(key, bytes);
   *out = bytes_to_string(tensor_to_int64_vector(bytes));
+}
+
+inline bool read_string_if_present(torch::serialize::InputArchive &root,
+                                   const std::string &key, std::string *out) {
+  try {
+    read_string(root, key, out);
+    return true;
+  } catch (const std::exception &) {
+    return false;
+  }
+}
+
+inline void read_string_with_legacy_key(torch::serialize::InputArchive &root,
+                                        const std::string &canonical_key,
+                                        const std::string &legacy_key,
+                                        std::string *out) {
+  if (read_string_if_present(root, canonical_key, out)) {
+    return;
+  }
+  read_string(root, legacy_key, out);
 }
 
 inline void write_string_list(torch::serialize::OutputArchive &root,
@@ -367,12 +388,10 @@ validate_forecast_artifact(const marginal_forecast_artifact_t &artifact,
     }
   }
   if (active_non_reference.any().item<bool>()) {
-    TORCH_CHECK(artifact.sigma.index({active_non_reference})
-                    .gt(0.0)
-                    .all()
-                    .item<bool>(),
-                "[forecast_artifact] active non-reference sigma must be "
-                "positive");
+    TORCH_CHECK(
+        artifact.sigma.index({active_non_reference}).gt(0.0).all().item<bool>(),
+        "[forecast_artifact] active non-reference sigma must be "
+        "positive");
   }
   if (active.any().item<bool>()) {
     auto weights = artifact.log_weight.exp().sum(/*dim=*/1);
@@ -387,8 +406,8 @@ validate_forecast_artifact(const marginal_forecast_artifact_t &artifact,
 make_from_allocation_belief_and_projection(
     const belief::AllocationBelief &allocation_belief,
     const nodelift_return_projection_t &projection,
-    std::string model_version = {}, std::string target_coords_hash = {},
-    std::string normalization_hash = {},
+    std::string model_version = {}, std::string target_coords_fingerprint = {},
+    std::string normalization_fingerprint = {},
     const scenario_bank_t *stress_bank = nullptr) {
   belief::validate_allocation_belief_contract(
       allocation_belief,
@@ -427,8 +446,10 @@ make_from_allocation_belief_and_projection(
       allocation_belief.projection_reference_graph_index.value_or(-1);
   artifact.identity.return_origin = "numeraire_relative_nodelift_projection";
   artifact.identity.model_version = std::move(model_version);
-  artifact.identity.target_coords_hash = std::move(target_coords_hash);
-  artifact.identity.normalization_hash = std::move(normalization_hash);
+  artifact.identity.target_coords_fingerprint =
+      std::move(target_coords_fingerprint);
+  artifact.identity.normalization_fingerprint =
+      std::move(normalization_fingerprint);
 
   artifact.log_weight = detail::tensor_or_empty_cpu(
       projection.projected_log_weight, torch::kFloat64);
@@ -503,10 +524,10 @@ inline void save_forecast_artifact(const marginal_forecast_artifact_t &artifact,
                        artifact.identity.source_feature_semantics_fingerprint);
   detail::write_string(root, "meta/node_ids_fingerprint_bytes",
                        artifact.identity.node_ids_fingerprint);
-  detail::write_string(root, "meta/target_coords_hash_bytes",
-                       artifact.identity.target_coords_hash);
-  detail::write_string(root, "meta/normalization_hash_bytes",
-                       artifact.identity.normalization_hash);
+  detail::write_string(root, "meta/target_coords_fingerprint_bytes",
+                       artifact.identity.target_coords_fingerprint);
+  detail::write_string(root, "meta/normalization_fingerprint_bytes",
+                       artifact.identity.normalization_fingerprint);
   detail::write_string(root, "meta/model_version_bytes",
                        artifact.identity.model_version);
   detail::write_string(root, "meta/return_origin_bytes",
@@ -608,10 +629,14 @@ inline void save_forecast_artifact(const marginal_forecast_artifact_t &artifact,
                       &artifact.identity.source_feature_semantics_fingerprint);
   detail::read_string(root, "meta/node_ids_fingerprint_bytes",
                       &artifact.identity.node_ids_fingerprint);
-  detail::read_string(root, "meta/target_coords_hash_bytes",
-                      &artifact.identity.target_coords_hash);
-  detail::read_string(root, "meta/normalization_hash_bytes",
-                      &artifact.identity.normalization_hash);
+  detail::read_string_with_legacy_key(
+      root, "meta/target_coords_fingerprint_bytes",
+      "meta/target_coords_hash_bytes",
+      &artifact.identity.target_coords_fingerprint);
+  detail::read_string_with_legacy_key(
+      root, "meta/normalization_fingerprint_bytes",
+      "meta/normalization_hash_bytes",
+      &artifact.identity.normalization_fingerprint);
   detail::read_string(root, "meta/model_version_bytes",
                       &artifact.identity.model_version);
   detail::read_string(root, "meta/return_origin_bytes",

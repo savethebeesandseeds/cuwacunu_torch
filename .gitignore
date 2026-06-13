@@ -26,6 +26,7 @@
 /src/config/hero_config_mcp
 /src/config/hero_lattice_mcp
 parse_temp.txt
+dump.temp
 out.txt
 diff.patch
 *.log

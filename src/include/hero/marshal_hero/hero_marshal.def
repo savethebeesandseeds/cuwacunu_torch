@@ -14,15 +14,112 @@ HERO_MARSHAL_TOOL(
     "Read-only Marshal health and authority-boundary summary: recent receipts, "
     "policy/advice visibility, refusal state, caller-supplied test surfaces, "
     "and explicit non-executor/non-proof flags.",
-    R"({"type":"object","properties":{"receipt_root":{"type":"string"},"limit":{"type":"integer"},"receipts":{"type":"array","items":{"type":"object"}},"runtime_policy":{"type":"object"},"lattice_advice_surface_available":{"type":"boolean"}},"additionalProperties":false})")
+    R"({"type":"object","properties":{},"additionalProperties":false})")
 
 HERO_MARSHAL_TOOL(
-    "hero.marshal.prepare",
-    "Prepare finite movement for one dispatchable Lattice target. Train/"
-    "evaluate are the current target-movement path; replay uses rollout, "
-    "artifact-readiness routes to inspect, and policy-training is reserved "
-    "until a concrete Runtime contract exists.",
-    R"({"type":"object","properties":{"target_id":{"type":"string"},"intent":{"type":"string"},"config_path":{"type":"string"},"runtime_root":{"type":"string"},"requested_mode":{"type":"string","enum":["plan","dry_run","execute"]},"drive_mode":{"type":"string","enum":["one_step","budgeted"]},"driver_policy":{"type":"object"},"resume_ledger":{"type":"object"},"source_lattice_timestamp":{"type":"string"},"max_waves":{"type":"integer"},"recommendation_attempt_count":{"type":"integer"},"context":{"type":"object"},"protocol_contract_fingerprint":{"type":"string"},"graph_order_fingerprint":{"type":"string"},"source_cursor_token":{"type":"string"},"vicreg_assembly_fingerprint":{"type":"string"},"mdn_assembly_fingerprint":{"type":"string"},"materialize_plan_inputs":{"type":"boolean"},"include_runtime_dry_run":{"type":"boolean"},"include_machine_payload":{"type":"boolean"},"runtime_policy":{"type":"object"},"runtime_wave":{"type":"object"},"timeout_seconds":{"type":"integer"},"ledger_created_at_utc":{"type":"string"},"ledger_nonce":{"type":"string"}},"required":["target_id"],"additionalProperties":false})")
+    "hero.marshal.prepare.train.one_step",
+    "Prepare one finite train-target movement for one dispatchable Lattice "
+    "target. This is the single-step target-movement path; replay uses "
+    "rollout, artifact-readiness routes to inspect, and policy-training is "
+    "reserved until a concrete Runtime contract exists. Target-specific "
+    "payload fields live in args_path.",
+    R"({
+      "type": "object",
+      "properties": {
+        "target_id": {
+          "type": "string"
+        },
+        "mode": {
+          "type": "string",
+          "enum": ["plan", "dry_run", "execute"]
+        },
+        "args_path": {
+          "type": "string"
+        },
+        "args_digest": {
+          "type": "string"
+        }
+      },
+      "required": ["target_id", "mode"],
+      "additionalProperties": false
+    })")
+
+HERO_MARSHAL_TOOL(
+    "hero.marshal.prepare.train.budgeted",
+    "Prepare bounded train-target movement for one dispatchable Lattice "
+    "target using an explicit driver policy from args_path.",
+    R"({
+      "type": "object",
+      "properties": {
+        "target_id": {
+          "type": "string"
+        },
+        "mode": {
+          "type": "string",
+          "enum": ["plan", "dry_run", "execute"]
+        },
+        "args_path": {
+          "type": "string"
+        },
+        "args_digest": {
+          "type": "string"
+        }
+      },
+      "required": ["target_id", "mode"],
+      "additionalProperties": false
+    })")
+
+HERO_MARSHAL_TOOL(
+    "hero.marshal.prepare.evaluate.one_step",
+    "Prepare one finite evaluate-target movement for one dispatchable Lattice "
+    "target. This is the single-step target-movement path; replay uses "
+    "rollout and artifact-readiness routes to inspect. Target-specific "
+    "payload fields live in args_path.",
+    R"({
+      "type": "object",
+      "properties": {
+        "target_id": {
+          "type": "string"
+        },
+        "mode": {
+          "type": "string",
+          "enum": ["plan", "dry_run", "execute"]
+        },
+        "args_path": {
+          "type": "string"
+        },
+        "args_digest": {
+          "type": "string"
+        }
+      },
+      "required": ["target_id", "mode"],
+      "additionalProperties": false
+    })")
+
+HERO_MARSHAL_TOOL(
+    "hero.marshal.prepare.evaluate.budgeted",
+    "Prepare bounded evaluate-target movement for one dispatchable Lattice "
+    "target using an explicit driver policy from args_path.",
+    R"({
+      "type": "object",
+      "properties": {
+        "target_id": {
+          "type": "string"
+        },
+        "mode": {
+          "type": "string",
+          "enum": ["plan", "dry_run", "execute"]
+        },
+        "args_path": {
+          "type": "string"
+        },
+        "args_digest": {
+          "type": "string"
+        }
+      },
+      "required": ["target_id", "mode"],
+      "additionalProperties": false
+    })")
 
 HERO_MARSHAL_TOOL(
     "hero.marshal.rollout",
@@ -30,15 +127,126 @@ HERO_MARSHAL_TOOL(
     "completed Runtime job: policy set plus Cajtucu paper execution profile "
     "becomes Runtime replay trajectory evidence. Accounting numeraire defaults "
     "from [ACCOUNTING].accounting_numeraire_node_id in .config. Runtime "
-    "executes and writes reports; Marshal records the handoff.",
-    R"({"type":"object","properties":{"rollout_id":{"type":"string"},"rollout_attempt_id":{"type":"string"},"idempotency_key":{"type":"string"},"experiment_id":{"type":"string"},"config_path":{"type":"string"},"runtime_job_dir":{"type":"string"},"replay_batch_index_path":{"type":"string"},"runtime_exec_path":{"type":"string"},"report_path":{"type":"string"},"requested_mode":{"type":"string","enum":["plan","execute"]},"environment_mode":{"type":"string"},"environment_assembly_id":{"type":"string"},"graph_order_fingerprint":{"type":"string"},"asset_universe_digest":{"type":"string"},"accounting_numeraire_node_id":{"type":"string"},"target_node_ids":{"type":"array","items":{"type":"string"}},"policy_set":{"type":"array","items":{"type":"string"}},"max_steps":{"type":"integer"},"max_parallel_jobs":{"type":"integer"},"execution_profile":{"type":"object","properties":{"execution_backend_id":{"type":"string"},"cost_model_id":{"type":"string"},"allow_synthetic_direct_edges":{"type":"boolean"},"synthetic_edge_research_reason":{"type":"string"},"linear_transaction_cost_rate":{"type":"number"},"allow_partial_fills":{"type":"boolean"},"equity_mismatch_tolerance":{"type":"number"},"equity_mismatch_fail_tolerance":{"type":"number"},"live_execution_allowed":{"type":"boolean"}},"additionalProperties":false},"timeout_seconds":{"type":"integer"},"require_existing_runtime_job_dir":{"type":"boolean"},"require_completed_runtime_job":{"type":"boolean"},"require_replay_artifacts":{"type":"boolean"},"include_machine_payload":{"type":"boolean"}},"required":["rollout_id","rollout_attempt_id","idempotency_key","runtime_job_dir","replay_batch_index_path","requested_mode","graph_order_fingerprint","asset_universe_digest","target_node_ids","policy_set","max_steps"],"additionalProperties":false})")
+    "executes and writes reports; Marshal records the handoff. Rollout packet "
+    "fields live in args_path.",
+    R"({
+      "type": "object",
+      "required": ["mode", "args_path"],
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": ["plan", "execute"]
+        },
+        "args_path": {
+          "type": "string"
+        },
+        "args_digest": {
+          "type": "string"
+        },
+        "include_machine_payload": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    })")
 
 HERO_MARSHAL_TOOL(
-    "hero.marshal.inspect",
-    "Read-only evidence inspection. Subjects run, target, protocol, spawn, "
-    "component, and facts explain Runtime/Lattice/Marshal state without "
-    "execution, proof claims, checkpoint selection, policy selection, or "
-    "writes.",
-    R"({"type":"object","properties":{"subject":{"type":"string","enum":["run","target","protocol","spawn","component","facts"]},"mode":{"type":"string"},"identity_mode":{"type":"string","enum":["report","strict"]},"runtime_root":{"type":"string"},"config_path":{"type":"string"},"target_id":{"type":"string"},"job_id":{"type":"string"},"job_ids":{"type":"array","items":{"type":"string"}},"target_ids":{"type":"array","items":{"type":"string"}},"baseline_job_id":{"type":"string"},"candidate_job_id":{"type":"string"},"component_family_id":{"type":"string"},"spawn_id":{"type":"string"},"component_spawn_id":{"type":"string"},"component_spawn_registry_id":{"type":"string"},"component_spawn_label":{"type":"string"},"component_spawn_fingerprint":{"type":"string"},"fact_family_id":{"type":"string"},"limit":{"type":"integer"},"include_facts":{"type":"boolean"},"include_lineage":{"type":"boolean"},"include_preview":{"type":"boolean"},"fact_digest":{"type":"string"},"fact_digest_prefix":{"type":"string"},"fact_index":{"type":"integer"},"include_machine_payload":{"type":"boolean"},"protocol_contract_fingerprint":{"type":"string"},"graph_order_fingerprint":{"type":"string"},"source_cursor_token":{"type":"string"},"vicreg_assembly_fingerprint":{"type":"string"},"mdn_assembly_fingerprint":{"type":"string"}},"required":["subject"],"additionalProperties":false})")
+    "hero.marshal.inspect.run.latest_chain",
+    "Read-only Runtime latest-chain operator inspection.",
+    R"({"type":"object","properties":{"runtime_root":{"type":"string"},"config_path":{"type":"string"},"job_ids":{"type":"array","items":{"type":"string"}},"target_ids":{"type":"array","items":{"type":"string"}},"include_machine_payload":{"type":"boolean"}},"additionalProperties":false})")
+
+HERO_MARSHAL_TOOL(
+    "hero.marshal.inspect.run.training_state",
+    "Read-only Runtime training-state operator inspection.",
+    R"({"type":"object","properties":{"runtime_root":{"type":"string"},"config_path":{"type":"string"},"job_ids":{"type":"array","items":{"type":"string"}},"target_ids":{"type":"array","items":{"type":"string"}},"include_machine_payload":{"type":"boolean"}},"additionalProperties":false})")
+
+HERO_MARSHAL_TOOL(
+    "hero.marshal.inspect.run.single_job",
+    "Read-only Runtime single-job operator inspection.",
+    R"({"type":"object","required":["job_id"],"properties":{"job_id":{"type":"string"},"runtime_root":{"type":"string"},"config_path":{"type":"string"},"target_ids":{"type":"array","items":{"type":"string"}},"include_machine_payload":{"type":"boolean"}},"additionalProperties":false})")
+
+HERO_MARSHAL_TOOL(
+    "hero.marshal.inspect.run.compare",
+    "Read-only Runtime run comparison inspection.",
+    R"({"type":"object","required":["baseline_job_id","candidate_job_id"],"properties":{"baseline_job_id":{"type":"string"},"candidate_job_id":{"type":"string"},"runtime_root":{"type":"string"},"config_path":{"type":"string"},"include_machine_payload":{"type":"boolean"}},"additionalProperties":false})")
+
+HERO_MARSHAL_TOOL(
+    "hero.marshal.inspect.target",
+    "Read-only Lattice target proof/deficit context inspection.",
+    R"({"type":"object","required":["target_id"],"properties":{"target_id":{"type":"string"},"runtime_root":{"type":"string"},"config_path":{"type":"string"},"include_machine_payload":{"type":"boolean"}},"additionalProperties":false})")
+
+HERO_MARSHAL_TOOL(
+    "hero.marshal.inspect.protocol.report",
+    "Read-only protocol identity report over Runtime evidence.",
+    R"({"type":"object","properties":{"runtime_root":{"type":"string"},"config_path":{"type":"string"},"job_id":{"type":"string"},"job_ids":{"type":"array","items":{"type":"string"}},"include_machine_payload":{"type":"boolean"}},"additionalProperties":false})")
+
+HERO_MARSHAL_TOOL(
+    "hero.marshal.inspect.protocol.strict",
+    "Read-only strict protocol identity inspection over Runtime evidence.",
+    R"({"type":"object","required":["protocol_contract_fingerprint","graph_order_fingerprint","source_cursor_token","vicreg_assembly_fingerprint","mdn_assembly_fingerprint"],"properties":{"runtime_root":{"type":"string"},"config_path":{"type":"string"},"job_id":{"type":"string"},"job_ids":{"type":"array","items":{"type":"string"}},"include_machine_payload":{"type":"boolean"},"protocol_contract_fingerprint":{"type":"string"},"graph_order_fingerprint":{"type":"string"},"source_cursor_token":{"type":"string"},"vicreg_assembly_fingerprint":{"type":"string"},"mdn_assembly_fingerprint":{"type":"string"}},"additionalProperties":false})")
+
+HERO_MARSHAL_TOOL(
+    "hero.marshal.inspect.spawn.by_id",
+    "Read-only component-spawn inspection by component_spawn_id over Runtime "
+    "evidence.",
+    R"({"type":"object","required":["component_spawn_id"],"properties":{"component_spawn_id":{"type":"string"},"runtime_root":{"type":"string"},"config_path":{"type":"string"},"include_machine_payload":{"type":"boolean"}},"additionalProperties":false})")
+
+HERO_MARSHAL_TOOL(
+    "hero.marshal.inspect.spawn.by_label",
+    "Read-only component-spawn inspection by component_spawn_label over "
+    "Runtime evidence.",
+    R"({"type":"object","required":["component_spawn_label"],"properties":{"component_spawn_label":{"type":"string"},"runtime_root":{"type":"string"},"config_path":{"type":"string"},"include_machine_payload":{"type":"boolean"}},"additionalProperties":false})")
+
+HERO_MARSHAL_TOOL(
+    "hero.marshal.inspect.spawn.by_registry",
+    "Read-only component-spawn inspection by component_spawn_registry_id over "
+    "Runtime evidence.",
+    R"({"type":"object","required":["component_spawn_registry_id"],"properties":{"component_spawn_registry_id":{"type":"string"},"runtime_root":{"type":"string"},"config_path":{"type":"string"},"include_machine_payload":{"type":"boolean"}},"additionalProperties":false})")
+
+HERO_MARSHAL_TOOL(
+    "hero.marshal.inspect.spawn.by_fingerprint",
+    "Read-only component-spawn inspection by component_spawn_fingerprint over "
+    "Runtime evidence.",
+    R"({"type":"object","required":["component_spawn_fingerprint"],"properties":{"component_spawn_fingerprint":{"type":"string"},"runtime_root":{"type":"string"},"config_path":{"type":"string"},"include_machine_payload":{"type":"boolean"}},"additionalProperties":false})")
+
+HERO_MARSHAL_TOOL(
+    "hero.marshal.inspect.spawn.by_job",
+    "Read-only component-spawn inspection for one Runtime job.",
+    R"({"type":"object","required":["job_id"],"properties":{"job_id":{"type":"string"},"runtime_root":{"type":"string"},"config_path":{"type":"string"},"include_machine_payload":{"type":"boolean"}},"additionalProperties":false})")
+
+HERO_MARSHAL_TOOL(
+    "hero.marshal.inspect.component",
+    "Read-only component family/status inspection over Runtime evidence.",
+    R"({"type":"object","required":["component_family_id"],"properties":{"component_family_id":{"type":"string"},"runtime_root":{"type":"string"},"config_path":{"type":"string"},"job_id":{"type":"string"},"job_ids":{"type":"array","items":{"type":"string"}},"include_machine_payload":{"type":"boolean"}},"additionalProperties":false})")
+
+HERO_MARSHAL_TOOL(
+    "hero.marshal.inspect.facts.summary",
+    "Read-only fact-family summary panel inspection.",
+    R"({"type":"object","properties":{"target_id":{"type":"string"},"fact_family_id":{"type":"string"},"config_path":{"type":"string"},"runtime_root":{"type":"string"},"limit":{"type":"integer"},"include_facts":{"type":"boolean"},"include_lineage":{"type":"boolean"},"include_machine_payload":{"type":"boolean"}},"additionalProperties":false})")
+
+HERO_MARSHAL_TOOL(
+    "hero.marshal.inspect.facts.lineage",
+    "Read-only fact-family lineage panel inspection.",
+    R"({"type":"object","properties":{"target_id":{"type":"string"},"fact_family_id":{"type":"string"},"config_path":{"type":"string"},"runtime_root":{"type":"string"},"limit":{"type":"integer"},"include_machine_payload":{"type":"boolean"}},"additionalProperties":false})")
+
+HERO_MARSHAL_TOOL(
+    "hero.marshal.inspect.facts.preview",
+    "Read-only fact-family preview panel inspection.",
+    R"({"type":"object","properties":{"target_id":{"type":"string"},"fact_family_id":{"type":"string"},"config_path":{"type":"string"},"runtime_root":{"type":"string"},"limit":{"type":"integer"},"include_lineage":{"type":"boolean"},"include_machine_payload":{"type":"boolean"}},"additionalProperties":false})")
+
+HERO_MARSHAL_TOOL(
+    "hero.marshal.inspect.facts.preview.by_digest",
+    "Read-only fact-family preview panel inspection by exact digest.",
+    R"({"type":"object","required":["fact_digest"],"properties":{"target_id":{"type":"string"},"fact_family_id":{"type":"string"},"config_path":{"type":"string"},"runtime_root":{"type":"string"},"limit":{"type":"integer"},"include_lineage":{"type":"boolean"},"fact_digest":{"type":"string"},"include_machine_payload":{"type":"boolean"}},"additionalProperties":false})")
+
+HERO_MARSHAL_TOOL(
+    "hero.marshal.inspect.facts.preview.by_digest_prefix",
+    "Read-only fact-family preview panel inspection by unique digest prefix.",
+    R"({"type":"object","required":["fact_digest_prefix"],"properties":{"target_id":{"type":"string"},"fact_family_id":{"type":"string"},"config_path":{"type":"string"},"runtime_root":{"type":"string"},"limit":{"type":"integer"},"include_lineage":{"type":"boolean"},"fact_digest_prefix":{"type":"string"},"include_machine_payload":{"type":"boolean"}},"additionalProperties":false})")
+
+HERO_MARSHAL_TOOL(
+    "hero.marshal.inspect.facts.preview.by_index",
+    "Read-only fact-family preview panel inspection by family-local row index.",
+    R"({"type":"object","required":["fact_index"],"properties":{"target_id":{"type":"string"},"fact_family_id":{"type":"string"},"config_path":{"type":"string"},"runtime_root":{"type":"string"},"limit":{"type":"integer"},"include_lineage":{"type":"boolean"},"fact_index":{"type":"integer"},"include_machine_payload":{"type":"boolean"}},"additionalProperties":false})")
 
 #undef HERO_MARSHAL_TOOL

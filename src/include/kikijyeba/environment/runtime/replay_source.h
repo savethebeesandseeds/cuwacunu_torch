@@ -437,12 +437,13 @@ make_runtime_replay_forecast_record_from_observer_build(
     const belief::allocation_belief_build_result_t &build_result,
     std::optional<std::int64_t> observation_anchor_index = std::nullopt,
     artifact_ref_t mdn_artifact = {}, std::string model_version = {},
-    std::string target_coords_hash = {}, std::string normalization_hash = {},
+    std::string target_coords_fingerprint = {},
+    std::string normalization_fingerprint = {},
     std::filesystem::path forecast_artifact_path = {}) {
   auto artifact = forecast::make_from_allocation_belief_and_projection(
       build_result.allocation_belief, build_result.return_projection,
-      std::move(model_version), std::move(target_coords_hash),
-      std::move(normalization_hash), &build_result.scenario_bank);
+      std::move(model_version), std::move(target_coords_fingerprint),
+      std::move(normalization_fingerprint), &build_result.scenario_bank);
   return {
       .forecast_artifact = std::move(artifact),
       .observation_anchor_index = observation_anchor_index,
@@ -459,7 +460,8 @@ make_runtime_replay_forecast_records_from_mdn_batch(
         &batch,
     belief::allocation_belief_builder_options_t common_options,
     artifact_ref_t mdn_artifact = {}, std::string model_version = {},
-    std::string target_coords_hash = {}, std::string normalization_hash = {}) {
+    std::string target_coords_fingerprint = {},
+    std::string normalization_fingerprint = {}) {
   static_assert(std::is_integral_v<KeyT>,
                 "Runtime replay MDN batch records require integral keys");
   const auto cpu_out = replay_runtime_detail::mdn_out_to_cpu(out);
@@ -509,8 +511,8 @@ make_runtime_replay_forecast_records_from_mdn_batch(
     common_options.channel_mask =
         batch.context_mask.detach().to(torch::kCPU).to(torch::kBool);
   }
-  if (target_coords_hash.empty()) {
-    target_coords_hash =
+  if (target_coords_fingerprint.empty()) {
+    target_coords_fingerprint =
         replay_runtime_detail::target_coords_fingerprint(batch.target_coords);
   }
 
@@ -536,7 +538,7 @@ make_runtime_replay_forecast_records_from_mdn_batch(
     }
     records.push_back(make_runtime_replay_forecast_record_from_observer_build(
         build_result, observation_anchor_index, mdn_artifact, model_version,
-        target_coords_hash, normalization_hash));
+        target_coords_fingerprint, normalization_fingerprint));
   }
   return records;
 }
@@ -1056,7 +1058,8 @@ write_runtime_graph_anchor_replay_artifacts_from_mdn_batch(
         channel_representation_batch_t<KeyT> &representation_batch,
     belief::allocation_belief_builder_options_t common_options,
     artifact_ref_t mdn_artifact = {}, std::string model_version = {},
-    std::string target_coords_hash = {}, std::string normalization_hash = {}) {
+    std::string target_coords_fingerprint = {},
+    std::string normalization_fingerprint = {}) {
   static_assert(std::is_integral_v<KeyT>,
                 "Runtime replay MDN writer requires integral keys");
   replay_runtime_detail::require_same_if_present(
@@ -1087,8 +1090,8 @@ write_runtime_graph_anchor_replay_artifacts_from_mdn_batch(
       representation_batch);
   auto forecast_records = make_runtime_replay_forecast_records_from_mdn_batch(
       out, mdn_batch, std::move(common_options), std::move(mdn_artifact),
-      std::move(model_version), std::move(target_coords_hash),
-      std::move(normalization_hash));
+      std::move(model_version), std::move(target_coords_fingerprint),
+      std::move(normalization_fingerprint));
   return write_runtime_graph_anchor_replay_artifacts(job_dir, edge_batch,
                                                      forecast_records);
 }
@@ -1104,7 +1107,8 @@ write_runtime_graph_anchor_replay_artifacts_from_mdn_batch_for_pulse(
         channel_representation_batch_t<KeyT> &representation_batch,
     belief::allocation_belief_builder_options_t common_options,
     artifact_ref_t mdn_artifact = {}, std::string model_version = {},
-    std::string target_coords_hash = {}, std::string normalization_hash = {}) {
+    std::string target_coords_fingerprint = {},
+    std::string normalization_fingerprint = {}) {
   auto edge_batch = make_runtime_replay_edge_batch_from_channel_representation(
       representation_batch);
   const auto cursor_token = edge_batch.cursor.cursor_token();
@@ -1113,8 +1117,8 @@ write_runtime_graph_anchor_replay_artifacts_from_mdn_batch_for_pulse(
   const auto paths = default_runtime_replay_artifact_paths_for_dir(pulse_dir);
   auto forecast_records = make_runtime_replay_forecast_records_from_mdn_batch(
       out, mdn_batch, std::move(common_options), std::move(mdn_artifact),
-      std::move(model_version), std::move(target_coords_hash),
-      std::move(normalization_hash));
+      std::move(model_version), std::move(target_coords_fingerprint),
+      std::move(normalization_fingerprint));
   const auto written_paths =
       write_runtime_graph_anchor_replay_artifacts_to_paths(
           pulse_dir / "runtime_replay_artifacts.index", paths, edge_batch,
@@ -1293,6 +1297,8 @@ job_manifest_from_runtime_kv(
   out.component_family_id = layout::map_get(kv, "component_family_id");
   out.component_spawn_fingerprint =
       layout::map_get(kv, "component_spawn_fingerprint");
+  out.component_operator_surface_digest =
+      layout::map_get(kv, "component_operator_surface_digest");
   out.component_spawn_id = layout::map_get(kv, "component_spawn_id");
   out.component_spawn_label = layout::map_get(kv, "component_spawn_label");
   out.protocol_id = layout::map_get(kv, "protocol_id");

@@ -75,6 +75,16 @@ bool has_deficit_key(
                      [&](const auto &deficit) { return deficit.key == key; });
 }
 
+bool has_deficit_message_containing(
+    const std::vector<target::lattice_target_evaluation_t::proof_deficit_t>
+        &deficits,
+    const std::string &needle) {
+  return std::any_of(deficits.begin(), deficits.end(),
+                     [&](const auto &deficit) {
+                       return deficit.message.find(needle) != std::string::npos;
+                     });
+}
+
 bool deficit_has_related_fact_integrity_issue_code(
     const std::vector<target::lattice_target_evaluation_t::proof_deficit_t>
         &deficits,
@@ -1034,7 +1044,8 @@ exposure::lattice_exposure_ledger_t artifact_readiness_ledger(
   policy_training.component_assembly_fingerprint =
       parent.component_assembly_fingerprint;
   policy_training.target_component_family_id =
-      policy_training_component_is_policy ? "wikimyei.policy.trainable"
+      policy_training_component_is_policy
+          ? "wikimyei.policy.portfolio.graph_node_allocation"
                                           : parent.target_component_family_id;
   policy_training.job_id = parent.job_id;
   policy_training.wave_id = parent.wave_id;
@@ -1073,8 +1084,12 @@ exposure::lattice_exposure_ledger_t artifact_readiness_ledger(
       "wikimyei.policy.portfolio.graph_node_allocation";
   policy_training.policy_checkpoint_schema_id =
       "wikimyei.policy.portfolio.graph_node_allocation.ppo_checkpoint.v1";
+  policy_training.policy_dsl_digest = "policy_dsl_digest_1";
+  policy_training.policy_net_digest = "policy_net_digest_1";
   policy_training.policy_input_feature_manifest_digest =
       "policy_input_manifest_digest_1";
+  policy_training.policy_jkimyei_digest = "policy_jkimyei_digest_1";
+  policy_training.target_node_universe_digest = "target_node_universe_digest_1";
   policy_training.action_distribution_config_digest =
       "action_distribution_config_digest_1";
   policy_training.snapshot_family_digest = "snapshot_family_digest_1";
@@ -1085,7 +1100,25 @@ exposure::lattice_exposure_ledger_t artifact_readiness_ledger(
   policy_training.actor_checkpoint_digest = "actor_checkpoint_digest_1";
   policy_training.critic_checkpoint_digest = "critic_checkpoint_digest_1";
   policy_training.optimizer_state_digest = "optimizer_state_digest_1";
+  policy_training.optimizer_state_schema_id =
+      "kikijyeba.runtime.ppo_optimizer_state.v1";
+  policy_training.optimizer_torch_state_path = "ppo_v0_optimizer_state.pt";
+  policy_training.optimizer_torch_state_digest =
+      "optimizer_torch_state_digest_1";
   policy_training.ppo_config_digest = "ppo_config_digest_1";
+  policy_training.device_policy = "require_cuda";
+  policy_training.runtime_device_kind = "cuda";
+  policy_training.cuda_device_index = 0;
+  policy_training.cuda_device_index_bound = true;
+  policy_training.cuda_available = true;
+  policy_training.module_parameters_on_cuda = true;
+  policy_training.forward_input_on_cuda = true;
+  policy_training.loss_on_cuda = true;
+  policy_training.optimizer_state_on_cuda = true;
+  policy_training.cuda_verification_passed = true;
+  policy_training.resume_mode = "fresh_spawn";
+  policy_training.resume_parent_loaded = false;
+  policy_training.optimizer_state_resume_loaded = false;
   policy_training.advantage_estimator_id = "gae.v1";
   policy_training.advantage_normalization_policy = "per_rollout_standardize_v1";
   policy_training.rollout_collection_schema_id =
@@ -1096,6 +1129,8 @@ exposure::lattice_exposure_ledger_t artifact_readiness_ledger(
   policy_training.ppo_update_report_digest = "ppo_update_report_digest_1";
   policy_training.validation_rollout_report_digest =
       "validation_rollout_report_digest_1";
+  policy_training.policy_quality_report_digest =
+      "policy_quality_report_digest_1";
   policy_training.ppo_gamma = 0.99;
   policy_training.ppo_gae_lambda = 0.95;
   policy_training.ppo_clip_epsilon = 0.2;
@@ -1158,6 +1193,220 @@ exposure::lattice_exposure_ledger_t artifact_readiness_ledger(
   policy_training.offline_full_window_research = false;
   ledger.add_policy_training(policy_training);
 
+  return ledger;
+}
+
+exposure::lattice_tsodao_settings_protection_fact_t
+make_tsodao_settings_protection_fact_from_policy_training(
+    const exposure::lattice_policy_training_fact_t &policy_training) {
+  exposure::lattice_tsodao_settings_protection_fact_t protection{};
+  protection.parent_exposure_fact_digest =
+      policy_training.parent_exposure_fact_digest;
+  protection.contract_fingerprint = policy_training.contract_fingerprint;
+  protection.protocol_id = policy_training.protocol_id;
+  protection.graph_order_fingerprint = policy_training.graph_order_fingerprint;
+  protection.source_cursor_token = policy_training.source_cursor_token;
+  protection.split_policy_fingerprint =
+      policy_training.split_policy_fingerprint;
+  protection.component_assembly_fingerprint =
+      policy_training.component_assembly_fingerprint;
+  protection.target_component_family_id = "tsodao.settings_protection";
+  protection.job_id = policy_training.job_id;
+  protection.wave_id = policy_training.wave_id;
+  protection.job_status = policy_training.job_status;
+  protection.wave_action = policy_training.wave_action;
+  protection.split_name = policy_training.split_name;
+  protection.split_role = policy_training.split_role;
+  protection.anchor_range = policy_training.anchor_range;
+  protection.completed_anchor_range = policy_training.completed_anchor_range;
+  protection.protection_id = "tsodao_policy_settings_protection_1";
+  protection.protection_contract_id = "tsodao_settings_protection_contract.v1";
+  protection.protected_settings_bundle_digest =
+      "protected_policy_settings_bundle_digest_1";
+  protection.protected_policy_training_fact_digest =
+      exposure::policy_training_fact_digest(policy_training);
+  protection.protected_policy_training_target_id =
+      "policy_training_artifact_ready";
+  protection.protected_policy_training_proof_certificate_digest =
+      "policy_training_ready_certificate_digest_1";
+  protection.policy_id = policy_training.policy_id;
+  protection.policy_kind = policy_training.policy_kind;
+  protection.policy_family_id = policy_training.policy_family_id;
+  protection.policy_checkpoint_schema_id =
+      policy_training.policy_checkpoint_schema_id;
+  protection.policy_input_schema_id = policy_training.policy_input_schema_id;
+  protection.policy_input_feature_manifest_digest =
+      policy_training.policy_input_feature_manifest_digest;
+  protection.graph_node_action_universe_digest =
+      policy_training.graph_order_fingerprint;
+  protection.action_schema_digest = policy_training.action_schema_digest;
+  protection.action_adapter_id = policy_training.action_adapter_id;
+  protection.action_distribution_id = policy_training.action_distribution_id;
+  protection.action_distribution_config_digest =
+      policy_training.action_distribution_config_digest;
+  protection.reward_contract_id = policy_training.reward_contract_id;
+  protection.reward_contract_digest = policy_training.reward_contract_digest;
+  protection.environment_contract_id = policy_training.environment_contract_id;
+  protection.execution_profile_digest =
+      policy_training.execution_profile_digest;
+  protection.accounting_numeraire_node_id = "USD_CASH";
+  protection.causal_schedule_schema_id =
+      policy_training.causal_schedule_schema_id;
+  protection.causal_schedule_digest = policy_training.causal_schedule_digest;
+  protection.snapshot_family_digest = policy_training.snapshot_family_digest;
+  protection.training_config_digest = policy_training.training_config_digest;
+  protection.ppo_config_digest = policy_training.ppo_config_digest;
+  protection.actor_architecture_digest =
+      policy_training.actor_architecture_digest;
+  protection.critic_architecture_digest =
+      policy_training.critic_architecture_digest;
+  protection.optimizer_state_schema_id =
+      policy_training.optimizer_state_schema_id;
+  protection.optimizer_state_digest = policy_training.optimizer_state_digest;
+  protection.optimizer_torch_state_digest =
+      policy_training.optimizer_torch_state_digest;
+  protection.resume_mode = policy_training.resume_mode;
+  protection.validation_rollout_report_digest =
+      policy_training.validation_rollout_report_digest;
+  protection.policy_quality_report_digest =
+      policy_training.policy_quality_report_digest;
+  protection.protected_settings_match_policy_training_fact = true;
+  protection.protected_evidence_digests_bound = true;
+  protection.protected_policy_training_ready = true;
+  return protection;
+}
+
+exposure::lattice_policy_acceptance_fact_t
+make_policy_acceptance_fact_from_policy_training_and_tsodao(
+    const exposure::lattice_policy_training_fact_t &policy_training,
+    const exposure::lattice_tsodao_settings_protection_fact_t &protection) {
+  exposure::lattice_policy_acceptance_fact_t acceptance{};
+  acceptance.parent_exposure_fact_digest =
+      policy_training.parent_exposure_fact_digest;
+  acceptance.contract_fingerprint = policy_training.contract_fingerprint;
+  acceptance.protocol_id = policy_training.protocol_id;
+  acceptance.graph_order_fingerprint = policy_training.graph_order_fingerprint;
+  acceptance.source_cursor_token = policy_training.source_cursor_token;
+  acceptance.split_policy_fingerprint =
+      policy_training.split_policy_fingerprint;
+  acceptance.component_assembly_fingerprint =
+      policy_training.component_assembly_fingerprint;
+  acceptance.target_component_family_id = "tsodao.policy_acceptance";
+  acceptance.job_id = policy_training.job_id;
+  acceptance.wave_id = policy_training.wave_id;
+  acceptance.job_status = policy_training.job_status;
+  acceptance.wave_action = policy_training.wave_action;
+  acceptance.split_name = policy_training.split_name;
+  acceptance.split_role = policy_training.split_role;
+  acceptance.anchor_range = policy_training.anchor_range;
+  acceptance.completed_anchor_range = policy_training.completed_anchor_range;
+  acceptance.acceptance_id = "policy_acceptance_v1_smoke";
+  acceptance.acceptance_contract_id = "policy_acceptance_contract.v1";
+  acceptance.acceptance_policy_digest =
+      exposure::policy_acceptance_governance_thresholds_v0_digest();
+  acceptance.accepted_policy_training_fact_digest =
+      exposure::policy_training_fact_digest(policy_training);
+  acceptance.accepted_policy_training_target_id =
+      "policy_training_artifact_ready";
+  acceptance.accepted_policy_training_proof_certificate_digest =
+      "policy_training_ready_certificate_digest_1";
+  acceptance.tsodao_settings_protection_fact_digest =
+      exposure::tsodao_settings_protection_fact_digest(protection);
+  acceptance.tsodao_settings_protection_target_id =
+      "tsodao_settings_protection_ready";
+  acceptance.tsodao_settings_protection_proof_certificate_digest =
+      "tsodao_ready_certificate_digest_1";
+  acceptance.protected_settings_bundle_digest =
+      protection.protected_settings_bundle_digest;
+  acceptance.accepted_policy_id = policy_training.policy_id;
+  acceptance.accepted_policy_kind = policy_training.policy_kind;
+  acceptance.accepted_policy_family_id = policy_training.policy_family_id;
+  acceptance.accepted_actor_checkpoint_digest =
+      policy_training.actor_checkpoint_digest;
+  acceptance.accepted_checkpoint_digest = policy_training.checkpoint_digest;
+  acceptance.policy_quality_report_digest =
+      policy_training.policy_quality_report_digest;
+  acceptance.validation_rollout_report_digest =
+      policy_training.validation_rollout_report_digest;
+  acceptance.reward_contract_id = policy_training.reward_contract_id;
+  acceptance.execution_profile_digest =
+      policy_training.execution_profile_digest;
+  acceptance.accounting_numeraire_node_id =
+      protection.accounting_numeraire_node_id;
+  acceptance.mandatory_baseline_set_digest =
+      exposure::policy_acceptance_governance_v0_mandatory_baseline_set_digest();
+  acceptance.mandatory_baselines =
+      exposure::policy_acceptance_governance_v0_mandatory_baselines();
+  acceptance.primary_metric_id = "after_cost_total_log_growth_delta";
+  acceptance.primary_metric_value = 0.12;
+  acceptance.primary_metric_threshold = 0.0;
+  acceptance.primary_metric_direction = "at_or_above";
+  acceptance.after_cost_metric_set_digest =
+      exposure::policy_acceptance_governance_v0_after_cost_metric_set_digest();
+  acceptance.cost_slippage_assumption_digest = exposure::
+      policy_acceptance_governance_v0_cost_slippage_assumption_digest();
+  acceptance.uncertainty_policy = "block_bootstrap_required";
+  acceptance.uncertainty_model = "validation_block_bootstrap_v1";
+  acceptance.selector_split = "validation";
+  acceptance.validation_split = "validation_holdout";
+  acceptance.test_split = "sealed_test";
+  acceptance.sealed_test_policy = "sealed_until_acceptance";
+  acceptance.tie_policy = "reject_ties";
+  acceptance.negative_tests_digest =
+      exposure::policy_acceptance_governance_v0_negative_tests_digest();
+  acceptance.threshold_selection_audit_digest = exposure::
+      policy_acceptance_governance_v0_threshold_selection_audit_digest();
+  acceptance.promotion_criteria_digest =
+      exposure::policy_acceptance_governance_v0_promotion_criteria_digest();
+  acceptance.accepted_policy_training_ready = true;
+  acceptance.tsodao_settings_protection_ready = true;
+  acceptance.protected_settings_bound = true;
+  acceptance.mandatory_baselines_bound = true;
+  acceptance.mandatory_baselines_passed = true;
+  acceptance.after_cost_metrics_bound = true;
+  acceptance.primary_metric_passed = true;
+  acceptance.uncertainty_policy_bound = true;
+  acceptance.uncertainty_passed = true;
+  acceptance.selector_split_bound = true;
+  acceptance.validation_test_disjoint = true;
+  acceptance.test_sealed_until_acceptance = true;
+  acceptance.negative_tests_bound = true;
+  acceptance.negative_tests_passed = true;
+  acceptance.leakage_negative_tests_passed = true;
+  acceptance.threshold_selection_audit_bound = true;
+  acceptance.threshold_selected_before_test = true;
+  acceptance.tie_policy_bound = true;
+  acceptance.tie_policy_passed = true;
+  acceptance.cost_slippage_assumptions_bound = true;
+  acceptance.promotion_criteria_bound = true;
+  acceptance.promotion_criteria_satisfied = true;
+  acceptance.policy_acceptance_decision = true;
+  return acceptance;
+}
+
+exposure::lattice_exposure_ledger_t artifact_readiness_ledger_with_tsodao() {
+  auto ledger = artifact_readiness_ledger();
+  check(!ledger.policy_training_facts().empty(),
+        "tsodao fixture requires a policy-training parent fact");
+  ledger.add_tsodao_settings_protection(
+      make_tsodao_settings_protection_fact_from_policy_training(
+          ledger.policy_training_facts().front()));
+  return ledger;
+}
+
+exposure::lattice_exposure_ledger_t
+artifact_readiness_ledger_with_policy_acceptance() {
+  auto ledger = artifact_readiness_ledger();
+  check(!ledger.policy_training_facts().empty(),
+        "policy acceptance fixture requires a policy-training parent fact");
+  const auto protection =
+      make_tsodao_settings_protection_fact_from_policy_training(
+          ledger.policy_training_facts().front());
+  const auto acceptance =
+      make_policy_acceptance_fact_from_policy_training_and_tsodao(
+          ledger.policy_training_facts().front(), protection);
+  ledger.add_tsodao_settings_protection(protection);
+  ledger.add_policy_acceptance(acceptance);
   return ledger;
 }
 
@@ -1539,7 +1788,8 @@ LATTICE_TARGET {
             active_policy_training.proof_kind ==
                 "policy_training_artifact_bound" &&
             active_policy_training.protocol_id == "cwu_02v" &&
-            active_policy_training.component == "wikimyei.policy.trainable" &&
+            active_policy_training.component ==
+                "wikimyei.policy.portfolio.graph_node_allocation" &&
             active_policy_training.train_split == "validation_holdout" &&
             active_policy_training.checkpoint_source == "none" &&
             active_policy_training.plan_mode == "none" &&
@@ -1549,7 +1799,7 @@ LATTICE_TARGET {
         "artifact proofs, not TARGET_KIND expansion");
   const auto &artifact_proof_templates =
       target::lattice_artifact_readiness_proof_templates();
-  check(artifact_proof_templates.size() == 7 &&
+  check(artifact_proof_templates.size() == 10 &&
             target::artifact_readiness_proof_template_for_subject_fact_family(
                 "forecast_eval") != nullptr &&
             target::artifact_readiness_proof_template_for_subject_fact_family(
@@ -1565,6 +1815,22 @@ LATTICE_TARGET {
             target::artifact_readiness_proof_template_for_subject_fact_family(
                 "policy_training")
                     ->proof_kind == "policy_training_artifact_bound" &&
+            target::artifact_readiness_proof_template_for_subject_fact_family(
+                "tsodao_settings_protection") != nullptr &&
+            target::artifact_readiness_proof_template_for_subject_fact_family(
+                "tsodao_settings_protection")
+                    ->proof_kind ==
+                "tsodao_settings_protection_artifact_bound" &&
+            target::artifact_readiness_proof_template_for_subject_fact_family(
+                "policy_acceptance") != nullptr &&
+            target::artifact_readiness_proof_template_for_subject_fact_family(
+                "policy_acceptance")
+                    ->proof_kind == "policy_acceptance_contract_bound" &&
+            target::artifact_readiness_proof_template_for_subject_fact_family(
+                "paper_online_readiness") != nullptr &&
+            target::artifact_readiness_proof_template_for_subject_fact_family(
+                "paper_online_readiness")
+                    ->proof_kind == "paper_online_readiness_contract_bound" &&
             target::artifact_readiness_proof_template_for_subject_fact_family(
                 "source_analytics") == nullptr &&
             target::artifact_readiness_proof_template_for_subject_fact_family(
@@ -1739,6 +2005,32 @@ LATTICE_TARGET {
   REQUIRE_CONTRACT_MATCH = true;
 };
 
+LATTICE_TARGET {
+  TARGET_ID = tsodao_settings_protection_ready;
+  TARGET_CLASS = artifact_readiness;
+  PROOF_KIND = tsodao_settings_protection_artifact_bound;
+  SUBJECT_FACT_FAMILY = tsodao_settings_protection;
+  SUBJECT_COMPONENT = tsodao.settings_protection;
+  PROTOCOL_ID = cwu_02v;
+  SOURCE_RANGE = anchor_index;
+  ANCHOR_INDEX_BEGIN = 0;
+  ANCHOR_INDEX_END = 10;
+  REQUIRE_CONTRACT_MATCH = true;
+};
+
+LATTICE_TARGET {
+  TARGET_ID = policy_acceptance_contract_ready;
+  TARGET_CLASS = artifact_readiness;
+  PROOF_KIND = policy_acceptance_contract_bound;
+  SUBJECT_FACT_FAMILY = policy_acceptance;
+  SUBJECT_COMPONENT = tsodao.policy_acceptance;
+  PROTOCOL_ID = cwu_02v;
+  SOURCE_RANGE = anchor_index;
+  ANCHOR_INDEX_BEGIN = 0;
+  ANCHOR_INDEX_END = 10;
+  REQUIRE_CONTRACT_MATCH = true;
+};
+
 LATTICE_WARN {
   TARGET_ID = allocation_artifact_ready;
   WARNING_ID = allocation_turnover_high_visibility_only;
@@ -1751,7 +2043,7 @@ LATTICE_WARN {
 };
 )DSL");
 
-  check(artifact_specs.size() == 7,
+  check(artifact_specs.size() == 9,
         "artifact readiness targets decode without TARGET_KIND expansion");
   check(artifact_specs[0].target_class == "artifact_readiness" &&
             artifact_specs[0].subject_fact_family == "observer_belief" &&
@@ -1835,7 +2127,18 @@ LATTICE_WARN {
           !artifact_specs[6].target_kind_applicable &&
           artifact_specs[6].checkpoint_source == "none" &&
           artifact_specs[6].plan_mode == "none" &&
-          artifact_specs[6].max_waves == 0,
+          artifact_specs[6].max_waves == 0 &&
+          artifact_specs[7].target_class == "artifact_readiness" &&
+          artifact_specs[7].subject_fact_family ==
+              "tsodao_settings_protection" &&
+          artifact_specs[7].proof_kind ==
+              "tsodao_settings_protection_artifact_bound" &&
+          artifact_specs[7].kind ==
+              target::lattice_target_kind_t::not_applicable &&
+          !artifact_specs[7].target_kind_applicable &&
+          artifact_specs[7].checkpoint_source == "none" &&
+          artifact_specs[7].plan_mode == "none" &&
+          artifact_specs[7].max_waves == 0,
       "allocation artifact readiness keeps proof kind separate from target "
       "kind");
 
@@ -2856,6 +3159,355 @@ LATTICE_TARGET {
       policy_training_eval.proof_certificate.artifacts.front(),
       "policy_training_artifact_ready");
 
+  const auto tsodao_ledger = artifact_readiness_ledger_with_tsodao();
+  target::lattice_target_evaluator_t tsodao_evaluator(
+      artifact_specs, artifact_eval_options(tsodao_ledger));
+  const auto tsodao_eval =
+      tsodao_evaluator.evaluate("tsodao_settings_protection_ready");
+  check(tsodao_eval.status == target::lattice_target_status_t::satisfied &&
+            tsodao_eval.target_class == "artifact_readiness" &&
+            !tsodao_eval.target_kind_applicable &&
+            tsodao_eval.proof_kind ==
+                "tsodao_settings_protection_artifact_bound" &&
+            tsodao_eval.subject_fact_family == "tsodao_settings_protection" &&
+            tsodao_eval.fact_integrity_summary_available &&
+            tsodao_eval.fact_integrity_summary.inspected_family_count == 1 &&
+            tsodao_eval.fact_integrity_summary.relation_declared_count == 1 &&
+            tsodao_eval.fact_integrity_summary.relation_bound_count == 1 &&
+            tsodao_eval.fact_integrity_summary.relation_integrity_clean &&
+            tsodao_eval.proof_certificate.artifacts.size() == 1 &&
+            tsodao_eval.proof_certificate.artifacts.front().fact_family ==
+                "tsodao_settings_protection" &&
+            tsodao_eval.proof_certificate.artifacts.front().passed &&
+            tsodao_eval.proof_certificate.artifacts.front().lineage_bound &&
+            tsodao_eval.proof_certificate.artifacts.front()
+                .proof_template_bound &&
+            tsodao_eval.proof_certificate_check.passed &&
+            tsodao_eval.warning_results.empty() && tsodao_eval.deficits.empty(),
+        "Tsodao settings protection readiness proves a protected settings "
+        "bundle is digest-bound to a clean policy-training artifact without "
+        "search, selection, quality, readiness, execution, deployment, or live "
+        "authority");
+  check_artifact_proof_no_decision_authority(
+      tsodao_eval.proof_certificate.artifacts.front(),
+      "tsodao_settings_protection_ready");
+
+  const auto tsodao_fault_eval = [&](const auto &mutate_protection_fact) {
+    const auto valid_ledger = artifact_readiness_ledger_with_tsodao();
+    exposure::lattice_exposure_ledger_t fault_ledger{};
+    for (const auto &fact : valid_ledger.facts()) {
+      fault_ledger.add(fact, /*derive_source_receipts=*/false,
+                       /*derive_selection_signals=*/false);
+    }
+    for (const auto &fact : valid_ledger.forecast_eval_facts()) {
+      fault_ledger.add_forecast_eval(fact);
+    }
+    for (const auto &fact : valid_ledger.observer_belief_facts()) {
+      fault_ledger.add_observer_belief(fact);
+    }
+    for (const auto &fact : valid_ledger.allocation_engine_facts()) {
+      fault_ledger.add_allocation_engine(fact);
+    }
+    for (const auto &fact : valid_ledger.replay_environment_facts()) {
+      fault_ledger.add_replay_environment(fact);
+    }
+    for (const auto &fact : valid_ledger.policy_training_facts()) {
+      fault_ledger.add_policy_training(fact);
+    }
+    for (auto fact : valid_ledger.tsodao_settings_protection_facts()) {
+      mutate_protection_fact(fact);
+      fault_ledger.add_tsodao_settings_protection(std::move(fact));
+    }
+    target::lattice_target_evaluator_t evaluator(
+        artifact_specs, artifact_eval_options(fault_ledger));
+    return evaluator.evaluate("tsodao_settings_protection_ready");
+  };
+  const auto tsodao_ppo_config_drift_eval = tsodao_fault_eval(
+      [](auto &fact) { fact.ppo_config_digest = "mutated_ppo_config_digest"; });
+  check(tsodao_ppo_config_drift_eval.status !=
+                target::lattice_target_status_t::satisfied &&
+            has_reason_containing(tsodao_ppo_config_drift_eval.reasons,
+                                  "protected_ppo_config_digest_mismatch") &&
+            has_deficit_message_containing(
+                tsodao_ppo_config_drift_eval.deficits,
+                "protected settings do not match the referenced "
+                "policy-training artifact") &&
+            tsodao_ppo_config_drift_eval.proof_certificate.artifacts.size() ==
+                1 &&
+            !tsodao_ppo_config_drift_eval.proof_certificate.artifacts.front()
+                 .lineage_bound,
+        "Tsodao settings protection rejects protected PPO config digest drift");
+
+  const auto tsodao_missing_parent_eval = tsodao_fault_eval([](auto &fact) {
+    fact.protected_policy_training_fact_digest = "missing_policy_fact";
+  });
+  check(tsodao_missing_parent_eval.status !=
+                target::lattice_target_status_t::satisfied &&
+            has_reason_containing(
+                tsodao_missing_parent_eval.reasons,
+                "protected_policy_training_fact_digest_not_found") &&
+            has_deficit_message_containing(
+                tsodao_missing_parent_eval.deficits,
+                "references a policy-training fact digest that is not present"),
+        "Tsodao settings protection rejects missing protected policy-training "
+        "fact lineage");
+
+  const auto tsodao_authority_eval =
+      tsodao_fault_eval([](auto &fact) { fact.tsodao_selects_policy = true; });
+  check(tsodao_authority_eval.status !=
+                target::lattice_target_status_t::satisfied &&
+            has_reason_containing(
+                tsodao_authority_eval.reasons,
+                "tsodao_settings_protection_must_remain_artifact_evidence_"
+                "only") &&
+            has_deficit_message_containing(
+                tsodao_authority_eval.deficits,
+                "must remain read-only artifact evidence"),
+        "Tsodao settings protection rejects selection/decision authority "
+        "claims");
+
+  const auto acceptance_ledger =
+      artifact_readiness_ledger_with_policy_acceptance();
+  target::lattice_target_evaluator_t acceptance_evaluator(
+      artifact_specs, artifact_eval_options(acceptance_ledger));
+  const auto acceptance_eval =
+      acceptance_evaluator.evaluate("policy_acceptance_contract_ready");
+  check(
+      acceptance_eval.status == target::lattice_target_status_t::satisfied &&
+          acceptance_eval.target_class == "artifact_readiness" &&
+          !acceptance_eval.target_kind_applicable &&
+          acceptance_eval.proof_kind == "policy_acceptance_contract_bound" &&
+          acceptance_eval.subject_fact_family == "policy_acceptance" &&
+          acceptance_eval.fact_integrity_summary_available &&
+          acceptance_eval.fact_integrity_summary.inspected_family_count == 1 &&
+          acceptance_eval.fact_integrity_summary.relation_declared_count == 2 &&
+          acceptance_eval.fact_integrity_summary.relation_bound_count == 2 &&
+          acceptance_eval.fact_integrity_summary.relation_integrity_clean &&
+          acceptance_eval.proof_certificate.artifacts.size() == 1 &&
+          acceptance_eval.proof_certificate.artifacts.front().fact_family ==
+              "policy_acceptance" &&
+          acceptance_eval.proof_certificate.artifacts.front().passed &&
+          acceptance_eval.proof_certificate.artifacts.front().lineage_bound &&
+          acceptance_eval.proof_certificate.artifacts.front()
+              .proof_template_bound &&
+          acceptance_eval.proof_certificate_check.passed &&
+          acceptance_eval.warning_results.empty() &&
+          acceptance_eval.deficits.empty(),
+      "policy acceptance readiness proves a read-only acceptance contract "
+      "bound to policy-training readiness, Tsodao protected settings, "
+      "after-cost criteria, uncertainty, split discipline, negative tests, and "
+      "promotion criteria without selection, quality, readiness, deployment, "
+      "execution, or live authority");
+  check_artifact_proof_no_decision_authority(
+      acceptance_eval.proof_certificate.artifacts.front(),
+      "policy_acceptance_contract_ready");
+
+  const auto policy_acceptance_fault_eval =
+      [&](const auto &mutate_acceptance_fact, bool include_tsodao_fact = true) {
+        const auto valid_ledger =
+            artifact_readiness_ledger_with_policy_acceptance();
+        exposure::lattice_exposure_ledger_t fault_ledger{};
+        for (const auto &fact : valid_ledger.facts()) {
+          fault_ledger.add(fact, /*derive_source_receipts=*/false,
+                           /*derive_selection_signals=*/false);
+        }
+        for (const auto &fact : valid_ledger.forecast_eval_facts()) {
+          fault_ledger.add_forecast_eval(fact);
+        }
+        for (const auto &fact : valid_ledger.observer_belief_facts()) {
+          fault_ledger.add_observer_belief(fact);
+        }
+        for (const auto &fact : valid_ledger.allocation_engine_facts()) {
+          fault_ledger.add_allocation_engine(fact);
+        }
+        for (const auto &fact : valid_ledger.replay_environment_facts()) {
+          fault_ledger.add_replay_environment(fact);
+        }
+        for (const auto &fact : valid_ledger.policy_training_facts()) {
+          fault_ledger.add_policy_training(fact);
+        }
+        if (include_tsodao_fact) {
+          for (const auto &fact :
+               valid_ledger.tsodao_settings_protection_facts()) {
+            fault_ledger.add_tsodao_settings_protection(fact);
+          }
+        }
+        for (auto fact : valid_ledger.policy_acceptance_facts()) {
+          mutate_acceptance_fact(fact);
+          fault_ledger.add_policy_acceptance(std::move(fact));
+        }
+        target::lattice_target_evaluator_t evaluator(
+            artifact_specs, artifact_eval_options(fault_ledger));
+        return evaluator.evaluate("policy_acceptance_contract_ready");
+      };
+  const auto acceptance_primary_metric_eval = policy_acceptance_fault_eval(
+      [](auto &fact) { fact.primary_metric_passed = false; });
+  check(acceptance_primary_metric_eval.status !=
+                target::lattice_target_status_t::satisfied &&
+            has_reason_containing(acceptance_primary_metric_eval.reasons,
+                                  "primary_metric_not_passed") &&
+            has_deficit_message_containing(
+                acceptance_primary_metric_eval.deficits,
+                "acceptance metric, baseline, uncertainty, negative-test, or "
+                "promotion criterion") &&
+            acceptance_primary_metric_eval.proof_certificate.artifacts.size() ==
+                1 &&
+            !acceptance_primary_metric_eval.proof_certificate.artifacts.front()
+                 .lineage_bound,
+        "policy acceptance rejects acceptance records whose primary metric did "
+        "not pass");
+
+  const auto acceptance_governance_drift_eval =
+      policy_acceptance_fault_eval([](auto &fact) {
+        fact.acceptance_policy_digest =
+            "mutated_policy_acceptance_governance_digest";
+      });
+  check(acceptance_governance_drift_eval.status !=
+                target::lattice_target_status_t::satisfied &&
+            has_reason_containing(
+                acceptance_governance_drift_eval.reasons,
+                "acceptance_policy_digest_mismatch_governance_thresholds_v0") &&
+            has_deficit_message_containing(
+                acceptance_governance_drift_eval.deficits,
+                "does not match the required V0 governance threshold "
+                "contract"),
+        "policy acceptance readiness rejects governance-threshold digest "
+        "drift");
+
+  const auto acceptance_actor_checkpoint_drift_eval =
+      policy_acceptance_fault_eval([](auto &fact) {
+        fact.accepted_actor_checkpoint_digest =
+            "mutated_actor_checkpoint_digest";
+      });
+  check(
+      acceptance_actor_checkpoint_drift_eval.status !=
+              target::lattice_target_status_t::satisfied &&
+          has_reason_containing(acceptance_actor_checkpoint_drift_eval.reasons,
+                                "accepted_actor_checkpoint_digest_mismatch") &&
+          has_deficit_message_containing(
+              acceptance_actor_checkpoint_drift_eval.deficits,
+              "does not match its referenced policy-training or Tsodao "
+              "settings-protection evidence"),
+      "policy acceptance rejects actor checkpoint digest drift against the "
+      "accepted policy-training fact");
+
+  const auto acceptance_missing_tsodao_eval =
+      policy_acceptance_fault_eval([](auto &) {}, false);
+  check(acceptance_missing_tsodao_eval.status !=
+                target::lattice_target_status_t::satisfied &&
+            has_reason_containing(
+                acceptance_missing_tsodao_eval.reasons,
+                "tsodao_settings_protection_fact_digest_not_found") &&
+            has_deficit_message_containing(
+                acceptance_missing_tsodao_eval.deficits,
+                "Tsodao settings-protection fact digest that is not present"),
+        "policy acceptance rejects missing Tsodao settings-protection lineage");
+
+  const auto acceptance_authority_eval = policy_acceptance_fault_eval(
+      [](auto &fact) { fact.market_readiness_authority = true; });
+  check(acceptance_authority_eval.status !=
+                target::lattice_target_status_t::satisfied &&
+            has_reason_containing(
+                acceptance_authority_eval.reasons,
+                "policy_acceptance_must_remain_artifact_evidence_only") &&
+            has_deficit_message_containing(
+                acceptance_authority_eval.deficits,
+                "must remain read-only artifact evidence"),
+        "policy acceptance rejects market-readiness authority claims");
+
+  const auto policy_training_fault_eval = [&](const auto &mutate_policy_fact) {
+    const auto valid_ledger = artifact_readiness_ledger();
+    exposure::lattice_exposure_ledger_t fault_ledger{};
+    for (const auto &fact : valid_ledger.facts()) {
+      fault_ledger.add(fact, /*derive_source_receipts=*/false,
+                       /*derive_selection_signals=*/false);
+    }
+    for (const auto &fact : valid_ledger.forecast_eval_facts()) {
+      fault_ledger.add_forecast_eval(fact);
+    }
+    for (const auto &fact : valid_ledger.observer_belief_facts()) {
+      fault_ledger.add_observer_belief(fact);
+    }
+    for (const auto &fact : valid_ledger.allocation_engine_facts()) {
+      fault_ledger.add_allocation_engine(fact);
+    }
+    for (const auto &fact : valid_ledger.replay_environment_facts()) {
+      fault_ledger.add_replay_environment(fact);
+    }
+    for (auto fact : valid_ledger.policy_training_facts()) {
+      mutate_policy_fact(fact);
+      fault_ledger.add_policy_training(std::move(fact));
+    }
+    target::lattice_target_evaluator_t evaluator(
+        artifact_specs, artifact_eval_options(fault_ledger));
+    return evaluator.evaluate("policy_training_artifact_ready");
+  };
+  const auto missing_optimizer_archive_eval = policy_training_fault_eval(
+      [](auto &fact) { fact.optimizer_torch_state_digest.clear(); });
+  check(missing_optimizer_archive_eval.status !=
+                target::lattice_target_status_t::satisfied &&
+            has_reason_containing(missing_optimizer_archive_eval.reasons,
+                                  "missing_optimizer_torch_state_digest") &&
+            has_deficit_message_containing(
+                missing_optimizer_archive_eval.deficits,
+                "resumable Torch optimizer archive path or digest") &&
+            missing_optimizer_archive_eval.proof_certificate.artifacts.size() ==
+                1 &&
+            !missing_optimizer_archive_eval.proof_certificate.artifacts.front()
+                 .lineage_bound,
+        "policy-training artifact readiness rejects PPO facts without Torch "
+        "optimizer archive evidence");
+
+  const auto missing_cuda_eval = policy_training_fault_eval(
+      [](auto &fact) { fact.cuda_verification_passed = false; });
+  check(
+      missing_cuda_eval.status != target::lattice_target_status_t::satisfied &&
+          has_reason_containing(missing_cuda_eval.reasons,
+                                "cuda_verification_not_proven") &&
+          has_deficit_message_containing(
+              missing_cuda_eval.deficits,
+              "did not prove CUDA execution under device_policy=require_"
+              "cuda") &&
+          missing_cuda_eval.proof_certificate.artifacts.size() == 1 &&
+          !missing_cuda_eval.proof_certificate.artifacts.front().lineage_bound,
+      "policy-training artifact readiness rejects PPO facts without Runtime "
+      "CUDA verification proof");
+
+  const auto missing_policy_net_eval = policy_training_fault_eval(
+      [](auto &fact) { fact.policy_net_digest.clear(); });
+  check(missing_policy_net_eval.status !=
+                target::lattice_target_status_t::satisfied &&
+            has_reason_containing(missing_policy_net_eval.reasons,
+                                  "missing_policy_net_digest") &&
+            missing_policy_net_eval.proof_certificate.artifacts.size() == 1 &&
+            !missing_policy_net_eval.proof_certificate.artifacts.front()
+                 .lineage_bound,
+        "policy-training artifact readiness rejects PPO facts without a bound "
+        "policy net digest");
+
+  const auto incomplete_resume_eval =
+      policy_training_fault_eval([](auto &fact) {
+        fact.resume_mode = "resume_weights_and_optimizer";
+        fact.resume_actor_checkpoint_path = "/tmp/ppo_parent_actor.checkpoint";
+        fact.resume_actor_checkpoint_digest =
+            "parent_actor_checkpoint_digest_1";
+        fact.resume_parent_loaded = true;
+        fact.optimizer_state_resume_loaded = false;
+      });
+  check(incomplete_resume_eval.status !=
+                target::lattice_target_status_t::satisfied &&
+            has_reason_containing(
+                incomplete_resume_eval.reasons,
+                "resume_weights_and_optimizer_missing_optimizer_state") &&
+            has_deficit_message_containing(
+                incomplete_resume_eval.deficits,
+                "requires the optimizer state archive to be loaded") &&
+            incomplete_resume_eval.proof_certificate.artifacts.size() == 1 &&
+            !incomplete_resume_eval.proof_certificate.artifacts.front()
+                 .lineage_bound,
+        "policy-training artifact readiness rejects resume-with-optimizer "
+        "claims that did not load optimizer state evidence");
+
   const auto cross_component_policy_training_specs =
       target::decode_lattice_targets_from_dsl(R"DSL(
 LATTICE_TARGET {
@@ -2863,7 +3515,7 @@ LATTICE_TARGET {
   TARGET_CLASS = artifact_readiness;
   PROOF_KIND = policy_training_artifact_bound;
   SUBJECT_FACT_FAMILY = policy_training;
-  SUBJECT_COMPONENT = wikimyei.policy.trainable;
+  SUBJECT_COMPONENT = wikimyei.policy.portfolio.graph_node_allocation;
   PROTOCOL_ID = cwu_02v;
   SOURCE_RANGE = anchor_index;
   ANCHOR_INDEX_BEGIN = 0;
@@ -2927,7 +3579,7 @@ LATTICE_TARGET {
                 .lineage_bound,
         "policy-training artifact readiness resolves MDN/replay parent "
         "lineage while the subject policy fact is scoped to "
-        "wikimyei.policy.trainable: " +
+        "wikimyei.policy.portfolio.graph_node_allocation: " +
             describe_evaluation(cross_component_policy_training_eval));
 
   const auto bad_artifact_ledger =

@@ -271,7 +271,7 @@ inline void prepare_explicit_job_dir(const std::filesystem::path &job_dir,
     return runtime_job_kind_t::channel_representation_mtf_jepa_mae_vicreg;
   case cuwacunu::hero::runtime::settings::wave_target_t::inference_channel_mdn:
     return runtime_job_kind_t::channel_inference_mdn;
-  case cuwacunu::hero::runtime::settings::wave_target_t::policy_trainable:
+  case cuwacunu::hero::runtime::settings::wave_target_t::graph_node_allocation_policy:
     return runtime_job_kind_t::policy_training;
   }
   throw std::runtime_error("[kikijyeba_job_runner] unknown wave target");
@@ -624,6 +624,14 @@ component_assembly_fingerprint_for_manifest(const job_manifest_t &manifest) {
       "wikimyei.inference.expected_value.mdn") {
     return manifest.mdn_assembly_fingerprint;
   }
+  if (manifest.target_component_family_id == "wikimyei.policy.portfolio.graph_node_allocation") {
+    if (!manifest.policy_operator_surface_digest.empty()) {
+      return manifest.policy_operator_surface_digest;
+    }
+    if (!manifest.component_spawn_fingerprint.empty()) {
+      return manifest.component_spawn_fingerprint;
+    }
+  }
   return {};
 }
 
@@ -919,10 +927,11 @@ private:
           const auto model_version = manifest.mdn_assembly_fingerprint.empty()
                                          ? manifest.inference_training_id
                                          : manifest.mdn_assembly_fingerprint;
-          const auto normalization_hash = manifest.dock_binding_fingerprint;
+          const auto normalization_fingerprint =
+              manifest.dock_binding_fingerprint;
           replay_artifact_observer = [job_dir, delegated_report_path, manifest,
                                       belief_options, model_version,
-                                      normalization_hash,
+                                      normalization_fingerprint,
                                       &replay_artifacts_written,
                                       &replay_artifact_error,
                                       &last_replay_artifact_paths](
@@ -953,7 +962,7 @@ private:
                   write_runtime_graph_anchor_replay_artifacts_from_mdn_batch_for_pulse(
                       job_dir, pulse_index, out, batch, representation_batch,
                       belief_options, std::move(mdn_artifact), model_version,
-                      "", normalization_hash);
+                      "", normalization_fingerprint);
               replay_artifacts_written = true;
             } catch (const std::exception &ex) {
               replay_artifact_error = ex.what();

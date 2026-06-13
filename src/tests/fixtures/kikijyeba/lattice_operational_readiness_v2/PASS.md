@@ -222,13 +222,13 @@ PASS: make -C src/main/hero clean
 PASS: make -C src/main/hero build-runtime-hero build-lattice-hero -j12
 PASS: make -C src/tests/bench/kikijyeba/protocol/pipeline_builder all -j12
 PASS: make -C src/tests/bench/kikijyeba/protocol/pipeline_builder run-test_kikijyeba_protocol_pipeline_builder -j12
-PASS: direct Runtime Hero execute for channel VICReg train-core with dry_run=false and confirm_execute=true
+PASS: direct Runtime Hero execute for channel VICReg train-core with requested_mode=execute
 PASS: direct Lattice Hero evaluate_target vicreg_train_core_ready
-PASS: direct Runtime Hero execute for channel MDN train-core with dry_run=false and confirm_execute=true
+PASS: direct Runtime Hero execute for channel MDN train-core with requested_mode=execute
 PASS: direct Lattice Hero evaluate_target channel_mdn_train_core_ready
 PASS: direct Lattice Hero evaluate_target channel_mdn_train_core_no_validation_leakage
 PASS: direct Lattice Hero evaluate_target channel_mdn_train_core_no_test_leakage
-PASS: direct Runtime Hero execute for channel validation eval with dry_run=false and confirm_execute=true
+PASS: direct Runtime Hero execute for channel validation eval with requested_mode=execute
 PASS: direct Lattice Hero evaluate_target channel_mdn_validation_eval_ready
 PASS: direct Runtime Hero status after policy restore
 PASS: make -C src/tests/bench/kikijyeba/lattice_exposure run-test_kikijyeba_lattice_exposure -j12

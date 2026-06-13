@@ -69,40 +69,74 @@ part of the execution root. Unmarked temporary fixture roots may still be
 scanned recursively by tests, but the marked runtime layout is authoritative
 for real execution evidence.
 
-`job_runner_t` resolves the Jkimyei delegate from `TARGET` by default.
-`wikimyei.representation.encoding.vicreg` runs the channel-preserving
-representation launcher, while `wikimyei.inference.expected_value.mdn` runs
-the channel-context MDN launcher. The latter runs VICReg as a frozen dependency
-and mutates only Channel MDN in `MODE=train`. `MODE=run`
-executes the target dependency closure without optimizer steps; `MODE=train`
-mutates only the target component and runs upstream dependencies frozen.
+`job_runner_t` resolves the Jkimyei delegate from the protocol-resolved
+`TARGET` by default. `wikimyei.representation.encoding` resolves to the active
+representation family for the selected protocol, while
+`wikimyei.inference.expected_value` resolves to the channel-context MDN
+launcher. The latter runs the active representation as a frozen dependency and
+mutates only Channel MDN in `MODE=train`. `MODE=run` executes the target
+dependency closure without optimizer steps; `MODE=train` mutates only the target
+component and runs upstream dependencies frozen.
 
 `wave_settings.h` decodes the selected block from the
-`hero.runtime.wave.dsl` catalog. The selected wave names the current
-Wikimyei family to run with `TARGET`, declares mode flags such as
-`run | debug`, and declares the graph-wide source range and Ujcamei cursor
-family used to ground runtime `.lls` reports. A wave range is larger than a
-batch: the stream generator yields graph-anchor batches until the requested
-range is exhausted. `SOURCE_RANGE=source_key` is the stable authoring form for
-key-valued sources; it resolves to the accepted graph-anchor index domain before
-execution while preserving requested source-key bounds in runtime evidence.
+`hero.runtime.wave.dsl` catalog. The selected wave declares the exact
+`PROTOCOL`, a broad protocol-level `TARGET`, mode flags such as `run | debug`,
+and `SOURCE_CURSOR_ID`. The cursor id is resolved from
+`ujcamei.source.cursor.dsl`, where protocol-neutral source ranges and Ujcamei
+cursor families are defined for runtime `.lls` reports. A cursor range is larger
+than a batch: the stream generator yields graph-anchor batches until the
+requested range is exhausted. `SOURCE_RANGE=source_key` is the stable cursor
+authoring form for key-valued sources; it resolves to the accepted graph-anchor
+index domain before execution while preserving requested source-key bounds in
+runtime
+evidence.
 
-`TARGET` is the focal component, not the whole execution chain. For example,
-`TARGET=wikimyei.inference.expected_value.mdn` still runs NodeLift and a frozen
-VICReg encoder because MDN depends on node encodings. `MODE=train` mutates only
-the target; `MODE=run` applies no optimizer step. `debug` is only a report
-modifier and may be combined with either primary mode. Wave settings are not
-topology and are not training policy. Topology lives in `kikijyeba/topology`;
-training policy lives in `.jkimyei` files consumed by Jkimyei.
+`TARGET` is the focal component family, not the whole execution chain. For
+example, `TARGET=wikimyei.inference.expected_value` still runs NodeLift and the
+active frozen representation because MDN depends on node encodings.
+`MODE=train` mutates only the target; `MODE=run` applies no optimizer step.
+`debug` is only a report modifier and may be combined with either primary mode.
+Wave settings are not topology and are not training policy. Topology lives in
+`kikijyeba/topology`; training policy lives in `.jkimyei` files consumed by
+Jkimyei.
 
-V1 deliberately does not implement resume. Resume requests fail fast after
-configuration entry and before pipeline materialization.
+Operator profile vocabulary:
 
-`hero.runtime.run operation=wave` accepts a Marshal `runtime_handoff` object for
-concrete operator handoffs. The object binds schema/id/digest, target id, base
-config path/digest, concrete wave fields, concrete checkpoint inputs, Runtime
-policy path/digest identity, and dry-run/execute intent. Runtime rejects non-empty
-unresolved-symbol lists and symbolic model-state selectors such as
+- `component_wave`: a Runtime wave selected from `hero.runtime.wave.dsl`; use it
+  for representation/MDN train or run jobs over a source range.
+- `policy_training_profile`: a Runtime policy-training contract; use it for
+  graph-node allocation policy training, where replay lineage, causal schedule,
+  policy DSL/net/features/jkimyei, action distribution, reward, execution
+  profile, target-node universe, PPO update evidence, and checkpoint lineage are
+  one bound surface.
+- `environment_replay_profile`: a Kikijyeba historical replay environment
+  profile; use it for reset/step/reward worlds that consume completed Runtime
+  artifacts and call Cajtucu paper execution.
+
+PPO V0 resume is explicit and contract-bound. `resume_mode=fresh_spawn`
+creates a new graph-node allocation actor; `resume_weights` loads a parent
+actor checkpoint after metadata compatibility checks; and
+`resume_weights_and_optimizer` also loads the bound Torch optimizer archive.
+Resume compatibility requires the parent checkpoint to match the current policy
+family, module/network contract, feature manifest, action distribution/config,
+PPO config, causal schedule, snapshot family, reward contract, execution
+profile, graph order, and actor/critic architecture digests. PPO V0 execution
+requires `device_policy=require_cuda`; Runtime records CUDA verification for
+module parameters, forward tensors, loss tensors, and optimizer state.
+The generated `runtime.policy_training.fact` carries the optimizer-state schema,
+Torch optimizer archive digest, CUDA verification fields, and resume-mode
+lineage so Lattice can reject stale or incomplete PPO readiness evidence.
+Runtime PPO execution packets also include display-only refs such as
+`actor_checkpoint_ref`, `optimizer_torch_state_ref`, and
+`ppo_update_report_ref` beside the full digest fields. These refs are operator
+handles only; full digests remain the machine identity used by Lattice.
+
+`hero.runtime.run` accepts a `runtime_handoff_path` entry inside
+`args_path` for concrete operator handoffs. The handoff object binds
+schema/id/digest, target id, base config path/digest, concrete wave fields,
+concrete checkpoint inputs, Runtime policy path/digest identity, and
+dry-run/execute intent. Runtime rejects non-empty unresolved-symbol lists and
+symbolic model-state selectors such as
 `latest_satisfying:*` before launching `cuwacunu_exec`. When a handoff is
 accepted, Runtime passes the handoff id and digest into the job runner so
 `job.manifest`, `runtime.result.fact`, and the derived lattice exposure sidecar
@@ -114,13 +148,15 @@ not require copying those materialized paths back into static `.jkimyei` files.
 Reusable wave profiles live as multiple `WAVE_SETTINGS` blocks in the single
 `hero.runtime.wave.dsl` catalog. Operator configs select the active block
 with `[HERO].runtime_wave_id`; the file-level `WAVE_SELECTION` is only the
-checked-in fallback. Profiles should keep protocol/target/mode/source-order
-intent stable and avoid baked-in anchor indexes. Concrete launch ranges are
-supplied as Runtime Hero `wave_overlay` fields or directly to `cuwacunu_exec`
-with `--source-range`, `--anchor-index-begin/end`, or
-`--source-key-begin/end`. Runtime applies the overlay in memory, validates the
-effective wave, and records the resolved range in the manifest/state sidecars
-without editing the profile.
+checked-in fallback. Profiles should keep protocol/target/mode/cursor/source
+order intent stable. Cursor definitions live in `ujcamei.source.cursor.dsl` and
+intentionally avoid protocol names because the source cursor catalog is data
+identity, not protocol identity. Concrete launch range overrides are supplied
+through an `execution_request_path` entry inside `hero.runtime.run`
+`args_path`, or directly to `cuwacunu_exec` with `--source-range`,
+`--anchor-index-begin/end`, or `--source-key-begin/end`. Runtime applies the
+request overlay in memory, validates the effective wave, and records the
+resolved range in the manifest/state sidecars without editing the profile.
 
 Direct `cuwacunu_exec` use remains possible for developer recovery and narrow
 debugging, but it is not the preferred operator path. Non-dry-run launches
@@ -206,13 +242,16 @@ from the per-step replay evidence. This remains a post-job replay adapter and
 does not change Runtime's MDN execution semantics. The executable surface is
 `cuwacunu_exec --replay-from-job-dir <job_dir>`, which consumes an already
 completed job directory instead of launching a new graph-first wave. Runtime
-Hero exposes the same path as
-`hero.runtime.run operation=replay requested_mode=plan|dry_run|execute`. The
-tool accepts `job_id` or `job_dir`, checks the job is completed and has replay
-batch evidence, then delegates to the executable with the requested replay
-policy options and Cajtucu paper profile hints such as
-`allow_synthetic_direct_edges` and `linear_transaction_cost_rate`. When a caller
-sets `validation_rollout=true`, Runtime treats replay as validation-grade: it
+Hero exposes the same low-level path through a non-catalog Runtime replay
+executor. Replay fields are supplied through an `execution_request_path` entry
+inside `args_path`. Operators should prefer
+`hero.environment.rollout`, which validates rollout admission and delegates back
+to Runtime when replay is allowed. Runtime checks the job is completed and has
+replay batch evidence, then delegates to the executable with the requested
+replay policy options and Cajtucu paper profile hints such as
+`allow_synthetic_direct_edges` and `linear_transaction_cost_rate`. When the
+execution request sets `validation_rollout=true`, Runtime treats replay as
+validation-grade: it
 requires positive `max_steps`, positive `max_parallel_jobs`, nonzero
 `linear_transaction_cost_rate`, `execution_profile_digest`,
 `policy_set_digest`, and rejects synthetic direct execution edges at the request
@@ -221,33 +260,54 @@ fails closed if the report is missing, has no completed episodes, lacks profile
 or policy-set identity, contains `cajtucu_synthetic_market_step_count > 0`,
 contains `cajtucu_numeraire_fallback_pair_count > 0`, or contains
 `cajtucu_invalid_trace_count > 0`. The matching read path is named too:
-`hero.runtime.inspect subject=artifact` can inspect `replay_batch_index`,
+`hero.runtime.inspect.artifact.job` can inspect `replay_batch_index`,
 `replay_experiment_index`, and `replay_experiment_report`, and
-`hero.runtime.inspect subject=job` summarizes those replay artifacts beside the
-regular Runtime manifest/state/report summaries.
+`hero.runtime.inspect.artifact.path` reads explicit runtime artifact paths.
+`hero.runtime.inspect.job` summarizes those replay artifacts beside the regular
+Runtime manifest/state/report summaries. Runtime inspect tools now expose their
+small selectors directly: `hero.runtime.inspect.wave` accepts optional
+`config_path`, `hero.runtime.inspect.jobs` accepts `root`, `limit`, and
+`include_artifacts`, and job/artifact selectors such as `job_dir`, `artifact`,
+`include_text`, and `max_bytes` are direct arguments.
 
-Policy-training is represented as a Runtime wave contract and now has bounded
-no-op and PPO V0 evidence paths. `hero.runtime.run operation=wave
-requested_mode=plan|dry_run|execute` with policy-training contract fields
-validates a bounded trainable-policy handoff. The selected `WAVE_SETTINGS`
-block may bind `POLICY_ID`, `POLICY_KIND`, `TRAINING_SCHEDULE_MODE`, and
-`LIVE_EXECUTION_ALLOWED`; the request still supplies causal schedule evidence,
+Policy is represented as a first-class component wave for
+`wikimyei.policy.portfolio.graph_node_allocation`, with a specialized
+contract-backed Runtime driver. `hero.runtime.run mode=dry_run` reports the
+required policy-training packet for an active policy component wave; the same
+`hero.runtime.run` surface with `contract_path` and optional
+`execution_request_path` entries inside `args_path` runs the persisted
+contract. The selected `WAVE_SETTINGS`
+block may bind
+`POLICY_ID`, `POLICY_KIND`, `TRAINING_SCHEDULE_MODE`, and
+`LIVE_EXECUTION_ALLOWED`; the contract still supplies causal schedule evidence,
 parent evidence, range digests, and finite bounds. Runtime returns a deterministic
 `kikijyeba.runtime.policy_training_job_contract.v1` packet with a contract
 digest. The contract binds protocol/source identity,
 policy identity, architecture/training-config digests, disjoint
 train/validation/test range digests, normalization and replay-buffer ranges,
-environment/observation/action/reward/execution-profile digests, causal
-walk-forward schedule mode/schema/digest, explicit `policy_input_schema_id`,
-`action_adapter_id`, `action_distribution_id`, and `reward_contract_id`,
+observation/action-distribution/reward/execution-profile digests, causal
+walk-forward schedule mode/digest, typed cursor-key ordering,
 selector/checkpoint lineage, parent evidence digests, random seed, and finite
-episode/step/wall-clock bounds. PPO-shaped policy kinds additionally bind
-`ppo_policy_artifact_contract_id`, graph-node allocation policy family,
-policy checkpoint schema, policy-input feature manifest, action-distribution
-config, snapshot family, actor/critic architecture and checkpoint digests,
-optimizer state, PPO config, GAE/advantage-normalization policy, rollout
-collection evidence, PPO update-report evidence, validation rollout evidence,
-and PPO hyperparameters.
+episode/step/wall-clock bounds. Runtime derives fixed contract constants for
+the Environment replay contract, action schema, policy input schema, action
+adapter, reward contract, PPO artifact contract, graph-node allocation policy
+family, checkpoint/update/rollout schemas, optimizer-state schema, CUDA policy,
+GAE estimator, causal-schedule schema, and no-future snapshot source.
+PPO-shaped policy kinds additionally bind policy DSL/net/features/jkimyei
+digests, target-node universe digest, action-distribution config, snapshot
+family, actor/critic architecture and checkpoint digests, optimizer state, PPO
+config, advantage-normalization policy, rollout collection evidence, PPO
+update-report evidence, validation rollout evidence, and PPO hyperparameters.
+Runtime folds those policy-source and environment bindings into
+`policy_operator_surface_digest`; policy-training Runtime jobs use that digest as
+the graph-node allocation policy component-spawn fingerprint.
+Representation and MDN component-wave manifests also carry a
+`component_operator_surface_digest`, computed from the durable component
+operator surface: target family, protocol/graph/source cursor identity, wave
+mode/range/order, component assembly fingerprints, dock binding, training IDs,
+and checkpoint input paths. That generic digest is emitted beside the existing
+family-specific assembly fingerprints; it does not replace current component
+spawn matching or policy-training identity.
 Runtime rejects contracts where normalization or replay-buffer inputs are not
 training-bound, where train/validation/test ranges overlap by digest, where the
 causal schedule does not bind a typed cursor-key ordering and ledger-derived
@@ -255,8 +315,8 @@ causal schedule does not bind a typed cursor-key ordering and ledger-derived
 availability extends beyond artifact `usable_from_key`, where
 `offline_full_window_research` is presented as readiness evidence, or where live
 execution is requested.
-In this mode, `requested_mode=execute` is allowed under Runtime execute/train
-policy for `policy_kind=noop_policy_training.v1` and for the bounded
+In this mode, `mode=execute` is allowed under Runtime execute/train
+policy for `policy_kind=noop_policy_training.v1` and for the replay/paper
 `policy_kind=ppo_policy_adapter.v1` trainer. The noop path writes a
 Runtime job directory, `policy_training.contract`, `policy_training.report`, a
 deterministic no-op checkpoint, terminal Runtime facts, and
@@ -268,20 +328,26 @@ smoke fallback and declares `replay_backed_step_count=0`. With `report_path`,
 it ingests an existing Kikijyeba replay report into PPO rollout samples,
 including anchors, target weights, reward components, Cajtucu trace ids, costs,
 rejects, partials, missing-pair counters, and source labels. If the replay
-report was produced by the trainable policy bridge, Runtime can also bind the
+report was produced by the graph-node allocation policy component, Runtime can
+also bind the
 old-policy action-distribution evidence carried on the step report:
 `policy_input_digest`, `action_distribution_id`, active nodes, old log
-probability, entropy, and value estimate. Replay-backed PPO training now fails
-closed when that evidence is missing; only the explicit smoke fallback may run
-without replay-backed probability evidence. With
+probability, entropy, value estimate, and actor-visible policy-input tensor
+payloads. Replay-backed PPO training now fails closed when probability evidence
+or tensor payloads are missing; only the explicit smoke fallback may run without
+replay-backed probability evidence. With
 `replay_job_dir`, Runtime dispatches `cuwacunu_exec --replay-from-job-dir` using
-the `graph_node_allocation` trainable policy and `on_policy_sample` collection,
+the `graph_node_allocation` policy component and `on_policy_sample` collection,
 passes an explicit actor checkpoint artifact to the replay policy, and then
 ingests the generated replay report with
 `collection_source=kikijyeba_on_policy_replay`. Runtime records the collection
 checkpoint path/digest and writes separate post-update actor/critic checkpoints.
 The actor checkpoint binds the graph-node allocation Torch module contract and
-stores bounded module-head logit/value deltas from PPO V0 rollout evidence.
+stores a sibling `module_state.pt` archive mutated by the Torch autograd
+PPO-Clip/GAE update loop.
+The optimizer receipt binds `kikijyeba.runtime.ppo_optimizer_state.v1` and a
+sibling `ppo_v0_optimizer_state.pt` Torch archive used by
+`resume_weights_and_optimizer`.
 Runtime then dispatches a second deterministic replay from the same completed
 replay job using the post-update actor checkpoint and a nonzero
 transaction-cost rate, writing
@@ -316,6 +382,48 @@ Runtime execution results may report the bounded trainer role; the
 Lattice-readable artifact fact remains evidence-only and carries no
 live-capital, policy-quality, market-readiness, deployment, or target-proof
 authority.
+
+Policy acceptance sidecar emission is Environment-owned and evidence-only:
+`hero.environment.certify.policy_acceptance mode=check|issue args_path=...`
+loads an explicit
+certification request file, an existing policy-training job directory, plus an
+existing Tsodao settings-protection sidecar, assembles a
+`kikijyeba.lattice.policy_acceptance.v1` fact, validates it with the same
+Lattice exposure validators used by proof readers, and writes
+`lattice.policy_acceptance.fact` under the policy-training job directory only in
+issue mode after `args_digest` binds the request file. The
+acceptance policy digest must identify the named
+`policy_acceptance_governance_thresholds_v0.v1` contract, which fixes the V0
+mandatory baselines, after-cost metric identity, zero-delta threshold,
+block-bootstrap uncertainty policy, validation/sealed-test discipline,
+reject-ties rule, cost/slippage assumptions, negative tests,
+threshold-selection audit, and promotion criteria. Environment derives
+`accepted_policy_training_fact_digest` and
+`tsodao_settings_protection_fact_digest` from parsed sidecars rather than
+trusting caller-supplied parent digests. Issue refuses invalid assembled
+facts and refuses to overwrite an existing `lattice.policy_acceptance.fact`.
+This operation does not select a checkpoint, judge policy quality, prove target
+satisfaction, promote market readiness, approve deployment, or authorize live
+capital. It only emits the sidecar that Lattice may later prove with
+`policy_acceptance_contract_ready`.
+
+Paper-online readiness sidecar emission is also Environment-owned and
+evidence-only: `hero.environment.certify.paper_online_readiness
+mode=check|issue args_path=...` loads an explicit
+certification request file and an existing policy-acceptance sidecar, derives
+the accepted policy/checkpoint/reward/execution/accounting identity from parsed
+evidence, and assembles
+`kikijyeba.lattice.paper_online_readiness.v1`. The fact must bind market-data
+staleness, clock/timestamp, session lifecycle, durable paper-ledger recovery,
+idempotency, duplicate-action/execution protection, direct-edge universe,
+synthetic-market forbiddance, locked Cajtucu execution profile, reward/report
+artifact path, operator-abort, and kill-switch policies. Issue writes
+`lattice.paper_online_readiness.fact` only when the assembled contract is clean
+and `args_digest` binds the request file, and refuses to overwrite
+an existing sidecar. This operation does not start a
+paper-online session, execute broker orders, claim market/deployment readiness,
+or authorize live capital; it only emits evidence for
+`paper_online_readiness_contract_ready`.
 
 The readiness-grade schedule is `causal_walk_forward_training.v1`: each rollout
 block must use a snapshot family whose artifacts declare `usable_from_key <=

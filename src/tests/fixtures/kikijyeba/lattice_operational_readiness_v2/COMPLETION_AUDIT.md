@@ -45,8 +45,7 @@ Runtime Hero was temporarily enabled for bounded execution only:
 ```text
 allow_execute = true
 allow_train_execute = true
-dry_run = false
-confirm_execute = true
+requested_mode = execute
 ```
 
 After the three channel jobs completed, Runtime Hero policy was restored to the

@@ -60,25 +60,27 @@ training/inference pipelines, and DSL-driven system configuration.
   - `hero-runtime` -> `/cuwacunu/.build/hero/hero_runtime.mcp`
   - `hero-lattice` -> `/cuwacunu/.build/hero/hero_lattice.mcp`
   - `hero-marshal` -> `/cuwacunu/.build/hero/hero_marshal.mcp`
+  - `hero-environment` -> `/cuwacunu/.build/hero/hero_environment.mcp`
 - MCP usage preference:
-  - For Hero runtime/config questions (Runtime, Lattice, Marshal, or Config behavior), use MCP calls first before reading local source files.
-  - Prefer direct tool invocations (`hero.runtime.*`, `hero.config.*`, `hero.lattice.*`, `hero.marshal.*`) and return MCP output as the source of truth.
+  - For Hero runtime/config questions (Runtime, Environment, Lattice, Marshal, or Config behavior), use MCP calls first before reading local source files.
+  - Prefer direct tool invocations (`hero.runtime.*`, `hero.environment.*`, `hero.config.*`, `hero.lattice.*`, `hero.marshal.*`) and return MCP output as the source of truth.
   - Only inspect source files when MCP is unavailable or fails (hard error), and only then.
-- Preferred MCP args for all four servers:
+- Preferred MCP args for registered Hero MCP servers:
   - `--global-config /cuwacunu/src/config/.config`
 - MCP registration maintenance:
   - Check registrations with `codex mcp list` when a Hero tool namespace is
     missing from Codex.
   - The active Codex config is normally `/root/.codex/config.toml`.
   - Remove stale Hero MCP registrations whose binaries are not installed.
-  - Keep the four active Hero MCPs registered: config, runtime, lattice, and
-    marshal.
+  - Keep active Hero MCP registrations aligned with installed binaries and
+    `[HERO]` DSL path pointers in `src/config/.config`.
   - After changing Codex MCP registrations, start a fresh Codex session before
     expecting new `mcp__hero_*` tool namespaces to appear.
-- Fresh Config/Runtime/Lattice/Marshal Hero policy comes from `[HERO]` DSL path pointers in
+- Fresh Config/Runtime/Environment/Lattice/Marshal Hero policy comes from `[HERO]` DSL path pointers in
   `src/config/.config`:
   - `config_hero_dsl_path`
   - `runtime_hero_dsl_path`
+  - `environment_hero_dsl_path`
   - `lattice_hero_dsl_path`
   - `marshal_hero_dsl_path`
 - Marshal Hero has a minimal symmetry policy at `src/config/hero.marshal.dsl`;
@@ -86,6 +88,7 @@ training/inference pipelines, and DSL-driven system configuration.
   execution authority still belongs to Runtime Hero policy.
 - Runtime contract:
   - Runtime tools: `hero.runtime.*`
+  - Environment tools: `hero.environment.*`
   - Config tools: `hero.config.*`
   - Lattice tools: `hero.lattice.*`
   - Marshal tools: `hero.marshal.*`

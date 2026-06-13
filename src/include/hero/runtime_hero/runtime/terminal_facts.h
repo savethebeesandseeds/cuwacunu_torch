@@ -299,6 +299,8 @@ inline void put_common(std::map<std::string, std::string> *fields,
       manifest.target_component_family_id.empty()
           ? state.target_component_family_id
           : manifest.target_component_family_id);
+  put(fields, "component_operator_surface_digest",
+      manifest.component_operator_surface_digest);
   put(fields, "config_bundle_id", manifest.config_bundle_id);
   put(fields, "runtime_policy_digest", "");
   put(fields, "runtime_handoff_id", manifest.runtime_handoff_id);

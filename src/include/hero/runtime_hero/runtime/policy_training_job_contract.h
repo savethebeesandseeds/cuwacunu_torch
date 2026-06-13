@@ -80,7 +80,11 @@ struct policy_training_job_contract_t {
   std::string ppo_policy_artifact_contract_id{};
   std::string policy_family_id{};
   std::string policy_checkpoint_schema_id{};
+  std::string policy_dsl_digest{};
+  std::string policy_net_digest{};
   std::string policy_input_feature_manifest_digest{};
+  std::string policy_jkimyei_digest{};
+  std::string target_node_universe_digest{};
   std::string action_distribution_config_digest{};
   std::string snapshot_family_digest{};
   std::string actor_architecture_digest{};
@@ -89,6 +93,16 @@ struct policy_training_job_contract_t {
   std::string critic_checkpoint_digest{};
   std::string optimizer_state_digest{};
   std::string ppo_config_digest{};
+  std::string optimizer_state_schema_id{
+      "kikijyeba.runtime.ppo_optimizer_state.v1"};
+  std::string device_policy{"require_cuda"};
+  std::int64_t cuda_device_index{0};
+  bool cuda_device_index_bound{false};
+  std::string resume_mode{"fresh_spawn"};
+  std::string resume_actor_checkpoint_path{};
+  std::string resume_actor_checkpoint_digest{};
+  std::string resume_optimizer_state_path{};
+  std::string resume_optimizer_state_digest{};
   std::string advantage_estimator_id{};
   std::string advantage_normalization_policy{};
   std::string rollout_collection_schema_id{};
@@ -183,8 +197,13 @@ struct policy_training_job_contract_t {
     out << "policy_family_id=" << policy_family_id << "\n";
     out << "policy_checkpoint_schema_id=" << policy_checkpoint_schema_id
         << "\n";
+    out << "policy_dsl_digest=" << policy_dsl_digest << "\n";
+    out << "policy_net_digest=" << policy_net_digest << "\n";
     out << "policy_input_feature_manifest_digest="
         << policy_input_feature_manifest_digest << "\n";
+    out << "policy_jkimyei_digest=" << policy_jkimyei_digest << "\n";
+    out << "target_node_universe_digest=" << target_node_universe_digest
+        << "\n";
     out << "action_distribution_config_digest="
         << action_distribution_config_digest << "\n";
     out << "snapshot_family_digest=" << snapshot_family_digest << "\n";
@@ -194,6 +213,20 @@ struct policy_training_job_contract_t {
     out << "critic_checkpoint_digest=" << critic_checkpoint_digest << "\n";
     out << "optimizer_state_digest=" << optimizer_state_digest << "\n";
     out << "ppo_config_digest=" << ppo_config_digest << "\n";
+    out << "optimizer_state_schema_id=" << optimizer_state_schema_id << "\n";
+    out << "device_policy=" << device_policy << "\n";
+    out << "cuda_device_index=" << cuda_device_index << "\n";
+    out << "cuda_device_index_bound="
+        << (cuda_device_index_bound ? "true" : "false") << "\n";
+    out << "resume_mode=" << resume_mode << "\n";
+    out << "resume_actor_checkpoint_path=" << resume_actor_checkpoint_path
+        << "\n";
+    out << "resume_actor_checkpoint_digest=" << resume_actor_checkpoint_digest
+        << "\n";
+    out << "resume_optimizer_state_path=" << resume_optimizer_state_path
+        << "\n";
+    out << "resume_optimizer_state_digest=" << resume_optimizer_state_digest
+        << "\n";
     out << "advantage_estimator_id=" << advantage_estimator_id << "\n";
     out << "advantage_normalization_policy=" << advantage_normalization_policy
         << "\n";
@@ -295,6 +328,53 @@ policy_training_contract_digest_for_text(std::string_view text) {
   cuwacunu::wikimyei::assembly::assembly_detail::mix_hash_string(
       hash, "kikijyeba.runtime.policy_training_job_contract.digest.v1");
   cuwacunu::wikimyei::assembly::assembly_detail::mix_hash_string(hash, text);
+  return cuwacunu::wikimyei::assembly::assembly_detail::hash_hex(hash);
+}
+
+[[nodiscard]] inline std::string canonical_policy_operator_surface_text(
+    const policy_training_job_contract_t &contract) {
+  std::ostringstream out;
+  out << "schema=policy_operator_surface_and_identity_standardization.v1\n";
+  out << "policy_family_id=" << contract.policy_family_id << "\n";
+  out << "policy_dsl_digest=" << contract.policy_dsl_digest << "\n";
+  out << "policy_net_digest=" << contract.policy_net_digest << "\n";
+  out << "policy_input_feature_manifest_digest="
+      << contract.policy_input_feature_manifest_digest << "\n";
+  out << "policy_jkimyei_digest=" << contract.policy_jkimyei_digest << "\n";
+  out << "policy_input_schema_id=" << contract.policy_input_schema_id << "\n";
+  out << "action_schema_digest=" << contract.action_schema_digest << "\n";
+  out << "action_adapter_id=" << contract.action_adapter_id << "\n";
+  out << "action_distribution_id=" << contract.action_distribution_id << "\n";
+  out << "action_distribution_config_digest="
+      << contract.action_distribution_config_digest << "\n";
+  out << "reward_contract_id=" << contract.reward_contract_id << "\n";
+  out << "reward_contract_digest=" << contract.reward_contract_digest << "\n";
+  out << "execution_profile_digest=" << contract.execution_profile_digest
+      << "\n";
+  out << "training_schedule_mode=" << contract.training_schedule_mode << "\n";
+  out << "causal_schedule_schema_id=" << contract.causal_schedule_schema_id
+      << "\n";
+  out << "causal_schedule_digest=" << contract.causal_schedule_digest << "\n";
+  out << "causal_schedule_cursor_key_kind="
+      << contract.causal_schedule_cursor_key_kind << "\n";
+  out << "graph_order_fingerprint=" << contract.graph_order_fingerprint << "\n";
+  out << "target_node_universe_digest=" << contract.target_node_universe_digest
+      << "\n";
+  out << "ppo_policy_artifact_contract_id="
+      << contract.ppo_policy_artifact_contract_id << "\n";
+  out << "policy_checkpoint_schema_id=" << contract.policy_checkpoint_schema_id
+      << "\n";
+  return out.str();
+}
+
+[[nodiscard]] inline std::string
+policy_operator_surface_digest(const policy_training_job_contract_t &contract) {
+  std::uint64_t hash =
+      cuwacunu::wikimyei::assembly::assembly_detail::kFnvOffsetBasis;
+  cuwacunu::wikimyei::assembly::assembly_detail::mix_hash_string(
+      hash, "kikijyeba.runtime.policy_operator_surface.digest.v1");
+  cuwacunu::wikimyei::assembly::assembly_detail::mix_hash_string(
+      hash, canonical_policy_operator_surface_text(contract));
   return cuwacunu::wikimyei::assembly::assembly_detail::hash_hex(hash);
 }
 
@@ -449,8 +529,13 @@ validate_policy_training_job_contract(
     require_nonempty(contract.policy_family_id, "policy_family_id");
     require_nonempty(contract.policy_checkpoint_schema_id,
                      "policy_checkpoint_schema_id");
+    require_nonempty(contract.policy_dsl_digest, "policy_dsl_digest");
+    require_nonempty(contract.policy_net_digest, "policy_net_digest");
     require_nonempty(contract.policy_input_feature_manifest_digest,
                      "policy_input_feature_manifest_digest");
+    require_nonempty(contract.policy_jkimyei_digest, "policy_jkimyei_digest");
+    require_nonempty(contract.target_node_universe_digest,
+                     "target_node_universe_digest");
     require_nonempty(contract.action_distribution_config_digest,
                      "action_distribution_config_digest");
     require_nonempty(contract.snapshot_family_digest, "snapshot_family_digest");
@@ -464,6 +549,10 @@ validate_policy_training_job_contract(
                      "critic_checkpoint_digest");
     require_nonempty(contract.optimizer_state_digest, "optimizer_state_digest");
     require_nonempty(contract.ppo_config_digest, "ppo_config_digest");
+    require_nonempty(contract.optimizer_state_schema_id,
+                     "optimizer_state_schema_id");
+    require_nonempty(contract.device_policy, "device_policy");
+    require_nonempty(contract.resume_mode, "resume_mode");
     require_nonempty(contract.advantage_estimator_id, "advantage_estimator_id");
     require_nonempty(contract.advantage_normalization_policy,
                      "advantage_normalization_policy");
@@ -499,6 +588,49 @@ validate_policy_training_job_contract(
     if (!contract.ppo_update_report_schema_id.empty() &&
         contract.ppo_update_report_schema_id != k_ppo_update_report_schema_v1) {
       issues.emplace_back("unsupported_ppo_update_report_schema_id");
+    }
+    if (!contract.optimizer_state_schema_id.empty() &&
+        contract.optimizer_state_schema_id !=
+            "kikijyeba.runtime.ppo_optimizer_state.v1") {
+      issues.emplace_back("unsupported_optimizer_state_schema_id");
+    }
+    if (!contract.device_policy.empty() &&
+        contract.device_policy != "require_cuda") {
+      issues.emplace_back("unsupported_device_policy");
+    }
+    if (contract.cuda_device_index_bound && contract.cuda_device_index != 0) {
+      issues.emplace_back("unsupported_cuda_device_index");
+    }
+    if (!contract.resume_mode.empty() &&
+        contract.resume_mode != "fresh_spawn" &&
+        contract.resume_mode != "resume_weights" &&
+        contract.resume_mode != "resume_weights_and_optimizer") {
+      issues.emplace_back("unsupported_resume_mode");
+    }
+    if (contract.resume_mode == "fresh_spawn") {
+      if (!contract.resume_actor_checkpoint_path.empty() ||
+          !contract.resume_actor_checkpoint_digest.empty() ||
+          !contract.resume_optimizer_state_path.empty() ||
+          !contract.resume_optimizer_state_digest.empty()) {
+        issues.emplace_back("fresh_spawn_must_not_bind_resume_artifacts");
+      }
+    }
+    if (contract.resume_mode == "resume_weights" ||
+        contract.resume_mode == "resume_weights_and_optimizer") {
+      if (contract.resume_actor_checkpoint_path.empty()) {
+        issues.emplace_back("missing_resume_actor_checkpoint_path");
+      }
+      if (contract.resume_actor_checkpoint_digest.empty()) {
+        issues.emplace_back("missing_resume_actor_checkpoint_digest");
+      }
+    }
+    if (contract.resume_mode == "resume_weights_and_optimizer") {
+      if (contract.resume_optimizer_state_path.empty()) {
+        issues.emplace_back("missing_resume_optimizer_state_path");
+      }
+      if (contract.resume_optimizer_state_digest.empty()) {
+        issues.emplace_back("missing_resume_optimizer_state_digest");
+      }
     }
     if (!contract.advantage_estimator_id.empty() &&
         contract.advantage_estimator_id != k_gae_advantage_estimator_v1) {

@@ -104,6 +104,8 @@ struct channel_graph_first_protocol_contract_t {
   std::string runtime_wave_dsl_bnf_path{};
   std::string runtime_wave_dsl_path{};
   std::string runtime_wave_id{};
+  std::string ujcamei_source_cursor_dsl_bnf_path{};
+  std::string ujcamei_source_cursor_dsl_path{};
   std::string kikijyeba_protocol_dsl_bnf_path{};
   std::string kikijyeba_protocol_dsl_path{};
   std::string kikijyeba_environment_replay_dsl_bnf_path{};
@@ -185,6 +187,18 @@ active_representation_assembly(
   return active_protocol_uses_mtf_jepa_mae_vicreg(bundle)
              ? bundle.mtf_jepa_mae_vicreg.config.latent_dim
              : bundle.vicreg.encoding_dim;
+}
+
+[[nodiscard]] inline cuwacunu::hero::runtime::settings::wave_protocol_bindings_t
+runtime_wave_protocol_bindings(const protocol_variant_t &variant) {
+  cuwacunu::hero::runtime::settings::wave_protocol_bindings_t out{};
+  out.protocol_id = variant.protocol_id;
+  out.representation_family =
+      protocol_representation_family_name(variant.representation_family);
+  out.inference_family = variant.inference_family;
+  out.allocation_policy_family = variant.allocation_policy_family;
+  out.policy_component_family = variant.policy_component_family;
+  return out;
 }
 
 inline void populate_channel_graph_first_source_plan(
@@ -482,6 +496,8 @@ canonical_channel_graph_first_protocol_contract_text(
       << "\n";
   out << "protocol_allocation_policy="
       << contract.protocol_variant.allocation_policy_family << "\n";
+  out << "protocol_policy_component="
+      << contract.protocol_variant.policy_component_family << "\n";
   out << "protocol_representation_contract="
       << contract.protocol_variant.representation_contract << "\n";
   out << "source_count=" << contract.source_universe.source_forms.size()
@@ -1257,7 +1273,8 @@ inline void validate_channel_graph_first_protocol_contract(
           bundle.wave_settings, bundle.protocol_variant.protocol_id)) {
     throw std::runtime_error("[channel_graph_first_config] active protocol " +
                              bundle.protocol_variant.protocol_id +
-                             " is not declared by wave COMPATIBLE_PROTOCOLS");
+                             " does not match wave PROTOCOL " +
+                             bundle.wave_settings.protocol_id);
   }
   if (bundle.wave_settings.target == cuwacunu::hero::runtime::settings::
                                          wave_target_t::vicreg_representation &&
@@ -1487,12 +1504,20 @@ load_wave_settings_from_config(std::string config_path = {}) {
   }
   const auto cfg =
       graph_first_config_detail::parse_assignment_config(config_path);
+  const auto protocol = decode_protocol_variant_from_dsl(
+      graph_first_config_detail::read_text_file_or_throw(
+          graph_first_config_detail::required_config_value(
+              cfg, "kikijyeba_protocol_dsl_path", config_path)));
   return cuwacunu::hero::runtime::settings::decode_wave_settings_from_dsl(
       graph_first_config_detail::read_text_file_or_throw(
           graph_first_config_detail::required_config_value(
               cfg, "runtime_wave_dsl_path", config_path)),
       graph_first_config_detail::optional_config_value(cfg, "runtime_wave_id",
-                                                       ""));
+                                                       ""),
+      runtime_wave_protocol_bindings(protocol),
+      graph_first_config_detail::read_text_file_or_throw(
+          graph_first_config_detail::required_config_value(
+              cfg, "ujcamei_source_cursor_dsl_path", config_path)));
 }
 
 [[nodiscard]] inline channel_graph_first_protocol_contract_t
@@ -1683,14 +1708,18 @@ load_channel_graph_first_protocol_contract_from_config(
       cfg, "runtime_wave_dsl_path", config_path);
   out.runtime_wave_id = graph_first_config_detail::optional_config_value(
       cfg, "runtime_wave_id", "");
+  out.ujcamei_source_cursor_dsl_bnf_path =
+      graph_first_config_detail::required_config_value(
+          cfg, "ujcamei_source_cursor_dsl_bnf_path", config_path);
+  out.ujcamei_source_cursor_dsl_path =
+      graph_first_config_detail::required_config_value(
+          cfg, "ujcamei_source_cursor_dsl_path", config_path);
   out.kikijyeba_protocol_dsl_bnf_path =
-      graph_first_config_detail::optional_config_value(
-          cfg, "kikijyeba_protocol_dsl_bnf_path",
-          "/cuwacunu/src/config/grammar/kikijyeba.protocol.dsl.bnf");
+      graph_first_config_detail::required_config_value(
+          cfg, "kikijyeba_protocol_dsl_bnf_path", config_path);
   out.kikijyeba_protocol_dsl_path =
-      graph_first_config_detail::optional_config_value(
-          cfg, "kikijyeba_protocol_dsl_path",
-          "/cuwacunu/src/config/kikijyeba.protocol.cwu_01v.dsl");
+      graph_first_config_detail::required_config_value(
+          cfg, "kikijyeba_protocol_dsl_path", config_path);
   out.kikijyeba_environment_replay_dsl_bnf_path =
       graph_first_config_detail::optional_config_value(
           cfg, "kikijyeba_environment_replay_dsl_bnf_path",
@@ -1735,6 +1764,8 @@ load_channel_graph_first_protocol_contract_from_config(
   (void)graph_first_config_detail::read_text_file_or_throw(
       out.runtime_wave_dsl_bnf_path);
   (void)graph_first_config_detail::read_text_file_or_throw(
+      out.ujcamei_source_cursor_dsl_bnf_path);
+  (void)graph_first_config_detail::read_text_file_or_throw(
       out.kikijyeba_protocol_dsl_bnf_path);
   (void)graph_first_config_detail::read_text_file_or_throw(
       out.kikijyeba_environment_replay_dsl_bnf_path);
@@ -1746,7 +1777,10 @@ load_channel_graph_first_protocol_contract_from_config(
       cuwacunu::hero::runtime::settings::decode_wave_settings_from_dsl(
           graph_first_config_detail::read_text_file_or_throw(
               out.runtime_wave_dsl_path),
-          out.runtime_wave_id);
+          out.runtime_wave_id,
+          runtime_wave_protocol_bindings(out.protocol_variant),
+          graph_first_config_detail::read_text_file_or_throw(
+              out.ujcamei_source_cursor_dsl_path));
   out.replay_environment =
       cuwacunu::kikijyeba::environment::decode_replay_environment_spec_from_dsl(
           graph_first_config_detail::read_text_file_or_throw(

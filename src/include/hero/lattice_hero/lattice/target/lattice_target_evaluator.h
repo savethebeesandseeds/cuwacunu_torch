@@ -628,6 +628,8 @@ make_evidence_from_candidate(const job_candidate_t &candidate,
       map_get(candidate.manifest, "protocol_contract_fingerprint");
   out.component_fingerprint = map_get(
       candidate.manifest, component_fingerprint_key_for_target_kind(spec.kind));
+  out.component_operator_surface_digest =
+      map_get(candidate.manifest, "component_operator_surface_digest");
   out.graph_order_fingerprint =
       map_get(candidate.manifest, "graph_order_fingerprint");
   out.source_cursor_token = map_get(candidate.manifest, "source_cursor_token");
@@ -1380,6 +1382,8 @@ make_proof_context(const lattice_target_spec_t &spec,
       out.active_contract_fingerprint == out.evidence_contract_fingerprint;
   out.expected_component_fingerprint = expected_component_fingerprint;
   out.evidence_component_fingerprint = evidence.component_fingerprint;
+  out.evidence_component_operator_surface_digest =
+      evidence.component_operator_surface_digest;
   out.component_match =
       !out.require_component_match ||
       out.expected_component_fingerprint == out.evidence_component_fingerprint;
@@ -1669,43 +1673,41 @@ private:
   [[nodiscard]] static std::string
   warning_inspection_panel_for_family(const std::string &family) {
     if (family == "source_health") {
-      return "hero.lattice.inspect subject=facts mode=summary "
-             "family=source_analytics";
+      return "hero.lattice.inspect.facts.summary family=source_analytics";
     }
     if (family == "target_transform_contract") {
-      return "hero.lattice.inspect subject=facts mode=summary "
+      return "hero.lattice.inspect.facts.summary "
              "family=target_transform";
     }
     if (family == "forecast_quality_visibility" ||
         family == "forecast_calibration" ||
         family == "forecast_baseline_comparison" ||
         family == "forecast_support") {
-      return "hero.lattice.inspect subject=facts mode=summary "
-             "family=forecast_eval";
+      return "hero.lattice.inspect.facts.summary family=forecast_eval";
     }
     if (family == "lineage_integrity") {
-      return "hero.lattice.inspect subject=facts mode=lineage";
+      return "hero.lattice.inspect.facts.lineage";
     }
     if (family == "selection_signal_audit") {
-      return "hero.lattice.inspect subject=facts mode=summary "
+      return "hero.lattice.inspect.facts.summary "
              "family=selection_signal";
     }
     if (family == "observer_belief_consistency") {
-      return "hero.lattice.inspect subject=facts mode=summary "
+      return "hero.lattice.inspect.facts.summary "
              "family=observer_belief";
     }
     if (family == "allocation_engine_diagnostics") {
-      return "hero.lattice.inspect subject=facts mode=summary "
+      return "hero.lattice.inspect.facts.summary "
              "family=allocation_engine";
     }
     if (family == "replay_environment_diagnostics") {
-      return "hero.lattice.inspect subject=facts mode=summary "
+      return "hero.lattice.inspect.facts.summary "
              "family=replay_environment";
     }
     if (family == "runtime_health") {
       return "hero.runtime.health";
     }
-    return "hero.lattice.inspect subject=target";
+    return "hero.lattice.inspect.target";
   }
 
   [[nodiscard]] static std::string warning_reason_code(
@@ -1916,6 +1918,133 @@ private:
       return "forbidden";
     }
     return "failed";
+  }
+
+  [[nodiscard]] static std::string
+  artifact_issue_operator_message(const std::string &family,
+                                  const std::string &issue) {
+    if (family == "tsodao_settings_protection") {
+      if (issue == "protected_policy_training_fact_digest_not_found") {
+        return "Tsodao settings protection references a policy-training fact "
+               "digest that is not present in the current evidence catalog";
+      }
+      if (issue.find("_mismatch") != std::string::npos ||
+          issue == "protected_settings_not_declared_matched") {
+        return "Tsodao protected settings do not match the referenced "
+               "policy-training artifact";
+      }
+      if (issue == "protected_evidence_digests_not_bound" ||
+          issue ==
+              "missing_protected_policy_training_proof_certificate_digest") {
+        return "Tsodao settings protection is missing the bound readiness "
+               "proof/evidence digest for the protected policy-training "
+               "artifact";
+      }
+      if (issue ==
+          "tsodao_settings_protection_must_remain_artifact_evidence_only") {
+        return "Tsodao settings protection must remain read-only artifact "
+               "evidence and must not search settings, select policies, "
+               "claim quality/readiness, execute, deploy, or authorize live "
+               "capital";
+      }
+      return "Tsodao settings-protection proof issue: " + issue;
+    }
+    if (family == "policy_acceptance") {
+      if (issue == "accepted_policy_training_fact_digest_not_found") {
+        return "policy acceptance references a policy-training fact digest "
+               "that "
+               "is not present in the current evidence catalog";
+      }
+      if (issue == "tsodao_settings_protection_fact_digest_not_found") {
+        return "policy acceptance references a Tsodao settings-protection fact "
+               "digest that is not present in the current evidence catalog";
+      }
+      if (issue ==
+          "acceptance_policy_digest_mismatch_governance_thresholds_v0") {
+        return "policy acceptance artifact does not match the required V0 "
+               "governance threshold contract for the pre-paper-online policy "
+               "lane";
+      }
+      if (issue.find("_mismatch") != std::string::npos) {
+        return "policy acceptance artifact does not match its referenced "
+               "policy-training or Tsodao settings-protection evidence";
+      }
+      if (issue == "primary_metric_not_passed" ||
+          issue == "mandatory_baselines_not_passed" ||
+          issue == "uncertainty_not_passed" ||
+          issue == "negative_tests_not_passed" ||
+          issue == "leakage_negative_tests_not_passed" ||
+          issue == "promotion_criteria_not_satisfied") {
+        return "policy acceptance evidence did not satisfy the declared "
+               "acceptance metric, baseline, uncertainty, negative-test, or "
+               "promotion criterion";
+      }
+      if (issue == "policy_acceptance_must_remain_artifact_evidence_only") {
+        return "policy acceptance must remain read-only artifact evidence and "
+               "must not select policies, optimize, allocate, execute, claim "
+               "quality/readiness, deploy, or authorize live capital";
+      }
+      return "policy acceptance proof issue: " + issue;
+    }
+    if (family == "paper_online_readiness") {
+      if (issue == "policy_acceptance_fact_digest_not_found") {
+        return "paper-online readiness references a policy-acceptance fact "
+               "digest that is not present in the current evidence catalog";
+      }
+      if (issue == "policy_acceptance_fact_not_ready") {
+        return "paper-online readiness depends on a policy-acceptance fact "
+               "that does not satisfy its own acceptance contract";
+      }
+      if (issue.find("_mismatch") != std::string::npos) {
+        return "paper-online readiness artifact does not match its accepted "
+               "policy, Tsodao, execution-profile, or accounting evidence";
+      }
+      if (issue ==
+          "paper_online_readiness_must_remain_artifact_evidence_only") {
+        return "paper-online readiness must remain pre-execution artifact "
+               "evidence and must not run paper sessions, execute, deploy, "
+               "bypass Cajtucu/Runtime authority, or authorize live capital";
+      }
+      return "paper-online readiness proof issue: " + issue;
+    }
+    if (family != "policy_training") {
+      return "artifact proof issue: " + issue;
+    }
+    if (issue == "missing_optimizer_torch_state_digest" ||
+        issue == "missing_optimizer_torch_state_path") {
+      return "policy-training PPO evidence is missing the resumable Torch "
+             "optimizer archive path or digest";
+    }
+    if (issue == "cuda_verification_not_proven" ||
+        issue == "cuda_not_available" ||
+        issue == "unsupported_runtime_device_kind" ||
+        issue == "unsupported_device_policy") {
+      return "policy-training PPO evidence did not prove CUDA execution under "
+             "device_policy=require_cuda";
+    }
+    if (issue == "resume_weights_and_optimizer_missing_optimizer_state") {
+      return "resume_mode=resume_weights_and_optimizer requires the optimizer "
+             "state archive to be loaded and digest-bound";
+    }
+    if (issue == "resume_weights_missing_parent_checkpoint") {
+      return "resume_mode=resume_weights requires a bound parent actor "
+             "checkpoint and resume_parent_loaded=true";
+    }
+    if (issue == "fresh_spawn_must_not_load_resume_artifacts") {
+      return "resume_mode=fresh_spawn must not include parent checkpoint or "
+             "optimizer resume artifacts";
+    }
+    if (issue.find("parent_") != std::string::npos &&
+        issue.find("_not_found") != std::string::npos) {
+      return "policy-training parent lineage digest could not be resolved in "
+             "the current Runtime/Lattice evidence catalog";
+    }
+    if (issue == "policy_training_must_remain_artifact_evidence_only") {
+      return "policy-training facts must remain artifact evidence only and "
+             "must not claim quality, selection, execution, market readiness, "
+             "or deployment authority";
+    }
+    return "policy-training artifact proof issue: " + issue;
   }
 
   [[nodiscard]] static bool
@@ -2373,7 +2502,7 @@ private:
             matching_fact_integrity_issue_codes(result, issue);
         append_deficit(result, "artifact", family + "_issue_" + issue,
                        artifact_issue_deficit_status(issue),
-                       "artifact proof issue: " + issue,
+                       artifact_issue_operator_message(family, issue),
                        std::numeric_limits<double>::quiet_NaN(),
                        std::numeric_limits<double>::quiet_NaN(), {}, {}, {},
                        true, std::move(related_issue_codes));
@@ -2828,6 +2957,10 @@ private:
     out.protocol_contract_fingerprint = fact.contract_fingerprint;
     out.protocol_id = fact.protocol_id;
     out.component_fingerprint = fact.component_assembly_fingerprint;
+    if constexpr (requires { fact.component_operator_surface_digest; }) {
+      out.component_operator_surface_digest =
+          fact.component_operator_surface_digest;
+    }
     out.graph_order_fingerprint = fact.graph_order_fingerprint;
     out.source_cursor_token = fact.source_cursor_token;
     out.component_family_id = fact.target_component_family_id;
@@ -3493,7 +3626,10 @@ private:
          fact.policy_checkpoint_schema_id ==
              "wikimyei.policy.portfolio.graph_node_allocation."
              "ppo_checkpoint.v1" &&
+         !fact.policy_dsl_digest.empty() && !fact.policy_net_digest.empty() &&
          !fact.policy_input_feature_manifest_digest.empty() &&
+         !fact.policy_jkimyei_digest.empty() &&
+         !fact.target_node_universe_digest.empty() &&
          !fact.action_distribution_config_digest.empty() &&
          !fact.snapshot_family_digest.empty() &&
          !fact.actor_architecture_digest.empty() &&
@@ -3502,6 +3638,7 @@ private:
          !fact.actor_checkpoint_digest.empty() &&
          !fact.critic_checkpoint_digest.empty() &&
          !fact.optimizer_state_digest.empty() &&
+         exposure::policy_training_fact_has_ppo_runtime_state_evidence(fact) &&
          !fact.ppo_config_digest.empty() &&
          fact.advantage_estimator_id == "gae.v1" &&
          !fact.advantage_normalization_policy.empty() &&
@@ -3552,6 +3689,233 @@ private:
     return make_common_artifact_proof(
         spec, fact, "policy_training",
         exposure::policy_training_fact_digest(fact), identity_match,
+        fact.artifact_evidence, fact.artifact_evidence, fact.visibility_only,
+        lineage_bound, std::move(issues));
+  }
+
+  [[nodiscard]] lattice_target_proof_certificate_t::artifact_proof_t
+  make_tsodao_settings_protection_artifact_proof(
+      const lattice_target_spec_t &spec,
+      const cuwacunu::hero::lattice::exposure::
+          lattice_tsodao_settings_protection_fact_t &fact,
+      bool identity_match,
+      const std::vector<
+          cuwacunu::hero::lattice::exposure::lattice_policy_training_fact_t>
+          &policy_training_facts) const {
+    namespace exposure = cuwacunu::hero::lattice::exposure;
+    auto issues = exposure::tsodao_settings_protection_fact_issues(fact);
+    const auto binding_issues =
+        exposure::tsodao_settings_protection_policy_training_binding_issues(
+            fact, policy_training_facts);
+    issues.insert(issues.end(), binding_issues.begin(), binding_issues.end());
+    const bool contract_bound =
+        !fact.protection_id.empty() &&
+        fact.protection_contract_id ==
+            "tsodao_settings_protection_contract.v1" &&
+        !fact.protected_settings_bundle_digest.empty() &&
+        !fact.protected_policy_training_fact_digest.empty() &&
+        fact.protected_policy_training_target_id ==
+            "policy_training_artifact_ready" &&
+        !fact.protected_policy_training_proof_certificate_digest.empty() &&
+        !fact.policy_id.empty() && !fact.policy_kind.empty() &&
+        !fact.policy_family_id.empty() &&
+        !fact.policy_checkpoint_schema_id.empty() &&
+        !fact.policy_input_schema_id.empty() &&
+        !fact.policy_input_feature_manifest_digest.empty() &&
+        !fact.graph_node_action_universe_digest.empty() &&
+        !fact.action_schema_digest.empty() && !fact.action_adapter_id.empty() &&
+        !fact.action_distribution_id.empty() &&
+        !fact.action_distribution_config_digest.empty() &&
+        fact.reward_contract_id ==
+            "kikijyeba.environment.reward.post_execution_ledger_log_growth_"
+            "cost_drawdown.v1" &&
+        !fact.reward_contract_digest.empty() &&
+        !fact.environment_contract_id.empty() &&
+        !fact.execution_profile_digest.empty() &&
+        !fact.accounting_numeraire_node_id.empty() &&
+        !fact.causal_schedule_schema_id.empty() &&
+        !fact.causal_schedule_digest.empty() &&
+        !fact.snapshot_family_digest.empty() &&
+        !fact.training_config_digest.empty() &&
+        !fact.ppo_config_digest.empty() &&
+        !fact.actor_architecture_digest.empty() &&
+        !fact.critic_architecture_digest.empty() &&
+        !fact.optimizer_state_schema_id.empty() &&
+        !fact.optimizer_state_digest.empty() &&
+        !fact.optimizer_torch_state_digest.empty() &&
+        !fact.resume_mode.empty() &&
+        !fact.validation_rollout_report_digest.empty() &&
+        !fact.policy_quality_report_digest.empty() &&
+        fact.protected_settings_match_policy_training_fact &&
+        fact.protected_evidence_digests_bound &&
+        fact.protected_policy_training_ready && binding_issues.empty();
+    const bool lineage_bound =
+        !fact.parent_exposure_fact_digest.empty() && contract_bound;
+    return make_common_artifact_proof(
+        spec, fact, "tsodao_settings_protection",
+        exposure::tsodao_settings_protection_fact_digest(fact), identity_match,
+        fact.artifact_evidence, fact.artifact_evidence, fact.visibility_only,
+        lineage_bound, std::move(issues));
+  }
+
+  [[nodiscard]] lattice_target_proof_certificate_t::artifact_proof_t
+  make_policy_acceptance_artifact_proof(
+      const lattice_target_spec_t &spec,
+      const cuwacunu::hero::lattice::exposure::lattice_policy_acceptance_fact_t
+          &fact,
+      bool identity_match,
+      const std::vector<
+          cuwacunu::hero::lattice::exposure::lattice_policy_training_fact_t>
+          &policy_training_facts,
+      const std::vector<cuwacunu::hero::lattice::exposure::
+                            lattice_tsodao_settings_protection_fact_t>
+          &protection_facts) const {
+    namespace exposure = cuwacunu::hero::lattice::exposure;
+    auto issues = exposure::policy_acceptance_fact_issues(fact);
+    const auto binding_issues = exposure::policy_acceptance_binding_issues(
+        fact, policy_training_facts, protection_facts);
+    issues.insert(issues.end(), binding_issues.begin(), binding_issues.end());
+    const bool contract_bound =
+        !fact.acceptance_id.empty() &&
+        fact.acceptance_contract_id == "policy_acceptance_contract.v1" &&
+        !fact.acceptance_policy_digest.empty() &&
+        !fact.accepted_policy_training_fact_digest.empty() &&
+        fact.accepted_policy_training_target_id ==
+            "policy_training_artifact_ready" &&
+        !fact.accepted_policy_training_proof_certificate_digest.empty() &&
+        !fact.tsodao_settings_protection_fact_digest.empty() &&
+        fact.tsodao_settings_protection_target_id ==
+            "tsodao_settings_protection_ready" &&
+        !fact.tsodao_settings_protection_proof_certificate_digest.empty() &&
+        !fact.protected_settings_bundle_digest.empty() &&
+        !fact.accepted_policy_id.empty() &&
+        !fact.accepted_policy_kind.empty() &&
+        !fact.accepted_policy_family_id.empty() &&
+        !fact.accepted_actor_checkpoint_digest.empty() &&
+        !fact.accepted_checkpoint_digest.empty() &&
+        !fact.policy_quality_report_digest.empty() &&
+        !fact.validation_rollout_report_digest.empty() &&
+        fact.reward_contract_id ==
+            "kikijyeba.environment.reward.post_execution_ledger_log_growth_"
+            "cost_drawdown.v1" &&
+        !fact.execution_profile_digest.empty() &&
+        !fact.accounting_numeraire_node_id.empty() &&
+        !fact.mandatory_baseline_set_digest.empty() &&
+        !fact.mandatory_baselines.empty() && !fact.primary_metric_id.empty() &&
+        std::isfinite(fact.primary_metric_value) &&
+        std::isfinite(fact.primary_metric_threshold) &&
+        (fact.primary_metric_direction == "at_or_above" ||
+         fact.primary_metric_direction == "at_or_below") &&
+        !fact.after_cost_metric_set_digest.empty() &&
+        !fact.cost_slippage_assumption_digest.empty() &&
+        !fact.uncertainty_policy.empty() && !fact.uncertainty_model.empty() &&
+        !fact.selector_split.empty() && !fact.validation_split.empty() &&
+        !fact.test_split.empty() && !fact.sealed_test_policy.empty() &&
+        !fact.tie_policy.empty() && !fact.negative_tests_digest.empty() &&
+        !fact.threshold_selection_audit_digest.empty() &&
+        !fact.promotion_criteria_digest.empty() &&
+        fact.accepted_policy_training_ready &&
+        fact.tsodao_settings_protection_ready &&
+        fact.protected_settings_bound && fact.mandatory_baselines_bound &&
+        fact.mandatory_baselines_passed && fact.after_cost_metrics_bound &&
+        fact.primary_metric_passed && fact.uncertainty_policy_bound &&
+        fact.uncertainty_passed && fact.selector_split_bound &&
+        fact.validation_test_disjoint && fact.test_sealed_until_acceptance &&
+        fact.negative_tests_bound && fact.negative_tests_passed &&
+        fact.leakage_negative_tests_passed &&
+        fact.threshold_selection_audit_bound &&
+        fact.threshold_selected_before_test && fact.tie_policy_bound &&
+        fact.tie_policy_passed && fact.cost_slippage_assumptions_bound &&
+        fact.promotion_criteria_bound && fact.promotion_criteria_satisfied &&
+        fact.policy_acceptance_decision && binding_issues.empty();
+    const bool lineage_bound =
+        !fact.parent_exposure_fact_digest.empty() && contract_bound;
+    return make_common_artifact_proof(
+        spec, fact, "policy_acceptance",
+        exposure::policy_acceptance_fact_digest(fact), identity_match,
+        fact.artifact_evidence, fact.artifact_evidence, fact.visibility_only,
+        lineage_bound, std::move(issues));
+  }
+
+  [[nodiscard]] lattice_target_proof_certificate_t::artifact_proof_t
+  make_paper_online_readiness_artifact_proof(
+      const lattice_target_spec_t &spec,
+      const cuwacunu::hero::lattice::exposure::
+          lattice_paper_online_readiness_fact_t &fact,
+      bool identity_match,
+      const std::vector<
+          cuwacunu::hero::lattice::exposure::lattice_policy_acceptance_fact_t>
+          &acceptance_facts,
+      const std::vector<cuwacunu::hero::lattice::exposure::
+                            lattice_tsodao_settings_protection_fact_t>
+          &protection_facts) const {
+    namespace exposure = cuwacunu::hero::lattice::exposure;
+    auto issues = exposure::paper_online_readiness_fact_issues(fact);
+    const auto binding_issues = exposure::paper_online_readiness_binding_issues(
+        fact, acceptance_facts, protection_facts);
+    issues.insert(issues.end(), binding_issues.begin(), binding_issues.end());
+    const bool contract_bound =
+        !fact.readiness_id.empty() &&
+        fact.readiness_contract_id == "paper_online_readiness_contract.v1" &&
+        !fact.policy_acceptance_fact_digest.empty() &&
+        fact.policy_acceptance_target_id ==
+            "policy_acceptance_contract_ready" &&
+        !fact.policy_acceptance_proof_certificate_digest.empty() &&
+        !fact.tsodao_settings_protection_fact_digest.empty() &&
+        !fact.protected_settings_bundle_digest.empty() &&
+        !fact.accepted_policy_id.empty() &&
+        !fact.accepted_policy_kind.empty() &&
+        !fact.accepted_policy_family_id.empty() &&
+        !fact.accepted_actor_checkpoint_digest.empty() &&
+        !fact.accepted_checkpoint_digest.empty() &&
+        !fact.policy_quality_report_digest.empty() &&
+        !fact.validation_rollout_report_digest.empty() &&
+        fact.reward_contract_id ==
+            "kikijyeba.environment.reward.post_execution_ledger_log_growth_"
+            "cost_drawdown.v1" &&
+        !fact.execution_profile_digest.empty() &&
+        !fact.accounting_numeraire_node_id.empty() &&
+        fact.paper_online_environment_contract_id ==
+            "kikijyeba.environment.paper_online.v1" &&
+        !fact.paper_online_profile_digest.empty() &&
+        !fact.direct_edge_universe_digest.empty() &&
+        !fact.direct_edge_universe_validation_policy_id.empty() &&
+        (fact.missing_direct_pair_policy == "skip_pair_warn" ||
+         fact.missing_direct_pair_policy == "invalid_trace") &&
+        fact.synthetic_execution_market_policy_id ==
+            "synthetic_execution_markets_forbidden.v1" &&
+        !fact.locked_execution_profile_digest.empty() &&
+        fact.locked_execution_profile_digest == fact.execution_profile_digest &&
+        !fact.persistent_paper_ledger_recovery_policy_id.empty() &&
+        !fact.paper_ledger_storage_policy_id.empty() &&
+        fact.session_state_schema_id ==
+            "kikijyeba.paper_online.session_state.v1" &&
+        !fact.session_lifecycle_policy_id.empty() &&
+        !fact.idempotency_policy_id.empty() &&
+        !fact.execution_intent_id_policy.empty() &&
+        !fact.duplicate_action_policy.empty() &&
+        !fact.duplicate_execution_intent_policy.empty() &&
+        !fact.clock_policy_id.empty() && !fact.timestamp_policy_id.empty() &&
+        !fact.market_data_staleness_policy_id.empty() &&
+        fact.max_market_data_staleness_ms > 0 &&
+        fact.clock_skew_tolerance_ms >= 0 &&
+        !fact.reward_report_artifact_policy_id.empty() &&
+        !fact.operator_abort_policy_id.empty() &&
+        !fact.kill_switch_policy_id.empty() && fact.policy_acceptance_ready &&
+        fact.tsodao_settings_protection_ready && fact.accepted_policy_bound &&
+        fact.protected_settings_bound && fact.direct_edge_universe_validated &&
+        fact.locked_execution_profile_bound &&
+        fact.persistent_paper_ledger_recovery_bound && fact.idempotency_bound &&
+        fact.duplicate_action_protection_bound &&
+        fact.session_lifecycle_bound && fact.clock_timestamp_policy_bound &&
+        fact.market_data_staleness_bound &&
+        fact.reward_report_artifact_path_bound && fact.operator_abort_bound &&
+        fact.kill_switch_bound && binding_issues.empty();
+    const bool lineage_bound =
+        !fact.parent_exposure_fact_digest.empty() && contract_bound;
+    return make_common_artifact_proof(
+        spec, fact, "paper_online_readiness",
+        exposure::paper_online_readiness_fact_digest(fact), identity_match,
         fact.artifact_evidence, fact.artifact_evidence, fact.visibility_only,
         lineage_bound, std::move(issues));
   }
@@ -3641,8 +4005,9 @@ private:
     std::vector<std::string> first_identity_issues{};
     auto parent_artifact_spec = spec;
     if (spec.subject_fact_family == "policy_training") {
-      // Policy-training facts belong to wikimyei.policy.trainable, while their
-      // required forecast/observer/allocation/replay parents belong to the
+      // Policy-training facts belong to
+      // wikimyei.policy.portfolio.graph_node_allocation, while their required
+      // forecast/observer/allocation/replay parents belong to the
       // evidence-producing component families. Keep the subject component
       // filter for the policy fact itself, but do not apply it to parent
       // lineage digest lookup.
@@ -3855,6 +4220,62 @@ private:
             spec, fact, identity_match, forecast_eval_digests,
             observer_belief_digests, allocation_engine_digests,
             replay_environment_digests, replay_environment_report_digests);
+        if (identity_match) {
+          remember_identity_proof(fact, proof);
+        }
+        if (proof.passed) {
+          selected_evidence = artifact_evidence_from_fact(
+              fact, family_fact_count, identity_fact_count);
+          selected_proof = std::move(proof);
+          break;
+        }
+      }
+    } else if (spec.subject_fact_family == "tsodao_settings_protection") {
+      family_fact_count = static_cast<std::int64_t>(
+          ledger->tsodao_settings_protection_facts().size());
+      for (const auto &fact : ledger->tsodao_settings_protection_facts()) {
+        const bool identity_match = artifact_fact_matches_identity(
+            spec, fact, expected_split_policy_fingerprint);
+        auto proof = make_tsodao_settings_protection_artifact_proof(
+            spec, fact, identity_match, ledger->policy_training_facts());
+        if (identity_match) {
+          remember_identity_proof(fact, proof);
+        }
+        if (proof.passed) {
+          selected_evidence = artifact_evidence_from_fact(
+              fact, family_fact_count, identity_fact_count);
+          selected_proof = std::move(proof);
+          break;
+        }
+      }
+    } else if (spec.subject_fact_family == "policy_acceptance") {
+      family_fact_count =
+          static_cast<std::int64_t>(ledger->policy_acceptance_facts().size());
+      for (const auto &fact : ledger->policy_acceptance_facts()) {
+        const bool identity_match = artifact_fact_matches_identity(
+            spec, fact, expected_split_policy_fingerprint);
+        auto proof = make_policy_acceptance_artifact_proof(
+            spec, fact, identity_match, ledger->policy_training_facts(),
+            ledger->tsodao_settings_protection_facts());
+        if (identity_match) {
+          remember_identity_proof(fact, proof);
+        }
+        if (proof.passed) {
+          selected_evidence = artifact_evidence_from_fact(
+              fact, family_fact_count, identity_fact_count);
+          selected_proof = std::move(proof);
+          break;
+        }
+      }
+    } else if (spec.subject_fact_family == "paper_online_readiness") {
+      family_fact_count = static_cast<std::int64_t>(
+          ledger->paper_online_readiness_facts().size());
+      for (const auto &fact : ledger->paper_online_readiness_facts()) {
+        const bool identity_match = artifact_fact_matches_identity(
+            spec, fact, expected_split_policy_fingerprint);
+        auto proof = make_paper_online_readiness_artifact_proof(
+            spec, fact, identity_match, ledger->policy_acceptance_facts(),
+            ledger->tsodao_settings_protection_facts());
         if (identity_match) {
           remember_identity_proof(fact, proof);
         }

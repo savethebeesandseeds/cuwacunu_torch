@@ -11,6 +11,7 @@
 #include <stdexcept>
 #include <string>
 #include <type_traits>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -35,7 +36,7 @@ enum class wave_target_t {
   vicreg_representation,
   mtf_jepa_mae_vicreg_representation,
   inference_channel_mdn,
-  policy_trainable,
+  graph_node_allocation_policy,
 };
 
 enum class wave_action_t {
@@ -45,11 +46,13 @@ enum class wave_action_t {
 
 struct wave_settings_t {
   std::string wave_id{};
-  std::vector<std::string> compatible_protocol_ids{};
+  std::string protocol_id{};
+  std::string authored_target{};
   wave_target_t target{wave_target_t::inference_channel_mdn};
   std::string mode_text{"run"};
   wave_action_t action{wave_action_t::run};
   bool debug{false};
+  std::string source_cursor_id{};
   std::string source_cursor_kind{"graph_anchor"};
   std::string source_cursor_scope{"wave_batch"};
   wave_source_range_policy_t source_range_policy{
@@ -62,6 +65,28 @@ struct wave_settings_t {
   std::string policy_kind{};
   std::string training_schedule_mode{};
   bool live_execution_allowed{false};
+  std::optional<std::size_t> anchor_index_begin{std::nullopt};
+  std::optional<std::size_t> anchor_index_end{std::nullopt};
+  std::optional<std::int64_t> source_key_begin{std::nullopt};
+  std::optional<std::int64_t> source_key_end{std::nullopt};
+};
+
+struct wave_protocol_bindings_t {
+  std::string protocol_id{"cwu_01v"};
+  std::string representation_family{"wikimyei.representation.encoding.vicreg"};
+  std::string inference_family{"wikimyei.inference.expected_value.mdn"};
+  std::string allocation_policy_family{
+      "wikimyei.policy.portfolio.spot_distributional_utility"};
+  std::string policy_component_family{
+      "wikimyei.policy.portfolio.graph_node_allocation"};
+};
+
+struct source_cursor_settings_t {
+  std::string cursor_id{};
+  std::string source_cursor_kind{"graph_anchor"};
+  std::string source_cursor_scope{"wave_batch"};
+  wave_source_range_policy_t source_range_policy{
+      wave_source_range_policy_t::all};
   std::optional<std::size_t> anchor_index_begin{std::nullopt};
   std::optional<std::size_t> anchor_index_end{std::nullopt};
   std::optional<std::int64_t> source_key_begin{std::nullopt};
@@ -90,59 +115,52 @@ split_mode_atoms(std::string mode_text) {
 
 } // namespace wave_detail
 
-[[nodiscard]] inline std::vector<std::string>
-parse_protocol_id_list(std::string value) {
-  for (char &ch : value) {
-    if (ch == '|' || ch == '+' || ch == ',') {
-      ch = ' ';
-    }
-  }
-  std::istringstream in(value);
-  std::vector<std::string> out;
-  std::string item;
-  while (in >> item) {
-    item = wave_detail::kv::trim(item);
-    if (item.empty()) {
-      continue;
-    }
-    if (std::find(out.begin(), out.end(), item) == out.end()) {
-      out.push_back(std::move(item));
-    }
-  }
-  return out;
-}
-
 [[nodiscard]] inline bool
 wave_supports_protocol(const wave_settings_t &settings,
                        const std::string &protocol_id) {
-  if (settings.compatible_protocol_ids.empty()) {
-    return true;
-  }
-  return std::find(settings.compatible_protocol_ids.begin(),
-                   settings.compatible_protocol_ids.end(),
-                   wave_detail::kv::trim(protocol_id)) !=
-         settings.compatible_protocol_ids.end();
+  return wave_detail::kv::trim(settings.protocol_id) ==
+         wave_detail::kv::trim(protocol_id);
 }
 
-[[nodiscard]] inline wave_target_t parse_wave_target(std::string value) {
+[[nodiscard]] inline wave_protocol_bindings_t default_wave_protocol_bindings() {
+  return wave_protocol_bindings_t{};
+}
+
+[[nodiscard]] inline std::string
+resolve_wave_target_family(std::string value,
+                           const wave_protocol_bindings_t &protocol) {
   value = wave_detail::kv::lowercase(wave_detail::kv::trim(value));
-  if (value == "wikimyei.representation.encoding.vicreg" ||
-      value == "vicreg_representation") {
+  if (value == "wikimyei.representation.encoding" ||
+      value == "representation_encoding" || value == "representation") {
+    return protocol.representation_family;
+  }
+  if (value == "wikimyei.inference.expected_value" ||
+      value == "expected_value_inference" || value == "inference") {
+    return protocol.inference_family;
+  }
+  if (value == "wikimyei.policy.portfolio" || value == "portfolio_policy" ||
+      value == "policy_portfolio") {
+    return protocol.policy_component_family;
+  }
+  return value;
+}
+
+[[nodiscard]] inline wave_target_t
+parse_wave_target(std::string value, const wave_protocol_bindings_t &protocol =
+                                         default_wave_protocol_bindings()) {
+  value = wave_detail::kv::lowercase(wave_detail::kv::trim(
+      resolve_wave_target_family(std::move(value), protocol)));
+  if (value == "wikimyei.representation.encoding.vicreg") {
     return wave_target_t::vicreg_representation;
   }
-  if (value == "wikimyei.representation.encoding.mtf_jepa_mae_vicreg" ||
-      value == "mtf_jepa_mae_vicreg_representation" ||
-      value == "mtf_jvmae_representation") {
+  if (value == "wikimyei.representation.encoding.mtf_jepa_mae_vicreg") {
     return wave_target_t::mtf_jepa_mae_vicreg_representation;
   }
-  if (value == "wikimyei.inference.expected_value.mdn" ||
-      value == "inference_mdn" || value == "inference_channel_mdn" ||
-      value == "mdn_expected_value_inference") {
+  if (value == "wikimyei.inference.expected_value.mdn") {
     return wave_target_t::inference_channel_mdn;
   }
-  if (value == "wikimyei.policy.trainable" ||
-      value == "policy_trainable" || value == "trainable_policy") {
-    return wave_target_t::policy_trainable;
+  if (value == "wikimyei.policy.portfolio.graph_node_allocation") {
+    return wave_target_t::graph_node_allocation_policy;
   }
   throw std::runtime_error("[wave_settings] invalid TARGET: " + value);
 }
@@ -155,8 +173,8 @@ wave_supports_protocol(const wave_settings_t &settings,
     return "wikimyei.representation.encoding.mtf_jepa_mae_vicreg";
   case wave_target_t::inference_channel_mdn:
     return "wikimyei.inference.expected_value.mdn";
-  case wave_target_t::policy_trainable:
-    return "wikimyei.policy.trainable";
+  case wave_target_t::graph_node_allocation_policy:
+    return "wikimyei.policy.portfolio.graph_node_allocation";
   }
   throw std::runtime_error("[wave_settings] unknown TARGET");
 }
@@ -275,9 +293,9 @@ parse_optional_i64(const cuwacunu::piaabo::parse::simple_kv::block_t &block,
   return primary.has_value() ? primary : alias;
 }
 
-[[nodiscard]] inline bool parse_optional_bool(
-    const cuwacunu::piaabo::parse::simple_kv::block_t &block,
-    const std::string &key, bool default_value) {
+[[nodiscard]] inline bool
+parse_optional_bool(const cuwacunu::piaabo::parse::simple_kv::block_t &block,
+                    const std::string &key, bool default_value) {
   const auto raw = wave_detail::kv::optional(block, key, "");
   const auto value = wave_detail::kv::lowercase(wave_detail::kv::trim(raw));
   if (value.empty()) {
@@ -289,14 +307,126 @@ parse_optional_i64(const cuwacunu::piaabo::parse::simple_kv::block_t &block,
   if (value == "false") {
     return false;
   }
-  throw std::runtime_error("[wave_settings] " + key +
-                           " must be true or false");
+  throw std::runtime_error("[wave_settings] " + key + " must be true or false");
+}
+
+inline void
+validate_source_cursor_settings(const source_cursor_settings_t &settings) {
+  if (wave_detail::kv::trim(settings.cursor_id).empty()) {
+    throw std::runtime_error("[wave_settings] CURSOR_ID is required");
+  }
+  if (settings.source_cursor_kind != "graph_anchor") {
+    throw std::runtime_error(
+        "[wave_settings] v1 source cursor KIND must be graph_anchor");
+  }
+  if (settings.source_cursor_scope != "wave_batch") {
+    throw std::runtime_error(
+        "[wave_settings] v1 source cursor SCOPE must be wave_batch");
+  }
+  if (settings.source_range_policy == wave_source_range_policy_t::all) {
+    if (settings.anchor_index_begin.has_value() ||
+        settings.anchor_index_end.has_value() ||
+        settings.source_key_begin.has_value() ||
+        settings.source_key_end.has_value()) {
+      throw std::runtime_error("[wave_settings] cursor range bounds require "
+                               "SOURCE_RANGE=anchor_index "
+                               "or SOURCE_RANGE=source_key");
+    }
+    return;
+  }
+  if (settings.source_range_policy ==
+      wave_source_range_policy_t::anchor_index) {
+    if (settings.source_key_begin.has_value() ||
+        settings.source_key_end.has_value()) {
+      throw std::runtime_error("[wave_settings] cursor SOURCE_KEY_BEGIN/END "
+                               "require SOURCE_RANGE=source_key");
+    }
+    if (!settings.anchor_index_begin.has_value() ||
+        !settings.anchor_index_end.has_value()) {
+      throw std::runtime_error(
+          "[wave_settings] cursor SOURCE_RANGE=anchor_index requires "
+          "ANCHOR_INDEX_BEGIN and ANCHOR_INDEX_END");
+    }
+    if (*settings.anchor_index_end <= *settings.anchor_index_begin) {
+      throw std::runtime_error(
+          "[wave_settings] cursor ANCHOR_INDEX_END must be greater than "
+          "ANCHOR_INDEX_BEGIN");
+    }
+    return;
+  }
+  if (settings.anchor_index_begin.has_value() ||
+      settings.anchor_index_end.has_value()) {
+    throw std::runtime_error("[wave_settings] cursor ANCHOR_INDEX_BEGIN/END "
+                             "require SOURCE_RANGE=anchor_index");
+  }
+  if (!settings.source_key_begin.has_value() ||
+      !settings.source_key_end.has_value()) {
+    throw std::runtime_error(
+        "[wave_settings] cursor SOURCE_RANGE=source_key requires "
+        "SOURCE_KEY_BEGIN and SOURCE_KEY_END");
+  }
+  if (*settings.source_key_end <= *settings.source_key_begin) {
+    throw std::runtime_error(
+        "[wave_settings] cursor SOURCE_KEY_END must be greater than "
+        "SOURCE_KEY_BEGIN");
+  }
+}
+
+[[nodiscard]] inline source_cursor_settings_t
+decode_source_cursor_settings_from_block(
+    const cuwacunu::piaabo::parse::simple_kv::block_t &block) {
+  namespace kv = cuwacunu::piaabo::parse::simple_kv;
+  if (block.name != "UJCAMEI_SOURCE_CURSOR") {
+    throw std::runtime_error(
+        "[wave_settings] expected UJCAMEI_SOURCE_CURSOR block");
+  }
+  source_cursor_settings_t out{};
+  out.cursor_id = kv::required(block, "CURSOR_ID");
+  out.source_cursor_kind = kv::required(block, "SOURCE_CURSOR_KIND");
+  out.source_cursor_scope = kv::required(block, "SOURCE_CURSOR_SCOPE");
+  out.source_range_policy =
+      parse_source_range_policy(kv::required(block, "SOURCE_RANGE"));
+  out.anchor_index_begin = parse_optional_size(block, "ANCHOR_INDEX_BEGIN");
+  out.anchor_index_end = parse_optional_size(block, "ANCHOR_INDEX_END");
+  out.source_key_begin =
+      parse_optional_i64_alias(block, "SOURCE_KEY_BEGIN", "ANCHOR_KEY_BEGIN");
+  out.source_key_end =
+      parse_optional_i64_alias(block, "SOURCE_KEY_END", "ANCHOR_KEY_END");
+  validate_source_cursor_settings(out);
+  return out;
+}
+
+[[nodiscard]] inline source_cursor_settings_t
+source_cursor_settings_from_dsl(const std::string &dsl_text,
+                                std::string cursor_id) {
+  namespace kv = cuwacunu::piaabo::parse::simple_kv;
+  cursor_id = kv::trim(std::move(cursor_id));
+  if (cursor_id.empty()) {
+    throw std::runtime_error("[wave_settings] SOURCE_CURSOR_ID is required");
+  }
+  const auto blocks = kv::parse_blocks(dsl_text);
+  std::unordered_map<std::string, source_cursor_settings_t> cursors;
+  for (const auto &block : blocks) {
+    if (block.name != "UJCAMEI_SOURCE_CURSOR") {
+      continue;
+    }
+    auto cursor = decode_source_cursor_settings_from_block(block);
+    if (!cursors.emplace(cursor.cursor_id, cursor).second) {
+      throw std::runtime_error("[wave_settings] duplicate CURSOR_ID: " +
+                               cursor.cursor_id);
+    }
+  }
+  const auto found = cursors.find(cursor_id);
+  if (found == cursors.end()) {
+    throw std::runtime_error("[wave_settings] SOURCE_CURSOR_ID not found: " +
+                             cursor_id);
+  }
+  return found->second;
 }
 
 [[nodiscard]] inline const char *runtime_report_mode_name(
     cuwacunu::hero::lattice::runtime_report::runtime_report_mode_t mode) {
-  using mode_t =
-      cuwacunu::hero::lattice::runtime_report::runtime_report_mode_t;
+  using mode_t = cuwacunu::hero::lattice::runtime_report::runtime_report_mode_t;
   switch (mode) {
   case mode_t::normal:
     return "normal";
@@ -309,8 +439,7 @@ parse_optional_i64(const cuwacunu::piaabo::parse::simple_kv::block_t &block,
 [[nodiscard]] inline cuwacunu::hero::lattice::runtime_report::
     runtime_report_mode_t
     runtime_report_mode_from_wave(const wave_settings_t &settings) {
-  using mode_t =
-      cuwacunu::hero::lattice::runtime_report::runtime_report_mode_t;
+  using mode_t = cuwacunu::hero::lattice::runtime_report::runtime_report_mode_t;
   return settings.debug ? mode_t::debug : mode_t::normal;
 }
 
@@ -318,13 +447,14 @@ inline void validate_wave_settings(const wave_settings_t &settings) {
   if (wave_detail::kv::trim(settings.wave_id).empty()) {
     throw std::runtime_error("[wave_settings] WAVE_ID is required");
   }
-  for (const auto &protocol_id : settings.compatible_protocol_ids) {
-    if (wave_detail::kv::trim(protocol_id).empty() ||
-        protocol_id != wave_detail::kv::trim(protocol_id)) {
-      throw std::runtime_error(
-          "[wave_settings] COMPATIBLE_PROTOCOLS entries must be trimmed and "
-          "non-empty");
-    }
+  if (wave_detail::kv::trim(settings.protocol_id).empty()) {
+    throw std::runtime_error("[wave_settings] PROTOCOL is required");
+  }
+  if (wave_detail::kv::trim(settings.authored_target).empty()) {
+    throw std::runtime_error("[wave_settings] TARGET is required");
+  }
+  if (wave_detail::kv::trim(settings.source_cursor_id).empty()) {
+    throw std::runtime_error("[wave_settings] SOURCE_CURSOR_ID is required");
   }
   if (settings.source_cursor_kind != "graph_anchor") {
     throw std::runtime_error(
@@ -532,15 +662,21 @@ resolve_source_range_to_anchor_indices(const wave_settings_t &settings,
                                  .anchor_index_end = end_index};
 }
 
-[[nodiscard]] inline wave_settings_t
-decode_wave_settings_from_block(
-    const cuwacunu::piaabo::parse::simple_kv::block_t &block) {
+[[nodiscard]] inline wave_settings_t decode_wave_settings_from_block(
+    const cuwacunu::piaabo::parse::simple_kv::block_t &block,
+    const wave_protocol_bindings_t &protocol = default_wave_protocol_bindings(),
+    const std::string &source_cursor_dsl_text = {}) {
   namespace kv = cuwacunu::piaabo::parse::simple_kv;
   wave_settings_t out{};
   out.wave_id = kv::required(block, "WAVE_ID");
-  out.compatible_protocol_ids =
-      parse_protocol_id_list(kv::optional(block, "COMPATIBLE_PROTOCOLS", ""));
-  out.target = parse_wave_target(kv::required(block, "TARGET"));
+  out.protocol_id = kv::required(block, "PROTOCOL");
+  if (kv::trim(out.protocol_id) != kv::trim(protocol.protocol_id)) {
+    throw std::runtime_error(
+        "[wave_settings] WAVE_SETTINGS.PROTOCOL " + out.protocol_id +
+        " does not match active protocol " + protocol.protocol_id);
+  }
+  out.authored_target = kv::required(block, "TARGET");
+  out.target = parse_wave_target(out.authored_target, protocol);
   out.mode_text = kv::optional(block, "MODE", "run");
   bool saw_run = false;
   bool saw_train = false;
@@ -562,12 +698,7 @@ decode_wave_settings_from_block(
         "train; debug is only a modifier");
   }
   out.action = saw_train ? wave_action_t::train : wave_action_t::run;
-  out.source_cursor_kind =
-      kv::optional(block, "SOURCE_CURSOR_KIND", out.source_cursor_kind);
-  out.source_cursor_scope =
-      kv::optional(block, "SOURCE_CURSOR_SCOPE", out.source_cursor_scope);
-  out.source_range_policy =
-      parse_source_range_policy(kv::optional(block, "SOURCE_RANGE", "all"));
+  out.source_cursor_id = kv::required(block, "SOURCE_CURSOR_ID");
   const auto source_order_it = block.values.find("SOURCE_ORDER");
   out.source_order_policy_explicit = source_order_it != block.values.end() &&
                                      !kv::trim(source_order_it->second).empty();
@@ -577,12 +708,15 @@ decode_wave_settings_from_block(
           : (out.action == wave_action_t::train
                  ? wave_source_order_policy_t::random_per_epoch
                  : wave_source_order_policy_t::sequential);
-  out.anchor_index_begin = parse_optional_size(block, "ANCHOR_INDEX_BEGIN");
-  out.anchor_index_end = parse_optional_size(block, "ANCHOR_INDEX_END");
-  out.source_key_begin =
-      parse_optional_i64_alias(block, "SOURCE_KEY_BEGIN", "ANCHOR_KEY_BEGIN");
-  out.source_key_end =
-      parse_optional_i64_alias(block, "SOURCE_KEY_END", "ANCHOR_KEY_END");
+  const auto cursor = source_cursor_settings_from_dsl(source_cursor_dsl_text,
+                                                      out.source_cursor_id);
+  out.source_cursor_kind = cursor.source_cursor_kind;
+  out.source_cursor_scope = cursor.source_cursor_scope;
+  out.source_range_policy = cursor.source_range_policy;
+  out.anchor_index_begin = cursor.anchor_index_begin;
+  out.anchor_index_end = cursor.anchor_index_end;
+  out.source_key_begin = cursor.source_key_begin;
+  out.source_key_end = cursor.source_key_end;
   out.job_kind = kv::optional(block, "JOB_KIND", "");
   out.policy_id = kv::optional(block, "POLICY_ID", "");
   out.policy_kind = kv::optional(block, "POLICY_KIND", "");
@@ -594,8 +728,7 @@ decode_wave_settings_from_block(
   return out;
 }
 
-[[nodiscard]] inline std::string
-wave_selection_id_from_blocks(
+[[nodiscard]] inline std::string wave_selection_id_from_blocks(
     const std::vector<cuwacunu::piaabo::parse::simple_kv::block_t> &blocks) {
   namespace kv = cuwacunu::piaabo::parse::simple_kv;
   std::string selected{};
@@ -618,27 +751,27 @@ wave_selection_id_from_blocks(
   return kv::trim(selected);
 }
 
-[[nodiscard]] inline wave_settings_t
-decode_wave_settings_from_dsl(const std::string &dsl_text,
-                              std::string selected_wave_id = {});
+[[nodiscard]] inline wave_settings_t decode_wave_settings_from_dsl(
+    const std::string &dsl_text, std::string selected_wave_id = {},
+    const wave_protocol_bindings_t &protocol = default_wave_protocol_bindings(),
+    const std::string &source_cursor_dsl_text = {});
 
 [[nodiscard]] inline cuwacunu::piaabo::parse::simple_kv::block_t
 selected_wave_settings_block_from_dsl(const std::string &dsl_text,
                                       std::string selected_wave_id = {}) {
   namespace kv = cuwacunu::piaabo::parse::simple_kv;
   auto blocks = kv::parse_blocks(dsl_text);
-  std::vector<std::pair<wave_settings_t, kv::block_t>> waves{};
+  std::vector<std::pair<std::string, kv::block_t>> waves{};
   std::unordered_set<std::string> wave_ids{};
   for (const auto &block : blocks) {
     if (block.name != "WAVE_SETTINGS") {
       continue;
     }
-    auto wave = decode_wave_settings_from_block(block);
-    if (!wave_ids.insert(wave.wave_id).second) {
-      throw std::runtime_error("[wave_settings] duplicate WAVE_ID: " +
-                               wave.wave_id);
+    auto wave_id = kv::required(block, "WAVE_ID");
+    if (!wave_ids.insert(wave_id).second) {
+      throw std::runtime_error("[wave_settings] duplicate WAVE_ID: " + wave_id);
     }
-    waves.push_back(std::make_pair(std::move(wave), block));
+    waves.push_back(std::make_pair(std::move(wave_id), block));
   }
   if (waves.empty()) {
     throw std::runtime_error("[wave_settings] missing WAVE_SETTINGS");
@@ -658,7 +791,7 @@ selected_wave_settings_block_from_dsl(const std::string &dsl_text,
   }
 
   for (const auto &wave : waves) {
-    if (wave.first.wave_id == selected_wave_id) {
+    if (wave.first == selected_wave_id) {
       return wave.second;
     }
   }
@@ -668,9 +801,13 @@ selected_wave_settings_block_from_dsl(const std::string &dsl_text,
 
 [[nodiscard]] inline wave_settings_t
 decode_wave_settings_from_dsl(const std::string &dsl_text,
-                              std::string selected_wave_id) {
+                              std::string selected_wave_id,
+                              const wave_protocol_bindings_t &protocol,
+                              const std::string &source_cursor_dsl_text) {
   return decode_wave_settings_from_block(
-      selected_wave_settings_block_from_dsl(dsl_text, std::move(selected_wave_id)));
+      selected_wave_settings_block_from_dsl(dsl_text,
+                                            std::move(selected_wave_id)),
+      protocol, source_cursor_dsl_text);
 }
 
 } // namespace cuwacunu::hero::runtime::settings

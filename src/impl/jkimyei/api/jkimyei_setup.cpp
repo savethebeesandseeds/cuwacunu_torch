@@ -16,22 +16,23 @@ jkimyei_setup_t::_init jkimyei_setup_t::_initializer{};
 void jkimyei_setup_t::init() { log_dbg("[jkimyei_setup] initialising\n"); }
 void jkimyei_setup_t::finit() { log_dbg("[jkimyei_setup] finalising\n"); }
 
-std::string
-jkimyei_setup_t::make_component_key(const contract_hash_t &contract_hash,
-                                    const std::string &runtime_component_name) {
-  return contract_hash + ":" + runtime_component_name;
+std::string jkimyei_setup_t::make_component_key(
+    const contract_fingerprint_t &contract_fingerprint,
+    const std::string &runtime_component_name) {
+  return contract_fingerprint + ":" + runtime_component_name;
 }
 
 /* ------------------- lazy accessor ------------------- */
-jkimyei_component_t &
-jkimyei_setup_t::operator()(const std::string &component_name,
-                            const contract_hash_t &contract_hash) {
-  if (contract_hash.empty()) {
-    log_fatal("[jkimyei_setup] missing contract hash for component '%s'\n",
-              component_name.c_str());
+jkimyei_component_t &jkimyei_setup_t::operator()(
+    const std::string &component_name,
+    const contract_fingerprint_t &contract_fingerprint) {
+  if (contract_fingerprint.empty()) {
+    log_fatal(
+        "[jkimyei_setup] missing contract fingerprint for component '%s'\n",
+        component_name.c_str());
   }
   const std::string component_key =
-      make_component_key(contract_hash, component_name);
+      make_component_key(contract_fingerprint, component_name);
   {
     std::lock_guard<std::mutex> lk(mtx);
     auto it = components.find(component_key);
@@ -73,11 +74,13 @@ jkimyei_setup_t::operator()(const std::string &component_name,
 }
 
 void jkimyei_setup_t::set_component_instruction_override(
-    const contract_hash_t &contract_hash, std::string runtime_component_name,
-    std::string component_lookup_name, std::string instruction_text) {
-  if (contract_hash.empty()) {
-    log_fatal("[jkimyei_setup] missing contract hash for override '%s'\n",
-              runtime_component_name.c_str());
+    const contract_fingerprint_t &contract_fingerprint,
+    std::string runtime_component_name, std::string component_lookup_name,
+    std::string instruction_text) {
+  if (contract_fingerprint.empty()) {
+    log_fatal(
+        "[jkimyei_setup] missing contract fingerprint for override '%s'\n",
+        runtime_component_name.c_str());
   }
   if (runtime_component_name.empty())
     return;
@@ -86,7 +89,7 @@ void jkimyei_setup_t::set_component_instruction_override(
 
   std::lock_guard<std::mutex> lk(mtx);
   const std::string runtime_key =
-      make_component_key(contract_hash, runtime_component_name);
+      make_component_key(contract_fingerprint, runtime_component_name);
   component_instruction_overrides[runtime_key] =
       component_instruction_override_t{
           .component_lookup_name = std::move(component_lookup_name),
@@ -96,30 +99,29 @@ void jkimyei_setup_t::set_component_instruction_override(
 }
 
 void jkimyei_setup_t::clear_component_instruction_override(
-    const contract_hash_t &contract_hash,
+    const contract_fingerprint_t &contract_fingerprint,
     const std::string &runtime_component_name) {
-  if (contract_hash.empty()) {
-    log_fatal(
-        "[jkimyei_setup] missing contract hash while clearing override '%s'\n",
-        runtime_component_name.c_str());
+  if (contract_fingerprint.empty()) {
+    log_fatal("[jkimyei_setup] missing contract fingerprint while clearing "
+              "override '%s'\n",
+              runtime_component_name.c_str());
   }
   std::lock_guard<std::mutex> lk(mtx);
   const std::string runtime_key =
-      make_component_key(contract_hash, runtime_component_name);
+      make_component_key(contract_fingerprint, runtime_component_name);
   component_instruction_overrides.erase(runtime_key);
   components.erase(runtime_key);
 }
 
 void jkimyei_setup_t::clear_component_instruction_overrides(
-    const contract_hash_t &contract_hash) {
-  if (contract_hash.empty()) {
-    log_fatal(
-        "[jkimyei_setup] missing contract hash while clearing all overrides "
-        "for contract\n");
+    const contract_fingerprint_t &contract_fingerprint) {
+  if (contract_fingerprint.empty()) {
+    log_fatal("[jkimyei_setup] missing contract fingerprint while clearing all "
+              "overrides for contract\n");
   }
   std::lock_guard<std::mutex> lk(mtx);
   for (auto comp_it = components.begin(); comp_it != components.end();) {
-    if (comp_it->first.rfind(contract_hash + ":", 0) == 0) {
+    if (comp_it->first.rfind(contract_fingerprint + ":", 0) == 0) {
       comp_it = components.erase(comp_it);
     } else {
       ++comp_it;
@@ -127,7 +129,7 @@ void jkimyei_setup_t::clear_component_instruction_overrides(
   }
   for (auto ov_it = component_instruction_overrides.begin();
        ov_it != component_instruction_overrides.end();) {
-    if (ov_it->first.rfind(contract_hash + ":", 0) == 0) {
+    if (ov_it->first.rfind(contract_fingerprint + ":", 0) == 0) {
       ov_it = component_instruction_overrides.erase(ov_it);
     } else {
       ++ov_it;

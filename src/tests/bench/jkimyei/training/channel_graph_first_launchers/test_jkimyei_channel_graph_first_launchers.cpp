@@ -118,6 +118,8 @@ fixture_paths_t make_config_fixture(const std::string &label,
   const auto sources_dsl = out.dir / "ujcamei.source.registry.dsl";
   const auto channels_dsl = out.dir / "ujcamei.source.retrieval.channels.dsl";
   const auto graph_dsl = out.dir / "kikijyeba.topology.graph.dsl";
+  const auto protocol_dsl = out.dir / "kikijyeba.protocol.dsl";
+  const auto cursor_dsl = out.dir / "ujcamei.source.cursor.dsl";
   const auto wave_dsl = out.dir / "hero.runtime.wave.dsl";
   const auto vicreg_dsl = out.dir / "wikimyei.representation.vicreg.dsl";
   const auto vicreg_net = out.dir / "wikimyei.representation.vicreg.net";
@@ -226,14 +228,35 @@ fixture_paths_t make_config_fixture(const std::string &label,
   write_text(wave_dsl,
              std::string("WAVE_SETTINGS {\n"
                          "  WAVE_ID = cwu_01v_channel_smoke;\n"
-                         "  TARGET = wikimyei.inference.expected_value.mdn;\n"
+                         "  PROTOCOL = cwu_01v;\n"
+                         "  TARGET = wikimyei.inference.expected_value;\n"
                          "  MODE = ") +
                  wave_mode +
                  ";\n"
-                 "  SOURCE_CURSOR_KIND = graph_anchor;\n"
-                 "  SOURCE_CURSOR_SCOPE = wave_batch;\n"
-                 "  SOURCE_RANGE = all;\n"
+                 "  SOURCE_CURSOR_ID = smoke_cursor;\n"
                  "};\n");
+  write_text(cursor_dsl, "UJCAMEI_SOURCE_CURSOR {\n"
+                         "  CURSOR_ID = smoke_cursor;\n"
+                         "  SOURCE_CURSOR_KIND = graph_anchor;\n"
+                         "  SOURCE_CURSOR_SCOPE = wave_batch;\n"
+                         "  SOURCE_RANGE = all;\n"
+                         "};\n");
+  write_text(protocol_dsl,
+             "PROTOCOL {\n"
+             "  PROTOCOL_ID = cwu_01v;\n"
+             "  PROTOCOL_KIND = channel_graph_first;\n"
+             "  GRAPH_TOPOLOGY = kikijyeba.topology.graph;\n"
+             "  NODELIFT = wikimyei.expression.nodelift.srl;\n"
+             "  REPRESENTATION = wikimyei.representation.encoding.vicreg;\n"
+             "  INFERENCE = wikimyei.inference.expected_value.mdn;\n"
+             "  OBSERVER = wikimyei.observer.belief;\n"
+             "  ALLOCATION_POLICY = "
+             "wikimyei.policy.portfolio.spot_distributional_utility;\n"
+             "  POLICY_COMPONENT = "
+             "wikimyei.policy.portfolio.graph_node_allocation;\n"
+             "  REPRESENTATION_CONTRACT = "
+             "graph_order.channel_node_representation.v1;\n"
+             "};\n");
 
   write_text(vicreg_dsl, "VICREG {\n"
                          "  VERSION = wikimyei.representation.vicreg.v1;\n"
@@ -364,6 +387,17 @@ fixture_paths_t make_config_fixture(const std::string &label,
           "ujcamei.source.retrieval.channels.dsl.bnf\n"
           "ujcamei_source_retrieval_channels_dsl_path = " +
           channels_dsl.string() +
+          "\n"
+          "ujcamei_source_cursor_dsl_bnf_path = "
+          "/cuwacunu/src/config/grammar/ujcamei.source.cursor.dsl.bnf\n"
+          "ujcamei_source_cursor_dsl_path = " +
+          cursor_dsl.string() +
+          "\n\n"
+          "[KIKIJYEBA]\n"
+          "kikijyeba_protocol_dsl_bnf_path = "
+          "/cuwacunu/src/config/grammar/kikijyeba.protocol.dsl.bnf\n"
+          "kikijyeba_protocol_dsl_path = " +
+          protocol_dsl.string() +
           "\n"
           "kikijyeba_topology_graph_dsl_bnf_path = "
           "/cuwacunu/src/config/grammar/"

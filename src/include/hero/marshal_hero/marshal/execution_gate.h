@@ -271,7 +271,7 @@ call_runtime_hero_execution(
       !gate.decision.runtime_handoff_available) {
     marshal_runtime_hero_handoff_result_t out{};
     out.arguments_json = runtime_hero_execute_args_json(
-        gate.decision.runtime_request, options.timeout_seconds, false, true);
+        gate.decision.runtime_request, false);
     out.arguments_digest = marshal_digest_for_text(
         "kikijyeba.marshal.runtime_handoff_arguments.v1", out.arguments_json);
     out.error_message =
@@ -279,7 +279,7 @@ call_runtime_hero_execution(
     return out;
   }
   return detail::call_runtime_hero_execute_request(
-      gate.decision.runtime_request, options, false, true);
+      gate.decision.runtime_request, options, false);
 }
 
 } // namespace cuwacunu::hero::marshal

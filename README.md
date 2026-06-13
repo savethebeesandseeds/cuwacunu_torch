@@ -12,6 +12,22 @@ Think of it as a lance that cannot be turned toward harm.
 
 The `tsodao` is not the abstract transformer but the eyes on the edge of the lance. 
 
+### Tsodao Status
+
+Tsodao is intended as the later protection/governance layer for selected
+settings and weights. During development, it is where we will eventually bind
+internal iteration, protected setting/weight identity, promotion evidence, and
+the decision about what can be shared or open sourced without leaking private
+selection work.
+
+The current repository does not implement full Tsodao authority. The implemented
+surface is a settings-protection evidence contract: Lattice can scan and prove
+`kikijyeba.lattice.tsodao_settings_protection.v1` facts that bind a protected
+settings bundle to an existing policy-training artifact. That contract is
+evidence only. It does not optimize settings, select policies, publish weights,
+claim policy quality, grant market/deployment readiness, or authorize live
+execution.
+
 ## Reproducible Setup (Docker + `setup.sh`)
 The canonical environment setup is now scripted in [`setup.sh`](./setup.sh).  
 The script is designed for reproducibility and expects the staged LibTorch bundle in `.external/`.

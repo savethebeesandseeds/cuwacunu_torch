@@ -49,16 +49,9 @@ HERO_RUNTIME_POLICY_KEY(
 HERO_RUNTIME_POLICY_KEY("allow_force_rebuild_cache", "bool", 1, "false",
                         "true|false", "true,false",
                         "Allow passing --force-rebuild-cache to cuwacunu_exec.")
-HERO_RUNTIME_POLICY_KEY(
-    "require_confirm_execute", "bool", 1, "true", "true|false", "true,false",
-    "Require confirm_execute=true for non-dry-run execution.")
 HERO_RUNTIME_POLICY_KEY("allow_dev_nuke", "bool", 1, "true", "true|false",
                         "true,false",
                         "Allow hero.runtime.reset to clear runtime state.")
-HERO_RUNTIME_POLICY_KEY(
-    "require_confirm_dev_nuke", "bool", 1, "true", "true|false",
-    "true,false",
-    "Require confirm_dev_nuke=true for non-dry-run runtime state reset.")
 HERO_RUNTIME_POLICY_KEY(
     "dev_nuke_backup_enabled", "bool", 1, "false", "true|false",
     "true,false",
@@ -77,8 +70,8 @@ HERO_RUNTIME_POLICY_KEY(
 HERO_RUNTIME_POLICY_KEY(
     "max_capture_bytes", "int", 1, "65536", ">=1024", "integer",
     "Maximum stdout/stderr bytes retained inline per stream.")
-HERO_RUNTIME_POLICY_KEY("max_runtime_seconds", "int", 1, "600", ">=1",
-                        "integer",
-                        "Default timeout for cuwacunu_exec child processes.")
+HERO_RUNTIME_POLICY_KEY(
+    "max_runtime_seconds", "int", 1, "0", ">=0", "integer",
+    "Default timeout for cuwacunu_exec child processes; 0 means no timeout.")
 
 #undef HERO_RUNTIME_POLICY_KEY

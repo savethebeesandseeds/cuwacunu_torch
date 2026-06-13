@@ -2,32 +2,32 @@ std::string sequence_analytics_to_latent_lineage_state_text(
     const sequence_analytics_report_t &report,
     const data_analytics_options_t &options, std::string_view sequence_label,
     const evaluation_report_identity_t &report_identity) {
-  return cuwacunu::hero::lattice::runtime_report::
-      emit_runtime_lls_canonical(make_sequence_runtime_lls_document_(
-          report, options, generic_sequence_report_keys_(), sequence_label,
-          report_identity));
+  return cuwacunu::hero::lattice::runtime_report::emit_runtime_lls_canonical(
+      make_sequence_runtime_lls_document_(report, options,
+                                          generic_sequence_report_keys_(),
+                                          sequence_label, report_identity));
 }
 
 std::string data_analytics_to_latent_lineage_state_text(
     const data_source_analytics_report_t &report,
     const data_analytics_options_t &options, std::string_view source_label,
     const evaluation_report_identity_t &report_identity,
-    std::string_view contract_hash) {
+    std::string_view contract_fingerprint) {
   auto sequence_report = make_sequence_analytics_report(report);
   sequence_report.schema = report.schema;
   auto document = make_sequence_runtime_lls_document_(
       sequence_report, options, source_sequence_report_keys_(), source_label,
       report_identity);
-  const std::string_view normalized_contract_hash =
-      trim_ascii_ws_view_(contract_hash);
-  if (!normalized_contract_hash.empty()) {
+  const std::string_view normalized_contract_fingerprint =
+      trim_ascii_ws_view_(contract_fingerprint);
+  if (!normalized_contract_fingerprint.empty()) {
     document.entries.push_back(
-        cuwacunu::hero::lattice::runtime_report::
-            make_runtime_lls_string_entry(
-                "contract_hash", std::string(normalized_contract_hash)));
+        cuwacunu::hero::lattice::runtime_report::make_runtime_lls_string_entry(
+            "contract_fingerprint",
+            std::string(normalized_contract_fingerprint)));
   }
-  return cuwacunu::hero::lattice::runtime_report::
-      emit_runtime_lls_canonical(document);
+  return cuwacunu::hero::lattice::runtime_report::emit_runtime_lls_canonical(
+      document);
 }
 
 std::string sequence_symbolic_analytics_to_latent_lineage_state_text(
@@ -37,32 +37,32 @@ std::string sequence_symbolic_analytics_to_latent_lineage_state_text(
     sequence_symbolic_report_compaction_options_t compaction_options) {
   const auto compacted =
       compact_sequence_symbolic_analytics_report(report, compaction_options);
-  return cuwacunu::hero::lattice::runtime_report::
-      emit_runtime_lls_canonical(make_symbolic_runtime_lls_document_(
-          compacted, generic_symbolic_report_keys_(), sequence_label,
-          report_identity));
+  return cuwacunu::hero::lattice::runtime_report::emit_runtime_lls_canonical(
+      make_symbolic_runtime_lls_document_(compacted,
+                                          generic_symbolic_report_keys_(),
+                                          sequence_label, report_identity));
 }
 
 std::string data_symbolic_analytics_to_latent_lineage_state_text(
     const data_symbolic_analytics_report_t &report,
     std::string_view source_label,
     const evaluation_report_identity_t &report_identity,
-    std::string_view contract_hash) {
+    std::string_view contract_fingerprint) {
   auto sequence_report = make_sequence_symbolic_analytics_report(report);
   sequence_report.schema = report.schema;
   auto document = make_symbolic_runtime_lls_document_(
       sequence_report, source_symbolic_report_keys_(), source_label,
       report_identity);
-  const std::string_view normalized_contract_hash =
-      trim_ascii_ws_view_(contract_hash);
-  if (!normalized_contract_hash.empty()) {
+  const std::string_view normalized_contract_fingerprint =
+      trim_ascii_ws_view_(contract_fingerprint);
+  if (!normalized_contract_fingerprint.empty()) {
     document.entries.push_back(
-        cuwacunu::hero::lattice::runtime_report::
-            make_runtime_lls_string_entry(
-                "contract_hash", std::string(normalized_contract_hash)));
+        cuwacunu::hero::lattice::runtime_report::make_runtime_lls_string_entry(
+            "contract_fingerprint",
+            std::string(normalized_contract_fingerprint)));
   }
-  return cuwacunu::hero::lattice::runtime_report::
-      emit_runtime_lls_canonical(document);
+  return cuwacunu::hero::lattice::runtime_report::emit_runtime_lls_canonical(
+      document);
 }
 
 std::string sequence_symbolic_analytics_to_pretty_text(
@@ -116,14 +116,14 @@ bool write_data_analytics_file(
     const data_analytics_options_t &options,
     const std::filesystem::path &output_file, std::string_view source_label,
     std::string *error, const evaluation_report_identity_t &report_identity,
-    std::string_view contract_hash) {
+    std::string_view contract_fingerprint) {
   if (error)
     error->clear();
 
   std::string payload;
   try {
     payload = data_analytics_to_latent_lineage_state_text(
-        report, options, source_label, report_identity, contract_hash);
+        report, options, source_label, report_identity, contract_fingerprint);
   } catch (const std::exception &e) {
     if (error)
       *error =
@@ -161,14 +161,14 @@ bool write_data_symbolic_analytics_file(
     const data_symbolic_analytics_report_t &report,
     const std::filesystem::path &output_file, std::string_view source_label,
     std::string *error, const evaluation_report_identity_t &report_identity,
-    std::string_view contract_hash) {
+    std::string_view contract_fingerprint) {
   if (error)
     error->clear();
 
   std::string payload;
   try {
     payload = data_symbolic_analytics_to_latent_lineage_state_text(
-        report, source_label, report_identity, contract_hash);
+        report, source_label, report_identity, contract_fingerprint);
   } catch (const std::exception &e) {
     if (error) {
       *error = "cannot serialize symbolic data analytics report: " +
@@ -183,13 +183,13 @@ bool write_data_symbolic_analytics_file(
 std::string extract_data_analytics_kv_schema(std::string_view payload) {
   runtime_lls_document_t document{};
   std::string parse_error;
-  if (!cuwacunu::hero::lattice::runtime_report::
-          parse_runtime_lls_text(payload, &document, &parse_error)) {
+  if (!cuwacunu::hero::lattice::runtime_report::parse_runtime_lls_text(
+          payload, &document, &parse_error)) {
     return {};
   }
   std::unordered_map<std::string, std::string> kv{};
-  if (!cuwacunu::hero::lattice::runtime_report::
-          runtime_lls_document_to_kv_map(document, &kv, &parse_error)) {
+  if (!cuwacunu::hero::lattice::runtime_report::runtime_lls_document_to_kv_map(
+          document, &kv, &parse_error)) {
     return {};
   }
   if (const auto it = kv.find("schema"); it != kv.end())
@@ -234,18 +234,20 @@ std::filesystem::path source_data_analytics_root_directory() {
                                    "ujcamei.source.retrieval");
 }
 
-std::filesystem::path
-source_data_analytics_contract_directory(std::string_view contract_hash) {
-  const std::string token = contract_hash_path_token_(contract_hash);
+std::filesystem::path source_data_analytics_contract_directory(
+    std::string_view contract_fingerprint) {
+  const std::string token =
+      contract_fingerprint_path_token_(contract_fingerprint);
   if (token.empty())
     return {};
   return source_data_analytics_root_directory() / "contracts" / token;
 }
 
 std::filesystem::path source_data_analytics_context_directory(
-    std::string_view contract_hash, std::string_view canonical_path,
+    std::string_view contract_fingerprint, std::string_view canonical_path,
     std::string_view source_runtime_cursor) {
-  const std::string contract_token = contract_hash_path_token_(contract_hash);
+  const std::string contract_token =
+      contract_fingerprint_path_token_(contract_fingerprint);
   if (contract_token.empty())
     return {};
   const std::string canonical_path_token =
@@ -261,21 +263,21 @@ std::filesystem::path source_data_analytics_context_directory(
 }
 
 std::filesystem::path
-source_data_analytics_latest_file_path(std::string_view contract_hash,
+source_data_analytics_latest_file_path(std::string_view contract_fingerprint,
                                        std::string_view canonical_path,
                                        std::string_view source_runtime_cursor) {
   const auto base = source_data_analytics_context_directory(
-      contract_hash, canonical_path, source_runtime_cursor);
+      contract_fingerprint, canonical_path, source_runtime_cursor);
   if (base.empty())
     return {};
   return base / std::string(kDataAnalyticsLatestReportFilename);
 }
 
 std::filesystem::path source_data_analytics_symbolic_latest_file_path(
-    std::string_view contract_hash, std::string_view canonical_path,
+    std::string_view contract_fingerprint, std::string_view canonical_path,
     std::string_view source_runtime_cursor) {
   const auto base = source_data_analytics_context_directory(
-      contract_hash, canonical_path, source_runtime_cursor);
+      contract_fingerprint, canonical_path, source_runtime_cursor);
   if (base.empty())
     return {};
   return base / std::string(kDataAnalyticsSymbolicLatestReportFilename);

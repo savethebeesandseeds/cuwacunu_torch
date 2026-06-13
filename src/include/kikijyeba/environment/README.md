@@ -149,7 +149,7 @@ contract, graph-node masks, current weights, previous target weights, and
 compact feature tensors. It does not expose future realizations, same-action
 `step_info_t`, or raw MDN tensors by default.
 
-The bounded PPO V0 trainable output surface is also explicit:
+The Runtime PPO V0 trainable output surface is also explicit:
 
 ```text
 policy_input_t
@@ -167,15 +167,16 @@ the policy. Cajtucu handles paper execution after the environment receives the
 target-node action. Raw observation anchor indexes and raw knowledge timestamps
 remain policy-input identity evidence, not actor-visible tensor features.
 `fake_trainable_policy_t` remains a local contract fixture; Runtime replay uses
-the module-backed graph-node allocation policy path.
+the module-backed graph-node allocation policy path and can reload actor
+checkpoint artifacts from `checkpoint.meta` plus adjacent `module_state.pt`.
 
 PPO V0 is Runtime-owned and replay/paper-only. PPO-shaped policy-training
 requests must bind the graph-node allocation policy family, actor/critic
-architecture and checkpoint digests, optimizer state, PPO config,
-action-distribution config, rollout collection evidence, PPO
-update-report evidence, validation rollout evidence, GAE/advantage
-normalization identity, and PPO hyperparameters before Runtime will accept even
-a plan/dry-run contract.
+architecture and checkpoint digests, policy DSL/net/features/jkimyei digests,
+target-node universe digest, optimizer state, PPO config, action-distribution
+config, rollout collection evidence, PPO update-report evidence, validation
+rollout evidence, GAE/advantage normalization identity, and PPO hyperparameters
+before Runtime will accept even a plan/dry-run contract.
 
 ## Experience Driver And Output Boundary
 
@@ -298,6 +299,8 @@ That validation requires trained forecast artifacts. After `dev_nuke`, the
 model-training side must first produce serious trained MDN artifacts, using
 Marshal/Lattice target work as appropriate, before this environment can run a
 meaningful projection-validity study.
+Runtime replay forecast artifacts bind the target-coordinate fingerprint and
+normalization fingerprint used to produce each saved forecast.
 
 Until those trained artifacts exist, keep environment work limited to interface
 stability, naming consistency, trace/report evidence hygiene, Cajtucu paper
