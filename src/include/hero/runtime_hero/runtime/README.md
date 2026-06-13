@@ -46,7 +46,10 @@ Runtime artifacts are organized under one disposable root:
 may dry-run or clear either this execution root or the whole disposable
 `/cuwacunu/.runtime` tree when an operator policy enables it. Checked-in
 policies keep actual reset disabled and keep backup snapshots off by default,
-so cleanup does not create backup clutter under the runtime tree.
+so cleanup does not create backup clutter under the runtime tree. When enabled,
+snapshots are written under `/cuwacunu/.backups/runtime_dev_nuke`; Runtime first
+tries an atomic move and falls back to recursive copy then remove if rename is
+not available across filesystems.
 
 The folder path is for legibility and retrieval; it is not proof authority.
 The authoritative identity remains in `job.manifest`, Runtime terminal facts,

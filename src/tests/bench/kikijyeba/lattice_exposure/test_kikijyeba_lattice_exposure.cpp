@@ -1002,7 +1002,7 @@ int main() {
         "source analytics producer contract accepts only the declared durable "
         "sidecar names");
   check(
-      source_analytics_numeric_paths.size() == 6 &&
+      source_analytics_numeric_paths.size() == 4 &&
           has_filename(source_analytics_numeric_paths,
                        "data_analytics.v2.latest.lls") &&
           has_filename(source_analytics_numeric_paths,
@@ -1011,12 +1011,12 @@ int main() {
                        "embedding_sequence_analytics.v2.latest.lls") &&
           has_filename(source_analytics_numeric_paths,
                        "source_data_analytics.v2.latest.lls") &&
-          has_filename(source_analytics_numeric_paths, "data_analytics.lls") &&
-          has_filename(source_analytics_numeric_paths,
-                       "source_data_analytics.lls"),
+          !has_filename(source_analytics_numeric_paths, "data_analytics.lls") &&
+          !has_filename(source_analytics_numeric_paths,
+                        "source_data_analytics.lls"),
       "source analytics scanner-derived contract accepts the declared "
       "numeric source analytics payload names");
-  check(source_analytics_symbolic_paths.size() == 6 &&
+  check(source_analytics_symbolic_paths.size() == 4 &&
             has_filename(source_analytics_symbolic_paths,
                          "data_analytics.symbolic.v2.latest.lls") &&
             has_filename(source_analytics_symbolic_paths,
@@ -1026,10 +1026,10 @@ int main() {
                          "lls") &&
             has_filename(source_analytics_symbolic_paths,
                          "source_data_analytics.symbolic.v2.latest.lls") &&
-            has_filename(source_analytics_symbolic_paths,
-                         "data_analytics.symbolic.lls") &&
-            has_filename(source_analytics_symbolic_paths,
-                         "source_data_analytics.symbolic.lls"),
+            !has_filename(source_analytics_symbolic_paths,
+                          "data_analytics.symbolic.lls") &&
+            !has_filename(source_analytics_symbolic_paths,
+                          "source_data_analytics.symbolic.lls"),
         "source analytics scanner-derived contract accepts the declared "
         "symbolic source analytics payload names");
   const auto target_transform_paths =
@@ -3313,6 +3313,42 @@ int main() {
               1e-12,
       "source analytics facts can reuse source data analytics .lls payloads "
       "while remaining warning-only visibility evidence");
+  const auto legacy_source_payload_dir =
+      make_tmp_dir("source_analytics_legacy_payload");
+  write_text(legacy_source_payload_dir / "data_analytics.lls",
+             "schema:str = jkimyei.evaluation.data_analytics.v2\n"
+             "source_entropic_load[0,+inf):double = 9.000000000000\n");
+  write_text(legacy_source_payload_dir / "data_analytics.symbolic.lls",
+             "schema:str = jkimyei.evaluation.data_analytics_symbolic.v2\n"
+             "information_density_mean[0,1]:double = 0.900000000000\n");
+  const auto ignored_legacy_payload_source_analytics =
+      exposure::make_source_analytics_facts_from_job_dir(
+          legacy_source_payload_dir, rep_fact);
+  const auto ignored_legacy_runtime_source_analytics =
+      exposure::make_runtime_source_analytics_fact_from_exposure_fact(
+          rep_fact, legacy_source_payload_dir);
+  check(ignored_legacy_payload_source_analytics.empty() &&
+            !std::isfinite(ignored_legacy_runtime_source_analytics.entropy) &&
+            ignored_legacy_runtime_source_analytics.source_health_level == "ok",
+        "source analytics runtime-data fallback ignores pre-v2 legacy payload "
+        "filenames");
+  const auto malformed_source_payload_dir =
+      make_tmp_dir("source_analytics_malformed_payload");
+  write_text(malformed_source_payload_dir / "data_analytics.v2.latest.lls",
+             "# legacy comments are rejected in strict runtime .lls\n"
+             "schema:str = jkimyei.evaluation.data_analytics.v2\n"
+             "source_entropic_load[0,+inf):double = 9.000000000000\n");
+  const auto malformed_payload_source_analytics =
+      exposure::make_source_analytics_facts_from_job_dir(
+          malformed_source_payload_dir, rep_fact);
+  const auto malformed_runtime_source_analytics =
+      exposure::make_runtime_source_analytics_fact_from_exposure_fact(
+          rep_fact, malformed_source_payload_dir);
+  check(malformed_payload_source_analytics.empty() &&
+            !std::isfinite(malformed_runtime_source_analytics.entropy) &&
+            malformed_runtime_source_analytics.source_health_level == "ok",
+        "source analytics runtime-data fallback rejects malformed strict .lls "
+        "payloads instead of accepting relaxed assignments");
   const auto scan_target_transform_summary =
       exposure::summarize_target_transforms(
           scan.ledger.facts(), scan.ledger.target_transform_facts());

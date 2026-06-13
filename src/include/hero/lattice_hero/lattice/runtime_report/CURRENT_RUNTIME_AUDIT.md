@@ -7,8 +7,8 @@ behavior from desired future standard behavior.
 
 | Payload | Producer | Main consumers | Surface | Ingest class | Current notes |
 | --- | --- | --- | --- | --- | --- |
-| `wave.source.runtime.projection.v2` | `src/main/tools/cuwacunu_campaign.cpp` via `src/include/hero/lattice_hero/source_runtime_projection.h` | Hero Lattice ingest, assembled fact bundles, humans / direct artifact readers | `source_runtime_projection.latest.lls` under the canonical source leaf `ujcamei/source/retrieval/contracts/<contract_token>/bindings/<binding>/runs/<run_id>/` | standalone, ingestable | strict runtime `.lls`, top-level `schema`, context header (`canonical_path`, `binding_id`, `wave_cursor`), optional context extension `source_runtime_cursor`, explicit `contract_fingerprint`, fixed 12 digits |
-| `wave.projection.lls.v2` | `src/impl/hero/lattice_hero/lattice_catalog.cpp` | lattice catalog cells / MCP report joins | stored in catalog `projection_lls`, no standalone file | catalog-only | top-level `schema`, `projection_version`, `projector_build_id`, sorted numeric/text sections, fixed 12 digits |
+| `wave.source.runtime.projection.v2` | no current producer source path in this tree | archived Hero Lattice projection compatibility notes | historical `source_runtime_projection.latest.lls` location under `ujcamei/source/retrieval/contracts/<contract_token>/bindings/<binding>/runs/<run_id>/` | archived compatibility | schema remains documented, but the old campaign/source-projection source paths are retired in this layout |
+| `wave.projection.lls.v2` | no current catalog source path in this tree | archived catalog projection compatibility notes | historical catalog `projection_lls` cell, no standalone file | archived compatibility | schema remains documented, but the old catalog source path is retired in this layout |
 | `jkimyei.evaluation.data_analytics.v2` | `src/impl/jkimyei/evaluation/source/data_analytics_public.cpp` | Lattice entropic-capacity view inputs, humans / direct artifact readers | `.runtime/cuwacunu_exec/components/jkimyei.evaluation.source.data_analytics/spawns/standalone_runtime/artifacts/retrieval/.../ujcamei/source/retrieval/contracts/<contract_token>/contexts/<source_runtime_cursor>/data_analytics.v2.latest.lls` | standalone, ingestable | strict runtime `.lls`, fixed 12 digits, current `evaluation_report_identity_t` header, explicit `contract_fingerprint`, `source_entropic_load`, and invalid positions excluded from numeric statistics |
 | `jkimyei.evaluation.data_analytics_symbolic.v2` | `src/impl/jkimyei/evaluation/source/data_analytics_public.cpp` | Lattice ingest, humans / direct artifact readers | `.runtime/cuwacunu_exec/components/jkimyei.evaluation.source.data_analytics/spawns/standalone_runtime/artifacts/retrieval/.../ujcamei/source/retrieval/contracts/<contract_token>/contexts/<source_runtime_cursor>/data_analytics.symbolic.v2.latest.lls` | standalone, ingestable | strict runtime `.lls`, fixed 12 digits, flattened `channel_<n>_*` keys, current `evaluation_report_identity_t` header, explicit `contract_fingerprint`, and comment-free canonical emission |
 | `jkimyei.evaluation.embedding_sequence_analytics.v2` | `src/impl/jkimyei/evaluation/source/data_analytics_public.cpp` | Lattice ingest, humans / direct artifact readers | `embedding_sequence_analytics.v2.latest.lls` in the component report directory | standalone, ingestable | strict runtime `.lls`, fixed 12 digits, current `evaluation_report_identity_t` header, and generic sequence envelope over latent encodings reshaped to per-dimension streams |
@@ -42,23 +42,32 @@ Lattice query-time view surfaces:
 
 Legacy comparison helper:
 
-- `src/impl/jkimyei/evaluation/entropic_capacity_comparison.cpp`
+- `src/impl/jkimyei/evaluation/inference/entropic_capacity_comparison.cpp`
 - still provides payload reducers and canonical text serialization for compatibility tests
 - no standard component runtime currently emits or ingests
   `jkimyei.evaluation.entropic_capacity_comparison.v1`
 
-Legacy line readers still in tree:
+Relaxed assignment readers still in tree:
 
-- `parse_kv_payload(...)` in `src/impl/hero/lattice_hero/lattice_catalog.cpp`
-- `parse_latent_lineage_state_payload(...)` in retired catalog compatibility code
-- schema-local scanners in `src/impl/jkimyei/evaluation/data_analytics.cpp`,
-  `src/impl/jkimyei/evaluation/network_analytics.cpp`, and
-  `src/impl/jkimyei/evaluation/entropic_capacity_comparison.cpp`
+- `exposure_detail::parse_assignment_text(...)` in
+  `src/include/hero/lattice_hero/lattice/exposure/exposure_ledger.h` for job
+  manifests, job state/report payloads, runtime result/checkpoint/health
+  sidecars, and exposure/checkpoint sidecars
+- `lattice_target_eval_detail::parse_assignment_text(...)` in
+  `src/include/hero/lattice_hero/lattice/target/lattice_target_evaluator.h`
+  for config path resolution and target/policy gate helpers
+- `parse_assignment_text(...)` in
+  `src/impl/hero/lattice_hero/hero_lattice_tools.cpp` for Lattice policy/tool
+  config loading
+- source analytics `.lls` fallback in `exposure_ledger.h` now uses
+  `parse_runtime_lls_text(...)` plus `runtime_lls_document_to_kv_map(...)` and
+  accepts only canonical v2 payload filenames
 
-Common deployed rule across those remaining legacy readers:
+Common deployed behavior across the remaining relaxed readers:
 
-- normalize LHS with `extract_latent_lineage_state_lhs_key(...)`
-- drop full-line `#` comments
+- exposure/tool-policy readers normalize typed/domain LHS to semantic keys;
+  target config helpers keep the parsed assignment key form they need
+- drop comments in the non-runtime assignment readers that support them
 - keep last assignment for duplicate keys
 
 ## Current Producer Behavior
@@ -86,15 +95,16 @@ Duplicate keys:
 
 Ordering:
 
-- source projection and lattice cell projection explicitly sort numeric/text axes
+- archived source projection and lattice cell projection payloads explicitly
+  sorted numeric/text axes
 - network top-k collections sort deterministically before flattening
 - canonical emission now centralizes runtime field ordering across the migrated
   runtime producers
 
 Numeric formatting:
 
-- source projection, lattice cell projection, and transfer-matrix payloads use fixed
-  12-digit fractional formatting
+- archived source projection, archived lattice cell projection, and
+  transfer-matrix payloads use fixed 12-digit fractional formatting
 - all migrated runtime producers now use fixed 12-digit fractional formatting
 
 Collection encoding:
@@ -120,8 +130,9 @@ Identity envelope:
 - entropic-capacity helper payloads can still emit the common simplified header
   when the caller provides it, but that helper is no longer part of the
   standard component runtime artifact set
-- operational reports such as status and source runtime projection use the same
-  context header and may omit `semantic_taxon` in v1
+- operational reports such as status use the same context header and may omit
+  `semantic_taxon` in v1; source runtime projection remains an archived
+  compatibility schema in this layout
 
 ## Code-vs-Doc Mismatches
 
@@ -134,11 +145,11 @@ Identity envelope:
    stores. They are not current graph-first component runtime `.lls` producers
    and should not be used as authored Wikimyei report surfaces.
 
-3. Hero uses two distinct projection payload shapes:
+3. Historical Hero projection compatibility uses two payload shapes:
    `schema=wave.source.runtime.projection.v2` for the standalone source-runtime
    fact, and `schema=wave.projection.lls.v2` for the catalog cell
-   `projection_lls`. The embedded projection text inside joined transports still
-   uses `source.runtime.projection.schema=wave.source.runtime.projection.v2`.
+   `projection_lls`. The old source paths for those producers are not present
+   in this layout.
 
 4. Declared type/domain metadata is part of the shared LHS syntax, but many runtime
    consumers flatten to semantic keys immediately and do not preserve the declared

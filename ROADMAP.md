@@ -58,6 +58,12 @@ Runtime Hero:
   hero.runtime.run
   hero.runtime.reset
 
+Environment Hero:
+  hero.environment.status
+  hero.environment.inspect
+  hero.environment.certify
+  hero.environment.rollout
+
 Lattice Hero:
   hero.lattice.status
   hero.lattice.inspect
@@ -202,15 +208,17 @@ tsodao_settings_protection_contract.v1
   fact, evidence digests are bound, and Tsodao declares no optimization,
   selection, quality, readiness, deployment, execution, or live authority.
 
-policy_acceptance_runtime_emission.v1
-  Runtime exposes `hero.runtime.emit subject=policy_acceptance_fact
-  requested_mode=plan|dry_run|execute`. It loads existing
-  `runtime.policy_training.fact` and `lattice.tsodao_settings_protection.fact`
-  sidecars, derives parent fact digests from parsed evidence, validates the
-  assembled `kikijyeba.lattice.policy_acceptance.v1` fact with Lattice exposure
-  validators, and writes `lattice.policy_acceptance.fact` only in execute mode.
-  Execute refuses invalid assembled facts and refuses to overwrite an existing
-  acceptance sidecar. Runtime remains an evidence emitter only; Lattice proves
+policy_acceptance_environment_certification.v1
+  Environment exposes `hero.environment.certify.policy_acceptance
+  mode=check|issue`. It loads existing `runtime.policy_training.fact` and
+  `lattice.tsodao_settings_protection.fact` sidecars, derives parent fact
+  digests from parsed evidence, validates the assembled
+  `kikijyeba.lattice.policy_acceptance.v1` fact with Lattice exposure
+  validators, and writes `lattice.policy_acceptance.fact` only in issue mode
+  after `expected_preview_digest` matches the check preview. Issue refuses
+  invalid assembled facts and refuses to overwrite an existing acceptance
+  sidecar. Environment remains an evidence/admission surface only; Runtime
+  remains the low-level executor; Lattice proves
   `policy_acceptance_contract_ready`.
 
 policy_finalization_before_paper_online.v1
@@ -255,17 +263,18 @@ component_operator_surface_digest_contract.v1
   component-spawn matching and readiness checks remain family-specific.
 
 paper_online_readiness_contract.v1
-  Runtime exposes `hero.runtime.emit subject=paper_online_readiness_fact
-  requested_mode=plan|dry_run|execute`. It loads an existing
-  `lattice.policy_acceptance.fact`, assembles a
+  Environment exposes `hero.environment.certify.paper_online_readiness
+  mode=check|issue`. It loads an existing `lattice.policy_acceptance.fact`,
+  derives accepted policy identity from parsed evidence, assembles a
   `kikijyeba.lattice.paper_online_readiness.v1` fact, validates session
   lifecycle, clock/staleness, idempotency, duplicate-protection, persistent
   paper-ledger recovery, direct-edge universe, locked Cajtucu execution-profile,
   reward/report artifact, operator-abort, and kill-switch policy bindings, and
-  writes `lattice.paper_online_readiness.fact` only in execute mode. Lattice
-  proves `paper_online_readiness_contract_ready`; Runtime and Lattice still do
-  not run paper-online, select policies, claim market/deployment readiness, or
-  authorize live capital.
+  writes `lattice.paper_online_readiness.fact` only in issue mode after
+  `expected_preview_digest` matches the check preview. Lattice proves
+  `paper_online_readiness_contract_ready`; Environment still does not run
+  paper-online, Runtime still does not select policies or prove readiness, and
+  no surface claims market/deployment readiness or live-capital authority.
 ```
 
 ## Next Goal Queue
@@ -296,7 +305,27 @@ Design points:
 - direct-edge pair validation and no synthetic market fallback
 - reward/report artifact writing during online paper
 - operator abort and kill-switch transitions
-- Marshal -> Runtime -> Cajtucu authority chain
+- Marshal -> Runtime -> Environment -> Cajtucu authority chain
+
+Preparation note:
+
+- The session contract must consume freshly proven
+  `paper_online_readiness_contract_ready` evidence and must not rely on stale
+  runtime catalog records.
+- The first implementation slice should define durable schemas, validators, and
+  negative tests before adding any online-paper runner.
+
+Current implementation slice:
+
+- `src/include/kikijyeba/environment/paper_online_session_contract.h` defines
+  `paper_online_session_contract.v1`, session-state/artifact schemas, lifecycle
+  transitions, readiness-evidence binding, and admission validators.
+- `hero.environment.inspect.schema` exposes the paper-online session contract
+  vocabulary read-only, with session runner, broker execution, live execution,
+  and direct policy-to-broker authority all false.
+- Focused tests cover clean admission plus missing proof, stale proof,
+  readiness-not-ready, locked-profile drift, missing durable artifact, and
+  authority-drift rejection.
 
 This is the first design step toward paper-online execution, but it remains
 paper-only and must consume the readiness contract rather than bypass it.

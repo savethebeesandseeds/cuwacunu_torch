@@ -58,7 +58,7 @@ HERO_RUNTIME_POLICY_KEY(
     "Move runtime state into a backup snapshot before clearing it.")
 HERO_RUNTIME_POLICY_KEY(
     "dev_nuke_backup_root", "path", 1,
-    "/tmp/cuwacunu_runtime_dev_nuke_backups/hero.runtime_dev_nuke",
+    "/cuwacunu/.backups/runtime_dev_nuke",
     "directory path",
     "absolute_or_relative_path",
     "Root for hero.runtime.reset backup snapshots.")

@@ -522,7 +522,13 @@ Runtime agent workflow:
    `paper_online_readiness_contract_ready`; Environment still does not start
    paper-online, execute broker orders, approve deployment, or authorize live
    capital.
-10. `hero.runtime.reset mode=plan|execute` previews and, when
+10. `hero.environment.inspect.schema` exposes the
+   `paper_online_session_contract.v1` vocabulary read-only. The contract names
+   durable session state/event/intent/ledger/report files and validates future
+   admission against fresh `paper_online_readiness_contract_ready` evidence,
+   while reporting session runner, broker execution, live execution, and direct
+   policy-to-broker authority as false.
+11. `hero.runtime.reset mode=plan|execute` previews and, when
    explicitly enabled, clears the runtime artifact root for developer reset
    workflows.
 
@@ -578,8 +584,9 @@ arguments are direct tool fields.
 The checked-in policies allow the disposable `/cuwacunu/.runtime` tree to be
 selected for reset, but keep `dev_nuke_backup_enabled=false` so reset does not
 create new backup clutter under `.runtime`. Operators can explicitly enable
-backups to the configured `/tmp` backup root. The tool refuses roots outside
-`allowed_dev_nuke_roots` and refuses execution while nonterminal or
+backups to the configured `/cuwacunu/.backups/runtime_dev_nuke` root. The tool
+refuses roots outside `allowed_dev_nuke_roots` and refuses execution while
+nonterminal or
 unknown-status `job.state` files are present.
 
 Lattice Hero is the read-only control surface above runtime evidence. It scans

@@ -214,6 +214,30 @@ live_online
     future mode; live market stream plus live execution/fills.
 ```
 
+## Paper-Online Session Contract
+
+`paper_online_session_contract.v1` is currently a contract and admission
+validator only. It is defined in `paper_online_session_contract.h` and exposed
+read-only through `hero.environment.inspect.schema`; it does not start a
+paper-online session and it does not add broker or live-capital authority.
+
+The contract names the future paper-online session state schema
+`kikijyeba.paper_online.session_state.v1`, the durable session files
+`session.manifest`, `session.state`, `session.events.lls`,
+`market_events.lls`, `action_intents.lls`, `execution_intents.lls`,
+`paper_ledger.lls`, and `reward_reports.lls`, and the lifecycle states from
+`initialized` through `stopped`, `aborted`, or `kill_switch_triggered`.
+
+Admission consumes freshly proven `paper_online_readiness_contract_ready`
+evidence. The validator requires readiness fact/proof digests, freshness
+timestamps, accepted policy/checkpoint identity, locked Cajtucu execution
+profile, direct-edge universe validation, staleness policy, persistent
+paper-ledger recovery, idempotency, duplicate-action/intent rejection,
+reward/report artifact policy, operator abort, and kill-switch bindings. It
+rejects stale, missing, mismatched, or authority-drifting evidence, including
+any claim of policy selection, direct policy-to-broker routing, broker
+execution, or live execution.
+
 Cajtucu now owns output execution mechanics. In replay, `world.step` converts
 the policy action into an execution intent, calls `cajtucu.execution.paper.v1`,
 then computes reward from the post-execution ledger after historical realization

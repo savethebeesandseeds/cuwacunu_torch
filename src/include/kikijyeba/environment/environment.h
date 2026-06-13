@@ -4,6 +4,7 @@
 #include "kikijyeba/environment/control/interfaces.h"
 #include "kikijyeba/environment/control/types.h"
 #include "kikijyeba/environment/output/experience_trace.h"
+#include "kikijyeba/environment/paper_online_session_contract.h"
 #include "kikijyeba/environment/policy/allocation.h"
 #include "kikijyeba/environment/policy/baseline.h"
 #include "kikijyeba/environment/policy/trainable.h"

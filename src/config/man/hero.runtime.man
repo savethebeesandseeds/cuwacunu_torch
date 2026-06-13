@@ -113,8 +113,8 @@ nuance = When true, runtime root entries are moved into a backup snapshot before
 key = dev_nuke_backup_root
 scope = Runtime Hero policy
 type = path
-default = /tmp/cuwacunu_runtime_dev_nuke_backups/hero.runtime_dev_nuke
-nuance = Backup snapshots are written below this root as <runtime-root-leaf>/<stamp>/ when backup is explicitly enabled.
+default = /cuwacunu/.backups/runtime_dev_nuke
+nuance = Backup snapshots are written below this root as <runtime-root-leaf>/<stamp>/ when backup is explicitly enabled. The default is outside runtime_root and under the repo-level ignored .backups area. Runtime first tries an atomic rename into the snapshot and falls back to recursive copy then remove when rename is not available across filesystems.
 
 [FIELD allowed_dev_nuke_roots]
 key = allowed_dev_nuke_roots

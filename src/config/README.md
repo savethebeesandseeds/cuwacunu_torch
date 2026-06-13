@@ -157,6 +157,12 @@ returned by check mode. That sidecar is for Lattice
 `paper_online_readiness_contract_ready`; it does not start a paper-online session,
 select a policy, approve deployment, route through a broker, or authorize live
 capital.
+The follow-on `paper_online_session_contract.v1` surface is a Kikijyeba
+Environment contract/admission validator, not a runner. It consumes fresh
+`paper_online_readiness_contract_ready` evidence, names the durable session
+state/event/intent/ledger/report files, rejects stale or mismatched readiness
+proofs, and keeps broker/live/direct policy-to-broker authority denied.
+`hero.environment.inspect.schema` exposes this contract vocabulary read-only.
 
 The observer and deterministic policy DSLs currently require projection
 validation and explicitly disable live capital; this keeps
@@ -452,7 +458,11 @@ direct optional `runtime_root` selector and `backup` override when needed.
 Checked-in policies allow clearing
 `/cuwacunu/.runtime` but keep backup snapshots disabled by default so a reset
 does not leave legacy backup folders under the disposable runtime tree.
-Operators can explicitly enable backups to the configured `/tmp` backup root.
+Operators can explicitly enable backups to the configured
+`/cuwacunu/.backups/runtime_dev_nuke` root, which is outside `runtime_root` and
+under the repo-level ignored `.backups` area. Backup mode first tries an atomic
+move into the snapshot and falls back to recursive copy then remove when rename
+is not available across filesystems.
 
 `hero.lattice.targets.dsl` sits one level above waves and is pointed to by
 `[HERO].lattice_targets_dsl_path`. It declares read-only readiness targets over

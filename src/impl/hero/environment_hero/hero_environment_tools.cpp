@@ -9,6 +9,7 @@
 #include "hero/mcp_stdio_transport.h"
 #include "hero/runtime_hero/runtime/job_layout.h"
 #include "hero/short_ref.h"
+#include "kikijyeba/environment/paper_online_session_contract.h"
 
 #include <algorithm>
 #include <array>
@@ -35,6 +36,7 @@ namespace {
 
 namespace fs = std::filesystem;
 namespace exposure = cuwacunu::hero::lattice::exposure;
+namespace kenv = cuwacunu::kikijyeba::environment;
 namespace marshal = cuwacunu::hero::marshal;
 namespace md = cuwacunu::hero::marshal::tool_detail;
 namespace display = cuwacunu::hero::display;
@@ -1883,6 +1885,71 @@ make_paper_online_readiness_fact(
   return out.str();
 }
 
+[[nodiscard]] std::string paper_online_session_schema_json() {
+  const auto contract = kenv::default_paper_online_session_contract();
+  const auto issues = kenv::paper_online_session_contract_issues(contract);
+  constexpr std::array<kenv::paper_online_session_state_t, 11> kStates{
+      kenv::paper_online_session_state_t::initialized,
+      kenv::paper_online_session_state_t::admitted,
+      kenv::paper_online_session_state_t::ledger_recovered,
+      kenv::paper_online_session_state_t::streaming,
+      kenv::paper_online_session_state_t::action_recorded,
+      kenv::paper_online_session_state_t::paper_executed,
+      kenv::paper_online_session_state_t::reward_reported,
+      kenv::paper_online_session_state_t::stopping,
+      kenv::paper_online_session_state_t::stopped,
+      kenv::paper_online_session_state_t::aborted,
+      kenv::paper_online_session_state_t::kill_switch_triggered};
+
+  std::ostringstream out;
+  out << "{\"contract_id\":" << json_quote(contract.contract_id)
+      << ",\"environment_contract_id\":"
+      << json_quote(contract.environment_contract_id)
+      << ",\"readiness_contract_id\":"
+      << json_quote(kenv::kPaperOnlineReadinessContractV1)
+      << ",\"readiness_target_id\":" << json_quote(contract.readiness_target_id)
+      << ",\"readiness_fact_schema_id\":"
+      << json_quote(kenv::kPaperOnlineReadinessFactSchemaV1)
+      << ",\"session_state_schema_id\":"
+      << json_quote(contract.session_state_schema_id)
+      << ",\"action_schema_id\":" << json_quote(contract.action_schema_id)
+      << ",\"reward_contract_id\":" << json_quote(contract.reward_contract_id)
+      << ",\"durable_artifacts\":[";
+  for (std::size_t i = 0; i < contract.durable_artifacts.size(); ++i) {
+    const auto &slot = contract.durable_artifacts[i];
+    if (i != 0) {
+      out << ",";
+    }
+    out << "{\"artifact_id\":" << json_quote(slot.artifact_id)
+        << ",\"relative_path\":" << json_quote(slot.relative_path)
+        << ",\"schema_id\":" << json_quote(slot.schema_id)
+        << ",\"required\":" << bool_json(slot.required) << "}";
+  }
+  out << "],\"states\":[";
+  for (std::size_t i = 0; i < kStates.size(); ++i) {
+    if (i != 0) {
+      out << ",";
+    }
+    out << json_quote(kenv::paper_online_session_state_name(kStates[i]));
+  }
+  out << "],\"authority\":{\"session_runner_implemented\":"
+      << bool_json(contract.session_runner_implemented)
+      << ",\"policy_selection_authority\":"
+      << bool_json(contract.policy_selection_authority)
+      << ",\"checkpoint_selection_authority\":"
+      << bool_json(contract.checkpoint_selection_authority)
+      << ",\"broker_execution_allowed\":"
+      << bool_json(contract.broker_execution_allowed)
+      << ",\"live_execution_allowed\":"
+      << bool_json(contract.live_execution_allowed)
+      << ",\"direct_policy_to_broker_allowed\":"
+      << bool_json(contract.direct_policy_to_broker_allowed)
+      << ",\"direct_policy_to_cajtucu_allowed\":"
+      << bool_json(contract.direct_policy_to_cajtucu_allowed)
+      << "},\"validator_issues\":" << string_array_json(issues) << "}";
+  return out.str();
+}
+
 [[nodiscard]] std::string path_text_preview(const fs::path &path,
                                             bool include_text,
                                             std::size_t max_bytes) {
@@ -1958,7 +2025,9 @@ handle_inspect_schema(const std::map<std::string, std::string> &args,
   std::ostringstream json;
   json << "{\"ok\":true,\"tool\":\"hero.environment.inspect.schema\""
        << ",\"schema\":\"kikijyeba.environment.schema_inspection.v1\""
-       << ",\"policy_schema\":" << policy_schema_json() << "}";
+       << ",\"policy_schema\":" << policy_schema_json()
+       << ",\"paper_online_session_contract\":"
+       << paper_online_session_schema_json() << "}";
   *out = json.str();
   return true;
 }

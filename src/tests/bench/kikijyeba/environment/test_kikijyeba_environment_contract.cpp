@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+#include <algorithm>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -9,6 +10,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -55,6 +57,51 @@ void close(double actual, double expected, double tol, const char *message) {
                              " actual=" + std::to_string(actual) +
                              " expected=" + std::to_string(expected));
   }
+}
+
+bool contains_issue(const std::vector<std::string> &issues,
+                    std::string_view expected) {
+  return std::any_of(issues.begin(), issues.end(),
+                     [&](const auto &issue) { return issue == expected; });
+}
+
+env::paper_online_readiness_evidence_t make_paper_online_readiness_evidence() {
+  env::paper_online_readiness_evidence_t evidence{};
+  evidence.readiness_fact_digest = "digest:paper_online_readiness_fixture";
+  evidence.readiness_proof_certificate_digest =
+      "digest:paper_online_readiness_proof_fixture";
+  evidence.readiness_id = "readiness_fixture";
+  evidence.accepted_policy_id = "policy_fixture";
+  evidence.accepted_actor_checkpoint_digest = "digest:actor_checkpoint_fixture";
+  evidence.accepted_checkpoint_digest = "digest:checkpoint_fixture";
+  evidence.execution_profile_digest = "digest:execution_profile_fixture";
+  evidence.locked_execution_profile_digest = evidence.execution_profile_digest;
+  evidence.accounting_numeraire_node_id = "USDT";
+  evidence.paper_online_profile_digest = "digest:paper_online_profile_fixture";
+  evidence.direct_edge_universe_digest = "digest:direct_edge_universe_fixture";
+  evidence.max_market_data_staleness_ms = 5000;
+  evidence.clock_skew_tolerance_ms = 250;
+  evidence.readiness_proof_checked_at_ms = 100000;
+  evidence.session_admission_requested_at_ms = 110000;
+  evidence.max_readiness_proof_age_ms = 60000;
+  evidence.paper_online_readiness_contract_ready = true;
+  evidence.readiness_proof_fresh = true;
+  evidence.policy_acceptance_ready = true;
+  evidence.tsodao_settings_protection_ready = true;
+  evidence.accepted_policy_bound = true;
+  evidence.protected_settings_bound = true;
+  evidence.direct_edge_universe_validated = true;
+  evidence.locked_execution_profile_bound = true;
+  evidence.persistent_paper_ledger_recovery_bound = true;
+  evidence.idempotency_bound = true;
+  evidence.duplicate_action_protection_bound = true;
+  evidence.session_lifecycle_bound = true;
+  evidence.clock_timestamp_policy_bound = true;
+  evidence.market_data_staleness_bound = true;
+  evidence.reward_report_artifact_path_bound = true;
+  evidence.operator_abort_bound = true;
+  evidence.kill_switch_bound = true;
+  return evidence;
 }
 
 env::episode_spec_t make_episode_spec() {
@@ -733,6 +780,112 @@ public:
 private:
   env::episode_spec_t spec_{};
 };
+
+void test_paper_online_session_contract() {
+  const auto contract = env::default_paper_online_session_contract();
+  check(env::paper_online_session_contract_issues(contract).empty(),
+        "default paper-online session contract must validate");
+  const env::paper_online_session_contract_t default_constructed_contract{};
+  check(env::paper_online_session_contract_issues(default_constructed_contract)
+            .empty(),
+        "default-constructed paper-online session contract must validate");
+  check(env::paper_online_session_transition_allowed(
+            env::paper_online_session_state_t::initialized,
+            env::paper_online_session_state_t::admitted),
+        "paper-online session admits from initialized state");
+  check(env::paper_online_session_transition_allowed(
+            env::paper_online_session_state_t::streaming,
+            env::paper_online_session_state_t::action_recorded),
+        "paper-online session records actions from streaming state");
+  check(!env::paper_online_session_transition_allowed(
+            env::paper_online_session_state_t::streaming,
+            env::paper_online_session_state_t::paper_executed),
+        "paper-online session cannot execute paper before recording action");
+  check(env::paper_online_session_terminal_state(
+            env::paper_online_session_state_t::stopped),
+        "paper-online stopped state is terminal");
+  check(!env::paper_online_session_transition_allowed(
+            env::paper_online_session_state_t::stopped,
+            env::paper_online_session_state_t::streaming),
+        "paper-online stopped state cannot resume streaming");
+  check(env::paper_online_session_transition_allowed(
+            env::paper_online_session_state_t::kill_switch_triggered,
+            env::paper_online_session_state_t::stopped),
+        "paper-online kill switch drains only to stopped state");
+  check(!env::paper_online_session_transition_allowed(
+            env::paper_online_session_state_t::kill_switch_triggered,
+            env::paper_online_session_state_t::streaming),
+        "paper-online kill switch cannot resume streaming");
+
+  const auto evidence = make_paper_online_readiness_evidence();
+  check(env::paper_online_session_admission_ready(contract, evidence),
+        "fresh paper-online readiness evidence admits the session contract");
+
+  auto missing_proof = evidence;
+  missing_proof.readiness_proof_certificate_digest.clear();
+  const auto missing_proof_issues =
+      env::paper_online_session_admission_issues(contract, missing_proof);
+  check(contains_issue(missing_proof_issues,
+                       "missing_readiness_proof_certificate_digest"),
+        "paper-online session admission rejects missing readiness proof "
+        "digest");
+
+  auto stale = evidence;
+  stale.session_admission_requested_at_ms =
+      stale.readiness_proof_checked_at_ms + stale.max_readiness_proof_age_ms +
+      1;
+  stale.readiness_proof_fresh = false;
+  const auto stale_issues =
+      env::paper_online_session_admission_issues(contract, stale);
+  check(contains_issue(stale_issues, "stale_readiness_proof"),
+        "paper-online session admission rejects stale readiness proof timing");
+  check(contains_issue(stale_issues, "readiness_proof_not_fresh"),
+        "paper-online session admission requires freshness evidence");
+
+  auto not_ready = evidence;
+  not_ready.paper_online_readiness_contract_ready = false;
+  const auto not_ready_issues =
+      env::paper_online_session_admission_issues(contract, not_ready);
+  check(contains_issue(not_ready_issues,
+                       "paper_online_readiness_contract_not_ready"),
+        "paper-online session admission requires readiness target proof");
+
+  auto authority_drift = evidence;
+  authority_drift.live_execution_allowed = true;
+  const auto authority_issues =
+      env::paper_online_session_admission_issues(contract, authority_drift);
+  check(contains_issue(authority_issues,
+                       "readiness_evidence_must_not_claim_execution_authority"),
+        "paper-online session admission rejects readiness execution-authority "
+        "drift");
+
+  auto locked_profile_drift = evidence;
+  locked_profile_drift.locked_execution_profile_digest =
+      "digest:other_execution_profile_fixture";
+  const auto locked_profile_issues = env::paper_online_session_admission_issues(
+      contract, locked_profile_drift);
+  check(contains_issue(locked_profile_issues,
+                       "locked_execution_profile_digest_mismatch"),
+        "paper-online session admission rejects unlocked execution profile");
+
+  auto bad_contract = contract;
+  bad_contract.durable_artifacts.pop_back();
+  const auto bad_contract_issues =
+      env::paper_online_session_contract_issues(bad_contract);
+  check(contains_issue(bad_contract_issues,
+                       "missing_session_artifact_slot:reward_reports"),
+        "paper-online session contract requires durable reward report slot");
+
+  auto contract_authority_drift = contract;
+  contract_authority_drift.direct_policy_to_broker_allowed = true;
+  const auto contract_authority_issues =
+      env::paper_online_session_contract_issues(contract_authority_drift);
+  check(contains_issue(
+            contract_authority_issues,
+            "paper_online_session_contract_must_not_claim_execution_authority"),
+        "paper-online session contract rejects direct policy-to-broker "
+        "authority");
+}
 
 void test_environment_contract() {
   const auto replay_environment_bnf = read_text(
@@ -6138,6 +6291,7 @@ void test_trainable_policy_contract() {
 int main() {
   try {
     test_environment_contract();
+    test_paper_online_session_contract();
     test_baseline_policies();
     test_spot_distributional_utility_policy_adapter();
     test_trainable_policy_contract();

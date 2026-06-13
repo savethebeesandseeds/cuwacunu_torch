@@ -1420,6 +1420,81 @@ void test_runtime_policy_profiles() {
   std::filesystem::remove_all(dir);
 }
 
+void test_runtime_reset_backup_snapshot() {
+  const auto dir = make_tmp_dir("runtime_reset_backup_snapshot");
+  const auto runtime_root = dir / "runtime";
+  const auto backup_root = dir / ".backups" / "runtime_dev_nuke";
+  const auto component_file = runtime_root / "components" / "family" /
+                              "spawns" / "spawn_a" / "live.marker";
+  const auto system_file = runtime_root / "system" / "runtime_layout.v1.lls";
+  std::filesystem::create_directories(component_file.parent_path());
+  std::filesystem::create_directories(system_file.parent_path());
+  write_text(component_file, "component_state=legacy\n");
+  write_text(system_file, "schema=runtime_layout.v1\n");
+
+  hero_runtime::runtime_context_t ctx{};
+  ctx.policy.policy_path = dir / "hero.runtime.dsl";
+  ctx.policy.values["runtime_root"] = runtime_root.string();
+  ctx.policy.values["allowed_job_roots"] = runtime_root.string();
+  ctx.policy.values["allow_dev_nuke"] = "true";
+  ctx.policy.values["dev_nuke_backup_enabled"] = "true";
+  ctx.policy.values["dev_nuke_backup_root"] = backup_root.string();
+  ctx.policy.values["allowed_dev_nuke_roots"] = runtime_root.string();
+
+  std::string result;
+  std::string error;
+  const std::string plan_args = "{\"mode\":\"plan\",\"runtime_root\":\"" +
+                                runtime_root.string() + "\",\"backup\":true}";
+  check(execute_runtime_reset_json(plan_args, &ctx, &result, &error),
+        "Runtime reset backup plan failed: " + error);
+  require_contains(result, "\"dry_run\":true",
+                   "Runtime reset backup plan stays dry-run");
+  require_contains(result, "\"backup_enabled\":true",
+                   "Runtime reset backup plan reports backup mode");
+  require_contains(result, "\"target_count\":2",
+                   "Runtime reset backup plan should see components/system");
+  require_contains(result, json_quote_test(backup_root.string()),
+                   "Runtime reset backup plan reports configured backup root");
+
+  result.clear();
+  error.clear();
+  const std::string execute_args = "{\"mode\":\"execute\",\"runtime_root\":\"" +
+                                   runtime_root.string() +
+                                   "\",\"backup\":true}";
+  check(execute_runtime_reset_json(execute_args, &ctx, &result, &error),
+        "Runtime reset backup execute failed: " + error);
+  require_contains(result, "\"dry_run\":false",
+                   "Runtime reset backup execute is non-dry-run");
+  require_contains(result, "\"backup_enabled\":true",
+                   "Runtime reset backup execute reports backup mode");
+  require_contains(result, "\"backup_snapshot_path\":",
+                   "Runtime reset backup execute reports snapshot path");
+  require_contains(result, "\"backup_copy_fallback_paths\":[]",
+                   "same-filesystem reset should use atomic backup moves");
+
+  const auto snapshot_path =
+      std::filesystem::path(json_string_field(result, "backup_snapshot_path"));
+  check(std::filesystem::exists(snapshot_path / "components" / "family" /
+                                "spawns" / "spawn_a" / "live.marker"),
+        "Runtime reset backup should preserve component state in snapshot");
+  check(std::filesystem::exists(snapshot_path / "system" /
+                                "runtime_layout.v1.lls"),
+        "Runtime reset backup should preserve system state in snapshot");
+  check(!std::filesystem::exists(runtime_root / "components"),
+        "Runtime reset backup should clear active components tree");
+  check(!std::filesystem::exists(runtime_root / "system"),
+        "Runtime reset backup should clear active system tree");
+
+  result.clear();
+  error.clear();
+  check(execute_runtime_reset_json(plan_args, &ctx, &result, &error),
+        "Runtime reset backup post-clear plan failed: " + error);
+  require_contains(result, "\"would_clear\":false",
+                   "Runtime reset backup post-clear plan sees clean root");
+
+  std::filesystem::remove_all(dir);
+}
+
 void test_execute_expected_wave_binding() {
   const auto dir = make_tmp_dir("expected_wave_execute");
   const auto runtime_root = dir / "runtime";
@@ -5248,19 +5323,19 @@ LATTICE_TARGET {
   require_contains(result,
                    "\"acceptance_governance_policy_id\":"
                    "\"policy_acceptance_governance_thresholds_v0.v1\"",
-                   "Runtime reports policy acceptance governance identity");
+                   "Environment reports policy acceptance governance identity");
   require_contains(result,
                    "\"acceptance_governance_policy_digest\":\"" +
                        lattice_exposure::
                            policy_acceptance_governance_thresholds_v0_digest() +
                        "\"",
-                   "Runtime reports policy acceptance governance digest");
+                   "Environment reports policy acceptance governance digest");
   require_contains(result,
                    "\"acceptance_policy_digest\":\"" +
                        lattice_exposure::
                            policy_acceptance_governance_thresholds_v0_digest() +
                        "\"",
-                   "Runtime binds acceptance policy digest to governance "
+                   "Environment binds acceptance policy digest to governance "
                    "thresholds");
   require_contains(result, "\"policy_acceptance_fact_written\":true",
                    "Environment writes policy acceptance sidecar on execute");
@@ -5333,38 +5408,39 @@ LATTICE_TARGET {
       json_string_field(result, "policy_acceptance_fact_path"));
   const auto policy_acceptance_fact_text =
       read_text(policy_acceptance_fact_path);
-  require_contains(policy_acceptance_fact_text,
-                   "schema=kikijyeba.lattice.policy_acceptance.v1",
-                   "Runtime writes canonical policy acceptance fact schema");
+  require_contains(
+      policy_acceptance_fact_text,
+      "schema=kikijyeba.lattice.policy_acceptance.v1",
+      "Environment writes canonical policy acceptance fact schema");
   require_contains(policy_acceptance_fact_text,
                    "acceptance_id=policy_acceptance_fixture_v1",
-                   "Runtime writes policy acceptance identity");
+                   "Environment writes policy acceptance identity");
   require_contains(
       policy_acceptance_fact_text,
       "acceptance_policy_digest=" +
           lattice_exposure::policy_acceptance_governance_thresholds_v0_digest(),
-      "Runtime writes policy acceptance governance digest");
+      "Environment writes policy acceptance governance digest");
   require_contains(
       policy_acceptance_fact_text,
       "mandatory_baseline_set_digest=" +
           lattice_exposure::
               policy_acceptance_governance_v0_mandatory_baseline_set_digest(),
-      "Runtime writes canonical mandatory baseline set digest");
+      "Environment writes canonical mandatory baseline set digest");
   require_contains(policy_acceptance_fact_text, "tie_policy=reject_ties",
-                   "Runtime writes canonical V0 acceptance tie policy");
+                   "Environment writes canonical V0 acceptance tie policy");
   require_contains(policy_acceptance_fact_text,
                    "accepted_policy_training_fact_digest=" +
                        lattice_exposure::policy_training_fact_digest(
                            acceptance_source_policy_fact),
-                   "Runtime derives accepted policy-training fact digest");
+                   "Environment derives accepted policy-training fact digest");
   require_contains(policy_acceptance_fact_text,
                    "tsodao_settings_protection_fact_digest=" +
                        lattice_exposure::tsodao_settings_protection_fact_digest(
                            tsodao_protection_fact),
-                   "Runtime derives Tsodao settings-protection digest");
+                   "Environment derives Tsodao settings-protection digest");
   require_contains(policy_acceptance_fact_text,
                    "policy_acceptance_decision=true",
-                   "Runtime records explicit acceptance decision evidence");
+                   "Environment records explicit acceptance decision evidence");
   require_contains(policy_acceptance_fact_text, "policy_selector=false",
                    "policy acceptance fact denies policy-selection authority");
   require_contains(policy_acceptance_fact_text,
@@ -5577,24 +5653,25 @@ LATTICE_TARGET {
       json_string_field(result, "paper_online_readiness_fact_path"));
   const auto paper_online_readiness_fact_text =
       read_text(paper_online_readiness_fact_path);
-  require_contains(paper_online_readiness_fact_text,
-                   "schema=kikijyeba.lattice.paper_online_readiness.v1",
-                   "Runtime writes canonical paper-online readiness schema");
+  require_contains(
+      paper_online_readiness_fact_text,
+      "schema=kikijyeba.lattice.paper_online_readiness.v1",
+      "Environment writes canonical paper-online readiness schema");
   require_contains(paper_online_readiness_fact_text,
                    "readiness_id=paper_online_readiness_fixture_v1",
-                   "Runtime writes paper-online readiness identity");
+                   "Environment writes paper-online readiness identity");
   require_contains(paper_online_readiness_fact_text,
                    "policy_acceptance_fact_digest=" +
                        lattice_exposure::policy_acceptance_fact_digest(
                            parsed_acceptance_fact),
-                   "Runtime derives policy acceptance fact digest");
+                   "Environment derives policy acceptance fact digest");
   require_contains(paper_online_readiness_fact_text,
                    "paper_online_environment_contract_id="
                    "kikijyeba.environment.paper_online.v1",
-                   "Runtime binds paper-online environment contract");
+                   "Environment binds paper-online environment contract");
   require_contains(paper_online_readiness_fact_text,
                    "missing_direct_pair_policy=skip_pair_warn",
-                   "Runtime records missing-direct-pair policy");
+                   "Environment records missing-direct-pair policy");
   require_contains(paper_online_readiness_fact_text,
                    "synthetic_execution_markets_allowed=false",
                    "paper-online readiness forbids synthetic execution "
@@ -5830,6 +5907,7 @@ int main() {
     test_wave_profile_protocol_preview_warns();
     test_train_wave_explicit_sequential_source_order_warns();
     test_runtime_policy_profiles();
+    test_runtime_reset_backup_snapshot();
     test_wave_settings_train_defaults_to_random_source_order();
     test_multi_wave_catalog_selection();
     test_source_key_wave_preview_reports_key_bounds();

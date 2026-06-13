@@ -27,33 +27,37 @@ Implemented baseline:
 - Cost-aware replay reports expose execution feasibility, fill quality, cost
   anatomy, target tracking, ledger integrity, missing-pair counters, and
   fallback counters.
+- Paper-online readiness policy names persistent ledger recovery, duplicate
+  intent protection, direct-edge validation, stale-market policy, locked
+  execution-profile identity, and operator abort/kill-switch evidence before
+  any session runner exists.
 - No credentials, broker network calls, or live execution authority.
 
 ## Next Cajtucu Work
 
-### Paper-Online Readiness Contract V1
+### Paper-Online Session Contract V1
 
 Milestone:
 
 ```text
-paper_online_readiness_contract.v1 support
+paper_online_session_contract.v1 support
 ```
 
 Cajtucu role:
 
-- Define what online-paper execution must prove before it exists.
-- Reuse the paper V1 direct-pair intent, order, fill, ledger, and trace
-  contracts where possible.
-- Add persistent paper-ledger recovery, duplicate intent protection,
-  idempotency keys, stale-market rejection/warning policy, locked execution
-  profile identity, and operator abort/kill-switch trace requirements.
+- Define how a future online-paper session reuses the paper V1 direct-pair
+  intent, order, fill, ledger, and trace contracts.
+- Keep persistent ledger recovery, duplicate intent protection, idempotency
+  keys, stale-market rejection/warning policy, locked execution-profile
+  identity, and operator abort/kill-switch traces explicit in the session
+  evidence.
 - Keep the accounting numeraire a valuation/reporting node, not a hidden route
   or reserve action.
 
 Acceptance sketch:
 
-- The readiness contract names required online-paper trace fields before any
-  live market stream is consumed.
+- The session contract names required online-paper trace fields before any live
+  market stream is consumed.
 - Missing direct pairs, stale market data, duplicate intents, ledger recovery,
   rejects, partials, and cost anatomy remain visible evidence, not silent
   success.
@@ -65,7 +69,11 @@ Acceptance sketch:
 ```text
 paper_online_readiness_contract.v1
   Ledger, market-data, idempotency, session, stale-data, and trace-persistence
-  contract before online paper operation.
+  readiness contract before online paper operation.
+
+paper_online_session_contract.v1
+  Durable paper-only session state, intake, idempotency, ledger recovery, and
+  Cajtucu trace contract before a session runner is enabled.
 
 cajtucu.execution.paper_online.v1
   Live market stream, paper fills, no capital.

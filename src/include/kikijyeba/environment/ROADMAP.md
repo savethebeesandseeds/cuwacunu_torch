@@ -8,6 +8,8 @@ a broker, proof engine, Runtime launcher, policy trainer, or optimizer.
 
 ```text
 kikijyeba.environment.replay.v1
+hero.environment.certify.policy_acceptance
+hero.environment.certify.paper_online_readiness
 ```
 
 Stable environment contract:
@@ -41,39 +43,52 @@ Implemented baseline:
 - Actor checkpoint reload goes through `checkpoint.meta` and `module_state.pt`.
 - Lattice can prove `replay_environment_artifact_ready` from durable replay
   reports.
+- Environment certification emits policy-acceptance and paper-online-readiness
+  sidecars in check/issue mode, with preview-digest binding and no policy
+  selection, proof, deployment, broker, or live-capital authority.
 
 ## Next Environment Work
 
-### Paper-Online Readiness Contract V1
+### Paper-Online Session Contract V1
 
 Milestone:
 
 ```text
-paper_online_readiness_contract.v1 support
+paper_online_session_contract.v1 support
 ```
 
 Environment role:
 
-- Define the online-paper world contract before any online paper execution
-  exists.
+- Define the durable paper-online session world contract that consumes proven
+  `paper_online_readiness_contract_ready` evidence.
 - Reuse the proven replay action, execution, ledger, reward, and evidence
   semantics where possible.
-- Add session identity, clock/staleness policy, duplicate-action protection,
-  idempotent execution-intent handling, persistent paper-ledger recovery, and
-  operator abort/kill-switch evidence.
+- Define session state files, clock/staleness enforcement, duplicate-action
+  protection, idempotent execution-intent handling, persistent paper-ledger
+  recovery, and operator abort/kill-switch transitions.
 - Preserve the graph-node allocation surface: one `target_node_weights[A]`
   vector over graph nodes, no hidden reserve action, and no direct
   policy-to-broker path.
 
 Acceptance sketch:
 
-- `kikijyeba.environment.paper_online.v1` is defined as a readiness contract,
-  not an executor.
-- Paper-online readiness requires bounded session state, stale-data behavior,
-  idempotency, durable ledger recovery, direct-pair universe validation,
-  locked Cajtucu execution-profile identity, and explicit authority denials.
-- Historical replay remains the training/evaluation environment until this
-  readiness contract exists.
+- `kikijyeba.environment.paper_online.v1` has a concrete session-state contract
+  and validator surface before any online-paper runner exists.
+- Session admission requires a fresh paper-online-readiness proof and rejects
+  stale, missing, or mismatched readiness evidence.
+- Historical replay remains the training/evaluation environment until a bounded
+  paper-online session runner is explicitly implemented.
+
+First implementation slice:
+
+- `paper_online_session_contract.h` defines the contract IDs, durable session
+  files, lifecycle transitions, readiness evidence packet, and admission
+  validators.
+- `hero.environment.inspect.schema` reports the session contract vocabulary for
+  operator inspection without adding a session runner.
+- Contract tests reject stale readiness proof timing, missing proof digest,
+  readiness-not-ready evidence, locked execution-profile drift, missing durable
+  artifact slots, and execution-authority drift.
 
 ## Future Environment Work
 

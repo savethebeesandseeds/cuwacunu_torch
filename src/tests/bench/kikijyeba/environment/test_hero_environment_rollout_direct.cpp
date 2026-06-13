@@ -170,11 +170,68 @@ void test_environment_rollout_direct_validate() {
         "validate mode should not attempt Runtime replay");
 }
 
+void test_environment_schema_inspection_reports_paper_online_session_contract() {
+  const auto root = make_tmp_dir("schema_inspection");
+  const auto config_path = root / ".config";
+  const auto policy_path = root / "hero.environment.dsl";
+  write_text(config_path, "[HERO]\n"
+                          "environment_hero_dsl_path = " +
+                              policy_path.string() + "\n");
+  write_text(policy_path, "protocol_layer[STDIO|HTTPS/SSE]:enum = STDIO\n"
+                          "environment_profile:enum = operator_default\n"
+                          "default_config_path:path = " +
+                              config_path.string() +
+                              "\n"
+                              "runtime_root:path = " +
+                              root.string() +
+                              "\n"
+                              "allowed_job_roots:path_list = " +
+                              root.string() +
+                              "\n"
+                              "allow_certify_issue:bool = true\n"
+                              "allow_rollout_replay:bool = true\n");
+
+  environment::environment_context_t ctx{};
+  ctx.global_config_path = config_path;
+  ctx.policy_path = policy_path;
+  std::string error;
+  check(environment::load_environment_policy(policy_path, config_path,
+                                             &ctx.policy, &error),
+        "failed to load Environment policy for schema inspection: " + error);
+
+  std::string result;
+  error.clear();
+  check(environment::execute_tool_json("hero.environment.inspect.schema", "{}",
+                                       &ctx, &result, &error),
+        "Environment schema inspection should succeed: " + error);
+  check(result.find("\"paper_online_session_contract\":") != std::string::npos,
+        "Environment schema inspection exposes paper-online session contract");
+  check(result.find("\"contract_id\":\"paper_online_session_contract.v1\"") !=
+            std::string::npos,
+        "Environment schema inspection exposes paper-online session contract "
+        "id");
+  check(result.find("\"readiness_target_id\":"
+                    "\"paper_online_readiness_contract_ready\"") !=
+            std::string::npos,
+        "Environment schema inspection exposes readiness target prerequisite");
+  check(result.find("\"relative_path\":\"session.state\"") != std::string::npos,
+        "Environment schema inspection exposes durable session state path");
+  check(result.find("\"session_runner_implemented\":false") !=
+            std::string::npos,
+        "Environment schema inspection denies paper-online runner authority");
+  check(result.find("\"broker_execution_allowed\":false") != std::string::npos,
+        "Environment schema inspection denies broker execution authority");
+  check(result.find("\"validator_issues\":[]") != std::string::npos,
+        "Environment schema inspection reports clean default session "
+        "contract");
+}
+
 } // namespace
 
 int main() {
   try {
     test_environment_rollout_direct_validate();
+    test_environment_schema_inspection_reports_paper_online_session_contract();
     std::cout << "hero Environment rollout direct tests passed\n";
     return 0;
   } catch (const std::exception &ex) {

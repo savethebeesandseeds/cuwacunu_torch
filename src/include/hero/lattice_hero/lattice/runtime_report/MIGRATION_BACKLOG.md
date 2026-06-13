@@ -31,16 +31,12 @@ migration landed.
 
 ## Hero / Lattice
 
-`src/impl/hero/lattice_hero/lattice_catalog.cpp`
+`src/include/hero/lattice_hero/lattice/exposure/exposure_ledger.h`
 
-- Keep `wave.projection.lls.v2` as the catalog-cell schema; `wave.source.runtime.projection.v2`
-  is now a standalone runtime fact and should not regress back to synthetic
-  reconstruction from joined transports.
-
-`src/impl/hero/lattice_hero/lattice_catalog.cpp`
-
-- Keep runtime report ingest owned by Lattice. Retired catalog surfaces must not
-  be reintroduced as compatibility layers.
+- Keep source analytics `.lls` fallback on the strict runtime parser and the
+  canonical v2 filename set only.
+- Keep runtime report ingest owned by Lattice. Retired catalog/source projection
+  source paths must not be reintroduced as compatibility layers.
 
 ## Documentation Follow-Ups
 

@@ -26,6 +26,7 @@
 #include <utility>
 #include <vector>
 
+#include "hero/lattice_hero/lattice/runtime_report/runtime_lls.h"
 #include "hero/runtime_hero/runtime/job_layout.h"
 #include "piaabo/parse/simple_kv_block.h"
 #include "wikimyei/assembly.h"
@@ -3903,6 +3904,16 @@ namespace kv = cuwacunu::piaabo::parse::simple_kv;
                      std::istreambuf_iterator<char>());
 }
 
+[[nodiscard]] inline std::optional<std::string>
+read_text_file_if_exists(const fs::path &path) {
+  std::ifstream in(path);
+  if (!in) {
+    return std::nullopt;
+  }
+  return std::string((std::istreambuf_iterator<char>(in)),
+                     std::istreambuf_iterator<char>());
+}
+
 [[nodiscard]] inline std::unordered_map<std::string, std::string>
 parse_assignment_text(const std::string &text) {
   std::unordered_map<std::string, std::string> out;
@@ -3957,6 +3968,36 @@ parse_first_assignment_file(const std::vector<fs::path> &paths) {
     auto parsed = parse_assignment_file(path);
     if (!parsed.empty()) {
       return parsed;
+    }
+  }
+  return {};
+}
+
+[[nodiscard]] inline std::optional<std::unordered_map<std::string, std::string>>
+parse_runtime_lls_file_if_exists(const fs::path &path) {
+  const auto text = read_text_file_if_exists(path);
+  if (!text.has_value()) {
+    return std::nullopt;
+  }
+
+  cuwacunu::hero::lattice::runtime_report::runtime_lls_document_t document{};
+  std::unordered_map<std::string, std::string> parsed{};
+  std::string parse_error{};
+  if (!cuwacunu::hero::lattice::runtime_report::parse_runtime_lls_text(
+          *text, &document, &parse_error) ||
+      !cuwacunu::hero::lattice::runtime_report::runtime_lls_document_to_kv_map(
+          document, &parsed, &parse_error)) {
+    return std::unordered_map<std::string, std::string>{};
+  }
+  return parsed;
+}
+
+[[nodiscard]] inline std::unordered_map<std::string, std::string>
+parse_first_runtime_lls_file(const std::vector<fs::path> &paths) {
+  for (const auto &path : paths) {
+    auto parsed = parse_runtime_lls_file_if_exists(path);
+    if (parsed.has_value()) {
+      return *parsed;
     }
   }
   return {};
@@ -4931,9 +4972,7 @@ source_data_analytics_numeric_paths_for_job_dir(
   return {job_dir / "data_analytics.v2.latest.lls",
           job_dir / "sequence_analytics.v2.latest.lls",
           job_dir / "embedding_sequence_analytics.v2.latest.lls",
-          job_dir / "source_data_analytics.v2.latest.lls",
-          job_dir / "data_analytics.lls",
-          job_dir / "source_data_analytics.lls"};
+          job_dir / "source_data_analytics.v2.latest.lls"};
 }
 
 [[nodiscard]] inline std::vector<std::filesystem::path>
@@ -4942,9 +4981,7 @@ source_data_analytics_symbolic_paths_for_job_dir(
   return {job_dir / "data_analytics.symbolic.v2.latest.lls",
           job_dir / "sequence_analytics.symbolic.v2.latest.lls",
           job_dir / "embedding_sequence_analytics.symbolic.v2.latest.lls",
-          job_dir / "source_data_analytics.symbolic.v2.latest.lls",
-          job_dir / "data_analytics.symbolic.lls",
-          job_dir / "source_data_analytics.symbolic.lls"};
+          job_dir / "source_data_analytics.symbolic.v2.latest.lls"};
 }
 
 [[nodiscard]] inline std::string source_analytics_first_value(
@@ -5101,9 +5138,9 @@ make_source_analytics_facts_from_job_dir(
     return {std::move(fact)};
   }
 
-  const auto numeric = detail::parse_first_assignment_file(
+  const auto numeric = detail::parse_first_runtime_lls_file(
       source_data_analytics_numeric_paths_for_job_dir(job_dir));
-  const auto symbolic = detail::parse_first_assignment_file(
+  const auto symbolic = detail::parse_first_runtime_lls_file(
       source_data_analytics_symbolic_paths_for_job_dir(job_dir));
   if (numeric.empty() && symbolic.empty()) {
     return {};
@@ -5129,9 +5166,9 @@ make_runtime_source_analytics_fact_from_exposure_fact(
   auto fact = make_source_analytics_fact_shell_from_parent(parent);
 
   if (!job_dir.empty()) {
-    const auto numeric = detail::parse_first_assignment_file(
+    const auto numeric = detail::parse_first_runtime_lls_file(
         source_data_analytics_numeric_paths_for_job_dir(job_dir));
-    const auto symbolic = detail::parse_first_assignment_file(
+    const auto symbolic = detail::parse_first_runtime_lls_file(
         source_data_analytics_symbolic_paths_for_job_dir(job_dir));
     overlay_source_analytics_assignment_payload(fact, numeric, symbolic);
   }

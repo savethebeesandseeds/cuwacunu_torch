@@ -52,6 +52,7 @@ replay_environment_artifact_ready
 policy_training_artifact_ready
 tsodao_settings_protection_ready
 policy_acceptance_contract_ready
+paper_online_readiness_contract_ready
 ```
 
 `replay_environment_artifact_ready` proves replay report completeness, lineage,
@@ -102,6 +103,15 @@ negative-test, threshold-audit, tie-policy, and promotion-criteria fields, and
 rejects any policy-selection, checkpoint-selection, optimizer, allocation,
 execution, quality/performance, market/deployment readiness, or live-capital
 authority.
+
+`paper_online_readiness_contract_ready` proves a read-only paper-online readiness
+artifact binding. It resolves the referenced policy-acceptance and
+Tsodao-settings-protection evidence, checks accepted policy identity, session
+lifecycle, clock/staleness, idempotency, duplicate-action/execution protection,
+persistent paper-ledger recovery, direct-edge universe validation, locked
+Cajtucu execution profile, reward/report artifact policy, abort/kill-switch
+semantics, and rejects any policy-selection, broker, market/deployment
+readiness, paper-online execution, or live-capital authority claim.
 
 Lattice does not prove:
 
@@ -222,35 +232,71 @@ Acceptance sketch:
   quality/performance, market/deployment readiness, or live authority flag fails
   closed.
 
-## Next Lattice Work
-
-### Paper-Online Readiness Target Contract
+### Paper-Online Readiness Contract
 
 Milestone:
 
 ```text
-paper_online_readiness_contract.v1 support
+paper_online_readiness_contract.v1
+```
+
+Status:
+
+```text
+complete
 ```
 
 Lattice role:
 
-- Define the read-only artifact target shape for online-paper readiness before
-  any paper-online executor exists.
-- Prove only contract identity, lineage, session-state evidence, stale-data
-  policy, ledger-recovery policy, idempotency/duplicate-action protection,
-  Cajtucu execution-profile binding, graph/direct-pair universe validation,
-  operator abort/kill-switch evidence, and authority denials.
-- Do not prove policy quality, market readiness, deployment readiness, or live
-  execution safety.
+- Normalize `kikijyeba.lattice.paper_online_readiness.v1` facts from Environment
+  certification sidecars.
+- Prove only the readiness artifact contract through
+  `paper_online_readiness_contract_ready`.
+- Cross-check policy-acceptance and Tsodao settings-protection lineage before a
+  future paper-online session can consume the evidence.
+- Preserve all authority denials: no session execution, broker access, market
+  readiness, deployment readiness, or live-capital proof.
 
 Acceptance sketch:
 
+- Valid readiness facts satisfy `paper_online_readiness_contract_ready`.
+- Missing or stale policy-acceptance parent facts fail closed.
 - Missing session, clock/staleness, ledger-recovery, idempotency, execution
   profile, graph universe, abort/kill-switch, or authority-denial evidence
   fails closed.
 - Any paper-online fact claiming policy selection, execution authority beyond
   paper mode, deployment readiness, market readiness, broker access, or live
   capital authority fails closed.
+
+## Next Lattice Work
+
+### Paper-Online Session Evidence Contract
+
+Milestone:
+
+```text
+paper_online_session_contract.v1 proof support
+```
+
+Lattice role:
+
+- Define the read-only artifact target shape for a future paper-only session
+  report that consumes the Environment `paper_online_session_contract.v1`
+  validator surface.
+- Prove only session contract identity, readiness-proof binding, durable
+  session state, market-data staleness enforcement, ledger recovery,
+  idempotency/duplicate rejection, Cajtucu paper-execution trace binding,
+  operator abort/kill-switch evidence, and authority denials.
+- Do not prove policy quality, market readiness, deployment readiness, or live
+  execution safety.
+
+Acceptance sketch:
+
+- Missing readiness-proof lineage, session state, staleness enforcement,
+  ledger recovery, idempotency, Cajtucu paper trace evidence, abort/kill-switch,
+  or authority-denial evidence fails closed.
+- Any session fact claiming policy selection, broker access, deployment
+  readiness, market readiness, or live capital authority fails closed.
 
 ## Optional Lattice Work
 

@@ -1349,8 +1349,8 @@ append_kv_json_fields(const std::unordered_map<std::string, std::string> &map,
   return true;
 }
 
-[[nodiscard]] std::string runtime_handoff_file_digest(
-    const std::string &handoff_text) {
+[[nodiscard]] std::string
+runtime_handoff_file_digest(const std::string &handoff_text) {
   return cuwacunu::hero::marshal::marshal_digest_for_text(
       "kikijyeba.runtime.run_request.runtime_handoff_file.v1", handoff_text);
 }
@@ -1375,8 +1375,8 @@ append_kv_json_fields(const std::unordered_map<std::string, std::string> &map,
 
   fs::path handoff_path;
   std::string handoff_text;
-  if (!read_required_text_file_arg(args, "runtime_handoff_path",
-                                   &handoff_path, &handoff_text, err)) {
+  if (!read_required_text_file_arg(args, "runtime_handoff_path", &handoff_path,
+                                   &handoff_text, err)) {
     return false;
   }
   const std::string actual_digest = runtime_handoff_file_digest(handoff_text);
@@ -1416,9 +1416,9 @@ append_kv_json_fields(const std::unordered_map<std::string, std::string> &map,
   return true;
 }
 
-[[nodiscard]] bool append_handoff_wave_overlay(
-    const std::string &handoff_json, std::ostringstream &out, bool *first,
-    std::string *err) {
+[[nodiscard]] bool append_handoff_wave_overlay(const std::string &handoff_json,
+                                               std::ostringstream &out,
+                                               bool *first, std::string *err) {
   std::string wave_raw;
   if (!extract_json_raw_field(handoff_json, "wave", &wave_raw)) {
     if (err) {
@@ -1446,9 +1446,10 @@ append_kv_json_fields(const std::unordered_map<std::string, std::string> &map,
   return true;
 }
 
-[[nodiscard]] bool append_handoff_derived_run_fields(
-    const std::string &handoff_json, std::ostringstream &out, bool *first,
-    std::string *err) {
+[[nodiscard]] bool
+append_handoff_derived_run_fields(const std::string &handoff_json,
+                                  std::ostringstream &out, bool *first,
+                                  std::string *err) {
   std::string base_config_raw;
   if (!extract_json_raw_field(handoff_json, "base_config", &base_config_raw)) {
     if (err) {
@@ -1492,9 +1493,10 @@ append_kv_json_fields(const std::unordered_map<std::string, std::string> &map,
   return true;
 }
 
-[[nodiscard]] bool materialize_runtime_run_args(
-    const std::string &public_args, std::string_view requested_mode,
-    std::string *out, std::string *err) {
+[[nodiscard]] bool materialize_runtime_run_args(const std::string &public_args,
+                                                std::string_view requested_mode,
+                                                std::string *out,
+                                                std::string *err) {
   std::string handoff_json;
   if (!read_optional_runtime_handoff_artifact(public_args, requested_mode,
                                               &handoff_json, err)) {
@@ -1758,11 +1760,11 @@ validate_kv_fields(const std::unordered_map<std::string, std::string> &map,
       !kv_set_bool(map, "initial_equity_numeraire_bound",
                    &parsed.initial_equity_numeraire_bound, err) ||
       !kv_set_double(map, "max_node_weight", &parsed.max_node_weight, err) ||
-      !kv_set_bool(map, "max_node_weight_bound",
-                   &parsed.max_node_weight_bound, err) ||
+      !kv_set_bool(map, "max_node_weight_bound", &parsed.max_node_weight_bound,
+                   err) ||
       !kv_set_double(map, "max_turnover_l1", &parsed.max_turnover_l1, err) ||
-      !kv_set_bool(map, "max_turnover_l1_bound",
-                   &parsed.max_turnover_l1_bound, err) ||
+      !kv_set_bool(map, "max_turnover_l1_bound", &parsed.max_turnover_l1_bound,
+                   err) ||
       !kv_set_int64(map, "ppo_minibatch_size", &parsed.ppo_minibatch_size,
                     err) ||
       !kv_set_bool(map, "ppo_minibatch_size_bound",
@@ -3137,13 +3139,15 @@ active_jobs_json(const std::vector<active_job_marker_t> &active_jobs) {
   return true;
 }
 
-[[nodiscard]] bool move_dev_nuke_target(const fs::path &root,
-                                        const fs::path &target,
-                                        const fs::path &snapshot_root,
-                                        fs::path *out_backup,
-                                        std::string *err) {
+[[nodiscard]] bool
+move_dev_nuke_target(const fs::path &root, const fs::path &target,
+                     const fs::path &snapshot_root, fs::path *out_backup,
+                     bool *out_copy_fallback, std::string *err) {
   if (out_backup) {
     out_backup->clear();
+  }
+  if (out_copy_fallback) {
+    *out_copy_fallback = false;
   }
   if (!path_within(root, target) ||
       normalize_path(root) == normalize_path(target)) {
@@ -3172,10 +3176,39 @@ active_jobs_json(const std::vector<active_job_marker_t> &active_jobs) {
   }
   fs::rename(target, backup_path, ec);
   if (ec) {
+    const std::string rename_error = ec.message();
+    ec.clear();
+    fs::copy(target, backup_path,
+             fs::copy_options::recursive | fs::copy_options::copy_symlinks, ec);
+    if (ec) {
+      const std::string copy_error = ec.message();
+      std::error_code cleanup_ec;
+      fs::remove_all(backup_path, cleanup_ec);
+      if (err) {
+        *err = "failed to move runtime target into dev_nuke backup: " +
+               target.string() + " -> " + backup_path.string() + ": " +
+               rename_error + "; copy fallback failed: " + copy_error;
+      }
+      return false;
+    }
+    ec.clear();
+    fs::remove_all(target, ec);
+    if (ec) {
+      if (err) {
+        *err = "failed to clear runtime target after dev_nuke backup copy: " +
+               target.string() + " (backup preserved at " +
+               backup_path.string() + "): " + ec.message();
+      }
+      return false;
+    }
+    if (out_copy_fallback) {
+      *out_copy_fallback = true;
+    }
+  }
+  ec.clear();
+  if (!fs::exists(backup_path, ec) || ec) {
     if (err) {
-      *err = "failed to move runtime target into dev_nuke backup: " +
-             target.string() + " -> " + backup_path.string() + ": " +
-             ec.message();
+      *err = "dev_nuke backup path was not created: " + backup_path.string();
     }
     return false;
   }
@@ -3786,8 +3819,7 @@ validate_replay_report_for_validation_rollout(const fs::path &report_path,
       << json_quote(contract.accounting_numeraire_node_id)
       << ",\"target_node_ids\":" << json_quote(contract.target_node_ids)
       << ",\"experiment_id\":" << json_quote(contract.experiment_id)
-      << ",\"policy_set_digest\":"
-      << json_quote(contract.policy_set_digest)
+      << ",\"policy_set_digest\":" << json_quote(contract.policy_set_digest)
       << ",\"protocol_id\":" << json_quote(contract.protocol_id)
       << ",\"protocol_contract_fingerprint\":"
       << json_quote(contract.protocol_contract_fingerprint)
@@ -3907,8 +3939,7 @@ validate_replay_report_for_validation_rollout(const fs::path &report_path,
       << contract.linear_transaction_cost_rate
       << ",\"linear_transaction_cost_rate_bound\":"
       << bool_json(contract.linear_transaction_cost_rate_bound)
-      << ",\"initial_equity_numeraire\":"
-      << contract.initial_equity_numeraire
+      << ",\"initial_equity_numeraire\":" << contract.initial_equity_numeraire
       << ",\"initial_equity_numeraire_bound\":"
       << bool_json(contract.initial_equity_numeraire_bound)
       << ",\"max_node_weight\":" << contract.max_node_weight
@@ -10482,6 +10513,7 @@ replay_dry_run_json(const std::vector<std::string> &argv,
   }
 
   std::vector<fs::path> backed_up_paths;
+  std::vector<fs::path> backup_copy_fallback_paths;
   std::vector<fs::path> removed_paths;
   fs::path snapshot_root;
   std::uintmax_t cleared_entries = 0;
@@ -10491,11 +10523,15 @@ replay_dry_run_json(const std::vector<std::string> &argv,
     }
     for (const auto &target : targets) {
       fs::path backup_path;
+      bool used_copy_fallback = false;
       if (!move_dev_nuke_target(root, target.path, snapshot_root, &backup_path,
-                                err)) {
+                                &used_copy_fallback, err)) {
         return false;
       }
       backed_up_paths.push_back(backup_path);
+      if (used_copy_fallback) {
+        backup_copy_fallback_paths.push_back(backup_path);
+      }
       cleared_entries += target.entry_count;
     }
   } else {
@@ -10525,6 +10561,8 @@ replay_dry_run_json(const std::vector<std::string> &argv,
     json << json_quote(snapshot_root.string());
   }
   json << ",\"backed_up_paths\":" << path_vector_json(backed_up_paths)
+       << ",\"backup_copy_fallback_paths\":"
+       << path_vector_json(backup_copy_fallback_paths)
        << ",\"removed_paths\":" << path_vector_json(removed_paths)
        << ",\"active_jobs\":[]"
        << "}";
@@ -10989,10 +11027,9 @@ replay_dry_run_json(const std::vector<std::string> &argv,
                                               std::string *out,
                                               std::string *err) {
   std::vector<json_field_t> fields;
-  if (!validate_tool_fields(args,
-                            {"requested_mode", "contract_path",
-                             "contract_digest"},
-                            &fields, err)) {
+  if (!validate_tool_fields(
+          args, {"requested_mode", "contract_path", "contract_digest"}, &fields,
+          err)) {
     return false;
   }
   std::string requested_mode;
@@ -11135,11 +11172,11 @@ replay_dry_run_json(const std::vector<std::string> &argv,
 [[nodiscard]] bool handle_run(const std::string &args, runtime_context_t *ctx,
                               std::string *out, std::string *err) {
   std::vector<json_field_t> fields;
-  if (!validate_tool_fields(
-          args,
-          {"mode", "runtime_handoff_path", "runtime_handoff_digest",
-           "contract_path", "contract_digest"},
-          &fields, err)) {
+  if (!validate_tool_fields(args,
+                            {"mode", "runtime_handoff_path",
+                             "runtime_handoff_digest", "contract_path",
+                             "contract_digest"},
+                            &fields, err)) {
     return false;
   }
   std::string requested_mode;
