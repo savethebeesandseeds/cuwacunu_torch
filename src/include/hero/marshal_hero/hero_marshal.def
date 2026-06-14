@@ -20,9 +20,9 @@ HERO_MARSHAL_TOOL(
     "hero.marshal.prepare.train",
     "Prepare train-target movement for one dispatchable Lattice target using "
     "a Marshal prepare profile. Replay uses rollout, artifact-readiness "
-    "routes to inspect, and policy-training is reserved until a concrete "
-    "Runtime contract exists. Marshal derives Lattice/Runtime evidence at "
-    "call time.",
+    "routes to inspect, and policy-training uses Runtime contract paths until "
+    "Marshal has a dedicated policy-training handoff. Marshal derives "
+    "Lattice/Runtime evidence at call time.",
     R"({
       "type": "object",
       "properties": {
@@ -115,16 +115,17 @@ HERO_MARSHAL_TOOL(
     "evidence and optional session-admission evidence. mode=plan constructs "
     "the Environment-compatible admission/session payloads without tool calls; "
     "mode=dry_run performs safe Environment admission check and session "
-    "validate only. Marshal writes a handoff receipt but never issues "
-    "admission, runs the session, routes broker orders, or proves Lattice "
-    "targets.",
+    "validate only; mode=run repeats those gates and delegates the bounded "
+    "paper session run to Environment. Marshal writes a handoff receipt but "
+    "never issues admission, routes broker orders, authorizes live capital, or "
+    "proves Lattice targets.",
     R"({
       "type": "object",
       "required": ["mode"],
       "properties": {
         "mode": {
           "type": "string",
-          "enum": ["plan", "dry_run"]
+          "enum": ["plan", "dry_run", "run"]
         },
         "handoff_request": {
           "type": "object"

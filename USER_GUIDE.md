@@ -167,17 +167,17 @@ Prepare and execute the evaluation run through Marshal:
 ```sh
 .build/hero/hero_marshal.mcp \
   --global-config "$GLOBAL_CONFIG" \
-  --tool hero.marshal.prepare \
+  --tool hero.marshal.prepare.evaluate \
   --args-json '{"mode":"plan","profile":"single_wave_operator","target_id":"channel_mdn_validation_eval_ready"}'
 
 .build/hero/hero_marshal.mcp \
   --global-config "$GLOBAL_CONFIG" \
-  --tool hero.marshal.prepare \
+  --tool hero.marshal.prepare.evaluate \
   --args-json '{"mode":"dry_run","profile":"single_wave_operator","target_id":"channel_mdn_validation_eval_ready"}'
 
 .build/hero/hero_marshal.mcp \
   --global-config "$GLOBAL_CONFIG" \
-  --tool hero.marshal.prepare \
+  --tool hero.marshal.prepare.evaluate \
   --args-json '{"mode":"execute","profile":"single_wave_operator","target_id":"channel_mdn_validation_eval_ready"}'
 ```
 
@@ -321,29 +321,6 @@ Then check and issue Environment admission with the returned `preview_digest`:
   --args-json "{\"mode\":\"issue\",\"admission_request_path\":\"$REQUEST_DIR/paper_online_session_admission.request.json\",\"expected_preview_digest\":\"<preview_digest>\"}"
 ```
 
-Create the bounded paper-session request:
-
-```sh
-cat > "$REQUEST_DIR/paper_online_session.run_request.json" <<JSON
-{
-  "schema": "kikijyeba.environment.paper_online_session_run_request.v1",
-  "admission": {
-    "job_dir": "$READINESS_JOB_DIR"
-  },
-  "session": {
-    "session_id": "paper_online_session_001",
-    "session_root": "$SESSION_ROOT",
-    "requested_at_ms": 112000,
-    "max_steps": 64,
-    "step_interval_ms": 1000,
-    "market_data_receive_lag_ms": 100,
-    "target_node_ids": ["USDT", "BTC", "ETH"],
-    "recover_persistent_ledger": true
-  }
-}
-JSON
-```
-
 Rerun the Marshal dry-run after admission is issued. It should reach
 `dispatch_state=prepared` and write the handoff receipt:
 
@@ -354,24 +331,22 @@ Rerun the Marshal dry-run after admission is issued. It should reach
   --args-json "{\"mode\":\"dry_run\",\"handoff_request_path\":\"$REQUEST_DIR/paper_online_session_handoff.request.json\"}"
 ```
 
-Environment validation is the same check Marshal dry-run performs after
-admission exists. Run Environment only after the handoff is prepared:
+Run through the same Marshal handoff when the prepared receipt is accepted. The
+run mode repeats the admission check and session validation, then delegates the
+bounded paper session to Environment:
 
 ```sh
-.build/hero/hero_environment.mcp \
+.build/hero/hero_marshal.mcp \
   --global-config "$GLOBAL_CONFIG" \
-  --tool hero.environment.paper_online.session \
-  --args-json "{\"mode\":\"validate\",\"session_request_path\":\"$REQUEST_DIR/paper_online_session.run_request.json\"}"
-
-.build/hero/hero_environment.mcp \
-  --global-config "$GLOBAL_CONFIG" \
-  --tool hero.environment.paper_online.session \
-  --args-json "{\"mode\":\"run\",\"session_request_path\":\"$REQUEST_DIR/paper_online_session.run_request.json\"}"
+  --tool hero.marshal.paper_online.session_handoff \
+  --args-json "{\"mode\":\"run\",\"handoff_request_path\":\"$REQUEST_DIR/paper_online_session_handoff.request.json\"}"
 ```
 
-Environment writes the session artifacts and
+The successful Marshal run returns `dispatch_state=executed`; if the delegated
+Environment run is refused, it returns `dispatch_state=run_blocked` with the
+Environment run digest and error. Environment writes the session artifacts and
 `lattice.paper_online_session.fact` under `SESSION_ROOT`. Inspect the Lattice
-family:
+family after execution:
 
 ```sh
 .build/hero/hero_lattice.mcp \

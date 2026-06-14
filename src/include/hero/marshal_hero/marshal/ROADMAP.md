@@ -52,7 +52,7 @@ rollout
 
 paper_online.session_handoff
   paper-online readiness/admission evidence -> bounded Environment session
-  handoff plan/dry-run receipt
+  handoff plan/dry-run/run receipt
 
 inspect
   read-only Runtime/Lattice/Marshal evidence explanation
@@ -70,25 +70,31 @@ Milestone:
 
 ```text
 paper_online_session_marshal_handoff.v1
+paper_online_session_marshal_run_handoff.v1
 ```
 
 Current state:
 
-- `hero.marshal.paper_online.session_handoff mode=plan|dry_run` prepares a
-  compact handoff from a `handoff_request` object or `handoff_request_path`.
+- `hero.marshal.paper_online.session_handoff mode=plan|dry_run|run` prepares
+  or delegates a compact handoff from a `handoff_request` object or
+  `handoff_request_path`.
 - Plan mode builds Environment-compatible admission/session payload digests
   without calling Environment or writing a receipt.
 - Dry-run mode calls only safe validators:
   `hero.environment.certify.paper_online_session_admission mode=check` and,
   once admission evidence exists,
   `hero.environment.paper_online.session mode=validate`.
-- Dry-run writes a durable
+- Run mode repeats the same gates and then delegates
+  `hero.environment.paper_online.session mode=run`; successful execution
+  reports `dispatch_state=executed`, while a failed delegated run reports
+  `dispatch_state=run_blocked`.
+- Dry-run and run write a durable
   `kikijyeba.marshal.paper_online_session_handoff_receipt.v1` receipt with
-  request digests, Environment validation digests, readiness/admission sidecar
-  visibility, authority denials, and next safe actions.
-- Marshal never issues admission, runs the paper-online session, executes
-  Cajtucu paper mechanics, routes broker orders, selects policy/checkpoint, or
-  proves Lattice targets.
+  request digests, Environment validation/run digests, readiness/admission and
+  session sidecar visibility, authority denials, and next safe actions.
+- Marshal never issues admission, executes Cajtucu paper mechanics, routes
+  broker orders, selects policy/checkpoint, proves Lattice targets, or
+  authorizes live capital.
 
 ### Dispatch Readiness Repair
 

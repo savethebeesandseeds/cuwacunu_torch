@@ -54,7 +54,7 @@ The shortest rule is:
 status                   = what Marshal can see
 prepare                  = how one Lattice target can move next
 rollout                  = how one completed Runtime job can be replayed through environment
-paper_online.session_handoff = how a paper-online session handoff is prepared
+paper_online.session_handoff = how a paper-online session handoff is prepared or run
 inspect                  = what existing evidence says
 ```
 
@@ -128,8 +128,9 @@ ARGS='{
 `hero.marshal.paper_online.session_handoff` is for paper-online session
 handoff preparation. It starts from existing paper-online readiness evidence,
 assembles the Environment admission/session payloads, and in dry-run mode calls
-only safe Environment validators. Marshal does not issue admission or run the
-session.
+only safe Environment validators. In run mode it repeats those gates and
+delegates the bounded paper-session run to Environment. Marshal does not issue
+admission, route broker orders, or authorize live capital.
 
 ```bash
 ARGS='{
@@ -190,7 +191,7 @@ paper_online_readiness_contract_ready evidence
   -> hero.marshal.paper_online.session_handoff mode=dry_run
   -> Environment admission issue when Marshal reports admission_ready
   -> hero.marshal.paper_online.session_handoff mode=dry_run until prepared
-  -> Environment paper_online.session mode=run when operator accepts the handoff
+  -> hero.marshal.paper_online.session_handoff mode=run when operator accepts the handoff
   -> Lattice reads paper_online_session facts later
 ```
 
@@ -588,7 +589,7 @@ live_execution_authority=false
 
 ## Paper-Online Session Handoff
 
-`hero.marshal.paper_online.session_handoff` has two modes:
+`hero.marshal.paper_online.session_handoff` has three modes:
 
 ```text
 mode=plan
@@ -598,6 +599,10 @@ mode=plan
 mode=dry_run
   call Environment admission check, then Environment session validate only when
   the admission sidecar exists, and write a durable Marshal handoff receipt
+
+mode=run
+  repeat the dry-run gates, delegate Environment session run only after
+  validation is ready, and write a durable Marshal handoff receipt
 ```
 
 Public arguments are `mode`, exactly one of `handoff_request` or
@@ -605,11 +610,11 @@ Public arguments are `mode`, exactly one of `handoff_request` or
 readiness/session fields live inside the compact handoff request so the Marshal
 tool surface stays small.
 
-The handoff path never issues Environment admission, runs the session, executes
-Cajtucu paper mechanics, routes broker orders, selects policy/checkpoint, or
-proves Lattice targets. Its receipt records request digests, Environment
-validation digests, readiness/admission sidecar visibility, authority denials,
-and next safe actions.
+The handoff path never issues Environment admission, executes Cajtucu paper
+mechanics directly, routes broker orders, selects policy/checkpoint, or proves
+Lattice targets. Its receipt records request digests, Environment validation
+and run digests, readiness/admission/session sidecar visibility, authority
+denials, and next safe actions.
 
 ## Dispatchability
 

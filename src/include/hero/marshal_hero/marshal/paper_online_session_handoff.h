@@ -374,4 +374,14 @@ paper_online_session_handoff_session_validate_args_json(
          (include_machine_payload ? "true" : "false") + "}";
 }
 
+[[nodiscard]] inline std::string
+paper_online_session_handoff_session_run_args_json(
+    const marshal_paper_online_session_handoff_request_t &request,
+    bool include_machine_payload) {
+  return "{\"mode\":\"run\",\"session_request\":" +
+         paper_online_session_handoff_session_request_json(request) +
+         ",\"include_machine_payload\":" +
+         (include_machine_payload ? "true" : "false") + "}";
+}
+
 } // namespace cuwacunu::hero::marshal

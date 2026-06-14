@@ -72,10 +72,11 @@ Lattice Hero:
 
 Marshal Hero:
   hero.marshal.status
-  hero.marshal.prepare
+  hero.marshal.prepare.train
+  hero.marshal.prepare.evaluate
   hero.marshal.rollout
   hero.marshal.paper_online.session_handoff
-  hero.marshal.inspect
+  hero.marshal.inspect.*
 ```
 
 Stable replay and policy-training contracts:
@@ -324,6 +325,19 @@ paper_online_session_marshal_handoff.v1
   Marshal still does not issue admission, run the session, execute Cajtucu,
   route broker orders, select policy/checkpoint, prove Lattice targets, or
   authorize live capital.
+
+paper_online_session_marshal_run_handoff.v1
+  Marshal extends `hero.marshal.paper_online.session_handoff` with
+  `mode=run` while keeping the same compact `handoff_request` or
+  `handoff_request_path` surface. Run mode repeats local validation, readiness
+  sidecar visibility, Environment admission check, and Environment session
+  validate before delegating `hero.environment.paper_online.session mode=run`.
+  Successful delegation reports `dispatch_state=executed`; failed delegated run
+  reports `dispatch_state=run_blocked`. Dry-run and run receipts now include
+  Environment session-run call digests, session fact visibility, authority
+  denials, and next safe actions. Marshal still does not issue admission,
+  execute Cajtucu directly, route broker orders, select policy/checkpoint,
+  prove Lattice targets, or authorize live capital.
 
 marshal_dispatch_readiness_repair.v1
   Post-dev-nuke train-core dispatch now has a proof-clean first step again:

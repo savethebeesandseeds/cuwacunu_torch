@@ -446,6 +446,30 @@ void test_plan_and_dry_run_handoff() {
   check(!std::filesystem::exists(fixture.session_root / "job.manifest"),
         "Marshal dry-run must not run the session");
 
+  result.clear();
+  error.clear();
+  check(marshal::execute_marshal_tool_json(
+            "hero.marshal.paper_online.session_handoff",
+            marshal_args("run", request_json, true), &result, &error),
+        "Marshal handoff run before admission should return an auditable "
+        "packet: " +
+            error);
+  check(result.find("\"requested_mode\":\"run\"") != std::string::npos,
+        "run before admission should report run mode");
+  check(result.find("\"dispatch_state\":\"admission_ready\"") !=
+            std::string::npos,
+        "run before admission should stop at admission-ready");
+  check(result.find("\"session_executed\":false") != std::string::npos,
+        "run before admission must not execute the session");
+  check(result.find("\"environment_session_validate\":{\"attempted\":false") !=
+            std::string::npos,
+        "run before admission should not validate session");
+  check(result.find("\"environment_session_run\":{\"attempted\":false") !=
+            std::string::npos,
+        "run before admission should not call Environment session run");
+  check(!std::filesystem::exists(fixture.session_root / "job.manifest"),
+        "run before admission must not create session artifacts");
+
   issue_environment_admission(request);
 
   result.clear();
@@ -466,6 +490,60 @@ void test_plan_and_dry_run_handoff() {
         "dry-run after admission should validate the session successfully");
   check(!std::filesystem::exists(fixture.session_root / "job.manifest"),
         "Marshal prepared handoff must still not run the session");
+
+  result.clear();
+  error.clear();
+  check(marshal::execute_marshal_tool_json(
+            "hero.marshal.paper_online.session_handoff",
+            marshal_args("run", request_json, true), &result, &error),
+        "Marshal handoff run after admission should execute through "
+        "Environment: " +
+            error);
+  check(result.find("\"requested_mode\":\"run\"") != std::string::npos,
+        "run after admission should report run mode");
+  check(result.find("\"dispatch_state\":\"executed\"") != std::string::npos,
+        "run after admission should report executed dispatch state: " + result);
+  check(result.find("\"handoff_ready\":true") != std::string::npos,
+        "run after admission should keep the handoff gate ready");
+  check(result.find("\"session_executed\":true") != std::string::npos,
+        "run after admission should report session execution");
+  check(result.find("\"environment_session_validate\":{\"attempted\":true") !=
+            std::string::npos,
+        "run after admission should validate before execution");
+  check(result.find("\"environment_session_run\":{\"attempted\":true") !=
+            std::string::npos,
+        "run after admission should call Environment session run");
+  check(result.find("\"environment_session_run\":{\"attempted\":true,"
+                    "\"tool_name\":\"hero.environment.paper_online."
+                    "session\",\"ok\":true") != std::string::npos,
+        "Environment session run should succeed");
+  check(result.find("\"marshal_delegates_environment_paper_online_session_"
+                    "run\":true") != std::string::npos,
+        "Marshal run should record delegated Environment session execution");
+  check(result.find("\"marshal_executes_broker_orders\":false") !=
+            std::string::npos,
+        "Marshal run must not claim broker execution authority");
+  check(result.find("\"marshal_executes_live_capital\":false") !=
+            std::string::npos,
+        "Marshal run must not claim live-capital authority");
+  check(std::filesystem::exists(fixture.session_root / "job.manifest"),
+        "Marshal run should cause Environment to write session job manifest");
+  check(std::filesystem::exists(fixture.session_root / "session.manifest"),
+        "Marshal run should cause Environment to write session manifest");
+  check(std::filesystem::exists(fixture.session_root /
+                                "lattice.paper_online_session.fact"),
+        "Marshal run should cause Environment to write session fact");
+  const auto run_receipt_text = read_text(fixture.receipt_path);
+  check(run_receipt_text.find("\"requested_mode\":\"run\"") !=
+            std::string::npos,
+        "run receipt should record run mode");
+  check(run_receipt_text.find("\"dispatch_state\":\"executed\"") !=
+            std::string::npos,
+        "run receipt should record executed state");
+  check(run_receipt_text.find(
+            "\"environment_session_run\":{\"attempted\":true") !=
+            std::string::npos,
+        "run receipt should record Environment session run call");
 
   marshal::set_marshal_lattice_tool_callback(nullptr);
 }
@@ -492,6 +570,24 @@ void test_invalid_handoff_blocks_before_environment_call() {
         "invalid local handoff should not call Environment admission check");
   check(!std::filesystem::exists(fixture.session_root / "job.manifest"),
         "invalid handoff must not run the session");
+
+  result.clear();
+  error.clear();
+  check(marshal::execute_marshal_tool_json(
+            "hero.marshal.paper_online.session_handoff",
+            marshal_args("run", request_json, false), &result, &error),
+        "invalid run handoff should return an auditable blocked packet: " +
+            error);
+  check(result.find("\"dispatch_state\":\"blocked\"") != std::string::npos,
+        "invalid run handoff should be blocked");
+  check(result.find("\"environment_admission_check\":{\"attempted\":false") !=
+            std::string::npos,
+        "invalid run handoff should not call Environment admission check");
+  check(result.find("\"environment_session_run\":{\"attempted\":false") !=
+            std::string::npos,
+        "invalid run handoff should not call Environment session run");
+  check(!std::filesystem::exists(fixture.session_root / "job.manifest"),
+        "invalid run handoff must not run the session");
   marshal::set_marshal_lattice_tool_callback(nullptr);
 }
 

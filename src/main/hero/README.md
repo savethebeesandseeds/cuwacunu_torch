@@ -88,7 +88,7 @@ familiar:
 | Environment admission | `hero.environment.certify.*`, `hero.environment.rollout`, `hero.environment.inspect.*` | Check/issue policy-acceptance and paper-online readiness prerequisite evidence, inspect job-local Environment sidecars, and validate/replay bounded historical replay rollouts. Environment job inspect selectors are direct arguments on `hero.environment.inspect.job`. | Environment owns execution-environment admission and rollout evidence. It may delegate low-level replay execution to Runtime; Lattice still proves evidence and Marshal still coordinates. |
 | Runtime evidence | `hero.runtime.inspect.*` | Read active wave or durable Runtime job/replay artifacts through concrete inspect tools with direct selectors. | No target proof or config mutation. |
 | Lattice proof/evidence | `hero.lattice.*` | Scan evidence, explain/evaluate targets, inspect fact/catalog/checkpoint lineage, compare proof vectors. | Read-only. Lattice proves; it does not execute or select deployments. Lattice inspect and evaluate use concrete tools with direct selectors; compare keeps request-file selectors. |
-| Marshal coordination | `hero.marshal.prepare.*`, `hero.marshal.rollout`, `hero.marshal.paper_online.session_handoff` | Prepare/delegate bounded target handoffs, replay rollouts, or paper-online session handoff receipts through Environment/Runtime policy. | Marshal coordinates and records handoffs; Environment validates/adopts environment work, Runtime executes low-level jobs, Lattice proves. |
+| Marshal coordination | `hero.marshal.prepare.*`, `hero.marshal.rollout`, `hero.marshal.paper_online.session_handoff` | Prepare/delegate bounded target handoffs, replay rollouts, or paper-online session handoff/run receipts through Environment/Runtime policy. | Marshal coordinates and records handoffs; Environment validates/adopts environment work, Runtime executes low-level jobs, Lattice proves. |
 | Marshal inspection | `hero.marshal.status`, `hero.marshal.inspect.*` | Read Marshal visibility and explain Runtime/Lattice/Marshal evidence through concrete inspect tools. | Read-only and non-decision-making. |
 
 Shortest routing rules:
@@ -102,8 +102,8 @@ Shortest routing rules:
    `hero.marshal.prepare.*` tool.
 5. Need historical environment replay from a completed job:
    use `hero.marshal.rollout`.
-6. Need paper-online session admission/run preparation:
-   use `hero.marshal.paper_online.session_handoff` before Environment run.
+6. Need paper-online session admission/run preparation or delegated run:
+   use `hero.marshal.paper_online.session_handoff`.
 7. Need an actual Runtime action: use Runtime Hero directly or a Marshal
    handoff that delegates to Runtime Hero.
 
@@ -546,14 +546,16 @@ Runtime agent workflow:
    compact `session_request` object or `session_request_path`, refuses
    overwrite, writes durable session artifacts plus Lattice exposure/session
    facts in run mode, and does not authorize broker execution or live capital.
-13. `hero.marshal.paper_online.session_handoff mode=plan|dry_run` prepares a
-   compact paper-online session handoff from existing readiness/admission
-   evidence. Plan mode only assembles Environment-compatible request digests.
-   Dry-run mode calls Environment admission check and, once admission evidence
-   exists, Environment session validate, then writes a Marshal receipt.
-   Marshal does not issue admission, run the session, execute Cajtucu, route
-   broker orders, select policy/checkpoint, prove Lattice targets, or authorize
-   live capital.
+13. `hero.marshal.paper_online.session_handoff mode=plan|dry_run|run`
+   prepares or delegates a compact paper-online session handoff from existing
+   readiness/admission evidence. Plan mode only assembles
+   Environment-compatible request digests. Dry-run mode calls Environment
+   admission check and, once admission evidence exists, Environment session
+   validate, then writes a Marshal receipt. Run mode repeats those gates and
+   delegates `hero.environment.paper_online.session mode=run`, producing an
+   `executed` or `run_blocked` receipt. Marshal does not issue admission,
+   execute Cajtucu directly, route broker orders, select policy/checkpoint,
+   prove Lattice targets, or authorize live capital.
 14. `hero.runtime.reset mode=plan|execute` previews and, when
    explicitly enabled, clears the runtime artifact root for developer reset
    workflows.

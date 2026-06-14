@@ -2881,6 +2881,29 @@ void test_m9_marshal_tool_schema_compatibility() {
           rollout_tool_json.find("\"include_machine_payload\"") !=
               std::string::npos,
       "rollout MCP schema should advertise direct rollout selectors");
+  const std::string handoff_tool_json =
+      tool_fragment("hero.marshal.paper_online.session_handoff");
+  check(handoff_tool_json.find("\"mode\"") != std::string::npos &&
+            handoff_tool_json.find("\"plan\"") != std::string::npos &&
+            handoff_tool_json.find("\"dry_run\"") != std::string::npos &&
+            handoff_tool_json.find("\"run\"") != std::string::npos &&
+            handoff_tool_json.find("\"handoff_request\"") !=
+                std::string::npos &&
+            handoff_tool_json.find("\"handoff_request_path\"") !=
+                std::string::npos &&
+            handoff_tool_json.find("\"include_machine_payload\"") !=
+                std::string::npos,
+        "paper-online handoff MCP schema should advertise compact handoff "
+        "selectors and run mode");
+  for (const auto retired_field :
+       {"config_path", "runtime_root", "readiness", "session", "receipt_path",
+        "handoff_id", "timeout_seconds", "admission_id", "session_id",
+        "max_steps", "target_node_ids"}) {
+    check(handoff_tool_json.find("\"" + std::string(retired_field) + "\":") ==
+              std::string::npos,
+          "paper-online handoff MCP schema should not advertise request "
+          "payload fields");
+  }
   for (const auto retired_field : {"args_path",
                                    "args_digest",
                                    "idempotency_key",
