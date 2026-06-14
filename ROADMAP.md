@@ -74,6 +74,7 @@ Marshal Hero:
   hero.marshal.status
   hero.marshal.prepare
   hero.marshal.rollout
+  hero.marshal.paper_online.session_handoff
   hero.marshal.inspect
 ```
 
@@ -159,6 +160,18 @@ fresh_ppo_v0_end_to_end_evidence_run.v1
   A clean Runtime-root PPO evidence run can collect on-policy replay evidence,
   write artifacts, run validation/comparison replay, and satisfy
   policy_training_artifact_ready without promotional claims.
+
+ppo_policy_training_activation.v1
+  The current learned-policy path uses
+  `src/config/policy_training_ppo_v0.contract` and the
+  `policy_training_ppo_v0` Runtime wave. Runtime completed a non-noop
+  `policy_kind=ppo_policy_adapter.v1` run from fresh representation, MDN,
+  replay, observer, and causal-schedule evidence; wrote actor/critic
+  checkpoints, optimizer state and Torch optimizer archive, rollout/update/
+  validation/policy-quality reports, and `runtime.policy_training.fact`; and
+  Lattice satisfied `policy_training_artifact_ready` for PPO fact
+  `1095cf66c1a0c48b` with certificate `cert_070bdb168a73`. Live-capital
+  authority remains disabled.
 
 policy_network_architecture_review.v1
   The policy remains downstream of representation/MDN/observer and consumes
@@ -275,60 +288,56 @@ paper_online_readiness_contract.v1
   `paper_online_readiness_contract_ready`; Environment still does not run
   paper-online, Runtime still does not select policies or prove readiness, and
   no surface claims market/deployment readiness or live-capital authority.
+
+paper_online_session_contract.v1
+  Environment exposes `hero.environment.certify.paper_online_session_admission
+  mode=check|issue`. It consumes a compact `admission_request` object or
+  `admission_request_path`, reads `lattice.paper_online_readiness.fact`,
+  validates durable session state/event/intent/ledger/report paths, rejects
+  stale or mismatched readiness proof, and writes
+  `lattice.paper_online_session_admission.fact` only in issue mode after preview
+  digest binding. Admission writes no session state, starts no runner, and keeps
+  broker, live, and direct policy-to-broker authority denied.
+
+paper_online_session_runner.v1
+  Environment exposes `hero.environment.paper_online.session mode=validate|run`
+  behind `allow_paper_online_session_run` and
+  `paper_online_session_max_steps`. It consumes a compact `session_request`
+  object or `session_request_path`, reads existing admission and readiness
+  sidecars, validates finite step/timing/target/staleness/ledger-recovery and
+  duplicate-action/intent constraints, and in run mode refuses overwrite before
+  writing bounded paper-only session artifacts plus `lattice.exposure.fact` and
+  `lattice.paper_online_session.fact`. Lattice now indexes and renders the
+  `paper_online_session` fact family. The runner binds
+  `cajtucu.execution.paper.v1` paper execution identity only; no broker orders,
+  live capital, policy/checkpoint selection, market-readiness claim, or
+  deployment authority is introduced.
+
+paper_online_session_marshal_handoff.v1
+  Marshal exposes `hero.marshal.paper_online.session_handoff mode=plan|dry_run`
+  with a compact `handoff_request` object or `handoff_request_path`. Plan mode
+  assembles Environment-compatible admission/session payload digests without
+  external execution. Dry-run mode calls only Environment admission check and,
+  after admission evidence exists, Environment session validate. It writes a
+  durable Marshal receipt that records handoff/request digests, validation
+  results, sidecar visibility, authority denials, and next safe actions.
+  Marshal still does not issue admission, run the session, execute Cajtucu,
+  route broker orders, select policy/checkpoint, prove Lattice targets, or
+  authorize live capital.
+
+marshal_dispatch_readiness_repair.v1
+  Post-dev-nuke train-core dispatch now has a proof-clean first step again:
+  Lattice produces suggested waves when no completed Runtime candidate exists,
+  Marshal prepare/inspect returns promptly, representation train-core plan and
+  dry-run preflight are handoff-ready through the canonical `src/config/.config`,
+  the duplicate train-core `.config` overlays are removed, and
+  MDN correctly waits on the representation checkpoint-source dependency.
 ```
 
 ## Next Goal Queue
 
-### 1. Paper-Online Session Contract V1
-
-Milestone:
-
-```text
-paper_online_session_contract.v1
-```
-
-Goal:
-
-```text
-Define the paper-online session contract that can consume
-paper_online_readiness_contract_ready evidence without introducing live capital.
-```
-
-Design points:
-
-- session state machine and durable session files
-- market stream intake and staleness enforcement
-- persistent paper ledger recovery before session start
-- idempotent action and execution-intent ledger
-- duplicate action/execution rejection
-- Cajtucu paper execution only, no broker/live execution
-- direct-edge pair validation and no synthetic market fallback
-- reward/report artifact writing during online paper
-- operator abort and kill-switch transitions
-- Marshal -> Runtime -> Environment -> Cajtucu authority chain
-
-Preparation note:
-
-- The session contract must consume freshly proven
-  `paper_online_readiness_contract_ready` evidence and must not rely on stale
-  runtime catalog records.
-- The first implementation slice should define durable schemas, validators, and
-  negative tests before adding any online-paper runner.
-
-Current implementation slice:
-
-- `src/include/kikijyeba/environment/paper_online_session_contract.h` defines
-  `paper_online_session_contract.v1`, session-state/artifact schemas, lifecycle
-  transitions, readiness-evidence binding, and admission validators.
-- `hero.environment.inspect.schema` exposes the paper-online session contract
-  vocabulary read-only, with session runner, broker execution, live execution,
-  and direct policy-to-broker authority all false.
-- Focused tests cover clean admission plus missing proof, stale proof,
-  readiness-not-ready, locked-profile drift, missing durable artifact, and
-  authority-drift rejection.
-
-This is the first design step toward paper-online execution, but it remains
-paper-only and must consume the readiness contract rather than bypass it.
+No next implementation goal is selected here. Choose a new finite milestone
+explicitly before moving beyond the completed learned-policy PPO activation.
 
 ## Deferred Future Work
 

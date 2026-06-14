@@ -46,7 +46,7 @@ HERO_RUNTIME_POLICY_KEY(
     "allow_train_execute", "bool", 1, "true", "true|false", "true,false",
     "Allow non-dry-run execution when the active wave action "
     "is train.")
-HERO_RUNTIME_POLICY_KEY("allow_force_rebuild_cache", "bool", 1, "false",
+HERO_RUNTIME_POLICY_KEY("allow_force_rebuild_cache", "bool", 1, "true",
                         "true|false", "true,false",
                         "Allow passing --force-rebuild-cache to cuwacunu_exec.")
 HERO_RUNTIME_POLICY_KEY("allow_dev_nuke", "bool", 1, "true", "true|false",

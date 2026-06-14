@@ -25,6 +25,7 @@
 #include "hero/marshal_hero/marshal/codex_assist.h"
 #include "hero/marshal_hero/marshal/dispatch_receipt.h"
 #include "hero/marshal_hero/marshal/operational_report.h"
+#include "hero/marshal_hero/marshal/paper_online_session_handoff.h"
 #include "hero/marshal_hero/marshal/rollout_marshal.h"
 #include "hero/marshal_hero/marshal/run_compare.h"
 #include "hero/marshal_hero/marshal/status.h"
@@ -5862,36 +5863,35 @@ inspect_protocol_subject_json(const std::map<std::string, std::string> &args,
   const bool identity_verified = strict_identity && issues.empty();
 
   std::ostringstream identity;
-  identity << "{"
-           << protocol_field_json(
-                  "protocol_contract_fingerprint",
-                  expected_protocol_identity_value(
-                      expected_identity, "protocol_contract_fingerprint"),
-                  protocol)
-           << ","
-           << protocol_field_json(
-                  "graph_order_fingerprint",
-                  expected_protocol_identity_value(expected_identity,
-                                                   "graph_order_fingerprint"),
-                  graph)
-           << ","
-           << protocol_field_json("source_cursor_token",
-                                  expected_protocol_identity_value(
-                                      expected_identity, "source_cursor_token"),
-                                  cursor)
-           << ","
-           << protocol_field_json(
-                  "vicreg_assembly_fingerprint",
-                  expected_protocol_identity_value(
-                      expected_identity, "vicreg_assembly_fingerprint"),
-                  vicreg)
-           << ","
-           << protocol_field_json(
-                  "mdn_assembly_fingerprint",
-                  expected_protocol_identity_value(expected_identity,
-                                                   "mdn_assembly_fingerprint"),
-                  mdn)
-           << "}";
+  identity
+      << "{"
+      << protocol_field_json(
+             "protocol_contract_fingerprint",
+             expected_protocol_identity_value(expected_identity,
+                                              "protocol_contract_fingerprint"),
+             protocol)
+      << ","
+      << protocol_field_json("graph_order_fingerprint",
+                             expected_protocol_identity_value(
+                                 expected_identity, "graph_order_fingerprint"),
+                             graph)
+      << ","
+      << protocol_field_json("source_cursor_token",
+                             expected_protocol_identity_value(
+                                 expected_identity, "source_cursor_token"),
+                             cursor)
+      << ","
+      << protocol_field_json(
+             "vicreg_assembly_fingerprint",
+             expected_protocol_identity_value(expected_identity,
+                                              "vicreg_assembly_fingerprint"),
+             vicreg)
+      << ","
+      << protocol_field_json("mdn_assembly_fingerprint",
+                             expected_protocol_identity_value(
+                                 expected_identity, "mdn_assembly_fingerprint"),
+                             mdn)
+      << "}";
 
   std::ostringstream out;
   out << "{\"ok\":true,\"tool\":"
@@ -5901,7 +5901,7 @@ inspect_protocol_subject_json(const std::map<std::string, std::string> &args,
              "kikijyeba.marshal.inspect.v2.5a", "read_only",
              {issues.empty() ? "inspect_protocol_identity"
                              : "inspect_protocol_identity_issues"})
-      << marshal_read_only_non_proof_contract_json()
+      << "," << marshal_read_only_non_proof_contract_json()
       << ",\"evidence_scope\":\"runtime_jobs_only\""
       << ",\"proof_authority\":\"none\""
       << ",\"lattice_proof_context_included\":false"
@@ -6018,7 +6018,7 @@ inspect_spawn_subject_json(const std::map<std::string, std::string> &args,
              "kikijyeba.marshal.inspect.v2.5a", "read_only",
              {found ? "inspect_spawn_runtime_evidence"
                     : "inspect_spawn_identity_or_runtime_root"})
-      << marshal_read_only_non_proof_contract_json()
+      << "," << marshal_read_only_non_proof_contract_json()
       << ",\"evidence_scope\":\"runtime_jobs_only\""
       << ",\"proof_authority\":\"none\""
       << ",\"lattice_proof_context_included\":false"
@@ -6103,7 +6103,7 @@ inspect_component_subject_json(const std::map<std::string, std::string> &args,
              "kikijyeba.marshal.inspect.v2.5a", "read_only",
              {found ? "inspect_component_runtime_evidence"
                     : "inspect_component_family_or_runtime_root"})
-      << marshal_read_only_non_proof_contract_json()
+      << "," << marshal_read_only_non_proof_contract_json()
       << ",\"evidence_scope\":\"runtime_jobs_only\""
       << ",\"proof_authority\":\"none\""
       << ",\"lattice_proof_context_included\":false"
@@ -6257,7 +6257,7 @@ inspect_target_subject_json(const std::map<std::string, std::string> &args,
       << ",\"subject\":\"target\""
       << marshal_operator_envelope_fields_json(
              "kikijyeba.marshal.inspect.v2.5a", "read_only", {next_action})
-      << marshal_read_only_non_proof_contract_json()
+      << "," << marshal_read_only_non_proof_contract_json()
       << ",\"proof_authority\":\"lattice\""
       << ",\"operator_summary\":{\"headline\":"
       << detail::json_quote(status == "satisfied"
@@ -6974,6 +6974,150 @@ rollout_request_packet_text(const marshal_rollout_request_t &request) {
   return request;
 }
 
+[[nodiscard]] inline std::map<std::string, std::string>
+optional_object_fields(const std::map<std::string, std::string> &fields,
+                       const std::string &key, const std::string &label) {
+  if (const auto raw = optional_raw(fields, key)) {
+    try {
+      return object_fields(*raw);
+    } catch (const std::exception &ex) {
+      throw std::runtime_error(label + " must be a JSON object: " + ex.what());
+    }
+  }
+  return {};
+}
+
+[[nodiscard]] inline marshal_paper_online_session_handoff_request_t
+parse_paper_online_session_handoff_request_json(const std::string &request_json,
+                                                const std::string &source) {
+  auto fields = object_fields(request_json);
+  validate_fields(fields,
+                  {"schema", "config_path", "runtime_root", "readiness",
+                   "session", "receipt_path", "handoff_id", "timeout_seconds"},
+                  {}, "paper-online session handoff_request");
+  marshal_paper_online_session_handoff_request_t request{};
+  request.source = source;
+  const std::string schema =
+      optional_string(fields, "schema", request.schema_version);
+  if (schema != k_marshal_paper_online_session_handoff_request_schema_v1) {
+    throw std::runtime_error("unsupported handoff_request schema: " + schema);
+  }
+  request.schema_version = schema;
+  request.config_path = std::filesystem::path(
+      optional_string(fields, "config_path", request.config_path.string()));
+  request.runtime_root = std::filesystem::path(
+      optional_string(fields, "runtime_root", request.runtime_root.string()));
+  request.receipt_path =
+      std::filesystem::path(optional_string(fields, "receipt_path"));
+  request.handoff_id = optional_string(fields, "handoff_id");
+  request.timeout_seconds = static_cast<int>(
+      optional_i64(fields, "timeout_seconds", request.timeout_seconds));
+
+  auto readiness =
+      optional_object_fields(fields, "readiness", "handoff_request.readiness");
+  validate_fields(readiness,
+                  {"job_dir", "target_id", "proof_certificate_digest",
+                   "readiness_fact_digest", "proof_checked_at_ms",
+                   "max_proof_age_ms"},
+                  {}, "handoff_request.readiness");
+  request.readiness_job_dir =
+      std::filesystem::path(optional_string(readiness, "job_dir"));
+  request.readiness_target_id =
+      optional_string(readiness, "target_id", request.readiness_target_id);
+  request.readiness_proof_certificate_digest =
+      optional_string(readiness, "proof_certificate_digest");
+  request.expected_readiness_fact_digest =
+      optional_string(readiness, "readiness_fact_digest");
+  request.readiness_proof_checked_at_ms = optional_i64(
+      readiness, "proof_checked_at_ms", request.readiness_proof_checked_at_ms);
+  request.max_readiness_proof_age_ms = optional_i64(
+      readiness, "max_proof_age_ms", request.max_readiness_proof_age_ms);
+
+  auto session =
+      optional_object_fields(fields, "session", "handoff_request.session");
+  validate_fields(session,
+                  {"admission_id", "admission_requested_at_ms", "session_id",
+                   "session_root", "session_requested_at_ms", "max_steps",
+                   "step_interval_ms", "market_data_receive_lag_ms",
+                   "target_node_ids", "recover_persistent_ledger"},
+                  {}, "handoff_request.session");
+  request.admission_id = optional_string(session, "admission_id");
+  request.admission_requested_at_ms = optional_i64(
+      session, "admission_requested_at_ms", request.admission_requested_at_ms);
+  request.session_id = optional_string(session, "session_id");
+  request.session_root =
+      std::filesystem::path(optional_string(session, "session_root"));
+  request.session_requested_at_ms = optional_i64(
+      session, "session_requested_at_ms", request.session_requested_at_ms);
+  request.max_steps = optional_i64(session, "max_steps", request.max_steps);
+  request.step_interval_ms =
+      optional_i64(session, "step_interval_ms", request.step_interval_ms);
+  request.market_data_receive_lag_ms =
+      optional_i64(session, "market_data_receive_lag_ms",
+                   request.market_data_receive_lag_ms);
+  request.target_node_ids = optional_string_array(session, "target_node_ids");
+  request.recover_persistent_ledger = optional_bool(
+      session, "recover_persistent_ledger", request.recover_persistent_ledger);
+  normalize_paper_online_session_handoff_request(&request);
+  return request;
+}
+
+[[nodiscard]] inline marshal_paper_online_session_handoff_request_t
+paper_online_session_handoff_request_from_args(
+    const std::map<std::string, std::string> &args) {
+  const bool has_request = optional_raw(args, "handoff_request").has_value();
+  const bool has_request_path =
+      optional_raw(args, "handoff_request_path").has_value();
+  if (has_request == has_request_path) {
+    throw std::runtime_error(
+        "provide exactly one of handoff_request or handoff_request_path");
+  }
+
+  if (has_request) {
+    return parse_paper_online_session_handoff_request_json(
+        *optional_raw(args, "handoff_request"), "handoff_request");
+  }
+
+  const std::string request_path_raw =
+      optional_string(args, "handoff_request_path");
+  if (trim_ascii(request_path_raw).empty()) {
+    throw std::runtime_error("handoff_request_path must be non-empty");
+  }
+  const auto request_path =
+      normalize_request_path(std::filesystem::path(request_path_raw));
+  std::string request_json;
+  std::string read_error;
+  if (!read_text_file(request_path, &request_json, &read_error)) {
+    throw std::runtime_error("failed to read handoff_request_path: " +
+                             read_error);
+  }
+  return parse_paper_online_session_handoff_request_json(request_json,
+                                                         request_path.string());
+}
+
+[[nodiscard]] inline std::string paper_online_session_handoff_call_json(
+    bool attempted, const std::string &tool_name, bool ok, bool tool_call_ok,
+    bool tool_result_error, const std::string &arguments_digest,
+    const std::string &tool_result_digest, const std::string &error_message,
+    bool include_machine_payload, const std::string &arguments_json,
+    const std::string &tool_result_json) {
+  std::ostringstream out;
+  out << "{\"attempted\":" << (attempted ? "true" : "false")
+      << ",\"tool_name\":" << detail::json_quote(tool_name)
+      << ",\"ok\":" << (ok ? "true" : "false")
+      << ",\"tool_call_ok\":" << (tool_call_ok ? "true" : "false")
+      << ",\"tool_result_error\":" << (tool_result_error ? "true" : "false")
+      << ",\"arguments_digest\":" << detail::json_quote(arguments_digest)
+      << ",\"tool_result_digest\":" << detail::json_quote(tool_result_digest)
+      << ",\"error_message\":" << detail::json_quote(error_message);
+  if (include_machine_payload) {
+    out << ",\"arguments_json\":" << detail::json_quote(arguments_json)
+        << ",\"tool_result_json\":" << detail::json_quote(tool_result_json);
+  }
+  out << "}";
+  return out.str();
+}
+
 } // namespace tool_detail
 
 [[nodiscard]] inline std::filesystem::path
@@ -7303,6 +7447,7 @@ load_marshal_policy(const std::filesystem::path &policy_path,
                      << tool_detail::marshal_operator_envelope_fields_json(
                             "kikijyeba.marshal.inspect.v2.5a", "read_only",
                             {"inspect_run_compare"})
+                     << ","
                      << tool_detail::marshal_read_only_non_proof_contract_json()
                      << ",\"result\":"
                      << build_marshal_run_comparison_json(options) << "}";
@@ -7360,18 +7505,17 @@ load_marshal_policy(const std::filesystem::path &policy_path,
               options.target_statuses.push_back(std::move(status));
             }
           }
-          structured << "{\"ok\":true,\"tool\":"
-                     << detail::json_quote(
-                            tool_detail::marshal_inspect_result_tool(
-                                inspect_args))
-                     << ",\"subject\":\"run\",\"mode\":"
-                     << detail::json_quote(mode)
-                     << tool_detail::marshal_operator_envelope_fields_json(
-                            "kikijyeba.marshal.inspect.v2.5a", "read_only",
-                            {"inspect_run"})
-                     << tool_detail::marshal_read_only_non_proof_contract_json()
-                     << ",\"result\":"
-                     << build_marshal_operational_report_json(options) << "}";
+          structured
+              << "{\"ok\":true,\"tool\":"
+              << detail::json_quote(
+                     tool_detail::marshal_inspect_result_tool(inspect_args))
+              << ",\"subject\":\"run\",\"mode\":" << detail::json_quote(mode)
+              << tool_detail::marshal_operator_envelope_fields_json(
+                     "kikijyeba.marshal.inspect.v2.5a", "read_only",
+                     {"inspect_run"})
+              << "," << tool_detail::marshal_read_only_non_proof_contract_json()
+              << ",\"result\":"
+              << build_marshal_operational_report_json(options) << "}";
         } else {
           throw std::runtime_error(
               "hero.marshal.inspect.run.* suffix must be latest_chain, "
@@ -7440,6 +7584,366 @@ load_marshal_policy(const std::filesystem::path &policy_path,
             "hero.marshal.inspect.* suffix must be run, target, protocol, "
             "spawn, component, or facts");
       }
+    } else if (tool_name == "hero.marshal.paper_online.session_handoff") {
+      tool_detail::validate_fields(args,
+                                   {"mode", "handoff_request",
+                                    "handoff_request_path",
+                                    "include_machine_payload"},
+                                   {"mode"}, tool_name);
+      const std::string requested_mode =
+          tool_detail::optional_string(args, "mode");
+      if (requested_mode != "plan" && requested_mode != "dry_run") {
+        throw std::runtime_error("mode must be plan or dry_run");
+      }
+      const bool include_machine_payload =
+          tool_detail::optional_bool(args, "include_machine_payload", false);
+      auto request =
+          tool_detail::paper_online_session_handoff_request_from_args(args);
+      if (ctx != nullptr) {
+        const std::filesystem::path context_config =
+            !ctx->global_config_path.empty() ? ctx->global_config_path
+                                             : ctx->policy.global_config_path;
+        if (!context_config.empty() &&
+            request.config_path ==
+                std::filesystem::path("/cuwacunu/src/config/.config")) {
+          request.config_path = context_config;
+        }
+      }
+      normalize_paper_online_session_handoff_request(&request);
+
+      const auto local_issues =
+          paper_online_session_handoff_local_issues(request);
+      const bool local_ready = local_issues.empty();
+      const auto readiness_fact_path =
+          request.readiness_job_dir / "lattice.paper_online_readiness.fact";
+      const auto admission_fact_path =
+          request.readiness_job_dir /
+          "lattice.paper_online_session_admission.fact";
+      const bool readiness_fact_exists =
+          paper_online_session_handoff_detail::path_exists(readiness_fact_path);
+      const bool admission_fact_exists =
+          paper_online_session_handoff_detail::path_exists(admission_fact_path);
+      const std::string request_digest =
+          paper_online_session_handoff_request_digest(request);
+      const std::string admission_request_json =
+          paper_online_session_handoff_admission_request_json(request);
+      const std::string session_request_json =
+          paper_online_session_handoff_session_request_json(request);
+      const std::string admission_request_digest = marshal_digest_for_text(
+          "kikijyeba.environment.paper_online_session_admission.request.json."
+          "v1",
+          admission_request_json);
+      const std::string session_request_digest = marshal_digest_for_text(
+          "kikijyeba.environment.paper_online_session_run.request.json.v1",
+          session_request_json);
+
+      const std::string admission_tool_name =
+          "hero.environment.certify.paper_online_session_admission";
+      const std::string session_tool_name =
+          "hero.environment.paper_online.session";
+      const std::string lattice_tool_name =
+          "hero.lattice.inspect.facts.summary";
+
+      bool lattice_attempted = false;
+      bool lattice_ok = false;
+      bool lattice_call_ok = false;
+      bool lattice_result_error = false;
+      std::string lattice_args_json{};
+      std::string lattice_args_digest{};
+      std::string lattice_result_json{};
+      std::string lattice_result_digest{};
+      std::string lattice_error_message{};
+
+      bool admission_check_attempted = false;
+      bool admission_check_ok = false;
+      bool admission_tool_call_ok = false;
+      bool admission_tool_result_error = false;
+      std::string admission_args_json{};
+      std::string admission_args_digest{};
+      std::string admission_result_json{};
+      std::string admission_result_digest{};
+      std::string admission_error_message{};
+
+      bool session_validate_attempted = false;
+      bool session_validate_ok = false;
+      bool session_tool_call_ok = false;
+      bool session_tool_result_error = false;
+      std::string session_args_json{};
+      std::string session_args_digest{};
+      std::string session_result_json{};
+      std::string session_result_digest{};
+      std::string session_error_message{};
+
+      if (requested_mode == "dry_run") {
+        auto callback = marshal_lattice_tool_callback_slot();
+        if (callback != nullptr) {
+          lattice_attempted = true;
+          std::map<std::string, std::string> lattice_args;
+          lattice_args["runtime_root"] =
+              detail::json_quote(request.runtime_root.string());
+          lattice_args["family"] = detail::json_quote("paper_online_readiness");
+          lattice_args_json = tool_detail::raw_object_json(lattice_args);
+          lattice_args_digest = marshal_digest_for_text(
+              "kikijyeba.marshal.paper_online_session_handoff.lattice_args."
+              "v1",
+              lattice_args_json);
+          lattice_call_ok =
+              callback(lattice_tool_name, lattice_args_json,
+                       &lattice_result_json, &lattice_error_message);
+          lattice_result_error =
+              !lattice_call_ok ||
+              tool_detail::tool_result_has_error_marker(lattice_result_json);
+          lattice_result_digest = marshal_digest_for_text(
+              "kikijyeba.marshal.paper_online_session_handoff.lattice_result."
+              "v1",
+              lattice_result_json);
+          lattice_ok = lattice_call_ok && !lattice_result_error;
+        }
+
+        if (local_ready) {
+          admission_check_attempted = true;
+          admission_args_json =
+              paper_online_session_handoff_admission_args_json(request);
+          admission_args_digest = marshal_digest_for_text(
+              "kikijyeba.marshal.paper_online_session_handoff.admission_args."
+              "v1",
+              admission_args_json);
+          const auto admission_call =
+              cuwacunu::hero::mcp_cli::call_environment_tool(
+                  request.config_path, {}, admission_tool_name,
+                  admission_args_json, request.timeout_seconds, 1048576);
+          admission_tool_call_ok = admission_call.process_ok;
+          admission_result_json = admission_call.result_json;
+          admission_error_message = admission_call.error_message;
+          admission_tool_result_error =
+              cuwacunu::hero::mcp_cli::tool_result_is_error(
+                  admission_result_json);
+          admission_result_digest = marshal_digest_for_text(
+              "kikijyeba.marshal.paper_online_session_handoff.admission_"
+              "result.v1",
+              admission_result_json);
+          const std::string admission_structured =
+              tool_detail::structured_content_json(admission_result_json);
+          admission_check_ok =
+              admission_tool_call_ok && !admission_tool_result_error &&
+              admission_structured.find("\"admission_ready\":true") !=
+                  std::string::npos;
+        }
+
+        if (local_ready && admission_check_ok && admission_fact_exists) {
+          session_validate_attempted = true;
+          session_args_json =
+              paper_online_session_handoff_session_validate_args_json(
+                  request, include_machine_payload);
+          session_args_digest = marshal_digest_for_text(
+              "kikijyeba.marshal.paper_online_session_handoff.session_args."
+              "v1",
+              session_args_json);
+          const auto session_call =
+              cuwacunu::hero::mcp_cli::call_environment_tool(
+                  request.config_path, {}, session_tool_name, session_args_json,
+                  request.timeout_seconds, 1048576);
+          session_tool_call_ok = session_call.process_ok;
+          session_result_json = session_call.result_json;
+          session_error_message = session_call.error_message;
+          session_tool_result_error =
+              cuwacunu::hero::mcp_cli::tool_result_is_error(
+                  session_result_json);
+          session_result_digest = marshal_digest_for_text(
+              "kikijyeba.marshal.paper_online_session_handoff.session_result."
+              "v1",
+              session_result_json);
+          const std::string session_structured =
+              tool_detail::structured_content_json(session_result_json);
+          session_validate_ok =
+              session_tool_call_ok && !session_tool_result_error &&
+              session_structured.find("\"session_ready\":true") !=
+                  std::string::npos;
+        }
+      }
+
+      const bool handoff_ready = requested_mode == "dry_run" && local_ready &&
+                                 admission_fact_exists && admission_check_ok &&
+                                 session_validate_ok;
+      const std::string dispatch_state =
+          requested_mode == "plan"
+              ? "planned"
+              : (!local_ready || !admission_check_ok
+                     ? "blocked"
+                     : (!admission_fact_exists
+                            ? "admission_ready"
+                            : (session_validate_ok ? "prepared" : "blocked")));
+      std::vector<std::string> next_actions;
+      if (requested_mode == "plan") {
+        next_actions = {"dry_run_marshal_paper_online_session_handoff",
+                        "check_or_issue_environment_session_admission"};
+      } else if (!local_ready) {
+        next_actions = {"fix_paper_online_session_handoff_request"};
+      } else if (!admission_check_ok) {
+        next_actions = {"inspect_environment_admission_check_failure"};
+      } else if (!admission_fact_exists) {
+        next_actions = {"issue_environment_paper_online_session_admission",
+                        "rerun_marshal_paper_online_session_handoff"};
+      } else if (!session_validate_ok) {
+        next_actions = {"inspect_environment_session_validate_failure"};
+      } else {
+        next_actions = {"run_environment_paper_online_session",
+                        "inspect_paper_online_session_handoff_receipt"};
+      }
+
+      const auto call_json = [&](bool attempted,
+                                 const std::string &call_tool_name, bool ok,
+                                 bool tool_call_ok, bool tool_result_error,
+                                 const std::string &arguments_digest,
+                                 const std::string &tool_result_digest,
+                                 const std::string &error_message,
+                                 const std::string &arguments_json,
+                                 const std::string &tool_result_json) {
+        return tool_detail::paper_online_session_handoff_call_json(
+            attempted, call_tool_name, ok, tool_call_ok, tool_result_error,
+            arguments_digest, tool_result_digest, error_message,
+            include_machine_payload, arguments_json, tool_result_json);
+      };
+      const std::string lattice_json = call_json(
+          lattice_attempted, lattice_tool_name, lattice_ok, lattice_call_ok,
+          lattice_result_error, lattice_args_digest, lattice_result_digest,
+          lattice_error_message, lattice_args_json, lattice_result_json);
+      const std::string admission_json = call_json(
+          admission_check_attempted, admission_tool_name, admission_check_ok,
+          admission_tool_call_ok, admission_tool_result_error,
+          admission_args_digest, admission_result_digest,
+          admission_error_message, admission_args_json, admission_result_json);
+      const std::string session_json = call_json(
+          session_validate_attempted, session_tool_name, session_validate_ok,
+          session_tool_call_ok, session_tool_result_error, session_args_digest,
+          session_result_digest, session_error_message, session_args_json,
+          session_result_json);
+      const std::string authority_json =
+          "{\"marshal_prepares_paper_online_session_handoff\":true,"
+          "\"marshal_issues_environment_admission\":false,"
+          "\"marshal_runs_environment_paper_online_session\":false,"
+          "\"marshal_executes_cajtucu_paper\":false,"
+          "\"marshal_executes_broker_orders\":false,"
+          "\"marshal_executes_live_capital\":false,"
+          "\"marshal_selects_policy\":false,"
+          "\"marshal_selects_checkpoint\":false,"
+          "\"marshal_proves_lattice_target\":false}";
+
+      bool receipt_produced = false;
+      std::string receipt_json{};
+      std::string receipt_digest{};
+      std::string receipt_write_error{};
+      const bool receipt_path_usable =
+          !request.receipt_path.empty() &&
+          std::find(local_issues.begin(), local_issues.end(),
+                    "receipt_path_outside_readiness_job_dir") ==
+              local_issues.end() &&
+          std::find(local_issues.begin(), local_issues.end(),
+                    "receipt_path_must_be_file") == local_issues.end();
+      if (requested_mode == "dry_run" && receipt_path_usable) {
+        std::ostringstream receipt;
+        receipt << "{\"schema_version\":"
+                << detail::json_quote(
+                       k_marshal_paper_online_session_handoff_receipt_schema_v1)
+                << ",\"handoff_id\":" << detail::json_quote(request.handoff_id)
+                << ",\"created_at_utc\":"
+                << detail::json_quote(tool_detail::current_utc_timestamp())
+                << ",\"requested_mode\":" << detail::json_quote(requested_mode)
+                << ",\"dispatch_state\":" << detail::json_quote(dispatch_state)
+                << ",\"handoff_ready\":" << (handoff_ready ? "true" : "false")
+                << ",\"request_source\":" << detail::json_quote(request.source)
+                << ",\"request_digest\":" << detail::json_quote(request_digest)
+                << ",\"readiness_fact_exists\":"
+                << (readiness_fact_exists ? "true" : "false")
+                << ",\"readiness_fact_path\":"
+                << detail::json_quote(readiness_fact_path.string())
+                << ",\"admission_fact_exists\":"
+                << (admission_fact_exists ? "true" : "false")
+                << ",\"admission_fact_path\":"
+                << detail::json_quote(admission_fact_path.string())
+                << ",\"admission_request_digest\":"
+                << detail::json_quote(admission_request_digest)
+                << ",\"session_request_digest\":"
+                << detail::json_quote(session_request_digest)
+                << ",\"local_issues\":"
+                << paper_online_session_handoff_detail::string_array_json(
+                       local_issues)
+                << ",\"next_safe_actions\":"
+                << paper_online_session_handoff_detail::string_array_json(
+                       next_actions)
+                << ",\"lattice_readiness\":" << lattice_json
+                << ",\"environment_admission_check\":" << admission_json
+                << ",\"environment_session_validate\":" << session_json
+                << ",\"authority\":" << authority_json;
+        if (include_machine_payload) {
+          receipt << ",\"machine_payload\":{\"admission_request_json\":"
+                  << detail::json_quote(admission_request_json)
+                  << ",\"session_request_json\":"
+                  << detail::json_quote(session_request_json) << "}";
+        }
+        receipt << "}";
+        receipt_json = receipt.str();
+        receipt_digest = marshal_digest_for_text(
+            k_marshal_paper_online_session_handoff_receipt_schema_v1,
+            receipt_json);
+        try {
+          paper_online_session_handoff_detail::write_text_file_atomically(
+              request.receipt_path, receipt_json);
+          receipt_produced = true;
+        } catch (const std::exception &ex) {
+          receipt_write_error = ex.what();
+        }
+      }
+
+      structured << "{\"ok\":true,\"tool\":"
+                 << detail::json_quote(
+                        "hero.marshal.paper_online.session_handoff")
+                 << tool_detail::marshal_operator_envelope_supplement_json(
+                        k_marshal_paper_online_session_handoff_packet_schema_v1,
+                        next_actions)
+                 << ",\"requested_mode\":" << detail::json_quote(requested_mode)
+                 << ",\"dispatch_state\":" << detail::json_quote(dispatch_state)
+                 << ",\"handoff_id\":" << detail::json_quote(request.handoff_id)
+                 << ",\"handoff_ready\":" << (handoff_ready ? "true" : "false")
+                 << ",\"request_source\":" << detail::json_quote(request.source)
+                 << ",\"request_digest\":" << detail::json_quote(request_digest)
+                 << ",\"readiness_job_dir\":"
+                 << detail::json_quote(request.readiness_job_dir.string())
+                 << ",\"readiness_fact_exists\":"
+                 << (readiness_fact_exists ? "true" : "false")
+                 << ",\"readiness_fact_path\":"
+                 << detail::json_quote(readiness_fact_path.string())
+                 << ",\"admission_fact_exists\":"
+                 << (admission_fact_exists ? "true" : "false")
+                 << ",\"admission_fact_path\":"
+                 << detail::json_quote(admission_fact_path.string())
+                 << ",\"admission_request_digest\":"
+                 << detail::json_quote(admission_request_digest)
+                 << ",\"session_request_digest\":"
+                 << detail::json_quote(session_request_digest)
+                 << ",\"receipt_produced\":"
+                 << (receipt_produced ? "true" : "false")
+                 << ",\"receipt_path\":"
+                 << detail::json_quote(request.receipt_path.string())
+                 << ",\"receipt_digest\":" << detail::json_quote(receipt_digest)
+                 << ",\"receipt_write_error\":"
+                 << detail::json_quote(receipt_write_error)
+                 << ",\"local_issues\":"
+                 << paper_online_session_handoff_detail::string_array_json(
+                        local_issues)
+                 << ",\"lattice_readiness\":" << lattice_json
+                 << ",\"environment_admission_check\":" << admission_json
+                 << ",\"environment_session_validate\":" << session_json
+                 << ",\"paper_online_authority\":" << authority_json;
+      if (include_machine_payload) {
+        structured << ",\"machine_payload\":{\"admission_request_json\":"
+                   << detail::json_quote(admission_request_json)
+                   << ",\"session_request_json\":"
+                   << detail::json_quote(session_request_json)
+                   << ",\"receipt_json\":" << detail::json_quote(receipt_json)
+                   << "}";
+      }
+      structured << "}";
     } else if (tool_name == "hero.marshal.rollout") {
       tool_detail::validate_fields(args,
                                    {"mode", "runtime_job_dir", "rollout_id",

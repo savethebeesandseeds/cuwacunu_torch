@@ -273,9 +273,8 @@ runtime_run_request_text_from_args(const std::string &arguments_json) {
 }
 
 std::string runtime_handoff_text_from_args(const std::string &arguments_json) {
-  return read_text(
-      std::filesystem::path(json_string_field(arguments_json,
-                                             "runtime_handoff_path")));
+  return read_text(std::filesystem::path(
+      json_string_field(arguments_json, "runtime_handoff_path")));
 }
 
 std::string direct_marshal_inspect_args(const std::string &legacy_args_json,
@@ -476,15 +475,17 @@ std::string compact_marshal_prepare_args(const std::string &legacy_args_json) {
           fields, "include_machine_payload")) {
     out << ",\"include_machine_payload\":" << *include;
   }
-  if (const auto profile = marshal::tool_detail::optional_raw(fields, "profile")) {
+  if (const auto profile =
+          marshal::tool_detail::optional_raw(fields, "profile")) {
     out << ",\"profile\":" << *profile;
   }
   out << "}";
   return out.str();
 }
 
-std::filesystem::path write_prepare_runtime_files(
-    bool allow_execute, bool allow_train, std::filesystem::path runtime_exec_path);
+std::filesystem::path
+write_prepare_runtime_files(bool allow_execute, bool allow_train,
+                            std::filesystem::path runtime_exec_path);
 
 std::string marshal_prepare_profile_value_text(const std::string &key,
                                                const std::string &raw) {
@@ -498,7 +499,8 @@ marshal::marshal_context_t
 marshal_prepare_context_from_legacy_args(const std::string &legacy_args_json,
                                          const std::string &profile_id) {
   const auto fields = marshal::tool_detail::object_fields(legacy_args_json);
-  const auto config_path = std::filesystem::path("/tmp/marshal_prepare/.config");
+  const auto config_path =
+      std::filesystem::path("/tmp/marshal_prepare/.config");
   if (!std::filesystem::exists(config_path)) {
     (void)write_prepare_runtime_files(false, false, {});
   }
@@ -529,8 +531,8 @@ marshal_prepare_context_from_legacy_args(const std::string &legacy_args_json,
   profile_fields["drive_mode"] = marshal::tool_detail::optional_string(
       fields, "drive_mode",
       profile_fields["max_waves"] == "1" ? "one_step" : "budgeted");
-  if (const auto materialize =
-          marshal::tool_detail::optional_raw(fields, "materialize_plan_inputs")) {
+  if (const auto materialize = marshal::tool_detail::optional_raw(
+          fields, "materialize_plan_inputs")) {
     profile_fields["materialize_plan_inputs"] = *materialize;
   }
   if (const auto timeout =
@@ -566,20 +568,18 @@ bool execute_marshal_prepare_json(const std::string &legacy_args_json,
   if (!marshal_prepare_tool_name(fields, &tool_name, error)) {
     return false;
   }
-  const std::string profile_id =
-      marshal::tool_detail::optional_string(
-          fields, "profile",
-          "test_prepare_profile_" + std::to_string(counter++));
+  const std::string profile_id = marshal::tool_detail::optional_string(
+      fields, "profile", "test_prepare_profile_" + std::to_string(counter++));
   auto compact_args = compact_marshal_prepare_args(legacy_args_json);
   if (compact_args.find("\"profile\"") == std::string::npos) {
     compact_args.insert(compact_args.size() - 1,
                         ",\"profile\":" +
                             marshal::detail::json_quote(profile_id));
   }
-  auto ctx = marshal_prepare_context_from_legacy_args(legacy_args_json,
-                                                     profile_id);
-  return marshal::execute_marshal_tool_json(
-      tool_name, compact_args, result, error, &ctx);
+  auto ctx =
+      marshal_prepare_context_from_legacy_args(legacy_args_json, profile_id);
+  return marshal::execute_marshal_tool_json(tool_name, compact_args, result,
+                                            error, &ctx);
 }
 
 std::string read_command_stdout(const std::string &command) {
@@ -1469,9 +1469,8 @@ void test_m2_dry_run_preview_success() {
         "Runtime handoff should pass the handoff object path directly");
   check(handoff_args.find("\"runtime_handoff_digest\":") != std::string::npos,
         "Runtime handoff should pin the handoff object directly");
-  const auto runtime_handoff_json =
-      read_text(std::filesystem::path(json_string_field(
-          handoff_args, "runtime_handoff_path")));
+  const auto runtime_handoff_json = read_text(std::filesystem::path(
+      json_string_field(handoff_args, "runtime_handoff_path")));
   check(runtime_handoff_json.find("\"anchor_index_begin\":\"1800\"") !=
             std::string::npos,
         "runtime_handoff should bind the advised anchor begin");
@@ -2610,8 +2609,8 @@ void test_m9_marshal_tool_schema_compatibility() {
         "Marshal direct CLI and MCP surfaces should expose same primitives");
   const auto names = marshal::marshal_tool_names();
   check(!names.empty(), "Marshal tool catalog should not be empty");
-  check(names.size() == 23,
-        "Marshal tool catalog should expose exactly twenty-three "
+  check(names.size() == 24,
+        "Marshal tool catalog should expose exactly twenty-four "
         "operator-facing tools");
   check(std::find(names.begin(), names.end(), "hero.marshal.status") !=
             names.end(),
@@ -2624,6 +2623,9 @@ void test_m9_marshal_tool_schema_compatibility() {
   check(std::find(names.begin(), names.end(), "hero.marshal.rollout") !=
             names.end(),
         "Marshal tool catalog should expose rollout");
+  check(std::find(names.begin(), names.end(),
+                  "hero.marshal.paper_online.session_handoff") != names.end(),
+        "Marshal tool catalog should expose paper-online session handoff");
   for (const auto &inspect_name :
        {"hero.marshal.inspect.run.latest_chain",
         "hero.marshal.inspect.run.training_state",
@@ -2866,20 +2868,19 @@ void test_m9_marshal_tool_schema_compatibility() {
               std::string::npos,
           "prepare MCP schema should not advertise request payload fields");
   }
-  check(rollout_tool_json.find("\"mode\"") != std::string::npos &&
-            rollout_tool_json.find("\"plan\"") != std::string::npos &&
-            rollout_tool_json.find("\"execute\"") != std::string::npos &&
-            rollout_tool_json.find("\"runtime_job_dir\"") !=
-                std::string::npos &&
-            rollout_tool_json.find("\"rollout_id\"") != std::string::npos &&
-            rollout_tool_json.find("\"rollout_attempt_id\"") !=
-                std::string::npos &&
-            rollout_tool_json.find("\"target_node_ids\"") !=
-                std::string::npos &&
-            rollout_tool_json.find("\"profile\"") != std::string::npos &&
-            rollout_tool_json.find("\"include_machine_payload\"") !=
-                std::string::npos,
-        "rollout MCP schema should advertise direct rollout selectors");
+  check(
+      rollout_tool_json.find("\"mode\"") != std::string::npos &&
+          rollout_tool_json.find("\"plan\"") != std::string::npos &&
+          rollout_tool_json.find("\"execute\"") != std::string::npos &&
+          rollout_tool_json.find("\"runtime_job_dir\"") != std::string::npos &&
+          rollout_tool_json.find("\"rollout_id\"") != std::string::npos &&
+          rollout_tool_json.find("\"rollout_attempt_id\"") !=
+              std::string::npos &&
+          rollout_tool_json.find("\"target_node_ids\"") != std::string::npos &&
+          rollout_tool_json.find("\"profile\"") != std::string::npos &&
+          rollout_tool_json.find("\"include_machine_payload\"") !=
+              std::string::npos,
+      "rollout MCP schema should advertise direct rollout selectors");
   for (const auto retired_field : {"args_path",
                                    "args_digest",
                                    "idempotency_key",
@@ -2918,8 +2919,8 @@ void test_m9_marshal_tool_schema_compatibility() {
         "hero.marshal.evaluate_run", "hero.marshal.inspect_run",
         "hero.marshal.reach_lattice_target", "hero.marshal.evaluate",
         "hero.marshal.prepare", "hero.marshal.inspect",
-        "hero.marshal.inspect.run",
-        "hero.marshal.inspect.facts", "hero.marshal.inspect_evidence_panel"}) {
+        "hero.marshal.inspect.run", "hero.marshal.inspect.facts",
+        "hero.marshal.inspect_evidence_panel"}) {
     check(std::find(names.begin(), names.end(), hidden_name) == names.end(),
           std::string("Marshal tool catalog should not expose ") + hidden_name);
   }
@@ -2940,12 +2941,13 @@ void test_m9_marshal_tool_schema_compatibility() {
         "hero.marshal.prepare.train.budgeted",
         "hero.marshal.prepare.evaluate.one_step",
         "hero.marshal.prepare.evaluate.budgeted"}) {
-    check(!marshal::execute_marshal_tool_json(
-              retired_prepare_name,
-              R"({"target_id":"channel_mdn_validation_eval_ready","mode":"plan"})",
-              &result, &error),
-          std::string("retired split prepare should fail: ") +
-              retired_prepare_name);
+    check(
+        !marshal::execute_marshal_tool_json(
+            retired_prepare_name,
+            R"({"target_id":"channel_mdn_validation_eval_ready","mode":"plan"})",
+            &result, &error),
+        std::string("retired split prepare should fail: ") +
+            retired_prepare_name);
     check(error.find("unknown tool") != std::string::npos,
           std::string("retired split prepare should be unknown: ") +
               retired_prepare_name);
@@ -2956,14 +2958,15 @@ void test_m9_marshal_tool_schema_compatibility() {
        {"args_path", "args_digest", "driver_policy", "context",
         "runtime_policy", "runtime_wave", "drive_mode", "intent",
         "materialize_plan_inputs", "timeout_seconds"}) {
-    check(!marshal::execute_marshal_tool_json(
-              "hero.marshal.prepare.train",
-              std::string("{\"target_id\":\"channel_mdn_validation_eval_ready\","
-                          "\"mode\":\"plan\",\"") +
-                  removed_field + "\":\"removed\"}",
-              &result, &error),
-          std::string("prepare facade should reject retired field: ") +
-              removed_field);
+    check(
+        !marshal::execute_marshal_tool_json(
+            "hero.marshal.prepare.train",
+            std::string("{\"target_id\":\"channel_mdn_validation_eval_ready\","
+                        "\"mode\":\"plan\",\"") +
+                removed_field + "\":\"removed\"}",
+            &result, &error),
+        std::string("prepare facade should reject retired field: ") +
+            removed_field);
     check(error.find(std::string("unknown field: ") + removed_field) !=
               std::string::npos,
           std::string("retired prepare field should fail explicitly: ") +
@@ -2971,11 +2974,12 @@ void test_m9_marshal_tool_schema_compatibility() {
     result.clear();
     error.clear();
   }
-  check(!marshal::execute_marshal_tool_json(
-            "hero.marshal.prepare.train",
-            R"({"target_id":"channel_mdn_validation_eval_ready","mode":"plan","profile":"missing_profile"})",
-            &result, &error),
-        "prepare facade should reject unknown profiles before Lattice work");
+  check(
+      !marshal::execute_marshal_tool_json(
+          "hero.marshal.prepare.train",
+          R"({"target_id":"channel_mdn_validation_eval_ready","mode":"plan","profile":"missing_profile"})",
+          &result, &error),
+      "prepare facade should reject unknown profiles before Lattice work");
   check(error.find("unknown prepare profile: missing_profile") !=
             std::string::npos,
         "unknown prepare profile should fail explicitly");
@@ -4112,8 +4116,8 @@ void test_prepare_rejects_legacy_alias_and_retired_route_fields() {
 
   const std::string alias_args =
       "{\"lattice_target\":\"channel_mdn_validation_eval_ready\"}";
-  check(!marshal::execute_marshal_tool_json(
-            "hero.marshal.prepare.train", alias_args, &result, &error),
+  check(!marshal::execute_marshal_tool_json("hero.marshal.prepare.train",
+                                            alias_args, &result, &error),
         "prepare should reject legacy lattice_target alias");
   check(error.find("unknown field: lattice_target") != std::string::npos,
         "lattice_target rejection should be explicit");
@@ -4298,11 +4302,12 @@ void test_m16_5_prepare_profile_validation() {
   std::string result;
   std::string error;
 
-  check(!marshal::execute_marshal_tool_json(
-            "hero.marshal.prepare.train",
-            R"({"target_id":"channel_mdn_validation_eval_ready","mode":"plan","profile":"missing_profile"})",
-            &result, &error, &ctx),
-        "prepare should reject unknown profile ids");
+  check(
+      !marshal::execute_marshal_tool_json(
+          "hero.marshal.prepare.train",
+          R"({"target_id":"channel_mdn_validation_eval_ready","mode":"plan","profile":"missing_profile"})",
+          &result, &error, &ctx),
+      "prepare should reject unknown profile ids");
   check(error.find("unknown prepare profile: missing_profile") !=
             std::string::npos,
         "unknown profile error should be explicit");
@@ -4311,11 +4316,12 @@ void test_m16_5_prepare_profile_validation() {
   error.clear();
   ctx.policy.prepare_profile_fields["bad_zero_waves"] = {
       {"max_waves", "0"}, {"max_wall_clock_seconds", "5"}};
-  check(!marshal::execute_marshal_tool_json(
-            "hero.marshal.prepare.train",
-            R"({"target_id":"channel_mdn_validation_eval_ready","mode":"plan","profile":"bad_zero_waves"})",
-            &result, &error, &ctx),
-        "prepare should reject invalid profile wave counts");
+  check(
+      !marshal::execute_marshal_tool_json(
+          "hero.marshal.prepare.train",
+          R"({"target_id":"channel_mdn_validation_eval_ready","mode":"plan","profile":"bad_zero_waves"})",
+          &result, &error, &ctx),
+      "prepare should reject invalid profile wave counts");
   check(error.find("max_waves must be positive") != std::string::npos,
         "invalid max_waves error should be explicit");
 
@@ -4323,11 +4329,12 @@ void test_m16_5_prepare_profile_validation() {
   error.clear();
   ctx.policy.prepare_profile_fields["bad_bounded"] = {
       {"max_waves", "2"}, {"no_progress_window", "1"}};
-  check(!marshal::execute_marshal_tool_json(
-            "hero.marshal.prepare.train",
-            R"({"target_id":"channel_mdn_validation_eval_ready","mode":"plan","profile":"bad_bounded"})",
-            &result, &error, &ctx),
-        "prepare should reject bounded profiles without a wall-clock limit");
+  check(
+      !marshal::execute_marshal_tool_json(
+          "hero.marshal.prepare.train",
+          R"({"target_id":"channel_mdn_validation_eval_ready","mode":"plan","profile":"bad_bounded"})",
+          &result, &error, &ctx),
+      "prepare should reject bounded profiles without a wall-clock limit");
   check(error.find("bounded prepare profile requires max_wall_clock_seconds") !=
             std::string::npos,
         "missing max_wall_clock_seconds profile error should be explicit");
@@ -5275,7 +5282,7 @@ void test_m16_prepare_rejects_public_resume_ledger() {
   std::string result;
   std::string error;
   check(!marshal::execute_marshal_tool_json("hero.marshal.prepare.train", args,
-                                           &result, &error),
+                                            &result, &error),
         "prepare facade should reject public resume_ledger");
   check(error.find("unknown field: resume_ledger") != std::string::npos,
         "retired resume_ledger field should fail explicitly");
@@ -5340,8 +5347,7 @@ void test_m9_marshal_tool_handlers_validate_arguments() {
       ",\"target_text\":\"dispatch whatever target seems useful\"}";
   check(!execute_marshal_prepare_json(free_text_lookup_args, &result, &error),
         "prepare must reject free-form target text");
-  check(error.find("unknown field: target_text") !=
-            std::string::npos,
+  check(error.find("unknown field: target_text") != std::string::npos,
         "prepare should expose unknown-field rejection for "
         "target_text");
 
@@ -6104,8 +6110,7 @@ void test_artifact_evidence_panel_and_prepare_boundary() {
       !execute_marshal_prepare_json(fact_family_prepare_args, &result, &error),
       "prepare must reject fact_family arguments instead of "
       "treating fact evidence as reachable work");
-  check(error.find("unknown field: fact_family") !=
-            std::string::npos,
+  check(error.find("unknown field: fact_family") != std::string::npos,
         "prepare should expose unknown-field rejection for "
         "fact_family");
 
@@ -7393,11 +7398,12 @@ void test_inspect_deterministic_subjects() {
   check(error.find("hero.marshal.inspect.protocol.report unknown field: "
                    "spawn_id") != std::string::npos,
         "protocol subject spawn-only field rejection should be explicit");
-  check(!execute_marshal_inspect_json(
-            R"({"subject":"protocol","identity_mode":"strict","protocol_contract_fingerprint":"pc"})",
-            &result, &error),
-        "protocol strict should reject retired top-level expected identity "
-        "fields");
+  check(
+      !execute_marshal_inspect_json(
+          R"({"subject":"protocol","identity_mode":"strict","protocol_contract_fingerprint":"pc"})",
+          &result, &error),
+      "protocol strict should reject retired top-level expected identity "
+      "fields");
   check(error.find("hero.marshal.inspect.protocol.strict unknown field: "
                    "protocol_contract_fingerprint") != std::string::npos,
         "protocol strict retired identity rejection should be explicit");

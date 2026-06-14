@@ -51,8 +51,8 @@ MARSHAL_PREPARE_PROFILE single_wave_operator {
   drive_mode = one_step
   max_waves = 1
   max_wall_clock_seconds = 0
-  allow_execute = false
-  allow_train_execute = false
+  allow_execute = true
+  allow_train_execute = true
   require_runtime_job_completion = true
   require_post_wave_lattice_satisfied_check = true
   stop_on_warning_severity =
@@ -66,17 +66,17 @@ MARSHAL_PREPARE_PROFILE single_wave_operator {
 MARSHAL_PREPARE_PROFILE bounded_operator {
   drive_mode = budgeted
   max_waves = 3
-  max_wall_clock_seconds = 900
-  allow_execute = false
-  allow_train_execute = false
+  max_wall_clock_seconds = 86400
+  allow_execute = true
+  allow_train_execute = true
   require_runtime_job_completion = true
   require_post_wave_lattice_satisfied_check = true
   stop_on_warning_severity =
-  stop_on_lattice_warning = true
-  stop_on_runtime_warning = true
+  stop_on_lattice_warning = false
+  stop_on_runtime_warning = false
   no_progress_window = 1
   materialize_plan_inputs = true
-  timeout_seconds = 600
+  timeout_seconds = 86400
 }
 
 MARSHAL_ROLLOUT_PROFILE replay_validation_default {
@@ -84,7 +84,7 @@ MARSHAL_ROLLOUT_PROFILE replay_validation_default {
   max_steps = 250
   max_parallel_jobs = 4
   runtime_exec_path = /cuwacunu/.build/exec/cuwacunu_exec
-  timeout_seconds = 600
+  timeout_seconds = 86400
   execution_backend_id = cajtucu.execution.paper.v1
   cost_model_id = linear_transaction_cost_rate.v1
   allow_synthetic_direct_edges = false

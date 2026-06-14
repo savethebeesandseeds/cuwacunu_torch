@@ -49,12 +49,13 @@ Implemented baseline:
 
 ## Next Environment Work
 
-### Paper-Online Session Contract V1
+### Paper-Online Session Contract And Runner V1
 
 Milestone:
 
 ```text
 paper_online_session_contract.v1 support
+paper_online_session_runner.v1 support
 ```
 
 Environment role:
@@ -73,11 +74,14 @@ Environment role:
 Acceptance sketch:
 
 - `kikijyeba.environment.paper_online.v1` has a concrete session-state contract
-  and validator surface before any online-paper runner exists.
+  and validator surface before any live-online surface exists.
 - Session admission requires a fresh paper-online-readiness proof and rejects
   stale, missing, or mismatched readiness evidence.
-- Historical replay remains the training/evaluation environment until a bounded
-  paper-online session runner is explicitly implemented.
+- The bounded runner only writes paper session artifacts from an existing
+  admission fact; it does not start live trading, route to a broker, select
+  policies/checkpoints, or claim market/deployment readiness.
+- Historical replay remains the training/evaluation environment; the runner is
+  a bounded paper-online artifact producer for admitted sessions.
 
 First implementation slice:
 
@@ -86,9 +90,28 @@ First implementation slice:
   validators.
 - `hero.environment.inspect.schema` reports the session contract vocabulary for
   operator inspection without adding a session runner.
+- `hero.environment.certify.paper_online_session_admission mode=check|issue`
+  accepts a compact `admission_request` object or `admission_request_path`,
+  reads an existing `lattice.paper_online_readiness.fact`, derives bound
+  policy/checkpoint/profile evidence, and returns `admission_ready` plus issues.
+  Issue mode writes `lattice.paper_online_session_admission.fact` after preview
+  digest binding, without writing session state.
+- `hero.environment.paper_online.session mode=validate|run` accepts a compact
+  `session_request` object or `session_request_path`, reads the existing
+  admission and readiness sidecars, validates finite step/timing/target/ledger
+  recovery/idempotency/staleness constraints, and in run mode writes durable
+  session artifacts plus `lattice.exposure.fact` and
+  `lattice.paper_online_session.fact`.
+- Lattice exposure fact families include `paper_online_session`, with summary,
+  preview, digest-prefix resolution, and runtime-index counts available through
+  the standard Lattice inspection tools.
 - Contract tests reject stale readiness proof timing, missing proof digest,
   readiness-not-ready evidence, locked execution-profile drift, missing durable
   artifact slots, and execution-authority drift.
+- Tool tests cover clean inline and path-based admission requests, stale proof
+  rejection, readiness fact digest mismatch rejection, validate-only sessions,
+  successful bounded run, duplicate-run refusal, duplicate-action rejection,
+  staleness rejection, and missing ledger-recovery rejection.
 
 ## Future Environment Work
 

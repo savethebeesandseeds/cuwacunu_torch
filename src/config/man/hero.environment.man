@@ -44,7 +44,7 @@ key = allow_certify_issue
 scope = Environment Hero policy
 type = bool
 default = true
-nuance = Allows hero.environment.certify.policy_acceptance and hero.environment.certify.paper_online_readiness mode=issue to write validated prerequisite Lattice sidecars.
+nuance = Allows hero.environment.certify.policy_acceptance, hero.environment.certify.paper_online_readiness, and hero.environment.certify.paper_online_session_admission mode=issue to write validated prerequisite Lattice sidecars.
 
 [FIELD allow_rollout_replay]
 key = allow_rollout_replay
@@ -52,6 +52,20 @@ scope = Environment Hero policy
 type = bool
 default = true
 nuance = Allows hero.environment.rollout mode=replay to delegate low-level replay execution to Runtime.
+
+[FIELD allow_paper_online_session_run]
+key = allow_paper_online_session_run
+scope = Environment Hero policy/profile
+type = bool
+default = true
+nuance = Allows hero.environment.paper_online.session mode=run to write bounded paper-only session artifacts from an existing admission fact. This does not authorize broker orders or live capital.
+
+[FIELD paper_online_session_max_steps]
+key = paper_online_session_max_steps
+scope = Environment Hero policy/profile
+type = int
+default = 64
+nuance = Positive finite step cap enforced by hero.environment.paper_online.session before any bounded paper-only run writes artifacts.
 
 [FIELD max_capture_bytes]
 key = max_capture_bytes
@@ -64,8 +78,8 @@ nuance = Maximum delegated Runtime result payload retained inline.
 key = max_runtime_seconds
 scope = Environment Hero policy
 type = int
-default = 600
-nuance = Timeout used for delegated Runtime replay.
+default = 86400
+nuance = Timeout used for delegated Runtime replay; long non-live evaluation runs remain explicitly bounded by rollout step and worker caps.
 
 [FIELD rollout_policy_set]
 key = rollout_policy_set
@@ -164,6 +178,8 @@ hero.environment.inspect.schema = read Environment policy schema.
 hero.environment.inspect.job job_dir=... [include_text=...] [max_bytes=...] = inspect job-local policy_acceptance, paper_online_readiness, tsodao_settings_protection, and replay sidecars with direct selectors.
 hero.environment.certify.policy_acceptance mode=check|issue policy_training_job_dir=... acceptance_id=... certification_evidence={...} [expected_preview_digest=...] = assemble, validate, and optionally issue lattice.policy_acceptance.fact from direct certification evidence plus existing policy-training and Tsodao settings-protection evidence. check mode returns the canonical preview digest; issue mode requires expected_preview_digest to match that preview before writing. Environment derives canonical policy-acceptance governance v0 fields; they are not tool arguments.
 hero.environment.certify.paper_online_readiness mode=check|issue policy_acceptance_job_dir=... readiness_id=... certification_evidence={...} [expected_preview_digest=...] = assemble, validate, and optionally issue lattice.paper_online_readiness.fact from direct certification evidence plus existing policy-acceptance evidence. check mode returns the canonical preview digest; issue mode requires expected_preview_digest to match that preview before writing. Environment derives fixed paper-online contract/default policy ids; they are not tool arguments.
+hero.environment.certify.paper_online_session_admission mode=check|issue admission_request={...}|admission_request_path=... [expected_preview_digest=...] = assemble, validate, and optionally issue lattice.paper_online_session_admission.fact from existing paper-online readiness evidence. check mode returns the canonical preview digest; issue mode requires expected_preview_digest to match that preview before writing.
+hero.environment.paper_online.session mode=validate|run session_request={...}|session_request_path=... [include_machine_payload=...] = validate or run a bounded paper-only session from an existing paper-online session admission fact. The compact request groups admission.job_dir plus session id/root/timing/step/target controls. Run mode writes session manifest/state/event/intent/ledger/reward artifacts plus lattice.exposure.fact and lattice.paper_online_session.fact, refuses overwrite, and never authorizes broker or live execution.
 hero.environment.rollout mode=validate|replay runtime_job_dir=... rollout_id=... rollout_attempt_id=... target_node_ids=[...] [include_machine_payload=...] = validate or replay bounded historical replay rollout evidence from a completed Runtime job. Environment derives replay index, graph fingerprint, idempotency key, experiment id, asset-universe digest, and execution controls from job evidence, global config, and the active Environment profile before delegating low-level replay execution to the non-catalog Runtime replay executor.
 
 [BOUNDARY]

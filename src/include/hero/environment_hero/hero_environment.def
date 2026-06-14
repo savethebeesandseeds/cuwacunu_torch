@@ -94,6 +94,64 @@ HERO_ENVIRONMENT_TOOL(
     })")
 
 HERO_ENVIRONMENT_TOOL(
+    "hero.environment.certify.paper_online_session_admission",
+    "Check and optionally issue paper-online-session admission evidence from "
+    "a compact request envelope and an existing "
+    "lattice.paper_online_readiness.fact sidecar. mode=check validates "
+    "without writing; issue writes the sidecar after validation and preview "
+    "digest binding. It never starts streams, executes Cajtucu, routes broker "
+    "orders, or authorizes live capital.",
+    R"({
+      "type": "object",
+      "required": ["mode"],
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": ["check", "issue"]
+        },
+        "admission_request": {
+          "type": "object"
+        },
+        "admission_request_path": {
+          "type": "string"
+        },
+        "expected_preview_digest": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    })")
+
+HERO_ENVIRONMENT_TOOL(
+    "hero.environment.paper_online.session",
+    "Validate or run a bounded paper-online session from existing "
+    "paper-online-session admission evidence. mode=validate checks the compact "
+    "session request without writing; mode=run writes durable paper-only "
+    "session artifacts and a Lattice-readable paper_online_session fact. It "
+    "does not open market streams, route broker orders, or authorize live "
+    "capital.",
+    R"({
+      "type": "object",
+      "required": ["mode"],
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": ["validate", "run"]
+        },
+        "session_request": {
+          "type": "object"
+        },
+        "session_request_path": {
+          "type": "string"
+        },
+        "include_machine_payload": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    })")
+
+HERO_ENVIRONMENT_TOOL(
     "hero.environment.rollout",
     "Validate or replay a bounded historical replay rollout as environment "
     "evidence. Environment owns the rollout surface and delegates low-level "

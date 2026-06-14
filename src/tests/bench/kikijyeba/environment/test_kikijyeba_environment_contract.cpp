@@ -789,6 +789,21 @@ void test_paper_online_session_contract() {
   check(env::paper_online_session_contract_issues(default_constructed_contract)
             .empty(),
         "default-constructed paper-online session contract must validate");
+  const auto runner_contract =
+      env::default_paper_online_session_runner_contract();
+  check(
+      env::paper_online_session_runner_contract_issues(runner_contract).empty(),
+      "default paper-online session runner contract must validate");
+  check(runner_contract.session_runner_implemented,
+        "paper-online session runner contract must claim bounded runner "
+        "implementation");
+  check(runner_contract.paper_execution_allowed,
+        "paper-online session runner contract must allow bounded paper "
+        "execution");
+  check(!runner_contract.broker_execution_allowed &&
+            !runner_contract.live_execution_allowed,
+        "paper-online session runner contract must not allow broker or live "
+        "execution");
   check(env::paper_online_session_transition_allowed(
             env::paper_online_session_state_t::initialized,
             env::paper_online_session_state_t::admitted),
@@ -884,6 +899,25 @@ void test_paper_online_session_contract() {
             contract_authority_issues,
             "paper_online_session_contract_must_not_claim_execution_authority"),
         "paper-online session contract rejects direct policy-to-broker "
+        "authority");
+
+  auto bad_runner_contract = runner_contract;
+  bad_runner_contract.durable_artifacts.pop_back();
+  const auto bad_runner_contract_issues =
+      env::paper_online_session_runner_contract_issues(bad_runner_contract);
+  check(contains_issue(bad_runner_contract_issues,
+                       "missing_session_artifact_slot:reward_reports"),
+        "paper-online session runner contract requires durable reward report "
+        "slot");
+
+  auto runner_authority_drift = runner_contract;
+  runner_authority_drift.live_execution_allowed = true;
+  const auto runner_authority_issues =
+      env::paper_online_session_runner_contract_issues(runner_authority_drift);
+  check(contains_issue(runner_authority_issues,
+                       "paper_online_session_runner_must_not_claim_broker_live_"
+                       "or_selection_authority"),
+        "paper-online session runner contract rejects live execution "
         "authority");
 }
 

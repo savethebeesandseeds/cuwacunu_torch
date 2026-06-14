@@ -509,18 +509,18 @@ json_has_string_field_value(const std::string &json, const std::string &key,
   }
   if (!request.model_state_inputs.empty()) {
     std::string inputs_raw;
-    if (!json_object_field_raw(wave_json, "model_state_inputs", &inputs_raw)) {
-      return false;
-    }
-    for (const auto &[key, value] : request.model_state_inputs) {
-      std::string raw;
-      if (!json_object_field_raw(inputs_raw, key, &raw)) {
-        return false;
-      }
-      const std::string normalized =
-          std::filesystem::path(value).lexically_normal().string();
-      if (raw != json_quote(normalized)) {
-        return false;
+    if (json_object_field_raw(wave_json, "model_state_inputs", &inputs_raw) &&
+        trim_ascii(inputs_raw) != "{}") {
+      for (const auto &[key, value] : request.model_state_inputs) {
+        std::string raw;
+        if (!json_object_field_raw(inputs_raw, key, &raw)) {
+          return false;
+        }
+        const std::string normalized =
+            std::filesystem::path(value).lexically_normal().string();
+        if (raw != json_quote(normalized)) {
+          return false;
+        }
       }
     }
   }

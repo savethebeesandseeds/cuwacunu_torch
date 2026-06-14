@@ -110,6 +110,36 @@ HERO_MARSHAL_TOOL(
     })")
 
 HERO_MARSHAL_TOOL(
+    "hero.marshal.paper_online.session_handoff",
+    "Prepare a bounded paper-online session handoff from existing readiness "
+    "evidence and optional session-admission evidence. mode=plan constructs "
+    "the Environment-compatible admission/session payloads without tool calls; "
+    "mode=dry_run performs safe Environment admission check and session "
+    "validate only. Marshal writes a handoff receipt but never issues "
+    "admission, runs the session, routes broker orders, or proves Lattice "
+    "targets.",
+    R"({
+      "type": "object",
+      "required": ["mode"],
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": ["plan", "dry_run"]
+        },
+        "handoff_request": {
+          "type": "object"
+        },
+        "handoff_request_path": {
+          "type": "string"
+        },
+        "include_machine_payload": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    })")
+
+HERO_MARSHAL_TOOL(
     "hero.marshal.inspect.run.latest_chain",
     "Read-only Runtime latest-chain operator inspection.",
     R"({"type":"object","properties":{"runtime_root":{"type":"string"},"config_path":{"type":"string"},"job_ids":{"type":"array","items":{"type":"string"}},"target_ids":{"type":"array","items":{"type":"string"}},"include_machine_payload":{"type":"boolean"}},"additionalProperties":false})")

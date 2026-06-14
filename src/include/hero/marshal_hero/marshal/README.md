@@ -26,6 +26,7 @@ hero.marshal.status
 hero.marshal.prepare.train
 hero.marshal.prepare.evaluate
 hero.marshal.rollout
+hero.marshal.paper_online.session_handoff
 hero.marshal.inspect.run.latest_chain
 hero.marshal.inspect.run.training_state
 hero.marshal.inspect.run.single_job
@@ -50,10 +51,11 @@ hero.marshal.inspect.facts.preview.by_index
 The shortest rule is:
 
 ```text
-status   = what Marshal can see
-prepare  = how one Lattice target can move next
-rollout  = how one completed Runtime job can be replayed through environment
-inspect  = what existing evidence says
+status                   = what Marshal can see
+prepare                  = how one Lattice target can move next
+rollout                  = how one completed Runtime job can be replayed through environment
+paper_online.session_handoff = how a paper-online session handoff is prepared
+inspect                  = what existing evidence says
 ```
 
 Use the direct CLI when checking behavior from a shell:
@@ -123,6 +125,24 @@ ARGS='{
   --args-json "$ARGS"
 ```
 
+`hero.marshal.paper_online.session_handoff` is for paper-online session
+handoff preparation. It starts from existing paper-online readiness evidence,
+assembles the Environment admission/session payloads, and in dry-run mode calls
+only safe Environment validators. Marshal does not issue admission or run the
+session.
+
+```bash
+ARGS='{
+  "mode":"dry_run",
+  "handoff_request_path":"/cuwacunu/.runtime/cuwacunu_exec/operator_requests/paper_online_session_handoff.request.json",
+  "include_machine_payload":true
+}'
+/cuwacunu/.build/hero/hero_marshal.mcp \
+  --global-config /cuwacunu/src/config/.config \
+  --tool hero.marshal.paper_online.session_handoff \
+  --args-json "$ARGS"
+```
+
 `hero.marshal.inspect.*` is for reading evidence. Use the concrete inspect
 tool that matches the evidence panel after Runtime has written jobs, replay
 reports, or fact sidecars.
@@ -160,6 +180,18 @@ completed Runtime job with replay batches
   -> Runtime Hero calls the Runtime replay adapter
   -> Runtime writes replay report / trajectory evidence
   -> hero.marshal.inspect.run.latest_chain or hero.marshal.inspect.facts.summary reads the evidence later
+```
+
+An online-paper session handoff loop is:
+
+```text
+paper_online_readiness_contract_ready evidence
+  -> hero.marshal.paper_online.session_handoff mode=plan
+  -> hero.marshal.paper_online.session_handoff mode=dry_run
+  -> Environment admission issue when Marshal reports admission_ready
+  -> hero.marshal.paper_online.session_handoff mode=dry_run until prepared
+  -> Environment paper_online.session mode=run when operator accepts the handoff
+  -> Lattice reads paper_online_session facts later
 ```
 
 `prepare` and `rollout` are not synonyms. `prepare` is target-driven and starts
@@ -554,6 +586,31 @@ marshal_policy_training_authority=false
 live_execution_authority=false
 ```
 
+## Paper-Online Session Handoff
+
+`hero.marshal.paper_online.session_handoff` has two modes:
+
+```text
+mode=plan
+  validate the compact handoff request shape and report Environment request
+  digests without external tool calls or receipt writes
+
+mode=dry_run
+  call Environment admission check, then Environment session validate only when
+  the admission sidecar exists, and write a durable Marshal handoff receipt
+```
+
+Public arguments are `mode`, exactly one of `handoff_request` or
+`handoff_request_path`, and optional `include_machine_payload`. The detailed
+readiness/session fields live inside the compact handoff request so the Marshal
+tool surface stays small.
+
+The handoff path never issues Environment admission, runs the session, executes
+Cajtucu paper mechanics, routes broker orders, selects policy/checkpoint, or
+proves Lattice targets. Its receipt records request digests, Environment
+validation digests, readiness/admission sidecar visibility, authority denials,
+and next safe actions.
+
 ## Dispatchability
 
 M1 advice is dispatchable only when it is concrete, fresh, and allowed by the
@@ -645,6 +702,7 @@ hero.marshal.status
 hero.marshal.prepare.train
 hero.marshal.prepare.evaluate
 hero.marshal.rollout
+hero.marshal.paper_online.session_handoff
 hero.marshal.inspect.run.latest_chain
 hero.marshal.inspect.run.training_state
 hero.marshal.inspect.run.single_job

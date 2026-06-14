@@ -88,7 +88,7 @@ familiar:
 | Environment admission | `hero.environment.certify.*`, `hero.environment.rollout`, `hero.environment.inspect.*` | Check/issue policy-acceptance and paper-online readiness prerequisite evidence, inspect job-local Environment sidecars, and validate/replay bounded historical replay rollouts. Environment job inspect selectors are direct arguments on `hero.environment.inspect.job`. | Environment owns execution-environment admission and rollout evidence. It may delegate low-level replay execution to Runtime; Lattice still proves evidence and Marshal still coordinates. |
 | Runtime evidence | `hero.runtime.inspect.*` | Read active wave or durable Runtime job/replay artifacts through concrete inspect tools with direct selectors. | No target proof or config mutation. |
 | Lattice proof/evidence | `hero.lattice.*` | Scan evidence, explain/evaluate targets, inspect fact/catalog/checkpoint lineage, compare proof vectors. | Read-only. Lattice proves; it does not execute or select deployments. Lattice inspect and evaluate use concrete tools with direct selectors; compare keeps request-file selectors. |
-| Marshal coordination | `hero.marshal.prepare.*`, `hero.marshal.rollout` | Prepare/delegate bounded target handoffs or replay rollouts through Environment/Runtime policy. | Marshal coordinates and records handoffs; Environment admits rollout work, Runtime executes low-level jobs, Lattice proves. |
+| Marshal coordination | `hero.marshal.prepare.*`, `hero.marshal.rollout`, `hero.marshal.paper_online.session_handoff` | Prepare/delegate bounded target handoffs, replay rollouts, or paper-online session handoff receipts through Environment/Runtime policy. | Marshal coordinates and records handoffs; Environment validates/adopts environment work, Runtime executes low-level jobs, Lattice proves. |
 | Marshal inspection | `hero.marshal.status`, `hero.marshal.inspect.*` | Read Marshal visibility and explain Runtime/Lattice/Marshal evidence through concrete inspect tools. | Read-only and non-decision-making. |
 
 Shortest routing rules:
@@ -102,7 +102,9 @@ Shortest routing rules:
    `hero.marshal.prepare.*` tool.
 5. Need historical environment replay from a completed job:
    use `hero.marshal.rollout`.
-6. Need an actual Runtime action: use Runtime Hero directly or a Marshal
+6. Need paper-online session admission/run preparation:
+   use `hero.marshal.paper_online.session_handoff` before Environment run.
+7. Need an actual Runtime action: use Runtime Hero directly or a Marshal
    handoff that delegates to Runtime Hero.
 
 Marshal Hero has a minimal policy DSL for protocol selection and prepare
@@ -113,6 +115,7 @@ hero.marshal.status
 hero.marshal.prepare.train
 hero.marshal.prepare.evaluate
 hero.marshal.rollout
+hero.marshal.paper_online.session_handoff
 hero.marshal.inspect.run.latest_chain
 hero.marshal.inspect.run.training_state
 hero.marshal.inspect.run.single_job
@@ -526,9 +529,32 @@ Runtime agent workflow:
    `paper_online_session_contract.v1` vocabulary read-only. The contract names
    durable session state/event/intent/ledger/report files and validates future
    admission against fresh `paper_online_readiness_contract_ready` evidence,
-   while reporting session runner, broker execution, live execution, and direct
-   policy-to-broker authority as false.
-11. `hero.runtime.reset mode=plan|execute` previews and, when
+   while reporting the admission surface's session runner, broker execution,
+   live execution, and direct policy-to-broker authority as false. The same
+   schema response also reports the separate
+   `paper_online_session_runner.v1` contract, which allows bounded paper
+   execution only.
+11. `hero.environment.certify.paper_online_session_admission mode=check|issue`
+   validates a compact `admission_request` object or
+   `admission_request_path` against an existing
+   `lattice.paper_online_readiness.fact`, returns `admission_ready` plus
+   issues, and writes `lattice.paper_online_session_admission.fact` only in
+   issue mode after preview digest binding. It writes no session state or
+   execution artifacts.
+12. `hero.environment.paper_online.session mode=validate|run` validates or runs
+   a bounded paper-only session from an existing admission fact. It takes a
+   compact `session_request` object or `session_request_path`, refuses
+   overwrite, writes durable session artifacts plus Lattice exposure/session
+   facts in run mode, and does not authorize broker execution or live capital.
+13. `hero.marshal.paper_online.session_handoff mode=plan|dry_run` prepares a
+   compact paper-online session handoff from existing readiness/admission
+   evidence. Plan mode only assembles Environment-compatible request digests.
+   Dry-run mode calls Environment admission check and, once admission evidence
+   exists, Environment session validate, then writes a Marshal receipt.
+   Marshal does not issue admission, run the session, execute Cajtucu, route
+   broker orders, select policy/checkpoint, prove Lattice targets, or authorize
+   live capital.
+14. `hero.runtime.reset mode=plan|execute` previews and, when
    explicitly enabled, clears the runtime artifact root for developer reset
    workflows.
 
@@ -562,10 +588,10 @@ safety. The default `operator_default` profile permits digest-bound non-live
 wave/train execution, while developer reset is available only through the
 guarded `hero.runtime.reset` path with direct `runtime_root`/`backup`
 selectors. Use
-`runtime_hero_profile = long_train_operator` in an operator-local `.config`, or
-pass `--profile long_train_operator`, for longer intentional training runs; it
-keeps execute/train enabled, leaves Runtime process timeout unlimited by
-default, and disables developer reset.
+`runtime_hero_profile = long_train_operator` in `src/config/.config`, or pass
+`--profile long_train_operator`, for longer intentional training runs; it keeps
+execute/train enabled, leaves Runtime process timeout unlimited by default, and
+keeps guarded developer reset available.
 
 Direct `cuwacunu_exec` remains available for recovery/debugging, but it is not
 the normal operator path. Non-dry-run direct launches without handoff identity

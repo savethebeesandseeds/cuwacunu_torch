@@ -7440,12 +7440,12 @@ kv_get(const std::unordered_map<std::string, std::string> &fields,
 [[nodiscard]] policy_training_lattice_identity_t
 policy_training_lattice_identity_from_parent_fields(
     const std::unordered_map<std::string, std::string> &fields,
-    std::string_view policy_job_id) {
+    std::string_view policy_job_id, std::string_view policy_wave_id) {
   policy_training_lattice_identity_t identity{};
   identity.parent_exposure_fact_digest =
       kv_get(fields, "parent_exposure_fact_digest");
   identity.job_id = std::string(policy_job_id);
-  identity.wave_id = "policy_training_ppo_v0";
+  identity.wave_id = std::string(policy_wave_id);
   identity.job_status = "completed";
   identity.wave_action = "train";
   identity.split_name = kv_get(fields, "split_name");
@@ -7461,7 +7461,8 @@ policy_training_lattice_identity_from_parent_fields(
 policy_training_lattice_identity_from_source_job(
     const fs::path &source_replay_job_dir, std::string_view policy_job_id,
     std::string_view parent_forecast_eval_fact_digest,
-    std::string_view parent_observer_belief_fact_digest) {
+    std::string_view parent_observer_belief_fact_digest,
+    std::string_view policy_wave_id) {
   const auto forecast_fields =
       parse_kv_file(source_replay_job_dir / "lattice.forecast_eval.fact");
   if (!forecast_fields.empty() &&
@@ -7469,7 +7470,8 @@ policy_training_lattice_identity_from_source_job(
        kv_get(forecast_fields, "fact_digest") ==
            trim_ascii(parent_forecast_eval_fact_digest))) {
     return policy_training_lattice_identity_from_parent_fields(forecast_fields,
-                                                               policy_job_id);
+                                                               policy_job_id,
+                                                               policy_wave_id);
   }
 
   const auto observer_fields =
@@ -7479,7 +7481,8 @@ policy_training_lattice_identity_from_source_job(
        kv_get(observer_fields, "fact_digest") ==
            trim_ascii(parent_observer_belief_fact_digest))) {
     return policy_training_lattice_identity_from_parent_fields(observer_fields,
-                                                               policy_job_id);
+                                                               policy_job_id,
+                                                               policy_wave_id);
   }
 
   return {};
@@ -7890,8 +7893,20 @@ unique_policy_training_attempt_leaf(std::string_view contract_digest) {
         job_dir / "runtime.health_measurement.fact",
         policy_training_health_fact_text(job_id));
 
+    const auto policy_training_identity =
+        policy_training_lattice_identity_from_source_job(
+            fs::path(contract.replay_job_dir), job_id,
+            contract.parent_forecast_eval_fact_digest,
+            contract.parent_observer_belief_fact_digest,
+            "policy_training_pre_ppo");
+    const auto *identity_ptr =
+        policy_training_identity.parent_exposure_fact_digest.empty()
+            ? nullptr
+            : &policy_training_identity;
     const std::string fact_text =
-        policy_training_fact_text(contract, checkpoint_digest);
+        policy_training_fact_text(contract, checkpoint_digest,
+                                  /*runtime_trainer=*/false, {}, {},
+                                  identity_ptr);
     const fs::path policy_fact_path = job_dir / "runtime.policy_training.fact";
     cuwacunu::hero::runtime::job_layout::write_text_file_atomically(
         policy_fact_path, fact_text);
@@ -8751,7 +8766,8 @@ unique_policy_training_attempt_leaf(std::string_view contract_digest) {
         policy_training_lattice_identity_from_source_job(
             source_replay_job_dir, job_id,
             emitted_contract.parent_forecast_eval_fact_digest,
-            emitted_contract.parent_observer_belief_fact_digest);
+            emitted_contract.parent_observer_belief_fact_digest,
+            "policy_training_ppo_v0");
     const std::string fact_text = policy_training_fact_text(
         emitted_contract, emitted_contract.actor_checkpoint_digest,
         /*runtime_trainer=*/false,

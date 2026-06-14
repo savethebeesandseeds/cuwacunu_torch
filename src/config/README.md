@@ -157,12 +157,32 @@ returned by check mode. That sidecar is for Lattice
 `paper_online_readiness_contract_ready`; it does not start a paper-online session,
 select a policy, approve deployment, route through a broker, or authorize live
 capital.
-The follow-on `paper_online_session_contract.v1` surface is a Kikijyeba
-Environment contract/admission validator, not a runner. It consumes fresh
-`paper_online_readiness_contract_ready` evidence, names the durable session
-state/event/intent/ledger/report files, rejects stale or mismatched readiness
-proofs, and keeps broker/live/direct policy-to-broker authority denied.
-`hero.environment.inspect.schema` exposes this contract vocabulary read-only.
+The follow-on `paper_online_session_contract.v1` surface is split into
+admission and bounded paper-only execution. The admission contract consumes
+fresh `paper_online_readiness_contract_ready` evidence, names the durable
+session state/event/intent/ledger/report files, rejects stale or mismatched
+readiness proofs, and keeps broker/live/direct policy-to-broker authority
+denied. `hero.environment.inspect.schema` exposes both the admission contract
+and the `paper_online_session_runner.v1` runner contract.
+`hero.environment.certify.paper_online_session_admission mode=check|issue` is
+the admission certification for that contract. It keeps the tool surface
+compact with `admission_request={...}` or
+`admission_request_path=...`, reads the readiness sidecar from the request's
+readiness job directory, and reports `admission_ready` plus issues. Issue mode
+writes `lattice.paper_online_session_admission.fact` after preview digest
+binding, without writing session state or execution artifacts. The bounded
+runner is `hero.environment.paper_online.session mode=validate|run`, gated by
+`allow_paper_online_session_run` and capped by
+`paper_online_session_max_steps`. Its compact `session_request={...}` or
+`session_request_path=...` points at an admission job directory and a session
+root; run mode refuses overwrite and writes `session.manifest`,
+`session.state`, `session.events.lls`, `market_events.lls`,
+`action_intents.lls`, `execution_intents.lls`, `paper_ledger.lls`,
+`reward_reports.lls`, `lattice.exposure.fact`, and
+`lattice.paper_online_session.fact`. The runner binds
+`cajtucu.execution.paper.v1` paper execution identity only; it still does not
+select policies, approve deployment, route through a broker, or authorize live
+capital.
 
 The observer and deterministic policy DSLs currently require projection
 validation and explicitly disable live capital; this keeps
@@ -292,10 +312,11 @@ Runtime Hero starts from:
 default `operator_default` profile permits confirmed non-live wave/train
 execution while keeping developer reset available only through the guarded
 `hero.runtime.reset` path with explicit confirmation. Intentional long-running
-training may select `runtime_hero_profile = long_train_operator` in an
-operator-local `.config` or pass `--profile long_train_operator` to
-`hero_runtime.mcp`. That profile keeps execute/train enabled with explicit
-confirmation and a longer runtime budget, but keeps `allow_dev_nuke=false`.
+training may select `runtime_hero_profile = long_train_operator` in the
+canonical `src/config/.config` or pass `--profile long_train_operator` to
+`hero_runtime.mcp`. That profile keeps execute/train and guarded developer
+reset enabled with explicit confirmation and an unlimited Runtime process
+timeout.
 
 Reusable wave profiles now live inside the single canonical wave catalog:
 
@@ -305,10 +326,11 @@ Reusable wave profiles now live inside the single canonical wave catalog:
   `train_core_mtf_jepa_mae_vicreg`, `train_core_channel_mdn`,
   `cwu_02v_channel_validation_eval_mdn_1800_2050`,
   `cwu_01v_validation_eval_channel_mdn`,
-  `cwu_02v_validation_eval_channel_mdn`, and `policy_training_pre_ppo_noop`
+  `cwu_02v_validation_eval_channel_mdn`, `policy_training_pre_ppo_noop`, and
+  `policy_training_ppo_v0`
 
-Operator-local `.config` files point `[HERO].runtime_wave_dsl_path` at this
-same file and select the active block with `[HERO].runtime_wave_id`. The
+The canonical `src/config/.config` points `[HERO].runtime_wave_dsl_path` at this
+same file and selects the active block with `[HERO].runtime_wave_id`. The
 checked-in `WAVE_SELECTION.ACTIVE_WAVE_ID` is only a fallback for direct file
 decoding. Cursor ranges live in `ujcamei.source.cursor.dsl`; cursor ids
 intentionally avoid protocol names because source availability is independent of
@@ -316,6 +338,27 @@ the active protocol. Runtime execution may still adjust the effective
 launch range through Runtime handoff wave fields, or the equivalent
 `cuwacunu_exec --source-range ...` flags, without mutating the wave or cursor
 catalog. Effective ranges are not protocol identity.
+
+The durable learned-policy contract is
+`src/config/policy_training_ppo_v0.contract`. It binds the current replay,
+forecast evaluation, observer, causal-schedule, reward, execution-profile,
+action-distribution, and policy DSL/net/features evidence into the
+`policy_training_ppo_v0` wave while keeping live execution disabled. The older
+`src/config/policy_training_pre_ppo_noop.contract` remains only as a bounded
+contract-path smoke reference; it is not the current learned-policy path.
+
+Config-profile audit policy:
+
+- `src/config/.config` is the canonical default config and Config Hero validates
+  its path map.
+- There should be only one checked-in `.config` file. The train-core operator
+  directory may contain durable `.jkimyei` policies, but not config copies.
+- Temporary config copies are still discouraged for real training because
+  downstream Runtime/Lattice evidence must be recoverable from repo-local
+  config.
+- Prefer compact Marshal materialized handoffs for target, wave id, source
+  range, checkpoint source, and training profile when that preserves the same
+  proof-clean operator digest.
 
 Environment Hero starts from:
 

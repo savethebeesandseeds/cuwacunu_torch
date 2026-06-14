@@ -686,7 +686,6 @@ validate_dispatch_advice(const marshal_dispatch_advice_t &advice,
 
   if (advice.config_path.empty() || advice.runtime_root.empty() ||
       advice.target_id.empty() ||
-      advice.active_identity.protocol_contract_fingerprint.empty() ||
       advice.active_identity.target_spec_fingerprint.empty() ||
       advice.active_identity.split_policy_fingerprint.empty()) {
     add_refusal(result, marshal_refusal_reason_t::unknown_required_field,

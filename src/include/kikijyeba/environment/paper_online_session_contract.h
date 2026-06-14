@@ -12,8 +12,14 @@ namespace cuwacunu::kikijyeba::environment {
 
 inline constexpr const char *kPaperOnlineSessionContractV1 =
     "paper_online_session_contract.v1";
+inline constexpr const char *kPaperOnlineSessionRunnerContractV1 =
+    "paper_online_session_runner.v1";
+inline constexpr const char *kPaperOnlineSessionFactSchemaV1 =
+    "kikijyeba.lattice.paper_online_session.v1";
 inline constexpr const char *kPaperOnlineReadinessContractV1 =
     "paper_online_readiness_contract.v1";
+inline constexpr const char *kPaperOnlineSessionAdmissionFactSchemaV1 =
+    "kikijyeba.lattice.paper_online_session_admission.v1";
 inline constexpr const char *kPaperOnlineReadinessTargetReadyV1 =
     "paper_online_readiness_contract_ready";
 inline constexpr const char *kPaperOnlineReadinessFactSchemaV1 =
@@ -242,6 +248,58 @@ struct paper_online_session_contract_t {
   bool direct_policy_to_cajtucu_allowed{false};
 };
 
+struct paper_online_session_runner_contract_t {
+  std::string runner_contract_id{kPaperOnlineSessionRunnerContractV1};
+  std::string session_contract_id{kPaperOnlineSessionContractV1};
+  std::string session_fact_schema_id{kPaperOnlineSessionFactSchemaV1};
+  std::string session_admission_fact_schema_id{
+      kPaperOnlineSessionAdmissionFactSchemaV1};
+  std::string environment_contract_id{kPaperOnlineEnvironmentContractV1};
+  std::string execution_backend_id{"cajtucu.execution.paper.v1"};
+  std::string session_state_schema_id{kPaperOnlineSessionStateSchemaV1};
+  std::string action_schema_id{kPaperOnlineTargetWeightsActionSchemaV1};
+  std::string reward_contract_id{kPaperOnlineRewardContractV1};
+  std::string direct_edge_universe_validation_policy_id{
+      kPaperOnlineDirectEdgeUniversePolicyV1};
+  std::string missing_direct_pair_policy{kPaperOnlineMissingDirectPairPolicyV1};
+  std::string synthetic_execution_market_policy_id{
+      kPaperOnlineSyntheticExecutionMarketPolicyV1};
+  std::string persistent_paper_ledger_recovery_policy_id{
+      kPaperOnlinePersistentLedgerRecoveryPolicyV1};
+  std::string paper_ledger_storage_policy_id{kPaperOnlineLedgerStoragePolicyV1};
+  std::string session_lifecycle_policy_id{kPaperOnlineSessionLifecyclePolicyV1};
+  std::string idempotency_policy_id{kPaperOnlineIdempotencyPolicyV1};
+  std::string duplicate_action_policy{kPaperOnlineDuplicateActionPolicyV1};
+  std::string duplicate_execution_intent_policy{
+      kPaperOnlineDuplicateExecutionIntentPolicyV1};
+  std::string market_data_staleness_policy_id{
+      kPaperOnlineMarketDataStalenessPolicyV1};
+  std::string operator_abort_policy_id{kPaperOnlineOperatorAbortPolicyV1};
+  std::string kill_switch_policy_id{kPaperOnlineKillSwitchPolicyV1};
+  std::vector<paper_online_session_artifact_slot_t> durable_artifacts{
+      default_paper_online_session_artifacts()};
+  bool requires_session_admission_fact{true};
+  bool requires_bounded_step_count{true};
+  bool requires_market_event_log{true};
+  bool requires_action_intent_log{true};
+  bool requires_execution_intent_log{true};
+  bool requires_paper_ledger_log{true};
+  bool requires_reward_report_log{true};
+  bool requires_duplicate_action_rejection{true};
+  bool requires_duplicate_execution_intent_rejection{true};
+  bool requires_persistent_paper_ledger_recovery{true};
+  bool requires_terminal_state{true};
+  bool session_runner_implemented{true};
+  bool paper_execution_allowed{true};
+  bool policy_selection_authority{false};
+  bool checkpoint_selection_authority{false};
+  bool broker_execution_allowed{false};
+  bool live_execution_allowed{false};
+  bool direct_policy_to_broker_allowed{false};
+  bool market_readiness_authority{false};
+  bool deployment_authority{false};
+};
+
 struct paper_online_readiness_evidence_t {
   std::string readiness_target_id{kPaperOnlineReadinessTargetReadyV1};
   std::string readiness_contract_id{kPaperOnlineReadinessContractV1};
@@ -322,6 +380,11 @@ struct paper_online_readiness_evidence_t {
 
 [[nodiscard]] inline paper_online_session_contract_t
 default_paper_online_session_contract() {
+  return {};
+}
+
+[[nodiscard]] inline paper_online_session_runner_contract_t
+default_paper_online_session_runner_contract() {
   return {};
 }
 
@@ -472,6 +535,124 @@ paper_online_session_contract_issues(
       contract.direct_policy_to_cajtucu_allowed) {
     issues.emplace_back(
         "paper_online_session_contract_must_not_claim_execution_authority");
+  }
+  return issues;
+}
+
+[[nodiscard]] inline std::vector<std::string>
+paper_online_session_runner_contract_issues(
+    const paper_online_session_runner_contract_t &contract) {
+  namespace detail = paper_online_session_detail;
+  std::vector<std::string> issues;
+  detail::require_equal(contract.runner_contract_id,
+                        kPaperOnlineSessionRunnerContractV1,
+                        "unsupported_session_runner_contract_id", &issues);
+  detail::require_equal(contract.session_contract_id,
+                        kPaperOnlineSessionContractV1,
+                        "unsupported_session_contract_id", &issues);
+  detail::require_equal(contract.session_fact_schema_id,
+                        kPaperOnlineSessionFactSchemaV1,
+                        "unsupported_session_fact_schema_id", &issues);
+  detail::require_equal(contract.session_admission_fact_schema_id,
+                        kPaperOnlineSessionAdmissionFactSchemaV1,
+                        "unsupported_session_admission_fact_schema_id",
+                        &issues);
+  detail::require_equal(
+      contract.environment_contract_id, kPaperOnlineEnvironmentContractV1,
+      "unsupported_paper_online_environment_contract_id", &issues);
+  detail::require_equal(contract.execution_backend_id,
+                        "cajtucu.execution.paper.v1",
+                        "unsupported_execution_backend_id", &issues);
+  detail::require_equal(contract.session_state_schema_id,
+                        kPaperOnlineSessionStateSchemaV1,
+                        "unsupported_session_state_schema_id", &issues);
+  detail::require_equal(contract.action_schema_id,
+                        kPaperOnlineTargetWeightsActionSchemaV1,
+                        "unsupported_action_schema_id", &issues);
+  detail::require_equal(contract.reward_contract_id,
+                        kPaperOnlineRewardContractV1,
+                        "unsupported_reward_contract_id", &issues);
+  detail::require_equal(contract.direct_edge_universe_validation_policy_id,
+                        kPaperOnlineDirectEdgeUniversePolicyV1,
+                        "unsupported_direct_edge_universe_policy_id", &issues);
+  detail::require_equal(contract.missing_direct_pair_policy,
+                        kPaperOnlineMissingDirectPairPolicyV1,
+                        "unsupported_missing_direct_pair_policy", &issues);
+  detail::require_equal(contract.synthetic_execution_market_policy_id,
+                        kPaperOnlineSyntheticExecutionMarketPolicyV1,
+                        "synthetic_execution_market_policy_mismatch", &issues);
+  detail::require_equal(contract.persistent_paper_ledger_recovery_policy_id,
+                        kPaperOnlinePersistentLedgerRecoveryPolicyV1,
+                        "unsupported_ledger_recovery_policy_id", &issues);
+  detail::require_equal(contract.paper_ledger_storage_policy_id,
+                        kPaperOnlineLedgerStoragePolicyV1,
+                        "unsupported_paper_ledger_storage_policy_id", &issues);
+  detail::require_equal(contract.session_lifecycle_policy_id,
+                        kPaperOnlineSessionLifecyclePolicyV1,
+                        "unsupported_session_lifecycle_policy_id", &issues);
+  detail::require_equal(contract.idempotency_policy_id,
+                        kPaperOnlineIdempotencyPolicyV1,
+                        "unsupported_idempotency_policy_id", &issues);
+  detail::require_equal(contract.duplicate_action_policy,
+                        kPaperOnlineDuplicateActionPolicyV1,
+                        "unsupported_duplicate_action_policy", &issues);
+  detail::require_equal(contract.duplicate_execution_intent_policy,
+                        kPaperOnlineDuplicateExecutionIntentPolicyV1,
+                        "unsupported_duplicate_execution_intent_policy",
+                        &issues);
+  detail::require_equal(contract.market_data_staleness_policy_id,
+                        kPaperOnlineMarketDataStalenessPolicyV1,
+                        "unsupported_market_data_staleness_policy_id", &issues);
+  detail::require_equal(contract.operator_abort_policy_id,
+                        kPaperOnlineOperatorAbortPolicyV1,
+                        "unsupported_operator_abort_policy_id", &issues);
+  detail::require_equal(contract.kill_switch_policy_id,
+                        kPaperOnlineKillSwitchPolicyV1,
+                        "unsupported_kill_switch_policy_id", &issues);
+
+  for (const auto &required : default_paper_online_session_artifacts()) {
+    if (!detail::has_artifact_slot(contract.durable_artifacts, required)) {
+      issues.emplace_back("missing_session_artifact_slot:" +
+                          required.artifact_id);
+    }
+  }
+  detail::require_true(contract.requires_session_admission_fact,
+                       "session_admission_fact_requirement_missing", &issues);
+  detail::require_true(contract.requires_bounded_step_count,
+                       "bounded_step_count_requirement_missing", &issues);
+  detail::require_true(contract.requires_market_event_log,
+                       "market_event_log_requirement_missing", &issues);
+  detail::require_true(contract.requires_action_intent_log,
+                       "action_intent_log_requirement_missing", &issues);
+  detail::require_true(contract.requires_execution_intent_log,
+                       "execution_intent_log_requirement_missing", &issues);
+  detail::require_true(contract.requires_paper_ledger_log,
+                       "paper_ledger_log_requirement_missing", &issues);
+  detail::require_true(contract.requires_reward_report_log,
+                       "reward_report_log_requirement_missing", &issues);
+  detail::require_true(contract.requires_duplicate_action_rejection,
+                       "duplicate_action_rejection_requirement_missing",
+                       &issues);
+  detail::require_true(
+      contract.requires_duplicate_execution_intent_rejection,
+      "duplicate_execution_intent_rejection_requirement_missing", &issues);
+  detail::require_true(contract.requires_persistent_paper_ledger_recovery,
+                       "persistent_paper_ledger_recovery_requirement_missing",
+                       &issues);
+  detail::require_true(contract.requires_terminal_state,
+                       "terminal_state_requirement_missing", &issues);
+  detail::require_true(contract.session_runner_implemented,
+                       "session_runner_not_implemented", &issues);
+  detail::require_true(contract.paper_execution_allowed,
+                       "paper_execution_not_allowed", &issues);
+  if (contract.policy_selection_authority ||
+      contract.checkpoint_selection_authority ||
+      contract.broker_execution_allowed || contract.live_execution_allowed ||
+      contract.direct_policy_to_broker_allowed ||
+      contract.market_readiness_authority || contract.deployment_authority) {
+    issues.emplace_back(
+        "paper_online_session_runner_must_not_claim_broker_live_or_selection_"
+        "authority");
   }
   return issues;
 }

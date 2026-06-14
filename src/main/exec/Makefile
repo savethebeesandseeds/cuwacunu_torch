@@ -22,6 +22,8 @@ CUWACUNU_EXEC_OBJS := \
   $(OUTPUT_PATH)/common/grammar_parser.o \
   $(OUTPUT_PATH)/common/instruction_lexer.o \
   $(OUTPUT_PATH)/common/instruction_parser.o \
+  $(OUTPUT_PATH)/common/runtime_lls.o \
+  $(OUTPUT_PATH)/common/lattice.o \
   $(OUTPUT_PATH)/common/memory_mapped_datafile.o \
   $(OUTPUT_PATH)/libtorch/memory_mapped_dataset.o \
   $(OUTPUT_PATH)/libtorch/memory_mapped_dataloader.o \
@@ -38,6 +40,16 @@ cuwacunu-exec-objects:
 	$(MAKE) -C $(IMPL_PATH)/ujcamei/source/retrieval/storage/memory_mapped all
 	$(MAKE) -C $(IMPL_PATH)/wikimyei/expression/nodelift/srl all
 	$(MAKE) -C $(IMPL_PATH)/wikimyei/inference/expected_value/mdn all
+
+$(OUTPUT_PATH)/common/runtime_lls.o: \
+	$(IMPL_PATH)/hero/lattice_hero/lattice/runtime_report/runtime_lls.cpp \
+	$(SRC_ROOT)/Makefile.config
+	$(CC_RULE)
+
+$(OUTPUT_PATH)/common/lattice.o: \
+	$(IMPL_PATH)/hero/lattice_hero/lattice/lattice.cpp \
+	$(SRC_ROOT)/Makefile.config
+	$(CC_RULE)
 
 $(OBJTMP)/cuwacunu_exec.o: \
 	$(HERE_PATH)/cuwacunu_exec.cpp \

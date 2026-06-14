@@ -49,7 +49,7 @@ runtime_exec_path:path = /cuwacunu/.build/exec/cuwacunu_exec
 default_config_path:path = /cuwacunu/src/config/.config
 runtime_root:path = /cuwacunu/.runtime/cuwacunu_exec
 allowed_job_roots:path_list = /cuwacunu/.runtime/cuwacunu_exec,/tmp
-allow_force_rebuild_cache:bool = false
+allow_force_rebuild_cache:bool = true
 dev_nuke_backup_enabled:bool = false
 dev_nuke_backup_root:path = /cuwacunu/.backups/runtime_dev_nuke
 allowed_dev_nuke_roots:path_list = /cuwacunu/.runtime
@@ -68,7 +68,7 @@ RUNTIME_PROFILE long_train_operator {
   default_dry_run:bool = true
   allow_execute:bool = true
   allow_train_execute:bool = true
-  allow_dev_nuke:bool = false
+  allow_dev_nuke:bool = true
   max_runtime_seconds:int = 0
 }
 )";

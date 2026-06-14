@@ -81,3 +81,17 @@ WAVE_SETTINGS {
   SOURCE_CURSOR_ID = policy_training.all;
   SOURCE_ORDER = random_per_epoch;
 };
+
+WAVE_SETTINGS {
+  WAVE_ID = policy_training_ppo_v0;
+  PROTOCOL = cwu_02v;
+  TARGET = wikimyei.policy.portfolio;
+  MODE = train;
+  JOB_KIND = policy_training;
+  POLICY_ID = wikimyei.policy.portfolio.graph_node_allocation.ppo_v0;
+  POLICY_KIND = ppo_policy_adapter.v1;
+  TRAINING_SCHEDULE_MODE = causal_walk_forward_training.v1;
+  LIVE_EXECUTION_ALLOWED = false;
+  SOURCE_CURSOR_ID = policy_training.all;
+  SOURCE_ORDER = random_per_epoch;
+};

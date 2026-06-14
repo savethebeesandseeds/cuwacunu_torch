@@ -6,6 +6,7 @@ Marshal is intentionally small:
 hero.marshal.status
 hero.marshal.prepare.*
 hero.marshal.rollout
+hero.marshal.paper_online.session_handoff
 hero.marshal.inspect
 ```
 
@@ -49,6 +50,10 @@ prepare
 rollout
   completed Runtime job evidence -> bounded replay rollout through Runtime
 
+paper_online.session_handoff
+  paper-online readiness/admission evidence -> bounded Environment session
+  handoff plan/dry-run receipt
+
 inspect
   read-only Runtime/Lattice/Marshal evidence explanation
 ```
@@ -57,40 +62,65 @@ Marshal can coordinate bounded cost-aware replay through Runtime and inspect the
 resulting Runtime/Lattice evidence. Direct `cuwacunu_exec` remains an explicit
 debug path with warning, not the recommended proof-clean operator path.
 
-## Next Marshal Work
+## Completed Marshal Work
 
-### Paper-Online Session Handoff Contract
+### Paper-Online Session Handoff
 
 Milestone:
 
 ```text
-paper_online_session_contract.v1 handoff support
+paper_online_session_marshal_handoff.v1
 ```
 
-Marshal role:
+Current state:
 
-- Prepare and inspect bounded paper-online-session handoffs without becoming
-  proof authority, Environment authority, or executor.
-- Require an existing `paper_online_readiness_contract_ready` proof before a
-  future session handoff can proceed, and align the handoff fields with the
-  Environment `paper_online_session_contract.v1` admission validator.
-- Bind policy artifact identity, accepted settings protection, Cajtucu paper
-  execution profile, graph-node universe, accounting numeraire, session policy,
-  stale-data policy, durable paper-ledger path, idempotency policy, and operator
-  abort/kill-switch requirements in plan/dry-run output.
-- Delegate any future execution only through Runtime and Environment/Cajtucu
-  contracts.
-- Quote Lattice readiness deficits and explain next safe actions.
-- Preserve authority denials: no policy selection, tuning, reward judgment,
-  market readiness, deployment readiness, or live execution.
+- `hero.marshal.paper_online.session_handoff mode=plan|dry_run` prepares a
+  compact handoff from a `handoff_request` object or `handoff_request_path`.
+- Plan mode builds Environment-compatible admission/session payload digests
+  without calling Environment or writing a receipt.
+- Dry-run mode calls only safe validators:
+  `hero.environment.certify.paper_online_session_admission mode=check` and,
+  once admission evidence exists,
+  `hero.environment.paper_online.session mode=validate`.
+- Dry-run writes a durable
+  `kikijyeba.marshal.paper_online_session_handoff_receipt.v1` receipt with
+  request digests, Environment validation digests, readiness/admission sidecar
+  visibility, authority denials, and next safe actions.
+- Marshal never issues admission, runs the paper-online session, executes
+  Cajtucu paper mechanics, routes broker orders, selects policy/checkpoint, or
+  proves Lattice targets.
 
-Acceptance sketch:
+### Dispatch Readiness Repair
 
-- Operators can see what a paper-online session would require before any
-  online-paper session can run.
-- Marshal packets expose missing prerequisites and next safe actions.
-- Marshal never writes policy, ledger, or paper-online execution artifacts
-  itself.
+Milestone:
+
+```text
+marshal_dispatch_readiness_repair.v1
+```
+
+Current state:
+
+- Post-dev-nuke train-core recovery starts through Marshal again without a
+  direct `cuwacunu_exec` bypass.
+- Lattice preserves first-wave advice when no completed Runtime candidate
+  exists, while still failing closed if existing candidate evidence cannot be
+  compared to active proof identity.
+- Marshal accepts first-wave plan advice without requiring a runtime-derived
+  contract fingerprint before the first Runtime evidence exists.
+- `hero.marshal.prepare.train` returns representation train-core plan and
+  dry-run-ready packets through the canonical `src/config/.config`.
+- `cwu_02v_mdn_train_core_no_test_leakage` correctly points back to the
+  representation checkpoint-source dependency until representation evidence is
+  completed and proven.
+- `policy_training_artifact_ready` remains proof-only and non-dispatchable by
+  design.
+
+Remaining boundary:
+
+- The checked-in Marshal profiles now authorize non-live execute-mode training.
+  Live execution remains disabled by Marshal/Runtime/Environment contracts.
+
+## Next Marshal Work
 
 ## Future Milestone: Tsodao Handoff
 

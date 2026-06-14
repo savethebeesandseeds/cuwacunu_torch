@@ -76,6 +76,7 @@ enum class lattice_fact_family_t {
   tsodao_settings_protection,
   policy_acceptance,
   paper_online_readiness,
+  paper_online_session,
   selection_signal,
   representation_support,
 };
@@ -3413,6 +3414,136 @@ struct paper_online_readiness_summary_t {
   std::vector<std::string> issues{};
 };
 
+struct lattice_paper_online_session_fact_t {
+  std::string schema{"kikijyeba.lattice.paper_online_session.v1"};
+  std::string fact_type{"paper_online_session"};
+  std::string parent_exposure_fact_digest{};
+
+  std::string contract_fingerprint{};
+  std::string protocol_id{};
+  std::string graph_order_fingerprint{};
+  std::string source_cursor_token{};
+  std::string split_policy_fingerprint{};
+  std::string component_assembly_fingerprint{};
+  std::string target_component_family_id{};
+  std::string job_id{};
+  std::string wave_id{};
+  std::string job_status{};
+  std::string wave_action{};
+  std::string split_name{"unknown"};
+  exposure_split_role_t split_role{exposure_split_role_t::unknown};
+  anchor_interval_t anchor_range{};
+  anchor_interval_t completed_anchor_range{};
+
+  std::string session_id{};
+  std::string session_contract_id{"paper_online_session_contract.v1"};
+  std::string session_runner_contract_id{"paper_online_session_runner.v1"};
+  std::string admission_id{};
+  std::string admission_fact_digest{};
+  std::string admission_fact_schema_id{
+      "kikijyeba.lattice.paper_online_session_admission.v1"};
+  std::string readiness_fact_digest{};
+  std::string readiness_proof_certificate_digest{};
+  std::string accepted_policy_id{};
+  std::string accepted_actor_checkpoint_digest{};
+  std::string accepted_checkpoint_digest{};
+  std::string execution_profile_digest{};
+  std::string locked_execution_profile_digest{};
+  std::string paper_online_profile_digest{};
+  std::string direct_edge_universe_digest{};
+  std::string accounting_numeraire_node_id{};
+  std::string target_node_ids{};
+  std::string execution_backend_id{"cajtucu.execution.paper.v1"};
+  std::string reward_contract_id{};
+
+  std::string session_manifest_digest{};
+  std::string session_state_digest{};
+  std::string session_events_digest{};
+  std::string market_events_digest{};
+  std::string action_intents_digest{};
+  std::string execution_intents_digest{};
+  std::string paper_ledger_digest{};
+  std::string reward_reports_digest{};
+
+  std::int64_t requested_step_count{0};
+  std::int64_t completed_step_count{0};
+  std::int64_t market_event_count{0};
+  std::int64_t action_intent_count{0};
+  std::int64_t execution_intent_count{0};
+  std::int64_t paper_fill_count{0};
+  std::int64_t reward_report_count{0};
+  std::int64_t started_at_ms{0};
+  std::int64_t stopped_at_ms{0};
+  std::int64_t max_market_data_staleness_ms{0};
+  std::int64_t max_observed_market_data_staleness_ms{0};
+  std::string terminal_state{};
+
+  bool ledger_recovered{false};
+  bool duplicate_action_protection_enforced{false};
+  bool duplicate_execution_intent_protection_enforced{false};
+  bool market_data_staleness_enforced{false};
+  bool operator_abort_supported{false};
+  bool kill_switch_supported{false};
+  bool operator_abort_triggered{false};
+  bool kill_switch_triggered{false};
+  bool terminal_state_recorded{false};
+  bool artifacts_written{false};
+  bool artifact_evidence{true};
+  bool paper_online_session_artifact{true};
+  bool paper_execution_attempted{false};
+  bool paper_execution_completed{false};
+
+  bool broker_execution_allowed{false};
+  bool live_execution_allowed{false};
+  bool direct_policy_to_broker_allowed{false};
+  bool direct_policy_to_cajtucu_allowed{false};
+  bool policy_selector{false};
+  bool checkpoint_selector{false};
+  bool optimizer{false};
+  bool allocation_authority{false};
+  bool execution_authority{false};
+  bool readiness_authority{false};
+  bool quality_authority{false};
+  bool performance_authority{false};
+  bool market_readiness_authority{false};
+  bool deployment_authority{false};
+  bool live_execution_authority{false};
+  bool coverage_authority{false};
+  bool leakage_authority{false};
+  bool contract_identity_authority{false};
+};
+
+struct paper_online_session_summary_t {
+  std::string schema{"kikijyeba.lattice.paper_online_session_summary.v1"};
+  std::int64_t exposure_fact_count{0};
+  std::int64_t paper_online_session_fact_count{0};
+  std::int64_t parent_exposure_fact_count{0};
+  std::int64_t admission_fact_declared_count{0};
+  std::int64_t readiness_fact_declared_count{0};
+  std::int64_t session_id_bound_count{0};
+  std::int64_t stopped_terminal_count{0};
+  std::int64_t aborted_terminal_count{0};
+  std::int64_t kill_switch_terminal_count{0};
+  std::int64_t artifact_evidence_count{0};
+  std::int64_t paper_execution_completed_count{0};
+  std::int64_t completed_step_count{0};
+  std::int64_t authority_drift_count{0};
+  std::int64_t warning_count{0};
+  bool artifact_evidence{true};
+  bool paper_online_session_artifact{true};
+  bool broker_execution_allowed{false};
+  bool live_execution_allowed{false};
+  bool direct_policy_to_broker_allowed{false};
+  bool direct_policy_to_cajtucu_allowed{false};
+  bool readiness_authority{false};
+  bool quality_authority{false};
+  bool performance_authority{false};
+  bool market_readiness_authority{false};
+  bool deployment_authority{false};
+  bool live_execution_authority{false};
+  std::vector<std::string> issues{};
+};
+
 struct lattice_selection_signal_fact_t {
   std::string schema{"kikijyeba.lattice.selection_signal.v1"};
   std::string fact_type{"selection_signal_event"};
@@ -3719,10 +3850,15 @@ empty_policy_acceptance_facts() {
   return empty;
 }
 
-[[nodiscard]] inline const std::vector<
-    lattice_paper_online_readiness_fact_t> &
+[[nodiscard]] inline const std::vector<lattice_paper_online_readiness_fact_t> &
 empty_paper_online_readiness_facts() {
   static const std::vector<lattice_paper_online_readiness_fact_t> empty{};
+  return empty;
+}
+
+[[nodiscard]] inline const std::vector<lattice_paper_online_session_fact_t> &
+empty_paper_online_session_facts() {
+  static const std::vector<lattice_paper_online_session_fact_t> empty{};
   return empty;
 }
 
@@ -12435,8 +12571,7 @@ inline void append_policy_acceptance_scan_warning(
 [[nodiscard]] inline std::vector<std::filesystem::path>
 paper_online_readiness_fact_paths_for_job_dir(
     const std::filesystem::path &job_dir) {
-  const auto artifact_dir =
-      job_dir / "artifacts" / "paper.online.readiness.v1";
+  const auto artifact_dir = job_dir / "artifacts" / "paper.online.readiness.v1";
   return {job_dir / "lattice.paper_online_readiness.fact",
           job_dir / "paper_online_readiness.fact",
           job_dir / "runtime.paper_online_readiness.fact",
@@ -12453,8 +12588,7 @@ paper_online_readiness_fact_paths_for_job_dir(
          !fact.paper_online_profile_digest.empty() ||
          !fact.direct_edge_universe_digest.empty() ||
          !fact.persistent_paper_ledger_recovery_policy_id.empty() ||
-         !fact.idempotency_policy_id.empty() ||
-         !fact.clock_policy_id.empty() ||
+         !fact.idempotency_policy_id.empty() || !fact.clock_policy_id.empty() ||
          !fact.market_data_staleness_policy_id.empty() ||
          !fact.operator_abort_policy_id.empty() ||
          !fact.kill_switch_policy_id.empty() || fact.policy_acceptance_ready ||
@@ -12466,8 +12600,9 @@ paper_online_readiness_fact_paths_for_job_dir(
          fact.market_data_staleness_bound ||
          fact.reward_report_artifact_path_bound || fact.operator_abort_bound ||
          fact.kill_switch_bound || fact.synthetic_execution_markets_allowed ||
-         fact.numeraire_fallback_allowed || fact.paper_online_execution_allowed ||
-         fact.live_execution_allowed || fact.broker_execution_allowed ||
+         fact.numeraire_fallback_allowed ||
+         fact.paper_online_execution_allowed || fact.live_execution_allowed ||
+         fact.broker_execution_allowed ||
          fact.direct_policy_to_broker_allowed ||
          fact.direct_policy_to_cajtucu_allowed || !fact.artifact_evidence ||
          !fact.visibility_only || !fact.paper_online_readiness_artifact ||
@@ -12608,14 +12743,15 @@ make_paper_online_readiness_facts_from_job_dir(
   }
 
   fact.readiness_id = first_value({"readiness_id"});
-  fact.readiness_contract_id = first_value({"readiness_contract_id",
-                                            "paper_online_readiness_contract_id"});
+  fact.readiness_contract_id = first_value(
+      {"readiness_contract_id", "paper_online_readiness_contract_id"});
   if (fact.readiness_contract_id.empty()) {
     fact.readiness_contract_id = "paper_online_readiness_contract.v1";
   }
   fact.policy_acceptance_fact_digest =
       first_value({"policy_acceptance_fact_digest"});
-  fact.policy_acceptance_target_id = first_value({"policy_acceptance_target_id"});
+  fact.policy_acceptance_target_id =
+      first_value({"policy_acceptance_target_id"});
   if (fact.policy_acceptance_target_id.empty()) {
     fact.policy_acceptance_target_id = "policy_acceptance_contract_ready";
   }
@@ -12643,9 +12779,8 @@ make_paper_online_readiness_facts_from_job_dir(
   fact.accounting_numeraire_node_id =
       first_value({"accounting_numeraire_node_id"});
 
-  fact.paper_online_environment_contract_id =
-      first_value({"paper_online_environment_contract_id",
-                   "environment_contract_id"});
+  fact.paper_online_environment_contract_id = first_value(
+      {"paper_online_environment_contract_id", "environment_contract_id"});
   if (fact.paper_online_environment_contract_id.empty()) {
     fact.paper_online_environment_contract_id =
         "kikijyeba.environment.paper_online.v1";
@@ -12660,8 +12795,7 @@ make_paper_online_readiness_facts_from_job_dir(
     fact.direct_edge_universe_validation_policy_id =
         "direct_graph_node_pair_universe_required.v1";
   }
-  fact.missing_direct_pair_policy =
-      first_value({"missing_direct_pair_policy"});
+  fact.missing_direct_pair_policy = first_value({"missing_direct_pair_policy"});
   if (fact.missing_direct_pair_policy.empty()) {
     fact.missing_direct_pair_policy = "skip_pair_warn";
   }
@@ -12682,12 +12816,10 @@ make_paper_online_readiness_facts_from_job_dir(
   if (fact.session_state_schema_id.empty()) {
     fact.session_state_schema_id = "kikijyeba.paper_online.session_state.v1";
   }
-  fact.session_lifecycle_policy_id =
-      first_value({"session_lifecycle_policy_id",
-                   "session_start_stop_policy_id"});
+  fact.session_lifecycle_policy_id = first_value(
+      {"session_lifecycle_policy_id", "session_start_stop_policy_id"});
   fact.idempotency_policy_id = first_value({"idempotency_policy_id"});
-  fact.execution_intent_id_policy =
-      first_value({"execution_intent_id_policy"});
+  fact.execution_intent_id_policy = first_value({"execution_intent_id_policy"});
   fact.duplicate_action_policy = first_value({"duplicate_action_policy"});
   fact.duplicate_execution_intent_policy =
       first_value({"duplicate_execution_intent_policy"});
@@ -12728,8 +12860,7 @@ make_paper_online_readiness_facts_from_job_dir(
   fact.kill_switch_bound = first_bool({"kill_switch_bound"});
   fact.synthetic_execution_markets_allowed =
       first_bool({"synthetic_execution_markets_allowed"});
-  fact.numeraire_fallback_allowed =
-      first_bool({"numeraire_fallback_allowed"});
+  fact.numeraire_fallback_allowed = first_bool({"numeraire_fallback_allowed"});
   fact.paper_online_execution_allowed =
       first_bool({"paper_online_execution_allowed"});
   fact.live_execution_allowed = first_bool({"live_execution_allowed"});
@@ -12742,8 +12873,9 @@ make_paper_online_readiness_facts_from_job_dir(
   fact.artifact_evidence =
       first_bool({"artifact_evidence"}, fact.artifact_evidence);
   fact.visibility_only = first_bool({"visibility_only"}, fact.visibility_only);
-  fact.paper_online_readiness_artifact = first_bool(
-      {"paper_online_readiness_artifact"}, fact.paper_online_readiness_artifact);
+  fact.paper_online_readiness_artifact =
+      first_bool({"paper_online_readiness_artifact"},
+                 fact.paper_online_readiness_artifact);
   fact.policy_selector = first_bool({"policy_selector"});
   fact.checkpoint_selector = first_bool({"checkpoint_selector"});
   fact.optimizer = first_bool({"optimizer"});
@@ -12794,8 +12926,8 @@ make_paper_online_readiness_facts_from_job_dir(
   out << "completed_anchor_end=" << fact.completed_anchor_range.end << "\n";
   out << "readiness_id=" << fact.readiness_id << "\n";
   out << "readiness_contract_id=" << fact.readiness_contract_id << "\n";
-  out << "policy_acceptance_fact_digest="
-      << fact.policy_acceptance_fact_digest << "\n";
+  out << "policy_acceptance_fact_digest=" << fact.policy_acceptance_fact_digest
+      << "\n";
   out << "policy_acceptance_target_id=" << fact.policy_acceptance_target_id
       << "\n";
   out << "policy_acceptance_proof_certificate_digest="
@@ -12838,11 +12970,11 @@ make_paper_online_readiness_facts_from_job_dir(
   out << "paper_ledger_storage_policy_id="
       << fact.paper_ledger_storage_policy_id << "\n";
   out << "session_state_schema_id=" << fact.session_state_schema_id << "\n";
-  out << "session_lifecycle_policy_id="
-      << fact.session_lifecycle_policy_id << "\n";
+  out << "session_lifecycle_policy_id=" << fact.session_lifecycle_policy_id
+      << "\n";
   out << "idempotency_policy_id=" << fact.idempotency_policy_id << "\n";
-  out << "execution_intent_id_policy="
-      << fact.execution_intent_id_policy << "\n";
+  out << "execution_intent_id_policy=" << fact.execution_intent_id_policy
+      << "\n";
   out << "duplicate_action_policy=" << fact.duplicate_action_policy << "\n";
   out << "duplicate_execution_intent_policy="
       << fact.duplicate_execution_intent_policy << "\n";
@@ -12850,18 +12982,17 @@ make_paper_online_readiness_facts_from_job_dir(
   out << "timestamp_policy_id=" << fact.timestamp_policy_id << "\n";
   out << "market_data_staleness_policy_id="
       << fact.market_data_staleness_policy_id << "\n";
-  out << "max_market_data_staleness_ms="
-      << fact.max_market_data_staleness_ms << "\n";
+  out << "max_market_data_staleness_ms=" << fact.max_market_data_staleness_ms
+      << "\n";
   out << "clock_skew_tolerance_ms=" << fact.clock_skew_tolerance_ms << "\n";
   out << "reward_report_artifact_policy_id="
       << fact.reward_report_artifact_policy_id << "\n";
   out << "operator_abort_policy_id=" << fact.operator_abort_policy_id << "\n";
   out << "kill_switch_policy_id=" << fact.kill_switch_policy_id << "\n";
-#define CUWACUNU_PAPER_ONLINE_READINESS_BOOL_FIELD(name)                      \
+#define CUWACUNU_PAPER_ONLINE_READINESS_BOOL_FIELD(name)                       \
   out << #name "=" << (fact.name ? "true" : "false") << "\n";
   CUWACUNU_PAPER_ONLINE_READINESS_BOOL_FIELD(policy_acceptance_ready)
-  CUWACUNU_PAPER_ONLINE_READINESS_BOOL_FIELD(
-      tsodao_settings_protection_ready)
+  CUWACUNU_PAPER_ONLINE_READINESS_BOOL_FIELD(tsodao_settings_protection_ready)
   CUWACUNU_PAPER_ONLINE_READINESS_BOOL_FIELD(accepted_policy_bound)
   CUWACUNU_PAPER_ONLINE_READINESS_BOOL_FIELD(protected_settings_bound)
   CUWACUNU_PAPER_ONLINE_READINESS_BOOL_FIELD(direct_edge_universe_validated)
@@ -12869,13 +13000,11 @@ make_paper_online_readiness_facts_from_job_dir(
   CUWACUNU_PAPER_ONLINE_READINESS_BOOL_FIELD(
       persistent_paper_ledger_recovery_bound)
   CUWACUNU_PAPER_ONLINE_READINESS_BOOL_FIELD(idempotency_bound)
-  CUWACUNU_PAPER_ONLINE_READINESS_BOOL_FIELD(
-      duplicate_action_protection_bound)
+  CUWACUNU_PAPER_ONLINE_READINESS_BOOL_FIELD(duplicate_action_protection_bound)
   CUWACUNU_PAPER_ONLINE_READINESS_BOOL_FIELD(session_lifecycle_bound)
   CUWACUNU_PAPER_ONLINE_READINESS_BOOL_FIELD(clock_timestamp_policy_bound)
   CUWACUNU_PAPER_ONLINE_READINESS_BOOL_FIELD(market_data_staleness_bound)
-  CUWACUNU_PAPER_ONLINE_READINESS_BOOL_FIELD(
-      reward_report_artifact_path_bound)
+  CUWACUNU_PAPER_ONLINE_READINESS_BOOL_FIELD(reward_report_artifact_path_bound)
   CUWACUNU_PAPER_ONLINE_READINESS_BOOL_FIELD(operator_abort_bound)
   CUWACUNU_PAPER_ONLINE_READINESS_BOOL_FIELD(kill_switch_bound)
   CUWACUNU_PAPER_ONLINE_READINESS_BOOL_FIELD(
@@ -12888,8 +13017,7 @@ make_paper_online_readiness_facts_from_job_dir(
   CUWACUNU_PAPER_ONLINE_READINESS_BOOL_FIELD(direct_policy_to_cajtucu_allowed)
   CUWACUNU_PAPER_ONLINE_READINESS_BOOL_FIELD(artifact_evidence)
   CUWACUNU_PAPER_ONLINE_READINESS_BOOL_FIELD(visibility_only)
-  CUWACUNU_PAPER_ONLINE_READINESS_BOOL_FIELD(
-      paper_online_readiness_artifact)
+  CUWACUNU_PAPER_ONLINE_READINESS_BOOL_FIELD(paper_online_readiness_artifact)
   CUWACUNU_PAPER_ONLINE_READINESS_BOOL_FIELD(policy_selector)
   CUWACUNU_PAPER_ONLINE_READINESS_BOOL_FIELD(checkpoint_selector)
   CUWACUNU_PAPER_ONLINE_READINESS_BOOL_FIELD(optimizer)
@@ -12992,13 +13120,13 @@ paper_online_readiness_fact_issues(
                    "missing_persistent_paper_ledger_recovery_policy_id");
   require_nonempty(fact.paper_ledger_storage_policy_id,
                    "missing_paper_ledger_storage_policy_id");
-  if (fact.session_state_schema_id != "kikijyeba.paper_online.session_state.v1") {
+  if (fact.session_state_schema_id !=
+      "kikijyeba.paper_online.session_state.v1") {
     issues.emplace_back("unsupported_session_state_schema_id");
   }
   require_nonempty(fact.session_lifecycle_policy_id,
                    "missing_session_lifecycle_policy_id");
-  require_nonempty(fact.idempotency_policy_id,
-                   "missing_idempotency_policy_id");
+  require_nonempty(fact.idempotency_policy_id, "missing_idempotency_policy_id");
   require_nonempty(fact.execution_intent_id_policy,
                    "missing_execution_intent_id_policy");
   require_nonempty(fact.duplicate_action_policy,
@@ -13019,8 +13147,7 @@ paper_online_readiness_fact_issues(
                    "missing_reward_report_artifact_policy_id");
   require_nonempty(fact.operator_abort_policy_id,
                    "missing_operator_abort_policy_id");
-  require_nonempty(fact.kill_switch_policy_id,
-                   "missing_kill_switch_policy_id");
+  require_nonempty(fact.kill_switch_policy_id, "missing_kill_switch_policy_id");
   const auto require_true = [&](bool value, const char *issue) {
     if (!value) {
       issues.emplace_back(issue);
@@ -13041,8 +13168,7 @@ paper_online_readiness_fact_issues(
   require_true(fact.idempotency_bound, "idempotency_not_bound");
   require_true(fact.duplicate_action_protection_bound,
                "duplicate_action_protection_not_bound");
-  require_true(fact.session_lifecycle_bound,
-               "session_lifecycle_not_bound");
+  require_true(fact.session_lifecycle_bound, "session_lifecycle_not_bound");
   require_true(fact.clock_timestamp_policy_bound,
                "clock_timestamp_policy_not_bound");
   require_true(fact.market_data_staleness_bound,
@@ -13167,6 +13293,505 @@ inline void append_paper_online_readiness_scan_warning(
   }
   std::ostringstream oss;
   oss << "[lattice_exposure] paper_online_readiness warning job_dir="
+      << job_dir.string() << " job_id=" << fact.job_id << " issues=";
+  for (std::size_t i = 0; i < issues.size(); ++i) {
+    if (i != 0) {
+      oss << ",";
+    }
+    oss << issues[i];
+  }
+  warnings.push_back(oss.str());
+}
+
+[[nodiscard]] inline std::vector<std::filesystem::path>
+paper_online_session_fact_paths_for_job_dir(
+    const std::filesystem::path &job_dir) {
+  const auto artifact_dir = job_dir / "artifacts" / "paper.online.session.v1";
+  return {job_dir / "lattice.paper_online_session.fact",
+          job_dir / "paper_online_session.fact",
+          job_dir / "runtime.paper_online_session.fact",
+          artifact_dir / "paper_online_session.fact"};
+}
+
+[[nodiscard]] inline std::vector<lattice_paper_online_session_fact_t>
+make_paper_online_session_facts_from_job_dir(
+    const std::filesystem::path &job_dir,
+    const lattice_exposure_fact_t &parent) {
+  namespace detail = exposure_detail;
+  const auto session = detail::parse_first_assignment_file(
+      paper_online_session_fact_paths_for_job_dir(job_dir));
+  if (session.empty()) {
+    return {};
+  }
+  const auto first_value =
+      [&](const std::vector<std::string> &keys) -> std::string {
+    for (const auto &key : keys) {
+      const auto value = detail::map_get(session, key);
+      if (!value.empty()) {
+        return value;
+      }
+    }
+    return {};
+  };
+  const auto first_bool = [&](const std::vector<std::string> &keys,
+                              bool fallback = false) {
+    return detail::parse_bool_fallback(first_value(keys), fallback);
+  };
+  const auto first_i64 = [&](const std::vector<std::string> &keys,
+                             std::int64_t fallback = 0) {
+    return detail::parse_i64_fallback(first_value(keys), fallback);
+  };
+
+  lattice_paper_online_session_fact_t fact{};
+  fact.parent_exposure_fact_digest = exposure_fact_digest(parent);
+  fact.contract_fingerprint = parent.contract_fingerprint;
+  fact.protocol_id = parent.protocol_id;
+  fact.graph_order_fingerprint = parent.graph_order_fingerprint;
+  fact.source_cursor_token = parent.source_cursor_token;
+  fact.split_policy_fingerprint = parent.split_policy_fingerprint;
+  fact.component_assembly_fingerprint = parent.component_assembly_fingerprint;
+  fact.target_component_family_id = parent.target_component_family_id;
+  fact.job_id = parent.job_id;
+  fact.wave_id = parent.wave_id;
+  fact.job_status = parent.job_status;
+  fact.wave_action = parent.wave_action;
+  fact.split_name = parent.split_name;
+  fact.split_role = parent.split_role;
+  fact.anchor_range = parent.anchor_range;
+  fact.completed_anchor_range = parent.completed_anchor_range;
+
+  const auto file_parent_exposure_fact_digest =
+      first_value({"parent_exposure_fact_digest"});
+  if (!file_parent_exposure_fact_digest.empty()) {
+    fact.parent_exposure_fact_digest = file_parent_exposure_fact_digest;
+  }
+  const auto file_contract_fingerprint = first_value({"contract_fingerprint"});
+  if (!file_contract_fingerprint.empty()) {
+    fact.contract_fingerprint = file_contract_fingerprint;
+  }
+  const auto file_protocol_id = first_value({"protocol_id"});
+  if (!file_protocol_id.empty()) {
+    fact.protocol_id = file_protocol_id;
+  }
+  const auto file_graph_order_fingerprint =
+      first_value({"graph_order_fingerprint"});
+  if (!file_graph_order_fingerprint.empty()) {
+    fact.graph_order_fingerprint = file_graph_order_fingerprint;
+  }
+  const auto file_source_cursor_token = first_value({"source_cursor_token"});
+  if (!file_source_cursor_token.empty()) {
+    fact.source_cursor_token = file_source_cursor_token;
+  }
+  const auto file_split_policy_fingerprint =
+      first_value({"split_policy_fingerprint"});
+  if (!file_split_policy_fingerprint.empty()) {
+    fact.split_policy_fingerprint = file_split_policy_fingerprint;
+  }
+  const auto file_component_assembly_fingerprint =
+      first_value({"component_assembly_fingerprint"});
+  if (!file_component_assembly_fingerprint.empty()) {
+    fact.component_assembly_fingerprint = file_component_assembly_fingerprint;
+  }
+  const auto file_target_component_family_id =
+      first_value({"target_component_family_id"});
+  if (!file_target_component_family_id.empty()) {
+    fact.target_component_family_id = file_target_component_family_id;
+  }
+  const auto file_job_id = first_value({"job_id"});
+  if (!file_job_id.empty()) {
+    fact.job_id = file_job_id;
+  }
+  const auto file_wave_id = first_value({"wave_id"});
+  if (!file_wave_id.empty()) {
+    fact.wave_id = file_wave_id;
+  }
+  const auto file_job_status = first_value({"job_status"});
+  if (!file_job_status.empty()) {
+    fact.job_status = file_job_status;
+  }
+  const auto file_wave_action = first_value({"wave_action"});
+  if (!file_wave_action.empty()) {
+    fact.wave_action = file_wave_action;
+  }
+  const auto file_split_name = first_value({"split_name"});
+  if (!file_split_name.empty()) {
+    fact.split_name = file_split_name;
+  }
+  const auto file_split_role = first_value({"split_role"});
+  if (!file_split_role.empty()) {
+    fact.split_role = parse_exposure_split_role(file_split_role);
+  }
+  const auto file_anchor_begin = first_value({"anchor_begin"});
+  const auto file_anchor_end = first_value({"anchor_end"});
+  if (!file_anchor_begin.empty() && !file_anchor_end.empty()) {
+    fact.anchor_range.begin =
+        detail::parse_i64_fallback(file_anchor_begin, fact.anchor_range.begin);
+    fact.anchor_range.end =
+        detail::parse_i64_fallback(file_anchor_end, fact.anchor_range.end);
+  }
+  const auto file_completed_anchor_begin =
+      first_value({"completed_anchor_begin"});
+  const auto file_completed_anchor_end = first_value({"completed_anchor_end"});
+  if (!file_completed_anchor_begin.empty() &&
+      !file_completed_anchor_end.empty()) {
+    fact.completed_anchor_range.begin = detail::parse_i64_fallback(
+        file_completed_anchor_begin, fact.completed_anchor_range.begin);
+    fact.completed_anchor_range.end = detail::parse_i64_fallback(
+        file_completed_anchor_end, fact.completed_anchor_range.end);
+  }
+
+#define CUWACUNU_SET_SESSION_STRING(field) fact.field = first_value({#field})
+  CUWACUNU_SET_SESSION_STRING(session_id);
+  CUWACUNU_SET_SESSION_STRING(session_contract_id);
+  CUWACUNU_SET_SESSION_STRING(session_runner_contract_id);
+  CUWACUNU_SET_SESSION_STRING(admission_id);
+  CUWACUNU_SET_SESSION_STRING(admission_fact_digest);
+  CUWACUNU_SET_SESSION_STRING(admission_fact_schema_id);
+  CUWACUNU_SET_SESSION_STRING(readiness_fact_digest);
+  CUWACUNU_SET_SESSION_STRING(readiness_proof_certificate_digest);
+  CUWACUNU_SET_SESSION_STRING(accepted_policy_id);
+  CUWACUNU_SET_SESSION_STRING(accepted_actor_checkpoint_digest);
+  CUWACUNU_SET_SESSION_STRING(accepted_checkpoint_digest);
+  CUWACUNU_SET_SESSION_STRING(execution_profile_digest);
+  CUWACUNU_SET_SESSION_STRING(locked_execution_profile_digest);
+  CUWACUNU_SET_SESSION_STRING(paper_online_profile_digest);
+  CUWACUNU_SET_SESSION_STRING(direct_edge_universe_digest);
+  CUWACUNU_SET_SESSION_STRING(accounting_numeraire_node_id);
+  CUWACUNU_SET_SESSION_STRING(target_node_ids);
+  CUWACUNU_SET_SESSION_STRING(execution_backend_id);
+  CUWACUNU_SET_SESSION_STRING(reward_contract_id);
+  CUWACUNU_SET_SESSION_STRING(session_manifest_digest);
+  CUWACUNU_SET_SESSION_STRING(session_state_digest);
+  CUWACUNU_SET_SESSION_STRING(session_events_digest);
+  CUWACUNU_SET_SESSION_STRING(market_events_digest);
+  CUWACUNU_SET_SESSION_STRING(action_intents_digest);
+  CUWACUNU_SET_SESSION_STRING(execution_intents_digest);
+  CUWACUNU_SET_SESSION_STRING(paper_ledger_digest);
+  CUWACUNU_SET_SESSION_STRING(reward_reports_digest);
+  CUWACUNU_SET_SESSION_STRING(terminal_state);
+#undef CUWACUNU_SET_SESSION_STRING
+
+  fact.requested_step_count = first_i64({"requested_step_count"});
+  fact.completed_step_count = first_i64({"completed_step_count"});
+  fact.market_event_count = first_i64({"market_event_count"});
+  fact.action_intent_count = first_i64({"action_intent_count"});
+  fact.execution_intent_count = first_i64({"execution_intent_count"});
+  fact.paper_fill_count = first_i64({"paper_fill_count"});
+  fact.reward_report_count = first_i64({"reward_report_count"});
+  fact.started_at_ms = first_i64({"started_at_ms"});
+  fact.stopped_at_ms = first_i64({"stopped_at_ms"});
+  fact.max_market_data_staleness_ms =
+      first_i64({"max_market_data_staleness_ms"});
+  fact.max_observed_market_data_staleness_ms =
+      first_i64({"max_observed_market_data_staleness_ms"});
+
+#define CUWACUNU_SET_SESSION_BOOL(field)                                       \
+  fact.field = first_bool({#field}, fact.field)
+  CUWACUNU_SET_SESSION_BOOL(ledger_recovered);
+  CUWACUNU_SET_SESSION_BOOL(duplicate_action_protection_enforced);
+  CUWACUNU_SET_SESSION_BOOL(duplicate_execution_intent_protection_enforced);
+  CUWACUNU_SET_SESSION_BOOL(market_data_staleness_enforced);
+  CUWACUNU_SET_SESSION_BOOL(operator_abort_supported);
+  CUWACUNU_SET_SESSION_BOOL(kill_switch_supported);
+  CUWACUNU_SET_SESSION_BOOL(operator_abort_triggered);
+  CUWACUNU_SET_SESSION_BOOL(kill_switch_triggered);
+  CUWACUNU_SET_SESSION_BOOL(terminal_state_recorded);
+  CUWACUNU_SET_SESSION_BOOL(artifacts_written);
+  CUWACUNU_SET_SESSION_BOOL(artifact_evidence);
+  CUWACUNU_SET_SESSION_BOOL(paper_online_session_artifact);
+  CUWACUNU_SET_SESSION_BOOL(paper_execution_attempted);
+  CUWACUNU_SET_SESSION_BOOL(paper_execution_completed);
+  CUWACUNU_SET_SESSION_BOOL(broker_execution_allowed);
+  CUWACUNU_SET_SESSION_BOOL(live_execution_allowed);
+  CUWACUNU_SET_SESSION_BOOL(direct_policy_to_broker_allowed);
+  CUWACUNU_SET_SESSION_BOOL(direct_policy_to_cajtucu_allowed);
+  CUWACUNU_SET_SESSION_BOOL(policy_selector);
+  CUWACUNU_SET_SESSION_BOOL(checkpoint_selector);
+  CUWACUNU_SET_SESSION_BOOL(optimizer);
+  CUWACUNU_SET_SESSION_BOOL(allocation_authority);
+  CUWACUNU_SET_SESSION_BOOL(execution_authority);
+  CUWACUNU_SET_SESSION_BOOL(readiness_authority);
+  CUWACUNU_SET_SESSION_BOOL(quality_authority);
+  CUWACUNU_SET_SESSION_BOOL(performance_authority);
+  CUWACUNU_SET_SESSION_BOOL(market_readiness_authority);
+  CUWACUNU_SET_SESSION_BOOL(deployment_authority);
+  CUWACUNU_SET_SESSION_BOOL(live_execution_authority);
+  CUWACUNU_SET_SESSION_BOOL(coverage_authority);
+  CUWACUNU_SET_SESSION_BOOL(leakage_authority);
+  CUWACUNU_SET_SESSION_BOOL(contract_identity_authority);
+#undef CUWACUNU_SET_SESSION_BOOL
+
+  if (fact.session_contract_id.empty()) {
+    fact.session_contract_id = "paper_online_session_contract.v1";
+  }
+  if (fact.session_runner_contract_id.empty()) {
+    fact.session_runner_contract_id = "paper_online_session_runner.v1";
+  }
+  if (fact.admission_fact_schema_id.empty()) {
+    fact.admission_fact_schema_id =
+        "kikijyeba.lattice.paper_online_session_admission.v1";
+  }
+  if (fact.execution_backend_id.empty()) {
+    fact.execution_backend_id = "cajtucu.execution.paper.v1";
+  }
+  return {fact};
+}
+
+[[nodiscard]] inline std::string canonical_paper_online_session_fact_text(
+    const lattice_paper_online_session_fact_t &fact) {
+  std::ostringstream out;
+  out << "schema=" << fact.schema << "\n";
+  out << "fact_type=" << fact.fact_type << "\n";
+  out << "parent_exposure_fact_digest=" << fact.parent_exposure_fact_digest
+      << "\n";
+  out << "contract_fingerprint=" << fact.contract_fingerprint << "\n";
+  out << "protocol_id=" << fact.protocol_id << "\n";
+  out << "graph_order_fingerprint=" << fact.graph_order_fingerprint << "\n";
+  out << "source_cursor_token=" << fact.source_cursor_token << "\n";
+  out << "split_policy_fingerprint=" << fact.split_policy_fingerprint << "\n";
+  out << "component_assembly_fingerprint="
+      << fact.component_assembly_fingerprint << "\n";
+  out << "target_component_family_id=" << fact.target_component_family_id
+      << "\n";
+  out << "job_id=" << fact.job_id << "\n";
+  out << "wave_id=" << fact.wave_id << "\n";
+  out << "job_status=" << fact.job_status << "\n";
+  out << "wave_action=" << fact.wave_action << "\n";
+  out << "split_name=" << fact.split_name << "\n";
+  out << "split_role=" << exposure_split_role_name(fact.split_role) << "\n";
+  out << "anchor_begin=" << fact.anchor_range.begin << "\n";
+  out << "anchor_end=" << fact.anchor_range.end << "\n";
+  out << "completed_anchor_begin=" << fact.completed_anchor_range.begin << "\n";
+  out << "completed_anchor_end=" << fact.completed_anchor_range.end << "\n";
+#define CUWACUNU_WRITE_SESSION_STRING(field)                                   \
+  out << #field "=" << fact.field << "\n"
+  CUWACUNU_WRITE_SESSION_STRING(session_id);
+  CUWACUNU_WRITE_SESSION_STRING(session_contract_id);
+  CUWACUNU_WRITE_SESSION_STRING(session_runner_contract_id);
+  CUWACUNU_WRITE_SESSION_STRING(admission_id);
+  CUWACUNU_WRITE_SESSION_STRING(admission_fact_digest);
+  CUWACUNU_WRITE_SESSION_STRING(admission_fact_schema_id);
+  CUWACUNU_WRITE_SESSION_STRING(readiness_fact_digest);
+  CUWACUNU_WRITE_SESSION_STRING(readiness_proof_certificate_digest);
+  CUWACUNU_WRITE_SESSION_STRING(accepted_policy_id);
+  CUWACUNU_WRITE_SESSION_STRING(accepted_actor_checkpoint_digest);
+  CUWACUNU_WRITE_SESSION_STRING(accepted_checkpoint_digest);
+  CUWACUNU_WRITE_SESSION_STRING(execution_profile_digest);
+  CUWACUNU_WRITE_SESSION_STRING(locked_execution_profile_digest);
+  CUWACUNU_WRITE_SESSION_STRING(paper_online_profile_digest);
+  CUWACUNU_WRITE_SESSION_STRING(direct_edge_universe_digest);
+  CUWACUNU_WRITE_SESSION_STRING(accounting_numeraire_node_id);
+  CUWACUNU_WRITE_SESSION_STRING(target_node_ids);
+  CUWACUNU_WRITE_SESSION_STRING(execution_backend_id);
+  CUWACUNU_WRITE_SESSION_STRING(reward_contract_id);
+  CUWACUNU_WRITE_SESSION_STRING(session_manifest_digest);
+  CUWACUNU_WRITE_SESSION_STRING(session_state_digest);
+  CUWACUNU_WRITE_SESSION_STRING(session_events_digest);
+  CUWACUNU_WRITE_SESSION_STRING(market_events_digest);
+  CUWACUNU_WRITE_SESSION_STRING(action_intents_digest);
+  CUWACUNU_WRITE_SESSION_STRING(execution_intents_digest);
+  CUWACUNU_WRITE_SESSION_STRING(paper_ledger_digest);
+  CUWACUNU_WRITE_SESSION_STRING(reward_reports_digest);
+  CUWACUNU_WRITE_SESSION_STRING(terminal_state);
+#undef CUWACUNU_WRITE_SESSION_STRING
+  out << "requested_step_count=" << fact.requested_step_count << "\n";
+  out << "completed_step_count=" << fact.completed_step_count << "\n";
+  out << "market_event_count=" << fact.market_event_count << "\n";
+  out << "action_intent_count=" << fact.action_intent_count << "\n";
+  out << "execution_intent_count=" << fact.execution_intent_count << "\n";
+  out << "paper_fill_count=" << fact.paper_fill_count << "\n";
+  out << "reward_report_count=" << fact.reward_report_count << "\n";
+  out << "started_at_ms=" << fact.started_at_ms << "\n";
+  out << "stopped_at_ms=" << fact.stopped_at_ms << "\n";
+  out << "max_market_data_staleness_ms=" << fact.max_market_data_staleness_ms
+      << "\n";
+  out << "max_observed_market_data_staleness_ms="
+      << fact.max_observed_market_data_staleness_ms << "\n";
+#define CUWACUNU_WRITE_SESSION_BOOL(field)                                     \
+  out << #field "=" << (fact.field ? "true" : "false") << "\n"
+  CUWACUNU_WRITE_SESSION_BOOL(ledger_recovered);
+  CUWACUNU_WRITE_SESSION_BOOL(duplicate_action_protection_enforced);
+  CUWACUNU_WRITE_SESSION_BOOL(duplicate_execution_intent_protection_enforced);
+  CUWACUNU_WRITE_SESSION_BOOL(market_data_staleness_enforced);
+  CUWACUNU_WRITE_SESSION_BOOL(operator_abort_supported);
+  CUWACUNU_WRITE_SESSION_BOOL(kill_switch_supported);
+  CUWACUNU_WRITE_SESSION_BOOL(operator_abort_triggered);
+  CUWACUNU_WRITE_SESSION_BOOL(kill_switch_triggered);
+  CUWACUNU_WRITE_SESSION_BOOL(terminal_state_recorded);
+  CUWACUNU_WRITE_SESSION_BOOL(artifacts_written);
+  CUWACUNU_WRITE_SESSION_BOOL(artifact_evidence);
+  CUWACUNU_WRITE_SESSION_BOOL(paper_online_session_artifact);
+  CUWACUNU_WRITE_SESSION_BOOL(paper_execution_attempted);
+  CUWACUNU_WRITE_SESSION_BOOL(paper_execution_completed);
+  CUWACUNU_WRITE_SESSION_BOOL(broker_execution_allowed);
+  CUWACUNU_WRITE_SESSION_BOOL(live_execution_allowed);
+  CUWACUNU_WRITE_SESSION_BOOL(direct_policy_to_broker_allowed);
+  CUWACUNU_WRITE_SESSION_BOOL(direct_policy_to_cajtucu_allowed);
+  CUWACUNU_WRITE_SESSION_BOOL(policy_selector);
+  CUWACUNU_WRITE_SESSION_BOOL(checkpoint_selector);
+  CUWACUNU_WRITE_SESSION_BOOL(optimizer);
+  CUWACUNU_WRITE_SESSION_BOOL(allocation_authority);
+  CUWACUNU_WRITE_SESSION_BOOL(execution_authority);
+  CUWACUNU_WRITE_SESSION_BOOL(readiness_authority);
+  CUWACUNU_WRITE_SESSION_BOOL(quality_authority);
+  CUWACUNU_WRITE_SESSION_BOOL(performance_authority);
+  CUWACUNU_WRITE_SESSION_BOOL(market_readiness_authority);
+  CUWACUNU_WRITE_SESSION_BOOL(deployment_authority);
+  CUWACUNU_WRITE_SESSION_BOOL(live_execution_authority);
+  CUWACUNU_WRITE_SESSION_BOOL(coverage_authority);
+  CUWACUNU_WRITE_SESSION_BOOL(leakage_authority);
+  CUWACUNU_WRITE_SESSION_BOOL(contract_identity_authority);
+#undef CUWACUNU_WRITE_SESSION_BOOL
+  return out.str();
+}
+
+[[nodiscard]] inline std::string paper_online_session_fact_digest(
+    const lattice_paper_online_session_fact_t &fact) {
+  return exposure_digest_for_text(
+      canonical_paper_online_session_fact_text(fact));
+}
+
+[[nodiscard]] inline std::vector<std::string> paper_online_session_fact_issues(
+    const lattice_paper_online_session_fact_t &fact) {
+  std::vector<std::string> issues;
+  const auto require_nonempty = [&](const std::string &value,
+                                    const char *issue) {
+    if (value.empty()) {
+      issues.emplace_back(issue);
+    }
+  };
+  require_nonempty(fact.parent_exposure_fact_digest,
+                   "missing_parent_exposure_fact_digest");
+  require_nonempty(fact.contract_fingerprint, "missing_contract_fingerprint");
+  require_nonempty(fact.protocol_id, "missing_protocol_id");
+  require_nonempty(fact.graph_order_fingerprint,
+                   "missing_graph_order_fingerprint");
+  require_nonempty(fact.source_cursor_token, "missing_source_cursor_token");
+  require_nonempty(fact.session_id, "missing_session_id");
+  if (fact.session_contract_id != "paper_online_session_contract.v1") {
+    issues.emplace_back("unsupported_session_contract_id");
+  }
+  if (fact.session_runner_contract_id != "paper_online_session_runner.v1") {
+    issues.emplace_back("unsupported_session_runner_contract_id");
+  }
+  require_nonempty(fact.admission_id, "missing_admission_id");
+  require_nonempty(fact.admission_fact_digest, "missing_admission_fact_digest");
+  if (fact.admission_fact_schema_id !=
+      "kikijyeba.lattice.paper_online_session_admission.v1") {
+    issues.emplace_back("unsupported_session_admission_fact_schema_id");
+  }
+  require_nonempty(fact.readiness_fact_digest, "missing_readiness_fact_digest");
+  require_nonempty(fact.readiness_proof_certificate_digest,
+                   "missing_readiness_proof_certificate_digest");
+  require_nonempty(fact.accepted_policy_id, "missing_accepted_policy_id");
+  require_nonempty(fact.accepted_actor_checkpoint_digest,
+                   "missing_accepted_actor_checkpoint_digest");
+  require_nonempty(fact.accepted_checkpoint_digest,
+                   "missing_accepted_checkpoint_digest");
+  require_nonempty(fact.execution_profile_digest,
+                   "missing_execution_profile_digest");
+  if (fact.locked_execution_profile_digest != fact.execution_profile_digest) {
+    issues.emplace_back("locked_execution_profile_digest_mismatch");
+  }
+  require_nonempty(fact.paper_online_profile_digest,
+                   "missing_paper_online_profile_digest");
+  require_nonempty(fact.direct_edge_universe_digest,
+                   "missing_direct_edge_universe_digest");
+  require_nonempty(fact.accounting_numeraire_node_id,
+                   "missing_accounting_numeraire_node_id");
+  require_nonempty(fact.target_node_ids, "missing_target_node_ids");
+  if (fact.execution_backend_id != "cajtucu.execution.paper.v1") {
+    issues.emplace_back("unsupported_execution_backend_id");
+  }
+  if (fact.reward_contract_id !=
+      "kikijyeba.environment.reward.post_execution_ledger_log_growth_"
+      "cost_drawdown.v1") {
+    issues.emplace_back("unsupported_reward_contract_id");
+  }
+  require_nonempty(fact.session_manifest_digest,
+                   "missing_session_manifest_digest");
+  require_nonempty(fact.session_state_digest, "missing_session_state_digest");
+  require_nonempty(fact.session_events_digest, "missing_session_events_digest");
+  require_nonempty(fact.market_events_digest, "missing_market_events_digest");
+  require_nonempty(fact.action_intents_digest, "missing_action_intents_digest");
+  require_nonempty(fact.execution_intents_digest,
+                   "missing_execution_intents_digest");
+  require_nonempty(fact.paper_ledger_digest, "missing_paper_ledger_digest");
+  require_nonempty(fact.reward_reports_digest, "missing_reward_reports_digest");
+  if (fact.requested_step_count <= 0) {
+    issues.emplace_back("invalid_requested_step_count");
+  }
+  if (fact.completed_step_count < 0 ||
+      fact.completed_step_count > fact.requested_step_count) {
+    issues.emplace_back("invalid_completed_step_count");
+  }
+  if (fact.market_event_count < fact.completed_step_count ||
+      fact.action_intent_count != fact.completed_step_count ||
+      fact.execution_intent_count != fact.completed_step_count ||
+      fact.paper_fill_count != fact.completed_step_count ||
+      fact.reward_report_count != fact.completed_step_count) {
+    issues.emplace_back("session_artifact_count_mismatch");
+  }
+  if (fact.started_at_ms <= 0 || fact.stopped_at_ms < fact.started_at_ms) {
+    issues.emplace_back("invalid_session_clock_bounds");
+  }
+  if (fact.max_market_data_staleness_ms <= 0) {
+    issues.emplace_back("invalid_max_market_data_staleness_ms");
+  }
+  if (fact.max_observed_market_data_staleness_ms >
+      fact.max_market_data_staleness_ms) {
+    issues.emplace_back("market_data_staleness_exceeded");
+  }
+  if (fact.terminal_state != "stopped" && fact.terminal_state != "aborted" &&
+      fact.terminal_state != "kill_switch_triggered") {
+    issues.emplace_back("unsupported_terminal_state");
+  }
+  const auto require_true = [&](bool value, const char *issue) {
+    if (!value) {
+      issues.emplace_back(issue);
+    }
+  };
+  require_true(fact.ledger_recovered, "ledger_not_recovered");
+  require_true(fact.duplicate_action_protection_enforced,
+               "duplicate_action_protection_not_enforced");
+  require_true(fact.duplicate_execution_intent_protection_enforced,
+               "duplicate_execution_intent_protection_not_enforced");
+  require_true(fact.market_data_staleness_enforced,
+               "market_data_staleness_not_enforced");
+  require_true(fact.operator_abort_supported, "operator_abort_not_supported");
+  require_true(fact.kill_switch_supported, "kill_switch_not_supported");
+  require_true(fact.terminal_state_recorded, "terminal_state_not_recorded");
+  require_true(fact.artifacts_written, "artifacts_not_written");
+  require_true(fact.artifact_evidence, "artifact_evidence_not_bound");
+  require_true(fact.paper_online_session_artifact,
+               "paper_online_session_artifact_not_bound");
+  require_true(fact.paper_execution_attempted, "paper_execution_not_attempted");
+  require_true(fact.paper_execution_completed, "paper_execution_not_completed");
+  if (fact.broker_execution_allowed || fact.live_execution_allowed ||
+      fact.direct_policy_to_broker_allowed ||
+      fact.direct_policy_to_cajtucu_allowed || fact.policy_selector ||
+      fact.checkpoint_selector || fact.optimizer || fact.allocation_authority ||
+      fact.execution_authority || fact.readiness_authority ||
+      fact.quality_authority || fact.performance_authority ||
+      fact.market_readiness_authority || fact.deployment_authority ||
+      fact.live_execution_authority || fact.coverage_authority ||
+      fact.leakage_authority || fact.contract_identity_authority) {
+    issues.emplace_back(
+        "paper_online_session_must_not_claim_broker_live_selection_or_"
+        "readiness_authority");
+  }
+  return issues;
+}
+
+inline void append_paper_online_session_scan_warning(
+    const lattice_paper_online_session_fact_t &fact,
+    const std::filesystem::path &job_dir, std::vector<std::string> &warnings) {
+  const auto issues = paper_online_session_fact_issues(fact);
+  if (issues.empty()) {
+    return;
+  }
+  std::ostringstream oss;
+  oss << "[lattice_exposure] paper_online_session warning job_dir="
       << job_dir.string() << " job_id=" << fact.job_id << " issues=";
   for (std::size_t i = 0; i < issues.size(); ++i) {
     if (i != 0) {
@@ -13424,19 +14049,16 @@ summarize_paper_online_readiness(
     }
     out.artifact_evidence = out.artifact_evidence && fact.artifact_evidence;
     out.visibility_only = out.visibility_only && fact.visibility_only;
-    out.paper_online_readiness_artifact =
-        out.paper_online_readiness_artifact &&
-        fact.paper_online_readiness_artifact;
-    out.paper_online_execution_allowed =
-        out.paper_online_execution_allowed ||
-        fact.paper_online_execution_allowed;
+    out.paper_online_readiness_artifact = out.paper_online_readiness_artifact &&
+                                          fact.paper_online_readiness_artifact;
+    out.paper_online_execution_allowed = out.paper_online_execution_allowed ||
+                                         fact.paper_online_execution_allowed;
     out.live_execution_allowed =
         out.live_execution_allowed || fact.live_execution_allowed;
     out.broker_execution_allowed =
         out.broker_execution_allowed || fact.broker_execution_allowed;
-    out.direct_policy_to_broker_allowed =
-        out.direct_policy_to_broker_allowed ||
-        fact.direct_policy_to_broker_allowed;
+    out.direct_policy_to_broker_allowed = out.direct_policy_to_broker_allowed ||
+                                          fact.direct_policy_to_broker_allowed;
     out.direct_policy_to_cajtucu_allowed =
         out.direct_policy_to_cajtucu_allowed ||
         fact.direct_policy_to_cajtucu_allowed;
@@ -13489,6 +14111,101 @@ summarize_paper_online_readiness(
         "Paper-online readiness facts must remain artifact evidence; they "
         "cannot run paper sessions, execute, deploy, bypass Marshal/Runtime/"
         "Cajtucu, declare market readiness, or authorize live capital");
+    ++out.warning_count;
+  }
+  return out;
+}
+
+[[nodiscard]] inline paper_online_session_summary_t
+summarize_paper_online_sessions(
+    const std::vector<lattice_exposure_fact_t> &exposure_facts,
+    const std::vector<lattice_paper_online_session_fact_t> &session_facts) {
+  paper_online_session_summary_t out{};
+  out.exposure_fact_count = static_cast<std::int64_t>(exposure_facts.size());
+  out.paper_online_session_fact_count =
+      static_cast<std::int64_t>(session_facts.size());
+  std::set<std::string> parent_digests;
+  for (const auto &fact : session_facts) {
+    if (!fact.parent_exposure_fact_digest.empty()) {
+      parent_digests.insert(fact.parent_exposure_fact_digest);
+    }
+    if (!fact.admission_fact_digest.empty()) {
+      ++out.admission_fact_declared_count;
+    }
+    if (!fact.readiness_fact_digest.empty()) {
+      ++out.readiness_fact_declared_count;
+    }
+    if (!fact.session_id.empty()) {
+      ++out.session_id_bound_count;
+    }
+    if (fact.terminal_state == "stopped") {
+      ++out.stopped_terminal_count;
+    } else if (fact.terminal_state == "aborted") {
+      ++out.aborted_terminal_count;
+    } else if (fact.terminal_state == "kill_switch_triggered") {
+      ++out.kill_switch_terminal_count;
+    }
+    if (fact.artifact_evidence) {
+      ++out.artifact_evidence_count;
+    }
+    if (fact.paper_execution_completed) {
+      ++out.paper_execution_completed_count;
+    }
+    out.completed_step_count += fact.completed_step_count;
+    out.artifact_evidence = out.artifact_evidence && fact.artifact_evidence;
+    out.paper_online_session_artifact =
+        out.paper_online_session_artifact && fact.paper_online_session_artifact;
+    out.broker_execution_allowed =
+        out.broker_execution_allowed || fact.broker_execution_allowed;
+    out.live_execution_allowed =
+        out.live_execution_allowed || fact.live_execution_allowed;
+    out.direct_policy_to_broker_allowed = out.direct_policy_to_broker_allowed ||
+                                          fact.direct_policy_to_broker_allowed;
+    out.direct_policy_to_cajtucu_allowed =
+        out.direct_policy_to_cajtucu_allowed ||
+        fact.direct_policy_to_cajtucu_allowed;
+    out.readiness_authority =
+        out.readiness_authority || fact.readiness_authority;
+    out.quality_authority = out.quality_authority || fact.quality_authority;
+    out.performance_authority =
+        out.performance_authority || fact.performance_authority;
+    out.market_readiness_authority =
+        out.market_readiness_authority || fact.market_readiness_authority;
+    out.deployment_authority =
+        out.deployment_authority || fact.deployment_authority;
+    out.live_execution_authority =
+        out.live_execution_authority || fact.live_execution_authority;
+    const auto issues = paper_online_session_fact_issues(fact);
+    out.warning_count += static_cast<std::int64_t>(issues.size());
+    for (const auto &issue : issues) {
+      out.issues.push_back(fact.job_id + ":" + issue);
+    }
+    if (fact.broker_execution_allowed || fact.live_execution_allowed ||
+        fact.direct_policy_to_broker_allowed ||
+        fact.direct_policy_to_cajtucu_allowed || fact.policy_selector ||
+        fact.checkpoint_selector || fact.optimizer ||
+        fact.allocation_authority || fact.execution_authority ||
+        fact.readiness_authority || fact.quality_authority ||
+        fact.performance_authority || fact.market_readiness_authority ||
+        fact.deployment_authority || fact.live_execution_authority ||
+        fact.coverage_authority || fact.leakage_authority ||
+        fact.contract_identity_authority) {
+      ++out.authority_drift_count;
+    }
+  }
+  out.parent_exposure_fact_count =
+      static_cast<std::int64_t>(parent_digests.size());
+  if (!out.artifact_evidence || !out.paper_online_session_artifact ||
+      out.broker_execution_allowed || out.live_execution_allowed ||
+      out.direct_policy_to_broker_allowed ||
+      out.direct_policy_to_cajtucu_allowed || out.readiness_authority ||
+      out.quality_authority || out.performance_authority ||
+      out.market_readiness_authority || out.deployment_authority ||
+      out.live_execution_authority) {
+    out.issues.push_back(
+        "Paper-online session facts may evidence bounded paper execution, but "
+        "cannot select policies, claim readiness, deploy, broker orders, or "
+        "authorize live capital");
     ++out.warning_count;
   }
   return out;
@@ -14217,6 +14934,8 @@ lattice_fact_family_name(lattice_fact_family_t family) {
     return "policy_acceptance";
   case lattice_fact_family_t::paper_online_readiness:
     return "paper_online_readiness";
+  case lattice_fact_family_t::paper_online_session:
+    return "paper_online_session";
   case lattice_fact_family_t::selection_signal:
     return "selection_signal";
   case lattice_fact_family_t::representation_support:
@@ -14305,13 +15024,16 @@ lattice_fact_family_registry() {
        "kikijyeba.lattice.policy_acceptance_summary.v1",
        "policy_acceptance_artifact", true, false, false, false, false, false,
        false, false},
-      {lattice_fact_family_t::paper_online_readiness,
-       "paper_online_readiness",
-       "kikijyeba.lattice.paper_online_readiness.v1",
-       "paper_online_readiness",
+      {lattice_fact_family_t::paper_online_readiness, "paper_online_readiness",
+       "kikijyeba.lattice.paper_online_readiness.v1", "paper_online_readiness",
        "kikijyeba.lattice.paper_online_readiness_summary.v1",
        "paper_online_readiness_artifact", true, false, false, false, false,
        false, false, false},
+      {lattice_fact_family_t::paper_online_session, "paper_online_session",
+       "kikijyeba.lattice.paper_online_session.v1", "paper_online_session",
+       "kikijyeba.lattice.paper_online_session_summary.v1",
+       "paper_online_session_artifact", true, false, false, false, false, false,
+       false, false},
       {lattice_fact_family_t::selection_signal, "selection_signal",
        "kikijyeba.lattice.selection_signal.v1", "selection_signal",
        "kikijyeba.lattice.selection_signal_summary.v1", "leakage_visibility",
@@ -17144,6 +17866,16 @@ inline void write_allocation_engine_fact_sidecar(
   write_text_file_atomically(path, text.str());
 }
 
+inline void write_paper_online_session_fact_sidecar(
+    const std::filesystem::path &path,
+    const lattice_paper_online_session_fact_t &fact) {
+  const auto canonical = canonical_paper_online_session_fact_text(fact);
+  std::ostringstream text;
+  text << canonical << "fact_digest=" << exposure_digest_for_text(canonical)
+       << "\n";
+  write_text_file_atomically(path, text.str());
+}
+
 template <typename FactT>
 inline void
 populate_artifact_fact_identity(FactT &fact,
@@ -17650,9 +18382,12 @@ public:
     policy_acceptance_facts_.push_back(std::move(fact));
   }
 
-  void add_paper_online_readiness(
-      lattice_paper_online_readiness_fact_t fact) {
+  void add_paper_online_readiness(lattice_paper_online_readiness_fact_t fact) {
     paper_online_readiness_facts_.push_back(std::move(fact));
+  }
+
+  void add_paper_online_session(lattice_paper_online_session_fact_t fact) {
+    paper_online_session_facts_.push_back(std::move(fact));
   }
 
   void add_selection_signal(lattice_selection_signal_fact_t fact) {
@@ -17738,6 +18473,11 @@ public:
   [[nodiscard]] const std::vector<lattice_paper_online_readiness_fact_t> &
   paper_online_readiness_facts() const {
     return paper_online_readiness_facts_;
+  }
+
+  [[nodiscard]] const std::vector<lattice_paper_online_session_fact_t> &
+  paper_online_session_facts() const {
+    return paper_online_session_facts_;
   }
 
   [[nodiscard]] const std::vector<lattice_selection_signal_fact_t> &
@@ -18102,6 +18842,8 @@ private:
   std::vector<lattice_policy_acceptance_fact_t> policy_acceptance_facts_{};
   std::vector<lattice_paper_online_readiness_fact_t>
       paper_online_readiness_facts_{};
+  std::vector<lattice_paper_online_session_fact_t>
+      paper_online_session_facts_{};
   std::vector<lattice_selection_signal_fact_t> selection_signal_facts_{};
   std::vector<lattice_representation_support_fact_t>
       representation_support_facts_{};
@@ -18258,6 +19000,9 @@ lattice_fact_family_count(const lattice_exposure_ledger_t &ledger,
   case lattice_fact_family_t::paper_online_readiness:
     return static_cast<std::int64_t>(
         ledger.paper_online_readiness_facts().size());
+  case lattice_fact_family_t::paper_online_session:
+    return static_cast<std::int64_t>(
+        ledger.paper_online_session_facts().size());
   case lattice_fact_family_t::selection_signal:
     return static_cast<std::int64_t>(ledger.selection_signal_facts().size());
   case lattice_fact_family_t::representation_support:
@@ -18483,6 +19228,17 @@ summarize_lattice_fact_family(const lattice_exposure_ledger_t &ledger,
                      .issues;
     break;
   }
+  case lattice_fact_family_t::paper_online_session: {
+    for (const auto &fact : ledger.paper_online_session_facts()) {
+      if (!fact.parent_exposure_fact_digest.empty()) {
+        parent_digests.insert(fact.parent_exposure_fact_digest);
+      }
+    }
+    out.issues = summarize_paper_online_sessions(
+                     ledger.facts(), ledger.paper_online_session_facts())
+                     .issues;
+    break;
+  }
   case lattice_fact_family_t::selection_signal: {
     for (const auto &fact : ledger.selection_signal_facts()) {
       if (!fact.parent_exposure_fact_digest.empty()) {
@@ -18531,6 +19287,7 @@ summarize_lattice_fact_family_integrity(const lattice_exposure_ledger_t &ledger,
   case lattice_fact_family_t::source_analytics:
   case lattice_fact_family_t::target_transform:
   case lattice_fact_family_t::replay_environment:
+  case lattice_fact_family_t::paper_online_session:
   case lattice_fact_family_t::selection_signal:
   case lattice_fact_family_t::representation_support:
     break;
@@ -18959,6 +19716,7 @@ struct exposure_scan_options_t {
   bool derive_tsodao_settings_protection_facts{true};
   bool derive_policy_acceptance_facts{true};
   bool derive_paper_online_readiness_facts{true};
+  bool derive_paper_online_session_facts{true};
   bool derive_selection_signal_facts{true};
   bool read_checkpoint_sidecars{true};
   bool collect_warnings{true};
@@ -19289,8 +20047,16 @@ scan_exposure_ledger_from_runtime_root(
             for (const auto &readiness_fact :
                  make_paper_online_readiness_facts_from_job_dir(job_dir,
                                                                 sidecar_fact)) {
-              append_paper_online_readiness_scan_warning(
-                  readiness_fact, job_dir, out.warnings);
+              append_paper_online_readiness_scan_warning(readiness_fact,
+                                                         job_dir, out.warnings);
+            }
+          }
+          if (options.derive_paper_online_session_facts) {
+            for (const auto &session_fact :
+                 make_paper_online_session_facts_from_job_dir(job_dir,
+                                                              sidecar_fact)) {
+              append_paper_online_session_scan_warning(session_fact, job_dir,
+                                                       out.warnings);
             }
           }
           if (options.derive_selection_signal_facts) {
@@ -19380,6 +20146,12 @@ scan_exposure_ledger_from_runtime_root(
             out.ledger.add_paper_online_readiness(std::move(readiness_fact));
           }
         }
+        if (options.derive_paper_online_session_facts) {
+          for (auto session_fact : make_paper_online_session_facts_from_job_dir(
+                   job_dir, sidecar_fact)) {
+            out.ledger.add_paper_online_session(std::move(session_fact));
+          }
+        }
         out.ledger.add(std::move(sidecar_fact),
                        options.derive_source_receipt_facts,
                        options.derive_selection_signal_facts);
@@ -19466,8 +20238,15 @@ scan_exposure_ledger_from_runtime_root(
             for (const auto &readiness_fact :
                  make_paper_online_readiness_facts_from_job_dir(job_dir,
                                                                 fact)) {
-              append_paper_online_readiness_scan_warning(
-                  readiness_fact, job_dir, out.warnings);
+              append_paper_online_readiness_scan_warning(readiness_fact,
+                                                         job_dir, out.warnings);
+            }
+          }
+          if (options.derive_paper_online_session_facts) {
+            for (const auto &session_fact :
+                 make_paper_online_session_facts_from_job_dir(job_dir, fact)) {
+              append_paper_online_session_scan_warning(session_fact, job_dir,
+                                                       out.warnings);
             }
           }
           if (options.derive_selection_signal_facts) {
@@ -19552,6 +20331,12 @@ scan_exposure_ledger_from_runtime_root(
           for (auto readiness_fact :
                make_paper_online_readiness_facts_from_job_dir(job_dir, fact)) {
             out.ledger.add_paper_online_readiness(std::move(readiness_fact));
+          }
+        }
+        if (options.derive_paper_online_session_facts) {
+          for (auto session_fact :
+               make_paper_online_session_facts_from_job_dir(job_dir, fact)) {
+            out.ledger.add_paper_online_session(std::move(session_fact));
           }
         }
         out.ledger.add(std::move(fact), options.derive_source_receipt_facts,
@@ -19678,6 +20463,7 @@ struct lattice_runtime_index_cache_t {
   std::int64_t tsodao_settings_protection_fact_count{0};
   std::int64_t policy_acceptance_fact_count{0};
   std::int64_t paper_online_readiness_fact_count{0};
+  std::int64_t paper_online_session_fact_count{0};
   std::int64_t selection_signal_fact_count{0};
   std::int64_t representation_support_fact_count{0};
   std::vector<lattice_runtime_index_relation_count_t> relation_counts{};
@@ -19778,6 +20564,9 @@ runtime_index_watched_file_is_relevant(const std::filesystem::path &path) {
       filename == "lattice.paper_online_readiness.fact" ||
       filename == "paper_online_readiness.fact" ||
       filename == "runtime.paper_online_readiness.fact" ||
+      filename == "lattice.paper_online_session.fact" ||
+      filename == "paper_online_session.fact" ||
+      filename == "runtime.paper_online_session.fact" ||
       filename == "runtime_replay_batches.index" ||
       filename == "runtime_replay_experiments.index") {
     return true;
@@ -19915,6 +20704,16 @@ watched_runtime_metadata_digest(const std::filesystem::path &runtime_root) {
         append_file(it->path());
       }
     }
+    const auto paper_online_session_artifact_dir =
+        job_dir / "artifacts" / "paper.online.session.v1";
+    if (fs::is_directory(paper_online_session_artifact_dir, job_ec)) {
+      for (fs::recursive_directory_iterator
+               it(paper_online_session_artifact_dir, job_ec),
+           end;
+           !job_ec && it != end; it.increment(job_ec)) {
+        append_file(it->path());
+      }
+    }
   };
   if (fs::is_regular_file(runtime_root, ec)) {
     append_file(runtime_root);
@@ -19997,6 +20796,8 @@ make_runtime_index_cache_from_scan(const std::filesystem::path &runtime_root,
       static_cast<std::int64_t>(scan.ledger.policy_acceptance_facts().size());
   cache.paper_online_readiness_fact_count = static_cast<std::int64_t>(
       scan.ledger.paper_online_readiness_facts().size());
+  cache.paper_online_session_fact_count = static_cast<std::int64_t>(
+      scan.ledger.paper_online_session_facts().size());
   cache.selection_signal_fact_count =
       static_cast<std::int64_t>(scan.ledger.selection_signal_facts().size());
   cache.representation_support_fact_count = static_cast<std::int64_t>(
@@ -20115,6 +20916,12 @@ make_runtime_index_cache_from_scan(const std::filesystem::path &runtime_root,
                 fact.readiness_id + "|" + fact.policy_acceptance_fact_digest,
             paper_online_readiness_fact_digest(fact));
   }
+  for (const auto &fact : scan.ledger.paper_online_session_facts()) {
+    add_row("paper_online_session",
+            fact.parent_exposure_fact_digest + "|" + fact.job_id + "|" +
+                fact.session_id + "|" + fact.admission_fact_digest,
+            paper_online_session_fact_digest(fact));
+  }
   for (const auto &fact : scan.ledger.selection_signal_facts()) {
     add_row("selection_signal",
             fact.parent_exposure_fact_digest + "|" + fact.selector_id + "|" +
@@ -20193,6 +21000,8 @@ canonical_runtime_index_cache_text(const lattice_runtime_index_cache_t &cache) {
       << "\n";
   out << "paper_online_readiness_fact_count="
       << cache.paper_online_readiness_fact_count << "\n";
+  out << "paper_online_session_fact_count="
+      << cache.paper_online_session_fact_count << "\n";
   out << "selection_signal_fact_count=" << cache.selection_signal_fact_count
       << "\n";
   out << "representation_support_fact_count="
@@ -20273,6 +21082,8 @@ read_runtime_index_cache(const std::filesystem::path &path) {
       detail::map_get(map, "policy_acceptance_fact_count"), 0);
   cache.paper_online_readiness_fact_count = detail::parse_i64_fallback(
       detail::map_get(map, "paper_online_readiness_fact_count"), 0);
+  cache.paper_online_session_fact_count = detail::parse_i64_fallback(
+      detail::map_get(map, "paper_online_session_fact_count"), 0);
   cache.selection_signal_fact_count = detail::parse_i64_fallback(
       detail::map_get(map, "selection_signal_fact_count"), 0);
   cache.representation_support_fact_count = detail::parse_i64_fallback(

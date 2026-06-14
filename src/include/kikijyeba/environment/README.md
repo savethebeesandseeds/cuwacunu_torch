@@ -216,10 +216,13 @@ live_online
 
 ## Paper-Online Session Contract
 
-`paper_online_session_contract.v1` is currently a contract and admission
-validator only. It is defined in `paper_online_session_contract.h` and exposed
-read-only through `hero.environment.inspect.schema`; it does not start a
-paper-online session and it does not add broker or live-capital authority.
+`paper_online_session_contract.v1` is the admission contract for a bounded
+paper-online session. It is defined in `paper_online_session_contract.h`,
+exposed read-only through `hero.environment.inspect.schema`, and checked
+through
+`hero.environment.certify.paper_online_session_admission mode=check|issue`.
+That admission surface does not start a paper-online session and does not add
+broker or live-capital authority.
 
 The contract names the future paper-online session state schema
 `kikijyeba.paper_online.session_state.v1`, the durable session files
@@ -237,6 +240,36 @@ reward/report artifact policy, operator abort, and kill-switch bindings. It
 rejects stale, missing, mismatched, or authority-drifting evidence, including
 any claim of policy selection, direct policy-to-broker routing, broker
 execution, or live execution.
+
+The admission certification tool keeps the Hero argument surface compact. It
+accepts `mode`, plus exactly one of `admission_request={...}` or
+`admission_request_path=...`, and an `expected_preview_digest` for issue mode.
+The request groups readiness inputs under `readiness` (`job_dir`, target proof
+digest, proof timing, optional expected fact digest) and session inputs under
+`session` (`admission_id`, `requested_at_ms`). The tool reads
+`lattice.paper_online_readiness.fact` from the readiness job directory, derives
+policy/checkpoint/profile/session bindings from that sidecar, returns
+`admission_ready` and `issues`, and writes
+`lattice.paper_online_session_admission.fact` only in issue mode after preview
+digest binding.
+
+`paper_online_session_runner.v1` is the separate bounded runner contract. It is
+exposed through
+`hero.environment.paper_online.session mode=validate|run` with a compact
+`session_request={...}` or `session_request_path=...`. The request points to an
+admission job directory and names the session id/root, finite step cap, timing,
+target node ids, durable ledger recovery, and duplicate-action/intent
+simulation controls. Validate mode returns readiness and policy issues without
+writing. Run mode requires an existing
+`lattice.paper_online_session_admission.fact`, refuses to overwrite an existing
+session root, writes the durable session artifacts, and emits
+`lattice.exposure.fact` plus `lattice.paper_online_session.fact` for Lattice
+inspection.
+
+The runner binds `cajtucu.execution.paper.v1` paper execution identity and
+records paper fills in `paper_ledger.lls`. It remains paper-only: no broker
+orders, no live capital, no policy/checkpoint selection, no market-readiness
+claim, and no deployment authority.
 
 Cajtucu now owns output execution mechanics. In replay, `world.step` converts
 the policy action into an execution intent, calls `cajtucu.execution.paper.v1`,

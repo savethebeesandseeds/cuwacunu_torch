@@ -18,7 +18,17 @@ HERO_ENVIRONMENT_OBJS := \
   $(HERO_ENVIRONMENT_TOOL_OBJ)
 
 HERO_LATTICE_OBJS := \
-  $(OUTPUT_PATH)/common/hero_lattice_tools.o
+  $(OUTPUT_PATH)/common/hero_lattice_tools.o \
+  $(OUTPUT_PATH)/common/runtime_lls.o \
+  $(OUTPUT_PATH)/common/lattice.o \
+  $(OUTPUT_PATH)/common/core/utils.o \
+  $(OUTPUT_PATH)/common/io/files.o \
+  $(OUTPUT_PATH)/common/parser_types.o \
+  $(OUTPUT_PATH)/common/ast.o \
+  $(OUTPUT_PATH)/common/grammar_lexer.o \
+  $(OUTPUT_PATH)/common/grammar_parser.o \
+  $(OUTPUT_PATH)/common/instruction_lexer.o \
+  $(OUTPUT_PATH)/common/instruction_parser.o
 
 HERO_MARSHAL_OBJS := \
   $(HERO_LATTICE_OBJS)
@@ -47,6 +57,56 @@ $(OUTPUT_PATH)/common/hero_environment_tools.o: \
 
 $(OUTPUT_PATH)/common/hero_lattice_tools.o: \
 	$(IMPL_PATH)/hero/lattice_hero/hero_lattice_tools.cpp \
+	$(SRC_ROOT)/Makefile.config
+	$(CC_RULE)
+
+$(OUTPUT_PATH)/common/runtime_lls.o: \
+	$(IMPL_PATH)/hero/lattice_hero/lattice/runtime_report/runtime_lls.cpp \
+	$(SRC_ROOT)/Makefile.config
+	$(CC_RULE)
+
+$(OUTPUT_PATH)/common/lattice.o: \
+	$(IMPL_PATH)/hero/lattice_hero/lattice/lattice.cpp \
+	$(SRC_ROOT)/Makefile.config
+	$(CC_RULE)
+
+$(OUTPUT_PATH)/common/core/utils.o: \
+	$(IMPL_PATH)/piaabo/core/utils.cpp \
+	$(SRC_ROOT)/Makefile.config
+	$(CC_RULE)
+
+$(OUTPUT_PATH)/common/io/files.o: \
+	$(IMPL_PATH)/piaabo/io/files.cpp \
+	$(SRC_ROOT)/Makefile.config
+	$(CC_RULE)
+
+$(OUTPUT_PATH)/common/parser_types.o: \
+	$(IMPL_PATH)/piaabo/parse/bnf/parser_types.cpp \
+	$(SRC_ROOT)/Makefile.config
+	$(CC_RULE)
+
+$(OUTPUT_PATH)/common/ast.o: \
+	$(IMPL_PATH)/piaabo/parse/bnf/ast.cpp \
+	$(SRC_ROOT)/Makefile.config
+	$(CC_RULE)
+
+$(OUTPUT_PATH)/common/grammar_lexer.o: \
+	$(IMPL_PATH)/piaabo/parse/bnf/grammar_lexer.cpp \
+	$(SRC_ROOT)/Makefile.config
+	$(CC_RULE)
+
+$(OUTPUT_PATH)/common/grammar_parser.o: \
+	$(IMPL_PATH)/piaabo/parse/bnf/grammar_parser.cpp \
+	$(SRC_ROOT)/Makefile.config
+	$(CC_RULE)
+
+$(OUTPUT_PATH)/common/instruction_lexer.o: \
+	$(IMPL_PATH)/piaabo/parse/bnf/instruction_lexer.cpp \
+	$(SRC_ROOT)/Makefile.config
+	$(CC_RULE)
+
+$(OUTPUT_PATH)/common/instruction_parser.o: \
+	$(IMPL_PATH)/piaabo/parse/bnf/instruction_parser.cpp \
 	$(SRC_ROOT)/Makefile.config
 	$(CC_RULE)
 

@@ -4511,15 +4511,9 @@ private:
       dependency_proofs.push_back(std::move(upstream_proof));
     }
 
-    if (spec.require_contract_match &&
-        options_.active_identity.protocol_contract_fingerprint.empty()) {
-      result.status = lattice_target_status_t::blocked;
-      result.reasons.push_back(
-          "active contract fingerprint is required but was not provided");
-      result.plan_ready = false;
-      result.suggested_wave = {};
-      return result;
-    }
+    const bool missing_active_contract_fingerprint =
+        spec.require_contract_match &&
+        options_.active_identity.protocol_contract_fingerprint.empty();
 
     if (!spec.protocol_id.empty()) {
       if (options_.active_identity.protocol_id.empty()) {
@@ -4567,24 +4561,14 @@ private:
       return result;
     }
 
+    bool missing_active_graph_order_fingerprint = false;
+    bool missing_active_source_cursor_token = false;
     if (detail::target_requires_graph_anchor_identity(spec)) {
       if (options_.active_identity.graph_order_fingerprint.empty()) {
-        result.status = lattice_target_status_t::blocked;
-        result.reasons.push_back(
-            "active graph order fingerprint is required for graph-anchor "
-            "lattice targets but was not provided");
-        result.plan_ready = false;
-        result.suggested_wave = {};
-        return result;
+        missing_active_graph_order_fingerprint = true;
       }
       if (options_.active_identity.source_cursor_token.empty()) {
-        result.status = lattice_target_status_t::blocked;
-        result.reasons.push_back(
-            "active source cursor token is required for graph-anchor lattice "
-            "targets but was not provided");
-        result.plan_ready = false;
-        result.suggested_wave = {};
-        return result;
+        missing_active_source_cursor_token = true;
       }
     }
 
@@ -4756,6 +4740,36 @@ private:
       result.reasons.push_back("no matching job manifest/report found under " +
                                options_.runtime_root.string());
       result.plan_ready = spec.max_waves > 0;
+      return result;
+    }
+    if (missing_active_contract_fingerprint) {
+      result.proof_certificate.dependencies = dependency_proofs;
+      result.status = lattice_target_status_t::blocked;
+      result.reasons.push_back(
+          "active contract fingerprint is required for lattice targets with "
+          "existing candidate evidence but was not provided");
+      result.plan_ready = false;
+      result.suggested_wave = {};
+      return result;
+    }
+    if (missing_active_graph_order_fingerprint) {
+      result.proof_certificate.dependencies = dependency_proofs;
+      result.status = lattice_target_status_t::blocked;
+      result.reasons.push_back(
+          "active graph order fingerprint is required for graph-anchor lattice "
+          "targets with existing candidate evidence but was not provided");
+      result.plan_ready = false;
+      result.suggested_wave = {};
+      return result;
+    }
+    if (missing_active_source_cursor_token) {
+      result.proof_certificate.dependencies = dependency_proofs;
+      result.status = lattice_target_status_t::blocked;
+      result.reasons.push_back(
+          "active source cursor token is required for graph-anchor lattice "
+          "targets with existing candidate evidence but was not provided");
+      result.plan_ready = false;
+      result.suggested_wave = {};
       return result;
     }
     std::optional<lattice_target_evaluation_t> newest_failure{};

@@ -8,7 +8,9 @@
 #include "hero/runtime_hero/runtime/job_layout.h"
 #include "hero/short_ref.h"
 #include "wikimyei/assembly.h"
+#include "wikimyei/inference/expected_value/mdn/assembly.h"
 #include "wikimyei/representation/encoding/mtf_jepa_mae_vicreg/assembly.h"
+#include "wikimyei/representation/encoding/vicreg/assembly.h"
 
 #include <algorithm>
 #include <array>
@@ -9880,6 +9882,194 @@ policy_training_operator_issues_json(const std::vector<std::string> &issues) {
   return out.str();
 }
 
+[[nodiscard]] std::string paper_online_session_fact_json(
+    const exposure::lattice_paper_online_session_fact_t &fact) {
+  const auto issues = exposure::paper_online_session_fact_issues(fact);
+  const auto digest = exposure::paper_online_session_fact_digest(fact);
+  std::ostringstream out;
+  out << "{\"schema\":" << json_quote(fact.schema)
+      << ",\"fact_type\":" << json_quote(fact.fact_type) << ",\"fact_ref\":"
+      << json_quote(display::fact_ref("paper_online_session", digest))
+      << ",\"fact_digest_prefix\":"
+      << json_quote(display::digest_prefix(digest))
+      << ",\"short_ref_scheme\":\"kikijyeba.hero.short_ref.v1\""
+      << ",\"parent_exposure_fact_digest\":"
+      << json_quote(fact.parent_exposure_fact_digest)
+      << ",\"contract_fingerprint\":" << json_quote(fact.contract_fingerprint)
+      << ",\"protocol_id\":" << json_quote(fact.protocol_id)
+      << ",\"graph_order_fingerprint\":"
+      << json_quote(fact.graph_order_fingerprint)
+      << ",\"source_cursor_token\":" << json_quote(fact.source_cursor_token)
+      << ",\"target_component_family_id\":"
+      << json_quote(fact.target_component_family_id)
+      << ",\"job_id\":" << json_quote(fact.job_id)
+      << ",\"wave_id\":" << json_quote(fact.wave_id)
+      << ",\"wave_action\":" << json_quote(fact.wave_action)
+      << ",\"split_name\":" << json_quote(fact.split_name) << ",\"split_role\":"
+      << json_quote(exposure::exposure_split_role_name(fact.split_role))
+      << ",\"session_id\":" << json_quote(fact.session_id)
+      << ",\"session_contract_id\":" << json_quote(fact.session_contract_id)
+      << ",\"session_runner_contract_id\":"
+      << json_quote(fact.session_runner_contract_id)
+      << ",\"admission_id\":" << json_quote(fact.admission_id)
+      << ",\"admission_fact_digest\":" << json_quote(fact.admission_fact_digest)
+      << ",\"admission_ref\":"
+      << json_quote(display::fact_ref("paper_online_session_admission",
+                                      fact.admission_fact_digest))
+      << ",\"readiness_fact_digest\":" << json_quote(fact.readiness_fact_digest)
+      << ",\"readiness_ref\":"
+      << json_quote(display::fact_ref("paper_online_readiness",
+                                      fact.readiness_fact_digest))
+      << ",\"readiness_proof_certificate_digest\":"
+      << json_quote(fact.readiness_proof_certificate_digest)
+      << ",\"accepted_policy_id\":" << json_quote(fact.accepted_policy_id)
+      << ",\"accepted_actor_checkpoint_digest\":"
+      << json_quote(fact.accepted_actor_checkpoint_digest)
+      << ",\"accepted_checkpoint_digest\":"
+      << json_quote(fact.accepted_checkpoint_digest)
+      << ",\"execution_profile_digest\":"
+      << json_quote(fact.execution_profile_digest)
+      << ",\"locked_execution_profile_digest\":"
+      << json_quote(fact.locked_execution_profile_digest)
+      << ",\"paper_online_profile_digest\":"
+      << json_quote(fact.paper_online_profile_digest)
+      << ",\"direct_edge_universe_digest\":"
+      << json_quote(fact.direct_edge_universe_digest)
+      << ",\"accounting_numeraire_node_id\":"
+      << json_quote(fact.accounting_numeraire_node_id)
+      << ",\"target_node_ids\":" << json_quote(fact.target_node_ids)
+      << ",\"execution_backend_id\":" << json_quote(fact.execution_backend_id)
+      << ",\"reward_contract_id\":" << json_quote(fact.reward_contract_id)
+      << ",\"session_manifest_digest\":"
+      << json_quote(fact.session_manifest_digest)
+      << ",\"session_state_digest\":" << json_quote(fact.session_state_digest)
+      << ",\"session_events_digest\":" << json_quote(fact.session_events_digest)
+      << ",\"market_events_digest\":" << json_quote(fact.market_events_digest)
+      << ",\"action_intents_digest\":" << json_quote(fact.action_intents_digest)
+      << ",\"execution_intents_digest\":"
+      << json_quote(fact.execution_intents_digest)
+      << ",\"paper_ledger_digest\":" << json_quote(fact.paper_ledger_digest)
+      << ",\"reward_reports_digest\":" << json_quote(fact.reward_reports_digest)
+      << ",\"requested_step_count\":" << fact.requested_step_count
+      << ",\"completed_step_count\":" << fact.completed_step_count
+      << ",\"market_event_count\":" << fact.market_event_count
+      << ",\"action_intent_count\":" << fact.action_intent_count
+      << ",\"execution_intent_count\":" << fact.execution_intent_count
+      << ",\"paper_fill_count\":" << fact.paper_fill_count
+      << ",\"reward_report_count\":" << fact.reward_report_count
+      << ",\"started_at_ms\":" << fact.started_at_ms
+      << ",\"stopped_at_ms\":" << fact.stopped_at_ms
+      << ",\"max_market_data_staleness_ms\":"
+      << fact.max_market_data_staleness_ms
+      << ",\"max_observed_market_data_staleness_ms\":"
+      << fact.max_observed_market_data_staleness_ms
+      << ",\"terminal_state\":" << json_quote(fact.terminal_state)
+      << ",\"ledger_recovered\":" << bool_json(fact.ledger_recovered)
+      << ",\"duplicate_action_protection_enforced\":"
+      << bool_json(fact.duplicate_action_protection_enforced)
+      << ",\"duplicate_execution_intent_protection_enforced\":"
+      << bool_json(fact.duplicate_execution_intent_protection_enforced)
+      << ",\"market_data_staleness_enforced\":"
+      << bool_json(fact.market_data_staleness_enforced)
+      << ",\"operator_abort_supported\":"
+      << bool_json(fact.operator_abort_supported)
+      << ",\"kill_switch_supported\":" << bool_json(fact.kill_switch_supported)
+      << ",\"operator_abort_triggered\":"
+      << bool_json(fact.operator_abort_triggered)
+      << ",\"kill_switch_triggered\":" << bool_json(fact.kill_switch_triggered)
+      << ",\"terminal_state_recorded\":"
+      << bool_json(fact.terminal_state_recorded)
+      << ",\"artifacts_written\":" << bool_json(fact.artifacts_written)
+      << ",\"artifact_evidence\":" << bool_json(fact.artifact_evidence)
+      << ",\"paper_online_session_artifact\":"
+      << bool_json(fact.paper_online_session_artifact)
+      << ",\"paper_execution_attempted\":"
+      << bool_json(fact.paper_execution_attempted)
+      << ",\"paper_execution_completed\":"
+      << bool_json(fact.paper_execution_completed)
+      << ",\"broker_execution_allowed\":"
+      << bool_json(fact.broker_execution_allowed)
+      << ",\"live_execution_allowed\":"
+      << bool_json(fact.live_execution_allowed)
+      << ",\"direct_policy_to_broker_allowed\":"
+      << bool_json(fact.direct_policy_to_broker_allowed)
+      << ",\"direct_policy_to_cajtucu_allowed\":"
+      << bool_json(fact.direct_policy_to_cajtucu_allowed)
+      << ",\"readiness_authority\":" << bool_json(fact.readiness_authority)
+      << ",\"market_readiness_authority\":"
+      << bool_json(fact.market_readiness_authority)
+      << ",\"deployment_authority\":" << bool_json(fact.deployment_authority)
+      << ",\"live_execution_authority\":"
+      << bool_json(fact.live_execution_authority)
+      << ",\"issues\":" << string_array_json(issues)
+      << ",\"digest\":" << json_quote(digest) << "}";
+  return out.str();
+}
+
+[[nodiscard]] std::string paper_online_session_facts_json(
+    const std::vector<exposure::lattice_paper_online_session_fact_t> &facts,
+    std::size_t limit) {
+  const std::size_t n = std::min(facts.size(), limit);
+  std::ostringstream out;
+  out << "[";
+  for (std::size_t i = 0; i < n; ++i) {
+    if (i != 0) {
+      out << ",";
+    }
+    out << paper_online_session_fact_json(facts[i]);
+  }
+  out << "]";
+  return out.str();
+}
+
+[[nodiscard]] std::string paper_online_session_summary_json(
+    const exposure::paper_online_session_summary_t &summary) {
+  std::ostringstream out;
+  out << "{\"schema\":" << json_quote(summary.schema)
+      << ",\"exposure_fact_count\":" << summary.exposure_fact_count
+      << ",\"paper_online_session_fact_count\":"
+      << summary.paper_online_session_fact_count
+      << ",\"parent_exposure_fact_count\":"
+      << summary.parent_exposure_fact_count
+      << ",\"admission_fact_declared_count\":"
+      << summary.admission_fact_declared_count
+      << ",\"readiness_fact_declared_count\":"
+      << summary.readiness_fact_declared_count
+      << ",\"session_id_bound_count\":" << summary.session_id_bound_count
+      << ",\"stopped_terminal_count\":" << summary.stopped_terminal_count
+      << ",\"aborted_terminal_count\":" << summary.aborted_terminal_count
+      << ",\"kill_switch_terminal_count\":"
+      << summary.kill_switch_terminal_count
+      << ",\"artifact_evidence_count\":" << summary.artifact_evidence_count
+      << ",\"paper_execution_completed_count\":"
+      << summary.paper_execution_completed_count
+      << ",\"completed_step_count\":" << summary.completed_step_count
+      << ",\"authority_drift_count\":" << summary.authority_drift_count
+      << ",\"warning_count\":" << summary.warning_count
+      << ",\"artifact_evidence\":" << bool_json(summary.artifact_evidence)
+      << ",\"paper_online_session_artifact\":"
+      << bool_json(summary.paper_online_session_artifact)
+      << ",\"broker_execution_allowed\":"
+      << bool_json(summary.broker_execution_allowed)
+      << ",\"live_execution_allowed\":"
+      << bool_json(summary.live_execution_allowed)
+      << ",\"direct_policy_to_broker_allowed\":"
+      << bool_json(summary.direct_policy_to_broker_allowed)
+      << ",\"direct_policy_to_cajtucu_allowed\":"
+      << bool_json(summary.direct_policy_to_cajtucu_allowed)
+      << ",\"readiness_authority\":" << bool_json(summary.readiness_authority)
+      << ",\"quality_authority\":" << bool_json(summary.quality_authority)
+      << ",\"performance_authority\":"
+      << bool_json(summary.performance_authority)
+      << ",\"market_readiness_authority\":"
+      << bool_json(summary.market_readiness_authority)
+      << ",\"deployment_authority\":" << bool_json(summary.deployment_authority)
+      << ",\"live_execution_authority\":"
+      << bool_json(summary.live_execution_authority)
+      << ",\"issues\":" << string_array_json(summary.issues) << "}";
+  return out.str();
+}
+
 [[nodiscard]] std::string selection_signal_fact_json(
     const exposure::lattice_selection_signal_fact_t &fact) {
   std::ostringstream out;
@@ -10314,6 +10504,8 @@ runtime_index_cache_json(const exposure::lattice_runtime_index_cache_t &cache,
       << cache.policy_acceptance_fact_count
       << ",\"paper_online_readiness_fact_count\":"
       << cache.paper_online_readiness_fact_count
+      << ",\"paper_online_session_fact_count\":"
+      << cache.paper_online_session_fact_count
       << ",\"selection_signal_fact_count\":"
       << cache.selection_signal_fact_count
       << ",\"representation_support_fact_count\":"
@@ -11087,6 +11279,10 @@ simple_fact_family_summary_json(const char *schema, std::int64_t fact_count) {
             ledger.facts(), ledger.paper_online_readiness_facts(),
             ledger.policy_acceptance_facts(),
             ledger.tsodao_settings_protection_facts()));
+  case exposure::lattice_fact_family_t::paper_online_session:
+    return paper_online_session_summary_json(
+        exposure::summarize_paper_online_sessions(
+            ledger.facts(), ledger.paper_online_session_facts()));
   case exposure::lattice_fact_family_t::selection_signal:
     return selection_signal_summary_json(exposure::summarize_selection_signals(
         ledger.facts(), ledger.selection_signal_facts(),
@@ -11140,6 +11336,9 @@ fact_family_facts_json(const exposure::lattice_exposure_ledger_t &ledger,
   case exposure::lattice_fact_family_t::paper_online_readiness:
     return paper_online_readiness_facts_json(
         ledger.paper_online_readiness_facts(), limit);
+  case exposure::lattice_fact_family_t::paper_online_session:
+    return paper_online_session_facts_json(ledger.paper_online_session_facts(),
+                                           limit);
   case exposure::lattice_fact_family_t::selection_signal:
     return selection_signal_facts_json(ledger.selection_signal_facts(), limit);
   case exposure::lattice_fact_family_t::representation_support:
@@ -11325,6 +11524,10 @@ resolve_fact_digest_prefix(const std::vector<Fact> &facts,
     return resolve_fact_digest_prefix(
         ledger.paper_online_readiness_facts(), prefix,
         exposure::paper_online_readiness_fact_digest);
+  case exposure::lattice_fact_family_t::paper_online_session:
+    return resolve_fact_digest_prefix(
+        ledger.paper_online_session_facts(), prefix,
+        exposure::paper_online_session_fact_digest);
   case exposure::lattice_fact_family_t::selection_signal:
     return resolve_fact_digest_prefix(ledger.selection_signal_facts(), prefix,
                                       exposure::selection_signal_fact_digest);
@@ -11428,6 +11631,12 @@ fact_family_preview_rows_json(const exposure::lattice_exposure_ledger_t &ledger,
                                   exposure::lattice_fact_family_name(family),
                                   exposure::paper_online_readiness_fact_digest,
                                   paper_online_readiness_fact_json,
+                                  matching_count, truncated);
+  case exposure::lattice_fact_family_t::paper_online_session:
+    return fact_preview_rows_json(ledger.paper_online_session_facts(), filter,
+                                  exposure::lattice_fact_family_name(family),
+                                  exposure::paper_online_session_fact_digest,
+                                  paper_online_session_fact_json,
                                   matching_count, truncated);
   case exposure::lattice_fact_family_t::selection_signal:
     return fact_preview_rows_json(ledger.selection_signal_facts(), filter,
@@ -11581,22 +11790,53 @@ void overlay_active_identity_from_config(
     const auto protocol_dsl = parse_kv_file(protocol_dsl_path);
     id->protocol_id = map_get_or(protocol_dsl, "PROTOCOL_ID", "cwu_01v");
   }
-  if (!id->mtf_jepa_mae_vicreg_assembly_fingerprint.empty()) {
-    return;
+  if (id->mtf_jepa_mae_vicreg_assembly_fingerprint.empty()) {
+    const fs::path mtf_dsl_path = map_get_or(
+        config, "wikimyei_representation_mtf_jepa_mae_vicreg_dsl_path",
+        "/cuwacunu/src/config/"
+        "wikimyei.representation.mtf_jepa_mae_vicreg.dsl");
+    const auto mtf_dsl = parse_kv_file(mtf_dsl_path);
+    const auto component_assembly_id =
+        map_get_or(mtf_dsl, "COMPONENT_ASSEMBLY_ID", "mtf_jepa_mae_vicreg_v1");
+    const auto version_token = map_get_or(
+        mtf_dsl, "VERSION", "wikimyei.representation.mtf_jepa_mae_vicreg.v1");
+    const auto assembly = cuwacunu::wikimyei::representation::encoding::
+        mtf_jepa_mae_vicreg::make_mtf_jepa_mae_vicreg_assembly(
+            component_assembly_id, version_token);
+    id->mtf_jepa_mae_vicreg_assembly_fingerprint =
+        cuwacunu::wikimyei::assembly::assembly_fingerprint(assembly);
   }
-  const fs::path mtf_dsl_path = map_get_or(
-      config, "wikimyei_representation_mtf_jepa_mae_vicreg_dsl_path",
-      "/cuwacunu/src/config/wikimyei.representation.mtf_jepa_mae_vicreg.dsl");
-  const auto mtf_dsl = parse_kv_file(mtf_dsl_path);
-  const auto component_assembly_id =
-      map_get_or(mtf_dsl, "COMPONENT_ASSEMBLY_ID", "mtf_jepa_mae_vicreg_v1");
-  const auto version_token = map_get_or(
-      mtf_dsl, "VERSION", "wikimyei.representation.mtf_jepa_mae_vicreg.v1");
-  const auto assembly = cuwacunu::wikimyei::representation::encoding::
-      mtf_jepa_mae_vicreg::make_mtf_jepa_mae_vicreg_assembly(
-          component_assembly_id, version_token);
-  id->mtf_jepa_mae_vicreg_assembly_fingerprint =
-      cuwacunu::wikimyei::assembly::assembly_fingerprint(assembly);
+  if (id->vicreg_assembly_fingerprint.empty()) {
+    const fs::path vicreg_dsl_path =
+        map_get_or(config, "wikimyei_representation_vicreg_dsl_path",
+                   "/cuwacunu/src/config/wikimyei.representation.vicreg.dsl");
+    const auto vicreg_dsl = parse_kv_file(vicreg_dsl_path);
+    const auto vicreg_component_assembly_id =
+        map_get_or(vicreg_dsl, "COMPONENT_ASSEMBLY_ID", "vicreg_v1");
+    const auto vicreg_version_token =
+        map_get_or(vicreg_dsl, "VERSION", "wikimyei.representation.vicreg.v1");
+    const auto vicreg_assembly = cuwacunu::wikimyei::representation::encoding::
+        vicreg::make_vicreg_assembly(vicreg_component_assembly_id,
+                                     vicreg_version_token);
+    id->vicreg_assembly_fingerprint =
+        cuwacunu::wikimyei::assembly::assembly_fingerprint(vicreg_assembly);
+  }
+  if (id->mdn_assembly_fingerprint.empty()) {
+    const fs::path mdn_dsl_path =
+        map_get_or(config, "wikimyei_inference_expected_value_mdn_dsl_path",
+                   "/cuwacunu/src/config/"
+                   "wikimyei.inference.expected_value.mdn.dsl");
+    const auto mdn_dsl = parse_kv_file(mdn_dsl_path);
+    const auto mdn_component_assembly_id =
+        map_get_or(mdn_dsl, "COMPONENT_ASSEMBLY_ID", "channel_mdn_v1");
+    const auto mdn_version_token = map_get_or(
+        mdn_dsl, "VERSION", "wikimyei.inference.expected_value.mdn.v1");
+    const auto mdn_assembly = cuwacunu::wikimyei::inference::expected_value::
+        mdn::make_channel_context_mdn_assembly(mdn_component_assembly_id,
+                                               mdn_version_token);
+    id->mdn_assembly_fingerprint =
+        cuwacunu::wikimyei::assembly::assembly_fingerprint(mdn_assembly);
+  }
 }
 
 void overlay_active_identity_from_args(
@@ -11868,6 +12108,8 @@ build_target_evaluator(const std::string &args, lattice_context_t *ctx,
        << scan.ledger.policy_acceptance_facts().size()
        << ",\"paper_online_readiness_fact_count\":"
        << scan.ledger.paper_online_readiness_facts().size()
+       << ",\"paper_online_session_fact_count\":"
+       << scan.ledger.paper_online_session_facts().size()
        << ",\"selection_signal_fact_count\":"
        << scan.ledger.selection_signal_facts().size()
        << ",\"representation_support_fact_count\":"
@@ -12441,6 +12683,8 @@ build_target_evaluator(const std::string &args, lattice_context_t *ctx,
        << scan.ledger.policy_acceptance_facts().size()
        << ",\"paper_online_readiness_fact_count\":"
        << scan.ledger.paper_online_readiness_facts().size()
+       << ",\"paper_online_session_fact_count\":"
+       << scan.ledger.paper_online_session_facts().size()
        << ",\"selection_signal_fact_count\":"
        << scan.ledger.selection_signal_facts().size()
        << ",\"representation_support_fact_count\":"
@@ -12797,6 +13041,8 @@ build_target_evaluator(const std::string &args, lattice_context_t *ctx,
        << scan.ledger.policy_acceptance_facts().size()
        << ",\"paper_online_readiness_fact_count\":"
        << scan.ledger.paper_online_readiness_facts().size()
+       << ",\"paper_online_session_fact_count\":"
+       << scan.ledger.paper_online_session_facts().size()
        << ",\"selection_signal_fact_count\":"
        << scan.ledger.selection_signal_facts().size()
        << ",\"representation_support_fact_count\":"
@@ -13135,6 +13381,8 @@ build_target_evaluator(const std::string &args, lattice_context_t *ctx,
        << scan.ledger.policy_acceptance_facts().size()
        << ",\"paper_online_readiness_fact_count\":"
        << scan.ledger.paper_online_readiness_facts().size()
+       << ",\"paper_online_session_fact_count\":"
+       << scan.ledger.paper_online_session_facts().size()
        << ",\"selection_signal_fact_count\":"
        << scan.ledger.selection_signal_facts().size()
        << ",\"representation_support_fact_count\":"
@@ -13186,6 +13434,9 @@ build_target_evaluator(const std::string &args, lattice_context_t *ctx,
        << std::min<std::size_t>(
               scan.ledger.paper_online_readiness_facts().size(),
               static_cast<std::size_t>(limit))
+       << ",\"returned_paper_online_session_fact_count\":"
+       << std::min<std::size_t>(scan.ledger.paper_online_session_facts().size(),
+                                static_cast<std::size_t>(limit))
        << ",\"returned_selection_signal_fact_count\":"
        << std::min<std::size_t>(scan.ledger.selection_signal_facts().size(),
                                 static_cast<std::size_t>(limit))
@@ -14524,6 +14775,8 @@ evidence_dimension_comparison_rows(
        << scan.ledger.policy_acceptance_facts().size()
        << ",\"paper_online_readiness_fact_count\":"
        << scan.ledger.paper_online_readiness_facts().size()
+       << ",\"paper_online_session_fact_count\":"
+       << scan.ledger.paper_online_session_facts().size()
        << ",\"selection_signal_fact_count\":"
        << scan.ledger.selection_signal_facts().size()
        << ",\"representation_support_fact_count\":"
